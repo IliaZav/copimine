@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+RETIRED_DONATION_ITEM_IDS = frozenset({"gde_moy_lut_blyat_compass"})
+
 try:
     import yaml  # type: ignore
 except Exception:  # pragma: no cover
@@ -103,6 +105,8 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             continue
         item_id = str(entry.get("item-id") or "").strip().lower()
         if not item_id:
+            continue
+        if item_id in RETIRED_DONATION_ITEM_IDS or not bool(entry.get("enabled", True)):
             continue
         lore = _string_list(entry.get("lore") or [])
         effect_description = str(entry.get("effect-description") or "").strip()
@@ -206,6 +210,8 @@ def admin_gift_catalog_snapshot(items_file: Path | None = None) -> dict[str, Any
         base_material = str(entry.get("base-material") or "PAPER").strip().upper()
         custom_model_data = int(entry.get("custom-model-data") or 0)
         custom_texture_allowed = bool(entry.get("custom-texture-mode-allowed", True))
+        if item_id in RETIRED_DONATION_ITEM_IDS or not bool(entry.get("enabled", True)):
+            continue
         buckets["DONATION"].append(
             {
                 "item_id": item_id,

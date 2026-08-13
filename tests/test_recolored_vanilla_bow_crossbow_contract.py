@@ -37,14 +37,17 @@ BOW_PROJECTILE_COORDS = {
 }
 
 BOW_OUTPUTS = {
-    "teleport_bow": "bow.png",
-    "teleport_bow_pulling_0": "bow_pulling_0.png",
-    "teleport_bow_pulling_1": "bow_pulling_1.png",
-    "teleport_bow_pulling_2": "bow_pulling_2.png",
     "cobblestone_trail_bow": "bow.png",
     "cobblestone_trail_bow_pulling_0": "bow_pulling_0.png",
     "cobblestone_trail_bow_pulling_1": "bow_pulling_1.png",
     "cobblestone_trail_bow_pulling_2": "bow_pulling_2.png",
+}
+
+TELEPORT_CROSSBOW_OUTPUTS = {
+    "teleport_bow": "crossbow_standby.png",
+    "teleport_bow_pulling_0": "crossbow_pulling_0.png",
+    "teleport_bow_pulling_1": "crossbow_pulling_1.png",
+    "teleport_bow_pulling_2": "crossbow_pulling_2.png",
 }
 
 CROSSBOW_OUTPUTS = {
@@ -111,7 +114,7 @@ def test_recolored_bows_preserve_vanilla_geometry_with_projectile():
 
 def test_bow_pull_frames_are_distinct_and_keep_custom_projectile():
     frames = []
-    for output_name in ("teleport_bow_pulling_0", "teleport_bow_pulling_1", "teleport_bow_pulling_2"):
+    for output_name in ("cobblestone_trail_bow_pulling_0", "cobblestone_trail_bow_pulling_1", "cobblestone_trail_bow_pulling_2"):
         with Image.open(ARTIFACT_TEXTURES / f"{output_name}.png") as image:
             frames.append(image.convert("RGBA").tobytes())
     assert len(set(frames)) == 3
@@ -125,6 +128,20 @@ def test_bow_pull_frames_are_distinct_and_keep_custom_projectile():
             for x, y in BOW_PROJECTILE_COORDS[reference_name]:
                 assert logical.getpixel((x, y))[3] > 0
                 assert logical.getpixel((x, y))[:3] != source.getpixel((x, y))[:3]
+
+
+def test_recolored_teleport_crossbow_preserves_vanilla_geometry():
+    for output_name, reference_name in TELEPORT_CROSSBOW_OUTPUTS.items():
+        _assert_recolored_shape(output_name, reference_name)
+        model = json.loads((ARTIFACT_MODELS / f"{output_name}.json").read_text(encoding="utf-8"))
+        expected_parent = "minecraft:item/crossbow" if output_name == "teleport_bow" else f"minecraft:item/{output_name.replace('teleport_bow', 'crossbow') }"
+        assert model["parent"] == expected_parent
+
+    frames = []
+    for output_name in ("teleport_bow_pulling_0", "teleport_bow_pulling_1", "teleport_bow_pulling_2"):
+        with Image.open(ARTIFACT_TEXTURES / f"{output_name}.png") as image:
+            frames.append(image.convert("RGBA").tobytes())
+    assert len(set(frames)) == 3
 
 
 def test_recolored_crossbows_preserve_vanilla_geometry():

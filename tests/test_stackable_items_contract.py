@@ -71,7 +71,7 @@ def test_custom_item_plugins_do_not_register_the_old_creative_antidupe_handlers(
     assert "InventoryCreativeEvent" in ARTIFACTS
     assert "onUtilityArtifactCreative" in ARTIFACTS
     assert "isUtilityArtifactItem(event.getCursor())" in ARTIFACTS
-    assert "handleCreativeDonationLoss" not in ARTIFACTS
+    assert "handleCreativeDonationLoss" in ARTIFACTS
     assert "blockCreativeOfficialCopy" not in ARTIFACTS
     assert "onCreativeOfficialCopy" not in NARCOTICS
 

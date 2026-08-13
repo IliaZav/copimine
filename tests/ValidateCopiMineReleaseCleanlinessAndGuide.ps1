@@ -33,7 +33,7 @@ Require-Path $source 'Clean AdminPlus source file is missing.'
 Require-Path $pluginYml 'Clean AdminPlus plugin.yml is missing.'
 Require-Path (Join-Path $plugins 'CopiMineUltimateAdminPlus.jar') 'Active CopiMineUltimateAdminPlus.jar is missing.'
 Require-Path (Join-Path $plugins 'CopiMineArtifacts.jar') 'Active CopiMineArtifacts.jar is missing.'
-Require-Path (Join-Path $plugins 'CopiMineUltimateAdmin\copimine_ultimate.db') 'Runtime CopiMine DB must stay in plugins\CopiMineUltimateAdmin.'
+Require-Text $source 'postgresRuntime()' 'Active AdminPlus storage must use the PostgreSQL runtime path.'
 Require-Path $guide 'Root transfer guide COPIMINE_TRANSFER_GUIDE.txt is missing.'
 
 $legacyRootDirs = @(
@@ -66,7 +66,7 @@ Get-ChildItem -LiteralPath $root -File |
     ForEach-Object { $errors.Add("Legacy installer/script must be removed from release root: $($_.Name)") }
 
 Require-Missing (Join-Path $plugins 'old-plugins') 'Active server plugins folder must not contain old-plugins archive.'
-Require-Missing (Join-Path $plugins 'CopiMineUltimateAdminPlus') 'Stale CopiMineUltimateAdminPlus data folder must be removed; runtime DB is CopiMineUltimateAdmin.'
+Require-Missing (Join-Path $plugins 'CopiMineUltimateAdminPlus') 'Stale CopiMineUltimateAdminPlus data folder must be removed from the active plugin directory.'
 
 $activeCopiMineJars = @(Get-ChildItem -LiteralPath $plugins -File -Filter 'CopiMine*.jar' | Select-Object -ExpandProperty Name | Sort-Object)
 $requiredCopiMineJars = @(

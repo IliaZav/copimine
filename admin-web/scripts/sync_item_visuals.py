@@ -46,6 +46,11 @@ def main() -> None:
         for entry in models.get("items", [])
         if isinstance(entry, dict)
     }
+    model_textures = {
+        str(entry.get("id") or "").strip().lower(): str(entry.get("texture") or "")
+        for entry in models.get("items", [])
+        if isinstance(entry, dict)
+    }
     entries = [entry for entry in mapping.get("items", []) if isinstance(entry, dict)]
     if not entries:
         raise SystemExit("Texture mapping has no items.")
@@ -58,7 +63,10 @@ def main() -> None:
             raise SystemExit("Texture mapping contains an empty item id.")
         if item_id not in model_ids:
             raise SystemExit(f"Resource-pack model is missing for {item_id}.")
-        source = TEXTURES_DIR / f"{item_id}.png"
+        texture_ref = model_textures.get(item_id, "")
+        texture_path = texture_ref.split(":", 1)[1] if ":" in texture_ref else ""
+        source_name = Path(texture_path).name if texture_path else item_id
+        source = TEXTURES_DIR / f"{source_name}.png"
         if not source.is_file():
             raise SystemExit(f"Resource-pack texture is missing for {item_id}: {source}")
         destination = OUTPUT_DIR / f"{item_id}.png"

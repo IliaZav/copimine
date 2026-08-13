@@ -20,7 +20,9 @@ EXPECTED = {
     "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD"),
     "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
     "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK"),
-    "gde_moy_lut_blyat_compass": (100, "LOOT_COMPASS", "COMPASS"),
+    "berserker_heart": (200, "BERSERKER_HEART", "NETHER_STAR"),
+    "zhilorez_pickaxe": (250, "VEIN_MINER", "NETHERITE_PICKAXE"),
+    "night_cloak": (150, "NIGHT_CLOAK", "PHANTOM_MEMBRANE"),
 }
 
 
@@ -34,7 +36,7 @@ def _donation_blocks(text: str) -> dict[str, str]:
     )
     for match in matches:
         block = match.group(2)
-        if "source: DONATION_SHOP" in block:
+        if "source: DONATION_SHOP" in block and "enabled: false" not in block:
             blocks[match.group(1)] = block
     return blocks
 
@@ -66,16 +68,19 @@ def test_donation_catalog_has_one_backend_and_runtime_contract_per_item() -> Non
         assert _field(block, "source") == "DONATION_SHOP"
         assert _field(block, "enabled").lower() == "true"
         assert int(_field(block, "max-stack")) == 1
-        assert _field(block, "owner-bound").lower() == "true"
+        expected_owner_bound = "false" if item_id == "night_cloak" else "true"
+        assert _field(block, "owner-bound").lower() == expected_owner_bound
         assert _field(block, "effect-description")
 
     java = JAVA.read_text(encoding="utf-8")
     interact = _method_body(java, "artifactInteractEffects")
     combat = _method_body(java, "artifactCombatEffects")
     defense = _method_body(java, "artifactDefenseEffects")
-    assert {"DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS"} <= set(re.findall(r'"([A-Z_]+)"', interact))
+    interact_effects = set(re.findall(r'"([A-Z_]+)"', interact))
+    assert {"DEBUFF_AMULET", "TAX_CLOCK", "SIGNAL_BELL"} <= interact_effects
+    assert "LOOT_COMPASS" not in interact_effects
     assert {"BATIN_REMEN", "NAKOPAL_PICKAXE", "NALOGOVAYA_KOSA"} <= set(re.findall(r'"([A-Z_]+)"', combat))
-    assert {"PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD"} <= set(re.findall(r'"([A-Z_]+)"', defense))
+    assert {"PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD", "BERSERKER_HEART"} <= set(re.findall(r'"([A-Z_]+)"', defense))
 
 
 def test_vest_damage_reduction_is_separate_from_chance_gated_buff() -> None:
@@ -163,7 +168,8 @@ def test_each_donation_ability_is_wired_to_its_specific_effect_logic() -> None:
 
     assert 'case "DEBUFF_AMULET" -> this.cleanseAllowedDebuff(var2)' in interact_body
     assert 'this.activateTaxClock(var2, var1.getItem())' in interact_body
-    assert 'case "LOOT_COMPASS" -> this.activateLootCompass(var2, var1.getItem())' in interact_body
+    assert 'case "LOOT_COMPASS"' not in interact_body
+    assert 'activateLootCompass' not in interact_body
 
     batin = re.search(r'(?ms)case "BATIN_REMEN":(.*?)(?=\n\s*case "NAKOPAL_PICKAXE":)', combat_body)
     pickaxe = re.search(r'(?ms)case "NAKOPAL_PICKAXE":(.*?)(?=\n\s*case "NALOGOVAYA_KOSA":)', combat_body)

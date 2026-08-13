@@ -17,6 +17,13 @@ BOW_PROJECTILE_COORDS = {
     "bow_pulling_2.png": {(3, 2), (3, 3), (4, 3)},
 }
 
+CROSSBOW_OUTPUTS = {
+    "teleport_bow": "crossbow_standby.png",
+    "teleport_bow_pulling_0": "crossbow_pulling_0.png",
+    "teleport_bow_pulling_1": "crossbow_pulling_1.png",
+    "teleport_bow_pulling_2": "crossbow_pulling_2.png",
+}
+
 
 def _load_generator():
     spec = importlib.util.spec_from_file_location("copimine_texture_generator", GENERATOR_PATH)
@@ -39,7 +46,7 @@ def test_generator_declares_custom_projectile_layers():
 
 
 def test_bow_pull_frames_keep_visible_recolored_custom_arrow():
-    for prefix in ("teleport_bow", "cobblestone_trail_bow"):
+    for prefix in ("cobblestone_trail_bow",):
         for reference_name in BOW_PROJECTILE_COORDS:
             stage = reference_name.removeprefix("bow_").removesuffix(".png")
             output_name = f"{prefix}_{stage}"
@@ -53,6 +60,22 @@ def test_bow_pull_frames_keep_visible_recolored_custom_arrow():
                 reference_pixel = reference.getpixel((x, y))
                 assert output_pixel[3] > 0, (prefix, output_name, x, y)
                 assert output_pixel[:3] != reference_pixel[:3], (prefix, output_name, x, y)
+
+
+def test_teleport_crossbow_pull_frames_keep_recolored_vanilla_geometry():
+    for output_name, reference_name in CROSSBOW_OUTPUTS.items():
+        with Image.open(TEXTURES / f"{output_name}.png") as output_file, Image.open(REFERENCE / reference_name) as reference_file:
+            output = _logical(output_file)
+            reference = reference_file.convert("RGBA")
+            changed = 0
+            for y in range(16):
+                for x in range(16):
+                    source = reference.getpixel((x, y))
+                    actual = output.getpixel((x, y))
+                    assert actual[3] == source[3], (output_name, x, y)
+                    if source[3] and actual[:3] != source[:3]:
+                        changed += 1
+            assert changed > 0, output_name
 
 
 def test_charged_crossbow_contains_recolored_vanilla_bolt_geometry():

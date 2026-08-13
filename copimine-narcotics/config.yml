@@ -28,9 +28,6 @@ textures:
 
 client_bridge:
   enabled: true
-  require_client_mod: false
-  kick_if_missing_client: false
-  handshake_timeout_seconds: 10
   prefer_client_visuals: true
   fallback_to_server_overlay: false
   fallback_to_particles: true

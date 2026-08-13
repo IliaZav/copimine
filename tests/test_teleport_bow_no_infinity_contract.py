@@ -23,11 +23,11 @@ def item_block(item_id: str) -> str:
     return match.group(0)
 
 
-class TeleportBowAndNoInfinityContractTest(unittest.TestCase):
-    def test_teleport_item_is_a_bow_in_the_ar_catalog(self) -> None:
+class TeleportCrossbowAndNoInfinityContractTest(unittest.TestCase):
+    def test_teleport_item_is_a_crossbow_in_the_ar_catalog(self) -> None:
         block = item_block("combat_crossbow")
-        self.assertIn("material: BOW", block)
-        self.assertIn('name: "&dЛук телепортации"', block)
+        self.assertIn("material: CROSSBOW", block)
+        self.assertIn('name: "&6Арбалет телепортации"', block)
         self.assertIn("source: AR_SHOP", block)
         self.assertIn("effect: AR_CROSSBOW_TELEPORT", block)
 

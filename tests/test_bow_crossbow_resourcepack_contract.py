@@ -19,7 +19,7 @@ STAGE = ROOT / "resourcepacks" / "build" / "_stage"
 ZIP_PATH = ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
 
 PROJECTILE_ITEMS = {
-    "combat_crossbow": ("BOW", 10014, "teleport_bow"),
+    "combat_crossbow": ("CROSSBOW", 10014, "teleport_bow"),
     "cobblestone_trail_bow": ("BOW", 10015, "cobblestone_trail_bow"),
     "explosive_crossbow": ("CROSSBOW", 10016, "explosive_crossbow"),
 }
@@ -103,7 +103,7 @@ def test_vanilla_predicate_composition_is_implemented():
 
 def test_source_models_and_textures_have_all_animation_states():
     expected = {
-        "teleport_bow": ["", "_pulling_0", "_pulling_1", "_pulling_2"],
+        "teleport_bow": ["", "_pulling_0", "_pulling_1", "_pulling_2", "_charged", "_charged_firework"],
         "cobblestone_trail_bow": ["", "_pulling_0", "_pulling_1", "_pulling_2"],
         "explosive_crossbow": ["", "_pulling_0", "_pulling_1", "_pulling_2", "_charged", "_charged_firework"],
     }
@@ -185,8 +185,9 @@ def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():
     assert crossbow["textures"]["layer0"] == "minecraft:item/crossbow_standby"
     assert torch["parent"] == "minecraft:block/torch"
     assert "textures" not in torch
-    assert any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in bow["overrides"])
+    assert not any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in bow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10016 for override in crossbow["overrides"])
+    assert any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in crossbow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10017 for override in written_book["overrides"])
 
     assert ZIP_PATH.is_file()
@@ -256,13 +257,29 @@ def test_custom_bow_states_are_self_contained_and_keep_vanilla_hand_transforms()
             "scale": [0.68, 0.68, 0.68],
         },
     }
-    for prefix in ("teleport_bow", "cobblestone_trail_bow"):
+    for prefix in ("cobblestone_trail_bow",):
         for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2"):
             model = model_json(
                 STAGE / "assets" / "copimine" / "models" / "item" / "artifacts" / f"{prefix}{suffix}.json"
             )
-            assert model["parent"] == "minecraft:item/generated"
-            assert model["display"] == expected_display
+            expected_parent = "minecraft:item/bow" if not suffix else f"minecraft:item/bow{suffix}"
+            assert model["parent"] == expected_parent
+            # The vanilla bow parent owns the hand transforms and pull-state
+            # animation; duplicating a custom display block reintroduces the
+            # old misalignment seen in first/third person.
+            assert "display" not in model
+
+    for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2", "_charged", "_charged_firework"):
+        model = model_json(
+            SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / f"teleport_bow{suffix}.json"
+        )
+        expected_parent = {
+            "": "minecraft:item/crossbow",
+            "_charged": "minecraft:item/crossbow_arrow",
+            "_charged_firework": "minecraft:item/crossbow_firework",
+        }.get(suffix, f"minecraft:item/crossbow{suffix}")
+        assert model["parent"] == expected_parent
+        assert "display" not in model
 
 
 def test_custom_explosive_crossbow_states_are_self_contained_including_full_charge():
@@ -292,6 +309,12 @@ def test_custom_explosive_crossbow_states_are_self_contained_including_full_char
         model = model_json(
             SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / f"explosive_crossbow{suffix}.json"
         )
-        assert model["parent"] == "minecraft:item/generated"
-        assert model["display"] == expected_display
+        expected_parent = {
+            "": "minecraft:item/crossbow",
+            "_charged": "minecraft:item/crossbow_arrow",
+            "_charged_firework": "minecraft:item/crossbow_firework",
+        }.get(suffix, f"minecraft:item/crossbow{suffix}")
+        assert model["parent"] == expected_parent
+        # Keep the vanilla crossbow parent responsible for hand transforms.
+        assert "display" not in model
         assert model["textures"]["layer0"].startswith("copimine:item/artifacts/explosive_crossbow")

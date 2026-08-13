@@ -8,6 +8,7 @@ $server = Get-Content -LiteralPath (Join-Path $root 'minecraft\server\server.pro
 $install = Get-Content -LiteralPath (Join-Path $root 'deploy\ubuntu\install_release.sh') -Raw -Encoding UTF8
 $unpack = Get-Content -LiteralPath (Join-Path $root 'deploy\ubuntu\copimine_unpack_and_verify.sh') -Raw -Encoding UTF8
 $backend = Get-Content -LiteralPath (Join-Path $root 'admin-web\backend\main.py') -Raw -Encoding UTF8
+$commerce = Get-Content -LiteralPath (Join-Path $root 'admin-web\backend\commerce_catalog.py') -Raw -Encoding UTF8
 $errors = [System.Collections.Generic.List[string]]::new()
 
 function Require([string]$text, [string]$needle, [string]$message) {
@@ -29,10 +30,15 @@ if ($artifact -match '(?s)case "COLD_FOG":(?:(?!case ").)*?addPotionEffect\(new 
     $errors.Add('Amulet visual feedback must not add a slowness debuff to its owner.')
 }
 Require $artifact 'PotionEffectType.NIGHT_VISION' 'Amulet visual feedback must remain a positive/non-debuff effect.'
-Require $artifact 'rayTraceBlocks' 'Donation compass must trace the look direction before teleporting.'
-Require $artifact '100.0D' 'Donation compass must cap teleport distance at 100 blocks.'
-Require $artifact 'teleport(' 'Donation compass must teleport the player, not modify the global vanilla compass target.'
-Require $artifact 'getHighestBlockYAt' 'Donation compass must place the player on the surface instead of underground.'
+Require $artifact 'isRetiredArtifact' 'Retired donation items must have a central retirement guard.'
+Require $artifact 'gde_moy_lut_blyat_compass' 'The retired compass id must be recognized by the runtime guard.'
+if ($artifact -match 'activateLootCompass|COMPASS_COOLDOWN_SECONDS|MAX_COMPASS_TELEPORT_DISTANCE|keyCompassCooldownUntil|case "LOOT_COMPASS"') {
+    $errors.Add('Retired compass must not retain an active teleport, cooldown, or effect handler.')
+}
+if ($items -notmatch '(?ms)item-id:\s*gde_moy_lut_blyat_compass.*?enabled:\s*false') {
+    $errors.Add('Retired compass must remain as a disabled catalog tombstone.')
+}
+Require $commerce 'RETIRED_DONATION_ITEM_IDS' 'Website donation catalog must filter the retired compass.'
 Require $items 'effect-profile-id: NAKOPAL_PICKAXE' 'The NAKOPAL_PICKAXE donation item must remain configured.'
 Require $items 'proc-chance: 1.0' 'The NAKOPAL_PICKAXE ability must proc reliably.'
 RequireRegex $items '(?s)item-id:\s*batin_remen_sudnogo_dnya.*?proc-chance:\s*1\.0' 'The Batin belt must reliably trigger its lightning ability.'

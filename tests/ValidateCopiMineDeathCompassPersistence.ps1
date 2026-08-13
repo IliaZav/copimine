@@ -1,20 +1,18 @@
 $ErrorActionPreference = 'Stop'
 
-$sourcePath = Join-Path $PSScriptRoot '..\copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
-$source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$death = [regex]::Match($source, '(?s)public void onPlayerDeath\(PlayerDeathEvent var1\) \{.*?(?=\r?\n\s*@EventHandler)')
-$compass = [regex]::Match($source, '(?s)private boolean activateLootCompass\(Player player, ItemStack ignored\) \{.*?(?=\r?\n\s*private Location persistedLastDeathLocation)')
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$source = Get-Content -LiteralPath (Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java') -Raw -Encoding UTF8
+$items = Get-Content -LiteralPath (Join-Path $root 'copimine-artifacts\items.yml') -Raw -Encoding UTF8
+$block = [regex]::Match($items, '(?ms)^    - item-id: gde_moy_lut_blyat_compass\r?\n.*?(?=^    - item-id:|\z)')
 
-if ($source -notmatch 'keyLastDeathWorld' -or $source -notmatch 'keyLastDeathX' -or $source -notmatch 'keyLastDeathY' -or $source -notmatch 'keyLastDeathZ') {
-    throw 'Death compass persistence keys are required.'
+if (-not $block.Success -or $block.Value -notmatch '(?m)^      enabled:\s*false\s*$') {
+    throw 'The legacy compass must remain as a disabled catalog tombstone.'
+}
+foreach ($forbidden in @('activateLootCompass', 'COMPASS_COOLDOWN_SECONDS', 'MAX_COMPASS_TELEPORT_DISTANCE', 'keyCompassCooldownUntil', 'case "LOOT_COMPASS"')) {
+    if ($source.Contains($forbidden)) { throw "Retired compass runtime marker is still active: $forbidden" }
+}
+if ($source -notmatch 'isRetiredArtifact' -or $source -notmatch 'gde_moy_lut_blyat_compass') {
+    throw 'The retired compass guard/tombstone synchronization is missing.'
 }
 
-if (-not $death.Success -or $death.Value -notmatch 'keyLastDeathWorld' -or $death.Value -notmatch 'PersistentDataType\.INTEGER') {
-    throw 'A player death must persist the world and block coordinates for the compass.'
-}
-
-if (-not $compass.Success -or $compass.Value -notmatch 'rayTraceBlocks' -or $compass.Value -notmatch 'teleport') {
-    throw 'The donation compass must teleport along the look direction.'
-}
-
-Write-Host 'Death compass persistence contract OK'
+Write-Host 'Retired compass contract OK'

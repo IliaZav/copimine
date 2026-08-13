@@ -58,9 +58,6 @@ public final class NarcoticsConfigService {
     private boolean blockProcessingInventories;
     private int schemaVersion;
     private boolean clientBridgeEnabled;
-    private boolean requireClientMod;
-    private boolean kickIfMissingClient;
-    private int handshakeTimeoutSeconds;
     private boolean preferClientVisuals;
     private boolean fallbackToServerOverlay;
     private boolean fallbackToParticles;
@@ -98,9 +95,6 @@ public final class NarcoticsConfigService {
         visualMode = parseVisualMode(root.getString("visuals.mode", "AUTO"));
         blockProcessingInventories = root.getBoolean("storage.block_processing_inventories", true);
         clientBridgeEnabled = root.getBoolean("client_bridge.enabled", true);
-        requireClientMod = root.getBoolean("client_bridge.require_client_mod", false);
-        kickIfMissingClient = root.getBoolean("client_bridge.kick_if_missing_client", false);
-        handshakeTimeoutSeconds = clamp(root.getInt("client_bridge.handshake_timeout_seconds", 10), 3, 120);
         preferClientVisuals = root.getBoolean("client_bridge.prefer_client_visuals", true);
         fallbackToServerOverlay = root.getBoolean("client_bridge.fallback_to_server_overlay", false);
         fallbackToParticles = root.getBoolean("client_bridge.fallback_to_particles", true);
@@ -301,18 +295,6 @@ public final class NarcoticsConfigService {
         return clientBridgeEnabled;
     }
 
-    public boolean requireClientMod() {
-        return requireClientMod;
-    }
-
-    public boolean kickIfMissingClient() {
-        return kickIfMissingClient;
-    }
-
-    public int handshakeTimeoutSeconds() {
-        return handshakeTimeoutSeconds;
-    }
-
     public boolean preferClientVisuals() {
         return preferClientVisuals;
     }
@@ -391,12 +373,6 @@ public final class NarcoticsConfigService {
         }
         visualEffectToggles.put(normalized, enabled);
         plugin.getConfig().set("visuals.effects." + normalized, enabled);
-        plugin.saveConfig();
-    }
-
-    public void setRequireClientMod(boolean required) {
-        requireClientMod = required;
-        plugin.getConfig().set("client_bridge.require_client_mod", required);
         plugin.saveConfig();
     }
 

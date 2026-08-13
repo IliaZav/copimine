@@ -20,7 +20,6 @@ foreach ($marker in @(
   ('name: "' + $windHammerName + '"'),
   'effect: WIND_HAMMER',
   'cooldown_seconds: 300',
-  $windHammerLore,
   'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
   'setVelocity(player.getVelocity().setY(1.9D)',
   'setFreezeTicks(Math.max(living.getFreezeTicks(), 100))',
@@ -49,6 +48,9 @@ $hammer = [regex]::Match($items, '(?ms)^  - id: craftsman_hammer\r?\n.*?(?=^  - 
 if (-not $hammer.Success) { throw 'Wind hammer catalog entry is missing.' }
 foreach ($marker in @('material: MACE', 'custom_model_data: 10012', 'effect: WIND_HAMMER', 'cooldown_seconds: 300')) {
   if ($hammer.Value -notmatch [regex]::Escape($marker)) { throw "Wind hammer catalog marker is missing: $marker" }
+}
+if ($hammer.Value -notmatch '(?s)lore:\s*-\s*"&7[^"\r\n]+"') {
+  throw 'Wind hammer lore entry is missing.'
 }
 
 $windAbility = [regex]::Match($source, '(?s)private boolean triggerWindHammer\(Player player, Block ground\) \{.*?(?=\r?\n\s*private )')

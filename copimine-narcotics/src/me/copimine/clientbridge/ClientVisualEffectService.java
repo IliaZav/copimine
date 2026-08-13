@@ -174,9 +174,11 @@ public final class ClientVisualEffectService {
             return;
         }
         ClientCapabilityState state = capabilities.state(player);
-        String sessionId = state == null ? "" : state.sessionId();
-        long seq = nextSeq.getAndIncrement();
-        player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL, ClientBridgePayloads.encodeVisualStop(seq, sessionId, effectId, reason));
+        if (state != null) {
+            String sessionId = state.sessionId();
+            long seq = nextSeq.getAndIncrement();
+            player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL, ClientBridgePayloads.encodeVisualStop(seq, sessionId, effectId, reason));
+        }
         removePlayerCommands(player.getUniqueId());
     }
 
@@ -190,9 +192,9 @@ public final class ClientVisualEffectService {
         }
         UUID playerUuid = player.getUniqueId();
         ClientCapabilityState state = capabilities.state(player);
-        String sessionId = state == null ? "" : state.sessionId();
-        long seq = nextSeq.getAndIncrement();
-        if (player.isOnline()) {
+        if (state != null && player.isOnline()) {
+            String sessionId = state.sessionId();
+            long seq = nextSeq.getAndIncrement();
             player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL, ClientBridgePayloads.encodeClearAll(seq, sessionId, reason));
         }
         removePlayerCommands(playerUuid);

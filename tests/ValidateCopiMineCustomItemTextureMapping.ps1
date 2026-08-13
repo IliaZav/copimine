@@ -14,6 +14,8 @@ $required = @(
   'mne_pohuy_ya_v_tanke_vest','pohuy_na_debaffy_amulet',
   'vremya_platit_nalogi_clock','gde_moy_lut_blyat_compass',
   'repair_kit','return_stone','angel_wings','infinite_torch',
+  'gravedigger_contract','signal_bell',
+  'zhilorez_pickaxe','night_cloak','berserker_heart',
   'combat_crossbow','cobblestone_trail_bow','explosive_crossbow',
   'narcotic_recipe_feta','narcotic_recipe_kola','narcotic_recipe_girion','narcotic_recipe_sbp',
   'narcotic_recipe_sos','narcotic_recipe_drun','narcotic_recipe_chups','narcotic_recipe_borshevik'
@@ -36,7 +38,7 @@ foreach ($id in $required) {
   if ([int]$row.custom_model_data -le 0) { $errors.Add("$id has non-positive custom model data") }
   if ($row.catalog -eq 'AR' -and $row.source_group -notin @('No_Donate', 'Generated')) { $errors.Add("AR item $id must come from No_Donate or Generated") }
   if ($row.catalog -eq 'ADMIN_ONLY' -and $row.source_group -ne 'User_Supplied') { $errors.Add("Admin-only item $id must come from User_Supplied") }
-  if ($row.catalog -eq 'DONATION' -and $row.source_group -ne 'Donate') { $errors.Add("Donation item $id must come from Donate") }
+  if ($row.catalog -eq 'DONATION' -and $row.source_group -notin @('Donate', 'Generated')) { $errors.Add("Donation item $id must come from Donate or Generated") }
   $key = "{0}:{1}" -f ([string]$row.base_material).ToUpperInvariant(), [int]$row.custom_model_data
   if (-not $manifestByKey.ContainsKey($key)) { $errors.Add("Manifest key $key is missing for $id"); continue }
   $manifestRow = $manifestByKey[$key]

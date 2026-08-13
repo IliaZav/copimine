@@ -29,7 +29,6 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     private final ClientCapabilityService capabilities;
     private final ClientVisualEffectService visuals;
     private final Map<UUID, Long> nextInboundMessageAt = new ConcurrentHashMap<>();
-    private boolean clientModEnforcementWarningLogged = false;
 
     public CopiMineClientBridge(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
         this.plugin = plugin;
@@ -74,10 +73,6 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         return configService.clientBridgeEnabled();
     }
 
-    public boolean requireClientMod() {
-        return configService.requireClientMod();
-    }
-
     public String statusFor(Player player) {
         return capabilities.describe(player) + ", visuals=" + visuals.playerSummary(player);
     }
@@ -87,8 +82,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     private void applyCapabilityTtl() {
-        long ttlMillis = Math.max(30L, configService.handshakeTimeoutSeconds() * 3L) * 1_000L;
-        capabilities.setTtlMillis(ttlMillis);
+        capabilities.setTtlMillis(90_000L);
     }
 
     @Override
@@ -129,13 +123,6 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         capabilities.clear(event.getPlayer().getUniqueId());
-        if (!enabled() || !configService.requireClientMod() || !configService.kickIfMissingClient()) {
-            return;
-        }
-        if (!clientModEnforcementWarningLogged) {
-            clientModEnforcementWarningLogged = true;
-            plugin.getLogger().warning("CopiMineClient channel HELLO cannot prove that a client mod is installed; automatic kicking is disabled.");
-        }
     }
 
     @EventHandler
@@ -169,26 +156,12 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             sender.sendMessage(ChatColor.GOLD + "/cmclient clear <игрок>");
             sender.sendMessage(ChatColor.GOLD + "/cmclient routes <игрок>");
             sender.sendMessage(ChatColor.GOLD + "/cmclient sessions");
-            sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
             sender.sendMessage(ChatColor.GOLD + "/cmclient debug <игрок>");
             return true;
         }
         String sub = args[0].toLowerCase(Locale.ROOT);
         if ("sessions".equals(sub)) {
             sender.sendMessage(ChatColor.GRAY + "Client bridge sessions: " + visuals.sessionsSummary());
-            return true;
-        }
-        if ("require".equals(sub) && args.length >= 3 && "client".equalsIgnoreCase(args[1])) {
-            if (!sender.hasPermission("copimine.narcotics.admin")) {
-                sender.sendMessage(ChatColor.RED + "Для изменения требования клиента нужны права администратора наркотиков.");
-                return true;
-            }
-            boolean required = Boolean.parseBoolean(args[2]);
-            configService.setRequireClientMod(required);
-            sender.sendMessage(ChatColor.GREEN + "Режим CopiMineClient: " + required);
-            if (required && configService.kickIfMissingClient()) {
-                sender.sendMessage(ChatColor.YELLOW + "Автоматическое исключение отключено: сообщение канала не доказывает наличие мода у клиента.");
-            }
             return true;
         }
         if (args.length < 2) {

@@ -46,9 +46,9 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         block = item_block("combat_crossbow")
         require_all(
             block,
-            "material: BOW",
+            "material: CROSSBOW",
             "source: AR_SHOP",
-            'name: "&dЛук телепортации"',
+            'name: "&6Арбалет телепортации"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 200",
@@ -224,14 +224,12 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "this.expireSpawnedCobblestone()",
         )
 
-    def test_teleport_bow_and_compass_cooldowns_survive_relog(self) -> None:
+    def test_teleport_bow_cooldown_survives_relog(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
             "keyTeleportBowCooldownUntil",
-            "keyCompassCooldownUntil",
             'new NamespacedKey(this, "teleport_bow_cooldown_until")',
-            'new NamespacedKey(this, "compass_cooldown_until")',
             "actionCooldownUntil(var2, var3)",
             "storeActionCooldown(var2, var3",
             "PersistentDataType.LONG",
@@ -256,6 +254,17 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
         require_all(shot_handler, "if (!(var1.getProjectile() instanceof Projectile))")
 
+    def test_cooldown_denial_does_not_consume_the_arrow_or_shot_item(self) -> None:
+        source = SOURCE.read_text(encoding="utf-8")
+        shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
+        denied = shot_handler[shot_handler.index("if (!decision.allowed())"):shot_handler.index("if (explosiveMultishot)")]
+        require_all(
+            denied,
+            "var1.setConsumeArrow(false)",
+            "var1.setConsumeItem(false)",
+            "var1.setCancelled(true)",
+        )
+
     def test_safe_teleport_checks_every_candidate_chunk(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         safe_location = source[source.index("private Location findSafeProjectileLocation"):source.index("private void spawnExplosiveTnt")]
@@ -270,7 +279,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "for (int dy = -2; dy <= 3; dy++)",
             "for (int dx = -radius; dx <= radius; dx++)",
             "for (int dz = -radius; dz <= radius; dz++)",
-            "this.isSafeCompassLocation(candidate)",
+            "this.isSafeTeleportLocation(candidate)",
         )
 
     def test_explosive_tnt_cannot_damage_its_owner(self) -> None:

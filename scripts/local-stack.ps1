@@ -21,6 +21,7 @@ $WebsitePort = 8090
 $MinecraftPort = 25565
 $RconPort = 25575
 $PostgresPort = 55432
+$LocalResourcePackUrl = "http://127.0.0.1:$WebsitePort/resourcepacks/CopiMineResourcePack.zip"
 $PostgresDownloadUrl = 'https://get.enterprisedb.com/postgresql/postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresZip = Join-Path $Downloads 'postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresLog = Join-Path $Logs 'postgresql.log'
@@ -108,6 +109,7 @@ function Write-LocalEnvironment {
         'ADMIN_DB_WRITE_ALLOWLIST=localadmin',
         'ALLOW_PLAIN_ADMIN_PASSWORDS=1',
         "ADMIN_USERS_JSON=$adminUsersJson",
+        "COPIMINE_RESOURCEPACK_URL=$LocalResourcePackUrl",
         'RCON_WEB_COMMAND_ALLOWLIST=list,tps,mspt,say,save-all,time query,weather query',
         'COPIMINE_SYSTEMD_SERVICES=',
         'DISCORD_BOT_TOKEN=',
@@ -220,8 +222,10 @@ function Backup-AndPatchServerProperties {
     Set-ServerProperty -Key 'rcon.port' -Value ([string]$RconPort)
     Set-ServerProperty -Key 'rcon.password' -Value $script:LocalValues['RCON_PASSWORD']
     Set-ServerProperty -Key 'require-resource-pack' -Value 'false'
-    Set-ServerProperty -Key 'resource-pack' -Value ''
-    Set-ServerProperty -Key 'resource-pack-sha1' -Value ''
+    if (-not $script:LocalResourcePackSha1) { throw 'Local resource pack SHA1 is not available.' }
+    $resourcePackSha1 = $script:LocalResourcePackSha1
+    Set-ServerProperty -Key 'resource-pack' -Value "http://127.0.0.1:$WebsitePort/resourcepacks/CopiMineResourcePack.zip"
+    Set-ServerProperty -Key 'resource-pack-sha1' -Value $resourcePackSha1
 }
 
 function Restore-ServerProperties {
@@ -286,6 +290,56 @@ function Invoke-Psql {
     }
 }
 
+function Wait-PostgresReady {
+    param(
+        [string]$BinDir,
+        [int]$Attempts = 60,
+        [int]$DelayMilliseconds = 500
+    )
+    $lastOutput = ''
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        $probe = Invoke-Psql -BinDir $BinDir -Database 'postgres' -User 'postgres' -Sql 'SELECT 1;' -AllowFailure
+        if ($probe.ExitCode -eq 0) {
+            Write-StackLog "PostgreSQL readiness probe passed on attempt $attempt."
+            return
+        }
+
+        $lastOutput = [string]$probe.Output
+        # A listening PostgreSQL socket can still reject connections while the
+        # server finishes recovery/startup.  Retry only transient readiness
+        # failures; authentication, SQL, and configuration errors must fail
+        # immediately instead of being hidden by a retry loop.
+        if ($lastOutput -notmatch '(?i)database system is starting up|could not connect to server|connection refused|server closed the connection unexpectedly') {
+            throw "PostgreSQL readiness probe failed: $lastOutput"
+        }
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Milliseconds $DelayMilliseconds
+        }
+    }
+    throw "PostgreSQL did not finish starting within the readiness window: $lastOutput"
+}
+
+function Wait-PostgresQuery {
+    param(
+        [string]$BinDir,
+        [string]$Sql = 'SELECT 1;',
+        [int]$Attempts = 60,
+        [int]$DelayMilliseconds = 500
+    )
+    $lastOutput = ''
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        try {
+            $result = Invoke-Psql -BinDir $BinDir -Database 'copimine' -User 'copimine' -Sql $Sql
+            $lastOutput = [string]$result.Output
+            if ($result.ExitCode -eq 0) { return $true }
+        } catch {
+            $lastOutput = $_.Exception.Message
+        }
+        Start-Sleep -Milliseconds $DelayMilliseconds
+    }
+    throw "PostgreSQL query did not become ready within the readiness window: $lastOutput"
+}
+
 function Ensure-Postgres {
     $bin = Resolve-PostgresBinaries
     $initdb = Join-Path $bin 'initdb.exe'
@@ -336,6 +390,9 @@ function Ensure-Postgres {
             throw 'PostgreSQL did not become ready. See local-runtime/logs/postgresql.log.'
         }
     }
+
+    Wait-PostgresReady -BinDir $bin
+    Wait-PostgresQuery -BinDir $bin | Out-Null
 
     $roleSql = @'
 DO $$
@@ -463,6 +520,37 @@ function Resolve-WebsitePython {
     return $local
 }
 
+function Ensure-LocalResourcePack {
+    $builder = Join-Path $Root 'resourcepacks\build-resourcepack.py'
+    $pack = Join-Path $Root 'resourcepacks\build\CopiMineResourcePack.zip'
+    $sha1File = Join-Path $Root 'resourcepacks\build\CopiMineResourcePack.sha1'
+    $sourceRoot = Join-Path $Root 'resourcepacks\src'
+    if (-not (Test-Path -LiteralPath $builder)) { throw "Resource pack builder is missing: $builder" }
+
+    $needsBuild = -not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File)
+    if (-not $needsBuild) {
+        $packTime = (Get-Item -LiteralPath $pack).LastWriteTimeUtc
+        $needsBuild = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Where-Object { $_.LastWriteTimeUtc -gt $packTime }).Count -gt 0
+    }
+
+    if ($needsBuild) {
+        $python = Resolve-WebsitePython
+        $propertiesPath = Join-Path $ServerDir 'server.properties'
+        $propertiesBytes = if (Test-Path -LiteralPath $propertiesPath) { [System.IO.File]::ReadAllBytes($propertiesPath) } else { $null }
+        Write-StackLog 'Building the local CopiMine resource pack.'
+        & $python $builder 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw 'Local resource pack build failed. See local-runtime/logs/stack.log.' }
+        if ($null -ne $propertiesBytes) { [System.IO.File]::WriteAllBytes($propertiesPath, $propertiesBytes) }
+    }
+    if (-not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File)) {
+        throw 'Local resource pack build output is missing.'
+    }
+    $sha1 = (Get-Content -LiteralPath $sha1File -Raw).Trim().ToLowerInvariant()
+    if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw 'Local resource pack SHA1 is invalid.' }
+    Write-StackLog "Local resource pack is ready: $pack (SHA1 $sha1)."
+    return $sha1
+}
+
 function Ensure-ServerRuntimeFiles {
     $jar = Join-Path $ServerDir 'purpur.jar'
     if (-not (Test-Path -LiteralPath $jar)) {
@@ -479,6 +567,32 @@ function Ensure-ServerRuntimeFiles {
         if (Test-Path -LiteralPath $sourceVoicechat) {
             Copy-Item -LiteralPath $sourceVoicechat -Destination $voicechat -Force
             Write-StackLog 'Copied the local Simple Voice Chat API dependency.'
+        }
+    }
+}
+
+function Sync-LocalFirstPartyPlugins {
+    $pluginPairs = @(
+        @{ Source = (Join-Path $Root 'copimine-economy-core\CopiMineEconomyCore.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineEconomyCore.jar') },
+        @{ Source = (Join-Path $Root 'copimine-election-core\CopiMineElectionCore.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineElectionCore.jar') },
+        @{ Source = (Join-Path $Root 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineUltimateAdminPlus.jar') },
+        @{ Source = (Join-Path $Root 'copimine-artifacts\CopiMineArtifacts.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineArtifacts.jar') },
+        @{ Source = (Join-Path $Root 'copimine-narcotics\CopiMineNarcotics.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineNarcotics.jar') },
+        @{ Source = (Join-Path $Root 'copimine-world-core\CopiMineWorldCore.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineWorldCore.jar') }
+    )
+    foreach ($pair in $pluginPairs) {
+        if (-not (Test-Path -LiteralPath $pair.Source)) {
+            throw "Missing local first-party plugin build: $($pair.Source)"
+        }
+        $needsCopy = -not (Test-Path -LiteralPath $pair.Runtime)
+        if (-not $needsCopy) {
+            $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pair.Source).Hash
+            $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pair.Runtime).Hash
+            $needsCopy = $sourceHash -ne $runtimeHash
+        }
+        if ($needsCopy) {
+            Copy-Item -LiteralPath $pair.Source -Destination $pair.Runtime -Force
+            Write-StackLog "Synchronized local plugin $(Split-Path $pair.Runtime -Leaf) from the current build."
         }
     }
 }
@@ -552,6 +666,7 @@ function Start-Website {
 
 function Start-Minecraft {
     Ensure-ServerRuntimeFiles
+    Sync-LocalFirstPartyPlugins
     if (Test-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort) { throw "Port $MinecraftPort is already in use." }
     Backup-AndPatchServerProperties
     $java = (Get-Command java.exe -ErrorAction SilentlyContinue).Source
@@ -570,7 +685,7 @@ function Start-Minecraft {
         if (-not (Get-ProcessIfAlive -ProcessId $proc.Id)) { throw 'Minecraft exited during startup. See local-runtime/logs/minecraft.stderr.log and minecraft/server/logs/latest.log.' }
         throw 'Minecraft did not open port 25565. See local-runtime/logs/minecraft.stdout.log and minecraft/server/logs/latest.log.'
     }
-    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 30)) { throw 'Minecraft RCON did not become ready.' }
+    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 180)) { throw 'Minecraft RCON did not become ready.' }
     [void](Send-RconCommand -Command 'save-all')
     $adminFile = Join-Path $Runtime 'local-admin.txt'
     if (Test-Path -LiteralPath $adminFile) {
@@ -652,6 +767,7 @@ function Show-Status {
 try {
     $script:LocalValues = Write-LocalEnvironment
     if ($Action -eq 'start') {
+        $script:LocalResourcePackSha1 = Ensure-LocalResourcePack
         $script:PostgresBin = Ensure-Postgres
         Start-Website
         Ensure-PluginCompatibilitySchema

@@ -185,11 +185,11 @@ def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
     assert "this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\");" in drop
 
 
-def test_artifact_compass_is_explicit_teleport_item_with_200_second_cooldown():
-    assert "КОМПАС ТЕЛЕПОРТАЦИИ" in ITEMS.upper()
-    assert "cooldown-seconds: 200" in ITEMS
-    assert "getViewDistance" in ARTIFACTS or "view-distance" in ARTIFACTS
-    assert "MAX_COMPASS_TELEPORT_DISTANCE" in ARTIFACTS
+def test_retired_compass_is_not_buyable_or_wired_to_teleport():
+    assert "enabled: false" in ITEMS[ITEMS.lower().index("item-id: gde_moy_lut_blyat_compass"):]
+    assert "activateLootCompass" not in ARTIFACTS
+    assert "keyCompassCooldownUntil" not in ARTIFACTS
+    assert "MAX_COMPASS_TELEPORT_DISTANCE" not in ARTIFACTS
 
 
 def test_artifact_permissions_and_world_mutations_are_closed():

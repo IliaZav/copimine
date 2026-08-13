@@ -9,13 +9,12 @@ if ($bridge -notmatch 'MAX_INBOUND_MESSAGE_BYTES' -or $bridge -notmatch 'allowIn
     throw 'Client bridge input must have both a byte-size ceiling and a per-player rate gate before decoding.'
 }
 
-if ($bridge -notmatch 'copimine\.narcotics\.admin' -or $bridge -notmatch '"require"\.equals\(sub\)') {
-    throw 'Changing the server-wide client requirement must require the full narcotics administrator permission.'
-}
-
 $join = [regex]::Match($bridge, '(?s)public void onJoin\(PlayerJoinEvent event\) \{.*?(?=\r?\n\s*@EventHandler\r?\n\s*public void onQuit)')
-if (-not $join.Success -or $join.Value -match 'kickPlayer\(' -or $join.Value -notmatch 'cannot prove that a client mod is installed') {
-    throw 'A plugin-channel HELLO must not be treated as proof that a client mod is installed for automatic kicking.'
+if (-not $join.Success -or $join.Value -match 'kickPlayer\(' -or $join.Value -match 'enforceClientModpack\(') {
+    throw 'Client bridge must not enforce a client modpack during join.'
+}
+if ($bridge -match 'missing-required-mods:' -or $bridge -match 'player\.kickPlayer\(' -or $bridge -match 'onAuthCommandBeforeModpack') {
+    throw 'Client bridge must not contain a client-mod kick or authentication-command gate.'
 }
 
 if ($payloads -notmatch 'Float\.isFinite\(value\)') {

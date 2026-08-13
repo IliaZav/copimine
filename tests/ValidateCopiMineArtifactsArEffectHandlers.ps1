@@ -19,7 +19,11 @@ $requiredEffectIds = @(
   "NOT_TODAY_SHIELD",
   "DEBUFF_AMULET",
   "TAX_CLOCK",
-  "LOOT_COMPASS"
+  "SIGNAL_BELL",
+  "BERSERKER_HEART",
+  "VEIN_MINER",
+  "NIGHT_CLOAK",
+  "GRAVEDIGGER_CONTRACT"
 )
 
 foreach ($id in $requiredEffectIds) {
@@ -31,7 +35,10 @@ foreach ($id in $requiredEffectIds) {
 if ($content -notmatch "tryFarmerSweep") { throw "Missing farmer sweep helper." }
 if ($content -notmatch "tryForesterChain") { throw "Missing forester chain helper." }
 if ($content -notmatch "grantTrenchBonus") { throw "Missing trench bonus helper." }
-if ($content -notmatch "activateLootCompass") { throw "Missing loot compass helper." }
+if ($content -notmatch "bindSignalBell") { throw "Missing signal bell helper." }
+if ($content -notmatch "tryVeinMine") { throw "Missing vein miner helper." }
+if ($content -notmatch "tickNightCloak") { throw "Missing night cloak scheduler." }
+if ($content -notmatch "captureGravediggerContract") { throw "Missing gravedigger contract helper." }
 # The donation totem is retired, but the AR infinite totem remains a supported
 # catalog item and must restore its official stack after resurrection.
 if ($content -notmatch "EntityResurrectEvent|INFINITE_TOTEM|restoreInfiniteTotem") { throw "Missing AR infinite totem runtime hook." }

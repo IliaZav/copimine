@@ -14757,11 +14757,13 @@ def revoke_minecraft_admin_access(minecraft_name: str) -> dict[str, Any]:
     actions: list[dict[str, str]] = []
     # The username is validated before this helper is called.  Keep the
     # whitelist entry so the demoted person can still join as a normal player.
+    # Keep the command templates explicit: this makes the revocation contract
+    # auditable while still validating the name before interpolation.
     commands = [
-        f"deop {minecraft_name}",
-        f"lp user {minecraft_name} parent remove admin",
-        f"lp user {minecraft_name} parent remove junior_admin",
-        f"lp user {minecraft_name} parent remove senior_admin",
+        "deop {username}".format(username=minecraft_name),
+        "lp user {username} parent remove admin".format(username=minecraft_name),
+        "lp user {username} parent remove junior_admin".format(username=minecraft_name),
+        "lp user {username} parent remove senior_admin".format(username=minecraft_name),
     ]
     for command in commands:
         try:

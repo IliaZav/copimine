@@ -3,9 +3,9 @@
     "filename":  "CopiMineMods.zip",
     "downloadUrl":  "/downloads/CopiMineMods.zip",
     "size":  16647034,
-    "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
-    "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69",
-    "modified":  1786267072,
+    "sha1":  "7b452a18898394a53e18fbf404f0a4918c83efd1",
+    "sha256":  "529163190a41259302b85ebe02497f1e5668c0b5885ca96e2a8dc249b17a50b0",
+    "modified":  1786594664,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -28,7 +28,7 @@
                                        "license":  "GPL-3.0-only",
                                        "source":  "https://github.com/xfl03/MCCustomSkinLoader",
                                        "feature":  "Клиентские скины вместо TL Skin",
-                                       "required":  false
+                                       "required":  true
                                    },
                                    {
                                        "path":  "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
@@ -64,7 +64,7 @@
                                        "license":  "GPL-3.0-only",
                                        "source":  "https://modrinth.com/mod/iris",
                                        "feature":  "Поддержка шейдеров на клиенте",
-                                       "required":  false
+                                       "required":  true
                                    },
                                    {
                                        "path":  "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
@@ -73,7 +73,7 @@
                                        "license":  "LGPL-3.0-only",
                                        "source":  "https://modrinth.com/mod/sodium",
                                        "feature":  "Оптимизация производительности клиента",
-                                       "required":  false
+                                       "required":  true
                                    }
                                ],
                      "requiredExternal":  [
@@ -86,7 +86,7 @@
                                       ],
                      "notes":  [
                                    "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
-                                   "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
+                                   "Для входа на сервер требуется каждый мод из этого архива; дополнительные клиентские моды разрешены.",
                                    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
                                    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
                                ]

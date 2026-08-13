@@ -161,7 +161,8 @@ try {
         $backendMainPath,
         $unpackScriptPath,
         $replaceScriptPath,
-        $commonScriptPath
+        $commonScriptPath,
+        (Join-Path $payloadRoot "minecraft\server\plugins\CopiMineArtifacts\items.yml"),
         $gameHardeningApplyScriptPath,
         $gameHardeningRuntimePath,
         $gameHardeningPolicyPath,

@@ -121,6 +121,12 @@ $firstPartyServerJars = @(
     'minecraft/server/plugins/CopiMineUltimateAdminPlus.jar',
     'minecraft/server/plugins/CopiMineWorldCore.jar'
 )
+$firstPartyServerRuntimeFiles = @(
+    # CopiMineArtifacts loads this external file when it exists and does not
+    # overwrite it from the JAR.  It is therefore part of the executable
+    # artifact release, even though it is not a plugin JAR.
+    'minecraft/server/plugins/CopiMineArtifacts/items.yml'
+)
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
     throw 'ResourcePackDownloadUrl must be an absolute http:// or https:// URL.'
@@ -313,6 +319,14 @@ foreach ($relative in $firstPartyServerJars) {
     }
     $serverPluginHashes[$relative] = Get-Sha256Lower -LiteralPath $full
 }
+$serverPluginRuntimeHashes = [ordered]@{}
+foreach ($relative in $firstPartyServerRuntimeFiles) {
+    $full = Join-Path $ProjectRoot ($relative -replace '/', '\\')
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) {
+        throw "First-party server plugin runtime file is missing: $relative"
+    }
+    $serverPluginRuntimeHashes[$relative] = Get-Sha256Lower -LiteralPath $full
+}
 
 $releaseManifest = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
@@ -337,6 +351,7 @@ $releaseManifest = [ordered]@{
         sha256 = $clientSha256
     }
     serverPlugins = $serverPluginHashes
+    serverPluginRuntimeFiles = $serverPluginRuntimeHashes
     javaBuild = [ordered]@{
         sourceCommit = $commit
         scripts = $pluginBuildScripts | ForEach-Object { Split-Path $_ -Leaf }
@@ -357,6 +372,7 @@ $installerManifest = [ordered]@{
     sourceArtifacts = [ordered]@{
         gitCommit = $commit
         serverPlugins = $serverPluginHashes
+        serverPluginRuntimeFiles = $serverPluginRuntimeHashes
     }
     artifacts = [ordered]@{
         resourcePack = [ordered]@{
@@ -507,6 +523,9 @@ $generatedReleaseFiles = @(
     'thirdparty\checksums.txt',
     'thirdparty\thirdparty_manifest.json'
 )
+$serverReleaseRuntimeFiles = @(
+    'minecraft\server\plugins\CopiMineArtifacts\items.yml'
+)
 $serverReleaseJars = @(
     'minecraft\server\purpur.jar',
     'minecraft\server\plugins\AuthEffects.jar',
@@ -552,7 +571,7 @@ $serverReleaseJars = @(
     'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\checker-qual-3.48.3.pom.sha1',
     'minecraft\server\libraries\org\checkerframework\checker-qual\3.48.3\_remote.repositories'
 )
-foreach ($relative in ($generatedReleaseFiles + $serverReleaseJars)) {
+foreach ($relative in ($generatedReleaseFiles + $serverReleaseRuntimeFiles + $serverReleaseJars)) {
     $source = Join-Path $ProjectRoot $relative
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
         throw "Required release artifact is missing: $relative"

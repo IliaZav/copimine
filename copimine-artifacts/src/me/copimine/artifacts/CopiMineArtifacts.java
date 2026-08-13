@@ -12241,14 +12241,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       return !uniqueId.isBlank() && this.provisionalDonationInstanceIds.contains(uniqueId);
    }
 
-   /**
-    * Keep the ownership/loss workflow active for owner-bound donation items.
-    * Transferable items (for example the night cloak) are excluded by
-    * foreignDonationRef through their catalog owner-bound flag, so this
-    * boundary must not disable the lifecycle handlers globally.
-    */
+    /**
+     * Donation-shop stacks follow vanilla transfer/drop/pickup rules.  Their
+     * purchase owner remains in the PDC and database for entitlement history,
+     * but it is not a physical-holder restriction and must never quarantine a
+     * legitimate item moved to another player.
+     */
    private boolean customShopItemsAreVanilla() {
-      return false;
+      return true;
    }
 
    private boolean isRepairLockedItem(Player player, ItemStack stack) {
@@ -13049,9 +13049,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     * catalog material/model, and AR source/type still authenticate AR items.
     */
    private boolean isOwnerBoundGameplayItem(String itemId, String itemType, String source) {
-      DonationCatalogItem donation = this.donationCatalogItem(itemId);
-      if (donation != null) {
-         return donation.ownerBound();
+      // Donation instances are authenticated by their durable item binding,
+      // not by the purchaser UUID.  The item can be transferred and used by
+      // another player without becoming a foreign/deleted copy.
+      if (this.isDonationCatalogItem(itemId)) {
+         return false;
       }
       return this.isAdminOnlyCatalogItem(itemId)
             || "DONATION_SHOP_ITEM".equalsIgnoreCase(this.firstNonBlank(itemType, ""))

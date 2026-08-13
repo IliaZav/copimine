@@ -57,7 +57,9 @@ required_entries=(
   'assets/copimine/textures/item/artifacts/night_cloak.png'
 )
 for entry in "${required_entries[@]}"; do
-  unzip -Z1 -- "$staged_zip" | grep -Fqx -- "$entry" || fail "required pack entry is missing: $entry"
+  # Do not use grep -q here: with pipefail it exits early, unzip receives
+  # SIGPIPE, and a present entry is reported as missing.
+  unzip -Z1 -- "$staged_zip" | grep -Fx -- "$entry" >/dev/null || fail "required pack entry is missing: $entry"
 done
 
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"

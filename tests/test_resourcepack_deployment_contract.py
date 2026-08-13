@@ -43,3 +43,13 @@ def test_resourcepack_installer_is_scoped_and_verifies_the_published_pack():
     assert "/opt/copimine-backups" in installer
     assert "world" not in installer.lower()
     assert "postgres" not in installer.lower()
+
+
+def test_required_entry_check_is_safe_with_bash_pipefail():
+    installer = read("deploy/ubuntu/install_resourcepack_patch.sh")
+
+    # grep -q exits as soon as it finds a match. With pipefail enabled that
+    # turns unzip's resulting SIGPIPE into a false negative for an entry that
+    # is actually present in the archive.
+    assert 'grep -Fx -- "$entry" >/dev/null' in installer
+    assert 'grep -Fqx -- "$entry"' not in installer

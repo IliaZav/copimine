@@ -70,6 +70,25 @@ public sealed class SelfUpdateTests
     }
 
     [Fact]
+    public async Task Apply_persists_pending_restart_before_handing_off_to_velopack()
+    {
+        using var temp = new TemporaryDirectory();
+        var update = Candidate("1.0.1");
+        var backend = new FakeVelopackBackend(update);
+        backend.BeforeApply = () =>
+        {
+            var state = File.ReadAllText(Path.Combine(temp.Path, "self-update-state.json"));
+            state.Should().Contain("PendingRestart");
+        };
+        var service = CreateService(temp.Path, backend, "1.0.0");
+
+        var result = await service.ApplyAsync(ToVerified(update), CancellationToken.None);
+
+        result.Kind.Should().Be(SelfUpdateStatusKind.PendingRestart);
+        backend.ApplyCalls.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Previous_version_start_is_reported_as_rollback_and_clears_pending_state()
     {
         using var temp = new TemporaryDirectory();
@@ -146,6 +165,8 @@ public sealed class SelfUpdateTests
 
         public bool ThrowOnApply { get; init; }
 
+        public Action? BeforeApply { get; set; }
+
         public Task<VelopackUpdateCandidate?> CheckAsync(Uri feedUri, string channel, CancellationToken cancellationToken)
         {
             CheckCalls++;
@@ -161,6 +182,7 @@ public sealed class SelfUpdateTests
 
         public Task ApplyAsync(VerifiedSelfUpdate update, string packagePath, CancellationToken cancellationToken)
         {
+            BeforeApply?.Invoke();
             ApplyCalls++;
             if (ThrowOnApply)
             {

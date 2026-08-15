@@ -1,12 +1,14 @@
 using System.Windows;
 using System.Net.Http;
 using System.IO;
+using CopiMineLauncher.Core;
 using Velopack;
 using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.Manifest;
 using CopiMineLauncher.Infrastructure.News;
 using CopiMineLauncher.Infrastructure.Provisioning;
 using CopiMineLauncher.Infrastructure.Runtime;
+using CopiMineLauncher.Infrastructure.SelfUpdate;
 using CopiMineLauncher.Infrastructure.Servers;
 using CopiMineLauncher.Infrastructure.Updates;
 
@@ -41,7 +43,13 @@ public partial class App : Application
             new TransactionalReconcilerFactory(downloads),
             new ServersDatService(),
             new MinecraftLaunchService(httpClient));
-        var window = new MainWindow(new LauncherViewModel(feedClient, runtimeCoordinator));
+        var selfUpdate = new VelopackSelfUpdateService(
+            new Uri("https://copimine.ru/downloads/launcher/"),
+            new VelopackUpdateBackend(),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CopiMine", "Launcher"),
+            new SelfUpdatePolicy(),
+            () => LauncherVersionInfo.Version);
+        var window = new MainWindow(new LauncherViewModel(feedClient, runtimeCoordinator, selfUpdate));
         MainWindow = window;
         window.Show();
     }

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CopiMineLauncher.Core;
 using Velopack;
 using Velopack.Locators;
@@ -59,7 +60,8 @@ public sealed class VelopackSelfUpdateService : ISelfUpdateService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     private readonly Uri feedUri;
@@ -145,8 +147,12 @@ public sealed class VelopackSelfUpdateService : ISelfUpdateService
                 return await FailApplyAsync(currentVersion, update.Version, "SELF_UPDATE_PACKAGE_HASH_MISMATCH", "The downloaded Velopack package failed its size or SHA-256 verification.", downloadedPath);
             }
 
+            // The Velopack apply call may terminate this process immediately. Persist the
+            // restart intent before handing control to the updater so the next process can
+            // distinguish a planned restart from an interrupted staging operation.
+            var pendingRestart = state with { Phase = SelfUpdatePhase.PendingRestart };
+            await WriteStateAsync(pendingRestart, cancellationToken);
             await backend.ApplyAsync(update, downloadedPath, cancellationToken);
-            await WriteStateAsync(state with { Phase = SelfUpdatePhase.PendingRestart }, cancellationToken);
             TryDeleteDirectory(stagingRoot);
             return new(SelfUpdateStatusKind.PendingRestart, currentVersion, update);
         }

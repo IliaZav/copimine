@@ -57,7 +57,7 @@ export function renderLauncherMetadata(metadata) {
   button.removeAttribute("aria-disabled");
   button.classList.remove("is-disabled");
   state.dataset.state = "ready";
-  text(state, `${metadata.filename} · SHA-256 опубликован в технических данных.`);
+  text(state, `${metadata.filename} · контрольная сумма опубликована ниже.`);
 }
 
 export function renderLauncherNews(patches) {

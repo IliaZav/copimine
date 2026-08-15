@@ -5,32 +5,43 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="CopiMine Launcher"
-        Width="1180" Height="760" MinWidth="940" MinHeight="620"
-        Background="#0d1722" Foreground="#eef7f5"
+        Width="1120" Height="720" MinWidth="900" MinHeight="600"
+        Background="#0b141c" Foreground="#eef7f5"
         WindowStartupLocation="CenterScreen">
   <Window.Resources>
     <Style TargetType="Button">
-      <Setter Property="Foreground" Value="#eef7f5" />
-      <Setter Property="Background" Value="#173244" />
-      <Setter Property="BorderBrush" Value="#2b5367" />
+      <Setter Property="Foreground" Value="#edf7f4" />
+      <Setter Property="Background" Value="#173044" />
+      <Setter Property="BorderBrush" Value="#2c5367" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="Padding" Value="13,9" />
       <Setter Property="Margin" Value="0,0,0,8" />
       <Setter Property="FontSize" Value="14" />
       <Setter Property="Cursor" Value="Hand" />
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#21445b" />
+          <Setter Property="BorderBrush" Value="#4a7b91" />
+        </Trigger>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Opacity" Value="0.55" />
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="#2ac46f" />
+      <Setter Property="Background" Value="#45d483" />
       <Setter Property="Foreground" Value="#06150d" />
-      <Setter Property="BorderBrush" Value="#61e49a" />
+      <Setter Property="BorderBrush" Value="#7af0aa" />
       <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="Padding" Value="14,13" />
     </Style>
     <Style x:Key="Card" TargetType="Border">
-      <Setter Property="Background" Value="#132331" />
-      <Setter Property="BorderBrush" Value="#284657" />
+      <Setter Property="Background" Value="#122332" />
+      <Setter Property="BorderBrush" Value="#284858" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="12" />
-      <Setter Property="Padding" Value="18" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="20" />
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="#0c1925" />
@@ -38,67 +49,123 @@
       <Setter Property="BorderBrush" Value="#2b5367" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="9,7" />
-      <Setter Property="Margin" Value="0,4,0,12" />
+      <Setter Property="Margin" Value="0,5,0,13" />
     </Style>
   </Window.Resources>
 
   <Grid Margin="24">
-    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="2.2*" /><ColumnDefinition Width="3.6*" /><ColumnDefinition Width="2.2*" /></Grid.ColumnDefinitions>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
 
-    <Grid Grid.Row="0" Grid.ColumnSpan="3" Margin="0,0,0,22">
+    <Grid Grid.Row="0" Margin="0,0,0,20">
       <StackPanel>
-        <TextBlock Text="COPIMINE / CLIENT CONTROL" Foreground="#65df9a" FontSize="12" FontWeight="Bold" />
-        <TextBlock Text="CopiMine Launcher" FontSize="30" FontWeight="Bold" Margin="0,4,0,0" />
-        <TextBlock Text="Minecraft 1.21.1  ·  Fabric Loader 0.19.3  ·  Windows x64" Foreground="#9eb8c3" Margin="0,5,0,0" />
+        <TextBlock Text="COPIMINE" Foreground="#63dfa0" FontSize="12" FontWeight="Bold" />
+        <TextBlock Text="Launcher" FontSize="31" FontWeight="Bold" Margin="0,3,0,0" />
+        <TextBlock Text="Minecraft 1.21.1  ·  Fabric 0.19.3  ·  Windows x64" Foreground="#9eb8c3" Margin="0,5,0,0" />
       </StackPanel>
-      <Border HorizontalAlignment="Right" VerticalAlignment="Top" Background="#102d26" BorderBrush="#2a9d61" BorderThickness="1" CornerRadius="20" Padding="13,8"><TextBlock Text="stable / v1.0.0" Foreground="#7af0aa" FontWeight="Bold" /></Border>
+      <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Width="260">
+        <TextBlock Text="v1.0.0  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
+        <Button Command="{Binding ApplySelfUpdateCommand}" Content="{Binding SelfUpdateStatus}" Padding="10,6" Margin="0,9,0,0" FontSize="12" HorizontalAlignment="Right" />
+      </StackPanel>
     </Grid>
 
-    <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,14,0">
-      <StackPanel>
-        <TextBlock Text="Игра" FontSize="18" FontWeight="Bold" />
-        <TextBlock Text="Имя игрока" Foreground="#9eb8c3" Margin="0,18,0,0" />
-        <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}" />
-        <TextBlock Text="Папка экземпляра" Foreground="#9eb8c3" />
-        <TextBox Text="{Binding InstancePath, UpdateSourceTrigger=PropertyChanged}" />
-        <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" FontSize="17" Padding="14,13" Margin="0,8,0,12">ИГРАТЬ</Button>
-        <Button Command="{Binding RepairCommand}">Восстановить сборку</Button>
-        <Button Command="{Binding DiagnoseCommand}">Диагностика</Button>
-        <Separator Margin="0,12,0,12" Background="#284657" />
-        <TextBlock Text="Сервер" Foreground="#9eb8c3" />
-        <TextBlock Text="mc.copimine.ru" FontSize="16" FontWeight="Bold" Margin="0,4,0,2" />
-        <TextBlock Text="Будет добавлен в servers.dat без удаления других записей." Foreground="#7f9aa5" TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
+    <Grid Grid.Row="1">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
 
-    <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}" Margin="0,0,14,0">
-      <Grid>
-        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-        <DockPanel Grid.Row="0" Margin="0,0,0,14"><TextBlock Text="Последние обновления" FontSize="18" FontWeight="Bold" /><Button Command="{Binding RefreshNewsCommand}" DockPanel.Dock="Right" Padding="10,5" Margin="0">Обновить</Button></DockPanel>
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding PatchCards}"><ItemsControl.ItemTemplate><DataTemplate>
-          <Border Background="#0f1d2a" BorderBrush="#284657" BorderThickness="1" CornerRadius="9" Padding="12" Margin="0,0,0,9">
-            <StackPanel><DockPanel><TextBlock Text="{Binding Version}" Foreground="#65df9a" FontWeight="Bold" /><TextBlock Text="{Binding PublishedAt}" Foreground="#7f9aa5" DockPanel.Dock="Right" /></DockPanel><TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,6,0,3" /><TextBlock Text="{Binding Summary}" Foreground="#b1c7ce" TextWrapping="Wrap" /><Button Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" HorizontalAlignment="Left" Padding="0,6" Background="Transparent" BorderThickness="0" Foreground="#7af0aa" Margin="0,5,0,0">Подробнее →</Button></StackPanel>
-          </Border>
-        </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
-        <TextBlock Grid.Row="2" Text="Feed bounded to 4.5 s · malformed cards skipped · last valid cache retained" Foreground="#718b96" FontSize="11" Margin="0,14,0,0" />
+      <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,16,0">
+        <StackPanel>
+          <TextBlock Text="Игра" FontSize="20" FontWeight="Bold" />
+          <TextBlock Text="После установки всё готово к запуску." Foreground="#9eb8c3" TextWrapping="Wrap" Margin="0,7,0,18" />
+
+          <TextBlock Text="Имя игрока" Foreground="#9eb8c3" />
+          <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock Text="Папка игры" Foreground="#9eb8c3" />
+          <TextBox Text="{Binding InstancePath, UpdateSourceTrigger=PropertyChanged}" />
+
+          <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Content="Играть" Margin="0,4,0,12" />
+          <Button Command="{Binding RepairCommand}" Content="Проверить файлы" />
+
+          <Separator Margin="0,10,0,14" Background="#284657" />
+          <TextBlock Text="Сервер" Foreground="#9eb8c3" />
+          <TextBlock Text="mc.copimine.ru" FontSize="16" FontWeight="Bold" Margin="0,5,0,2" />
+          <TextBlock Text="Добавится автоматически. Другие серверы останутся на месте." Foreground="#7f9aa5" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Grid Grid.Column="1">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16" Margin="0,0,0,14">
+          <DockPanel>
+            <StackPanel>
+              <TextBlock Text="Состояние" Foreground="#9eb8c3" FontSize="12" FontWeight="Bold" />
+              <TextBlock Text="{Binding Status}" Foreground="#7af0aa" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0" />
+            </StackPanel>
+            <Button Command="{Binding CheckSelfUpdateCommand}" Content="Проверить обновление" Padding="10,6" Margin="12,0,0,0" DockPanel.Dock="Right" FontSize="12" />
+          </DockPanel>
+        </Border>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,14">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="*" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <DockPanel Grid.Row="0" Margin="0,0,0,14">
+              <TextBlock Text="Обновления" FontSize="20" FontWeight="Bold" />
+              <Button Command="{Binding RefreshNewsCommand}" Content="Обновить" Padding="10,5" Margin="0" DockPanel.Dock="Right" FontSize="12" />
+            </DockPanel>
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding PatchCards}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <Border Background="#0f1c28" BorderBrush="#284657" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,10">
+                      <StackPanel>
+                        <DockPanel>
+                          <TextBlock Text="{Binding Version}" Foreground="#65df9a" FontWeight="Bold" />
+                          <TextBlock Text="{Binding PublishedAt}" Foreground="#7f9aa5" DockPanel.Dock="Right" />
+                        </DockPanel>
+                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,6,0,3" />
+                        <TextBlock Text="{Binding Summary}" Foreground="#b1c7ce" TextWrapping="Wrap" />
+                        <Button Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Content="Подробнее →" HorizontalAlignment="Left" Padding="0,6" Background="Transparent" BorderThickness="0" Foreground="#7af0aa" Margin="0,5,0,0" />
+                      </StackPanel>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+            <TextBlock Grid.Row="2" Text="Новости обновляются автоматически. При сбое сети остаётся последний сохранённый выпуск." Foreground="#718b96" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" />
+          </Grid>
+        </Border>
+
+        <Expander Grid.Row="2" Header="Диагностика" Foreground="#b1c7ce" Background="#122332" BorderBrush="#284858" BorderThickness="1" Padding="12,8">
+          <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <ScrollViewer Grid.Column="0" MaxHeight="120" VerticalScrollBarVisibility="Auto" Margin="0,0,12,0">
+              <TextBlock Text="{Binding Diagnostic}" Foreground="#b1c7ce" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
+            </ScrollViewer>
+            <Button Grid.Column="1" Command="{Binding DiagnoseCommand}" Content="Проверить состояние" Padding="10,6" FontSize="12" />
+          </Grid>
+        </Expander>
       </Grid>
-    </Border>
+    </Grid>
 
-    <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource Card}">
-      <StackPanel>
-        <TextBlock Text="Состояние" FontSize="18" FontWeight="Bold" />
-        <TextBlock Text="{Binding Status}" Foreground="#7af0aa" FontSize="15" TextWrapping="Wrap" Margin="0,9,0,0" />
-        <Separator Margin="0,16,0,14" Background="#284657" />
-        <TextBlock Text="Диагностика" Foreground="#9eb8c3" FontWeight="Bold" />
-        <ScrollViewer Height="260" VerticalScrollBarVisibility="Auto" Margin="0,7,0,0"><TextBlock Text="{Binding Diagnostic}" Foreground="#b1c7ce" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" /></ScrollViewer>
-        <Separator Margin="0,16,0,14" Background="#284657" />
-        <TextBlock Text="Admission" Foreground="#9eb8c3" FontWeight="Bold" />
-        <TextBlock Text="CopiMineClient READY → ACK" Foreground="#7af0aa" Margin="0,5,0,0" />
-        <TextBlock Text="protocolVersion 3 · finite retry · no mod-list gate" Foreground="#7f9aa5" TextWrapping="Wrap" Margin="0,4,0,0" />
-      </StackPanel>
+    <Border Grid.Row="2" Background="#09111a" BorderBrush="#1d3441" BorderThickness="1" CornerRadius="8" Padding="11" Margin="0,16,0,0">
+      <DockPanel>
+        <TextBlock Text="{Binding Status}" Foreground="#9eb8c3" />
+        <TextBlock Text="Логи: %LOCALAPPDATA%\\CopiMine\\Launcher\\logs" Foreground="#718b96" DockPanel.Dock="Right" />
+      </DockPanel>
     </Border>
-
-    <Border Grid.Row="2" Grid.ColumnSpan="3" Background="#0a131d" BorderBrush="#1d3441" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,18,0,0"><DockPanel><TextBlock Text="{Binding Status}" Foreground="#9eb8c3" /><TextBlock Text="Логи: %LOCALAPPDATA%\\CopiMine\\Launcher\\logs" Foreground="#718b96" DockPanel.Dock="Right" /></DockPanel></Border>
   </Grid>
 </Window>

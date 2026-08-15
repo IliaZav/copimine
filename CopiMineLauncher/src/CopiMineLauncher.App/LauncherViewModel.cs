@@ -117,8 +117,21 @@ public partial class LauncherViewModel : ObservableObject
     {
         try
         {
-            var statePath = Path.Combine(Path.GetFullPath(InstancePath), ".copimine", "managed-state.json");
-            return File.Exists(statePath);
+            var instanceRoot = Path.GetFullPath(InstancePath);
+            var requiredFiles = new[]
+            {
+                Path.Combine(instanceRoot, ".copimine", "managed-state.json"),
+                Path.Combine(instanceRoot, ".copimine", "java", "21.0.10", "bin", "java.exe"),
+                Path.Combine(instanceRoot, "servers.dat")
+            };
+            if (requiredFiles.Any(path => !File.Exists(path)))
+            {
+                return false;
+            }
+
+            return Directory.Exists(Path.Combine(instanceRoot, "versions", "1.21.1"))
+                && Directory.Exists(Path.Combine(instanceRoot, "mods"))
+                && Directory.EnumerateFiles(Path.Combine(instanceRoot, "mods"), "*.jar", SearchOption.TopDirectoryOnly).Any();
         }
         catch (Exception exception)
         {

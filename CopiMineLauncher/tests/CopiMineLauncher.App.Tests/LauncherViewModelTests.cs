@@ -30,8 +30,7 @@ public sealed class LauncherViewModelTests
     public async Task Existing_launcher_state_skips_automatic_setup_on_later_start()
     {
         using var temp = new TemporaryDirectory();
-        Directory.CreateDirectory(Path.Combine(temp.Path, ".copimine"));
-        await File.WriteAllTextAsync(Path.Combine(temp.Path, ".copimine", "managed-state.json"), "{}");
+        await CreateReadyInstanceAsync(temp.Path);
         var runtime = new FakeRuntimeCoordinator();
         var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
         {
@@ -42,6 +41,34 @@ public sealed class LauncherViewModelTests
 
         runtime.RepairCalls.Should().Be(0);
         runtime.PlayCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Partial_instance_state_does_not_skip_automatic_setup()
+    {
+        using var temp = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(temp.Path, ".copimine"));
+        await File.WriteAllTextAsync(Path.Combine(temp.Path, ".copimine", "managed-state.json"), "{}");
+        var runtime = new FakeRuntimeCoordinator();
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        runtime.RepairCalls.Should().Be(1);
+    }
+
+    private static async Task CreateReadyInstanceAsync(string instancePath)
+    {
+        Directory.CreateDirectory(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin"));
+        Directory.CreateDirectory(Path.Combine(instancePath, "versions", "1.21.1"));
+        Directory.CreateDirectory(Path.Combine(instancePath, "mods"));
+        await File.WriteAllTextAsync(Path.Combine(instancePath, ".copimine", "managed-state.json"), "{}");
+        await File.WriteAllTextAsync(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin", "java.exe"), "fixture");
+        await File.WriteAllTextAsync(Path.Combine(instancePath, "servers.dat"), "fixture");
+        await File.WriteAllTextAsync(Path.Combine(instancePath, "mods", "CopiMineClient.jar"), "fixture");
     }
 
     private sealed class FakePatchFeedClient : IPatchFeedClient

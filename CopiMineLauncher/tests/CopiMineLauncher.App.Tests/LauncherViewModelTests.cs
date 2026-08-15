@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using System.IO;
 using CopiMineLauncher.Core.News;
+using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.News;
 using CopiMineLauncher.Infrastructure.Runtime;
 using FluentAssertions;
@@ -60,6 +62,36 @@ public sealed class LauncherViewModelTests
         runtime.RepairCalls.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Launch_diagnostic_includes_the_process_log_path()
+    {
+        using var temp = new TemporaryDirectory();
+        var logPath = System.IO.Path.Combine(temp.Path, "logs", "launcher-process.log");
+        var runtime = new FakeRuntimeCoordinator
+        {
+            RepairResult = new LauncherOperationResult(
+                true,
+                "repair",
+                null,
+                "Сборка проверена.",
+                Launch: new LaunchEvidence(
+                    Process.GetCurrentProcess(),
+                    DateTimeOffset.UtcNow,
+                    "fabric-loader-0.19.3-1.21.1",
+                    temp.Path,
+                    "java.exe",
+                    logPath))
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        viewModel.Diagnostic.Should().Contain($"Launch log: {logPath}");
+    }
+
     private static async Task CreateReadyInstanceAsync(string instancePath)
     {
         Directory.CreateDirectory(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin"));
@@ -81,11 +113,12 @@ public sealed class LauncherViewModelTests
     {
         public int RepairCalls { get; private set; }
         public int PlayCalls { get; private set; }
+        public LauncherOperationResult? RepairResult { get; init; }
 
         public Task<LauncherOperationResult> RepairAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
         {
             RepairCalls++;
-            return Task.FromResult(new LauncherOperationResult(true, "repair", null, "ok"));
+            return Task.FromResult(RepairResult ?? new LauncherOperationResult(true, "repair", null, "ok"));
         }
 
         public Task<LauncherOperationResult> PlayAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)

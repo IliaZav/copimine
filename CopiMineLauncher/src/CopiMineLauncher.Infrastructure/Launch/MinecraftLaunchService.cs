@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.ProcessBuilder;
@@ -17,7 +18,8 @@ public sealed record LaunchEvidence(
     DateTimeOffset StartedAtUtc,
     string FabricVersionName,
     string InstanceRoot,
-    string JavaExecutablePath);
+    string JavaExecutablePath,
+    string? ProcessLogPath = null);
 
 public interface IMinecraftLaunchService
 {
@@ -52,7 +54,57 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             MinimumRamMb = Math.Min(1024, request.MaximumRamMb)
         };
         var process = await launcher.BuildProcessAsync(request.FabricVersionName, options, cancellationToken);
-        process.Start();
-        return new(process, DateTimeOffset.UtcNow, request.FabricVersionName, Path.GetFullPath(request.InstanceRoot), javaPath);
+        var logPath = Path.Combine(Path.GetFullPath(request.InstanceRoot), "logs", "launcher-process.log");
+        Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+        var logWriter = new StreamWriter(logPath, append: true, Encoding.UTF8)
+        {
+            AutoFlush = true
+        };
+        var logLock = new object();
+        void WriteLog(string line)
+        {
+            lock (logLock)
+            {
+                logWriter.WriteLine($"{DateTimeOffset.UtcNow:O} {line}");
+            }
+        }
+
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.RedirectStandardError = true;
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                WriteLog($"OUT {args.Data}");
+            }
+        };
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                WriteLog($"ERR {args.Data}");
+            }
+        };
+        process.Exited += (_, _) =>
+        {
+            WriteLog($"EXIT code={process.ExitCode}");
+            logWriter.Dispose();
+        };
+
+        WriteLog($"START fabric={request.FabricVersionName} java={javaPath}");
+        try
+        {
+            process.Start();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+        }
+        catch
+        {
+            logWriter.Dispose();
+            throw;
+        }
+
+        return new(process, DateTimeOffset.UtcNow, request.FabricVersionName, Path.GetFullPath(request.InstanceRoot), javaPath, logPath);
     }
 }

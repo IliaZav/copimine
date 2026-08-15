@@ -328,6 +328,10 @@ public partial class LauncherViewModel : ObservableObject
         if (result.Launch is not null)
         {
             lines.Add($"Process: {result.Launch.Process.Id}");
+            if (!string.IsNullOrWhiteSpace(result.Launch.ProcessLogPath))
+            {
+                lines.Add($"Launch log: {result.Launch.ProcessLogPath}");
+            }
         }
 
         return string.Join(Environment.NewLine, lines);

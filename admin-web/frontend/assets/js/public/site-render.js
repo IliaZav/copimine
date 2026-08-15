@@ -388,6 +388,7 @@ export function createHomepageRenderer() {
   const serverIpText = document.getElementById("serverIpText");
   const serverPulseText = document.getElementById("serverPulseText");
   const downloadModsBtn = document.getElementById("downloadModsBtn");
+  const downloadLauncherBtn = document.getElementById("downloadLauncherBtn");
   const statusGrid = document.getElementById("publicStatusGrid");
   const onlineBoard = document.getElementById("publicOnlineBoard");
   const publicSigninLink = document.getElementById("publicSigninLink");
@@ -531,7 +532,7 @@ export function createHomepageRenderer() {
         if (image) image.src = String(home.imagePath || home.image_path);
       }
       if (home.linkUrl || home.link_url) {
-        setCmsText("#downloadModsBtn", home.linkUrl || home.link_url, "href");
+        setCmsText("#downloadLauncherBtn", home.linkUrl || home.link_url, "href");
       }
     }
     const shops = cmsEntry(payload, "shops_note");
@@ -549,6 +550,11 @@ export function createHomepageRenderer() {
   }
 
   function renderModpack(modpack = {}, config = {}) {
+    if (document.body?.dataset.pageKind === "public-home") {
+      if (heroMiniTitle) heroMiniTitle.textContent = "CopiMine Launcher";
+      if (heroMiniText) heroMiniText.textContent = "Java 21 · Minecraft 1.21.1 · Fabric 0.19.3.";
+      return;
+    }
     const manifest = modpack && typeof modpack === "object" ? (modpack.manifest || {}) : {};
     const files = Array.isArray(manifest.files) ? manifest.files : [];
     const requiredExternal = Array.isArray(manifest.requiredExternal) ? manifest.requiredExternal : [];
@@ -636,16 +642,9 @@ export function createHomepageRenderer() {
     if (serverPulseText) {
       serverPulseText.textContent = onlineText;
     }
-    if (downloadModsBtn) {
-      if (modpack.available) {
-        downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = "Скачать модпак";
-        downloadModsBtn.classList.remove("btn-disabled");
-        downloadModsBtn.removeAttribute("aria-disabled");
-      } else if (document.body?.dataset.pageKind === "public-home") {
-        downloadModsBtn.href = publicPageRoute("mods.html");
-        downloadModsBtn.textContent = "Открыть раздел модпака";
-      }
+    if (downloadLauncherBtn) {
+      downloadLauncherBtn.href = "/launcher.html";
+      downloadLauncherBtn.textContent = "Скачать Launcher";
     }
     renderModpack(modpack, config);
   }

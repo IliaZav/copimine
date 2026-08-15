@@ -1,0 +1,131 @@
+function text(node, value) {
+  if (node) node.textContent = String(value ?? "");
+}
+
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  const units = ["Б", "КиБ", "МиБ", "ГиБ"];
+  let size = bytes;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+  return `${size >= 10 || index === 0 ? size.toFixed(0) : size.toFixed(1)} ${units[index]}`;
+}
+
+function formatDate(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(date);
+}
+
+function createSummaryList(summary) {
+  const list = document.createElement("ul");
+  (Array.isArray(summary) ? summary : []).slice(0, 3).forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = value;
+    list.append(item);
+  });
+  return list;
+}
+
+export function renderLauncherMetadata(metadata) {
+  const button = document.getElementById("launcherDownloadBtn");
+  const state = document.getElementById("launcherDownloadStatus");
+  const fields = {
+    version: document.getElementById("launcherVersion"),
+    size: document.getElementById("launcherSize"),
+    published: document.getElementById("launcherPublished"),
+    platform: document.getElementById("launcherPlatform"),
+    sha: document.getElementById("launcherSha256"),
+  };
+  text(fields.version, metadata?.version || "—");
+  text(fields.size, metadata ? formatBytes(metadata.sizeBytes) : "—");
+  text(fields.published, metadata ? formatDate(metadata.publishedAt) : "—");
+  text(fields.platform, metadata ? `Windows ${metadata.minimumWindowsBuild}+ · ${metadata.architecture}` : "—");
+  text(fields.sha, metadata?.sha256 || "—");
+  if (!(button instanceof HTMLAnchorElement) || !state) return;
+  if (!metadata) {
+    button.removeAttribute("href");
+    button.removeAttribute("download");
+    button.setAttribute("aria-disabled", "true");
+    button.classList.add("is-disabled");
+    state.dataset.state = "error";
+    text(state, "Скачивание временно недоступно. Повторите позже.");
+    return;
+  }
+  button.href = metadata.downloadUrl;
+  button.download = metadata.filename;
+  button.removeAttribute("aria-disabled");
+  button.classList.remove("is-disabled");
+  state.dataset.state = "ready";
+  text(state, `${metadata.filename} · SHA-256 опубликован в технических данных.`);
+}
+
+export function renderLauncherNews(patches) {
+  const mount = document.getElementById("launcherNewsGrid");
+  if (!mount) return;
+  const fragment = document.createDocumentFragment();
+  const safePatches = Array.isArray(patches) ? patches.slice(0, 3) : [];
+  if (safePatches.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "patch-empty";
+    empty.textContent = "Последние обновления пока недоступны.";
+    fragment.append(empty);
+  }
+  safePatches.forEach((patch) => {
+    const card = document.createElement("article");
+    card.className = "news-card";
+    if (patch.thumbnailUrl) {
+      const image = document.createElement("img");
+      image.className = "news-card-media";
+      image.loading = "lazy";
+      image.src = patch.thumbnailUrl;
+      image.alt = `Иконка предмета из обновления ${patch.version}`;
+      card.append(image);
+    }
+    const body = document.createElement("div");
+    body.className = "news-card-body";
+    const meta = document.createElement("div");
+    meta.className = "news-card-meta";
+    const version = document.createElement("span");
+    version.textContent = `v${patch.version}`;
+    meta.append(version);
+    (Array.isArray(patch.badges) ? patch.badges.slice(0, 3) : []).forEach((badge) => {
+      const badgeNode = document.createElement("span");
+      badgeNode.className = "news-card-badge";
+      badgeNode.textContent = badge;
+      meta.append(badgeNode);
+    });
+    body.append(meta);
+    const heading = document.createElement("h3");
+    heading.textContent = patch.title;
+    body.append(heading);
+    body.append(createSummaryList(patch.summary));
+    const link = document.createElement("a");
+    link.className = "launcher-news-link";
+    link.href = patch.detailUrl;
+    link.textContent = "Подробнее →";
+    body.append(link);
+    card.append(body);
+    fragment.append(card);
+  });
+  mount.replaceChildren(fragment);
+}
+
+export function bindLauncherLightbox() {
+  const dialog = document.getElementById("launcherLightbox");
+  const image = dialog?.querySelector("img");
+  const caption = dialog?.querySelector("figcaption");
+  if (!(dialog instanceof HTMLDialogElement) || !(image instanceof HTMLImageElement) || !(caption instanceof HTMLElement)) return;
+  document.querySelectorAll("[data-lightbox-src]").forEach((button) => {
+    if (!(button instanceof HTMLButtonElement) || button.dataset.bound === "true") return;
+    button.dataset.bound = "true";
+    button.addEventListener("click", () => {
+      const source = String(button.dataset.lightboxSrc || "");
+      if (!source.startsWith("/assets/launcher-screenshots/") || source.includes("..")) return;
+      image.src = source;
+      caption.textContent = String(button.dataset.lightboxAlt || "Скриншот CopiMine Launcher");
+      dialog.showModal();
+    });
+  });
+  dialog.addEventListener("close", () => { image.removeAttribute("src"); });
+}

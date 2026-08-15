@@ -22,8 +22,12 @@ if ($payload.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'metadata sha256 is not 
 if ($payload.downloadUrl -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.exe$') { throw 'metadata downloadUrl is unsafe' }
 if ($payload.releaseNotesUrl -notmatch '^/news/[A-Za-z0-9._-]+\.html$') { throw 'metadata releaseNotesUrl is unsafe' }
 
-$installer = Join-Path $root ([System.IO.Path]::GetFileName([string]$payload.filename))
-if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "installer is missing: $installer" }
+$installerName = [System.IO.Path]::GetFileName([string]$payload.filename)
+$installer = Join-Path $root $installerName
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+    $installer = Join-Path $root (Join-Path 'packages' $installerName)
+}
+if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "installer is missing in artifact root or packages: $installerName" }
 $bytes = [System.IO.File]::ReadAllBytes($installer)
 if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'installer is not a PE file' }
 $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)

@@ -24,7 +24,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        var httpClient = new HttpClient
+        var httpClient = new HttpClient(CreateHttpHandler())
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
@@ -52,5 +52,39 @@ public partial class App : Application
         var window = new MainWindow(new LauncherViewModel(feedClient, runtimeCoordinator, selfUpdate));
         MainWindow = window;
         window.Show();
+    }
+
+    private static HttpMessageHandler CreateHttpHandler()
+    {
+        var stagingValue = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");
+        if (Uri.TryCreate(stagingValue, UriKind.Absolute, out var stagingBase)
+            && stagingBase.IsLoopback
+            && string.Equals(stagingBase.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(stagingBase.UserInfo))
+        {
+            return new StagingHttpMessageHandler(stagingBase);
+        }
+
+        return new HttpClientHandler();
+    }
+
+    private sealed class StagingHttpMessageHandler(Uri stagingBase) : HttpClientHandler
+    {
+        private readonly Uri stagingBase = stagingBase.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+            ? stagingBase
+            : new Uri(stagingBase.AbsoluteUri + "/", UriKind.Absolute);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri is { IsAbsoluteUri: true } requestUri
+                && (requestUri.Host.Equals("copimine.ru", StringComparison.OrdinalIgnoreCase)
+                    || requestUri.Host.Equals("www.copimine.ru", StringComparison.OrdinalIgnoreCase)
+                    || requestUri.Host.Equals("cdn.copimine.ru", StringComparison.OrdinalIgnoreCase)))
+            {
+                request.RequestUri = new Uri(stagingBase, requestUri.AbsolutePath.TrimStart('/') + requestUri.Query);
+            }
+
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 }

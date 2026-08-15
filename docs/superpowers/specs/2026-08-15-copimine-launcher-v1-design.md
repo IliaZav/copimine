@@ -1,8 +1,8 @@
 # CopiMine Launcher v1 Design
 
-**Status:** Approved for implementation by the user on 2026-08-15.
+**Status:** Approved for implementation by the user on 2026-08-15; revised by the user's later admission clarification on 2026-08-15.
 
-**Scope:** Complete Phase 1 from `D:\Downloads\01_FINAL_copimine_launcher_site_news_luna_prompt_v3.md`: the Windows Launcher, signed instance/update contracts, launch-ticket admission, public launcher/download/news pages, shared patch feed, packaging, local/staging verification, and release evidence. End Rift Event is explicitly out of scope for this branch and will not be implemented.
+**Scope:** Complete Phase 1 from `D:\Downloads\01_FINAL_copimine_launcher_site_news_luna_prompt_v3.md`: the Windows Launcher, signed instance/update contracts, minimal `CopiMineClient` compatibility handshake, public launcher/download/news pages, shared patch feed, packaging, local/staging verification, and release evidence. End Rift Event is explicitly out of scope for this branch and will not be implemented.
 
 ## Outcome
 
@@ -14,17 +14,19 @@ The public user path is:
 copimine.ru/launcher.html
   -> signed installer download
   -> Launcher verifies and reconciles a dedicated instance
-  -> Launcher requests a short-lived launch ticket when admission is enabled
   -> Minecraft starts with the managed instance
-  -> server validates the one-shot ticket in ENFORCE mode
+  -> CopiMineClient sends bounded CLIENT_READY retries
+  -> server validates protocolVersion and returns CLIENT_READY_ACK
+  -> server accepts the compatible protocol after a reasonable grace period
   -> Launcher and copimine.ru/news.html show the same generated patch feed
 ```
 
 ## Non-goals and explicit boundaries
 
 - Do not implement End Rift Event, a boss plugin, Core, runes, waves, or Rift Shard.
-- Do not deploy to production, enable production ENFORCE, upload an installer, or publish mutable metadata from this branch.
-- Do not use a mod-list `HELLO`, heartbeat, capability comparison, or required-mod-version gate as launcher admission.
+- Do not deploy to production, upload an installer, or publish mutable metadata from this branch.
+- Do not implement launch tickets, launcher signatures/admission, device identity, nonce replay state, launcher-only mode, heartbeat, full mod-list reporting, JAR hash admission, or a required-mod-version gate.
+- Do not make the choice of launcher or the presence of additional client-side mods an admission requirement.
 - Do not store AuthMe passwords, private signing keys, or server credentials in the Launcher.
 - Do not delete or rewrite user-owned files in the dedicated instance; only managed paths may be reconciled.
 - Do not replace the existing Java `CopiMineClient` with the Windows Launcher. The Java client remains a managed game mod artifact.
@@ -70,7 +72,6 @@ Idle
  -> Staging
  -> Committing
  -> Ready
- -> RequestingLaunchTicket (when mode is WARN/ENFORCE)
  -> Launching
  -> Running
 ```
@@ -119,34 +120,24 @@ The Launcher never edits the user's normal `.minecraft`. The instance path is de
 
 Velopack is used only for updating the Launcher executable. Game files, Java, and mods are updated by the signed manifest reconciler. Self-update metadata is independently verified, staged outside the running application, and applied only after the Launcher has a known-good previous version. A failed update starts the prior version and records a recoverable diagnostic.
 
-## Launch-ticket admission
+## Minimal CopiMineClient compatibility admission
 
-Admission modes are `OFF`, `WARN`, and `ENFORCE`. OFF/WARN are allowed for local and staged rollout only. The production-ready implementation includes a complete ENFORCE path.
+The Launcher is an official installer/updater, not a server pass. Players may use the CopiMine Launcher, Prism Launcher, Modrinth App, the official Minecraft Launcher, or another launcher when the resulting instance contains a compatible `CopiMineClient` and its declared required Fabric dependencies. Additional client-side mods are allowed.
 
-The Launcher authenticates through the existing site/account flow without receiving or storing an AuthMe password. The backend issues a ticket only after the account/device flow has identified the player and verified the requested launcher build/manifest identity. The ticket is signed server-side with an Ed25519 private key held only by the backend. The Launcher receives the signed ticket and passes it only to the current Minecraft launch.
-
-Ticket claims include:
+After a player joins, `CopiMineClient` sends a small `copimine:client_ready` payload containing only the fields below. It retries at a bounded interval until `copimine:client_ready_ack` arrives or the same admission attempt reaches its deadline; this is a finite connection handshake, not a heartbeat:
 
 ```json
 {
-  "schemaVersion": 1,
-  "ticketId": "nonce",
-  "playerId": "site-account-or-minecraft-uuid",
-  "playerName": "optional-display-name",
-  "buildId": "signed-manifest-identity",
-  "launcherVersion": "1.0.0",
-  "issuedAtUtc": "...",
-  "expiresAtUtc": "...",
-  "audience": "mc.copimine.ru",
-  "nonce": "unique-value"
+  "protocolVersion": 3,
+  "clientVersion": "1.4.0"
 }
 ```
 
-The backend persists ticket IDs/nonces as one-shot records and atomically consumes them. The server-side gate verifies signature, audience, expiry, player identity, build identity, and one-shot state. Replays, expired tickets, tickets for another player, malformed tickets, and missing tickets in ENFORCE are rejected with stable diagnostic codes. The gate does not inspect the mod list.
+The Paper gate compares `protocolVersion` with the server's required protocol and sends `CLIENT_READY_ACK` only after the payload is valid and compatible. The ACK contains a small result code and the required protocol for diagnostics. On ACK the client stops retrying, and the server marks the current pending admission compatible. `clientVersion` is diagnostic and does not create a patch-version matrix. Neither direction contains a launcher name, device ID, hardware ID, file paths, JAR list, hashes, or additional-mod list.
 
-Backend or database failure must not create a silent server-wide lockout. The gate logs a precise diagnostic, exposes health/metrics, and supports an explicit administrative emergency mode transition to WARN/OFF. ENFORCE remains fail-closed for an individual unauthorised login when healthy verification is possible; emergency mode is visible and auditable.
+The server creates a pending admission on join and waits a tested, reasonable grace period (target 10–15 seconds, never an untested 1–2 second timeout). A compatible `client_ready` produces a `CLIENT_READY_ACK`, completes admission, and removes the pending timeout before it can kick the player. A malformed, incompatible, missing, or late packet produces a player-facing message and an exact structured log reason such as `CLIENT_READY_MALFORMED`, `CLIENT_PROTOCOL_MISMATCH`, `CLIENT_READY_TIMEOUT`, `CLIENT_READY_AFTER_TIMEOUT`, `CLIENT_READY_ACK_SENT`, or `CLIENT_READY_ACCEPTED`. On quit, the pending check is removed; on plugin disable, all pending checks are cleared. A reconnect race must not allow an old timeout callback to affect a new session.
 
-The Paper gate is a separate module (`copimine-launcher-gate`) with Java 21 unit/contract tests and a local Paper integration harness. Existing CopiMineClientBridge HELLO/heartbeat remains a visual capability protocol only and cannot make admission decisions.
+There is no continuous validated state, heartbeat, mod-list comparison, launcher check, ticket, device registration, or second admission path. The Paper gate is a small separate module (`copimine-client-gate`) with Java 21 unit/contract tests and a local Paper integration harness. Existing client bridge traffic is not reused as a mod admission protocol; the bounded `client_ready` → `client_ready_ack` handshake is the only compatibility signal.
 
 ## Website and patch contracts
 
@@ -175,10 +166,10 @@ The public site adds:
 
 Every behavior is developed RED → GREEN → refactor. The test pyramid includes:
 
-- Core unit tests for schema, canonical signature bytes, paths, ownership, update plans, journal recovery, rollback, servers.dat, ticket claims, expiry, replay, identity, and modes;
-- HTTP integration tests using a local test server for manifests, range downloads, corrupt responses, patch feeds, ticket issuance, and outage behavior;
+- Core unit tests for schema, canonical signature bytes, paths, ownership, update plans, journal recovery, rollback, duplicate official mod IDs, and servers.dat;
+- HTTP integration tests using a local test server for manifests, range downloads, corrupt responses, patch feeds, and outage behavior;
 - Python contract tests for generated YAML/JSON/HTML and backend routes;
-- Java plugin tests and local Paper integration for ticket ENFORCE and existing AuthMe compatibility;
+- Java plugin tests and local Paper integration for the `client_ready` → `client_ready_ack` protocol, bounded retries, grace timeout, exact diagnostics, reconnect race, and existing AuthMe compatibility;
 - WPF/UI smoke tests through stable ViewModel seams and FlaUI/UIA3 where available;
 - browser desktop `1440x900` and mobile `390x844` checks for launcher/news/legacy routes, screenshots, accessibility, no overflow, console errors, and exact download metadata;
 - clean Windows x64 install/update/rollback tests;
@@ -190,7 +181,7 @@ No acceptance record is created until every required result is `PASS`; `SKIP` an
 
 ## Release and operations boundary
 
-Release order is: build and test artifacts, verify hashes/signatures, redownload public binaries in staging, publish immutable versioned files, publish mutable metadata last, run browser/download smoke, and only then prepare acceptance evidence. Production upload and ENFORCE activation are separate operations and remain prohibited until explicitly requested after the full local/staging gate.
+Release order is: build and test artifacts, verify hashes/signatures, redownload public binaries in staging, publish immutable versioned files, publish mutable metadata last, run browser/download smoke, and only then prepare acceptance evidence. Production upload remains prohibited until explicitly requested after the full local/staging gate.
 
 The final acceptance file is created only by the verified release step:
 

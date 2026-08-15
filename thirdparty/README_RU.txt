@@ -7,6 +7,7 @@ Included:
 - CustomSkinLoader Fabric 14.26.1 - custom skins instead of TL Skin (GPL-3.0-only)
 - Emotecraft fabric 2.4.12 - animations and emotes
 - Fabric API 0.116.11+1.21.1 - required Fabric library
+- Mod Menu 11.0.4 - installed mod list and client settings menu (optional for gameplay)
 - Simple Voice Chat 2.6.16 - voice chat
 - Iris 1.8.8 - client shader support
 - Sodium 0.6.13 - performance optimization

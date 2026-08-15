@@ -3,11 +3,12 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $backend = Join-Path $projectRoot "admin-web\backend\main.py"
 $indexHtml = Join-Path $projectRoot "admin-web\frontend\index.html"
+$modsHtml = Join-Path $projectRoot "admin-web\frontend\mods.html"
 $renderer = Join-Path $projectRoot "admin-web\frontend\assets\js\public\site-render.js"
 $zipPath = Join-Path $projectRoot "thirdparty\CopiMineMods.zip"
 $manifestPath = Join-Path $projectRoot "thirdparty\modpack_manifest.json"
 
-foreach ($path in @($backend, $indexHtml, $renderer, $zipPath, $manifestPath)) {
+foreach ($path in @($backend, $indexHtml, $modsHtml, $renderer, $zipPath, $manifestPath)) {
     if (-not (Test-Path $path)) {
         throw "Required modpack foundation path is missing: $path"
     }
@@ -15,6 +16,7 @@ foreach ($path in @($backend, $indexHtml, $renderer, $zipPath, $manifestPath)) {
 
 $backendText = Get-Content $backend -Raw -Encoding UTF8
 $indexText = Get-Content $indexHtml -Raw -Encoding UTF8
+$modsText = Get-Content $modsHtml -Raw -Encoding UTF8
 $rendererText = Get-Content $renderer -Raw -Encoding UTF8
 $manifestText = Get-Content $manifestPath -Raw -Encoding UTF8
 
@@ -26,8 +28,8 @@ if ($backendText -notmatch '@app\.get\("/api/public/modpack"\)') {
     throw "Backend missing /api/public/modpack endpoint"
 }
 
-if ($indexText -notmatch '/downloads/CopiMineMods\.zip') {
-    throw "Public index no longer links to CopiMineMods.zip"
+if ($modsText -notmatch '/launcher\.html' -or $modsText -notmatch 'meta http-equiv="refresh"') {
+    throw "Legacy mods page must redirect to the canonical Launcher page"
 }
 
 if ($rendererText -notmatch 'CopiMineMods\.zip' -or $rendererText -notmatch 'renderModpack') {
@@ -50,6 +52,7 @@ foreach ($required in @(
     "mods/CopiMineClient-0.1.0.jar",
     "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
     "mods/fabric-api-0.116.11+1.21.1.jar",
+    "mods/modmenu-11.0.4.jar",
     "mods/voicechat-fabric-1.21.1-2.6.16.jar",
     "mods/iris-fabric-1.8.8+mc1.21.1.jar",
     "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
@@ -69,6 +72,10 @@ if ($manifestText -notmatch '"requiredExternal"\s*:\s*\[\s*\]') {
 
 if ($manifestText -notmatch 'Simple Voice Chat') {
     throw "modpack_manifest.json must document Simple Voice Chat"
+}
+
+if ($manifestText -notmatch 'Mod Menu' -or $manifestText -notmatch '11\.0\.4' -or $manifestText -notmatch 'https://modrinth.com/mod/modmenu') {
+    throw "modpack_manifest.json must document the official Mod Menu 11.0.4 client mod"
 }
 
 if ($manifestText -notmatch 'CustomSkinLoader' -or $manifestText -notmatch '14\.26\.1') {

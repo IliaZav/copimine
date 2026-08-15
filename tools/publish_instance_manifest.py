@@ -25,6 +25,7 @@ COMPONENT_ID_OVERRIDES = {
     "CustomSkinLoader": "custom-skin-loader",
     "Emotecraft": "emotecraft",
     "Fabric API": "fabric-api",
+    "Mod Menu": "mod-menu",
     "Simple Voice Chat": "simple-voice-chat",
     "Iris": "iris",
     "Sodium": "sodium",

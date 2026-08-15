@@ -2,10 +2,10 @@
     "available":  true,
     "filename":  "CopiMineMods.zip",
     "downloadUrl":  "/downloads/CopiMineMods.zip",
-    "size":  16647034,
-    "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
-    "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69",
-    "modified":  1786267072,
+    "size":  17415470,
+    "sha1":  "80edcf854e6a51c03598331bd17885a9c3d82fbd",
+    "sha256":  "a9adb79636cf72a68e33ccd290d5d36a1ecaab887116c8537cdf95ec7e75f3bc",
+    "modified":  1786799916,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -49,6 +49,15 @@
                                        "required":  true
                                    },
                                    {
+                                       "path":  "mods/modmenu-11.0.4.jar",
+                                       "component":  "Mod Menu",
+                                       "version":  "11.0.4+1.21.1-fabric",
+                                       "license":  "MIT",
+                                       "source":  "https://modrinth.com/mod/modmenu",
+                                       "feature":  "Меню установленных модов",
+                                       "required":  false
+                                   },
+                                   {
                                        "path":  "mods/voicechat-fabric-1.21.1-2.6.16.jar",
                                        "component":  "Simple Voice Chat",
                                        "version":  "2.6.16+1.21.1-fabric",
@@ -85,7 +94,7 @@
                                           "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
                                       ],
                      "notes":  [
-                                   "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
+                                   "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Mod Menu, Simple Voice Chat, Iris и Sodium.",
                                    "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
                                    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
                                    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."

@@ -46,6 +46,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         var launcher = new MinecraftLauncher(parameters);
         var javaPath = request.JavaExecutablePath ?? launcher.GetDefaultJavaPath()
             ?? throw new InvalidOperationException("No Java runtime is available for Minecraft launch");
+        MinecraftSettingsDefaults.EnsureDefaults(request.InstanceRoot);
         var options = new MLaunchOption
         {
             Session = MSession.CreateOfflineSession(request.Username),
@@ -70,6 +71,8 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         }
 
         process.StartInfo.UseShellExecute = false;
+        process.StartInfo.CreateNoWindow = true;
+        process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.RedirectStandardError = true;
         process.EnableRaisingEvents = true;

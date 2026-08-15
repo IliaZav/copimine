@@ -52,6 +52,7 @@ $files = @(
     "thirdparty\client-mods\CustomSkinLoader_Fabric-14.26.1.jar",
     "thirdparty\client-mods\emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
     "thirdparty\client-mods\fabric-api-0.116.11+1.21.1.jar",
+    "thirdparty\client-mods\modmenu-11.0.4.jar",
     "thirdparty\client-mods\voicechat-fabric-1.21.1-2.6.16.jar",
     "thirdparty\client-mods\iris-fabric-1.8.8+mc1.21.1.jar",
     "thirdparty\client-mods\sodium-fabric-0.6.13+mc1.21.1.jar"
@@ -66,10 +67,21 @@ foreach ($relative in $files) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 
-# The downloadable archive is deliberately a plain Fabric client payload:
-# only .minecraft/mods is packaged. Documentation, checksums and the JSON
-# manifest stay in the repository and public metadata, not inside the client
-# archive where launchers may copy them into the game directory.
+# Keep the same documentation contract as the Linux builder. The Launcher
+# only consumes the mods directory; the extra files make the standalone
+# download auditable without copying metadata into the Minecraft root.
+foreach ($relative in @(
+    "thirdparty\README_RU.txt",
+    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",
+    "thirdparty\checksums.txt",
+    "thirdparty\modpack_manifest.json"
+)) {
+    $source = Join-Path $ProjectRoot $relative
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "Missing documentation for modpack: $relative"
+    }
+    Copy-Item -LiteralPath $source -Destination $stage -Force
+}
 
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force

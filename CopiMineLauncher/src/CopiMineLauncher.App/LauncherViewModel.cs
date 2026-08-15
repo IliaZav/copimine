@@ -4,7 +4,9 @@ using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CopiMineLauncher.Core;
 using CopiMineLauncher.Core.News;
+using CopiMineLauncher.Infrastructure.Binding;
 using CopiMineLauncher.Infrastructure.News;
 using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.Runtime;
@@ -29,6 +31,8 @@ public partial class LauncherViewModel : ObservableObject
     private readonly ISelfUpdateService? selfUpdateService;
     private readonly LauncherProfileStore profileStore;
     private readonly LauncherSettingsStore settingsStore;
+    private readonly ILauncherBindingClient? launcherBindingClient;
+    private readonly LauncherBindingStateStore launcherBindingStateStore;
     private readonly Action<string, string> nicknameChangedNotifier;
     private CancellationTokenSource? operationCancellation;
     private VerifiedSelfUpdate? availableSelfUpdate;
@@ -42,13 +46,17 @@ public partial class LauncherViewModel : ObservableObject
         string? defaultInstancePath = null,
         LauncherProfileStore? profileStore = null,
         Action<string, string>? nicknameChangedNotifier = null,
-        LauncherSettingsStore? settingsStore = null)
+        LauncherSettingsStore? settingsStore = null,
+        ILauncherBindingClient? launcherBindingClient = null,
+        LauncherBindingStateStore? launcherBindingStateStore = null)
     {
         this.patchFeedClient = patchFeedClient;
         this.runtimeCoordinator = runtimeCoordinator;
         this.selfUpdateService = selfUpdateService;
         this.profileStore = profileStore ?? new LauncherProfileStore(LauncherInstallPaths.ResolveLauncherDataRoot());
         this.settingsStore = settingsStore ?? new LauncherSettingsStore(LauncherInstallPaths.ResolveLauncherDataRoot());
+        this.launcherBindingClient = launcherBindingClient;
+        this.launcherBindingStateStore = launcherBindingStateStore ?? new LauncherBindingStateStore(LauncherInstallPaths.ResolveLauncherDataRoot());
         this.nicknameChangedNotifier = nicknameChangedNotifier ?? ShowNicknameChangedWarning;
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
@@ -62,7 +70,7 @@ public partial class LauncherViewModel : ObservableObject
         OpenInstanceFolderCommand = new RelayCommand(OpenInstanceFolder);
         OpenWebsiteCommand = new RelayCommand(OpenWebsite);
         OpenDiscordCommand = new RelayCommand(OpenDiscord);
-        OpenAccountLinkCommand = new RelayCommand(OpenAccountLink);
+        OpenAccountLinkCommand = new AsyncRelayCommand(OpenAccountLinkAsync);
     }
 
     public ObservableCollection<PatchFeedCardViewModel> PatchCards { get; }
@@ -95,6 +103,12 @@ public partial class LauncherViewModel : ObservableObject
     private bool isDiagnosticOpen;
 
     [ObservableProperty]
+    private bool isLauncherLinked;
+
+    [ObservableProperty]
+    private bool launcherLinkRequired;
+
+    [ObservableProperty]
     private int maximumRamMb = 4096;
 
     [ObservableProperty]
@@ -116,7 +130,7 @@ public partial class LauncherViewModel : ObservableObject
     public IRelayCommand OpenInstanceFolderCommand { get; }
     public IRelayCommand OpenWebsiteCommand { get; }
     public IRelayCommand OpenDiscordCommand { get; }
-    public IRelayCommand OpenAccountLinkCommand { get; }
+    public IAsyncRelayCommand OpenAccountLinkCommand { get; }
     public string LauncherDataPath => LauncherInstallPaths.ResolveLauncherDataRoot();
     public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
 
@@ -124,10 +138,17 @@ public partial class LauncherViewModel : ObservableObject
     {
         LoadPlayerProfile();
         LoadSettings();
+        LoadLauncherBinding();
         await RefreshNewsAsync();
         await RecoverSelfUpdateAsync();
         await CheckSelfUpdateAsync();
         await PrepareFirstRunAsync();
+        if (launcherBindingClient is not null && !IsLauncherLinked)
+        {
+            Status = "Привязка Launcher обязательна";
+            LoadingStage = "Откройте сайт и подтвердите привязку";
+            Diagnostic = "Для запуска Minecraft сначала привяжите Launcher к аккаунту сайта. Пароль сайта и AuthMe Launcher не получает.";
+        }
     }
 
     private async Task RefreshNewsAsync()
@@ -202,6 +223,13 @@ public partial class LauncherViewModel : ObservableObject
         ResolutionWidth = settings.ResolutionWidth;
         ResolutionHeight = settings.ResolutionHeight;
         Fullscreen = settings.Fullscreen;
+    }
+
+    private void LoadLauncherBinding()
+    {
+        var state = launcherBindingStateStore.Load();
+        IsLauncherLinked = launcherBindingClient is not null && state.Linked;
+        LauncherLinkRequired = launcherBindingClient is not null && !IsLauncherLinked;
     }
 
     public void SaveSettings()
@@ -367,6 +395,15 @@ public partial class LauncherViewModel : ObservableObject
             return;
         }
 
+        if (launch && launcherBindingClient is not null && !IsLauncherLinked)
+        {
+            Status = "Привязка Launcher обязательна";
+            LoadingStage = "Сначала подтвердите аккаунт на сайте";
+            Diagnostic = "LAUNCHER_LINK_REQUIRED: нажмите «Привязать на сайте», войдите в свой аккаунт и подтвердите привязку. Пароль не передаётся в Launcher.";
+            IsDiagnosticOpen = true;
+            return;
+        }
+
         if (operationCancellation is not null)
         {
             Status = "Операция уже выполняется";
@@ -527,10 +564,70 @@ public partial class LauncherViewModel : ObservableObject
 
     private static void OpenDiscord() => OpenTrustedUrl(new Uri("https://discord.com/channels/1499360677725343744"));
 
-    private void OpenAccountLink()
+    private async Task OpenAccountLinkAsync()
     {
-        var encodedName = Uri.EscapeDataString(PlayerName.Trim());
-        OpenTrustedUrl(new Uri($"https://copimine.ru/cabinet/link.html?launcher_nick={encodedName}"));
+        if (launcherBindingClient is null)
+        {
+            var encodedName = Uri.EscapeDataString(PlayerName.Trim());
+            OpenTrustedUrl(new Uri($"https://copimine.ru/cabinet/link.html?launcher_nick={encodedName}"));
+            return;
+        }
+
+        try
+        {
+            Status = "Создаём безопасную привязку…";
+            LoadingStage = "Откройте страницу сайта";
+            var challenge = await launcherBindingClient.CreateChallengeAsync(PlayerName.Trim(), LauncherVersionInfo.Version, CancellationToken.None);
+            OpenTrustedUrl(challenge.AuthorizationUrl);
+            Status = "Ожидаем подтверждение на сайте…";
+            Diagnostic = $"Проверьте страницу привязки в браузере. Код действует до {challenge.ExpiresAtUtc.ToLocalTime():HH:mm}. Пароль сайта и AuthMe не передаются.";
+
+            while (DateTimeOffset.UtcNow < challenge.ExpiresAtUtc)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+                var result = await launcherBindingClient.GetStatusAsync(challenge, CancellationToken.None);
+                if (!result.Linked)
+                {
+                    if (string.Equals(result.Status, "EXPIRED", StringComparison.OrdinalIgnoreCase)) break;
+                    continue;
+                }
+
+                launcherBindingStateStore.Save(new LauncherBindingState(
+                    true,
+                    result.SiteAccountId ?? string.Empty,
+                    result.SiteUsername ?? string.Empty,
+                    result.MinecraftName ?? PlayerName));
+                IsLauncherLinked = true;
+                LauncherLinkRequired = false;
+                Status = "Launcher привязан к сайту";
+                LoadingStage = "Можно запускать игру";
+                Diagnostic = $"Аккаунт сайта: {result.SiteUsername ?? "подтверждён"}{Environment.NewLine}Launcher связан без передачи пароля.";
+                return;
+            }
+
+            Status = "Привязка не подтверждена";
+            LoadingStage = "Код истёк или страница не подтверждена";
+            Diagnostic = "LAUNCHER_LINK_NOT_CONFIRMED: откройте привязку ещё раз и подтвердите её в аккаунте сайта.";
+            IsDiagnosticOpen = true;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (LauncherBindingException exception)
+        {
+            Status = "Привязка недоступна";
+            LoadingStage = $"Причина: {exception.Code}";
+            Diagnostic = $"{exception.Code}: {exception.Message}";
+            IsDiagnosticOpen = true;
+        }
+        catch (Exception exception)
+        {
+            Status = "Привязка недоступна";
+            LoadingStage = "Причина указана ниже";
+            Diagnostic = $"LAUNCHER_LINK_FAILED: {exception.Message}";
+            IsDiagnosticOpen = true;
+        }
     }
 
     private static void OpenTrustedUrl(Uri uri)

@@ -127,6 +127,9 @@
           <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Content="Играть" Margin="0,4,0,14" />
           <Button Command="{Binding RepairCommand}" Style="{StaticResource StackButton}" Content="Проверить файлы" />
           <Button Command="{Binding OpenAccountLinkCommand}" Style="{StaticResource StackButton}" Content="Привязать на сайте" />
+          <Border Background="#193443" BorderBrush="#2d6274" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,2,0,12" Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <TextBlock Text="Для запуска нужна привязка Launcher к аккаунту сайта. Пароль в Launcher не вводится." Foreground="#bfe9ef" TextWrapping="Wrap" FontSize="12" />
+          </Border>
 
           <Separator Margin="0,10,0,14" Background="#284657" />
           <TextBlock Text="Сервер" Foreground="#9eb8c3" />

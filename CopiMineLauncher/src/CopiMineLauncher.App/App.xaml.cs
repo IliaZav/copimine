@@ -2,6 +2,7 @@ using System.Windows;
 using System.Net.Http;
 using System.IO;
 using CopiMineLauncher.Core;
+using CopiMineLauncher.Infrastructure.Binding;
 using Velopack;
 using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.Manifest;
@@ -24,11 +25,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        LauncherProtocolRegistration.EnsureRegistered();
         var httpClient = new HttpClient(CreateHttpHandler())
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
         var launcherDataRoot = LauncherInstallPaths.ResolveLauncherDataRoot();
+        var bindingStateStore = new LauncherBindingStateStore(launcherDataRoot);
+        var deviceId = new LauncherDeviceIdentityStore(launcherDataRoot).LoadOrCreate();
+        var bindingClient = new HttpLauncherBindingClient(httpClient, new Uri("https://copimine.ru/"), deviceId);
         var cachePath = Path.Combine(launcherDataRoot, "patch-feed.json");
         var feedClient = new PatchFeedClient(httpClient, cachePath);
         var manifestClient = new SignedInstanceManifestClient(
@@ -54,7 +59,9 @@ public partial class App : Application
             feedClient,
             runtimeCoordinator,
             selfUpdate,
-            defaultInstancePath: LauncherInstallPaths.ResolveMinecraftRoot()));
+            defaultInstancePath: LauncherInstallPaths.ResolveMinecraftRoot(),
+            launcherBindingClient: bindingClient,
+            launcherBindingStateStore: bindingStateStore));
         MainWindow = window;
         window.Show();
     }

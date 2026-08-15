@@ -599,6 +599,17 @@ class PlayerLinkConfirmIn(BaseModel):
     code: str = Field(min_length=6, max_length=16)
 
 
+class LauncherLinkChallengeIn(BaseModel):
+    device_id: str = Field(min_length=16, max_length=128)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    launcher_version: str = Field(default="", max_length=32)
+
+
+class LauncherLinkAuthorizeIn(BaseModel):
+    challenge_id: str = Field(min_length=16, max_length=96)
+    code: str = Field(min_length=6, max_length=16)
+
+
 class PlayerRecoveryStartIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
 
@@ -2185,6 +2196,35 @@ def _ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS launcher_link_challenges(
+            challenge_id TEXT PRIMARY KEY,
+            device_id_hash TEXT NOT NULL,
+            minecraft_name TEXT NOT NULL DEFAULT '',
+            launcher_version TEXT NOT NULL DEFAULT '',
+            code_hash TEXT NOT NULL,
+            poll_token_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            site_account_id TEXT NOT NULL DEFAULT '',
+            created_at BIGINT NOT NULL DEFAULT 0,
+            expires_at BIGINT NOT NULL DEFAULT 0,
+            authorized_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS launcher_account_links(
+            device_id_hash TEXT PRIMARY KEY,
+            site_account_id TEXT NOT NULL,
+            minecraft_name TEXT NOT NULL DEFAULT '',
+            launcher_version TEXT NOT NULL DEFAULT '',
+            linked_at BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS player_profile_cache(
             minecraft_uuid TEXT PRIMARY KEY,
             minecraft_name TEXT NOT NULL DEFAULT '',
@@ -3307,6 +3347,9 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_whitelist_sync_time ON auth_whitelist_sync(synced_at DESC,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_login_checks_time ON auth_login_checks(checked_at DESC,ok)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_effects_disable_audit_time ON auth_effects_disable_audit(created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_expiry ON launcher_link_challenges(status,expires_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_device ON launcher_link_challenges(device_id_hash,status,created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_account_links_site ON launcher_account_links(site_account_id,updated_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_purchases_player_time ON artifact_purchases(player_uuid,created_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_purchases_idempotency ON artifact_purchases(idempotency_key) WHERE idempotency_key<>''")
@@ -7016,6 +7059,158 @@ def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTa
         "periodHours": period_hours,
         "voluntary": True,
     }
+
+
+def normalize_launcher_device_id(device_id: str) -> str:
+    value = str(device_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{16,128}", value):
+        raise HTTPException(status_code=400, detail="Идентификатор Launcher недействителен")
+    return value
+
+
+def launcher_secret_hash(kind: str, value: str) -> str:
+    return sha256_hex(f"copimine-launcher:{kind}:{value}")
+
+
+def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[str, Any]:
+    device_id = normalize_launcher_device_id(data.device_id)
+    minecraft_name = data.minecraft_name.strip()
+    if not valid_minecraft_name(minecraft_name):
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    challenge_id = secrets.token_urlsafe(24)
+    code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
+    poll_token = secrets.token_urlsafe(32)
+    now = donation_now_ms()
+    expires = now + (15 * 60 * 1000)
+    device_hash = launcher_secret_hash("device", device_id)
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute(
+            "UPDATE launcher_link_challenges SET status='EXPIRED' WHERE device_id_hash=%s AND status='PENDING'",
+            (device_hash,),
+        )
+        conn.execute(
+            """
+            INSERT INTO launcher_link_challenges(
+                challenge_id,device_id_hash,minecraft_name,launcher_version,code_hash,poll_token_hash,status,created_at,expires_at
+            ) VALUES(%s,%s,%s,%s,%s,%s,'PENDING',%s,%s)
+            """,
+            (
+                challenge_id,
+                device_hash,
+                minecraft_name,
+                data.launcher_version.strip(),
+                launcher_secret_hash("code", code.upper()),
+                launcher_secret_hash("poll", poll_token),
+                now,
+                expires,
+            ),
+        )
+        conn.commit()
+    authorization_url = (
+        f"{ADMIN_PUBLIC_BASE_URL}/cabinet/link.html?launcher_challenge={quote(challenge_id)}"
+        f"&launcher_code={quote(code)}&launcher_nick={quote(minecraft_name)}"
+    )
+    return {
+        "ok": True,
+        "challengeId": challenge_id,
+        "pollToken": poll_token,
+        "authorizationUrl": authorization_url,
+        "expiresAt": expires,
+        "minecraftName": minecraft_name,
+    }
+
+
+def authorize_launcher_link_sync(account: dict[str, Any], data: LauncherLinkAuthorizeIn) -> dict[str, Any]:
+    challenge_id = data.challenge_id.strip()
+    code_hash = launcher_secret_hash("code", data.code.strip().upper())
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            "SELECT * FROM launcher_link_challenges WHERE challenge_id=%s AND status='PENDING' AND expires_at>%s FOR UPDATE",
+            (challenge_id, now),
+        ).fetchone()
+        if not row or not hmac.compare_digest(str(row_get(row, "code_hash", "") or ""), code_hash):
+            raise HTTPException(status_code=403, detail="Код привязки Launcher неверный или истёк")
+        device_hash = str(row_get(row, "device_id_hash", "") or "")
+        existing = conn.execute(
+            "SELECT site_account_id FROM launcher_account_links WHERE device_id_hash=%s LIMIT 1",
+            (device_hash,),
+        ).fetchone()
+        account_id = str(account.get("id") or "")
+        if existing and str(row_get(existing, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Этот Launcher уже привязан к другому аккаунту сайта")
+        conn.execute(
+            "UPDATE launcher_link_challenges SET status='AUTHORIZED',site_account_id=%s,authorized_at=%s WHERE challenge_id=%s AND status='PENDING'",
+            (account_id, now, challenge_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO launcher_account_links(device_id_hash,site_account_id,minecraft_name,launcher_version,linked_at,updated_at)
+            VALUES(%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(device_id_hash) DO UPDATE SET
+                site_account_id=EXCLUDED.site_account_id,
+                minecraft_name=EXCLUDED.minecraft_name,
+                launcher_version=EXCLUDED.launcher_version,
+                updated_at=EXCLUDED.updated_at
+            """,
+            (
+                device_hash,
+                account_id,
+                str(row_get(row, "minecraft_name", "") or ""),
+                str(row_get(row, "launcher_version", "") or ""),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        minecraft_linked = bool(str(account.get("minecraft_uuid") or "").strip())
+    return {"ok": True, "linked": True, "minecraftLinkRequired": not minecraft_linked}
+
+
+def launcher_link_status_sync(challenge_id: str, device_id: str, poll_token: str) -> dict[str, Any]:
+    challenge = str(challenge_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,96}", challenge):
+        raise HTTPException(status_code=400, detail="Идентификатор привязки недействителен")
+    device_hash = launcher_secret_hash("device", normalize_launcher_device_id(device_id))
+    poll_hash = launcher_secret_hash("poll", str(poll_token or ""))
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            """
+            SELECT c.status,c.expires_at,c.site_account_id,c.minecraft_name,
+                   a.username,a.minecraft_uuid,a.minecraft_name AS account_minecraft_name
+            FROM launcher_link_challenges c
+            LEFT JOIN site_accounts a ON a.id=c.site_account_id
+            WHERE c.challenge_id=%s AND c.device_id_hash=%s AND c.poll_token_hash=%s
+            LIMIT 1
+            """,
+            (challenge, device_hash, poll_hash),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=403, detail="Проверка привязки Launcher не прошла")
+        status = str(row_get(row, "status", "") or "")
+        expires = int(row_get(row, "expires_at", 0) or 0)
+        if status == "PENDING" and expires <= now:
+            conn.execute("UPDATE launcher_link_challenges SET status='EXPIRED' WHERE challenge_id=%s AND status='PENDING'", (challenge,))
+            conn.commit()
+            return {"ok": True, "linked": False, "status": "EXPIRED"}
+        if status not in {"AUTHORIZED", "CONSUMED"}:
+            return {"ok": True, "linked": False, "status": status or "PENDING"}
+        account_id = str(row_get(row, "site_account_id", "") or "")
+        if not account_id or not str(row_get(row, "username", "") or ""):
+            return {"ok": True, "linked": False, "status": "PENDING"}
+        return {
+            "ok": True,
+            "linked": True,
+            "status": "LINKED",
+            "siteAccountId": account_id,
+            "siteUsername": str(row_get(row, "username", "") or ""),
+            "minecraftName": str(row_get(row, "account_minecraft_name", "") or row_get(row, "minecraft_name", "") or ""),
+            "launcherAccessToken": str(poll_token or ""),
+        }
 
 
 def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[str, Any]:
@@ -12676,6 +12871,33 @@ async def player_change_password(
 async def player_whitelist_request(request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     row = await bg(create_whitelist_request_sync, account, get_client_ip(request))
     return {"ok": True, "request": row}
+
+
+@app.post("/api/launcher/link/challenge")
+async def launcher_link_challenge(data: LauncherLinkChallengeIn) -> dict[str, Any]:
+    """Create a short-lived browser authorization challenge for the Launcher.
+
+    This endpoint never receives a site password, AuthMe password, or bearer
+    session.  The returned poll token is held only by the local Launcher.
+    """
+    return await bg(create_launcher_link_challenge_sync, data)
+
+
+@app.get("/api/launcher/link/status")
+async def launcher_link_status(
+    challenge_id: str = Query(min_length=16, max_length=96),
+    device_id: str = Query(min_length=16, max_length=128),
+    poll_token: str = Query(min_length=32, max_length=128),
+) -> dict[str, Any]:
+    return await bg(launcher_link_status_sync, challenge_id, device_id, poll_token)
+
+
+@app.post("/api/player/launcher/link/authorize")
+async def player_launcher_link_authorize(
+    data: LauncherLinkAuthorizeIn,
+    account: dict[str, Any] = Depends(require_player),
+) -> dict[str, Any]:
+    return await bg(authorize_launcher_link_sync, account, data)
 
 
 @app.post("/api/player/link/request")

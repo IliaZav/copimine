@@ -5838,10 +5838,57 @@ async function loadPlayerLink() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   const linked = Boolean(state.user.linked);
-  const launcherNick = new URLSearchParams(window.location.search || "").get("launcher_nick")?.trim() || "";
+  const search = new URLSearchParams(window.location.search || "");
+  const launcherChallenge = search.get("launcher_challenge")?.trim() || "";
+  const launcherCode = search.get("launcher_code")?.trim() || "";
+  const launcherNick = search.get("launcher_nick")?.trim() || "";
+  const hasLauncherAuthorization = Boolean(launcherChallenge && launcherCode);
+  let launcherAuthorization = null;
+  if (hasLauncherAuthorization) {
+    try {
+      await api("/api/player/launcher/link/authorize", {
+        method: "POST",
+        body: JSON.stringify({ challenge_id: launcherChallenge, code: launcherCode })
+      });
+      launcherAuthorization = { ok: true };
+      // The Launcher is already polling, so this hand-off is best effort. It
+      // lets browsers which registered the protocol return to the app without
+      // requiring the player to copy a code or click another button.
+      window.setTimeout(() => {
+        try {
+          window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(launcherChallenge)}`;
+        } catch (_) {
+          // A browser may block custom protocols; the success message remains
+          // visible and the Launcher polling path still completes the link.
+        }
+      }, 120);
+      try {
+        window.history.replaceState({}, document.title, "/cabinet/link.html");
+      } catch (_) {
+        // History APIs can be unavailable in an embedded or restricted view.
+      }
+    } catch (err) {
+      launcherAuthorization = { ok: false, message: err.message || "Не удалось подтвердить Launcher." };
+    }
+  }
   const requestedNick = /^[A-Za-z0-9_]{3,16}$/.test(launcherNick)
     ? launcherNick
     : (state.user.minecraftName || "");
+  const launcherPanel = hasLauncherAuthorization
+    ? panel(
+      launcherAuthorization?.ok ? "Launcher привязан" : "Привязка Launcher не завершена",
+      launcherAuthorization?.ok
+        ? "Сайт подтвердил вход в ваш аккаунт."
+        : "Не удалось подтвердить запрос Launcher.",
+      launcherAuthorization?.ok
+        ? '<div class="notice">Launcher привязан. Это окно можно закрыть.</div>'
+        : `<div class="notice error">${esc(launcherAuthorization?.message || "Повтори авторизацию из Launcher.")}</div>`
+    )
+    : panel("Привязка Launcher", "Запусти привязку из Launcher и войди на сайте.", safetyRail([
+      ["1. Нажми кнопку в Launcher", "Откроется эта страница сайта.", "good"],
+      ["2. Войди в аккаунт", "После входа сайт подтвердит запрос автоматически.", "neutral"],
+      ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
+    ]));
   setView(`
     <section class="layout-grid grid-2">
       ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
@@ -5850,11 +5897,7 @@ async function loadPlayerLink() {
         ["Привязан", linked],
         ["Создан", dt(state.user.createdAt)]
       ]))}
-      ${panel("Привязка", "Запроси код в игре и подтверди его здесь.", safetyRail([
-        ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
-        ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
-        ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
-      ]))}
+      ${launcherPanel}
     </section>
     <section class="layout-grid grid-2">
       ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `

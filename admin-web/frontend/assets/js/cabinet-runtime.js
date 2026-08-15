@@ -5838,6 +5838,10 @@ async function loadPlayerLink() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   const linked = Boolean(state.user.linked);
+  const launcherNick = new URLSearchParams(window.location.search || "").get("launcher_nick")?.trim() || "";
+  const requestedNick = /^[A-Za-z0-9_]{3,16}$/.test(launcherNick)
+    ? launcherNick
+    : (state.user.minecraftName || "");
   setView(`
     <section class="layout-grid grid-2">
       ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
@@ -5855,9 +5859,10 @@ async function loadPlayerLink() {
     <section class="layout-grid grid-2">
       ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
         <div class="form-grid">
-          <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
+          <input id="linkMinecraftName" value="${esc(requestedNick)}" placeholder="Minecraft-ник на сервере" />
           <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
         </div>
+        ${launcherNick ? '<div class="notice">Launcher передал новый ник. Проверь его и подтверди привязку после получения кода в игре. Пароль сайта и AuthMe не передаются в Launcher.</div>' : ""}
         <div class="spacer-12"></div>
         ${playerLinkSummary(state.playerLinkRequest)}
       `)}

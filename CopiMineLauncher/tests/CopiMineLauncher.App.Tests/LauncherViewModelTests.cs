@@ -92,6 +92,23 @@ public sealed class LauncherViewModelTests
         viewModel.Diagnostic.Should().Contain($"Launch log: {logPath}");
     }
 
+    [Fact]
+    public async Task Loading_progress_reaches_completed_state_after_runtime_reports_stages()
+    {
+        using var temp = new TemporaryDirectory();
+        var runtime = new FakeRuntimeCoordinator { ReportProgress = true };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        viewModel.ProgressPercent.Should().Be(100);
+        viewModel.LoadingStage.Should().Be("Сборка готова");
+        viewModel.IsBusy.Should().BeFalse();
+    }
+
     private static async Task CreateReadyInstanceAsync(string instancePath)
     {
         Directory.CreateDirectory(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin"));
@@ -114,10 +131,15 @@ public sealed class LauncherViewModelTests
         public int RepairCalls { get; private set; }
         public int PlayCalls { get; private set; }
         public LauncherOperationResult? RepairResult { get; init; }
+        public bool ReportProgress { get; init; }
 
         public Task<LauncherOperationResult> RepairAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
         {
             RepairCalls++;
+            if (ReportProgress)
+            {
+                progress?.Report(new("minecraft", "Проверяем Minecraft 1.21.1…"));
+            }
             return Task.FromResult(RepairResult ?? new LauncherOperationResult(true, "repair", null, "ok"));
         }
 

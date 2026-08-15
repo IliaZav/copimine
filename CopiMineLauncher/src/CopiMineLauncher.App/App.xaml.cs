@@ -28,7 +28,8 @@ public partial class App : Application
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        var cachePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CopiMine", "Launcher", "patch-feed.json");
+        var launcherDataRoot = LauncherInstallPaths.ResolveLauncherDataRoot();
+        var cachePath = Path.Combine(launcherDataRoot, "patch-feed.json");
         var feedClient = new PatchFeedClient(httpClient, cachePath);
         var manifestClient = new SignedInstanceManifestClient(
             httpClient,
@@ -46,10 +47,14 @@ public partial class App : Application
         var selfUpdate = new VelopackSelfUpdateService(
             new Uri("https://copimine.ru/downloads/launcher/"),
             new VelopackUpdateBackend(),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CopiMine", "Launcher"),
+            launcherDataRoot,
             new SelfUpdatePolicy(),
             () => LauncherVersionInfo.Version);
-        var window = new MainWindow(new LauncherViewModel(feedClient, runtimeCoordinator, selfUpdate));
+        var window = new MainWindow(new LauncherViewModel(
+            feedClient,
+            runtimeCoordinator,
+            selfUpdate,
+            defaultInstancePath: LauncherInstallPaths.ResolveMinecraftRoot()));
         MainWindow = window;
         window.Show();
     }

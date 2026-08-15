@@ -36,4 +36,16 @@ public partial class MainWindow : Window
         };
         settings.ShowDialog();
     }
+
+    private void OpenSkins_Click(object sender, RoutedEventArgs e)
+    {
+        var cosmetics = new SkinManagerWindow(
+            viewModel.InstancePath,
+            viewModel.PlayerName,
+            LauncherInstallPaths.ResolveLauncherDataRoot())
+        {
+            Owner = this
+        };
+        cosmetics.ShowDialog();
+    }
 }

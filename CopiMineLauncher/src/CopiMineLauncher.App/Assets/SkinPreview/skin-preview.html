@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CopiMine skin preview</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101923; }
+    #skin_container { display: block; width: 100%; height: 100%; touch-action: none; }
+    #status {
+      position: fixed; left: 18px; right: 18px; bottom: 14px; padding: 8px 12px;
+      border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
+      background: rgba(5, 12, 18, .72); color: #e7f5f1; font: 13px "Segoe UI", sans-serif;
+      pointer-events: none; opacity: .92;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="skin_container"></canvas>
+  <div id="status">Загрузка предпросмотра…</div>
+  <script src="/skinview3d.bundle.js"></script>
+  <script>
+    (() => {
+      const canvas = document.getElementById("skin_container");
+      const status = document.getElementById("status");
+      let viewer = null;
+      let revision = 0;
+
+      function createBackground(name) {
+        const image = document.createElement("canvas");
+        image.width = 1200;
+        image.height = 720;
+        const ctx = image.getContext("2d");
+        const gradients = {
+          ice: ["#9fb8ef", "#dce9fb"],
+          night: ["#111d42", "#26395e"],
+          forest: ["#173d3b", "#5b8067"],
+          sunset: ["#5f405b", "#e0a068"],
+          clean: ["#172532", "#35566a"]
+        };
+        const colors = gradients[name] || gradients.ice;
+        const gradient = ctx.createLinearGradient(0, 0, 0, image.height);
+        gradient.addColorStop(0, colors[0]);
+        gradient.addColorStop(1, colors[1]);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, image.width, image.height);
+
+        if (name === "ice") {
+          ctx.fillStyle = "rgba(255,255,255,.26)";
+          for (let i = 0; i < 70; i++) {
+            const x = (i * 173) % image.width;
+            const y = 40 + ((i * 89) % 300);
+            const size = 7 + (i % 4) * 4;
+            ctx.fillRect(x, y, size, size);
+            ctx.fillRect(x + size, y + size, size * 1.4, size);
+          }
+          ctx.fillStyle = "rgba(255,255,255,.18)";
+          ctx.fillRect(0, 520, image.width, 200);
+        } else if (name === "night") {
+          ctx.fillStyle = "rgba(255,255,220,.75)";
+          for (let i = 0; i < 70; i++) {
+            const x = (i * 97) % image.width;
+            const y = 30 + ((i * 53) % 330);
+            ctx.fillRect(x, y, 2 + (i % 3), 2 + (i % 3));
+          }
+          ctx.fillStyle = "rgba(0,0,0,.24)";
+          ctx.fillRect(0, 500, image.width, 220);
+        } else if (name === "forest") {
+          ctx.fillStyle = "rgba(4,22,20,.3)";
+          for (let x = -40; x < image.width + 80; x += 62) {
+            ctx.beginPath();
+            ctx.moveTo(x, 580);
+            ctx.lineTo(x + 35, 300 + (x % 95));
+            ctx.lineTo(x + 90, 580);
+            ctx.fill();
+          }
+        } else if (name === "sunset") {
+          ctx.fillStyle = "rgba(255,220,160,.33)";
+          ctx.beginPath();
+          ctx.arc(960, 130, 82, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(40,20,50,.22)";
+          ctx.fillRect(0, 540, image.width, 180);
+        }
+
+        return image.toDataURL("image/png");
+      }
+
+      function animationFor(name) {
+        switch (name) {
+          case "idle": return new skinview3d.IdleAnimation();
+          case "running": return new skinview3d.RunningAnimation();
+          case "wave": return new skinview3d.WaveAnimation("right");
+          case "crouch": return new skinview3d.CrouchAnimation();
+          case "flying": return new skinview3d.FlyingAnimation();
+          case "hit": return new skinview3d.HitAnimation();
+          case "swim": return new skinview3d.SwimAnimation();
+          default: return new skinview3d.WalkingAnimation();
+        }
+      }
+
+      async function applyConfig(config) {
+        const currentRevision = ++revision;
+        if (!viewer) {
+          viewer = new skinview3d.SkinViewer({
+            canvas,
+            width: canvas.clientWidth,
+            height: canvas.clientHeight,
+            fov: 50,
+            zoom: .82,
+            enableControls: true,
+            preserveDrawingBuffer: true
+          });
+          viewer.controls.enablePan = false;
+          viewer.controls.enableZoom = true;
+        }
+
+        viewer.autoRotate = config.autoRotate === true;
+        viewer.autoRotateSpeed = Number(config.autoRotateSpeed || 1);
+        viewer.loadBackground(createBackground(config.background || "ice"));
+        viewer.animation = animationFor(config.animation || "walking");
+        viewer.animation.speed = Number(config.animationSpeed || 1);
+        viewer.animation.paused = config.animationPaused === true;
+
+        try {
+          if (config.skinUrl) {
+            await viewer.loadSkin(config.skinUrl, { model: config.model || "auto-detect", ears: false });
+          } else {
+            await viewer.loadSkin(null);
+          }
+          if (currentRevision !== revision) return;
+          if (config.capeUrl) {
+            await viewer.loadCape(config.capeUrl, { backEquipment: config.capeEquipment === "elytra" ? "elytra" : "cape" });
+          } else {
+            await viewer.loadCape(null);
+          }
+          status.textContent = config.skinUrl ? "Перетаскивайте мышью, чтобы вращать модель" : "Выберите скин или загрузите PNG-файл";
+        } catch (error) {
+          status.textContent = "Не удалось загрузить текстуру предпросмотра";
+          if (window.chrome && window.chrome.webview) {
+            window.chrome.webview.postMessage({ type: "preview-error", message: String(error && error.message || error) });
+          }
+        }
+      }
+
+      async function loadInitialConfig() {
+        try {
+          const response = await fetch("/preview-config.json?ts=" + Date.now(), { cache: "no-store" });
+          await applyConfig(await response.json());
+        } catch (error) {
+          status.textContent = "Предпросмотр готов: загрузите скин";
+        }
+      }
+
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.addEventListener("message", event => applyConfig(event.data || {}));
+      }
+      window.addEventListener("resize", () => {
+        if (viewer) viewer.setSize(canvas.clientWidth, canvas.clientHeight);
+      });
+      loadInitialConfig();
+    })();
+  </script>
+</body>
+</html>

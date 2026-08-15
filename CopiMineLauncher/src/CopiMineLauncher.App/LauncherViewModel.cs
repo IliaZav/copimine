@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CopiMineLauncher.Core.News;
 using CopiMineLauncher.Infrastructure.News;
+using CopiMineLauncher.Infrastructure.Runtime;
 
 namespace CopiMineLauncher.App;
 
@@ -21,10 +22,13 @@ public sealed class PatchFeedCardViewModel(PatchFeedItem item)
 public partial class LauncherViewModel : ObservableObject
 {
     private readonly IPatchFeedClient patchFeedClient;
+    private readonly ILauncherRuntimeCoordinator? runtimeCoordinator;
+    private CancellationTokenSource? operationCancellation;
 
-    public LauncherViewModel(IPatchFeedClient patchFeedClient)
+    public LauncherViewModel(IPatchFeedClient patchFeedClient, ILauncherRuntimeCoordinator? runtimeCoordinator = null)
     {
         this.patchFeedClient = patchFeedClient;
+        this.runtimeCoordinator = runtimeCoordinator;
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
         RefreshNewsCommand = new AsyncRelayCommand(RefreshNewsAsync);
         PlayCommand = new AsyncRelayCommand(PlayAsync);
@@ -76,18 +80,106 @@ public partial class LauncherViewModel : ObservableObject
             : string.Join(Environment.NewLine, result.Diagnostics);
     }
 
-    private Task PlayAsync()
+    private Task PlayAsync() => RunOperationAsync(launch: true);
+
+    private Task RepairAsync() => RunOperationAsync(launch: false);
+
+    private async Task RunOperationAsync(bool launch)
     {
-        Status = "Запуск подготовлен: сначала выполните проверку сборки.";
-        Diagnostic = $"Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
-        return Task.CompletedTask;
+        if (runtimeCoordinator is null)
+        {
+            Status = "Runtime pipeline недоступен";
+            Diagnostic = "RUNTIME_COORDINATOR_NOT_CONFIGURED: composition root did not provide the signed update/launch pipeline.";
+            return;
+        }
+
+        if (operationCancellation is not null)
+        {
+            Status = "Операция уже выполняется";
+            Diagnostic = "Дождитесь завершения текущей проверки сборки.";
+            return;
+        }
+
+        using var cancellation = new CancellationTokenSource();
+        operationCancellation = cancellation;
+        try
+        {
+            var progress = new Progress<LauncherProgress>(value =>
+            {
+                Status = value.Message;
+                Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
+            });
+            var request = new LauncherOperationRequest(InstancePath, PlayerName, MaximumRamMb: 4096);
+            var result = launch
+                ? await runtimeCoordinator.PlayAsync(request, cancellation.Token, progress)
+                : await runtimeCoordinator.RepairAsync(request, cancellation.Token, progress);
+
+            Status = result.Succeeded
+                ? (launch ? "Minecraft запущен" : "Сборка восстановлена")
+                : $"Операция не выполнена: {result.ErrorCode}";
+            Diagnostic = BuildDiagnostic(result);
+        }
+        catch (OperationCanceledException)
+        {
+            Status = "Операция отменена";
+            Diagnostic = "Операция остановлена до завершения; незавершённые managed-файлы остаются в transaction staging.";
+        }
+        catch (Exception exception)
+        {
+            Status = "Ошибка Launcher";
+            Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
+        }
+        finally
+        {
+            operationCancellation = null;
+        }
     }
 
-    private Task RepairAsync()
+    private static string BuildDiagnostic(LauncherOperationResult result)
     {
-        Status = "Восстановление доступно после загрузки signed manifest.";
-        Diagnostic = "Ни один файл не изменён: remote manifest ещё не опубликован для локального режима.";
-        return Task.CompletedTask;
+        var lines = new List<string>
+        {
+            $"Operation: {result.Operation}",
+            $"Result: {(result.Succeeded ? "PASS" : "FAIL")}",
+            $"Code: {result.ErrorCode ?? "OK"}",
+            result.Diagnostic
+        };
+        if (result.VerifiedManifest is not null)
+        {
+            lines.Add($"Manifest sequence: {result.VerifiedManifest.ReconcilerManifest.Sequence}");
+            lines.Add($"Manifest SHA-256: {result.VerifiedManifest.ManifestSha256}");
+        }
+
+        if (result.Reconciliation is not null)
+        {
+            lines.Add($"Reconcile: {result.Reconciliation.Status}");
+            if (result.Reconciliation.RecoveredPreviousTransaction)
+            {
+                lines.Add("Recovery: previous transaction was recovered before planning.");
+            }
+        }
+
+        if (result.Java is not null)
+        {
+            lines.Add($"Java: {result.Java.JavaExecutablePath}");
+        }
+
+        if (result.Minecraft is not null)
+        {
+            lines.Add($"Minecraft/Fabric: {result.Minecraft.MinecraftVersion} / {result.Minecraft.FabricLoaderVersion}");
+        }
+
+        if (result.ServersDat is not null)
+        {
+            lines.Add($"servers.dat: {result.ServersDat.Path} (changed={result.ServersDat.Changed})");
+        }
+
+        if (result.Launch is not null)
+        {
+            lines.Add($"Process: {result.Launch.Process.Id}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private Task DiagnoseAsync()

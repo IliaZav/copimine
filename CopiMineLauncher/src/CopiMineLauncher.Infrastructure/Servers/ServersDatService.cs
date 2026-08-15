@@ -4,7 +4,7 @@ using System.Text;
 
 namespace CopiMineLauncher.Infrastructure.Servers;
 
-public sealed record ManagedServerRecord(string DisplayName, string Address, int Port);
+public sealed record ManagedServerRecord(string DisplayName, string Address, int Port, bool AcceptTextures = true);
 
 public sealed record ServersDatEvidence(bool Changed, int ExistingServerCount, int CopiMineServerCount, string Path);
 
@@ -18,6 +18,7 @@ public sealed class ServersDatService : IServersDatService
     private const string ServersTag = "servers";
     private const string NameTag = "name";
     private const string IpTag = "ip";
+    private const string AcceptTexturesTag = "acceptTextures";
 
     public async Task<ServersDatEvidence> EnsureCopiMineServerAsync(string serversDatPath, ManagedServerRecord record, CancellationToken cancellationToken = default)
     {
@@ -55,6 +56,7 @@ public sealed class ServersDatService : IServersDatService
 
         changed |= SetString(managed, NameTag, record.DisplayName);
         changed |= SetString(managed, IpTag, canonicalIp);
+        changed |= SetByte(managed, AcceptTexturesTag, record.AcceptTextures ? (byte)1 : (byte)0);
 
         if (!changed)
         {
@@ -107,6 +109,17 @@ public sealed class ServersDatService : IServersDatService
         }
 
         compound.Values[key] = new StringTag(value);
+        return true;
+    }
+
+    private static bool SetByte(CompoundTag compound, string key, byte value)
+    {
+        if (compound.Values.TryGetValue(key, out var existing) && existing is ByteTag byteTag && byteTag.Value == value)
+        {
+            return false;
+        }
+
+        compound.Values[key] = new ByteTag(value);
         return true;
     }
 

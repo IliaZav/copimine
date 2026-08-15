@@ -21,6 +21,7 @@ public sealed class ServersDatServiceTests
         evidence.Changed.Should().BeTrue();
         CountText(Decompress(path), "mc.copimine.ru:25565").Should().Be(1);
         CountText(Decompress(path), "CopiMine").Should().Be(1);
+        CountText(Decompress(path), "acceptTextures").Should().Be(1);
     }
 
     [Fact]

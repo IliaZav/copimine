@@ -41,6 +41,16 @@ public sealed class TransactionalReconciler : ITransactionalReconciler
         {
             var recovered = await atomicFileStore.RecoverAsync(cancellationToken);
             var previousState = await atomicFileStore.LoadStateAsync(cancellationToken);
+            if (manifest.Sequence < previousState.ManifestSequence)
+            {
+                return new(
+                    ReconciliationStatus.Failed,
+                    Array.Empty<UpdateOperation>(),
+                    "MANIFEST_SEQUENCE_ROLLBACK",
+                    $"Manifest sequence {manifest.Sequence} is older than committed sequence {previousState.ManifestSequence}.",
+                    recovered);
+            }
+
             var plan = OwnershipPolicy.BuildPlan(manifest, previousState, Snapshot);
             if (plan.HasConflicts)
             {

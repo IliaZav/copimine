@@ -10,23 +10,22 @@ public sealed record JavaProvisioningResult(string JavaExecutablePath, string Ve
 
 public interface IJavaProvisioner
 {
-    Task<JavaProvisioningResult> EnsureJava21Async(LauncherManifest manifest, CancellationToken cancellationToken);
+    Task<JavaProvisioningResult> EnsureJava21Async(string instanceRoot, LauncherManifest manifest, CancellationToken cancellationToken);
 }
 
 public sealed class JavaProvisioner : IJavaProvisioner
 {
     private static readonly Regex Java21Pattern = new("(?:version|openjdk)\\s*[=\\\"]*21(?:[.\\s\\\"]|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private readonly string instanceRoot;
     private readonly IResumableDownloadManager downloads;
 
-    public JavaProvisioner(string instanceRoot, IResumableDownloadManager downloads)
+    public JavaProvisioner(IResumableDownloadManager downloads)
     {
-        this.instanceRoot = Path.GetFullPath(instanceRoot);
         this.downloads = downloads;
     }
 
-    public async Task<JavaProvisioningResult> EnsureJava21Async(LauncherManifest manifest, CancellationToken cancellationToken)
+    public async Task<JavaProvisioningResult> EnsureJava21Async(string instanceRoot, LauncherManifest manifest, CancellationToken cancellationToken)
     {
+        instanceRoot = Path.GetFullPath(instanceRoot);
         var metadata = manifest.JavaRuntime ?? throw new InvalidDataException("Manifest does not contain Java runtime metadata");
         var javaRoot = Path.Combine(instanceRoot, ".copimine", "java", metadata.Version);
         var existing = FindJavaExecutable(javaRoot);

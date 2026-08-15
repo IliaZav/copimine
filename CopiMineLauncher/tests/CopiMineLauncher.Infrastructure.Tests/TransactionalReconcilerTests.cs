@@ -77,6 +77,22 @@ public sealed class TransactionalReconcilerTests
     }
 
     [Fact]
+    public async Task Older_signed_sequence_is_rejected_before_download_or_mutation()
+    {
+        using var temp = new TemporaryDirectory();
+        var entry = Entry("a", "mods/a.jar", "same");
+        var downloader = new FixtureDownloader(new[] { entry });
+        var reconciler = CreateReconciler(temp.Path, trusted: true, downloader);
+
+        (await reconciler.ReconcileAsync(Manifest(new[] { entry }, sequence: 2), CancellationToken.None)).IsSuccess.Should().BeTrue();
+        var result = await reconciler.ReconcileAsync(Manifest(new[] { entry }, sequence: 1), CancellationToken.None);
+
+        result.ErrorCode.Should().Be("MANIFEST_SEQUENCE_ROLLBACK");
+        downloader.Calls.Should().ContainSingle();
+        File.ReadAllText(Path.Combine(temp.Path, "mods", "a.jar")).Should().Be("same");
+    }
+
+    [Fact]
     public async Task Injected_commit_failure_rolls_back_the_file_and_removes_journal()
     {
         using var temp = new TemporaryDirectory();

@@ -27,4 +27,13 @@ public partial class MainWindow : Window
             viewModel.Diagnostic = exception.Message;
         }
     }
+
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var settings = new LauncherSettingsWindow(viewModel)
+        {
+            Owner = this
+        };
+        settings.ShowDialog();
+    }
 }

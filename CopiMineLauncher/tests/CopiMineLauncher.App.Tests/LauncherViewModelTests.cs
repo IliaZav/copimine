@@ -109,6 +109,31 @@ public sealed class LauncherViewModelTests
         viewModel.IsBusy.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Saved_launch_settings_are_forwarded_to_the_runtime()
+    {
+        using var temp = new TemporaryDirectory();
+        using var settingsRoot = new TemporaryDirectory();
+        var settingsStore = new LauncherSettingsStore(settingsRoot.Path);
+        settingsStore.Save(new LauncherSettings(8192, 1600, 900, true));
+        var runtime = new FakeRuntimeCoordinator();
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            runtime,
+            settingsStore: settingsStore)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        runtime.LastRepairRequest.Should().NotBeNull();
+        runtime.LastRepairRequest!.MaximumRamMb.Should().Be(8192);
+        runtime.LastRepairRequest.ResolutionWidth.Should().Be(1600);
+        runtime.LastRepairRequest.ResolutionHeight.Should().Be(900);
+        runtime.LastRepairRequest.Fullscreen.Should().BeTrue();
+    }
+
     private static async Task CreateReadyInstanceAsync(string instancePath)
     {
         Directory.CreateDirectory(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin"));
@@ -132,10 +157,12 @@ public sealed class LauncherViewModelTests
         public int PlayCalls { get; private set; }
         public LauncherOperationResult? RepairResult { get; init; }
         public bool ReportProgress { get; init; }
+        public LauncherOperationRequest? LastRepairRequest { get; private set; }
 
         public Task<LauncherOperationResult> RepairAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
         {
             RepairCalls++;
+            LastRepairRequest = request;
             if (ReportProgress)
             {
                 progress?.Report(new("minecraft", "Проверяем Minecraft 1.21.1…"));

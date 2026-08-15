@@ -13,7 +13,10 @@ public sealed record LauncherOperationRequest(
     string InstanceRoot,
     string PlayerName,
     Uri? ManifestUri = null,
-    int MaximumRamMb = 4096);
+    int MaximumRamMb = 4096,
+    int ResolutionWidth = 1280,
+    int ResolutionHeight = 720,
+    bool Fullscreen = false);
 
 public sealed record LauncherProgress(string Stage, string Message);
 
@@ -169,7 +172,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                         minecraft.FabricVersionName,
                         request.PlayerName,
                         java.JavaExecutablePath,
-                        request.MaximumRamMb),
+                        request.MaximumRamMb,
+                        request.ResolutionWidth,
+                        request.ResolutionHeight,
+                        request.Fullscreen),
                     cancellationToken);
             }
 
@@ -218,9 +224,14 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
             return ("PLAYER_NAME_INVALID", "Player name must contain 3–16 Latin letters, digits, or underscores.");
         }
 
-        if (request.MaximumRamMb is < 1024 or > 32768)
+        if (request.MaximumRamMb < LauncherMemoryLimits.MinimumRamMb || request.MaximumRamMb > LauncherMemoryLimits.MaximumRamMb)
         {
-            return ("MEMORY_LIMIT_INVALID", "Launcher memory must be between 1024 and 32768 MB.");
+            return ("MEMORY_LIMIT_INVALID", $"Launcher memory must be between {LauncherMemoryLimits.MinimumRamMb} and {LauncherMemoryLimits.MaximumRamMb} MB for this PC.");
+        }
+
+        if (request.ResolutionWidth is < 800 or > 7680 || request.ResolutionHeight is < 600 or > 4320)
+        {
+            return ("RESOLUTION_INVALID", "Launcher resolution must be between 800×600 and 7680×4320.");
         }
 
         var fullPath = Path.GetFullPath(request.InstanceRoot);

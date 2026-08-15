@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CopiMineLauncher.Core.News;
 using CopiMineLauncher.Infrastructure.News;
+using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.Runtime;
 using CopiMineLauncher.Infrastructure.SelfUpdate;
 
@@ -27,6 +28,7 @@ public partial class LauncherViewModel : ObservableObject
     private readonly ILauncherRuntimeCoordinator? runtimeCoordinator;
     private readonly ISelfUpdateService? selfUpdateService;
     private readonly LauncherProfileStore profileStore;
+    private readonly LauncherSettingsStore settingsStore;
     private readonly Action<string, string> nicknameChangedNotifier;
     private CancellationTokenSource? operationCancellation;
     private VerifiedSelfUpdate? availableSelfUpdate;
@@ -39,12 +41,14 @@ public partial class LauncherViewModel : ObservableObject
         ISelfUpdateService? selfUpdateService = null,
         string? defaultInstancePath = null,
         LauncherProfileStore? profileStore = null,
-        Action<string, string>? nicknameChangedNotifier = null)
+        Action<string, string>? nicknameChangedNotifier = null,
+        LauncherSettingsStore? settingsStore = null)
     {
         this.patchFeedClient = patchFeedClient;
         this.runtimeCoordinator = runtimeCoordinator;
         this.selfUpdateService = selfUpdateService;
         this.profileStore = profileStore ?? new LauncherProfileStore(LauncherInstallPaths.ResolveLauncherDataRoot());
+        this.settingsStore = settingsStore ?? new LauncherSettingsStore(LauncherInstallPaths.ResolveLauncherDataRoot());
         this.nicknameChangedNotifier = nicknameChangedNotifier ?? ShowNicknameChangedWarning;
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
@@ -87,6 +91,18 @@ public partial class LauncherViewModel : ObservableObject
     [ObservableProperty]
     private string loadingStage = "Готов к запуску";
 
+    [ObservableProperty]
+    private int maximumRamMb = 4096;
+
+    [ObservableProperty]
+    private int resolutionWidth = 1280;
+
+    [ObservableProperty]
+    private int resolutionHeight = 720;
+
+    [ObservableProperty]
+    private bool fullscreen;
+
     public IAsyncRelayCommand RefreshNewsCommand { get; }
     public IAsyncRelayCommand PlayCommand { get; }
     public IAsyncRelayCommand RepairCommand { get; }
@@ -99,10 +115,12 @@ public partial class LauncherViewModel : ObservableObject
     public IRelayCommand OpenDiscordCommand { get; }
     public IRelayCommand OpenAccountLinkCommand { get; }
     public string LauncherDataPath => LauncherInstallPaths.ResolveLauncherDataRoot();
+    public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
 
     public async Task InitializeAsync()
     {
         LoadPlayerProfile();
+        LoadSettings();
         await RefreshNewsAsync();
         await RecoverSelfUpdateAsync();
         await CheckSelfUpdateAsync();
@@ -171,6 +189,31 @@ public partial class LauncherViewModel : ObservableObject
         finally
         {
             loadingProfile = false;
+        }
+    }
+
+    private void LoadSettings()
+    {
+        var settings = settingsStore.Load();
+        MaximumRamMb = settings.MaximumRamMb;
+        ResolutionWidth = settings.ResolutionWidth;
+        ResolutionHeight = settings.ResolutionHeight;
+        Fullscreen = settings.Fullscreen;
+    }
+
+    public void SaveSettings()
+    {
+        try
+        {
+            settingsStore.Save(new LauncherSettings(MaximumRamMb, ResolutionWidth, ResolutionHeight, Fullscreen));
+            Status = "Настройки сохранены";
+            Diagnostic = $"RAM: {MaximumRamMb} МБ · Разрешение: {ResolutionWidth}×{ResolutionHeight} · Полный экран: {(Fullscreen ? "да" : "нет")}";
+        }
+        catch (Exception exception)
+        {
+            Status = "Настройки не сохранены";
+            Diagnostic = $"LAUNCHER_SETTINGS_SAVE_FAILED: {exception.Message}";
+            throw;
         }
     }
 
@@ -333,12 +376,12 @@ public partial class LauncherViewModel : ObservableObject
         IsBusy = true;
         ProgressPercent = 0;
         LoadingStage = launch ? "Запускаем Minecraft…" : "Проверяем файлы сборки…";
-        var operationFinished = false;
+        var operationFinished = 0;
         try
         {
             var progress = new Progress<LauncherProgress>(value =>
             {
-                if (operationFinished)
+                if (Volatile.Read(ref operationFinished) != 0)
                 {
                     return;
                 }
@@ -357,12 +400,18 @@ public partial class LauncherViewModel : ObservableObject
                 };
                 Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
             });
-            var request = new LauncherOperationRequest(InstancePath, PlayerName, MaximumRamMb: 4096);
+            var request = new LauncherOperationRequest(
+                InstancePath,
+                PlayerName,
+                MaximumRamMb: MaximumRamMb,
+                ResolutionWidth: ResolutionWidth,
+                ResolutionHeight: ResolutionHeight,
+                Fullscreen: Fullscreen);
             var result = launch
                 ? await runtimeCoordinator.PlayAsync(request, cancellation.Token, progress)
                 : await runtimeCoordinator.RepairAsync(request, cancellation.Token, progress);
 
-            operationFinished = true;
+            Volatile.Write(ref operationFinished, 1);
             Status = result.Succeeded
                 ? (launch ? "Minecraft запущен" : "Игра готова")
                 : (automatic ? "Не удалось подготовить игру" : $"Операция не выполнена: {result.ErrorCode}");
@@ -389,7 +438,7 @@ public partial class LauncherViewModel : ObservableObject
         }
         finally
         {
-            operationFinished = true;
+            Volatile.Write(ref operationFinished, 1);
             IsBusy = false;
             operationCancellation = null;
         }
@@ -449,7 +498,7 @@ public partial class LauncherViewModel : ObservableObject
     private Task DiagnoseAsync()
     {
         Status = "Диагностика завершена";
-        Diagnostic = $"Minecraft 1.21.1 · Fabric Loader 0.19.3{Environment.NewLine}Папка игры: {Path.GetFullPath(InstancePath)}{Environment.NewLine}Данные Launcher: {LauncherDataPath}{Environment.NewLine}Новости: при сбое сети используется последний сохранённый выпуск.";
+        Diagnostic = $"Minecraft 1.21.1 · Fabric Loader 0.19.3{Environment.NewLine}Папка игры: {Path.GetFullPath(InstancePath)}{Environment.NewLine}RAM: {MaximumRamMb} МБ · {ResolutionWidth}×{ResolutionHeight} · {(Fullscreen ? "полный экран" : "оконный режим")}{Environment.NewLine}Данные Launcher: {LauncherDataPath}{Environment.NewLine}Новости: при сбое сети используется последний сохранённый выпуск.";
         return Task.CompletedTask;
     }
 

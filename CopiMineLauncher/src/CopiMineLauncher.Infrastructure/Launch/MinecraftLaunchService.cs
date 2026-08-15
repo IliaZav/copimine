@@ -11,7 +11,10 @@ public sealed record LaunchRequest(
     string FabricVersionName,
     string Username,
     string? JavaExecutablePath,
-    int MaximumRamMb = 4096);
+    int MaximumRamMb = 4096,
+    int ResolutionWidth = 1280,
+    int ResolutionHeight = 720,
+    bool Fullscreen = false);
 
 public sealed record LaunchEvidence(
     Process Process,
@@ -37,9 +40,19 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
 
     public async Task<LaunchEvidence> LaunchAsync(LaunchRequest request, CancellationToken cancellationToken)
     {
-        if (request.MaximumRamMb is < 1024 or > 32768)
+        if (request.MaximumRamMb < LauncherMemoryLimits.MinimumRamMb || request.MaximumRamMb > LauncherMemoryLimits.MaximumRamMb)
         {
-            throw new ArgumentOutOfRangeException(nameof(request.MaximumRamMb), "Launcher memory must be between 1024 and 32768 MB");
+            throw new ArgumentOutOfRangeException(nameof(request.MaximumRamMb), $"Launcher memory must be between {LauncherMemoryLimits.MinimumRamMb} and {LauncherMemoryLimits.MaximumRamMb} MB for this PC");
+        }
+
+        if (request.ResolutionWidth is < 800 or > 7680)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.ResolutionWidth), "Launcher width must be between 800 and 7680 pixels");
+        }
+
+        if (request.ResolutionHeight is < 600 or > 4320)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request.ResolutionHeight), "Launcher height must be between 600 and 4320 pixels");
         }
 
         var parameters = MinecraftLauncherParameters.CreateDefault(new MinecraftPath(request.InstanceRoot), httpClient);
@@ -52,7 +65,10 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             Session = MSession.CreateOfflineSession(request.Username),
             JavaPath = javaPath,
             MaximumRamMb = request.MaximumRamMb,
-            MinimumRamMb = Math.Min(1024, request.MaximumRamMb)
+            MinimumRamMb = Math.Min(1024, request.MaximumRamMb),
+            ScreenWidth = request.ResolutionWidth,
+            ScreenHeight = request.ResolutionHeight,
+            FullScreen = request.Fullscreen
         };
         var process = await launcher.BuildProcessAsync(request.FabricVersionName, options, cancellationToken);
         var logPath = Path.Combine(Path.GetFullPath(request.InstanceRoot), "logs", "launcher-process.log");

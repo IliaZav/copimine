@@ -98,7 +98,7 @@
       <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,16,0">
         <StackPanel>
           <TextBlock Text="Игра" FontSize="20" FontWeight="Bold" />
-          <TextBlock Text="После установки всё готово к запуску." Foreground="#9eb8c3" TextWrapping="Wrap" Margin="0,7,0,18" />
+          <TextBlock Text="Выберите ник и нажмите «Играть»." Foreground="#9eb8c3" TextWrapping="Wrap" Margin="0,7,0,18" />
 
           <TextBlock Text="Имя игрока" Foreground="#9eb8c3" />
           <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=LostFocus}" MaxLength="16" />
@@ -121,7 +121,7 @@
           <Separator Margin="0,10,0,14" Background="#284657" />
           <TextBlock Text="Сервер" Foreground="#9eb8c3" />
           <TextBlock Text="mc.copimine.ru" FontSize="16" FontWeight="Bold" Margin="0,5,0,2" />
-          <TextBlock Text="Добавится автоматически. Другие серверы останутся на месте." Foreground="#7f9aa5" TextWrapping="Wrap" />
+          <TextBlock Text="Сервер добавится в список автоматически." Foreground="#7f9aa5" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
 
@@ -141,7 +141,7 @@
             <StackPanel Grid.Column="0">
               <TextBlock Text="Состояние" Foreground="#9eb8c3" FontSize="12" FontWeight="Bold" />
               <TextBlock Text="{Binding Status}" Foreground="#7af0aa" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0" />
-              <TextBlock Text="CopiMine загружается" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#5ab7e8" FontSize="12" FontWeight="SemiBold" Margin="0,5,0,0" />
+              <TextBlock Text="Игра загружается" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#5ab7e8" FontSize="12" FontWeight="SemiBold" Margin="0,5,0,0" />
               <TextBlock Text="{Binding LoadingStage}" Foreground="#b1c7ce" FontSize="12" Margin="0,7,0,0" />
               <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}" Height="8" Margin="0,8,0,0" Background="#0a1721" Foreground="#48d891" />
             </StackPanel>
@@ -183,7 +183,7 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
             </ScrollViewer>
-            <TextBlock Grid.Row="2" Text="Новости обновляются автоматически. При сбое сети остаётся последний сохранённый выпуск." Foreground="#718b96" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" />
+            <TextBlock Grid.Row="2" Text="Нет сети? Покажем последние загруженные новости." Foreground="#718b96" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" />
           </Grid>
         </Border>
 

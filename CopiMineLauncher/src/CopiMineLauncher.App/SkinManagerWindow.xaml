@@ -56,9 +56,9 @@
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,14">
-      <TextBlock Text="КОСМЕТИКА" Foreground="#63dfa0" FontSize="12" FontWeight="Bold" />
+      <TextBlock Text="ВНЕШНИЙ ВИД" Foreground="#63dfa0" FontSize="12" FontWeight="Bold" />
       <TextBlock Text="Скины и плащи" FontSize="28" FontWeight="Bold" Margin="0,3,0,0" />
-      <TextBlock Text="Выберите текстуру, покрутите 3D-модель и примените её к своему нику." Foreground="#9eb8c3" Margin="0,5,0,0" />
+      <TextBlock Text="Выберите скин или плащ. Крутите модель мышью." Foreground="#9eb8c3" Margin="0,5,0,0" />
     </StackPanel>
 
     <Grid Grid.Row="1">
@@ -79,7 +79,7 @@
           </Grid.RowDefinitions>
           <StackPanel Grid.Row="0">
             <TextBlock Text="Каталог скинов" FontSize="18" FontWeight="Bold" />
-            <TextBlock Text="Открытая база Ely.by · постраничная загрузка" Foreground="#718b96" FontSize="11" Margin="0,4,0,10" TextWrapping="Wrap" />
+            <TextBlock Text="Каталог Ely.by" Foreground="#718b96" FontSize="11" Margin="0,4,0,10" TextWrapping="Wrap" />
             <TextBox x:Name="TagsTextBox" ToolTip="Например: winter, fantasy" />
           </StackPanel>
           <Grid Grid.Row="1">
@@ -123,7 +123,7 @@
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="Публичный индекс capes.dev · плащи, найденные для указанного ника" Foreground="#718b96" FontSize="11" TextWrapping="Wrap" Margin="8,8,8,6" />
+                <TextBlock Text="Плащи для выбранного ника" Foreground="#718b96" FontSize="11" TextWrapping="Wrap" Margin="8,8,8,6" />
                 <ListBox Grid.Row="1" x:Name="CapeListBox" SelectionChanged="CapeSelectionChanged" Background="#0c1925" BorderThickness="0" Foreground="#eef7f5" ScrollViewer.VerticalScrollBarVisibility="Auto">
                   <ListBox.ItemTemplate>
                     <DataTemplate>
@@ -163,11 +163,11 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel>
             <TextBlock Text="Мой образ" FontSize="18" FontWeight="Bold" />
-            <TextBlock Text="Ник, к которому применится текстура" Foreground="#718b96" FontSize="11" Margin="0,4,0,6" TextWrapping="Wrap" />
+            <TextBlock Text="Ваш ник" Foreground="#718b96" FontSize="11" Margin="0,4,0,6" TextWrapping="Wrap" />
             <TextBox x:Name="PlayerNameTextBox" />
-            <Button Content="Найти скин и плащи по нику" Click="ResolveByNickname_Click" />
-            <Button Content="Обновить каталог плащей" Click="LoadCapes_Click" />
-            <TextBlock x:Name="SourceLabel" Text="Источник не выбран" Foreground="#9eb8c3" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+            <Button Content="Найти по нику" Click="ResolveByNickname_Click" />
+            <Button Content="Загрузить плащи" Click="LoadCapes_Click" />
+            <TextBlock x:Name="SourceLabel" Text="Ничего не выбрано" Foreground="#9eb8c3" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
 
             <Separator Background="#284657" Margin="0,0,0,12" />
             <TextBlock Text="Файлы" Foreground="#9eb8c3" FontWeight="SemiBold" />
@@ -175,7 +175,7 @@
             <Button Content="Загрузить плащ из файла" Click="ImportCape_Click" />
             <Button Content="Применить скин" Style="{StaticResource PrimaryButton}" Click="ApplySkin_Click" />
             <Button Content="Применить плащ" Click="ApplyCape_Click" />
-            <TextBlock Text="Изменение применяется в локальной папке Minecraft через CustomSkinLoader. Перезапустите игру или переподключитесь к серверу." Foreground="#718b96" FontSize="11" TextWrapping="Wrap" Margin="0,1,0,12" />
+            <TextBlock Text="Файлы лежат в папке игры. После смены перезапустите Minecraft." Foreground="#718b96" FontSize="11" TextWrapping="Wrap" Margin="0,1,0,12" />
 
             <Separator Background="#284657" Margin="0,0,0,12" />
             <TextBlock Text="Предпросмотр" Foreground="#9eb8c3" FontWeight="SemiBold" />

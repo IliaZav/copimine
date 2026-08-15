@@ -68,10 +68,10 @@ public partial class LauncherViewModel : ObservableObject
     public ObservableCollection<PatchFeedCardViewModel> PatchCards { get; }
 
     [ObservableProperty]
-    private string status = "Готов к проверке";
+    private string status = "Готово";
 
     [ObservableProperty]
-    private string diagnostic = "Launcher ещё не выполнял операции.";
+    private string diagnostic = "Операций ещё не было.";
 
     [ObservableProperty]
     private string instancePath = LauncherInstallPaths.ResolveMinecraftRoot();
@@ -80,7 +80,7 @@ public partial class LauncherViewModel : ObservableObject
     private string playerName = "CopiMinePlayer";
 
     [ObservableProperty]
-    private string selfUpdateStatus = "Launcher обновлён";
+    private string selfUpdateStatus = "Обновлено";
 
     [ObservableProperty]
     private bool isBusy;
@@ -89,7 +89,7 @@ public partial class LauncherViewModel : ObservableObject
     private double progressPercent;
 
     [ObservableProperty]
-    private string loadingStage = "Готов к запуску";
+    private string loadingStage = "Готово";
 
     [ObservableProperty]
     private int maximumRamMb = 4096;
@@ -129,7 +129,7 @@ public partial class LauncherViewModel : ObservableObject
 
     private async Task RefreshNewsAsync()
     {
-        Status = "Загружаем последние обновления…";
+        Status = "Загружаем новости…";
         var result = await patchFeedClient.GetLatestAsync(CancellationToken.None);
         PatchCards.Clear();
         foreach (var item in result.Items)
@@ -141,7 +141,7 @@ public partial class LauncherViewModel : ObservableObject
             ? (result.FromCache ? "Обновления показаны из локального кэша" : "Обновления получены")
             : "Обновления временно недоступны";
         Diagnostic = result.Diagnostics.Count == 0
-            ? "Patch feed проверен: unsafe links не допускаются, HTML из feed не выполняется."
+            ? "Новости проверены."
             : string.Join(Environment.NewLine, result.Diagnostics);
     }
 
@@ -154,7 +154,7 @@ public partial class LauncherViewModel : ObservableObject
 
         if (!LauncherProfileStore.IsValidPlayerName(value))
         {
-            Diagnostic = "Имя игрока должно содержать 3–16 символов: A–Z, 0–9 или _.";
+            Diagnostic = "Ник: 3–16 латинских букв, цифр или _.";
             return;
         }
 
@@ -164,7 +164,7 @@ public partial class LauncherViewModel : ObservableObject
             profileStore.SavePlayerName(value);
             savedPlayerName = value;
             nicknameChangedNotifier(previousName, value);
-            Diagnostic = $"Ник сохранён: {value}. Проверьте привязку на сайте перед входом на сервер.";
+            Diagnostic = "Ник сохранён. Проверьте привязку на сайте.";
         }
         catch (Exception exception)
         {
@@ -228,8 +228,8 @@ public partial class LauncherViewModel : ObservableObject
             return;
         }
 
-        Status = "Подготавливаем игру…";
-        Diagnostic = "Первый запуск: скачиваем Java 21, Minecraft 1.21.1, Fabric и файлы сборки.";
+        Status = "Готовим игру…";
+        Diagnostic = "Первый запуск: загружаем Java, Minecraft и моды.";
         await RunOperationAsync(launch: false, automatic: true);
     }
 
@@ -272,17 +272,17 @@ public partial class LauncherViewModel : ObservableObject
             var result = await selfUpdateService.RecoverAsync(CancellationToken.None);
             if (result.Kind == SelfUpdateStatusKind.PendingRestart)
             {
-                SelfUpdateStatus = "Launcher обновлён после перезапуска";
+                SelfUpdateStatus = "Обновлено после перезапуска";
             }
             else if (result.Kind == SelfUpdateStatusKind.Failed)
             {
-                SelfUpdateStatus = "Проверка обновления Launcher не завершена";
+                SelfUpdateStatus = "Не удалось проверить обновление";
                 Diagnostic = FormatSelfUpdateDiagnostic(result);
             }
         }
         catch (Exception exception)
         {
-            SelfUpdateStatus = "Проверка обновления Launcher не завершена";
+            SelfUpdateStatus = "Не удалось проверить обновление";
             Diagnostic = $"SELF_UPDATE_RECOVERY_FAILED: {exception.Message}";
         }
     }
@@ -294,16 +294,16 @@ public partial class LauncherViewModel : ObservableObject
             return;
         }
 
-        SelfUpdateStatus = "Проверяем обновление Launcher…";
+        SelfUpdateStatus = "Проверяем обновление…";
         try
         {
             var result = await selfUpdateService.CheckAsync(CancellationToken.None);
             availableSelfUpdate = result.Update;
             SelfUpdateStatus = result.Kind switch
             {
-                SelfUpdateStatusKind.UpdateAvailable => $"Доступно обновление Launcher: v{result.Update!.Version}",
-                SelfUpdateStatusKind.Failed => "Проверка обновления Launcher не завершена",
-                _ => "Launcher обновлён"
+                SelfUpdateStatusKind.UpdateAvailable => $"Доступна новая версия: v{result.Update!.Version}",
+                SelfUpdateStatusKind.Failed => "Не удалось проверить обновление",
+                _ => "Обновлено"
             };
             if (result.Kind == SelfUpdateStatusKind.Failed)
             {
@@ -317,7 +317,7 @@ public partial class LauncherViewModel : ObservableObject
         catch (Exception exception)
         {
             availableSelfUpdate = null;
-            SelfUpdateStatus = "Проверка обновления Launcher не завершена";
+            SelfUpdateStatus = "Не удалось проверить обновление";
             Diagnostic = $"SELF_UPDATE_CHECK_FAILED: {exception.Message}";
         }
     }
@@ -326,7 +326,7 @@ public partial class LauncherViewModel : ObservableObject
     {
         if (selfUpdateService is null)
         {
-            SelfUpdateStatus = "Обновление Launcher доступно только в установленной версии";
+            SelfUpdateStatus = "Обновление доступно в установленной версии";
             return;
         }
 
@@ -340,17 +340,17 @@ public partial class LauncherViewModel : ObservableObject
             return;
         }
 
-        Status = "Скачиваем обновление Launcher…";
+        Status = "Скачиваем обновление…";
         var result = await selfUpdateService.ApplyAsync(availableSelfUpdate, CancellationToken.None);
         if (result.Kind == SelfUpdateStatusKind.PendingRestart)
         {
-            SelfUpdateStatus = "Обновление установлено; Launcher перезапустится";
-            Status = "Launcher обновлён";
+            SelfUpdateStatus = "Обновление установлено. Перезапустите Launcher.";
+            Status = "Обновлено";
             availableSelfUpdate = null;
         }
         else
         {
-            SelfUpdateStatus = "Обновление Launcher не установлено";
+            SelfUpdateStatus = "Обновление не установлено";
             Diagnostic = FormatSelfUpdateDiagnostic(result);
         }
     }
@@ -367,7 +367,7 @@ public partial class LauncherViewModel : ObservableObject
         if (operationCancellation is not null)
         {
             Status = "Операция уже выполняется";
-            Diagnostic = "Дождитесь завершения текущей проверки сборки.";
+            Diagnostic = "Дождитесь окончания проверки.";
             return;
         }
 
@@ -375,7 +375,7 @@ public partial class LauncherViewModel : ObservableObject
         operationCancellation = cancellation;
         IsBusy = true;
         ProgressPercent = 0;
-        LoadingStage = launch ? "Запускаем Minecraft…" : "Проверяем файлы сборки…";
+        LoadingStage = launch ? "Запускаем Minecraft…" : "Проверяем файлы…";
         var operationFinished = 0;
         try
         {
@@ -428,11 +428,11 @@ public partial class LauncherViewModel : ObservableObject
         {
             Status = "Операция отменена";
             LoadingStage = "Операция отменена";
-            Diagnostic = "Операция остановлена до завершения; незавершённые managed-файлы остаются в transaction staging.";
+            Diagnostic = "Проверка остановлена. Незавершённые файлы не применены.";
         }
         catch (Exception exception)
         {
-            Status = "Ошибка Launcher";
+            Status = "Ошибка";
             LoadingStage = "Ошибка — откройте диагностику";
             Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
         }
@@ -498,7 +498,7 @@ public partial class LauncherViewModel : ObservableObject
     private Task DiagnoseAsync()
     {
         Status = "Диагностика завершена";
-        Diagnostic = $"Minecraft 1.21.1 · Fabric Loader 0.19.3{Environment.NewLine}Папка игры: {Path.GetFullPath(InstancePath)}{Environment.NewLine}RAM: {MaximumRamMb} МБ · {ResolutionWidth}×{ResolutionHeight} · {(Fullscreen ? "полный экран" : "оконный режим")}{Environment.NewLine}Данные Launcher: {LauncherDataPath}{Environment.NewLine}Новости: при сбое сети используется последний сохранённый выпуск.";
+        Diagnostic = $"Minecraft 1.21.1 · Fabric Loader 0.19.3{Environment.NewLine}Папка игры: {Path.GetFullPath(InstancePath)}{Environment.NewLine}RAM: {MaximumRamMb} МБ · {ResolutionWidth}×{ResolutionHeight} · {(Fullscreen ? "полный экран" : "оконный режим")}{Environment.NewLine}Файлы Launcher: {LauncherDataPath}{Environment.NewLine}Новости: используется последняя сохранённая версия.";
         return Task.CompletedTask;
     }
 
@@ -544,8 +544,8 @@ public partial class LauncherViewModel : ObservableObject
     private static void ShowNicknameChangedWarning(string previousName, string newName)
     {
         MessageBox.Show(
-            $"Ник изменён: {previousName} → {newName}.\n\nПеред входом откройте «Привязать на сайте» и подтвердите новый ник. Whitelist и сайт должны использовать тот же ник. Пароль AuthMe Launcher не хранит и не меняет — используйте прежний пароль, но сохранность старой AuthMe-записи зависит от серверной миграции.",
-            "Проверьте привязку игрока",
+            $"Ник изменён: {previousName} → {newName}.\n\nОткройте «Привязать на сайте» и подтвердите новый ник. Пароль AuthMe не меняется.",
+            "Новый ник",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
     }

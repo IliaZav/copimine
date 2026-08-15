@@ -1,0 +1,13 @@
+{
+    "schemaVersion":  1,
+    "channel":  "stable",
+    "version":  "1.0.0",
+    "minimumWindowsBuild":  "19045",
+    "architecture":  "x64",
+    "filename":  "CopiMineLauncherSetup-1.0.0.exe",
+    "downloadUrl":  "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe",
+    "sizeBytes":  72910512,
+    "sha256":  "571f70dcce5657cf65bfec462960648d1208445028747319382783a294343366",
+    "releaseNotesUrl":  "/news/copimine-launcher-1-0-0.html",
+    "publishedAt":  "2026-08-15T10:00:00.0000000+00:00"
+}

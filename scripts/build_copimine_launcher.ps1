@@ -43,8 +43,14 @@ if ($SkipPackaging) {
 }
 
 $vpk = Get-Command vpk -ErrorAction SilentlyContinue
-if ($null -eq $vpk) {
-    throw 'vpk 1.2.0 is required for packaging. Install the pinned Velopack CLI before running without -SkipPackaging.'
+$vpkPath = if ($null -ne $vpk) {
+    $vpk.Source
+} else {
+    $localVpk = Join-Path $repoRoot 'artifacts/tools/vpk/vpk.exe'
+    if (Test-Path -LiteralPath $localVpk -PathType Leaf) { $localVpk } else { $null }
+}
+if ([string]::IsNullOrWhiteSpace($vpkPath)) {
+    throw 'vpk 1.2.0 is required for packaging. Install the pinned Velopack CLI or place it at artifacts/tools/vpk/vpk.exe before running without -SkipPackaging.'
 }
 
 if (Test-Path -LiteralPath $packageRoot) {
@@ -52,7 +58,7 @@ if (Test-Path -LiteralPath $packageRoot) {
 }
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 
-& $vpk.Source pack `
+& $vpkPath pack `
     --packId CopiMineLauncher `
     --packTitle 'CopiMine Launcher' `
     --packVersion $Version `
@@ -63,5 +69,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "vpk packaging failed with exit code $LASTEXITCODE"
 }
 
+$setupSource = Join-Path $packageRoot 'CopiMineLauncher-win-Setup.exe'
+$installerPath = Join-Path $packageRoot "CopiMineLauncherSetup-$Version.exe"
+if (-not (Test-Path -LiteralPath $setupSource -PathType Leaf)) {
+    throw "Velopack did not produce the expected setup bundle: $setupSource"
+}
+Copy-Item -LiteralPath $setupSource -Destination $installerPath -Force
+
 Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"
+Write-Output "INSTALLER_OUTPUT=$installerPath"

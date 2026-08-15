@@ -46,6 +46,20 @@ def test_generated_patch_feed_points_to_existing_safe_assets() -> None:
             assert (ROOT / "admin-web/frontend/assets" / item["iconUrl"].removeprefix("/assets/")).is_file()
 
 
+def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() -> None:
+    metadata = json.loads(
+        (ROOT / "admin-web/frontend/assets/public-data/launcher/latest.json").read_text(encoding="utf-8")
+    )
+    assert metadata["schemaVersion"] == 1
+    assert metadata["channel"] == "stable"
+    assert metadata["architecture"] == "x64"
+    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.0.exe"
+    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe"
+    assert metadata["releaseNotesUrl"].startswith("/news/")
+    assert isinstance(metadata["sizeBytes"], int) and metadata["sizeBytes"] > 0
+    assert len(metadata["sha256"]) == 64 and metadata["sha256"] == metadata["sha256"].lower()
+
+
 def test_network_text_is_not_inserted_as_html() -> None:
     for name in ("launcher-data.js", "launcher-render.js", "patch-data.js", "patch-render.js", "news-page.js", "patch-detail-page.js"):
         source = read(f"admin-web/frontend/assets/js/public/{name}")

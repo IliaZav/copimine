@@ -1,4 +1,12 @@
-# CopiMineClient Protocol v2
+# CopiMineClient Protocol v2 + compatibility admission v3
+
+Compatibility admission uses a separate registered payload pair on the same
+bridge owner:
+
+- `copimine:client_ready` carries only `protocolVersion` and diagnostic `clientVersion`.
+- `copimine:client_ready_ack` carries `accepted`, `requiredProtocol`, `receivedProtocol`, and a bounded reason code.
+- `protocolVersion=3` is the compatibility contract; the existing visual envelope remains protocol v2.
+- READY retries are finite and stop immediately after an accepted ACK or a rejected decision. There is no admission heartbeat, mod list, launcher identity, or device identity.
 
 Channel:
 - `copimine:client_bridge`

@@ -15,8 +15,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.text.Text;
 
 public final class CopiMineClient implements ClientModInitializer {
-    public static final String CLIENT_VERSION = "0.1.0";
-
     private final ClientConfig config = ClientConfig.load();
     private final ClientVisualManager visualManager = new ClientVisualManager(config);
     private final ClientPostProcessController postProcessController = new ClientPostProcessController();
@@ -45,9 +43,13 @@ public final class CopiMineClient implements ClientModInitializer {
             }
             ClientBridgeProtocol.tickNetwork(client);
         });
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> ClientBridgeProtocol.onJoin());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            ClientReadyProtocol.onJoin();
+            ClientBridgeProtocol.onJoin();
+        });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             ClientBridgeProtocol.onDisconnect();
+            ClientReadyProtocol.onDisconnect();
             visualManager.clearAll("disconnect");
         });
         ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
@@ -61,6 +63,7 @@ public final class CopiMineClient implements ClientModInitializer {
                         .then(ClientCommandManager.literal("status")
                                 .executes(context -> {
                                     context.getSource().sendFeedback(Text.literal(visualManager.statusLine()));
+                                    context.getSource().sendFeedback(Text.literal("Gate: " + ClientReadyProtocol.statusLine()));
                                     context.getSource().sendFeedback(Text.literal(ClientBridgeProtocol.handshakeStatusLine()));
                                     context.getSource().sendFeedback(Text.literal("active=" + visualManager.activeSummary()));
                                     return 1;
@@ -68,6 +71,7 @@ public final class CopiMineClient implements ClientModInitializer {
                         .then(ClientCommandManager.literal("diagnose")
                                 .executes(context -> {
                                     context.getSource().sendFeedback(Text.literal("CopiMineClient diagnose"));
+                                    context.getSource().sendFeedback(Text.literal("Gate: " + ClientReadyProtocol.statusLine()));
                                     context.getSource().sendFeedback(Text.literal("Bridge: " + ClientBridgeProtocol.handshakeStatusLine()));
                                     for (String line : shaderRuntimeManager.diagnosticLines()) {
                                         context.getSource().sendFeedback(Text.literal(line));

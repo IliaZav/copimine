@@ -51,7 +51,7 @@ public final class ClientBridgeProtocol {
     private static long lastAckSeq;
     private static String lastError = "";
     private static String sessionId = "";
-    private static String clientVersion = CopiMineClient.CLIENT_VERSION;
+    private static String clientVersion = ClientReadyProtocol.clientVersion();
     private static boolean irisShaderPackActive;
     private static boolean lastReportedIrisShaderPackActive;
     private static boolean irisDetectionFailureLogged;
@@ -62,6 +62,7 @@ public final class ClientBridgeProtocol {
 
     public static void registerNetworking(ClientVisualManager manager) {
         registeredVisualManager = manager;
+        ClientReadyProtocol.registerNetworking();
         PayloadTypeRegistry.playC2S().register(BridgePayload.ID, BridgePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(BridgePayload.ID, BridgePayload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(BridgePayload.ID, (payload, context) -> {
@@ -227,6 +228,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickNetwork(MinecraftClient client) {
+        ClientReadyProtocol.tick(client);
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;

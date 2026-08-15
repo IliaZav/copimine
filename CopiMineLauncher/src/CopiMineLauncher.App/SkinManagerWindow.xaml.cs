@@ -21,6 +21,7 @@ public partial class SkinManagerWindow : Window
     private readonly PlayerCosmeticsClient playerCosmeticsClient;
     private readonly LocalCosmeticsStore localStore;
     private readonly CancellationTokenSource lifetime = new();
+    private readonly SemaphoreSlim previewGate = new(1, 1);
     private readonly List<CatalogItemViewModel> catalogItems = [];
     private readonly List<CapeCatalogItemViewModel> capeItems = [];
     private bool initialized;
@@ -55,13 +56,24 @@ public partial class SkinManagerWindow : Window
         try
         {
             await InitializePreviewAsync();
-            initialized = true;
-            await LoadCatalogAsync(reset: true);
-            await LoadInstalledTexturesAsync();
         }
         catch (Exception exception)
         {
             SetStatus($"Предпросмотр не запущен: {exception.Message}");
+        }
+        finally
+        {
+            initialized = true;
+        }
+
+        await LoadCatalogAsync(reset: true);
+        try
+        {
+            await LoadInstalledTexturesAsync();
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Локальные текстуры не загружены: {exception.Message}");
         }
     }
 
@@ -391,21 +403,29 @@ public partial class SkinManagerWindow : Window
     private async Task SendPreviewAsync()
     {
         if (!previewReady || PreviewView.CoreWebView2 is null) return;
-        var skinPreview = await CopyPreviewTextureAsync(selectedSkinPath, "current-skin.png");
-        var capePreview = await CopyPreviewTextureAsync(selectedCapePath, "current-cape.png");
-        var config = new
+        await previewGate.WaitAsync(lifetime.Token);
+        try
         {
-            skinUrl = skinPreview is null ? null : "https://copimine.local/current-skin.png",
-            capeUrl = capePreview is null ? null : "https://copimine.local/current-cape.png",
-            model = GetTag(ModelComboBox) ?? "auto-detect",
-            animation = GetTag(AnimationComboBox) ?? "walking",
-            background = GetTag(BackgroundComboBox) ?? "ice",
-            autoRotate = AutoRotateCheckBox.IsChecked == true,
-            animationSpeed = AnimationSpeedSlider.Value
-        };
-        var json = JsonSerializer.Serialize(config);
-        await File.WriteAllTextAsync(Path.Combine(previewRoot, "preview-config.json"), json, lifetime.Token);
-        PreviewView.CoreWebView2.PostWebMessageAsJson(json);
+            var skinPreview = await CopyPreviewTextureAsync(selectedSkinPath, "current-skin.png");
+            var capePreview = await CopyPreviewTextureAsync(selectedCapePath, "current-cape.png");
+            var config = new
+            {
+                skinUrl = skinPreview is null ? null : "https://copimine.local/current-skin.png",
+                capeUrl = capePreview is null ? null : "https://copimine.local/current-cape.png",
+                model = GetTag(ModelComboBox) ?? "auto-detect",
+                animation = GetTag(AnimationComboBox) ?? "walking",
+                background = GetTag(BackgroundComboBox) ?? "ice",
+                autoRotate = AutoRotateCheckBox.IsChecked == true,
+                animationSpeed = AnimationSpeedSlider.Value
+            };
+            var json = JsonSerializer.Serialize(config);
+            await File.WriteAllTextAsync(Path.Combine(previewRoot, "preview-config.json"), json, lifetime.Token);
+            PreviewView.CoreWebView2.PostWebMessageAsJson(json);
+        }
+        finally
+        {
+            previewGate.Release();
+        }
     }
 
     private async Task<string?> CopyPreviewTextureAsync(string? source, string fileName)
@@ -484,6 +504,7 @@ public partial class SkinManagerWindow : Window
             core.WebMessageReceived -= PreviewMessageReceived;
         }
         httpClient.Dispose();
+        previewGate.Dispose();
         lifetime.Dispose();
     }
 

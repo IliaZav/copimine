@@ -89,6 +89,21 @@
         return image.toDataURL("image/png");
       }
 
+      function damageAnimation() {
+        return new skinview3d.FunctionAnimation((player, progress) => {
+          const phase = (progress % 1) * Math.PI * 2;
+          const recoil = Math.max(0, Math.sin(phase));
+          const shake = Math.sin(phase * 4) * recoil;
+          player.rotation.z = shake * 0.06;
+          player.skin.body.rotation.x = -0.12 * recoil;
+          player.skin.head.rotation.x = -0.18 * recoil;
+          player.skin.leftArm.rotation.x = 0.18 * recoil;
+          player.skin.rightArm.rotation.x = 0.18 * recoil;
+          player.skin.leftLeg.rotation.x = -0.05 * recoil;
+          player.skin.rightLeg.rotation.x = -0.05 * recoil;
+        });
+      }
+
       function animationFor(name) {
         switch (name) {
           case "idle": return new skinview3d.IdleAnimation();
@@ -96,7 +111,8 @@
           case "wave": return new skinview3d.WaveAnimation("right");
           case "crouch": return new skinview3d.CrouchAnimation();
           case "flying": return new skinview3d.FlyingAnimation();
-          case "hit": return new skinview3d.HitAnimation();
+          case "damage":
+          case "hit": return damageAnimation();
           case "swim": return new skinview3d.SwimAnimation();
           default: return new skinview3d.WalkingAnimation();
         }

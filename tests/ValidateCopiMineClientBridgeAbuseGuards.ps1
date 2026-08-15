@@ -14,8 +14,8 @@ if ($bridge -notmatch 'copimine\.narcotics\.admin' -or $bridge -notmatch '"requi
 }
 
 $join = [regex]::Match($bridge, '(?s)public void onJoin\(PlayerJoinEvent event\) \{.*?(?=\r?\n\s*@EventHandler\r?\n\s*public void onQuit)')
-if (-not $join.Success -or $join.Value -match 'kickPlayer\(' -or $join.Value -notmatch 'cannot prove that a client mod is installed') {
-    throw 'A plugin-channel HELLO must not be treated as proof that a client mod is installed for automatic kicking.'
+if (-not $join.Success -or $join.Value -notmatch 'clientGateRequired' -or $join.Value -notmatch 'admission\.onJoin' -or $join.Value -notmatch 'joinAttemptId') {
+    throw 'Join must create a bounded client READY admission with a per-attempt race guard.'
 }
 
 if ($payloads -notmatch 'Float\.isFinite\(value\)') {

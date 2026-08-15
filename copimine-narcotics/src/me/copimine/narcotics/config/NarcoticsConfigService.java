@@ -64,6 +64,8 @@ public final class NarcoticsConfigService {
     private boolean preferClientVisuals;
     private boolean fallbackToServerOverlay;
     private boolean fallbackToParticles;
+    private boolean clientGateRequired;
+    private int clientGateTimeoutSeconds;
 
     public NarcoticsConfigService(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -104,6 +106,8 @@ public final class NarcoticsConfigService {
         preferClientVisuals = root.getBoolean("client_bridge.prefer_client_visuals", true);
         fallbackToServerOverlay = root.getBoolean("client_bridge.fallback_to_server_overlay", false);
         fallbackToParticles = root.getBoolean("client_bridge.fallback_to_particles", true);
+        clientGateRequired = root.getBoolean("client_gate.required", true);
+        clientGateTimeoutSeconds = clamp(root.getInt("client_gate.ready_timeout_seconds", 15), 10, 30);
 
         messages.clear();
         ConfigurationSection messageSection = root.getConfigurationSection("messages");
@@ -313,6 +317,14 @@ public final class NarcoticsConfigService {
         return handshakeTimeoutSeconds;
     }
 
+    public boolean clientGateRequired() {
+        return clientGateRequired;
+    }
+
+    public int clientGateTimeoutSeconds() {
+        return clientGateTimeoutSeconds;
+    }
+
     public boolean preferClientVisuals() {
         return preferClientVisuals;
     }
@@ -397,6 +409,13 @@ public final class NarcoticsConfigService {
     public void setRequireClientMod(boolean required) {
         requireClientMod = required;
         plugin.getConfig().set("client_bridge.require_client_mod", required);
+        setClientGateRequired(required);
+        plugin.saveConfig();
+    }
+
+    public void setClientGateRequired(boolean required) {
+        clientGateRequired = required;
+        plugin.getConfig().set("client_gate.required", required);
         plugin.saveConfig();
     }
 

@@ -77,7 +77,13 @@ public sealed class JavaProvisioner : IJavaProvisioner
                 continue;
             }
 
-            var safe = Core.Filesystem.SafeRelativePath.Parse(entry.FullName.Replace('\\', '/')).Value.Replace('/', Path.DirectorySeparatorChar);
+            var normalizedEntry = NormalizeArchiveEntryPath(entry.FullName);
+            if (normalizedEntry is null)
+            {
+                continue;
+            }
+
+            var safe = Core.Filesystem.SafeRelativePath.Parse(normalizedEntry).Value.Replace('/', Path.DirectorySeparatorChar);
             var target = Path.GetFullPath(Path.Combine(destinationRoot, safe));
             if (!target.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
             {
@@ -87,6 +93,28 @@ public sealed class JavaProvisioner : IJavaProvisioner
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             entry.ExtractToFile(target, overwrite: true);
         }
+    }
+
+    private static string? NormalizeArchiveEntryPath(string entryName)
+    {
+        var normalized = entryName.Replace('\\', '/');
+        while (normalized.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalized = normalized[2..];
+        }
+
+        if (string.IsNullOrEmpty(normalized) || normalized == "." || normalized.EndsWith("/", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var segments = normalized.Split('/');
+        if (segments.Any(segment => segment.Length == 0 || segment is "." or ".."))
+        {
+            throw new InvalidDataException("Java archive contains an empty or traversal path segment");
+        }
+
+        return normalized;
     }
 
     private static string? FindJavaExecutable(string root)

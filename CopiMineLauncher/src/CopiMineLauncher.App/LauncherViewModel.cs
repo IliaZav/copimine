@@ -92,6 +92,9 @@ public partial class LauncherViewModel : ObservableObject
     private string loadingStage = "Готово";
 
     [ObservableProperty]
+    private bool isDiagnosticOpen;
+
+    [ObservableProperty]
     private int maximumRamMb = 4096;
 
     [ObservableProperty]
@@ -414,10 +417,11 @@ public partial class LauncherViewModel : ObservableObject
             Volatile.Write(ref operationFinished, 1);
             Status = result.Succeeded
                 ? (launch ? "Minecraft запущен" : "Игра готова")
-                : (automatic ? "Не удалось подготовить игру" : $"Операция не выполнена: {result.ErrorCode}");
+                : (automatic ? "Не удалось подготовить игру" : "Не удалось выполнить действие");
             LoadingStage = result.Succeeded
                 ? (launch ? "Minecraft запущен" : "Сборка готова")
-                : "Операция остановлена — откройте диагностику";
+                : $"Причина: {result.ErrorCode ?? "UNKNOWN_ERROR"}";
+            IsDiagnosticOpen = !result.Succeeded;
             if (result.Succeeded)
             {
                 ProgressPercent = 100;
@@ -427,14 +431,16 @@ public partial class LauncherViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             Status = "Операция отменена";
-            LoadingStage = "Операция отменена";
+            LoadingStage = "Файлы не изменены";
             Diagnostic = "Проверка остановлена. Незавершённые файлы не применены.";
+            IsDiagnosticOpen = true;
         }
         catch (Exception exception)
         {
             Status = "Ошибка";
-            LoadingStage = "Ошибка — откройте диагностику";
+            LoadingStage = "Причина указана ниже";
             Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
+            IsDiagnosticOpen = true;
         }
         finally
         {

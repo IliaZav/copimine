@@ -110,6 +110,32 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Failed_operation_exposes_the_error_code_and_opens_diagnostics()
+    {
+        using var temp = new TemporaryDirectory();
+        var runtime = new FakeRuntimeCoordinator
+        {
+            RepairResult = new LauncherOperationResult(
+                false,
+                "repair",
+                "MANIFEST_HTTP_FAILED",
+                "GET /launcher/stable/instance-manifest.json returned 404 Not Found.")
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        viewModel.Status.Should().Be("Не удалось подготовить игру");
+        viewModel.LoadingStage.Should().Be("Причина: MANIFEST_HTTP_FAILED");
+        viewModel.IsDiagnosticOpen.Should().BeTrue();
+        viewModel.Diagnostic.Should().Contain("MANIFEST_HTTP_FAILED");
+        viewModel.Diagnostic.Should().Contain("404 Not Found");
+    }
+
+    [Fact]
     public async Task Saved_launch_settings_are_forwarded_to_the_runtime()
     {
         using var temp = new TemporaryDirectory();

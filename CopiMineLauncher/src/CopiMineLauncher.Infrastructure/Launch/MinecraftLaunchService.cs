@@ -29,6 +29,47 @@ public interface IMinecraftLaunchService
     Task<LaunchEvidence> LaunchAsync(LaunchRequest request, CancellationToken cancellationToken);
 }
 
+public static class MinecraftLaunchStartup
+{
+    public static async Task EnsureAliveAsync(
+        Process process,
+        string logPath,
+        TimeSpan gracePeriod,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentException.ThrowIfNullOrWhiteSpace(logPath);
+        if (gracePeriod <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(gracePeriod));
+        }
+
+        if (process.HasExited)
+        {
+            throw BuildExitException(process, logPath);
+        }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(gracePeriod);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (process.HasExited)
+        {
+            throw BuildExitException(process, logPath);
+        }
+    }
+
+    private static InvalidOperationException BuildExitException(Process process, string logPath) =>
+        new($"MINECRAFT_PROCESS_EXITED: Minecraft завершился во время запуска (code {process.ExitCode}). Лог запуска: {logPath}");
+}
+
 public sealed class MinecraftLaunchService : IMinecraftLaunchService
 {
     private readonly HttpClient httpClient;
@@ -124,6 +165,12 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             logWriter.Dispose();
             throw;
         }
+
+        await MinecraftLaunchStartup.EnsureAliveAsync(
+            process,
+            logPath,
+            TimeSpan.FromSeconds(2),
+            cancellationToken);
 
         return new(process, DateTimeOffset.UtcNow, request.FabricVersionName, Path.GetFullPath(request.InstanceRoot), javaPath, logPath);
     }

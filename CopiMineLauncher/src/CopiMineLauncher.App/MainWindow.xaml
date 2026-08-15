@@ -17,7 +17,7 @@
       <Setter Property="BorderBrush" Value="#2c5367" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="Padding" Value="13,9" />
-      <Setter Property="Margin" Value="0,0,0,8" />
+      <Setter Property="Margin" Value="0" />
       <Setter Property="FontSize" Value="14" />
       <Setter Property="Cursor" Value="Hand" />
       <Style.Triggers>
@@ -37,6 +37,16 @@
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="FontSize" Value="18" />
       <Setter Property="Padding" Value="14,13" />
+      <Setter Property="MinHeight" Value="50" />
+    </Style>
+    <Style x:Key="StackButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Margin" Value="0,0,0,10" />
+      <Setter Property="MinHeight" Value="38" />
+    </Style>
+    <Style x:Key="CompactButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Padding" Value="11,7" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="32" />
     </Style>
     <Style x:Key="Card" TargetType="Border">
       <Setter Property="Background" Value="#122332" />
@@ -77,16 +87,16 @@
           <TextBlock Text="Minecraft 1.21.1  ·  Fabric 0.19.3  ·  Windows x64" Foreground="#9eb8c3" Margin="0,5,0,0" />
         </StackPanel>
       </StackPanel>
-      <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
-        <TextBlock Text="v1.0.0  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-          <Button Content="Скины" Padding="10,6" FontSize="12" Click="OpenSkins_Click" ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
-          <Button Content="Настройки" Padding="10,6" FontSize="12" Click="OpenSettings_Click" />
-          <Button Command="{Binding OpenWebsiteCommand}" Content="Сайт" Padding="10,6" FontSize="12" ToolTip="Открыть copimine.ru" />
-          <Button Command="{Binding OpenDiscordCommand}" Content="Discord" Padding="10,6" FontSize="12" ToolTip="Открыть Discord-сервер" />
-          <Button Command="{Binding ApplySelfUpdateCommand}" Content="{Binding SelfUpdateStatus}" Padding="10,6" FontSize="12" />
+        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
+          <TextBlock Text="v1.0.0  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+          <Button Style="{StaticResource CompactButton}" Content="Скины" Margin="0,0,8,0" Click="OpenSkins_Click" ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
+          <Button Style="{StaticResource CompactButton}" Content="Настройки" Margin="0,0,8,0" Click="OpenSettings_Click" />
+          <Button Style="{StaticResource CompactButton}" Command="{Binding OpenWebsiteCommand}" Content="Сайт" Margin="0,0,8,0" ToolTip="Открыть copimine.ru" />
+          <Button Style="{StaticResource CompactButton}" Command="{Binding OpenDiscordCommand}" Content="Discord" Margin="0,0,8,0" ToolTip="Открыть Discord-сервер" />
+          <Button Style="{StaticResource CompactButton}" Command="{Binding ApplySelfUpdateCommand}" Content="{Binding SelfUpdateStatus}" />
+          </StackPanel>
         </StackPanel>
-      </StackPanel>
     </Grid>
 
     <Grid Grid.Row="1">
@@ -114,9 +124,9 @@
           </Grid>
           <TextBlock Text="{Binding InstancePath}" Foreground="#718b96" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" Margin="0,0,0,10" />
 
-          <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Content="Играть" Margin="0,4,0,12" />
-          <Button Command="{Binding RepairCommand}" Content="Проверить файлы" />
-          <Button Command="{Binding OpenAccountLinkCommand}" Content="Привязать на сайте" />
+          <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Content="Играть" Margin="0,4,0,14" />
+          <Button Command="{Binding RepairCommand}" Style="{StaticResource StackButton}" Content="Проверить файлы" />
+          <Button Command="{Binding OpenAccountLinkCommand}" Style="{StaticResource StackButton}" Content="Привязать на сайте" />
 
           <Separator Margin="0,10,0,14" Background="#284657" />
           <TextBlock Text="Сервер" Foreground="#9eb8c3" />
@@ -148,7 +158,7 @@
             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
               <TextBlock Text="{Binding ProgressPercent, StringFormat={}{0:0}%}" Foreground="#7af0aa" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" />
               <TextBlock Text="Загрузка" Foreground="#718b96" FontSize="11" HorizontalAlignment="Right" />
-              <Button Command="{Binding CheckSelfUpdateCommand}" Content="Проверить обновление" Padding="10,6" Margin="0,10,0,0" FontSize="12" />
+              <Button Style="{StaticResource CompactButton}" Command="{Binding CheckSelfUpdateCommand}" Content="Проверить обновление" Margin="0,10,0,0" />
             </StackPanel>
           </Grid>
         </Border>
@@ -160,10 +170,14 @@
               <RowDefinition Height="*" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <DockPanel Grid.Row="0" Margin="0,0,0,14">
-              <TextBlock Text="Обновления" FontSize="20" FontWeight="Bold" />
-              <Button Command="{Binding RefreshNewsCommand}" Content="Обновить" Padding="10,5" Margin="0" DockPanel.Dock="Right" FontSize="12" />
-            </DockPanel>
+            <Grid Grid.Row="0" Margin="0,0,0,14">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBlock Text="Обновления" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Style="{StaticResource CompactButton}" Command="{Binding RefreshNewsCommand}" Content="Обновить" Margin="12,0,0,0" />
+            </Grid>
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
               <ItemsControl ItemsSource="{Binding PatchCards}">
                 <ItemsControl.ItemTemplate>
@@ -176,7 +190,7 @@
                         </DockPanel>
                         <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,6,0,3" />
                         <TextBlock Text="{Binding Summary}" Foreground="#b1c7ce" TextWrapping="Wrap" />
-                        <Button Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Content="Подробнее →" HorizontalAlignment="Left" Padding="0,6" Background="Transparent" BorderThickness="0" Foreground="#7af0aa" Margin="0,5,0,0" />
+                        <Button Style="{StaticResource CompactButton}" Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Content="Подробнее" HorizontalAlignment="Left" Margin="0,10,0,0" />
                       </StackPanel>
                     </Border>
                   </DataTemplate>
@@ -187,13 +201,11 @@
           </Grid>
         </Border>
 
-        <Expander Grid.Row="2" Header="Диагностика" Foreground="#b1c7ce" Background="#122332" BorderBrush="#284858" BorderThickness="1" Padding="12,8">
+        <Expander Grid.Row="2" Header="Диагностика" IsExpanded="{Binding IsDiagnosticOpen, Mode=TwoWay}" Foreground="#b1c7ce" Background="#122332" BorderBrush="#284858" BorderThickness="1" Padding="12,8">
           <Grid Margin="0,8,0,0">
             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <ScrollViewer Grid.Column="0" MaxHeight="120" VerticalScrollBarVisibility="Auto" Margin="0,0,12,0">
-              <TextBlock Text="{Binding Diagnostic}" Foreground="#b1c7ce" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" />
-            </ScrollViewer>
-            <Button Grid.Column="1" Command="{Binding DiagnoseCommand}" Content="Проверить состояние" Padding="10,6" FontSize="12" />
+            <TextBox Grid.Column="0" Text="{Binding Diagnostic, Mode=OneWay}" IsReadOnly="True" IsTabStop="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="Transparent" BorderThickness="0" Padding="0" Foreground="#b1c7ce" FontFamily="Consolas" FontSize="12" Margin="0,0,12,0" />
+            <Button Grid.Column="1" Style="{StaticResource CompactButton}" Command="{Binding DiagnoseCommand}" Content="Проверить состояние" />
           </Grid>
         </Expander>
       </Grid>

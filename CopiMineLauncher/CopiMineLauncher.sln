@@ -1,0 +1,48 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Core", "src\CopiMineLauncher.Core\CopiMineLauncher.Core.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C01}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Infrastructure", "src\CopiMineLauncher.Infrastructure\CopiMineLauncher.Infrastructure.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C02}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.App", "src\CopiMineLauncher.App\CopiMineLauncher.App.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Core.Tests", "tests\CopiMineLauncher.Core.Tests\CopiMineLauncher.Core.Tests.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Infrastructure.Tests", "tests\CopiMineLauncher.Infrastructure.Tests\CopiMineLauncher.Infrastructure.Tests.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.IntegrationTests", "tests\CopiMineLauncher.IntegrationTests\CopiMineLauncher.IntegrationTests.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C06}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C02}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C02}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C02}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C02}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C06}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C06}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C06}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

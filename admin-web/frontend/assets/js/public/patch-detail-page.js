@@ -1,5 +1,5 @@
-import { loadPatchDetail } from "./patch-data.js?v=20260815launchernews1";
-import { renderPatchDetail } from "./patch-render.js?v=20260815launchernews1";
+import { loadPatchDetail } from "./patch-data.js?v=20260815launchernews2";
+import { renderPatchDetail } from "./patch-render.js?v=20260815launchernews2";
 
 function resolveSlug() {
   const fromBody = String(document.body?.dataset.patchSlug || "").trim();

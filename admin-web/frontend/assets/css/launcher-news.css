@@ -85,9 +85,9 @@
 .text-link:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
 
 .launcher-technical { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
-.launcher-system-card { padding: .9rem 1rem; }
+.launcher-system-card { min-width: 0; padding: .9rem 1rem; }
 .launcher-system-card span { display: block; color: var(--muted); font-size: .78rem; }
-.launcher-system-card strong { display: block; margin-top: .3rem; font-size: 1rem; }
+.launcher-system-card strong { display: block; margin-top: .3rem; font-size: 1rem; overflow-wrap: anywhere; word-break: break-word; }
 
 .launcher-news-grid,
 .news-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }

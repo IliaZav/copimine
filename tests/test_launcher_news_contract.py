@@ -60,6 +60,20 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert len(metadata["sha256"]) == 64 and metadata["sha256"] == metadata["sha256"].lower()
 
 
+def test_launcher_gallery_references_real_capture_assets() -> None:
+    launcher = read("admin-web/frontend/launcher.html")
+    expected = (
+        "launcher-home",
+        "launcher-update",
+        "launcher-diagnostics",
+    )
+    for stem in expected:
+        assert f"/assets/launcher-screenshots/{stem}.jpg" in launcher
+        assert f"/assets/launcher-screenshots/{stem}-thumb.jpg" in launcher
+        assert (ROOT / "admin-web/frontend/assets/launcher-screenshots" / f"{stem}.jpg").is_file()
+        assert (ROOT / "admin-web/frontend/assets/launcher-screenshots" / f"{stem}-thumb.jpg").is_file()
+
+
 def test_network_text_is_not_inserted_as_html() -> None:
     for name in ("launcher-data.js", "launcher-render.js", "patch-data.js", "patch-render.js", "news-page.js", "patch-detail-page.js"):
         source = read(f"admin-web/frontend/assets/js/public/{name}")

@@ -67,22 +67,6 @@ foreach ($relative in $files) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 
-# Keep the same documentation contract as the Linux builder. The Launcher
-# only consumes the mods directory; the extra files make the standalone
-# download auditable without copying metadata into the Minecraft root.
-foreach ($relative in @(
-    "thirdparty\README_RU.txt",
-    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",
-    "thirdparty\checksums.txt",
-    "thirdparty\modpack_manifest.json"
-)) {
-    $source = Join-Path $ProjectRoot $relative
-    if (-not (Test-Path -LiteralPath $source)) {
-        throw "Missing documentation for modpack: $relative"
-    }
-    Copy-Item -LiteralPath $source -Destination $stage -Force
-}
-
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force
 }

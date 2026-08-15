@@ -36,17 +36,6 @@ do
   verify_release_artifact "$file"
   cp "$PROJECT_ROOT/$file" "$STAGE/mods/"
 done
-
-for file in \
-  "thirdparty/README_RU.txt" \
-  "thirdparty/VOICE_CHAT_OFFICIAL_DOWNLOAD.txt" \
-  "thirdparty/checksums.txt" \
-  "thirdparty/modpack_manifest.json"
-do
-  [[ -f "$PROJECT_ROOT/$file" ]] || { echo "Missing file for modpack: $file" >&2; exit 1; }
-  cp "$PROJECT_ROOT/$file" "$STAGE/"
-done
-
 rm -f "$ZIP"
 (cd "$STAGE" && zip -qr "$ZIP" .)
 sha1sum "$ZIP" | awk '{print $1}' > "$SHA"

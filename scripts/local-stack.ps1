@@ -286,6 +286,31 @@ function Invoke-Psql {
     }
 }
 
+function Wait-PostgresQuery {
+    param(
+        [Parameter(Mandatory = $true)][string]$BinDir,
+        [string]$Database = 'postgres',
+        [string]$User = 'postgres',
+        [int]$TimeoutSeconds = 120
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            $probe = Invoke-Psql -BinDir $BinDir -Database $Database -User $User -Sql 'SELECT 1;'
+            if ($probe.ExitCode -eq 0 -and $probe.Output -match '(?m)^\s*1\s*$') {
+                return $true
+            }
+        } catch {
+            # PostgreSQL can accept TCP connections before it is ready to run a
+            # query. Keep polling until the bounded timeout, then fail clearly.
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    throw "PostgreSQL accepted TCP connections but did not answer a query within $TimeoutSeconds seconds. See local-runtime/logs/postgresql.log."
+}
+
 function Ensure-Postgres {
     $bin = Resolve-PostgresBinaries
     $initdb = Join-Path $bin 'initdb.exe'
@@ -337,6 +362,7 @@ function Ensure-Postgres {
         }
     }
 
+    Wait-PostgresQuery -BinDir $bin | Out-Null
     $roleSql = @'
 DO $$
 BEGIN
@@ -554,6 +580,14 @@ function Start-Minecraft {
     Ensure-ServerRuntimeFiles
     if (Test-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort) { throw "Port $MinecraftPort is already in use." }
     Backup-AndPatchServerProperties
+    $resourcePackBuild = Join-Path $Root 'resourcepacks\build'
+    $resourcePackZip = Join-Path $resourcePackBuild 'CopiMineResourcePack.zip'
+    if (-not (Test-Path -LiteralPath $resourcePackZip -PathType Leaf)) {
+        throw "Built resource pack is missing: $resourcePackZip. Run resourcepacks/build-resourcepack.py first."
+    }
+    $resourcePackSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $resourcePackZip).Hash.ToLowerInvariant()
+    Set-ServerProperty -Key 'resource-pack' -Value "http://127.0.0.1:$WebsitePort/resourcepacks/CopiMineResourcePack.zip"
+    Set-ServerProperty -Key 'resource-pack-sha1' -Value $resourcePackSha1
     $java = (Get-Command java.exe -ErrorAction SilentlyContinue).Source
     if (-not $java) { throw 'Java 21 is required to start Purpur.' }
     $env:COPIMINE_ENV_FILE = $LocalEnvFile
@@ -570,7 +604,7 @@ function Start-Minecraft {
         if (-not (Get-ProcessIfAlive -ProcessId $proc.Id)) { throw 'Minecraft exited during startup. See local-runtime/logs/minecraft.stderr.log and minecraft/server/logs/latest.log.' }
         throw 'Minecraft did not open port 25565. See local-runtime/logs/minecraft.stdout.log and minecraft/server/logs/latest.log.'
     }
-    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 30)) { throw 'Minecraft RCON did not become ready.' }
+    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 180)) { throw 'Minecraft RCON did not become ready.' }
     [void](Send-RconCommand -Command 'save-all')
     $adminFile = Join-Path $Runtime 'local-admin.txt'
     if (Test-Path -LiteralPath $adminFile) {

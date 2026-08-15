@@ -72,6 +72,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         process.StartInfo.UseShellExecute = false;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.RedirectStandardError = true;
+        process.EnableRaisingEvents = true;
         process.OutputDataReceived += (_, args) =>
         {
             if (!string.IsNullOrWhiteSpace(args.Data))

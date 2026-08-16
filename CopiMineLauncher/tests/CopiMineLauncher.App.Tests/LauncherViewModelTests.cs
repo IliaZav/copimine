@@ -107,6 +107,32 @@ public sealed class LauncherViewModelTests
         viewModel.ProgressPercent.Should().Be(100);
         viewModel.LoadingStage.Should().Be("Сборка готова");
         viewModel.IsBusy.Should().BeFalse();
+        viewModel.IsProgressIndeterminate.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Unknown_duration_preparation_stage_shows_activity_until_operation_finishes()
+    {
+        using var temp = new TemporaryDirectory();
+        var runtime = new FakeRuntimeCoordinator { HoldAfterProgress = true };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        var initialize = viewModel.InitializeAsync();
+        await runtime.ProgressReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.IsProgressIndeterminate.Should().BeTrue();
+        viewModel.ProgressPercent.Should().Be(28);
+        viewModel.ProgressLabel.Should().Be("…");
+
+        runtime.ReleaseProgress.TrySetResult(true);
+        await initialize;
+
+        viewModel.IsProgressIndeterminate.Should().BeFalse();
+        viewModel.ProgressPercent.Should().Be(100);
+        viewModel.ProgressLabel.Should().Be("100%");
     }
 
     [Fact]
@@ -201,6 +227,9 @@ public sealed class LauncherViewModelTests
         public int PlayCalls { get; private set; }
         public LauncherOperationResult? RepairResult { get; init; }
         public bool ReportProgress { get; init; }
+        public bool HoldAfterProgress { get; init; }
+        public TaskCompletionSource<bool> ProgressReported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> ReleaseProgress { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public LauncherOperationRequest? LastRepairRequest { get; private set; }
 
         public Task<LauncherOperationResult> RepairAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
@@ -211,7 +240,19 @@ public sealed class LauncherViewModelTests
             {
                 progress?.Report(new("minecraft", "Проверяем Minecraft 1.21.1…"));
             }
+            if (HoldAfterProgress)
+            {
+                progress?.Report(new("reconcile", "Проверяем managed-файлы…"));
+                ProgressReported.TrySetResult(true);
+                return WaitForReleaseAsync();
+            }
             return Task.FromResult(RepairResult ?? new LauncherOperationResult(true, "repair", null, "ok"));
+        }
+
+        private async Task<LauncherOperationResult> WaitForReleaseAsync()
+        {
+            await ReleaseProgress.Task;
+            return new LauncherOperationResult(true, "repair", null, "ok");
         }
 
         public Task<LauncherOperationResult> PlayAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)

@@ -100,6 +100,12 @@ public partial class LauncherViewModel : ObservableObject
     private double progressPercent;
 
     [ObservableProperty]
+    private bool isProgressIndeterminate;
+
+    [ObservableProperty]
+    private string progressLabel = "0%";
+
+    [ObservableProperty]
     private string loadingStage = "Готово";
 
     [ObservableProperty]
@@ -496,6 +502,8 @@ public partial class LauncherViewModel : ObservableObject
         operationCancellation = cancellation;
         IsBusy = true;
         ProgressPercent = 0;
+        IsProgressIndeterminate = true;
+        ProgressLabel = "…";
         LoadingStage = launch ? "Запускаем Minecraft…" : "Проверяем файлы…";
         var operationFinished = 0;
         try
@@ -509,9 +517,10 @@ public partial class LauncherViewModel : ObservableObject
 
                 Status = value.Message;
                 LoadingStage = value.Message;
+                IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "java" or "minecraft";
                 ProgressPercent = value.Stage switch
                 {
-                    "manifest" => 8,
+                    "manifest" => 2,
                     "reconcile" => 28,
                     "java" => 46,
                     "minecraft" => 72,
@@ -519,6 +528,7 @@ public partial class LauncherViewModel : ObservableObject
                     "launch" => 96,
                     _ => ProgressPercent
                 };
+                ProgressLabel = IsProgressIndeterminate ? "…" : $"{ProgressPercent:0}%";
                 Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
             });
             var request = new LauncherOperationRequest(
@@ -544,6 +554,8 @@ public partial class LauncherViewModel : ObservableObject
             {
                 ProgressPercent = 100;
             }
+            IsProgressIndeterminate = false;
+            ProgressLabel = $"{ProgressPercent:0}%";
             Diagnostic = BuildDiagnostic(result, InstancePath);
             TraceStartup($"operation:result:{result.Succeeded}:{result.ErrorCode ?? "OK"}:{result.Diagnostic.Replace(Environment.NewLine, " | ", StringComparison.Ordinal)}");
         }
@@ -553,6 +565,8 @@ public partial class LauncherViewModel : ObservableObject
             LoadingStage = "Файлы не изменены";
             Diagnostic = "Проверка остановлена. Незавершённые файлы не применены.";
             IsDiagnosticOpen = true;
+            IsProgressIndeterminate = false;
+            ProgressLabel = $"{ProgressPercent:0}%";
         }
         catch (Exception exception)
         {
@@ -560,6 +574,8 @@ public partial class LauncherViewModel : ObservableObject
             LoadingStage = "Причина указана ниже";
             Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
             IsDiagnosticOpen = true;
+            IsProgressIndeterminate = false;
+            ProgressLabel = $"{ProgressPercent:0}%";
             TraceStartup($"operation:exception:{exception.GetType().Name}:{exception.Message}");
         }
         finally

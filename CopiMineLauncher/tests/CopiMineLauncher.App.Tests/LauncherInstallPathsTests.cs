@@ -25,7 +25,7 @@ public sealed class LauncherInstallPathsTests
     [Fact]
     public async Task Existing_legacy_sibling_instance_is_reused_instead_of_an_empty_selected_folder()
     {
-        using var temp = new TemporaryDirectory();
+        using var temp = new LocalApplicationDataTestDirectory();
         var selectedInstallRoot = Path.Combine(temp.Path, "CopiMine");
         var currentDirectory = Path.Combine(selectedInstallRoot, "current");
         var legacyInstance = Path.Combine(temp.Path, "Minecraft");
@@ -75,9 +75,15 @@ public sealed class LauncherInstallPathsTests
         }
     }
 
-    private sealed class TemporaryDirectory : IDisposable
+    private sealed class LocalApplicationDataTestDirectory : IDisposable
     {
-        public TemporaryDirectory() => Path = Directory.CreateTempSubdirectory("copimine-launcher-path-tests-").FullName;
+        public LocalApplicationDataTestDirectory()
+        {
+            Path = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "CopiMineLauncherPathTests-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path);
+        }
 
         public string Path { get; }
 

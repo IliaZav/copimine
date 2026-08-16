@@ -35,10 +35,13 @@ public static class LauncherInstallPaths
         var preferred = ResolvePreferredMinecraftRoot(installRoot);
         foreach (var candidate in EnumerateCompatibilityRoots(installRoot, preferred))
         {
-            if (HasLauncherInstanceEvidence(candidate))
+            var isPreferred = string.Equals(candidate, preferred, StringComparison.OrdinalIgnoreCase);
+            if ((!isPreferred && IsUnderTemporaryDirectory(candidate)) || !HasLauncherInstanceEvidence(candidate))
             {
-                return candidate;
+                continue;
             }
+
+            return candidate;
         }
 
         return preferred;
@@ -127,6 +130,13 @@ public static class LauncherInstallPaths
         {
             return false;
         }
+    }
+
+    private static bool IsUnderTemporaryDirectory(string path)
+    {
+        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var temporaryRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(temporaryRoot, StringComparison.OrdinalIgnoreCase);
     }
 }
 

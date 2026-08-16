@@ -13,5 +13,8 @@ public sealed class LauncherInstallPathsTests
 
         LauncherInstallPaths.ResolveMinecraftRoot(@"D:\Games\CopiMine\current")
             .Should().Be(@"D:\Games\CopiMine\Minecraft");
+
+        LauncherInstallPaths.ResolveLauncherBootstrapRoot(@"D:\Games\CopiMine\current")
+            .Should().Be(@"D:\Games\CopiMine\current\launcher-bootstrap");
     }
 }

@@ -24,6 +24,11 @@ public static class LauncherInstallPaths
     public static string ResolveMinecraftRoot(string? applicationBaseDirectory = null) =>
         Path.Combine(ResolveInstallRoot(applicationBaseDirectory), "Minecraft");
 
+    public static string ResolveLauncherBootstrapRoot(string? applicationBaseDirectory = null) =>
+        Path.Combine(
+            Path.GetFullPath(applicationBaseDirectory ?? AppContext.BaseDirectory),
+            "launcher-bootstrap");
+
     public static string ResolveLauncherDataRoot() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

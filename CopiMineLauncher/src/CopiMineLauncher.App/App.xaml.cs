@@ -69,15 +69,22 @@ public partial class App : Application
     private static HttpMessageHandler CreateHttpHandler()
     {
         var stagingValue = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");
+        HttpMessageHandler innerHandler;
         if (Uri.TryCreate(stagingValue, UriKind.Absolute, out var stagingBase)
             && stagingBase.IsLoopback
             && string.Equals(stagingBase.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrEmpty(stagingBase.UserInfo))
         {
-            return new StagingHttpMessageHandler(stagingBase);
+            innerHandler = new StagingHttpMessageHandler(stagingBase);
+        }
+        else
+        {
+            innerHandler = new HttpClientHandler();
         }
 
-        return new HttpClientHandler();
+        return new LauncherDistributionHttpMessageHandler(
+            innerHandler,
+            LauncherInstallPaths.ResolveLauncherBootstrapRoot());
     }
 
     private sealed class StagingHttpMessageHandler(Uri stagingBase) : HttpClientHandler

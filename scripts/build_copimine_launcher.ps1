@@ -3,6 +3,7 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
     [string] $Version = '1.0.0',
+    [string] $InstanceReleaseRoot = '',
     [switch] $SkipPackaging
 )
 
@@ -36,6 +37,28 @@ $publishedExe = Join-Path $publishRoot 'CopiMineLauncher.App.exe'
 if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf)) {
     throw "Published Launcher executable was not produced: $publishedExe"
 }
+
+$bootstrapSource = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) {
+    Join-Path $repoRoot 'artifacts/launcher/Release/instance'
+} else {
+    (Resolve-Path -LiteralPath $InstanceReleaseRoot -ErrorAction Stop).Path
+}
+$bootstrapFiles = Join-Path $bootstrapSource 'files'
+foreach ($required in @(
+    (Join-Path $bootstrapSource 'instance-manifest.json'),
+    (Join-Path $bootstrapSource 'instance-manifest.sig'),
+    $bootstrapFiles
+)) {
+    if (-not (Test-Path -LiteralPath $required)) {
+        throw "Launcher bootstrap artifact is missing: $required. Build/stage the signed instance release before packaging the installer."
+    }
+}
+
+$bootstrapDestination = Join-Path $publishRoot 'launcher-bootstrap'
+New-Item -ItemType Directory -Path (Join-Path $bootstrapDestination 'files') -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.json') -Destination $bootstrapDestination -Force
+Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.sig') -Destination $bootstrapDestination -Force
+Get-ChildItem -LiteralPath $bootstrapFiles -File | Copy-Item -Destination (Join-Path $bootstrapDestination 'files') -Force
 
 if ($SkipPackaging) {
     Write-Output "PUBLISH_OUTPUT=$publishRoot"

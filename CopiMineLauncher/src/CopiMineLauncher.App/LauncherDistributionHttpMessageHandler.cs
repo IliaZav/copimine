@@ -15,6 +15,7 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
 {
     private readonly HttpMessageInvoker innerInvoker;
     private readonly string bootstrapRoot;
+    private static readonly TimeSpan BootstrapRemoteTimeout = TimeSpan.FromSeconds(8);
 
     public LauncherDistributionHttpMessageHandler(HttpMessageHandler innerHandler, string bootstrapRoot)
     {
@@ -28,9 +29,13 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
         CancellationToken cancellationToken)
     {
         var fallbackPath = ResolveBootstrapPath(request.RequestUri);
+        using var fallbackTimeout = fallbackPath is not null && File.Exists(fallbackPath)
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        fallbackTimeout?.CancelAfter(BootstrapRemoteTimeout);
         try
         {
-            var response = await innerInvoker.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = await innerInvoker.SendAsync(request, fallbackTimeout?.Token ?? cancellationToken).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.NotFound
                 || fallbackPath is null
                 || !File.Exists(fallbackPath))
@@ -42,6 +47,12 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
             return CreateBootstrapResponse(request, fallbackPath!);
         }
         catch (HttpRequestException) when (fallbackPath is not null && File.Exists(fallbackPath))
+        {
+            return CreateBootstrapResponse(request, fallbackPath!);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested
+            && fallbackPath is not null
+            && File.Exists(fallbackPath))
         {
             return CreateBootstrapResponse(request, fallbackPath!);
         }

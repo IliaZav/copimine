@@ -44,10 +44,34 @@ public sealed class LauncherDistributionHttpMessageHandlerTests
         response.Headers.Contains("X-Copimine-Launcher-Source").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Bundled_instance_files_are_used_when_distribution_times_out()
+    {
+        using var bootstrap = new TemporaryDirectory();
+        Directory.CreateDirectory(Path.Combine(bootstrap.Path, "files"));
+        var fileHash = new string('b', 64);
+        await File.WriteAllTextAsync(Path.Combine(bootstrap.Path, "files", fileHash), "managed-mod-after-timeout");
+
+        using var handler = new LauncherDistributionHttpMessageHandler(new TimeoutHandler(), bootstrap.Path);
+        using var client = new HttpClient(handler);
+
+        using var response = await client.GetAsync($"https://copimine.ru/launcher/files/{fileHash}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadAsStringAsync()).Should().Be("managed-mod-after-timeout");
+        response.Headers.GetValues("X-Copimine-Launcher-Source").Single().Should().Be("bundled-bootstrap");
+    }
+
     private sealed class NotFoundHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound) { RequestMessage = request });
+    }
+
+    private sealed class TimeoutHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromException<HttpResponseMessage>(new TaskCanceledException("simulated distribution timeout"));
     }
 
     private sealed class TemporaryDirectory : IDisposable

@@ -39,7 +39,10 @@ if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf)) {
 }
 
 $bootstrapSource = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) {
-    Join-Path $repoRoot 'artifacts/launcher/Release/instance'
+    # instance-current is the promoted local release pointer. The older
+    # instance directory is retained only as historical evidence and must
+    # never silently become the bootstrap source for a new installer.
+    Join-Path $repoRoot 'artifacts/launcher/Release/instance-current'
 } else {
     (Resolve-Path -LiteralPath $InstanceReleaseRoot -ErrorAction Stop).Path
 }

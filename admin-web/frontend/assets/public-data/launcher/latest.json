@@ -1,13 +1,13 @@
 {
-  "schemaVersion": 1,
-  "channel": "stable",
-  "version": "1.0.0",
-  "minimumWindowsBuild": "19045",
-  "architecture": "x64",
-  "filename": "CopiMineLauncherSetup-1.0.0.exe",
-  "downloadUrl": "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe",
-  "sizeBytes": 294474682,
-  "sha256": "d411228bf06b070bb6dfc4cf442bd7a4e92b781756f70f30401b07bc52051e33",
-  "releaseNotesUrl": "/news/copimine-launcher-1-0-0.html",
-  "publishedAt": "2026-08-16T14:28:15.3882078+00:00"
+    "schemaVersion":  1,
+    "channel":  "stable",
+    "version":  "1.0.0",
+    "minimumWindowsBuild":  "19045",
+    "architecture":  "x64",
+    "filename":  "CopiMineLauncherSetup-1.0.0.exe",
+    "downloadUrl":  "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe",
+    "sizeBytes":  294475185,
+    "sha256":  "b9953c834c1dc45896a9bed97799838a3c71369b769bd3e4a9cd7fef2d094c31",
+    "releaseNotesUrl":  "/news/copimine-launcher-1-0-0.html",
+    "publishedAt":  "2026-08-16T14:52:20.8085586+00:00"
 }

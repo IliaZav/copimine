@@ -34,10 +34,12 @@ public final class CopiMineClient implements ClientModInitializer {
         CopiMineClientLogger.info("CopiMineClient bootstrap started");
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
+        ClientReadyProtocol.registerNetworking();
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
+            ClientReadyProtocol.tick(client);
             if (client.player != null && client.player.isDead() && visualManager.hasActiveVisuals()) {
                 visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
             }

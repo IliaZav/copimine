@@ -33,6 +33,16 @@ def test_shared_ready_protocol_contract_is_stable() -> None:
     assert 'ACK_CHANNEL = "copimine:client_ready_ack"' in ready_source
 
 
+def test_client_registers_ready_ack_networking_at_startup() -> None:
+    client_source = (CLIENT / "src/main/java/me/copimine/client/CopiMineClient.java").read_text(encoding="utf-8")
+    assert "ClientReadyProtocol.registerNetworking();" in client_source
+
+
+def test_client_ticks_ready_retry_state_while_connected() -> None:
+    client_source = (CLIENT / "src/main/java/me/copimine/client/CopiMineClient.java").read_text(encoding="utf-8")
+    assert "ClientReadyProtocol.tick(client);" in client_source
+
+
 def test_ready_payload_does_not_report_launcher_or_mod_inventory() -> None:
     ready = (CLIENT / "src/main/java/me/copimine/client/ClientReadyPayload.java").read_text(encoding="utf-8")
     ack = (CLIENT / "src/main/java/me/copimine/client/ClientReadyAckPayload.java").read_text(encoding="utf-8")
@@ -58,3 +68,21 @@ def test_retry_contract_is_finite_and_stops_on_ack() -> None:
     assert re.search(r"DEADLINE_MILLIS\s*=\s*15_000L", retry)
     assert "acknowledge" in retry
     assert "ScheduledExecutorService" not in retry
+
+
+def test_official_resource_pack_is_auto_accepted_without_accepting_arbitrary_urls() -> None:
+    mixins = json.loads((CLIENT / "src/main/resources/copimineclient.mixins.json").read_text(encoding="utf-8"))
+    assert "ClientCommonNetworkHandlerResourcePackMixin" in mixins["client"]
+
+    policy = (CLIENT / "src/main/java/me/copimine/client/CopiMineResourcePackPolicy.java").read_text(encoding="utf-8")
+    mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/ClientCommonNetworkHandlerResourcePackMixin.java").read_text(encoding="utf-8")
+
+    assert "copimine.ru" in policy
+    assert "mc.copimine.ru" in policy
+    assert "127.0.0.1" in policy
+    assert "CopiMineResourcePack.zip" in policy
+    assert "[a-fA-F0-9]{40}" in policy
+    assert "addResourcePack" in mixin
+    assert "acceptAll" in mixin
+    assert "ResourcePackSendS2CPacket" in mixin
+    assert "CallbackInfo" in mixin

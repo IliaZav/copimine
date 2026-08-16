@@ -163,7 +163,7 @@ public sealed class LauncherRuntimeCoordinatorTests
     private static VerifiedInstanceManifest CreateVerifiedManifest()
     {
         var document = new InstanceManifestDocument(
-            1,
+            2,
             "stable",
             "2026.08.15.1",
             DateTimeOffset.Parse("2026-08-15T10:00:00Z"),

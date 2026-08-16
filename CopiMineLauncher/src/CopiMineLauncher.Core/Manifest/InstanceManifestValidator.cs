@@ -23,9 +23,9 @@ public sealed class InstanceManifestValidator
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<ManifestValidationError>();
 
-        if (document.SchemaVersion != 1)
+        if (document.SchemaVersion != 2)
         {
-            errors.Add(new("INSTANCE_MANIFEST_SCHEMA_UNSUPPORTED", "schemaVersion must be 1"));
+            errors.Add(new("INSTANCE_MANIFEST_SCHEMA_UNSUPPORTED", "schemaVersion must be 2"));
         }
 
         if (string.IsNullOrWhiteSpace(document.Channel))
@@ -35,7 +35,7 @@ public sealed class InstanceManifestValidator
 
         if (!IsSafeVersion(document.InstanceVersion))
         {
-            errors.Add(new("INSTANCE_VERSION_INVALID", "instanceVersion is not a bounded release identifier"));
+            errors.Add(new("RELEASE_ID_INVALID", "releaseId is not a bounded release identifier"));
         }
 
         if (!IsSafeVersion(document.MinimumLauncherVersion))
@@ -45,7 +45,7 @@ public sealed class InstanceManifestValidator
 
         if (document.PublishedAt > now.AddMinutes(5))
         {
-            errors.Add(new("INSTANCE_MANIFEST_PUBLISHED_IN_FUTURE", "publishedAt is too far in the future"));
+            errors.Add(new("INSTANCE_MANIFEST_PUBLISHED_IN_FUTURE", "publishedAtUtc is too far in the future"));
         }
 
         if (document.ReleaseSequence <= 0)
@@ -70,7 +70,7 @@ public sealed class InstanceManifestValidator
 
             if (!string.Equals(document.Minecraft.FabricLoader, ManifestValidator.RequiredFabricLoaderVersion, StringComparison.Ordinal))
             {
-                errors.Add(new("FABRIC_LOADER_VERSION_UNSUPPORTED", $"minecraft.fabricLoader must be {ManifestValidator.RequiredFabricLoaderVersion}"));
+                errors.Add(new("FABRIC_LOADER_VERSION_UNSUPPORTED", $"minecraft.fabricLoaderVersion must be {ManifestValidator.RequiredFabricLoaderVersion}"));
             }
 
             if (document.Minecraft.JavaMajor != 21)

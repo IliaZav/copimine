@@ -106,7 +106,7 @@ public sealed class SignedInstanceManifestClientTests
     }
 
     private static InstanceManifestDocument FixtureDocument() => new(
-        1,
+        2,
         "stable",
         "2026.08.15.1",
         DateTimeOffset.Parse("2026-08-15T10:00:00Z"),

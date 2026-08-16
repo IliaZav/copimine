@@ -81,6 +81,13 @@ def test_publisher_builds_real_files_and_detached_signature(tmp_path: Path) -> N
     assert len(public_key) == 32
     assert len(base64.b64decode(signature["signatureBase64"])) == 64
     entry = document["files"][0]
+    assert document["schemaVersion"] == 2
+    assert document["releaseId"] == "2026.08.15.1"
+    assert document["publishedAtUtc"] == "2026-08-15T10:00:00Z"
+    assert document["minecraft"]["fabricLoaderVersion"] == "0.19.3"
+    assert "instanceVersion" not in document
+    assert "publishedAt" not in document
+    assert "fabricLoader" not in document["minecraft"]
     assert entry["componentId"] == "copimine-client"
     assert entry["sha256"] == hashlib.sha256(mod.read_bytes()).hexdigest()
     assert (output / "files" / entry["sha256"]).read_bytes() == mod.read_bytes()

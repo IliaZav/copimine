@@ -159,12 +159,12 @@ def main() -> None:
     java_archive = args.java_archive.resolve()
     java_digest, java_size = copy_hashed(java_archive, output_files)
     document: dict[str, object] = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "channel": "stable",
-        "instanceVersion": args.instance_version,
-        "publishedAt": published_at.isoformat().replace("+00:00", "Z"),
+        "releaseId": args.instance_version,
+        "publishedAtUtc": published_at.isoformat().replace("+00:00", "Z"),
         "minimumLauncherVersion": args.minimum_launcher_version,
-        "minecraft": {"version": "1.21.1", "fabricLoader": "0.19.3", "javaMajor": 21},
+        "minecraft": {"version": "1.21.1", "fabricLoaderVersion": "0.19.3", "javaMajor": 21},
         "server": {"name": "CopiMine", "address": "mc.copimine.ru", "acceptServerResourcePack": True, "port": 25565},
         "files": entries,
         "configPolicies": [],

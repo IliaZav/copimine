@@ -10,8 +10,8 @@ namespace CopiMineLauncher.Core.Manifest;
 public sealed record InstanceManifestDocument(
     int SchemaVersion,
     string Channel,
-    string InstanceVersion,
-    DateTimeOffset PublishedAt,
+    [property: JsonPropertyName("releaseId")] string InstanceVersion,
+    [property: JsonPropertyName("publishedAtUtc")] DateTimeOffset PublishedAt,
     string MinimumLauncherVersion,
     InstanceMinecraft Minecraft,
     InstanceManifestServer Server,
@@ -24,7 +24,7 @@ public sealed record InstanceManifestDocument(
 
 public sealed record InstanceMinecraft(
     string Version,
-    string FabricLoader,
+    [property: JsonPropertyName("fabricLoaderVersion")] string FabricLoader,
     int JavaMajor);
 
 public sealed record InstanceManifestServer(

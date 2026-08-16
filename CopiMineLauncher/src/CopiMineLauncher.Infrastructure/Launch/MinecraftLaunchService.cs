@@ -14,7 +14,9 @@ public sealed record LaunchRequest(
     int MaximumRamMb = 4096,
     int ResolutionWidth = 1280,
     int ResolutionHeight = 720,
-    bool Fullscreen = false);
+    bool Fullscreen = false,
+    string? ServerAddress = null,
+    int ServerPort = 25565);
 
 public sealed record LaunchEvidence(
     Process Process,
@@ -129,6 +131,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             ScreenHeight = request.ResolutionHeight,
             FullScreen = request.Fullscreen
         };
+        MinecraftLaunchServerConfiguration.Apply(options, request.ServerAddress, request.ServerPort);
         var process = await launcher.BuildProcessAsync(request.FabricVersionName, options, cancellationToken);
         var logPath = Path.Combine(Path.GetFullPath(request.InstanceRoot), "logs", "launcher-process.log");
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);

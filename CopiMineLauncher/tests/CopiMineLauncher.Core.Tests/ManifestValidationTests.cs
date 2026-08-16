@@ -77,6 +77,7 @@ public sealed class ManifestValidationTests
     [InlineData("mods/./client.jar")]
     [InlineData("mods/CON.txt")]
     [InlineData("mods/client.jar ")]
+    [InlineData("mods/client.jar:alternate")]
     public void Unsafe_paths_are_rejected(string path)
     {
         var action = () => SafeRelativePath.Parse(path);

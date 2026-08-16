@@ -50,27 +50,39 @@ public static class OwnershipPolicy
             var safePath = SafeRelativePath.Parse(entry.Path).Value;
             desiredComponents.Add(entry.ComponentId);
             desiredPaths.Add(safePath);
-            desiredManaged.Add(new ManagedFileRecord(entry.ComponentId, safePath, entry.Sha256, entry.Version));
 
             previousByComponent.TryGetValue(entry.ComponentId, out var previousComponent);
             var current = snapshot(safePath);
             var isPreviouslyManaged = previousByPath.ContainsKey(safePath)
                 || (previousComponent is not null && string.Equals(previousComponent.RelativePath, safePath, StringComparison.OrdinalIgnoreCase));
 
-            if (!current.Exists)
+            var launcherOwnsCurrentFile = false;
+            if (entry.Ownership is "merge")
+            {
+                operations.Add(new(UpdateOperationKind.Conflict, entry.ComponentId, safePath, current.Sha256, entry.Sha256, entry, "merge-policy-unsupported"));
+            }
+            else if (!current.Exists)
             {
                 operations.Add(new(UpdateOperationKind.Add, entry.ComponentId, safePath, null, entry.Sha256, entry, null));
+                launcherOwnsCurrentFile = true;
             }
             else if (!isPreviouslyManaged)
             {
-                if (!string.Equals(current.Sha256, entry.Sha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    operations.Add(new(UpdateOperationKind.Conflict, entry.ComponentId, safePath, current.Sha256, entry.Sha256, entry, "unknown-file-at-official-path"));
-                }
+                operations.Add(new(UpdateOperationKind.Conflict, entry.ComponentId, safePath, current.Sha256, entry.Sha256, entry, "unknown-file-at-official-path"));
             }
             else if (!string.Equals(current.Sha256, entry.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 operations.Add(new(UpdateOperationKind.Replace, entry.ComponentId, safePath, current.Sha256, entry.Sha256, entry, null));
+                launcherOwnsCurrentFile = true;
+            }
+            else
+            {
+                launcherOwnsCurrentFile = true;
+            }
+
+            if (launcherOwnsCurrentFile)
+            {
+                desiredManaged.Add(new ManagedFileRecord(entry.ComponentId, safePath, entry.Sha256, entry.Version));
             }
 
             if (previousComponent is not null && !string.Equals(previousComponent.RelativePath, safePath, StringComparison.OrdinalIgnoreCase))

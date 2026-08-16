@@ -156,6 +156,27 @@ public sealed class TransactionalReconcilerTests
     }
 
     [Fact]
+    public async Task Durable_prepared_journal_exists_before_the_first_download()
+    {
+        using var temp = new TemporaryDirectory();
+        var entry = Entry("a", "mods/a.jar", "A");
+        var downloader = new FixtureDownloader(new[] { entry });
+        var journalObserved = false;
+        downloader.BeforeDownload = _ =>
+        {
+            journalObserved = true;
+            File.Exists(Path.Combine(temp.Path, ".copimine", "update-journal.json")).Should().BeTrue();
+        };
+
+        var result = await CreateReconciler(temp.Path, trusted: true, downloader)
+            .ReconcileAsync(Manifest(entry), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        journalObserved.Should().BeTrue();
+        File.Exists(Path.Combine(temp.Path, ".copimine", "update-journal.json")).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Network_disconnect_keeps_partial_staging_and_resumes_without_touching_final_file()
     {
         using var temp = new TemporaryDirectory();
@@ -233,11 +254,14 @@ public sealed class TransactionalReconcilerTests
 
         public List<Uri> Calls { get; } = new();
 
+        public Action<string>? BeforeDownload { get; set; }
+
         public bool FailNext { get; set; }
 
         public async Task<string> DownloadAsync(Uri source, string destination, long expectedSize, string expectedSha256, CancellationToken cancellationToken)
         {
             Calls.Add(source);
+            BeforeDownload?.Invoke(destination);
             if (FailNext)
             {
                 FailNext = false;

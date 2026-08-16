@@ -63,8 +63,37 @@ public sealed class TransactionalReconciler : ITransactionalReconciler
             }
 
             var transactionId = Guid.NewGuid().ToString("N");
+            var plannedOperations = plan.Operations
+                .Select(operation => operation.Kind is UpdateOperationKind.Add or UpdateOperationKind.Replace
+                    ? operation with
+                    {
+                        StagedPath = Path.Combine(
+                            instanceRoot,
+                            ".copimine",
+                            "staging",
+                            transactionId,
+                            SafeRelativePath.Parse(operation.RelativePath).Value.Replace('/', Path.DirectorySeparatorChar))
+                    }
+                    : operation)
+                .ToArray();
+            var plannedJournal = new TransactionJournal(
+                transactionId,
+                manifest.Sequence,
+                TransactionPhase.Prepared,
+                DateTimeOffset.UtcNow,
+                previousState,
+                plannedOperations.Select(operation => new TransactionJournalEntry(
+                    operation.Kind,
+                    operation.ComponentId,
+                    operation.RelativePath,
+                    operation.StagedPath,
+                    null,
+                    operation.ExpectedSha256,
+                    operation.NewSha256)).ToArray());
+            await atomicFileStore.PrepareAsync(plannedJournal, cancellationToken);
+
             var staged = new List<UpdateOperation>();
-            foreach (var operation in plan.Operations)
+            foreach (var operation in plannedOperations)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (operation.Kind is not (UpdateOperationKind.Add or UpdateOperationKind.Replace))
@@ -74,7 +103,7 @@ public sealed class TransactionalReconciler : ITransactionalReconciler
                 }
 
                 var entry = operation.Entry ?? throw new InvalidDataException("Add/replace operation has no manifest entry");
-                var stagedPath = Path.Combine(instanceRoot, ".copimine", "staging", transactionId, SafeRelativePath.Parse(operation.RelativePath).Value.Replace('/', Path.DirectorySeparatorChar));
+                var stagedPath = operation.StagedPath ?? throw new InvalidDataException("Add/replace operation has no prepared staging path");
                 var verifiedPath = await downloads.DownloadAsync(new Uri(entry.Url, UriKind.Absolute), stagedPath, entry.SizeBytes, entry.Sha256, cancellationToken);
                 staged.Add(operation with { StagedPath = verifiedPath });
             }

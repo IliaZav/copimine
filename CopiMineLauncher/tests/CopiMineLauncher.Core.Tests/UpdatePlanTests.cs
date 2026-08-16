@@ -72,6 +72,35 @@ public sealed class UpdatePlanTests
         plan.Operations.Should().ContainSingle(operation => operation.Kind == UpdateOperationKind.Conflict);
     }
 
+    [Fact]
+    public void Unknown_file_with_matching_hash_is_still_not_adopted_or_deleted()
+    {
+        var manifest = FixtureManifest("a");
+        var expectedHash = manifest.Files[0].Sha256;
+
+        var plan = OwnershipPolicy.BuildPlan(
+            manifest,
+            ManagedState.Empty,
+            _ => new LocalFileSnapshot(true, 1, expectedHash));
+
+        plan.HasConflicts.Should().BeTrue();
+        plan.Operations.Should().ContainSingle(operation => operation.Kind == UpdateOperationKind.Conflict);
+        plan.NextState.Files.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Merge_entries_fail_closed_instead_of_being_replaced_as_raw_files()
+    {
+        var entry = Entry("config", "config/copimine.json", 'a') with { Ownership = "merge" };
+        var plan = OwnershipPolicy.BuildPlan(FixtureManifest(entry), ManagedState.Empty, _ => LocalFileSnapshot.Missing);
+
+        plan.HasConflicts.Should().BeTrue();
+        plan.Operations.Should().ContainSingle(operation =>
+            operation.Kind == UpdateOperationKind.Conflict
+            && operation.Reason == "merge-policy-unsupported");
+        plan.NextState.Files.Should().BeEmpty();
+    }
+
     private static ManagedState StateFor(LauncherManifest manifest) => new(
         manifest.Sequence - 1,
         manifest.Files.Select(entry => new ManagedFileRecord(entry.ComponentId, entry.Path, entry.Sha256, entry.Version)).ToArray());

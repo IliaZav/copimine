@@ -10,6 +10,8 @@ public interface IAtomicFileStore
 
     Task<bool> RecoverAsync(CancellationToken cancellationToken);
 
+    Task PrepareAsync(TransactionJournal journal, CancellationToken cancellationToken);
+
     Task CommitAsync(
         IReadOnlyList<UpdateOperation> operations,
         TransactionJournal journal,
@@ -73,6 +75,18 @@ public sealed class AtomicFileStore : IAtomicFileStore
 
         CleanupJournalAndStaging(journal);
         return true;
+    }
+
+    public async Task PrepareAsync(TransactionJournal journal, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(journal);
+        if (journal.Phase != TransactionPhase.Prepared)
+        {
+            throw new ArgumentException("A transaction must be prepared before downloads begin.", nameof(journal));
+        }
+
+        Directory.CreateDirectory(Path.Combine(metadataRoot, "staging", journal.TransactionId));
+        await WriteJournalAsync(journal, cancellationToken);
     }
 
     public async Task CommitAsync(
@@ -238,6 +252,50 @@ public sealed class AtomicFileStore : IAtomicFileStore
             throw new ArgumentException("Path escapes the instance root", nameof(relativePath));
         }
 
+        EnsureNoReparsePoints(combined);
         return combined;
+    }
+
+    private void EnsureNoReparsePoints(string targetPath)
+    {
+        var root = instanceRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var relative = Path.GetRelativePath(instanceRoot, targetPath);
+        var current = instanceRoot;
+        Check(current);
+        foreach (var segment in relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        {
+            if (string.IsNullOrEmpty(segment) || segment == ".")
+            {
+                continue;
+            }
+
+            current = Path.Combine(current, segment);
+            Check(current);
+        }
+
+        void Check(string path)
+        {
+            if (!path.StartsWith(root[..^1], StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(path, root[..^1], StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Path escapes the instance root", nameof(targetPath));
+            }
+
+            try
+            {
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+                {
+                    throw new IOException($"Reparse points are not allowed in the Launcher instance path: {path}");
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                // A missing target is safe; existing ancestors were checked above.
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // A missing target is safe; existing ancestors were checked above.
+            }
+        }
     }
 }

@@ -15,7 +15,7 @@ public readonly record struct SafeRelativePath
 
     public static SafeRelativePath Parse(string value)
     {
-        if (string.IsNullOrWhiteSpace(value) || value.Contains('\0') || value.Contains('\\'))
+        if (string.IsNullOrWhiteSpace(value) || value.Contains('\0') || value.Contains('\\') || value.Contains(':'))
         {
             throw new ArgumentException("Path must be a non-empty forward-slash relative path", nameof(value));
         }

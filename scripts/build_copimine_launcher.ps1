@@ -11,11 +11,24 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $project = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/CopiMineLauncher.App.csproj'
+$installContract = Join-Path $repoRoot 'CopiMineLauncher/packaging/launcher-install-contract.json'
 $publishRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/publish"
 $packageRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/packages"
 
 if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
     throw "Launcher project was not found: $project"
+}
+if (-not (Test-Path -LiteralPath $installContract -PathType Leaf)) {
+    throw "Launcher install contract was not found: $installContract"
+}
+
+$installContractDocument = Get-Content -LiteralPath $installContract -Raw | ConvertFrom-Json
+if ($installContractDocument.bindingRequired -ne $true -or
+    $installContractDocument.flow -ne 'browser' -or
+    $installContractDocument.manualCodeEntry -ne $false -or
+    $installContractDocument.allowSkip -ne $false -or
+    $installContractDocument.playBlockedUntilLinked -ne $true) {
+    throw 'Launcher install contract must require browser binding, prohibit manual code entry and block play until linked.'
 }
 
 if (Test-Path -LiteralPath $publishRoot) {
@@ -62,6 +75,7 @@ New-Item -ItemType Directory -Path (Join-Path $bootstrapDestination 'files') -Fo
 Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.json') -Destination $bootstrapDestination -Force
 Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.sig') -Destination $bootstrapDestination -Force
 Get-ChildItem -LiteralPath $bootstrapFiles -File | Copy-Item -Destination (Join-Path $bootstrapDestination 'files') -Force
+Copy-Item -LiteralPath $installContract -Destination (Join-Path $publishRoot 'launcher-install-contract.json') -Force
 
 if ($SkipPackaging) {
     Write-Output "PUBLISH_OUTPUT=$publishRoot"

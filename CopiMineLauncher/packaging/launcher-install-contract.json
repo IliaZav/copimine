@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "bindingRequired": true,
+  "flow": "browser",
+  "manualCodeEntry": false,
+  "allowSkip": false,
+  "playBlockedUntilLinked": true,
+  "callbackProtocol": "copimine",
+  "preserveLauncherDataOnUpdate": true
+}

@@ -18,6 +18,7 @@ $frontendRoot = Join-Path $repoRoot 'admin-web/frontend'
 $sourceInstaller = (Resolve-Path -LiteralPath $InstallerPath -ErrorAction Stop).Path
 $sourceMsi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
 $sourceMetadata = (Resolve-Path -LiteralPath $MetadataPath -ErrorAction Stop).Path
+$packageRoot = Split-Path -Parent $sourceInstaller
 $sourceInstance = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) { $null } else { (Resolve-Path -LiteralPath $InstanceReleaseRoot -ErrorAction Stop).Path }
 $destination = [System.IO.Path]::GetFullPath($OutputRoot)
 
@@ -48,6 +49,22 @@ if ([string]::IsNullOrWhiteSpace($filename) -or $filename -ne $metadata.filename
 Copy-Item -LiteralPath $sourceInstaller -Destination (Join-Path $downloadDirectory $filename) -Force
 Copy-Item -LiteralPath $sourceMsi -Destination (Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi))) -Force
 Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $metadataDirectory 'latest.json') -Force
+
+# Velopack self-update checks the feed in this same directory.  Publishing
+# only the public installer would make the Launcher install successfully but
+# leave its in-app update path unable to discover a newer full package.
+foreach ($feedFileName in @('RELEASES', 'releases.win.json', 'assets.win.json')) {
+    $feedFile = Join-Path $packageRoot $feedFileName
+    if (-not (Test-Path -LiteralPath $feedFile -PathType Leaf)) {
+        throw "Velopack feed artifact is missing: $feedFile"
+    }
+    Copy-Item -LiteralPath $feedFile -Destination (Join-Path $downloadDirectory $feedFileName) -Force
+}
+$fullPackages = @(Get-ChildItem -LiteralPath $packageRoot -File -Filter '*-full.nupkg')
+if ($fullPackages.Count -eq 0) {
+    throw "Velopack full package is missing from the package directory: $packageRoot"
+}
+$fullPackages | Copy-Item -Destination $downloadDirectory -Force
 
 if ($null -ne $sourceInstance) {
     $instanceManifest = Join-Path $sourceInstance 'instance-manifest.json'

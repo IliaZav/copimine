@@ -14,13 +14,21 @@ public static class LauncherInstallPaths
         if (string.Equals(currentDirectory.Name, "current", StringComparison.OrdinalIgnoreCase)
             && currentDirectory.Parent is not null)
         {
-            return currentDirectory.Parent.FullName;
+            // Velopack's normal layout is <selected-root>\current. Some
+            // existing installs keep the app one level deeper at
+            // <selected-root>\Launcher\current; both layouts must point at
+            // the same selected root so the game instance is never redirected
+            // to an unrelated default directory.
+            return string.Equals(currentDirectory.Parent.Name, "Launcher", StringComparison.OrdinalIgnoreCase)
+                   && currentDirectory.Parent.Parent is not null
+                ? currentDirectory.Parent.Parent.FullName
+                : currentDirectory.Parent.FullName;
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "CopiMine",
-            "Launcher");
+        // Portable/direct installs do not have a Velopack `current` folder.
+        // Treat the executable directory itself as the selected install root
+        // instead of silently falling back to %LOCALAPPDATA%.
+        return baseDirectory;
     }
 
     public static string ResolveMinecraftRoot(string? applicationBaseDirectory = null)

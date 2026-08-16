@@ -23,6 +23,16 @@ public sealed class LauncherInstallPathsTests
     }
 
     [Fact]
+    public void Direct_custom_application_directory_keeps_game_inside_selected_root()
+    {
+        LauncherInstallPaths.ResolveInstallRoot(@"D:\Games\CopiMine")
+            .Should().Be(@"D:\Games\CopiMine");
+
+        LauncherInstallPaths.ResolveMinecraftRoot(@"D:\Games\CopiMine")
+            .Should().Be(@"D:\Games\CopiMine\Minecraft");
+    }
+
+    [Fact]
     public async Task Existing_legacy_sibling_instance_is_reused_instead_of_an_empty_selected_folder()
     {
         using var temp = new LocalApplicationDataTestDirectory();

@@ -16,7 +16,10 @@ def test_linked_launcher_nickname_rebind_updates_identity_without_password_bound
     monkeypatch.setenv("MC_SERVER_DIR", str(server_dir))
     monkeypatch.setenv("RCON_PASSWORD", "test-local-rcon")
 
-    main = importlib.import_module("backend.main")
+    # Other contract tests import backend.main during collection. Reload it
+    # after installing this test's disposable paths so the module-level auth
+    # configuration cannot point at a previous fixture database.
+    main = importlib.reload(importlib.import_module("backend.main"))
     main.V4_SCHEMA_READY = False
     main.AUTH_SCHEMA_READY = False
     device_id = "cm-device-1234567890"

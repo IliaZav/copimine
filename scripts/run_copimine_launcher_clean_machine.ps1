@@ -29,9 +29,16 @@ try {
         -WindowStyle Hidden `
         -PassThru
 
-    # Velopack replaces the launcher installation root during an update. The
-    # mutable Minecraft instance is intentionally a sibling of that root.
-    $minecraftRoot = Join-Path (Split-Path -Parent $installRoot) 'Minecraft'
+    # Velopack replaces only the current application directory during an
+    # update. The packaged default uses a Launcher subdirectory and keeps the
+    # game beside it; a custom root selected directly keeps the game inside
+    # that selected root.
+    $installName = Split-Path -Leaf $installRoot
+    $minecraftRoot = if ($installName -ieq 'Launcher') {
+        Join-Path (Split-Path -Parent $installRoot) 'Minecraft'
+    } else {
+        Join-Path $installRoot 'Minecraft'
+    }
     $managedState = Join-Path $minecraftRoot '.copimine/managed-state.json'
     $serversDat = Join-Path $minecraftRoot 'servers.dat'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)

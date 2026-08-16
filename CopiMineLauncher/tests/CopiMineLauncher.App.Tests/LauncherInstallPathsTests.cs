@@ -1,3 +1,4 @@
+using System.IO;
 using FluentAssertions;
 using Xunit;
 
@@ -12,10 +13,27 @@ public sealed class LauncherInstallPathsTests
             .Should().Be(@"D:\Games\CopiMine");
 
         LauncherInstallPaths.ResolveMinecraftRoot(@"D:\Games\CopiMine\current")
-            .Should().Be(@"D:\Games\Minecraft");
+            .Should().Be(@"D:\Games\CopiMine\Minecraft");
+
+        LauncherInstallPaths.ResolveMinecraftRoot(@"D:\Games\CopiMine\Launcher\current")
+            .Should().Be(@"D:\Games\CopiMine\Minecraft");
 
         LauncherInstallPaths.ResolveLauncherBootstrapRoot(@"D:\Games\CopiMine\current")
             .Should().Be(@"D:\Games\CopiMine\current\launcher-bootstrap");
+    }
+
+    [Fact]
+    public async Task Existing_legacy_sibling_instance_is_reused_instead_of_an_empty_selected_folder()
+    {
+        using var temp = new TemporaryDirectory();
+        var selectedInstallRoot = Path.Combine(temp.Path, "CopiMine");
+        var currentDirectory = Path.Combine(selectedInstallRoot, "current");
+        var legacyInstance = Path.Combine(temp.Path, "Minecraft");
+        Directory.CreateDirectory(Path.Combine(legacyInstance, ".copimine"));
+        await File.WriteAllTextAsync(Path.Combine(legacyInstance, ".copimine", "managed-state.json"), "{}");
+
+        LauncherInstallPaths.ResolveMinecraftRoot(currentDirectory)
+            .Should().Be(Path.GetFullPath(legacyInstance));
     }
 
     [Fact]
@@ -54,6 +72,21 @@ public sealed class LauncherInstallPathsTests
         finally
         {
             Environment.SetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL", previous);
+        }
+    }
+
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public TemporaryDirectory() => Path = Directory.CreateTempSubdirectory("copimine-launcher-path-tests-").FullName;
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Path))
+            {
+                Directory.Delete(Path, recursive: true);
+            }
         }
     }
 }

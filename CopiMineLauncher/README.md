@@ -37,7 +37,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_copimine_launc
 ```
 
 The installer keeps the mutable Minecraft instance outside the replaceable
-Velopack application directory. For an install root such as
-`D:\Games\CopiMine\Launcher`, the game data is stored in
-`D:\Games\CopiMine\Minecraft` so launcher updates do not empty the game
-folder or remove user files.
+Velopack `current` directory. With the packaged default layout, an install
+root such as `D:\Games\CopiMine\Launcher` stores game data in
+`D:\Games\CopiMine\Minecraft`. If the user selects a custom root directly,
+such as `D:\Games\CopiMine`, the game data is stored in
+`D:\Games\CopiMine\Minecraft`. In both layouts Launcher updates do not empty
+the game folder or remove user files.

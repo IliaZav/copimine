@@ -25,12 +25,23 @@ public static class LauncherInstallPaths
 
     public static string ResolveMinecraftRoot(string? applicationBaseDirectory = null)
     {
-        // Velopack replaces its application directory during install/update. Keep
-        // the mutable game instance beside that directory so a Launcher update
-        // cannot remove Minecraft, Java, mods, or servers.dat.
+        // Velopack replaces only its current application directory during an
+        // update. Keep the mutable game instance beside that directory. When a
+        // user selected a custom root directly (for example D:\\Games\\CopiMine),
+        // keep Minecraft under that selected root instead of unexpectedly moving
+        // it to D:\\Games\\Minecraft. The default packaged layout uses a
+        // Launcher subdirectory and therefore keeps the instance beside it.
         var installRoot = ResolveInstallRoot(applicationBaseDirectory);
-        var parent = Directory.GetParent(installRoot)?.FullName;
-        return Path.Combine(parent ?? installRoot, "Minecraft");
+        var preferred = ResolvePreferredMinecraftRoot(installRoot);
+        foreach (var candidate in EnumerateCompatibilityRoots(installRoot, preferred))
+        {
+            if (HasLauncherInstanceEvidence(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return preferred;
     }
 
     public static string ResolveLauncherBootstrapRoot(string? applicationBaseDirectory = null) =>
@@ -70,6 +81,53 @@ public static class LauncherInstallPaths
         && value.IsLoopback
         && string.Equals(value.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
         && string.IsNullOrEmpty(value.UserInfo);
+
+    private static string ResolvePreferredMinecraftRoot(string installRoot)
+    {
+        var installDirectory = new DirectoryInfo(installRoot);
+        if (string.Equals(installDirectory.Name, "Launcher", StringComparison.OrdinalIgnoreCase)
+            && installDirectory.Parent is not null)
+        {
+            return Path.Combine(installDirectory.Parent.FullName, "Minecraft");
+        }
+
+        return Path.Combine(installRoot, "Minecraft");
+    }
+
+    private static IEnumerable<string> EnumerateCompatibilityRoots(string installRoot, string preferred)
+    {
+        yield return Path.GetFullPath(preferred);
+
+        var parent = Directory.GetParent(installRoot)?.FullName;
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            var legacySibling = Path.GetFullPath(Path.Combine(parent, "Minecraft"));
+            if (!string.Equals(legacySibling, preferred, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return legacySibling;
+            }
+        }
+    }
+
+    private static bool HasLauncherInstanceEvidence(string path)
+    {
+        try
+        {
+            var root = Path.GetFullPath(path);
+            return File.Exists(Path.Combine(root, ".copimine", "managed-state.json"))
+                || File.Exists(Path.Combine(root, "servers.dat"))
+                || Directory.Exists(Path.Combine(root, "versions", "1.21.1"))
+                || Directory.EnumerateFiles(Path.Combine(root, "mods"), "*.jar", SearchOption.TopDirectoryOnly).Any();
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 }
 
 public sealed class LauncherProfileStore

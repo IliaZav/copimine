@@ -50,7 +50,7 @@ public partial class App : Application
             new ServersDatService(),
             new MinecraftLaunchService(httpClient));
         var selfUpdate = new VelopackSelfUpdateService(
-            new Uri("https://copimine.ru/downloads/launcher/"),
+            LauncherInstallPaths.ResolveSelfUpdateFeed(GetStagingBaseUrl()),
             new VelopackUpdateBackend(),
             launcherDataRoot,
             new SelfUpdatePolicy(),
@@ -85,6 +85,17 @@ public partial class App : Application
         return new LauncherDistributionHttpMessageHandler(
             innerHandler,
             LauncherInstallPaths.ResolveLauncherBootstrapRoot());
+    }
+
+    private static Uri? GetStagingBaseUrl()
+    {
+        var value = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");
+        return Uri.TryCreate(value, UriKind.Absolute, out var stagingBase)
+            && stagingBase.IsLoopback
+            && string.Equals(stagingBase.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(stagingBase.UserInfo)
+            ? stagingBase
+            : null;
     }
 
     private sealed class StagingHttpMessageHandler(Uri stagingBase) : HttpClientHandler

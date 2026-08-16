@@ -5,6 +5,8 @@ namespace CopiMineLauncher.App;
 
 public static class LauncherInstallPaths
 {
+    private static readonly Uri ProductionSelfUpdateFeed = new("https://copimine.ru/downloads/launcher/", UriKind.Absolute);
+
     public static string ResolveInstallRoot(string? applicationBaseDirectory = null)
     {
         var baseDirectory = Path.GetFullPath(applicationBaseDirectory ?? AppContext.BaseDirectory);
@@ -34,6 +36,33 @@ public static class LauncherInstallPaths
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "CopiMine",
             "Launcher");
+
+    public static Uri ResolveSelfUpdateFeed(Uri? stagingBaseUrl = null)
+    {
+        if (stagingBaseUrl is not null && IsLoopbackStagingUrl(stagingBaseUrl))
+        {
+            var baseUri = stagingBaseUrl.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+                ? stagingBaseUrl
+                : new Uri(stagingBaseUrl.AbsoluteUri + "/", UriKind.Absolute);
+            return new Uri(baseUri, "downloads/launcher/");
+        }
+
+        return ProductionSelfUpdateFeed;
+    }
+
+    public static bool IsLoopbackStagingEnvironment()
+    {
+        var value = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");
+        return Uri.TryCreate(value, UriKind.Absolute, out var stagingBase)
+            && stagingBase is not null
+            && IsLoopbackStagingUrl(stagingBase);
+    }
+
+    private static bool IsLoopbackStagingUrl(Uri? value) =>
+        value is { IsAbsoluteUri: true }
+        && value.IsLoopback
+        && string.Equals(value.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+        && string.IsNullOrEmpty(value.UserInfo);
 }
 
 public sealed class LauncherProfileStore

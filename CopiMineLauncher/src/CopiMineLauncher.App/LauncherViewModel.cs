@@ -139,13 +139,30 @@ public partial class LauncherViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
+        TraceStartup("initialize:start");
         LoadPlayerProfile();
+        TraceStartup($"profile:loaded:{PlayerName}");
         LoadSettings();
+        TraceStartup("settings:loaded");
         LoadLauncherBinding();
+        TraceStartup($"binding:loaded:{IsLauncherLinked}");
         await RefreshNewsAsync();
-        await RecoverSelfUpdateAsync();
-        await CheckSelfUpdateAsync();
+        TraceStartup("news:loaded");
+        if (!LauncherInstallPaths.IsLoopbackStagingEnvironment())
+        {
+            TraceStartup("self-update:check");
+            await RecoverSelfUpdateAsync();
+            await CheckSelfUpdateAsync();
+            TraceStartup("self-update:done");
+        }
+        else
+        {
+            TraceStartup("self-update:skipped-staging");
+        }
+
+        TraceStartup("prepare:start");
         await PrepareFirstRunAsync();
+        TraceStartup("prepare:done");
         if (launcherBindingClient is not null && !IsLauncherLinked)
         {
             Status = "Привязка Launcher обязательна";
@@ -156,6 +173,7 @@ public partial class LauncherViewModel : ObservableObject
 
     private async Task RefreshNewsAsync()
     {
+        TraceStartup("news:request");
         Status = "Загружаем новости…";
         var result = await patchFeedClient.GetLatestAsync(CancellationToken.None);
         PatchCards.Clear();
@@ -170,6 +188,7 @@ public partial class LauncherViewModel : ObservableObject
         Diagnostic = result.Diagnostics.Count == 0
             ? "Новости проверены."
             : string.Join(Environment.NewLine, result.Diagnostics);
+        TraceStartup($"news:response:{result.Items.Count}:{result.Diagnostics.Count}");
     }
 
     async partial void OnPlayerNameChanged(string value)
@@ -313,6 +332,7 @@ public partial class LauncherViewModel : ObservableObject
 
     private async Task PrepareFirstRunAsync()
     {
+        TraceStartup($"prepare:check:coordinator={(runtimeCoordinator is not null)}:ready={IsInstanceReady()}");
         if (runtimeCoordinator is null || IsInstanceReady())
         {
             return;
@@ -321,6 +341,7 @@ public partial class LauncherViewModel : ObservableObject
         Status = "Готовим игру…";
         Diagnostic = "Первый запуск: загружаем Java, Minecraft и моды.";
         await RunOperationAsync(launch: false, automatic: true);
+        TraceStartup("prepare:operation-returned");
     }
 
     private bool IsInstanceReady()
@@ -447,6 +468,7 @@ public partial class LauncherViewModel : ObservableObject
 
     private async Task RunOperationAsync(bool launch, bool automatic = false)
     {
+        TraceStartup($"operation:start:{(launch ? "play" : "repair")}");
         if (runtimeCoordinator is null)
         {
             Status = "Runtime pipeline недоступен";
@@ -523,6 +545,7 @@ public partial class LauncherViewModel : ObservableObject
                 ProgressPercent = 100;
             }
             Diagnostic = BuildDiagnostic(result, InstancePath);
+            TraceStartup($"operation:result:{result.Succeeded}:{result.ErrorCode ?? "OK"}:{result.Diagnostic.Replace(Environment.NewLine, " | ", StringComparison.Ordinal)}");
         }
         catch (OperationCanceledException)
         {
@@ -537,12 +560,30 @@ public partial class LauncherViewModel : ObservableObject
             LoadingStage = "Причина указана ниже";
             Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
             IsDiagnosticOpen = true;
+            TraceStartup($"operation:exception:{exception.GetType().Name}:{exception.Message}");
         }
         finally
         {
             Volatile.Write(ref operationFinished, 1);
             IsBusy = false;
             operationCancellation = null;
+            TraceStartup("operation:finished");
+        }
+    }
+
+    private void TraceStartup(string message)
+    {
+        try
+        {
+            var root = LauncherInstallPaths.ResolveLauncherDataRoot();
+            Directory.CreateDirectory(root);
+            File.AppendAllText(
+                Path.Combine(root, "launcher-startup.log"),
+                $"{DateTimeOffset.UtcNow:O} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+            // Startup tracing must never prevent the Launcher from opening.
         }
     }
 

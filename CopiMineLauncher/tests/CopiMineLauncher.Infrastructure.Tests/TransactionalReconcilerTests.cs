@@ -209,6 +209,44 @@ public sealed class TransactionalReconcilerTests
         File.Exists(destination + ".part").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Download_manager_discards_an_oversized_partial_before_resuming()
+    {
+        using var temp = new TemporaryDirectory();
+        var destination = Path.Combine(temp.Path, "staging", "file.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        await File.WriteAllTextAsync(destination + ".part", "stale bytes that are too long");
+        using var handler = new FreshFileHandler("right");
+        using var http = new HttpClient(handler);
+        var manager = new ResumableDownloadManager(http);
+        var expected = Encoding.UTF8.GetBytes("right");
+
+        var result = await manager.DownloadAsync(new Uri("https://copimine.ru/file.bin"), destination, expected.Length, Hash(expected), CancellationToken.None);
+
+        result.Should().Be(destination);
+        File.ReadAllText(destination).Should().Be("right");
+        handler.Requests.Should().ContainSingle().Which.Headers.Range.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Download_manager_restarts_when_a_full_partial_has_the_wrong_hash()
+    {
+        using var temp = new TemporaryDirectory();
+        var destination = Path.Combine(temp.Path, "staging", "file.bin");
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        await File.WriteAllTextAsync(destination + ".part", "wrong");
+        using var handler = new FreshFileHandler("right");
+        using var http = new HttpClient(handler);
+        var manager = new ResumableDownloadManager(http);
+        var expected = Encoding.UTF8.GetBytes("right");
+
+        var result = await manager.DownloadAsync(new Uri("https://copimine.ru/file.bin"), destination, expected.Length, Hash(expected), CancellationToken.None);
+
+        result.Should().Be(destination);
+        File.ReadAllText(destination).Should().Be("right");
+        handler.Requests.Should().ContainSingle().Which.Headers.Range.Should().BeNull();
+    }
+
     private static TransactionalReconciler CreateReconciler(string root, bool trusted, FixtureDownloader downloader) =>
         new(root, new FixtureTrustGate(trusted), downloader, new AtomicFileStore(root));
 
@@ -294,6 +332,20 @@ public sealed class TransactionalReconcilerTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes("wrong")) });
+    }
+
+    private sealed class FreshFileHandler(string content) : HttpMessageHandler
+    {
+        public List<HttpRequestMessage> Requests { get; } = new();
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(Encoding.UTF8.GetBytes(content))
+            });
+        }
     }
 
     private sealed class DisconnectingHandler : HttpMessageHandler

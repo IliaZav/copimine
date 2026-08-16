@@ -35,6 +35,33 @@ public sealed class ResumableDownloadManager : IResumableDownloadManager
         var finalPath = Path.GetFullPath(destination);
         var partPath = finalPath + ".part";
         Directory.CreateDirectory(Path.GetDirectoryName(finalPath)!);
+
+        // A previous process may have left a complete-but-corrupt archive or a
+        // partial file which is longer than this manifest entry. Never ask the
+        // server to resume from an impossible offset; discard that stale state
+        // and restart from byte zero.
+        if (File.Exists(partPath))
+        {
+            var existingLength = new FileInfo(partPath).Length;
+            if (existingLength > expectedSize)
+            {
+                DeleteIfExists(partPath);
+            }
+            else if (existingLength == expectedSize)
+            {
+                try
+                {
+                    Verify(partPath, expectedSize, expectedSha256);
+                    File.Move(partPath, finalPath, overwrite: true);
+                    return finalPath;
+                }
+                catch (InvalidDataException)
+                {
+                    DeleteIfExists(partPath);
+                }
+            }
+        }
+
         Exception? lastFailure = null;
 
         for (var attempt = 1; attempt <= MaximumAttempts; attempt++)

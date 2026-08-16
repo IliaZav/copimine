@@ -55,6 +55,7 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
     private static readonly string[] ManagedDirectories = ["assets", "libraries", "versions"];
     private static readonly string[] OptionalDirectories = [".fabric", "config", "CustomSkinLoader", "resourcepacks", "shaderpacks"];
     private static readonly string[] OptionalFiles = ["options.txt", "optionsof.txt"];
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string bootstrapRoot;
 
     public OfflineMinecraftBaseline(string bootstrapRoot)
@@ -201,7 +202,7 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         try
         {
             await using var stream = File.OpenRead(path);
-            return await JsonSerializer.DeserializeAsync<OfflineMinecraftBaselineMetadata>(stream, cancellationToken: cancellationToken)
+            return await JsonSerializer.DeserializeAsync<OfflineMinecraftBaselineMetadata>(stream, JsonOptions, cancellationToken)
                 ?? throw new InvalidDataException("Offline baseline metadata is empty.");
         }
         catch (Exception exception) when (exception is JsonException or NotSupportedException or IOException)

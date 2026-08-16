@@ -77,7 +77,7 @@ public sealed class OfflineMinecraftBaselineTests
             Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
         await File.WriteAllTextAsync(
             Path.Combine(bootstrap, "offline-minecraft-baseline.json"),
-            JsonSerializer.Serialize(metadata));
+            JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
 
         var installer = new OfflineMinecraftBaseline(bootstrap);
         var action = () => installer.EnsureAsync(Path.Combine(temp.Path, "instance"), "1.21.1", "0.19.3", CancellationToken.None);
@@ -136,7 +136,7 @@ public sealed class OfflineMinecraftBaselineTests
             Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
         await File.WriteAllTextAsync(
             Path.Combine(bootstrap, "offline-minecraft-baseline.json"),
-            JsonSerializer.Serialize(metadata));
+            JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Directory.Delete(content, recursive: true);
     }
 

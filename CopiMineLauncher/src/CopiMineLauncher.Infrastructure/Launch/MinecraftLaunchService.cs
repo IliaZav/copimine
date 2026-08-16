@@ -3,6 +3,8 @@ using System.Text;
 using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.ProcessBuilder;
+using CmlLib.Core.VersionLoader;
+using CopiMineLauncher.Infrastructure.Provisioning;
 
 namespace CopiMineLauncher.Infrastructure.Launch;
 
@@ -116,7 +118,19 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             throw new ArgumentOutOfRangeException(nameof(request.ResolutionHeight), "Launcher height must be between 600 and 4320 pixels");
         }
 
-        var parameters = MinecraftLauncherParameters.CreateDefault(new MinecraftPath(request.InstanceRoot), httpClient);
+        var minecraftPath = new MinecraftPath(request.InstanceRoot);
+        var parameters = MinecraftLauncherParameters.CreateDefault(minecraftPath, httpClient);
+        if (OfflineMinecraftBaseline.IsMinecraftProfileReady(
+                request.InstanceRoot,
+                "1.21.1",
+                "0.19.3"))
+        {
+            parameters.VersionLoader = new MojangJsonVersionLoaderV2(minecraftPath, httpClient)
+            {
+                UseLocalManifestWhenError = true
+            };
+        }
+
         var launcher = new MinecraftLauncher(parameters);
         var javaPath = request.JavaExecutablePath ?? launcher.GetDefaultJavaPath()
             ?? throw new InvalidOperationException("No Java runtime is available for Minecraft launch");

@@ -29,4 +29,15 @@ dotnet restore CopiMineLauncher/CopiMineLauncher.sln
 dotnet test CopiMineLauncher/CopiMineLauncher.sln -c Release --no-restore
 ```
 
-The planned Velopack command-line tool is pinned to `vpk` 1.2.0; it is not installed or invoked by this scaffold task.
+Release packaging uses the pinned Velopack CLI 1.2.0 from
+`artifacts/tools/vpk/vpk.exe`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_copimine_launcher.ps1 -Configuration Release -InstanceReleaseRoot artifacts/launcher/Release/instance-current
+```
+
+The installer keeps the mutable Minecraft instance outside the replaceable
+Velopack application directory. For an install root such as
+`D:\Games\CopiMine\Launcher`, the game data is stored in
+`D:\Games\CopiMine\Minecraft` so launcher updates do not empty the game
+folder or remove user files.

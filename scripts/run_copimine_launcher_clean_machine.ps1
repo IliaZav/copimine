@@ -29,7 +29,9 @@ try {
         -WindowStyle Hidden `
         -PassThru
 
-    $minecraftRoot = Join-Path $installRoot 'Minecraft'
+    # Velopack replaces the launcher installation root during an update. The
+    # mutable Minecraft instance is intentionally a sibling of that root.
+    $minecraftRoot = Join-Path (Split-Path -Parent $installRoot) 'Minecraft'
     $managedState = Join-Path $minecraftRoot '.copimine/managed-state.json'
     $serversDat = Join-Path $minecraftRoot 'servers.dat'
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)

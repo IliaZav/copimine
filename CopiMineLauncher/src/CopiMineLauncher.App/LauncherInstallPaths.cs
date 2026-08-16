@@ -23,19 +23,26 @@ public static class LauncherInstallPaths
             "Launcher");
     }
 
-    public static string ResolveMinecraftRoot(string? applicationBaseDirectory = null) =>
-        Path.Combine(ResolveInstallRoot(applicationBaseDirectory), "Minecraft");
+    public static string ResolveMinecraftRoot(string? applicationBaseDirectory = null)
+    {
+        // Velopack replaces its application directory during install/update. Keep
+        // the mutable game instance beside that directory so a Launcher update
+        // cannot remove Minecraft, Java, mods, or servers.dat.
+        var installRoot = ResolveInstallRoot(applicationBaseDirectory);
+        var parent = Directory.GetParent(installRoot)?.FullName;
+        return Path.Combine(parent ?? installRoot, "Minecraft");
+    }
 
     public static string ResolveLauncherBootstrapRoot(string? applicationBaseDirectory = null) =>
         Path.Combine(
             Path.GetFullPath(applicationBaseDirectory ?? AppContext.BaseDirectory),
             "launcher-bootstrap");
 
-    public static string ResolveLauncherDataRoot() =>
+    public static string ResolveLauncherDataRoot(string? localAppDataRoot = null) =>
         Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.GetFullPath(localAppDataRoot ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
             "CopiMine",
-            "Launcher");
+            "LauncherData");
 
     public static Uri ResolveSelfUpdateFeed(Uri? stagingBaseUrl = null)
     {

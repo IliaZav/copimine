@@ -12,10 +12,17 @@ public sealed class LauncherInstallPathsTests
             .Should().Be(@"D:\Games\CopiMine");
 
         LauncherInstallPaths.ResolveMinecraftRoot(@"D:\Games\CopiMine\current")
-            .Should().Be(@"D:\Games\CopiMine\Minecraft");
+            .Should().Be(@"D:\Games\Minecraft");
 
         LauncherInstallPaths.ResolveLauncherBootstrapRoot(@"D:\Games\CopiMine\current")
             .Should().Be(@"D:\Games\CopiMine\current\launcher-bootstrap");
+    }
+
+    [Fact]
+    public void Launcher_data_is_outside_the_velopack_install_directory()
+    {
+        LauncherInstallPaths.ResolveLauncherDataRoot(@"D:\UserData")
+            .Should().Be(@"D:\UserData\CopiMine\LauncherData");
     }
 
     [Fact]

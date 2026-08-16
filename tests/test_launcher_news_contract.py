@@ -94,3 +94,5 @@ def test_launcher_lightbox_has_explicit_escape_close_handler() -> None:
     assert 'closeButton.addEventListener("click"' in source
     assert "onclick=" not in launcher
     assert "image.alt = String(button.dataset.lightboxAlt" in source
+    assert 'id="launcherLightbox"' in launcher
+    assert 'img alt="Предварительный просмотр скриншота CopiMine Launcher"' in launcher

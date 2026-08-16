@@ -87,6 +87,38 @@ public sealed class LauncherBindingClientTests
             .Where(exception => exception.Code == "LAUNCHER_LINK_AUTH_URL_INVALID");
     }
 
+    [Fact]
+    public async Task Nickname_change_sends_device_bound_access_token_without_password()
+    {
+        using var http = new HttpClient(new RecordingHandler(request =>
+        {
+            request.Method.Should().Be(HttpMethod.Post);
+            request.RequestUri!.AbsolutePath.Should().Be("/api/launcher/profile/nickname");
+            var payload = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            payload.Should().Contain("old_minecraft_name");
+            payload.Should().Contain("new_minecraft_name");
+            payload.Should().Contain("access_token");
+            payload.ToLowerInvariant().Should().NotContain("password");
+            return Json("""
+            {
+              "ok": true,
+              "changed": true,
+              "minecraftName": "NewPlayer",
+              "minecraftUuid": "00000000-0000-0000-0000-000000000002",
+              "preserve_player_state": true,
+              "authmePasswordPreserved": true
+            }
+            """);
+        }));
+        var client = new HttpLauncherBindingClient(http, new Uri("https://copimine.ru/"), "cm-device-1234567890");
+
+        var result = await client.ChangeNicknameAsync("poll-token-abcdefghijklmnopqrstuvwxyz-123456", "Player", "NewPlayer", CancellationToken.None);
+
+        result.Changed.Should().BeTrue();
+        result.MinecraftName.Should().Be("NewPlayer");
+        result.AuthMePasswordPreserved.Should().BeTrue();
+    }
+
     private static HttpResponseMessage Json(string payload) =>
         new(HttpStatusCode.OK) { Content = new StringContent(payload, Encoding.UTF8, "application/json") };
 

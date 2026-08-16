@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 
 namespace CopiMineLauncher.App;
@@ -6,7 +7,8 @@ public sealed record LauncherBindingState(
     bool Linked = false,
     string SiteAccountId = "",
     string SiteUsername = "",
-    string MinecraftName = "");
+    string MinecraftName = "",
+    string AccessToken = "");
 
 public sealed class LauncherDeviceIdentityStore
 {

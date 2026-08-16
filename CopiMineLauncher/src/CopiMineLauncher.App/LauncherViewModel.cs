@@ -37,6 +37,9 @@ public partial class LauncherViewModel : ObservableObject
     private CancellationTokenSource? operationCancellation;
     private VerifiedSelfUpdate? availableSelfUpdate;
     private bool loadingProfile;
+    private bool applyingNicknameSync;
+    private string launcherAccessToken = string.Empty;
+    private LauncherBindingState launcherBindingState = new();
     private string savedPlayerName = "CopiMinePlayer";
 
     public LauncherViewModel(
@@ -169,9 +172,9 @@ public partial class LauncherViewModel : ObservableObject
             : string.Join(Environment.NewLine, result.Diagnostics);
     }
 
-    partial void OnPlayerNameChanged(string value)
+    async partial void OnPlayerNameChanged(string value)
     {
-        if (loadingProfile || string.Equals(value, savedPlayerName, StringComparison.Ordinal))
+        if (loadingProfile || applyingNicknameSync || string.Equals(value, savedPlayerName, StringComparison.Ordinal))
         {
             return;
         }
@@ -185,14 +188,68 @@ public partial class LauncherViewModel : ObservableObject
         var previousName = savedPlayerName;
         try
         {
+            if (launcherBindingClient is not null && IsLauncherLinked)
+            {
+                if (string.IsNullOrWhiteSpace(launcherAccessToken))
+                {
+                    throw new LauncherBindingException("LAUNCHER_NICKNAME_ACCESS_REQUIRED", "У привязанного Launcher отсутствует локальный access token. Выполните привязку ещё раз.");
+                }
+
+                Status = "Синхронизируем новый ник…";
+                LoadingStage = "Сохраняем данные игрока и AuthMe";
+                var result = await launcherBindingClient.ChangeNicknameAsync(
+                    launcherAccessToken,
+                    previousName,
+                    value,
+                    CancellationToken.None);
+                if (!result.PreservePlayerState || !result.AuthMePasswordPreserved)
+                {
+                    throw new LauncherBindingException("LAUNCHER_NICKNAME_NOT_PRESERVED", "Сервер не подтвердил перенос данных игрока и сохранение пароля AuthMe.");
+                }
+
+                launcherBindingState = launcherBindingState with { MinecraftName = value };
+                launcherBindingStateStore.Save(launcherBindingState);
+                Diagnostic = "Ник изменён. Данные игрока, whitelist и пароль AuthMe сохранены.";
+            }
+            else
+            {
+                Diagnostic = "Ник сохранён локально. Для синхронизации с сайтом сначала привяжите Launcher.";
+            }
             profileStore.SavePlayerName(value);
             savedPlayerName = value;
             nicknameChangedNotifier(previousName, value);
-            Diagnostic = "Ник сохранён. Проверьте привязку на сайте.";
+            Status = "Ник сохранён";
+        }
+        catch (LauncherBindingException exception)
+        {
+            applyingNicknameSync = true;
+            try
+            {
+                PlayerName = previousName;
+            }
+            finally
+            {
+                applyingNicknameSync = false;
+            }
+            Status = "Ник не изменён";
+            LoadingStage = $"Причина: {exception.Code}";
+            Diagnostic = $"{exception.Code}: {exception.Message}";
+            IsDiagnosticOpen = true;
         }
         catch (Exception exception)
         {
+            applyingNicknameSync = true;
+            try
+            {
+                PlayerName = previousName;
+            }
+            finally
+            {
+                applyingNicknameSync = false;
+            }
+            Status = "Ник не изменён";
             Diagnostic = $"PLAYER_PROFILE_SAVE_FAILED: {exception.Message}";
+            IsDiagnosticOpen = true;
         }
     }
 
@@ -228,6 +285,8 @@ public partial class LauncherViewModel : ObservableObject
     private void LoadLauncherBinding()
     {
         var state = launcherBindingStateStore.Load();
+        launcherBindingState = state;
+        launcherAccessToken = state.AccessToken;
         IsLauncherLinked = launcherBindingClient is not null && state.Linked;
         LauncherLinkRequired = launcherBindingClient is not null && !IsLauncherLinked;
     }
@@ -463,7 +522,7 @@ public partial class LauncherViewModel : ObservableObject
             {
                 ProgressPercent = 100;
             }
-            Diagnostic = BuildDiagnostic(result);
+            Diagnostic = BuildDiagnostic(result, InstancePath);
         }
         catch (OperationCanceledException)
         {
@@ -487,13 +546,14 @@ public partial class LauncherViewModel : ObservableObject
         }
     }
 
-    private static string BuildDiagnostic(LauncherOperationResult result)
+    private static string BuildDiagnostic(LauncherOperationResult result, string instancePath)
     {
         var lines = new List<string>
         {
             $"Operation: {result.Operation}",
             $"Result: {(result.Succeeded ? "PASS" : "FAIL")}",
             $"Code: {result.ErrorCode ?? "OK"}",
+            $"Instance path: {Path.GetFullPath(instancePath)}",
             result.Diagnostic
         };
         if (result.VerifiedManifest is not null)
@@ -592,11 +652,14 @@ public partial class LauncherViewModel : ObservableObject
                     continue;
                 }
 
-                launcherBindingStateStore.Save(new LauncherBindingState(
+                launcherBindingState = new LauncherBindingState(
                     true,
                     result.SiteAccountId ?? string.Empty,
                     result.SiteUsername ?? string.Empty,
-                    result.MinecraftName ?? PlayerName));
+                    result.MinecraftName ?? PlayerName,
+                    result.LauncherAccessToken ?? challenge.PollToken);
+                launcherAccessToken = launcherBindingState.AccessToken;
+                launcherBindingStateStore.Save(launcherBindingState);
                 IsLauncherLinked = true;
                 LauncherLinkRequired = false;
                 Status = "Launcher привязан к сайту";
@@ -647,7 +710,7 @@ public partial class LauncherViewModel : ObservableObject
     private static void ShowNicknameChangedWarning(string previousName, string newName)
     {
         MessageBox.Show(
-            $"Ник изменён: {previousName} → {newName}.\n\nОткройте «Привязать на сайте» и подтвердите новый ник. Пароль AuthMe не меняется.",
+            $"Ник изменён: {previousName} → {newName}.\n\nЕсли Launcher уже привязан, сервер синхронизировал whitelist и данные игрока. Пароль AuthMe не меняется.",
             "Новый ник",
             MessageBoxButton.OK,
             MessageBoxImage.Information);

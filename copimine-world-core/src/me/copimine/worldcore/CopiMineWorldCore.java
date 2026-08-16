@@ -10,7 +10,9 @@ import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -36,6 +38,8 @@ import org.bukkit.util.Vector;
 import java.util.ArrayList;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.HashSet;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -210,8 +214,293 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         if ("nether".equalsIgnoreCase(args[0]) || "end".equalsIgnoreCase(args[0])) {
             return handleWorldToggleCommand(sender, args);
         }
+        if ("identity".equalsIgnoreCase(args[0])) {
+            return handleIdentityCommand(sender, args);
+        }
         sendHelp(sender);
         return true;
+    }
+
+    /**
+     * Rebind one offline-mode Minecraft identity without merging player data.
+     * The operation is deliberately console-only and requires an explicit
+     * confirmation token.  It is used by the Launcher/backend nickname flow;
+     * no production operation is started by merely installing this plugin.
+     */
+    private boolean handleIdentityCommand(CommandSender sender, String[] args) {
+        if (!(sender instanceof ConsoleCommandSender) && !(sender instanceof RemoteConsoleCommandSender)) {
+            sender.sendMessage(color("&cПеренос identity разрешён только из консоли сервера."));
+            return true;
+        }
+        if (args.length != 7 || !"rebind".equalsIgnoreCase(args[1]) || !"confirm".equalsIgnoreCase(args[6])) {
+            sender.sendMessage(color("&7/cmworld identity rebind <oldUuid> <newUuid> <oldName> <newName> confirm"));
+            return true;
+        }
+        String oldUuid = args[2].trim();
+        String newUuid = args[3].trim();
+        String oldName = args[4].trim();
+        String newName = args[5].trim();
+        String validationError = identityValidationError(oldUuid, newUuid, oldName, newName);
+        if (validationError != null) {
+            getLogger().warning("IDENTITY_REBIND_REJECT reason=" + validationError
+                    + " oldUuid=" + oldUuid + " newUuid=" + newUuid
+                    + " oldName=" + oldName + " newName=" + newName);
+            sender.sendMessage(color("&cIDENTITY_REBIND_INVALID " + validationError));
+            return true;
+        }
+        if (oldName.equalsIgnoreCase(newName) && oldUuid.equalsIgnoreCase(newUuid)) {
+            sender.sendMessage(color("&eIDENTITY_REBIND_NOOP"));
+            return true;
+        }
+        if (Bukkit.getPlayerExact(oldName) != null || Bukkit.getPlayerExact(newName) != null
+                || Bukkit.getPlayer(java.util.UUID.fromString(oldUuid)) != null
+                || Bukkit.getPlayer(java.util.UUID.fromString(newUuid)) != null) {
+            sender.sendMessage(color("&cIDENTITY_REBIND_PLAYER_ONLINE"));
+            return true;
+        }
+
+        try {
+            IdentityRebindResult result = preservePlayerStateAndAuthMe(oldUuid, newUuid, oldName, newName);
+            sender.sendMessage(color("&aIDENTITY_REBIND_OK operation=" + result.operationId()
+                    + " files=" + result.movedFiles() + " password_preserved=true"));
+        } catch (Exception error) {
+            getLogger().log(java.util.logging.Level.WARNING, "Identity rebind rejected: " + error.getMessage(), error);
+            sender.sendMessage(color("&cIDENTITY_REBIND_FAILED " + safeCommandMessage(error.getMessage())));
+        }
+        return true;
+    }
+
+    /**
+     * Move the exact UUID-owned files and then rename the AuthMe record using
+     * the plugin's own DataSource.  The same PlayerAuth object is saved, so its
+     * existing password hash, salt, email and timestamps are retained.
+     */
+    private IdentityRebindResult preservePlayerStateAndAuthMe(
+            String oldUuid,
+            String newUuid,
+            String oldName,
+            String newName) throws Exception {
+        File worldFolder = primaryWorldFolder();
+        if (worldFolder == null) {
+            throw new IllegalStateException("PRIMARY_WORLD_NOT_FOUND");
+        }
+        Path operationRoot = getDataFolder().toPath().resolve("identity-rebind")
+                .resolve(UUID.randomUUID().toString());
+        Files.createDirectories(operationRoot);
+        Files.writeString(operationRoot.resolve("operation.txt"),
+                "oldUuid=" + oldUuid + System.lineSeparator()
+                        + "newUuid=" + newUuid + System.lineSeparator()
+                        + "oldName=" + oldName + System.lineSeparator()
+                        + "newName=" + newName + System.lineSeparator()
+                        + "preserve_player_state=true" + System.lineSeparator());
+
+        List<IdentityFileMove> moves = new ArrayList<>();
+        if (!oldUuid.equalsIgnoreCase(newUuid)) {
+            addIdentityMove(moves, worldFolder.toPath().resolve("playerdata"), oldUuid, newUuid, ".dat", operationRoot.resolve("playerdata"), true);
+            addIdentityMove(moves, worldFolder.toPath().resolve("stats"), oldUuid, newUuid, ".json", operationRoot.resolve("stats"), false);
+            addIdentityMove(moves, worldFolder.toPath().resolve("advancements"), oldUuid, newUuid, ".json", operationRoot.resolve("advancements"), false);
+        }
+
+        int moved = 0;
+        try {
+            for (IdentityFileMove move : moves) {
+                Files.createDirectories(move.backup().getParent());
+                Files.copy(move.source(), move.backup(), StandardCopyOption.COPY_ATTRIBUTES);
+            }
+            for (IdentityFileMove move : moves) {
+                moveWithoutOverwrite(move.source(), move.target());
+                moved++;
+            }
+            renameAuthMePreservingPassword(oldName, newName, UUID.fromString(newUuid));
+            return new IdentityRebindResult(operationRoot.getFileName().toString(), moved);
+        } catch (Exception error) {
+            rollbackIdentityMoves(moves);
+            throw error;
+        }
+    }
+
+    private void addIdentityMove(
+            List<IdentityFileMove> moves,
+            Path directory,
+            String oldUuid,
+            String newUuid,
+            String suffix,
+            Path backupDirectory,
+            boolean required) throws IOException {
+        Path source = directory.resolve(oldUuid + suffix);
+        Path target = directory.resolve(newUuid + suffix);
+        if (!Files.exists(source)) {
+            if (required) {
+                throw new IOException("PLAYERDATA_SOURCE_NOT_FOUND");
+            }
+            return;
+        }
+        if (Files.exists(target)) {
+            throw new IOException("PLAYERDATA_TARGET_ALREADY_EXISTS");
+        }
+        moves.add(new IdentityFileMove(source, target, backupDirectory.resolve(source.getFileName())));
+    }
+
+    private static void moveWithoutOverwrite(Path source, Path target) throws IOException {
+        Files.createDirectories(target.getParent());
+        try {
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException error) {
+            Files.move(source, target);
+        }
+    }
+
+    private static void rollbackIdentityMoves(List<IdentityFileMove> moves) {
+        for (int index = moves.size() - 1; index >= 0; index--) {
+            IdentityFileMove move = moves.get(index);
+            try {
+                if (Files.exists(move.target()) && !Files.exists(move.source())) {
+                    moveWithoutOverwrite(move.target(), move.source());
+                }
+            } catch (Exception error) {
+                // Keep the durable operation backup and report the original
+                // failure; an administrator can inspect this exact directory.
+            }
+        }
+    }
+
+    private void renameAuthMePreservingPassword(String oldName, String newName, UUID newUuid) throws Exception {
+        Class<?> apiType = Class.forName("fr.xephi.authme.api.v3.AuthMeApi");
+        Object api = apiType.getMethod("getInstance").invoke(null);
+        if (api == null) {
+            throw new IllegalStateException("AUTHME_API_UNAVAILABLE");
+        }
+        Object plugin = apiType.getMethod("getPlugin").invoke(api);
+        Field databaseField = plugin.getClass().getDeclaredField("database");
+        databaseField.setAccessible(true);
+        Object dataSource = databaseField.get(plugin);
+        if (dataSource == null) {
+            throw new IllegalStateException("AUTHME_DATASOURCE_UNAVAILABLE");
+        }
+
+        String oldKey = oldName.toLowerCase(Locale.ROOT);
+        String newKey = newName.toLowerCase(Locale.ROOT);
+        Method getAuth = findMethod(dataSource, "getAuth", 1);
+        Object auth = getAuth.invoke(dataSource, oldKey);
+        if (auth == null) {
+            throw new IllegalStateException("AUTHME_ACCOUNT_NOT_FOUND");
+        }
+        if (getAuth.invoke(dataSource, newKey) != null) {
+            throw new IllegalStateException("AUTHME_TARGET_ALREADY_EXISTS");
+        }
+
+        Method removeAuth = findMethod(dataSource, "removeAuth", 1);
+        Method setNickname = auth.getClass().getMethod("setNickname", String.class);
+        Method setRealName = auth.getClass().getMethod("setRealName", String.class);
+        Method setUuid = auth.getClass().getMethod("setUuid", UUID.class);
+        Method saveAuth = findMethod(dataSource, "saveAuth", 1);
+        Method getUuid = auth.getClass().getMethod("getUuid");
+        UUID oldAuthUuid = (UUID) getUuid.invoke(auth);
+        boolean removed = false;
+        boolean saved = false;
+        try {
+            if (!Boolean.TRUE.equals(removeAuth.invoke(dataSource, oldKey))) {
+                throw new IllegalStateException("AUTHME_REMOVE_FAILED");
+            }
+            removed = true;
+            setNickname.invoke(auth, newKey);
+            setRealName.invoke(auth, newName);
+            setUuid.invoke(auth, newUuid);
+            if (!Boolean.TRUE.equals(saveAuth.invoke(dataSource, auth))) {
+                throw new IllegalStateException("AUTHME_SAVE_FAILED");
+            }
+            saved = true;
+            Method updateRealName = findMethod(dataSource, "updateRealName", 2);
+            if (!Boolean.TRUE.equals(updateRealName.invoke(dataSource, newKey, newName))) {
+                throw new IllegalStateException("AUTHME_REALNAME_UPDATE_FAILED");
+            }
+        } catch (Exception error) {
+            try {
+                if (saved) {
+                    removeAuth.invoke(dataSource, newKey);
+                }
+                if (removed) {
+                    setNickname.invoke(auth, oldKey);
+                    setRealName.invoke(auth, oldName);
+                    setUuid.invoke(auth, oldAuthUuid);
+                    saveAuth.invoke(dataSource, auth);
+                }
+            } catch (Exception rollbackError) {
+                error.addSuppressed(rollbackError);
+            }
+            throw error;
+        }
+        getLogger().info("AuthMe identity changed " + oldName + " -> " + newName + " with password_preserved=true");
+    }
+
+    private static Method findMethod(Object target, String name, int parameterCount) throws NoSuchMethodException {
+        for (Method method : target.getClass().getMethods()) {
+            if (method.getName().equals(name) && method.getParameterCount() == parameterCount) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(name);
+    }
+
+    private File primaryWorldFolder() {
+        World world = Bukkit.getWorld("world");
+        if (world != null) {
+            return world.getWorldFolder();
+        }
+        for (World candidate : Bukkit.getWorlds()) {
+            if (candidate.getEnvironment() == World.Environment.NORMAL) {
+                return candidate.getWorldFolder();
+            }
+        }
+        return null;
+    }
+
+    private static boolean isUuid(String value) {
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException error) {
+            return false;
+        }
+    }
+
+    private static boolean isSafeIdentityName(String value) {
+        if (value.length() < 3 || value.length() > 16) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (!((character >= 'a' && character <= 'z')
+                    || (character >= 'A' && character <= 'Z')
+                    || (character >= '0' && character <= '9')
+                    || character == '_')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String identityValidationError(String oldUuid, String newUuid, String oldName, String newName) {
+        if (!isUuid(oldUuid)) {
+            return "OLD_UUID";
+        }
+        if (!isUuid(newUuid)) {
+            return "NEW_UUID";
+        }
+        if (!isSafeIdentityName(oldName)) {
+            return "OLD_NAME";
+        }
+        if (!isSafeIdentityName(newName)) {
+            return "NEW_NAME";
+        }
+        return null;
+    }
+
+    private static String safeCommandMessage(String message) {
+        if (message == null || message.isBlank()) {
+            return "UNKNOWN";
+        }
+        return message.replace('\n', ' ').replace('\r', ' ').replace('§', ' ').trim();
     }
 
     private boolean handleBorderCommand(CommandSender sender, String[] args) {
@@ -297,7 +586,7 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return List.of();
         }
         if (args.length == 1) {
-            return prefix(List.of("status", "border", "nether", "end", "reload", "safecheck"), args[0]);
+            return prefix(List.of("status", "border", "nether", "end", "identity", "reload", "safecheck"), args[0]);
         }
         if (args.length == 2 && "border".equalsIgnoreCase(args[0])) {
             return prefix(List.of("status", "set", "apply"), args[1]);
@@ -310,6 +599,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         }
         if (args.length == 3 && ("nether".equalsIgnoreCase(args[0]) || "end".equalsIgnoreCase(args[0])) && "close".equalsIgnoreCase(args[1])) {
             return prefix(List.of("confirm"), args[2]);
+        }
+        if (args.length == 2 && "identity".equalsIgnoreCase(args[0])) {
+            return prefix(List.of("rebind"), args[1]);
+        }
+        if (args.length == 7 && "identity".equalsIgnoreCase(args[0]) && "rebind".equalsIgnoreCase(args[1])) {
+            return prefix(List.of("confirm"), args[6]);
         }
         return List.of();
     }
@@ -745,6 +1040,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         sender.sendMessage(color("&6/cmworld border apply"));
         sender.sendMessage(color("&6/cmworld nether open|close|status"));
         sender.sendMessage(color("&6/cmworld end open|close|status"));
+        sender.sendMessage(color("&6/cmworld identity rebind <oldUuid> <newUuid> <oldName> <newName> confirm"));
+        sender.sendMessage(color("&7Identity rebind переносит playerdata/stats/advancements и сохраняет AuthMe password hash."));
         sender.sendMessage(color("&7Если игроки внутри: &f/cmworld nether close confirm"));
         sender.sendMessage(color("&7Если игроки внутри: &f/cmworld end close confirm"));
         sender.sendMessage(color("&6/cmworld reload"));
@@ -1170,6 +1467,12 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     }
 
     private record EvacuationRequest(UUID playerUuid, WorldAccess access, String message) {
+    }
+
+    private record IdentityFileMove(Path source, Path target, Path backup) {
+    }
+
+    private record IdentityRebindResult(String operationId, int movedFiles) {
     }
 
     private record BorderSnapshot(double centerX, double centerZ, double size, double damageBuffer,

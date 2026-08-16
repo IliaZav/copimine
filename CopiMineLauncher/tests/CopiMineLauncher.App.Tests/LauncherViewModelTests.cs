@@ -133,6 +133,7 @@ public sealed class LauncherViewModelTests
         viewModel.IsDiagnosticOpen.Should().BeTrue();
         viewModel.Diagnostic.Should().Contain("MANIFEST_HTTP_FAILED");
         viewModel.Diagnostic.Should().Contain("404 Not Found");
+        viewModel.Diagnostic.Should().Contain($"Instance path: {Path.GetFullPath(temp.Path)}");
     }
 
     [Fact]

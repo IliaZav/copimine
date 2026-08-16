@@ -610,6 +610,13 @@ class LauncherLinkAuthorizeIn(BaseModel):
     code: str = Field(min_length=6, max_length=16)
 
 
+class LauncherNicknameChangeIn(BaseModel):
+    device_id: str = Field(min_length=16, max_length=128)
+    access_token: str = Field(min_length=32, max_length=128)
+    old_minecraft_name: str = Field(min_length=3, max_length=16)
+    new_minecraft_name: str = Field(min_length=3, max_length=16)
+
+
 class PlayerRecoveryStartIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
 
@@ -7213,6 +7220,227 @@ def launcher_link_status_sync(challenge_id: str, device_id: str, poll_token: str
         }
 
 
+def launcher_account_for_access_token_sync(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    device_hash = launcher_secret_hash("device", normalize_launcher_device_id(data.device_id))
+    access_hash = launcher_secret_hash("poll", str(data.access_token or "").strip())
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute(
+            """
+            SELECT l.site_account_id,l.minecraft_name AS launcher_minecraft_name,
+                   a.id,a.username,a.minecraft_uuid,a.minecraft_name,a.enabled,
+                   c.authorized_at
+            FROM launcher_account_links l
+            JOIN launcher_link_challenges c
+              ON c.device_id_hash=l.device_id_hash
+             AND c.poll_token_hash=%s
+             AND c.status IN ('AUTHORIZED','CONSUMED')
+            JOIN site_accounts a ON a.id=l.site_account_id
+            WHERE l.device_id_hash=%s
+            ORDER BY c.authorized_at DESC,l.updated_at DESC
+            LIMIT 1
+            """,
+            (access_hash, device_hash),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        raise HTTPException(status_code=403, detail="Привязка Launcher не подтверждена или устарела")
+    account = dict(row)
+    if not bool(account.get("enabled", True)):
+        raise HTTPException(status_code=403, detail="Аккаунт сайта отключён")
+    return account
+
+
+def require_identity_rcon_ack(command: str) -> str:
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="IDENTITY_REBIND_UNAVAILABLE: RCON_PASSWORD не настроен")
+    try:
+        response = rcon_sync(command)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"IDENTITY_REBIND_RCON_FAILED: {public_error_message(error)}") from error
+    if "IDENTITY_REBIND_OK" not in str(response or "").upper():
+        raise HTTPException(status_code=502, detail="IDENTITY_REBIND_NOT_CONFIRMED: WorldCore не подтвердил перенос identity")
+    return str(response or "")
+
+
+def rollback_identity_rebind(
+    old_uuid: str,
+    new_uuid: str,
+    old_name: str,
+    new_name: str,
+) -> None:
+    """Best-effort reverse operation for a failed post-RCON database step."""
+    try:
+        remove_player_from_whitelist_sync(new_uuid, new_name)
+        add_player_to_whitelist_sync(old_uuid, old_name)
+        require_identity_rcon_ack(
+            f"cmworld identity rebind {new_uuid} {old_uuid} {new_name} {old_name} confirm"
+        )
+    except Exception as error:
+        audit_event(
+            "system",
+            "launcher.nickname.rollback_failed",
+            target=new_name,
+            status="error",
+            details={"oldUuid": old_uuid, "newUuid": new_uuid, "error": public_error_message(error)},
+        )
+
+
+def launcher_nickname_change_sync(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    account = launcher_account_for_access_token_sync(data)
+    old_name = data.old_minecraft_name.strip()
+    new_name = data.new_minecraft_name.strip()
+    if not valid_minecraft_name(old_name) or not valid_minecraft_name(new_name):
+        raise HTTPException(status_code=400, detail="Укажи корректные Minecraft-ники")
+    current_name = str(account.get("minecraft_name") or account.get("launcher_minecraft_name") or "").strip()
+    if current_name and current_name.casefold() != old_name.casefold():
+        raise HTTPException(status_code=409, detail="Старый ник не совпадает с активной привязкой сайта")
+    old_uuid = str(account.get("minecraft_uuid") or offline_uuid_for_name(old_name)).strip()
+    new_uuid = offline_uuid_for_name(new_name)
+    if old_uuid.casefold() == new_uuid.casefold() and old_name.casefold() == new_name.casefold():
+        return {
+            "ok": True,
+            "changed": False,
+            "minecraftName": old_name,
+            "minecraftUuid": old_uuid,
+            "preserve_player_state": True,
+            "authmePasswordPreserved": True,
+            "whitelisted": True,
+        }
+
+    account_id = str(account.get("id") or "").strip()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        collision = conn.execute(
+            """
+            SELECT id FROM site_accounts
+            WHERE id<>%s AND (minecraft_uuid=%s OR LOWER(minecraft_name)=LOWER(%s))
+            LIMIT 1
+            """,
+            (account_id, new_uuid, new_name),
+        ).fetchone()
+        if collision:
+            raise HTTPException(status_code=409, detail="Новый ник уже привязан к другому аккаунту")
+        link_collision = conn.execute(
+            "SELECT site_account_id FROM minecraft_account_links WHERE minecraft_uuid=%s LIMIT 1",
+            (new_uuid,),
+        ).fetchone()
+        if link_collision and str(row_get(link_collision, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Новый Minecraft-идентификатор уже занят")
+        conn.commit()
+
+    # The plugin performs the durable playerdata/stats/advancements move and
+    # AuthMe DataSource rename as one guarded server operation.  No password or
+    # password hash crosses this HTTP boundary.
+    require_identity_rcon_ack(
+        f"cmworld identity rebind {old_uuid} {new_uuid} {old_name} {new_name} confirm"
+    )
+    try:
+        old_whitelist = remove_player_from_whitelist_sync(old_uuid, old_name)
+        if RCON_PASSWORD and old_whitelist.get("rconState") != "RCON_AND_FILE":
+            raise HTTPException(status_code=502, detail="IDENTITY_REBIND_OLD_WHITELIST_NOT_CONFIRMED")
+        new_whitelist = add_player_to_whitelist_sync(new_uuid, new_name)
+        if RCON_PASSWORD and new_whitelist.get("rconState") != "RCON_AND_FILE":
+            raise HTTPException(status_code=502, detail="IDENTITY_REBIND_NEW_WHITELIST_NOT_CONFIRMED")
+    except Exception:
+        rollback_identity_rebind(old_uuid, new_uuid, old_name, new_name)
+        raise
+
+    now = donation_now_ms()
+    try:
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            current = conn.execute(
+                "SELECT minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s FOR UPDATE",
+                (account_id,),
+            ).fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail="Аккаунт сайта не найден")
+            current_uuid = str(row_get(current, "minecraft_uuid", "") or old_uuid)
+            current_name = str(row_get(current, "minecraft_name", "") or old_name)
+            if current_uuid.casefold() != old_uuid.casefold() or current_name.casefold() != old_name.casefold():
+                raise HTTPException(status_code=409, detail="Привязка изменилась во время операции; выполнен откат")
+            conn.execute(
+                "UPDATE minecraft_account_links SET status='REVOKED',updated_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (now, old_uuid, account_id),
+            )
+            conn.execute(
+                "UPDATE whitelist_account_links SET whitelisted=0,synced_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (now, old_uuid, account_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO minecraft_account_links(minecraft_uuid,minecraft_name,site_account_id,status,linked_at,updated_at)
+                VALUES(%s,%s,%s,'ACTIVE',%s,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    status='ACTIVE',
+                    updated_at=EXCLUDED.updated_at
+                """,
+                (new_uuid, new_name, account_id, now, now),
+            )
+            conn.execute(
+                "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+                (new_uuid, new_name, now, account_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
+                VALUES(%s,%s,%s,1,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    whitelisted=1,
+                    synced_at=EXCLUDED.synced_at
+                """,
+                (new_uuid, new_name, account_id, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO auth_users_imported(minecraft_uuid,minecraft_name,imported_at,source)
+                VALUES(%s,%s,%s,'launcher-nickname')
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    imported_at=EXCLUDED.imported_at,
+                    source=EXCLUDED.source
+                """,
+                (new_uuid, new_name, now),
+            )
+            conn.execute(
+                "UPDATE launcher_account_links SET minecraft_name=%s,updated_at=%s WHERE device_id_hash=%s",
+                (new_name, now, launcher_secret_hash("device", normalize_launcher_device_id(data.device_id))),
+            )
+            conn.execute(
+                "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'LAUNCHER_MINECRAFT_IDENTITY_REBIND',%s,'launcher')",
+                (now, str(account.get("username") or "launcher"), f"old_uuid={old_uuid} new_uuid={new_uuid} old_name={old_name} new_name={new_name}"),
+            )
+            conn.commit()
+    except Exception:
+        rollback_identity_rebind(old_uuid, new_uuid, old_name, new_name)
+        raise
+
+    audit_event(
+        str(account.get("username") or "launcher"),
+        "launcher.nickname.changed",
+        target=new_name,
+        details={"oldName": old_name, "newName": new_name, "preserve_player_state": True, "authmePasswordPreserved": True},
+    )
+    return {
+        "ok": True,
+        "changed": True,
+        "oldMinecraftName": old_name,
+        "oldMinecraftUuid": old_uuid,
+        "minecraftName": new_name,
+        "minecraftUuid": new_uuid,
+        "preserve_player_state": True,
+        "authmePasswordPreserved": True,
+        "whitelisted": True,
+    }
+
+
 def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[str, Any]:
     if not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
@@ -12898,6 +13126,16 @@ async def player_launcher_link_authorize(
     account: dict[str, Any] = Depends(require_player),
 ) -> dict[str, Any]:
     return await bg(authorize_launcher_link_sync, account, data)
+
+
+@app.post("/api/launcher/profile/nickname")
+async def launcher_profile_nickname(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    """Synchronize a linked Launcher's name with the server identity.
+
+    Authentication uses only the device-bound Launcher access token.  The
+    endpoint never accepts a site password, AuthMe password, or hash.
+    """
+    return await bg(launcher_nickname_change_sync, data)
 
 
 @app.post("/api/player/link/request")

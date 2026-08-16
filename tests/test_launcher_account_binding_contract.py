@@ -53,3 +53,23 @@ def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_ap
     protocol = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherProtocolRegistration.cs").read_text(encoding="utf-8")
     assert "Registry.CurrentUser" in protocol
     assert "Software" in protocol and "Classes" in protocol and "copimine" in protocol
+
+
+def test_launcher_nickname_change_is_a_server_side_identity_operation():
+    world_core = (ROOT / "copimine-world-core/src/me/copimine/worldcore/CopiMineWorldCore.java").read_text(encoding="utf-8")
+    client = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.Infrastructure/Binding/LauncherBindingClient.cs").read_text(encoding="utf-8")
+    view_model = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherViewModel.cs").read_text(encoding="utf-8")
+    for marker in (
+        "LauncherNicknameChangeIn",
+        "/api/launcher/profile/nickname",
+        "preserve_player_state",
+        "playerdata",
+        "stats",
+        "advancements",
+        "AuthMeApi",
+        "updateRealName",
+        "password_preserved",
+        "identity rebind",
+        "whitelist",
+    ):
+        assert marker in BACKEND or marker in world_core or marker in client or marker in view_model, marker

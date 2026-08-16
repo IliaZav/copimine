@@ -19,6 +19,13 @@ public sealed record LauncherLinkStatus(
     string? MinecraftName = null,
     string? LauncherAccessToken = null);
 
+public sealed record LauncherNicknameChangeResult(
+    bool Changed,
+    string? MinecraftName = null,
+    string? MinecraftUuid = null,
+    bool PreservePlayerState = false,
+    bool AuthMePasswordPreserved = false);
+
 public sealed class LauncherBindingException : Exception
 {
     public LauncherBindingException(string code, string message, Exception? innerException = null)
@@ -37,6 +44,8 @@ public interface ILauncherBindingClient
     Task<LauncherLinkChallenge> CreateChallengeAsync(string minecraftName, string launcherVersion, CancellationToken cancellationToken);
 
     Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken);
+
+    Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken);
 }
 
 public sealed class HttpLauncherBindingClient : ILauncherBindingClient
@@ -64,9 +73,9 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
     {
         var payload = JsonSerializer.Serialize(new
         {
-            deviceId = DeviceId,
-            minecraftName,
-            launcherVersion
+            device_id = DeviceId,
+            minecraft_name = minecraftName,
+            launcher_version = launcherVersion
         }, JsonOptions);
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/launcher/link/challenge"))
         {
@@ -109,6 +118,38 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
             OptionalString(document, "siteUsername"),
             OptionalString(document, "minecraftName"),
             OptionalString(document, "launcherAccessToken"));
+    }
+
+    public async Task<LauncherNicknameChangeResult> ChangeNicknameAsync(
+        string accessToken,
+        string oldMinecraftName,
+        string newMinecraftName,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(oldMinecraftName) || string.IsNullOrWhiteSpace(newMinecraftName))
+        {
+            throw new LauncherBindingException("LAUNCHER_NICKNAME_INVALID", "Для смены ника нужна активная привязка Launcher.");
+        }
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            device_id = DeviceId,
+            access_token = accessToken,
+            old_minecraft_name = oldMinecraftName,
+            new_minecraft_name = newMinecraftName
+        }, JsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "api/launcher/profile/nickname"))
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json")
+        };
+        using var response = await SendAsync(request, cancellationToken);
+        var document = await ReadJsonAsync(response, "LAUNCHER_NICKNAME_FAILED", cancellationToken);
+        return new(
+            document.TryGetProperty("changed", out var changed) && changed.ValueKind == JsonValueKind.True,
+            OptionalString(document, "minecraftName"),
+            OptionalString(document, "minecraftUuid"),
+            document.TryGetProperty("preserve_player_state", out var preserved) && preserved.ValueKind == JsonValueKind.True,
+            document.TryGetProperty("authmePasswordPreserved", out var passwordPreserved) && passwordPreserved.ValueKind == JsonValueKind.True);
     }
 
     private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

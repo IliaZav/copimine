@@ -32,6 +32,7 @@ def test_existing_bridge_owns_both_channels_and_never_checks_mod_inventory() -> 
     assert "CLIENT_GATE_REJECT reason=" in bridge
     assert "CLIENT_READY_TIMEOUT" in bridge
     assert "STALE_JOIN_ATTEMPT_IGNORED" in bridge
+    assert "cancelAdmissionTimeout" in bridge
     assert "modList" not in bridge and "jarHashes" not in bridge and "launch-ticket" not in bridge
     assert "MAX_PAYLOAD_BYTES = 256" in payloads
     assert "MAX_CLIENT_VERSION_LENGTH = 64" in payloads

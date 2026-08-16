@@ -36,7 +36,7 @@ public final class ClientReadyRetryState {
         return started
                 && !terminal
                 && attempts < MAX_ATTEMPTS
-                && nowMillis <= deadlineAt
+                && nowMillis < deadlineAt
                 && nowMillis >= nextAttemptAt;
     }
 
@@ -64,7 +64,7 @@ public final class ClientReadyRetryState {
     }
 
     public boolean expired(long nowMillis) {
-        return started && !terminal && (nowMillis > deadlineAt || (attempts >= MAX_ATTEMPTS && nowMillis >= nextAttemptAt));
+        return started && !terminal && (nowMillis >= deadlineAt || (attempts >= MAX_ATTEMPTS && nowMillis >= nextAttemptAt));
     }
 
     public boolean accepted() {

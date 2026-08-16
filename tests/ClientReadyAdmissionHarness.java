@@ -12,6 +12,19 @@ public final class ClientReadyAdmissionHarness {
                 == ClientReadyAdmission.Decision.ACCEPTED, "compatible READY must be accepted");
         require(admission.onReady(player, new ClientReadyAdmission.ReadyRequest(3, "0.1.0"), 900L).decision()
                 == ClientReadyAdmission.Decision.DUPLICATE_ACCEPTED, "duplicate READY must be idempotent");
+        ClientReadyAdmission.ReadyDecision duplicateMismatch = admission.onReady(
+                player,
+                new ClientReadyAdmission.ReadyRequest(2, "0.0.1"),
+                1_000L);
+        require(duplicateMismatch.decision() == ClientReadyAdmission.Decision.DUPLICATE_ACCEPTED,
+                "a duplicate after acceptance must not revoke admission");
+        require(duplicateMismatch.state().clientProtocol() == 3
+                        && "0.1.0".equals(duplicateMismatch.state().clientVersion()),
+                "duplicate READY must not overwrite the accepted protocol diagnostics");
+        ClientReadyAdmission.ReadyDecision malformedDuplicate = admission.onReady(player, null, 1_100L);
+        require(malformedDuplicate.decision() == ClientReadyAdmission.Decision.DUPLICATE_ACCEPTED
+                        && malformedDuplicate.ack().accepted(),
+                "a malformed duplicate after acceptance must not revoke admission");
         require(admission.onTimeout(player, first.joinAttemptId(), 15_001L).decision()
                 == ClientReadyAdmission.Decision.ALREADY_ACCEPTED, "accepted player must not be kicked by timeout");
 

@@ -43,16 +43,16 @@ public final class ClientReadyAdmission {
         if (current == null) {
             return decision(Decision.AFTER_TIMEOUT, null, false, 0, "CLIENT_READY_AFTER_TIMEOUT");
         }
+        if (current.accepted()) {
+            PendingClientAdmission observed = current.withDuplicateReady(request, receivedAtMillis);
+            pending.put(playerId, observed);
+            return decision(Decision.DUPLICATE_ACCEPTED, observed, true, current.clientProtocol(), "ACCEPTED");
+        }
         if (request == null || request.clientVersion() == null || request.clientVersion().isBlank()) {
             pending.remove(playerId);
             return decision(Decision.MALFORMED_READY, current, false, 0, "MALFORMED_READY");
         }
-
         PendingClientAdmission observed = current.withReady(request, receivedAtMillis);
-        if (current.accepted()) {
-            pending.put(playerId, observed);
-            return decision(Decision.DUPLICATE_ACCEPTED, observed, true, request.protocolVersion(), "ACCEPTED");
-        }
         if (request.protocolVersion() != REQUIRED_PROTOCOL) {
             pending.remove(playerId, current);
             return decision(Decision.PROTOCOL_MISMATCH, observed, false, request.protocolVersion(), "PROTOCOL_MISMATCH");
@@ -178,6 +178,24 @@ public final class ClientReadyAdmission {
                     clientProtocol,
                     readyPacketCount,
                     lastReadyAtMillis
+            );
+        }
+
+        private PendingClientAdmission withDuplicateReady(ReadyRequest request, long receivedAtMillis) {
+            boolean sameProtocol = request != null
+                    && clientProtocol != null
+                    && clientProtocol == request.protocolVersion()
+                    && request.clientVersion() != null
+                    && !request.clientVersion().isBlank();
+            return new PendingClientAdmission(
+                    playerId,
+                    joinAttemptId,
+                    startedAtMillis,
+                    accepted,
+                    sameProtocol ? request.clientVersion() : clientVersion,
+                    clientProtocol,
+                    readyPacketCount + 1,
+                    receivedAtMillis
             );
         }
     }

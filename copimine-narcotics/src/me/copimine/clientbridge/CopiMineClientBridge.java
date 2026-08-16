@@ -221,6 +221,10 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
 
         sendReadyAck(player, decision);
+        if (decision.decision() == ClientReadyAdmission.Decision.ACCEPTED
+                || decision.decision() == ClientReadyAdmission.Decision.DUPLICATE_ACCEPTED) {
+            cancelAdmissionTimeout(player.getUniqueId());
+        }
         switch (decision.decision()) {
             case ACCEPTED, DUPLICATE_ACCEPTED -> plugin.getLogger().info(
                     "CLIENT_GATE_ACCEPT player=" + player.getName()
@@ -285,6 +289,13 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 + " waitedMs=" + admission.timeoutMillis());
         if (player != null && player.isOnline() && configService.clientGateRequired()) {
             player.kickPlayer(userMessage("CLIENT_READY_TIMEOUT"));
+        }
+    }
+
+    private void cancelAdmissionTimeout(UUID playerId) {
+        BukkitTask timeout = admissionTimeoutTasks.remove(playerId);
+        if (timeout != null) {
+            timeout.cancel();
         }
     }
 

@@ -6,13 +6,13 @@
     "architecture":  "x64",
     "filename":  "CopiMineLauncherSetup-1.0.0.exe",
     "downloadUrl":  "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe",
-    "sizeBytes":  298900529,
-    "sha256":  "cd6561784b3776e5787f7631aae72fcb5cc4f1f5af417976c5bfd64c453c0404",
+    "sizeBytes":  298902816,
+    "sha256":  "f92f672293b6e1915c7ad667062ecb5a8ccdbe5e3541973b94038aa7f362a88c",
     "releaseNotesUrl":  "/news/copimine-launcher-1-0-0.html",
-    "publishedAt":  "2026-08-16T18:45:00.0000000+00:00",
+    "publishedAt":  "2026-08-16T19:43:15.3250419+00:00",
     "msiFilename":  "CopiMineLauncherSetup-1.0.0.msi",
     "msiDownloadUrl":  "/downloads/launcher/CopiMineLauncherSetup-1.0.0.msi",
-    "msiSizeBytes":  285016624,
-    "msiSha256":  "b2edcba0e349ef93438ded69d0f97fa4692d8f921f2072717670e59c57ba3451",
+    "msiSizeBytes":  285008432,
+    "msiSha256":  "8891a3bae08ea31469d497d0b1c0fdd310bba48e4e9bf2deacc70283e4453ec3",
     "msiInstallLocation":  "choose"
 }

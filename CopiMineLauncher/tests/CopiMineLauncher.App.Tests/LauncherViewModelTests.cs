@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using CopiMineLauncher.Core.News;
+using CopiMineLauncher.Infrastructure.Binding;
 using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.News;
 using CopiMineLauncher.Infrastructure.Runtime;
@@ -148,6 +149,32 @@ public sealed class LauncherViewModelTests
         runtime.ReleasePlay.TrySetResult(true);
         await playTask;
         await hideRequested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Play_without_a_linked_account_requests_binding_and_does_not_start_minecraft()
+    {
+        using var temp = new TemporaryDirectory();
+        await CreateReadyInstanceAsync(temp.Path);
+        var runtime = new FakeRuntimeCoordinator();
+        var bindingRequired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            runtime,
+            launcherBindingClient: new FakeLauncherBindingClient(),
+            launcherBindingStateStore: new LauncherBindingStateStore(Path.Combine(temp.Path, "launcher-data")))
+        {
+            InstancePath = temp.Path
+        };
+        viewModel.LauncherBindingRequired += (_, _) => bindingRequired.TrySetResult(true);
+
+        await viewModel.InitializeAsync();
+        await viewModel.PlayCommand.ExecuteAsync(null);
+
+        await bindingRequired.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        runtime.PlayCalls.Should().Be(0);
+        viewModel.IsLauncherLinked.Should().BeFalse();
+        viewModel.Diagnostic.Should().Contain("LAUNCHER_LINK_REQUIRED");
     }
 
     [Fact]
@@ -359,6 +386,20 @@ public sealed class LauncherViewModelTests
             await ReleasePlay.Task;
             return PlayResult ?? new LauncherOperationResult(true, "play", null, "ok");
         }
+    }
+
+    private sealed class FakeLauncherBindingClient : ILauncherBindingClient
+    {
+        public string DeviceId => "cm-device-1234567890";
+
+        public Task<LauncherLinkChallenge> CreateChallengeAsync(string minecraftName, string launcherVersion, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
     private sealed class TemporaryDirectory : IDisposable

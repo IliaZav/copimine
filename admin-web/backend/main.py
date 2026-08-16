@@ -1734,6 +1734,12 @@ def csrf_exempt_paths() -> set[str]:
         "/api/player/login",
         "/api/player/refresh",
         "/api/player/register",
+        # These requests are made by the native Launcher, not by a browser
+        # session. Their own device/token checks are the authentication
+        # boundary; requiring a browser CSRF cookie would make the native
+        # client unable to create a challenge or synchronize a nickname.
+        "/api/launcher/link/challenge",
+        "/api/launcher/profile/nickname",
     }
 
 

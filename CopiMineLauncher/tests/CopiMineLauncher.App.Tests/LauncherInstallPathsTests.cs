@@ -68,6 +68,30 @@ public sealed class LauncherInstallPathsTests
     }
 
     [Fact]
+    public void Local_binding_endpoint_defaults_to_loopback_and_accepts_only_loopback_override()
+    {
+        var previous = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL");
+        try
+        {
+            Environment.SetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL", null);
+            LauncherInstallPaths.ResolveLocalBindingBaseUrl()
+                .Should().Be(new Uri("http://127.0.0.1:8090/"));
+
+            Environment.SetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL", "http://127.0.0.1:8190");
+            LauncherInstallPaths.ResolveLocalBindingBaseUrl()
+                .Should().Be(new Uri("http://127.0.0.1:8190/"));
+
+            Environment.SetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL", "https://copimine.ru");
+            LauncherInstallPaths.ResolveLocalBindingBaseUrl()
+                .Should().Be(new Uri("http://127.0.0.1:8090/"));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL", previous);
+        }
+    }
+
+    [Fact]
     public void Staging_environment_requires_a_loopback_http_url()
     {
         var previous = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");

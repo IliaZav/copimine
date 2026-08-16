@@ -14,6 +14,7 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         viewModel.LauncherHideRequested += OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested += OnLauncherRestoreRequested;
+        viewModel.LauncherBindingRequired += OnLauncherBindingRequired;
         Closed += OnClosed;
     }
 
@@ -83,10 +84,25 @@ public partial class MainWindow : Window
         Focus();
     }
 
+    private async void OnLauncherBindingRequired(object? sender, EventArgs e)
+    {
+        var answer = MessageBox.Show(
+            this,
+            "Аккаунт не привязан к Launcher. Сначала привяжите аккаунт на сайте, затем повторите запуск Minecraft. Открыть страницу привязки сейчас?",
+            "Аккаунт не привязан",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.OK)
+        {
+            await viewModel.OpenAccountLinkCommand.ExecuteAsync(null);
+        }
+    }
+
     private void OnClosed(object? sender, EventArgs e)
     {
         viewModel.LauncherHideRequested -= OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested -= OnLauncherRestoreRequested;
+        viewModel.LauncherBindingRequired -= OnLauncherBindingRequired;
         Closed -= OnClosed;
     }
 }

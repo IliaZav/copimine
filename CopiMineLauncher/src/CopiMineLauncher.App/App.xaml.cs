@@ -33,7 +33,12 @@ public partial class App : Application
         var launcherDataRoot = LauncherInstallPaths.ResolveLauncherDataRoot();
         var bindingStateStore = new LauncherBindingStateStore(launcherDataRoot);
         var deviceId = new LauncherDeviceIdentityStore(launcherDataRoot).LoadOrCreate();
-        var bindingClient = new HttpLauncherBindingClient(httpClient, new Uri("https://copimine.ru/"), deviceId);
+        var productionBindingClient = new HttpLauncherBindingClient(httpClient, new Uri("https://copimine.ru/"), deviceId);
+        var localBindingClient = new HttpLauncherBindingClient(
+            httpClient,
+            LauncherInstallPaths.ResolveLocalBindingBaseUrl(),
+            deviceId);
+        var bindingClient = new FallbackLauncherBindingClient(productionBindingClient, localBindingClient);
         var cachePath = Path.Combine(launcherDataRoot, "patch-feed.json");
         var feedClient = new PatchFeedClient(httpClient, cachePath);
         var manifestClient = new SignedInstanceManifestClient(

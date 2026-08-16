@@ -48,6 +48,93 @@ public interface ILauncherBindingClient
     Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken);
 }
 
+public sealed class FallbackLauncherBindingClient : ILauncherBindingClient
+{
+    private readonly ILauncherBindingClient primary;
+    private readonly ILauncherBindingClient local;
+    private ILauncherBindingClient? selected;
+
+    public FallbackLauncherBindingClient(ILauncherBindingClient primary, ILauncherBindingClient local)
+    {
+        this.primary = primary ?? throw new ArgumentNullException(nameof(primary));
+        this.local = local ?? throw new ArgumentNullException(nameof(local));
+        if (!string.Equals(primary.DeviceId, local.DeviceId, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Launcher binding endpoints must use the same device identity.", nameof(local));
+        }
+    }
+
+    public string DeviceId => primary.DeviceId;
+
+    public async Task<LauncherLinkChallenge> CreateChallengeAsync(
+        string minecraftName,
+        string launcherVersion,
+        CancellationToken cancellationToken)
+    {
+        if (selected is not null)
+        {
+            return await selected.CreateChallengeAsync(minecraftName, launcherVersion, cancellationToken);
+        }
+
+        try
+        {
+            var challenge = await primary.CreateChallengeAsync(minecraftName, launcherVersion, cancellationToken);
+            selected = primary;
+            return challenge;
+        }
+        catch (LauncherBindingException exception) when (CanFallback(exception))
+        {
+            return await CreateLocalChallengeAsync(minecraftName, launcherVersion, cancellationToken, exception);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return await CreateLocalChallengeAsync(minecraftName, launcherVersion, cancellationToken, null);
+        }
+    }
+
+    public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken) =>
+        (selected ?? primary).GetStatusAsync(challenge, cancellationToken);
+
+    public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(
+        string accessToken,
+        string oldMinecraftName,
+        string newMinecraftName,
+        CancellationToken cancellationToken) =>
+        (selected ?? primary).ChangeNicknameAsync(accessToken, oldMinecraftName, newMinecraftName, cancellationToken);
+
+    private async Task<LauncherLinkChallenge> CreateLocalChallengeAsync(
+        string minecraftName,
+        string launcherVersion,
+        CancellationToken cancellationToken,
+        LauncherBindingException? primaryException)
+    {
+        try
+        {
+            var challenge = await local.CreateChallengeAsync(minecraftName, launcherVersion, cancellationToken);
+            selected = local;
+            return challenge;
+        }
+        catch (LauncherBindingException localException)
+        {
+            throw new LauncherBindingException(
+                "LAUNCHER_LINK_ALL_ENDPOINTS_FAILED",
+                "Реальный сайт привязки недоступен, а локальный сервер не ответил. Запустите локальный staging-сервер и повторите попытку.",
+                new AggregateException(primaryException ?? new LauncherBindingException("LAUNCHER_LINK_PRIMARY_UNAVAILABLE", "Основной endpoint недоступен."), localException));
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new LauncherBindingException(
+                "LAUNCHER_LINK_ALL_ENDPOINTS_FAILED",
+                "Реальный сайт привязки недоступен, а локальный сервер не ответил. Запустите локальный staging-сервер и повторите попытку.",
+                primaryException);
+        }
+    }
+
+    private static bool CanFallback(LauncherBindingException exception) =>
+        exception.Code is "LAUNCHER_LINK_NETWORK_FAILED"
+            or "LAUNCHER_LINK_CHALLENGE_FAILED";
+}
+
 public sealed class HttpLauncherBindingClient : ILauncherBindingClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -86,7 +173,7 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
         var challengeId = RequiredString(document, "challengeId", "LAUNCHER_LINK_CHALLENGE_INVALID");
         var pollToken = RequiredString(document, "pollToken", "LAUNCHER_LINK_CHALLENGE_INVALID");
         var authorizationUrl = RequiredUri(document, "authorizationUrl", "LAUNCHER_LINK_AUTH_URL_INVALID");
-        if (!DateTimeOffset.TryParse(document.GetProperty("expiresAt").ToString(), out var expiresAt))
+        if (!TryParseExpiry(document, out var expiresAt))
         {
             throw new LauncherBindingException("LAUNCHER_LINK_CHALLENGE_INVALID", "The Launcher link challenge expiry is invalid.");
         }
@@ -216,6 +303,31 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
         document.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
             : null;
+
+    private static bool TryParseExpiry(JsonElement document, out DateTimeOffset expiresAt)
+    {
+        expiresAt = default;
+        if (!document.TryGetProperty("expiresAt", out var value))
+        {
+            return false;
+        }
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var epochMilliseconds))
+        {
+            try
+            {
+                expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(epochMilliseconds);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            && DateTimeOffset.TryParse(value.GetString(), out expiresAt);
+    }
 
     private static Uri ValidateBaseUri(Uri? value)
     {

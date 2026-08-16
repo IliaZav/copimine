@@ -79,6 +79,20 @@ public static class LauncherInstallPaths
         return ProductionSelfUpdateFeed;
     }
 
+    public static Uri ResolveLocalBindingBaseUrl()
+    {
+        var configured = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_LOCAL_BASE_URL");
+        foreach (var candidate in new[] { TryParseUri(configured) })
+        {
+            if (candidate is not null && IsLoopbackStagingUrl(candidate))
+            {
+                return EnsureTrailingSlash(candidate);
+            }
+        }
+
+        return new Uri("http://127.0.0.1:8090/", UriKind.Absolute);
+    }
+
     public static bool IsLoopbackStagingEnvironment()
     {
         var value = Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_STAGING_BASE_URL");
@@ -92,6 +106,14 @@ public static class LauncherInstallPaths
         && value.IsLoopback
         && string.Equals(value.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
         && string.IsNullOrEmpty(value.UserInfo);
+
+    private static Uri? TryParseUri(string? value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri : null;
+
+    private static Uri EnsureTrailingSlash(Uri value) =>
+        value.AbsoluteUri.EndsWith("/", StringComparison.Ordinal)
+            ? value
+            : new Uri(value.AbsoluteUri + "/", UriKind.Absolute);
 
     private static string ResolvePreferredMinecraftRoot(string installRoot)
     {

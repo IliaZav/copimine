@@ -152,6 +152,7 @@ public partial class LauncherViewModel : ObservableObject
 
     public event EventHandler? LauncherHideRequested;
     public event EventHandler? LauncherRestoreRequested;
+    public event EventHandler? LauncherBindingRequired;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -508,6 +509,7 @@ public partial class LauncherViewModel : ObservableObject
             LoadingStage = "Сначала подтвердите аккаунт на сайте";
             Diagnostic = "LAUNCHER_LINK_REQUIRED: нажмите «Привязать на сайте», войдите в свой аккаунт и подтвердите привязку. Пароль не передаётся в Launcher.";
             IsDiagnosticOpen = true;
+            LauncherBindingRequired?.Invoke(this, EventArgs.Empty);
             return;
         }
 
@@ -815,7 +817,7 @@ public partial class LauncherViewModel : ObservableObject
         if (launcherBindingClient is null)
         {
             var encodedName = Uri.EscapeDataString(PlayerName.Trim());
-            OpenTrustedUrl(new Uri($"https://copimine.ru/cabinet/link.html?launcher_nick={encodedName}"));
+            OpenBindingUrl(new Uri($"https://copimine.ru/cabinet/link.html?launcher_nick={encodedName}"));
             return;
         }
 
@@ -824,7 +826,7 @@ public partial class LauncherViewModel : ObservableObject
             Status = "Создаём безопасную привязку…";
             LoadingStage = "Откройте страницу сайта";
             var challenge = await launcherBindingClient.CreateChallengeAsync(PlayerName.Trim(), LauncherVersionInfo.Version, CancellationToken.None);
-            OpenTrustedUrl(challenge.AuthorizationUrl);
+            OpenBindingUrl(challenge.AuthorizationUrl);
             Status = "Ожидаем подтверждение на сайте…";
             Diagnostic = $"Проверьте страницу привязки в браузере. Код действует до {challenge.ExpiresAtUtc.ToLocalTime():HH:mm}. Пароль сайта и AuthMe не передаются.";
 
@@ -888,6 +890,21 @@ public partial class LauncherViewModel : ObservableObject
             || !allowedHost)
         {
             return;
+        }
+
+        Process.Start(new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true });
+    }
+
+    private static void OpenBindingUrl(Uri uri)
+    {
+        var isProduction = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && (string.Equals(uri.Host, "copimine.ru", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(uri.Host, "www.copimine.ru", StringComparison.OrdinalIgnoreCase)
+                || uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase));
+        var isLoopback = string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
+        if ((!isProduction && !isLoopback) || !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("Сервис привязки вернул недопустимый адрес.");
         }
 
         Process.Start(new ProcessStartInfo { FileName = uri.ToString(), UseShellExecute = true });

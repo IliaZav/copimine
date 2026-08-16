@@ -56,6 +56,15 @@ public sealed class MinecraftProvisioner : IMinecraftProvisioner
             throw new ArgumentException("Minecraft version must be exactly 1.21.1", nameof(minecraftVersion));
         }
 
+        if (OfflineMinecraftBaseline.IsMinecraftProfileReady(instanceRoot, minecraftVersion, fabricLoaderVersion))
+        {
+            return new(
+                minecraftVersion,
+                fabricLoaderVersion,
+                FabricProvisioner.ResolveVersionName(minecraftVersion, fabricLoaderVersion),
+                Path.GetFullPath(instanceRoot));
+        }
+
         var profileInstaller = profileInstallerOverride ?? new CmlibMinecraftProfileInstaller(instanceRoot, httpClient);
         await profileInstaller.InstallAsync(minecraftVersion, cancellationToken);
         var fabric = await fabricProvisioner.EnsureFabricAsync(instanceRoot, minecraftVersion, fabricLoaderVersion, cancellationToken);

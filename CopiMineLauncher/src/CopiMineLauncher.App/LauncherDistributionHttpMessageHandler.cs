@@ -15,6 +15,7 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
 {
     private readonly HttpMessageInvoker innerInvoker;
     private readonly string bootstrapRoot;
+    private int remoteUnavailable;
     private static readonly TimeSpan BootstrapRemoteTimeout = TimeSpan.FromSeconds(8);
 
     public LauncherDistributionHttpMessageHandler(HttpMessageHandler innerHandler, string bootstrapRoot)
@@ -33,6 +34,14 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
             ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
             : null;
         fallbackTimeout?.CancelAfter(BootstrapRemoteTimeout);
+        if (fallbackPath is not null
+            && File.Exists(fallbackPath)
+            && (Volatile.Read(ref remoteUnavailable) == 1
+                || IsExplicitOfflineMode()))
+        {
+            return CreateBootstrapResponse(request, fallbackPath);
+        }
+
         try
         {
             var response = await innerInvoker.SendAsync(request, fallbackTimeout?.Token ?? cancellationToken).ConfigureAwait(false);
@@ -48,12 +57,14 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
         }
         catch (HttpRequestException) when (fallbackPath is not null && File.Exists(fallbackPath))
         {
+            Interlocked.Exchange(ref remoteUnavailable, 1);
             return CreateBootstrapResponse(request, fallbackPath!);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested
             && fallbackPath is not null
             && File.Exists(fallbackPath))
         {
+            Interlocked.Exchange(ref remoteUnavailable, 1);
             return CreateBootstrapResponse(request, fallbackPath!);
         }
     }
@@ -134,4 +145,14 @@ public sealed class LauncherDistributionHttpMessageHandler : HttpMessageHandler
         || host.Equals("www.copimine.ru", StringComparison.OrdinalIgnoreCase)
         || host.Equals("cdn.copimine.ru", StringComparison.OrdinalIgnoreCase)
         || host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsExplicitOfflineMode() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_OFFLINE"),
+            "1",
+            StringComparison.OrdinalIgnoreCase)
+        || string.Equals(
+            Environment.GetEnvironmentVariable("COPIMINE_LAUNCHER_OFFLINE"),
+            "true",
+            StringComparison.OrdinalIgnoreCase);
 }

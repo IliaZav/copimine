@@ -113,13 +113,20 @@ public partial class SkinManagerWindow : Window
         }
         catch (Exception firstException)
         {
-            var bootstrapper = Path.Combine(AppContext.BaseDirectory, "Assets", "WebView2", "MicrosoftEdgeWebView2Setup.exe");
-            if (!File.Exists(bootstrapper)) throw;
+            var webViewDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "WebView2");
+            var standaloneInstaller = Path.Combine(webViewDirectory, "MicrosoftEdgeWebView2RuntimeInstallerX64.exe");
+            var bootstrapper = Path.Combine(webViewDirectory, "MicrosoftEdgeWebView2Setup.exe");
+            var installerPath = File.Exists(standaloneInstaller)
+                ? standaloneInstaller
+                : bootstrapper;
+            if (!File.Exists(installerPath)) throw;
 
-            SetStatus("Устанавливаем компонент предпросмотра Microsoft WebView2…");
+            SetStatus(File.Exists(standaloneInstaller)
+                ? "Устанавливаем компонент предпросмотра Microsoft WebView2 из установщика…"
+                : "Устанавливаем компонент предпросмотра Microsoft WebView2…");
             using var process = Process.Start(new ProcessStartInfo
             {
-                FileName = bootstrapper,
+                FileName = installerPath,
                 Arguments = "/silent /install",
                 UseShellExecute = false,
                 CreateNoWindow = true,

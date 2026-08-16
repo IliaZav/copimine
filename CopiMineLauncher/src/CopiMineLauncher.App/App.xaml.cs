@@ -53,7 +53,8 @@ public partial class App : Application
             new JavaProvisioner(downloads),
             new TransactionalReconcilerFactory(downloads),
             new ServersDatService(),
-            new MinecraftLaunchService(httpClient));
+            new MinecraftLaunchService(httpClient),
+            new OfflineMinecraftBaseline(LauncherInstallPaths.ResolveLauncherBootstrapRoot()));
         var selfUpdate = new VelopackSelfUpdateService(
             LauncherInstallPaths.ResolveSelfUpdateFeed(GetStagingBaseUrl()),
             new VelopackUpdateBackend(),

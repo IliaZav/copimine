@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $ArtifactRoot,
     [string] $MetadataPath = "",
-    [string] $Version = "1.0.0"
+    [string] $Version = "1.0.0",
+    [switch] $RequireOfflineBundle
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,6 +67,38 @@ if ($null -ne $payload.msiFilename) {
     Write-Output "MSI=$msi"
     Write-Output "MSI_SHA256=$msiHash"
     Write-Output "MSI_SIZE=$($msiBytes.LongLength)"
+}
+
+if ($RequireOfflineBundle) {
+    $publishRoot = Join-Path $root 'publish'
+    $offlineMetadataPath = Join-Path $publishRoot 'launcher-bootstrap/offline-minecraft-baseline.json'
+    $offlineArchivePath = Join-Path $publishRoot 'launcher-bootstrap/offline-minecraft-baseline.zip'
+    $webView2Path = Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+    foreach ($required in @($offlineMetadataPath, $offlineArchivePath, $webView2Path)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw "Required offline bundle file is missing: $required"
+        }
+    }
+
+    $offlineMetadata = Get-Content -LiteralPath $offlineMetadataPath -Raw | ConvertFrom-Json
+    if (($offlineMetadata.schemaVersion -ne 1) -or ($offlineMetadata.minecraftVersion -ne '1.21.1') -or ($offlineMetadata.fabricLoaderVersion -ne '0.19.3') -or ($offlineMetadata.archiveFileName -ne 'offline-minecraft-baseline.zip') -or ($offlineMetadata.sha256 -notmatch '^[0-9a-f]{64}$')) {
+        throw 'Offline Minecraft baseline metadata is invalid.'
+    }
+    $offlineInfo = Get-Item -LiteralPath $offlineArchivePath
+    if ([int64]$offlineInfo.Length -ne [int64]$offlineMetadata.sizeBytes) {
+        throw "Offline Minecraft baseline size mismatch: $($offlineInfo.Length) != $($offlineMetadata.sizeBytes)"
+    }
+    $offlineHash = (Get-FileHash -LiteralPath $offlineArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($offlineHash -ne [string]$offlineMetadata.sha256) {
+        throw "Offline Minecraft baseline SHA-256 mismatch: $offlineHash != $($offlineMetadata.sha256)"
+    }
+    $webViewInfo = Get-Item -LiteralPath $webView2Path
+    if ($webViewInfo.Length -lt 100MB) {
+        throw "WebView2 standalone installer is unexpectedly small: $($webViewInfo.Length) bytes"
+    }
+    Write-Output "OFFLINE_BASELINE_SHA256=$offlineHash"
+    Write-Output "OFFLINE_BASELINE_SIZE=$($offlineInfo.Length)"
+    Write-Output "WEBVIEW2_STANDALONE_SIZE=$($webViewInfo.Length)"
 }
 
 Write-Output "RELEASE_VERIFY=PASS"

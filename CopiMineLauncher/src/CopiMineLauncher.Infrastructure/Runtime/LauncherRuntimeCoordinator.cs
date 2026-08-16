@@ -81,6 +81,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
     private readonly ITransactionalReconcilerFactory reconcilerFactory;
     private readonly IServersDatService serversDatService;
     private readonly IMinecraftLaunchService launchService;
+    private readonly IOfflineMinecraftBaseline? offlineMinecraftBaseline;
 
     public LauncherRuntimeCoordinator(
         IManifestClient manifestClient,
@@ -88,7 +89,8 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         IJavaProvisioner javaProvisioner,
         ITransactionalReconcilerFactory reconcilerFactory,
         IServersDatService serversDatService,
-        IMinecraftLaunchService launchService)
+        IMinecraftLaunchService launchService,
+        IOfflineMinecraftBaseline? offlineMinecraftBaseline = null)
     {
         this.manifestClient = manifestClient ?? throw new ArgumentNullException(nameof(manifestClient));
         this.minecraftProvisioner = minecraftProvisioner ?? throw new ArgumentNullException(nameof(minecraftProvisioner));
@@ -96,6 +98,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         this.reconcilerFactory = reconcilerFactory ?? throw new ArgumentNullException(nameof(reconcilerFactory));
         this.serversDatService = serversDatService ?? throw new ArgumentNullException(nameof(serversDatService));
         this.launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
+        this.offlineMinecraftBaseline = offlineMinecraftBaseline;
     }
 
     public Task<LauncherOperationResult> RepairAsync(
@@ -130,6 +133,16 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
 
             var instanceRoot = Path.GetFullPath(request.InstanceRoot);
             Directory.CreateDirectory(instanceRoot);
+
+            if (offlineMinecraftBaseline is not null)
+            {
+                progress?.Report(new("offline-baseline", "Проверяем офлайн-файлы Minecraft из установщика…"));
+                await offlineMinecraftBaseline.EnsureAsync(
+                    instanceRoot,
+                    manifest.Document.Minecraft.Version,
+                    manifest.Document.Minecraft.FabricLoader,
+                    cancellationToken);
+            }
 
             progress?.Report(new("reconcile", "Сверяем managed-файлы и готовим безопасное обновление…"));
             var reconciler = reconcilerFactory.Create(instanceRoot, manifest);
@@ -197,6 +210,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                 launchEvidence);
         }
         catch (ManifestFetchException exception)
+        {
+            return Failure(operation, exception.Code, exception.Message);
+        }
+        catch (OfflineMinecraftBaselineException exception)
         {
             return Failure(operation, exception.Code, exception.Message);
         }

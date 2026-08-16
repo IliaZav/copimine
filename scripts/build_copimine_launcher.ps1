@@ -4,6 +4,9 @@ param(
     [string] $Configuration = 'Release',
     [string] $Version = '1.0.0',
     [string] $InstanceReleaseRoot = '',
+    [string] $OfflineMinecraftRoot = '',
+    [string] $WebView2StandalonePath = '',
+    [switch] $RequireOfflineBundle,
     [switch] $SkipPackaging
 )
 
@@ -77,8 +80,47 @@ Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.sig') -Des
 Get-ChildItem -LiteralPath $bootstrapFiles -File | Copy-Item -Destination (Join-Path $bootstrapDestination 'files') -Force
 Copy-Item -LiteralPath $installContract -Destination (Join-Path $publishRoot 'launcher-install-contract.json') -Force
 
+if ($RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+    throw 'RequireOfflineBundle was specified but OfflineMinecraftRoot is empty.'
+}
+if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+    $offlineBaselineScript = Join-Path $scriptRoot 'prepare_launcher_offline_baseline.ps1'
+    & $offlineBaselineScript -MinecraftRoot $OfflineMinecraftRoot -DestinationRoot $bootstrapDestination -MinecraftVersion '1.21.1' -FabricLoaderVersion '0.19.3'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Offline Minecraft baseline preparation failed with exit code $LASTEXITCODE"
+    }
+}
+
+if ($RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+    throw 'RequireOfflineBundle was specified but WebView2StandalonePath is empty.'
+}
+if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+    $webView2Source = (Resolve-Path -LiteralPath $WebView2StandalonePath -ErrorAction Stop).Path
+    $webView2Destination = Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $webView2Destination) -Force | Out-Null
+    Copy-Item -LiteralPath $webView2Source -Destination $webView2Destination -Force
+}
+
+if ($RequireOfflineBundle) {
+    foreach ($requiredOfflineFile in @(
+        (Join-Path $bootstrapDestination 'offline-minecraft-baseline.json'),
+        (Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip'),
+        (Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
+    )) {
+        if (-not (Test-Path -LiteralPath $requiredOfflineFile -PathType Leaf)) {
+            throw "Offline bundle file is missing from publish output: $requiredOfflineFile"
+        }
+    }
+}
+
 if ($SkipPackaging) {
     Write-Output "PUBLISH_OUTPUT=$publishRoot"
+    if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+        Write-Output "OFFLINE_BASELINE_OUTPUT=$(Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip')"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+        Write-Output "WEBVIEW2_STANDALONE_OUTPUT=$(Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')"
+    }
     exit 0
 }
 
@@ -128,3 +170,9 @@ Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"
 Write-Output "INSTALLER_OUTPUT=$installerPath"
 Write-Output "MSI_OUTPUT=$msiPath"
+if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+    Write-Output "OFFLINE_BASELINE_OUTPUT=$(Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip')"
+}
+if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+    Write-Output "WEBVIEW2_STANDALONE_OUTPUT=$(Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')"
+}

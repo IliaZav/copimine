@@ -42,9 +42,29 @@ export function parseLauncherMetadata(payload) {
   if (!isSafeNewsPath(releaseNotesUrl)) return null;
   if (!Number.isSafeInteger(payload.sizeBytes) || payload.sizeBytes <= 0) return null;
   if (!/^[0-9a-f]{64}$/.test(String(payload.sha256 || ""))) return null;
+  let msi = null;
+  const hasMsi = payload.msiDownloadUrl !== undefined || payload.msiFilename !== undefined;
+  if (hasMsi) {
+    const msiFilename = String(payload.msiFilename || "");
+    const msiDownloadUrl = String(payload.msiDownloadUrl || "");
+    if (!/^[A-Za-z0-9._-]+\.msi$/i.test(msiFilename)
+      || !isSafeRelative(msiDownloadUrl, "/downloads/launcher/")
+      || !msiDownloadUrl.endsWith(".msi")
+      || !Number.isSafeInteger(payload.msiSizeBytes)
+      || payload.msiSizeBytes <= 0
+      || !/^[0-9a-f]{64}$/.test(String(payload.msiSha256 || ""))
+      || payload.msiInstallLocation !== "choose") return null;
+    msi = {
+      filename: msiFilename,
+      downloadUrl: msiDownloadUrl,
+      sizeBytes: payload.msiSizeBytes,
+      sha256: String(payload.msiSha256),
+      installLocation: "choose",
+    };
+  }
   const publishedAt = parseDate(payload.publishedAt);
   if (!publishedAt) return null;
-  return { ...payload, version, downloadUrl, releaseNotesUrl, publishedAt };
+  return { ...payload, version, downloadUrl, releaseNotesUrl, publishedAt, msi };
 }
 
 export function parsePatchIndex(payload) {

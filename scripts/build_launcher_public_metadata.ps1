@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $InstallerPath,
+    [string] $MsiPath = "",
     [Parameter(Mandatory = $true)]
     [string] $Version,
     [Parameter(Mandatory = $true)]
@@ -41,6 +42,28 @@ try {
     $sha256.Dispose()
 }
 $hash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+$msiInfo = $null
+$msiHash = $null
+$msiFilename = $null
+$msiDownload = $null
+if (-not [string]::IsNullOrWhiteSpace($MsiPath)) {
+    $msi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
+    $msiInfo = Get-Item -LiteralPath $msi -ErrorAction Stop
+    if ($msiInfo.PSIsContainer -or $msiInfo.Extension -ine '.msi') {
+        throw "MsiPath must point to an .msi file: $msi"
+    }
+    if ($msiInfo.Length -le 0) {
+        throw "MSI is empty: $msi"
+    }
+    $msiFilename = $msiInfo.Name
+    $msiDownload = "/downloads/launcher/$msiFilename"
+    $msiDigest = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $msiHash = [BitConverter]::ToString($msiDigest.ComputeHash([System.IO.File]::ReadAllBytes($msi))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $msiDigest.Dispose()
+    }
+}
 $download = if ([string]::IsNullOrWhiteSpace($DownloadUrl)) {
     "/downloads/launcher/CopiMineLauncherSetup-$Version.exe"
 } else {
@@ -59,6 +82,9 @@ $published = if ([string]::IsNullOrWhiteSpace($PublishedAtUtc)) {
 
 if ($download -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.exe$') {
     throw "downloadUrl must be a safe launcher-relative .exe URL: $download"
+}
+if ($null -ne $msiDownload -and $msiDownload -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.msi$') {
+    throw "msiDownloadUrl must be a safe launcher-relative .msi URL: $msiDownload"
 }
 if ($notes -notmatch '^/news/[A-Za-z0-9._-]+\.html$') {
     throw "releaseNotesUrl must be a safe news-relative .html URL: $notes"
@@ -80,6 +106,13 @@ $payload = [ordered]@{
     releaseNotesUrl = $notes
     publishedAt = $published
 }
+if ($null -ne $msiInfo) {
+    $payload.msiFilename = $msiFilename
+    $payload.msiDownloadUrl = $msiDownload
+    $payload.msiSizeBytes = [long]$msiInfo.Length
+    $payload.msiSha256 = $msiHash
+    $payload.msiInstallLocation = 'choose'
+}
 
 $destination = [System.IO.Path]::GetFullPath($OutputPath)
 $directory = [System.IO.Path]::GetDirectoryName($destination)
@@ -95,3 +128,8 @@ Move-Item -LiteralPath $temporary -Destination $destination -Force
 Write-Output "METADATA_OUTPUT=$destination"
 Write-Output "INSTALLER_SHA256=$hash"
 Write-Output "INSTALLER_SIZE=$($info.Length)"
+if ($null -ne $msiInfo) {
+    Write-Output "MSI_OUTPUT=$msi"
+    Write-Output "MSI_SHA256=$msiHash"
+    Write-Output "MSI_SIZE=$($msiInfo.Length)"
+}

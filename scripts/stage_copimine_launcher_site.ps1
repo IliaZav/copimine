@@ -3,6 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $InstallerPath,
     [Parameter(Mandatory = $true)]
+    [string] $MsiPath,
+    [Parameter(Mandatory = $true)]
     [string] $MetadataPath,
     [Parameter(Mandatory = $true)]
     [string] $OutputRoot,
@@ -14,12 +16,14 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $frontendRoot = Join-Path $repoRoot 'admin-web/frontend'
 $sourceInstaller = (Resolve-Path -LiteralPath $InstallerPath -ErrorAction Stop).Path
+$sourceMsi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
 $sourceMetadata = (Resolve-Path -LiteralPath $MetadataPath -ErrorAction Stop).Path
 $sourceInstance = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) { $null } else { (Resolve-Path -LiteralPath $InstanceReleaseRoot -ErrorAction Stop).Path }
 $destination = [System.IO.Path]::GetFullPath($OutputRoot)
 
 if (-not (Test-Path -LiteralPath $frontendRoot -PathType Container)) { throw "Frontend root is missing: $frontendRoot" }
 if (-not (Test-Path -LiteralPath $sourceInstaller -PathType Leaf)) { throw "Installer is missing: $sourceInstaller" }
+if (-not (Test-Path -LiteralPath $sourceMsi -PathType Leaf)) { throw "MSI is missing: $sourceMsi" }
 if (-not (Test-Path -LiteralPath $sourceMetadata -PathType Leaf)) { throw "Metadata is missing: $sourceMetadata" }
 
 if (Test-Path -LiteralPath $destination) {
@@ -42,6 +46,7 @@ if ([string]::IsNullOrWhiteSpace($filename) -or $filename -ne $metadata.filename
     throw "Metadata filename is not a safe installer filename: $($metadata.filename)"
 }
 Copy-Item -LiteralPath $sourceInstaller -Destination (Join-Path $downloadDirectory $filename) -Force
+Copy-Item -LiteralPath $sourceMsi -Destination (Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi))) -Force
 Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $metadataDirectory 'latest.json') -Force
 
 if ($null -ne $sourceInstance) {
@@ -61,5 +66,6 @@ if ($null -ne $sourceInstance) {
 
 Write-Output "SITE_OUTPUT=$destination"
 Write-Output "SITE_INSTALLER=$(Join-Path $downloadDirectory $filename)"
+Write-Output "SITE_MSI=$(Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi)))"
 Write-Output "SITE_METADATA=$(Join-Path $metadataDirectory 'latest.json')"
 if ($null -ne $sourceInstance) { Write-Output "SITE_INSTANCE_MANIFEST=$(Join-Path $destination 'launcher/stable/instance-manifest.json')" }

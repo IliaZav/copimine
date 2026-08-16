@@ -29,6 +29,7 @@ function createSummaryList(summary) {
 
 export function renderLauncherMetadata(metadata) {
   const button = document.getElementById("launcherDownloadBtn");
+  const msiButton = document.getElementById("launcherMsiBtn");
   const state = document.getElementById("launcherDownloadStatus");
   const fields = {
     version: document.getElementById("launcherVersion"),
@@ -48,6 +49,7 @@ export function renderLauncherMetadata(metadata) {
     button.removeAttribute("download");
     button.setAttribute("aria-disabled", "true");
     button.classList.add("is-disabled");
+    disableMsiButton(msiButton);
     state.dataset.state = "error";
     text(state, "Скачивание временно недоступно. Повторите позже.");
     return;
@@ -56,8 +58,29 @@ export function renderLauncherMetadata(metadata) {
   button.download = metadata.filename;
   button.removeAttribute("aria-disabled");
   button.classList.remove("is-disabled");
+  if (metadata.msi) {
+    configureMsiButton(msiButton, metadata.msi);
+  } else {
+    disableMsiButton(msiButton);
+  }
   state.dataset.state = "ready";
-  text(state, `${metadata.filename} · контрольная сумма опубликована ниже.`);
+  text(state, `${metadata.filename} · установщик с выбором папки доступен рядом.`);
+}
+
+function configureMsiButton(button, msi) {
+  if (!(button instanceof HTMLAnchorElement)) return;
+  button.href = msi.downloadUrl;
+  button.download = msi.filename;
+  button.removeAttribute("aria-disabled");
+  button.classList.remove("is-disabled");
+}
+
+function disableMsiButton(button) {
+  if (!(button instanceof HTMLAnchorElement)) return;
+  button.removeAttribute("href");
+  button.removeAttribute("download");
+  button.setAttribute("aria-disabled", "true");
+  button.classList.add("is-disabled");
 }
 
 export function renderLauncherNews(patches) {

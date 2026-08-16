@@ -90,6 +90,8 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
     --packVersion $Version `
     --packDir $publishRoot `
     --mainExe 'CopiMineLauncher.App.exe' `
+    --msi `
+    --instLocation Either `
     --outputDir $packageRoot
 if ($LASTEXITCODE -ne 0) {
     throw "vpk packaging failed with exit code $LASTEXITCODE"
@@ -97,11 +99,18 @@ if ($LASTEXITCODE -ne 0) {
 
 $setupSource = Join-Path $packageRoot 'CopiMineLauncher-win-Setup.exe'
 $installerPath = Join-Path $packageRoot "CopiMineLauncherSetup-$Version.exe"
+$msiSource = Join-Path $packageRoot 'CopiMineLauncher-win.msi'
+$msiPath = Join-Path $packageRoot "CopiMineLauncherSetup-$Version.msi"
 if (-not (Test-Path -LiteralPath $setupSource -PathType Leaf)) {
     throw "Velopack did not produce the expected setup bundle: $setupSource"
 }
+if (-not (Test-Path -LiteralPath $msiSource -PathType Leaf)) {
+    throw "Velopack did not produce the expected folder-selecting MSI: $msiSource"
+}
 Copy-Item -LiteralPath $setupSource -Destination $installerPath -Force
+Copy-Item -LiteralPath $msiSource -Destination $msiPath -Force
 
 Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"
 Write-Output "INSTALLER_OUTPUT=$installerPath"
+Write-Output "MSI_OUTPUT=$msiPath"

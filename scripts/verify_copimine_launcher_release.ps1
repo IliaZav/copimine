@@ -42,6 +42,32 @@ $hash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
 if ($bytes.LongLength -ne [long]$payload.sizeBytes) { throw "installer size mismatch: $($bytes.LongLength) != $($payload.sizeBytes)" }
 if ($hash -ne $payload.sha256) { throw "installer SHA-256 mismatch: $hash != $($payload.sha256)" }
 
+if ($null -ne $payload.msiFilename) {
+    if ([string]$payload.msiFilename -notmatch '^[A-Za-z0-9._-]+\.msi$') { throw 'metadata msiFilename is unsafe' }
+    if ([string]$payload.msiDownloadUrl -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.msi$') { throw 'metadata msiDownloadUrl is unsafe' }
+    if ([string]$payload.msiInstallLocation -ne 'choose') { throw 'metadata msiInstallLocation must be choose' }
+    if ([long]$payload.msiSizeBytes -le 0 -or [string]$payload.msiSha256 -notmatch '^[0-9a-f]{64}$') { throw 'metadata MSI integrity fields are invalid' }
+    $msiName = [System.IO.Path]::GetFileName([string]$payload.msiFilename)
+    $msi = Join-Path $root $msiName
+    if (-not (Test-Path -LiteralPath $msi -PathType Leaf)) {
+        $msi = Join-Path $root (Join-Path 'packages' $msiName)
+    }
+    if (-not (Test-Path -LiteralPath $msi -PathType Leaf)) { throw "MSI is missing in artifact root or packages: $msiName" }
+    $msiBytes = [System.IO.File]::ReadAllBytes($msi)
+    $msiSha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $msiDigest = $msiSha.ComputeHash($msiBytes)
+    } finally {
+        $msiSha.Dispose()
+    }
+    $msiHash = [BitConverter]::ToString($msiDigest).Replace('-', '').ToLowerInvariant()
+    if ($msiBytes.LongLength -ne [long]$payload.msiSizeBytes) { throw "MSI size mismatch: $($msiBytes.LongLength) != $($payload.msiSizeBytes)" }
+    if ($msiHash -ne [string]$payload.msiSha256) { throw "MSI SHA-256 mismatch: $msiHash != $($payload.msiSha256)" }
+    Write-Output "MSI=$msi"
+    Write-Output "MSI_SHA256=$msiHash"
+    Write-Output "MSI_SIZE=$($msiBytes.LongLength)"
+}
+
 Write-Output "RELEASE_VERIFY=PASS"
 Write-Output "INSTALLER=$installer"
 Write-Output "SHA256=$hash"

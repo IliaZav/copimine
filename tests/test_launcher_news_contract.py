@@ -17,6 +17,7 @@ def test_launcher_news_and_legacy_routes_are_static_contracts() -> None:
     legacy = read("admin-web/frontend/mods.html")
     assert 'data-page-kind="public-launcher"' in launcher
     assert 'id="launcherDownloadBtn"' in launcher
+    assert 'id="launcherMsiBtn"' in launcher
     assert 'href="/downloads/CopiMineMods.zip"' not in launcher
     assert 'data-page-kind="public-news"' in news
     assert 'id="newsList"' in news
@@ -55,9 +56,14 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert metadata["architecture"] == "x64"
     assert metadata["filename"] == "CopiMineLauncherSetup-1.0.0.exe"
     assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe"
+    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.0.msi"
+    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.0.msi"
+    assert metadata["msiInstallLocation"] == "choose"
     assert metadata["releaseNotesUrl"].startswith("/news/")
     assert isinstance(metadata["sizeBytes"], int) and metadata["sizeBytes"] > 0
     assert len(metadata["sha256"]) == 64 and metadata["sha256"] == metadata["sha256"].lower()
+    assert isinstance(metadata["msiSizeBytes"], int) and metadata["msiSizeBytes"] > 0
+    assert len(metadata["msiSha256"]) == 64 and metadata["msiSha256"] == metadata["msiSha256"].lower()
 
 
 def test_launcher_gallery_references_real_capture_assets() -> None:

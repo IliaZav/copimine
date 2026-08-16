@@ -36,6 +36,12 @@ Release packaging uses the pinned Velopack CLI 1.2.0 from
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_copimine_launcher.ps1 -Configuration Release -InstanceReleaseRoot artifacts/launcher/Release/instance-current
 ```
 
+The release contains both `CopiMineLauncherSetup-1.0.0.exe` for a quick
+per-user install and `CopiMineLauncherSetup-1.0.0.msi` for the normal Windows
+installer flow with a folder/disk selection page. Both installers keep the
+same `current`/`Minecraft` layout and are staged together by
+`stage_copimine_launcher_site.ps1`.
+
 The installer keeps the mutable Minecraft instance outside the replaceable
 Velopack `current` directory. With the packaged default layout, an install
 root such as `D:\Games\CopiMine\Launcher` stores game data in

@@ -121,3 +121,30 @@ def test_patch_source_rejects_missing_review_and_more_than_three_summary_lines(t
     patch_path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
     with pytest.raises(PatchBuildError, match="summary"):
         build_notes(source, output, site, catalog, textures)
+
+
+def test_patch_detail_keeps_section_boundaries_with_multiple_rows_and_theme_contract(tmp_path: Path) -> None:
+    source = tmp_path / "patches"
+    output = tmp_path / "public-data" / "patches"
+    site = tmp_path / "news"
+    catalog, textures = make_catalog(tmp_path)
+    write_valid_patch(source)
+    patch_path = source / "2026-08-20-1.0.0.yaml"
+    payload = yaml.safe_load(patch_path.read_text(encoding="utf-8"))
+    payload["sections"]["technical"].append(
+        {
+            "id": "second-technical-row",
+            "title": "Проверка",
+            "changes": [{"kind": "verified", "text": "Повторная проверка выполнена."}],
+        }
+    )
+    patch_path.write_text(yaml.safe_dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    build_notes(source, output, site, catalog, textures)
+
+    detail_html = (site / "copimine-launcher-1-0-0.html").read_text(encoding="utf-8")
+    assert detail_html.count('<section class="patch-section">') == detail_html.count("</section>")
+    assert 'src="/assets/js/theme/theme-bootstrap.js"' in detail_html
+    assert 'data-theme-toggle="true"' in detail_html
+    assert "onclick=" not in detail_html
+    assert not list(output.glob("*.tmp"))

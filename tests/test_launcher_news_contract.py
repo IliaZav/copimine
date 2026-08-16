@@ -87,6 +87,10 @@ def test_network_text_is_not_inserted_as_html() -> None:
 
 def test_launcher_lightbox_has_explicit_escape_close_handler() -> None:
     source = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    launcher = read("admin-web/frontend/launcher.html")
     assert 'dialog.addEventListener("keydown"' in source
     assert 'event.key === "Escape"' in source
     assert 'dialog.close()' in source
+    assert 'closeButton.addEventListener("click"' in source
+    assert "onclick=" not in launcher
+    assert "image.alt = String(button.dataset.lightboxAlt" in source

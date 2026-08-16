@@ -115,6 +115,7 @@ export function bindLauncherLightbox() {
   const dialog = document.getElementById("launcherLightbox");
   const image = dialog?.querySelector("img");
   const caption = dialog?.querySelector("figcaption");
+  const closeButton = dialog?.querySelector(".launcher-lightbox-close");
   if (!(dialog instanceof HTMLDialogElement) || !(image instanceof HTMLImageElement) || !(caption instanceof HTMLElement)) return;
   document.querySelectorAll("[data-lightbox-src]").forEach((button) => {
     if (!(button instanceof HTMLButtonElement) || button.dataset.bound === "true") return;
@@ -123,10 +124,16 @@ export function bindLauncherLightbox() {
       const source = String(button.dataset.lightboxSrc || "");
       if (!source.startsWith("/assets/launcher-screenshots/") || source.includes("..")) return;
       image.src = source;
-      caption.textContent = String(button.dataset.lightboxAlt || "Скриншот CopiMine Launcher");
+      image.alt = String(button.dataset.lightboxAlt || "Скриншот CopiMine Launcher");
+      caption.textContent = image.alt;
       dialog.showModal();
     });
   });
+  if (closeButton instanceof HTMLButtonElement) {
+    closeButton.addEventListener("click", () => {
+      if (dialog.open) dialog.close();
+    });
+  }
   dialog.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && dialog.open) {
       event.preventDefault();
@@ -139,5 +146,9 @@ export function bindLauncherLightbox() {
       dialog.close();
     }
   });
-  dialog.addEventListener("close", () => { image.removeAttribute("src"); });
+  dialog.addEventListener("close", () => {
+    image.removeAttribute("src");
+    image.alt = "";
+    caption.textContent = "";
+  });
 }

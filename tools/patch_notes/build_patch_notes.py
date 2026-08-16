@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -24,6 +26,25 @@ VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
 class PatchBuildError(ValueError):
     """Raised when a source patch cannot be published safely."""
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+        text=True,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
 
 
 def _require_mapping(value: Any, label: str) -> dict[str, Any]:
@@ -230,7 +251,8 @@ def _detail_html(patch: dict[str, Any]) -> str:
             blocks.append(f'<article class="patch-group"><h3>{text(row["title"])}</h3><ul>')
             for change in row["changes"]:
                 blocks.append(f'<li><span class="change-kind change-kind-{text(change["kind"])}">{text(change["kind"])}</span>{text(change["text"])}</li>')
-            blocks.append("</ul></article></section>")
+            blocks.append("</ul></article>")
+        blocks.append("</section>")
     if patch["items"]:
         blocks.append('<section class="patch-section"><h2>Предметы</h2><div id="patch-items" class="patch-items">')
         for item in patch["items"]:
@@ -252,15 +274,20 @@ def _detail_html(patch: dict[str, Any]) -> str:
   <meta name="color-scheme" content="light dark" />
   <link rel="canonical" href="https://copimine.ru/news/%s.html" />
   <title>%s — CopiMine</title>
-  <link rel="stylesheet" href="/assets/style.css?v=20260815launchernews1" />
-  <link rel="stylesheet" href="/assets/css/launcher-news.css?v=20260815launchernews1" />
+  <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css?v=20260815launchernews3" />
+  <link rel="stylesheet" href="/assets/css/tokens.css" />
+  <link rel="stylesheet" href="/assets/css/themes.css" />
+  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/css/launcher-news.css?v=20260815launchernews3" />
 </head>
 <body data-page-kind="public-patch" data-patch-slug="%s">
   <main class="public-site public-site-compact patch-page">
-    <header class="public-nav"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Новости обновлений</small></span></a><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/launcher.html">Лаунчер</a><a href="/news.html" aria-current="page">Новости</a><a href="/server.html">Сервер</a></nav></header>
+    <header class="public-nav"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Новости обновлений</small></span></a><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/launcher.html">Лаунчер</a><a href="/news.html" aria-current="page">Новости</a><a href="/server.html">Сервер</a><a href="/shops.html">Лавки</a><a id="publicSigninLink" href="/signin.html">Войти</a><a id="publicRegisterLink" href="/register.html">Регистрация</a><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button></nav></header>
     <div class="public-page-shell"><article class="patch-detail" data-patch-detail><a class="text-link" href="/news.html">← Все обновления</a><header class="patch-heading"><span class="hero-kicker">Патчноут</span><h1>%s</h1><p><span>Версия %s</span> · <time datetime="%s">%s</time></p></header><ul class="patch-summary">%s</ul>%s</article></div>
   </main>
-  <script type="module" src="/assets/js/public/public-page.js?v=20260815launchernews1"></script>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260815launchernews3"></script>
 </body>
 </html>
 """ % (
@@ -315,8 +342,8 @@ def build_notes(
                 "changes": item["changes"],
             })
         detail = {**patch, "detailUrl": f"/news/{patch['slug']}.html", "items": normalized_items}
-        (output_dir / f"{patch['slug']}.json").write_text(json.dumps(detail, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        (site_dir / f"{patch['slug']}.html").write_text(_detail_html(detail), encoding="utf-8")
+        _atomic_write_text(output_dir / f"{patch['slug']}.json", json.dumps(detail, ensure_ascii=False, indent=2) + "\n")
+        _atomic_write_text(site_dir / f"{patch['slug']}.html", _detail_html(detail))
         index_rows.append({
             "id": patch["id"],
             "slug": patch["slug"],
@@ -329,7 +356,7 @@ def build_notes(
             "badges": ["Launcher"] if "launcher" in patch["title"].lower() or "launcher" in patch["id"].lower() else ["Сервер"],
         })
     index = {"schemaVersion": 1, "patches": index_rows}
-    (output_dir / "index.json").write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _atomic_write_text(output_dir / "index.json", json.dumps(index, ensure_ascii=False, indent=2) + "\n")
     return {"count": len(patches), "index": index, "outputDir": str(output_dir), "siteDir": str(site_dir)}
 
 

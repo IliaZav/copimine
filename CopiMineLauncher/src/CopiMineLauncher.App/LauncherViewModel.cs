@@ -505,31 +505,35 @@ public partial class LauncherViewModel : ObservableObject
         IsProgressIndeterminate = true;
         ProgressLabel = "…";
         LoadingStage = launch ? "Запускаем Minecraft…" : "Проверяем файлы…";
-        var operationFinished = 0;
+        var progressGate = new object();
+        var operationFinished = false;
         try
         {
             var progress = new Progress<LauncherProgress>(value =>
             {
-                if (Volatile.Read(ref operationFinished) != 0)
+                lock (progressGate)
                 {
-                    return;
-                }
+                    if (operationFinished)
+                    {
+                        return;
+                    }
 
-                Status = value.Message;
-                LoadingStage = value.Message;
-                IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "java" or "minecraft";
-                ProgressPercent = value.Stage switch
-                {
-                    "manifest" => 2,
-                    "reconcile" => 28,
-                    "java" => 46,
-                    "minecraft" => 72,
-                    "servers" => 88,
-                    "launch" => 96,
-                    _ => ProgressPercent
-                };
-                ProgressLabel = IsProgressIndeterminate ? "…" : $"{ProgressPercent:0}%";
-                Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
+                    Status = value.Message;
+                    LoadingStage = value.Message;
+                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "java" or "minecraft";
+                    ProgressPercent = value.Stage switch
+                    {
+                        "manifest" => 2,
+                        "reconcile" => 28,
+                        "java" => 46,
+                        "minecraft" => 72,
+                        "servers" => 88,
+                        "launch" => 96,
+                        _ => ProgressPercent
+                    };
+                    ProgressLabel = IsProgressIndeterminate ? "…" : $"{ProgressPercent:0}%";
+                    Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
+                }
             });
             var request = new LauncherOperationRequest(
                 InstancePath,
@@ -542,45 +546,59 @@ public partial class LauncherViewModel : ObservableObject
                 ? await runtimeCoordinator.PlayAsync(request, cancellation.Token, progress)
                 : await runtimeCoordinator.RepairAsync(request, cancellation.Token, progress);
 
-            Volatile.Write(ref operationFinished, 1);
-            Status = result.Succeeded
-                ? (launch ? "Minecraft запущен" : "Игра готова")
-                : (automatic ? "Не удалось подготовить игру" : "Не удалось выполнить действие");
-            LoadingStage = result.Succeeded
-                ? (launch ? "Minecraft запущен" : "Сборка готова")
-                : $"Причина: {result.ErrorCode ?? "UNKNOWN_ERROR"}";
-            IsDiagnosticOpen = !result.Succeeded;
-            if (result.Succeeded)
+            lock (progressGate)
             {
-                ProgressPercent = 100;
+                operationFinished = true;
+                Status = result.Succeeded
+                    ? (launch ? "Minecraft запущен" : "Игра готова")
+                    : (automatic ? "Не удалось подготовить игру" : "Не удалось выполнить действие");
+                LoadingStage = result.Succeeded
+                    ? (launch ? "Minecraft запущен" : "Сборка готова")
+                    : $"Причина: {result.ErrorCode ?? "UNKNOWN_ERROR"}";
+                IsDiagnosticOpen = !result.Succeeded;
+                if (result.Succeeded)
+                {
+                    ProgressPercent = 100;
+                }
+                IsProgressIndeterminate = false;
+                ProgressLabel = $"{ProgressPercent:0}%";
+                Diagnostic = BuildDiagnostic(result, InstancePath);
             }
-            IsProgressIndeterminate = false;
-            ProgressLabel = $"{ProgressPercent:0}%";
-            Diagnostic = BuildDiagnostic(result, InstancePath);
             TraceStartup($"operation:result:{result.Succeeded}:{result.ErrorCode ?? "OK"}:{result.Diagnostic.Replace(Environment.NewLine, " | ", StringComparison.Ordinal)}");
         }
         catch (OperationCanceledException)
         {
-            Status = "Операция отменена";
-            LoadingStage = "Файлы не изменены";
-            Diagnostic = "Проверка остановлена. Незавершённые файлы не применены.";
-            IsDiagnosticOpen = true;
-            IsProgressIndeterminate = false;
-            ProgressLabel = $"{ProgressPercent:0}%";
+            lock (progressGate)
+            {
+                operationFinished = true;
+                Status = "Операция отменена";
+                LoadingStage = "Файлы не изменены";
+                Diagnostic = "Проверка остановлена. Незавершённые файлы не применены.";
+                IsDiagnosticOpen = true;
+                IsProgressIndeterminate = false;
+                ProgressLabel = $"{ProgressPercent:0}%";
+            }
         }
         catch (Exception exception)
         {
-            Status = "Ошибка";
-            LoadingStage = "Причина указана ниже";
-            Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
-            IsDiagnosticOpen = true;
-            IsProgressIndeterminate = false;
-            ProgressLabel = $"{ProgressPercent:0}%";
+            lock (progressGate)
+            {
+                operationFinished = true;
+                Status = "Ошибка";
+                LoadingStage = "Причина указана ниже";
+                Diagnostic = $"LAUNCHER_UI_OPERATION_FAILED: {exception.Message}";
+                IsDiagnosticOpen = true;
+                IsProgressIndeterminate = false;
+                ProgressLabel = $"{ProgressPercent:0}%";
+            }
             TraceStartup($"operation:exception:{exception.GetType().Name}:{exception.Message}");
         }
         finally
         {
-            Volatile.Write(ref operationFinished, 1);
+            lock (progressGate)
+            {
+                operationFinished = true;
+            }
             IsBusy = false;
             operationCancellation = null;
             TraceStartup("operation:finished");

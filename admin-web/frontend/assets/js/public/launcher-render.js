@@ -127,5 +127,17 @@ export function bindLauncherLightbox() {
       dialog.showModal();
     });
   });
+  dialog.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && dialog.open) {
+      event.preventDefault();
+      dialog.close();
+    }
+  });
+  dialog.addEventListener("cancel", (event) => {
+    if (dialog.open) {
+      event.preventDefault();
+      dialog.close();
+    }
+  });
   dialog.addEventListener("close", () => { image.removeAttribute("src"); });
 }

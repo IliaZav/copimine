@@ -83,3 +83,10 @@ def test_network_text_is_not_inserted_as_html() -> None:
     assert 'pageKind === "public-launcher"' in public_page
     assert 'pageKind === "public-news"' in public_page
     assert 'pageKind === "public-patch"' in public_page
+
+
+def test_launcher_lightbox_has_explicit_escape_close_handler() -> None:
+    source = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    assert 'dialog.addEventListener("keydown"' in source
+    assert 'event.key === "Escape"' in source
+    assert 'dialog.close()' in source

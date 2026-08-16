@@ -50,9 +50,24 @@ def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_ap
     ):
         assert marker in link_page.lower(), marker
 
+    assert 'const manualLinkPanels = hasLauncherAuthorization ? "" :' in link_page
+    assert "Код вводить не нужно" in link_page
+
     protocol = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherProtocolRegistration.cs").read_text(encoding="utf-8")
     assert "Registry.CurrentUser" in protocol
     assert "Software" in protocol and "Classes" in protocol and "copimine" in protocol
+
+
+def test_unauthenticated_launcher_binding_preserves_the_return_target_after_login():
+    routes = (ROOT / "admin-web/frontend/assets/js/shared/app-routes.js").read_text(encoding="utf-8")
+    runtime = (ROOT / "admin-web/frontend/assets/js/cabinet-runtime.js").read_text(encoding="utf-8")
+    for marker in (
+        "launcherBindingHrefFromSearch",
+        "launcherReturnHrefFromAuthSearch",
+        "authLandingHref(\"signin\", launcherReturn)",
+        "if (launcherReturn) {",
+    ):
+        assert marker in routes or marker in runtime, marker
 
 
 def test_launcher_nickname_change_is_a_server_side_identity_operation():

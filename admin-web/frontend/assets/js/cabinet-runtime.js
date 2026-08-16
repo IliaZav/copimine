@@ -10,7 +10,7 @@ import { createPlayerAccountPages } from "./player/account-pages.js";
 import { createPlayerArtifactPages } from "./player/artifact-pages.js";
 import { createPlayerDonationPages } from "./player/donation-pages.js";
 import { createPlayerTreasuryPages } from "./player/treasury-pages.js";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -2771,6 +2771,7 @@ async function login(event) {
   event.preventDefault();
   if ($("loginError")) $("loginError").textContent = "";
   try {
+    const launcherReturn = launcherReturnHrefFromAuthSearch();
     const isRegister = isRegisterPage();
     const payload = { username: $("username").value.trim(), password: $("password").value };
     if (isRegister) payload.minecraft_name = $("playerMinecraftName").value.trim();
@@ -2784,6 +2785,10 @@ async function login(event) {
     state.role = data.role || "player";
     state.authRole = state.role;
     state.user = data.account || { username: data.username, role: state.role };
+    if (launcherReturn) {
+      window.location.replace(launcherReturn);
+      return;
+    }
     redirectToRoleHome(true);
   } catch (err) {
     if ($("loginError")) $("loginError").textContent = err.message;
@@ -2859,7 +2864,12 @@ async function bootAuthed(options = {}) {
     state.authRole = state.role;
     if (isAuthLandingPage()) {
       renderPublicAuthState();
-      redirectToRoleHome(true);
+      const launcherReturn = launcherReturnHrefFromAuthSearch();
+      if (launcherReturn) {
+        window.location.replace(launcherReturn);
+      } else {
+        redirectToRoleHome(true);
+      }
       return;
     }
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
@@ -2869,7 +2879,8 @@ async function bootAuthed(options = {}) {
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     if (isCabinetPage()) {
-      window.location.replace(authLandingHref("signin"));
+      const launcherReturn = launcherBindingHrefFromSearch(window.location.search);
+      window.location.replace(authLandingHref("signin", launcherReturn));
       return;
     }
     logout(false);
@@ -5889,23 +5900,14 @@ async function loadPlayerLink() {
       ["2. Войди в аккаунт", "После входа сайт подтвердит запрос автоматически.", "neutral"],
       ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
     ]));
-  setView(`
-    <section class="layout-grid grid-2">
-      ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
-        ["Логин сайта", state.user.username || "—"],
-        ["Minecraft-ник", state.user.minecraftName || "—"],
-        ["Привязан", linked],
-        ["Создан", dt(state.user.createdAt)]
-      ]))}
-      ${launcherPanel}
-    </section>
+  const manualLinkPanels = hasLauncherAuthorization ? "" : `
     <section class="layout-grid grid-2">
       ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
         <div class="form-grid">
           <input id="linkMinecraftName" value="${esc(requestedNick)}" placeholder="Minecraft-ник на сервере" />
           <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
         </div>
-        ${launcherNick ? '<div class="notice">Launcher передал новый ник. Проверь его и подтверди привязку после получения кода в игре. Пароль сайта и AuthMe не передаются в Launcher.</div>' : ""}
+        ${launcherNick ? '<div class="notice">Launcher передал новый ник. Для автоматической привязки достаточно войти в аккаунт сайта; код вводить не нужно. Пароль сайта и AuthMe не передаются в Launcher.</div>' : ""}
         <div class="spacer-12"></div>
         ${playerLinkSummary(state.playerLinkRequest)}
       `)}
@@ -5916,7 +5918,20 @@ async function loadPlayerLink() {
         </div>
         ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
       `)}
+    </section>`;
+  setView(`
+    <section class="layout-grid grid-2">
+      ${panel("Статус привязки", hasLauncherAuthorization
+        ? "Launcher связывается с аккаунтом сайта после обычного входа. Код вводить не нужно."
+        : "Minecraft-ник подтверждается кодом из игры.", kv([
+        ["Логин сайта", state.user.username || "—"],
+        ["Minecraft-ник", state.user.minecraftName || "—"],
+        ["Привязан", linked],
+        ["Создан", dt(state.user.createdAt)]
+      ]))}
+      ${launcherPanel}
     </section>
+    ${manualLinkPanels}
   `);
 }
 

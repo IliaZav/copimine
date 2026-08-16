@@ -69,6 +69,12 @@ public partial class App : Application
             launcherBindingStateStore: bindingStateStore));
         MainWindow = window;
         window.Show();
+
+        var callback = e.Args.FirstOrDefault(argument => LauncherProtocolCallbackParser.TryParse(argument, out _));
+        if (!string.IsNullOrWhiteSpace(callback))
+        {
+            _ = window.HandleLauncherProtocolCallbackAsync(callback);
+        }
     }
 
     private static HttpMessageHandler CreateHttpHandler()

@@ -98,6 +98,12 @@ public partial class MainWindow : Window
         }
     }
 
+    public async Task HandleLauncherProtocolCallbackAsync(string callback)
+    {
+        await viewModel.HandleLauncherProtocolCallbackAsync(callback);
+        Activate();
+    }
+
     private void OnClosed(object? sender, EventArgs e)
     {
         viewModel.LauncherHideRequested -= OnLauncherHideRequested;

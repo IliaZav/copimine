@@ -826,40 +826,12 @@ public partial class LauncherViewModel : ObservableObject
             Status = "Создаём безопасную привязку…";
             LoadingStage = "Откройте страницу сайта";
             var challenge = await launcherBindingClient.CreateChallengeAsync(PlayerName.Trim(), LauncherVersionInfo.Version, CancellationToken.None);
+            launcherBindingStateStore.SavePendingChallenge(challenge);
             OpenBindingUrl(challenge.AuthorizationUrl);
             Status = "Ожидаем подтверждение на сайте…";
-            Diagnostic = $"Проверьте страницу привязки в браузере. Код действует до {challenge.ExpiresAtUtc.ToLocalTime():HH:mm}. Пароль сайта и AuthMe не передаются.";
+            Diagnostic = $"Проверьте страницу привязки в браузере. Запрос действует до {challenge.ExpiresAtUtc.ToLocalTime():HH:mm}. Пароль сайта и AuthMe не передаются.";
 
-            while (DateTimeOffset.UtcNow < challenge.ExpiresAtUtc)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2));
-                var result = await launcherBindingClient.GetStatusAsync(challenge, CancellationToken.None);
-                if (!result.Linked)
-                {
-                    if (string.Equals(result.Status, "EXPIRED", StringComparison.OrdinalIgnoreCase)) break;
-                    continue;
-                }
-
-                launcherBindingState = new LauncherBindingState(
-                    true,
-                    result.SiteAccountId ?? string.Empty,
-                    result.SiteUsername ?? string.Empty,
-                    result.MinecraftName ?? PlayerName,
-                    result.LauncherAccessToken ?? challenge.PollToken);
-                launcherAccessToken = launcherBindingState.AccessToken;
-                launcherBindingStateStore.Save(launcherBindingState);
-                IsLauncherLinked = true;
-                LauncherLinkRequired = false;
-                Status = "Launcher привязан к сайту";
-                LoadingStage = "Можно запускать игру";
-                Diagnostic = $"Аккаунт сайта: {result.SiteUsername ?? "подтверждён"}{Environment.NewLine}Launcher связан без передачи пароля.";
-                return;
-            }
-
-            Status = "Привязка не подтверждена";
-            LoadingStage = "Код истёк или страница не подтверждена";
-            Diagnostic = "LAUNCHER_LINK_NOT_CONFIRMED: откройте привязку ещё раз и подтвердите её в аккаунте сайта.";
-            IsDiagnosticOpen = true;
+            await WaitForLauncherLinkAsync(challenge);
         }
         catch (OperationCanceledException)
         {
@@ -879,6 +851,73 @@ public partial class LauncherViewModel : ObservableObject
             Diagnostic = $"LAUNCHER_LINK_FAILED: {exception.Message}";
             IsDiagnosticOpen = true;
         }
+    }
+
+    public async Task HandleLauncherProtocolCallbackAsync(string callback)
+    {
+        if (!LauncherProtocolCallbackParser.TryParse(callback, out var parsed))
+        {
+            Status = "Ответ браузера не распознан";
+            LoadingStage = "Привязка не подтверждена";
+            Diagnostic = "LAUNCHER_CALLBACK_INVALID: Launcher принимает только безопасный callback copimine://launcher/link.";
+            IsDiagnosticOpen = true;
+            return;
+        }
+
+        if (IsLauncherLinked || launcherBindingClient is null) return;
+
+        var pending = launcherBindingStateStore.LoadPendingChallenge();
+        if (pending is null || !string.Equals(pending.ChallengeId, parsed.ChallengeId, StringComparison.Ordinal))
+        {
+            Status = "Ответ браузера получен";
+            LoadingStage = "Ожидается новая привязка";
+            Diagnostic = "LAUNCHER_CALLBACK_NO_PENDING_CHALLENGE: callback не совпал с активным запросом этого Launcher. Запустите привязку ещё раз.";
+            IsDiagnosticOpen = true;
+            return;
+        }
+
+        Status = "Проверяем подтверждение на сайте…";
+        LoadingStage = "Получаем результат привязки";
+        Diagnostic = "Браузер вернулся в Launcher. Проверяем одноразовый запрос без ручного ввода.";
+        await WaitForLauncherLinkAsync(pending);
+    }
+
+    private async Task WaitForLauncherLinkAsync(LauncherLinkChallenge challenge)
+    {
+        if (launcherBindingClient is null) return;
+
+        while (DateTimeOffset.UtcNow < challenge.ExpiresAtUtc)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            var result = await launcherBindingClient.GetStatusAsync(challenge, CancellationToken.None);
+            if (!result.Linked)
+            {
+                if (string.Equals(result.Status, "EXPIRED", StringComparison.OrdinalIgnoreCase)) break;
+                continue;
+            }
+
+            launcherBindingState = new LauncherBindingState(
+                true,
+                result.SiteAccountId ?? string.Empty,
+                result.SiteUsername ?? string.Empty,
+                result.MinecraftName ?? PlayerName,
+                result.LauncherAccessToken ?? challenge.PollToken);
+            launcherAccessToken = launcherBindingState.AccessToken;
+            launcherBindingStateStore.Save(launcherBindingState);
+            launcherBindingStateStore.ClearPendingChallenge();
+            IsLauncherLinked = true;
+            LauncherLinkRequired = false;
+            Status = "Launcher привязан к сайту";
+            LoadingStage = "Можно запускать игру";
+            Diagnostic = $"Аккаунт сайта: {result.SiteUsername ?? "подтверждён"}{Environment.NewLine}Launcher связан без передачи пароля.";
+            return;
+        }
+
+        launcherBindingStateStore.ClearPendingChallenge();
+        Status = "Привязка не подтверждена";
+        LoadingStage = "Запрос истёк или страница не подтверждена";
+        Diagnostic = "LAUNCHER_LINK_NOT_CONFIRMED: откройте привязку ещё раз и подтвердите её в аккаунте сайта.";
+        IsDiagnosticOpen = true;
     }
 
     private static void OpenTrustedUrl(Uri uri)

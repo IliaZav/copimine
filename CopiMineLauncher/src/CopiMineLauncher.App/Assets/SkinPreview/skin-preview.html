@@ -28,6 +28,8 @@
       const status = document.getElementById("status");
       let viewer = null;
       let revision = 0;
+      let capeAnimationTimer = null;
+      let capeAnimationImage = null;
 
       function createBackground(name) {
         const image = document.createElement("canvas");
@@ -118,8 +120,61 @@
         }
       }
 
+      function stopCapeAnimation() {
+        if (capeAnimationTimer !== null) {
+          window.clearInterval(capeAnimationTimer);
+          capeAnimationTimer = null;
+        }
+        if (capeAnimationImage !== null) {
+          capeAnimationImage.onload = null;
+          capeAnimationImage.onerror = null;
+          capeAnimationImage.remove();
+          capeAnimationImage = null;
+        }
+      }
+
+      async function loadAnimatedCape(url, options, currentRevision) {
+        const image = new Image();
+        image.alt = "";
+        image.decoding = "async";
+        image.style.position = "absolute";
+        image.style.left = "-10000px";
+        image.style.top = "-10000px";
+        image.style.width = "1px";
+        image.style.height = "1px";
+        image.style.opacity = "0";
+        image.style.pointerEvents = "none";
+        document.body.appendChild(image);
+        try {
+          await new Promise((resolve, reject) => {
+            image.onload = resolve;
+            image.onerror = () => reject(new Error("GIF плаща не загрузился"));
+            image.src = url;
+          });
+          if (currentRevision !== revision) {
+            image.remove();
+            return;
+          }
+
+          capeAnimationImage = image;
+          const repaint = () => {
+            if (currentRevision !== revision) {
+              stopCapeAnimation();
+              return;
+            }
+            viewer.loadCape(image, options);
+          };
+          repaint();
+          capeAnimationTimer = window.setInterval(repaint, 1000 / 12);
+        } catch (error) {
+          image.remove();
+          throw error;
+        }
+      }
+
       async function applyConfig(config) {
         const currentRevision = ++revision;
+        stopCapeAnimation();
         if (!viewer) {
           viewer = new skinview3d.SkinViewer({
             canvas,
@@ -149,12 +204,19 @@
           }
           if (currentRevision !== revision) return;
           if (config.capeUrl) {
-            await viewer.loadCape(config.capeUrl, { backEquipment: config.capeEquipment === "elytra" ? "elytra" : "cape" });
+            const capeOptions = { backEquipment: config.capeEquipment === "elytra" ? "elytra" : "cape" };
+            const isAnimated = config.capeAnimated === true || /\.gif(?:[?#]|$)/i.test(config.capeUrl);
+            if (isAnimated) {
+              await loadAnimatedCape(config.capeUrl, capeOptions, currentRevision);
+            } else {
+              await viewer.loadCape(config.capeUrl, capeOptions);
+            }
           } else {
             await viewer.loadCape(null);
           }
           status.textContent = config.skinUrl ? "Перетаскивайте мышью, чтобы вращать модель" : "Выберите скин или загрузите PNG-файл";
         } catch (error) {
+          stopCapeAnimation();
           status.textContent = "Не удалось загрузить текстуру предпросмотра";
           if (window.chrome && window.chrome.webview) {
             window.chrome.webview.postMessage({ type: "preview-error", message: String(error && error.message || error) });

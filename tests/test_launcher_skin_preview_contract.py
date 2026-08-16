@@ -40,6 +40,32 @@ def test_skin_manager_has_dark_dropdown_and_spaced_action_controls():
     assert 'ItemContainerStyle' in xaml
 
 
+def test_cosmetics_use_durable_separate_libraries_and_preserve_gif_capes():
+    store = (REPO / "CopiMineLauncher" / "src" / "CopiMineLauncher.Infrastructure" / "Skins" / "LocalCosmeticsStore.cs").read_text(encoding="utf-8")
+    validator = (REPO / "CopiMineLauncher" / "src" / "CopiMineLauncher.Infrastructure" / "Skins" / "SkinTextureValidator.cs").read_text(encoding="utf-8")
+    manager = (APP / "SkinManagerWindow.xaml.cs").read_text(encoding="utf-8")
+
+    assert 'Path.Combine(cosmeticsRoot, "skins")' in store
+    assert 'Path.Combine(cosmeticsRoot, "capes")' in store
+    assert "FindLibraryPath" in store
+    assert "SaveToLibrary" in store
+    assert "GIF89a" in validator
+    assert "IsAnimated" in validator
+    assert "SaveToLibrary" in manager
+
+
+def test_skin_preview_repaints_animated_gif_capes_and_clears_old_timer():
+    preview = (APP / "Assets" / "SkinPreview" / "skin-preview.html").read_text(encoding="utf-8")
+    manager = (APP / "SkinManagerWindow.xaml.cs").read_text(encoding="utf-8")
+
+    assert "capeAnimated" in manager
+    assert "capeAnimated" in preview
+    assert "new Image()" in preview
+    assert "setInterval" in preview
+    assert "clearInterval" in preview
+    assert "loadCape(image" in preview
+
+
 def test_local_staging_runner_is_loopback_only():
     script = (REPO / "scripts" / "run_copimine_launcher_staging.ps1").read_text(encoding="utf-8")
 

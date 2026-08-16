@@ -28,6 +28,7 @@ public partial class SkinManagerWindow : Window
     private bool previewReady;
     private bool hasNextPage;
     private int currentPage = 1;
+    private long previewAssetVersion;
     private string? selectedSkinPath;
     private string? selectedCapePath;
 
@@ -142,8 +143,10 @@ public partial class SkinManagerWindow : Window
             return;
         }
 
-        var skinPath = localStore.GetInstalledPath(player, CosmeticTextureKind.Skin);
-        var capePath = localStore.GetInstalledPath(player, CosmeticTextureKind.Cape);
+        var skinPath = localStore.FindLibraryPath(player, CosmeticTextureKind.Skin)
+            ?? localStore.GetInstalledPath(player, CosmeticTextureKind.Skin);
+        var capePath = localStore.FindLibraryPath(player, CosmeticTextureKind.Cape)
+            ?? localStore.GetInstalledPath(player, CosmeticTextureKind.Cape);
         if (File.Exists(skinPath)) selectedSkinPath = skinPath;
         if (File.Exists(capePath)) selectedCapePath = capePath;
         if (selectedSkinPath is not null || selectedCapePath is not null)
@@ -212,7 +215,8 @@ public partial class SkinManagerWindow : Window
         try
         {
             SetStatus($"Скачиваем скин №{item.Id} для предпросмотра…");
-            selectedSkinPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Skin, lifetime.Token);
+            var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Skin, lifetime.Token);
+            selectedSkinPath = PersistSelection(cachedPath, CosmeticTextureKind.Skin);
             ModelComboBox.SelectedIndex = item.IsSlim ? 2 : 1;
             SourceLabel.Text = $"Ely.by · скин №{item.Id}";
             await SendPreviewAsync();
@@ -248,7 +252,8 @@ public partial class SkinManagerWindow : Window
 
             if (profile.SkinUrl is not null)
             {
-                selectedSkinPath = await localStore.CacheRemoteAsync(httpClient, profile.SkinUrl, CosmeticTextureKind.Skin, lifetime.Token);
+                var cachedSkinPath = await localStore.CacheRemoteAsync(httpClient, profile.SkinUrl, CosmeticTextureKind.Skin, lifetime.Token);
+                selectedSkinPath = PersistSelection(cachedSkinPath, CosmeticTextureKind.Skin);
                 ModelComboBox.SelectedIndex = profile.IsSlim ? 2 : 1;
             }
             else
@@ -258,7 +263,8 @@ public partial class SkinManagerWindow : Window
 
             if (profile.CapeUrl is not null)
             {
-                selectedCapePath = await localStore.CacheRemoteAsync(httpClient, profile.CapeUrl, CosmeticTextureKind.Cape, lifetime.Token);
+                var cachedCapePath = await localStore.CacheRemoteAsync(httpClient, profile.CapeUrl, CosmeticTextureKind.Cape, lifetime.Token);
+                selectedCapePath = PersistSelection(cachedCapePath, CosmeticTextureKind.Cape);
             }
             else
             {
@@ -321,7 +327,8 @@ public partial class SkinManagerWindow : Window
         try
         {
             SetStatus($"Скачиваем плащ {item.Type} для предпросмотра…");
-            selectedCapePath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Cape, lifetime.Token);
+            var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Cape, lifetime.Token);
+            selectedCapePath = PersistSelection(cachedPath, CosmeticTextureKind.Cape);
             SourceLabel.Text = $"{item.Source} · плащ {item.Type}";
             await SendPreviewAsync();
             SetStatus("Плащ загружен в предпросмотр.");
@@ -340,7 +347,7 @@ public partial class SkinManagerWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = kind == CosmeticTextureKind.Skin ? "Выберите PNG/JPG скин" : "Выберите PNG/JPG плащ",
+            Title = kind == CosmeticTextureKind.Skin ? "Выберите PNG/JPG скин" : "Выберите PNG/JPG/GIF плащ",
             Filter = "Изображения|*.png;*.jpg;*.jpeg;*.bmp;*.gif|Все файлы|*.*",
             CheckFileExists = true,
             Multiselect = false
@@ -349,16 +356,19 @@ public partial class SkinManagerWindow : Window
 
         try
         {
-            var imported = ConvertToPng(dialog.FileName);
+            var imported = kind == CosmeticTextureKind.Cape && SkinTextureValidator.IsGifFile(dialog.FileName)
+                ? dialog.FileName
+                : ConvertToPng(dialog.FileName);
             _ = SkinTextureValidator.ValidateFile(imported, kind);
+            var persisted = PersistSelection(imported, kind);
             if (kind == CosmeticTextureKind.Skin)
             {
-                selectedSkinPath = imported;
+                selectedSkinPath = persisted;
                 SourceLabel.Text = $"Локальный файл скина · {Path.GetFileName(dialog.FileName)}";
             }
             else
             {
-                selectedCapePath = imported;
+                selectedCapePath = persisted;
                 SourceLabel.Text = $"Локальный файл плаща · {Path.GetFileName(dialog.FileName)}";
             }
 
@@ -387,10 +397,11 @@ public partial class SkinManagerWindow : Window
         try
         {
             var path = localStore.InstallFile(source, player, kind);
+            var libraryPath = localStore.FindLibraryPath(player, kind);
             SetStatus(kind == CosmeticTextureKind.Skin
                 ? $"Скин применён к нику {player}."
                 : $"Плащ применён к нику {player}.");
-            SourceLabel.Text = $"Установлено: {path}";
+            SourceLabel.Text = libraryPath is null ? $"Установлено: {path}" : $"Сохранено: {libraryPath}";
         }
         catch (Exception exception)
         {
@@ -406,12 +417,17 @@ public partial class SkinManagerWindow : Window
         await previewGate.WaitAsync(lifetime.Token);
         try
         {
-            var skinPreview = await CopyPreviewTextureAsync(selectedSkinPath, "current-skin.png");
-            var capePreview = await CopyPreviewTextureAsync(selectedCapePath, "current-cape.png");
+            var skinPreview = await CopyPreviewTextureAsync(selectedSkinPath, "current-skin");
+            var capePreview = await CopyPreviewTextureAsync(selectedCapePath, "current-cape");
+            var capeInfo = selectedCapePath is null || !File.Exists(selectedCapePath)
+                ? null
+                : SkinTextureValidator.ValidateFile(selectedCapePath, CosmeticTextureKind.Cape);
+            var version = Interlocked.Increment(ref previewAssetVersion);
             var config = new
             {
-                skinUrl = skinPreview is null ? null : "https://copimine.local/current-skin.png",
-                capeUrl = capePreview is null ? null : "https://copimine.local/current-cape.png",
+                skinUrl = ToPreviewUrl(skinPreview, version),
+                capeUrl = ToPreviewUrl(capePreview, version),
+                capeAnimated = capeInfo?.IsAnimated == true,
                 model = GetTag(ModelComboBox) ?? "auto-detect",
                 animation = GetTag(AnimationComboBox) ?? "walking",
                 background = GetTag(BackgroundComboBox) ?? "ice",
@@ -428,12 +444,40 @@ public partial class SkinManagerWindow : Window
         }
     }
 
-    private async Task<string?> CopyPreviewTextureAsync(string? source, string fileName)
+    private async Task<string?> CopyPreviewTextureAsync(string? source, string fileStem)
     {
         if (string.IsNullOrWhiteSpace(source) || !File.Exists(source)) return null;
-        var destination = Path.Combine(previewRoot, fileName);
-        await Task.Run(() => File.Copy(source, destination, overwrite: true), lifetime.Token);
+        var extension = SkinTextureValidator.IsGifFile(source) ? ".gif" : ".png";
+        var destination = Path.Combine(previewRoot, fileStem + extension);
+        var temporary = destination + ".part";
+        var staleDestination = Path.Combine(previewRoot, fileStem + (extension == ".gif" ? ".png" : ".gif"));
+        await Task.Run(() =>
+        {
+            try
+            {
+                File.Copy(source, temporary, overwrite: true);
+                File.Move(temporary, destination, overwrite: true);
+                if (File.Exists(staleDestination)) File.Delete(staleDestination);
+            }
+            finally
+            {
+                if (File.Exists(temporary)) File.Delete(temporary);
+            }
+        }, lifetime.Token);
         return destination;
+    }
+
+    private static string? ToPreviewUrl(string? path, long version) =>
+        path is null
+            ? null
+            : $"https://copimine.local/{Uri.EscapeDataString(Path.GetFileName(path))}?v={version}";
+
+    private string PersistSelection(string source, CosmeticTextureKind kind)
+    {
+        var player = PlayerNameTextBox.Text.Trim();
+        return PlayerCosmeticsClient.IsValidNickname(player)
+            ? localStore.SaveToLibrary(source, player, kind)
+            : source;
     }
 
     private string ConvertToPng(string source)
@@ -463,7 +507,7 @@ public partial class SkinManagerWindow : Window
 
     private async Task WritePreviewConfigAsync()
     {
-        var config = "{\"skinUrl\":null,\"capeUrl\":null,\"model\":\"auto-detect\",\"animation\":\"walking\",\"background\":\"ice\",\"autoRotate\":true,\"animationSpeed\":1}";
+        var config = "{\"skinUrl\":null,\"capeUrl\":null,\"capeAnimated\":false,\"model\":\"auto-detect\",\"animation\":\"walking\",\"background\":\"ice\",\"autoRotate\":true,\"animationSpeed\":1}";
         await File.WriteAllTextAsync(Path.Combine(previewRoot, "preview-config.json"), config, lifetime.Token);
     }
 

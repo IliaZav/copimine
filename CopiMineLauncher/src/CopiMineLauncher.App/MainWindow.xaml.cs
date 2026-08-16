@@ -12,6 +12,9 @@ public partial class MainWindow : Window
         this.viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         DataContext = viewModel;
         Loaded += OnLoaded;
+        viewModel.LauncherHideRequested += OnLauncherHideRequested;
+        viewModel.LauncherRestoreRequested += OnLauncherRestoreRequested;
+        Closed += OnClosed;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -47,5 +50,43 @@ public partial class MainWindow : Window
             Owner = this
         };
         cosmetics.ShowDialog();
+    }
+
+    private void OnLauncherHideRequested(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnLauncherHideRequested(sender, e));
+            return;
+        }
+
+        ShowInTaskbar = false;
+        Hide();
+    }
+
+    private void OnLauncherRestoreRequested(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnLauncherRestoreRequested(sender, e));
+            return;
+        }
+
+        ShowInTaskbar = true;
+        if (WindowState == WindowState.Minimized)
+        {
+            WindowState = WindowState.Normal;
+        }
+
+        Show();
+        Activate();
+        Focus();
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        viewModel.LauncherHideRequested -= OnLauncherHideRequested;
+        viewModel.LauncherRestoreRequested -= OnLauncherRestoreRequested;
+        Closed -= OnClosed;
     }
 }

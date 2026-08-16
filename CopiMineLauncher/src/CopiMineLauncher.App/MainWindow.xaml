@@ -61,6 +61,35 @@
       <Setter Property="Padding" Value="8" />
       <Setter Property="Margin" Value="5,0,0,0" />
     </Style>
+    <Style x:Key="LoadingSpinner" TargetType="Ellipse">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="Stroke" Value="#06150d" />
+      <Setter Property="StrokeThickness" Value="3" />
+      <Setter Property="StrokeDashArray" Value="2 5" />
+      <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+      <Setter Property="RenderTransform">
+        <Setter.Value>
+          <RotateTransform Angle="0" />
+        </Setter.Value>
+      </Setter>
+      <Setter Property="Visibility" Value="Collapsed" />
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsLaunching}" Value="True">
+          <Setter Property="Visibility" Value="Visible" />
+          <DataTrigger.EnterActions>
+            <BeginStoryboard Name="SpinLauncher">
+              <Storyboard>
+                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" To="360" Duration="0:0:0.8" RepeatBehavior="Forever" />
+              </Storyboard>
+            </BeginStoryboard>
+          </DataTrigger.EnterActions>
+          <DataTrigger.ExitActions>
+            <RemoveStoryboard BeginStoryboardName="SpinLauncher" />
+          </DataTrigger.ExitActions>
+        </DataTrigger>
+      </Style.Triggers>
+    </Style>
     <Style TargetType="TextBox">
       <Setter Property="Background" Value="#0c1925" />
       <Setter Property="Foreground" Value="#eef7f5" />
@@ -124,7 +153,12 @@
           </Grid>
           <TextBlock Text="{Binding InstancePath}" Foreground="#718b96" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" Margin="0,0,0,10" />
 
-          <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Content="Играть" Margin="0,4,0,14" />
+          <Button Command="{Binding PlayCommand}" Style="{StaticResource PrimaryButton}" Margin="0,4,0,14">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+              <Ellipse Style="{StaticResource LoadingSpinner}" Margin="0,0,9,0" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding PlayButtonText}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Button Command="{Binding RepairCommand}" Style="{StaticResource StackButton}" Content="Проверить файлы" />
           <Button Command="{Binding OpenAccountLinkCommand}" Style="{StaticResource StackButton}" Content="Привязать на сайте" />
           <Border Background="#193443" BorderBrush="#2d6274" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,2,0,12" Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">

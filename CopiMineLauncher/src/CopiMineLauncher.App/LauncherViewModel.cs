@@ -41,6 +41,9 @@ public partial class LauncherViewModel : ObservableObject
     private string launcherAccessToken = string.Empty;
     private LauncherBindingState launcherBindingState = new();
     private string savedPlayerName = "CopiMinePlayer";
+    private readonly object minecraftLifecycleGate = new();
+    private Process? monitoredMinecraftProcess;
+    private bool launcherHiddenForMinecraft;
 
     public LauncherViewModel(
         IPatchFeedClient patchFeedClient,
@@ -64,8 +67,8 @@ public partial class LauncherViewModel : ObservableObject
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
         RefreshNewsCommand = new AsyncRelayCommand(RefreshNewsAsync);
-        PlayCommand = new AsyncRelayCommand(PlayAsync);
-        RepairCommand = new AsyncRelayCommand(RepairAsync);
+        PlayCommand = new AsyncRelayCommand(PlayAsync, CanStartOperation);
+        RepairCommand = new AsyncRelayCommand(RepairAsync, CanStartOperation);
         DiagnoseCommand = new AsyncRelayCommand(DiagnoseAsync);
         CheckSelfUpdateCommand = new AsyncRelayCommand(CheckSelfUpdateAsync);
         ApplySelfUpdateCommand = new AsyncRelayCommand(ApplySelfUpdateAsync);
@@ -95,6 +98,9 @@ public partial class LauncherViewModel : ObservableObject
 
     [ObservableProperty]
     private bool isBusy;
+
+    [ObservableProperty]
+    private bool isLaunching;
 
     [ObservableProperty]
     private double progressPercent;
@@ -142,6 +148,18 @@ public partial class LauncherViewModel : ObservableObject
     public IAsyncRelayCommand OpenAccountLinkCommand { get; }
     public string LauncherDataPath => LauncherInstallPaths.ResolveLauncherDataRoot();
     public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
+    public string PlayButtonText => IsLaunching ? "Запуск…" : "Играть";
+
+    public event EventHandler? LauncherHideRequested;
+    public event EventHandler? LauncherRestoreRequested;
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        PlayCommand.NotifyCanExecuteChanged();
+        RepairCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsLaunchingChanged(bool value) => OnPropertyChanged(nameof(PlayButtonText));
 
     public async Task InitializeAsync()
     {
@@ -336,6 +354,8 @@ public partial class LauncherViewModel : ObservableObject
 
     private Task RepairAsync() => RunOperationAsync(launch: false);
 
+    private bool CanStartOperation() => !IsBusy;
+
     private async Task PrepareFirstRunAsync()
     {
         TraceStartup($"prepare:check:coordinator={(runtimeCoordinator is not null)}:ready={IsInstanceReady()}");
@@ -501,6 +521,7 @@ public partial class LauncherViewModel : ObservableObject
         using var cancellation = new CancellationTokenSource();
         operationCancellation = cancellation;
         IsBusy = true;
+        IsLaunching = launch;
         ProgressPercent = 0;
         IsProgressIndeterminate = true;
         ProgressLabel = "…";
@@ -565,6 +586,10 @@ public partial class LauncherViewModel : ObservableObject
                 ProgressLabel = $"{ProgressPercent:0}%";
                 Diagnostic = BuildDiagnostic(result, InstancePath);
             }
+            if (launch && result.Succeeded && result.Launch is not null)
+            {
+                BeginMinecraftLifecycle(result.Launch.Process);
+            }
             TraceStartup($"operation:result:{result.Succeeded}:{result.ErrorCode ?? "OK"}:{result.Diagnostic.Replace(Environment.NewLine, " | ", StringComparison.Ordinal)}");
         }
         catch (OperationCanceledException)
@@ -601,9 +626,86 @@ public partial class LauncherViewModel : ObservableObject
                 operationFinished = true;
             }
             IsBusy = false;
+            IsLaunching = false;
             operationCancellation = null;
             TraceStartup("operation:finished");
         }
+    }
+
+    private void BeginMinecraftLifecycle(Process process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        lock (minecraftLifecycleGate)
+        {
+            monitoredMinecraftProcess = process;
+            launcherHiddenForMinecraft = true;
+        }
+
+        process.Exited += OnMinecraftProcessExited;
+        process.EnableRaisingEvents = true;
+        if (process.HasExited)
+        {
+            OnMinecraftProcessExited(process, EventArgs.Empty);
+            return;
+        }
+
+        LauncherHideRequested?.Invoke(this, EventArgs.Empty);
+        if (process.HasExited)
+        {
+            OnMinecraftProcessExited(process, EventArgs.Empty);
+        }
+    }
+
+    private void OnMinecraftProcessExited(object? sender, EventArgs e)
+    {
+        if (sender is not Process process)
+        {
+            return;
+        }
+
+        lock (minecraftLifecycleGate)
+        {
+            if (!ReferenceEquals(monitoredMinecraftProcess, process) || !launcherHiddenForMinecraft)
+            {
+                return;
+            }
+
+            monitoredMinecraftProcess = null;
+            launcherHiddenForMinecraft = false;
+        }
+
+        RunOnUi(() =>
+        {
+            var exitCode = "unknown";
+            try
+            {
+                exitCode = process.ExitCode.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                // The process can disappear between Exited and ExitCode access.
+            }
+
+            Status = "Minecraft завершён";
+            LoadingStage = "Можно запустить снова";
+            ProgressPercent = 0;
+            ProgressLabel = "0%";
+            IsProgressIndeterminate = false;
+            Diagnostic = $"Minecraft завершился (код {exitCode}). Launcher снова готов к запуску.";
+            LauncherRestoreRequested?.Invoke(this, EventArgs.Empty);
+        });
+    }
+
+    private static void RunOnUi(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.BeginInvoke(action);
     }
 
     private void TraceStartup(string message)

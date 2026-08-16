@@ -111,6 +111,85 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Play_button_enters_starting_state_until_minecraft_process_is_ready()
+    {
+        using var temp = new TemporaryDirectory();
+        await CreateReadyInstanceAsync(temp.Path);
+        using var process = StartTestProcess("/c ping -n 4 127.0.0.1 >nul");
+        var runtime = new FakeRuntimeCoordinator
+        {
+            HoldPlayAfterStart = true,
+            PlayResult = new LauncherOperationResult(
+                true,
+                "play",
+                null,
+                "Minecraft запущен.",
+                Launch: new LaunchEvidence(
+                    process,
+                    DateTimeOffset.UtcNow,
+                    "fabric-loader-0.19.3-1.21.1",
+                    temp.Path,
+                    "java.exe"))
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        var hideRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.LauncherHideRequested += (_, _) => hideRequested.TrySetResult(true);
+        var playTask = viewModel.PlayCommand.ExecuteAsync(null);
+        await runtime.PlayStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.IsBusy.Should().BeTrue();
+        viewModel.IsLaunching.Should().BeTrue();
+        viewModel.PlayButtonText.Should().Be("Запуск…");
+
+        runtime.ReleasePlay.TrySetResult(true);
+        await playTask;
+        await hideRequested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task Launcher_is_restored_when_minecraft_process_exits()
+    {
+        using var temp = new TemporaryDirectory();
+        await CreateReadyInstanceAsync(temp.Path);
+        using var process = StartTestProcess("/c ping -n 2 127.0.0.1 >nul");
+        var runtime = new FakeRuntimeCoordinator
+        {
+            PlayResult = new LauncherOperationResult(
+                true,
+                "play",
+                null,
+                "Minecraft запущен.",
+                Launch: new LaunchEvidence(
+                    process,
+                    DateTimeOffset.UtcNow,
+                    "fabric-loader-0.19.3-1.21.1",
+                    temp.Path,
+                    "java.exe"))
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        var hideRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restoreRequested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.LauncherHideRequested += (_, _) => hideRequested.TrySetResult(true);
+        viewModel.LauncherRestoreRequested += (_, _) => restoreRequested.TrySetResult(true);
+
+        await viewModel.PlayCommand.ExecuteAsync(null);
+        await hideRequested.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await restoreRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        viewModel.Status.Should().Be("Minecraft завершён");
+        viewModel.LoadingStage.Should().Be("Можно запустить снова");
+        viewModel.IsLaunching.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Unknown_duration_preparation_stage_shows_activity_until_operation_finishes()
     {
         using var temp = new TemporaryDirectory();
@@ -215,6 +294,15 @@ public sealed class LauncherViewModelTests
         await File.WriteAllTextAsync(Path.Combine(instancePath, "mods", "CopiMineClient.jar"), "fixture");
     }
 
+    private static Process StartTestProcess(string arguments) =>
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = arguments,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        }) ?? throw new InvalidOperationException("Could not start the process fixture.");
+
     private sealed class FakePatchFeedClient : IPatchFeedClient
     {
         public Task<PatchFeedFetchResult> GetLatestAsync(CancellationToken cancellationToken) =>
@@ -226,10 +314,14 @@ public sealed class LauncherViewModelTests
         public int RepairCalls { get; private set; }
         public int PlayCalls { get; private set; }
         public LauncherOperationResult? RepairResult { get; init; }
+        public LauncherOperationResult? PlayResult { get; init; }
         public bool ReportProgress { get; init; }
         public bool HoldAfterProgress { get; init; }
+        public bool HoldPlayAfterStart { get; init; }
         public TaskCompletionSource<bool> ProgressReported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> ReleaseProgress { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> PlayStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> ReleasePlay { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public LauncherOperationRequest? LastRepairRequest { get; private set; }
 
         public Task<LauncherOperationResult> RepairAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
@@ -258,7 +350,14 @@ public sealed class LauncherViewModelTests
         public Task<LauncherOperationResult> PlayAsync(LauncherOperationRequest request, CancellationToken cancellationToken, IProgress<LauncherProgress>? progress = null)
         {
             PlayCalls++;
-            return Task.FromResult(new LauncherOperationResult(true, "play", null, "ok"));
+            PlayStarted.TrySetResult(true);
+            return HoldPlayAfterStart ? WaitForPlayReleaseAsync() : Task.FromResult(PlayResult ?? new LauncherOperationResult(true, "play", null, "ok"));
+        }
+
+        private async Task<LauncherOperationResult> WaitForPlayReleaseAsync()
+        {
+            await ReleasePlay.Task;
+            return PlayResult ?? new LauncherOperationResult(true, "play", null, "ok");
         }
     }
 

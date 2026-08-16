@@ -120,6 +120,69 @@ public sealed class SkinAndCosmeticTests
         File.Exists(capePath).Should().BeTrue();
     }
 
+    [Fact]
+    public void Local_store_persists_separate_skin_and_cape_libraries_across_store_instances()
+    {
+        using var temp = new TemporaryDirectory();
+        var sourceSkin = Path.Combine(temp.Path, "skin.png");
+        var sourceCape = Path.Combine(temp.Path, "cape.png");
+        File.WriteAllBytes(sourceSkin, PngHeader(64, 64));
+        File.WriteAllBytes(sourceCape, PngHeader(64, 32));
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+        var launcherRoot = Path.Combine(temp.Path, "LauncherData");
+        var store = new LocalCosmeticsStore(instanceRoot, launcherRoot);
+
+        var skinLibraryPath = store.SaveToLibrary(sourceSkin, "Player", CosmeticTextureKind.Skin);
+        var capeLibraryPath = store.SaveToLibrary(sourceCape, "Player", CosmeticTextureKind.Cape);
+
+        skinLibraryPath.Should().EndWith(Path.Combine("cosmetics", "skins", "Player.png"));
+        capeLibraryPath.Should().EndWith(Path.Combine("cosmetics", "capes", "Player.png"));
+        File.Exists(skinLibraryPath).Should().BeTrue();
+        File.Exists(capeLibraryPath).Should().BeTrue();
+
+        var restartedStore = new LocalCosmeticsStore(instanceRoot, launcherRoot);
+        restartedStore.FindLibraryPath("Player", CosmeticTextureKind.Skin).Should().Be(skinLibraryPath);
+        restartedStore.FindLibraryPath("Player", CosmeticTextureKind.Cape).Should().Be(capeLibraryPath);
+    }
+
+    [Fact]
+    public void Animated_gif_cape_is_validated_and_kept_as_gif_in_the_persistent_library()
+    {
+        using var temp = new TemporaryDirectory();
+        var sourceCape = Path.Combine(temp.Path, "cape.gif");
+        File.WriteAllBytes(sourceCape, AnimatedGif(64, 32));
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+        var launcherRoot = Path.Combine(temp.Path, "LauncherData");
+        var store = new LocalCosmeticsStore(instanceRoot, launcherRoot);
+
+        var info = SkinTextureValidator.ValidateFile(sourceCape, CosmeticTextureKind.Cape);
+        var libraryPath = store.SaveToLibrary(sourceCape, "Player", CosmeticTextureKind.Cape);
+
+        info.IsAnimated.Should().BeTrue();
+        libraryPath.Should().EndWith(Path.Combine("cosmetics", "capes", "Player.gif"));
+        File.ReadAllBytes(libraryPath).Should().Equal(File.ReadAllBytes(sourceCape));
+        new LocalCosmeticsStore(instanceRoot, launcherRoot)
+            .FindLibraryPath("Player", CosmeticTextureKind.Cape)
+            .Should().Be(libraryPath);
+    }
+
+    [Fact]
+    public async Task Remote_animated_gif_cape_cache_preserves_the_gif_extension()
+    {
+        using var temp = new TemporaryDirectory();
+        using var http = new HttpClient(new BinaryHandler(AnimatedGif(64, 32), "image/gif"));
+        var store = new LocalCosmeticsStore(Path.Combine(temp.Path, "Minecraft"), Path.Combine(temp.Path, "LauncherData"));
+
+        var path = await store.CacheRemoteAsync(
+            http,
+            new Uri("https://textures.minecraft.net/cape.gif"),
+            CosmeticTextureKind.Cape,
+            CancellationToken.None);
+
+        path.Should().EndWith(".gif");
+        SkinTextureValidator.ValidateFile(path, CosmeticTextureKind.Cape).IsAnimated.Should().BeTrue();
+    }
+
     private static byte[] PngHeader(int width, int height)
     {
         var header = new byte[33];
@@ -131,6 +194,13 @@ public sealed class SkinAndCosmeticTests
         header[24] = 8;
         header[25] = 6;
         return header;
+    }
+
+    private static byte[] AnimatedGif(int width, int height)
+    {
+        _ = width;
+        _ = height;
+        return Convert.FromBase64String("R0lGODlhQAAgAIEAAP8AAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQBCgAAACwAAAAAQAAgAAAISwABCBxIsKDBgwgTKlzIsKHDhxAjSpxIsaLFixgzatzIsaPHjyBDihxJsqTJkyhTqlzJsqXLlzBjypxJs6bNmzhz6tzJs6fPnyADAgAh+QQBCgAAACwAAAAAQAAgAIEAAP8AAAAAAAAAAAAISwABCBxIsKDBgwgTKlzIsKHDhxAjSpxIsaLFixgzatzIsaPHjyBDihxJsqTJkyhTqlzJsqXLlzBjypxJs6bNmzhz6tzJs6fPnyADAgA7");
     }
 
     private static HttpResponseMessage Json(string payload) =>
@@ -146,6 +216,15 @@ public sealed class SkinAndCosmeticTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(route(request.RequestUri!));
+    }
+
+    private sealed class BinaryHandler(byte[] payload, string mediaType) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new ByteArrayContent(payload) { Headers = { ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mediaType) } }
+            });
     }
 
     private sealed class TemporaryDirectory : IDisposable

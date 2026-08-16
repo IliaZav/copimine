@@ -610,7 +610,15 @@ public partial class LauncherViewModel : ObservableObject
         try
         {
             var path = Path.GetFullPath(InstancePath);
-            Directory.CreateDirectory(path);
+            if (!IsInstanceReady())
+            {
+                Status = "Папка игры пока не готова";
+                LoadingStage = "Сначала нажмите «Проверить файлы»";
+                Diagnostic = $"INSTANCE_NOT_READY: файлы игры ещё не подготовлены.{Environment.NewLine}Путь экземпляра: {path}";
+                IsDiagnosticOpen = true;
+                return;
+            }
+
             Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
         }
         catch (Exception exception)

@@ -137,6 +137,23 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public void Opening_the_game_folder_does_not_create_a_misleading_empty_instance()
+    {
+        using var temp = new TemporaryDirectory();
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient())
+        {
+            InstancePath = Path.Combine(temp.Path, "Minecraft")
+        };
+
+        viewModel.OpenInstanceFolderCommand.Execute(null);
+
+        Directory.Exists(viewModel.InstancePath).Should().BeFalse();
+        viewModel.Status.Should().Be("Папка игры пока не готова");
+        viewModel.Diagnostic.Should().Contain("INSTANCE_NOT_READY");
+        viewModel.IsDiagnosticOpen.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Saved_launch_settings_are_forwarded_to_the_runtime()
     {
         using var temp = new TemporaryDirectory();

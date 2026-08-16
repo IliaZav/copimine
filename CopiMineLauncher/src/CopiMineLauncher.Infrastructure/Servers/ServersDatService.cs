@@ -24,9 +24,10 @@ public sealed class ServersDatService : IServersDatService
     {
         ArgumentNullException.ThrowIfNull(record);
         var path = Path.GetFullPath(serversDatPath);
-        var root = File.Exists(path)
-            ? ReadRoot(await File.ReadAllBytesAsync(path, cancellationToken))
-            : NewRoot();
+        var document = File.Exists(path)
+            ? ReadDocument(await File.ReadAllBytesAsync(path, cancellationToken))
+            : new ServersDocument(NewRoot(), Compressed: true);
+        var root = document.Root;
         var servers = GetOrCreateServers(root);
         var existingCount = servers.Items.Count;
         var canonicalIp = CanonicalIp(record);
@@ -63,7 +64,7 @@ public sealed class ServersDatService : IServersDatService
             return new(false, existingCount, matches.Count > 0 ? 1 : 0, path);
         }
 
-        var bytes = WriteRoot(root);
+        var bytes = WriteRoot(root, document.Compressed);
         var tempPath = path + ".tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken);
@@ -123,14 +124,17 @@ public sealed class ServersDatService : IServersDatService
         return true;
     }
 
-    private static CompoundTag ReadRoot(byte[] compressed)
+    private static ServersDocument ReadDocument(byte[] bytes)
     {
+        var isCompressed = IsGzip(bytes);
         try
         {
-            using var input = new MemoryStream(compressed);
-            using var gzip = new GZipStream(input, CompressionMode.Decompress);
+            using var input = new MemoryStream(bytes, writable: false);
+            using Stream payload = isCompressed
+                ? new GZipStream(input, CompressionMode.Decompress)
+                : input;
             using var raw = new MemoryStream();
-            gzip.CopyTo(raw);
+            payload.CopyTo(raw);
             raw.Position = 0;
             using var reader = new BigEndianReader(raw);
             var type = (TagType)reader.ReadByteChecked();
@@ -140,7 +144,7 @@ public sealed class ServersDatService : IServersDatService
             }
 
             _ = reader.ReadString();
-            return (CompoundTag)ReadPayload(reader, type);
+            return new ServersDocument((CompoundTag)ReadPayload(reader, type), isCompressed);
         }
         catch (InvalidDataException)
         {
@@ -148,11 +152,13 @@ public sealed class ServersDatService : IServersDatService
         }
         catch (Exception exception)
         {
-            throw new InvalidDataException("servers.dat is not a valid gzip NBT document", exception);
+            throw new InvalidDataException("servers.dat is not a valid NBT document", exception);
         }
     }
 
-    private static byte[] WriteRoot(CompoundTag root)
+    private static bool IsGzip(byte[] bytes) => bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B;
+
+    private static byte[] WriteRoot(CompoundTag root, bool compressed)
     {
         using var raw = new MemoryStream();
         using (var writer = new BigEndianWriter(raw))
@@ -162,15 +168,22 @@ public sealed class ServersDatService : IServersDatService
             WritePayload(writer, root);
         }
 
-        using var compressed = new MemoryStream();
-        using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        if (!compressed)
+        {
+            return raw.ToArray();
+        }
+
+        using var compressedOutput = new MemoryStream();
+        using (var gzip = new GZipStream(compressedOutput, CompressionLevel.SmallestSize, leaveOpen: true))
         {
             raw.Position = 0;
             raw.CopyTo(gzip);
         }
 
-        return compressed.ToArray();
+        return compressedOutput.ToArray();
     }
+
+    private sealed record ServersDocument(CompoundTag Root, bool Compressed);
 
     private static Tag ReadPayload(BigEndianReader reader, TagType type) => type switch
     {

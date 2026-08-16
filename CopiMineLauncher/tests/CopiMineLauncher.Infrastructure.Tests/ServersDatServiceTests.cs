@@ -75,6 +75,23 @@ public sealed class ServersDatServiceTests
         (await File.ReadAllBytesAsync(path)).Should().Equal(corrupt);
     }
 
+    [Fact]
+    public async Task Uncompressed_minecraft_servers_dat_is_updated_in_place()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "servers.dat");
+        await File.WriteAllBytesAsync(path, BuildRawServers(("Other", "other.example:25565", 42)));
+
+        var evidence = await new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
+
+        evidence.Changed.Should().BeTrue();
+        var output = await File.ReadAllBytesAsync(path);
+        output[0].Should().Be(10);
+        CountText(output, "mc.copimine.ru:25565").Should().Be(1);
+        CountText(output, "other.example:25565").Should().Be(1);
+        CountText(output, "acceptTextures").Should().Be(1);
+    }
+
     private static byte[] Decompress(string path) => Decompress(File.ReadAllBytes(path));
 
     private static byte[] Decompress(byte[] bytes)
@@ -94,6 +111,28 @@ public sealed class ServersDatServiceTests
     }
 
     private static byte[] BuildServers(params (string Name, string Ip, int? Custom)[] servers)
+    {
+        using var raw = new MemoryStream();
+        WriteServers(raw, servers);
+
+        using var compressed = new MemoryStream();
+        using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            raw.Position = 0;
+            raw.CopyTo(gzip);
+        }
+
+        return compressed.ToArray();
+    }
+
+    private static byte[] BuildRawServers(params (string Name, string Ip, int? Custom)[] servers)
+    {
+        using var raw = new MemoryStream();
+        WriteServers(raw, servers);
+        return raw.ToArray();
+    }
+
+    private static void WriteServers(Stream output, params (string Name, string Ip, int? Custom)[] servers)
     {
         using var raw = new MemoryStream();
         using (var writer = new BinaryWriter(raw, Encoding.UTF8, leaveOpen: true))
@@ -124,15 +163,8 @@ public sealed class ServersDatServiceTests
 
             writer.Write((byte)0);
         }
-
-        using var compressed = new MemoryStream();
-        using (var gzip = new GZipStream(compressed, CompressionLevel.SmallestSize, leaveOpen: true))
-        {
-            raw.Position = 0;
-            raw.CopyTo(gzip);
-        }
-
-        return compressed.ToArray();
+        raw.Position = 0;
+        raw.CopyTo(output);
     }
 
     private static void WriteString(BinaryWriter writer, string value)

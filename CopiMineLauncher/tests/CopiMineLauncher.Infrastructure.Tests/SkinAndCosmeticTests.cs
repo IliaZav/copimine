@@ -167,6 +167,28 @@ public sealed class SkinAndCosmeticTests
     }
 
     [Fact]
+    public void Animated_gif_cape_library_remains_separate_from_the_game_png_frame()
+    {
+        using var temp = new TemporaryDirectory();
+        var sourceCape = Path.Combine(temp.Path, "cape.gif");
+        File.WriteAllBytes(sourceCape, AnimatedGif(64, 32));
+        var firstFrame = Path.Combine(temp.Path, "cape-frame.png");
+        File.WriteAllBytes(firstFrame, PngHeader(64, 32));
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+        var launcherRoot = Path.Combine(temp.Path, "LauncherData");
+        var store = new LocalCosmeticsStore(instanceRoot, launcherRoot);
+
+        var libraryPath = store.SaveToLibrary(sourceCape, "Player", CosmeticTextureKind.Cape);
+        var installedPath = store.InstallPngFile(firstFrame, "Player", CosmeticTextureKind.Cape);
+
+        libraryPath.Should().EndWith(Path.Combine("cosmetics", "capes", "Player.gif"));
+        installedPath.Should().EndWith(Path.Combine("CustomSkinLoader", "LocalSkin", "capes", "Player.png"));
+        File.Exists(installedPath).Should().BeTrue();
+        File.ReadAllBytes(libraryPath).Should().Equal(File.ReadAllBytes(sourceCape));
+        SkinTextureValidator.ValidateFile(installedPath, CosmeticTextureKind.Cape).IsAnimated.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Remote_animated_gif_cape_cache_preserves_the_gif_extension()
     {
         using var temp = new TemporaryDirectory();

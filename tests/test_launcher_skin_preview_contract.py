@@ -54,6 +54,16 @@ def test_cosmetics_use_durable_separate_libraries_and_preserve_gif_capes():
     assert "SaveToLibrary" in manager
 
 
+def test_gif_cape_keeps_library_animation_and_installs_a_valid_game_png_frame():
+    store = (REPO / "CopiMineLauncher" / "src" / "CopiMineLauncher.Infrastructure" / "Skins" / "LocalCosmeticsStore.cs").read_text(encoding="utf-8")
+    manager = (APP / "SkinManagerWindow.xaml.cs").read_text(encoding="utf-8")
+
+    assert "InstallPngFile" in store
+    assert 'ConvertToPng(gifLibraryPath)' in manager
+    assert 'localStore.InstallPngFile(firstFramePath, player, kind)' in manager
+    assert "GIF сохранён в библиотеке" in manager
+
+
 def test_skin_preview_repaints_animated_gif_capes_and_clears_old_timer():
     preview = (APP / "Assets" / "SkinPreview" / "skin-preview.html").read_text(encoding="utf-8")
     manager = (APP / "SkinManagerWindow.xaml.cs").read_text(encoding="utf-8")

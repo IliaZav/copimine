@@ -396,12 +396,25 @@ public partial class SkinManagerWindow : Window
 
         try
         {
-            var path = localStore.InstallFile(source, player, kind);
-            var libraryPath = localStore.FindLibraryPath(player, kind);
-            SetStatus(kind == CosmeticTextureKind.Skin
+            string path;
+            string? statusOverride = null;
+            if (kind == CosmeticTextureKind.Cape && SkinTextureValidator.IsGifFile(source))
+            {
+                var gifLibraryPath = localStore.SaveToLibrary(source, player, kind);
+                var firstFramePath = ConvertToPng(gifLibraryPath);
+                path = localStore.InstallPngFile(firstFramePath, player, kind);
+                statusOverride = "GIF сохранён в библиотеке и предпросмотре; в игре используется первый кадр, потому что CustomSkinLoader принимает только PNG.";
+            }
+            else
+            {
+                path = localStore.InstallFile(source, player, kind);
+            }
+
+            var savedLibraryPath = localStore.FindLibraryPath(player, kind);
+            SetStatus(statusOverride ?? (kind == CosmeticTextureKind.Skin
                 ? $"Скин применён к нику {player}."
-                : $"Плащ применён к нику {player}.");
-            SourceLabel.Text = libraryPath is null ? $"Установлено: {path}" : $"Сохранено: {libraryPath}";
+                : $"Плащ применён к нику {player}."));
+            SourceLabel.Text = savedLibraryPath is null ? $"Установлено: {path}" : $"Сохранено: {savedLibraryPath}";
         }
         catch (Exception exception)
         {

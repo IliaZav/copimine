@@ -21,8 +21,7 @@ public sealed class LocalCosmeticsStore
     public string GetInstalledPath(string playerName, CosmeticTextureKind kind)
     {
         ValidatePlayerName(playerName);
-        var bucket = kind == CosmeticTextureKind.Skin ? "skins" : "capes";
-        return Path.Combine(instanceRoot, "CustomSkinLoader", "LocalSkin", bucket, playerName + ".png");
+        return GetInstalledPath(playerName, kind, ".png");
     }
 
     public string GetLibraryPath(string playerName, CosmeticTextureKind kind, string extension = ".png")
@@ -75,9 +74,34 @@ public sealed class LocalCosmeticsStore
     public string InstallFile(string sourcePath, string playerName, CosmeticTextureKind kind)
     {
         var source = SaveToLibrary(sourcePath, playerName, kind);
-        var destination = GetInstalledPath(playerName, kind);
+        if (kind == CosmeticTextureKind.Cape && SkinTextureValidator.IsGifFile(source))
+        {
+            throw new InvalidDataException("GIF-плащ сохранён в библиотеке, но для игры нужен PNG-кадр.");
+        }
+
+        return InstallPngFile(source, playerName, kind);
+    }
+
+    public string InstallPngFile(string sourcePath, string playerName, CosmeticTextureKind kind)
+    {
+        var source = Path.GetFullPath(sourcePath ?? throw new ArgumentNullException(nameof(sourcePath)));
+        _ = SkinTextureValidator.ValidateFile(source, kind);
+        if (SkinTextureValidator.IsGifFile(source))
+        {
+            throw new InvalidDataException("В игровой каталог можно установить только PNG-файл.");
+        }
+
+        var destination = GetInstalledPath(playerName, kind, ".png");
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         CopyAtomically(source, destination);
+        foreach (var siblingExtension in kind == CosmeticTextureKind.Cape ? new[] { ".png", ".gif" } : new[] { ".png" })
+        {
+            var sibling = GetInstalledPath(playerName, kind, siblingExtension);
+            if (!string.Equals(sibling, destination, StringComparison.OrdinalIgnoreCase))
+            {
+                TryDeleteFile(sibling);
+            }
+        }
         return destination;
     }
 
@@ -161,6 +185,18 @@ public sealed class LocalCosmeticsStore
         {
             throw new ArgumentException("Ник должен содержать 3–16 символов A–Z, 0–9 или _.", nameof(playerName));
         }
+    }
+
+    private string GetInstalledPath(string playerName, CosmeticTextureKind kind, string extension)
+    {
+        var normalizedExtension = NormalizeExtension(extension);
+        if (kind == CosmeticTextureKind.Skin && normalizedExtension != ".png")
+        {
+            throw new ArgumentException("Скин в игре должен быть PNG-файлом.", nameof(extension));
+        }
+
+        var bucket = kind == CosmeticTextureKind.Skin ? "skins" : "capes";
+        return Path.Combine(instanceRoot, "CustomSkinLoader", "LocalSkin", bucket, playerName + normalizedExtension);
     }
 
     private static string NormalizeExtension(string extension)

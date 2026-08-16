@@ -70,6 +70,24 @@ public static class MinecraftLaunchStartup
         new($"MINECRAFT_PROCESS_EXITED: Minecraft завершился во время запуска (code {process.ExitCode}). Лог запуска: {logPath}");
 }
 
+public static class MinecraftLaunchProcessConfiguration
+{
+    public static void Apply(Process process, string instanceRoot)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceRoot);
+
+        var fullInstanceRoot = Path.GetFullPath(instanceRoot);
+        Directory.CreateDirectory(fullInstanceRoot);
+        process.StartInfo.WorkingDirectory = fullInstanceRoot;
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.CreateNoWindow = true;
+        process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        process.StartInfo.RedirectStandardOutput = true;
+        process.StartInfo.RedirectStandardError = true;
+    }
+}
+
 public sealed class MinecraftLaunchService : IMinecraftLaunchService
 {
     private readonly HttpClient httpClient;
@@ -127,11 +145,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             }
         }
 
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.CreateNoWindow = true;
-        process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        process.StartInfo.RedirectStandardOutput = true;
-        process.StartInfo.RedirectStandardError = true;
+        MinecraftLaunchProcessConfiguration.Apply(process, request.InstanceRoot);
         process.EnableRaisingEvents = true;
         process.OutputDataReceived += (_, args) =>
         {
@@ -154,6 +168,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         };
 
         WriteLog($"START fabric={request.FabricVersionName} java={javaPath}");
+        WriteLog($"COMMAND file={process.StartInfo.FileName} cwd={process.StartInfo.WorkingDirectory} args={process.StartInfo.Arguments}");
         try
         {
             process.Start();
@@ -169,7 +184,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         await MinecraftLaunchStartup.EnsureAliveAsync(
             process,
             logPath,
-            TimeSpan.FromSeconds(2),
+            TimeSpan.FromSeconds(10),
             cancellationToken);
 
         return new(process, DateTimeOffset.UtcNow, request.FabricVersionName, Path.GetFullPath(request.InstanceRoot), javaPath, logPath);

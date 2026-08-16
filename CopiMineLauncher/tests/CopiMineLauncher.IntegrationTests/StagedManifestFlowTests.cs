@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using CopiMineLauncher.Core.Manifest;
 using CopiMineLauncher.Infrastructure.Launch;
@@ -55,7 +56,7 @@ public sealed class StagedManifestFlowTests
 
         var userMod = Path.Combine(temp.Path, "mods", "user-extra.jar");
         Directory.CreateDirectory(Path.GetDirectoryName(userMod)!);
-        var userBytes = new byte[] { 3, 1, 4, 1, 5, 9 };
+        var userBytes = CreateValidModArchive();
         await File.WriteAllBytesAsync(userMod, userBytes);
 
         var second = await coordinator.RepairAsync(
@@ -67,6 +68,17 @@ public sealed class StagedManifestFlowTests
         preservedUserBytes.Should().Equal(userBytes);
         File.Exists(Path.Combine(temp.Path, ".copimine", "managed-state.json")).Should().BeTrue();
         File.Exists(Path.Combine(temp.Path, "servers.dat")).Should().BeTrue();
+    }
+
+    private static byte[] CreateValidModArchive()
+    {
+        using var stream = new MemoryStream();
+        using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            archive.CreateEntry("fabric.mod.json");
+        }
+
+        return stream.ToArray();
     }
 
     private sealed class StagedReleaseFactAttribute : FactAttribute

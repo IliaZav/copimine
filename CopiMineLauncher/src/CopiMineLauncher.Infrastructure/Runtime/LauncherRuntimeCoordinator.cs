@@ -145,6 +145,9 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                     reconciliation);
             }
 
+            progress?.Report(new("preflight", "Проверяем целостность архивов модов…"));
+            MinecraftInstancePreflight.ValidateModArchives(instanceRoot);
+
             progress?.Report(new("java", "Проверяем Java 21 для отдельного экземпляра…"));
             var java = await javaProvisioner.EnsureJava21Async(instanceRoot, manifest.ReconcilerManifest, cancellationToken);
 
@@ -194,6 +197,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                 launchEvidence);
         }
         catch (ManifestFetchException exception)
+        {
+            return Failure(operation, exception.Code, exception.Message);
+        }
+        catch (MinecraftPreflightException exception)
         {
             return Failure(operation, exception.Code, exception.Message);
         }

@@ -520,11 +520,12 @@ public partial class LauncherViewModel : ObservableObject
 
                     Status = value.Message;
                     LoadingStage = value.Message;
-                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "java" or "minecraft";
+                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "preflight" or "java" or "minecraft";
                     ProgressPercent = value.Stage switch
                     {
                         "manifest" => 2,
                         "reconcile" => 28,
+                        "preflight" => 36,
                         "java" => 46,
                         "minecraft" => 72,
                         "servers" => 88,

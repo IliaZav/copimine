@@ -4,7 +4,8 @@ public enum LauncherScreen
 {
     Home,
     Skins,
-    Settings
+    Settings,
+    MinecraftDefaults
 }
 
 public sealed class LauncherScreenNavigation

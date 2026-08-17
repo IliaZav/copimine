@@ -310,6 +310,38 @@ public sealed class LauncherViewModelTests
         runtime.LastRepairRequest.Fullscreen.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task First_run_defaults_are_loaded_and_can_be_saved_without_touching_launcher_settings()
+    {
+        using var temp = new TemporaryDirectory();
+        MinecraftDefaultSettingsStore.Save(
+            temp.Path,
+            new MinecraftDefaultSettings(
+                UseRussianLanguage: false,
+                DisableNarrator: true,
+                SetMasterVolumeToFifteenPercent: false));
+        var runtime = new FakeRuntimeCoordinator();
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        viewModel.HasMinecraftDefaultsSelection.Should().BeTrue();
+        viewModel.UseRussianLanguageDefault.Should().BeFalse();
+        viewModel.DisableNarratorDefault.Should().BeTrue();
+        viewModel.SetMasterVolumeToFifteenPercentDefault.Should().BeFalse();
+
+        viewModel.UseRussianLanguageDefault = true;
+        viewModel.SetMasterVolumeToFifteenPercentDefault = true;
+        viewModel.SaveMinecraftDefaults();
+
+        MinecraftDefaultSettingsStore.Load(temp.Path)
+            .Should().Be(new MinecraftDefaultSettings(true, true, true));
+        viewModel.HasMinecraftDefaultsSelection.Should().BeTrue();
+    }
+
     private static async Task CreateReadyInstanceAsync(string instancePath)
     {
         Directory.CreateDirectory(Path.Combine(instancePath, ".copimine", "java", "21.0.10", "bin"));

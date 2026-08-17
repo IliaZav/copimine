@@ -27,6 +27,10 @@ public partial class MainWindow : Window
         try
         {
             await viewModel.InitializeAsync();
+            if (!viewModel.HasMinecraftDefaultsSelection)
+            {
+                ShowFirstRunDefaultsScreen();
+            }
         }
         catch (Exception exception)
         {
@@ -48,6 +52,12 @@ public partial class MainWindow : Window
             LauncherInstallPaths.ResolveLauncherDataRoot()));
     }
 
+    private void ShowFirstRunDefaultsScreen()
+    {
+        ShowScreen(LauncherScreen.MinecraftDefaults, "Настройка Minecraft", new MinecraftDefaultsWindow(viewModel));
+        BackButton.IsEnabled = false;
+    }
+
     private void ShowScreen(LauncherScreen screen, string title, UserControl content)
     {
         if (currentScreen is not null)
@@ -62,6 +72,7 @@ public partial class MainWindow : Window
         ScreenContent.Content = content;
         HomeView.Visibility = Visibility.Collapsed;
         ScreenView.Visibility = Visibility.Visible;
+        BackButton.IsEnabled = screen != LauncherScreen.MinecraftDefaults;
         BackButton.Focus();
     }
 
@@ -81,6 +92,7 @@ public partial class MainWindow : Window
         currentScreen = null;
         ScreenView.Visibility = Visibility.Collapsed;
         HomeView.Visibility = Visibility.Visible;
+        BackButton.IsEnabled = true;
     }
 
     private void SubscribeToScreen(UserControl screen)
@@ -93,6 +105,10 @@ public partial class MainWindow : Window
         {
             skins.BackRequested += OnScreenBackRequested;
         }
+        else if (screen is MinecraftDefaultsWindow defaults)
+        {
+            defaults.Completed += OnScreenBackRequested;
+        }
     }
 
     private void UnsubscribeFromScreen(UserControl screen)
@@ -104,6 +120,10 @@ public partial class MainWindow : Window
         else if (screen is SkinManagerWindow skins)
         {
             skins.BackRequested -= OnScreenBackRequested;
+        }
+        else if (screen is MinecraftDefaultsWindow defaults)
+        {
+            defaults.Completed -= OnScreenBackRequested;
         }
     }
 

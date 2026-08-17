@@ -118,7 +118,7 @@
         </StackPanel>
       </StackPanel>
         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
-          <TextBlock Text="v1.0.0  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
+          <TextBlock Text="v1.0.1  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
           <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
           <Button Style="{StaticResource CompactButton}" Content="Скины" Margin="0,0,8,0" Click="OpenSkins_Click" ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
           <Button Style="{StaticResource CompactButton}" Content="Настройки" Margin="0,0,8,0" Click="OpenSettings_Click" />

@@ -135,6 +135,15 @@ public partial class LauncherViewModel : ObservableObject
     [ObservableProperty]
     private bool fullscreen;
 
+    [ObservableProperty]
+    private bool useRussianLanguageDefault = true;
+
+    [ObservableProperty]
+    private bool disableNarratorDefault = true;
+
+    [ObservableProperty]
+    private bool setMasterVolumeToFifteenPercentDefault = true;
+
     public IAsyncRelayCommand RefreshNewsCommand { get; }
     public IAsyncRelayCommand PlayCommand { get; }
     public IAsyncRelayCommand RepairCommand { get; }
@@ -149,6 +158,7 @@ public partial class LauncherViewModel : ObservableObject
     public string LauncherDataPath => LauncherInstallPaths.ResolveLauncherDataRoot();
     public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
     public string PlayButtonText => IsLaunching ? "Запуск…" : "Играть";
+    public bool HasMinecraftDefaultsSelection => MinecraftDefaultSettingsStore.IsConfigured(InstancePath);
 
     public event EventHandler? LauncherHideRequested;
     public event EventHandler? LauncherRestoreRequested;
@@ -161,6 +171,12 @@ public partial class LauncherViewModel : ObservableObject
     }
 
     partial void OnIsLaunchingChanged(bool value) => OnPropertyChanged(nameof(PlayButtonText));
+
+    partial void OnInstancePathChanged(string value)
+    {
+        LoadMinecraftDefaults();
+        OnPropertyChanged(nameof(HasMinecraftDefaultsSelection));
+    }
 
     public async Task InitializeAsync()
     {
@@ -324,6 +340,15 @@ public partial class LauncherViewModel : ObservableObject
         ResolutionWidth = settings.ResolutionWidth;
         ResolutionHeight = settings.ResolutionHeight;
         Fullscreen = settings.Fullscreen;
+        LoadMinecraftDefaults();
+    }
+
+    private void LoadMinecraftDefaults()
+    {
+        var settings = MinecraftDefaultSettingsStore.Load(InstancePath) ?? new MinecraftDefaultSettings();
+        UseRussianLanguageDefault = settings.UseRussianLanguage;
+        DisableNarratorDefault = settings.DisableNarrator;
+        SetMasterVolumeToFifteenPercentDefault = settings.SetMasterVolumeToFifteenPercent;
     }
 
     private void LoadLauncherBinding()
@@ -340,6 +365,7 @@ public partial class LauncherViewModel : ObservableObject
         try
         {
             settingsStore.Save(new LauncherSettings(MaximumRamMb, ResolutionWidth, ResolutionHeight, Fullscreen));
+            SaveMinecraftDefaults();
             Status = "Настройки сохранены";
             Diagnostic = $"RAM: {MaximumRamMb} МБ · Разрешение: {ResolutionWidth}×{ResolutionHeight} · Полный экран: {(Fullscreen ? "да" : "нет")}";
         }
@@ -349,6 +375,17 @@ public partial class LauncherViewModel : ObservableObject
             Diagnostic = $"LAUNCHER_SETTINGS_SAVE_FAILED: {exception.Message}";
             throw;
         }
+    }
+
+    public void SaveMinecraftDefaults()
+    {
+        MinecraftDefaultSettingsStore.Save(
+            InstancePath,
+            new MinecraftDefaultSettings(
+                UseRussianLanguageDefault,
+                DisableNarratorDefault,
+                SetMasterVolumeToFifteenPercentDefault));
+        OnPropertyChanged(nameof(HasMinecraftDefaultsSelection));
     }
 
     private Task PlayAsync() => RunOperationAsync(launch: true);

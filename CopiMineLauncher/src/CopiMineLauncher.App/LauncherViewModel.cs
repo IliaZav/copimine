@@ -74,6 +74,7 @@ public partial class LauncherViewModel : ObservableObject
         this.nicknameChangedNotifier = nicknameChangedNotifier ?? ShowNicknameChangedWarning;
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
+        PatchCards.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPatchCards));
         RefreshNewsCommand = new AsyncRelayCommand(RefreshNewsAsync);
         PlayCommand = new AsyncRelayCommand(PlayAsync, CanStartOperation);
         RepairCommand = new AsyncRelayCommand(RepairAsync, CanStartOperation);
@@ -88,6 +89,7 @@ public partial class LauncherViewModel : ObservableObject
     }
 
     public ObservableCollection<PatchFeedCardViewModel> PatchCards { get; }
+    public bool HasPatchCards => PatchCards.Count > 0;
 
     [ObservableProperty]
     private string status = "Готово";

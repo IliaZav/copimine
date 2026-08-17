@@ -40,4 +40,19 @@ public sealed class LauncherMotionTests
         below.Should().Be(0d);
         above.Should().Be(1d);
     }
+
+    [Fact]
+    public void Xaml_duration_tokens_are_valid_wpf_durations()
+    {
+        var motionType = typeof(LauncherVisualAssetCatalog).Assembly.GetType("CopiMineLauncher.App.LauncherMotion");
+        motionType.Should().NotBeNull();
+
+        var shortDuration = (System.Windows.Duration)motionType!.GetProperty("ShortDuration")!.GetValue(null)!;
+        var mediumDuration = (System.Windows.Duration)motionType.GetProperty("MediumDuration")!.GetValue(null)!;
+
+        shortDuration.HasTimeSpan.Should().BeTrue();
+        mediumDuration.HasTimeSpan.Should().BeTrue();
+        shortDuration.TimeSpan.Should().Be(TimeSpan.FromMilliseconds(180));
+        mediumDuration.TimeSpan.Should().Be(TimeSpan.FromMilliseconds(320));
+    }
 }

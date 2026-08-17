@@ -6,192 +6,453 @@
         xmlns:local="clr-namespace:CopiMineLauncher.App"
         mc:Ignorable="d"
         Title="CopiMine Launcher"
-        Icon="Assets/copimine.ico"
-        Width="1120" Height="720" MinWidth="900" MinHeight="600"
-        Background="{StaticResource LauncherWindowBackground}" Foreground="{StaticResource LauncherPrimaryText}"
+        Icon="/CopiMineLauncher.App;component/Assets/copimine.ico"
+        Width="1240" Height="800" MinWidth="1000" MinHeight="650"
+        Background="{StaticResource LauncherWindowBackground}"
+        Foreground="{StaticResource LauncherPrimaryText}"
         WindowStartupLocation="CenterScreen">
 
   <Grid>
-    <Image Source="Assets/LauncherVisuals/launcher-home-background.png" Stretch="UniformToFill" Opacity="0.48" IsHitTestVisible="False" />
-    <Border Background="#B807120F" IsHitTestVisible="False" />
-    <Grid x:Name="HomeView" Margin="24">
-    <Grid.RowDefinitions>
-      <RowDefinition Height="Auto" />
-      <RowDefinition Height="*" />
-      <RowDefinition Height="Auto" />
-    </Grid.RowDefinitions>
+    <Image Source="Assets/LauncherVisuals/launcher-home-background.png"
+           Stretch="UniformToFill"
+           Opacity="0.72"
+           IsHitTestVisible="False" />
+    <Border IsHitTestVisible="False">
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+          <GradientStop Color="#B3061210" Offset="0" />
+          <GradientStop Color="#7A081A18" Offset="0.52" />
+          <GradientStop Color="#E307100E" Offset="1" />
+        </LinearGradientBrush>
+      </Border.Background>
+    </Border>
 
-    <Grid Grid.Row="0" Margin="0,0,0,20">
-      <StackPanel Orientation="Horizontal">
-        <Image Source="Assets/LauncherVisuals/copimine-icon.png" Width="50" Height="50" Stretch="Uniform" Margin="0,0,12,0" />
-        <StackPanel>
-          <TextBlock Text="COPIMINE" Foreground="#63dfa0" FontSize="12" FontWeight="Bold" />
-          <TextBlock Text="Launcher" FontSize="31" FontWeight="Bold" Margin="0,3,0,0" />
-          <TextBlock Text="Minecraft 1.21.1  ·  Fabric 0.19.3  ·  Windows x64" Foreground="#9eb8c3" Margin="0,5,0,0" />
-        </StackPanel>
-      </StackPanel>
-        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top">
-          <TextBlock Text="v1.0.1  ·  stable" Foreground="#7af0aa" FontWeight="Bold" HorizontalAlignment="Right" />
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-          <Button Style="{StaticResource LauncherCompactButton}" Content="Скины" Margin="0,0,8,0" Click="OpenSkins_Click" ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
-          <Button Style="{StaticResource LauncherCompactButton}" Content="Настройки" Margin="0,0,8,0" Click="OpenSettings_Click" />
-          <Button Style="{StaticResource LauncherCompactButton}" Command="{Binding OpenWebsiteCommand}" Content="Сайт" Margin="0,0,8,0" ToolTip="Открыть copimine.ru" />
-          <Button Style="{StaticResource LauncherCompactButton}" Command="{Binding OpenDiscordCommand}" Content="Discord" Margin="0,0,8,0" ToolTip="Открыть Discord-сервер" />
-          <Button Style="{StaticResource LauncherCompactButton}" Command="{Binding ApplySelfUpdateCommand}" Content="{Binding SelfUpdateStatus}" />
+    <Grid x:Name="HomeView" Margin="28">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <Border Grid.Row="0"
+              Background="#E6122722"
+              BorderBrush="#B83D755B"
+              BorderThickness="1"
+              CornerRadius="18"
+              Padding="16"
+              Margin="0,0,0,18">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <Image Grid.Column="0"
+                 Source="Assets/LauncherVisuals/copimine-icon.png"
+                 Width="58"
+                 Height="58"
+                 Stretch="Uniform"
+                 Margin="0,0,14,0" />
+          <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="COPIMINE" Foreground="{StaticResource LauncherAccentBright}" FontSize="12" FontWeight="Bold" />
+            <TextBlock Text="Launcher" FontSize="28" FontWeight="Bold" Margin="0,1,0,0" />
+            <TextBlock Text="Minecraft 1.21.1  ·  Fabric 0.19.3  ·  Windows x64"
+                       Foreground="{StaticResource LauncherSecondaryText}"
+                       FontSize="12"
+                       Margin="0,3,0,0" />
           </StackPanel>
-        </StackPanel>
-    </Grid>
-
-    <Grid Grid.Row="1">
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="300" />
-        <ColumnDefinition Width="*" />
-      </Grid.ColumnDefinitions>
-
-      <Border Grid.Column="0" Style="{StaticResource LauncherCard}" Margin="0,0,16,0">
-        <StackPanel>
-          <TextBlock Text="Игра" FontSize="20" FontWeight="Bold" />
-          <TextBlock Text="Выберите ник и нажмите «Играть»." Foreground="#9eb8c3" TextWrapping="Wrap" Margin="0,7,0,18" />
-
-          <TextBlock Text="Имя игрока" Foreground="#9eb8c3" />
-          <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=LostFocus}" MaxLength="16" />
-          <Grid Margin="0,0,0,4">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="Папка игры" Foreground="#9eb8c3" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Style="{StaticResource LauncherIconButton}" Command="{Binding OpenInstanceFolderCommand}" HorizontalAlignment="Right" ToolTip="Открыть папку игры" AutomationProperties.Name="Открыть папку игры">
-              <Path Fill="#7af0aa" Stretch="Uniform" Data="M2,5 L8,5 L10,7 L21,7 C22.1,7 23,7.9 23,9 L23,18 C23,19.1 22.1,20 21,20 L3,20 C1.9,20 1,19.1 1,18 L1,7 C1,5.9 1.9,5 3,5 Z M3,3 C1.9,3 1,3.9 1,5 L1,7 L3,7 L3,5 L8,5 L10,7 L12,7 L10,4.5 C9.6,3.6 8.8,3 7.8,3 Z" />
-            </Button>
-          </Grid>
-          <TextBlock Text="{Binding InstancePath}" Foreground="#718b96" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding InstancePath}" Margin="0,0,0,10" />
-
-          <Button Command="{Binding PlayCommand}" Style="{StaticResource LauncherPrimaryButton}" Margin="0,4,0,14">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-              <Ellipse Style="{StaticResource LauncherLoadingSpinner}" Margin="0,0,9,0" VerticalAlignment="Center" />
-              <TextBlock Text="{Binding PlayButtonText}" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <Image Source="Assets/LauncherVisuals/copimine-logo.png"
+                   Width="185"
+                   Height="58"
+                   Stretch="Uniform"
+                   HorizontalAlignment="Right"
+                   Margin="0,0,0,8" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <Button Style="{StaticResource LauncherCompactButton}"
+                      Content="Скины"
+                      Click="OpenSkins_Click"
+                      Margin="0,0,8,0"
+                      ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
+              <Button Style="{StaticResource LauncherCompactButton}"
+                      Content="Настройки"
+                      Click="OpenSettings_Click"
+                      Margin="0,0,8,0" />
+              <Button Style="{StaticResource LauncherCompactButton}"
+                      Command="{Binding OpenWebsiteCommand}"
+                      Content="Сайт"
+                      Margin="0,0,8,0" />
+              <Button Style="{StaticResource LauncherCompactButton}"
+                      Command="{Binding OpenDiscordCommand}"
+                      Content="Discord"
+                      Margin="0,0,8,0" />
+              <Button Style="{StaticResource LauncherCompactButton}"
+                      Command="{Binding ApplySelfUpdateCommand}"
+                      Content="{Binding SelfUpdateStatus}" />
             </StackPanel>
-          </Button>
-          <Button Command="{Binding RepairCommand}" Style="{StaticResource LauncherStackButton}" Content="Проверить файлы" />
-          <Button Command="{Binding OpenAccountLinkCommand}" Style="{StaticResource LauncherStackButton}" Content="Привязать на сайте" />
-          <Border Background="#193443" BorderBrush="#2d6274" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,2,0,12" Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <TextBlock Text="Для запуска нужна привязка Launcher к аккаунту сайта. Пароль в Launcher не вводится." Foreground="#bfe9ef" TextWrapping="Wrap" FontSize="12" />
-          </Border>
-
-          <Separator Margin="0,10,0,14" Background="#284657" />
-          <TextBlock Text="Сервер" Foreground="#9eb8c3" />
-          <TextBlock Text="mc.copimine.ru" FontSize="16" FontWeight="Bold" Margin="0,5,0,2" />
-          <TextBlock Text="Сервер добавится в список автоматически." Foreground="#7f9aa5" TextWrapping="Wrap" />
-        </StackPanel>
+          </StackPanel>
+        </Grid>
       </Border>
 
-      <Grid Grid.Column="1">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />
-          <RowDefinition Height="*" />
-          <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+      <Grid Grid.Row="1">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="340" />
+          <ColumnDefinition Width="18" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <Border Grid.Row="0" Style="{StaticResource LauncherCard}" Padding="16" Margin="0,0,0,14">
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0">
-              <TextBlock Text="Состояние" Foreground="#9eb8c3" FontSize="12" FontWeight="Bold" />
-              <TextBlock Text="{Binding Status}" Foreground="#7af0aa" FontSize="16" FontWeight="SemiBold" Margin="0,4,0,0" />
-              <TextBlock Text="Игра загружается" Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}" Foreground="#5ab7e8" FontSize="12" FontWeight="SemiBold" Margin="0,5,0,0" />
-              <TextBlock Text="{Binding LoadingStage}" Foreground="#b1c7ce" FontSize="12" Margin="0,7,0,0" />
-              <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}" IsIndeterminate="{Binding IsProgressIndeterminate}" Height="8" Margin="0,8,0,0" Background="#0a1721" Foreground="#48d891" />
-            </StackPanel>
-            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="16,0,0,0">
-              <TextBlock Text="{Binding ProgressLabel}" Foreground="#7af0aa" FontSize="18" FontWeight="Bold" HorizontalAlignment="Right" />
-              <TextBlock Text="Загрузка" Foreground="#718b96" FontSize="11" HorizontalAlignment="Right" />
-              <Button Style="{StaticResource LauncherCompactButton}" Command="{Binding CheckSelfUpdateCommand}" Content="Проверить обновление" Margin="0,10,0,0" />
-            </StackPanel>
-          </Grid>
-        </Border>
-
-        <Border Grid.Row="1" Style="{StaticResource LauncherCard}" Margin="0,0,0,14">
+        <Border Grid.Column="0" Style="{StaticResource LauncherCard}" Padding="22,20">
           <Grid>
             <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <Grid Grid.Row="0" Margin="0,0,0,14">
+
+            <StackPanel Grid.Row="0">
+              <TextBlock Text="ИГРА" Foreground="{StaticResource LauncherAccentBright}" FontSize="11" FontWeight="Bold" />
+              <TextBlock Text="Готово к запуску" FontSize="24" FontWeight="Bold" Margin="0,4,0,0" />
+              <TextBlock Text="Синхронизируем файлы и запускаем Minecraft одной кнопкой."
+                         Foreground="{StaticResource LauncherSecondaryText}"
+                         TextWrapping="Wrap"
+                         Margin="0,8,0,18" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1">
+              <TextBlock Text="Имя игрока" Foreground="{StaticResource LauncherSecondaryText}" />
+              <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=LostFocus}" MaxLength="16" />
+              <Grid Margin="0,0,0,3">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Папка игры"
+                           Foreground="{StaticResource LauncherSecondaryText}"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1"
+                        Style="{StaticResource LauncherIconButton}"
+                        Command="{Binding OpenInstanceFolderCommand}"
+                        ToolTip="Открыть папку игры"
+                        AutomationProperties.Name="Открыть папку игры">
+                  <Path Fill="{StaticResource LauncherAccent}"
+                        Stretch="Uniform"
+                        Data="M2,5 L8,5 L10,7 L21,7 C22.1,7 23,7.9 23,9 L23,18 C23,19.1 22.1,20 21,20 L3,20 C1.9,20 1,19.1 1,18 L1,7 C1,5.9 1.9,5 3,5 Z M3,3 C1.9,3 1,3.9 1,5 L1,7 L3,7 L3,5 L8,5 L10,7 L12,7 L10,4.5 C9.6,3.6 8.8,3 7.8,3 Z" />
+                </Button>
+              </Grid>
+              <TextBlock Text="{Binding InstancePath}"
+                         Foreground="{StaticResource LauncherMutedText}"
+                         FontSize="11"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip="{Binding InstancePath}"
+                         Margin="0,0,0,12" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" VerticalAlignment="Top">
+              <Button Command="{Binding PlayCommand}"
+                      Style="{StaticResource LauncherPrimaryButton}"
+                      Margin="0,3,0,12">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                  <Ellipse Style="{StaticResource LauncherLoadingSpinner}"
+                           Margin="0,0,9,0"
+                           VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding PlayButtonText}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Command="{Binding RepairCommand}"
+                      Style="{StaticResource LauncherStackButton}"
+                      Content="Проверить файлы" />
+              <Button Command="{Binding OpenAccountLinkCommand}"
+                      Style="{StaticResource LauncherStackButton}"
+                      Content="Привязать аккаунт" />
+              <Border Background="#243F45"
+                      BorderBrush="#3E7B74"
+                      BorderThickness="1"
+                      CornerRadius="9"
+                      Padding="11"
+                      Margin="0,0,0,12"
+                      Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBlock Text="Для запуска нужна привязка Launcher к аккаунту сайта. Пароль здесь не вводится."
+                           Foreground="#D1F1E6"
+                           TextWrapping="Wrap"
+                           FontSize="12" />
+              </Border>
+            </StackPanel>
+
+            <Border Grid.Row="3"
+                    Background="#B10D1B18"
+                    BorderBrush="#543D755B"
+                    BorderThickness="1"
+                    CornerRadius="11"
+                    Padding="12">
+              <StackPanel>
+                <TextBlock Text="СЕРВЕР" Foreground="{StaticResource LauncherAccentBright}" FontSize="11" FontWeight="Bold" />
+                <TextBlock Text="mc.copimine.ru" FontSize="17" FontWeight="Bold" Margin="0,5,0,2" />
+                <TextBlock Text="Сервер добавится в список Minecraft автоматически."
+                           Foreground="{StaticResource LauncherMutedText}"
+                           TextWrapping="Wrap"
+                           FontSize="11" />
+              </StackPanel>
+            </Border>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Column="2">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="158" />
+            <RowDefinition Height="18" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+
+          <Border Grid.Row="0"
+                  Style="{StaticResource LauncherCard}"
+                  Padding="0"
+                  ClipToBounds="True">
+            <Grid>
+              <Image Source="Assets/LauncherVisuals/update-background.png"
+                     Stretch="UniformToFill"
+                     Opacity="0.46"
+                     IsHitTestVisible="False" />
+              <Border IsHitTestVisible="False">
+                <Border.Background>
+                  <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                    <GradientStop Color="#F0122520" Offset="0" />
+                    <GradientStop Color="#98132A25" Offset="0.62" />
+                    <GradientStop Color="#3D1B3930" Offset="1" />
+                  </LinearGradientBrush>
+                </Border.Background>
+              </Border>
+              <Grid Margin="20,17">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                  <TextBlock Text="СОСТОЯНИЕ" Foreground="{StaticResource LauncherAccentBright}" FontSize="11" FontWeight="Bold" />
+                  <TextBlock Text="{Binding Status}" FontSize="21" FontWeight="Bold" Margin="0,4,0,0" />
+                  <TextBlock Text="{Binding LoadingStage}"
+                             Foreground="{StaticResource LauncherSecondaryText}"
+                             TextWrapping="Wrap"
+                             Margin="0,7,0,0" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="18,0,0,0">
+                  <TextBlock Text="{Binding ProgressLabel}"
+                             Foreground="{StaticResource LauncherAccentBright}"
+                             FontSize="25"
+                             FontWeight="Bold"
+                             HorizontalAlignment="Right" />
+                  <TextBlock Text="синхронизация"
+                             Foreground="{StaticResource LauncherMutedText}"
+                             FontSize="11"
+                             HorizontalAlignment="Right" />
+                  <Button Style="{StaticResource LauncherCompactButton}"
+                          Command="{Binding CheckSelfUpdateCommand}"
+                          Content="Проверить обновление"
+                          Margin="0,10,0,0" />
+                </StackPanel>
+              </Grid>
+              <ProgressBar Value="{Binding ProgressPercent}"
+                           IsIndeterminate="{Binding IsProgressIndeterminate}"
+                           Style="{StaticResource LauncherProgressBar}"
+                           VerticalAlignment="Bottom"
+                           Margin="20,0,20,15" />
+            </Grid>
+          </Border>
+
+          <Border Grid.Row="2" Style="{StaticResource LauncherCard}" Padding="18">
+            <Grid>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <Grid Grid.Row="0" Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                  <TextBlock Text="Последние новости" FontSize="21" FontWeight="Bold" />
+                  <TextBlock Text="Обновления сборки и короткие заметки команды"
+                             Foreground="{StaticResource LauncherSecondaryText}"
+                             FontSize="11"
+                             Margin="0,4,0,0" />
+                </StackPanel>
+                <Button Grid.Column="1"
+                        Style="{StaticResource LauncherCompactButton}"
+                        Command="{Binding RefreshNewsCommand}"
+                        Content="Обновить"
+                        Margin="12,0,0,0" />
+              </Grid>
+
+              <ScrollViewer Grid.Row="1"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Disabled">
+                <Grid>
+                  <ItemsControl ItemsSource="{Binding PatchCards}"
+                                Visibility="{Binding HasPatchCards, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate>
+                        <Border Background="#A6142825"
+                                BorderBrush="#6C3D755B"
+                                BorderThickness="1"
+                                CornerRadius="11"
+                                Padding="13"
+                                Margin="0,0,0,10">
+                          <StackPanel>
+                            <Border Height="88"
+                                    Background="{StaticResource LauncherInputSurface}"
+                                    BorderBrush="{StaticResource LauncherBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Margin="0,0,0,11">
+                              <Grid>
+                                <Image Source="{Binding ArtworkPath}" Stretch="UniformToFill" Opacity="0.88" />
+                                <Border Background="#8F07120F" IsHitTestVisible="False" />
+                              </Grid>
+                            </Border>
+                            <DockPanel>
+                              <TextBlock Text="{Binding Version}" Foreground="{StaticResource LauncherAccentBright}" FontWeight="Bold" />
+                              <TextBlock Text="{Binding PublishedAt}" Foreground="{StaticResource LauncherMutedText}" DockPanel.Dock="Right" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,6,0,3" />
+                            <TextBlock Text="{Binding Summary}" Foreground="{StaticResource LauncherSecondaryText}" TextWrapping="Wrap" />
+                            <Button Style="{StaticResource LauncherCompactButton}"
+                                    Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}"
+                                    Content="Подробнее"
+                                    HorizontalAlignment="Left"
+                                    Margin="0,10,0,0" />
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+
+                  <Grid Visibility="{Binding HasPatchCards, Converter={StaticResource InverseBooleanToVisibilityConverter}}"
+                        MinHeight="172">
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" CornerRadius="12" ClipToBounds="True" Margin="0,0,6,0">
+                      <Image Source="Assets/LauncherVisuals/news-01.png" Stretch="UniformToFill" />
+                    </Border>
+                    <Border Grid.Column="1" CornerRadius="12" ClipToBounds="True" Margin="3,0,3,0">
+                      <Image Source="Assets/LauncherVisuals/news-02.png" Stretch="UniformToFill" />
+                    </Border>
+                    <Border Grid.Column="2" CornerRadius="12" ClipToBounds="True" Margin="6,0,0,0">
+                      <Image Source="Assets/LauncherVisuals/news-03.png" Stretch="UniformToFill" />
+                    </Border>
+                    <Border Grid.ColumnSpan="3"
+                            VerticalAlignment="Bottom"
+                            Background="#D20A1512"
+                            Padding="13,9"
+                            CornerRadius="0,0,12,12">
+                      <StackPanel>
+                        <TextBlock Text="Новости пока недоступны" FontWeight="SemiBold" FontSize="14" />
+                        <TextBlock Text="Показываем сохранённый визуальный набор. Попробуйте обновить позже."
+                                   Foreground="{StaticResource LauncherSecondaryText}"
+                                   FontSize="11"
+                                   Margin="0,3,0,0" />
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                </Grid>
+              </ScrollViewer>
+
+              <TextBlock Grid.Row="2"
+                         Text="Новости подгружаются с сайта и сохраняются локально для следующего запуска."
+                         Foreground="{StaticResource LauncherMutedText}"
+                         FontSize="11"
+                         TextWrapping="Wrap"
+                         Margin="0,12,0,0" />
+            </Grid>
+          </Border>
+
+          <Expander Grid.Row="3"
+                    Header="Диагностика"
+                    IsExpanded="{Binding IsDiagnosticOpen, Mode=TwoWay}"
+                    Foreground="{StaticResource LauncherSecondaryText}"
+                    Background="#D0122722"
+                    BorderBrush="{StaticResource LauncherBorder}"
+                    BorderThickness="1"
+                    Padding="12,8"
+                    Margin="0,14,0,0">
+            <Grid Margin="0,8,0,0">
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
-              <TextBlock Text="Обновления" FontSize="20" FontWeight="Bold" VerticalAlignment="Center" />
-              <Button Grid.Column="1" Style="{StaticResource LauncherCompactButton}" Command="{Binding RefreshNewsCommand}" Content="Обновить" Margin="12,0,0,0" />
+              <TextBox Grid.Column="0"
+                       Text="{Binding Diagnostic, Mode=OneWay}"
+                       IsReadOnly="True"
+                       IsTabStop="True"
+                       AcceptsReturn="True"
+                       TextWrapping="Wrap"
+                       VerticalScrollBarVisibility="Auto"
+                       HorizontalScrollBarVisibility="Auto"
+                       Background="Transparent"
+                       BorderThickness="0"
+                       Padding="0"
+                       Foreground="{StaticResource LauncherSecondaryText}"
+                       FontFamily="Consolas"
+                       FontSize="12"
+                       Margin="0,0,12,0" />
+              <Button Grid.Column="1"
+                      Style="{StaticResource LauncherCompactButton}"
+                      Command="{Binding DiagnoseCommand}"
+                      Content="Проверить состояние" />
             </Grid>
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-              <ItemsControl ItemsSource="{Binding PatchCards}">
-                <ItemsControl.ItemTemplate>
-                  <DataTemplate>
-                    <Border Background="#0f1c28" BorderBrush="#284657" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,10">
-                      <StackPanel>
-                        <Border Height="92" Background="{StaticResource LauncherInputSurface}" BorderBrush="{StaticResource LauncherBorder}" BorderThickness="1" CornerRadius="9" Margin="0,0,0,12">
-                          <Grid>
-                            <Image Source="{Binding ArtworkPath}" Stretch="UniformToFill" Opacity="0.88" />
-                            <Border Background="#9907120F" IsHitTestVisible="False" />
-                          </Grid>
-                        </Border>
-                        <DockPanel>
-                          <TextBlock Text="{Binding Version}" Foreground="#65df9a" FontWeight="Bold" />
-                          <TextBlock Text="{Binding PublishedAt}" Foreground="#7f9aa5" DockPanel.Dock="Right" />
-                        </DockPanel>
-                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="Bold" Margin="0,6,0,3" />
-                        <TextBlock Text="{Binding Summary}" Foreground="#b1c7ce" TextWrapping="Wrap" />
-                        <Button Style="{StaticResource LauncherCompactButton}" Command="{Binding DataContext.OpenPatchCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}" CommandParameter="{Binding}" Content="Подробнее" HorizontalAlignment="Left" Margin="0,10,0,0" />
-                      </StackPanel>
-                    </Border>
-                  </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
-            </ScrollViewer>
-            <TextBlock Grid.Row="2" Text="Нет сети? Покажем последние загруженные новости." Foreground="#718b96" FontSize="11" Margin="0,12,0,0" TextWrapping="Wrap" />
-          </Grid>
-        </Border>
-
-        <Expander Grid.Row="2" Header="Диагностика" IsExpanded="{Binding IsDiagnosticOpen, Mode=TwoWay}" Foreground="#b1c7ce" Background="#122332" BorderBrush="#284858" BorderThickness="1" Padding="12,8">
-          <Grid Margin="0,8,0,0">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-            <TextBox Grid.Column="0" Text="{Binding Diagnostic, Mode=OneWay}" IsReadOnly="True" IsTabStop="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" Background="Transparent" BorderThickness="0" Padding="0" Foreground="#b1c7ce" FontFamily="Consolas" FontSize="12" Margin="0,0,12,0" />
-            <Button Grid.Column="1" Style="{StaticResource LauncherCompactButton}" Command="{Binding DiagnoseCommand}" Content="Проверить состояние" />
-          </Grid>
-        </Expander>
+          </Expander>
+        </Grid>
       </Grid>
+
+      <Border Grid.Row="2"
+              Background="#D00B1714"
+              BorderBrush="#663D755B"
+              BorderThickness="1"
+              CornerRadius="10"
+              Padding="11"
+              Margin="0,18,0,0">
+        <DockPanel>
+          <TextBlock Text="{Binding Status}" Foreground="{StaticResource LauncherSecondaryText}" />
+          <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" MaxWidth="650">
+            <TextBlock Text="Данные Launcher: " Foreground="{StaticResource LauncherMutedText}" />
+            <TextBlock Text="{Binding LauncherDataPath}"
+                       Foreground="{StaticResource LauncherMutedText}"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding LauncherDataPath}" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
     </Grid>
 
-    <Border Grid.Row="2" Background="#09111a" BorderBrush="#1d3441" BorderThickness="1" CornerRadius="8" Padding="11" Margin="0,16,0,0">
-      <DockPanel>
-        <TextBlock Text="{Binding Status}" Foreground="#9eb8c3" />
-        <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" MaxWidth="580">
-          <TextBlock Text="Данные Launcher: " Foreground="#718b96" />
-          <TextBlock Text="{Binding LauncherDataPath}" Foreground="#718b96" TextTrimming="CharacterEllipsis" ToolTip="{Binding LauncherDataPath}" />
-        </StackPanel>
-      </DockPanel>
-    </Border>
-    </Grid>
-
-    <Grid x:Name="ScreenView" Margin="24" Visibility="Collapsed">
+    <Grid x:Name="ScreenView" Margin="28" Visibility="Collapsed">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
-      <Grid Grid.Row="0" Margin="0,0,0,14">
+      <Grid Grid.Row="0" Margin="0,0,0,16">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
-        <Button x:Name="BackButton" Grid.Column="0" Content="←" Click="BackFromScreen_Click" Width="42" Height="38" Padding="0" FontSize="23" ToolTip="Назад" AutomationProperties.Name="Назад" />
-        <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
-          <TextBlock Text="РАЗДЕЛ LAUNCHER" Foreground="#63dfa0" FontSize="11" FontWeight="Bold" />
+        <Button x:Name="BackButton"
+                Grid.Column="0"
+                Content="←"
+                Click="BackFromScreen_Click"
+                Width="44"
+                Height="42"
+                Padding="0"
+                FontSize="23"
+                ToolTip="Назад"
+                AutomationProperties.Name="Назад" />
+        <StackPanel Grid.Column="1" Margin="13,0,0,0" VerticalAlignment="Center">
+          <TextBlock Text="РАЗДЕЛ LAUNCHER" Foreground="{StaticResource LauncherAccentBright}" FontSize="11" FontWeight="Bold" />
           <TextBlock x:Name="ScreenTitleText" Text="Настройки" FontSize="25" FontWeight="Bold" Margin="0,2,0,0" />
         </StackPanel>
       </Grid>

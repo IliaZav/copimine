@@ -18,9 +18,9 @@
           <DataTrigger.EnterActions>
             <BeginStoryboard>
               <Storyboard>
-                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="{x:Static local:LauncherMotion.ShortTransition}" />
-                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.97" To="1" Duration="{x:Static local:LauncherMotion.MediumTransition}" />
-                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.97" To="1" Duration="{x:Static local:LauncherMotion.MediumTransition}" />
+                <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="{x:Static local:LauncherMotion.ShortDuration}" />
+                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" From="0.97" To="1" Duration="{x:Static local:LauncherMotion.MediumDuration}" />
+                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" From="0.97" To="1" Duration="{x:Static local:LauncherMotion.MediumDuration}" />
               </Storyboard>
             </BeginStoryboard>
           </DataTrigger.EnterActions>

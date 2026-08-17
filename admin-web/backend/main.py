@@ -624,6 +624,7 @@ class PlayerRecoveryStartIn(BaseModel):
 
 class PlayerRecoveryConfirmIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
+    username: str = Field(min_length=3, max_length=32)
     code: str = Field(min_length=6, max_length=16)
     new_password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
@@ -3735,8 +3736,8 @@ def current_admin_users() -> dict[str, dict[str, Any]]:
 ADMIN_USERS = DEFAULT_ADMIN_USERS  # legacy snapshot; runtime checks use current_admin_users()
 
 
-def is_reserved_admin_username(username: str) -> bool:
-    """Prevent player accounts from colliding with enabled panel accounts."""
+def is_reserved_admin_username(username: str, *, include_disabled: bool = False) -> bool:
+    """Prevent player accounts from colliding with panel account names."""
     normalized = str(username or "").strip().casefold()
     if not normalized:
         return False
@@ -3746,7 +3747,8 @@ def is_reserved_admin_username(username: str) -> bool:
         # Fail closed if the admin directory cannot be read.
         return True
     return any(
-        str(name).strip().casefold() == normalized and bool(meta.get("enabled", True))
+        str(name).strip().casefold() == normalized
+        and (include_disabled or bool(meta.get("enabled", True)))
         for name, meta in admins.items()
     )
 def now_ts() -> int:
@@ -7588,9 +7590,19 @@ def create_player_recovery_code_sync(minecraft_name: str) -> dict[str, Any]:
     return {"ok": True, "deliveredInGame": delivered, "expiresAt": expires, "minecraftName": minecraft_name}
 
 
-def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_password: str) -> dict[str, Any]:
+def confirm_player_recovery_code_sync(
+    minecraft_name: str,
+    requested_username: str,
+    code: str,
+    new_password: str,
+) -> dict[str, Any]:
     if not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    requested_username = str(requested_username or "").strip()
+    if not valid_site_username(requested_username):
+        raise HTTPException(status_code=400, detail="Логин должен быть 3-32 символа: A-Z, 0-9 и _")
+    if is_reserved_admin_username(requested_username, include_disabled=True):
+        raise HTTPException(status_code=409, detail="Этот логин уже зарегистрирован в панели администрации")
     ok, reason = password_policy_ok(new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
@@ -7601,6 +7613,14 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         account = player_account_by_minecraft_name(conn, minecraft_name)
         if not account:
             raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
+        if str(account.get("role") or "player").strip().lower() != "player":
+            raise HTTPException(status_code=403, detail="Учётную запись панели нельзя восстанавливать через форму игрока")
+        collision = conn.execute(
+            "SELECT id FROM site_accounts WHERE username_norm=%s AND id<>%s LIMIT 1",
+            (requested_username.lower(), account["id"]),
+        ).fetchone()
+        if collision:
+            raise HTTPException(status_code=409, detail="Такой логин уже занят")
         row = conn.execute(
             """
             SELECT * FROM one_time_link_codes
@@ -7626,8 +7646,16 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
             conn.rollback()
             raise HTTPException(status_code=403, detail="Код восстановления уже использован или истёк")
         conn.execute(
-            "UPDATE site_accounts SET password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
-            (make_password_hash(new_password), minecraft_uuid, minecraft_name, updated_at, account["id"]),
+            "UPDATE site_accounts SET username=%s,username_norm=%s,password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+            (
+                requested_username,
+                requested_username.lower(),
+                make_password_hash(new_password),
+                minecraft_uuid,
+                minecraft_name,
+                updated_at,
+                account["id"],
+            ),
         )
         conn.execute(
             """
@@ -7643,7 +7671,7 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         )
         conn.commit()
     account = dict(account)
-    account.update({"minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
+    account.update({"username": requested_username, "username_norm": requested_username.lower(), "minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
     return {"ok": True, "account": public_player_account(account)}
 
 
@@ -13069,7 +13097,13 @@ async def player_recovery_start(data: PlayerRecoveryStartIn, request: Request) -
 async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Request, response: Response) -> dict[str, Any]:
     require_secure_auth_transport(request)
     check_rate_limit(request, "player-recovery-confirm", limit=8, window_seconds=300)
-    result = await bg(confirm_player_recovery_code_sync, data.minecraft_name.strip(), data.code.strip().upper(), data.new_password)
+    result = await bg(
+        confirm_player_recovery_code_sync,
+        data.minecraft_name.strip(),
+        data.username.strip(),
+        data.code.strip().upper(),
+        data.new_password,
+    )
     account = dict(result.get("account") or {})
     access_token, refresh_token = issue_player_auth_pair(
         {

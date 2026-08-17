@@ -182,11 +182,12 @@ async function startRecovery(event) {
 async function confirmRecovery(event) {
   event?.preventDefault?.();
   const minecraftName = String($("recoveryMinecraftName")?.value || "").trim();
+  const username = String($("recoveryUsername")?.value || "").trim();
   const code = String($("recoveryCode")?.value || "").trim().toUpperCase();
   const newPassword = String($("recoveryPassword")?.value || "");
   const rememberMe = Boolean($("recoveryRememberMe")?.checked);
-  if (!minecraftName || !code || !newPassword) {
-    setRecoveryStatus("Заполните ник, код и новый пароль.", true);
+  if (!minecraftName || !username || !code || !newPassword) {
+    setRecoveryStatus("Заполните Minecraft-ник, логин сайта, код и новый пароль.", true);
     return;
   }
   setRecoveryStatus("");
@@ -195,6 +196,7 @@ async function confirmRecovery(event) {
     method: "POST",
     body: JSON.stringify({
       minecraft_name: minecraftName,
+      username,
       code,
       new_password: newPassword,
       remember_me: rememberMe,

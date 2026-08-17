@@ -88,9 +88,12 @@
 
               <section class="auth-recovery-card">
                 <h3>Восстановить доступ</h3>
-                <p>Если ваш ник уже есть в whitelist, получите код в игре и задайте новый пароль для сайта.</p>
+                <p>Введите Minecraft-ник, получите код в игре и укажите логин, под которым будете входить на сайт.</p>
                 <label for="recoveryMinecraftName">Minecraft-ник</label>
                 <input id="recoveryMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Тот же ник, что и на сервере" />
+
+                <label for="recoveryUsername">Логин сайта</label>
+                <input id="recoveryUsername" autocomplete="username" spellcheck="false" placeholder="Ваш логин для входа" />
 
                 <div class="auth-inline-actions">
                   <button id="recoveryStartBtn" type="button" class="btn btn-secondary">Отправить код в игру</button>

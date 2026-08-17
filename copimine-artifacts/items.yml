@@ -52,6 +52,27 @@ items:
     lore:
       - "&7Возвращает к точке возрождения"
 
+  # Issued only by the first-party End Rift event reward service.  It is not
+  # listed in the AR shop and cannot be purchased or granted by the admin GUI.
+  - id: rift_core_shard
+    category: TOOL
+    material: ECHO_SHARD
+    source: ADMIN_ONLY
+    custom_model_data: 830004
+    custom-texture-mode-allowed: true
+    name: "&5Осколок Разлома"
+    rarity: LEGENDARY
+    price_ar: 0
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 3600
+    effect: RIFT_CORE_SHARD
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore:
+      - "&7Подлинная награда за закрытие Края Разлома"
+      - "&8Выдаётся только официальным участникам события"
+
   - id: angel_wings
     category: TOOL
     material: FEATHER

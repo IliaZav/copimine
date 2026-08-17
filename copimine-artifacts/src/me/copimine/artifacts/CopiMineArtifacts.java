@@ -53,6 +53,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
+import me.copimine.artifacts.api.EventArtifactRewardRequest;
+import me.copimine.artifacts.api.EventArtifactRewardService;
+import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.economycore.CopiMineEconomyCore;
 import me.copimine.economycore.CopiMineEconomyCore.ArtifactsBridge;
 import me.copimine.economycore.CopiMineEconomyCore.DonationBalanceService;
@@ -176,6 +179,7 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.EventExecutor;
 import org.bukkit.plugin.IllegalPluginAccessException;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -283,6 +287,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private CopiMineArtifacts.PgPool pgPool;
    private CopiMineArtifacts.PgSettings pgSettings;
    private CopiMineArtifacts.ArtifactBridgeAdapter bridge;
+   private EventArtifactRewardService eventArtifactRewardService;
    private boolean debugGui;
    private CopiMineArtifacts.VisualEffectService visualEffects;
    private Path donationLossJournalPath;
@@ -455,6 +460,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          setPriceCommand.setTabCompleter(this);
       }
       Bukkit.getPluginManager().registerEvents(this, this);
+      this.eventArtifactRewardService = new EventArtifactRewardServiceImpl();
+      Bukkit.getServicesManager().register(
+            EventArtifactRewardService.class,
+            this.eventArtifactRewardService,
+            this,
+            ServicePriority.Normal);
+      this.reconcilePendingEventWorldDrops();
       // The catalog and official-instance cache are loaded asynchronously
       // before listeners are registered. Re-check players that were already
       // online during a plugin reload, and give join-time inventory restores
@@ -569,6 +581,11 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    public void onDisable() {
+      if (this.eventArtifactRewardService != null) {
+         Bukkit.getServicesManager().unregister(
+               EventArtifactRewardService.class, this.eventArtifactRewardService);
+         this.eventArtifactRewardService = null;
+      }
       // Never leave temporary magma blocks behind during a normal plugin
       // reload/restart; every graceful shutdown restores the exact original
       // BlockData before the world is handed back to Bukkit.
@@ -922,6 +939,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             "    CREATE TABLE IF NOT EXISTS artifact_pending_deliveries(\n        delivery_id TEXT PRIMARY KEY,\n        purchase_id TEXT NOT NULL,\n        unique_item_id TEXT NOT NULL,\n        player_uuid TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        status TEXT NOT NULL,\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
          );
          var2.execute(
+            "    CREATE TABLE IF NOT EXISTS artifact_event_rewards(\n        idempotency_key TEXT PRIMARY KEY,\n        event_id TEXT NOT NULL,\n        item_id TEXT NOT NULL,\n        recipient_uuid TEXT NOT NULL,\n        recipient_name TEXT NOT NULL DEFAULT '',\n        purchase_id TEXT NOT NULL,\n        unique_item_id TEXT NOT NULL,\n        delivery_mode TEXT NOT NULL,\n        status TEXT NOT NULL,\n        world_name TEXT NOT NULL DEFAULT '',\n        drop_x DOUBLE PRECISION NOT NULL DEFAULT 0,\n        drop_y DOUBLE PRECISION NOT NULL DEFAULT 0,\n        drop_z DOUBLE PRECISION NOT NULL DEFAULT 0,\n        created_at BIGINT NOT NULL,\n        updated_at BIGINT NOT NULL\n    )\n"
+         );
+         var2.execute(
             "    CREATE TABLE IF NOT EXISTS artifact_revenue_payouts(\n        purchase_id TEXT PRIMARY KEY,\n        president_uuid TEXT NOT NULL,\n        president_name TEXT NOT NULL DEFAULT '',\n        recipient_account_id TEXT NOT NULL DEFAULT 'PRESIDENT_BUDGET',\n        buyer_uuid TEXT NOT NULL,\n        buyer_name TEXT NOT NULL DEFAULT '',\n        item_id TEXT NOT NULL,\n        shop_id TEXT NOT NULL,\n        amount_ar BIGINT NOT NULL DEFAULT 0,\n        status TEXT NOT NULL DEFAULT 'PENDING',\n        bank_tx_id TEXT NOT NULL DEFAULT '',\n        idempotency_key TEXT NOT NULL DEFAULT '',\n        last_error TEXT NOT NULL DEFAULT '',\n        created_at BIGINT NOT NULL DEFAULT 0,\n        updated_at BIGINT NOT NULL DEFAULT 0\n    )\n"
          );
          var2.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)");
@@ -932,6 +952,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             "CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_instances_owner_item_live ON artifact_item_instances(owner_uuid,item_id) WHERE status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY')"
          );
          var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_pending_player ON artifact_pending_deliveries(player_uuid,status,created_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_event_rewards_status ON artifact_event_rewards(status,updated_at DESC)");
+         var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_event_rewards_event ON artifact_event_rewards(event_id,created_at DESC)");
          var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_status ON artifact_revenue_payouts(status,updated_at DESC)");
          var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_president ON artifact_revenue_payouts(president_uuid,created_at DESC)");
          var2.execute("CREATE INDEX IF NOT EXISTS idx_artifact_revenue_payouts_recipient ON artifact_revenue_payouts(recipient_account_id,created_at DESC)");
@@ -12593,7 +12615,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
              var7.add(this.color("&7Осталось использований: " + RepairKitMath.MAX_USES + "/" + RepairKitMath.MAX_USES));
           }
           if ("INFINITE_TORCH".equalsIgnoreCase(var1.effect())
-                || "RETURN_STONE".equalsIgnoreCase(var1.effect())) {
+                || "RETURN_STONE".equalsIgnoreCase(var1.effect())
+                || "RIFT_CORE_SHARD".equalsIgnoreCase(var1.effect())) {
              var6.setMaxStackSize(1);
           }
           if ("ANGEL_WINGS".equalsIgnoreCase(var1.effect())) {
@@ -13333,6 +13356,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             );
             PreparedStatement var7 = var5.prepareStatement("UPDATE artifact_purchases SET status='DELIVERED',updated_at=? WHERE purchase_id=?");
             PreparedStatement var8 = var5.prepareStatement("UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? WHERE unique_item_id=?");
+            PreparedStatement eventReward = var5.prepareStatement("UPDATE artifact_event_rewards SET status='DELIVERED',updated_at=? WHERE purchase_id=? AND status='PENDING_DELIVERY'");
          ) {
             long var9 = this.now();
             var6.setLong(1, var9);
@@ -13347,6 +13371,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var8.setLong(1, var9);
             var8.setString(2, var3);
             var8.executeUpdate();
+            eventReward.setLong(1, var9);
+            eventReward.setString(2, var2);
+            eventReward.executeUpdate();
             var5.commit();
             // cacheOfficialBinding(uniqueItemId, itemId, readOwnerUuidForInstance(c, uniqueItemId));
             this.cacheOfficialBinding(var3, var4, this.readOwnerUuidForInstance(var5, var3));
@@ -14746,6 +14773,408 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          stack.setItemMeta(meta);
       }
       return stack;
+   }
+
+   /**
+    * Durable reward boundary for first-party gameplay events.  This is kept
+    * separate from the AR shop and donation purchase paths deliberately:
+    * event rewards do not charge a player, create revenue, or call EconomyCore
+    * transaction methods.  The event ledger is the idempotency boundary and
+    * the existing pending-delivery queue is the physical player-delivery
+    * recovery boundary.
+    */
+   private final class EventArtifactRewardServiceImpl implements EventArtifactRewardService {
+      @Override
+      public CompletableFuture<RewardIssueResult> issueToPlayer(EventArtifactRewardRequest request) {
+         if (request == null || request.worldDrop() || request.recipientUuid() == null) {
+            return CompletableFuture.completedFuture(
+                  RewardIssueResult.rejected("", "Player reward request is invalid."));
+         }
+         return submitEventReward(request, null);
+      }
+
+      @Override
+      public CompletableFuture<RewardIssueResult> issueWorldDrop(
+            EventArtifactRewardRequest request, Location location) {
+         if (request == null || !request.worldDrop() || location == null || location.getWorld() == null) {
+            return CompletableFuture.completedFuture(
+                  RewardIssueResult.rejected(
+                        request == null ? "" : request.idempotencyKey(),
+                        "World-drop reward request is invalid."));
+         }
+         EventWorldDropLocation drop = new EventWorldDropLocation(
+               location.getWorld().getName(), location.getX(), location.getY(), location.getZ());
+         return submitEventReward(request, drop);
+      }
+   }
+
+   private CompletableFuture<RewardIssueResult> submitEventReward(
+         EventArtifactRewardRequest request, EventWorldDropLocation drop) {
+      CompletableFuture<RewardIssueResult> result = new CompletableFuture<>();
+      if (request == null || this.pgPool == null || this.dbExecutor == null
+            || this.dbExecutor.isShutdown() || request.worldDrop() != (drop != null)) {
+         result.complete(RewardIssueResult.rejected(
+               request == null ? "" : request.idempotencyKey(),
+               "Artifacts reward service is not ready."));
+         return result;
+      }
+      try {
+         this.dbExecutor.submit(() -> {
+            try {
+               result.complete(this.reserveEventReward(request, drop));
+            } catch (Throwable error) {
+               this.getLogger().log(Level.WARNING, "End event reward reservation failed", error);
+               result.complete(RewardIssueResult.rejected(
+                     request.idempotencyKey(), "Reward reservation failed."));
+            }
+         });
+      } catch (RejectedExecutionException rejected) {
+         result.complete(RewardIssueResult.rejected(
+               request.idempotencyKey(), "Artifacts database queue is stopping."));
+      }
+      return result;
+   }
+
+   private RewardIssueResult reserveEventReward(
+         EventArtifactRewardRequest request, EventWorldDropLocation drop) {
+      String key = request.idempotencyKey();
+      boolean worldDrop = drop != null;
+      CatalogItem item = this.runtimeCatalogItem(request.itemId());
+      if (item == null) {
+         return RewardIssueResult.rejected(key, "Event reward item is not in the catalog.");
+      }
+      if (worldDrop) {
+         if (!"return_stone".equalsIgnoreCase(item.itemId())) {
+            return RewardIssueResult.rejected(key, "Only the official Return Stone may be a world drop.");
+         }
+      } else if (!"rift_core_shard".equalsIgnoreCase(item.itemId())
+            || !this.isAdminOnlyCatalogItem(item.itemId())) {
+         return RewardIssueResult.rejected(key, "Only the official Rift Shard may be issued to a player.");
+      }
+
+      UUID ownerUuid = worldDrop
+            ? this.eventWorldOwnerUuid(key)
+            : request.recipientUuid();
+      String ownerName = worldDrop
+            ? "CopiMine End Event"
+            : this.firstNonBlank(request.recipientName(), "Participant");
+      Connection connection = null;
+      try {
+         connection = this.pgPool.acquire();
+         connection.setAutoCommit(false);
+         RewardIssueResult existing = this.readEventReward(connection, key);
+         if (existing != null) {
+            connection.rollback();
+            return existing;
+         }
+
+         // A participant may receive one live Rift Shard instance.  A second
+         // event idempotency key must never turn an already-issued physical
+         // item into two certified copies.
+         try (PreparedStatement live = connection.prepareStatement(
+               "SELECT unique_item_id FROM artifact_item_instances "
+                     + "WHERE owner_uuid=? AND item_id=? "
+                     + "AND status IN ('ACTIVE','DELIVERING','PENDING_DELIVERY') LIMIT 1")) {
+            live.setString(1, ownerUuid.toString());
+            live.setString(2, item.itemId());
+            try (ResultSet rows = live.executeQuery()) {
+               if (rows.next()) {
+                  connection.rollback();
+                  return RewardIssueResult.rejected(
+                        key, "This participant already owns the official event reward.");
+               }
+            }
+         }
+
+         String purchaseId = "end-event-reward-" + UUID.randomUUID();
+         String uniqueItemId = UUID.randomUUID().toString();
+         long timestamp = this.now();
+         String status = worldDrop ? "WORLD_PENDING" : "PENDING_DELIVERY";
+         String deliveryMode = worldDrop ? "EVENT_WORLD" : "EVENT_PLAYER";
+         String worldName = worldDrop ? drop.worldName() : "";
+         double x = worldDrop ? drop.x() : 0.0D;
+         double y = worldDrop ? drop.y() : 0.0D;
+         double z = worldDrop ? drop.z() : 0.0D;
+
+         try (PreparedStatement event = connection.prepareStatement(
+                  "INSERT INTO artifact_event_rewards "
+                        + "(idempotency_key,event_id,item_id,recipient_uuid,recipient_name,"
+                        + "purchase_id,unique_item_id,delivery_mode,status,world_name,drop_x,drop_y,drop_z,created_at,updated_at) "
+                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+              PreparedStatement purchase = connection.prepareStatement(
+                  "INSERT INTO artifact_purchases "
+                        + "(purchase_id,unique_item_id,player_uuid,player_name,item_id,shop_id,price_ar,bank_tx_id,idempotency_key,status,delivery_mode,created_at,updated_at) "
+                        + "VALUES(?,?,?,?,?,'END_RIFT_EVENT',0,'EVENT_REWARD',?,?,?, ?,?)");
+              PreparedStatement instance = connection.prepareStatement(
+                  "INSERT INTO artifact_item_instances "
+                        + "(unique_item_id,item_id,owner_uuid,purchase_id,status,repaired_count,created_at,updated_at) "
+                        + "VALUES(?,?,?,?,?,0,?,?)");
+              PreparedStatement delivery = worldDrop ? null : connection.prepareStatement(
+                  "INSERT INTO artifact_pending_deliveries "
+                        + "(delivery_id,purchase_id,unique_item_id,player_uuid,item_id,status,created_at,updated_at) "
+                        + "VALUES(?,?,?,?,?,'PENDING',?,?)")) {
+            event.setString(1, key);
+            event.setString(2, request.eventId());
+            event.setString(3, item.itemId());
+            event.setString(4, ownerUuid.toString());
+            event.setString(5, ownerName);
+            event.setString(6, purchaseId);
+            event.setString(7, uniqueItemId);
+            event.setString(8, deliveryMode);
+            event.setString(9, status);
+            event.setString(10, worldName);
+            event.setDouble(11, x);
+            event.setDouble(12, y);
+            event.setDouble(13, z);
+            event.setLong(14, timestamp);
+            event.setLong(15, timestamp);
+            event.executeUpdate();
+
+            purchase.setString(1, purchaseId);
+            purchase.setString(2, uniqueItemId);
+            purchase.setString(3, ownerUuid.toString());
+            purchase.setString(4, ownerName);
+            purchase.setString(5, item.itemId());
+            purchase.setString(6, "event-reward:" + key);
+            purchase.setString(7, status);
+            purchase.setString(8, worldDrop ? "WORLD" : "PENDING");
+            purchase.setLong(9, timestamp);
+            purchase.setLong(10, timestamp);
+            purchase.executeUpdate();
+
+            instance.setString(1, uniqueItemId);
+            instance.setString(2, item.itemId());
+            instance.setString(3, ownerUuid.toString());
+            instance.setString(4, purchaseId);
+            instance.setString(5, status);
+            instance.setLong(6, timestamp);
+            instance.setLong(7, timestamp);
+            instance.executeUpdate();
+
+            if (delivery != null) {
+               delivery.setString(1, UUID.randomUUID().toString());
+               delivery.setString(2, purchaseId);
+               delivery.setString(3, uniqueItemId);
+               delivery.setString(4, ownerUuid.toString());
+               delivery.setString(5, item.itemId());
+               delivery.setLong(6, timestamp);
+               delivery.setLong(7, timestamp);
+               delivery.executeUpdate();
+            }
+         }
+         connection.commit();
+         this.audit("END_RIFT_EVENT", "reward_reserved", key,
+               "item=" + item.itemId() + " owner=" + ownerUuid);
+         if (worldDrop) {
+            this.schedulePendingEventWorldDrop(
+                  key, item.itemId(), uniqueItemId, purchaseId, ownerUuid, drop);
+            return RewardIssueResult.pending(key, "WORLD_PENDING", uniqueItemId);
+         }
+         Player online = Bukkit.getPlayer(ownerUuid);
+         if (online != null) {
+            this.runSync(() -> this.autoClaimPendingDeliveries(online));
+         }
+         return RewardIssueResult.pending(key, "PENDING_DELIVERY", uniqueItemId);
+      } catch (SQLException error) {
+         if (connection != null) {
+            try {
+               connection.rollback();
+            } catch (SQLException ignored) {
+            }
+            // A concurrent request may have won the idempotency race.  Read
+            // that durable winner before reporting a failure to the event.
+            if ("23505".equals(error.getSQLState())) {
+               RewardIssueResult winner = this.readEventReward(connection, key);
+               if (winner != null) {
+                  return winner;
+               }
+            }
+         }
+         this.getLogger().log(Level.WARNING, "Event reward transaction failed for " + key, error);
+         return RewardIssueResult.rejected(key, "Reward transaction failed.");
+      } finally {
+         if (connection != null) {
+            try {
+               connection.setAutoCommit(true);
+            } catch (SQLException ignored) {
+            }
+            this.pgPool.release(connection);
+         }
+      }
+   }
+
+   private RewardIssueResult readEventReward(Connection connection, String idempotencyKey) {
+      try (PreparedStatement query = connection.prepareStatement(
+            "SELECT status,unique_item_id FROM artifact_event_rewards WHERE idempotency_key=? FOR UPDATE")) {
+         query.setString(1, idempotencyKey);
+         try (ResultSet rows = query.executeQuery()) {
+            if (rows.next()) {
+               return RewardIssueResult.alreadyIssued(
+                     idempotencyKey,
+                     this.firstNonBlank(rows.getString(2), ""),
+                     this.firstNonBlank(rows.getString(1), "PENDING_DELIVERY"));
+            }
+         }
+      } catch (SQLException error) {
+         this.getLogger().log(Level.FINE, "Event reward idempotency lookup failed", error);
+      }
+      return null;
+   }
+
+   private UUID eventWorldOwnerUuid(String idempotencyKey) {
+      return UUID.nameUUIDFromBytes(
+            ("copimine-end-event-world:" + idempotencyKey).getBytes(StandardCharsets.UTF_8));
+   }
+
+   private void schedulePendingEventWorldDrop(
+         String key,
+         String itemId,
+         String uniqueItemId,
+         String purchaseId,
+         UUID ownerUuid,
+         EventWorldDropLocation drop) {
+      this.runSync(() -> this.spawnPendingEventWorldDrop(
+            key, itemId, uniqueItemId, purchaseId, ownerUuid, drop));
+   }
+
+   private void reconcilePendingEventWorldDrops() {
+      if (this.pgPool == null) {
+         return;
+      }
+      this.runAsync(() -> {
+         Connection connection = null;
+         try {
+            connection = this.pgPool.acquire();
+            try (PreparedStatement query = connection.prepareStatement(
+                    "SELECT idempotency_key,item_id,purchase_id,unique_item_id,recipient_uuid,world_name,drop_x,drop_y,drop_z "
+                          + "FROM artifact_event_rewards WHERE status='WORLD_PENDING' ORDER BY created_at ASC LIMIT 64")) {
+            try (ResultSet rows = query.executeQuery()) {
+               while (rows.next()) {
+                  String key = rows.getString(1);
+                  EventWorldDropLocation drop = new EventWorldDropLocation(
+                        rows.getString(6), rows.getDouble(7), rows.getDouble(8), rows.getDouble(9));
+                  UUID ownerUuid;
+                  try {
+                     ownerUuid = UUID.fromString(rows.getString(5));
+                  } catch (IllegalArgumentException invalidOwner) {
+                     ownerUuid = this.eventWorldOwnerUuid(key);
+                  }
+                  this.schedulePendingEventWorldDrop(
+                        key, rows.getString(2), rows.getString(4), rows.getString(3), ownerUuid, drop);
+               }
+            }
+            }
+         } catch (SQLException error) {
+            this.getLogger().log(Level.WARNING, "End event world reward recovery lookup failed", error);
+         } finally {
+            this.pgPool.release(connection);
+         }
+      });
+   }
+
+   private void spawnPendingEventWorldDrop(
+         String key,
+         String itemId,
+         String uniqueItemId,
+         String purchaseId,
+         UUID ownerUuid,
+         EventWorldDropLocation drop) {
+      if (!this.isEnabled() || drop == null || drop.worldName().isBlank()) {
+         return;
+      }
+      World world = Bukkit.getWorld(drop.worldName());
+      if (world == null) {
+         Bukkit.getScheduler().runTaskLater(
+               this, () -> this.spawnPendingEventWorldDrop(
+                     key, itemId, uniqueItemId, purchaseId, ownerUuid, drop), 100L);
+         return;
+      }
+      Location location = new Location(world, drop.x(), drop.y(), drop.z());
+      if (!world.isChunkLoaded(location.getBlockX() >> 4, location.getBlockZ() >> 4)) {
+         Bukkit.getScheduler().runTaskLater(
+               this, () -> this.spawnPendingEventWorldDrop(
+                     key, itemId, uniqueItemId, purchaseId, ownerUuid, drop), 100L);
+         return;
+      }
+      for (Entity entity : world.getNearbyEntities(location, 2.0D, 2.0D, 2.0D)) {
+         if (entity instanceof Item existing
+               && this.isEventRewardPhysicalItem(existing, uniqueItemId)) {
+            this.finalizeEventWorldDrop(key, purchaseId, uniqueItemId, itemId, ownerUuid);
+            return;
+         }
+      }
+      CatalogItem item = this.runtimeCatalogItem(itemId);
+      if (item == null) {
+         this.getLogger().warning("Event world reward catalog item disappeared: " + itemId);
+         return;
+      }
+      try {
+         Item entity = world.dropItem(location, this.createOfficialItem(
+               item, uniqueItemId, ownerUuid, purchaseId));
+         entity.setPickupDelay(20);
+         this.finalizeEventWorldDrop(key, purchaseId, uniqueItemId, itemId, ownerUuid);
+      } catch (RuntimeException error) {
+         this.getLogger().log(Level.WARNING, "Event world reward spawn failed for " + key, error);
+      }
+   }
+
+   private boolean isEventRewardPhysicalItem(Item entity, String uniqueItemId) {
+      if (entity == null || uniqueItemId == null || !entity.getItemStack().hasItemMeta()) {
+         return false;
+      }
+      String actual = entity.getItemStack().getItemMeta().getPersistentDataContainer()
+            .get(this.keyUniqueItemId, PersistentDataType.STRING);
+      return uniqueItemId.equals(actual);
+   }
+
+   private void finalizeEventWorldDrop(
+         String key, String purchaseId, String uniqueItemId, String itemId, UUID ownerUuid) {
+      this.runAsync(() -> {
+         Connection connection = null;
+         try {
+            connection = this.pgPool.acquire();
+            connection.setAutoCommit(false);
+            long timestamp = this.now();
+            try (PreparedStatement event = connection.prepareStatement(
+                     "UPDATE artifact_event_rewards SET status='DELIVERED',updated_at=? "
+                           + "WHERE idempotency_key=? AND status='WORLD_PENDING'");
+                 PreparedStatement purchase = connection.prepareStatement(
+                     "UPDATE artifact_purchases SET status='DELIVERED',delivery_mode='WORLD',updated_at=? "
+                           + "WHERE purchase_id=? AND status='WORLD_PENDING'");
+                 PreparedStatement instance = connection.prepareStatement(
+                     "UPDATE artifact_item_instances SET status='DELIVERED',updated_at=? "
+                           + "WHERE unique_item_id=? AND item_id=? AND status='WORLD_PENDING'")) {
+               event.setLong(1, timestamp);
+               event.setString(2, key);
+               event.executeUpdate();
+               purchase.setLong(1, timestamp);
+               purchase.setString(2, purchaseId);
+               purchase.executeUpdate();
+               instance.setLong(1, timestamp);
+               instance.setString(2, uniqueItemId);
+               instance.setString(3, itemId);
+               instance.executeUpdate();
+            }
+            connection.commit();
+            this.cacheOfficialBinding(uniqueItemId, itemId, ownerUuid);
+         } catch (SQLException error) {
+            if (connection != null) {
+               try {
+                  connection.rollback();
+               } catch (SQLException ignored) {
+               }
+            }
+            this.getLogger().log(Level.WARNING, "Event world reward finalization failed for " + key, error);
+         } finally {
+            if (connection != null) {
+               try {
+                  connection.setAutoCommit(true);
+               } catch (SQLException ignored) {
+               }
+               this.pgPool.release(connection);
+            }
+         }
+      });
    }
 
    private boolean persistAdminGiftDelivery(UUID ownerUuid, String ownerName, CopiMineArtifacts.CatalogItem item, String actor, String idempotencyKey) {
@@ -16752,6 +17181,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record PendingDeliveryRow(String deliveryId, String purchaseId, String uniqueItemId, String itemId) {
+   }
+
+   private static record EventWorldDropLocation(String worldName, double x, double y, double z) {
    }
 
    private static record OrphanedShopTransfer(

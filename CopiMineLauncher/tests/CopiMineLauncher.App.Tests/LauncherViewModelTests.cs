@@ -14,6 +14,41 @@ namespace CopiMineLauncher.App.Tests;
 public sealed class LauncherViewModelTests
 {
     [Fact]
+    public async Task Initialization_state_is_visible_during_loading_and_clears_after_success()
+    {
+        using var temp = new TemporaryDirectory();
+        var feed = new BlockingPatchFeedClient();
+        var viewModel = new LauncherViewModel(feed, new FakeRuntimeCoordinator())
+        {
+            InstancePath = temp.Path
+        };
+
+        var initializeTask = viewModel.InitializeAsync();
+        await feed.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.IsInitializing.Should().BeTrue();
+        feed.Release.TrySetResult(true);
+        await initializeTask;
+
+        viewModel.IsInitializing.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Initialization_state_clears_when_loading_fails()
+    {
+        using var temp = new TemporaryDirectory();
+        var viewModel = new LauncherViewModel(new ThrowingPatchFeedClient(), new FakeRuntimeCoordinator())
+        {
+            InstancePath = temp.Path
+        };
+
+        var action = () => viewModel.InitializeAsync();
+
+        await action.Should().ThrowAsync<InvalidOperationException>();
+        viewModel.IsInitializing.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task First_start_prepares_the_game_when_the_instance_has_no_launcher_state()
     {
         using var temp = new TemporaryDirectory();
@@ -400,6 +435,25 @@ public sealed class LauncherViewModelTests
     {
         public Task<PatchFeedFetchResult> GetLatestAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new PatchFeedFetchResult(Array.Empty<PatchFeedItem>(), Array.Empty<string>(), false));
+    }
+
+    private sealed class BlockingPatchFeedClient : IPatchFeedClient
+    {
+        public TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<PatchFeedFetchResult> GetLatestAsync(CancellationToken cancellationToken)
+        {
+            Started.TrySetResult(true);
+            await Release.Task.WaitAsync(cancellationToken);
+            return new PatchFeedFetchResult(Array.Empty<PatchFeedItem>(), Array.Empty<string>(), false);
+        }
+    }
+
+    private sealed class ThrowingPatchFeedClient : IPatchFeedClient
+    {
+        public Task<PatchFeedFetchResult> GetLatestAsync(CancellationToken cancellationToken) =>
+            Task.FromException<PatchFeedFetchResult>(new InvalidOperationException("feed fixture failed"));
     }
 
     private sealed class FakeRuntimeCoordinator : ILauncherRuntimeCoordinator

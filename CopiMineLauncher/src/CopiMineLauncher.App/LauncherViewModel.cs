@@ -106,6 +106,9 @@ public partial class LauncherViewModel : ObservableObject
     private bool isBusy;
 
     [ObservableProperty]
+    private bool isInitializing;
+
+    [ObservableProperty]
     private bool isLaunching;
 
     [ObservableProperty]
@@ -187,35 +190,43 @@ public partial class LauncherViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
-        TraceStartup("initialize:start");
-        LoadPlayerProfile();
-        TraceStartup($"profile:loaded:{PlayerName}");
-        LoadSettings();
-        TraceStartup("settings:loaded");
-        LoadLauncherBinding();
-        TraceStartup($"binding:loaded:{IsLauncherLinked}");
-        await RefreshNewsAsync();
-        TraceStartup("news:loaded");
-        if (!LauncherInstallPaths.IsLoopbackStagingEnvironment())
+        IsInitializing = true;
+        try
         {
-            TraceStartup("self-update:check");
-            await RecoverSelfUpdateAsync();
-            await CheckSelfUpdateAsync();
-            TraceStartup("self-update:done");
-        }
-        else
-        {
-            TraceStartup("self-update:skipped-staging");
-        }
+            TraceStartup("initialize:start");
+            LoadPlayerProfile();
+            TraceStartup($"profile:loaded:{PlayerName}");
+            LoadSettings();
+            TraceStartup("settings:loaded");
+            LoadLauncherBinding();
+            TraceStartup($"binding:loaded:{IsLauncherLinked}");
+            await RefreshNewsAsync();
+            TraceStartup("news:loaded");
+            if (!LauncherInstallPaths.IsLoopbackStagingEnvironment())
+            {
+                TraceStartup("self-update:check");
+                await RecoverSelfUpdateAsync();
+                await CheckSelfUpdateAsync();
+                TraceStartup("self-update:done");
+            }
+            else
+            {
+                TraceStartup("self-update:skipped-staging");
+            }
 
-        TraceStartup("prepare:start");
-        await PrepareFirstRunAsync();
-        TraceStartup("prepare:done");
-        if (launcherBindingClient is not null && !IsLauncherLinked)
+            TraceStartup("prepare:start");
+            await PrepareFirstRunAsync();
+            TraceStartup("prepare:done");
+            if (launcherBindingClient is not null && !IsLauncherLinked)
+            {
+                Status = "Привязка Launcher обязательна";
+                LoadingStage = "Откройте сайт и подтвердите привязку";
+                Diagnostic = "Для запуска Minecraft сначала привяжите Launcher к аккаунту сайта. Пароль сайта и AuthMe Launcher не получает.";
+            }
+        }
+        finally
         {
-            Status = "Привязка Launcher обязательна";
-            LoadingStage = "Откройте сайт и подтвердите привязку";
-            Diagnostic = "Для запуска Minecraft сначала привяжите Launcher к аккаунту сайта. Пароль сайта и AuthMe Launcher не получает.";
+            IsInitializing = false;
         }
     }
 

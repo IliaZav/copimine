@@ -23,6 +23,7 @@
     <Resource Include="Assets\LauncherVisuals\loading-emblem.png" />
     <Resource Include="Assets\LauncherVisuals\copimine-logo.png" />
     <Resource Include="Assets\LauncherVisuals\copimine-logo-animated.gif" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo-header.gif" />
     <Resource Include="Assets\LauncherVisuals\copimine-icon.png" />
     <Resource Include="Assets\LauncherVisuals\installer-banner.png" />
     <Resource Include="Assets\LauncherVisuals\news-01.png" />

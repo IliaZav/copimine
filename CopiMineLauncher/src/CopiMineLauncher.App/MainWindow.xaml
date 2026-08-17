@@ -63,37 +63,104 @@
                        Margin="0,3,0,0" />
           </StackPanel>
           <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
-            <local:AnimatedGifImage GifSource="Assets/LauncherVisuals/copimine-logo-animated.gif"
-                                    FallbackSource="Assets/LauncherVisuals/copimine-logo.png"
-                                    IsPlaying="True"
-                                    Width="185"
-                                    Height="58"
-                                    Stretch="Uniform"
-                                    HorizontalAlignment="Right"
-                                    ToolTip="Анимированный логотип CopiMine"
-                                    Margin="0,0,0,8" />
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <Border x:Name="HeaderAnimationCard"
+                    Width="248"
+                    Height="76"
+                    Background="#B30B211B"
+                    BorderBrush="#9962E39B"
+                    BorderThickness="1"
+                    CornerRadius="13"
+                    ClipToBounds="True"
+                    ToolTip="Живая анимация CopiMine">
+              <Grid>
+                <Border x:Name="HeaderAnimationGlow"
+                        Background="#2862E39B"
+                        CornerRadius="13"
+                        Opacity="0.38"
+                        IsHitTestVisible="False">
+                  <Border.Triggers>
+                    <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                      <BeginStoryboard Name="HeaderGlowPulse">
+                        <Storyboard AutoReverse="True" RepeatBehavior="Forever">
+                          <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                           From="0.24"
+                                           To="0.82"
+                                           Duration="0:0:1.4" />
+                        </Storyboard>
+                      </BeginStoryboard>
+                    </EventTrigger>
+                  </Border.Triggers>
+                </Border>
+                <local:AnimatedGifImage GifSource="Assets/LauncherVisuals/copimine-logo-header.gif"
+                                        FallbackSource="Assets/LauncherVisuals/copimine-logo.png"
+                                        IsPlaying="True"
+                                        Width="222"
+                                        Height="62"
+                                        Stretch="Uniform"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,10,7"
+                            IsHitTestVisible="False">
+                  <Ellipse x:Name="HeaderLiveDot"
+                           Width="7"
+                           Height="7"
+                           Fill="{StaticResource LauncherAccentBright}"
+                           RenderTransformOrigin="0.5,0.5"
+                           Margin="0,0,5,0">
+                    <Ellipse.RenderTransform>
+                      <ScaleTransform ScaleX="1" ScaleY="1" />
+                    </Ellipse.RenderTransform>
+                    <Ellipse.Triggers>
+                      <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+                        <BeginStoryboard Name="HeaderLivePulse">
+                          <Storyboard AutoReverse="True" RepeatBehavior="Forever">
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                             From="0.78"
+                                             To="1.35"
+                                             Duration="0:0:0.85" />
+                            <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                             From="0.78"
+                                             To="1.35"
+                                             Duration="0:0:0.85" />
+                          </Storyboard>
+                        </BeginStoryboard>
+                      </EventTrigger>
+                    </Ellipse.Triggers>
+                  </Ellipse>
+                  <TextBlock Text="LIVE"
+                             Foreground="{StaticResource LauncherAccentBright}"
+                             FontSize="9"
+                             FontWeight="Bold"
+                             VerticalAlignment="Center" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <WrapPanel HorizontalAlignment="Right" MaxWidth="420">
               <Button Style="{StaticResource LauncherCompactButton}"
                       Content="Скины"
                       Click="OpenSkins_Click"
-                      Margin="0,0,8,0"
+                      Margin="0,8,6,0"
                       ToolTip="Открыть скины, плащи и 3D-предпросмотр" />
               <Button Style="{StaticResource LauncherCompactButton}"
                       Content="Настройки"
                       Click="OpenSettings_Click"
-                      Margin="0,0,8,0" />
+                      Margin="0,8,6,0" />
               <Button Style="{StaticResource LauncherCompactButton}"
                       Command="{Binding OpenWebsiteCommand}"
                       Content="Сайт"
-                      Margin="0,0,8,0" />
+                      Margin="0,8,6,0" />
               <Button Style="{StaticResource LauncherCompactButton}"
                       Command="{Binding OpenDiscordCommand}"
                       Content="Discord"
-                      Margin="0,0,8,0" />
+                      Margin="0,8,6,0" />
               <Button Style="{StaticResource LauncherCompactButton}"
                       Command="{Binding ApplySelfUpdateCommand}"
-                      Content="{Binding SelfUpdateStatus}" />
-            </StackPanel>
+                      Content="{Binding SelfUpdateStatus}"
+                      Margin="0,8,0,0" />
+            </WrapPanel>
           </StackPanel>
         </Grid>
       </Border>

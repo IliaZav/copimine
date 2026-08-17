@@ -13,6 +13,7 @@ public static class LauncherVisualAssetCatalog
     public const string LoadingEmblem = "loading-emblem.png";
     public const string CopiMineLogo = "copimine-logo.png";
     public const string CopiMineAnimatedLogo = "copimine-logo-animated.gif";
+    public const string CopiMineHeaderAnimatedLogo = "copimine-logo-header.gif";
     public const string CopiMineIcon = "copimine-icon.png";
     public const string InstallerBanner = "installer-banner.png";
     public const string News01 = "news-01.png";
@@ -40,6 +41,7 @@ public static class LauncherVisualAssetCatalog
 
     public static IReadOnlyList<string> DerivedDisplayAssets { get; } =
     [
+        CopiMineHeaderAnimatedLogo,
         UpdateBackground,
         News01,
         News02,

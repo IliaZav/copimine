@@ -96,6 +96,13 @@
 или не может быть декодирован, Launcher всё равно стартует со статическим
 `loading-emblem.png`.
 
+В верхней правой карточке Home используется отдельный производный вариант
+`copimine-logo-header.gif`: исходный GIF из архива имеет большой прозрачный
+холст, поэтому его кадрирование сохраняет ту же анимацию, но делает логотип
+видимым в реальном размере. В карточке остаются GIF-контроллер, pulsing glow и
+индикатор `LIVE`; статичный PNG используется только как fallback при ошибке
+декодирования.
+
 ### Промежуточные анимации и motion
 
 Помимо GIF, интерфейс использует короткие контролируемые переходы:
@@ -156,7 +163,7 @@
 | `splash_master.gif` | `splash.gif` | стартовый splash |
 | `loading_emblem.png` | `loading-emblem.png` | splash и progress |
 | `logo_horizontal.png/copimine logo.png` | `copimine-logo.png` | header/installer |
-| `logo_horizontal.png/copimine logo anim.gif` | `copimine-logo-animated.gif` | splash/loader fallback |
+| `logo_horizontal.png/copimine logo anim.gif` | `copimine-logo-animated.gif` и `copimine-logo-header.gif` | splash/loader и Home header |
 | `app_icon_master.png/copimine icon.png` | `copimine-icon.png` | installer и shortcut source |
 | `installer_banner.png` | `installer-banner.png` | installer |
 | `news_01.webp` | `news-01.png` | новости 1 |

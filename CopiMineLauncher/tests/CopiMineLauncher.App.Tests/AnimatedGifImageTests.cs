@@ -19,7 +19,7 @@ public sealed class AnimatedGifImageTests
     [Fact]
     public async Task Header_logo_animation_changes_frame_on_a_real_sta_dispatcher()
     {
-        var played = await RunPlaybackProbeAsync("copimine-logo-animated.gif");
+        var played = await RunPlaybackProbeAsync("copimine-logo-header.gif");
 
         played.Should().BeTrue("the animated header logo must actually advance while the Launcher is open");
     }

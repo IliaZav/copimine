@@ -73,6 +73,21 @@ public sealed class LauncherVisualAssetCatalogTests
             .Should().OnlyContain(path => File.Exists(path));
     }
 
+    [Fact]
+    public void Header_logo_variant_is_tightly_framed_and_animated()
+    {
+        var path = Path.Combine(ResolveAssetRoot(), LauncherVisualAssetCatalog.CopiMineHeaderAnimatedLogo);
+        using var stream = File.OpenRead(path);
+        var decoder = BitmapDecoder.Create(
+            stream,
+            BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad);
+
+        decoder.Frames.Should().HaveCountGreaterThan(1);
+        decoder.Frames[0].PixelWidth.Should().BeLessThan(700);
+        decoder.Frames[0].PixelHeight.Should().BeLessThan(220);
+    }
+
     private static string ResolveAssetRoot()
     {
         var sourceRoot = Path.GetFullPath(Path.Combine(

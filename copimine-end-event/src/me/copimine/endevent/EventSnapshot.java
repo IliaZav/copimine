@@ -70,7 +70,12 @@ public record EventSnapshot(
 
     public EventPhase eventPhase() {
         try {
-            return EventPhase.valueOf(phase);
+            String compatible = switch (phase) {
+                case "FINAL_DRAIN" -> "FINAL_RITUAL";
+                case "VICTORY_PROCESSING" -> "VICTORY";
+                default -> phase;
+            };
+            return EventPhase.valueOf(compatible);
         } catch (IllegalArgumentException invalid) {
             return EventPhase.RECOVERY_REQUIRED;
         }

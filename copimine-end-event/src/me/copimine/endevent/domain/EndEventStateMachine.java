@@ -41,8 +41,8 @@ public final class EndEventStateMachine {
         }
         return switch (persisted) {
             case COUNTDOWN, WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2,
-                    WAVE_3, BOSS_ACTIVE, FINAL_DRAIN, FINAL_WAVE, BOSS_FINISH,
-                    VICTORY_PROCESSING -> EventPhase.READY_FOR_PLAYERS;
+                    WAVE_3, BOSS_ACTIVE, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
+                    VICTORY -> EventPhase.READY_FOR_PLAYERS;
             default -> persisted;
         };
     }
@@ -58,11 +58,11 @@ public final class EndEventStateMachine {
         map.put(EventPhase.WAVE_2, EnumSet.of(EventPhase.INTERMISSION_2));
         map.put(EventPhase.INTERMISSION_2, EnumSet.of(EventPhase.WAVE_3));
         map.put(EventPhase.WAVE_3, EnumSet.of(EventPhase.BOSS_ACTIVE));
-        map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(EventPhase.FINAL_DRAIN));
-        map.put(EventPhase.FINAL_DRAIN, EnumSet.of(EventPhase.FINAL_WAVE));
+        map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(EventPhase.FINAL_RITUAL));
+        map.put(EventPhase.FINAL_RITUAL, EnumSet.of(EventPhase.FINAL_WAVE));
         map.put(EventPhase.FINAL_WAVE, EnumSet.of(EventPhase.BOSS_FINISH));
-        map.put(EventPhase.BOSS_FINISH, EnumSet.of(EventPhase.VICTORY_PROCESSING));
-        map.put(EventPhase.VICTORY_PROCESSING, EnumSet.of(EventPhase.UNLOCKED));
+        map.put(EventPhase.BOSS_FINISH, EnumSet.of(EventPhase.VICTORY));
+        map.put(EventPhase.VICTORY, EnumSet.of(EventPhase.UNLOCKED));
         map.put(EventPhase.RECOVERY_REQUIRED, EnumSet.of(EventPhase.READY_FOR_PLAYERS));
         return Map.copyOf(map);
     }

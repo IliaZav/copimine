@@ -10,7 +10,7 @@ depend:
 commands:
   cmend:
     description: Управление End Rift Event
-    usage: /cmend <status|core|arena|gate|portalroom|resources|ritual|wave|boss|client>
+    usage: /cmend <status|debug|recovery|core|arena|gate|portalroom|resources|ritual|wave|boss|client|test|cleanup|reset|unlock>
 permissions:
   copimine.endevent.admin:
     description: Управление End Rift Event

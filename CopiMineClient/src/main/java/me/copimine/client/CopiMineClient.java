@@ -40,8 +40,11 @@ public final class CopiMineClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
-            if (client.player != null && client.player.isDead() && visualManager.hasActiveVisuals()) {
-                visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
+            if (client.player != null && client.player.isDead()) {
+                if (visualManager.hasActiveVisuals()) {
+                    visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
+                }
+                ClientBridgeProtocol.clearEndEventState();
             }
             ClientBridgeProtocol.tickNetwork(client);
         });
@@ -50,7 +53,10 @@ public final class CopiMineClient implements ClientModInitializer {
             ClientBridgeProtocol.onDisconnect();
             visualManager.clearAll("disconnect");
         });
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> {
+            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change");
+            ClientBridgeProtocol.clearEndEventState();
+        });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");
     }
@@ -63,6 +69,12 @@ public final class CopiMineClient implements ClientModInitializer {
                                     context.getSource().sendFeedback(Text.literal(visualManager.statusLine()));
                                     context.getSource().sendFeedback(Text.literal(ClientBridgeProtocol.handshakeStatusLine()));
                                     context.getSource().sendFeedback(Text.literal("active=" + visualManager.activeSummary()));
+                                    EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "endEvent=" + (endEvent.eventId().isBlank() ? "-" : endEvent.eventId())
+                                                    + ", generation=" + endEvent.generation()
+                                                    + ", bossBound=" + endEvent.hasBossBinding()
+                                                    + ", reverse=" + ClientBridgeProtocol.isReverseMovementActive()));
                                     return 1;
                                 }))
                         .then(ClientCommandManager.literal("diagnose")

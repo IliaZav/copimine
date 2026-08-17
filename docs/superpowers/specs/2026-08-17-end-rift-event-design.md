@@ -174,8 +174,8 @@ The state enum is:
 ```text
 UNCONFIGURED, COLLECTING, READY_FOR_PLAYERS, COUNTDOWN,
 WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
-BOSS_ACTIVE, FINAL_DRAIN, FINAL_WAVE, BOSS_FINISH,
-VICTORY_PROCESSING, UNLOCKED, RECOVERY_REQUIRED
+BOSS_ACTIVE, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
+VICTORY, UNLOCKED, RECOVERY_REQUIRED
 ```
 
 Every transition is main-thread, checks expected phase/eventId/generation,
@@ -196,7 +196,7 @@ atomically when supported, and copied to a backup. Invalid or corrupted state
 enters `RECOVERY_REQUIRED` and does not guess or unlock.
 
 On startup, `UNLOCKED` is terminal and never relocks End. A transient phase
-(`COUNTDOWN`, any wave, `BOSS_ACTIVE`, `FINAL_DRAIN`, `FINAL_WAVE`, or
+(`COUNTDOWN`, any wave, `BOSS_ACTIVE`, `FINAL_RITUAL`, `FINAL_WAVE`, or
 `BOSS_FINISH`) is reconciled by cancelling tasks, removing only current
 generation tagged entities/displays, preserving resources/config/roster where
 durable, and returning to `READY_FOR_PLAYERS`. A `COUNTDOWN -> WAVE_1`
@@ -318,7 +318,7 @@ mouse, attack/use, jump, sneak, inventory, chat, and hotbar are untouched.
 
 At the first projected hit at or below 100 HP, damage is cancelled or clamped,
 the boss is set to exactly 100 HP, and `finalDrainTriggered` is persisted
-before side effects. The phase becomes `FINAL_DRAIN`, boss invulnerability and
+before side effects. The phase becomes `FINAL_RITUAL`, boss invulnerability and
 normal spells/targeting begin, active control is stopped, boss returns to a
 safe core point, and the final wave starts once. Purple/black particles run
 from every eligible living player physically inside the arena to the core and

@@ -337,6 +337,34 @@
       "base_material": "written_book",
       "model": "copimine:item/artifacts/recipe_note",
       "texture": "copimine:item/artifacts/recipe_note"
+    },
+    {
+      "id": "end_event_core",
+      "custom_model_data": 830001,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_core",
+      "texture": "copimine:item/end_event_core"
+    },
+    {
+      "id": "end_event_core_charged",
+      "custom_model_data": 830002,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_core_charged",
+      "texture": "copimine:item/end_event_core_charged"
+    },
+    {
+      "id": "end_event_pad",
+      "custom_model_data": 830003,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_pad",
+      "texture": "copimine:item/end_event_pad"
+    },
+    {
+      "id": "rift_core_shard",
+      "custom_model_data": 830004,
+      "base_material": "echo_shard",
+      "model": "copimine:item/rift_core_shard",
+      "texture": "copimine:item/rift_core_shard"
     }
   ]
 }

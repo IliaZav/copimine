@@ -22,12 +22,14 @@ public final class BossThresholdPolicy {
         double damage = Math.max(0.0D, finite(incomingDamage) ? incomingDamage : 0.0D);
         double projected = Math.max(0.0D, current - damage);
         double finalLimit = clamp(finalThreshold, 0.0D, safeMax);
+        double halfLimit = clamp(halfThreshold, finalLimit, safeMax);
+        if (!halfAlreadyTriggered && projected <= halfLimit) {
+            return new Decision(true, false, halfLimit);
+        }
         if (projected <= finalLimit) {
             return new Decision(false, true, clamp(finalHealth, 1.0D, safeMax));
         }
-        boolean triggerHalf = !halfAlreadyTriggered
-                && projected <= clamp(halfThreshold, finalLimit, safeMax);
-        return new Decision(triggerHalf, false, projected);
+        return new Decision(false, false, projected);
     }
 
     private static double positive(double value, double fallback) {

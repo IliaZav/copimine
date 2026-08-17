@@ -447,7 +447,7 @@
 **Interfaces:**
 - `FinalDrainService.triggerAtProjectedHealth(double projectedHealth)` clamps
   the boss to 100, persists once, stops spells/control, and enters
-  `FINAL_DRAIN`.
+  `FINAL_RITUAL`.
 - `FinalDrainService.applyIfEligible()` snapshots current eligible players,
   sets each to `max(1.0, before*0.40)` once, and then sets boss health exactly
   200. It never calls `damage`, creates death events, changes absorption,

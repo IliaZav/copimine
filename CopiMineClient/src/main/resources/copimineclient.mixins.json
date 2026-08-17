@@ -4,7 +4,9 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "GameRendererAccessor",
-    "ArmorFeatureRendererMixin"
+    "ArmorFeatureRendererMixin",
+    "KeyboardInputReverseMovementMixin",
+    "EndermanEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

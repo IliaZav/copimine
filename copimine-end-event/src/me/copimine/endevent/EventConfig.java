@@ -31,6 +31,10 @@ public record EventConfig(
         WaveDefinition wave2,
         WaveDefinition wave3,
         WaveDefinition finalWave,
+        Map<String, Integer> waveMobLoot,
+        Map<String, Integer> eliteLoot,
+        Map<String, Integer> finalWaveLoot,
+        Map<String, Integer> testLoot,
         double bossHealth,
         double bossAttackDamageBonus,
         int bossTargetMinSeconds,
@@ -67,6 +71,10 @@ public record EventConfig(
         resourceRequirements = Map.copyOf(resourceRequirements);
         resourceBundle = Map.copyOf(resourceBundle);
         padRadii = List.copyOf(padRadii);
+        waveMobLoot = Map.copyOf(waveMobLoot);
+        eliteLoot = Map.copyOf(eliteLoot);
+        finalWaveLoot = Map.copyOf(finalWaveLoot);
+        testLoot = Map.copyOf(testLoot);
     }
 
     public static EventConfig load(JavaPlugin plugin) {
@@ -77,6 +85,7 @@ public record EventConfig(
         ConfigurationSection waves = requiredSection(plugin, "waves");
         ConfigurationSection boss = requiredSection(plugin, "boss");
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
+        ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
         ConfigurationSection portal = requiredSection(plugin, "portal-room");
         ConfigurationSection client = requiredSection(plugin, "client");
         ConfigurationSection persistence = requiredSection(plugin, "persistence");
@@ -129,6 +138,10 @@ public record EventConfig(
                 wave(waves, "wave-2"),
                 wave(waves, "wave-3"),
                 wave(waves, "final"),
+                readOptionalMaterials(eventLoot, "wave-mob"),
+                readOptionalMaterials(eventLoot, "elite"),
+                readOptionalMaterials(eventLoot, "final-wave"),
+                readOptionalMaterials(eventLoot, "test"),
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
                 target[0], target[1], spells[0], spells[1],
@@ -189,6 +202,32 @@ public record EventConfig(
         }
         if (values.isEmpty() && !path.endsWith("resource-bundle")) {
             throw new IllegalStateException(path + " must not be empty");
+        }
+        return values;
+    }
+
+    private static LinkedHashMap<String, Integer> readOptionalMaterials(ConfigurationSection parent, String key) {
+        if (parent == null) {
+            return new LinkedHashMap<>();
+        }
+        return readOptionalMaterialSection(parent.getConfigurationSection(key), "event-loot." + key);
+    }
+
+    private static LinkedHashMap<String, Integer> readOptionalMaterialSection(ConfigurationSection section, String path) {
+        LinkedHashMap<String, Integer> values = new LinkedHashMap<>();
+        if (section == null) {
+            return values;
+        }
+        for (String key : section.getKeys(false)) {
+            String materialName = key.toUpperCase(Locale.ROOT);
+            if (Material.matchMaterial(materialName) == null) {
+                throw new IllegalStateException(path + " contains unknown material " + key);
+            }
+            int amount = section.getInt(key, 0);
+            if (amount < 1) {
+                throw new IllegalStateException(path + "." + key + " must be positive");
+            }
+            values.put(materialName, amount);
         }
         return values;
     }

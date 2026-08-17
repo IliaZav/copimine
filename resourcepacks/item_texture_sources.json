@@ -37,7 +37,8 @@
     {"id":"narcotic_recipe_sos","catalog":"AR","source_group":"Generated","source_path":"generated/recipe_note.png","base_material":"WRITTEN_BOOK","custom_model_data":10021},
     {"id":"narcotic_recipe_drun","catalog":"AR","source_group":"Generated","source_path":"generated/recipe_note.png","base_material":"WRITTEN_BOOK","custom_model_data":10022},
     {"id":"narcotic_recipe_chups","catalog":"AR","source_group":"Generated","source_path":"generated/recipe_note.png","base_material":"WRITTEN_BOOK","custom_model_data":10023},
-    {"id":"narcotic_recipe_borshevik","catalog":"AR","source_group":"Generated","source_path":"generated/recipe_note.png","base_material":"WRITTEN_BOOK","custom_model_data":10024}
+    {"id":"narcotic_recipe_borshevik","catalog":"AR","source_group":"Generated","source_path":"generated/recipe_note.png","base_material":"WRITTEN_BOOK","custom_model_data":10024},
+    {"id":"rift_core_shard","catalog":"ADMIN_ONLY","source_group":"Generated","source_path":"generated/end_event_rift_core_shard.png","base_material":"ECHO_SHARD","custom_model_data":830004}
   ],
   "unassigned_archive_assets": [
     "Donate/entiti (ne_segodny_suki_shield)/ne_segodny_suki_shield_base.png"

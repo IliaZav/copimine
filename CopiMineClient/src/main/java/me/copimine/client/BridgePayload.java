@@ -266,6 +266,13 @@ public record BridgePayload(
     private static BridgePayload read(RegistryByteBuf buf) {
         try (DataInputStream in = new DataInputStream(new ByteBufInputStream(buf))) {
             String type = safe(in.readUTF());
+            if (ClientBridgeProtocol.END_EVENT_MAGIC.equals(type)) {
+                EndEventPacket packet = EndEventPacket.readAfterMagic(in);
+                if (in.available() != 0) {
+                    throw new IllegalArgumentException("Trailing bytes in End Rift event packet");
+                }
+                return fromEndEvent(packet);
+            }
             int protocol = in.readInt();
             long seq = Math.max(0L, in.readLong());
             long timestampMillis = Math.max(0L, in.readLong());
@@ -321,6 +328,33 @@ public record BridgePayload(
         } catch (Exception error) {
             throw new IllegalStateException("Failed to read CopiMine client bridge payload", error);
         }
+    }
+
+    private static BridgePayload fromEndEvent(EndEventPacket packet) {
+        return new BridgePayload(
+                ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + packet.type(),
+                ClientBridgeProtocol.PROTOCOL_VERSION,
+                packet.generation(),
+                System.currentTimeMillis(),
+                packet.eventId(),
+                packet.instanceId(),
+                false,
+                false,
+                false,
+                false,
+                Set.of(),
+                "",
+                packet.bossId(),
+                packet.durationMillis() > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) packet.durationMillis(),
+                0.0F,
+                0,
+                0,
+                packet.subjectId(),
+                packet.bossId(),
+                packet.controlId(),
+                "",
+                ""
+        );
     }
 
     private static String safe(String raw) {

@@ -1,0 +1,84 @@
+$ErrorActionPreference = 'Stop'
+
+$endRiftRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
+$endRiftConfig = Join-Path $endRiftRoot 'copimine-end-event\config.yml'
+$endRiftConfigText = Get-Content -LiteralPath $endRiftConfig -Raw
+if ($endRiftConfigText -notmatch '(?m)^environment:\s*local\s*$') {
+  throw 'End Rift checks refuse to run: copimine-end-event/config.yml is not local.'
+}
+
+function Invoke-EndRiftStep {
+  param([string]$Label, [scriptblock]$Action)
+  Write-Host "== $Label =="
+  & $Action
+  if ($LASTEXITCODE -ne 0) {
+    throw "$Label failed with exit code $LASTEXITCODE"
+  }
+}
+
+Invoke-EndRiftStep 'WorldCore build' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-world-core\build-plugin.ps1')
+}
+Invoke-EndRiftStep 'Artifacts build' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-artifacts\build-plugin.ps1')
+}
+Invoke-EndRiftStep 'End Event plugin build' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-end-event\build-plugin.ps1')
+}
+Invoke-EndRiftStep 'Fabric client tests and build' {
+  Push-Location (Join-Path $endRiftRoot 'CopiMineClient')
+  try {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File '.\build-client.ps1'
+  } finally {
+    Pop-Location
+  }
+}
+Invoke-EndRiftStep 'Resourcepack build' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'resourcepacks\build-resourcepack.ps1')
+}
+Invoke-EndRiftStep 'Python event contracts' {
+  Push-Location $endRiftRoot
+  try {
+    & python -m pytest -q tests\test_end_event_contract.py tests\test_end_event_resourcepack_contract.py `
+      tests\test_end_event_client_contract.py tests\test_end_event_spec_contract.py `
+      tests\test_end_event_layout_contract.py tests\test_end_event_commands_contract.py `
+      tests\test_end_event_item_lore_contract.py
+  } finally {
+    Pop-Location
+  }
+}
+
+$endRiftTestBuild = Join-Path $endRiftRoot 'tests\build\end-event-check'
+New-Item -ItemType Directory -Path $endRiftTestBuild -Force | Out-Null
+$endRiftTestClasspathEntries = @((Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path)
+$endRiftTestClasspathEntries += Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter '*.jar' -Recurse |
+  ForEach-Object FullName
+$endRiftTestClasspath = $endRiftTestClasspathEntries -join [IO.Path]::PathSeparator
+$endRiftDomainSources = (Get-ChildItem (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\domain\*.java')).FullName
+
+Invoke-EndRiftStep 'Pure domain tests' {
+  & javac -encoding UTF-8 -d $endRiftTestBuild $endRiftDomainSources `
+    (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
+    (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java')
+  & java -cp $endRiftTestBuild EndEventDomainTest
+  & java -cp $endRiftTestBuild BossThresholdPolicyTest
+}
+Invoke-EndRiftStep 'Durable persistence and layout tests' {
+  & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
+    (Join-Path $endRiftRoot 'tests\EventStateStoreTest.java') `
+    (Join-Path $endRiftRoot 'tests\DepositJournalTest.java') `
+    (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java')
+  $endRiftRunClasspath = @($endRiftTestBuild, (Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path) + $endRiftTestClasspathEntries
+  $endRiftRunClasspathText = $endRiftRunClasspath -join [IO.Path]::PathSeparator
+  & java -cp $endRiftRunClasspathText EventStateStoreTest
+  & java -cp $endRiftRunClasspathText DepositJournalTest
+  & java -cp $endRiftRunClasspathText EventLayoutStoreTest
+}
+
+Write-Host '== Local artifact hashes =='
+Get-FileHash (Join-Path $endRiftRoot 'copimine-world-core\CopiMineWorldCore.jar') -Algorithm SHA256
+Get-FileHash (Join-Path $endRiftRoot 'copimine-artifacts\CopiMineArtifacts.jar') -Algorithm SHA256
+Get-FileHash (Join-Path $endRiftRoot 'copimine-end-event\CopiMineEndEvent.jar') -Algorithm SHA256
+Get-FileHash (Join-Path $endRiftRoot 'CopiMineClient\build\libs\CopiMineClient-0.1.0.jar') -Algorithm SHA256
+Get-FileHash (Join-Path $endRiftRoot 'resourcepacks\build\CopiMineResourcePack.zip') -Algorithm SHA256
+Write-Host 'End Rift local checks passed.'

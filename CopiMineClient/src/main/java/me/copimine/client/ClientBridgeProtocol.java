@@ -23,6 +23,8 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_VISUAL_STOP = "visual_stop";
     public static final String TYPE_VISUAL_CLEAR_ALL = "visual_clear_all";
     public static final String TYPE_PING = "ping";
+    public static final String END_EVENT_MAGIC = "COPIMINE_END_EVENT_V1";
+    public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -56,6 +58,7 @@ public final class ClientBridgeProtocol {
     private static boolean lastReportedIrisShaderPackActive;
     private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
+    private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
 
     private ClientBridgeProtocol() {
     }
@@ -68,6 +71,10 @@ public final class ClientBridgeProtocol {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
                 CopiMineClientLogger.warn("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
+                return;
+            }
+            if (payload.type().startsWith(TYPE_END_EVENT_PREFIX)) {
+                context.client().execute(() -> applyEndEventPayload(payload));
                 return;
             }
             CopiMineClientLogger.info("Received bridge payload: type=" + payload.type() + ", seq=" + payload.seq() + ", effect=" + payload.effectId() + ", shaderpack=" + payload.shaderpack());
@@ -116,6 +123,28 @@ public final class ClientBridgeProtocol {
                 }
             }
         });
+    }
+
+    private static void applyEndEventPayload(BridgePayload payload) {
+        try {
+            String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
+            EndEventPacket packet = new EndEventPacket(
+                    eventType,
+                    payload.sessionId(),
+                    payload.seq(),
+                    payload.clientVersion(),
+                    payload.durationMillis(),
+                    payload.mode(),
+                    payload.clearPolicy(),
+                    payload.source());
+            if (END_EVENT_STATE.apply(packet, System.currentTimeMillis())) {
+                CopiMineClientLogger.info("End Rift client state applied: type=" + eventType + ", event=" + packet.eventId() + ", generation=" + packet.generation());
+            } else {
+                CopiMineClientLogger.warn("End Rift client state ignored packet: type=" + eventType + ", event=" + packet.eventId());
+            }
+        } catch (RuntimeException error) {
+            CopiMineClientLogger.warn("End Rift client packet rejected", error);
+        }
     }
 
     public static boolean sendHello() {
@@ -193,6 +222,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onJoin() {
+        END_EVENT_STATE.clear();
         connected = true;
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
@@ -210,6 +240,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
+        END_EVENT_STATE.clear();
         connected = false;
         helloAttempts = 0;
         helloSent = false;
@@ -278,6 +309,22 @@ public final class ClientBridgeProtocol {
 
     public static boolean isIrisShaderPackActive() {
         return irisShaderPackActive;
+    }
+
+    public static EndEventClientState endEventState() {
+        return END_EVENT_STATE;
+    }
+
+    public static boolean isReverseMovementActive() {
+        return END_EVENT_STATE.isReverseActive(System.currentTimeMillis());
+    }
+
+    public static boolean isBoundEndBoss(String uuid) {
+        return END_EVENT_STATE.isBossBound(uuid);
+    }
+
+    public static void clearEndEventState() {
+        END_EVENT_STATE.clear();
     }
 
     private static Set<String> supportedEffects() {

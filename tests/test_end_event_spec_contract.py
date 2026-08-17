@@ -1,0 +1,67 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PLUGIN = ROOT / "copimine-end-event"
+MAIN = (PLUGIN / "src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+CONFIG = (PLUGIN / "config.yml").read_text(encoding="utf-8")
+PHASES = (PLUGIN / "src/me/copimine/endevent/domain/EventPhase.java").read_text(encoding="utf-8")
+
+
+def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
+    for phase in (
+        "UNCONFIGURED", "COLLECTING", "READY_FOR_PLAYERS", "COUNTDOWN",
+        "WAVE_1", "INTERMISSION_1", "WAVE_2", "INTERMISSION_2", "WAVE_3",
+        "BOSS_ACTIVE", "FINAL_RITUAL", "FINAL_WAVE", "BOSS_FINISH",
+        "VICTORY", "UNLOCKED", "RECOVERY_REQUIRED",
+    ):
+        assert re.search(rf"\b{phase}\b", PHASES)
+    assert "DIAMOND: 100" in CONFIG
+    assert "ENDER_EYE: 64" in CONFIG
+    assert "AMETHYST_SHARD: 128" in CONFIG
+    assert "BLAZE_ROD: 64" in CONFIG
+    assert "boss-xp: 3000" in CONFIG
+    assert "elite-endermen: 8" in CONFIG
+    assert "endermites: 8" in CONFIG
+    assert "shulkers: 4" in CONFIG
+
+
+def test_entity_ownership_uses_session_role_wave_and_generation_tags() -> None:
+    for key in ("event_session_id", "event_role", "event_wave", "event_generation"):
+        assert f'"{key}"' in MAIN
+    assert "cleanupOwnedEntities(eventId, generation)" in MAIN
+    assert "Bukkit.getWorlds()" in MAIN
+    assert "entity.remove()" in MAIN
+
+
+def test_final_ritual_is_direct_health_control_and_stops_normal_boss_loop() -> None:
+    assert "FinalDrainMath.healthAfterDrain" in MAIN
+    assert "player.setHealth(after)" in MAIN
+    assert "boss.setInvulnerable(true)" in MAIN
+    assert "boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()))" in MAIN
+    assert "if (phase != EventPhase.BOSS_ACTIVE)" in MAIN
+    assert "PlayerDeathEvent" not in MAIN[MAIN.index("applyFinalDrain"):MAIN.index("scheduleFinalRitualVisual")]
+
+
+def test_command_matrix_and_typed_boundaries_remain_fail_closed() -> None:
+    for command in (
+        '"arena"', '"gate"', '"portalroom"', '"resources"', '"ritual"',
+        '"wave"', '"boss"', '"client"',
+    ):
+        assert command in MAIN
+    assert "clientgate" not in MAIN.lower()
+    assert "Bukkit.dispatchCommand" not in MAIN
+    assert "CopiMineEconomyCore" not in MAIN
+    assert "WorldAccessService" in MAIN
+    assert "EventArtifactRewardService" in MAIN
+
+
+def test_reward_count_is_frozen_roster_not_last_hit() -> None:
+    assert "RewardRoster.commitExactly" in MAIN
+    assert "officialRewardRoster" in MAIN
+    assert ":participant:" in MAIN
+    assert "rift-core-shard" in MAIN
+    assert "getKiller" not in MAIN[MAIN.index("issueVictoryRewards"):MAIN.index("checkVictoryRewardCompletion")]

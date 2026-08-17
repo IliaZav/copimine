@@ -48,8 +48,22 @@ waves:
   final:
     endermen: 0
     endermites: 8
-    shulkers: 2
+    shulkers: 4
     elite-endermen: 8
+
+# Event-owned mobs use these bounded drops.  Recovery/cleanup removes entities
+# directly and therefore never enters EntityDeathEvent or creates kill loot.
+event-loot:
+  wave-mob:
+    ENDER_PEARL: 1
+  elite:
+    ENDER_PEARL: 2
+    AMETHYST_SHARD: 1
+  final-wave:
+    ENDER_PEARL: 2
+    SHULKER_SHELL: 1
+  test:
+    ENDER_PEARL: 1
 
 boss:
   health: 1000.0

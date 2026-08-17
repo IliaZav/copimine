@@ -8,7 +8,11 @@ param(
     [string] $WebView2StandalonePath = '',
     [switch] $RequireOfflineBundle,
     [switch] $ServerHostedRuntimeOnly,
-    [switch] $SkipPackaging
+    [switch] $SkipPackaging,
+    [string] $SignToolPath = '',
+    [string] $SigningCertificateThumbprint = '',
+    [string] $TimestampUrl = 'https://timestamp.digicert.com',
+    [switch] $RequireAuthenticodeSignature
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,6 +29,7 @@ $installerConclusion = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer
 $publishRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/publish"
 $packageRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/packages"
 $installerAssetsRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/installer-assets"
+$signatureRequested = $RequireAuthenticodeSignature -or -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
 
 if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
     throw "Launcher project was not found: $project"
@@ -54,6 +59,69 @@ if ($ServerHostedRuntimeOnly -and $RequireOfflineBundle) {
 if ($ServerHostedRuntimeOnly -and -not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     throw 'ServerHostedRuntimeOnly does not accept OfflineMinecraftRoot.'
 }
+
+if ($RequireAuthenticodeSignature -and [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)) {
+    throw 'RequireAuthenticodeSignature requires a certificate thumbprint from a trusted Windows certificate store.'
+}
+
+if ($signatureRequested) {
+    $normalizedThumbprint = ($SigningCertificateThumbprint -replace '\s', '').Trim()
+    if ($normalizedThumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
+        throw 'SigningCertificateThumbprint must be a 40-character SHA-1 certificate thumbprint.'
+    }
+
+    $timestampUri = $null
+    $timestampIsValid = [Uri]::TryCreate($TimestampUrl, [UriKind]::Absolute, [ref]$timestampUri)
+    if (-not $timestampIsValid -or $timestampUri.Scheme -notin @([Uri]::UriSchemeHttp, [Uri]::UriSchemeHttps) -or -not [string]::IsNullOrWhiteSpace($timestampUri.UserInfo)) {
+        throw 'TimestampUrl must be an absolute HTTP(S) URL without embedded credentials.'
+    }
+}
+
+function Resolve-AuthenticodeSignTool {
+    if (-not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+        $resolved = (Resolve-Path -LiteralPath $SignToolPath -ErrorAction Stop).Path
+        if (-not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+            throw "SignToolPath is not a file: $resolved"
+        }
+
+        return $resolved
+    }
+
+    $fromPath = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($null -ne $fromPath) {
+        return $fromPath.Source
+    }
+
+    $windowsKitsRoots = @(
+        (Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'),
+        (Join-Path $env:ProgramFiles 'Windows Kits\10\bin')
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Container) }
+    $candidate = $windowsKitsRoots |
+        ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter 'signtool.exe' -File -Recurse -ErrorAction SilentlyContinue } |
+        Where-Object { $_.Directory.Name -eq 'x64' } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+    if ($null -eq $candidate) {
+        throw 'signtool.exe was not found. Install the Windows SDK or pass -SignToolPath.'
+    }
+
+    return $candidate.FullName
+}
+
+function Sign-AuthenticodeArtifact([string] $Path) {
+    $resolvedPath = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    & $resolvedSignTool sign /sha1 $normalizedThumbprint /fd SHA256 /tr $TimestampUrl /td SHA256 $resolvedPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "signtool sign failed for $resolvedPath with exit code $LASTEXITCODE"
+    }
+
+    $signature = Get-AuthenticodeSignature -LiteralPath $resolvedPath
+    if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
+        throw "Authenticode verification failed for ${resolvedPath}: $($signature.Status)"
+    }
+}
+
+$resolvedSignTool = if ($signatureRequested) { Resolve-AuthenticodeSignTool } else { $null }
 
 if (-not $SkipPackaging -and [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
     $defaultWebView2Candidates = @(
@@ -87,6 +155,10 @@ if ($LASTEXITCODE -ne 0) {
 $publishedExe = Join-Path $publishRoot 'CopiMineLauncher.App.exe'
 if (-not (Test-Path -LiteralPath $publishedExe -PathType Leaf)) {
     throw "Published Launcher executable was not produced: $publishedExe"
+}
+
+if ($signatureRequested) {
+    Sign-AuthenticodeArtifact $publishedExe
 }
 
 $bootstrapSource = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) {
@@ -229,6 +301,12 @@ if (-not (Test-Path -LiteralPath $msiSource -PathType Leaf)) {
 }
 Copy-Item -LiteralPath $setupSource -Destination $installerPath -Force
 Copy-Item -LiteralPath $msiSource -Destination $msiPath -Force
+
+if ($signatureRequested) {
+    foreach ($artifact in @($setupSource, $installerPath, $msiSource, $msiPath)) {
+        Sign-AuthenticodeArtifact $artifact
+    }
+}
 
 Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"

@@ -132,6 +132,15 @@
 установки и не уменьшает читаемость полей. Текст установщика остаётся коротким:
 «Установите CopiMine Launcher», «Папка Launcher и Minecraft», «Далее».
 
+SmartScreen не отключается и не обходится на компьютере игрока. Для публичного
+release build предусмотрен fail-closed режим
+`-RequireAuthenticodeSignature`: он подписывает Launcher EXE, setup EXE и MSI
+через `signtool`, добавляет RFC 3161 timestamp и проверяет итоговый статус
+`Valid` через `Get-AuthenticodeSignature`. Закрытый ключ берётся только из
+доверенного хранилища Windows по thumbprint и не попадает в репозиторий,
+архив или Launcher. Без публичного сертификата release остаётся неподписанным
+и не может быть объявлен готовым для пользователей.
+
 Выбор диска/папки, размещение Minecraft рядом с Launcher, WebView2 bootstrapper
 и сохранение mutable instance не меняются. В release проверяется, что баннер
 включён в установленный пакет, а не только лежит в исходниках.

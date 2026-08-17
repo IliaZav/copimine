@@ -81,6 +81,38 @@ public sealed class LauncherBindingClientTests
         result.SiteUsername.Should().Be("local-player");
     }
 
+    [Fact]
+    public async Task Fallback_binding_client_uses_loopback_when_primary_returns_501()
+    {
+        var localCalls = 0;
+        using var primaryHttp = new HttpClient(new RecordingHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.NotImplemented)
+            {
+                Content = new StringContent("binding endpoint is not implemented")
+            }));
+        using var localHttp = new HttpClient(new RecordingHandler(_ =>
+        {
+            localCalls++;
+            return Json("""
+            {
+              "challengeId": "challenge-local-501-123456",
+              "pollToken": "poll-local-501-abcdefghijklmnopqrstuvwxyz-123456",
+              "authorizationUrl": "http://127.0.0.1:8090/cabinet/link.html?launcher_challenge=challenge-local-501-123456",
+              "expiresAt": "2026-08-15T18:00:00Z",
+              "minecraftName": "Player"
+            }
+            """);
+        }));
+        var primary = new HttpLauncherBindingClient(primaryHttp, new Uri("https://copimine.ru/"), "cm-device-1234567890");
+        var local = new HttpLauncherBindingClient(localHttp, new Uri("http://127.0.0.1:8090/"), "cm-device-1234567890");
+        var client = new FallbackLauncherBindingClient(primary, local);
+
+        var result = await client.CreateChallengeAsync("Player", "1.0.0", CancellationToken.None);
+
+        result.AuthorizationUrl.IsLoopback.Should().BeTrue();
+        localCalls.Should().Be(1);
+    }
+
     [LocalBindingFact]
     public async Task Live_loopback_backend_accepts_a_launcher_challenge_after_primary_endpoint_fails()
     {

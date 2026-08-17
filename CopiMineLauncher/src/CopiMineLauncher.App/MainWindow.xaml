@@ -63,12 +63,15 @@
                        Margin="0,3,0,0" />
           </StackPanel>
           <StackPanel Grid.Column="2" HorizontalAlignment="Right" VerticalAlignment="Center">
-            <Image Source="Assets/LauncherVisuals/copimine-logo.png"
-                   Width="185"
-                   Height="58"
-                   Stretch="Uniform"
-                   HorizontalAlignment="Right"
-                   Margin="0,0,0,8" />
+            <local:AnimatedGifImage GifSource="Assets/LauncherVisuals/copimine-logo-animated.gif"
+                                    FallbackSource="Assets/LauncherVisuals/copimine-logo.png"
+                                    IsPlaying="True"
+                                    Width="185"
+                                    Height="58"
+                                    Stretch="Uniform"
+                                    HorizontalAlignment="Right"
+                                    ToolTip="Анимированный логотип CopiMine"
+                                    Margin="0,0,0,8" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
               <Button Style="{StaticResource LauncherCompactButton}"
                       Content="Скины"

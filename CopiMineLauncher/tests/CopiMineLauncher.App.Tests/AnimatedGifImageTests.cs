@@ -11,12 +11,20 @@ public sealed class AnimatedGifImageTests
     [Fact]
     public async Task Splash_animation_changes_frame_on_a_real_sta_dispatcher()
     {
-        var played = await RunPlaybackProbeAsync();
+        var played = await RunPlaybackProbeAsync("splash.gif");
 
         played.Should().BeTrue("the supplied splash GIF must actually advance while the UI dispatcher is running");
     }
 
-    private static Task<bool> RunPlaybackProbeAsync()
+    [Fact]
+    public async Task Header_logo_animation_changes_frame_on_a_real_sta_dispatcher()
+    {
+        var played = await RunPlaybackProbeAsync("copimine-logo-animated.gif");
+
+        played.Should().BeTrue("the animated header logo must actually advance while the Launcher is open");
+    }
+
+    private static Task<bool> RunPlaybackProbeAsync(string assetName)
     {
         var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
@@ -24,7 +32,7 @@ public sealed class AnimatedGifImageTests
             var dispatcher = Dispatcher.CurrentDispatcher;
             var image = new AnimatedGifImage
             {
-                GifSource = new Uri(Path.GetFullPath(SourcePath("splash.gif")), UriKind.Absolute)
+                GifSource = new Uri(Path.GetFullPath(SourcePath(assetName)), UriKind.Absolute)
             };
 
             try

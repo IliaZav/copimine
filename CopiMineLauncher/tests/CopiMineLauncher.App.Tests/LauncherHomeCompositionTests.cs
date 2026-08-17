@@ -12,7 +12,9 @@ public sealed class LauncherHomeCompositionTests
         var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");
 
         xaml.Should().Contain("/CopiMineLauncher.App;component/Assets/copimine.ico");
-        xaml.Should().Contain("Assets/LauncherVisuals/copimine-logo.png");
+        xaml.Should().Contain("<local:AnimatedGifImage");
+        xaml.Should().Contain("GifSource=\"Assets/LauncherVisuals/copimine-logo-animated.gif\"");
+        xaml.Should().Contain("FallbackSource=\"Assets/LauncherVisuals/copimine-logo.png\"");
         xaml.Should().Contain("Assets/LauncherVisuals/news-01.png");
         xaml.Should().Contain("Assets/LauncherVisuals/news-02.png");
         xaml.Should().Contain("Assets/LauncherVisuals/news-03.png");

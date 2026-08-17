@@ -17,9 +17,25 @@
   <ItemGroup>
     <Resource Include="Assets\copimine-logo.png" />
     <Resource Include="Assets\copimine.ico" />
+    <Resource Include="Assets\LauncherVisuals\launcher-home-background.png" />
+    <Resource Include="Assets\LauncherVisuals\update-background.png" />
+    <Resource Include="Assets\LauncherVisuals\splash.gif" />
+    <Resource Include="Assets\LauncherVisuals\loading-emblem.png" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo.png" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo-animated.gif" />
+    <Resource Include="Assets\LauncherVisuals\copimine-icon.png" />
+    <Resource Include="Assets\LauncherVisuals\installer-banner.png" />
+    <Resource Include="Assets\LauncherVisuals\news-01.png" />
+    <Resource Include="Assets\LauncherVisuals\news-02.png" />
+    <Resource Include="Assets\LauncherVisuals\news-03.png" />
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include="Assets\LauncherVisuals\launcher-home-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\update-background-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-01-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-02-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-03-source.webp" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SkinPreview\skin-preview.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SkinPreview\skinview3d.bundle.js" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\SkinPreview\skinview3d.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />

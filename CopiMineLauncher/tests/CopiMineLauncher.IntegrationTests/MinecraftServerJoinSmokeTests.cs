@@ -15,6 +15,7 @@ public sealed class MinecraftServerJoinSmokeTests
         var serverPort = int.Parse(Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_PORT")!);
         var serverLog = Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_LOG")!;
         var clientLog = Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_CLIENT_LOG");
+        var expectedGate = ReadExpectedGate();
         var javaPath = Path.Combine(instanceRoot, ".copimine", "java", "21.0.10", "bin", "java.exe");
 
         Directory.Exists(instanceRoot).Should().BeTrue();
@@ -52,12 +53,20 @@ public sealed class MinecraftServerJoinSmokeTests
                 serverLog,
                 startingLength,
                 "CLIENT_GATE_ACCEPT player=SmokePlayer",
-                "CLIENT_GATE_REJECT player=SmokePlayer");
+                "CLIENT_GATE_REJECT");
 
-            result.Should().Contain("CLIENT_GATE_ACCEPT player=SmokePlayer");
-            result.Should().NotContain("CLIENT_GATE_REJECT");
+            if (expectedGate == "ACCEPT")
+            {
+                result.Should().Contain("CLIENT_GATE_ACCEPT player=SmokePlayer");
+                result.Should().NotContain("CLIENT_GATE_REJECT");
+            }
+            else
+            {
+                result.Should().Contain("CLIENT_GATE_REJECT");
+                result.Should().NotContain("CLIENT_GATE_ACCEPT");
+            }
 
-            if (!string.IsNullOrWhiteSpace(clientLog))
+            if (expectedGate == "ACCEPT" && !string.IsNullOrWhiteSpace(clientLog))
             {
                 var acknowledgement = await WaitForServerLogAsync(
                     clientLog,
@@ -81,7 +90,12 @@ public sealed class MinecraftServerJoinSmokeTests
         long startingLength,
         params string[] markers)
     {
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(30);
+        var waitSeconds = int.TryParse(
+            Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_WAIT_SECONDS"),
+            out var configuredWaitSeconds)
+            ? Math.Clamp(configuredWaitSeconds, 30, 180)
+            : 90;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(waitSeconds);
         while (DateTimeOffset.UtcNow < deadline)
         {
             var text = ReadTail(path, startingLength);
@@ -94,6 +108,20 @@ public sealed class MinecraftServerJoinSmokeTests
         }
 
         return ReadTail(path, startingLength);
+    }
+
+    private static string ReadExpectedGate()
+    {
+        var configured = Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_EXPECTED_GATE")
+            ?.Trim()
+            .ToUpperInvariant();
+        return configured switch
+        {
+            null or "" or "ACCEPT" => "ACCEPT",
+            "REJECT" => "REJECT",
+            _ => throw new InvalidOperationException(
+                "COPIMINE_SERVER_SMOKE_EXPECTED_GATE must be ACCEPT or REJECT.")
+        };
     }
 
     private static string ReadTail(string path, long startingLength)

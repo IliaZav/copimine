@@ -19,6 +19,11 @@ $sourceInstaller = (Resolve-Path -LiteralPath $InstallerPath -ErrorAction Stop).
 $sourceMsi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
 $sourceMetadata = (Resolve-Path -LiteralPath $MetadataPath -ErrorAction Stop).Path
 $packageRoot = Split-Path -Parent $sourceInstaller
+$publishRoot = Join-Path (Split-Path -Parent $packageRoot) 'publish'
+$offlineRoot = Join-Path $publishRoot 'launcher-bootstrap'
+$offlineMetadata = Join-Path $offlineRoot 'offline-minecraft-baseline.json'
+$offlineArchive = Join-Path $offlineRoot 'offline-minecraft-baseline.zip'
+$webView2Standalone = Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
 $sourceInstance = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) { $null } else { (Resolve-Path -LiteralPath $InstanceReleaseRoot -ErrorAction Stop).Path }
 $destination = [System.IO.Path]::GetFullPath($OutputRoot)
 
@@ -74,6 +79,22 @@ foreach ($feedFileName in $feedFileNames) {
 $fullPackages = @(Get-ChildItem -LiteralPath $packageRoot -File -Filter '*-full.nupkg')
 if ($fullPackages.Count -eq 0) {
     throw "Velopack full package is missing from the package directory: $packageRoot"
+}
+foreach ($requiredOffline in @($offlineMetadata, $offlineArchive, $webView2Standalone)) {
+    if (-not (Test-Path -LiteralPath $requiredOffline -PathType Leaf)) {
+        throw "Offline Launcher artifact is missing: $requiredOffline"
+    }
+}
+$offlineDocument = Get-Content -Raw -LiteralPath $offlineMetadata | ConvertFrom-Json
+$offlineInfo = Get-Item -LiteralPath $offlineArchive
+if ($offlineDocument.schemaVersion -ne 1 -or $offlineDocument.minecraftVersion -ne '1.21.1' -or $offlineDocument.fabricLoaderVersion -ne '0.19.3') {
+    throw "Offline Minecraft metadata is invalid: $offlineMetadata"
+}
+if ([long]$offlineDocument.sizeBytes -ne [long]$offlineInfo.Length -or [string]$offlineDocument.sha256 -ine (Get-Sha256Lower $offlineArchive)) {
+    throw "Offline Minecraft metadata does not match the archive: $offlineArchive"
+}
+if ((Get-Item -LiteralPath $webView2Standalone).Length -lt 100MB) {
+    throw "WebView2 standalone artifact is unexpectedly small: $webView2Standalone"
 }
 
 $sourceInstanceManifest = $null
@@ -149,6 +170,13 @@ foreach ($feedFileName in $feedFileNames) {
     Copy-Item -LiteralPath $feedFile -Destination (Join-Path $downloadDirectory $feedFileName) -Force
 }
 $fullPackages | Copy-Item -Destination $downloadDirectory -Force
+
+$offlineDestination = Join-Path $destination 'launcher-bootstrap'
+$webView2Destination = Join-Path $destination 'Assets/WebView2'
+New-Item -ItemType Directory -Path $offlineDestination,$webView2Destination -Force | Out-Null
+Copy-Item -LiteralPath $offlineMetadata -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.json') -Force
+Copy-Item -LiteralPath $offlineArchive -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.zip') -Force
+Copy-Item -LiteralPath $webView2Standalone -Destination (Join-Path $webView2Destination 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe') -Force
 
 if ($null -ne $sourceInstance) {
     $instanceFiles = Join-Path $sourceInstance 'files'

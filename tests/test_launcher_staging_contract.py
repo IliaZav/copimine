@@ -69,6 +69,9 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
             assert staged_file.is_file(), artifact
             expected_size = artifact.get("size", artifact.get("sizeBytes"))
             assert staged_file.stat().st_size == expected_size, artifact
+        assert (output / "launcher-bootstrap/offline-minecraft-baseline.json").is_file()
+        assert (output / "launcher-bootstrap/offline-minecraft-baseline.zip").stat().st_size > 100_000_000
+        assert (output / "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe").stat().st_size > 100_000_000
     finally:
         if output.exists():
             import shutil

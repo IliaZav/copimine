@@ -22,6 +22,31 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
 
 let cabinetRuntimePromise = null;
 
+function showCabinetRuntimeFailure(error) {
+  document.body?.setAttribute("data-boot-state", "error");
+  const boot = document.getElementById("bootStage");
+  if (!boot) return;
+  boot.setAttribute("aria-busy", "false");
+  const message = document.createElement("div");
+  message.className = "loading boot-error";
+  message.setAttribute("role", "alert");
+  message.textContent = "Кабинет не загрузился. Проверьте соединение и повторите попытку.";
+  const detail = document.createElement("p");
+  detail.textContent = "Если ошибка повторится, откройте сайт позже или сообщите в поддержку.";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "btn btn-primary";
+  retry.textContent = "Повторить";
+  retry.addEventListener("click", () => {
+    boot.replaceChildren(message, detail, retry);
+    boot.setAttribute("aria-busy", "true");
+    document.body?.setAttribute("data-boot-state", "loading");
+    requestCabinetRuntime();
+  }, { once: true });
+  boot.replaceChildren(message, detail, retry);
+  console.error("CopiMine cabinet runtime failed to load", error);
+}
+
 function currentHashRoute(hashValue = window.location.hash) {
   return String(hashValue || "").replace(/^#/, "").split("?", 1)[0].trim().toLowerCase();
 }
@@ -58,14 +83,14 @@ function loadCabinetRuntime() {
     })
     .catch((error) => {
       cabinetRuntimePromise = null;
-      console.error("CopiMine cabinet runtime failed to load", error);
+      showCabinetRuntimeFailure(error);
       throw error;
     });
   return cabinetRuntimePromise;
 }
 
 function requestCabinetRuntime() {
-  void loadCabinetRuntime();
+  void loadCabinetRuntime().catch(() => undefined);
 }
 
 window.addEventListener("hashchange", () => {

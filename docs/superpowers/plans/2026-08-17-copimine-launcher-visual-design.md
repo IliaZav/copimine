@@ -14,6 +14,8 @@
 - Use visual assets from `D:\Downloads\Telegram Desktop\COPIMINE Launcher.rar`; do not generate replacement artwork.
 - WebP source files may be converted to PNG only for WPF compatibility; retain source WebP files as content/source evidence.
 - GIF animations must run without blocking the UI, stop on unload/close, and fall back to a static PNG if decoding fails.
+- Intermediate fade/scale/stagger/shimmer animations must change visible state, keep input available, and have a reduced-motion/static path.
+- User-facing copy must be short, human and action-oriented; no template/AI-style filler text.
 - Preserve single-window navigation: settings and skins replace current content and the existing back button returns home.
 - Do not change production website, Paper/Minecraft service, production world, production database, AuthMe, or player data.
 - Do not change manifest/binding/admission behavior as part of the visual slice.
@@ -182,18 +184,21 @@
 **Files:**
 - Create: `CopiMineLauncher/src/CopiMineLauncher.App/LauncherLoadingOverlay.xaml`
 - Create: `CopiMineLauncher/src/CopiMineLauncher.App/LauncherLoadingOverlay.xaml.cs`
+- Create: `CopiMineLauncher/src/CopiMineLauncher.App/LauncherMotion.cs`
 - Modify: `CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml`
 - Modify: `CopiMineLauncher/src/CopiMineLauncher.App/LauncherViewModel.cs`
 - Modify: `CopiMineLauncher/tests/CopiMineLauncher.App.Tests/LauncherViewModelTests.cs`
 - Create: `CopiMineLauncher/tests/CopiMineLauncher.App.Tests/LauncherLoadingOverlayContractTests.cs`
+- Create: `CopiMineLauncher/tests/CopiMineLauncher.App.Tests/LauncherMotionTests.cs`
 
 **Interfaces:**
 - `LauncherLoadingOverlay` is a `UserControl` with dependency property `bool IsSplashVisible`, `bool IsOperationVisible`, `string Stage`, `double Progress`, `bool IsIndeterminate`, and `string ProgressLabel`.
+- `LauncherMotion` exposes `TimeSpan ShortTransition = 180ms`, `TimeSpan MediumTransition = 320ms`, `bool ReducedMotion`, and `double GetOpacityAt(double progress)`; it contains no network/runtime side effects.
 - `LauncherViewModel` adds `bool IsInitializing`; it is true before the first `InitializeAsync` operation and false in a `finally` block; existing `IsBusy`, `LoadingStage`, `ProgressPercent`, and `ProgressLabel` remain the operation bindings.
 
 - [ ] **Step 1: Write failing state and overlay contract tests**
 
-  Add a ViewModel test that `InitializeAsync` enters initialization and always clears it after both success and a feed failure. Add XAML contract tests for `update-background.png`, `loading-emblem.png`, `splash.gif`, `copimine-logo-animated.gif`, progress text, and a non-opaque overlay card.
+  Add a ViewModel test that `InitializeAsync` enters initialization and always clears it after both success and a feed failure. Add `LauncherMotionTests` for the 180/320 ms bounds, reduced-motion opacity, and monotonic progress interpolation. Add XAML contract tests for `update-background.png`, `loading-emblem.png`, `splash.gif`, `copimine-logo-animated.gif`, progress text, fade/scale/shimmer storyboards, and a non-opaque overlay card.
 
 - [ ] **Step 2: Run the focused tests to verify red**
 
@@ -205,11 +210,11 @@
 
 - [ ] **Step 3: Implement the overlay and initialization binding**
 
-  Place the overlay above the Home content in the same Window, not as a second Window. Use `AnimatedGifImage` for splash and animated logo, a static emblem, the update background, a dark scrim, and a centered card containing stage/progress/status. Keep text and progress visible at every stage. When `IsInitializing` is true, show splash; when `IsBusy` is true after initialization, show operation overlay; when complete or failed, return to the normal shell and leave the existing diagnostic panel/status available.
+  Place the overlay above the Home content in the same Window, not as a second Window. Use `AnimatedGifImage` for splash and animated logo, a static emblem, the update background, a dark scrim, and a centered card containing stage/progress/status. Add one-shot fade/scale transitions, a restrained indeterminate shimmer and a monotonic determinate progress animation; use `LauncherMotion.ReducedMotion` to skip movement while preserving content. Keep text and progress visible at every stage. When `IsInitializing` is true, show splash; when `IsBusy` is true after initialization, show operation overlay; when complete or failed, return to the normal shell and leave the existing diagnostic panel/status available.
 
 - [ ] **Step 4: Run tests and build**
 
-  Run the focused tests and the full solution build. Expected: PASS; a failed initialization must not leave the splash permanently visible.
+  Run the focused tests and the full solution build. Expected: PASS; a failed initialization must not leave the splash permanently visible, and motion tests must prove intermediate state changes without waiting on network/runtime work.
 
 - [ ] **Step 5: Review and commit**
 
@@ -305,7 +310,11 @@
 - Create: `artifacts/design-qa/launcher-visuals/design-qa.md`
 - Create: `artifacts/design-qa/launcher-visuals/home.png`
 - Create: `artifacts/design-qa/launcher-visuals/splash.png`
+- Create: `artifacts/design-qa/launcher-visuals/splash-frame-a.png`
+- Create: `artifacts/design-qa/launcher-visuals/splash-frame-b.png`
 - Create: `artifacts/design-qa/launcher-visuals/update.png`
+- Create: `artifacts/design-qa/launcher-visuals/update-mid.png`
+- Create: `artifacts/design-qa/launcher-visuals/update-complete.png`
 - Create: `artifacts/design-qa/launcher-visuals/failure.png`
 - Create: `artifacts/design-qa/launcher-visuals/installer.png`
 - Create: `scripts/run_copimine_launcher_visual_qa.ps1`
@@ -330,7 +339,7 @@
 
 - [ ] **Step 3: Inspect every screenshot for concrete defects**
 
-  Check image crop/proportion, text contrast, button spacing, card alignment, progress readability, no clipped controls, no layout jump, no stale “Модпак”/AI-like filler text, and consistent palette across Settings/Skins. Compare two splash captures or frame indexes to prove the GIF advances.
+  Check image crop/proportion, text contrast, button spacing, card alignment, progress readability, no clipped controls, no layout jump, no stale “Модпак”/AI-like filler text, and consistent palette across Settings/Skins. Compare splash frame A/B and update start/mid/complete captures to prove GIF and intermediate transitions advance. Confirm a button can receive input while a non-blocking transition is running.
 
 - [ ] **Step 4: Fix and repeat until the set is clean**
 

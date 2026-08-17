@@ -15,7 +15,7 @@ using CopiMineLauncher.Infrastructure.SelfUpdate;
 
 namespace CopiMineLauncher.App;
 
-public sealed class PatchFeedCardViewModel(PatchFeedItem item)
+public sealed class PatchFeedCardViewModel(PatchFeedItem item, int index = 0)
 {
     public string Version => $"v{item.Version}";
     public string Title => item.Title;
@@ -23,6 +23,8 @@ public sealed class PatchFeedCardViewModel(PatchFeedItem item)
     public string Summary => string.Join(" · ", item.Summary.Take(2));
     public Uri DetailUrl => item.DetailUrl;
     public Uri? ThumbnailUrl => item.ThumbnailUrl;
+    public bool UsesRemoteThumbnail => item.ThumbnailUrl is not null;
+    public string ArtworkPath => $"{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.GetNewsArtwork(index)}";
 }
 
 public sealed class MinecraftLaunchFailureEventArgs(MinecraftLaunchFailureReport report) : EventArgs
@@ -236,9 +238,9 @@ public partial class LauncherViewModel : ObservableObject
         Status = "Загружаем новости…";
         var result = await patchFeedClient.GetLatestAsync(CancellationToken.None);
         PatchCards.Clear();
-        foreach (var item in result.Items)
+        for (var index = 0; index < result.Items.Count; index++)
         {
-            PatchCards.Add(new PatchFeedCardViewModel(item));
+            PatchCards.Add(new PatchFeedCardViewModel(result.Items[index], index));
         }
 
         Status = result.Items.Count > 0

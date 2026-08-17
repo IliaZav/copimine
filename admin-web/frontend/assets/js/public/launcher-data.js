@@ -82,18 +82,38 @@ export function parsePatchIndex(payload) {
 
 export async function loadLauncherMetadata() {
   try {
+    const apiPayload = await fetchJson("/api/public/launcher");
+    const apiData = apiPayload?.data || apiPayload;
+    const fromApi = parseLauncherMetadata(apiData?.installer);
+    if (fromApi) return fromApi;
+  } catch (error) {
+    console.warn("CopiMine Launcher API metadata unavailable", error?.message || "unknown error");
+  }
+  try {
     return parseLauncherMetadata(await fetchJson("/assets/public-data/launcher/latest.json"));
   } catch (error) {
-    console.warn("CopiMine Launcher metadata unavailable", error?.message || "unknown error");
+    console.warn("CopiMine Launcher static metadata unavailable", error?.message || "unknown error");
     return null;
   }
 }
 
 export async function loadPatchIndex() {
   try {
+    const apiPayload = await fetchJson("/api/public/news");
+    const apiPatches = Array.isArray(apiPayload?.patches) ? apiPayload.patches : apiPayload?.data?.patches;
+    const fromApi = parsePatchIndex({ schemaVersion: 1, patches: Array.isArray(apiPatches) ? apiPatches.map((patch) => ({
+      ...patch,
+      id: patch.id || `launcher-${patch.slug}`,
+      detailUrl: patch.detailUrl || `/news/${patch.slug}.html`,
+    })) : [] });
+    if (fromApi.length) return fromApi;
+  } catch (error) {
+    console.warn("CopiMine patch API unavailable", error?.message || "unknown error");
+  }
+  try {
     return parsePatchIndex(await fetchJson("/assets/public-data/patches/index.json"));
   } catch (error) {
-    console.warn("CopiMine patch feed unavailable", error?.message || "unknown error");
+    console.warn("CopiMine patch static feed unavailable", error?.message || "unknown error");
     return [];
   }
 }

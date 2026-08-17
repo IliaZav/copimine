@@ -54,6 +54,42 @@ def source_manifest(tmp_path: Path) -> Path:
     return path
 
 
+def complete_source_manifest(tmp_path: Path) -> Path:
+    release = tmp_path / "complete-source"
+    (release / "files").mkdir(parents=True)
+    mod_bytes = b"complete-mod"
+    java_bytes = b"complete-java"
+    mod_digest = hashlib.sha256(mod_bytes).hexdigest()
+    java_digest = hashlib.sha256(java_bytes).hexdigest()
+    (release / "files" / mod_digest).write_bytes(mod_bytes)
+    (release / "files" / java_digest).write_bytes(java_bytes)
+    document = {
+        "schemaVersion": 2,
+        "channel": "stable",
+        "releaseId": "2026.08.17.1",
+        "publishedAtUtc": "2026-08-17T08:00:00Z",
+        "minimumLauncherVersion": "1.0.0",
+        "minecraft": {"version": "1.21.1", "fabricLoaderVersion": "0.19.3", "javaMajor": 21},
+        "server": {"name": "CopiMine", "address": "mc.copimine.ru", "acceptServerResourcePack": True, "port": 25565},
+        "files": [{
+            "componentId": "seeded-client", "path": "mods/Seeded.jar", "url": f"https://copimine.ru/launcher/files/{mod_digest}",
+            "sha256": mod_digest, "size": len(mod_bytes), "ownership": "MANAGED", "required": True,
+            "kind": "mod", "version": "1.0.0", "installPolicy": "REPLACE",
+        }],
+        "configPolicies": [],
+        "newsUrl": "https://copimine.ru/news/staging.html",
+        "releaseSequence": 1,
+        "javaRuntime": {
+            "provider": "Eclipse Adoptium", "buildId": "temurin-21", "platform": "windows-x64", "version": "21.0.10",
+            "url": f"https://copimine.ru/launcher/files/{java_digest}", "sizeBytes": len(java_bytes), "sha256": java_digest,
+        },
+        "publicKeyId": "launcher-v1-staging",
+    }
+    path = release / "instance-manifest.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 def test_control_plane_seeds_manifest_and_preserves_non_mod_files(tmp_path: Path) -> None:
     plane = control.ControlPlane(tmp_path / "control", source_manifest=source_manifest(tmp_path))
 
@@ -154,7 +190,7 @@ def test_release_validation_fails_closed_without_server_signing_key(tmp_path: Pa
 
 def test_ephemeral_staging_release_is_signed_and_rollback_keeps_files(tmp_path: Path) -> None:
     pytest.importorskip("cryptography")
-    plane = control.ControlPlane(tmp_path / "control", public_root=tmp_path / "public")
+    plane = control.ControlPlane(tmp_path / "control", source_manifest=complete_source_manifest(tmp_path), public_root=tmp_path / "public")
     plane.load_state()
     plane.add_mod("map-helper", "2.1.0", "MapHelper.jar", b"map-helper")
     seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
@@ -162,12 +198,12 @@ def test_ephemeral_staging_release_is_signed_and_rollback_keeps_files(tmp_path: 
     first = plane.publish_release(
         private_key_hex=seed,
         public_key_id="launcher-v1-staging",
-        release_id="2026.08.17.1",
-        release_sequence=1,
+        release_id="2026.08.17.2",
+        release_sequence=2,
     )
     manifest_path = tmp_path / "public" / "launcher" / "stable" / "instance-manifest.json"
     signature_path = tmp_path / "public" / "launcher" / "stable" / "instance-manifest.sig"
-    assert first["releaseId"] == "2026.08.17.1"
+    assert first["releaseId"] == "2026.08.17.2"
     assert manifest_path.is_file() and signature_path.is_file()
     manifest_bytes = manifest_path.read_bytes()
     signature = json.loads(signature_path.read_text(encoding="utf-8"))
@@ -184,11 +220,37 @@ def test_ephemeral_staging_release_is_signed_and_rollback_keeps_files(tmp_path: 
     second = plane.publish_release(
         private_key_hex=seed,
         public_key_id="launcher-v1-staging",
-        release_id="2026.08.17.2",
-        release_sequence=2,
+        release_id="2026.08.17.3",
+        release_sequence=3,
     )
-    assert second["releaseId"] == "2026.08.17.2"
-    assert (tmp_path / "control" / "releases" / "2026.08.17.1" / "instance-manifest.json").is_file()
-    rolled = plane.rollback_release("2026.08.17.1")
-    assert rolled["releaseId"] == "2026.08.17.1"
-    assert json.loads(manifest_path.read_text(encoding="utf-8"))["releaseId"] == "2026.08.17.1"
+    assert second["releaseId"] == "2026.08.17.3"
+    assert (tmp_path / "control" / "releases" / "2026.08.17.2" / "instance-manifest.json").is_file()
+    rolled = plane.rollback_release("2026.08.17.2", private_key_hex=seed)
+    assert rolled["rollbackOf"] == "2026.08.17.2"
+    assert rolled["releaseSequence"] == 4
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["releaseSequence"] == 4
+
+
+def test_published_news_generates_static_patch_contract_and_safe_detail_page(tmp_path: Path) -> None:
+    public = tmp_path / "public"
+    plane = control.ControlPlane(tmp_path / "control", public_root=public)
+    plane.load_state()
+    plane.save_news(
+        {
+            "slug": "staging-news",
+            "title": "Staging <release>",
+            "version": "1.0.1",
+            "summary": ["Ready"],
+            "sections": {"general": ["Added"], "technical": ["Signed"], "bugfixes": ["Fixed"]},
+            "items": [{"itemId": "copimine:token", "displayName": "Token", "iconUrl": "/assets/patch-items/token.png", "changes": ["Texture"]}],
+        }
+    )
+    plane.publish_news("staging-news")
+    index = json.loads((public / "assets/public-data/patches/index.json").read_text(encoding="utf-8"))
+    detail = json.loads((public / "assets/public-data/patches/staging-news.json").read_text(encoding="utf-8"))
+    html = (public / "news/staging-news.html").read_text(encoding="utf-8")
+    assert index["patches"][0]["slug"] == "staging-news"
+    assert detail["items"][0]["iconUrl"] == "/assets/patch-items/token.png"
+    assert "Staging" in html
+    assert "<release>" not in html
+    assert "<script>" not in html

@@ -42,6 +42,42 @@ def load_main(monkeypatch, tmp_path: Path):
     return importlib.import_module("backend.main")
 
 
+def complete_source_manifest(tmp_path: Path) -> Path:
+    release = tmp_path / "complete-source"
+    (release / "files").mkdir(parents=True)
+    mod_bytes = b"complete-mod"
+    java_bytes = b"complete-java"
+    mod_digest = hashlib.sha256(mod_bytes).hexdigest()
+    java_digest = hashlib.sha256(java_bytes).hexdigest()
+    (release / "files" / mod_digest).write_bytes(mod_bytes)
+    (release / "files" / java_digest).write_bytes(java_bytes)
+    document = {
+        "schemaVersion": 2,
+        "channel": "stable",
+        "releaseId": "2026.08.17.1",
+        "publishedAtUtc": "2026-08-17T08:00:00Z",
+        "minimumLauncherVersion": "1.0.0",
+        "minecraft": {"version": "1.21.1", "fabricLoaderVersion": "0.19.3", "javaMajor": 21},
+        "server": {"name": "CopiMine", "address": "mc.copimine.ru", "acceptServerResourcePack": True, "port": 25565},
+        "files": [{
+            "componentId": "seeded-client", "path": "mods/Seeded.jar", "url": f"https://copimine.ru/launcher/files/{mod_digest}",
+            "sha256": mod_digest, "size": len(mod_bytes), "ownership": "MANAGED", "required": True,
+            "kind": "mod", "version": "1.0.0", "installPolicy": "REPLACE",
+        }],
+        "configPolicies": [],
+        "newsUrl": "https://copimine.ru/news/staging.html",
+        "releaseSequence": 1,
+        "javaRuntime": {
+            "provider": "Eclipse Adoptium", "buildId": "temurin-21", "platform": "windows-x64", "version": "21.0.10",
+            "url": f"https://copimine.ru/launcher/files/{java_digest}", "sizeBytes": len(java_bytes), "sha256": java_digest,
+        },
+        "publicKeyId": "launcher-v1-staging",
+    }
+    path = release / "instance-manifest.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 def test_launcher_api_routes_are_exposed_with_auth_and_public_split(monkeypatch, tmp_path: Path) -> None:
     main = load_main(monkeypatch, tmp_path)
     paths = {route.path for route in main.app.routes}
@@ -60,20 +96,20 @@ def test_public_feed_file_and_telemetry_work_without_database(monkeypatch, tmp_p
     main = load_main(monkeypatch, tmp_path)
     from backend.launcher_control import ControlPlane
 
-    plane = ControlPlane(tmp_path / "control", public_root=tmp_path / "public")
+    plane = ControlPlane(tmp_path / "control", source_manifest=complete_source_manifest(tmp_path), public_root=tmp_path / "public")
     plane.load_state()
     payload = b"staging mod"
     item = plane.add_mod("staging-mod", "1.0.0", "StagingMod.jar", payload)
     plane.publish_release(
         private_key_hex="9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
         public_key_id="launcher-v1-staging",
-        release_id="2026.08.17.1",
-        release_sequence=1,
+            release_id="2026.08.17.5",
+            release_sequence=5,
     )
     with TestClient(main.app) as client:
         launcher = client.get("/api/public/launcher")
         assert launcher.status_code == 200, launcher.text
-        assert launcher.json()["data"]["currentRelease"]["releaseId"] == "2026.08.17.1"
+        assert launcher.json()["data"]["currentRelease"]["releaseId"] == "2026.08.17.5"
         assert client.get("/launcher/stable/instance-manifest.json").status_code == 200
         assert client.get("/launcher/stable/instance-manifest.sig").status_code == 200
         file_response = client.get(f"/launcher/files/{item['sha256']}")
@@ -81,7 +117,7 @@ def test_public_feed_file_and_telemetry_work_without_database(monkeypatch, tmp_p
         assert file_response.content == payload
         telemetry = client.post(
             "/api/launcher/telemetry",
-            json={"event": "launch", "launcherVersion": "1.0.0", "manifestSequence": 1},
+            json={"event": "launch", "launcherVersion": "1.0.0", "manifestSequence": 5},
         )
         assert telemetry.status_code == 200, telemetry.text
         assert telemetry.json()["ok"] is True

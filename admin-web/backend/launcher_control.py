@@ -376,12 +376,18 @@ class ControlPlane:
         managed: list[dict[str, Any]] = []
         origin = os.getenv("COPIMINE_LAUNCHER_DOWNLOAD_ORIGIN", "https://copimine.ru/launcher/files").rstrip("/")
         for item in state["draftMods"]:
-            managed_item = _copy_json(item)
-            managed_item["url"] = f"{origin}/{managed_item['sha256']}"
-            managed_item["size"] = int(managed_item.get("sizeBytes", 0))
-            managed_item["ownership"] = "MANAGED"
-            managed_item["kind"] = "mod"
-            managed_item["installPolicy"] = "REPLACE"
+            managed_item = {
+                "componentId": item["componentId"],
+                "path": item["path"],
+                "url": f"{origin}/{item['sha256']}",
+                "sha256": item["sha256"],
+                "size": int(item.get("sizeBytes", 0)),
+                "ownership": "MANAGED",
+                "required": bool(item.get("required", True)),
+                "kind": "mod",
+                "version": item.get("version", ""),
+                "installPolicy": "REPLACE",
+            }
             managed.append(managed_item)
         manifest["files"] = preserved + managed
         return manifest
@@ -419,6 +425,87 @@ class ControlPlane:
                 return candidate
         return None
 
+    @staticmethod
+    def _validate_https_url(value: Any, *, news: bool = False) -> bool:
+        if not isinstance(value, str):
+            return False
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+            return False
+        if parsed.hostname not in {"copimine.ru", "www.copimine.ru", "cdn.copimine.ru"}:
+            return False
+        return parsed.path.startswith("/news") if news else parsed.path.startswith("/launcher/files/")
+
+    def _validate_native_manifest(self, manifest: dict[str, Any]) -> list[str]:
+        reasons: list[str] = []
+        if manifest.get("schemaVersion") != 2:
+            reasons.append("MANIFEST_SCHEMA_INVALID")
+        for key in ("channel", "releaseId", "publishedAtUtc", "minimumLauncherVersion", "newsUrl", "releaseSequence", "publicKeyId"):
+            if key not in manifest or manifest.get(key) in (None, ""):
+                reasons.append(f"MANIFEST_{key.upper()}_MISSING")
+        if manifest.get("channel") != "stable":
+            reasons.append("MANIFEST_CHANNEL_INVALID")
+        try:
+            validate_version(str(manifest.get("releaseId") or ""))
+            validate_version(str(manifest.get("minimumLauncherVersion") or ""))
+        except ControlPlaneError:
+            reasons.append("MANIFEST_VERSION_INVALID")
+        if not self._validate_https_url(manifest.get("newsUrl"), news=True):
+            reasons.append("MANIFEST_NEWS_URL_INVALID")
+        minecraft = manifest.get("minecraft")
+        if not isinstance(minecraft, dict) or minecraft.get("version") != "1.21.1" or minecraft.get("fabricLoaderVersion") != "0.19.3" or minecraft.get("javaMajor") != 21:
+            reasons.append("MANIFEST_MINECRAFT_INVALID")
+        server = manifest.get("server")
+        if not isinstance(server, dict) or not server.get("name") or not server.get("address") or not isinstance(server.get("port", 0), int) or not 1 <= server.get("port", 0) <= 65535:
+            reasons.append("MANIFEST_SERVER_INVALID")
+        java = manifest.get("javaRuntime")
+        if not isinstance(java, dict) or java.get("platform") != "windows-x64" or not java.get("version"):
+            reasons.append("MANIFEST_JAVA_INVALID")
+        elif not self._validate_https_url(java.get("url")):
+            reasons.append("MANIFEST_JAVA_URL_INVALID")
+        else:
+            try:
+                java_digest = validate_sha256(java.get("sha256"), field="javaRuntime.sha256")
+                java_size = int(java.get("sizeBytes", 0))
+                artifact = self._artifact_path(self.root, self.source_manifest, java_digest)
+                if artifact is None or artifact.stat().st_size != java_size:
+                    reasons.append("JAVA_ARTIFACT_MISSING")
+            except (ControlPlaneError, TypeError, ValueError):
+                reasons.append("MANIFEST_JAVA_INVALID")
+        files = manifest.get("files")
+        if not isinstance(files, list) or not files:
+            reasons.append("MANIFEST_FILES_MISSING")
+            files = []
+        components: set[str] = set()
+        paths: set[str] = set()
+        for index, item in enumerate(files):
+            prefix = f"FILE_{index}"
+            if not isinstance(item, dict):
+                reasons.append(f"{prefix}_INVALID")
+                continue
+            component = str(item.get("componentId") or "")
+            path = str(item.get("path") or "")
+            try:
+                validate_component_id(component)
+                if component.lower() in components:
+                    reasons.append("DUPLICATE_COMPONENT_ID")
+                components.add(component.lower())
+                if not path or "\\" in path or ".." in Path(path).parts or Path(path).is_absolute():
+                    raise ValueError("unsafe path")
+                if path.lower() in paths:
+                    reasons.append("DUPLICATE_FILE_PATH")
+                paths.add(path.lower())
+                digest = validate_sha256(item.get("sha256"), field=f"files[{index}].sha256")
+                size = int(item.get("size", 0))
+                if size <= 0 or not self._validate_https_url(item.get("url")) or item.get("ownership") not in {"MANAGED", "MERGE", "USER"} or item.get("installPolicy") not in {"ADD", "REPLACE", "PRESERVE"}:
+                    raise ValueError("invalid native file metadata")
+                artifact = self._artifact_path(self.root, self.source_manifest, digest)
+                if artifact is None or artifact.stat().st_size != size:
+                    reasons.append("ARTIFACT_MISSING")
+            except (ControlPlaneError, TypeError, ValueError):
+                reasons.append(f"{prefix}_INVALID")
+        return list(dict.fromkeys(reasons))
+
     def validate_release(
         self,
         *,
@@ -437,6 +524,11 @@ class ControlPlane:
         if not isinstance(sequence, int) or sequence <= 0:
             reasons.append("RELEASE_SEQUENCE_INVALID")
         manifest = self.manifest_for_draft()
+        manifest["releaseSequence"] = sequence
+        manifest["publicKeyId"] = key_id
+        reasons.extend(self._validate_native_manifest(manifest))
+        if self.source_manifest and int(state.get("releaseSequence") or 0) >= sequence:
+            reasons.append("RELEASE_SEQUENCE_NOT_MONOTONIC")
         seen_components: set[str] = set()
         seen_paths: set[str] = set()
         for index, item in enumerate(manifest.get("files", [])):
@@ -485,8 +577,6 @@ class ControlPlane:
                 "releaseSequence": sequence,
                 "publicKeyId": key_id,
             }
-        manifest["releaseSequence"] = sequence
-        manifest["publicKeyId"] = key_id
         return {
             "ok": True,
             "code": "READY",
@@ -496,31 +586,47 @@ class ControlPlane:
             "manifest": manifest,
         }
 
-    def _release_artifacts(self, manifest: dict[str, Any], destination: Path) -> None:
+    def _release_artifacts(self, manifest: dict[str, Any], destination: Path, *, artifact_root: Path | None = None) -> None:
         destination.mkdir(parents=True, exist_ok=True)
-        for item in manifest.get("files", []):
+        artifacts = list(manifest.get("files", []))
+        java = manifest.get("javaRuntime")
+        if isinstance(java, dict):
+            artifacts.append(java)
+        for item in artifacts:
             if not isinstance(item, dict) or not item.get("sha256"):
                 continue
             digest = validate_sha256(item["sha256"])
-            source = self._artifact_path(self.root, self.source_manifest, digest)
+            source = artifact_root / digest if artifact_root and (artifact_root / digest).is_file() else self._artifact_path(self.root, self.source_manifest, digest)
             if source is None:
                 raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "release artifact is missing")
             target = destination / digest
             if not target.is_file() or target.stat().st_size != source.stat().st_size:
                 shutil.copyfile(source, target)
 
-    def _write_public_release(self, manifest_bytes: bytes, signature_bytes: bytes, public_key_hex: str, manifest: dict[str, Any]) -> None:
+    def _write_public_release(
+        self,
+        manifest_bytes: bytes,
+        signature_bytes: bytes,
+        public_key_hex: str,
+        manifest: dict[str, Any],
+        *,
+        artifact_root: Path | None = None,
+    ) -> None:
         if not self.public_root:
             return
         launcher_root = self.public_root / "launcher"
         public_files = launcher_root / "files"
         stable = launcher_root / "stable"
         public_files.mkdir(parents=True, exist_ok=True)
-        for item in manifest.get("files", []):
+        artifacts = list(manifest.get("files", []))
+        java = manifest.get("javaRuntime")
+        if isinstance(java, dict):
+            artifacts.append(java)
+        for item in artifacts:
             if not isinstance(item, dict) or not item.get("sha256"):
                 continue
             digest = validate_sha256(item["sha256"])
-            source = self._artifact_path(self.root, self.source_manifest, digest)
+            source = artifact_root / digest if artifact_root and (artifact_root / digest).is_file() else self._artifact_path(self.root, self.source_manifest, digest)
             if source is None:
                 raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "release artifact is missing")
             target = public_files / digest
@@ -595,7 +701,7 @@ class ControlPlane:
         self._save(state, action="release.publish", details=release_record)
         return _copy_json(release_record)
 
-    def rollback_release(self, release_id: str) -> dict[str, Any]:
+    def rollback_release(self, release_id: str, *, private_key_hex: str | None = None) -> dict[str, Any]:
         release_id = validate_version(release_id)
         state = self.load_state()
         record = next((item for item in state["releases"] if item.get("releaseId") == release_id), None)
@@ -609,16 +715,65 @@ class ControlPlane:
         manifest = json.loads(manifest_bytes.decode("utf-8"))
         if hashlib.sha256(manifest_bytes).hexdigest() != record.get("manifestSha256"):
             raise ControlPlaneError("LAUNCHER_ROLLBACK_INVALID", "immutable manifest hash changed")
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+            public_key_hex = key_path.read_text(encoding="ascii").strip()
+            public_key = bytes.fromhex(public_key_hex)
+            signature_document = json.loads(signature_path.read_text(encoding="utf-8"))
+            Ed25519PublicKey.from_public_bytes(public_key).verify(
+                base64.b64decode(signature_document["signatureBase64"]), manifest_bytes
+            )
+        except (ImportError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            raise ControlPlaneError("LAUNCHER_ROLLBACK_INVALID", "immutable release signature is invalid") from exc
+        private_key = self._load_private_key(private_key_hex)
+        try:
+            from cryptography.hazmat.primitives import serialization
+        except ImportError as exc:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "cryptography signing library is unavailable") from exc
+        generated_public_key = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        if generated_public_key != public_key:
+            raise ControlPlaneError("LAUNCHER_ROLLBACK_INVALID", "configured signing key does not match immutable release")
+        sequence = max([int(item.get("releaseSequence") or 0) for item in state.get("releases", [])] + [int(manifest.get("releaseSequence") or 0)]) + 1
+        rollback_id = validate_version(f"rollback-{release_id}-{sequence}")
+        manifest["releaseId"] = rollback_id
+        manifest["releaseSequence"] = sequence
+        manifest["publishedAtUtc"] = self.clock()
+        manifest["rollbackOf"] = release_id
+        manifest_bytes = (json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        signature = private_key.sign(manifest_bytes)
+        signature_document = {
+            "algorithm": "Ed25519",
+            "publicKeyId": str(manifest.get("publicKeyId") or record.get("publicKeyId") or ""),
+            "signatureBase64": base64.b64encode(signature).decode("ascii"),
+        }
+        signature_bytes = (json.dumps(signature_document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        rollback_dir = self.root / "releases" / rollback_id
+        self._release_artifacts(manifest, rollback_dir / "files", artifact_root=release_dir / "files")
+        _atomic_bytes(rollback_dir / "instance-manifest.json", manifest_bytes)
+        _atomic_bytes(rollback_dir / "instance-manifest.sig", signature_bytes)
+        _atomic_bytes(rollback_dir / "public-key.hex", (public_key_hex + "\n").encode("ascii"))
         self._write_public_release(
             manifest_bytes,
-            signature_path.read_bytes(),
-            key_path.read_text(encoding="ascii").strip(),
+            signature_bytes,
+            public_key_hex,
             manifest,
+            artifact_root=release_dir / "files",
         )
+        rollback_record = {
+            "releaseId": rollback_id,
+            "releaseSequence": sequence,
+            "publishedAtUtc": manifest["publishedAtUtc"],
+            "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "publicKeyId": signature_document["publicKeyId"],
+            "rollbackOf": release_id,
+        }
         state["previousReleaseId"] = state.get("currentReleaseId")
-        state["currentReleaseId"] = release_id
-        self._save(state, action="release.rollback", details={"releaseId": release_id})
-        return _copy_json(record)
+        state["currentReleaseId"] = rollback_id
+        state["releaseId"] = rollback_id
+        state["releaseSequence"] = sequence
+        state["releases"].append(rollback_record)
+        self._save(state, action="release.rollback", details=rollback_record)
+        return _copy_json(rollback_record)
 
     @staticmethod
     def _news_lines(value: Any, *, field: str) -> list[str]:
@@ -677,6 +832,115 @@ class ControlPlane:
         self._save(state, action="news.save", details={"slug": slug})
         return _copy_json(record)
 
+    @staticmethod
+    def _section_title(section: str) -> str:
+        return {
+            "general": "Общие изменения",
+            "technical": "Технические изменения",
+            "bugfixes": "Исправленные ошибки",
+        }.get(section, section.title())
+
+    def _news_patch_contract(self, record: dict[str, Any]) -> dict[str, Any]:
+        sections: dict[str, list[dict[str, Any]]] = {}
+        for section, lines in (record.get("sections") or {}).items():
+            groups: list[dict[str, Any]] = []
+            for index, line in enumerate(lines or []):
+                groups.append(
+                    {
+                        "id": f"{section}-{index + 1}",
+                        "title": self._section_title(str(section)),
+                        "changes": [{"kind": "changed", "text": str(line)}],
+                    }
+                )
+            sections[str(section)] = groups
+        items: list[dict[str, Any]] = []
+        for item in record.get("items") or []:
+            items.append(
+                {
+                    "itemId": item.get("itemId", ""),
+                    "displayName": item.get("displayName", ""),
+                    "iconUrl": item.get("iconUrl", ""),
+                    "changes": [{"kind": "changed", "text": str(line)} for line in item.get("changes") or []],
+                }
+            )
+        thumbnail = next((item.get("iconUrl") for item in items if item.get("iconUrl")), "")
+        return {
+            "schemaVersion": 1,
+            "id": f"launcher-{record['slug']}",
+            "slug": record["slug"],
+            "version": record.get("version", ""),
+            "title": record["title"],
+            "publishedAt": record.get("publishedAt") or record.get("updatedAt") or self.clock(),
+            "summary": list(record.get("summary") or [])[:MAX_SUMMARY_ITEMS],
+            "sections": sections,
+            "items": items,
+            "detailUrl": f"/news/{record['slug']}.html",
+            "thumbnailUrl": thumbnail,
+            "badges": ["Launcher"],
+        }
+
+    def _news_detail_html(self, contract: dict[str, Any]) -> str:
+        esc = lambda value: html.escape(str(value or ""), quote=True)
+        summary = "".join(f"<li>{esc(line)}</li>" for line in contract.get("summary", []))
+        sections = []
+        for section, groups in (contract.get("sections") or {}).items():
+            groups_html = []
+            for group in groups or []:
+                changes = "".join(
+                    f"<li><span class=\"change-kind change-kind-changed\">changed</span>{esc(change.get('text'))}</li>"
+                    for change in group.get("changes", [])
+                )
+                groups_html.append(f"<article class=\"patch-group\"><h3>{esc(group.get('title'))}</h3><ul>{changes}</ul></article>")
+            if groups_html:
+                sections.append(f"<section class=\"patch-section\"><h2>{esc(self._section_title(str(section)))}</h2>{''.join(groups_html)}</section>")
+        item_sections = []
+        for item in contract.get("items", []):
+            icon = item.get("iconUrl") if str(item.get("iconUrl") or "").startswith("/assets/patch-items/") else ""
+            icon_html = f"<img src=\"{esc(icon)}\" alt=\"\" loading=\"lazy\" />" if icon else ""
+            changes = "".join(f"<li><span class=\"change-kind change-kind-changed\">changed:</span> {esc(change.get('text'))}</li>" for change in item.get("changes", []))
+            item_sections.append(f"<article class=\"patch-item\" data-item-id=\"{esc(item.get('itemId'))}\"><div class=\"patch-item-icon\">{icon_html}</div><div><h3>{esc(item.get('displayName') or item.get('itemId'))}</h3><ul>{changes}</ul></div></article>")
+        item_html = f"<section class=\"patch-section\"><h2>Предметы</h2><div id=\"patch-items\" class=\"patch-items\">{''.join(item_sections)}</div></section>" if item_sections else ""
+        return f"""<!doctype html>
+<html lang=\"ru\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><meta name=\"color-scheme\" content=\"light dark\" /><link rel=\"canonical\" href=\"https://copimine.ru{esc(contract['detailUrl'])}\" /><title>{esc(contract['title'])} — CopiMine</title><link rel=\"icon\" href=\"/assets/favicon.svg\" type=\"image/svg+xml\" /><link rel=\"stylesheet\" href=\"/assets/style.css\" /><link rel=\"stylesheet\" href=\"/assets/css/tokens.css\" /><link rel=\"stylesheet\" href=\"/assets/css/themes.css\" /><link rel=\"stylesheet\" href=\"/assets/css/release-ui.css\" /><link rel=\"stylesheet\" href=\"/assets/css/launcher-news.css\" /></head>
+<body data-page-kind=\"public-patch\" data-patch-slug=\"{esc(contract['slug'])}\"><main class=\"public-site public-site-compact patch-page\"><header class=\"public-nav\"><a class=\"public-brand\" href=\"/index.html\">CopiMine</a><nav aria-label=\"Разделы сайта\"><a href=\"/launcher.html\">Лаунчер</a><a href=\"/news.html\">Новости</a></nav></header><div class=\"public-page-shell\"><article class=\"patch-detail\"><a class=\"text-link\" href=\"/news.html\">← Все обновления</a><header class=\"patch-heading\"><span class=\"hero-kicker\">Патчноут</span><h1>{esc(contract['title'])}</h1><p><span>Версия {esc(contract['version'])}</span> · <time datetime=\"{esc(contract['publishedAt'])}\">{esc(contract['publishedAt'])}</time></p></header><ul class=\"patch-summary\">{summary}</ul>{''.join(sections)}{item_html}</article></div></main><script type=\"module\" src=\"/assets/js/public/public-page.js\"></script></body></html>
+"""
+
+    def _write_public_news_contracts(self, record: dict[str, Any]) -> None:
+        if not self.public_root:
+            return
+        contract = self._news_patch_contract(record)
+        patches_root = self.public_root / "assets" / "public-data" / "patches"
+        news_root = self.public_root / "news"
+        patches_root.mkdir(parents=True, exist_ok=True)
+        news_root.mkdir(parents=True, exist_ok=True)
+        _atomic_json(patches_root / f"{record['slug']}.json", contract)
+        _atomic_bytes(news_root / f"{record['slug']}.html", self._news_detail_html(contract).encode("utf-8"))
+        index_path = patches_root / "index.json"
+        existing: dict[str, Any] = {"schemaVersion": 1, "patches": []}
+        if index_path.is_file():
+            try:
+                loaded = json.loads(index_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict) and isinstance(loaded.get("patches"), list):
+                    existing = loaded
+            except (OSError, json.JSONDecodeError):
+                existing = {"schemaVersion": 1, "patches": []}
+        entries = [row for row in existing.get("patches", []) if isinstance(row, dict) and row.get("slug") != record["slug"]]
+        entries.insert(
+            0,
+            {
+                "id": contract["id"],
+                "slug": contract["slug"],
+                "version": contract["version"],
+                "title": contract["title"],
+                "publishedAt": contract["publishedAt"],
+                "summary": contract["summary"],
+                "detailUrl": contract["detailUrl"],
+                "thumbnailUrl": contract["thumbnailUrl"],
+                "badges": contract["badges"],
+            },
+        )
+        _atomic_json(index_path, {"schemaVersion": 1, "patches": entries[:50]})
+
     def delete_news(self, slug: str) -> None:
         slug = _safe_slug(slug)
         state = self.load_state()
@@ -698,6 +962,7 @@ class ControlPlane:
         state["draftNews"] = [item for item in state["draftNews"] if item.get("slug") != slug]
         state["publishedNews"] = [item for item in state["publishedNews"] if item.get("slug") != slug]
         state["publishedNews"].insert(0, record)
+        self._write_public_news_contracts(record)
         self._save(state, action="news.publish", details={"slug": slug})
         return record
 
@@ -792,7 +1057,16 @@ class ControlPlane:
         current_id = state.get("currentReleaseId")
         current = next((item for item in state.get("releases", []) if item.get("releaseId") == current_id), None)
         mods: list[dict[str, Any]] = []
+        installer: dict[str, Any] | None = None
         if self.public_root:
+            metadata_path = self.public_root / "assets" / "public-data" / "launcher" / "latest.json"
+            if metadata_path.is_file():
+                try:
+                    loaded_metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded_metadata, dict) and loaded_metadata.get("schemaVersion") == 1:
+                        installer = loaded_metadata
+                except (OSError, json.JSONDecodeError):
+                    installer = None
             manifest_path = self.public_root / "launcher" / "stable" / "instance-manifest.json"
             if manifest_path.is_file():
                 try:
@@ -816,6 +1090,7 @@ class ControlPlane:
             "manifestUrl": "/launcher/stable/instance-manifest.json",
             "signatureUrl": "/launcher/stable/instance-manifest.sig",
             "filesBaseUrl": "/launcher/files/",
+            "installer": installer,
             "mods": mods,
         }
 

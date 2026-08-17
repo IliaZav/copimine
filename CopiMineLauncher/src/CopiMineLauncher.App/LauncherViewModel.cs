@@ -52,6 +52,7 @@ public partial class LauncherViewModel : ObservableObject
     private readonly object minecraftLifecycleGate = new();
     private Process? monitoredMinecraftProcess;
     private bool launcherHiddenForMinecraft;
+    private Task? firstRunPreparation;
 
     public LauncherViewModel(
         IPatchFeedClient patchFeedClient,
@@ -416,18 +417,26 @@ public partial class LauncherViewModel : ObservableObject
 
     private bool CanStartOperation() => !IsBusy;
 
-    private async Task PrepareFirstRunAsync()
+    private Task PrepareFirstRunAsync()
     {
         TraceStartup($"prepare:check:coordinator={(runtimeCoordinator is not null)}:ready={IsInstanceReady()}");
         if (runtimeCoordinator is null || IsInstanceReady())
         {
-            return;
+            return Task.CompletedTask;
+        }
+
+        if (operationCancellation is not null)
+        {
+            TraceStartup("prepare:already-running");
+            return Task.CompletedTask;
         }
 
         Status = "Готовим игру…";
-        Diagnostic = "Первый запуск: загружаем Java, Minecraft и моды.";
-        await RunOperationAsync(launch: false, automatic: true);
-        TraceStartup("prepare:operation-returned");
+        LoadingStage = "Подготовка идёт в фоне";
+        Diagnostic = "Первый запуск: загружаем Java, Minecraft, Fabric и обязательные моды. Окно Launcher уже доступно.";
+        firstRunPreparation = RunOperationAsync(launch: false, automatic: true);
+        TraceStartup("prepare:background-started");
+        return Task.CompletedTask;
     }
 
     private bool IsInstanceReady()
@@ -958,9 +967,14 @@ public partial class LauncherViewModel : ObservableObject
     {
         if (launcherBindingClient is null) return;
 
+        var pollImmediately = true;
         while (DateTimeOffset.UtcNow < challenge.ExpiresAtUtc)
         {
-            await Task.Delay(TimeSpan.FromSeconds(2));
+            if (!pollImmediately)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2));
+            }
+            pollImmediately = false;
             var result = await launcherBindingClient.GetStatusAsync(challenge, CancellationToken.None);
             if (!result.Linked)
             {

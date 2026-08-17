@@ -49,7 +49,7 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
-    public async Task First_start_prepares_the_game_when_the_instance_has_no_launcher_state()
+    public async Task First_start_prepares_the_game_without_blocking_the_launcher_window()
     {
         using var temp = new TemporaryDirectory();
         var runtime = new FakeRuntimeCoordinator();
@@ -63,6 +63,35 @@ public sealed class LauncherViewModelTests
         runtime.RepairCalls.Should().Be(1);
         runtime.PlayCalls.Should().Be(0);
         viewModel.Status.Should().Be("Игра готова");
+    }
+
+    [Fact]
+    public async Task Initialization_does_not_wait_for_first_game_download()
+    {
+        using var temp = new TemporaryDirectory();
+        var runtime = new FakeRuntimeCoordinator { HoldAfterProgress = true };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        var initialize = viewModel.InitializeAsync();
+        var completed = await Task.WhenAny(initialize, Task.Delay(TimeSpan.FromMilliseconds(500)));
+        if (completed != initialize)
+        {
+            runtime.ReleaseProgress.TrySetResult(true);
+        }
+
+        await initialize;
+
+        completed.Should().Be(initialize);
+        await runtime.ProgressReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        runtime.RepairCalls.Should().Be(1);
+        viewModel.IsBusy.Should().BeTrue();
+
+        runtime.ReleaseProgress.TrySetResult(true);
+        await runtime.RepairCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => !viewModel.IsBusy, TimeSpan.FromSeconds(5));
     }
 
     [Fact]
@@ -83,7 +112,7 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
-    public async Task Partial_instance_state_does_not_skip_automatic_setup()
+    public async Task Partial_instance_state_does_not_skip_background_setup()
     {
         using var temp = new TemporaryDirectory();
         Directory.CreateDirectory(Path.Combine(temp.Path, ".copimine"));
@@ -214,6 +243,47 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Launcher_binding_stops_polling_immediately_after_the_site_acknowledges_it()
+    {
+        using var temp = new TemporaryDirectory();
+        var challenge = new LauncherLinkChallenge(
+            "challenge-1234567890",
+            "poll-token-1234567890",
+            new Uri("https://copimine.ru/cabinet/link.html?launcher_challenge=challenge-1234567890"),
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            "CopiMinePlayer");
+        var binding = new FakeLauncherBindingClient
+        {
+            Status = new LauncherLinkStatus(
+                true,
+                "AUTHORIZED",
+                "account-42",
+                "player-login",
+                "CopiMinePlayer",
+                "access-token"),
+        };
+        var bindingStore = new LauncherBindingStateStore(Path.Combine(temp.Path, "launcher-data"));
+        bindingStore.SavePendingChallenge(challenge);
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            launcherBindingClient: binding,
+            launcherBindingStateStore: bindingStore)
+        {
+            InstancePath = temp.Path
+        };
+
+        var stopwatch = Stopwatch.StartNew();
+        await viewModel.HandleLauncherProtocolCallbackAsync(
+            "copimine://launcher/link?challenge=challenge-1234567890");
+        stopwatch.Stop();
+
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1));
+        binding.StatusCalls.Should().Be(1);
+        viewModel.IsLauncherLinked.Should().BeTrue();
+        viewModel.Status.Should().Be("Launcher привязан к сайту");
+    }
+
+    [Fact]
     public async Task Launcher_is_restored_when_minecraft_process_exits()
     {
         using var temp = new TemporaryDirectory();
@@ -271,6 +341,8 @@ public sealed class LauncherViewModelTests
 
         runtime.ReleaseProgress.TrySetResult(true);
         await initialize;
+        await runtime.RepairCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => !viewModel.IsBusy, TimeSpan.FromSeconds(5));
 
         viewModel.IsProgressIndeterminate.Should().BeFalse();
         viewModel.ProgressPercent.Should().Be(100);
@@ -431,6 +503,20 @@ public sealed class LauncherViewModelTests
             CreateNoWindow = true
         }) ?? throw new InvalidOperationException("Could not start the process fixture.");
 
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new TimeoutException("The condition did not become true in time.");
+            }
+
+            await Task.Delay(10);
+        }
+    }
+
     private sealed class FakePatchFeedClient : IPatchFeedClient
     {
         public Task<PatchFeedFetchResult> GetLatestAsync(CancellationToken cancellationToken) =>
@@ -467,6 +553,7 @@ public sealed class LauncherViewModelTests
         public bool HoldPlayAfterStart { get; init; }
         public TaskCompletionSource<bool> ProgressReported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> ReleaseProgress { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> RepairCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> PlayStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> ReleasePlay { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public LauncherOperationRequest? LastRepairRequest { get; private set; }
@@ -485,12 +572,14 @@ public sealed class LauncherViewModelTests
                 ProgressReported.TrySetResult(true);
                 return WaitForReleaseAsync();
             }
+            RepairCompleted.TrySetResult(true);
             return Task.FromResult(RepairResult ?? new LauncherOperationResult(true, "repair", null, "ok"));
         }
 
         private async Task<LauncherOperationResult> WaitForReleaseAsync()
         {
             await ReleaseProgress.Task;
+            RepairCompleted.TrySetResult(true);
             return new LauncherOperationResult(true, "repair", null, "ok");
         }
 
@@ -511,12 +600,17 @@ public sealed class LauncherViewModelTests
     private sealed class FakeLauncherBindingClient : ILauncherBindingClient
     {
         public string DeviceId => "cm-device-1234567890";
+        public LauncherLinkStatus Status { get; init; } = new(false, "PENDING");
+        public int StatusCalls { get; private set; }
 
         public Task<LauncherLinkChallenge> CreateChallengeAsync(string minecraftName, string launcherVersion, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
-        public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken) =>
-            throw new NotSupportedException();
+        public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken)
+        {
+            StatusCalls++;
+            return Task.FromResult(Status);
+        }
 
         public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken) =>
             throw new NotSupportedException();

@@ -16,14 +16,25 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $project = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/CopiMineLauncher.App.csproj'
 $installContract = Join-Path $repoRoot 'CopiMineLauncher/packaging/launcher-install-contract.json'
+$installerAssetsScript = Join-Path $scriptRoot 'prepare_copimine_installer_assets.ps1'
+$installerLogoSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/copimine-logo.png'
+$installerWelcome = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-welcome.txt'
+$installerReadme = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-readme.txt'
+$installerConclusion = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-conclusion.txt'
 $publishRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/publish"
 $packageRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/packages"
+$installerAssetsRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/installer-assets"
 
 if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
     throw "Launcher project was not found: $project"
 }
 if (-not (Test-Path -LiteralPath $installContract -PathType Leaf)) {
     throw "Launcher install contract was not found: $installContract"
+}
+foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSource, $installerWelcome, $installerReadme, $installerConclusion)) {
+    if (-not (Test-Path -LiteralPath $requiredInstallerInput -PathType Leaf)) {
+        throw "Launcher installer input was not found: $requiredInstallerInput"
+    }
 }
 
 $installContractDocument = Get-Content -LiteralPath $installContract -Raw | ConvertFrom-Json
@@ -133,6 +144,22 @@ if ($SkipPackaging) {
     exit 0
 }
 
+if (Test-Path -LiteralPath $installerAssetsRoot) {
+    Remove-Item -LiteralPath $installerAssetsRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Path $installerAssetsRoot -Force | Out-Null
+& $installerAssetsScript -SourceLogo $installerLogoSource -DestinationRoot $installerAssetsRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Installer asset preparation failed with exit code $LASTEXITCODE"
+}
+$installerBanner = Join-Path $installerAssetsRoot 'installer-banner.bmp'
+$installerLogo = Join-Path $installerAssetsRoot 'installer-logo.bmp'
+foreach ($requiredInstallerAsset in @($installerBanner, $installerLogo)) {
+    if (-not (Test-Path -LiteralPath $requiredInstallerAsset -PathType Leaf)) {
+        throw "Installer asset is missing before packaging: $requiredInstallerAsset"
+    }
+}
+
 $vpk = Get-Command vpk -ErrorAction SilentlyContinue
 $vpkPath = if ($null -ne $vpk) {
     $vpk.Source
@@ -152,11 +179,21 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 & $vpkPath pack `
     --packId CopiMineLauncher `
     --packTitle 'CopiMine Launcher' `
+    --packAuthors 'CopiMine' `
     --packVersion $Version `
     --packDir $publishRoot `
     --mainExe 'CopiMineLauncher.App.exe' `
+    --icon (Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/copimine.ico') `
+    --splashImage $installerLogo `
+    --splashProgressColor '#63dfa0' `
     --msi `
     --instLocation Either `
+    --msiBanner $installerBanner `
+    --msiLogo $installerLogo `
+    --instWelcome $installerWelcome `
+    --instReadme $installerReadme `
+    --instConclusion $installerConclusion `
+    --shortcuts 'Desktop,StartMenuRoot' `
     --outputDir $packageRoot
 if ($LASTEXITCODE -ne 0) {
     throw "vpk packaging failed with exit code $LASTEXITCODE"

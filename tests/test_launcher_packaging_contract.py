@@ -15,6 +15,15 @@ def test_launcher_packaging_produces_a_folder_selecting_msi() -> None:
     stage = read("scripts/stage_copimine_launcher_site.ps1")
     assert "--msi" in build
     assert "--instLocation" in build
+    assert "--splashImage" in build
+    assert "--splashProgressColor" in build
+    assert "--msiBanner" in build
+    assert "--msiLogo" in build
+    assert "--instWelcome" in build
+    assert "--instReadme" in build
+    assert "--instConclusion" in build
+    assert "--shortcuts" in build
+    assert "prepare_copimine_installer_assets.ps1" in build
     assert "CopiMineLauncherSetup-$Version.msi" in build
     assert "MsiPath" in stage
     assert "downloads/launcher" in stage
@@ -32,6 +41,17 @@ def test_launcher_installer_requires_browser_binding_without_manual_code_entry()
     assert '"playBlockedUntilLinked": true' in contract.read_text(encoding="utf-8")
     assert "launcher-install-contract.json" in build
     assert "Copy-Item" in build
+
+
+def test_launcher_installer_contract_describes_first_run_minecraft_defaults() -> None:
+    contract = ROOT / "CopiMineLauncher/packaging/launcher-install-contract.json"
+    document = contract.read_text(encoding="utf-8")
+
+    assert '"firstRunSettings": "minecraft-defaults"' in document
+    assert '"preserveExistingOptions": true' in document
+    assert '"lang": "ru_ru"' in document
+    assert '"narrator": "0"' in document
+    assert '"soundCategory_master": "0.15"' in document
 
 
 def test_launcher_page_exposes_the_optional_folder_selecting_installer() -> None:

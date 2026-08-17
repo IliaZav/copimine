@@ -283,7 +283,9 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
             using var archive = ZipFile.OpenRead(archivePath);
             foreach (var entry in archive.Entries)
             {
-                if (string.IsNullOrEmpty(entry.FullName) || entry.FullName.EndsWith("/", StringComparison.Ordinal))
+                var normalizedEntryName = entry.FullName.Replace('\\', '/');
+                if (string.IsNullOrEmpty(normalizedEntryName)
+                    || normalizedEntryName.EndsWith("/", StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -291,7 +293,7 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
                 SafeRelativePath safeRelative;
                 try
                 {
-                    safeRelative = SafeRelativePath.Parse(entry.FullName.Replace('\\', '/'));
+                    safeRelative = SafeRelativePath.Parse(normalizedEntryName);
                 }
                 catch (ArgumentException exception)
                 {

@@ -88,6 +88,30 @@ public sealed class OfflineMinecraftBaselineTests
     }
 
     [Fact]
+    public async Task Accepts_windows_style_directory_entries_in_offline_archive()
+    {
+        using var temp = new TempDirectory();
+        var bootstrap = Path.Combine(temp.Path, "bootstrap");
+        var instance = Path.Combine(temp.Path, "instance");
+        await CreateBaselineAsync(bootstrap);
+
+        using (var archive = ZipFile.Open(
+                   Path.Combine(bootstrap, "offline-minecraft-baseline.zip"),
+                   ZipArchiveMode.Update))
+        {
+            archive.CreateEntry("resourcepacks\\");
+        }
+
+        await RefreshMetadataAsync(bootstrap);
+
+        var result = await new OfflineMinecraftBaseline(bootstrap)
+            .EnsureAsync(instance, "1.21.1", "0.19.3", CancellationToken.None);
+
+        result.Applied.Should().BeTrue();
+        Directory.Exists(Path.Combine(instance, "versions", "1.21.1")).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Minecraft_provisioner_skips_network_install_when_profiles_are_seeded()
     {
         using var temp = new TempDirectory();
@@ -138,6 +162,22 @@ public sealed class OfflineMinecraftBaselineTests
             Path.Combine(bootstrap, "offline-minecraft-baseline.json"),
             JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Directory.Delete(content, recursive: true);
+    }
+
+    private static async Task RefreshMetadataAsync(string bootstrap)
+    {
+        var archivePath = Path.Combine(bootstrap, "offline-minecraft-baseline.zip");
+        var bytes = await File.ReadAllBytesAsync(archivePath);
+        var metadata = new OfflineMinecraftBaselineMetadata(
+            1,
+            "1.21.1",
+            "0.19.3",
+            "offline-minecraft-baseline.zip",
+            bytes.LongLength,
+            Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+        await File.WriteAllTextAsync(
+            Path.Combine(bootstrap, "offline-minecraft-baseline.json"),
+            JsonSerializer.Serialize(metadata, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
     private sealed class FakeProfileInstaller : IMinecraftProfileInstaller

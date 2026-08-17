@@ -730,6 +730,12 @@ def assert_admin_player_credentials_never_return_plaintext(main) -> None:
     assert row["username"] == "newprofile", row
     assert main.verify_password_hash(row["password_hash"], "NewPassword!45")
     assert "NewPassword!45" not in str(row["password_hash"])
+    # Keep this credential-only fixture from becoming a linked player in the
+    # following roster test.  The roster intentionally includes active linked
+    # site accounts, so leaving this row behind makes the tests order-dependent.
+    with main.auth_conn() as conn:
+        conn.execute("DELETE FROM site_accounts WHERE id=%s", ("profile-account",))
+        conn.commit()
 
 
 def assert_new_linked_site_account_appears_in_player_list(main) -> None:

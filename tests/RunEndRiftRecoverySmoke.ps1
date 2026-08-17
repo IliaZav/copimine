@@ -45,9 +45,16 @@ if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
   if ($logText -match 'CopiMineEndEvent failed closed') {
     throw 'Recovery smoke found failed-closed End Event bootstrap.'
   }
-  if ($logText -notmatch 'persistent phase=UNLOCKED') {
-    throw 'Recovery smoke did not observe persistent UNLOCKED bootstrap.'
+  $hasPersistedPhase = $logText -match 'persistent phase=[A-Z_]+'
+  $hasForcedUnlock = $logText -match 'END_EVENT_STATE forced=UNLOCKED'
+  $hasAlreadyUnlocked = $logText -match 'WorldCore already reports End unlocked; preserving active event'
+  if (-not $hasPersistedPhase -or (-not $hasForcedUnlock -and -not $hasAlreadyUnlocked)) {
+    throw 'Recovery smoke did not observe persisted phase plus a durable WorldCore unlock path.'
   }
-  Write-Host 'PASS recovery persistent phase'
+  if ($hasForcedUnlock) {
+    Write-Host 'PASS recovery persisted phase and forced unlock transition'
+  } else {
+    Write-Host 'PASS recovery persisted phase and idempotent already-unlocked transition'
+  }
 }
 Write-Host 'End Rift durable recovery smoke passed.'

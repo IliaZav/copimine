@@ -1,6 +1,3 @@
 {
-  "parent": "minecraft:item/generated",
-  "textures": {
-    "layer0": "copimine:item/end_event_pad"
-  }
+  "parent": "copimine:block/end_event_rune"
 }

@@ -111,3 +111,9 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
 }
+
+// Keep the local visual verification client bounded so it can run alongside
+// the isolated Paper/PostgreSQL harness on a developer workstation.
+tasks.named("runClient").configure {
+    jvmArgs "-Xms512m", "-Xmx3G", "-XX:MaxMetaspaceSize=512m"
+}

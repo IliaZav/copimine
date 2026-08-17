@@ -1,0 +1,22 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "copimine:block/end_event_rune",
+    "top": "copimine:block/end_event_rune",
+    "side": "copimine:block/end_event_rune"
+  },
+  "elements": [
+    {
+      "from": [0.5, 0.08, 0.5],
+      "to": [15.5, 0.45, 15.5],
+      "faces": {
+        "down": {"texture": "#side", "cullface": "down"},
+        "up": {"texture": "#top"},
+        "north": {"texture": "#side", "cullface": "north"},
+        "south": {"texture": "#side", "cullface": "south"},
+        "west": {"texture": "#side", "cullface": "west"},
+        "east": {"texture": "#side", "cullface": "east"}
+      }
+    }
+  ]
+}

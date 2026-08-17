@@ -27,6 +27,14 @@ public record EventConfig(
         double bossRadius,
         double containmentRadius,
         int waveHardCap,
+        double endermiteHealthBonus,
+        double endermiteAttackDamageBonus,
+        double musicVolume,
+        MusicTrack wavesMusic,
+        MusicTrack bossMusic,
+        MusicTrack bossHalfMusic,
+        MusicTrack bossFinalMusic,
+        MusicTrack victoryMusic,
         WaveDefinition wave1,
         WaveDefinition wave2,
         WaveDefinition wave3,
@@ -42,6 +50,9 @@ public record EventConfig(
         int bossSpellMinSeconds,
         int bossSpellMaxSeconds,
         int bossSpellTelegraphTicks,
+        int bossRecentTargetMemory,
+        int bossTeleportCooldownSeconds,
+        MiniBossTuning miniBossTuning,
         int finalRitualTelegraphTicks,
         double bossHalfHealth,
         double bossFinalThreshold,
@@ -76,6 +87,9 @@ public record EventConfig(
         eliteLoot = Map.copyOf(eliteLoot);
         finalWaveLoot = Map.copyOf(finalWaveLoot);
         testLoot = Map.copyOf(testLoot);
+        if (miniBossTuning == null) {
+            throw new IllegalArgumentException("mini boss tuning is required");
+        }
     }
 
     public static EventConfig load(JavaPlugin plugin) {
@@ -83,13 +97,16 @@ public record EventConfig(
         LinkedHashMap<String, Integer> requirements = readMaterials(resources, "resources");
         ConfigurationSection ritual = requiredSection(plugin, "ritual");
         ConfigurationSection arena = requiredSection(plugin, "arena");
+        ConfigurationSection mobs = requiredSection(plugin, "mobs");
         ConfigurationSection waves = requiredSection(plugin, "waves");
+        ConfigurationSection miniBosses = requiredSection(plugin, "mini-bosses");
         ConfigurationSection boss = requiredSection(plugin, "boss");
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
         ConfigurationSection portal = requiredSection(plugin, "portal-room");
         ConfigurationSection client = requiredSection(plugin, "client");
         ConfigurationSection persistence = requiredSection(plugin, "persistence");
+        ConfigurationSection music = requiredSection(plugin, "music");
 
         int minPlayers = positiveInt(ritual, "min-players");
         int maxPlayers = positiveInt(ritual, "max-players");
@@ -102,6 +119,14 @@ public record EventConfig(
         }
         int waveCap = positiveInt(waves, "hard-cap");
         double health = positiveDouble(boss, "health");
+        double endermiteHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("endermite"), "health-bonus");
+        double endermiteAttackDamageBonus = nonNegativeDouble(mobs.getConfigurationSection("endermite"), "attack-damage-bonus");
+        double musicVolume = boundedVolume(music.getDouble("volume", 0.85D));
+        MusicTrack wavesMusic = musicTrack(music, "waves");
+        MusicTrack bossMusic = musicTrack(music, "boss");
+        MusicTrack bossHalfMusic = musicTrack(music, "boss-half");
+        MusicTrack bossFinalMusic = musicTrack(music, "boss-final");
+        MusicTrack victoryMusic = musicTrack(music, "victory");
         double half = positiveDouble(boss, "half-health");
         double finalThreshold = positiveDouble(boss, "final-threshold");
         double finalHealth = positiveDouble(boss, "final-health");
@@ -114,9 +139,12 @@ public record EventConfig(
         }
         int[] target = secondsRange(boss, "target-rotation-seconds");
         int[] spells = secondsRange(boss, "spell-cooldown-seconds");
+        int bossRecentTargetMemory = positiveInt(boss, "recent-target-memory");
+        int bossTeleportCooldownSeconds = positiveInt(boss, "teleport-cooldown-seconds");
         if (boss.getInt("spell-telegraph-ticks", 30) < 1) {
             throw new IllegalStateException("boss.spell-telegraph-ticks must be positive");
         }
+        MiniBossTuning miniBossTuning = miniBossTuning(miniBosses);
         int finalRitualTelegraphTicks = positiveInt(boss, "final-ritual-telegraph-ticks");
 
         return new EventConfig(
@@ -136,6 +164,14 @@ public record EventConfig(
                 positiveDouble(arena, "boss-radius"),
                 positiveDouble(arena, "containment-radius"),
                 waveCap,
+                endermiteHealthBonus,
+                endermiteAttackDamageBonus,
+                musicVolume,
+                wavesMusic,
+                bossMusic,
+                bossHalfMusic,
+                bossFinalMusic,
+                victoryMusic,
                 wave(waves, "wave-1"),
                 wave(waves, "wave-2"),
                 wave(waves, "wave-3"),
@@ -147,7 +183,8 @@ public record EventConfig(
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
                 target[0], target[1], spells[0], spells[1],
-                positiveInt(boss, "spell-telegraph-ticks"), finalRitualTelegraphTicks,
+                positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
+                bossTeleportCooldownSeconds, miniBossTuning, finalRitualTelegraphTicks,
                 half, finalThreshold, finalHealth,
                 drainFraction,
                 Math.max(1.0D, boss.getDouble("final-drain-min-health", 1.0D)),
@@ -184,6 +221,16 @@ public record EventConfig(
             throw new IllegalStateException("" + key + " must be [min,max] positive seconds");
         }
         return new int[] {values.get(0), values.get(1)};
+    }
+
+    private static MiniBossTuning miniBossTuning(ConfigurationSection section) {
+        int[] cooldown = secondsRange(section, "spell-cooldown-seconds");
+        int telegraphTicks = positiveInt(section, "spell-telegraph-ticks");
+        return new MiniBossTuning(
+                cooldown[0], cooldown[1], telegraphTicks,
+                positiveDouble(requiredSection(section, "rift-step"), "damage"),
+                positiveDouble(requiredSection(section, "void-snare"), "damage"),
+                positiveDouble(requiredSection(section, "echo-pulse"), "damage"));
     }
 
     private static LinkedHashMap<String, Integer> readMaterials(ConfigurationSection section, String path) {
@@ -270,6 +317,37 @@ public record EventConfig(
         return value;
     }
 
+    private static double nonNegativeDouble(ConfigurationSection section, String key) {
+        if (section == null) {
+            throw new IllegalStateException("Missing configuration section for " + key);
+        }
+        double value = section.getDouble(key, -1.0D);
+        if (value < 0.0D || Double.isInfinite(value) || Double.isNaN(value)) {
+            throw new IllegalStateException(key + " must be non-negative");
+        }
+        return value;
+    }
+
+    private static double boundedVolume(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value) || value < 0.0D || value > 1.0D) {
+            throw new IllegalStateException("music.volume must be between 0 and 1");
+        }
+        return value;
+    }
+
+    private static MusicTrack musicTrack(ConfigurationSection parent, String key) {
+        ConfigurationSection section = requiredSection(parent, key);
+        String soundId = text(section.getString("sound", ""), "");
+        if (soundId.isBlank() || !soundId.contains(":")) {
+            throw new IllegalStateException("music." + key + ".sound must be a namespaced sound id");
+        }
+        int loopSeconds = section.getInt("loop-seconds", -1);
+        if (loopSeconds < 0) {
+            throw new IllegalStateException("music." + key + ".loop-seconds must be non-negative");
+        }
+        return new MusicTrack(soundId, loopSeconds);
+    }
+
     private static String text(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
@@ -277,6 +355,30 @@ public record EventConfig(
     public record WaveDefinition(int endermen, int endermites, int shulkers, int eliteEndermen) {
         public int total() {
             return endermen + endermites + shulkers + eliteEndermen;
+        }
+    }
+
+    public record MusicTrack(String soundId, int loopSeconds) {
+        public MusicTrack {
+            soundId = soundId == null ? "" : soundId.trim();
+            if (soundId.isBlank() || loopSeconds < 0) {
+                throw new IllegalArgumentException("invalid event music track");
+            }
+        }
+    }
+
+    public record MiniBossTuning(
+            int spellMinSeconds,
+            int spellMaxSeconds,
+            int spellTelegraphTicks,
+            double riftStepDamage,
+            double voidSnareDamage,
+            double echoPulseDamage) {
+        public MiniBossTuning {
+            if (spellMinSeconds < 1 || spellMaxSeconds < spellMinSeconds || spellTelegraphTicks < 1
+                    || !(riftStepDamage > 0.0D) || !(voidSnareDamage > 0.0D) || !(echoPulseDamage > 0.0D)) {
+                throw new IllegalArgumentException("invalid mini boss tuning");
+            }
         }
     }
 }

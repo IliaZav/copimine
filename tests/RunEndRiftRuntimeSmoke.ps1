@@ -94,13 +94,21 @@ function Assert-Text {
   Write-Host "PASS $Label"
 }
 
+function Assert-NoConfiguredCore {
+  param([string]$Text)
+  if ($Text -notmatch 'state=.*(?:UNCONFIGURED|UNLOCKED)' -or $Text -notmatch 'requiredPlayers=.*0') {
+    throw "fresh state did not have an empty event configuration. Actual response: $Text"
+  }
+  Write-Host 'PASS fresh state has no configured Core'
+}
+
 $plugins = Invoke-RconCommand 'plugins'
 Assert-Text 'typed plugins loaded' $plugins 'CopiMineEndEvent'
 Assert-Text 'WorldCore loaded' $plugins 'CopiMineWorldCore'
 Assert-Text 'Artifacts loaded' $plugins 'CopiMineArtifacts'
 
 $status = Invoke-RconCommand 'cmend status'
-Assert-Text 'fresh state is unconfigured' $status 'UNCONFIGURED'
+Assert-NoConfiguredCore $status
 Assert-Text 'fresh state has no boss' $status 'boss='
 
 $testWave = Invoke-RconCommand 'cmend test wave 1'
@@ -121,8 +129,8 @@ Assert-Text 'resource reset requires confirmation' $reset 'confirm'
 $unlock = Invoke-RconCommand 'cmend unlock confirm'
 Assert-Text 'unlock requires official death' $unlock 'official'
 
-$clientGate = Invoke-RconCommand 'cmend clientgate status'
-Assert-Text 'clientgate is not registered' $clientGate 'status'
+$clientStatus = Invoke-RconCommand 'cmend client status'
+Assert-Text 'client bridge status is available' $clientStatus 'channel='
 
 if (Test-Path -LiteralPath $LogPath) {
   $log = (Get-Content -LiteralPath $LogPath -Tail 2500) -join [Environment]::NewLine

@@ -6,7 +6,9 @@
     "GameRendererAccessor",
     "ArmorFeatureRendererMixin",
     "KeyboardInputReverseMovementMixin",
-    "EndermanEntityRendererMixin"
+    "EndermanEntityRendererMixin",
+    "EndermiteEntityRendererMixin",
+    "ShulkerEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

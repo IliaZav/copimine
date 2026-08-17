@@ -1,0 +1,127 @@
+package me.copimine.endevent.domain;
+
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Small deterministic policy layer for the End Rift combat controllers.
+ * Bukkit entities stay outside this class so the fairness and spell contracts
+ * can be tested without a running server.
+ */
+public final class EndRiftAiPolicy {
+    private EndRiftAiPolicy() {
+    }
+
+    public enum BossPhase {
+        NORMAL,
+        HALF,
+        FINAL
+    }
+
+    public enum BossSpell {
+        VOID_BLAST("void_blast"),
+        RIFT_PROJECTILE("rift_projectile"),
+        VOID_MARK("void_mark"),
+        SUMMON_SERVANTS("summon_servants"),
+        WILL_DISTORTION("will_distortion");
+
+        private final String id;
+
+        BossSpell(String id) {
+            this.id = id;
+        }
+
+        public String id() {
+            return id;
+        }
+    }
+
+    public enum MiniBossSpell {
+        RIFT_STEP("rift_step", "Рывок Разлома"),
+        VOID_SNARE("void_snare", "Кандалы Пустоты"),
+        ECHO_PULSE("echo_pulse", "Импульс Эха");
+
+        private final String id;
+        private final String displayName;
+
+        MiniBossSpell(String id, String displayName) {
+            this.id = id;
+            this.displayName = displayName;
+        }
+
+        public String id() {
+            return id;
+        }
+
+        public String displayName() {
+            return displayName;
+        }
+    }
+
+    public static BossPhase bossPhase(
+            double health,
+            double maxHealth,
+            double halfThreshold,
+            double finalThreshold,
+            boolean halfTriggered,
+            boolean finalTriggered) {
+        double safeHealth = Math.max(0.0D, Math.min(finite(maxHealth) && maxHealth > 0.0D ? maxHealth : 1.0D,
+                finite(health) ? health : 0.0D));
+        if (finalTriggered || safeHealth <= Math.max(0.0D, finalThreshold)) {
+            return BossPhase.FINAL;
+        }
+        if (halfTriggered || safeHealth <= Math.max(finalThreshold, halfThreshold)) {
+            return BossPhase.HALF;
+        }
+        return BossPhase.NORMAL;
+    }
+
+    public static TargetChoice chooseFairTarget(
+            List<UUID> candidates,
+            UUID current,
+            List<UUID> recent,
+            int cursor) {
+        List<UUID> unique = new ArrayList<>(new LinkedHashSet<>(candidates == null ? List.of() : candidates));
+        unique.removeIf(uuid -> uuid == null);
+        if (unique.isEmpty()) {
+            return new TargetChoice(null, Math.max(0, cursor));
+        }
+        LinkedHashSet<UUID> recentSet = new LinkedHashSet<>(recent == null ? List.of() : recent);
+        List<UUID> preferred = unique.stream()
+                .filter(uuid -> !uuid.equals(current) && !recentSet.contains(uuid))
+                .toList();
+        List<UUID> fallback = unique.stream()
+                .filter(uuid -> !uuid.equals(current))
+                .toList();
+        List<UUID> pool = preferred.isEmpty() ? (fallback.isEmpty() ? unique : fallback) : preferred;
+        int safeCursor = Math.floorMod(cursor, pool.size());
+        return new TargetChoice(pool.get(safeCursor), safeCursor + 1);
+    }
+
+    public static BossSpell chooseBossSpell(List<BossSpell> available, BossSpell previous, int cursor) {
+        List<BossSpell> unique = new ArrayList<>(new LinkedHashSet<>(available == null ? List.of() : available));
+        unique.removeIf(spell -> spell == null);
+        if (unique.isEmpty()) {
+            return null;
+        }
+        List<BossSpell> alternatives = unique.stream().filter(spell -> spell != previous).toList();
+        List<BossSpell> pool = alternatives.isEmpty() ? unique : alternatives;
+        return pool.get(Math.floorMod(cursor, pool.size()));
+    }
+
+    /** Stable assignment: an elite owns one ability for its entire lifetime. */
+    public static MiniBossSpell miniBossSpell(int wave, int eliteSlot) {
+        MiniBossSpell[] spells = MiniBossSpell.values();
+        int offset = Math.max(0, wave - 3);
+        return spells[Math.floorMod(offset + eliteSlot, spells.length)];
+    }
+
+    public record TargetChoice(UUID target, int nextCursor) {
+    }
+
+    private static boolean finite(double value) {
+        return !Double.isNaN(value) && !Double.isInfinite(value);
+    }
+}

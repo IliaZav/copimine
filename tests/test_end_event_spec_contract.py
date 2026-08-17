@@ -24,9 +24,14 @@ def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
     assert "AMETHYST_SHARD: 128" in CONFIG
     assert "BLAZE_ROD: 64" in CONFIG
     assert "boss-xp: 3000" in CONFIG
-    assert "elite-endermen: 8" in CONFIG
+    assert "elite-endermen: 6" in CONFIG
     assert "endermites: 8" in CONFIG
-    assert "shulkers: 4" in CONFIG
+    assert "shulkers: 2" in CONFIG
+    assert "health-bonus: 10.0" in CONFIG
+    assert "attack-damage-bonus: 2.0" in CONFIG
+    assert "visuals:" not in CONFIG
+    assert "core-block:" not in CONFIG
+    assert "pad-block:" not in CONFIG
 
 
 def test_entity_ownership_uses_session_role_wave_and_generation_tags() -> None:
@@ -37,12 +42,40 @@ def test_entity_ownership_uses_session_role_wave_and_generation_tags() -> None:
     assert "entity.remove()" in MAIN
 
 
+def test_core_command_preserves_real_target_block_and_uses_surface_overlays() -> None:
+    assert "player.getTargetBlockExact(8)" in MAIN
+    assert "coreBlockData = originalBlockData" in MAIN
+    assert "block.setType(config.coreBlockMaterial()" not in MAIN
+    assert "padBlock.setType(config.padBlockMaterial()" not in MAIN
+    assert "spawnCoreOverlay" in MAIN
+    assert "spawnRuneOverlay" in MAIN
+    assert "ItemDisplay" in MAIN
+    assert "setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED)" in MAIN
+    assert "core overlay stays above the preserved target block" in MAIN
+    assert "rune overlay is placed on the floor block" in MAIN
+    assert "displays=CORE_OVERLAY_AND_RUNE_OVERLAYS" in MAIN
+    assert "legacyVisualInArena" in MAIN
+    assert "END_EVENT_VISUAL_CLEANUP" in MAIN
+
+
+def test_endermite_wave_stats_are_applied_as_runtime_attribute_bonuses() -> None:
+    assert "configureEventMobStats" in MAIN
+    assert "config.endermiteHealthBonus()" in MAIN
+    assert "config.endermiteAttackDamageBonus()" in MAIN
+    assert "Attribute.GENERIC_MAX_HEALTH" in MAIN
+    assert "Attribute.GENERIC_ATTACK_DAMAGE" in MAIN
+
+
+def test_wave_scaling_is_bounded_for_small_and_large_official_rosters() -> None:
+    assert "Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D))" in MAIN
+
+
 def test_final_ritual_is_direct_health_control_and_stops_normal_boss_loop() -> None:
     assert "FinalDrainMath.healthAfterDrain" in MAIN
     assert "player.setHealth(after)" in MAIN
     assert "boss.setInvulnerable(true)" in MAIN
     assert "boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()))" in MAIN
-    assert "if (phase != EventPhase.BOSS_ACTIVE)" in MAIN
+    assert "if (!forced && phase != EventPhase.BOSS_ACTIVE)" in MAIN
     assert "PlayerDeathEvent" not in MAIN[MAIN.index("applyFinalDrain"):MAIN.index("scheduleFinalRitualVisual")]
 
 

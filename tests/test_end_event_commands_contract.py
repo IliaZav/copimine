@@ -26,6 +26,8 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
     assert "simulate-victory" in MAIN
     assert "Тестовая волна не создана: сначала настрой Core" in MAIN
     assert "Волна не создана: сначала настрой Core" in MAIN
+    assert "return isConfigured() && coreLocation() != null;" in MAIN
+    assert "if (!isConfigured()) {" in MAIN
 
 
 def test_dangerous_paths_are_never_console_or_production_mutations() -> None:

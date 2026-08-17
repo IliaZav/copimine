@@ -86,3 +86,45 @@ def test_permissions_keep_admin_and_test_surfaces_separate() -> None:
     assert "validTest(sender)" in MAIN
     assert "client status|bindboss|clear [player]" in MAIN
     assert "Bukkit.getPlayerExact(args[3])" in MAIN
+
+
+def test_event_mob_visual_bindings_are_cleaned_with_owned_entities() -> None:
+    assert "entityBindingInstances" in MAIN
+    assert "END_ENTITY_UNBIND" in MAIN
+    assert "unbindEventEntityClient" in MAIN
+    assert "clientVisualId" in MAIN
+
+
+def test_core_and_rune_visuals_never_replace_vanilla_block_materials() -> None:
+    assert "coreBlockData = originalBlockData" in MAIN
+    assert "block.setType(config.coreBlockMaterial()" not in MAIN
+    assert "padBlock.setType(config.padBlockMaterial()" not in MAIN
+    assert "spawnCoreOverlay" in MAIN
+    assert "spawnRuneOverlay" in MAIN
+    assert "ItemDisplay.ItemDisplayTransform.FIXED" in MAIN
+    assert "core.getLocation().add(0.5D, 1.5D, 0.5D)" in MAIN
+    assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" in MAIN
+    assert "entity.setViewRange(64.0F)" in MAIN
+    assert "entity.setDisplayWidth(1.0F)" in MAIN
+    assert "entity.setDisplayHeight(1.0F)" in MAIN
+    assert "entity.setDisplayHeight(0.25F)" in MAIN
+
+
+def test_core_layout_adapts_runes_to_nearest_safe_vanilla_floor() -> None:
+    for marker in (
+        "findSafePadBlock",
+        "two-air-blocks over solid floor",
+        "coordinates",
+        "No block material is replaced here",
+    ):
+        assert marker in MAIN
+
+
+def test_bootstrap_preserves_an_active_core_even_when_worldcore_is_already_unlocked() -> None:
+    for marker in (
+        "configuredEventInProgress",
+        "WorldCore already reports End unlocked; preserving active event",
+        "phase != EventPhase.UNLOCKED",
+        "!VICTORY_COMPLETE.equals(victoryStep)",
+    ):
+        assert marker in MAIN

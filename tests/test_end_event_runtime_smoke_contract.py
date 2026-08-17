@@ -19,16 +19,18 @@ def test_runtime_smoke_is_local_only_and_does_not_manage_production_processes() 
     assert "Artifacts bridge ready=true postgres=true" in SMOKE
     assert "Stop-Process" not in SMOKE
     assert "Remove-Item" not in SMOKE
-    assert "clientgate" in SMOKE
+    assert "cmend client status" in SMOKE
 
 
 def test_runtime_smoke_covers_refusal_paths_and_typed_dependencies() -> None:
     for expected in (
         "CopiMineEndEvent", "CopiMineWorldCore", "CopiMineArtifacts",
-        "UNCONFIGURED", "event world", "Core", "cmend cleanup",
+        "UNCONFIGURED", "UNLOCKED", "requiredPlayers=.*0", "event world", "Core", "cmend cleanup",
         "cmend ritual cancel", "cmend resources reset", "official",
     ):
         assert expected in SMOKE
+    assert "clientgate" not in SMOKE
+    assert "channel=" in SMOKE
 
 
 def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -> None:
@@ -46,7 +48,11 @@ def test_local_start_script_is_bounded_to_the_isolated_runtime() -> None:
 
 
 def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> None:
-    for expected in ("local-runtime", "UNLOCKED", "VICTORY_COMPLETE", "persistent phase=UNLOCKED"):
+    for expected in (
+        "local-runtime", "UNLOCKED", "VICTORY_COMPLETE", "persistent phase=",
+        "END_EVENT_STATE forced=UNLOCKED",
+        "WorldCore already reports End unlocked; preserving active event",
+    ):
         assert expected in RECOVERY
     assert "Stop-Process" not in RECOVERY
     assert "Remove-Item" not in RECOVERY

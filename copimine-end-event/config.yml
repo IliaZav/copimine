@@ -28,6 +28,39 @@ arena:
   boss-radius: 15.0
   containment-radius: 10.0
 
+mobs:
+  endermite:
+    health-bonus: 10.0
+    attack-damage-bonus: 2.0
+
+mini-bosses:
+  spell-cooldown-seconds: [8, 12]
+  spell-telegraph-ticks: 20
+  rift-step:
+    damage: 5.0
+  void-snare:
+    damage: 4.0
+  echo-pulse:
+    damage: 5.0
+
+music:
+  volume: 0.85
+  waves:
+    sound: copimine:end_rift/waves
+    loop-seconds: 95
+  boss:
+    sound: copimine:end_rift/boss
+    loop-seconds: 123
+  boss-half:
+    sound: copimine:end_rift/boss_half
+    loop-seconds: 26
+  boss-final:
+    sound: copimine:end_rift/boss_final
+    loop-seconds: 39
+  victory:
+    sound: copimine:end_rift/victory
+    loop-seconds: 0
+
 waves:
   hard-cap: 48
   wave-1:
@@ -42,14 +75,14 @@ waves:
     elite-endermen: 0
   wave-3:
     endermen: 10
-    endermites: 3
-    shulkers: 4
-    elite-endermen: 3
+    endermites: 0
+    shulkers: 3
+    elite-endermen: 4
   final:
     endermen: 0
     endermites: 8
-    shulkers: 4
-    elite-endermen: 8
+    shulkers: 2
+    elite-endermen: 6
 
 # Event-owned mobs use these bounded drops.  Recovery/cleanup removes entities
 # directly and therefore never enters EntityDeathEvent or creates kill loot.
@@ -66,14 +99,16 @@ event-loot:
     ENDER_PEARL: 1
 
 boss:
-  health: 1000.0
+  health: 1200.0
   attack-damage-bonus: 3.0
   target-rotation-seconds: [5, 8]
+  recent-target-memory: 3
+  teleport-cooldown-seconds: 12
   spell-cooldown-seconds: [6, 9]
   spell-telegraph-ticks: 30
   final-ritual-telegraph-ticks: 80
-  half-health: 500.0
-  final-threshold: 100.0
+  half-health: 600.0
+  final-threshold: 120.0
   final-health: 200.0
   final-drain-fraction: 0.60
   final-drain-min-health: 1.0

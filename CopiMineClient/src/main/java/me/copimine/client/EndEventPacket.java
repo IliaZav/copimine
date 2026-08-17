@@ -21,6 +21,8 @@ public record EndEventPacket(
     private static final Set<String> TYPES = Set.of(
             "END_BOSS_BIND",
             "END_BOSS_UNBIND",
+            "END_ENTITY_BIND",
+            "END_ENTITY_UNBIND",
             "END_CONTROL_START",
             "END_CONTROL_STOP");
 
@@ -43,6 +45,11 @@ public record EndEventPacket(
         if (durationMillis < 0L || durationMillis > MAX_DURATION_MILLIS) {
             throw new IllegalArgumentException("End Rift duration is outside the safe bound");
         }
+    }
+
+    /** The legacy bossId wire slot carries the bounded visual id for mob binds. */
+    public String visualId() {
+        return bossId;
     }
 
     public static EndEventPacket parse(byte[] bytes) {

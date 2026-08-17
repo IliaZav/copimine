@@ -4,8 +4,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -30,6 +32,7 @@ import me.copimine.artifacts.api.RewardIssueResult;
 import me.copimine.endevent.domain.BossThresholdPolicy;
 import me.copimine.endevent.domain.CoreDepositMath;
 import me.copimine.endevent.domain.EndEventStateMachine;
+import me.copimine.endevent.domain.EndRiftAiPolicy;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.FinalDrainMath;
 import me.copimine.endevent.domain.PadLayout;
@@ -45,6 +48,7 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -63,8 +67,10 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Enderman;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Shulker;
 import org.bukkit.entity.TextDisplay;
@@ -97,6 +103,7 @@ import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
@@ -106,7 +113,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.joml.AxisAngle4f;
+import org.joml.Vector3f;
 
 /**
  * First-party, Paper-authoritative End Rift Event.  The class owns gameplay
@@ -121,6 +131,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_ELITE = "ELITE";
     private static final String EVENT_KIND_BOSS = "BOSS";
     private static final String EVENT_KIND_FINAL_WAVE = "FINAL_WAVE";
+    private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
+    private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
+    private static final String CLIENT_VISUAL_ENDERMITE = "END_RIFT_ENDERMITE_V1";
+    private static final String CLIENT_VISUAL_SHULKER = "END_RIFT_SHULKER_V1";
+    private static final Material EVENT_OVERLAY_ITEM = Material.PAPER;
+    private static final int MODEL_CORE_OVERLAY = 830001;
+    private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
+    private static final int MODEL_RUNE_OVERLAY = 830003;
+    private static final int VOID_MARK_RADIUS_BLOCKS = 3;
+    private static final int VOID_MARK_DURATION_SECONDS = 6;
+    private static final int MAX_ACTIVE_VOID_MARKS = 2;
     private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
     private static final String VICTORY_UNLOCK_PENDING = "END_UNLOCK_PENDING";
     private static final String VICTORY_UNLOCKED = "END_UNLOCKED_COMMITTED";
@@ -140,6 +161,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> combatHelpers = new LinkedHashSet<>();
     private final Set<UUID> finalWaveEntities = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
+    private final Map<UUID, String> entityBindingInstances = new HashMap<>();
+    private final Map<UUID, EndRiftAiPolicy.MiniBossSpell> miniBossSpells = new HashMap<>();
+    private final Map<UUID, Long> nextMiniBossSpellMillis = new HashMap<>();
+    private final Map<UUID, BukkitTask> activeVoidMarkTasks = new LinkedHashMap<>();
+    private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
+    private final Deque<UUID> recentBossTargets = new ArrayDeque<>();
 
     private EventConfig config;
     private EventStateStore stateStore;
@@ -154,6 +181,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventArtifactRewardService rewardService;
     private BukkitTask bootstrapTask;
     private BukkitTask tickTask;
+    private BukkitTask musicLoopTask;
     private boolean bootstrapped;
 
     private String eventId = "";
@@ -195,10 +223,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long phaseDeadlineMillis;
     private long nextTargetMillis;
     private long nextSpellMillis;
+    private long nextWaveTargetMillis;
+    private long bossSpellPauseUntilMillis;
+    private long lastBossTeleportMillis;
+    private int bossTargetCursor;
+    private int bossSpellCursor;
+    private int waveTargetCursor;
+    private EndRiftAiPolicy.BossSpell previousBossSpell;
+    private boolean servantsSummonedAt70;
+    private boolean servantsSummonedAt35;
+    /**
+     * Explicitly non-persistent local verification mode.  It reuses the
+     * production AI controllers while keeping the durable official phase,
+     * roster, rewards, and End unlock saga untouched.
+     */
+    private boolean testCombatAiMode;
     private long nextVictoryRetryMillis;
     private UUID bossUuid;
     private UUID bossKillerUuid;
     private String bossBindingInstanceId = "";
+    private String activeMusicTrackId = "";
     private BossBar bossBar;
 
     private NamespacedKey keyEventId;
@@ -212,6 +256,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyLootProfile;
     private NamespacedKey keyOfficial;
     private NamespacedKey keyBossTest;
+    private NamespacedKey keyMiniBossSpell;
     private NamespacedKey keyArtifactItemId;
     private NamespacedKey keyArtifactUniqueId;
 
@@ -249,6 +294,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyLootProfile = new NamespacedKey(this, "end_event_loot_profile");
             keyOfficial = new NamespacedKey(this, "end_event_official");
             keyBossTest = new NamespacedKey(this, "end_event_test_boss");
+            keyMiniBossSpell = new NamespacedKey(this, "end_event_miniboss_spell");
             keyArtifactItemId = new NamespacedKey("copimineartifacts", "artifact_item_id");
             keyArtifactUniqueId = new NamespacedKey("copimineartifacts", "artifact_unique_item_id");
             registerCommandsAndListeners();
@@ -286,10 +332,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         taskRegistry = new EventTaskRegistry(Math.max(1L, generation));
         restorePersistedGateIfNeeded();
+        boolean configuredEventInProgress = isConfigured()
+                && phase != EventPhase.UNCONFIGURED
+                && phase != EventPhase.UNLOCKED
+                && !VICTORY_COMPLETE.equals(victoryStep);
         if (worldAccessService.isEndEnabled()) {
             endUnlocked = true;
-            victoryStep = VICTORY_COMPLETE;
-            forcePhase(EventPhase.UNLOCKED, "WorldCore already reports End unlocked");
+            if (configuredEventInProgress) {
+                getLogger().info("WorldCore already reports End unlocked; preserving active event event=" + eventId
+                        + " phase=" + phase);
+            } else {
+                victoryStep = VICTORY_COMPLETE;
+                forcePhase(EventPhase.UNLOCKED, "WorldCore already reports End unlocked");
+            }
         } else if (phase != EventPhase.UNCONFIGURED && EndEventStateMachine.recoveryPhase(phase) != phase) {
             recoverTransientSession();
         } else if (phase == EventPhase.RECOVERY_REQUIRED) {
@@ -299,6 +354,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         recoverUnresolvedDeposits();
         resumeVictorySaga();
         tickTask = Bukkit.getScheduler().runTaskTimer(this, this::tick, 1L, 5L);
+        playEventMusic(musicForPhase());
         getLogger().info("CopiMineEndEvent services ready; phase=" + phase + " event=" + eventId);
     }
 
@@ -411,6 +467,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         activeWave = 0;
         bossUuid = null;
         bossKillerUuid = null;
+        clearCombatAiState();
         halfHealthTriggered = false;
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
@@ -431,16 +488,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (taskRegistry != null) {
             taskRegistry.cancelAll();
         }
+        clearVoidMarkZones();
         for (BukkitTask task : shardChannelTasks.values()) {
             if (task != null) {
                 task.cancel();
             }
         }
         shardChannelTasks.clear();
+        stopEventMusic();
         phaseDeadlineMillis = 0L;
+        nextWaveTargetMillis = 0L;
+        bossSpellPauseUntilMillis = 0L;
+    }
+
+    private void clearCombatAiState() {
+        clearVoidMarkZones();
+        testCombatAiMode = false;
+        miniBossSpells.clear();
+        nextMiniBossSpellMillis.clear();
+        recentBossTargets.clear();
+        previousBossSpell = null;
+        bossTargetCursor = 0;
+        bossSpellCursor = 0;
+        waveTargetCursor = 0;
+        nextTargetMillis = 0L;
+        nextSpellMillis = 0L;
+        nextWaveTargetMillis = 0L;
+        bossSpellPauseUntilMillis = 0L;
+        lastBossTeleportMillis = 0L;
+        servantsSummonedAt70 = false;
+        servantsSummonedAt35 = false;
     }
 
     private void clearClientEffects() {
+        stopEventMusic();
         for (UUID playerUuid : new HashSet<>(controlInstances.keySet())) {
             sendControlStop(Bukkit.getPlayer(playerUuid), controlInstances.get(playerUuid));
         }
@@ -448,6 +529,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             for (Player player : Bukkit.getOnlinePlayers()) {
                 sendClientPacket(player, "END_BOSS_UNBIND", bossBindingInstanceId, 0L, "");
             }
+        }
+        for (UUID entityUuid : new HashSet<>(entityBindingInstances.keySet())) {
+            unbindEventEntityClient(entityUuid);
         }
         controlEnds.clear();
         controlInstances.clear();
@@ -458,10 +542,112 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (player == null) {
             return;
         }
+        stopEventMusic(player);
         stopControl(player.getUniqueId());
         if (!bossBindingInstanceId.isBlank()) {
             sendClientPacket(player, "END_BOSS_UNBIND", bossBindingInstanceId, 0L, "");
         }
+        for (UUID entityUuid : entityBindingInstances.keySet()) {
+            String instance = entityBindingInstances.get(entityUuid);
+            sendClientPacket(player, "END_ENTITY_UNBIND", instance, 0L, entityUuid.toString(), "");
+        }
+    }
+
+    private EventConfig.MusicTrack musicForPhase() {
+        return switch (phase) {
+            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3 -> config.wavesMusic();
+            case BOSS_ACTIVE -> halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
+            case FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> config.bossFinalMusic();
+            default -> null;
+        };
+    }
+
+    private void playEventMusic(EventConfig.MusicTrack track) {
+        if (track == null || track.soundId().isBlank()) {
+            return;
+        }
+        if (track.soundId().equals(activeMusicTrackId)
+                && musicLoopTask != null && !musicLoopTask.isCancelled()) {
+            return;
+        }
+        stopEventMusic();
+        for (Player player : activeLivingPlayers()) {
+            player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
+                    (float) config.musicVolume(), 1.0F);
+        }
+        activeMusicTrackId = track.soundId();
+        if (track.loopSeconds() > 0) {
+            long period = Math.max(20L, track.loopSeconds() * 20L);
+            musicLoopTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+                if (!isCombatPhase()) {
+                    stopEventMusic();
+                    return;
+                }
+                for (Player player : activeLivingPlayers()) {
+                    player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
+                            (float) config.musicVolume(), 1.0F);
+                }
+            }, period, period);
+        }
+        getLogger().info("END_EVENT_MUSIC track=" + track.soundId() + " phase=" + phase
+                + " loopSeconds=" + track.loopSeconds());
+    }
+
+    private void stopEventMusic() {
+        if (musicLoopTask != null) {
+            musicLoopTask.cancel();
+            musicLoopTask = null;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            stopEventMusic(player);
+        }
+        activeMusicTrackId = "";
+    }
+
+    private void stopEventMusic(Player player) {
+        if (player == null || config == null) {
+            return;
+        }
+        for (EventConfig.MusicTrack track : List.of(
+                config.wavesMusic(), config.bossMusic(), config.bossHalfMusic(),
+                config.bossFinalMusic(), config.victoryMusic())) {
+            player.stopSound(track.soundId(), SoundCategory.MUSIC);
+        }
+    }
+
+    private void syncEventMusic(Player player) {
+        EventConfig.MusicTrack track = musicForPhase();
+        if (track == null || player == null || !isActiveArenaParticipant(player)) {
+            return;
+        }
+        if (activeMusicTrackId.isBlank()) {
+            playEventMusic(track);
+            return;
+        }
+        stopEventMusic(player);
+        player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
+                (float) config.musicVolume(), 1.0F);
+    }
+
+    private void playTestMusic(Player player, String requested) {
+        EventConfig.MusicTrack track = switch (requested.toLowerCase(Locale.ROOT)) {
+            case "waves", "wave" -> config.wavesMusic();
+            case "boss" -> config.bossMusic();
+            case "half", "boss-half" -> config.bossHalfMusic();
+            case "final", "boss-final" -> config.bossFinalMusic();
+            case "victory" -> config.victoryMusic();
+            default -> null;
+        };
+        if (track == null) {
+            message(player, "&e/cmend test music <waves|boss|half|final|victory>");
+            return;
+        }
+        stopEventMusic(player);
+        player.playSound(player.getLocation(), track.soundId(), SoundCategory.MUSIC,
+                (float) config.musicVolume(), 1.0F);
+        getLogger().info("END_EVENT_MUSIC_TEST player=" + player.getName()
+                + " track=" + track.soundId() + " loopSeconds=" + track.loopSeconds());
+        message(player, "&aЛокальная музыкальная проверка: &f" + track.soundId());
     }
 
     @Override
@@ -1023,7 +1209,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test wave <1|2|3|final> | boss");
+            message(sender, "&e/cmend test wave <1|2|3|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
+            return;
+        }
+        if ("music".equalsIgnoreCase(args[1])) {
+            String requested = args.length > 2 ? args[2] : "";
+            Player player = sender instanceof Player current
+                    ? current
+                    : args.length > 3 ? Bukkit.getPlayerExact(args[3]) : null;
+            if (player == null) {
+                message(sender, "&cУкажи онлайн-игрока: /cmend test music <waves|boss|half|final|victory> <player>.");
+                return;
+            }
+            playTestMusic(player, requested);
             return;
         }
         if ("wave".equalsIgnoreCase(args[1])) {
@@ -1041,11 +1239,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&aТестовая волна создана; official phase/roster/victory не изменены.");
             return;
         }
+        if ("ai".equalsIgnoreCase(args[1])) {
+            spawnTestAi(sender);
+            return;
+        }
         if ("boss".equalsIgnoreCase(args[1])) {
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test wave <1|2|3|final> | boss");
+        message(sender, "&e/cmend test wave <1|2|3|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
     }
 
     private void handleWave(CommandSender sender, String[] args) {
@@ -1149,15 +1351,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     message(sender, "&cBoss отсутствует.");
                 } else if ("control_reverse".equals(spell)) {
                     Player requested = args.length > 3 ? Bukkit.getPlayerExact(args[3]) : null;
-                    if (requested != null && isActiveArenaParticipant(requested)) {
-                        sendControlStart(requested);
-                    } else {
-                        startFairControlTarget();
+                    Player target = requested != null && isActiveArenaParticipant(requested)
+                            ? requested : selectBossSpellTarget(boss);
+                    if (target != null) {
+                        telegraphBossSpell(boss, target, EndRiftAiPolicy.BossSpell.WILL_DISTORTION, true);
                     }
                     message(sender, "&aControl reversal test requested.");
-                } else if (List.of("void_blast", "rift_projectile", "void_mark", "summon").contains(spell)) {
-                    castBossSpell(boss, true);
-                    message(sender, "&aBoss spell test requested: &f" + spell);
+                } else if (List.of("void_blast", "rift_projectile", "void_mark", "summon", "summon_servants")
+                        .contains(spell)) {
+                    EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
+                        case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
+                        case "rift_projectile" -> EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE;
+                        case "void_mark" -> EndRiftAiPolicy.BossSpell.VOID_MARK;
+                        default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
+                    };
+                    castBossSpell(boss, requestedSpell, true);
+                    message(sender, "&aBoss spell test requested: &f" + requestedSpell.id());
                 } else {
                     message(sender, "&e/cmend boss spell <void_blast|rift_projectile|void_mark|summon|control_reverse>");
                 }
@@ -1215,7 +1424,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean hasSpawnAnchor() {
-        return coreLocation() != null;
+        return isConfigured() && coreLocation() != null;
     }
 
     private void setCore(Player player, int players) {
@@ -1231,9 +1440,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(player, "&cCore должен находиться в настроенном event world: " + config.arenaWorld());
             return;
         }
-        Block block = player.getWorld().getBlockAt(
-                player.getLocation().getBlockX(), player.getLocation().getBlockY() - 1, player.getLocation().getBlockZ());
+        Block block = player.getTargetBlockExact(8);
+        if (block == null || block.getType().isAir() || block.isPassable() || block.isLiquid()) {
+            message(player, "&cНаведи прицел на реальный твёрдый блок в радиусе 8 блоков и повтори команду.");
+            return;
+        }
+        if (!player.getWorld().equals(block.getWorld())) {
+            message(player, "&cЦелевой блок должен находиться в event world.");
+            return;
+        }
         String originalBlockData = block.getBlockData().getAsString();
+        boolean endWasAlreadyUnlocked = endUnlocked;
         EventSnapshot previousSnapshot = snapshot();
         EventLayoutState previousLayout = layoutState;
         eventId = UUID.randomUUID().toString();
@@ -1270,7 +1487,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         finalDrainTriggered = false;
         finalDrainApplied = false;
         bossKillerUuid = null;
-        endUnlocked = false;
+        clearCombatAiState();
+        // End access is a permanent WorldCore fact; creating a new local
+        // event Core must never roll it back in the event snapshot.
+        endUnlocked = endWasAlreadyUnlocked;
         officialBossDeathCommitted = false;
         bossLootCommitted = false;
         returnStoneStatus = "PENDING";
@@ -1281,7 +1501,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
         taskRegistry = new EventTaskRegistry(generation);
-        block.setType(Material.CRYING_OBSIDIAN, false);
         try {
             calculateAndPlacePads(block.getWorld());
         } catch (RuntimeException invalidLayout) {
@@ -1317,31 +1536,78 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Set<String> coordinates = new HashSet<>();
         List<EventSnapshot.PadSnapshot> planned = new ArrayList<>();
         for (PadLayout.Point point : layout.points()) {
-            Block padBlock = world.getBlockAt(coreX + point.blockX(), coreY, coreZ + point.blockZ());
+            Block padBlock = findSafePadBlock(world, point, coordinates);
+            if (padBlock == null) {
+                throw new IllegalStateException("no safe two-air-blocks over solid floor near "
+                        + (coreX + point.blockX()) + ":" + coreY + ":" + (coreZ + point.blockZ()));
+            }
             String coordinate = padBlock.getX() + ":" + padBlock.getY() + ":" + padBlock.getZ();
-            if (!coordinates.add(coordinate)
-                    || (padBlock.getX() == coreX && padBlock.getY() == coreY && padBlock.getZ() == coreZ)
-                    || !isArenaLocation(padBlock.getLocation())
-                    || isGateLocation(padBlock.getLocation())) {
-                throw new IllegalStateException("pad overlaps core, gate, duplicate, or arena bounds");
-            }
-            Block head = padBlock.getRelative(BlockFace.UP);
-            Block floor = padBlock.getRelative(BlockFace.DOWN);
-            if (!padBlock.isPassable() || padBlock.isLiquid()
-                    || !head.isPassable() || head.isLiquid()
-                    || !floor.getType().isSolid() || floor.isLiquid()
-                    || floor.getType() == Material.FIRE) {
-                throw new IllegalStateException("pad candidate is not two-air-blocks over solid floor at " + coordinate);
-            }
+            coordinates.add(coordinate);
             String original = padBlock.getBlockData().getAsString();
+            double dx = padBlock.getX() + 0.5D - (coreX + 0.5D);
+            double dz = padBlock.getZ() + 0.5D - (coreZ + 0.5D);
             planned.add(new EventSnapshot.PadSnapshot(
-                    padBlock.getX(), padBlock.getY(), padBlock.getZ(), point.radius(), point.angleRadians(), original));
+                    padBlock.getX(), padBlock.getY(), padBlock.getZ(), Math.sqrt(dx * dx + dz * dz),
+                    Math.atan2(dz, dx), original));
         }
-        for (EventSnapshot.PadSnapshot plannedPad : planned) {
-            Block padBlock = world.getBlockAt(plannedPad.x(), plannedPad.y(), plannedPad.z());
-            padBlock.setType(Material.PURPUR_BLOCK, false);
-            pads.add(plannedPad);
+        // The pad coordinate is the air block above the floor.  Keep both
+        // blocks vanilla and render only a thin event overlay on the floor.
+        // No block material is replaced here.
+        pads.addAll(planned);
+    }
+
+    /**
+     * Find the nearest intact vanilla position for a rune.  The admin may
+     * target a block in a cave, on a slope, or beside an old structure, so a
+     * single mathematically perfect ring coordinate is not a valid reason to
+     * reject the Core.  We search a bounded neighbourhood and never write a
+     * block: the pad remains two passable blocks above a real solid floor.
+     */
+    private Block findSafePadBlock(World world, PadLayout.Point point, Set<String> coordinates) {
+        int desiredX = coreX + point.blockX();
+        int desiredZ = coreZ + point.blockZ();
+        int searchRadius = Math.min(12, Math.max(4, (int) Math.ceil(config.arenaRadius() / 2.0D)));
+        int[] yOffsets = {0, -1, 1, -2, 2, -3, 3, -4, 4, -5, 5, -6, 6};
+        List<Block> candidates = new ArrayList<>();
+        for (int dx = -searchRadius; dx <= searchRadius; dx++) {
+            for (int dz = -searchRadius; dz <= searchRadius; dz++) {
+                if (dx * dx + dz * dz > searchRadius * searchRadius) {
+                    continue;
+                }
+                for (int yOffset : yOffsets) {
+                    Block candidate = world.getBlockAt(desiredX + dx, coreY + yOffset, desiredZ + dz);
+                    String coordinate = candidate.getX() + ":" + candidate.getY() + ":" + candidate.getZ();
+                    if (coordinates.contains(coordinate)
+                            || (candidate.getX() == coreX && candidate.getY() == coreY && candidate.getZ() == coreZ)
+                            || !isArenaLocation(candidate.getLocation())
+                            || isGateLocation(candidate.getLocation())
+                            || !candidate.isPassable() || candidate.isLiquid()
+                            || candidate.getType() == Material.FIRE) {
+                        continue;
+                    }
+                    Block head = candidate.getRelative(BlockFace.UP);
+                    Block floor = candidate.getRelative(BlockFace.DOWN);
+                    if ((floor.getX() == coreX && floor.getY() == coreY && floor.getZ() == coreZ)
+                            || !head.isPassable() || head.isLiquid()
+                            || !floor.getType().isSolid() || floor.isLiquid()
+                            || floor.getType() == Material.FIRE) {
+                        continue;
+                    }
+                    candidates.add(candidate);
+                }
+            }
         }
+        candidates.sort(Comparator
+                .comparingDouble((Block candidate) -> {
+                    double dx = candidate.getX() - desiredX;
+                    double dz = candidate.getZ() - desiredZ;
+                    double dy = candidate.getY() - coreY;
+                    return dx * dx + dz * dz + dy * dy * 4.0D;
+                })
+                .thenComparingInt(Block::getY)
+                .thenComparingInt(Block::getX)
+                .thenComparingInt(Block::getZ));
+        return candidates.isEmpty() ? null : candidates.get(0);
     }
 
     private void removeCore(CommandSender sender) {
@@ -1369,6 +1635,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         rewardRequestsInFlight.clear();
         coreCharged = false;
         bossKillerUuid = null;
+        clearCombatAiState();
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
         saveStateSync();
@@ -1410,6 +1677,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 cancelRitual("resources became incomplete");
                 forcePhase(EventPhase.COLLECTING, "resource regression");
             }
+            rebuildPersistedVisuals();
         }
     }
 
@@ -1546,7 +1814,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOwnedDisplayDamage(EntityDamageEvent event) {
         Entity entity = event.getEntity();
-        if (entity instanceof ItemDisplay || entity instanceof TextDisplay) {
+        if (entity instanceof TextDisplay || entity instanceof ItemDisplay) {
             String kind = readString(entity, keyKind);
             if (ownedEntities.containsKey(entity.getUniqueId())
                     && (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind)
@@ -1654,48 +1922,151 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().warning("Configured End Event world is unavailable: " + worldName);
             return;
         }
+        restoreLegacyMaterializedBlocks(world);
+        if (phase == EventPhase.UNLOCKED) {
+            removeOwnedVisuals();
+            return;
+        }
         Block core = world.getBlockAt(coreX, coreY, coreZ);
-        if (core.getType() != Material.CRYING_OBSIDIAN) {
-            getLogger().warning("Configured Core block is not event-owned CRYING_OBSIDIAN; refusing to overwrite it automatically.");
+        if (core.getType().isAir() || core.isPassable() || core.isLiquid()) {
+            getLogger().warning("Configured Core target is no longer a solid block; refusing to create a floating overlay.");
             return;
         }
         removeOwnedVisuals();
-        spawnCoreDisplay(world);
-        if (coreCharged) {
-            for (EventSnapshot.PadSnapshot pad : pads) {
-                Block block = world.getBlockAt(pad.x(), pad.y(), pad.z());
-                if (block.getType() == Material.PURPUR_BLOCK) {
-                    spawnPadDisplay(world, pad);
-                }
-            }
+        spawnCoreOverlay(world, core);
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            spawnRuneOverlay(world, pad);
         }
         spawnCoreText(world);
+        getLogger().info("END_EVENT_PHYSICAL_VISUALS core=" + core.getType()
+                + " pads=VANILLA_FLOOR_BLOCKS displays=CORE_OVERLAY_AND_RUNE_OVERLAYS");
+    }
+
+    private void restoreLegacyMaterializedBlocks(World world) {
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        Material originalCoreMaterial = materialFromBlockData(coreBlockData);
+        if (isLegacyEventMaterial(core.getType())
+                && originalCoreMaterial != null && originalCoreMaterial != core.getType()) {
+            restoreBlock(core, coreBlockData);
+            getLogger().info("END_EVENT_LEGACY_BLOCK_RESTORED kind=CORE material=" + originalCoreMaterial);
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Block block = world.getBlockAt(pad.x(), pad.y(), pad.z());
+            Material originalPadMaterial = materialFromBlockData(pad.originalBlockData());
+            if (block.getType() == Material.CRYING_OBSIDIAN
+                    && originalPadMaterial != null && originalPadMaterial != Material.CRYING_OBSIDIAN) {
+                restoreBlock(block, pad.originalBlockData());
+                getLogger().info("END_EVENT_LEGACY_BLOCK_RESTORED kind=PAD x=" + pad.x()
+                        + " y=" + pad.y() + " z=" + pad.z());
+            }
+        }
+    }
+
+    private Material materialFromBlockData(String blockData) {
+        if (blockData == null || blockData.isBlank()) {
+            return null;
+        }
+        try {
+            return Bukkit.createBlockData(blockData).getMaterial();
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
+    }
+
+    private boolean isLegacyEventMaterial(Material material) {
+        return material == Material.RESPAWN_ANCHOR || material == Material.CRYING_OBSIDIAN;
     }
 
     private void removeOwnedVisuals() {
-        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        int removed = 0;
+        for (Entity entity : new ArrayList<>(world.getEntities())) {
             String kind = readString(entity, keyKind);
-            if (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind) || EVENT_KIND_PAD.equals(kind)) {
+            boolean visual = EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind)
+                    || EVENT_KIND_PAD.equals(kind);
+            boolean currentSession = ownedBySession(entity, eventId, generation);
+            boolean legacyVisualInArena = visual && isArenaLocation(entity.getLocation());
+            if (visual && (currentSession || legacyVisualInArena)) {
                 entity.remove();
                 ownedEntities.remove(entity.getUniqueId());
+                removed++;
             }
+        }
+        if (removed > 0) {
+            getLogger().info("END_EVENT_VISUAL_CLEANUP removed=" + removed + " scope=event-arena");
         }
     }
 
-    private void spawnCoreDisplay(World world) {
-        Location location = new Location(world, coreX + 0.5D, coreY + 1.1D, coreZ + 0.5D);
-        ItemDisplay display = world.spawn(location, ItemDisplay.class);
-        tag(display, EVENT_KIND_CORE, 0, true);
-        display.setItemStack(modelStack(coreCharged ? 830002 : 830001));
-        ownedEntities.put(display.getUniqueId(), display);
+    private void spawnCoreOverlay(World world, Block core) {
+        // The target block remains the real block selected by the admin;
+        // this core overlay stays above the preserved target block.
+        // Put the display on the top face.  Placing it at block centre makes
+        // the solid vanilla target occlude the custom texture from above.
+        // A half-block lift keeps the custom cube outside the target block's
+        // culling plane.  At the exact integer boundary Minecraft can clip an
+        // ItemDisplay into the vanilla block and make the overlay disappear.
+        Location displayLocation = core.getLocation().add(0.5D, 1.5D, 0.5D);
+        ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
+            entity.setItemStack(overlayItem(coreCharged ? MODEL_CORE_CHARGED_OVERLAY : MODEL_CORE_OVERLAY,
+                    coreCharged ? "end_event_core_charged" : "end_event_core"));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(64.0F);
+            entity.setDisplayWidth(1.0F);
+            entity.setDisplayHeight(1.0F);
+            entity.setPersistent(true);
+            entity.setGravity(false);
+            entity.setInvulnerable(true);
+            entity.setShadowRadius(0.0F);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.015F, 1.015F, 1.015F), new AxisAngle4f()));
+        });
+        tag(display, EVENT_KIND_CORE, 0, false);
     }
 
-    private void spawnPadDisplay(World world, EventSnapshot.PadSnapshot pad) {
-        Location location = new Location(world, pad.x() + 0.5D, pad.y() + 1.0D, pad.z() + 0.5D);
-        ItemDisplay display = world.spawn(location, ItemDisplay.class);
+    private void spawnRuneOverlay(World world, EventSnapshot.PadSnapshot pad) {
+        Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+        if (!floor.getType().isSolid() || floor.isLiquid()) {
+            getLogger().warning("Refused to create a floating rune overlay: floor is not solid at "
+                    + floor.getLocation());
+            return;
+        }
+        // The rune overlay is placed on the floor block, never in the air
+        // block used for player occupancy.
+        // Keep the rune just above the physical floor block; integer-height
+        // display origins can be clipped by the block face in the client.
+        Location displayLocation = floor.getLocation().add(0.5D, 1.5D, 0.5D);
+        ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
+            entity.setItemStack(overlayItem(MODEL_RUNE_OVERLAY, "end_event_pad"));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(64.0F);
+            entity.setDisplayWidth(1.0F);
+            entity.setDisplayHeight(0.25F);
+            entity.setPersistent(true);
+            entity.setGravity(false);
+            entity.setInvulnerable(true);
+            entity.setShadowRadius(0.0F);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.0F, 1.0F, 1.0F), new AxisAngle4f()));
+        });
         tag(display, EVENT_KIND_PAD, 0, false);
-        display.setItemStack(modelStack(830003));
-        ownedEntities.put(display.getUniqueId(), display);
+    }
+
+    private ItemStack overlayItem(int customModelData, String modelId) {
+        ItemStack item = new ItemStack(EVENT_OVERLAY_ITEM);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
+        }
+        meta.setCustomModelData(customModelData);
+        meta.setDisplayName("§f" + modelId);
+        meta.addItemFlags(ItemFlag.values());
+        item.setItemMeta(meta);
+        return item;
     }
 
     private void spawnCoreText(World world) {
@@ -1704,17 +2075,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tag(display, EVENT_KIND_DISPLAY, 0, false);
         display.setText(coreCharged ? "§5РАЗЛОМ ЗАРЯЖЕН\n§7Соберите игроков на рунах" : "§5РАЗЛОМ\n§7" + resourceProgressText().replace(", ", "\n§7"));
         display.setBillboard(TextDisplay.Billboard.CENTER);
+        display.setLineWidth(180);
+        display.setTransformation(new Transformation(
+                new Vector3f(), new AxisAngle4f(), new Vector3f(0.45F, 0.45F, 0.45F), new AxisAngle4f()));
         ownedEntities.put(display.getUniqueId(), display);
-    }
-
-    private ItemStack modelStack(int customModelData) {
-        ItemStack stack = new ItemStack(Material.PAPER);
-        ItemMeta meta = stack.getItemMeta();
-        if (meta != null) {
-            meta.setCustomModelData(customModelData);
-            stack.setItemMeta(meta);
-        }
-        return stack;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -1819,6 +2183,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         expireControlEffects();
         updatePadOccupancy();
         updateCombatHelpers();
+        tickWaveMobAi();
+        tickMiniBosses();
+        if (testCombatAiMode && liveBoss() != null) {
+            tickBoss();
+        }
         switch (phase) {
             case COUNTDOWN -> tickCountdown();
             case INTERMISSION_1, INTERMISSION_2 -> tickIntermission();
@@ -1876,6 +2245,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return pad.x() + ":" + pad.y() + ":" + pad.z();
     }
 
+    private boolean isEventPad(Block block) {
+        return block != null && isConfigured() && block.getWorld() != null
+                && block.getWorld().getName().equalsIgnoreCase(worldName)
+                && pads.stream().anyMatch(pad -> pad.x() == block.getX()
+                        && (pad.y() == block.getY() || pad.y() - 1 == block.getY())
+                        && pad.z() == block.getZ());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEventPadInteract(PlayerInteractEvent event) {
+        if (event.getHand() == EquipmentSlot.HAND
+                && event.getAction() == Action.RIGHT_CLICK_BLOCK
+                && isEventPad(event.getClickedBlock())
+                && phase != EventPhase.UNLOCKED) {
+            event.setCancelled(true);
+        }
+    }
+
     private void beginCountdownIfReady() {
         if (phase != EventPhase.READY_FOR_PLAYERS || padOccupants.size() != requiredPlayers) {
             return;
@@ -1923,6 +2310,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
         finalDrainApplied = false;
+        clearCombatAiState();
         activeWave = 1;
         saveStateSync();
         if (transition(EventPhase.WAVE_1, "official roster frozen", eventId + ":roster:" + generation)) {
@@ -1953,12 +2341,233 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * One bounded controller owns wave targeting and the containment watchdog.
+     * Natural mobs are never included because every lookup starts in
+     * ownedEntities and checks the event role tag.
+     */
+    private void tickWaveMobAi() {
+        if (!isCombatPhase()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        List<Player> candidates = activeLivingPlayers();
+        if (now >= nextWaveTargetMillis && !candidates.isEmpty()) {
+            List<UUID> candidateIds = candidates.stream()
+                    .map(Player::getUniqueId)
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+            for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+                String kind = readString(entity, keyKind);
+                if (!(entity instanceof Mob mob) || !isWaveCombatKind(kind) || !isLiveOwnedEntity(entity.getUniqueId())) {
+                    continue;
+                }
+                UUID current = mob.getTarget() == null ? null : mob.getTarget().getUniqueId();
+                EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
+                        candidateIds, current, List.of(), waveTargetCursor++);
+                Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
+                if (target != null && isActiveArenaParticipant(target)) {
+                    mob.setTarget(target);
+                    getLogger().info("WAVE_AI_TARGET entity=" + entity.getUniqueId()
+                            + " role=" + kind + " target=" + target.getUniqueId());
+                }
+            }
+            nextWaveTargetMillis = now
+                    + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
+        }
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            String kind = readString(entity, keyKind);
+            if (isWaveCombatKind(kind) && isLiveOwnedEntity(entity.getUniqueId())) {
+                enforceCombatLeash(entity, coreLocation(), 10.0D, "WAVE_AI_LEASH");
+            }
+        }
+    }
+
+    private boolean isWaveCombatKind(String kind) {
+        return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
+                || EVENT_KIND_FINAL_WAVE.equals(kind);
+    }
+
+    /** Each elite owns exactly one spell; there is no shared repeating task per mob. */
+    private void tickMiniBosses() {
+        if (!isMiniBossCombatPhase()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        for (Map.Entry<UUID, EndRiftAiPolicy.MiniBossSpell> entry : new HashMap<>(miniBossSpells).entrySet()) {
+            Entity entity = ownedEntities.get(entry.getKey());
+            if (!(entity instanceof Enderman miniBoss) || !isLiveOwnedEntity(entity.getUniqueId())) {
+                miniBossSpells.remove(entry.getKey());
+                nextMiniBossSpellMillis.remove(entry.getKey());
+                continue;
+            }
+            if (nextMiniBossSpellMillis.getOrDefault(entity.getUniqueId(), 0L) > now) {
+                continue;
+            }
+            List<Player> candidates = activeLivingPlayers();
+            if (candidates.isEmpty()) {
+                nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
+                continue;
+            }
+            Player current = miniBoss.getTarget() instanceof Player player && isActiveArenaParticipant(player)
+                    ? player : null;
+            List<UUID> candidateIds = candidates.stream().map(Player::getUniqueId)
+                    .sorted(Comparator.comparing(UUID::toString)).toList();
+            EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
+                    candidateIds, current == null ? null : current.getUniqueId(), List.of(), waveTargetCursor++);
+            Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
+            if (target == null || !isActiveArenaParticipant(target)) {
+                nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
+                continue;
+            }
+            miniBoss.setTarget(target);
+            nextMiniBossSpellMillis.put(entity.getUniqueId(), now
+                    + randomSeconds(config.miniBossTuning().spellMinSeconds(), config.miniBossTuning().spellMaxSeconds()) * 1000L);
+            telegraphMiniBossSpell(miniBoss, target, entry.getValue());
+        }
+    }
+
+    private void telegraphMiniBossSpell(Enderman miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell) {
+        if (taskRegistry == null || miniBoss == null || target == null || !isActiveArenaParticipant(target)) {
+            return;
+        }
+        long callbackGeneration = generation;
+        UUID miniBossId = miniBoss.getUniqueId();
+        Location mark = target.getLocation().clone();
+        getLogger().info("MINIBOSS_SPELL_TELEGRAPH entity=" + miniBossId + " spell=" + spell.id()
+                + " target=" + target.getUniqueId() + " generation=" + generation);
+        target.sendActionBar(Component.text("Мини-босс готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
+        final int[] ticks = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || !isMiniBossCombatPhase() || !miniBoss.isValid() || miniBoss.isDead()
+                    || miniBossSpells.get(miniBossId) != spell) {
+                holder[0].cancel();
+                return;
+            }
+            ticks[0] += 5;
+            Location effect = spell == EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE
+                    ? miniBoss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
+            Particle particle = spell == EndRiftAiPolicy.MiniBossSpell.VOID_SNARE
+                    ? Particle.REVERSE_PORTAL : Particle.END_ROD;
+            miniBoss.getWorld().spawnParticle(particle, effect, 8, 0.65D, 0.15D, 0.65D, 0.01D);
+            if (ticks[0] >= config.miniBossTuning().spellTelegraphTicks()) {
+                holder[0].cancel();
+                if (taskRegistry.owns(callbackGeneration) && isMiniBossCombatPhase()
+                        && miniBoss.isValid() && !miniBoss.isDead()) {
+                    executeMiniBossSpell(miniBoss, target, mark, spell, callbackGeneration);
+                }
+            }
+        }, 0L, 5L);
+        taskRegistry.register(holder[0]);
+    }
+
+    private void executeMiniBossSpell(Enderman miniBoss, Player target, Location mark,
+                                      EndRiftAiPolicy.MiniBossSpell spell, long callbackGeneration) {
+        if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                || !isMiniBossCombatPhase() || !isActiveArenaParticipant(target)) {
+            return;
+        }
+        getLogger().info("MINIBOSS_SPELL_CAST entity=" + miniBoss.getUniqueId()
+                + " spell=" + spell.id() + " target=" + target.getUniqueId()
+                + " generation=" + callbackGeneration);
+        switch (spell) {
+            case RIFT_STEP -> miniBossRiftStep(miniBoss, target);
+            case VOID_SNARE -> miniBossVoidSnare(miniBoss, target, mark);
+            case ECHO_PULSE -> miniBossEchoPulse(miniBoss);
+        }
+    }
+
+    private void miniBossRiftStep(Enderman miniBoss, Player target) {
+        Location anchor = coreLocation();
+        Location destination = findSafeCombatLocation(anchor, target.getLocation(), 10.0D);
+        if (destination != null) {
+            miniBoss.teleport(destination);
+        }
+        target.damage(config.miniBossTuning().riftStepDamage(), miniBoss);
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 50, 0, false, true, true));
+        miniBoss.getWorld().spawnParticle(Particle.PORTAL, target.getLocation().add(0.0D, 1.0D, 0.0D),
+                24, 0.5D, 0.8D, 0.5D, 0.02D);
+    }
+
+    private void miniBossVoidSnare(Enderman miniBoss, Player target, Location mark) {
+        target.damage(config.miniBossTuning().voidSnareDamage(), miniBoss);
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 1, false, true, true));
+        target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, true, true));
+        miniBoss.getWorld().spawnParticle(Particle.REVERSE_PORTAL, mark, 28, 1.2D, 0.1D, 1.2D, 0.02D);
+    }
+
+    private void miniBossEchoPulse(Enderman miniBoss) {
+        Location center = miniBoss.getLocation();
+        for (Player player : activeLivingPlayers()) {
+            if (player.getLocation().distanceSquared(center) > 25.0D) {
+                continue;
+            }
+            player.damage(config.miniBossTuning().echoPulseDamage(), miniBoss);
+            Vector push = player.getLocation().toVector().subtract(center.toVector());
+            if (push.lengthSquared() < 0.01D) {
+                push = new Vector(0.0D, 0.25D, 0.0D);
+            }
+            player.setVelocity(push.normalize().multiply(0.35D).setY(0.22D));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, true, true));
+        }
+        miniBoss.getWorld().spawnParticle(Particle.END_ROD, center.add(0.0D, 1.0D, 0.0D),
+                32, 1.0D, 0.6D, 1.0D, 0.03D);
+    }
+
+    private void enforceCombatLeash(Entity entity, Location anchor, double radius, String logMarker) {
+        if (entity == null || anchor == null || entity.getWorld() == null
+                || !entity.getWorld().equals(anchor.getWorld())
+                || entity.getLocation().distanceSquared(anchor) <= radius * radius) {
+            return;
+        }
+        Location safe = findSafeCombatLocation(anchor, anchor, radius - 0.75D);
+        if (safe != null && entity.teleport(safe)) {
+            getLogger().info(logMarker + " entity=" + entity.getUniqueId()
+                    + " location=" + locationText(safe));
+        }
+    }
+
+    private Location findSafeCombatLocation(Location anchor, Location preferred, double radius) {
+        if (anchor == null || anchor.getWorld() == null) {
+            return null;
+        }
+        double safeRadius = Math.max(1.0D, radius);
+        Location center = anchor.clone();
+        for (int attempt = 0; attempt < 32; attempt++) {
+            double angle = attempt * 2.399963229728653D;
+            double distance = attempt == 0 ? 0.0D : 1.5D + (attempt % 6) * 1.7D;
+            Location candidate = attempt < 4 && preferred != null
+                    ? preferred.clone()
+                    : center.clone().add(Math.cos(angle) * distance, 0.0D, Math.sin(angle) * distance);
+            if (candidate.distanceSquared(center) > safeRadius * safeRadius) {
+                continue;
+            }
+            Block feet = candidate.getBlock();
+            Block head = feet.getRelative(BlockFace.UP);
+            Block floor = feet.getRelative(BlockFace.DOWN);
+            if (feet.isPassable() && head.isPassable() && floor.getType().isSolid() && !floor.isLiquid()) {
+                return new Location(candidate.getWorld(), feet.getX() + 0.5D, feet.getY(), feet.getZ() + 0.5D);
+            }
+        }
+        return null;
+    }
+
     private boolean isCombatPhase() {
+        if (testCombatAiMode) {
+            return true;
+        }
         return switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
                     BOSS_ACTIVE, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> true;
             default -> false;
         };
+    }
+
+    private boolean isMiniBossCombatPhase() {
+        return testCombatAiMode || phase == EventPhase.WAVE_1 || phase == EventPhase.WAVE_2
+                || phase == EventPhase.WAVE_3 || phase == EventPhase.FINAL_WAVE;
     }
 
     private boolean isActiveArenaParticipant(Player player) {
@@ -2062,7 +2671,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         int scalePlayers = Math.max(config.minPlayers(), officialRewardRoster.size());
-        double scale = Math.max(1.0D, Math.min(2.0D, scalePlayers / 5.0D));
+        double scale = Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D));
         int endermen = scaled(definition.endermen(), scale);
         int endermites = scaled(definition.endermites(), scale);
         int shulkers = scaled(definition.shulkers(), scale);
@@ -2083,12 +2692,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!test) {
             activeWave = wave;
+            playEventMusic(wave == 4 ? config.bossFinalMusic() : config.wavesMusic());
         }
         for (int index = 0; index < endermen; index++) {
-            spawnEnderman(world, core, wave, false, wave == 4, test, index);
+            spawnEnderman(world, core, wave, false, wave == 4, test, index, index);
         }
         for (int index = 0; index < elites; index++) {
-            spawnEnderman(world, core, wave, true, wave == 4, test, index + endermen);
+            spawnEnderman(world, core, wave, true, wave == 4, test, index + endermen, index);
         }
         for (int index = 0; index < endermites; index++) {
             spawnOwnedMob(world, core, EntityType.ENDERMITE, wave,
@@ -2119,23 +2729,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnEnderman(World world, Location core, int wave, boolean elite,
-                               boolean finalWave, boolean test, int index) {
+                               boolean finalWave, boolean test, int index, int abilityIndex) {
         Location location = safeSpawnLocation(core, index, elite ? 4.0D : 2.0D);
         Enderman enderman = (Enderman) world.spawnEntity(location, EntityType.ENDERMAN);
         String kind = finalWave ? EVENT_KIND_FINAL_WAVE : elite ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
         tag(enderman, kind, wave, !test);
         enderman.setPersistent(true);
         enderman.setRemoveWhenFarAway(false);
+        enderman.setCanPickupItems(false);
         if (elite) {
+            EndRiftAiPolicy.MiniBossSpell miniBossSpell = EndRiftAiPolicy.miniBossSpell(wave, abilityIndex);
             AttributeInstance max = enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH);
             if (max != null) {
-                max.setBaseValue(60.0D);
-                enderman.setHealth(60.0D);
+                max.setBaseValue(80.0D);
+                enderman.setHealth(80.0D);
             }
-            enderman.setCustomName(ChatColor.LIGHT_PURPLE + (finalWave ? "Элитный страж" : "Элитный эндермен"));
+            AttributeInstance attack = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+            if (attack != null) {
+                attack.setBaseValue(attack.getBaseValue() + 2.0D);
+            }
+            tagMiniBossSpell(enderman, miniBossSpell);
+            miniBossSpells.put(enderman.getUniqueId(), miniBossSpell);
+            nextMiniBossSpellMillis.put(enderman.getUniqueId(), 0L);
+            enderman.setCustomName(ChatColor.LIGHT_PURPLE + (finalWave ? "Элитный страж" : "Элитный эндермен")
+                    + ChatColor.DARK_PURPLE + " · " + miniBossSpell.displayName());
             enderman.setCustomNameVisible(true);
+            enderman.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                    enderman.getLocation().add(0.0D, 1.0D, 0.0D), 10, 0.35D, 0.55D, 0.35D, 0.02D);
         }
         ownedEntities.put(enderman.getUniqueId(), enderman);
+        bindEventEntityClientForOnlinePlayers(enderman);
         if (finalWave && !test) {
             finalWaveEntities.add(enderman.getUniqueId());
         }
@@ -2147,15 +2770,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tag(entity, kind, wave, !test);
         if (entity instanceof LivingEntity living) {
             living.setPersistent(true);
+            configureEventMobStats(living, type);
             if (living instanceof Shulker shulker) {
                 shulker.setAI(true);
             }
         }
         ownedEntities.put(entity.getUniqueId(), entity);
+        bindEventEntityClientForOnlinePlayers(entity);
         if (wave == 4 && !test) {
             finalWaveEntities.add(entity.getUniqueId());
         }
         return entity;
+    }
+
+    private void configureEventMobStats(LivingEntity living, EntityType type) {
+        if (living == null || type != EntityType.ENDERMITE) {
+            return;
+        }
+        AttributeInstance health = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        AttributeInstance attack = living.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        if (health != null) {
+            double maxHealth = health.getBaseValue() + config.endermiteHealthBonus();
+            health.setBaseValue(maxHealth);
+            living.setHealth(maxHealth);
+        }
+        if (attack != null) {
+            attack.setBaseValue(attack.getBaseValue() + config.endermiteAttackDamageBonus());
+        }
+        getLogger().info("ENDERMITE_STATS entity=" + living.getUniqueId()
+                + " health=" + (health == null ? "unknown" : health.getBaseValue())
+                + " attack=" + (attack == null ? "unknown" : attack.getBaseValue()));
     }
 
     private Location spawnLocation(Location core, int index, double offset) {
@@ -2196,12 +2840,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String kind = readString(entity, keyKind);
         double radius = EVENT_KIND_BOSS.equals(kind) ? config.bossRadius() : 10.0D;
         if (target.distanceSquared(anchor) > radius * radius) {
-            Vector delta = target.toVector().subtract(anchor.toVector());
-            if (delta.lengthSquared() <= 0.0001D) {
-                event.setTo(anchor.clone());
-                return;
+            Location safe = findSafeCombatLocation(anchor, target, radius - 0.75D);
+            if (safe == null) {
+                event.setCancelled(true);
+            } else {
+                event.setTo(safe);
             }
-            event.setTo(anchor.clone().add(delta.normalize().multiply(radius)));
         }
     }
 
@@ -2216,6 +2860,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         spellServants.clear();
+        miniBossSpells.clear();
+        nextMiniBossSpellMillis.clear();
     }
 
     private boolean isLiveOwnedEntity(UUID entityUuid) {
@@ -2235,6 +2881,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnTestBoss(CommandSender sender) {
+        if (!isConfigured()) {
+            message(sender, "&cСначала настрой Core в загруженном event world.");
+            return;
+        }
         Location core = coreLocation();
         World world = core == null ? null : core.getWorld();
         if (world == null) {
@@ -2245,6 +2895,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Enderman boss = (Enderman) world.spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
         configureBoss(boss, true);
         message(sender, "&aTest boss создан: он не открывает End и не выдаёт official rewards.");
+    }
+
+    private void spawnTestAi(CommandSender sender) {
+        if (!hasSpawnAnchor()) {
+            message(sender, "&cСначала настрой Core в загруженном event world.");
+            return;
+        }
+        if (isCombatPhase()) {
+            message(sender, "&cAI test refused during an official combat phase; сначала завершите или отмените бой.");
+            return;
+        }
+        clearBossOnly();
+        clearWaveEntities();
+        testCombatAiMode = true;
+        spawnWave(3, true);
+        Location core = coreLocation();
+        if (core != null && core.getWorld() != null) {
+            Enderman boss = (Enderman) core.getWorld().spawnEntity(
+                    core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+            configureBoss(boss, true);
+        }
+        List<Player> eligiblePlayers = activeLivingPlayers();
+        getLogger().info("TEST_AI_STARTED event=" + eventId
+                + " phase=" + phase + " official_phase_unchanged=true"
+                + " eligible_players=" + eligiblePlayers.size());
+        message(sender, "&aTest AI запущен: реальные wave/boss controllers, official phase/roster/victory не изменены.");
     }
 
     private void spawnOfficialBoss(CommandSender sender) {
@@ -2284,6 +2960,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boss.setPersistent(true);
         boss.setRemoveWhenFarAway(false);
+        boss.setCanPickupItems(false);
+        boss.setAware(true);
         boss.setCustomName("§5Хранитель Разлома");
         boss.setCustomNameVisible(true);
         AttributeInstance maxHealth = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
@@ -2300,8 +2978,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!test) {
             ensureBossBar();
             bindBossClientForOnlinePlayers();
+            playEventMusic(config.bossMusic());
             nextTargetMillis = 0L;
             nextSpellMillis = 0L;
+            recentBossTargets.clear();
+            previousBossSpell = null;
+            bossTargetCursor = 0;
+            bossSpellCursor = 0;
+            bossSpellPauseUntilMillis = 0L;
+            lastBossTeleportMillis = 0L;
+            servantsSummonedAt70 = false;
+            servantsSummonedAt35 = false;
         }
     }
 
@@ -2341,6 +3028,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         bossUuid = null;
         bossKillerUuid = null;
+        testCombatAiMode = false;
+        recentBossTargets.clear();
+        previousBossSpell = null;
+        bossTargetCursor = 0;
+        bossSpellCursor = 0;
+        nextTargetMillis = 0L;
+        nextSpellMillis = 0L;
+        bossSpellPauseUntilMillis = 0L;
+        lastBossTeleportMillis = 0L;
+        servantsSummonedAt70 = false;
+        servantsSummonedAt35 = false;
+        clearVoidMarkZones();
         clearClientEffects();
         if (bossBar != null) {
             bossBar.removeAll();
@@ -2353,13 +3052,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Location core = coreLocation();
-        if (core != null && boss.getWorld().equals(core.getWorld())
-                && boss.getLocation().distanceSquared(core) > config.bossRadius() * config.bossRadius()) {
-            boss.teleport(core.clone().add(0.0D, 1.0D, 0.0D));
-        }
+        enforceCombatLeash(boss, core, config.bossRadius(), "BOSS_AI_LEASH");
         if (bossBar != null) {
             double max = Math.max(1.0D, boss.getMaxHealth());
             bossBar.setProgress(Math.max(0.0D, Math.min(1.0D, boss.getHealth() / max)));
+            String title = halfHealthTriggered ? "Хранитель Разлома — Искажённая воля" : "Хранитель Разлома";
+            bossBar.setTitle(title + " — " + Math.round(boss.getHealth()) + "/" + Math.round(max) + " HP");
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (isActiveArenaParticipant(player) && !bossBar.getPlayers().contains(player)) {
                     bossBar.addPlayer(player);
@@ -2368,19 +3066,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
         }
-        if (phase != EventPhase.BOSS_ACTIVE) {
+        boolean testBossAi = testCombatAiMode && isTestBoss(boss);
+        if (phase != EventPhase.BOSS_ACTIVE && !testBossAi) {
             return;
         }
         long now = System.currentTimeMillis();
         if (nextTargetMillis <= now) {
-            if (boss instanceof org.bukkit.entity.Mob mob) {
+            if (boss instanceof Mob mob) {
                 rotateBossTarget(mob);
             }
             nextTargetMillis = now + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
         }
-        if (nextSpellMillis <= now) {
-            castBossSpell(boss, false);
-            nextSpellMillis = now + randomSeconds(config.bossSpellMinSeconds(), config.bossSpellMaxSeconds()) * 1000L;
+        maintainBossTeleport(boss, now);
+        if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now) {
+            if (!activeLivingPlayers().isEmpty()) {
+                castBossSpell(boss, false);
+                nextSpellMillis = now + randomSeconds(config.bossSpellMinSeconds(), config.bossSpellMaxSeconds()) * 1000L;
+            } else {
+                // No eligible target is not a real cast; retry soon instead of
+                // consuming the whole spell cooldown while the arena is empty.
+                nextSpellMillis = now + 1000L;
+            }
         }
     }
 
@@ -2388,7 +3094,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return minimum >= maximum ? minimum : minimum + random.nextInt(maximum - minimum + 1);
     }
 
-    private void rotateBossTarget(org.bukkit.entity.Mob boss) {
+    private void rotateBossTarget(Mob boss) {
         List<Player> candidates = Bukkit.getOnlinePlayers().stream()
                 .filter(this::isActiveArenaParticipant)
                 .map(player -> (Player) player)
@@ -2399,13 +3105,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Player current = boss.getTarget() instanceof Player player ? player : null;
-        List<Player> alternatives = candidates.stream()
-                .filter(player -> current == null || !player.getUniqueId().equals(current.getUniqueId()))
-                .toList();
-        Player target = (alternatives.isEmpty() ? candidates : alternatives)
-                .get(random.nextInt((alternatives.isEmpty() ? candidates : alternatives).size()));
+        EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
+                candidates.stream().map(Player::getUniqueId).toList(),
+                current == null ? null : current.getUniqueId(),
+                new ArrayList<>(recentBossTargets), bossTargetCursor);
+        bossTargetCursor = choice.nextCursor();
+        Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
+        if (target == null || !isActiveArenaParticipant(target)) {
+            boss.setTarget(null);
+            return;
+        }
         boss.setTarget(target);
+        recentBossTargets.addLast(target.getUniqueId());
+        while (recentBossTargets.size() > config.bossRecentTargetMemory()) {
+            recentBossTargets.removeFirst();
+        }
         combatHelpers.add(target.getUniqueId());
+        getLogger().info("BOSS_AI_TARGET boss=" + boss.getUniqueId() + " target=" + target.getUniqueId()
+                + " recent=" + recentBossTargets.size());
+    }
+
+    private void maintainBossTeleport(LivingEntity boss, long now) {
+        if (!(boss instanceof Mob mob) || now - lastBossTeleportMillis
+                < config.bossTeleportCooldownSeconds() * 1000L) {
+            return;
+        }
+        Location anchor = coreLocation();
+        if (anchor == null || !(mob.getTarget() instanceof Player target)
+                || !isActiveArenaParticipant(target)) {
+            return;
+        }
+        boolean targetTooFar = boss.getLocation().distanceSquared(target.getLocation()) > 144.0D;
+        boolean arenaTooWide = boss.getLocation().distanceSquared(anchor)
+                > Math.max(1.0D, config.bossRadius() - 2.0D) * Math.max(1.0D, config.bossRadius() - 2.0D);
+        if (!targetTooFar && !arenaTooWide) {
+            return;
+        }
+        Location safe = findSafeCombatLocation(anchor, target.getLocation(), config.bossRadius() - 1.0D);
+        if (safe != null && boss.teleport(safe)) {
+            lastBossTeleportMillis = now;
+            boss.getWorld().spawnParticle(Particle.PORTAL, safe.add(0.0D, 1.0D, 0.0D),
+                    20, 0.45D, 0.7D, 0.45D, 0.02D);
+            getLogger().info("BOSS_AI_TELEPORT boss=" + boss.getUniqueId()
+                    + " target=" + target.getUniqueId() + " location=" + locationText(safe));
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -2462,10 +3205,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         for (Player player : activeLivingPlayers()) {
             player.setHealth(player.getMaxHealth());
+            player.sendMessage(ChatColor.LIGHT_PURPLE + "Печать слабеет... Энергия Разлома возвращает вам силы.");
             player.getWorld().spawnParticle(Particle.END_ROD, player.getLocation().add(0.0D, 1.0D, 0.0D), 12, 0.3D, 0.5D, 0.3D, 0.02D);
         }
+        bossSpellPauseUntilMillis = System.currentTimeMillis() + 3_000L;
+        nextSpellMillis = bossSpellPauseUntilMillis;
         boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.6F);
-        getLogger().info("BOSS_PHASE_50 event=" + eventId + " boss=" + boss.getUniqueId());
+        playEventMusic(config.bossHalfMusic());
+        getLogger().info("BOSS_PHASE_50 event=" + eventId + " boss=" + boss.getUniqueId()
+                + " spell_unlocked=will_distortion spell_pause_ms=3000");
+        getLogger().info("BOSS_AI_PHASE event=" + eventId + " phase=HALF control_spell=WILL_DISTORTION");
     }
 
     private List<Player> activeLivingPlayers() {
@@ -2484,6 +3233,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         finalDrainTriggered = true;
         boss.setInvulnerable(true);
+        clearVoidMarkZones();
         if (!saveStateSync()) {
             forcePhase(EventPhase.RECOVERY_REQUIRED, "final phase could not be persisted before side effects");
             return;
@@ -2497,6 +3247,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!transition(EventPhase.FINAL_RITUAL, "boss crossed final threshold", eventId + ":final-ritual")) {
             return;
         }
+        playEventMusic(config.bossFinalMusic());
         if (bossBar != null) {
             bossBar.setTitle("Хранитель Разлома — ПОГЛОЩЕНИЕ ЖИЗНИ");
         }
@@ -2575,23 +3326,116 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void castBossSpell(LivingEntity boss, boolean forced) {
-        if (boss == null || isTestBoss(boss) && !forced || phase != EventPhase.BOSS_ACTIVE && !forced) {
+        boolean testBossAi = testCombatAiMode && isTestBoss(boss);
+        if (boss == null || isTestBoss(boss) && !forced && !testBossAi
+                || phase != EventPhase.BOSS_ACTIVE && !forced && !testBossAi) {
             return;
         }
-        List<Player> players = activeLivingPlayers();
-        if (players.isEmpty()) {
+        List<EndRiftAiPolicy.BossSpell> available = new ArrayList<>(List.of(
+                EndRiftAiPolicy.BossSpell.VOID_BLAST,
+                EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                EndRiftAiPolicy.BossSpell.VOID_MARK,
+                EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS));
+        if (controlSpellUnlocked && controlInstances.isEmpty()) {
+            available.add(EndRiftAiPolicy.BossSpell.WILL_DISTORTION);
+        }
+        if (!servantSummonWindow(boss)) {
+            available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
+        }
+        EndRiftAiPolicy.BossSpell spell = EndRiftAiPolicy.chooseBossSpell(
+                available, previousBossSpell, bossSpellCursor++);
+        if (spell != null) {
+            castBossSpell(boss, spell, forced);
+        }
+    }
+
+    private void castBossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell, boolean forced) {
+        boolean testBossAi = testCombatAiMode && isTestBoss(boss);
+        if (boss == null || spell == null || isTestBoss(boss) && !forced && !testBossAi
+                || phase != EventPhase.BOSS_ACTIVE && !forced && !testBossAi) {
             return;
         }
-        Player target = players.get(random.nextInt(players.size()));
-        int spell = forced ? 0 : random.nextInt(4);
-        switch (spell) {
-            case 0 -> voidBlast(boss, target);
-            case 1 -> riftProjectile(boss, target);
-            case 2 -> voidMark(boss, target);
-            default -> {
-                startFairControlTarget();
-                summonServants(boss);
+        Player target = selectBossSpellTarget(boss);
+        if (target == null) {
+            return;
+        }
+        previousBossSpell = spell;
+        getLogger().info("BOSS_AI_SPELL_SELECTED boss=" + boss.getUniqueId()
+                + " spell=" + spell.id() + " target=" + target.getUniqueId());
+        telegraphBossSpell(boss, target, spell, forced);
+    }
+
+    private Player selectBossSpellTarget(LivingEntity boss) {
+        List<Player> candidates = activeLivingPlayers();
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        UUID current = boss instanceof Mob mob && mob.getTarget() != null
+                ? mob.getTarget().getUniqueId() : null;
+        EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
+                candidates.stream().map(Player::getUniqueId).sorted(Comparator.comparing(UUID::toString)).toList(),
+                current, new ArrayList<>(recentBossTargets), bossTargetCursor++);
+        Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
+        return target != null && isActiveArenaParticipant(target) ? target : candidates.get(0);
+    }
+
+    private void telegraphBossSpell(LivingEntity boss, Player target,
+                                    EndRiftAiPolicy.BossSpell spell, boolean forced) {
+        if (taskRegistry == null || boss == null || target == null) {
+            return;
+        }
+        if (!forced && phase != EventPhase.BOSS_ACTIVE
+                && !(testCombatAiMode && isTestBoss(boss))) {
+            return;
+        }
+        long callbackGeneration = generation;
+        UUID bossId = boss.getUniqueId();
+        Location mark = target.getLocation().clone();
+        getLogger().info("BOSS_SPELL_TELEGRAPH boss=" + bossId + " spell=" + spell.id()
+                + " target=" + target.getUniqueId() + " generation=" + generation);
+        target.sendActionBar(Component.text("Хранитель готовит: " + spell.id(), NamedTextColor.LIGHT_PURPLE));
+        final int[] ticks = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean allowedPhase = phase == EventPhase.BOSS_ACTIVE
+                    || (forced || testCombatAiMode) && isTestBoss(boss);
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration) || !allowedPhase
+                    || !boss.isValid() || boss.isDead() || !bossId.equals(bossUuid)) {
+                holder[0].cancel();
+                return;
             }
+            ticks[0] += 5;
+            Particle particle = spell == EndRiftAiPolicy.BossSpell.VOID_BLAST
+                    ? Particle.DRAGON_BREATH : Particle.REVERSE_PORTAL;
+            Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                    ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
+            boss.getWorld().spawnParticle(particle, effect, 12, 0.9D, 0.2D, 0.9D, 0.02D);
+            if (ticks[0] >= config.bossSpellTelegraphTicks()) {
+                holder[0].cancel();
+                if (taskRegistry.owns(callbackGeneration) && allowedPhase
+                        && boss.isValid() && !boss.isDead() && bossId.equals(bossUuid)) {
+                    executeBossSpell(boss, target, mark, spell, callbackGeneration);
+                }
+            }
+        }, 0L, 5L);
+        taskRegistry.register(holder[0]);
+    }
+
+    private void executeBossSpell(LivingEntity boss, Player target, Location mark,
+                                   EndRiftAiPolicy.BossSpell spell, long callbackGeneration) {
+        if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                || (phase != EventPhase.BOSS_ACTIVE
+                && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY)))) {
+            return;
+        }
+        getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
+                + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
+        switch (spell) {
+            case VOID_BLAST -> voidBlast(boss, target);
+            case RIFT_PROJECTILE -> riftProjectile(boss, target);
+            case VOID_MARK -> voidMark(boss, target);
+            case SUMMON_SERVANTS -> summonServants(boss);
+            case WILL_DISTORTION -> sendControlStart(target);
         }
     }
 
@@ -2624,29 +3468,98 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void voidMark(LivingEntity boss, Player target) {
+        if (taskRegistry == null || activeVoidMarkTasks.size() >= MAX_ACTIVE_VOID_MARKS) {
+            return;
+        }
         Location mark = target.getLocation().clone();
+        UUID zoneId = UUID.randomUUID();
         long callbackGeneration = generation;
-        boss.getWorld().spawnParticle(Particle.REVERSE_PORTAL, mark.clone().add(0.0D, 0.2D, 0.0D), 18, 1.0D, 0.1D, 1.0D, 0.02D);
-        BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
+        activeVoidMarkCenters.put(zoneId, mark);
+        boss.getWorld().spawnParticle(Particle.REVERSE_PORTAL, mark.clone().add(0.0D, 0.2D, 0.0D),
+                18, 1.0D, 0.1D, 1.0D, 0.02D);
+        final int[] elapsedSeconds = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean testBossAi = testCombatAiMode && isTestBoss(boss);
             if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                    || phase != EventPhase.BOSS_ACTIVE || !boss.isValid()
-                    || !isActiveArenaParticipant(target)) {
+                    || phase != EventPhase.BOSS_ACTIVE && !testBossAi || !boss.isValid() || boss.isDead()
+                    || !boss.getUniqueId().equals(bossUuid)) {
+                cancelVoidMark(zoneId);
                 return;
             }
+            Location center = activeVoidMarkCenters.get(zoneId);
+            if (center == null || elapsedSeconds[0] >= VOID_MARK_DURATION_SECONDS) {
+                cancelVoidMark(zoneId);
+                return;
+            }
+            boss.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                    center.clone().add(0.0D, 0.12D, 0.0D), 20,
+                    1.0D, 0.08D, 1.0D, 0.02D);
             for (Player player : activeLivingPlayers()) {
-                if (player.getLocation().distanceSquared(mark) <= 9.0D) {
-                    player.damage(6.0D, boss);
+                if (player.getLocation().distanceSquared(center)
+                        <= VOID_MARK_RADIUS_BLOCKS * VOID_MARK_RADIUS_BLOCKS) {
+                    player.damage(2.0D, boss);
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,
+                            25, 0, false, true, true));
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                            25, 0, false, true, true));
                 }
             }
-        }, 60L);
-        if (taskRegistry != null) {
-            taskRegistry.register(task);
+            elapsedSeconds[0]++;
+            if (elapsedSeconds[0] >= VOID_MARK_DURATION_SECONDS) {
+                cancelVoidMark(zoneId);
+            }
+        }, 0L, 20L);
+        activeVoidMarkTasks.put(zoneId, holder[0]);
+        taskRegistry.register(holder[0]);
+    }
+
+    private void cancelVoidMark(UUID zoneId) {
+        BukkitTask task = activeVoidMarkTasks.remove(zoneId);
+        if (task != null) {
+            task.cancel();
         }
+        activeVoidMarkCenters.remove(zoneId);
+    }
+
+    private void clearVoidMarkZones() {
+        if (activeVoidMarkTasks.isEmpty() && activeVoidMarkCenters.isEmpty()) {
+            return;
+        }
+        int count = activeVoidMarkTasks.size();
+        for (BukkitTask task : activeVoidMarkTasks.values()) {
+            if (task != null) {
+                task.cancel();
+            }
+        }
+        activeVoidMarkTasks.clear();
+        activeVoidMarkCenters.clear();
+        getLogger().info("BOSS_VOID_MARK_CLEANUP count=" + count);
+    }
+
+    private boolean servantSummonWindow(LivingEntity boss) {
+        if (boss == null || boss.getMaxHealth() <= 0.0D) {
+            return false;
+        }
+        double fraction = boss.getHealth() / boss.getMaxHealth();
+        return (fraction <= 0.70D && fraction > 0.35D && !servantsSummonedAt70)
+                || (fraction <= 0.35D && !servantsSummonedAt35);
     }
 
     private void summonServants(LivingEntity boss) {
         if (spellServants.size() >= config.maxSummonedServants()) {
             return;
+        }
+        double fraction = boss.getMaxHealth() <= 0.0D ? 0.0D : boss.getHealth() / boss.getMaxHealth();
+        boolean at70 = fraction <= 0.70D && fraction > 0.35D && !servantsSummonedAt70;
+        boolean at35 = fraction <= 0.35D && !servantsSummonedAt35;
+        if (!at70 && !at35) {
+            return;
+        }
+        if (at35) {
+            servantsSummonedAt35 = true;
+        } else {
+            servantsSummonedAt70 = true;
         }
         Location location = boss.getLocation();
         int toSpawn = Math.min(2, config.maxSummonedServants() - spellServants.size());
@@ -2655,6 +3568,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     0, EVENT_KIND_WAVE_MOB, false, index + spellServants.size());
             spellServants.add(servant.getUniqueId());
         }
+        getLogger().info("BOSS_SERVANTS_SUMMON boss=" + boss.getUniqueId()
+                + " threshold=" + (at35 ? "35" : "70") + " count=" + toSpawn);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -2702,6 +3617,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             finalWaveEntities.remove(entity.getUniqueId());
             spellServants.remove(entity.getUniqueId());
+            miniBossSpells.remove(entity.getUniqueId());
+            nextMiniBossSpellMillis.remove(entity.getUniqueId());
             ownedEntities.remove(entity.getUniqueId());
         }
     }
@@ -2969,7 +3886,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.sendTitle("§5ЭНД ОТКРЫТ", "§dХранитель Разлома пал", 10, 80, 20);
             player.sendMessage("§5Энд открыт. Официальные участники: §f" + names);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
+            player.playSound(player.getLocation(), config.victoryMusic().soundId(), SoundCategory.MUSIC,
+                    (float) config.musicVolume(), 1.0F);
         }
+        getLogger().info("END_EVENT_MUSIC track=" + config.victoryMusic().soundId() + " phase=VICTORY");
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -2979,6 +3899,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         resumeVictorySaga();
         if (isCombatPhase()) {
             bindBossClient(player);
+            bindEventEntitiesClient(player);
+            syncEventMusic(player);
         }
     }
 
@@ -3013,6 +3935,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         padOccupants.values().removeIf(uuid::equals);
         if (isCombatPhase()) {
             bindBossClient(event.getPlayer());
+            bindEventEntitiesClient(event.getPlayer());
+            syncEventMusic(event.getPlayer());
         }
     }
 
@@ -3201,6 +4125,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         entity.getPersistentDataContainer().set(keyBossTest, PersistentDataType.BYTE, (byte) 1);
     }
 
+    private void tagMiniBossSpell(Entity entity, EndRiftAiPolicy.MiniBossSpell spell) {
+        if (entity == null || spell == null || keyMiniBossSpell == null) {
+            return;
+        }
+        entity.getPersistentDataContainer().set(keyMiniBossSpell, PersistentDataType.STRING, spell.id());
+    }
+
     private boolean isTestBoss(Entity entity) {
         return entity != null && entity.getPersistentDataContainer().has(keyBossTest, PersistentDataType.BYTE)
                 && entity.getPersistentDataContainer().get(keyBossTest, PersistentDataType.BYTE) == (byte) 1;
@@ -3263,9 +4194,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onOwnedEntityRemove(EntityRemoveEvent event) {
         Entity entity = event.getEntity();
         if (entity != null && ownedEntities.containsKey(entity.getUniqueId())) {
+            unbindEventEntityClient(entity.getUniqueId());
             ownedEntities.remove(entity.getUniqueId());
             finalWaveEntities.remove(entity.getUniqueId());
             spellServants.remove(entity.getUniqueId());
+            miniBossSpells.remove(entity.getUniqueId());
+            nextMiniBossSpellMillis.remove(entity.getUniqueId());
             if (bossUuid != null && bossUuid.equals(entity.getUniqueId()) && !officialBossDeathCommitted) {
                 bossUuid = null;
                 bossKillerUuid = null;
@@ -3282,6 +4216,85 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void bindEventEntitiesClient(Player player) {
+        if (player == null || !player.isOnline() || !isActiveArenaParticipant(player)) {
+            return;
+        }
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            bindEventEntityClient(player, entity);
+        }
+    }
+
+    private void bindEventEntityClientForOnlinePlayers(Entity entity) {
+        if (clientVisualId(entity).isBlank()) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isActiveArenaParticipant(player)) {
+                bindEventEntityClient(player, entity);
+            }
+        }
+    }
+
+    private void bindEventEntityClient(Player player, Entity entity) {
+        if (player == null || entity == null || !player.isOnline()) {
+            return;
+        }
+        String visualId = clientVisualId(entity);
+        if (visualId.isBlank()) {
+            return;
+        }
+        String instance = entityBindingInstances.computeIfAbsent(entity.getUniqueId(), uuid ->
+                eventId + ":" + generation + ":" + uuid);
+        sendClientPacket(player, "END_ENTITY_BIND", instance, 0L,
+                entity.getUniqueId().toString(), visualId);
+    }
+
+    private void unbindEventEntityClient(UUID entityUuid) {
+        if (entityUuid == null) {
+            return;
+        }
+        String instance = entityBindingInstances.remove(entityUuid);
+        if (instance == null || instance.isBlank()) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            sendClientPacket(player, "END_ENTITY_UNBIND", instance, 0L, entityUuid.toString(), "");
+        }
+    }
+
+    private String clientVisualId(Entity entity) {
+        if (entity == null || !isVisualEventMob(entity)) {
+            return "";
+        }
+        String kind = readString(entity, keyKind);
+        if (entity.getType() == EntityType.ENDERMITE) {
+            return CLIENT_VISUAL_ENDERMITE;
+        }
+        if (entity.getType() == EntityType.SHULKER) {
+            return CLIENT_VISUAL_SHULKER;
+        }
+        if (entity.getType() == EntityType.ENDERMAN) {
+            if (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind)) {
+                return CLIENT_VISUAL_ELITE;
+            }
+            if (EVENT_KIND_WAVE_MOB.equals(kind)) {
+                return CLIENT_VISUAL_ENDERMAN;
+            }
+        }
+        return "";
+    }
+
+    private boolean isVisualEventMob(Entity entity) {
+        if (entity == null || entity.getType() == EntityType.ARMOR_STAND
+                || EVENT_KIND_BOSS.equals(readString(entity, keyKind))) {
+            return false;
+        }
+        String kind = readString(entity, keyKind);
+        return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
+                || EVENT_KIND_FINAL_WAVE.equals(kind);
+    }
+
     private void bindBossClient(Player player) {
         if (player == null || !player.isOnline() || bossUuid == null || !isActiveArenaParticipant(player)) {
             return;
@@ -3289,7 +4302,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossBindingInstanceId.isBlank()) {
             bossBindingInstanceId = eventId + ":" + generation + ":" + bossUuid;
         }
-        sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L, bossUuid.toString());
+        sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
+                bossUuid.toString(), config.clientBossId());
     }
 
     private void sendControlStart(Player player) {
@@ -3347,6 +4361,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void sendClientPacket(Player player, String type, String instanceId, long durationMillis, String subjectId) {
+        sendClientPacket(player, type, instanceId, durationMillis, subjectId, config.clientBossId());
+    }
+
+    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,
+                                  String subjectId, String visualId) {
         if (player == null || !player.isOnline() || config.bridgeChannel().isBlank()) {
             return;
         }
@@ -3360,7 +4379,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             output.writeUTF(instanceId == null ? "" : instanceId);
             output.writeLong(durationMillis);
             output.writeUTF(subjectId == null ? "" : subjectId);
-            output.writeUTF(config.clientBossId());
+            output.writeUTF(visualId == null ? "" : visualId);
             output.writeUTF(config.clientControlId());
             output.flush();
             player.sendPluginMessage(this, config.bridgeChannel(), bytes.toByteArray());
@@ -3389,7 +4408,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "wave" -> List.of("spawn", "clear");
                 case "boss" -> List.of("spawn", "official", "info", "damage", "phase", "kill", "spell");
                 case "client" -> List.of("status", "bindboss", "clear");
-                case "test" -> List.of("wave", "boss");
+                case "test" -> List.of("wave", "boss", "music");
                 default -> List.of();
             };
         }
@@ -3398,6 +4417,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "wave".equalsIgnoreCase(args[1])) {
             return List.of("1", "2", "3", "final");
+        }
+        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "music".equalsIgnoreCase(args[1])) {
+            return List.of("waves", "boss", "half", "final", "victory");
+        }
+        if (args.length == 4 && "test".equalsIgnoreCase(args[0]) && "music".equalsIgnoreCase(args[1])) {
+            return Bukkit.getOnlinePlayers().stream()
+                    .map(Player::getName)
+                    .filter(value -> value.toLowerCase(Locale.ROOT).startsWith(args[3].toLowerCase(Locale.ROOT)))
+                    .sorted(String.CASE_INSENSITIVE_ORDER)
+                    .toList();
         }
         if (args.length == 3 && ("cleanup".equalsIgnoreCase(args[0]) || "reset".equalsIgnoreCase(args[0])
                 || "unlock".equalsIgnoreCase(args[0]))) {

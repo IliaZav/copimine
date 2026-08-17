@@ -86,6 +86,18 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/manifests/block_visuals_manifest.json",
     "assets/copimine/manifests/narcotics_items_manifest.json",
     "assets/copimine/manifests/narcotics_visuals_manifest.json",
+    "assets/copimine/models/block/end_event_core.json",
+    "assets/copimine/models/block/end_event_core_charged.json",
+    "assets/copimine/models/block/end_event_rune.json",
+    "assets/copimine/textures/block/end_event_core.png",
+    "assets/copimine/textures/block/end_event_core_charged.png",
+    "assets/copimine/textures/block/end_event_rune.png",
+    "assets/copimine/sounds.json",
+    "assets/copimine/sounds/end_rift/waves.ogg",
+    "assets/copimine/sounds/end_rift/boss.ogg",
+    "assets/copimine/sounds/end_rift/boss_half.ogg",
+    "assets/copimine/sounds/end_rift/boss_final.ogg",
+    "assets/copimine/sounds/end_rift/victory.ogg",
     "assets/copimine/font/narcotics_overlay.json",
     "assets/copimine/font/logo.json",
     "assets/copimine/models/item/feta.json",
@@ -250,6 +262,14 @@ def validate_source_tree() -> None:
     forbidden = list((SRC / "assets" / "minecraft" / "textures" / "block").rglob("*")) if (SRC / "assets" / "minecraft" / "textures" / "block").exists() else []
     if forbidden:
         raise ValueError("Global vanilla block texture overrides are not allowed in this resource pack.")
+    forbidden_vanilla_overrides = [
+        SRC / "assets" / "minecraft" / "blockstates" / "crying_obsidian.json",
+        SRC / "assets" / "minecraft" / "blockstates" / "respawn_anchor.json",
+        SRC / "assets" / "minecraft" / "models" / "item" / "crying_obsidian.json",
+        SRC / "assets" / "minecraft" / "models" / "item" / "respawn_anchor.json",
+    ]
+    if any(path.exists() for path in forbidden_vanilla_overrides):
+        raise ValueError("Event overlays must not override vanilla crying_obsidian or respawn_anchor assets.")
 
     validate_catalog_mapping()
 

@@ -323,6 +323,10 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.isBossBound(uuid);
     }
 
+    public static String endEventVisualForEntity(String uuid) {
+        return END_EVENT_STATE.visualForEntity(uuid);
+    }
+
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
     }

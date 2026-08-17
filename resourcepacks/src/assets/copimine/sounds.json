@@ -1,0 +1,27 @@
+{
+  "end_rift/waves": {
+    "sounds": [
+      {"name": "copimine:end_rift/waves", "stream": true}
+    ]
+  },
+  "end_rift/boss": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss", "stream": true}
+    ]
+  },
+  "end_rift/boss_half": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_half", "stream": true}
+    ]
+  },
+  "end_rift/boss_final": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_final", "stream": true}
+    ]
+  },
+  "end_rift/victory": {
+    "sounds": [
+      {"name": "copimine:end_rift/victory", "stream": true}
+    ]
+  }
+}

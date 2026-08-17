@@ -52,6 +52,23 @@ class EndEventClientStateTest {
         assertFalse(state.hasBossBinding());
     }
 
+    @Test
+    void bindsEventMobVisualsByUuidAndIgnoresStaleUnbind() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-1", 0L,
+                "mob-uuid", "END_RIFT_ENDERMITE_V1", "control-id"), 100L));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_ENDERMITE_V1"));
+
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-2", 0L,
+                "mob-uuid", "END_RIFT_SHULKER_V1", "control-id"), 200L));
+        assertFalse(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-1", 0L,
+                "mob-uuid", "", "control-id"), 300L));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SHULKER_V1"));
+        assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-2", 0L,
+                "mob-uuid", "", "control-id"), 400L));
+        assertTrue(state.visualForEntity("mob-uuid").isBlank());
+    }
+
     private static EndEventPacket packet(String type, String eventId, long generation, String instance,
                                          long duration, String subject, String bossId, String controlId) {
         return new EndEventPacket(type, eventId, generation, instance, duration, subject, bossId, controlId);

@@ -83,6 +83,10 @@ copimine-db-backups/
 
 # Resource pack build output
 resourcepacks/build/
+/pack-inspect/
+/tools/audio-work/
+/tools/ffmpeg-local/
+/CopiMineClient/run/
 thirdparty/_modpack_stage/
 
 # Minecraft server runtime

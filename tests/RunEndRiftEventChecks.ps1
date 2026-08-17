@@ -43,7 +43,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_client_contract.py tests\test_end_event_spec_contract.py `
       tests\test_end_event_layout_contract.py tests\test_end_event_commands_contract.py `
       tests\test_end_event_item_lore_contract.py tests\test_end_event_runtime_invariants_contract.py `
-      tests\test_end_event_runtime_smoke_contract.py
+      tests\test_end_event_runtime_smoke_contract.py tests\test_end_event_ai_contract.py `
+      tests\test_end_event_music_contract.py
   } finally {
     Pop-Location
   }
@@ -60,9 +61,11 @@ $endRiftDomainSources = (Get-ChildItem (Join-Path $endRiftRoot 'copimine-end-eve
 Invoke-EndRiftStep 'Pure domain tests' {
   & javac -encoding UTF-8 -d $endRiftTestBuild $endRiftDomainSources `
     (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
-    (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java')
+    (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
+    (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
+  & java -cp $endRiftTestBuild EndRiftAiPolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `

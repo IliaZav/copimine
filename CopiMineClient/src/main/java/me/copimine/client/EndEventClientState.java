@@ -1,5 +1,7 @@
 package me.copimine.client;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /** Main-thread-owned client state for the optional End Rift boss/reverse-control visuals. */
@@ -8,6 +10,8 @@ public final class EndEventClientState {
     private long generation;
     private String bossUuid = "";
     private String bossBindingInstance = "";
+    private String bossVisualId = "";
+    private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private String controlInstance = "";
     private long controlExpiresAt;
 
@@ -28,6 +32,8 @@ public final class EndEventClientState {
         return switch (packet.type()) {
             case "END_BOSS_BIND" -> bindBoss(packet);
             case "END_BOSS_UNBIND" -> unbindBoss(packet);
+            case "END_ENTITY_BIND" -> bindEntity(packet);
+            case "END_ENTITY_UNBIND" -> unbindEntity(packet);
             case "END_CONTROL_START" -> startControl(packet, nowMillis);
             case "END_CONTROL_STOP" -> stopControl(packet);
             default -> false;
@@ -49,6 +55,17 @@ public final class EndEventClientState {
 
     public synchronized boolean hasBossBinding() {
         return !bossUuid.isBlank();
+    }
+
+    public synchronized String visualForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "";
+        }
+        if (Objects.equals(bossUuid, uuid)) {
+            return bossVisualId;
+        }
+        EntityVisualBinding binding = entityVisuals.get(uuid);
+        return binding == null ? "" : binding.visualId();
     }
 
     public synchronized String bossUuid() {
@@ -79,6 +96,7 @@ public final class EndEventClientState {
         }
         bossUuid = packet.subjectId();
         bossBindingInstance = packet.instanceId();
+        bossVisualId = packet.visualId().isBlank() ? "END_RIFT_GUARDIAN_V1" : packet.visualId();
         return true;
     }
 
@@ -88,6 +106,24 @@ public final class EndEventClientState {
         }
         bossUuid = "";
         bossBindingInstance = "";
+        bossVisualId = "";
+        return true;
+    }
+
+    private boolean bindEntity(EndEventPacket packet) {
+        if (packet.subjectId().isBlank() || packet.instanceId().isBlank() || packet.visualId().isBlank()) {
+            return false;
+        }
+        entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
+        return true;
+    }
+
+    private boolean unbindEntity(EndEventPacket packet) {
+        EntityVisualBinding binding = entityVisuals.get(packet.subjectId());
+        if (binding == null || !Objects.equals(binding.instanceId(), packet.instanceId())) {
+            return false;
+        }
+        entityVisuals.remove(packet.subjectId());
         return true;
     }
 
@@ -116,7 +152,12 @@ public final class EndEventClientState {
     private void clearEffects() {
         bossUuid = "";
         bossBindingInstance = "";
+        bossVisualId = "";
+        entityVisuals.clear();
         controlInstance = "";
         controlExpiresAt = 0L;
+    }
+
+    private record EntityVisualBinding(String instanceId, String visualId) {
     }
 }

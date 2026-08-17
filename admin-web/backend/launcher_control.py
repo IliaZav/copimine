@@ -787,6 +787,59 @@ class ControlPlane:
             "stats": self.stats(),
         }
 
+    def public_launcher(self) -> dict[str, Any]:
+        state = self.load_state()
+        current_id = state.get("currentReleaseId")
+        current = next((item for item in state.get("releases", []) if item.get("releaseId") == current_id), None)
+        mods: list[dict[str, Any]] = []
+        if self.public_root:
+            manifest_path = self.public_root / "launcher" / "stable" / "instance-manifest.json"
+            if manifest_path.is_file():
+                try:
+                    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    mods = [
+                        {
+                            "componentId": item.get("componentId"),
+                            "version": item.get("version"),
+                            "required": bool(item.get("required", True)),
+                            "sizeBytes": int(item.get("size", item.get("sizeBytes", 0)) or 0),
+                        }
+                        for item in document.get("files", [])
+                        if isinstance(item, dict) and str(item.get("path") or "").lower().startswith("mods/")
+                    ]
+                except (OSError, json.JSONDecodeError):
+                    mods = []
+        return {
+            "schemaVersion": 1,
+            "channel": "stable",
+            "currentRelease": _copy_json(current) if current else None,
+            "manifestUrl": "/launcher/stable/instance-manifest.json",
+            "signatureUrl": "/launcher/stable/instance-manifest.sig",
+            "filesBaseUrl": "/launcher/files/",
+            "mods": mods,
+        }
+
+    def public_news(self) -> list[dict[str, Any]]:
+        return self.list_news()
+
+    def public_news_detail(self, slug: str) -> dict[str, Any]:
+        slug = _safe_slug(slug)
+        item = next((row for row in self.list_news() if row.get("slug") == slug), None)
+        if item is None:
+            raise ControlPlaneError("LAUNCHER_NEWS_NOT_FOUND", "published news was not found", field="slug")
+        return item
+
+    def resolve_public_file(self, digest: str) -> Path:
+        digest = validate_sha256(digest, field="sha256")
+        if not self.public_root:
+            raise ControlPlaneError("LAUNCHER_FILE_NOT_FOUND", "public distribution root is not configured")
+        candidate = self.public_root / "launcher" / "files" / digest
+        if not candidate.is_file():
+            raise ControlPlaneError("LAUNCHER_FILE_NOT_FOUND", "published launcher file was not found")
+        if hashlib.sha256(candidate.read_bytes()).hexdigest() != digest:
+            raise ControlPlaneError("LAUNCHER_FILE_INVALID", "published launcher file hash does not match URL")
+        return candidate
+
 
 def default_control_plane() -> ControlPlane:
     app_root = Path(__file__).resolve().parents[1]

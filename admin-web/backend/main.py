@@ -70,7 +70,7 @@ try:
 except Exception:  # pragma: no cover
     yaml = None
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -94,6 +94,7 @@ from .plugin_registry import (
     require_registry_plugin,
     validate_registry_values,
 )
+from .launcher_control import ControlPlaneError, MAX_MOD_SIZE, default_control_plane
 from .president_law_workflow import (
     review_president_law_transition,
     PresidentLawReviewError,
@@ -833,6 +834,41 @@ class SiteCmsEntryIn(BaseModel):
     link_url: str = Field(default="", max_length=240)
     sort_order: int = Field(default=100, ge=0, le=100000)
     enabled: bool = True
+
+
+class LauncherModEditIn(BaseModel):
+    version: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    filename: Optional[str] = Field(default=None, min_length=5, max_length=128)
+    required: Optional[bool] = None
+    display_name: Optional[str] = Field(default=None, alias="displayName", max_length=160)
+
+
+class LauncherReleasePublishIn(BaseModel):
+    public_key_id: str = Field(alias="publicKeyId", min_length=1, max_length=64)
+    release_id: str = Field(alias="releaseId", min_length=1, max_length=64)
+    release_sequence: int = Field(alias="releaseSequence", ge=1, le=2_147_483_647)
+    published_at: Optional[str] = Field(default=None, alias="publishedAt", max_length=64)
+
+
+class LauncherRollbackIn(BaseModel):
+    release_id: str = Field(alias="releaseId", min_length=1, max_length=64)
+
+
+class LauncherNewsIn(BaseModel):
+    slug: str = Field(min_length=3, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    version: str = Field(default="", max_length=64)
+    published_at: str = Field(default="", alias="publishedAt", max_length=64)
+    summary: list[str] = Field(default_factory=list, max_length=3)
+    sections: dict[str, Any] = Field(default_factory=dict)
+    items: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class LauncherTelemetryIn(BaseModel):
+    event: str = Field(min_length=1, max_length=40)
+    launcher_version: str = Field(alias="launcherVersion", min_length=1, max_length=64)
+    manifest_sequence: int = Field(alias="manifestSequence", ge=0, le=2_147_483_647)
+    diagnostic_code: Optional[str] = Field(default=None, alias="diagnosticCode", max_length=80)
 
 
 class PluginRegistryConfigIn(BaseModel):
@@ -1740,6 +1776,9 @@ def csrf_exempt_paths() -> set[str]:
         # client unable to create a challenge or synchronize a nickname.
         "/api/launcher/link/challenge",
         "/api/launcher/profile/nickname",
+        # Native Launcher telemetry is a bounded, anonymous diagnostic feed;
+        # it is not a browser session mutation and therefore has no CSRF cookie.
+        "/api/launcher/telemetry",
     }
 
 
@@ -12743,6 +12782,42 @@ async def public_cms() -> dict[str, Any]:
     return {"ok": True, "data": await bg(read_site_cms_sync, False)}
 
 
+@app.get("/api/public/launcher")
+async def public_launcher() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(default_control_plane().public_launcher)}
+
+
+@app.get("/api/public/news")
+async def public_launcher_news() -> dict[str, Any]:
+    news = await bg(default_control_plane().public_news)
+    return {"ok": True, "schemaVersion": 1, "news": news, "patches": news}
+
+
+@app.get("/api/public/news/{slug}")
+async def public_launcher_news_detail(slug: str) -> dict[str, Any]:
+    try:
+        news = await bg(default_control_plane().public_news_detail, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc, status_code=404)
+    return {"ok": True, "news": news, "patch": news}
+
+
+@app.post("/api/launcher/telemetry")
+async def launcher_telemetry(data: LauncherTelemetryIn, request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "launcher-telemetry", limit=120, window_seconds=60)
+    try:
+        await bg(
+            default_control_plane().record_telemetry,
+            data.event,
+            data.launcher_version,
+            data.manifest_sequence,
+            data.diagnostic_code,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True}
+
+
 @app.get("/api/public/status")
 async def public_status(request: Request) -> dict[str, Any]:
     check_rate_limit(request, "public-status", limit=30, window_seconds=60)
@@ -15685,6 +15760,29 @@ async def modpack_download() -> FileResponse:
         return artifact_file_response("downloads", "CopiMineMods.zip")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Архив модов пока не подготовлен") from exc
+
+
+@app.get("/launcher/files/{sha256}")
+@app.head("/launcher/files/{sha256}")
+async def launcher_file_download(sha256: str) -> FileResponse:
+    try:
+        path = await bg(default_control_plane().resolve_public_file, sha256)
+        await bg(default_control_plane().record_download, "managed-file")
+        return FileResponse(path, media_type="application/java-archive", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc, status_code=404)
+
+
+@app.get("/launcher/stable/{filename}")
+@app.head("/launcher/stable/{filename}")
+async def launcher_stable_download(filename: str) -> FileResponse:
+    if filename not in {"instance-manifest.json", "instance-manifest.sig"}:
+        raise HTTPException(status_code=404, detail="Launcher release contract not found")
+    public_root = default_control_plane().public_root
+    path = public_root / "launcher" / "stable" / filename if public_root else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Launcher release contract not found")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=60"})
 
 
 @app.get("/downloads/{filename}")
@@ -18754,6 +18852,204 @@ async def admin_whitelist_approve(data: AdminWhitelistApproveIn, request: Reques
 @app.get("/api/admin/cms")
 async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
     return await bg(read_site_cms_sync, True)
+
+
+def launcher_control_http_error(error: ControlPlaneError, *, status_code: int = 400) -> None:
+    detail: dict[str, Any] = {"code": error.code, "message": error.message}
+    if error.field:
+        detail["field"] = error.field
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+@app.get("/api/admin/launcher")
+async def admin_launcher(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().dashboard)
+
+
+@app.get("/api/admin/launcher/mods")
+async def admin_launcher_mods(_: str = Depends(require_admin)) -> dict[str, Any]:
+    mods = await bg(default_control_plane().list_mods)
+    return {"mods": mods, "count": len(mods)}
+
+
+@app.post("/api/admin/launcher/mods/upload")
+async def admin_launcher_mod_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    component_id: str = Form(...),
+    version: str = Form(...),
+    filename: str = Form(...),
+    required: bool = Form(True),
+    display_name: str = Form(""),
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-upload", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_UPLOAD")
+    data = await file.read(MAX_MOD_SIZE + 1)
+    plane = default_control_plane()
+    try:
+        existing = next((item for item in await bg(plane.list_mods) if item.get("componentId") == component_id.strip().lower()), None)
+        if existing:
+            mod = await bg(
+                plane.replace_mod,
+                component_id,
+                version=version,
+                filename=filename,
+                data=data,
+                required=required,
+                display_name=display_name or None,
+            )
+        else:
+            mod = await bg(
+                plane.add_mod,
+                component_id,
+                version,
+                filename,
+                data,
+                required=required,
+                display_name=display_name or None,
+            )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "mod": mod}
+
+
+@app.patch("/api/admin/launcher/mods/{component_id}")
+async def admin_launcher_mod_edit(
+    component_id: str,
+    data: LauncherModEditIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-edit", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_EDIT")
+    try:
+        mod = await bg(
+            default_control_plane().replace_mod,
+            component_id,
+            version=data.version,
+            filename=data.filename,
+            required=data.required,
+            display_name=data.display_name,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "mod": mod}
+
+
+@app.delete("/api/admin/launcher/mods/{component_id}")
+async def admin_launcher_mod_delete(
+    component_id: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-delete", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_DELETE")
+    try:
+        await bg(default_control_plane().remove_mod, component_id)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "componentId": component_id}
+
+
+@app.post("/api/admin/launcher/release/validate")
+async def admin_launcher_release_validate(public_key_id: str = Query(..., alias="publicKeyId"), _: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().validate_release, public_key_id=public_key_id)
+
+
+@app.post("/api/admin/launcher/release/publish")
+async def admin_launcher_release_publish(
+    data: LauncherReleasePublishIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-release-publish", limit=6, window_seconds=300)
+    require_sensitive_confirm(request, "LAUNCHER_RELEASE_PUBLISH")
+    try:
+        release = await bg(
+            default_control_plane().publish_release,
+            public_key_id=data.public_key_id,
+            release_id=data.release_id,
+            release_sequence=data.release_sequence,
+            published_at=data.published_at or None,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "release": release}
+
+
+@app.post("/api/admin/launcher/release/rollback")
+async def admin_launcher_release_rollback(
+    data: LauncherRollbackIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-release-rollback", limit=4, window_seconds=300)
+    require_sensitive_confirm(request, "LAUNCHER_RELEASE_ROLLBACK")
+    try:
+        release = await bg(default_control_plane().rollback_release, data.release_id)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "release": release}
+
+
+@app.get("/api/admin/launcher/news")
+async def admin_launcher_news(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return {"news": await bg(default_control_plane().list_news, include_drafts=True)}
+
+
+@app.put("/api/admin/launcher/news/{slug}")
+async def admin_launcher_news_save(
+    slug: str,
+    data: LauncherNewsIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-save", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_SAVE")
+    payload = data.model_dump(by_alias=False)
+    payload["slug"] = slug
+    payload["publishedAt"] = payload.pop("published_at", "")
+    try:
+        news = await bg(default_control_plane().save_news, payload)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "news": news}
+
+
+@app.delete("/api/admin/launcher/news/{slug}")
+async def admin_launcher_news_delete(
+    slug: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-delete", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_DELETE")
+    try:
+        await bg(default_control_plane().delete_news, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "slug": slug}
+
+
+@app.post("/api/admin/launcher/news/{slug}/publish")
+async def admin_launcher_news_publish(
+    slug: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-publish", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_PUBLISH")
+    try:
+        news = await bg(default_control_plane().publish_news, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "news": news}
+
+
+@app.get("/api/admin/launcher/stats")
+async def admin_launcher_stats(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().stats)
 
 
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}

@@ -1137,29 +1137,36 @@ class ControlPlane:
 
     def _static_release_record(self) -> dict[str, Any] | None:
         """Expose the immutable stable manifest as current control-plane state."""
-        if not self.source_manifest or not self.source_manifest.is_file():
-            return None
-        try:
-            manifest_bytes = self.source_manifest.read_bytes()
-            document = json.loads(manifest_bytes.decode("utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return None
-        if not isinstance(document, dict):
-            return None
-        release_id = str(document.get("releaseId") or "").strip()
-        try:
-            release_sequence = int(document.get("releaseSequence") or 0)
-        except (TypeError, ValueError):
-            release_sequence = 0
-        if not release_id or release_sequence <= 0:
-            return None
-        return {
-            "releaseId": release_id,
-            "releaseSequence": release_sequence,
-            "publishedAtUtc": document.get("publishedAtUtc"),
-            "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
-            "publicKeyId": document.get("publicKeyId"),
-        }
+        candidates: list[Path] = []
+        if self.source_manifest:
+            candidates.append(self.source_manifest)
+        if self.public_root:
+            candidates.append(self.public_root / "launcher" / "stable" / "instance-manifest.json")
+        for manifest_path in candidates:
+            if not manifest_path.is_file():
+                continue
+            try:
+                manifest_bytes = manifest_path.read_bytes()
+                document = json.loads(manifest_bytes.decode("utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(document, dict):
+                continue
+            release_id = str(document.get("releaseId") or "").strip()
+            try:
+                release_sequence = int(document.get("releaseSequence") or 0)
+            except (TypeError, ValueError):
+                release_sequence = 0
+            if not release_id or release_sequence <= 0:
+                continue
+            return {
+                "releaseId": release_id,
+                "releaseSequence": release_sequence,
+                "publishedAtUtc": document.get("publishedAtUtc"),
+                "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+                "publicKeyId": document.get("publicKeyId"),
+            }
+        return None
 
     def public_news(self) -> list[dict[str, Any]]:
         published = self.list_news()

@@ -120,6 +120,20 @@ def test_empty_control_state_surfaces_static_release_as_current(tmp_path: Path) 
     assert public["currentRelease"]["manifestSha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
 
 
+def test_public_root_manifest_is_used_when_source_manifest_is_unconfigured(tmp_path: Path) -> None:
+    manifest = complete_source_manifest(tmp_path)
+    public_manifest = tmp_path / "public" / "launcher" / "stable" / "instance-manifest.json"
+    public_manifest.parent.mkdir(parents=True)
+    public_manifest.write_bytes(manifest.read_bytes())
+    plane = control.ControlPlane(
+        tmp_path / "control",
+        source_manifest=tmp_path / "missing-source.json",
+        public_root=tmp_path / "public",
+    )
+
+    assert plane.public_launcher()["currentRelease"]["releaseId"] == "2026.08.17.1"
+
+
 def test_control_plane_keeps_official_plus_named_mods(tmp_path: Path) -> None:
     source = complete_source_manifest(tmp_path)
     document = json.loads(source.read_text(encoding="utf-8"))

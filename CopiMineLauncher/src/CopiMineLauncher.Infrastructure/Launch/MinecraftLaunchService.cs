@@ -51,6 +51,11 @@ public interface IMinecraftLaunchService
 
 public static class MinecraftLaunchStartup
 {
+    // The probe only needs to catch immediate crashes (for example, a bad
+    // user-installed mod). Waiting for the process to finish its full game
+    // bootstrap makes every successful launch feel frozen in the Launcher.
+    public static TimeSpan DefaultGracePeriod { get; } = TimeSpan.FromSeconds(3);
+
     public static async Task EnsureAliveAsync(
         Process process,
         string logPath,
@@ -293,7 +298,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         await MinecraftLaunchStartup.EnsureAliveAsync(
             process,
             logPath,
-            TimeSpan.FromSeconds(10),
+            MinecraftLaunchStartup.DefaultGracePeriod,
             cancellationToken,
             request.InstanceRoot,
             GetUserModFileNames(request));

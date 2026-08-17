@@ -9,6 +9,12 @@ namespace CopiMineLauncher.Infrastructure.Tests;
 public sealed class MinecraftLaunchStartupTests
 {
     [Fact]
+    public void Default_startup_probe_grace_period_is_short_enough_for_a_responsive_launcher()
+    {
+        MinecraftLaunchStartup.DefaultGracePeriod.Should().Be(TimeSpan.FromSeconds(3));
+    }
+
+    [Fact]
     public async Task Early_process_exit_is_reported_with_exit_code_and_log_path()
     {
         if (!OperatingSystem.IsWindows())

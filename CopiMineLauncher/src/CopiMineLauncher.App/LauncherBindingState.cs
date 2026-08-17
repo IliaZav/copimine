@@ -162,6 +162,7 @@ public sealed class LauncherBindingStateStore
     private static bool IsAllowedAuthorizationUrl(Uri uri)
     {
         var production = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(uri.UserInfo)
             && (string.Equals(uri.Host, "copimine.ru", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(uri.Host, "www.copimine.ru", StringComparison.OrdinalIgnoreCase)
                 || uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase));

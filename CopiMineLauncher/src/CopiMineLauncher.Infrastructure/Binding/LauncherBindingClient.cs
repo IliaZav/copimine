@@ -290,6 +290,7 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
         if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)
             || (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
                 && !(uri.IsLoopback && string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
+            || !string.IsNullOrEmpty(uri.UserInfo)
             || (!uri.IsLoopback && !uri.Host.Equals("copimine.ru", StringComparison.OrdinalIgnoreCase) && !uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase))
             || !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal))
         {

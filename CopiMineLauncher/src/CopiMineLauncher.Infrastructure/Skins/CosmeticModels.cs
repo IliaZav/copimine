@@ -59,6 +59,7 @@ public static class CosmeticTextureSources
         normalized = null!;
         if (source is null
             || !AllowedHosts.Contains(source.Host)
+            || !string.IsNullOrEmpty(source.UserInfo)
             || !string.Equals(source.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(source.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
         {

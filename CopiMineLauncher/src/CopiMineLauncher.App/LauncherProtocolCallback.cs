@@ -11,6 +11,7 @@ public static class LauncherProtocolCallbackParser
             || !Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)
             || !string.Equals(uri.Scheme, "copimine", StringComparison.OrdinalIgnoreCase)
             || !string.Equals(uri.Host, "launcher", StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(uri.UserInfo)
             || !string.Equals(uri.AbsolutePath, "/link", StringComparison.Ordinal)
             || !string.IsNullOrEmpty(uri.Fragment)
             || uri.Query.Length == 0)

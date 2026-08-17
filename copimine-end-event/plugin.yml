@@ -1,0 +1,17 @@
+name: CopiMineEndEvent
+version: '0.1.0'
+main: me.copimine.endevent.CopiMineEndEvent
+api-version: '1.21'
+author: CopiMine
+load: POSTWORLD
+depend:
+  - CopiMineWorldCore
+  - CopiMineArtifacts
+commands:
+  cmend:
+    description: Управление End Rift Event
+    usage: /cmend <status|core|arena|gate|portalroom|resources|ritual|wave|boss|client>
+permissions:
+  copimine.endevent.admin:
+    description: Управление End Rift Event
+    default: op

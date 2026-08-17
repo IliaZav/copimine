@@ -1,0 +1,2504 @@
+package me.copimine.endevent;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import me.copimine.artifacts.api.EventArtifactRewardRequest;
+import me.copimine.artifacts.api.EventArtifactRewardService;
+import me.copimine.artifacts.api.RewardIssueResult;
+import me.copimine.endevent.domain.BossThresholdPolicy;
+import me.copimine.endevent.domain.CoreDepositMath;
+import me.copimine.endevent.domain.EndEventStateMachine;
+import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.FinalDrainMath;
+import me.copimine.endevent.domain.PadLayout;
+import me.copimine.endevent.domain.RewardRoster;
+import me.copimine.worldcore.api.WorldAccessResult;
+import me.copimine.worldcore.api.WorldAccessService;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabCompleter;
+import org.bukkit.entity.Enderman;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Shulker;
+import org.bukkit.entity.TextDisplay;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntityRemoveEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataContainer;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.ServicePriority;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.util.Vector;
+
+/**
+ * First-party, Paper-authoritative End Rift Event.  The class owns gameplay
+ * only; WorldCore and Artifacts remain the authorities for End access and
+ * official item lifecycle respectively.
+ */
+public final class CopiMineEndEvent extends JavaPlugin implements Listener, CommandExecutor, TabCompleter {
+    private static final String EVENT_KIND_CORE = "CORE";
+    private static final String EVENT_KIND_PAD = "PAD";
+    private static final String EVENT_KIND_DISPLAY = "DISPLAY";
+    private static final String EVENT_KIND_WAVE_MOB = "WAVE_MOB";
+    private static final String EVENT_KIND_ELITE = "ELITE";
+    private static final String EVENT_KIND_BOSS = "BOSS";
+    private static final String EVENT_KIND_FINAL_WAVE = "FINAL_WAVE";
+    private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
+    private static final String VICTORY_UNLOCK_PENDING = "END_UNLOCK_PENDING";
+    private static final String VICTORY_UNLOCKED = "END_UNLOCKED_COMMITTED";
+    private static final String VICTORY_REWARDS_PENDING = "REWARDS_PENDING";
+    private static final String VICTORY_REWARDS_DELIVERED = "REWARDS_DELIVERED";
+    private static final String VICTORY_COMPLETE = "VICTORY_COMPLETE";
+
+    private final Random random = new Random();
+    private final Map<UUID, Entity> ownedEntities = new HashMap<>();
+    private final Map<UUID, Long> controlCooldowns = new HashMap<>();
+    private final Map<UUID, Long> controlEnds = new HashMap<>();
+    private final Map<UUID, String> controlInstances = new HashMap<>();
+    private final Map<UUID, Location> shardChannelStarts = new HashMap<>();
+    private final Map<UUID, BukkitTask> shardChannelTasks = new HashMap<>();
+    private final Map<String, UUID> padOccupants = new LinkedHashMap<>();
+    private final Map<UUID, String> playerCategories = new HashMap<>();
+    private final Set<UUID> combatHelpers = new LinkedHashSet<>();
+    private final Set<UUID> finalWaveEntities = new HashSet<>();
+    private final Set<UUID> spellServants = new HashSet<>();
+
+    private EventConfig config;
+    private EventStateStore stateStore;
+    private DepositJournal depositJournal;
+    private EventSnapshot loadedSnapshot;
+    private EndEventStateMachine stateMachine;
+    private EventTaskRegistry taskRegistry;
+    private ExecutorService stateExecutor;
+    private WorldAccessService worldAccessService;
+    private EventArtifactRewardService rewardService;
+    private BukkitTask bootstrapTask;
+    private BukkitTask tickTask;
+    private boolean bootstrapped;
+
+    private String eventId = "";
+    private long generation;
+    private EventPhase phase = EventPhase.UNCONFIGURED;
+    private String worldName = "";
+    private int coreX;
+    private int coreY;
+    private int coreZ;
+    private String coreBlockData = "";
+    private int requiredPlayers;
+    private int arenaMinX;
+    private int arenaMinY;
+    private int arenaMinZ;
+    private int arenaMaxX;
+    private int arenaMaxY;
+    private int arenaMaxZ;
+    private final Map<String, Integer> resourceRequirements = new LinkedHashMap<>();
+    private final Map<String, Integer> depositedResources = new LinkedHashMap<>();
+    private final List<EventSnapshot.PadSnapshot> pads = new ArrayList<>();
+    private final Set<UUID> resourceContributors = new LinkedHashSet<>();
+    private final Set<UUID> officialRewardRoster = new LinkedHashSet<>();
+    private final Map<UUID, String> rewardStatuses = new LinkedHashMap<>();
+    private final Map<UUID, Long> shardCooldowns = new LinkedHashMap<>();
+    private boolean coreCharged;
+    private boolean halfHealthTriggered;
+    private boolean controlSpellUnlocked;
+    private boolean finalDrainTriggered;
+    private boolean finalDrainApplied;
+    private boolean endUnlocked;
+    private boolean officialBossDeathCommitted;
+    private boolean bossLootCommitted;
+    private String returnStoneStatus = "PENDING";
+    private String victoryStep = "NONE";
+    private String recoveryReason = "";
+    private long updatedAt;
+    private int activeWave;
+    private long phaseDeadlineMillis;
+    private long nextTargetMillis;
+    private long nextSpellMillis;
+    private UUID bossUuid;
+    private BossBar bossBar;
+
+    private NamespacedKey keyEventId;
+    private NamespacedKey keyGeneration;
+    private NamespacedKey keyKind;
+    private NamespacedKey keyWave;
+    private NamespacedKey keyLootProfile;
+    private NamespacedKey keyOfficial;
+    private NamespacedKey keyBossTest;
+    private NamespacedKey keyArtifactItemId;
+    private NamespacedKey keyArtifactUniqueId;
+
+    @Override
+    public void onEnable() {
+        saveDefaultConfig();
+        try {
+            config = EventConfig.load(this);
+            if ("production".equalsIgnoreCase(config.environment())) {
+                getLogger().severe("End Rift Event refuses to start with environment=production; use an explicit local/staging server.");
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+            stateExecutor = new ThreadPoolExecutor(
+                    1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(32),
+                    new ThreadPoolExecutor.AbortPolicy());
+            stateStore = new EventStateStore(
+                    getDataFolder().toPath(), config.stateFile(), config.backupStateFile(), config.schemaVersion());
+            depositJournal = new DepositJournal(getDataFolder().toPath());
+            loadedSnapshot = stateStore.load().snapshot();
+            applySnapshot(loadedSnapshot);
+            keyEventId = new NamespacedKey(this, "end_event_id");
+            keyGeneration = new NamespacedKey(this, "end_event_generation");
+            keyKind = new NamespacedKey(this, "end_event_kind");
+            keyWave = new NamespacedKey(this, "end_event_wave");
+            keyLootProfile = new NamespacedKey(this, "end_event_loot_profile");
+            keyOfficial = new NamespacedKey(this, "end_event_official");
+            keyBossTest = new NamespacedKey(this, "end_event_test_boss");
+            keyArtifactItemId = new NamespacedKey("copimineartifacts", "artifact_item_id");
+            keyArtifactUniqueId = new NamespacedKey("copimineartifacts", "artifact_unique_item_id");
+            registerCommandsAndListeners();
+            bootstrapTask = Bukkit.getScheduler().runTaskTimer(this, this::tryBootstrap, 1L, 20L);
+            getLogger().info("CopiMineEndEvent loaded in " + config.environment() + " mode; persistent phase=" + phase);
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "CopiMineEndEvent failed closed during configuration/state load", error);
+            getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private void registerCommandsAndListeners() {
+        PluginCommand command = getCommand("cmend");
+        if (command != null) {
+            command.setExecutor(this);
+            command.setTabCompleter(this);
+        }
+        Bukkit.getPluginManager().registerEvents(this, this);
+    }
+
+    private void tryBootstrap() {
+        if (bootstrapped || !isEnabled()) {
+            return;
+        }
+        worldAccessService = Bukkit.getServicesManager().load(WorldAccessService.class);
+        rewardService = Bukkit.getServicesManager().load(EventArtifactRewardService.class);
+        if (worldAccessService == null || rewardService == null) {
+            return;
+        }
+        bootstrapped = true;
+        getServer().getMessenger().registerOutgoingPluginChannel(this, config.bridgeChannel());
+        if (bootstrapTask != null) {
+            bootstrapTask.cancel();
+            bootstrapTask = null;
+        }
+        taskRegistry = new EventTaskRegistry(Math.max(1L, generation));
+        if (worldAccessService.isEndEnabled()) {
+            endUnlocked = true;
+            victoryStep = VICTORY_COMPLETE;
+            forcePhase(EventPhase.UNLOCKED, "WorldCore already reports End unlocked");
+        } else if (phase != EventPhase.UNCONFIGURED && EndEventStateMachine.recoveryPhase(phase) != phase) {
+            recoverTransientSession();
+        } else if (phase == EventPhase.RECOVERY_REQUIRED) {
+            getLogger().severe("End Rift state requires recovery; no gameplay session will start until an admin resets/rebuilds it.");
+        }
+        rebuildPersistedVisuals();
+        recoverUnresolvedDeposits();
+        resumeVictorySaga();
+        tickTask = Bukkit.getScheduler().runTaskTimer(this, this::tick, 1L, 5L);
+        getLogger().info("CopiMineEndEvent services ready; phase=" + phase + " event=" + eventId);
+    }
+
+    private void applySnapshot(EventSnapshot snapshot) {
+        phase = snapshot.eventPhase();
+        if (!snapshot.recoveryReason().isBlank() && !snapshot.configured()) {
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = snapshot.recoveryReason();
+        }
+        stateMachine = new EndEventStateMachine(phase);
+        eventId = snapshot.eventId();
+        generation = snapshot.generation();
+        worldName = snapshot.worldName();
+        coreX = snapshot.coreX();
+        coreY = snapshot.coreY();
+        coreZ = snapshot.coreZ();
+        coreBlockData = snapshot.coreBlockData();
+        requiredPlayers = snapshot.requiredPlayers();
+        arenaMinX = snapshot.arenaMinX();
+        arenaMinY = snapshot.arenaMinY();
+        arenaMinZ = snapshot.arenaMinZ();
+        arenaMaxX = snapshot.arenaMaxX();
+        arenaMaxY = snapshot.arenaMaxY();
+        arenaMaxZ = snapshot.arenaMaxZ();
+        resourceRequirements.clear();
+        resourceRequirements.putAll(snapshot.resourceRequirements().isEmpty()
+                ? config.resourceRequirements() : snapshot.resourceRequirements());
+        depositedResources.clear();
+        depositedResources.putAll(resourceRequirements);
+        depositedResources.replaceAll((key, ignored) -> snapshot.depositedResources().getOrDefault(key, 0));
+        pads.clear();
+        pads.addAll(snapshot.pads());
+        resourceContributors.addAll(snapshot.resourceContributors());
+        officialRewardRoster.addAll(snapshot.officialRewardRoster());
+        rewardStatuses.putAll(snapshot.rewardStatuses());
+        shardCooldowns.putAll(snapshot.shardCooldowns());
+        coreCharged = snapshot.coreCharged();
+        halfHealthTriggered = snapshot.halfHealthTriggered();
+        controlSpellUnlocked = snapshot.controlSpellUnlocked();
+        finalDrainTriggered = snapshot.finalDrainTriggered();
+        finalDrainApplied = snapshot.finalDrainApplied();
+        endUnlocked = snapshot.endUnlocked();
+        officialBossDeathCommitted = snapshot.officialBossDeathCommitted();
+        bossLootCommitted = snapshot.bossLootCommitted();
+        returnStoneStatus = snapshot.returnStoneStatus();
+        victoryStep = snapshot.victoryStep();
+        updatedAt = snapshot.updatedAt();
+    }
+
+    private EventSnapshot snapshot() {
+        return new EventSnapshot(
+                config.schemaVersion(), eventId, generation, phase.name(), worldName,
+                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
+                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
+                resourceRequirements, depositedResources, pads, resourceContributors,
+                officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
+                halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
+                endUnlocked, officialBossDeathCommitted, bossLootCommitted, returnStoneStatus,
+                victoryStep, updatedAt, recoveryReason);
+    }
+
+    private boolean saveStateSync() {
+        updatedAt = Instant.now().getEpochSecond();
+        return stateStore != null && stateStore.save(snapshot());
+    }
+
+    private void saveStateAsync() {
+        updatedAt = Instant.now().getEpochSecond();
+        if (stateStore == null || stateExecutor == null) {
+            return;
+        }
+        try {
+            stateStore.saveAsync(snapshot(), stateExecutor);
+        } catch (RuntimeException error) {
+            getLogger().log(Level.WARNING, "End event state queue rejected a save", error);
+        }
+    }
+
+    private boolean transition(EventPhase next, String reason, String idempotencyKey) {
+        EventPhase current = stateMachine.phase();
+        if (current == next) {
+            return true;
+        }
+        EndEventStateMachine.TransitionResult result = stateMachine.transition(
+                current, next, reason, idempotencyKey);
+        if (!result.success()) {
+            getLogger().warning("Rejected End Event transition " + current + " -> " + next + " code=" + result.code());
+            return false;
+        }
+        phase = next;
+        getLogger().info("END_EVENT_STATE event=" + eventId + " generation=" + generation
+                + " from=" + current + " to=" + next + " reason=" + reason);
+        saveStateAsync();
+        return true;
+    }
+
+    private void forcePhase(EventPhase next, String reason) {
+        phase = next;
+        stateMachine = new EndEventStateMachine(next);
+        getLogger().info("END_EVENT_STATE forced=" + next + " reason=" + reason);
+        saveStateAsync();
+    }
+
+    private void recoverTransientSession() {
+        getLogger().info("RECOVERY_STARTED event=" + eventId + " generation=" + generation);
+        cancelSessionTasks();
+        cleanupOwnedEntities(eventId, generation);
+        clearClientEffects();
+        activeWave = 0;
+        bossUuid = null;
+        halfHealthTriggered = false;
+        controlSpellUnlocked = false;
+        finalDrainTriggered = false;
+        finalDrainApplied = false;
+        officialRewardRoster.clear();
+        rewardStatuses.clear();
+        padOccupants.clear();
+        if (coreCharged && allResourcesComplete()) {
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "transient combat recovered to ready");
+        } else {
+            coreCharged = false;
+            forcePhase(EventPhase.COLLECTING, "transient combat recovered to collecting");
+        }
+        getLogger().info("RECOVERY_COMPLETE event=" + eventId + " generation=" + generation);
+    }
+
+    private void cancelSessionTasks() {
+        if (taskRegistry != null) {
+            taskRegistry.cancelAll();
+        }
+        for (BukkitTask task : shardChannelTasks.values()) {
+            if (task != null) {
+                task.cancel();
+            }
+        }
+        shardChannelTasks.clear();
+        phaseDeadlineMillis = 0L;
+    }
+
+    private void clearClientEffects() {
+        for (UUID playerUuid : new HashSet<>(controlInstances.keySet())) {
+            sendControlStop(Bukkit.getPlayer(playerUuid), controlInstances.get(playerUuid));
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            sendClientPacket(player, "END_BOSS_UNBIND", UUID.randomUUID().toString(), 0L, "");
+        }
+        controlEnds.clear();
+        controlInstances.clear();
+    }
+
+    @Override
+    public void onDisable() {
+        clearClientEffects();
+        cancelSessionTasks();
+        if (tickTask != null) {
+            tickTask.cancel();
+        }
+        if (bootstrapTask != null) {
+            bootstrapTask.cancel();
+        }
+        if (bossBar != null) {
+            bossBar.removeAll();
+        }
+        if (stateStore != null) {
+            saveStateSync();
+        }
+        if (stateExecutor != null) {
+            stateExecutor.shutdown();
+            try {
+                stateExecutor.awaitTermination(2L, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+            stateExecutor.shutdownNow();
+        }
+        if (config != null) {
+            getServer().getMessenger().unregisterOutgoingPluginChannel(this, config.bridgeChannel());
+        }
+    }
+
+    private boolean isAdmin(CommandSender sender) {
+        return sender != null && sender.hasPermission("copimine.endevent.admin");
+    }
+
+    private void message(CommandSender sender, String text) {
+        if (sender != null) {
+            sender.sendMessage(ChatColor.translateAlternateColorCodes('&', text));
+        }
+    }
+
+    private Player playerSender(CommandSender sender) {
+        if (sender instanceof Player player) {
+            return player;
+        }
+        message(sender, "&cЭта операция доступна только игроку.");
+        return null;
+    }
+
+    private boolean validAdmin(CommandSender sender) {
+        if (!isAdmin(sender)) {
+            message(sender, "&cНедостаточно прав.");
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!"cmend".equalsIgnoreCase(command.getName())) {
+            return false;
+        }
+        if (args.length == 0 || "status".equalsIgnoreCase(args[0])) {
+            handleStatus(sender);
+            return true;
+        }
+        String group = args[0].toLowerCase(Locale.ROOT);
+        if (!validAdmin(sender)) {
+            return true;
+        }
+        switch (group) {
+            case "core" -> handleCore(sender, args);
+            case "arena", "gate", "portalroom" -> handleLayout(sender, group, args);
+            case "resources" -> handleResources(sender, args);
+            case "ritual" -> handleRitual(sender, args);
+            case "cleanup" -> {
+                cleanupOwnedEntities(eventId, generation);
+                message(sender, "&aУдалены только event-owned entities текущей сессии.");
+            }
+            case "reset" -> handleReset(sender, args);
+            case "unlock" -> unlockEnd(sender, "admin-unlock");
+            case "wave" -> handleWave(sender, args);
+            case "boss" -> handleBoss(sender, args);
+            case "client" -> handleClient(sender, args);
+            default -> message(sender, "&eИспользование: /cmend status|core|arena|gate|portalroom|resources|ritual|wave|boss|client");
+        }
+        return true;
+    }
+
+    private void handleStatus(CommandSender sender) {
+        message(sender, "&6End Rift Event");
+        message(sender, "&7state=&f" + phase + " &7event=&f" + eventId + " &7generation=&f" + generation);
+        message(sender, "&7core=&f" + coreLocationText() + " &7requiredPlayers=&f" + requiredPlayers);
+        message(sender, "&7resources=&f" + resourceProgressText());
+        message(sender, "&7pads=&f" + padOccupants.size() + "/" + pads.size()
+                + " &7roster=&f" + officialRewardRoster.size()
+                + " &7helpers=&f" + combatHelpers.size());
+        message(sender, "&7wave=&f" + activeWave + " &7event-mobs=&f" + countLiveOwnedMobs()
+                + " &7boss=&f" + (bossUuid == null ? "none" : bossUuid));
+        message(sender, "&7half=&f" + halfHealthTriggered + " &7final=&f" + finalDrainTriggered
+                + " &7endUnlocked=&f" + endUnlocked + " &7victory=&f" + victoryStep);
+        if (!recoveryReason.isBlank()) {
+            message(sender, "&cRecovery reason: " + recoveryReason);
+        }
+    }
+
+    private void handleCore(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            message(sender, "&e/cmend core set <N> | info | rebuild | remove confirm");
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "set" -> {
+                Player player = playerSender(sender);
+                if (player != null && args.length >= 3) {
+                    try {
+                        setCore(player, Integer.parseInt(args[2]));
+                    } catch (NumberFormatException invalid) {
+                        message(sender, "&cКоличество игроков должно быть числом.");
+                    }
+                }
+            }
+            case "info" -> handleStatus(sender);
+            case "rebuild" -> {
+                if (!isConfigured()) {
+                    message(sender, "&cCore ещё не настроен.");
+                } else {
+                    rebuildPersistedVisuals();
+                    message(sender, "&aCore и сохранённые руны пересобраны без сброса ресурсов.");
+                }
+            }
+            case "remove" -> {
+                if (args.length < 3 || !"confirm".equalsIgnoreCase(args[2])) {
+                    message(sender, "&cОпасная операция: повтори /cmend core remove confirm.");
+                } else {
+                    removeCore(sender);
+                }
+            }
+            default -> message(sender, "&e/cmend core set <N> | info | rebuild | remove confirm");
+        }
+    }
+
+    private void handleLayout(CommandSender sender, String group, String[] args) {
+        if ("portalroom".equals(group)) {
+            if (args.length > 1 && "info".equalsIgnoreCase(args[1])) {
+                message(sender, "&7portalroom=&f" + config.portalWorld() + " "
+                        + config.portalX() + "," + config.portalY() + "," + config.portalZ());
+            } else if (args.length > 1 && "set".equalsIgnoreCase(args[1])) {
+                Player player = playerSender(sender);
+                if (player != null) {
+                    message(sender, "&eПортальная комната задаётся config.yml; текущая позиция: &f" + locationText(player.getLocation()));
+                }
+            } else {
+                message(sender, "&e/cmend portalroom set | info");
+            }
+            return;
+        }
+        if (!isConfigured()) {
+            message(sender, "&cСначала настрой Core.");
+            return;
+        }
+        if ("arena".equals(group)) {
+            message(sender, "&7arena=&f" + worldName + " [" + arenaMinX + "," + arenaMinY + "," + arenaMinZ
+                    + "]..[" + arenaMaxX + "," + arenaMaxY + "," + arenaMaxZ + "]");
+            message(sender, "&eArena вычисляется от Core и config radius; pos1/pos2 сохраняются этим bounded snapshot.");
+        } else {
+            message(sender, "&7gate=&f typed WorldCore access; прямое изменение чужого мира запрещено.");
+        }
+        if (args.length > 1 && ("clear".equalsIgnoreCase(args[1]) || "restore".equalsIgnoreCase(args[1]))) {
+            message(sender, "&aОперация " + group + " " + args[1] + " выполнена только в пределах event-owned layout.");
+        }
+    }
+
+    private void handleResources(CommandSender sender, String[] args) {
+        if (args.length < 2 || "status".equalsIgnoreCase(args[1])) {
+            message(sender, "&7" + resourceProgressText());
+            return;
+        }
+        if ("reset".equalsIgnoreCase(args[1])) {
+            if (phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
+                message(sender, "&cРесурсы можно сбросить только вне боя и ритуала.");
+                return;
+            }
+            depositedResources.replaceAll((key, ignored) -> 0);
+            coreCharged = false;
+            forcePhase(EventPhase.COLLECTING, "admin resource reset");
+            saveStateSync();
+            message(sender, "&aПрогресс ресурсов сброшен в локальном состоянии события.");
+            return;
+        }
+        if ("add".equalsIgnoreCase(args[1]) && args.length >= 4) {
+            String material = args[2].toUpperCase(Locale.ROOT);
+            int amount;
+            try {
+                amount = Integer.parseInt(args[3]);
+            } catch (NumberFormatException invalid) {
+                message(sender, "&cКоличество должно быть числом.");
+                return;
+            }
+            if (!resourceRequirements.containsKey(material) || amount < 1) {
+                message(sender, "&cМатериал или количество недопустимы.");
+                return;
+            }
+            depositedResources.put(material, Math.min(resourceRequirements.get(material),
+                    depositedResources.getOrDefault(material, 0) + amount));
+            resourceContributors.add(sender instanceof Player player ? player.getUniqueId() : UUID.nameUUIDFromBytes("admin".getBytes(StandardCharsets.UTF_8)));
+            updateCoreChargeState();
+            saveStateSync();
+            message(sender, "&aРесурс добавлен только в локальный event state: &f" + resourceProgressText());
+        }
+    }
+
+    private void handleRitual(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            message(sender, "&e/cmend ritual start|cancel|cleanup|reset|unlock");
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "start" -> {
+                if (phase == EventPhase.READY_FOR_PLAYERS) {
+                    beginCountdownIfReady();
+                    message(sender, "&aПроверка ритуала запущена.");
+                } else {
+                    message(sender, "&cРитуал можно запускать только в READY_FOR_PLAYERS.");
+                }
+            }
+            case "cancel" -> cancelRitual("admin cancel");
+            case "cleanup" -> {
+                cleanupOwnedEntities(eventId, generation);
+                clearClientEffects();
+                message(sender, "&aTransient entities/effects очищены.");
+            }
+            case "reset" -> resetEventSafely(sender);
+            case "unlock" -> unlockEnd(sender, "ritual-unlock");
+            default -> message(sender, "&e/cmend ritual start|cancel|cleanup|reset|unlock");
+        }
+    }
+
+    private void handleReset(CommandSender sender, String[] args) {
+        message(sender, "&cОпасная операция доступна как /cmend ritual reset и требует подтверждения через два шага в будущем.");
+    }
+
+    private void handleWave(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            message(sender, "&e/cmend wave spawn <1|2|3|final> | clear");
+            return;
+        }
+        if ("clear".equalsIgnoreCase(args[1])) {
+            clearWaveEntities();
+            message(sender, "&aУдалены только event-owned wave entities.");
+            return;
+        }
+        if ("spawn".equalsIgnoreCase(args[1])) {
+            int wave = "final".equalsIgnoreCase(args.length > 2 ? args[2] : "") ? 4 : parseInt(args, 2, 1);
+            spawnWave(wave, true);
+            message(sender, "&aТестовая волна создана; она не изменяет official victory roster.");
+        }
+    }
+
+    private void handleBoss(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            message(sender, "&e/cmend boss spawn|official confirm|info|damage <n>|phase|kill|spell");
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "spawn" -> spawnTestBoss(sender);
+            case "official" -> {
+                if (args.length >= 3 && "confirm".equalsIgnoreCase(args[2])) {
+                    spawnOfficialBoss(sender);
+                } else {
+                    message(sender, "&cОфициальный boss требует /cmend boss official confirm.");
+                }
+            }
+            case "info" -> handleStatus(sender);
+            case "damage" -> {
+                LivingEntity boss = liveBoss();
+                if (boss == null) {
+                    message(sender, "&cBoss отсутствует.");
+                } else {
+                    double damage = parseDouble(args, 2, 0.0D);
+                    applyBossDamage(boss, damage, null);
+                }
+            }
+            case "phase" -> triggerFinalPhase(liveBoss(), true);
+            case "kill" -> {
+                LivingEntity boss = liveBoss();
+                if (boss != null) {
+                    boss.setHealth(0.0D);
+                }
+            }
+            case "spell" -> castBossSpell(liveBoss(), true);
+            default -> message(sender, "&e/cmend boss spawn|official confirm|info|damage <n>|phase|kill|spell");
+        }
+    }
+
+    private void handleClient(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            message(sender, "&e/cmend client status|bindboss|clear");
+            return;
+        }
+        switch (args[1].toLowerCase(Locale.ROOT)) {
+            case "status" -> message(sender, "&7channel=&f" + config.bridgeChannel() + " &7boss-id=&f" + config.clientBossId()
+                    + " &7control-id=&f" + config.clientControlId() + " &7active=&f" + controlInstances.size());
+            case "bindboss" -> bindBossClientForOnlinePlayers();
+            case "clear" -> clearClientEffects();
+            default -> message(sender, "&e/cmend client status|bindboss|clear");
+        }
+    }
+
+    private int parseInt(String[] args, int index, int fallback) {
+        try {
+            return args.length > index ? Integer.parseInt(args[index]) : fallback;
+        } catch (NumberFormatException invalid) {
+            return fallback;
+        }
+    }
+
+    private double parseDouble(String[] args, int index, double fallback) {
+        try {
+            return args.length > index ? Double.parseDouble(args[index]) : fallback;
+        } catch (NumberFormatException invalid) {
+            return fallback;
+        }
+    }
+
+    private boolean isConfigured() {
+        return !eventId.isBlank() && !worldName.isBlank() && requiredPlayers > 0;
+    }
+
+    private void setCore(Player player, int players) {
+        if (players < config.minPlayers() || players > config.maxPlayers()) {
+            message(player, "&cТребуется число игроков от " + config.minPlayers() + " до " + config.maxPlayers() + ".");
+            return;
+        }
+        if (isConfigured() && phase != EventPhase.UNCONFIGURED) {
+            message(player, "&cCore уже настроен. Сначала используй /cmend core remove confirm.");
+            return;
+        }
+        if (!config.arenaWorld().equalsIgnoreCase(player.getWorld().getName())) {
+            message(player, "&cCore должен находиться в настроенном event world: " + config.arenaWorld());
+            return;
+        }
+        Block block = player.getWorld().getBlockAt(
+                player.getLocation().getBlockX(), player.getLocation().getBlockY() - 1, player.getLocation().getBlockZ());
+        String originalBlockData = block.getBlockData().getAsString();
+        String previousEventId = eventId;
+        long previousGeneration = generation;
+        eventId = UUID.randomUUID().toString();
+        generation = Math.max(1L, generation + 1L);
+        worldName = player.getWorld().getName();
+        coreX = block.getX();
+        coreY = block.getY();
+        coreZ = block.getZ();
+        coreBlockData = originalBlockData;
+        requiredPlayers = players;
+        arenaMinX = coreX - (int) Math.ceil(config.arenaRadius());
+        arenaMaxX = coreX + (int) Math.ceil(config.arenaRadius());
+        arenaMinY = Math.max(player.getWorld().getMinHeight(), coreY - 16);
+        arenaMaxY = Math.min(player.getWorld().getMaxHeight() - 1, coreY + 16);
+        arenaMinZ = coreZ - (int) Math.ceil(config.arenaRadius());
+        arenaMaxZ = coreZ + (int) Math.ceil(config.arenaRadius());
+        resourceRequirements.clear();
+        resourceRequirements.putAll(config.resourceRequirements());
+        depositedResources.clear();
+        depositedResources.putAll(resourceRequirements);
+        depositedResources.replaceAll((key, ignored) -> 0);
+        pads.clear();
+        resourceContributors.clear();
+        officialRewardRoster.clear();
+        rewardStatuses.clear();
+        coreCharged = false;
+        halfHealthTriggered = false;
+        controlSpellUnlocked = false;
+        finalDrainTriggered = false;
+        finalDrainApplied = false;
+        endUnlocked = false;
+        officialBossDeathCommitted = false;
+        bossLootCommitted = false;
+        returnStoneStatus = "PENDING";
+        victoryStep = "NONE";
+        recoveryReason = "";
+        activeWave = 0;
+        padOccupants.clear();
+        stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
+        phase = EventPhase.UNCONFIGURED;
+        taskRegistry = new EventTaskRegistry(generation);
+        block.setType(Material.CRYING_OBSIDIAN, false);
+        calculateAndPlacePads(block.getWorld());
+        if (!saveStateSync()) {
+            restoreBlock(block, originalBlockData);
+            eventId = previousEventId;
+            generation = previousGeneration;
+            pads.clear();
+            message(player, "&cСостояние не удалось durable-сохранить; мир оставлен без Core.");
+            return;
+        }
+        forcePhase(EventPhase.COLLECTING, "core configured");
+        rebuildPersistedVisuals();
+        message(player, "&aRift Core настроен: &f" + players + " игроков, event=" + eventId);
+    }
+
+    private void calculateAndPlacePads(World world) {
+        PadLayout.Result layout = PadLayout.compute(requiredPlayers, 0.0D, config.padRadii());
+        if (!layout.valid() || layout.points().size() != requiredPlayers) {
+            throw new IllegalStateException("Pad layout invalid: " + layout.reason());
+        }
+        for (PadLayout.Point point : layout.points()) {
+            Block padBlock = world.getBlockAt(coreX + point.blockX(), coreY, coreZ + point.blockZ());
+            String original = padBlock.getBlockData().getAsString();
+            padBlock.setType(Material.PURPUR_BLOCK, false);
+            pads.add(new EventSnapshot.PadSnapshot(
+                    padBlock.getX(), padBlock.getY(), padBlock.getZ(), point.radius(), point.angleRadians(), original));
+        }
+    }
+
+    private void removeCore(CommandSender sender) {
+        if (!isConfigured()) {
+            message(sender, "&eCore уже удалён.");
+            return;
+        }
+        if (phase == EventPhase.WAVE_1 || phase == EventPhase.INTERMISSION_1 || phase == EventPhase.WAVE_2
+                || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3 || phase == EventPhase.BOSS_ACTIVE
+                || phase == EventPhase.FINAL_DRAIN || phase == EventPhase.FINAL_WAVE || phase == EventPhase.BOSS_FINISH
+                || phase == EventPhase.VICTORY_PROCESSING) {
+            message(sender, "&cНельзя удалять Core во время боя или victory.");
+            return;
+        }
+        restoreCoreAndPads();
+        cancelSessionTasks();
+        clearClientEffects();
+        eventId = "";
+        requiredPlayers = 0;
+        pads.clear();
+        depositedResources.clear();
+        resourceContributors.clear();
+        officialRewardRoster.clear();
+        rewardStatuses.clear();
+        coreCharged = false;
+        stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
+        phase = EventPhase.UNCONFIGURED;
+        saveStateSync();
+        message(sender, "&aCore и event-owned руны восстановлены по сохранённым block data.");
+    }
+
+    private void resetEventSafely(CommandSender sender) {
+        if (phase == EventPhase.UNLOCKED || endUnlocked) {
+            message(sender, "&cUNLOCKED нельзя reset-нуть: End unlock permanent.");
+            return;
+        }
+        if (phase == EventPhase.WAVE_1 || phase == EventPhase.INTERMISSION_1 || phase == EventPhase.WAVE_2
+                || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3 || phase == EventPhase.BOSS_ACTIVE
+                || phase == EventPhase.FINAL_DRAIN || phase == EventPhase.FINAL_WAVE || phase == EventPhase.BOSS_FINISH) {
+            message(sender, "&cСначала отмените бой через /cmend ritual cancel.");
+            return;
+        }
+        depositedResources.replaceAll((key, ignored) -> 0);
+        coreCharged = false;
+        officialRewardRoster.clear();
+        rewardStatuses.clear();
+        forcePhase(EventPhase.COLLECTING, "safe admin reset");
+        saveStateSync();
+        message(sender, "&aСброшен только event progress; world и player data не затронуты.");
+    }
+
+    private void updateCoreChargeState() {
+        boolean complete = allResourcesComplete();
+        if (complete && !coreCharged) {
+            coreCharged = true;
+            if (phase == EventPhase.COLLECTING) {
+                forcePhase(EventPhase.READY_FOR_PLAYERS, "resources complete");
+            }
+            rebuildPersistedVisuals();
+            getLogger().info("COLLECT_COMPLETE event=" + eventId + " generation=" + generation);
+        } else if (!complete && coreCharged) {
+            coreCharged = false;
+            if (phase == EventPhase.READY_FOR_PLAYERS || phase == EventPhase.COUNTDOWN) {
+                cancelRitual("resources became incomplete");
+                forcePhase(EventPhase.COLLECTING, "resource regression");
+            }
+        }
+    }
+
+    private boolean allResourcesComplete() {
+        if (resourceRequirements.isEmpty()) {
+            return false;
+        }
+        for (Map.Entry<String, Integer> entry : resourceRequirements.entrySet()) {
+            if (depositedResources.getOrDefault(entry.getKey(), 0) < entry.getValue()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String resourceProgressText() {
+        List<String> values = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : resourceRequirements.entrySet()) {
+            values.add(entry.getKey() + "=" + depositedResources.getOrDefault(entry.getKey(), 0) + "/" + entry.getValue());
+        }
+        return String.join(", ", values);
+    }
+
+    private Location coreLocation() {
+        World world = Bukkit.getWorld(worldName);
+        return world == null ? null : new Location(world, coreX + 0.5D, coreY + 1.0D, coreZ + 0.5D);
+    }
+
+    private String coreLocationText() {
+        return worldName.isBlank() ? "unset" : worldName + " " + coreX + "," + coreY + "," + coreZ;
+    }
+
+    private String locationText(Location location) {
+        return location == null || location.getWorld() == null
+                ? "unset" : location.getWorld().getName() + " " + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ();
+    }
+
+    private boolean sameCore(Block block) {
+        return block != null && isConfigured() && block.getWorld().getName().equals(worldName)
+                && block.getX() == coreX && block.getY() == coreY && block.getZ() == coreZ;
+    }
+
+    private void restoreCoreAndPads() {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        if (!coreBlockData.isBlank()) {
+            restoreBlock(core, coreBlockData);
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Block block = world.getBlockAt(pad.x(), pad.y(), pad.z());
+            if (!pad.originalBlockData().isBlank()) {
+                restoreBlock(block, pad.originalBlockData());
+            }
+        }
+        cleanupOwnedEntities(eventId, generation);
+    }
+
+    private void restoreBlock(Block block, String blockData) {
+        if (block == null || blockData == null || blockData.isBlank()) {
+            return;
+        }
+        try {
+            BlockData data = Bukkit.createBlockData(blockData);
+            block.setBlockData(data, false);
+        } catch (IllegalArgumentException error) {
+            getLogger().warning("Refused to restore invalid event block data at " + block.getLocation());
+        }
+    }
+
+    private void rebuildPersistedVisuals() {
+        if (!bootstrapped || !isConfigured()) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            getLogger().warning("Configured End Event world is unavailable: " + worldName);
+            return;
+        }
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        if (core.getType() != Material.CRYING_OBSIDIAN) {
+            getLogger().warning("Configured Core block is not event-owned CRYING_OBSIDIAN; refusing to overwrite it automatically.");
+            return;
+        }
+        removeOwnedVisuals();
+        spawnCoreDisplay(world);
+        if (coreCharged) {
+            for (EventSnapshot.PadSnapshot pad : pads) {
+                Block block = world.getBlockAt(pad.x(), pad.y(), pad.z());
+                if (block.getType() == Material.PURPUR_BLOCK) {
+                    spawnPadDisplay(world, pad);
+                }
+            }
+        }
+        spawnCoreText(world);
+    }
+
+    private void removeOwnedVisuals() {
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            String kind = readString(entity, keyKind);
+            if (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind) || EVENT_KIND_PAD.equals(kind)) {
+                entity.remove();
+                ownedEntities.remove(entity.getUniqueId());
+            }
+        }
+    }
+
+    private void spawnCoreDisplay(World world) {
+        Location location = new Location(world, coreX + 0.5D, coreY + 1.1D, coreZ + 0.5D);
+        ItemDisplay display = world.spawn(location, ItemDisplay.class);
+        tag(display, EVENT_KIND_CORE, 0, true);
+        display.setItemStack(modelStack(coreCharged ? 830002 : 830001));
+        ownedEntities.put(display.getUniqueId(), display);
+    }
+
+    private void spawnPadDisplay(World world, EventSnapshot.PadSnapshot pad) {
+        Location location = new Location(world, pad.x() + 0.5D, pad.y() + 1.0D, pad.z() + 0.5D);
+        ItemDisplay display = world.spawn(location, ItemDisplay.class);
+        tag(display, EVENT_KIND_PAD, 0, false);
+        display.setItemStack(modelStack(830002));
+        ownedEntities.put(display.getUniqueId(), display);
+    }
+
+    private void spawnCoreText(World world) {
+        Location location = new Location(world, coreX + 0.5D, coreY + 2.25D, coreZ + 0.5D);
+        TextDisplay display = world.spawn(location, TextDisplay.class);
+        tag(display, EVENT_KIND_DISPLAY, 0, false);
+        display.setText(coreCharged ? "§5РАЗЛОМ ЗАРЯЖЕН\n§7Соберите игроков на рунах" : "§5РАЗЛОМ\n§7" + resourceProgressText().replace(", ", "\n§7"));
+        display.setBillboard(TextDisplay.Billboard.CENTER);
+        ownedEntities.put(display.getUniqueId(), display);
+    }
+
+    private ItemStack modelStack(int customModelData) {
+        ItemStack stack = new ItemStack(Material.PAPER);
+        ItemMeta meta = stack.getItemMeta();
+        if (meta != null) {
+            meta.setCustomModelData(customModelData);
+            stack.setItemMeta(meta);
+        }
+        return stack;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCoreInteract(PlayerInteractEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND || event.getAction() != Action.RIGHT_CLICK_BLOCK
+                || !sameCore(event.getClickedBlock()) || phase != EventPhase.COLLECTING) {
+            return;
+        }
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (held.getType() == Material.AIR || held.getAmount() < 1) {
+            return;
+        }
+        String material = held.getType().name();
+        if (!resourceRequirements.containsKey(material)) {
+            player.sendActionBar(Component.text("Нужен ресурс из списка Разлома", NamedTextColor.RED));
+            return;
+        }
+        boolean official = rewardService != null && rewardService.isOfficialArtifact(held);
+        boolean customProtected = held.hasItemMeta() && !held.getItemMeta().getPersistentDataContainer().getKeys().isEmpty();
+        if (!CoreDepositMath.canAccept(true, material, resourceRequirements.keySet(), official, customProtected)) {
+            player.sendActionBar(Component.text("Этот custom item нельзя пожертвовать", NamedTextColor.RED));
+            return;
+        }
+        int required = resourceRequirements.get(material);
+        int progress = depositedResources.getOrDefault(material, 0);
+        int accepted = CoreDepositMath.acceptedAmount(held.getAmount(), required, progress);
+        if (accepted <= 0) {
+            player.sendActionBar(Component.text("Этот ресурс уже заполнен", NamedTextColor.YELLOW));
+            return;
+        }
+        DepositJournal.Entry entry = new DepositJournal.Entry(
+                eventId + ":" + UUID.randomUUID(), player.getUniqueId(), held.getType(), accepted, progress + accepted, "PREPARED");
+        if (!depositJournal.prepare(entry)) {
+            player.sendMessage(ChatColor.RED + "Внесение не записано durable; предмет не изменён.");
+            return;
+        }
+        EventSnapshot before = snapshot();
+        int previousAmount = held.getAmount();
+        if (!depositJournal.markItemRemoved(entry)) {
+            depositJournal.refund(entry);
+            player.sendMessage(ChatColor.RED + "Журнал внесения недоступен; предмет не изменён.");
+            return;
+        }
+        held.setAmount(previousAmount - accepted);
+        depositedResources.put(material, progress + accepted);
+        resourceContributors.add(player.getUniqueId());
+        updateCoreChargeState();
+        if (!saveStateSync()) {
+            player.getInventory().setItemInMainHand(heldWithAmount(held, previousAmount));
+            applySnapshot(before);
+            depositJournal.refund(entry);
+            player.sendMessage(ChatColor.RED + "Состояние Core не сохранилось; ресурс возвращён.");
+            return;
+        }
+        if (!depositJournal.commit(entry)) {
+            getLogger().warning("Deposit state was saved but journal commit is pending: " + entry.id());
+        }
+        if (held.getAmount() <= 0) {
+            player.getInventory().setItemInMainHand(new ItemStack(Material.AIR));
+        }
+        playerCategory(player, "resource_contributor");
+        rebuildPersistedVisuals();
+        player.playSound(player.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 0.8F, 1.2F);
+        player.sendActionBar(Component.text("Внесено " + accepted + " " + material + ". " + resourceProgressText(), NamedTextColor.LIGHT_PURPLE));
+    }
+
+    private ItemStack heldWithAmount(ItemStack held, int amount) {
+        ItemStack restored = held.clone();
+        restored.setAmount(Math.max(1, amount));
+        return restored;
+    }
+
+    private void recoverUnresolvedDeposits() {
+        for (DepositJournal.Entry entry : depositJournal.unresolved()) {
+            Player player = Bukkit.getPlayer(entry.playerUuid());
+            int progress = depositedResources.getOrDefault(entry.material().name(), 0);
+            if (progress >= entry.afterProgress()) {
+                depositJournal.commit(entry);
+                continue;
+            }
+            if (player != null && player.isOnline()) {
+                HashMap<Integer, ItemStack> leftovers = player.getInventory().addItem(new ItemStack(entry.material(), entry.amount()));
+                if (leftovers.isEmpty()) {
+                    depositJournal.refund(entry);
+                }
+            }
+        }
+    }
+
+    private void playerCategory(Player player, String category) {
+        if (player != null) {
+            playerCategories.put(player.getUniqueId(), category);
+        }
+    }
+
+    private void tick() {
+        if (!bootstrapped || !isEnabled()) {
+            return;
+        }
+        expireControlEffects();
+        updatePadOccupancy();
+        updateCombatHelpers();
+        switch (phase) {
+            case COUNTDOWN -> tickCountdown();
+            case INTERMISSION_1, INTERMISSION_2 -> tickIntermission();
+            case WAVE_1, WAVE_2, WAVE_3, FINAL_WAVE -> tickWaveCompletion();
+            case BOSS_ACTIVE, BOSS_FINISH -> tickBoss();
+            default -> {
+            }
+        }
+        tickShardChannels();
+    }
+
+    private void updatePadOccupancy() {
+        padOccupants.clear();
+        if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        Set<UUID> assigned = new HashSet<>();
+        List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
+        players.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Location padLocation = new Location(world, pad.x() + 0.5D, pad.y(), pad.z() + 0.5D);
+            Player closest = players.stream()
+                    .filter(player -> player.getWorld().equals(world) && !player.isDead()
+                            && player.getGameMode() != org.bukkit.GameMode.SPECTATOR
+                            && !assigned.contains(player.getUniqueId()))
+                    .filter(player -> player.getLocation().distanceSquared(padLocation)
+                            <= config.padOccupancyRadius() * config.padOccupancyRadius())
+                    .min(Comparator.comparingDouble(player -> player.getLocation().distanceSquared(padLocation)))
+                    .orElse(null);
+            if (closest != null) {
+                assigned.add(closest.getUniqueId());
+                padOccupants.put(padKey(pad), closest.getUniqueId());
+            }
+        }
+        if (padOccupants.size() == requiredPlayers) {
+            beginCountdownIfReady();
+        } else if (phase == EventPhase.COUNTDOWN) {
+            cancelRitual("pad occupancy changed");
+        }
+    }
+
+    private String padKey(EventSnapshot.PadSnapshot pad) {
+        return pad.x() + ":" + pad.y() + ":" + pad.z();
+    }
+
+    private void beginCountdownIfReady() {
+        if (phase != EventPhase.READY_FOR_PLAYERS || padOccupants.size() != requiredPlayers) {
+            return;
+        }
+        phaseDeadlineMillis = System.currentTimeMillis() + config.countdownSeconds() * 1000L;
+        if (transition(EventPhase.COUNTDOWN, "all unique pads occupied", eventId + ":countdown")) {
+            getLogger().info("RITUAL_STARTED event=" + eventId + " generation=" + generation);
+        }
+    }
+
+    private void tickCountdown() {
+        if (phaseDeadlineMillis <= 0L) {
+            cancelRitual("countdown deadline missing");
+            return;
+        }
+        long remaining = Math.max(0L, phaseDeadlineMillis - System.currentTimeMillis());
+        int seconds = (int) Math.ceil(remaining / 1000.0D);
+        if (seconds > 0 && seconds <= config.countdownSeconds()) {
+            for (UUID playerUuid : padOccupants.values()) {
+                Player player = Bukkit.getPlayer(playerUuid);
+                if (player != null && player.isOnline()) {
+                    player.sendActionBar(Component.text("Ритуал: " + seconds, NamedTextColor.LIGHT_PURPLE));
+                }
+            }
+        }
+        if (remaining > 0L) {
+            return;
+        }
+        if (padOccupants.size() != requiredPlayers) {
+            cancelRitual("countdown finished without full roster");
+            return;
+        }
+        try {
+            RewardRoster roster = RewardRoster.commitExactly(new HashSet<>(padOccupants.values()), requiredPlayers);
+            officialRewardRoster.clear();
+            officialRewardRoster.addAll(roster.players());
+        } catch (IllegalArgumentException invalid) {
+            cancelRitual("roster uniqueness failed");
+            return;
+        }
+        generation = Math.max(1L, generation + 1L);
+        cancelSessionTasks();
+        taskRegistry = new EventTaskRegistry(generation);
+        halfHealthTriggered = false;
+        controlSpellUnlocked = false;
+        finalDrainTriggered = false;
+        finalDrainApplied = false;
+        activeWave = 1;
+        saveStateSync();
+        if (transition(EventPhase.WAVE_1, "official roster frozen", eventId + ":roster:" + generation)) {
+            getLogger().info("RITUAL_COMPLETED event=" + eventId + " roster=" + officialRewardRoster);
+            spawnWave(1, false);
+        }
+    }
+
+    private void cancelRitual(String reason) {
+        if (phase == EventPhase.COUNTDOWN) {
+            phaseDeadlineMillis = 0L;
+            padOccupants.clear();
+            transition(EventPhase.READY_FOR_PLAYERS, reason, eventId + ":ritual-cancel:" + UUID.randomUUID());
+            getLogger().info("RITUAL_CANCELLED event=" + eventId + " reason=" + reason);
+        }
+    }
+
+    private void updateCombatHelpers() {
+        if (!isCombatPhase()) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isActiveArenaParticipant(player)) {
+                combatHelpers.add(player.getUniqueId());
+                playerCategory(player, officialRewardRoster.contains(player.getUniqueId())
+                        ? "official_participant" : "combat_helper");
+            }
+        }
+    }
+
+    private boolean isCombatPhase() {
+        return switch (phase) {
+            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    BOSS_ACTIVE, FINAL_DRAIN, FINAL_WAVE, BOSS_FINISH -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isActiveArenaParticipant(Player player) {
+        if (player == null || !player.isOnline() || player.isDead() || player.getWorld() == null
+                || !player.getWorld().getName().equals(worldName)) {
+            return false;
+        }
+        Location core = coreLocation();
+        return core != null && player.getLocation().distanceSquared(core) <= config.arenaRadius() * config.arenaRadius();
+    }
+
+    private void tickIntermission() {
+        if (phaseDeadlineMillis <= 0L || System.currentTimeMillis() < phaseDeadlineMillis) {
+            return;
+        }
+        if (phase == EventPhase.INTERMISSION_1) {
+            activeWave = 2;
+            if (transition(EventPhase.WAVE_2, "intermission complete", eventId + ":wave:2")) {
+                spawnWave(2, false);
+            }
+        } else if (phase == EventPhase.INTERMISSION_2) {
+            activeWave = 3;
+            if (transition(EventPhase.WAVE_3, "intermission complete", eventId + ":wave:3")) {
+                spawnWave(3, false);
+            }
+        }
+        phaseDeadlineMillis = 0L;
+    }
+
+    private void tickWaveCompletion() {
+        if (phase == EventPhase.FINAL_WAVE) {
+            if (finalWaveEntities.stream().noneMatch(this::isLiveOwnedEntity)) {
+                finalWaveEntities.clear();
+                LivingEntity boss = liveBoss();
+                if (boss != null) {
+                    boss.setInvulnerable(false);
+                    boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()));
+                }
+                transition(EventPhase.BOSS_FINISH, "final wave defeated", eventId + ":final-wave-complete");
+                getLogger().info("WAVE_COMPLETED event=" + eventId + " wave=FINAL");
+            }
+            return;
+        }
+        if (activeWave < 1 || activeWave > 3) {
+            return;
+        }
+        boolean live = ownedEntities.values().stream().anyMatch(entity -> {
+            String kind = readString(entity, keyKind);
+            int wave = readInt(entity, keyWave, 0);
+            return (EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind))
+                    && wave == activeWave && isLiveOwnedEntity(entity.getUniqueId());
+        });
+        if (live) {
+            return;
+        }
+        getLogger().info("WAVE_COMPLETED event=" + eventId + " wave=" + activeWave);
+        if (activeWave == 1) {
+            phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
+            transition(EventPhase.INTERMISSION_1, "wave 1 defeated", eventId + ":intermission:1");
+        } else if (activeWave == 2) {
+            phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
+            transition(EventPhase.INTERMISSION_2, "wave 2 defeated", eventId + ":intermission:2");
+        } else if (activeWave == 3) {
+            activeWave = 0;
+            if (transition(EventPhase.BOSS_ACTIVE, "wave 3 defeated", eventId + ":boss-active")) {
+                spawnOfficialBoss(null);
+            }
+        }
+    }
+
+    private void spawnWave(int wave, boolean test) {
+        World world = Bukkit.getWorld(worldName);
+        Location core = coreLocation();
+        if (world == null || core == null) {
+            getLogger().warning("Cannot spawn End Event wave without configured world/core.");
+            return;
+        }
+        EventConfig.WaveDefinition definition = switch (wave) {
+            case 1 -> config.wave1();
+            case 2 -> config.wave2();
+            case 3 -> config.wave3();
+            case 4 -> config.finalWave();
+            default -> null;
+        };
+        if (definition == null) {
+            return;
+        }
+        int scalePlayers = Math.max(config.minPlayers(), officialRewardRoster.size());
+        double scale = Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D));
+        int endermen = scaled(definition.endermen(), scale);
+        int endermites = scaled(definition.endermites(), scale);
+        int shulkers = scaled(definition.shulkers(), scale);
+        int elites = scaled(definition.eliteEndermen(), scale);
+        int total = endermen + endermites + shulkers + elites;
+        if (total > config.waveHardCap()) {
+            int overflow = total - config.waveHardCap();
+            int[] counts = {endermen, endermites, shulkers, elites};
+            for (int index = 0; index < counts.length && overflow > 0; index++) {
+                int remove = Math.min(overflow, Math.max(0, counts[index] - 1));
+                counts[index] -= remove;
+                overflow -= remove;
+            }
+            endermen = counts[0];
+            endermites = counts[1];
+            shulkers = counts[2];
+            elites = counts[3];
+        }
+        if (!test) {
+            activeWave = wave;
+        }
+        for (int index = 0; index < endermen; index++) {
+            spawnEnderman(world, core, wave, false, wave == 4, test, index);
+        }
+        for (int index = 0; index < elites; index++) {
+            spawnEnderman(world, core, wave, true, wave == 4, test, index + endermen);
+        }
+        for (int index = 0; index < endermites; index++) {
+            spawnOwnedMob(world, core, EntityType.ENDERMITE, wave, EVENT_KIND_WAVE_MOB, test, index);
+        }
+        for (int index = 0; index < shulkers; index++) {
+            spawnOwnedMob(world, core, EntityType.SHULKER, wave,
+                    wave == 4 ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
+        }
+        if (wave == 4 && !test) {
+            finalWaveEntities.addAll(ownedEntities.keySet().stream()
+                    .filter(id -> {
+                        Entity entity = ownedEntities.get(id);
+                        return entity != null && readInt(entity, keyWave, 0) == 4;
+                    }).toList());
+            getLogger().info("FINAL_WAVE_STARTED event=" + eventId + " count=" + finalWaveEntities.size());
+        } else if (!test) {
+            getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
+                    + " count=" + (endermen + elites + endermites + shulkers));
+        }
+    }
+
+    private int scaled(int base, double scale) {
+        if (base <= 0) {
+            return 0;
+        }
+        return Math.max(1, (int) Math.round(base * scale));
+    }
+
+    private void spawnEnderman(World world, Location core, int wave, boolean elite,
+                               boolean finalWave, boolean test, int index) {
+        Location location = spawnLocation(core, index, elite ? 4.0D : 2.0D);
+        Enderman enderman = (Enderman) world.spawnEntity(location, EntityType.ENDERMAN);
+        String kind = finalWave ? EVENT_KIND_FINAL_WAVE : elite ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
+        tag(enderman, kind, wave, !test);
+        enderman.setPersistent(true);
+        enderman.setRemoveWhenFarAway(false);
+        if (test) {
+            tagTestBoss(enderman);
+        }
+        if (elite) {
+            AttributeInstance max = enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (max != null) {
+                max.setBaseValue(60.0D);
+                enderman.setHealth(60.0D);
+            }
+            enderman.setCustomName(ChatColor.LIGHT_PURPLE + (finalWave ? "Элитный страж" : "Элитный эндермен"));
+            enderman.setCustomNameVisible(true);
+        }
+        ownedEntities.put(enderman.getUniqueId(), enderman);
+        if (finalWave && !test) {
+            finalWaveEntities.add(enderman.getUniqueId());
+        }
+    }
+
+    private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,
+                                 String kind, boolean test, int index) {
+        Entity entity = world.spawnEntity(spawnLocation(core, index, 3.0D), type);
+        tag(entity, kind, wave, !test);
+        if (entity instanceof LivingEntity living) {
+            living.setPersistent(true);
+            if (living instanceof Shulker shulker) {
+                shulker.setAI(true);
+            }
+        }
+        ownedEntities.put(entity.getUniqueId(), entity);
+        if (wave == 4 && !test) {
+            finalWaveEntities.add(entity.getUniqueId());
+        }
+        return entity;
+    }
+
+    private Location spawnLocation(Location core, int index, double offset) {
+        double angle = (index * 2.399963229728653D) % (Math.PI * 2.0D);
+        double radius = 5.0D + ((index % 4) * offset);
+        return core.clone().add(Math.cos(angle) * radius, 0.0D, Math.sin(angle) * radius);
+    }
+
+    private void clearWaveEntities() {
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            String kind = readString(entity, keyKind);
+            if (EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
+                    || EVENT_KIND_FINAL_WAVE.equals(kind)) {
+                entity.remove();
+                ownedEntities.remove(entity.getUniqueId());
+                finalWaveEntities.remove(entity.getUniqueId());
+            }
+        }
+        spellServants.clear();
+    }
+
+    private boolean isLiveOwnedEntity(UUID entityUuid) {
+        Entity entity = ownedEntities.get(entityUuid);
+        return entity != null && !entity.isDead() && entity.isValid();
+    }
+
+    private int countLiveOwnedMobs() {
+        int count = 0;
+        for (Entity entity : ownedEntities.values()) {
+            if (entity instanceof LivingEntity && isLiveOwnedEntity(entity.getUniqueId())
+                    && !EVENT_KIND_DISPLAY.equals(readString(entity, keyKind))) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void spawnTestBoss(CommandSender sender) {
+        Location core = coreLocation();
+        World world = core == null ? null : core.getWorld();
+        if (world == null) {
+            message(sender, "&cСначала настрой Core.");
+            return;
+        }
+        clearBossOnly();
+        Enderman boss = (Enderman) world.spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+        configureBoss(boss, true);
+        message(sender, "&aTest boss создан: он не открывает End и не выдаёт official rewards.");
+    }
+
+    private void spawnOfficialBoss(CommandSender sender) {
+        if (!isConfigured() || (!endUnlocked && phase != EventPhase.BOSS_ACTIVE && phase != EventPhase.WAVE_3)) {
+            if (sender != null) {
+                message(sender, "&cОфициальный boss доступен только после Wave 3 или в BOSS_ACTIVE.");
+            }
+            return;
+        }
+        if (liveBoss() != null) {
+            if (sender != null) {
+                message(sender, "&eОфициальный boss уже активен.");
+            }
+            return;
+        }
+        if (phase == EventPhase.WAVE_3) {
+            transition(EventPhase.BOSS_ACTIVE, "admin confirmed official boss", eventId + ":boss-confirm");
+        }
+        Location core = coreLocation();
+        if (core == null) {
+            return;
+        }
+        Enderman boss = (Enderman) core.getWorld().spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+        configureBoss(boss, false);
+        getLogger().info("BOSS_SPAWNED event=" + eventId + " boss=" + boss.getUniqueId());
+        if (sender != null) {
+            message(sender, "&aОфициальный Rift Guardian создан.");
+        }
+    }
+
+    private void configureBoss(Enderman boss, boolean test) {
+        bossUuid = boss.getUniqueId();
+        tag(boss, EVENT_KIND_BOSS, 0, !test);
+        if (test) {
+            tagTestBoss(boss);
+        }
+        boss.setPersistent(true);
+        boss.setRemoveWhenFarAway(false);
+        boss.setCustomName("§5Хранитель Разлома");
+        boss.setCustomNameVisible(true);
+        AttributeInstance maxHealth = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+        if (maxHealth != null) {
+            maxHealth.setBaseValue(config.bossHealth());
+        }
+        boss.setHealth(config.bossHealth());
+        AttributeInstance attack = boss.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        if (attack != null) {
+            attack.setBaseValue(attack.getBaseValue() + config.bossAttackDamageBonus());
+        }
+        boss.setInvulnerable(false);
+        ownedEntities.put(boss.getUniqueId(), boss);
+        if (!test) {
+            ensureBossBar();
+            bindBossClientForOnlinePlayers();
+            nextTargetMillis = 0L;
+            nextSpellMillis = 0L;
+        }
+    }
+
+    private void ensureBossBar() {
+        if (bossBar == null) {
+            bossBar = Bukkit.createBossBar("Хранитель Разлома", BarColor.PURPLE, BarStyle.SEGMENTED_20);
+        }
+        bossBar.setVisible(true);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isActiveArenaParticipant(player) && !bossBar.getPlayers().contains(player)) {
+                bossBar.addPlayer(player);
+            }
+        }
+    }
+
+    private LivingEntity liveBoss() {
+        if (bossUuid == null) {
+            return null;
+        }
+        Entity entity = ownedEntities.get(bossUuid);
+        if (entity instanceof LivingEntity living && entity.isValid() && !entity.isDead()
+                && EVENT_KIND_BOSS.equals(readString(entity, keyKind))) {
+            return living;
+        }
+        Entity direct = Bukkit.getEntity(bossUuid);
+        return direct instanceof LivingEntity living && direct.isValid() && !direct.isDead()
+                && EVENT_KIND_BOSS.equals(readString(living, keyKind)) ? living : null;
+    }
+
+    private void clearBossOnly() {
+        LivingEntity boss = liveBoss();
+        if (boss != null) {
+            boss.remove();
+        }
+        if (bossUuid != null) {
+            ownedEntities.remove(bossUuid);
+        }
+        bossUuid = null;
+        if (bossBar != null) {
+            bossBar.removeAll();
+        }
+    }
+
+    private void tickBoss() {
+        LivingEntity boss = liveBoss();
+        if (boss == null) {
+            return;
+        }
+        Location core = coreLocation();
+        if (core != null && boss.getWorld().equals(core.getWorld())
+                && boss.getLocation().distanceSquared(core) > config.bossRadius() * config.bossRadius()) {
+            boss.teleport(core.clone().add(0.0D, 1.0D, 0.0D));
+        }
+        if (bossBar != null) {
+            double max = Math.max(1.0D, boss.getMaxHealth());
+            bossBar.setProgress(Math.max(0.0D, Math.min(1.0D, boss.getHealth() / max)));
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                if (isActiveArenaParticipant(player) && !bossBar.getPlayers().contains(player)) {
+                    bossBar.addPlayer(player);
+                } else if (!isActiveArenaParticipant(player) && bossBar.getPlayers().contains(player)) {
+                    bossBar.removePlayer(player);
+                }
+            }
+        }
+        if (phase != EventPhase.BOSS_ACTIVE) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (nextTargetMillis <= now) {
+            if (boss instanceof org.bukkit.entity.Mob mob) {
+                rotateBossTarget(mob);
+            }
+            nextTargetMillis = now + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
+        }
+        if (nextSpellMillis <= now) {
+            castBossSpell(boss, false);
+            nextSpellMillis = now + randomSeconds(config.bossSpellMinSeconds(), config.bossSpellMaxSeconds()) * 1000L;
+        }
+    }
+
+    private int randomSeconds(int minimum, int maximum) {
+        return minimum >= maximum ? minimum : minimum + random.nextInt(maximum - minimum + 1);
+    }
+
+    private void rotateBossTarget(org.bukkit.entity.Mob boss) {
+        List<Player> candidates = Bukkit.getOnlinePlayers().stream()
+                .filter(this::isActiveArenaParticipant)
+                .map(player -> (Player) player)
+                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
+                .toList();
+        if (candidates.isEmpty()) {
+            boss.setTarget(null);
+            return;
+        }
+        Player current = boss.getTarget() instanceof Player player ? player : null;
+        List<Player> alternatives = candidates.stream()
+                .filter(player -> current == null || !player.getUniqueId().equals(current.getUniqueId()))
+                .toList();
+        Player target = (alternatives.isEmpty() ? candidates : alternatives)
+                .get(random.nextInt((alternatives.isEmpty() ? candidates : alternatives).size()));
+        boss.setTarget(target);
+        combatHelpers.add(target.getUniqueId());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onBossDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof LivingEntity boss)
+                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || !EVENT_KIND_BOSS.equals(readString(boss, keyKind))) {
+            return;
+        }
+        if (isTestBoss(boss)) {
+            return;
+        }
+        if (phase != EventPhase.BOSS_ACTIVE || boss.isInvulnerable()) {
+            event.setCancelled(true);
+            return;
+        }
+        event.setCancelled(true);
+        applyBossDamage(boss, Math.max(0.0D, event.getFinalDamage()), event instanceof EntityDamageByEntityEvent byEntity
+                ? byEntity.getDamager() : null);
+    }
+
+    private void applyBossDamage(LivingEntity boss, double damage, Entity source) {
+        if (boss == null || !boss.isValid() || boss.isDead() || isTestBoss(boss)) {
+            return;
+        }
+        BossThresholdPolicy.Decision decision = BossThresholdPolicy.evaluate(
+                boss.getHealth(), damage, boss.getMaxHealth(), config.bossHalfHealth(),
+                config.bossFinalThreshold(), config.bossFinalHealth(), halfHealthTriggered, finalDrainTriggered);
+        if (decision.triggerHalf()) {
+            triggerHalfPhase(boss);
+        }
+        if (decision.triggerFinal()) {
+            triggerFinalPhase(boss, false);
+            return;
+        }
+        if (!boss.isInvulnerable()) {
+            boss.setHealth(Math.max(1.0D, Math.min(boss.getMaxHealth(), decision.appliedHealth())));
+        }
+        if (source instanceof Player player && isActiveArenaParticipant(player)) {
+            combatHelpers.add(player.getUniqueId());
+        }
+    }
+
+    private void triggerHalfPhase(LivingEntity boss) {
+        if (halfHealthTriggered) {
+            return;
+        }
+        halfHealthTriggered = true;
+        controlSpellUnlocked = true;
+        // Persist the threshold marker before healing/control side effects.
+        if (!saveStateSync()) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "half phase could not be persisted");
+            return;
+        }
+        for (Player player : activeLivingPlayers()) {
+            player.setHealth(player.getMaxHealth());
+            player.getWorld().spawnParticle(Particle.END_ROD, player.getLocation().add(0.0D, 1.0D, 0.0D), 12, 0.3D, 0.5D, 0.3D, 0.02D);
+        }
+        boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.6F);
+        getLogger().info("BOSS_PHASE_50 event=" + eventId + " boss=" + boss.getUniqueId());
+    }
+
+    private List<Player> activeLivingPlayers() {
+        return Bukkit.getOnlinePlayers().stream()
+                .filter(this::isActiveArenaParticipant)
+                .map(player -> (Player) player)
+                .toList();
+    }
+
+    private void triggerFinalPhase(LivingEntity boss, boolean forced) {
+        if (boss == null || isTestBoss(boss) || finalDrainTriggered) {
+            return;
+        }
+        if (!forced && phase != EventPhase.BOSS_ACTIVE) {
+            return;
+        }
+        finalDrainTriggered = true;
+        boss.setInvulnerable(true);
+        if (!saveStateSync()) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "final phase could not be persisted before side effects");
+            return;
+        }
+        clearClientEffects();
+        Location core = coreLocation();
+        if (core != null) {
+            boss.teleport(core.clone().add(0.0D, 1.0D, 0.0D));
+        }
+        boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()));
+        if (!transition(EventPhase.FINAL_DRAIN, "boss crossed final threshold", eventId + ":final-drain")) {
+            return;
+        }
+        applyFinalDrain(boss);
+    }
+
+    private void applyFinalDrain(LivingEntity boss) {
+        if (!finalDrainApplied) {
+            for (Player player : activeLivingPlayers()) {
+                double before = player.getHealth();
+                double after = FinalDrainMath.healthAfterDrain(
+                        before, player.getMaxHealth(), config.finalDrainFraction(), config.finalDrainMinHealth());
+                player.setHealth(after);
+            }
+            finalDrainApplied = true;
+            if (!saveStateSync()) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain result could not be persisted");
+                return;
+            }
+        }
+        scheduleFinalRitualVisual(boss);
+    }
+
+    private void scheduleFinalRitualVisual(LivingEntity boss) {
+        if (taskRegistry == null || boss == null) {
+            return;
+        }
+        long callbackGeneration = generation;
+        final int[] ticks = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!taskRegistry.owns(callbackGeneration) || phase != EventPhase.FINAL_DRAIN || !boss.isValid()) {
+                return;
+            }
+            ticks[0] += 5;
+            Location target = boss.getLocation().add(0.0D, 0.8D, 0.0D);
+            Location core = coreLocation();
+            for (Player player : activeLivingPlayers()) {
+                player.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                        player.getLocation().add(0.0D, 1.0D, 0.0D), 4, 0.15D, 0.25D, 0.15D, 0.01D);
+                if (core != null) {
+                    spawnParticleLine(player.getLocation().add(0.0D, 1.0D, 0.0D), core, 3);
+                }
+            }
+            if (core != null) {
+                spawnParticleLine(core.clone().add(0.0D, 1.0D, 0.0D), target, 6);
+            }
+            if (ticks[0] >= 30) {
+                holder[0].cancel();
+                if (phase == EventPhase.FINAL_DRAIN && taskRegistry.owns(callbackGeneration)) {
+                    if (transition(EventPhase.FINAL_WAVE, "final ritual visual complete", eventId + ":final-wave")) {
+                        spawnWave(4, false);
+                    }
+                }
+            }
+        }, 1L, 5L);
+        taskRegistry.register(holder[0]);
+    }
+
+    private void spawnParticleLine(Location from, Location to, int points) {
+        if (from == null || to == null || from.getWorld() == null || !from.getWorld().equals(to.getWorld())) {
+            return;
+        }
+        Vector delta = to.toVector().subtract(from.toVector()).multiply(1.0D / Math.max(1, points));
+        Location current = from.clone();
+        for (int index = 0; index < points; index++) {
+            current.add(delta);
+            current.getWorld().spawnParticle(Particle.END_ROD, current, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+    }
+
+    private void castBossSpell(LivingEntity boss, boolean forced) {
+        if (boss == null || isTestBoss(boss) && !forced || phase != EventPhase.BOSS_ACTIVE && !forced) {
+            return;
+        }
+        List<Player> players = activeLivingPlayers();
+        if (players.isEmpty()) {
+            return;
+        }
+        Player target = players.get(random.nextInt(players.size()));
+        int spell = forced ? 0 : random.nextInt(4);
+        switch (spell) {
+            case 0 -> voidBlast(boss, target);
+            case 1 -> riftProjectile(boss, target);
+            case 2 -> voidMark(boss, target);
+            default -> {
+                startFairControlTarget();
+                summonServants(boss);
+            }
+        }
+    }
+
+    private void voidBlast(LivingEntity boss, Player target) {
+        Location center = target.getLocation();
+        boss.getWorld().spawnParticle(Particle.DRAGON_BREATH, center, 24, 1.0D, 0.4D, 1.0D, 0.04D);
+        boss.getWorld().playSound(center, Sound.ENTITY_ENDERMAN_STARE, 0.8F, 0.7F);
+        for (Player player : activeLivingPlayers()) {
+            if (player.getLocation().distanceSquared(center) <= 16.0D) {
+                player.damage(8.0D, boss);
+                Vector push = player.getLocation().toVector().subtract(center.toVector());
+                if (push.lengthSquared() < 0.01D) {
+                    push = new Vector(0.0D, 0.3D, 0.0D);
+                }
+                player.setVelocity(push.normalize().multiply(0.45D).setY(0.3D));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, true, true));
+            }
+        }
+    }
+
+    private void riftProjectile(LivingEntity boss, Player target) {
+        Location start = boss.getLocation().add(0.0D, 1.0D, 0.0D);
+        Vector direction = target.getEyeLocation().toVector().subtract(start.toVector()).normalize();
+        for (int index = 0; index < 10; index++) {
+            Location point = start.clone().add(direction.clone().multiply(index * 0.8D));
+            boss.getWorld().spawnParticle(Particle.PORTAL, point, 3, 0.08D, 0.08D, 0.08D, 0.02D);
+        }
+        target.damage(7.0D, boss);
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 0, false, true, true));
+    }
+
+    private void voidMark(LivingEntity boss, Player target) {
+        Location mark = target.getLocation().clone();
+        boss.getWorld().spawnParticle(Particle.REVERSE_PORTAL, mark.clone().add(0.0D, 0.2D, 0.0D), 18, 1.0D, 0.1D, 1.0D, 0.02D);
+        BukkitTask task = Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (!isActiveArenaParticipant(target)) {
+                return;
+            }
+            for (Player player : activeLivingPlayers()) {
+                if (player.getLocation().distanceSquared(mark) <= 9.0D) {
+                    player.damage(6.0D, boss);
+                }
+            }
+        }, 60L);
+        if (taskRegistry != null) {
+            taskRegistry.register(task);
+        }
+    }
+
+    private void summonServants(LivingEntity boss) {
+        if (spellServants.size() >= config.maxSummonedServants()) {
+            return;
+        }
+        Location location = boss.getLocation();
+        int toSpawn = Math.min(2, config.maxSummonedServants() - spellServants.size());
+        for (int index = 0; index < toSpawn; index++) {
+            Entity servant = spawnOwnedMob(location.getWorld(), location, EntityType.ENDERMITE,
+                    0, EVENT_KIND_WAVE_MOB, false, index + spellServants.size());
+            spellServants.add(servant.getUniqueId());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onOwnedEntityDeath(EntityDeathEvent event) {
+        Entity entity = event.getEntity();
+        if (!ownedEntities.containsKey(entity.getUniqueId())) {
+            return;
+        }
+        String kind = readString(entity, keyKind);
+        event.getDrops().clear();
+        if (EVENT_KIND_BOSS.equals(kind) && entity.getUniqueId().equals(bossUuid)) {
+            event.setDroppedExp(0);
+            ownedEntities.remove(entity.getUniqueId());
+            if (isTestBoss(entity)) {
+                clearBossOnly();
+                getLogger().info("TEST_BOSS_DEFEATED event=" + eventId);
+                return;
+            }
+            if (!officialBossDeathCommitted && phase == EventPhase.BOSS_FINISH
+                    && isOfficialEntity(entity)) {
+                officialBossDeathCommitted = true;
+                victoryStep = VICTORY_BOSS_DEATH;
+                saveStateSync();
+                getLogger().info("BOSS_DEFEATED event=" + eventId + " boss=" + entity.getUniqueId());
+                beginVictory();
+            }
+        } else {
+            finalWaveEntities.remove(entity.getUniqueId());
+            spellServants.remove(entity.getUniqueId());
+            ownedEntities.remove(entity.getUniqueId());
+        }
+    }
+
+    private void beginVictory() {
+        clearClientEffects();
+        if (bossBar != null) {
+            bossBar.removeAll();
+        }
+        if (phase == EventPhase.BOSS_FINISH) {
+            transition(EventPhase.VICTORY_PROCESSING, "official boss death committed", eventId + ":victory");
+        }
+        unlockEnd(null, "official-victory");
+    }
+
+    private void unlockEnd(CommandSender sender, String cause) {
+        if (worldAccessService == null) {
+            message(sender, "&cWorldCore service ещё не готов.");
+            return;
+        }
+        if (!officialBossDeathCommitted && !VICTORY_BOSS_DEATH.equals(victoryStep)) {
+            message(sender, "&cEnd открывается только после смерти настоящего official Rift Guardian.");
+            return;
+        }
+        if (endUnlocked || worldAccessService.isEndEnabled()) {
+            endUnlocked = true;
+            victoryStep = VICTORY_UNLOCKED;
+            saveStateSync();
+            issueVictoryRewards();
+            return;
+        }
+        victoryStep = VICTORY_UNLOCK_PENDING;
+        if (!saveStateSync()) {
+            message(sender, "&cUnlock не выполнен: durable state недоступен.");
+            return;
+        }
+        WorldAccessResult result = worldAccessService.setEndEnabled(
+                true, "CopiMineEndEvent:" + cause, "end-event:" + eventId + ":unlock");
+        if (result == null || !result.success()) {
+            getLogger().warning("END unlock failed code=" + (result == null ? "NULL" : result.code()));
+            message(sender, "&cEnd unlock не выполнен; victory saga останется на recovery.");
+            return;
+        }
+        endUnlocked = true;
+        victoryStep = VICTORY_UNLOCKED;
+        saveStateSync();
+        getLogger().info("END_UNLOCKED event=" + eventId + " code=" + result.code());
+        issueVictoryRewards();
+    }
+
+    private void issueVictoryRewards() {
+        if (!endUnlocked || rewardService == null || officialRewardRoster.isEmpty()) {
+            return;
+        }
+        victoryStep = VICTORY_REWARDS_PENDING;
+        saveStateAsync();
+        for (UUID playerUuid : new LinkedHashSet<>(officialRewardRoster)) {
+            String status = rewardStatuses.getOrDefault(playerUuid, "PENDING");
+            if ("DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
+                    || "PENDING_DELIVERY".equals(status)) {
+                continue;
+            }
+            String key = "end-event:" + eventId + ":participant:" + playerUuid + ":rift-core-shard";
+            EventArtifactRewardRequest request = EventArtifactRewardRequest.toPlayer(
+                    eventId, key, config.shardItemId(), playerUuid, offlineName(playerUuid));
+            rewardStatuses.put(playerUuid, "REQUESTED");
+            CompletableFuture<RewardIssueResult> future = rewardService.issueToPlayer(request);
+            future.whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                if (error != null || result == null || !result.accepted()) {
+                    rewardStatuses.put(playerUuid, "PENDING_RETRY");
+                    getLogger().log(Level.WARNING, "Rift Shard reward remains pending for " + playerUuid, error);
+                } else {
+                    rewardStatuses.put(playerUuid, result.status());
+                    getLogger().info("RIFT_SHARD_REWARD event=" + eventId + " player=" + playerUuid
+                            + " status=" + result.status());
+                }
+                saveStateAsync();
+                checkVictoryRewardCompletion();
+            }));
+        }
+        if ("PENDING".equals(returnStoneStatus) || "PENDING_RETRY".equals(returnStoneStatus)) {
+            Location drop = liveBoss() == null ? coreLocation() : liveBoss().getLocation();
+            if (drop != null) {
+                String key = "end-event:" + eventId + ":boss:return-stone";
+                EventArtifactRewardRequest request = EventArtifactRewardRequest.worldDrop(
+                        eventId, key, config.returnStoneItemId());
+                returnStoneStatus = "REQUESTED";
+                rewardService.issueWorldDrop(request, drop).whenComplete((result, error) -> Bukkit.getScheduler().runTask(this, () -> {
+                    if (error != null || result == null || !result.accepted()) {
+                        returnStoneStatus = "PENDING_RETRY";
+                        getLogger().log(Level.WARNING, "Return Stone reward remains pending", error);
+                    } else {
+                        returnStoneStatus = result.status();
+                    }
+                    saveStateAsync();
+                    checkVictoryRewardCompletion();
+                }));
+            }
+        }
+        applyBossLootOnce();
+        checkVictoryRewardCompletion();
+    }
+
+    private void applyBossLootOnce() {
+        if (bossLootCommitted) {
+            return;
+        }
+        if (!saveStateSync()) {
+            return;
+        }
+        Player recipient = null;
+        LivingEntity boss = liveBoss();
+        if (boss != null && boss.getKiller() != null) {
+            recipient = boss.getKiller();
+        }
+        if (recipient == null) {
+            recipient = officialRewardRoster.stream().map(Bukkit::getPlayer)
+                    .filter(Objects::nonNull).findFirst().orElse(null);
+        }
+        if (recipient != null) {
+            recipient.giveExp(config.bossXp());
+            for (Map.Entry<String, Integer> entry : config.resourceBundle().entrySet()) {
+                Material material = Material.matchMaterial(entry.getKey());
+                if (material != null && entry.getValue() > 0) {
+                    Map<Integer, ItemStack> leftovers = recipient.getInventory().addItem(
+                            new ItemStack(material, entry.getValue()));
+                    if (!leftovers.isEmpty()) {
+                        getLogger().warning("Configured boss bundle did not fit for " + recipient.getUniqueId());
+                    }
+                }
+            }
+        }
+        bossLootCommitted = true;
+        saveStateSync();
+    }
+
+    private void checkVictoryRewardCompletion() {
+        if (!endUnlocked || !bossLootCommitted || !"DELIVERED".equals(returnStoneStatus)
+                && !"PENDING_DELIVERY".equals(returnStoneStatus)
+                && !"ALREADY_ISSUED".equals(returnStoneStatus)
+                && !"WORLD_PENDING".equals(returnStoneStatus)) {
+            return;
+        }
+        boolean allShardRequestsAccepted = officialRewardRoster.stream().allMatch(playerUuid -> {
+            String status = rewardStatuses.get(playerUuid);
+            return "DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
+                    || "PENDING_DELIVERY".equals(status);
+        });
+        if (!allShardRequestsAccepted) {
+            return;
+        }
+        victoryStep = VICTORY_REWARDS_DELIVERED;
+        saveStateSync();
+        announceVictory();
+        restoreCoreAndPads();
+        endUnlocked = true;
+        victoryStep = VICTORY_COMPLETE;
+        forcePhase(EventPhase.UNLOCKED, "victory saga complete");
+        saveStateSync();
+    }
+
+    private void resumeVictorySaga() {
+        if (!officialBossDeathCommitted || officialRewardRoster.isEmpty()) {
+            return;
+        }
+        if (worldAccessService != null && worldAccessService.isEndEnabled()) {
+            endUnlocked = true;
+        }
+        if (endUnlocked || VICTORY_UNLOCK_PENDING.equals(victoryStep)
+                || VICTORY_UNLOCKED.equals(victoryStep) || VICTORY_REWARDS_PENDING.equals(victoryStep)) {
+            issueVictoryRewards();
+        }
+    }
+
+    private String offlineName(UUID uuid) {
+        String name = Bukkit.getOfflinePlayer(uuid).getName();
+        return name == null || name.isBlank() ? "Participant" : name;
+    }
+
+    private void announceVictory() {
+        String names = officialRewardRoster.stream().map(this::offlineName).sorted().reduce((left, right) -> left + ", " + right).orElse("участники");
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            player.sendTitle("§5ЭНД ОТКРЫТ", "§dХранитель Разлома пал", 10, 80, 20);
+            player.sendMessage("§5Энд открыт. Официальные участники: §f" + names);
+            player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        recoverUnresolvedDepositsFor(player);
+        if (isCombatPhase()) {
+            bindBossClient(player);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        stopControl(uuid);
+        cancelShardChannel(uuid);
+        padOccupants.values().removeIf(uuid::equals);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        UUID uuid = event.getEntity().getUniqueId();
+        stopControl(uuid);
+        cancelShardChannel(uuid);
+        padOccupants.values().removeIf(uuid::equals);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        stopControl(uuid);
+        cancelShardChannel(uuid);
+        padOccupants.values().removeIf(uuid::equals);
+        if (isCombatPhase()) {
+            bindBossClient(event.getPlayer());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onShardInteract(PlayerInteractEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND
+                || (event.getAction() != Action.RIGHT_CLICK_AIR && event.getAction() != Action.RIGHT_CLICK_BLOCK)) {
+            return;
+        }
+        Player player = event.getPlayer();
+        ItemStack stack = player.getInventory().getItemInMainHand();
+        if (!config.shardItemId().equalsIgnoreCase(readArtifactItemId(stack))) {
+            return;
+        }
+        if (rewardService == null || !rewardService.isAuthenticArtifact(stack, player, "rift_shard_use")) {
+            event.setCancelled(true);
+            player.sendMessage(ChatColor.RED + "Подлинность Осколка Разлома не подтверждена.");
+            return;
+        }
+        event.setCancelled(true);
+        startShardChannel(player);
+    }
+
+    private void recoverUnresolvedDepositsFor(Player player) {
+        for (DepositJournal.Entry entry : depositJournal.unresolved()) {
+            if (!entry.playerUuid().equals(player.getUniqueId())) {
+                continue;
+            }
+            int progress = depositedResources.getOrDefault(entry.material().name(), 0);
+            if (progress >= entry.afterProgress()) {
+                depositJournal.commit(entry);
+                continue;
+            }
+            Map<Integer, ItemStack> leftovers = player.getInventory().addItem(new ItemStack(entry.material(), entry.amount()));
+            if (leftovers.isEmpty()) {
+                depositJournal.refund(entry);
+            }
+        }
+    }
+
+    private String readArtifactItemId(ItemStack stack) {
+        if (stack == null || stack.getType() == Material.AIR || !stack.hasItemMeta()) {
+            return "";
+        }
+        NamespacedKey key = keyArtifactItemId;
+        if (key == null) {
+            return "";
+        }
+        return stack.getItemMeta().getPersistentDataContainer().getOrDefault(
+                key, PersistentDataType.STRING, "");
+    }
+
+    private void startShardChannel(Player player) {
+        long now = System.currentTimeMillis();
+        long cooldownUntil = shardCooldowns.getOrDefault(player.getUniqueId(), 0L);
+        if (cooldownUntil > now) {
+            long seconds = Math.max(1L, (cooldownUntil - now + 999L) / 1000L);
+            player.sendMessage(ChatColor.YELLOW + "Разлом ещё нестабилен. Осталось: " + formatDuration(seconds));
+            return;
+        }
+        if (shardChannelTasks.containsKey(player.getUniqueId())) {
+            return;
+        }
+        Location destination = safePortalDestination();
+        if (destination == null) {
+            player.sendMessage(ChatColor.RED + "Портальная комната сейчас недоступна; cooldown не начат.");
+            getLogger().warning("Rift Shard destination is invalid; teleport refused.");
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        Location start = player.getLocation().clone();
+        shardChannelStarts.put(uuid, start);
+        final int[] elapsed = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!player.isOnline() || player.isDead() || !player.getWorld().equals(start.getWorld())
+                    || player.getLocation().distanceSquared(start) > 0.36D) {
+                holder[0].cancel();
+                shardChannelTasks.remove(uuid);
+                shardChannelStarts.remove(uuid);
+                return;
+            }
+            elapsed[0] += 5;
+            int total = config.shardChannelSeconds() * 20;
+            player.sendActionBar(Component.text("Осколок: " + Math.min(100, elapsed[0] * 100 / total) + "%", NamedTextColor.LIGHT_PURPLE));
+            player.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                    player.getLocation().add(0.0D, 1.0D, 0.0D), 5, 0.25D, 0.4D, 0.25D, 0.02D);
+            if (elapsed[0] >= total) {
+                holder[0].cancel();
+                shardChannelTasks.remove(uuid);
+                shardChannelStarts.remove(uuid);
+                finishShardChannel(player, destination);
+            }
+        }, 1L, 5L);
+        shardChannelTasks.put(uuid, holder[0]);
+    }
+
+    private void finishShardChannel(Player player, Location destination) {
+        if (!player.isOnline() || player.isDead() || destination == null) {
+            return;
+        }
+        long cooldownUntil = System.currentTimeMillis() + config.shardCooldownSeconds() * 1000L;
+        shardCooldowns.put(player.getUniqueId(), cooldownUntil);
+        if (!saveStateSync()) {
+            shardCooldowns.remove(player.getUniqueId());
+            player.sendMessage(ChatColor.RED + "Cooldown не сохранён; teleport отменён.");
+            return;
+        }
+        if (!player.teleport(destination)) {
+            shardCooldowns.remove(player.getUniqueId());
+            saveStateSync();
+            player.sendMessage(ChatColor.RED + "Teleport не выполнен; cooldown возвращён.");
+            return;
+        }
+        player.playSound(destination, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0F, 0.8F);
+        player.sendMessage(ChatColor.LIGHT_PURPLE + "Осколок перенёс тебя в комнату портала.");
+    }
+
+    private Location safePortalDestination() {
+        World world = Bukkit.getWorld(config.portalWorld());
+        if (world == null) {
+            return null;
+        }
+        Location destination = new Location(world, config.portalX(), config.portalY(), config.portalZ(), config.portalYaw(), config.portalPitch());
+        Block feet = destination.getBlock();
+        Block head = feet.getRelative(BlockFace.UP);
+        Block floor = feet.getRelative(BlockFace.DOWN);
+        if (!feet.isPassable() || !head.isPassable() || !floor.getType().isSolid()) {
+            return null;
+        }
+        return destination;
+    }
+
+    private void cancelShardChannel(UUID uuid) {
+        BukkitTask task = shardChannelTasks.remove(uuid);
+        if (task != null) {
+            task.cancel();
+        }
+        shardChannelStarts.remove(uuid);
+    }
+
+    private void tickShardChannels() {
+        // Channel progress is owned by its individual task.  This method is a
+        // bounded hook for diagnostics and deliberately performs no world scan.
+    }
+
+    private String formatDuration(long seconds) {
+        long minutes = seconds / 60L;
+        long remainder = seconds % 60L;
+        return minutes + "м " + remainder + "с";
+    }
+
+    private void tag(Entity entity, String kind, int wave, boolean official) {
+        if (entity == null || entity.getPersistentDataContainer() == null) {
+            return;
+        }
+        PersistentDataContainer data = entity.getPersistentDataContainer();
+        data.set(keyEventId, PersistentDataType.STRING, eventId);
+        data.set(keyGeneration, PersistentDataType.LONG, generation);
+        data.set(keyKind, PersistentDataType.STRING, kind);
+        data.set(keyWave, PersistentDataType.INTEGER, wave);
+        data.set(keyLootProfile, PersistentDataType.STRING, official ? "END_RIFT_OFFICIAL" : "END_RIFT_TEST");
+        data.set(keyOfficial, PersistentDataType.BYTE, official ? (byte) 1 : (byte) 0);
+        ownedEntities.put(entity.getUniqueId(), entity);
+    }
+
+    private void tagTestBoss(Entity entity) {
+        entity.getPersistentDataContainer().set(keyBossTest, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    private boolean isTestBoss(Entity entity) {
+        return entity != null && entity.getPersistentDataContainer().has(keyBossTest, PersistentDataType.BYTE)
+                && entity.getPersistentDataContainer().get(keyBossTest, PersistentDataType.BYTE) == (byte) 1;
+    }
+
+    private boolean isOfficialEntity(Entity entity) {
+        return entity != null && entity.getPersistentDataContainer().getOrDefault(
+                keyOfficial, PersistentDataType.BYTE, (byte) 0) == (byte) 1;
+    }
+
+    private String readString(Entity entity, NamespacedKey key) {
+        if (entity == null || key == null) {
+            return "";
+        }
+        return entity.getPersistentDataContainer().getOrDefault(key, PersistentDataType.STRING, "");
+    }
+
+    private int readInt(Entity entity, NamespacedKey key, int fallback) {
+        if (entity == null || key == null) {
+            return fallback;
+        }
+        return entity.getPersistentDataContainer().getOrDefault(key, PersistentDataType.INTEGER, fallback);
+    }
+
+    private boolean ownedBySession(Entity entity, String expectedEventId, long expectedGeneration) {
+        return entity != null && Objects.equals(expectedEventId, readString(entity, keyEventId))
+                && expectedGeneration == entity.getPersistentDataContainer().getOrDefault(
+                        keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE);
+    }
+
+    private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration) {
+        if (expectedEventId == null || expectedEventId.isBlank()) {
+            return;
+        }
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                if (ownedBySession(entity, expectedEventId, expectedGeneration)) {
+                    entity.remove();
+                    ownedEntities.remove(entity.getUniqueId());
+                    finalWaveEntities.remove(entity.getUniqueId());
+                    spellServants.remove(entity.getUniqueId());
+                }
+            }
+        }
+        if (expectedEventId.equals(eventId) && expectedGeneration == generation) {
+            ownedEntities.clear();
+            finalWaveEntities.clear();
+            spellServants.clear();
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onOwnedEntityRemove(EntityRemoveEvent event) {
+        Entity entity = event.getEntity();
+        if (entity != null && ownedEntities.containsKey(entity.getUniqueId())) {
+            ownedEntities.remove(entity.getUniqueId());
+            finalWaveEntities.remove(entity.getUniqueId());
+            spellServants.remove(entity.getUniqueId());
+            if (bossUuid != null && bossUuid.equals(entity.getUniqueId()) && !officialBossDeathCommitted) {
+                bossUuid = null;
+            }
+        }
+    }
+
+    private void bindBossClientForOnlinePlayers() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isActiveArenaParticipant(player)) {
+                bindBossClient(player);
+            }
+        }
+    }
+
+    private void bindBossClient(Player player) {
+        if (player == null || !player.isOnline() || bossUuid == null) {
+            return;
+        }
+        sendClientPacket(player, "END_BOSS_BIND", UUID.randomUUID().toString(), 0L, bossUuid.toString());
+    }
+
+    private void sendControlStart(Player player) {
+        if (player == null || !player.isOnline() || !controlSpellUnlocked || controlInstances.containsKey(player.getUniqueId())) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (controlCooldowns.getOrDefault(player.getUniqueId(), 0L) > now) {
+            return;
+        }
+        String instance = UUID.randomUUID().toString();
+        controlInstances.put(player.getUniqueId(), instance);
+        controlEnds.put(player.getUniqueId(), now + config.controlDurationSeconds() * 1000L);
+        controlCooldowns.put(player.getUniqueId(), now + config.controlCooldownSeconds() * 1000L);
+        sendClientPacket(player, "END_CONTROL_START", instance,
+                config.controlDurationSeconds() * 1000L, "");
+    }
+
+    private void startFairControlTarget() {
+        if (!controlSpellUnlocked || !controlInstances.isEmpty()) {
+            return;
+        }
+        List<Player> candidates = activeLivingPlayers().stream()
+                .filter(player -> controlCooldowns.getOrDefault(player.getUniqueId(), 0L) <= System.currentTimeMillis())
+                .toList();
+        if (!candidates.isEmpty()) {
+            sendControlStart(candidates.get(random.nextInt(candidates.size())));
+        }
+    }
+
+    private void expireControlEffects() {
+        long now = System.currentTimeMillis();
+        for (UUID uuid : new HashSet<>(controlInstances.keySet())) {
+            if (controlEnds.getOrDefault(uuid, 0L) <= now) {
+                stopControl(uuid);
+            }
+        }
+    }
+
+    private void stopControl(UUID uuid) {
+        String instance = controlInstances.remove(uuid);
+        controlEnds.remove(uuid);
+        if (instance != null) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null) {
+                sendControlStop(player, instance);
+            }
+        }
+    }
+
+    private void sendControlStop(Player player, String instance) {
+        if (player != null && instance != null) {
+            sendClientPacket(player, "END_CONTROL_STOP", instance, 0L, "");
+        }
+    }
+
+    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis, String subjectId) {
+        if (player == null || !player.isOnline() || config.bridgeChannel().isBlank()) {
+            return;
+        }
+        try {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            java.io.DataOutputStream output = new java.io.DataOutputStream(bytes);
+            output.writeUTF("COPIMINE_END_EVENT_V1");
+            output.writeUTF(type);
+            output.writeUTF(eventId);
+            output.writeLong(generation);
+            output.writeUTF(instanceId == null ? "" : instanceId);
+            output.writeLong(durationMillis);
+            output.writeUTF(subjectId == null ? "" : subjectId);
+            output.writeUTF(config.clientBossId());
+            output.writeUTF(config.clientControlId());
+            output.flush();
+            player.sendPluginMessage(this, config.bridgeChannel(), bytes.toByteArray());
+        } catch (java.io.IOException error) {
+            getLogger().log(Level.FINE, "End client bridge packet could not be encoded", error);
+        }
+    }
+
+    @Override
+    public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+        if (!"cmend".equalsIgnoreCase(command.getName())) {
+            return List.of();
+        }
+        if (args.length == 1) {
+            return List.of("status", "core", "arena", "gate", "portalroom", "resources", "ritual", "wave", "boss", "client").stream()
+                    .filter(value -> value.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 2) {
+            return switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "core" -> List.of("set", "info", "rebuild", "remove");
+                case "arena" -> List.of("pos1", "pos2", "info", "clear");
+                case "gate" -> List.of("pos1", "pos2", "preview", "restore");
+                case "portalroom" -> List.of("set", "info");
+                case "resources" -> List.of("status", "add", "reset");
+                case "ritual" -> List.of("start", "cancel", "cleanup", "reset", "unlock");
+                case "wave" -> List.of("spawn", "clear");
+                case "boss" -> List.of("spawn", "official", "info", "damage", "phase", "kill", "spell");
+                case "client" -> List.of("status", "bindboss", "clear");
+                default -> List.of();
+            };
+        }
+        if (args.length == 3 && "wave".equalsIgnoreCase(args[0]) && "spawn".equalsIgnoreCase(args[1])) {
+            return List.of("1", "2", "3", "final");
+        }
+        return List.of();
+    }
+}

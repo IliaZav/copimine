@@ -2,6 +2,7 @@ package me.copimine.artifacts.api;
 
 import java.util.concurrent.CompletableFuture;
 import org.bukkit.Location;
+import org.bukkit.inventory.ItemStack;
 
 /**
  * Typed, event-only boundary for durable rewards owned by CopiMineArtifacts.
@@ -15,4 +16,10 @@ public interface EventArtifactRewardService {
 
     CompletableFuture<RewardIssueResult> issueWorldDrop(
             EventArtifactRewardRequest request, Location location);
+
+    /** Fail-closed identity check used when a vanilla resource is consumed. */
+    boolean isOfficialArtifact(ItemStack stack);
+
+    /** Player-context authenticity check for an event utility item. */
+    boolean isAuthenticArtifact(ItemStack stack, org.bukkit.entity.Player player, String context);
 }

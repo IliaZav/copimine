@@ -1,0 +1,91 @@
+# CopiMine End Rift Event.  This file is intentionally local/staging-safe by
+# default.  The event never changes a world or database outside the server on
+# which this plugin is explicitly installed.
+environment: local
+
+persistence:
+  file: event-state.yml
+  backup-file: event-state.yml.bak
+  schema-version: 1
+
+resources:
+  DIAMOND: 100
+  ENDER_EYE: 64
+  AMETHYST_SHARD: 128
+  BLAZE_ROD: 64
+
+ritual:
+  countdown-seconds: 60
+  intermission-seconds: 10
+  min-players: 2
+  max-players: 20
+  pad-radii: [5.0, 6.0, 7.0, 8.0]
+  pad-occupancy-radius: 1.35
+
+arena:
+  world: CopiMine
+  radius: 32.0
+  boss-radius: 15.0
+  containment-radius: 10.0
+
+waves:
+  hard-cap: 48
+  wave-1:
+    endermen: 5
+    endermites: 8
+    shulkers: 0
+    elite-endermen: 0
+  wave-2:
+    endermen: 7
+    endermites: 6
+    shulkers: 3
+    elite-endermen: 0
+  wave-3:
+    endermen: 10
+    endermites: 3
+    shulkers: 4
+    elite-endermen: 3
+  final:
+    endermen: 0
+    endermites: 8
+    shulkers: 2
+    elite-endermen: 8
+
+boss:
+  health: 1000.0
+  attack-damage-bonus: 3.0
+  target-rotation-seconds: [5, 8]
+  spell-cooldown-seconds: [6, 9]
+  spell-telegraph-ticks: 30
+  half-health: 500.0
+  final-threshold: 100.0
+  final-health: 200.0
+  final-drain-fraction: 0.60
+  final-drain-min-health: 1.0
+  control-duration-seconds: 10
+  control-cooldown-seconds: 24
+  max-summoned-servants: 4
+
+rewards:
+  boss-xp: 3000
+  max-xp-orbs: 20
+  shard-item-id: rift_core_shard
+  shard-channel-seconds: 3
+  shard-cooldown-seconds: 3600
+  return-stone-item-id: return_stone
+  resource-bundle:
+    ENDER_PEARL: 16
+    CHORUS_FRUIT: 16
+
+portal-room:
+  world: CopiMine_the_end
+  x: 0.5
+  y: 80.0
+  z: 0.5
+  yaw: 0.0
+  pitch: 0.0
+
+client:
+  boss-id: END_RIFT_GUARDIAN_V1
+  control-id: END_RIFT_CONTROL_REVERSAL_V1
+  bridge-channel: copimine:client_bridge

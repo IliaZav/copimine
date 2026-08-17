@@ -14806,6 +14806,16 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                location.getWorld().getName(), location.getX(), location.getY(), location.getZ());
          return submitEventReward(request, drop);
       }
+
+      @Override
+      public boolean isOfficialArtifact(ItemStack stack) {
+         return isOfficialArtifactItem(stack);
+      }
+
+      @Override
+      public boolean isAuthenticArtifact(ItemStack stack, Player player, String context) {
+         return authenticCatalogItem(stack, player, context == null ? "event" : context) != null;
+      }
    }
 
    private CompletableFuture<RewardIssueResult> submitEventReward(

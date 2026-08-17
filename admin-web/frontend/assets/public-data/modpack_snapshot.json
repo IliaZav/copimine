@@ -5,7 +5,7 @@
     "size":  17411926,
     "sha1":  "8335166bfb940bade9191d364840810cf1cbbbed",
     "sha256":  "7a1d9a5e325f5bc0f71088761af1f716452e47d27ce437429c67e253fa6d637f",
-    "modified":  1786937815,
+    "modified":  1786939488,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -95,7 +95,7 @@
                                       ],
                      "notes":  [
                                    "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Mod Menu, Simple Voice Chat, Iris и Sodium.",
-                                   "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
+                                   "Iris и Sodium входят в число семи обязательных модов для официального клиента.",
                                    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
                                    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
                                ]

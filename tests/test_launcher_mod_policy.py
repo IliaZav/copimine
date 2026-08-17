@@ -33,3 +33,11 @@ def test_default_launcher_mod_policy_has_no_other_managed_client_mods() -> None:
     assert all(entry["path"].startswith("mods/") for entry in document["files"])
     assert len(document["files"]) == 8
     assert document["requiredExternal"] == []
+
+
+def test_default_launcher_mod_policy_notes_match_admission_policy() -> None:
+    document = json.loads(MODPACK_MANIFEST.read_text(encoding="utf-8"))
+    notes = "\n".join(document["notes"]).lower()
+
+    assert "не требуются для входа" not in notes
+    assert "обязательн" in notes

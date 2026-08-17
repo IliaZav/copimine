@@ -42,7 +42,8 @@ Invoke-EndRiftStep 'Python event contracts' {
     & python -m pytest -q tests\test_end_event_contract.py tests\test_end_event_resourcepack_contract.py `
       tests\test_end_event_client_contract.py tests\test_end_event_spec_contract.py `
       tests\test_end_event_layout_contract.py tests\test_end_event_commands_contract.py `
-      tests\test_end_event_item_lore_contract.py
+      tests\test_end_event_item_lore_contract.py tests\test_end_event_runtime_invariants_contract.py `
+      tests\test_end_event_runtime_smoke_contract.py
   } finally {
     Pop-Location
   }

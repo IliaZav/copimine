@@ -42,6 +42,7 @@ public record EventConfig(
         int bossSpellMinSeconds,
         int bossSpellMaxSeconds,
         int bossSpellTelegraphTicks,
+        int finalRitualTelegraphTicks,
         double bossHalfHealth,
         double bossFinalThreshold,
         double bossFinalHealth,
@@ -116,6 +117,7 @@ public record EventConfig(
         if (boss.getInt("spell-telegraph-ticks", 30) < 1) {
             throw new IllegalStateException("boss.spell-telegraph-ticks must be positive");
         }
+        int finalRitualTelegraphTicks = positiveInt(boss, "final-ritual-telegraph-ticks");
 
         return new EventConfig(
                 persistence.getInt("schema-version", 1),
@@ -145,7 +147,7 @@ public record EventConfig(
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
                 target[0], target[1], spells[0], spells[1],
-                positiveInt(boss, "spell-telegraph-ticks"),
+                positiveInt(boss, "spell-telegraph-ticks"), finalRitualTelegraphTicks,
                 half, finalThreshold, finalHealth,
                 drainFraction,
                 Math.max(1.0D, boss.getDouble("final-drain-min-health", 1.0D)),

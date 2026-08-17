@@ -71,6 +71,7 @@ boss:
   target-rotation-seconds: [5, 8]
   spell-cooldown-seconds: [6, 9]
   spell-telegraph-ticks: 30
+  final-ritual-telegraph-ticks: 80
   half-health: 500.0
   final-threshold: 100.0
   final-health: 200.0

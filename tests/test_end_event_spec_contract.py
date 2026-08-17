@@ -64,4 +64,6 @@ def test_reward_count_is_frozen_roster_not_last_hit() -> None:
     assert "officialRewardRoster" in MAIN
     assert ":participant:" in MAIN
     assert "rift-core-shard" in MAIN
-    assert "getKiller" not in MAIN[MAIN.index("issueVictoryRewards"):MAIN.index("checkVictoryRewardCompletion")]
+    reward_method = MAIN[MAIN.index("private void issueVictoryRewards"):MAIN.index("private void checkVictoryRewardCompletion")]
+    assert "getKiller" not in reward_method
+    assert "bossKillerUuid" in MAIN

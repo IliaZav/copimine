@@ -24,6 +24,8 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
     assert "Повтори /cmend reset confirm" in MAIN
     assert "Повтори /cmend unlock confirm" in MAIN
     assert "simulate-victory" in MAIN
+    assert "Тестовая волна не создана: сначала настрой Core" in MAIN
+    assert "Волна не создана: сначала настрой Core" in MAIN
 
 
 def test_dangerous_paths_are_never_console_or_production_mutations() -> None:

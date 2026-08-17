@@ -15,3 +15,6 @@ permissions:
   copimine.endevent.admin:
     description: Управление End Rift Event
     default: op
+  copimine.endevent.test:
+    description: Локальные тестовые волны и boss End Rift Event
+    default: op

@@ -2,11 +2,12 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string] $Configuration = 'Release',
-    [string] $Version = '1.0.0',
+    [string] $Version = '1.0.1',
     [string] $InstanceReleaseRoot = '',
     [string] $OfflineMinecraftRoot = '',
     [string] $WebView2StandalonePath = '',
     [switch] $RequireOfflineBundle,
+    [switch] $ServerHostedRuntimeOnly,
     [switch] $SkipPackaging
 )
 
@@ -32,6 +33,14 @@ if ($installContractDocument.bindingRequired -ne $true -or
     $installContractDocument.allowSkip -ne $false -or
     $installContractDocument.playBlockedUntilLinked -ne $true) {
     throw 'Launcher install contract must require browser binding, prohibit manual code entry and block play until linked.'
+}
+
+if ($ServerHostedRuntimeOnly -and $RequireOfflineBundle) {
+    throw 'ServerHostedRuntimeOnly and RequireOfflineBundle are mutually exclusive.'
+}
+
+if ($ServerHostedRuntimeOnly -and -not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+    throw 'ServerHostedRuntimeOnly does not accept OfflineMinecraftRoot.'
 }
 
 if (Test-Path -LiteralPath $publishRoot) {
@@ -80,10 +89,10 @@ Copy-Item -LiteralPath (Join-Path $bootstrapSource 'instance-manifest.sig') -Des
 Get-ChildItem -LiteralPath $bootstrapFiles -File | Copy-Item -Destination (Join-Path $bootstrapDestination 'files') -Force
 Copy-Item -LiteralPath $installContract -Destination (Join-Path $publishRoot 'launcher-install-contract.json') -Force
 
-if ($RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+if (-not $ServerHostedRuntimeOnly -and $RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     throw 'RequireOfflineBundle was specified but OfflineMinecraftRoot is empty.'
 }
-if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+if (-not $ServerHostedRuntimeOnly -and -not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     $offlineBaselineScript = Join-Path $scriptRoot 'prepare_launcher_offline_baseline.ps1'
     & $offlineBaselineScript -MinecraftRoot $OfflineMinecraftRoot -DestinationRoot $bootstrapDestination -MinecraftVersion '1.21.1' -FabricLoaderVersion '0.19.3'
     if ($LASTEXITCODE -ne 0) {
@@ -91,7 +100,7 @@ if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     }
 }
 
-if ($RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+if (-not $ServerHostedRuntimeOnly -and $RequireOfflineBundle -and [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
     throw 'RequireOfflineBundle was specified but WebView2StandalonePath is empty.'
 }
 if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
@@ -101,7 +110,7 @@ if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
     Copy-Item -LiteralPath $webView2Source -Destination $webView2Destination -Force
 }
 
-if ($RequireOfflineBundle) {
+if (-not $ServerHostedRuntimeOnly -and $RequireOfflineBundle) {
     foreach ($requiredOfflineFile in @(
         (Join-Path $bootstrapDestination 'offline-minecraft-baseline.json'),
         (Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip'),
@@ -115,7 +124,7 @@ if ($RequireOfflineBundle) {
 
 if ($SkipPackaging) {
     Write-Output "PUBLISH_OUTPUT=$publishRoot"
-    if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
+    if (-not $ServerHostedRuntimeOnly -and -not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
         Write-Output "OFFLINE_BASELINE_OUTPUT=$(Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip')"
     }
     if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {

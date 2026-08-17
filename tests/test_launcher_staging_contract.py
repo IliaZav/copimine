@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE_SCRIPT = ROOT / "scripts" / "stage_copimine_launcher_site.ps1"
 RELEASE_ROOT = ROOT / "artifacts" / "launcher" / "Release"
 PACKAGE_ROOT = RELEASE_ROOT / "packages"
-INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.0.exe"
-MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.0.msi"
+INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.1.exe"
+MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.1.msi"
 METADATA = RELEASE_ROOT / "metadata" / "latest.json"
 INSTANCE = RELEASE_ROOT / "instance-current"
 
@@ -35,6 +35,7 @@ def run_stage(metadata: Path, output: Path) -> subprocess.CompletedProcess[str]:
             str(output),
             "-InstanceReleaseRoot",
             str(INSTANCE),
+            "-ServerHostedRuntimeOnly",
         ],
         cwd=ROOT,
         text=True,
@@ -69,8 +70,10 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
             assert staged_file.is_file(), artifact
             expected_size = artifact.get("size", artifact.get("sizeBytes"))
             assert staged_file.stat().st_size == expected_size, artifact
-        assert (output / "launcher-bootstrap/offline-minecraft-baseline.json").is_file()
-        assert (output / "launcher-bootstrap/offline-minecraft-baseline.zip").stat().st_size > 100_000_000
+        runtime = manifest["minecraftRuntime"]
+        runtime_file = output / "launcher/files" / runtime["sha256"]
+        assert runtime_file.is_file()
+        assert runtime_file.stat().st_size == runtime["sizeBytes"]
         assert (output / "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe").stat().st_size > 100_000_000
     finally:
         if output.exists():

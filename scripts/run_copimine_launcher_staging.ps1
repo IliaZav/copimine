@@ -11,14 +11,17 @@ $site = (Resolve-Path -LiteralPath $SiteRoot -ErrorAction Stop).Path
 foreach ($required in @(
     (Join-Path $site 'launcher/stable/instance-manifest.json'),
     (Join-Path $site 'launcher/stable/instance-manifest.sig'),
-    (Join-Path $site 'downloads/launcher/CopiMineLauncherSetup-1.0.0.exe'),
-    (Join-Path $site 'launcher-bootstrap/offline-minecraft-baseline.json'),
-    (Join-Path $site 'launcher-bootstrap/offline-minecraft-baseline.zip'),
+    (Join-Path $site 'downloads/launcher/CopiMineLauncherSetup-1.0.1.exe'),
     (Join-Path $site 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
 )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Staged Launcher site is incomplete: $required"
     }
+}
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $site 'launcher/stable/instance-manifest.json') | ConvertFrom-Json
+$runtimeDigest = [string]$manifest.minecraftRuntime.sha256
+if ($runtimeDigest -notmatch '^[0-9a-fA-F]{64}$' -or -not (Test-Path -LiteralPath (Join-Path $site "launcher/files/$runtimeDigest") -PathType Leaf)) {
+    throw 'Staged Launcher site is missing the server-hosted Minecraft runtime artifact.'
 }
 
 $python = Get-Command python -ErrorAction SilentlyContinue

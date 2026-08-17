@@ -22,6 +22,6 @@ public sealed class ScaffoldContractTests
     public void Product_and_initial_version_are_exposed()
     {
         LauncherVersionInfo.Product.Should().Be("CopiMineLauncher");
-        LauncherVersionInfo.Version.Should().Be("1.0.0");
+        LauncherVersionInfo.Version.Should().Be("1.0.1");
     }
 }

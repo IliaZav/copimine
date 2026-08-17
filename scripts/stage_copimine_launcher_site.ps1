@@ -8,7 +8,8 @@ param(
     [string] $MetadataPath,
     [Parameter(Mandatory = $true)]
     [string] $OutputRoot,
-    [string] $InstanceReleaseRoot = ""
+    [string] $InstanceReleaseRoot = "",
+    [switch] $ServerHostedRuntimeOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,22 +81,33 @@ $fullPackages = @(Get-ChildItem -LiteralPath $packageRoot -File -Filter '*-full.
 if ($fullPackages.Count -eq 0) {
     throw "Velopack full package is missing from the package directory: $packageRoot"
 }
-foreach ($requiredOffline in @($offlineMetadata, $offlineArchive, $webView2Standalone)) {
-    if (-not (Test-Path -LiteralPath $requiredOffline -PathType Leaf)) {
-        throw "Offline Launcher artifact is missing: $requiredOffline"
+if (-not $ServerHostedRuntimeOnly) {
+    foreach ($requiredOffline in @($offlineMetadata, $offlineArchive, $webView2Standalone)) {
+        if (-not (Test-Path -LiteralPath $requiredOffline -PathType Leaf)) {
+            throw "Offline Launcher artifact is missing: $requiredOffline"
+        }
+    }
+    $offlineDocument = Get-Content -Raw -LiteralPath $offlineMetadata | ConvertFrom-Json
+    $offlineInfo = Get-Item -LiteralPath $offlineArchive
+    if ($offlineDocument.schemaVersion -ne 1 -or $offlineDocument.minecraftVersion -ne '1.21.1' -or $offlineDocument.fabricLoaderVersion -ne '0.19.3') {
+        throw "Offline Minecraft metadata is invalid: $offlineMetadata"
+    }
+    if ([long]$offlineDocument.sizeBytes -ne [long]$offlineInfo.Length -or [string]$offlineDocument.sha256 -ine (Get-Sha256Lower $offlineArchive)) {
+        throw "Offline Minecraft metadata does not match the archive: $offlineArchive"
     }
 }
-$offlineDocument = Get-Content -Raw -LiteralPath $offlineMetadata | ConvertFrom-Json
-$offlineInfo = Get-Item -LiteralPath $offlineArchive
-if ($offlineDocument.schemaVersion -ne 1 -or $offlineDocument.minecraftVersion -ne '1.21.1' -or $offlineDocument.fabricLoaderVersion -ne '0.19.3') {
-    throw "Offline Minecraft metadata is invalid: $offlineMetadata"
-}
-if ([long]$offlineDocument.sizeBytes -ne [long]$offlineInfo.Length -or [string]$offlineDocument.sha256 -ine (Get-Sha256Lower $offlineArchive)) {
-    throw "Offline Minecraft metadata does not match the archive: $offlineArchive"
+if (-not (Test-Path -LiteralPath $webView2Standalone -PathType Leaf)) {
+    throw "WebView2 standalone artifact is missing: $webView2Standalone"
 }
 if ((Get-Item -LiteralPath $webView2Standalone).Length -lt 100MB) {
     throw "WebView2 standalone artifact is unexpectedly small: $webView2Standalone"
 }
+<#
+The server-hosted release omits the duplicate offline-baseline copy from the
+MSI. The signed minecraftRuntime archive remains once in launcher/files as a
+verified bundled fallback and is also downloaded from CopiMine storage on
+first repair/play when the local copy is unavailable.
+#>
 
 $sourceInstanceManifest = $null
 if ($null -ne $sourceInstance) {
@@ -174,9 +186,12 @@ $fullPackages | Copy-Item -Destination $downloadDirectory -Force
 
 $offlineDestination = Join-Path $destination 'launcher-bootstrap'
 $webView2Destination = Join-Path $destination 'Assets/WebView2'
-New-Item -ItemType Directory -Path $offlineDestination,$webView2Destination -Force | Out-Null
-Copy-Item -LiteralPath $offlineMetadata -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.json') -Force
-Copy-Item -LiteralPath $offlineArchive -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.zip') -Force
+New-Item -ItemType Directory -Path $webView2Destination -Force | Out-Null
+if (-not $ServerHostedRuntimeOnly) {
+    New-Item -ItemType Directory -Path $offlineDestination -Force | Out-Null
+    Copy-Item -LiteralPath $offlineMetadata -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.json') -Force
+    Copy-Item -LiteralPath $offlineArchive -Destination (Join-Path $offlineDestination 'offline-minecraft-baseline.zip') -Force
+}
 Copy-Item -LiteralPath $webView2Standalone -Destination (Join-Path $webView2Destination 'MicrosoftEdgeWebView2RuntimeInstallerX64.exe') -Force
 
 if ($null -ne $sourceInstance) {

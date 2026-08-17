@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $ArtifactRoot,
     [string] $MetadataPath = "",
-    [string] $Version = "1.0.0",
+    [string] $Version = "1.0.1",
     [switch] $RequireOfflineBundle
 )
 

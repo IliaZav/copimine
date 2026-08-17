@@ -4,5 +4,5 @@ public static class LauncherVersionInfo
 {
     public const string Product = "CopiMineLauncher";
 
-    public const string Version = "1.0.0";
+    public const string Version = "1.0.1";
 }

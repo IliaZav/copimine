@@ -18,6 +18,7 @@ public partial class MainWindow : Window
         viewModel.LauncherHideRequested += OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested += OnLauncherRestoreRequested;
         viewModel.LauncherBindingRequired += OnLauncherBindingRequired;
+        viewModel.LaunchFailureRequested += OnLaunchFailureRequested;
         Closed += OnClosed;
     }
 
@@ -172,6 +173,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnLaunchFailureRequested(object? sender, MinecraftLaunchFailureEventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(() => OnLaunchFailureRequested(sender, e));
+            return;
+        }
+
+        var dialog = new LaunchFailureDialog(e.Report)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+    }
+
     public async Task HandleLauncherProtocolCallbackAsync(string callback)
     {
         await viewModel.HandleLauncherProtocolCallbackAsync(callback);
@@ -189,6 +205,7 @@ public partial class MainWindow : Window
         viewModel.LauncherHideRequested -= OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested -= OnLauncherRestoreRequested;
         viewModel.LauncherBindingRequired -= OnLauncherBindingRequired;
+        viewModel.LaunchFailureRequested -= OnLaunchFailureRequested;
         Closed -= OnClosed;
     }
 }

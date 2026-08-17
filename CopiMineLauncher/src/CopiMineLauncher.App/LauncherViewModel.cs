@@ -5,6 +5,7 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CopiMineLauncher.Core;
+using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Core.News;
 using CopiMineLauncher.Infrastructure.Binding;
 using CopiMineLauncher.Infrastructure.News;
@@ -22,6 +23,11 @@ public sealed class PatchFeedCardViewModel(PatchFeedItem item)
     public string Summary => string.Join(" · ", item.Summary.Take(2));
     public Uri DetailUrl => item.DetailUrl;
     public Uri? ThumbnailUrl => item.ThumbnailUrl;
+}
+
+public sealed class MinecraftLaunchFailureEventArgs(MinecraftLaunchFailureReport report) : EventArgs
+{
+    public MinecraftLaunchFailureReport Report { get; } = report ?? throw new ArgumentNullException(nameof(report));
 }
 
 public partial class LauncherViewModel : ObservableObject
@@ -163,6 +169,7 @@ public partial class LauncherViewModel : ObservableObject
     public event EventHandler? LauncherHideRequested;
     public event EventHandler? LauncherRestoreRequested;
     public event EventHandler? LauncherBindingRequired;
+    public event EventHandler<MinecraftLaunchFailureEventArgs>? LaunchFailureRequested;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -607,6 +614,7 @@ public partial class LauncherViewModel : ObservableObject
                 ? await runtimeCoordinator.PlayAsync(request, cancellation.Token, progress)
                 : await runtimeCoordinator.RepairAsync(request, cancellation.Token, progress);
 
+            MinecraftLaunchFailureReport? launchFailure = null;
             lock (progressGate)
             {
                 operationFinished = true;
@@ -624,6 +632,11 @@ public partial class LauncherViewModel : ObservableObject
                 IsProgressIndeterminate = false;
                 ProgressLabel = $"{ProgressPercent:0}%";
                 Diagnostic = BuildDiagnostic(result, InstancePath);
+                launchFailure = launch && !result.Succeeded ? result.LaunchFailure : null;
+            }
+            if (launchFailure is not null)
+            {
+                RunOnUi(() => LaunchFailureRequested?.Invoke(this, new MinecraftLaunchFailureEventArgs(launchFailure)));
             }
             if (launch && result.Succeeded && result.Launch is not null)
             {
@@ -810,6 +823,13 @@ public partial class LauncherViewModel : ObservableObject
             {
                 lines.Add($"Launch log: {result.Launch.ProcessLogPath}");
             }
+        }
+
+        if (result.LaunchFailure is not null)
+        {
+            lines.Add($"Launch failure: {result.LaunchFailure.Summary}");
+            lines.Add($"Launch log: {result.LaunchFailure.LogPath}");
+            lines.AddRange(result.LaunchFailure.Evidence.Select(line => $"Evidence: {line}"));
         }
 
         return string.Join(Environment.NewLine, lines);

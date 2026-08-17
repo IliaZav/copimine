@@ -4,6 +4,7 @@ using CmlLib.Core;
 using CmlLib.Core.Auth;
 using CmlLib.Core.ProcessBuilder;
 using CmlLib.Core.VersionLoader;
+using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Infrastructure.Provisioning;
 
 namespace CopiMineLauncher.Infrastructure.Launch;
@@ -18,7 +19,8 @@ public sealed record LaunchRequest(
     int ResolutionHeight = 720,
     bool Fullscreen = false,
     string? ServerAddress = null,
-    int ServerPort = 25565);
+    int ServerPort = 25565,
+    IReadOnlyCollection<string>? ManagedModFileNames = null);
 
 public sealed record LaunchEvidence(
     Process Process,
@@ -27,6 +29,20 @@ public sealed record LaunchEvidence(
     string InstanceRoot,
     string JavaExecutablePath,
     string? ProcessLogPath = null);
+
+public sealed class MinecraftLaunchException : InvalidOperationException
+{
+    public MinecraftLaunchException(string code, MinecraftLaunchFailureReport report, string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+        Code = code;
+        Report = report;
+    }
+
+    public string Code { get; }
+
+    public MinecraftLaunchFailureReport Report { get; }
+}
 
 public interface IMinecraftLaunchService
 {
@@ -39,7 +55,9 @@ public static class MinecraftLaunchStartup
         Process process,
         string logPath,
         TimeSpan gracePeriod,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? instanceRoot = null,
+        IReadOnlyCollection<string>? userModFileNames = null)
     {
         ArgumentNullException.ThrowIfNull(process);
         ArgumentException.ThrowIfNullOrWhiteSpace(logPath);
@@ -50,7 +68,7 @@ public static class MinecraftLaunchStartup
 
         if (process.HasExited)
         {
-            throw BuildExitException(process, logPath);
+            throw BuildExitException(process, logPath, instanceRoot, userModFileNames);
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -66,12 +84,86 @@ public static class MinecraftLaunchStartup
 
         if (process.HasExited)
         {
-            throw BuildExitException(process, logPath);
+            throw BuildExitException(process, logPath, instanceRoot, userModFileNames);
         }
     }
 
-    private static InvalidOperationException BuildExitException(Process process, string logPath) =>
-        new($"MINECRAFT_PROCESS_EXITED: Minecraft завершился во время запуска (code {process.ExitCode}). Лог запуска: {logPath}");
+    private static MinecraftLaunchException BuildExitException(
+        Process process,
+        string logPath,
+        string? instanceRoot,
+        IReadOnlyCollection<string>? userModFileNames)
+    {
+        try
+        {
+            process.WaitForExit();
+        }
+        catch
+        {
+            // The process may disappear between the Exited event and this check.
+        }
+
+        var logText = ReadStartupLogs(logPath, instanceRoot);
+        var report = MinecraftLaunchFailureParser.Parse(logText, logPath, userModFileNames);
+        var exitCode = TryReadExitCode(process);
+        return new MinecraftLaunchException(
+            "MINECRAFT_START_FAILED",
+            report,
+            $"MINECRAFT_START_FAILED: {report.Summary} (код {exitCode}). Полный лог: {logPath}");
+    }
+
+    private static string ReadStartupLogs(string primaryLogPath, string? instanceRoot)
+    {
+        var paths = new List<string> { primaryLogPath };
+        if (!string.IsNullOrWhiteSpace(instanceRoot))
+        {
+            var fullRoot = Path.GetFullPath(instanceRoot);
+            paths.Add(Path.Combine(fullRoot, "logs", "latest.log"));
+            var crashDirectory = Path.Combine(fullRoot, "crash-reports");
+            if (Directory.Exists(crashDirectory))
+            {
+                paths.AddRange(Directory.EnumerateFiles(crashDirectory, "*.txt")
+                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                    .Take(2));
+            }
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            paths.Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(ReadLogFile)
+                .Where(text => !string.IsNullOrWhiteSpace(text)));
+    }
+
+    private static string ReadLogFile(string path)
+    {
+        try
+        {
+            return File.Exists(path)
+                ? File.ReadAllText(path, Encoding.UTF8)
+                : string.Empty;
+        }
+        catch (IOException)
+        {
+            return string.Empty;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
+    }
+
+    private static int TryReadExitCode(Process process)
+    {
+        try
+        {
+            return process.ExitCode;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
 }
 
 public static class MinecraftLaunchProcessConfiguration
@@ -202,8 +294,39 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
             process,
             logPath,
             TimeSpan.FromSeconds(10),
-            cancellationToken);
+            cancellationToken,
+            request.InstanceRoot,
+            GetUserModFileNames(request));
 
         return new(process, DateTimeOffset.UtcNow, request.FabricVersionName, Path.GetFullPath(request.InstanceRoot), javaPath, logPath);
+    }
+
+    private static IReadOnlyCollection<string> GetUserModFileNames(LaunchRequest request)
+    {
+        if (request.ManagedModFileNames is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        try
+        {
+            var managed = request.ManagedModFileNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var modsDirectory = Path.Combine(Path.GetFullPath(request.InstanceRoot), "mods");
+            return Directory.Exists(modsDirectory)
+                ? Directory.EnumerateFiles(modsDirectory, "*.jar", SearchOption.TopDirectoryOnly)
+                    .Select(Path.GetFileName)
+                    .Where(name => !string.IsNullOrWhiteSpace(name) && !managed.Contains(name!))
+                    .Cast<string>()
+                    .ToArray()
+                : Array.Empty<string>();
+        }
+        catch (IOException)
+        {
+            return Array.Empty<string>();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Core.Manifest;
 using CopiMineLauncher.Core.Updates;
 using CopiMineLauncher.Infrastructure.Launch;
@@ -30,7 +31,8 @@ public sealed record LauncherOperationResult(
     JavaProvisioningResult? Java = null,
     MinecraftProvisioningResult? Minecraft = null,
     ServersDatEvidence? ServersDat = null,
-    LaunchEvidence? Launch = null);
+    LaunchEvidence? Launch = null,
+    MinecraftLaunchFailureReport? LaunchFailure = null);
 
 public interface ITransactionalReconcilerFactory
 {
@@ -211,7 +213,13 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                         request.MaximumRamMb,
                         request.ResolutionWidth,
                         request.ResolutionHeight,
-                        request.Fullscreen),
+                        request.Fullscreen,
+                        ManagedModFileNames: manifest.ReconcilerManifest.Files
+                            .Where(file => file.Path.StartsWith("mods/", StringComparison.OrdinalIgnoreCase))
+                            .Select(file => Path.GetFileName(file.Path.Replace('/', Path.DirectorySeparatorChar)))
+                            .Where(fileName => !string.IsNullOrWhiteSpace(fileName))
+                            .Cast<string>()
+                            .ToHashSet(StringComparer.OrdinalIgnoreCase)),
                     cancellationToken);
             }
 
@@ -244,6 +252,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         catch (MinecraftProvisioningException exception)
         {
             return Failure(operation, exception.Code, exception.Message);
+        }
+        catch (MinecraftLaunchException exception)
+        {
+            return Failure(operation, exception.Code, exception.Message, exception.Report);
         }
         catch (OperationCanceledException)
         {
@@ -294,6 +306,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         return null;
     }
 
-    private static LauncherOperationResult Failure(string operation, string code, string diagnostic) =>
-        new(false, operation, code, diagnostic);
+    private static LauncherOperationResult Failure(
+        string operation,
+        string code,
+        string diagnostic,
+        MinecraftLaunchFailureReport? launchFailure = null) =>
+        new(false, operation, code, diagnostic, LaunchFailure: launchFailure);
 }

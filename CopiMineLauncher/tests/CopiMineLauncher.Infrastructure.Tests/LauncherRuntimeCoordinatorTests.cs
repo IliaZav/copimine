@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Security.Cryptography;
+using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Core.Manifest;
 using CopiMineLauncher.Core.Updates;
 using CopiMineLauncher.Infrastructure.Launch;
@@ -141,6 +142,37 @@ public sealed class LauncherRuntimeCoordinatorTests
         services.Java.Calls.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Minecraft_start_failure_keeps_the_structured_log_report()
+    {
+        using var temp = new TemporaryDirectory();
+        var services = FixtureServices(new List<string>(), ReconciliationStatus.Updated);
+        var report = MinecraftLaunchFailureParser.Parse(
+            "[main/ERROR] Could not execute entrypoint stage 'main' due to errors, provided by 'better-leaves'!",
+            Path.Combine(temp.Path, "logs", "launcher-process.log"),
+            new[] { "BetterLeaves-1.4.0.jar" });
+        services.Launch.Exception = new MinecraftLaunchException(
+            "MINECRAFT_START_FAILED",
+            report,
+            "Minecraft start failed",
+            new InvalidOperationException("fixture"));
+        var coordinator = new LauncherRuntimeCoordinator(
+            services.ManifestClient,
+            services.Minecraft,
+            services.Java,
+            services.ReconcilerFactory,
+            services.Servers,
+            services.Launch);
+
+        var result = await coordinator.PlayAsync(
+            new LauncherOperationRequest(temp.Path, "Steve"),
+            CancellationToken.None);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorCode.Should().Be("MINECRAFT_START_FAILED");
+        result.LaunchFailure.Should().BeSameAs(report);
+    }
+
     private static ServicesFixture FixtureServices(List<string> events, ReconciliationStatus reconciliationStatus)
     {
         var verified = CreateVerifiedManifest();
@@ -273,10 +305,17 @@ public sealed class LauncherRuntimeCoordinatorTests
     private sealed class FakeLaunchService(List<string> events) : IMinecraftLaunchService
     {
         public int Calls { get; private set; }
+        public Exception? Exception { get; set; }
+
         public Task<LaunchEvidence> LaunchAsync(LaunchRequest request, CancellationToken cancellationToken)
         {
             Calls++;
             events.Add("launch");
+            if (Exception is not null)
+            {
+                return Task.FromException<LaunchEvidence>(Exception);
+            }
+
             return Task.FromResult(new LaunchEvidence(
                 Process.GetCurrentProcess(),
                 DateTimeOffset.UtcNow,

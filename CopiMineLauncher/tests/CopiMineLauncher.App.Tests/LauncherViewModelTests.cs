@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Core.News;
 using CopiMineLauncher.Infrastructure.Binding;
 using CopiMineLauncher.Infrastructure.Launch;
@@ -266,6 +267,39 @@ public sealed class LauncherViewModelTests
         viewModel.Diagnostic.Should().Contain("MANIFEST_HTTP_FAILED");
         viewModel.Diagnostic.Should().Contain("404 Not Found");
         viewModel.Diagnostic.Should().Contain($"Instance path: {Path.GetFullPath(temp.Path)}");
+    }
+
+    [Fact]
+    public async Task User_mod_launch_failure_opens_the_structured_failure_dialog_request()
+    {
+        using var temp = new TemporaryDirectory();
+        await CreateReadyInstanceAsync(temp.Path);
+        var logPath = Path.Combine(temp.Path, "logs", "launcher-process.log");
+        var report = MinecraftLaunchFailureParser.Parse(
+            "[main/ERROR] Could not execute entrypoint stage 'main' due to errors, provided by 'better-leaves'!",
+            logPath,
+            new[] { "BetterLeaves-1.4.0.jar" });
+        var runtime = new FakeRuntimeCoordinator
+        {
+            PlayResult = new LauncherOperationResult(
+                false,
+                "play",
+                "MINECRAFT_START_FAILED",
+                report.Summary,
+                LaunchFailure: report)
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+        var failureRequested = new TaskCompletionSource<MinecraftLaunchFailureReport>(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.LaunchFailureRequested += (_, args) => failureRequested.TrySetResult(args.Report);
+
+        await viewModel.PlayCommand.ExecuteAsync(null);
+
+        (await failureRequested.Task.WaitAsync(TimeSpan.FromSeconds(5))).Should().BeSameAs(report);
+        viewModel.IsDiagnosticOpen.Should().BeTrue();
+        viewModel.Diagnostic.Should().Contain(logPath);
     }
 
     [Fact]

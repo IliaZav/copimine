@@ -228,7 +228,7 @@ const navGroups = [
       ["players", "Игроки", "Профили и действия", "И"],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
-      ["artifacts", "Лавки", "Каталог, точки в мире, покупки и выдача", "Л"],
+      ["artifacts", "Артефакты", "Каталог, точки в мире, покупки и выдача", "А"],
       ["elections", "Выборы", "Заявки, дебаты и голосование", "В"]
     ]
   },
@@ -265,12 +265,12 @@ const pageMeta = Object.fromEntries(
 
 navGroups[0].items.splice(4, 0, [
   "shops",
-  "\u041b\u0430\u0432\u043a\u0438",
+  "Каталоги",
   "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c",
   "L"
 ]);
 pageMeta.shops = {
-  title: "\u041b\u0430\u0432\u043a\u0438",
+  title: "Каталоги",
   subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c"
 };
 
@@ -365,15 +365,6 @@ const adminSearchSectionItems = [
 ];
 
 adminSearchAliases.shops = "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d \u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442\u044b donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433 \u0446\u0435\u043d\u044b \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c";
-adminSearchSectionItems.unshift({
-  id: "shops",
-  target: "shops-overview",
-  title: "\u041b\u0430\u0432\u043a\u0438",
-  subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438 \u0432 \u043e\u0434\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435",
-  group: "\u041b\u0430\u0432\u043a\u0438",
-  haystack: "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433",
-  focusNeedle: "\u041b\u0430\u0432\u043a\u0438"
-});
 
 function fuzzyContains(text, query) {
   const normalized = cleanText(text).toLowerCase().replace(/ё/g, "е");

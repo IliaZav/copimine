@@ -30,7 +30,7 @@ MAX_TELEMETRY_LINES = 10_000
 TELEMETRY_EVENTS = frozenset({"launch", "reconcile_success", "reconcile_failure", "game_exit"})
 COMPONENT_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
 VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+\-]{0,63}$")
-FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.jar$")
+FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+\-]{0,127}\.jar$")
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,79}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DIAGNOSTIC_RE = re.compile(r"^[A-Z0-9][A-Z0-9_.:-]{0,79}$")
@@ -989,6 +989,13 @@ class ControlPlane:
     def list_news(self, *, include_drafts: bool = False) -> list[dict[str, Any]]:
         state = self.load_state()
         result = _copy_json(state["publishedNews"])
+        # The generated static feed is the deployable source of truth until
+        # the control-plane state has its first explicitly published record.
+        # Keep the admin editor useful in a fresh install as well as the
+        # public pages; an empty control-state file must not hide releases
+        # that are already present in the static contract.
+        if not result:
+            result = self._static_news()
         if include_drafts:
             result.extend(_copy_json(state["draftNews"]))
         return result
@@ -1056,6 +1063,9 @@ class ControlPlane:
 
     def dashboard(self) -> dict[str, Any]:
         state = self.load_state()
+        published_news = self.list_news()
+        if not published_news:
+            published_news = self._static_news()
         return {
             "schemaVersion": 1,
             "draftRelease": {
@@ -1066,7 +1076,7 @@ class ControlPlane:
             "currentReleaseId": state.get("currentReleaseId"),
             "previousReleaseId": state.get("previousReleaseId"),
             "mods": _copy_json(state.get("draftMods", [])),
-            "news": _copy_json(state.get("publishedNews", [])),
+            "news": published_news,
             "draftNews": _copy_json(state.get("draftNews", [])),
             "releases": _copy_json(state.get("releases", [])),
             "stats": self.stats(),
@@ -1115,11 +1125,36 @@ class ControlPlane:
         }
 
     def public_news(self) -> list[dict[str, Any]]:
-        return self.list_news()
+        published = self.list_news()
+        if published:
+            return published
+        return self._static_news()
+
+    def _static_news(self) -> list[dict[str, Any]]:
+        """Read the generated patch index without mutating control state."""
+        if not self.public_root:
+            return []
+        index_path = self.public_root / "assets" / "public-data" / "patches" / "index.json"
+        try:
+            payload = json.loads(index_path.read_text(encoding="utf-8"))
+            patches = payload.get("patches") if isinstance(payload, dict) else None
+            if isinstance(patches, list):
+                return [item for item in patches if isinstance(item, dict)]
+        except (OSError, json.JSONDecodeError):
+            pass
+        return []
 
     def public_news_detail(self, slug: str) -> dict[str, Any]:
         slug = _safe_slug(slug)
         item = next((row for row in self.list_news() if row.get("slug") == slug), None)
+        if item is None and self.public_root:
+            detail_path = self.public_root / "assets" / "public-data" / "patches" / f"{slug}.json"
+            try:
+                payload = json.loads(detail_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict) and payload.get("slug") == slug:
+                    item = payload
+            except (OSError, json.JSONDecodeError):
+                item = None
         if item is None:
             raise ControlPlaneError("LAUNCHER_NEWS_NOT_FOUND", "published news was not found", field="slug")
         return item

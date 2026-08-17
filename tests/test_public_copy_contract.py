@@ -103,10 +103,11 @@ def test_public_pages_keep_player_actions_and_data_mounts():
     mods = read("admin-web/frontend/mods.html")
     errors = read("admin-web/frontend/404.html") + read("admin-web/frontend/error.html")
 
-    assert "Скачать модпак" in index
+    assert 'id="downloadLauncherBtn"' in index
+    assert "Скачать Launcher" in index
     assert 'id="presidentLaws"' in index
     assert 'id="publicElectionRefresh"' in elections
-    assert 'id="modpackMetaGrid"' in mods
+    assert 'href="/launcher.html"' in mods
     assert 'href="/index.html"' in errors
     assert 'href="/signin.html"' in errors
 

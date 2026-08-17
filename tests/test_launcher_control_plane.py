@@ -107,6 +107,28 @@ def test_control_plane_seeds_manifest_and_preserves_non_mod_files(tmp_path: Path
     assert any(item["path"] == "mods/Seeded.jar" for item in draft["files"])
 
 
+def test_control_plane_keeps_official_plus_named_mods(tmp_path: Path) -> None:
+    source = complete_source_manifest(tmp_path)
+    document = json.loads(source.read_text(encoding="utf-8"))
+    payload = b"iris-plus-mod"
+    digest = hashlib.sha256(payload).hexdigest()
+    (source.parent / "files" / digest).write_bytes(payload)
+    document["files"].append(
+        {
+            "componentId": "iris",
+            "path": "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+            "version": "1.8.8+mc1.21.1",
+            "required": True,
+            "sha256": digest,
+            "size": len(payload),
+        }
+    )
+    source.write_text(json.dumps(document), encoding="utf-8")
+
+    plane = control.ControlPlane(tmp_path / "control", source_manifest=source)
+    assert [item["componentId"] for item in plane.list_mods()] == ["seeded-client", "iris"]
+
+
 def test_mod_crud_hashes_server_bytes_and_rejects_duplicate_or_traversal(tmp_path: Path) -> None:
     plane = control.ControlPlane(tmp_path / "control")
     plane.load_state()
@@ -262,3 +284,27 @@ def test_published_news_generates_static_patch_contract_and_safe_detail_page(tmp
     assert "Staging" in html
     assert "<release>" not in html
     assert "<script>" not in html
+
+
+def test_public_news_serves_static_feed_when_backend_state_is_empty(tmp_path: Path) -> None:
+    public = tmp_path / "public"
+    patches = public / "assets" / "public-data" / "patches"
+    patches.mkdir(parents=True)
+    index_entry = {
+        "id": "launcher-static",
+        "slug": "launcher-static",
+        "version": "1.0.1",
+        "title": "Static release",
+        "publishedAt": "2026-08-17T05:00:00Z",
+        "summary": ["Served from the generated feed"],
+        "detailUrl": "/news/launcher-static.html",
+    }
+    (patches / "index.json").write_text(json.dumps({"schemaVersion": 1, "patches": [index_entry]}), encoding="utf-8")
+    (patches / "launcher-static.json").write_text(json.dumps({**index_entry, "sections": {}, "items": []}), encoding="utf-8")
+
+    plane = control.ControlPlane(tmp_path / "control", public_root=public)
+    plane.load_state()
+    assert plane.public_news()[0]["slug"] == "launcher-static"
+    assert plane.list_news(include_drafts=True)[0]["slug"] == "launcher-static"
+    assert plane.public_news_detail("launcher-static")["version"] == "1.0.1"
+    assert plane.dashboard()["news"][0]["slug"] == "launcher-static"

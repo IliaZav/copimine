@@ -1066,6 +1066,15 @@ class ControlPlane:
         published_news = self.list_news()
         if not published_news:
             published_news = self._static_news()
+        releases = _copy_json(state.get("releases", []))
+        current_release_id = state.get("currentReleaseId")
+        if not current_release_id:
+            static_release = self._static_release_record()
+            if static_release:
+                current_release_id = static_release["releaseId"]
+                releases = [static_release] + [
+                    item for item in releases if item.get("releaseId") != static_release["releaseId"]
+                ]
         return {
             "schemaVersion": 1,
             "draftRelease": {
@@ -1073,12 +1082,12 @@ class ControlPlane:
                 "releaseSequence": state.get("releaseSequence", 0),
                 "modCount": len(state.get("draftMods", [])),
             },
-            "currentReleaseId": state.get("currentReleaseId"),
+            "currentReleaseId": current_release_id,
             "previousReleaseId": state.get("previousReleaseId"),
             "mods": _copy_json(state.get("draftMods", [])),
             "news": published_news,
             "draftNews": _copy_json(state.get("draftNews", [])),
-            "releases": _copy_json(state.get("releases", [])),
+            "releases": releases,
             "stats": self.stats(),
         }
 
@@ -1086,6 +1095,8 @@ class ControlPlane:
         state = self.load_state()
         current_id = state.get("currentReleaseId")
         current = next((item for item in state.get("releases", []) if item.get("releaseId") == current_id), None)
+        if current is None:
+            current = self._static_release_record()
         mods: list[dict[str, Any]] = []
         installer: dict[str, Any] | None = None
         if self.public_root:
@@ -1122,6 +1133,32 @@ class ControlPlane:
             "filesBaseUrl": "/launcher/files/",
             "installer": installer,
             "mods": mods,
+        }
+
+    def _static_release_record(self) -> dict[str, Any] | None:
+        """Expose the immutable stable manifest as current control-plane state."""
+        if not self.source_manifest or not self.source_manifest.is_file():
+            return None
+        try:
+            manifest_bytes = self.source_manifest.read_bytes()
+            document = json.loads(manifest_bytes.decode("utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        if not isinstance(document, dict):
+            return None
+        release_id = str(document.get("releaseId") or "").strip()
+        try:
+            release_sequence = int(document.get("releaseSequence") or 0)
+        except (TypeError, ValueError):
+            release_sequence = 0
+        if not release_id or release_sequence <= 0:
+            return None
+        return {
+            "releaseId": release_id,
+            "releaseSequence": release_sequence,
+            "publishedAtUtc": document.get("publishedAtUtc"),
+            "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "publicKeyId": document.get("publicKeyId"),
         }
 
     def public_news(self) -> list[dict[str, Any]]:

@@ -107,6 +107,19 @@ def test_control_plane_seeds_manifest_and_preserves_non_mod_files(tmp_path: Path
     assert any(item["path"] == "mods/Seeded.jar" for item in draft["files"])
 
 
+def test_empty_control_state_surfaces_static_release_as_current(tmp_path: Path) -> None:
+    manifest = complete_source_manifest(tmp_path)
+    plane = control.ControlPlane(tmp_path / "control", source_manifest=manifest)
+
+    dashboard = plane.dashboard()
+    public = plane.public_launcher()
+
+    assert dashboard["currentReleaseId"] == "2026.08.17.1"
+    assert dashboard["releases"][0]["releaseId"] == "2026.08.17.1"
+    assert public["currentRelease"]["releaseId"] == "2026.08.17.1"
+    assert public["currentRelease"]["manifestSha256"] == hashlib.sha256(manifest.read_bytes()).hexdigest()
+
+
 def test_control_plane_keeps_official_plus_named_mods(tmp_path: Path) -> None:
     source = complete_source_manifest(tmp_path)
     document = json.loads(source.read_text(encoding="utf-8"))

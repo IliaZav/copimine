@@ -24,7 +24,19 @@ public sealed class AnimatedGifImageTests
         played.Should().BeTrue("the animated header logo must actually advance while the Launcher is open");
     }
 
+    [Fact]
+    public async Task Header_logo_pack_uri_loads_without_falling_back_to_static_artwork()
+    {
+        var played = await RunPlaybackProbeAsync(
+            new Uri("Assets/LauncherVisuals/copimine-logo-header.gif", UriKind.Relative));
+
+        played.Should().BeTrue("the packaged WPF resource must play from the same relative URI used by MainWindow");
+    }
+
     private static Task<bool> RunPlaybackProbeAsync(string assetName)
+        => RunPlaybackProbeAsync(new Uri(Path.GetFullPath(SourcePath(assetName)), UriKind.Absolute));
+
+    private static Task<bool> RunPlaybackProbeAsync(Uri source)
     {
         var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
@@ -32,12 +44,19 @@ public sealed class AnimatedGifImageTests
             var dispatcher = Dispatcher.CurrentDispatcher;
             var image = new AnimatedGifImage
             {
-                GifSource = new Uri(Path.GetFullPath(SourcePath(assetName)), UriKind.Absolute)
+                GifSource = source
             };
 
             try
             {
                 image.Start();
+                if (image.IsFallbackActive)
+                {
+                    result.TrySetResult(false);
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+                    return;
+                }
+
                 var firstFrame = image.CurrentFrameIndex;
                 var poll = new DispatcherTimer(DispatcherPriority.Render, dispatcher)
                 {

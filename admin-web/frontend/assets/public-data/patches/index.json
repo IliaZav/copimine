@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-17-launcher-1.0.1",
+      "slug": "copimine-launcher-1-0-1",
+      "version": "1.0.1",
+      "title": "CopiMine Launcher 1.0.1",
+      "publishedAt": "2026-08-17T05:00:00Z",
+      "summary": [
+        "Minecraft, Java и обязательные моды теперь загружаются из хранилища CopiMine.",
+        "Добавлена проверка и восстановление локального runtime-архива Minecraft 1.21.1.",
+        "Обновлён установщик с выбором папки и встроенным резервным способом восстановления."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-1.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-15-launcher-1.0.0",
       "slug": "copimine-launcher-1-0-0",
       "version": "1.0.0",

@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE_SCRIPT = ROOT / "scripts" / "stage_copimine_launcher_site.ps1"
 RELEASE_ROOT = ROOT / "artifacts" / "launcher" / "Release"
 PACKAGE_ROOT = RELEASE_ROOT / "packages"
-INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.1.exe"
-MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.1.msi"
+INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.2.exe"
+MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.2.msi"
 METADATA = RELEASE_ROOT / "metadata" / "latest.json"
 INSTANCE = RELEASE_ROOT / "instance-current"
 

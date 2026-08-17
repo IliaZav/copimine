@@ -11,7 +11,7 @@ $site = (Resolve-Path -LiteralPath $SiteRoot -ErrorAction Stop).Path
 foreach ($required in @(
     (Join-Path $site 'launcher/stable/instance-manifest.json'),
     (Join-Path $site 'launcher/stable/instance-manifest.sig'),
-    (Join-Path $site 'downloads/launcher/CopiMineLauncherSetup-1.0.1.exe'),
+    (Join-Path $site 'downloads/launcher/CopiMineLauncherSetup-1.0.2.exe'),
     (Join-Path $site 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
 )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {

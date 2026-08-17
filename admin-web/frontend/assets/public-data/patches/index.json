@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-17-launcher-1.0.2",
+      "slug": "copimine-launcher-1-0-2",
+      "version": "1.0.2",
+      "title": "CopiMine Launcher 1.0.2",
+      "publishedAt": "2026-08-17T19:30:32Z",
+      "summary": [
+        "Привязка аккаунта больше не ждёт первый ответ перед началом проверки.",
+        "Первый запуск готовит игру в фоне, поэтому окно Launcher открывается сразу.",
+        "Обновлена статическая раздача сайта и установщика с проверяемыми хэшами."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-2.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-17-launcher-1.0.1",
       "slug": "copimine-launcher-1-0-1",
       "version": "1.0.1",

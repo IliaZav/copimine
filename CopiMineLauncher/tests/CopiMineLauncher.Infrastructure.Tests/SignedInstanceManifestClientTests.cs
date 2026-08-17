@@ -29,6 +29,8 @@ public sealed class SignedInstanceManifestClientTests
         result.Document.InstanceVersion.Should().Be("2026.08.15.1");
         result.ReconcilerManifest.Sequence.Should().Be(17);
         result.ReconcilerManifest.MinecraftVersion.Should().Be("1.21.1");
+        result.ReconcilerManifest.MinecraftRuntime.Should().NotBeNull();
+        result.ReconcilerManifest.MinecraftRuntime!.Sha256.Should().Be(new string('d', 64));
         result.ReconcilerManifest.Files.Should().ContainSingle().Which.Ownership.Should().Be("managed");
         result.ManifestSha256.Should().HaveLength(64).And.MatchRegex("^[0-9a-f]{64}$");
         verifier.ManifestBytes.Should().Equal(raw);
@@ -138,7 +140,11 @@ public sealed class SignedInstanceManifestClientTests
             "https://copimine.ru/launcher/files/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             456,
             new string('c', 64)),
-        "launcher-v1");
+        "launcher-v1",
+        new InstanceMinecraftRuntime(
+            "https://copimine.ru/launcher/files/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            789,
+            new string('d', 64)));
 
     private static ManifestSignature Signature(string keyId) => new(
         "Ed25519",

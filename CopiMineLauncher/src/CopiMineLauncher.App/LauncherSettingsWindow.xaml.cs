@@ -1,10 +1,13 @@
 using System.Windows;
+using System.Windows.Controls;
 
 namespace CopiMineLauncher.App;
 
-public partial class LauncherSettingsWindow : Window
+public partial class LauncherSettingsWindow : UserControl
 {
     private readonly LauncherViewModel viewModel;
+
+    public event EventHandler? BackRequested;
 
     public LauncherSettingsWindow(LauncherViewModel viewModel)
     {
@@ -18,7 +21,7 @@ public partial class LauncherSettingsWindow : Window
         try
         {
             viewModel.SaveSettings();
-            DialogResult = true;
+            BackRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception exception)
         {
@@ -26,5 +29,5 @@ public partial class LauncherSettingsWindow : Window
         }
     }
 
-    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+    private void Cancel_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 }

@@ -1,10 +1,13 @@
 using System.Windows;
+using System.Windows.Controls;
 
 namespace CopiMineLauncher.App;
 
 public partial class MainWindow : Window
 {
     private readonly LauncherViewModel viewModel;
+    private readonly LauncherScreenNavigation navigation = new();
+    private UserControl? currentScreen;
 
     public MainWindow(LauncherViewModel viewModel)
     {
@@ -34,23 +37,74 @@ public partial class MainWindow : Window
 
     private void OpenSettings_Click(object sender, RoutedEventArgs e)
     {
-        var settings = new LauncherSettingsWindow(viewModel)
-        {
-            Owner = this
-        };
-        settings.ShowDialog();
+        ShowScreen(LauncherScreen.Settings, "Настройки", new LauncherSettingsWindow(viewModel));
     }
 
     private void OpenSkins_Click(object sender, RoutedEventArgs e)
     {
-        var cosmetics = new SkinManagerWindow(
+        ShowScreen(LauncherScreen.Skins, "Скины и плащи", new SkinManagerWindow(
             viewModel.InstancePath,
             viewModel.PlayerName,
-            LauncherInstallPaths.ResolveLauncherDataRoot())
+            LauncherInstallPaths.ResolveLauncherDataRoot()));
+    }
+
+    private void ShowScreen(LauncherScreen screen, string title, UserControl content)
+    {
+        if (currentScreen is not null)
         {
-            Owner = this
-        };
-        cosmetics.ShowDialog();
+            UnsubscribeFromScreen(currentScreen);
+        }
+
+        navigation.NavigateTo(screen);
+        currentScreen = content;
+        SubscribeToScreen(content);
+        ScreenTitleText.Text = title;
+        ScreenContent.Content = content;
+        HomeView.Visibility = Visibility.Collapsed;
+        ScreenView.Visibility = Visibility.Visible;
+        BackButton.Focus();
+    }
+
+    private void BackFromScreen_Click(object sender, RoutedEventArgs e) => ShowHomeScreen();
+
+    private void OnScreenBackRequested(object? sender, EventArgs e) => ShowHomeScreen();
+
+    private void ShowHomeScreen()
+    {
+        if (currentScreen is not null)
+        {
+            UnsubscribeFromScreen(currentScreen);
+        }
+
+        navigation.NavigateBack();
+        ScreenContent.Content = null;
+        currentScreen = null;
+        ScreenView.Visibility = Visibility.Collapsed;
+        HomeView.Visibility = Visibility.Visible;
+    }
+
+    private void SubscribeToScreen(UserControl screen)
+    {
+        if (screen is LauncherSettingsWindow settings)
+        {
+            settings.BackRequested += OnScreenBackRequested;
+        }
+        else if (screen is SkinManagerWindow skins)
+        {
+            skins.BackRequested += OnScreenBackRequested;
+        }
+    }
+
+    private void UnsubscribeFromScreen(UserControl screen)
+    {
+        if (screen is LauncherSettingsWindow settings)
+        {
+            settings.BackRequested -= OnScreenBackRequested;
+        }
+        else if (screen is SkinManagerWindow skins)
+        {
+            skins.BackRequested -= OnScreenBackRequested;
+        }
     }
 
     private void OnLauncherHideRequested(object? sender, EventArgs e)
@@ -106,6 +160,12 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        if (currentScreen is not null)
+        {
+            UnsubscribeFromScreen(currentScreen);
+            ScreenContent.Content = null;
+        }
+
         viewModel.LauncherHideRequested -= OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested -= OnLauncherRestoreRequested;
         viewModel.LauncherBindingRequired -= OnLauncherBindingRequired;

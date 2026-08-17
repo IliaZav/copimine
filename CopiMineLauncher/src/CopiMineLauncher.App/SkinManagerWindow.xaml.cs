@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using CopiMineLauncher.Infrastructure.Skins;
 using Microsoft.Web.WebView2.Core;
@@ -10,7 +12,7 @@ using Microsoft.Win32;
 
 namespace CopiMineLauncher.App;
 
-public partial class SkinManagerWindow : Window
+public partial class SkinManagerWindow : UserControl
 {
     private readonly string instancePath;
     private readonly string launcherDataRoot;
@@ -22,6 +24,8 @@ public partial class SkinManagerWindow : Window
     private readonly LocalCosmeticsStore localStore;
     private readonly CancellationTokenSource lifetime = new();
     private readonly SemaphoreSlim previewGate = new(1, 1);
+    private readonly SkinSelectionActivationGate skinSelectionGate = new();
+    private readonly SkinSelectionActivationGate capeSelectionGate = new();
     private readonly List<CatalogItemViewModel> catalogItems = [];
     private readonly List<CapeCatalogItemViewModel> capeItems = [];
     private bool initialized;
@@ -31,6 +35,9 @@ public partial class SkinManagerWindow : Window
     private long previewAssetVersion;
     private string? selectedSkinPath;
     private string? selectedCapePath;
+    private bool disposed;
+
+    public event EventHandler? BackRequested;
 
     public SkinManagerWindow(string instancePath, string playerName, string launcherDataRoot)
     {
@@ -48,7 +55,7 @@ public partial class SkinManagerWindow : Window
         AnimationComboBox.SelectedIndex = 0;
         BackgroundComboBox.SelectedIndex = 0;
         Loaded += OnLoaded;
-        Closed += OnClosed;
+        Unloaded += OnUnloaded;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -216,13 +223,34 @@ public partial class SkinManagerWindow : Window
         if (initialized) await LoadCatalogAsync(reset: true);
     }
 
-    private async void CatalogSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private async void CatalogSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CatalogListBox.SelectedItem is not CatalogItemViewModel item) return;
+        await ActivateCatalogItemAsync(item);
+    }
+
+    private async void CatalogCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(CatalogListBox, e.OriginalSource as DependencyObject) is not ListBoxItem container
+            || container.Content is not CatalogItemViewModel item
+            || !ReferenceEquals(CatalogListBox.SelectedItem, item))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await ActivateCatalogItemAsync(item);
+    }
+
+    private async Task ActivateCatalogItemAsync(CatalogItemViewModel item)
+    {
+        var activation = skinSelectionGate.Begin(item.Id);
         try
         {
             SetStatus($"Скачиваем скин №{item.Id} для предпросмотра…");
             var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Skin, lifetime.Token);
+            if (!skinSelectionGate.IsCurrent(activation)) return;
+
             selectedSkinPath = PersistSelection(cachedPath, CosmeticTextureKind.Skin);
             ModelComboBox.SelectedIndex = item.IsSlim ? 2 : 1;
             SourceLabel.Text = $"Ely.by · скин №{item.Id}";
@@ -231,7 +259,10 @@ public partial class SkinManagerWindow : Window
         }
         catch (Exception exception)
         {
-            SetStatus($"Скин не загрузился: {exception.Message}");
+            if (skinSelectionGate.IsCurrent(activation))
+            {
+                SetStatus($"Скин не загрузился: {exception.Message}");
+            }
         }
     }
 
@@ -328,13 +359,34 @@ public partial class SkinManagerWindow : Window
         }
     }
 
-    private async void CapeSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    private async void CapeSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CapeListBox.SelectedItem is not CapeCatalogItemViewModel item) return;
+        await ActivateCapeItemAsync(item);
+    }
+
+    private async void CapeCardMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(CapeListBox, e.OriginalSource as DependencyObject) is not ListBoxItem container
+            || container.Content is not CapeCatalogItemViewModel item
+            || !ReferenceEquals(CapeListBox.SelectedItem, item))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        await ActivateCapeItemAsync(item);
+    }
+
+    private async Task ActivateCapeItemAsync(CapeCatalogItemViewModel item)
+    {
+        var activation = capeSelectionGate.Begin(item.Type);
         try
         {
             SetStatus($"Скачиваем плащ {item.Type} для предпросмотра…");
             var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Cape, lifetime.Token);
+            if (!capeSelectionGate.IsCurrent(activation)) return;
+
             selectedCapePath = PersistSelection(cachedPath, CosmeticTextureKind.Cape);
             SourceLabel.Text = $"{item.Source} · плащ {item.Type}";
             await SendPreviewAsync();
@@ -342,7 +394,10 @@ public partial class SkinManagerWindow : Window
         }
         catch (Exception exception)
         {
-            SetStatus($"Плащ не загрузился: {exception.Message}");
+            if (capeSelectionGate.IsCurrent(activation))
+            {
+                SetStatus($"Плащ не загрузился: {exception.Message}");
+            }
         }
     }
 
@@ -359,7 +414,7 @@ public partial class SkinManagerWindow : Window
             CheckFileExists = true,
             Multiselect = false
         };
-        if (dialog.ShowDialog(this) != true) return;
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true) return;
 
         try
         {
@@ -558,10 +613,12 @@ public partial class SkinManagerWindow : Window
         PreviewStatus.Text = message;
     }
 
-    private void Close_Click(object sender, RoutedEventArgs e) => Close();
+    private void Back_Click(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnClosed(object? sender, EventArgs e)
+    private void OnUnloaded(object? sender, RoutedEventArgs e)
     {
+        if (disposed) return;
+        disposed = true;
         lifetime.Cancel();
         if (PreviewView.CoreWebView2 is { } core)
         {

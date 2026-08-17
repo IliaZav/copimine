@@ -26,6 +26,22 @@ public sealed class MinecraftProvisionerTests
             "fabric-loader-0.19.3-1.21.1");
     }
 
+    [Fact]
+    public async Task Production_provisioning_does_not_fall_back_to_external_Mojang_or_Fabric_services()
+    {
+        using var httpClient = new HttpClient();
+        var provisioner = new MinecraftProvisioner(httpClient);
+
+        var action = () => provisioner.EnsureMinecraftFabricAsync(
+            Path.Combine(Path.GetTempPath(), "copimine-unseeded-" + Guid.NewGuid().ToString("N")),
+            "1.21.1",
+            "0.19.3",
+            CancellationToken.None);
+
+        await action.Should().ThrowAsync<MinecraftProvisioningException>()
+            .Where(exception => exception.Code == "MINECRAFT_RUNTIME_NOT_READY");
+    }
+
     private sealed class FakeProfileInstaller : IMinecraftProfileInstaller
     {
         public List<string> InstalledVersions { get; } = [];

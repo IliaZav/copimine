@@ -13,10 +13,16 @@ public sealed record LauncherManifest(
     JavaRuntimeMetadata? JavaRuntime,
     IReadOnlyList<ManifestFileEntry> Files,
     ManifestServer Server,
-    string PublicKeyId);
+    string PublicKeyId,
+    MinecraftRuntimeMetadata? MinecraftRuntime = null);
 
 public sealed record JavaRuntimeMetadata(
     string Version,
+    string Url,
+    long SizeBytes,
+    string Sha256);
+
+public sealed record MinecraftRuntimeMetadata(
     string Url,
     long SizeBytes,
     string Sha256);

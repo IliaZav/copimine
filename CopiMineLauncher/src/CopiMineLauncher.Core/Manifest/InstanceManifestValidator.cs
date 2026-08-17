@@ -116,6 +116,16 @@ public sealed class InstanceManifestValidator
             }
         }
 
+        if (document.MinecraftRuntime is null)
+        {
+            errors.Add(new("MINECRAFT_RUNTIME_MISSING", "minecraftRuntime metadata is required for a server-hosted Minecraft profile"));
+        }
+        else
+        {
+            ValidateHostedArtifactUrl(document.MinecraftRuntime.Url, "MINECRAFT_RUNTIME_URL_INVALID", errors);
+            ValidateHostedArtifactHashAndSize(document.MinecraftRuntime.Sha256, document.MinecraftRuntime.SizeBytes, errors);
+        }
+
         if (document.Files is null || document.Files.Count == 0)
         {
             errors.Add(new("INSTANCE_FILES_MISSING", "files must contain at least one managed entry"));
@@ -189,5 +199,30 @@ public sealed class InstanceManifestValidator
             && string.IsNullOrEmpty(uri.UserInfo)
             && string.Equals(uri.Host, "copimine.ru", StringComparison.OrdinalIgnoreCase)
             && uri.AbsolutePath.StartsWith("/news", StringComparison.Ordinal);
+    }
+
+    private static void ValidateHostedArtifactUrl(string? value, string code, ICollection<ManifestValidationError> errors)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !new[] { "copimine.ru", "www.copimine.ru", "cdn.copimine.ru" }.Contains(uri.Host, StringComparer.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith("/launcher/files/", StringComparison.Ordinal))
+        {
+            errors.Add(new(code, "minecraftRuntime.url must be an HTTPS CopiMine launcher artifact URL"));
+        }
+    }
+
+    private static void ValidateHostedArtifactHashAndSize(string? hash, long size, ICollection<ManifestValidationError> errors)
+    {
+        if (size <= 0 || size > 4L * 1024 * 1024 * 1024)
+        {
+            errors.Add(new("MINECRAFT_RUNTIME_SIZE_INVALID", "minecraftRuntime.sizeBytes must be positive and within the maximum bound"));
+        }
+
+        if (hash is null || !Regex.IsMatch(hash, "^[0-9a-f]{64}$", RegexOptions.CultureInvariant))
+        {
+            errors.Add(new("MINECRAFT_RUNTIME_SHA256_INVALID", "minecraftRuntime.sha256 must be lowercase hexadecimal with 64 characters"));
+        }
     }
 }

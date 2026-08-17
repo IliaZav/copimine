@@ -2,6 +2,8 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using CopiMineLauncher.Core.Filesystem;
+using CopiMineLauncher.Core.Manifest;
+using CopiMineLauncher.Infrastructure.Updates;
 
 namespace CopiMineLauncher.Infrastructure.Provisioning;
 
@@ -97,6 +99,77 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
                 $"В установщике отсутствует архив Minecraft baseline: {archivePath}");
         }
 
+        return await EnsureArchiveAsync(root, metadata, archivePath, cancellationToken);
+    }
+
+    public async Task<OfflineMinecraftBaselineResult> EnsureHostedAsync(
+        string instanceRoot,
+        string minecraftVersion,
+        string fabricLoaderVersion,
+        MinecraftRuntimeMetadata runtime,
+        IResumableDownloadManager downloads,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(instanceRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(minecraftVersion);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fabricLoaderVersion);
+        ArgumentNullException.ThrowIfNull(runtime);
+        ArgumentNullException.ThrowIfNull(downloads);
+
+        ValidateHostedRuntime(runtime);
+        var metadata = new OfflineMinecraftBaselineMetadata(
+            SupportedSchemaVersion,
+            minecraftVersion,
+            fabricLoaderVersion,
+            DefaultArchiveFileName,
+            runtime.SizeBytes,
+            runtime.Sha256);
+        ValidateMetadata(metadata, minecraftVersion, fabricLoaderVersion);
+
+        var root = Path.GetFullPath(instanceRoot);
+        Directory.CreateDirectory(root);
+        if (IsReady(root, metadata))
+        {
+            return new(true, false, true, metadata.MinecraftVersion, metadata.FabricLoaderVersion, "Серверный пакет Minecraft уже установлен.");
+        }
+
+        var cachePath = Path.Combine(
+            root,
+            ".copimine",
+            "cache",
+            "minecraft-runtime",
+            runtime.Sha256.ToLowerInvariant() + ".zip");
+        string archivePath;
+        try
+        {
+            archivePath = await downloads.DownloadAsync(
+                new Uri(runtime.Url, UriKind.Absolute),
+                cachePath,
+                runtime.SizeBytes,
+                runtime.Sha256,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or HttpRequestException)
+        {
+            throw new OfflineMinecraftBaselineException(
+                "HOSTED_MINECRAFT_RUNTIME_DOWNLOAD_FAILED",
+                "Не удалось скачать проверенный Minecraft/Fabric runtime с сервера CopiMine.",
+                exception);
+        }
+
+        return await EnsureArchiveAsync(root, metadata, archivePath, cancellationToken);
+    }
+
+    private static async Task<OfflineMinecraftBaselineResult> EnsureArchiveAsync(
+        string root,
+        OfflineMinecraftBaselineMetadata metadata,
+        string archivePath,
+        CancellationToken cancellationToken)
+    {
         await VerifyArchiveAsync(archivePath, metadata, cancellationToken);
         var transactionId = Guid.NewGuid().ToString("N");
         var stagingRoot = Path.Combine(root, ".copimine", "staging", "offline-baseline", transactionId);
@@ -154,6 +227,20 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         finally
         {
             TryDeleteDirectory(stagingRoot);
+        }
+    }
+
+    private static void ValidateHostedRuntime(MinecraftRuntimeMetadata runtime)
+    {
+        if (!Uri.TryCreate(runtime.Url, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !new[] { "copimine.ru", "www.copimine.ru", "cdn.copimine.ru" }.Contains(uri.Host, StringComparer.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith("/launcher/files/", StringComparison.Ordinal))
+        {
+            throw new OfflineMinecraftBaselineException(
+                "HOSTED_MINECRAFT_RUNTIME_URL_INVALID",
+                "Minecraft runtime должен загружаться только с разрешённого CopiMine launcher storage.");
         }
     }
 

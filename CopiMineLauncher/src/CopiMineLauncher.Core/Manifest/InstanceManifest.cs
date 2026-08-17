@@ -20,7 +20,8 @@ public sealed record InstanceManifestDocument(
     string NewsUrl,
     long ReleaseSequence,
     InstanceJavaRuntime? JavaRuntime = null,
-    string? PublicKeyId = null);
+    string? PublicKeyId = null,
+    InstanceMinecraftRuntime? MinecraftRuntime = null);
 
 public sealed record InstanceMinecraft(
     string Version,
@@ -58,6 +59,11 @@ public sealed record InstanceJavaRuntime(
     long SizeBytes,
     string Sha256);
 
+public sealed record InstanceMinecraftRuntime(
+    string Url,
+    long SizeBytes,
+    string Sha256);
+
 public static class InstanceManifestAdapter
 {
     public static LauncherManifest ToLauncherManifest(
@@ -73,6 +79,13 @@ public static class InstanceManifestAdapter
                 document.JavaRuntime.Url,
                 document.JavaRuntime.SizeBytes,
                 document.JavaRuntime.Sha256);
+
+        var minecraftRuntime = document.MinecraftRuntime is null
+            ? null
+            : new MinecraftRuntimeMetadata(
+                document.MinecraftRuntime.Url,
+                document.MinecraftRuntime.SizeBytes,
+                document.MinecraftRuntime.Sha256);
 
         var files = document.Files.Select(file => new ManifestFileEntry(
             file.ComponentId,
@@ -98,6 +111,7 @@ public static class InstanceManifestAdapter
             java,
             files,
             new ManifestServer(document.Server.Address, document.Server.Port, document.Server.Name),
-            publicKeyId);
+            publicKeyId,
+            minecraftRuntime);
     }
 }

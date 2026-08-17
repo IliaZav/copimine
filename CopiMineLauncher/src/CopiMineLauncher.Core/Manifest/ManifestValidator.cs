@@ -89,6 +89,7 @@ public sealed class ManifestValidator
         }
 
         ValidateJava(manifest.JavaRuntime, errors);
+        ValidateMinecraftRuntime(manifest.MinecraftRuntime, errors);
         ValidateServer(manifest.Server, errors);
         ValidateFiles(manifest.Files, errors);
 
@@ -162,6 +163,24 @@ public sealed class ManifestValidator
         ValidateHashAndSize(java.Sha256, java.SizeBytes, "javaRuntime", errors);
     }
 
+    private void ValidateMinecraftRuntime(MinecraftRuntimeMetadata? runtime, ICollection<ManifestValidationError> errors)
+    {
+        if (runtime is null)
+        {
+            errors.Add(new("MINECRAFT_RUNTIME_MISSING", "minecraftRuntime metadata is required for a server-hosted Minecraft profile"));
+            return;
+        }
+
+        ValidateUrl(runtime.Url, "MINECRAFT_RUNTIME_URL_INVALID", "minecraftRuntime", errors);
+        ValidateHashAndSize(
+            runtime.Sha256,
+            runtime.SizeBytes,
+            "minecraftRuntime",
+            errors,
+            "MINECRAFT_RUNTIME_SIZE_INVALID",
+            "MINECRAFT_RUNTIME_SHA256_INVALID");
+    }
+
     private static void ValidateServer(ManifestServer? server, ICollection<ManifestValidationError> errors)
     {
         if (server is null || string.IsNullOrWhiteSpace(server.Address) || string.IsNullOrWhiteSpace(server.DisplayName) || server.Port is < 1 or > 65535)
@@ -185,16 +204,22 @@ public sealed class ManifestValidator
     private bool IsAllowedHost(string host) => allowedHosts.Contains(host)
         || allowedHosts.Any(allowed => host.EndsWith("." + allowed, StringComparison.OrdinalIgnoreCase));
 
-    private static void ValidateHashAndSize(string? hash, long size, string path, ICollection<ManifestValidationError> errors)
+    private static void ValidateHashAndSize(
+        string? hash,
+        long size,
+        string path,
+        ICollection<ManifestValidationError> errors,
+        string sizeCode = "FILE_SIZE_INVALID",
+        string hashCode = "FILE_SHA256_INVALID")
     {
         if (size <= 0 || size > MaximumFileSizeBytes)
         {
-            errors.Add(new("FILE_SIZE_INVALID", "sizeBytes must be positive and within the maximum bound", path));
+            errors.Add(new(sizeCode, "sizeBytes must be positive and within the maximum bound", path));
         }
 
         if (hash is null || !Sha256Pattern.IsMatch(hash))
         {
-            errors.Add(new("FILE_SHA256_INVALID", "sha256 must be lowercase hexadecimal with 64 characters", path));
+            errors.Add(new(hashCode, "sha256 must be lowercase hexadecimal with 64 characters", path));
         }
     }
 

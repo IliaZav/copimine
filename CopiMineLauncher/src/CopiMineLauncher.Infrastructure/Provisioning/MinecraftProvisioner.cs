@@ -4,6 +4,17 @@ namespace CopiMineLauncher.Infrastructure.Provisioning;
 
 public sealed record MinecraftProvisioningResult(string MinecraftVersion, string FabricLoaderVersion, string FabricVersionName, string InstanceRoot);
 
+public sealed class MinecraftProvisioningException : Exception
+{
+    public MinecraftProvisioningException(string code, string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+        Code = code;
+    }
+
+    public string Code { get; }
+}
+
 public interface IMinecraftProfileInstaller
 {
     Task InstallAsync(string versionName, CancellationToken cancellationToken);
@@ -65,7 +76,14 @@ public sealed class MinecraftProvisioner : IMinecraftProvisioner
                 Path.GetFullPath(instanceRoot));
         }
 
-        var profileInstaller = profileInstallerOverride ?? new CmlibMinecraftProfileInstaller(instanceRoot, httpClient);
+        if (profileInstallerOverride is null)
+        {
+            throw new MinecraftProvisioningException(
+                "MINECRAFT_RUNTIME_NOT_READY",
+                "Minecraft/Fabric runtime не установлен из подписанного серверного пакета CopiMine. Внешняя загрузка Mojang/Fabric отключена.");
+        }
+
+        var profileInstaller = profileInstallerOverride;
         await profileInstaller.InstallAsync(minecraftVersion, cancellationToken);
         var fabric = await fabricProvisioner.EnsureFabricAsync(instanceRoot, minecraftVersion, fabricLoaderVersion, cancellationToken);
         await profileInstaller.InstallAsync(fabric.VersionName, cancellationToken);

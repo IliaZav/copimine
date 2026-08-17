@@ -82,6 +82,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
     private readonly IServersDatService serversDatService;
     private readonly IMinecraftLaunchService launchService;
     private readonly IOfflineMinecraftBaseline? offlineMinecraftBaseline;
+    private readonly IHostedMinecraftRuntimeInstaller? hostedMinecraftRuntime;
 
     public LauncherRuntimeCoordinator(
         IManifestClient manifestClient,
@@ -90,7 +91,8 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         ITransactionalReconcilerFactory reconcilerFactory,
         IServersDatService serversDatService,
         IMinecraftLaunchService launchService,
-        IOfflineMinecraftBaseline? offlineMinecraftBaseline = null)
+        IOfflineMinecraftBaseline? offlineMinecraftBaseline = null,
+        IHostedMinecraftRuntimeInstaller? hostedMinecraftRuntime = null)
     {
         this.manifestClient = manifestClient ?? throw new ArgumentNullException(nameof(manifestClient));
         this.minecraftProvisioner = minecraftProvisioner ?? throw new ArgumentNullException(nameof(minecraftProvisioner));
@@ -99,6 +101,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         this.serversDatService = serversDatService ?? throw new ArgumentNullException(nameof(serversDatService));
         this.launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
         this.offlineMinecraftBaseline = offlineMinecraftBaseline;
+        this.hostedMinecraftRuntime = hostedMinecraftRuntime;
     }
 
     public Task<LauncherOperationResult> RepairAsync(
@@ -134,7 +137,24 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
             var instanceRoot = Path.GetFullPath(request.InstanceRoot);
             Directory.CreateDirectory(instanceRoot);
 
-            if (offlineMinecraftBaseline is not null)
+            if (hostedMinecraftRuntime is not null)
+            {
+                if (manifest.ReconcilerManifest.MinecraftRuntime is null)
+                {
+                    throw new OfflineMinecraftBaselineException(
+                        "MINECRAFT_RUNTIME_MISSING",
+                        "Подписанный manifest не содержит серверный Minecraft/Fabric runtime.");
+                }
+
+                progress?.Report(new("minecraft-runtime", "Скачиваем проверенный Minecraft/Fabric runtime с сервера CopiMine…"));
+                await hostedMinecraftRuntime.EnsureAsync(
+                    instanceRoot,
+                    manifest.Document.Minecraft.Version,
+                    manifest.Document.Minecraft.FabricLoader,
+                    manifest.ReconcilerManifest.MinecraftRuntime,
+                    cancellationToken);
+            }
+            else if (offlineMinecraftBaseline is not null)
             {
                 progress?.Report(new("offline-baseline", "Проверяем офлайн-файлы Minecraft из установщика…"));
                 await offlineMinecraftBaseline.EnsureAsync(
@@ -218,6 +238,10 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
             return Failure(operation, exception.Code, exception.Message);
         }
         catch (MinecraftPreflightException exception)
+        {
+            return Failure(operation, exception.Code, exception.Message);
+        }
+        catch (MinecraftProvisioningException exception)
         {
             return Failure(operation, exception.Code, exception.Message);
         }

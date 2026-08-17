@@ -67,6 +67,27 @@ public sealed class ManifestValidationTests
         result.ErrorCodes.Should().Contain("OWNERSHIP_INVALID");
     }
 
+    [Fact]
+    public void Minecraft_runtime_url_hash_and_size_are_validated()
+    {
+        var manifest = ValidManifest() with
+        {
+            MinecraftRuntime = new MinecraftRuntimeMetadata(
+                "https://external.example/minecraft.zip",
+                0,
+                "not-a-sha256")
+        };
+
+        var result = new ManifestValidator().Validate(manifest, DateTimeOffset.Parse("2026-08-15T12:00:00Z"));
+
+        result.ErrorCodes.Should().Contain(new[]
+        {
+            "MINECRAFT_RUNTIME_URL_INVALID",
+            "MINECRAFT_RUNTIME_SIZE_INVALID",
+            "MINECRAFT_RUNTIME_SHA256_INVALID"
+        });
+    }
+
     [Theory]
     [InlineData("mods\\client.jar")]
     [InlineData("../mods/client.jar")]
@@ -104,6 +125,7 @@ public sealed class ManifestValidationTests
             IssuedAtUtc: DateTimeOffset.Parse("2026-08-15T11:00:00Z"),
             ExpiresAtUtc: null,
             JavaRuntime: new JavaRuntimeMetadata("21", "https://copimine.ru/downloads/java.zip", 10, new string('a', 64)),
+            MinecraftRuntime: new MinecraftRuntimeMetadata("https://copimine.ru/launcher/files/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", 789, new string('d', 64)),
             Files: new[]
             {
                 new ManifestFileEntry(

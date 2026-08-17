@@ -90,6 +90,17 @@ public sealed class InstanceManifestValidationTests
         validation.ErrorCodes.Should().Contain("JAVA_RUNTIME_MISSING");
     }
 
+    [Fact]
+    public void Missing_minecraft_runtime_is_not_accepted_for_server_hosted_installation()
+    {
+        var validation = new InstanceManifestValidator().Validate(
+            ValidDocument() with { MinecraftRuntime = null },
+            Now,
+            signaturePublicKeyId: "launcher-v1");
+
+        validation.ErrorCodes.Should().Contain("MINECRAFT_RUNTIME_MISSING");
+    }
+
     private static InstanceManifestDocument ValidDocument() => new(
         2,
         "stable",
@@ -123,5 +134,9 @@ public sealed class InstanceManifestValidationTests
             "https://copimine.ru/launcher/files/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
             456,
             new string('c', 64)),
-        "launcher-v1");
+        "launcher-v1",
+        new InstanceMinecraftRuntime(
+            "https://copimine.ru/launcher/files/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            789,
+            new string('d', 64)));
 }

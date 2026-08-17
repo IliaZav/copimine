@@ -187,7 +187,8 @@ public sealed class LauncherRuntimeCoordinatorTests
             "https://copimine.ru/news.html",
             17,
             new InstanceJavaRuntime("Adoptium", "temurin-21", "windows-x64", "21.0.10", "https://copimine.ru/java.zip", 1, new string('c', 64)),
-            "launcher-v1");
+            "launcher-v1",
+            new InstanceMinecraftRuntime("https://copimine.ru/launcher/files/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", 1, new string('d', 64)));
         var internalManifest = InstanceManifestAdapter.ToLauncherManifest(document, "launcher-v1");
         return new(
             document,

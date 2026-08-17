@@ -14,8 +14,8 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["tops", "server.html"],
   ["elections", "elections.html"],
   ["shops", "shops.html"],
-  ["mods", "mods.html"],
-  ["join", "mods.html"],
+  ["mods", "launcher.html"],
+  ["join", "launcher.html"],
   ["cabinet-zones", "signin.html"],
   ["register", "register.html"],
 ]);

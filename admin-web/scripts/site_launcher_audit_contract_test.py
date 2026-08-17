@@ -47,8 +47,10 @@ def check_navigation() -> None:
             fail(f"canonical Launcher header link is missing in {page.name}")
 
     mods = read(FRONTEND / "mods.html")
-    if not re.search(r'url=/launcher\.html', mods, flags=re.IGNORECASE):
-        fail("mods compatibility page must redirect to /launcher.html")
+    if 'http-equiv="refresh"' in mods.lower():
+        fail("mods compatibility page must not paint a legacy page before redirect")
+    if not re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", mods):
+        fail("mods compatibility page must redirect to /launcher.html before rendering")
 
     runtime = read(FRONTEND / "assets" / "js" / "cabinet-runtime.js")
     if "adminSearchSectionItems.unshift" in runtime:

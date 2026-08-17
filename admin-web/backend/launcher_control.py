@@ -141,6 +141,42 @@ def _atomic_json(path: Path, value: Any) -> None:
     _atomic_bytes(path, payload.encode("utf-8"))
 
 
+def _public_header_html(*, active_href: str = "") -> str:
+    """Return the single public-site navigation used by generated pages."""
+
+    def link(href: str, label: str) -> str:
+        current = ' aria-current="page"' if href == active_href else ""
+        return f'<a href="{href}"{current}>{label}</a>'
+
+    return (
+        '<header class="public-nav public-nav-auth">'
+        '<a class="public-brand" href="/index.html" aria-label="CopiMine">'
+        '<img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />'
+        '<span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span>'
+        '</a>'
+        '<button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" '
+        'aria-label="Открыть меню">&#9776;</button>'
+        '<nav aria-label="Разделы сайта">'
+        + "".join(
+            (
+                link("/index.html", "Главная"),
+                link("/server.html", "Сервер"),
+                link("/elections.html", "Выборы"),
+                link("/shops.html", "Лавки"),
+                link("/launcher.html", "Лаунчер"),
+                link("/news.html", "Новости"),
+                '<a id="publicSigninLink" href="/signin.html">Войти</a>',
+                '<a id="publicRegisterLink" href="/register.html">Регистрация</a>',
+            )
+        )
+        + '<button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>'
+        + '<button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>'
+        + '<button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" '
+        'data-theme-toggle-compact="true" type="button">Тема</button>'
+        + '</nav></header>'
+    )
+
+
 def _append_jsonl(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -922,7 +958,7 @@ class ControlPlane:
         item_html = f"<section class=\"patch-section\"><h2>Предметы</h2><div id=\"patch-items\" class=\"patch-items\">{''.join(item_sections)}</div></section>" if item_sections else ""
         return f"""<!doctype html>
 <html lang=\"ru\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" /><meta name=\"color-scheme\" content=\"light dark\" /><link rel=\"canonical\" href=\"https://copimine.ru{esc(contract['detailUrl'])}\" /><title>{esc(contract['title'])} — CopiMine</title><link rel=\"icon\" href=\"/assets/favicon.svg\" type=\"image/svg+xml\" /><link rel=\"stylesheet\" href=\"/assets/style.css\" /><link rel=\"stylesheet\" href=\"/assets/css/tokens.css\" /><link rel=\"stylesheet\" href=\"/assets/css/themes.css\" /><link rel=\"stylesheet\" href=\"/assets/css/release-ui.css\" /><link rel=\"stylesheet\" href=\"/assets/css/launcher-news.css\" /></head>
-<body data-page-kind=\"public-patch\" data-patch-slug=\"{esc(contract['slug'])}\"><main class=\"public-site public-site-compact patch-page\"><header class=\"public-nav\"><a class=\"public-brand\" href=\"/index.html\">CopiMine</a><nav aria-label=\"Разделы сайта\"><a href=\"/launcher.html\">Лаунчер</a><a href=\"/news.html\">Новости</a></nav></header><div class=\"public-page-shell\"><article class=\"patch-detail\"><a class=\"text-link\" href=\"/news.html\">← Все обновления</a><header class=\"patch-heading\"><span class=\"hero-kicker\">Патчноут</span><h1>{esc(contract['title'])}</h1><p><span>Версия {esc(contract['version'])}</span> · <time datetime=\"{esc(contract['publishedAt'])}\">{esc(contract['publishedAt'])}</time></p></header><ul class=\"patch-summary\">{summary}</ul>{''.join(sections)}{item_html}</article></div></main><script type=\"module\" src=\"/assets/js/public/public-page.js\"></script></body></html>
+<body data-page-kind=\"public-patch\" data-patch-slug=\"{esc(contract['slug'])}\"><main class=\"public-site public-site-compact patch-page\">{_public_header_html(active_href='/news.html')}<div class=\"public-page-shell\"><article class=\"patch-detail\"><a class=\"text-link\" href=\"/news.html\">← Все обновления</a><header class=\"patch-heading\"><span class=\"hero-kicker\">Патчноут</span><h1>{esc(contract['title'])}</h1><p><span>Версия {esc(contract['version'])}</span> · <time datetime=\"{esc(contract['publishedAt'])}\">{esc(contract['publishedAt'])}</time></p></header><ul class=\"patch-summary\">{summary}</ul>{''.join(sections)}{item_html}</article></div></main><script type=\"module\" src=\"/assets/js/public/public-page.js\"></script></body></html>
 """
 
     def _write_public_news_contracts(self, record: dict[str, Any]) -> None:

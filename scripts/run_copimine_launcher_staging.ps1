@@ -46,7 +46,7 @@ if (-not [string]::IsNullOrWhiteSpace($LauncherPath)) {
     [System.Diagnostics.Process]::Start($startInfo) | Out-Null
     Write-Output "LAUNCHER_STARTED=$launcher"
 } else {
-    Write-Output 'LAUNCHER_COMMAND=$env:COPIMINE_LAUNCHER_STAGING_BASE_URL="http://127.0.0.1:8181"; .\CopiMineLauncher.App.exe'
+    Write-Output "LAUNCHER_COMMAND=`$env:COPIMINE_LAUNCHER_STAGING_BASE_URL=`"$baseUrl`"; .\CopiMineLauncher.App.exe"
 }
 
 Write-Output 'STOP_COMMAND=Stop-Process -Id ' + $server.Id

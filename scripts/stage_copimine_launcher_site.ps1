@@ -122,6 +122,7 @@ if ($null -ne $sourceInstance) {
     }
     $instanceArtifacts = @($sourceInstanceManifest.files)
     if ($null -ne $sourceInstanceManifest.javaRuntime) { $instanceArtifacts += $sourceInstanceManifest.javaRuntime }
+    if ($null -ne $sourceInstanceManifest.minecraftRuntime) { $instanceArtifacts += $sourceInstanceManifest.minecraftRuntime }
     if ($instanceArtifacts.Count -eq 0) { throw "Instance release manifest has no artifacts: $instanceManifest" }
     foreach ($artifact in $instanceArtifacts) {
         $digest = [string]$artifact.sha256

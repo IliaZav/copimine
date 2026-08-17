@@ -472,6 +472,20 @@ class ControlPlane:
                     reasons.append("JAVA_ARTIFACT_MISSING")
             except (ControlPlaneError, TypeError, ValueError):
                 reasons.append("MANIFEST_JAVA_INVALID")
+        minecraft_runtime = manifest.get("minecraftRuntime")
+        if not isinstance(minecraft_runtime, dict):
+            reasons.append("MANIFEST_MINECRAFT_RUNTIME_MISSING")
+        elif not self._validate_https_url(minecraft_runtime.get("url")):
+            reasons.append("MANIFEST_MINECRAFT_RUNTIME_URL_INVALID")
+        else:
+            try:
+                runtime_digest = validate_sha256(minecraft_runtime.get("sha256"), field="minecraftRuntime.sha256")
+                runtime_size = int(minecraft_runtime.get("sizeBytes", 0))
+                artifact = self._artifact_path(self.root, self.source_manifest, runtime_digest)
+                if runtime_size <= 0 or artifact is None or artifact.stat().st_size != runtime_size:
+                    reasons.append("MINECRAFT_RUNTIME_ARTIFACT_MISSING")
+            except (ControlPlaneError, TypeError, ValueError):
+                reasons.append("MANIFEST_MINECRAFT_RUNTIME_INVALID")
         files = manifest.get("files")
         if not isinstance(files, list) or not files:
             reasons.append("MANIFEST_FILES_MISSING")
@@ -592,6 +606,9 @@ class ControlPlane:
         java = manifest.get("javaRuntime")
         if isinstance(java, dict):
             artifacts.append(java)
+        minecraft_runtime = manifest.get("minecraftRuntime")
+        if isinstance(minecraft_runtime, dict):
+            artifacts.append(minecraft_runtime)
         for item in artifacts:
             if not isinstance(item, dict) or not item.get("sha256"):
                 continue
@@ -622,6 +639,9 @@ class ControlPlane:
         java = manifest.get("javaRuntime")
         if isinstance(java, dict):
             artifacts.append(java)
+        minecraft_runtime = manifest.get("minecraftRuntime")
+        if isinstance(minecraft_runtime, dict):
+            artifacts.append(minecraft_runtime)
         for item in artifacts:
             if not isinstance(item, dict) or not item.get("sha256"):
                 continue

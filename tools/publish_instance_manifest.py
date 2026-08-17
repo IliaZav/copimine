@@ -44,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--release-sequence", type=int, required=True)
     parser.add_argument("--published-at", required=True)
     parser.add_argument("--java-archive", type=Path, required=True)
+    parser.add_argument("--minecraft-runtime-archive", type=Path, required=True)
     parser.add_argument("--java-version", default="21.0.10")
     parser.add_argument("--java-provider", default="Eclipse Adoptium")
     parser.add_argument("--java-build-id", default="temurin-21")
@@ -158,6 +159,8 @@ def main() -> None:
 
     java_archive = args.java_archive.resolve()
     java_digest, java_size = copy_hashed(java_archive, output_files)
+    minecraft_runtime_archive = args.minecraft_runtime_archive.resolve()
+    runtime_digest, runtime_size = copy_hashed(minecraft_runtime_archive, output_files)
     document: dict[str, object] = {
         "schemaVersion": 2,
         "channel": "stable",
@@ -178,6 +181,11 @@ def main() -> None:
             "url": f"{args.download_origin.rstrip('/')}/{java_digest}",
             "sizeBytes": java_size,
             "sha256": java_digest,
+        },
+        "minecraftRuntime": {
+            "url": f"{args.download_origin.rstrip('/')}/{runtime_digest}",
+            "sizeBytes": runtime_size,
+            "sha256": runtime_digest,
         },
         "publicKeyId": args.public_key_id,
     }

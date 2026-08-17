@@ -29,10 +29,13 @@ def build_source(root: Path) -> tuple[Path, bytes]:
     files.mkdir(parents=True)
     source_mod = b"source-mod"
     java = b"source-java"
+    runtime = b"source-minecraft-runtime"
     source_digest = hashlib.sha256(source_mod).hexdigest()
     java_digest = hashlib.sha256(java).hexdigest()
+    runtime_digest = hashlib.sha256(runtime).hexdigest()
     (files / source_digest).write_bytes(source_mod)
     (files / java_digest).write_bytes(java)
+    (files / runtime_digest).write_bytes(runtime)
     manifest = {
         "schemaVersion": 2,
         "channel": "stable",
@@ -66,6 +69,11 @@ def build_source(root: Path) -> tuple[Path, bytes]:
             "url": f"https://copimine.ru/launcher/files/{java_digest}",
             "sizeBytes": len(java),
             "sha256": java_digest,
+        },
+        "minecraftRuntime": {
+            "url": f"https://copimine.ru/launcher/files/{runtime_digest}",
+            "sizeBytes": len(runtime),
+            "sha256": runtime_digest,
         },
         "publicKeyId": "launcher-v1-staging",
     }

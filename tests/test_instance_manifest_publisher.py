@@ -45,6 +45,8 @@ def test_publisher_builds_real_files_and_detached_signature(tmp_path: Path) -> N
     mod.write_bytes(b"client")
     java = tmp_path / "java.zip"
     java.write_bytes(b"java archive")
+    runtime = tmp_path / "minecraft-runtime.zip"
+    runtime.write_bytes(b"minecraft runtime archive")
     output = tmp_path / "release"
     seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
 
@@ -68,6 +70,8 @@ def test_publisher_builds_real_files_and_detached_signature(tmp_path: Path) -> N
             "2026-08-15T10:00:00Z",
             "--java-archive",
             str(java),
+            "--minecraft-runtime-archive",
+            str(runtime),
         ],
         text=True,
         capture_output=True,
@@ -93,4 +97,6 @@ def test_publisher_builds_real_files_and_detached_signature(tmp_path: Path) -> N
     assert (output / "files" / entry["sha256"]).read_bytes() == mod.read_bytes()
     java_digest = document["javaRuntime"]["sha256"]
     assert (output / "files" / java_digest).read_bytes() == java.read_bytes()
+    runtime_digest = document["minecraftRuntime"]["sha256"]
+    assert (output / "files" / runtime_digest).read_bytes() == runtime.read_bytes()
     assert not list(output.glob("*.key"))

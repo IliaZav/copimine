@@ -47,10 +47,13 @@ def complete_source_manifest(tmp_path: Path) -> Path:
     (release / "files").mkdir(parents=True)
     mod_bytes = b"complete-mod"
     java_bytes = b"complete-java"
+    runtime_bytes = b"complete-minecraft-runtime"
     mod_digest = hashlib.sha256(mod_bytes).hexdigest()
     java_digest = hashlib.sha256(java_bytes).hexdigest()
+    runtime_digest = hashlib.sha256(runtime_bytes).hexdigest()
     (release / "files" / mod_digest).write_bytes(mod_bytes)
     (release / "files" / java_digest).write_bytes(java_bytes)
+    (release / "files" / runtime_digest).write_bytes(runtime_bytes)
     document = {
         "schemaVersion": 2,
         "channel": "stable",
@@ -70,6 +73,9 @@ def complete_source_manifest(tmp_path: Path) -> Path:
         "javaRuntime": {
             "provider": "Eclipse Adoptium", "buildId": "temurin-21", "platform": "windows-x64", "version": "21.0.10",
             "url": f"https://copimine.ru/launcher/files/{java_digest}", "sizeBytes": len(java_bytes), "sha256": java_digest,
+        },
+        "minecraftRuntime": {
+            "url": f"https://copimine.ru/launcher/files/{runtime_digest}", "sizeBytes": len(runtime_bytes), "sha256": runtime_digest,
         },
         "publicKeyId": "launcher-v1-staging",
     }

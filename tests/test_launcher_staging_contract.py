@@ -63,7 +63,7 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
         assert manifest_path.is_file()
         assert signature_path.is_file()
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        artifacts = list(manifest["files"]) + [manifest["javaRuntime"]]
+        artifacts = list(manifest["files"]) + [manifest["javaRuntime"], manifest["minecraftRuntime"]]
         for artifact in artifacts:
             staged_file = output / "launcher/files" / artifact["sha256"]
             assert staged_file.is_file(), artifact

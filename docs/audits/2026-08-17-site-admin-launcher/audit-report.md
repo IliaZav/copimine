@@ -30,6 +30,15 @@
 
 Репозиторий декларирует PostgreSQL как primary storage для production auth/game data (`POSTGRES_*`, `COPIMINE_AUTH_STORAGE=postgresql`). SQLite остаётся локальным compatibility backend для synthetic/audit запуска и отдельных legacy helper paths. Текущий local browser audit запускался только на disposable SQLite; production connection string и production DB не использовались.
 
+## Production web-only gate
+
+- Web backup создан в `/opt/copimine/admin-web/backups/site-launcher-audit-20260817-a`; перед заменой сохранялись существующие backend/static-файлы.
+- Загружено 51 web/backend-файл; remote staging и target прошли двустороннюю проверку размера и SHA-256. Большие installer/runtime-файлы повторно не загружались: их production SHA уже совпадал с локальным релизом.
+- `nginx -t` прошёл. Перезапущен только `copimine-admin`; `copimine-minecraft` не перезапускался и сохранил `MainPID=411354`, `ExecMainStartTimestamp=Sat 2026-08-15 01:59:07 +07`.
+- Production HTTP: `/launcher.html`, `/news.html`, `/mods.html`, `/register.html`, manifest, patch detail и installer HEAD — `200`; installer `Content-Length=1407227839`.
+- `/api/public/launcher`: `ok=true`, Launcher `1.0.1`, `currentRelease=2026.08.17.4`, sequence `8`, 8 managed-модов. `/api/public/news`: 2 новости и 2 patch entries. `/api/admin/launcher`, `/mods`, `/news`, `/stats` без сессии доходят до auth boundary с `401`.
+- Production startup check после web restart сообщил PostgreSQL `copimine` connection `ok`; миграции, INSERT/UPDATE/DELETE, изменения мира, player data или AuthMe этой задачей не выполнялись.
+
 ## Визуальные доказательства
 
 - Главная до/после: `home-before.png`, `home-after.png`.
@@ -38,4 +47,4 @@
 
 ## Ограничения
 
-Этот файл фиксирует локальный GREEN-цикл. Read-only production web audit, upload static release и внешний HTTP/hash smoke test выполняются отдельным следующим gate. Gameplay regressions (ping, bed waypoint, authorization slowness) на production не выполнялись и не будут выполняться на живых игроках; без local/staging evidence они остаются `UNVERIFIED`.
+Production web distribution gate закрыт. Gameplay regressions (ping, bed waypoint, authorization slowness) на production не выполнялись и не будут выполняться на живых игроках; без отдельного local/staging gameplay evidence они остаются `UNVERIFIED`. Полный acceptance record не создавался, поскольку эти runtime-gates и live Paper join остаются за пределами безопасного web-only цикла.

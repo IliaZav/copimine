@@ -29,6 +29,14 @@ def test_launcher_packaging_produces_a_folder_selecting_msi() -> None:
     assert "downloads/launcher" in stage
 
 
+def test_launcher_packaging_requires_a_bundled_webview2_runtime() -> None:
+    build = read("scripts/build_copimine_launcher.ps1")
+
+    assert "WebView2StandalonePath is required for a self-contained installer" in build
+    assert "not $SkipPackaging" in build
+    assert "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" in build
+
+
 def test_launcher_installer_requires_browser_binding_without_manual_code_entry() -> None:
     contract = ROOT / "CopiMineLauncher/packaging/launcher-install-contract.json"
     build = read("scripts/build_copimine_launcher.ps1")

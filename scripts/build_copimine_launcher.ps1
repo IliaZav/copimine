@@ -54,6 +54,20 @@ if ($ServerHostedRuntimeOnly -and -not [string]::IsNullOrWhiteSpace($OfflineMine
     throw 'ServerHostedRuntimeOnly does not accept OfflineMinecraftRoot.'
 }
 
+if (-not $SkipPackaging -and [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
+    $defaultWebView2Candidates = @(
+        (Join-Path $repoRoot "artifacts/launcher/$Configuration/webview2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe"),
+        (Join-Path $repoRoot 'artifacts/launcher/Release/webview2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
+    )
+    $defaultWebView2 = $defaultWebView2Candidates |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
+    if ($null -eq $defaultWebView2) {
+        throw 'WebView2StandalonePath is required for a self-contained installer. Provide the standalone MicrosoftEdgeWebView2RuntimeInstallerX64.exe path.'
+    }
+    $WebView2StandalonePath = $defaultWebView2
+}
+
 if (Test-Path -LiteralPath $publishRoot) {
     Remove-Item -LiteralPath $publishRoot -Recurse -Force
 }
@@ -116,6 +130,9 @@ if (-not $ServerHostedRuntimeOnly -and $RequireOfflineBundle -and [string]::IsNu
 }
 if (-not [string]::IsNullOrWhiteSpace($WebView2StandalonePath)) {
     $webView2Source = (Resolve-Path -LiteralPath $WebView2StandalonePath -ErrorAction Stop).Path
+    if ((Get-Item -LiteralPath $webView2Source).Length -lt 100MB) {
+        throw "WebView2 standalone runtime is unexpectedly small: $webView2Source"
+    }
     $webView2Destination = Join-Path $publishRoot 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe'
     New-Item -ItemType Directory -Path (Split-Path -Parent $webView2Destination) -Force | Out-Null
     Copy-Item -LiteralPath $webView2Source -Destination $webView2Destination -Force

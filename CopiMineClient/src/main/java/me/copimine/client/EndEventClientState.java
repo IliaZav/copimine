@@ -132,8 +132,15 @@ public final class EndEventClientState {
             return false;
         }
         if (Objects.equals(controlInstance, packet.instanceId())) {
-            controlExpiresAt = Math.max(controlExpiresAt, nowMillis + packet.durationMillis());
+            // A retransmitted START is an idempotent delivery confirmation.
+            // It must not turn a ten-second effect into a longer one.
             return true;
+        }
+        if (!controlInstance.isBlank() && nowMillis < controlExpiresAt) {
+            // The server owns the one-active-effect invariant.  Refuse a
+            // second instance until the current deadline has elapsed rather
+            // than silently replacing the first effect.
+            return false;
         }
         controlInstance = packet.instanceId();
         controlExpiresAt = nowMillis + packet.durationMillis();

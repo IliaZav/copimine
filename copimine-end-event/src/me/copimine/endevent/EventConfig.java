@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.SplittableRandom;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -43,6 +44,7 @@ public record EventConfig(
         Map<String, Integer> eliteLoot,
         Map<String, Integer> finalWaveLoot,
         Map<String, Integer> testLoot,
+        Map<String, Map<String, LootEntry>> lootProfiles,
         double bossHealth,
         double bossAttackDamageBonus,
         int bossTargetMinSeconds,
@@ -87,6 +89,7 @@ public record EventConfig(
         eliteLoot = Map.copyOf(eliteLoot);
         finalWaveLoot = Map.copyOf(finalWaveLoot);
         testLoot = Map.copyOf(testLoot);
+        lootProfiles = copyLootProfiles(lootProfiles);
         if (miniBossTuning == null) {
             throw new IllegalArgumentException("mini boss tuning is required");
         }
@@ -103,6 +106,7 @@ public record EventConfig(
         ConfigurationSection boss = requiredSection(plugin, "boss");
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
+        ConfigurationSection eventLootRolls = plugin.getConfig().getConfigurationSection("event-loot-rolls");
         ConfigurationSection portal = requiredSection(plugin, "portal-room");
         ConfigurationSection client = requiredSection(plugin, "client");
         ConfigurationSection persistence = requiredSection(plugin, "persistence");
@@ -146,6 +150,17 @@ public record EventConfig(
         }
         MiniBossTuning miniBossTuning = miniBossTuning(miniBosses);
         int finalRitualTelegraphTicks = positiveInt(boss, "final-ritual-telegraph-ticks");
+        LinkedHashMap<String, Integer> waveMobLoot = readOptionalMaterials(eventLoot, "wave-mob");
+        LinkedHashMap<String, Integer> eliteLoot = readOptionalMaterials(eventLoot, "elite");
+        LinkedHashMap<String, Integer> finalWaveLoot = readOptionalMaterials(eventLoot, "final-wave");
+        LinkedHashMap<String, Integer> testLoot = readOptionalMaterials(eventLoot, "test");
+        LinkedHashMap<String, Map<String, LootEntry>> lootProfiles = new LinkedHashMap<>();
+        lootProfiles.put("common-enderman", readLootProfiles(eventLootRolls, "common-enderman", waveMobLoot));
+        lootProfiles.put("endermite", readLootProfiles(eventLootRolls, "endermite", waveMobLoot));
+        lootProfiles.put("elite-enderman", readLootProfiles(eventLootRolls, "elite-enderman", eliteLoot));
+        lootProfiles.put("shulker", readLootProfiles(eventLootRolls, "shulker", finalWaveLoot));
+        lootProfiles.put("final-wave", readLootProfiles(eventLootRolls, "final-wave", finalWaveLoot));
+        lootProfiles.put("test", readLootProfiles(eventLootRolls, "test", testLoot));
 
         return new EventConfig(
                 persistence.getInt("schema-version", 1),
@@ -176,10 +191,11 @@ public record EventConfig(
                 wave(waves, "wave-2"),
                 wave(waves, "wave-3"),
                 wave(waves, "final"),
-                readOptionalMaterials(eventLoot, "wave-mob"),
-                readOptionalMaterials(eventLoot, "elite"),
-                readOptionalMaterials(eventLoot, "final-wave"),
-                readOptionalMaterials(eventLoot, "test"),
+                waveMobLoot,
+                eliteLoot,
+                finalWaveLoot,
+                testLoot,
+                lootProfiles,
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
                 target[0], target[1], spells[0], spells[1],
@@ -281,6 +297,42 @@ public record EventConfig(
         return values;
     }
 
+    private static LinkedHashMap<String, LootEntry> readLootProfiles(
+            ConfigurationSection parent, String key, Map<String, Integer> legacy) {
+        LinkedHashMap<String, LootEntry> values = new LinkedHashMap<>();
+        ConfigurationSection section = parent == null ? null : parent.getConfigurationSection(key);
+        if (section == null) {
+            for (Map.Entry<String, Integer> entry : legacy.entrySet()) {
+                values.put(entry.getKey(), new LootEntry(1.0D, entry.getValue(), entry.getValue()));
+            }
+            return values;
+        }
+        for (String rawKey : section.getKeys(false)) {
+            String materialName = rawKey.toUpperCase(Locale.ROOT);
+            if (Material.matchMaterial(materialName) == null) {
+                throw new IllegalStateException("event-loot-rolls." + key + " contains unknown material " + rawKey);
+            }
+            ConfigurationSection item = section.getConfigurationSection(rawKey);
+            if (item == null) {
+                throw new IllegalStateException("event-loot-rolls." + key + "." + rawKey
+                        + " must define chance/min/max");
+            }
+            values.put(materialName, new LootEntry(
+                    item.getDouble("chance", -1.0D), item.getInt("min", 0), item.getInt("max", 0)));
+        }
+        return values;
+    }
+
+    private static Map<String, Map<String, LootEntry>> copyLootProfiles(
+            Map<String, Map<String, LootEntry>> profiles) {
+        LinkedHashMap<String, Map<String, LootEntry>> copied = new LinkedHashMap<>();
+        if (profiles != null) {
+            profiles.forEach((name, entries) -> copied.put(
+                    name, Map.copyOf(entries == null ? Map.of() : entries)));
+        }
+        return Map.copyOf(copied);
+    }
+
     private static ConfigurationSection requiredSection(JavaPlugin plugin, String path) {
         return requiredSection(plugin.getConfig(), path);
     }
@@ -365,6 +417,26 @@ public record EventConfig(
                 throw new IllegalArgumentException("invalid event music track");
             }
         }
+    }
+
+    public record LootEntry(double chance, int minAmount, int maxAmount) {
+        public LootEntry {
+            if (Double.isNaN(chance) || Double.isInfinite(chance) || chance < 0.0D || chance > 1.0D
+                    || minAmount < 1 || maxAmount < minAmount) {
+                throw new IllegalArgumentException("invalid loot roll entry");
+            }
+        }
+
+        public int roll(SplittableRandom random) {
+            if (random == null || random.nextDouble() >= chance) {
+                return 0;
+            }
+            return minAmount + random.nextInt(maxAmount - minAmount + 1);
+        }
+    }
+
+    public Map<String, LootEntry> lootProfile(String profileId) {
+        return lootProfiles.getOrDefault(profileId, Map.of());
     }
 
     public record MiniBossTuning(

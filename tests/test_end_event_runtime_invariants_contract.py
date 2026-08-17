@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
 CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
+STATE_STORE = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventStateStore.java").read_text(encoding="utf-8")
+EVENT_CONFIG = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventConfig.java").read_text(encoding="utf-8")
 
 
 def test_roster_and_combat_membership_exclude_non_survival_players() -> None:
@@ -128,3 +130,73 @@ def test_bootstrap_preserves_an_active_core_even_when_worldcore_is_already_unloc
         "!VICTORY_COMPLETE.equals(victoryStep)",
     ):
         assert marker in MAIN
+
+
+def test_recovery_preserves_a_committed_official_roster() -> None:
+    recovery = MAIN[MAIN.index("private void recoverTransientSession"):
+                    MAIN.index("private void cancelSessionTasks")]
+    assert "officialRewardRoster.clear()" not in recovery
+    assert "rewardStatuses.clear()" not in recovery
+
+
+def test_final_ritual_owns_one_bounded_visual_task() -> None:
+    assert "finalRitualVisualTask" in MAIN
+    visual = MAIN[MAIN.index("private void scheduleFinalRitualVisual"):
+                  MAIN.index("private void spawnParticleLine")]
+    assert "finalRitualVisualTask != null" in visual
+    assert "finalRitualVisualTask = holder[0]" in visual
+
+
+def test_all_participants_are_durable_and_announced_separately_from_rewards() -> None:
+    assert "participantUuids" in MAIN
+    assert "snapshot.participants()" in MAIN
+    assert "yaml.set(\"participants.all\"" in STATE_STORE
+    assert "yaml.getStringList(\"participants.all\")" in STATE_STORE
+    victory = MAIN[MAIN.index("private void announceVictory"):
+                   MAIN.index("public void onPlayerJoin")]
+    assert "participantUuids" in victory
+    assert "String names = participantUuids" in victory
+    assert "String rewardNames = officialRewardRoster" in victory
+
+
+def test_countdown_commits_phase_before_spawning_the_first_wave() -> None:
+    countdown = MAIN[MAIN.index("RewardRoster roster = RewardRoster.commitExactly"):
+                     MAIN.index("private void cancelRitual")]
+    assert countdown.index("transition(EventPhase.WAVE_1") < countdown.index("saveStateSync()")
+    assert "if (!saveStateSync())" in countdown
+    assert countdown.index("saveStateSync()") < countdown.index("spawnWave(1, false)")
+
+
+def test_final_drain_has_a_durable_per_player_plan_and_commit() -> None:
+    drain = MAIN[MAIN.index("private void applyFinalDrain"):
+                 MAIN.index("private void scheduleFinalRitualVisual")]
+    assert "finalDrainTargets" in drain
+    assert "finalDrainAppliedPlayers" in drain
+    assert "finalDrainTargets.put" in drain
+    assert "finalDrainAppliedPlayers.add" in drain
+    assert drain.index("saveStateSync()") < drain.index("player.setHealth")
+    assert "final-drain.targets" in STATE_STORE
+    assert "final-drain.applied-players" in STATE_STORE
+
+
+def test_victory_saga_issues_rewards_before_worldcore_unlock() -> None:
+    begin = MAIN[MAIN.index("private void beginVictory"):
+                 MAIN.index("private void unlockEnd")]
+    issue = MAIN[MAIN.index("private void issueVictoryRewards"):
+                 MAIN.index("private void applyBossLootOnce")]
+    completion = MAIN[MAIN.index("private void checkVictoryRewardCompletion"):
+                      MAIN.index("private void resumeVictorySaga")]
+    assert "issueVictoryRewards()" in begin
+    assert "unlockEnd(" not in begin
+    assert "!endUnlocked || rewardService" not in issue
+    assert "unlockEnd(null, \"official-victory\")" in completion
+
+
+def test_wave_loot_uses_configurable_deterministic_one_roll_profiles() -> None:
+    for marker in ("LootEntry", "SplittableRandom", "lootProfiles", "lootProfile"):
+        assert marker in EVENT_CONFIG or marker in MAIN
+    assert "event-loot-rolls:" in CONFIG
+    assert "lootIssuedEntityUuids.add" in MAIN
+    death = MAIN[MAIN.index("public void onOwnedEntityDeath"):
+                 MAIN.index("private void addConfiguredDrops")]
+    assert "addConfiguredDrops(event" in death

@@ -42,7 +42,10 @@ public record EventSnapshot(
         String returnStoneStatus,
         String victoryStep,
         long updatedAt,
-        String recoveryReason) {
+        String recoveryReason,
+        Set<UUID> participants,
+        Map<UUID, Double> finalDrainTargets,
+        Set<UUID> finalDrainAppliedPlayers) {
 
     public EventSnapshot {
         eventId = eventId == null ? "" : eventId;
@@ -56,6 +59,9 @@ public record EventSnapshot(
         officialRewardRoster = Set.copyOf(officialRewardRoster == null ? Set.of() : officialRewardRoster);
         rewardStatuses = Map.copyOf(rewardStatuses == null ? Map.of() : rewardStatuses);
         shardCooldowns = Map.copyOf(shardCooldowns == null ? Map.of() : shardCooldowns);
+        participants = Set.copyOf(participants == null ? Set.of() : participants);
+        finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
+        finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
         victoryStep = victoryStep == null ? "NONE" : victoryStep;
         returnStoneStatus = returnStoneStatus == null ? "PENDING" : returnStoneStatus;
         recoveryReason = recoveryReason == null ? "" : recoveryReason;
@@ -65,7 +71,20 @@ public record EventSnapshot(
         return new EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
                 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", "NONE", 0L, "");
+                false, false, false, false, false, false, false, false, "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of());
+    }
+
+    public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
+        return new EventSnapshot(
+                schemaVersion, eventId, generation, phase, worldName,
+                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
+                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
+                resourceRequirements, depositedResources, pads, resourceContributors,
+                officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
+                halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
+                endUnlocked, officialBossDeathCommitted, bossLootCommitted, returnStoneStatus,
+                victoryStep, updatedAt, recoveryReason, updatedParticipants, finalDrainTargets,
+                finalDrainAppliedPlayers);
     }
 
     public EventPhase eventPhase() {

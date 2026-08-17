@@ -98,6 +98,35 @@ event-loot:
   test:
     ENDER_PEARL: 1
 
+# One deterministic additive roll set per event-owned mob death.  The legacy
+# event-loot values above remain as the local fallback if a profile is omitted.
+event-loot-rolls:
+  endermite:
+    ENDER_PEARL: {chance: 0.15, min: 1, max: 1}
+    EXPERIENCE_BOTTLE: {chance: 0.08, min: 1, max: 1}
+    AMETHYST_SHARD: {chance: 0.10, min: 1, max: 3}
+  common-enderman:
+    DIAMOND: {chance: 0.03, min: 1, max: 1}
+    GOLDEN_APPLE: {chance: 0.04, min: 1, max: 1}
+    ECHO_SHARD: {chance: 0.02, min: 1, max: 1}
+    EXPERIENCE_BOTTLE: {chance: 0.12, min: 1, max: 3}
+    ENDER_EYE: {chance: 0.08, min: 1, max: 1}
+  elite-enderman:
+    DIAMOND: {chance: 0.12, min: 1, max: 2}
+    GOLDEN_APPLE: {chance: 0.10, min: 1, max: 1}
+    ECHO_SHARD: {chance: 0.08, min: 1, max: 1}
+    NETHERITE_SCRAP: {chance: 0.02, min: 1, max: 1}
+    EXPERIENCE_BOTTLE: {chance: 0.25, min: 2, max: 5}
+  shulker:
+    SHULKER_SHELL: {chance: 0.20, min: 1, max: 1}
+    DIAMOND: {chance: 0.05, min: 1, max: 1}
+    ECHO_SHARD: {chance: 0.04, min: 1, max: 1}
+  final-wave:
+    ENDER_PEARL: {chance: 0.25, min: 1, max: 2}
+    AMETHYST_SHARD: {chance: 0.15, min: 1, max: 3}
+  test:
+    ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
+
 boss:
   health: 1200.0
   attack-damage-bonus: 3.0

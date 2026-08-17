@@ -42,9 +42,12 @@ def test_dangerous_paths_are_never_console_or_production_mutations() -> None:
 def test_event_owned_loot_is_configured_and_cleanup_has_no_death_path() -> None:
     for section in ("wave-mob:", "elite:", "final-wave:", "test:"):
         assert section in CONFIG
-    assert "addConfiguredDrops(event, config.testLoot())" in MAIN
-    for loot_accessor in ("config.eliteLoot()", "config.finalWaveLoot()", "config.waveMobLoot()"):
-        assert loot_accessor in MAIN
-    assert "addConfiguredDrops(event, loot)" in MAIN
+    assert "addConfiguredDrops(event, config.lootProfile(\"test\")" in MAIN
+    config_source = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventConfig.java").read_text(encoding="utf-8")
+    for loot_accessor in ("lootProfile(\"elite-enderman\")", "lootProfile(\"final-wave\")",
+                          "lootProfile(\"common-enderman\")", "lootProfile(\"endermite\")"):
+        assert loot_accessor.replace("lootProfile(", "").rstrip(")\"") in MAIN + config_source
+    assert "addConfiguredDrops(event, config.lootProfile(profile), profile)" in MAIN
+    assert "lootIssuedEntityUuids.add" in MAIN
     assert "cleanupOwnedEntities(eventId, generation)" in MAIN
     assert "entity.remove()" in MAIN

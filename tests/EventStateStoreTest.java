@@ -16,9 +16,14 @@ public final class EventStateStoreTest {
         EventStateStore store = new EventStateStore(directory, "event-state.yml", "event-state.yml.bak", 1);
 
         EventSnapshot first = snapshot("first-event", EventPhase.COLLECTING.name(), 3L);
+        UUID helper = UUID.nameUUIDFromBytes("helper".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        first = first.withParticipants(Set.of(
+                UUID.nameUUIDFromBytes("first-event".getBytes(java.nio.charset.StandardCharsets.UTF_8)), helper));
         check(store.save(first), "first durable state save must succeed");
         check(store.load().valid(), "primary state must load after first save");
         check(store.load().source().equals("PRIMARY"), "first load must use primary state");
+        check(store.load().snapshot().participants().contains(helper),
+                "non-roster combat helper must survive a state round trip");
 
         EventSnapshot second = snapshot("second-event", EventPhase.READY_FOR_PLAYERS.name(), 4L);
         check(store.save(second), "second durable state save must succeed");
@@ -50,7 +55,8 @@ public final class EventStateStoreTest {
                 Map.of("DIAMOND", 100), Map.of("DIAMOND", 25),
                 List.of(new EventSnapshot.PadSnapshot(10, 70, 25, 5.0D, 0.0D, "minecraft:purpur_block")),
                 Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", "NONE", 123L, "");
+                false, false, false, false, false, false, false, false, "PENDING", "NONE", 123L, "", Set.of(player),
+                Map.of(player, 8.0D), Set.of(player));
     }
 
     private static void check(boolean condition, String message) {

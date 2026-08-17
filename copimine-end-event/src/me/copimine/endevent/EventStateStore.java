@@ -59,7 +59,8 @@ public final class EventStateStore {
                 recovery.finalDrainTriggered(), recovery.finalDrainApplied(), recovery.endUnlocked(),
                 recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.returnStoneStatus(),
                 recovery.victoryStep(), recovery.updatedAt(),
-                "Both primary and backup event state files are invalid.");
+                "Both primary and backup event state files are invalid.", recovery.participants(),
+                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers());
         return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
     }
 
@@ -121,6 +122,9 @@ public final class EventStateStore {
             yaml.set("resources.deposited", snapshot.depositedResources());
             yaml.set("participants.resource-contributors", uuidStrings(snapshot.resourceContributors()));
             yaml.set("participants.official-roster", uuidStrings(snapshot.officialRewardRoster()));
+            yaml.set("participants.all", uuidStrings(snapshot.participants()));
+            yaml.set("final-drain.targets", uuidDoubleMap(snapshot.finalDrainTargets()));
+            yaml.set("final-drain.applied-players", uuidStrings(snapshot.finalDrainAppliedPlayers()));
             yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
             yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
             List<Map<String, Object>> pads = new ArrayList<>();
@@ -169,6 +173,9 @@ public final class EventStateStore {
         }
         Set<UUID> contributors = uuids(yaml.getStringList("participants.resource-contributors"));
         Set<UUID> roster = uuids(yaml.getStringList("participants.official-roster"));
+        Set<UUID> participants = uuids(yaml.getStringList("participants.all"));
+        Map<UUID, Double> finalDrainTargets = uuidDoubles(yaml.getConfigurationSection("final-drain.targets"));
+        Set<UUID> finalDrainAppliedPlayers = uuids(yaml.getStringList("final-drain.applied-players"));
         Map<UUID, String> statuses = uuidStatuses(yaml.getConfigurationSection("rewards.statuses"));
         Map<UUID, Long> cooldowns = uuidLongs(yaml.getConfigurationSection("rewards.shard-cooldowns"));
         return new EventSnapshot(
@@ -188,7 +195,8 @@ public final class EventStateStore {
                 yaml.getBoolean("event.official-boss-death-committed"),
                 yaml.getBoolean("event.boss-loot-committed"), yaml.getString("event.return-stone-status", "PENDING"),
                 yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
-                yaml.getString("event.recovery-reason", ""));
+                yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
+                finalDrainAppliedPlayers);
     }
 
     private void writeAtomic(String content) throws IOException {
@@ -254,6 +262,13 @@ public final class EventStateStore {
         return result;
     }
 
+    private static Map<String, Double> uuidDoubleMap(Map<UUID, Double> values) {
+        Map<String, Double> result = new LinkedHashMap<>();
+        values.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> result.put(entry.getKey().toString(), entry.getValue()));
+        return result;
+    }
+
     private static Map<UUID, Long> uuidLongs(ConfigurationSection section) {
         Map<UUID, Long> result = new LinkedHashMap<>();
         if (section == null) {
@@ -262,6 +277,20 @@ public final class EventStateStore {
         for (String key : section.getKeys(false)) {
             try {
                 result.put(UUID.fromString(key), section.getLong(key));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return result;
+    }
+
+    private static Map<UUID, Double> uuidDoubles(ConfigurationSection section) {
+        Map<UUID, Double> result = new LinkedHashMap<>();
+        if (section == null) {
+            return result;
+        }
+        for (String key : section.getKeys(false)) {
+            try {
+                result.put(UUID.fromString(key), section.getDouble(key));
             } catch (IllegalArgumentException ignored) {
             }
         }

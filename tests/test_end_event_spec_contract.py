@@ -72,7 +72,9 @@ def test_wave_scaling_is_bounded_for_small_and_large_official_rosters() -> None:
 
 def test_final_ritual_is_direct_health_control_and_stops_normal_boss_loop() -> None:
     assert "FinalDrainMath.healthAfterDrain" in MAIN
-    assert "player.setHealth(after)" in MAIN
+    drain = MAIN[MAIN.index("private void applyFinalDrain"):MAIN.index("private void scheduleFinalRitualVisual")]
+    assert "player.setHealth(Math.max" in drain
+    assert "finalDrainTargets" in drain
     assert "boss.setInvulnerable(true)" in MAIN
     assert "boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()))" in MAIN
     assert "if (!forced && phase != EventPhase.BOSS_ACTIVE)" in MAIN

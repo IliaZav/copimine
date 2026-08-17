@@ -20,12 +20,36 @@ class EndEventClientStateTest {
     @Test
     void staleStopCannotCancelNewerControlInstance() {
         EndEventClientState state = new EndEventClientState();
-        state.apply(packet("END_CONTROL_START", "event-1", 1L, "old", 10_000L, "", "", ""), 100L);
-        state.apply(packet("END_CONTROL_START", "event-1", 1L, "new", 10_000L, "", "", ""), 200L);
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "old", 100L, "", "", ""), 100L);
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "new", 10_000L, "", "", ""), 250L);
 
         assertFalse(state.apply(packet("END_CONTROL_STOP", "event-1", 1L, "old", 0L, "", "", ""), 300L));
         assertTrue(state.isReverseActive(301L));
         assertTrue(state.controlInstanceId().equals("new"));
+    }
+
+    @Test
+    void duplicateStartIsIdempotentAndDoesNotExtendTheOriginalDeadline() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "same", 10_000L, "", "", ""), 100L));
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "same", 10_000L, "", "", ""), 9_900L));
+
+        assertTrue(state.isReverseActive(10_099L));
+        assertFalse(state.isReverseActive(10_100L));
+    }
+
+    @Test
+    void secondConcurrentControlInstanceIsRejectedUntilTheFirstExpires() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "first", 10_000L, "", "", ""), 100L));
+        assertFalse(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "second", 10_000L, "", "", ""), 200L));
+        assertTrue(state.controlInstanceId().equals("first"));
     }
 
     @Test

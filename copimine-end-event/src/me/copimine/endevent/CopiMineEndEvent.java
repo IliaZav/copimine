@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
+import java.util.SplittableRandom;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -160,6 +161,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, String> playerCategories = new HashMap<>();
     private final Set<UUID> combatHelpers = new LinkedHashSet<>();
     private final Set<UUID> finalWaveEntities = new HashSet<>();
+    private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
     private final Map<UUID, String> entityBindingInstances = new HashMap<>();
     private final Map<UUID, EndRiftAiPolicy.MiniBossSpell> miniBossSpells = new HashMap<>();
@@ -182,6 +184,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bootstrapTask;
     private BukkitTask tickTask;
     private BukkitTask musicLoopTask;
+    private BukkitTask finalRitualVisualTask;
     private boolean bootstrapped;
 
     private String eventId = "";
@@ -203,6 +206,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<String, Integer> depositedResources = new LinkedHashMap<>();
     private final List<EventSnapshot.PadSnapshot> pads = new ArrayList<>();
     private final Set<UUID> resourceContributors = new LinkedHashSet<>();
+    private final Set<UUID> participantUuids = new LinkedHashSet<>();
     private final Set<UUID> officialRewardRoster = new LinkedHashSet<>();
     private final Map<UUID, String> rewardStatuses = new LinkedHashMap<>();
     private final Set<UUID> rewardRequestsInFlight = new HashSet<>();
@@ -212,6 +216,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean controlSpellUnlocked;
     private boolean finalDrainTriggered;
     private boolean finalDrainApplied;
+    private final Map<UUID, Double> finalDrainTargets = new LinkedHashMap<>();
+    private final Set<UUID> finalDrainAppliedPlayers = new LinkedHashSet<>();
     private boolean endUnlocked;
     private boolean officialBossDeathCommitted;
     private boolean bossLootCommitted;
@@ -387,10 +393,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         depositedResources.replaceAll((key, ignored) -> snapshot.depositedResources().getOrDefault(key, 0));
         pads.clear();
         pads.addAll(snapshot.pads());
+        participantUuids.clear();
+        participantUuids.addAll(snapshot.participants());
         resourceContributors.addAll(snapshot.resourceContributors());
+        participantUuids.addAll(snapshot.resourceContributors());
         officialRewardRoster.addAll(snapshot.officialRewardRoster());
+        participantUuids.addAll(snapshot.officialRewardRoster());
         rewardStatuses.putAll(snapshot.rewardStatuses());
         shardCooldowns.putAll(snapshot.shardCooldowns());
+        finalDrainTargets.clear();
+        finalDrainTargets.putAll(snapshot.finalDrainTargets());
+        finalDrainAppliedPlayers.clear();
+        finalDrainAppliedPlayers.addAll(snapshot.finalDrainAppliedPlayers());
         coreCharged = snapshot.coreCharged();
         halfHealthTriggered = snapshot.halfHealthTriggered();
         controlSpellUnlocked = snapshot.controlSpellUnlocked();
@@ -413,7 +427,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
                 halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted, returnStoneStatus,
-                victoryStep, updatedAt, recoveryReason);
+                victoryStep, updatedAt, recoveryReason, participantUuids, finalDrainTargets,
+                finalDrainAppliedPlayers);
     }
 
     private boolean saveStateSync() {
@@ -435,6 +450,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean transition(EventPhase next, String reason, String idempotencyKey) {
+        return transition(next, reason, idempotencyKey, true);
+    }
+
+    private boolean transition(EventPhase next, String reason, String idempotencyKey, boolean persist) {
         EventPhase current = stateMachine.phase();
         if (current == next) {
             return true;
@@ -448,7 +467,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phase = next;
         getLogger().info("END_EVENT_STATE event=" + eventId + " generation=" + generation
                 + " from=" + current + " to=" + next + " reason=" + reason);
-        saveStateAsync();
+        if (persist) {
+            saveStateAsync();
+        }
         return true;
     }
 
@@ -461,21 +482,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void recoverTransientSession() {
         getLogger().info("RECOVERY_STARTED event=" + eventId + " generation=" + generation);
+        long staleGeneration = generation;
         cancelSessionTasks();
-        cleanupOwnedEntities(eventId, generation);
+        cleanupOwnedEntities(eventId, staleGeneration);
         clearClientEffects();
+        generation = Math.max(1L, staleGeneration + 1L);
+        taskRegistry = new EventTaskRegistry(generation);
         activeWave = 0;
         bossUuid = null;
         bossKillerUuid = null;
         clearCombatAiState();
+        lootIssuedEntityUuids.clear();
         halfHealthTriggered = false;
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
         finalDrainApplied = false;
-        officialRewardRoster.clear();
-        rewardStatuses.clear();
+        boolean rosterWasCommitted = !officialRewardRoster.isEmpty();
+        boolean victoryWasCommitted = officialBossDeathCommitted
+                || VICTORY_BOSS_DEATH.equals(victoryStep)
+                || VICTORY_UNLOCK_PENDING.equals(victoryStep)
+                || VICTORY_UNLOCKED.equals(victoryStep)
+                || VICTORY_REWARDS_PENDING.equals(victoryStep)
+                || VICTORY_REWARDS_DELIVERED.equals(victoryStep);
+        if (!rosterWasCommitted) {
+            discardUncommittedRoster();
+        }
+        if (!victoryWasCommitted) {
+            discardUncommittedRewardStatuses();
+        }
         padOccupants.clear();
-        if (coreCharged && allResourcesComplete()) {
+        if (victoryWasCommitted) {
+            forcePhase(endUnlocked ? EventPhase.UNLOCKED : EventPhase.VICTORY,
+                    "victory saga recovered without replaying combat");
+        } else if (coreCharged && allResourcesComplete()) {
             forcePhase(EventPhase.READY_FOR_PLAYERS, "transient combat recovered to ready");
         } else {
             coreCharged = false;
@@ -488,6 +527,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (taskRegistry != null) {
             taskRegistry.cancelAll();
         }
+        if (finalRitualVisualTask != null) {
+            finalRitualVisualTask.cancel();
+            finalRitualVisualTask = null;
+        }
         clearVoidMarkZones();
         for (BukkitTask task : shardChannelTasks.values()) {
             if (task != null) {
@@ -499,6 +542,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phaseDeadlineMillis = 0L;
         nextWaveTargetMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
+    }
+
+    private void discardUncommittedRoster() {
+        officialRewardRoster.clear();
+    }
+
+    private void discardUncommittedRewardStatuses() {
+        rewardStatuses.clear();
     }
 
     private void clearCombatAiState() {
@@ -775,6 +826,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         message(sender, "&7resources=&f" + resourceProgressText());
         message(sender, "&7pads=&f" + padOccupants.size() + "/" + pads.size()
                 + " &7roster=&f" + officialRewardRoster.size()
+                + " &7participants=&f" + participantUuids.size()
                 + " &7helpers=&f" + combatHelpers.size());
         message(sender, "&7wave=&f" + activeWave + " &7event-mobs=&f" + countLiveOwnedMobs()
                 + " &7boss=&f" + (bossUuid == null ? "none" : bossUuid));
@@ -1478,6 +1530,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         depositedResources.replaceAll((key, ignored) -> 0);
         pads.clear();
         resourceContributors.clear();
+        participantUuids.clear();
         officialRewardRoster.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
@@ -1486,8 +1539,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
         finalDrainApplied = false;
+        finalDrainTargets.clear();
+        finalDrainAppliedPlayers.clear();
         bossKillerUuid = null;
         clearCombatAiState();
+        lootIssuedEntityUuids.clear();
         // End access is a permanent WorldCore fact; creating a new local
         // event Core must never roll it back in the event snapshot.
         endUnlocked = endWasAlreadyUnlocked;
@@ -1630,12 +1686,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         pads.clear();
         depositedResources.clear();
         resourceContributors.clear();
+        participantUuids.clear();
         officialRewardRoster.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
+        finalDrainTargets.clear();
+        finalDrainAppliedPlayers.clear();
         coreCharged = false;
         bossKillerUuid = null;
         clearCombatAiState();
+        lootIssuedEntityUuids.clear();
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
         saveStateSync();
@@ -1655,8 +1715,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         depositedResources.replaceAll((key, ignored) -> 0);
         coreCharged = false;
+        participantUuids.clear();
         officialRewardRoster.clear();
         rewardStatuses.clear();
+        finalDrainTargets.clear();
+        finalDrainAppliedPlayers.clear();
         forcePhase(EventPhase.COLLECTING, "safe admin reset");
         saveStateSync();
         message(sender, "&aСброшен только event progress; world и player data не затронуты.");
@@ -2089,6 +2152,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         event.setCancelled(true);
         Player player = event.getPlayer();
+        registerParticipant(player);
         ItemStack held = player.getInventory().getItemInMainHand();
         if (held.getType() == Material.AIR || held.getAmount() < 1) {
             return;
@@ -2170,6 +2234,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void registerParticipant(Player player) {
+        if (player == null || !isConfigured()) {
+            return;
+        }
+        if (participantUuids.add(player.getUniqueId())) {
+            saveStateAsync();
+        }
+    }
+
     private void playerCategory(Player player, String category) {
         if (player != null) {
             playerCategories.put(player.getUniqueId(), category);
@@ -2232,6 +2305,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (closest != null) {
                 assigned.add(closest.getUniqueId());
                 padOccupants.put(padKey(pad), closest.getUniqueId());
+                registerParticipant(closest);
             }
         }
         if (padOccupants.size() == requiredPlayers) {
@@ -2299,6 +2373,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             RewardRoster roster = RewardRoster.commitExactly(new HashSet<>(padOccupants.values()), requiredPlayers);
             officialRewardRoster.clear();
             officialRewardRoster.addAll(roster.players());
+            participantUuids.addAll(roster.players());
         } catch (IllegalArgumentException invalid) {
             cancelRitual("roster uniqueness failed");
             return;
@@ -2310,13 +2385,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
         finalDrainApplied = false;
+        finalDrainTargets.clear();
+        finalDrainAppliedPlayers.clear();
         clearCombatAiState();
+        lootIssuedEntityUuids.clear();
         activeWave = 1;
-        saveStateSync();
-        if (transition(EventPhase.WAVE_1, "official roster frozen", eventId + ":roster:" + generation)) {
-            getLogger().info("RITUAL_COMPLETED event=" + eventId + " roster=" + officialRewardRoster);
-            spawnWave(1, false);
+        if (!transition(EventPhase.WAVE_1, "official roster frozen", eventId + ":roster:" + generation, false)) {
+            officialRewardRoster.clear();
+            activeWave = 0;
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "roster transition rejected");
+            return;
         }
+        if (!saveStateSync()) {
+            // No wave may spawn until the phase, generation, and frozen roster
+            // have crossed the durable boundary together.
+            officialRewardRoster.clear();
+            rewardStatuses.clear();
+            activeWave = 0;
+            padOccupants.clear();
+            clearCombatAiState();
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "official roster commit could not be persisted");
+            getLogger().severe("RITUAL_COMMIT_FAILED event=" + eventId + " generation=" + generation);
+            return;
+        }
+        getLogger().info("RITUAL_COMPLETED event=" + eventId + " roster=" + officialRewardRoster);
+        spawnWave(1, false);
     }
 
     private void cancelRitual(String reason) {
@@ -2335,6 +2428,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (isActiveArenaParticipant(player)) {
                 combatHelpers.add(player.getUniqueId());
+                registerParticipant(player);
                 playerCategory(player, officialRewardRoster.contains(player.getUniqueId())
                         ? "official_participant" : "combat_helper");
             }
@@ -2734,6 +2828,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Enderman enderman = (Enderman) world.spawnEntity(location, EntityType.ENDERMAN);
         String kind = finalWave ? EVENT_KIND_FINAL_WAVE : elite ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
         tag(enderman, kind, wave, !test);
+        setLootProfile(enderman, test ? "test"
+                : finalWave ? "final-wave" : elite ? "elite-enderman" : "common-enderman");
         enderman.setPersistent(true);
         enderman.setRemoveWhenFarAway(false);
         enderman.setCanPickupItems(false);
@@ -2768,6 +2864,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                  String kind, boolean test, int index) {
         Entity entity = world.spawnEntity(safeSpawnLocation(core, index, 3.0D), type);
         tag(entity, kind, wave, !test);
+        setLootProfile(entity, test ? "test"
+                : type == EntityType.ENDERMITE ? "endermite"
+                : type == EntityType.SHULKER ? "shulker" : "final-wave");
         if (entity instanceof LivingEntity living) {
             living.setPersistent(true);
             configureEventMobStats(living, type);
@@ -2862,6 +2961,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spellServants.clear();
         miniBossSpells.clear();
         nextMiniBossSpellMillis.clear();
+        lootIssuedEntityUuids.clear();
     }
 
     private boolean isLiveOwnedEntity(UUID entityUuid) {
@@ -2955,6 +3055,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossUuid = boss.getUniqueId();
         bossKillerUuid = null;
         tag(boss, EVENT_KIND_BOSS, 0, !test);
+        setLootProfile(boss, test ? "test" : "boss");
         if (test) {
             tagTestBoss(boss);
         }
@@ -3256,21 +3357,69 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void applyFinalDrain(LivingEntity boss) {
         if (!finalDrainApplied) {
+            if (!finalDrainTargets.isEmpty()
+                    && finalDrainAppliedPlayers.containsAll(finalDrainTargets.keySet())) {
+                finalDrainApplied = true;
+                if (!saveStateSync()) {
+                    forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain completion could not be persisted");
+                    return;
+                }
+                scheduleFinalRitualVisual(boss);
+                return;
+            }
             List<Player> eligible = activeLivingPlayers();
             if (eligible.isEmpty()) {
                 getLogger().info("FINAL_DRAIN_WAITING event=" + eventId + " reason=no eligible living players");
                 return;
             }
+            boolean planChanged = false;
             for (Player player : eligible) {
-                double before = player.getHealth();
-                double after = FinalDrainMath.healthAfterDrain(
-                        before, player.getMaxHealth(), config.finalDrainFraction(), config.finalDrainMinHealth());
-                player.setHealth(after);
+                UUID playerUuid = player.getUniqueId();
+                if (!finalDrainTargets.containsKey(playerUuid)) {
+                    double before = player.getHealth();
+                    double after = FinalDrainMath.healthAfterDrain(
+                            before, player.getMaxHealth(), config.finalDrainFraction(), config.finalDrainMinHealth());
+                    finalDrainTargets.put(playerUuid, after);
+                    participantUuids.add(playerUuid);
+                    planChanged = true;
+                }
+            }
+            // Persist every absolute target before changing any player health.
+            // A restart can therefore replay the same target without applying
+            // the percentage drain a second time.
+            if (planChanged && !saveStateSync()) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain plan could not be persisted");
+                return;
+            }
+            for (Player player : eligible) {
+                UUID playerUuid = player.getUniqueId();
+                if (finalDrainAppliedPlayers.contains(playerUuid)
+                        || !player.isOnline() || player.isDead() || player.getHealth() <= 0.0D) {
+                    continue;
+                }
+                Double target = finalDrainTargets.get(playerUuid);
+                if (target == null) {
+                    continue;
+                }
+                player.setHealth(Math.max(config.finalDrainMinHealth(),
+                        Math.min(player.getMaxHealth(), target)));
+                finalDrainAppliedPlayers.add(playerUuid);
                 player.sendMessage(ChatColor.LIGHT_PURPLE + "Хранитель вытягивает вашу жизненную силу!");
+                if (!saveStateSync()) {
+                    forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain player result could not be persisted");
+                    return;
+                }
+            }
+            if (finalDrainTargets.isEmpty()
+                    || !finalDrainAppliedPlayers.containsAll(finalDrainTargets.keySet())) {
+                getLogger().info("FINAL_DRAIN_WAITING event=" + eventId
+                        + " applied=" + finalDrainAppliedPlayers.size()
+                        + " planned=" + finalDrainTargets.size());
+                return;
             }
             finalDrainApplied = true;
             if (!saveStateSync()) {
-                forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain result could not be persisted");
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "final drain completion could not be persisted");
                 return;
             }
         }
@@ -3278,7 +3427,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void scheduleFinalRitualVisual(LivingEntity boss) {
-        if (taskRegistry == null || boss == null) {
+        if (taskRegistry == null || boss == null
+                || (finalRitualVisualTask != null && !finalRitualVisualTask.isCancelled())) {
             return;
         }
         long callbackGeneration = generation;
@@ -3286,6 +3436,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
             if (!taskRegistry.owns(callbackGeneration) || phase != EventPhase.FINAL_RITUAL || !boss.isValid()) {
+                holder[0].cancel();
+                if (finalRitualVisualTask == holder[0]) {
+                    finalRitualVisualTask = null;
+                }
                 return;
             }
             ticks[0] += 5;
@@ -3303,6 +3457,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (ticks[0] >= config.finalRitualTelegraphTicks()) {
                 holder[0].cancel();
+                if (finalRitualVisualTask == holder[0]) {
+                    finalRitualVisualTask = null;
+                }
                 if (phase == EventPhase.FINAL_RITUAL && taskRegistry.owns(callbackGeneration)) {
                     if (transition(EventPhase.FINAL_WAVE, "final ritual visual complete", eventId + ":final-wave")) {
                         spawnWave(4, false);
@@ -3310,6 +3467,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
         }, 1L, 5L);
+        finalRitualVisualTask = holder[0];
         taskRegistry.register(holder[0]);
     }
 
@@ -3578,6 +3736,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
+        if (!lootIssuedEntityUuids.add(entity.getUniqueId())) {
+            return;
+        }
         String kind = readString(entity, keyKind);
         event.getDrops().clear();
         if (EVENT_KIND_BOSS.equals(kind) && entity.getUniqueId().equals(bossUuid)) {
@@ -3588,7 +3749,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ownedEntities.remove(entity.getUniqueId());
             bossUuid = null;
             if (isTestBoss(entity)) {
-                addConfiguredDrops(event, config.testLoot());
+                addConfiguredDrops(event, config.lootProfile("test"), "test");
                 clearBossOnly();
                 getLogger().info("TEST_BOSS_DEFEATED event=" + eventId);
                 return;
@@ -3602,19 +3763,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 beginVictory();
             }
         } else {
-            if (isOfficialEntity(entity)) {
-                Map<String, Integer> loot = readInt(entity, keyWave, 0) == 4
-                        ? config.finalWaveLoot()
-                        : switch (kind) {
-                            case EVENT_KIND_ELITE -> config.eliteLoot();
-                            case EVENT_KIND_FINAL_WAVE -> config.finalWaveLoot();
-                            case EVENT_KIND_WAVE_MOB -> config.waveMobLoot();
-                            default -> Map.of();
-                        };
-                addConfiguredDrops(event, loot);
-            } else {
-                addConfiguredDrops(event, config.testLoot());
+            String profile = readString(entity, keyLootProfile);
+            if (profile.isBlank()) {
+                profile = isOfficialEntity(entity) ? "final-wave" : "test";
             }
+            addConfiguredDrops(event, config.lootProfile(profile), profile);
             finalWaveEntities.remove(entity.getUniqueId());
             spellServants.remove(entity.getUniqueId());
             miniBossSpells.remove(entity.getUniqueId());
@@ -3623,13 +3776,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void addConfiguredDrops(EntityDeathEvent event, Map<String, Integer> configured) {
+    private void addConfiguredDrops(EntityDeathEvent event,
+                                    Map<String, EventConfig.LootEntry> configured,
+                                    String profileId) {
         if (event == null || configured == null || configured.isEmpty()) {
             return;
         }
-        for (Map.Entry<String, Integer> entry : configured.entrySet()) {
+        UUID entityUuid = event.getEntity().getUniqueId();
+        long seed = 31L * eventId.hashCode() + generation;
+        seed = 31L * seed + entityUuid.getMostSignificantBits();
+        seed = 31L * seed + entityUuid.getLeastSignificantBits();
+        seed = 31L * seed + (profileId == null ? 0L : profileId.hashCode());
+        SplittableRandom rng = new SplittableRandom(seed);
+        for (Map.Entry<String, EventConfig.LootEntry> entry : configured.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).toList()) {
             Material material = Material.matchMaterial(entry.getKey());
-            int remaining = entry.getValue() == null ? 0 : entry.getValue();
+            int remaining = entry.getValue() == null ? 0 : entry.getValue().roll(rng);
             if (material == null || remaining < 1) {
                 continue;
             }
@@ -3650,7 +3812,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.BOSS_FINISH) {
             transition(EventPhase.VICTORY, "official boss death committed", eventId + ":victory");
         }
-        unlockEnd(null, "official-victory");
+        issueVictoryRewards();
     }
 
     private void unlockEnd(CommandSender sender, String cause) {
@@ -3660,6 +3822,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!officialBossDeathCommitted && !VICTORY_BOSS_DEATH.equals(victoryStep)) {
             message(sender, "&cEnd открывается только после смерти настоящего official Rift Guardian.");
+            return;
+        }
+        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()) {
+            message(sender, "&cСначала завершите durable-выдачу наград босса и Осколков Разлома.");
             return;
         }
         if (endUnlocked || worldAccessService.isEndEnabled()) {
@@ -3689,7 +3855,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void issueVictoryRewards() {
-        if (!endUnlocked || rewardService == null || officialRewardRoster.isEmpty()) {
+        if (rewardService == null || officialRewardRoster.isEmpty()) {
             return;
         }
         if (!VICTORY_COMPLETE.equals(victoryStep)
@@ -3838,18 +4004,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (VICTORY_COMPLETE.equals(victoryStep)) {
             return;
         }
-        if (!endUnlocked || !bossLootCommitted || !"DELIVERED".equals(returnStoneStatus)
-                && !"PENDING_DELIVERY".equals(returnStoneStatus)
-                && !"ALREADY_ISSUED".equals(returnStoneStatus)
-                && !"WORLD_PENDING".equals(returnStoneStatus)) {
+        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()) {
             return;
         }
-        boolean allShardRequestsAccepted = officialRewardRoster.stream().allMatch(playerUuid -> {
-            String status = rewardStatuses.get(playerUuid);
-            return "DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
-                    || "PENDING_DELIVERY".equals(status);
-        });
-        if (!allShardRequestsAccepted) {
+        if (!endUnlocked) {
+            victoryStep = VICTORY_REWARDS_DELIVERED;
+            saveStateSync();
+            unlockEnd(null, "official-victory");
             return;
         }
         victoryStep = VICTORY_REWARDS_DELIVERED;
@@ -3869,10 +4030,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (worldAccessService != null && worldAccessService.isEndEnabled()) {
             endUnlocked = true;
         }
-        if (endUnlocked || VICTORY_UNLOCK_PENDING.equals(victoryStep)
-                || VICTORY_UNLOCKED.equals(victoryStep) || VICTORY_REWARDS_PENDING.equals(victoryStep)) {
-            issueVictoryRewards();
-        }
+        issueVictoryRewards();
+    }
+
+    private boolean returnStoneAccepted() {
+        return "DELIVERED".equals(returnStoneStatus)
+                || "PENDING_DELIVERY".equals(returnStoneStatus)
+                || "ALREADY_ISSUED".equals(returnStoneStatus)
+                || "WORLD_PENDING".equals(returnStoneStatus);
+    }
+
+    private boolean allShardRewardsAccepted() {
+        return officialRewardRoster.stream().allMatch(playerUuid -> {
+            String status = rewardStatuses.get(playerUuid);
+            return "DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
+                    || "PENDING_DELIVERY".equals(status);
+        });
     }
 
     private String offlineName(UUID uuid) {
@@ -3881,10 +4054,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void announceVictory() {
-        String names = officialRewardRoster.stream().map(this::offlineName).sorted().reduce((left, right) -> left + ", " + right).orElse("участники");
+        String names = participantUuids.stream().map(this::offlineName).sorted()
+                .reduce((left, right) -> left + ", " + right).orElse("участники");
+        String rewardNames = officialRewardRoster.stream().map(this::offlineName).sorted()
+                .reduce((left, right) -> left + ", " + right).orElse("никто");
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendTitle("§5ЭНД ОТКРЫТ", "§dХранитель Разлома пал", 10, 80, 20);
-            player.sendMessage("§5Энд открыт. Официальные участники: §f" + names);
+            player.sendMessage("§5Энд открыт. Все участники: §f" + names
+                    + " §7| §5Наградный roster: §f" + rewardNames);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
             player.playSound(player.getLocation(), config.victoryMusic().soundId(), SoundCategory.MUSIC,
                     (float) config.musicVolume(), 1.0F);
@@ -4119,6 +4296,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         data.set(keyLootProfile, PersistentDataType.STRING, official ? "END_RIFT_OFFICIAL" : "END_RIFT_TEST");
         data.set(keyOfficial, PersistentDataType.BYTE, official ? (byte) 1 : (byte) 0);
         ownedEntities.put(entity.getUniqueId(), entity);
+    }
+
+    private void setLootProfile(Entity entity, String profileId) {
+        if (entity == null || keyLootProfile == null || profileId == null || profileId.isBlank()) {
+            return;
+        }
+        entity.getPersistentDataContainer().set(keyLootProfile, PersistentDataType.STRING, profileId);
     }
 
     private void tagTestBoss(Entity entity) {

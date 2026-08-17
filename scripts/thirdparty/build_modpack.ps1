@@ -67,19 +67,6 @@ foreach ($relative in $files) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 
-$documents = @(
-    "thirdparty\modpack_manifest.json",
-    "thirdparty\README_RU.txt",
-    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
-)
-foreach ($relative in $documents) {
-    $source = Join-Path $ProjectRoot $relative
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "Missing documentation for modpack: $relative"
-    }
-    Copy-Item -LiteralPath $source -Destination $stage -Force
-}
-
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force
 }

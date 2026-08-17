@@ -37,15 +37,6 @@ do
   cp "$PROJECT_ROOT/$file" "$STAGE/mods/"
 done
 
-for document in \
-  "thirdparty/modpack_manifest.json" \
-  "thirdparty/README_RU.txt" \
-  "thirdparty/VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
-do
-  [[ -f "$PROJECT_ROOT/$document" ]] || { echo "Missing documentation for modpack: $document" >&2; exit 1; }
-  cp "$PROJECT_ROOT/$document" "$STAGE/"
-done
-
 rm -f "$ZIP"
 (cd "$STAGE" && zip -qr "$ZIP" .)
 sha1sum "$ZIP" | awk '{print $1}' > "$SHA"

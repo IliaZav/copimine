@@ -56,10 +56,7 @@ foreach ($required in @(
     "mods/voicechat-fabric-1.21.1-2.6.16.jar",
     "mods/iris-fabric-1.8.8+mc1.21.1.jar",
     "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
-    "mods/CustomSkinLoader_Fabric-14.26.1.jar",
-    "modpack_manifest.json",
-    "README_RU.txt",
-    "VOICE_CHAT_OFFICIAL_DOWNLOAD.txt"
+    "mods/CustomSkinLoader_Fabric-14.26.1.jar"
 )) {
     if ($zipEntries -notcontains $required) {
         throw "CopiMineMods.zip is missing required entry: $required"
@@ -83,6 +80,25 @@ if ($manifestText -notmatch 'CustomSkinLoader' -or $manifestText -notmatch '14\.
 }
 
 $manifestData = $manifestText | ConvertFrom-Json
+$requiredComponents = @(
+    "CopiMineClient",
+    "CustomSkinLoader",
+    "Emotecraft",
+    "Fabric API",
+    "Simple Voice Chat",
+    "Iris",
+    "Sodium"
+)
+foreach ($component in $requiredComponents) {
+    $entry = @($manifestData.files | Where-Object { $_.component -eq $component })
+    if ($entry.Count -ne 1 -or $entry[0].required -ne $true) {
+        throw "modpack_manifest.json must mark $component as required"
+    }
+}
+$modMenuEntry = @($manifestData.files | Where-Object { $_.component -eq "Mod Menu" })
+if ($modMenuEntry.Count -ne 1 -or $modMenuEntry[0].required -ne $false) {
+    throw "modpack_manifest.json must keep Mod Menu optional"
+}
 $manifestPaths = @($manifestData.files | ForEach-Object { $_.path })
 if ($manifestPaths | Where-Object { $_ -match '(?i)tl.?skin' }) {
     throw "modpack_manifest.json must not list the replaced TL Skin mod as an included file"

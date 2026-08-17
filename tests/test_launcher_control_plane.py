@@ -141,3 +141,54 @@ def test_telemetry_is_bounded_and_aggregated_without_database(tmp_path: Path) ->
     assert stats["events"]["reconcile_failure"] == 1
     assert stats["diagnostics"][0]["code"] == "MANIFEST_HASH_MISMATCH"
     assert (tmp_path / "control" / "telemetry.jsonl").is_file()
+
+
+def test_release_validation_fails_closed_without_server_signing_key(tmp_path: Path) -> None:
+    plane = control.ControlPlane(tmp_path / "control", public_root=tmp_path / "public")
+    plane.load_state()
+    result = plane.validate_release(public_key_id="launcher-v1-staging")
+    assert result["ok"] is False
+    assert result["code"] == "LAUNCHER_RELEASE_NOT_READY"
+    assert "SIGNING_KEY_MISSING" in result["reasons"]
+
+
+def test_ephemeral_staging_release_is_signed_and_rollback_keeps_files(tmp_path: Path) -> None:
+    pytest.importorskip("cryptography")
+    plane = control.ControlPlane(tmp_path / "control", public_root=tmp_path / "public")
+    plane.load_state()
+    plane.add_mod("map-helper", "2.1.0", "MapHelper.jar", b"map-helper")
+    seed = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+
+    first = plane.publish_release(
+        private_key_hex=seed,
+        public_key_id="launcher-v1-staging",
+        release_id="2026.08.17.1",
+        release_sequence=1,
+    )
+    manifest_path = tmp_path / "public" / "launcher" / "stable" / "instance-manifest.json"
+    signature_path = tmp_path / "public" / "launcher" / "stable" / "instance-manifest.sig"
+    assert first["releaseId"] == "2026.08.17.1"
+    assert manifest_path.is_file() and signature_path.is_file()
+    manifest_bytes = manifest_path.read_bytes()
+    signature = json.loads(signature_path.read_text(encoding="utf-8"))
+    public_key = bytes.fromhex((tmp_path / "public" / "launcher" / "stable" / "public-key.hex").read_text(encoding="ascii"))
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    Ed25519PublicKey.from_public_bytes(public_key).verify(
+        __import__("base64").b64decode(signature["signatureBase64"]), manifest_bytes
+    )
+    digest = hashlib.sha256(b"map-helper").hexdigest()
+    assert (tmp_path / "public" / "launcher" / "files" / digest).read_bytes() == b"map-helper"
+
+    plane.replace_mod("map-helper", version="2.2.0", data=b"map-helper-v2")
+    second = plane.publish_release(
+        private_key_hex=seed,
+        public_key_id="launcher-v1-staging",
+        release_id="2026.08.17.2",
+        release_sequence=2,
+    )
+    assert second["releaseId"] == "2026.08.17.2"
+    assert (tmp_path / "control" / "releases" / "2026.08.17.1" / "instance-manifest.json").is_file()
+    rolled = plane.rollback_release("2026.08.17.1")
+    assert rolled["releaseId"] == "2026.08.17.1"
+    assert json.loads(manifest_path.read_text(encoding="utf-8"))["releaseId"] == "2026.08.17.1"

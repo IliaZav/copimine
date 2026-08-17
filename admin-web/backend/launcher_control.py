@@ -9,6 +9,7 @@ are atomic replacements of small JSON/text files.
 from __future__ import annotations
 
 import copy
+import base64
 import hashlib
 import html
 import json
@@ -372,8 +373,252 @@ class ControlPlane:
             for item in manifest.get("files", [])
             if isinstance(item, dict) and not str(item.get("path") or "").lower().startswith("mods/")
         ]
-        manifest["files"] = preserved + _copy_json(state["draftMods"])
+        managed: list[dict[str, Any]] = []
+        origin = os.getenv("COPIMINE_LAUNCHER_DOWNLOAD_ORIGIN", "https://copimine.ru/launcher/files").rstrip("/")
+        for item in state["draftMods"]:
+            managed_item = _copy_json(item)
+            managed_item["url"] = f"{origin}/{managed_item['sha256']}"
+            managed_item["size"] = int(managed_item.get("sizeBytes", 0))
+            managed_item["ownership"] = "MANAGED"
+            managed_item["kind"] = "mod"
+            managed_item["installPolicy"] = "REPLACE"
+            managed.append(managed_item)
+        manifest["files"] = preserved + managed
         return manifest
+
+    @staticmethod
+    def _public_key_id(value: Any) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value.strip()):
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "public key id is invalid", field="publicKeyId")
+        return value.strip()
+
+    def _load_private_key(self, private_key_hex: str | None = None) -> Any:
+        value = private_key_hex or os.getenv("COPIMINE_MANIFEST_PRIVATE_KEY_HEX")
+        if not value:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "server signing key is not configured")
+        try:
+            from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        except ImportError as exc:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "cryptography signing library is unavailable") from exc
+        try:
+            seed = bytes.fromhex(value.strip())
+        except ValueError as exc:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "server signing key is not hexadecimal") from exc
+        if len(seed) != 32:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "server signing key must contain 32 bytes")
+        return Ed25519PrivateKey.from_private_bytes(seed)
+
+    @staticmethod
+    def _artifact_path(root: Path, source_manifest: Path | None, digest: str) -> Path | None:
+        candidate = root / "files" / digest
+        if candidate.is_file():
+            return candidate
+        if source_manifest:
+            candidate = source_manifest.parent / "files" / digest
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def validate_release(
+        self,
+        *,
+        public_key_id: str | None = None,
+        private_key_hex: str | None = None,
+        release_sequence: int | None = None,
+    ) -> dict[str, Any]:
+        reasons: list[str] = []
+        state = self.load_state()
+        try:
+            key_id = self._public_key_id(public_key_id or state.get("baseManifest", {}).get("publicKeyId") or "")
+        except ControlPlaneError as exc:
+            reasons.append("PUBLIC_KEY_ID_INVALID")
+            key_id = ""
+        sequence = release_sequence if release_sequence is not None else int(state.get("releaseSequence") or 0) + 1
+        if not isinstance(sequence, int) or sequence <= 0:
+            reasons.append("RELEASE_SEQUENCE_INVALID")
+        manifest = self.manifest_for_draft()
+        seen_components: set[str] = set()
+        seen_paths: set[str] = set()
+        for index, item in enumerate(manifest.get("files", [])):
+            if not isinstance(item, dict):
+                reasons.append(f"FILE_{index}_INVALID")
+                continue
+            component = str(item.get("componentId") or "")
+            path = str(item.get("path") or "")
+            if component and component.lower() in seen_components:
+                reasons.append("DUPLICATE_COMPONENT_ID")
+            if path.lower() in seen_paths:
+                reasons.append("DUPLICATE_FILE_PATH")
+            if component:
+                seen_components.add(component.lower())
+            if path:
+                seen_paths.add(path.lower())
+            if path.lower().startswith("mods/"):
+                try:
+                    validate_component_id(component)
+                    _safe_path(path)
+                    digest = validate_sha256(item.get("sha256"))
+                    size = int(item.get("sizeBytes", item.get("size", 0)))
+                except (ControlPlaneError, TypeError, ValueError):
+                    reasons.append(f"FILE_{index}_INVALID")
+                    continue
+                artifact = self._artifact_path(self.root, self.source_manifest, digest)
+                if artifact is None or artifact.stat().st_size != size:
+                    reasons.append("ARTIFACT_MISSING")
+        if not private_key_hex and not os.getenv("COPIMINE_MANIFEST_PRIVATE_KEY_HEX"):
+            reasons.append("SIGNING_KEY_MISSING")
+        else:
+            try:
+                self._load_private_key(private_key_hex)
+            except ControlPlaneError as exc:
+                if "cryptography" in exc.message:
+                    reasons.append("SIGNING_LIBRARY_MISSING")
+                elif "hexadecimal" in exc.message:
+                    reasons.append("SIGNING_KEY_INVALID")
+                else:
+                    reasons.append("SIGNING_KEY_INVALID")
+        if reasons:
+            return {
+                "ok": False,
+                "code": "LAUNCHER_RELEASE_NOT_READY",
+                "reasons": list(dict.fromkeys(reasons)),
+                "releaseSequence": sequence,
+                "publicKeyId": key_id,
+            }
+        manifest["releaseSequence"] = sequence
+        manifest["publicKeyId"] = key_id
+        return {
+            "ok": True,
+            "code": "READY",
+            "reasons": [],
+            "releaseSequence": sequence,
+            "publicKeyId": key_id,
+            "manifest": manifest,
+        }
+
+    def _release_artifacts(self, manifest: dict[str, Any], destination: Path) -> None:
+        destination.mkdir(parents=True, exist_ok=True)
+        for item in manifest.get("files", []):
+            if not isinstance(item, dict) or not item.get("sha256"):
+                continue
+            digest = validate_sha256(item["sha256"])
+            source = self._artifact_path(self.root, self.source_manifest, digest)
+            if source is None:
+                raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "release artifact is missing")
+            target = destination / digest
+            if not target.is_file() or target.stat().st_size != source.stat().st_size:
+                shutil.copyfile(source, target)
+
+    def _write_public_release(self, manifest_bytes: bytes, signature_bytes: bytes, public_key_hex: str, manifest: dict[str, Any]) -> None:
+        if not self.public_root:
+            return
+        launcher_root = self.public_root / "launcher"
+        public_files = launcher_root / "files"
+        stable = launcher_root / "stable"
+        public_files.mkdir(parents=True, exist_ok=True)
+        for item in manifest.get("files", []):
+            if not isinstance(item, dict) or not item.get("sha256"):
+                continue
+            digest = validate_sha256(item["sha256"])
+            source = self._artifact_path(self.root, self.source_manifest, digest)
+            if source is None:
+                raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "release artifact is missing")
+            target = public_files / digest
+            if not target.is_file() or target.stat().st_size != source.stat().st_size:
+                shutil.copyfile(source, target)
+        _atomic_bytes(stable / "instance-manifest.json", manifest_bytes)
+        _atomic_bytes(stable / "instance-manifest.sig", signature_bytes)
+        _atomic_bytes(stable / "public-key.hex", (public_key_hex + "\n").encode("ascii"))
+
+    def publish_release(
+        self,
+        *,
+        private_key_hex: str | None = None,
+        public_key_id: str,
+        release_id: str,
+        release_sequence: int,
+        published_at: str | None = None,
+    ) -> dict[str, Any]:
+        release_id = validate_version(release_id)
+        result = self.validate_release(
+            public_key_id=public_key_id,
+            private_key_hex=private_key_hex,
+            release_sequence=release_sequence,
+        )
+        if not result["ok"]:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", ", ".join(result["reasons"]))
+        state = self.load_state()
+        if any(item.get("releaseId") == release_id for item in state["releases"]):
+            raise ControlPlaneError("LAUNCHER_RELEASE_DUPLICATE", "release id already exists")
+        private_key = self._load_private_key(private_key_hex)
+        try:
+            from cryptography.hazmat.primitives import serialization
+        except ImportError as exc:
+            raise ControlPlaneError("LAUNCHER_RELEASE_NOT_READY", "cryptography signing library is unavailable") from exc
+        manifest = _copy_json(result["manifest"])
+        manifest["releaseId"] = release_id
+        manifest["publishedAtUtc"] = published_at or self.clock()
+        manifest.setdefault("channel", "stable")
+        manifest.setdefault("minimumLauncherVersion", "1.0.0")
+        if not manifest.get("newsUrl"):
+            manifest["newsUrl"] = "https://copimine.ru/news.html"
+        manifest_bytes = (json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        signature = private_key.sign(manifest_bytes)
+        public_key = private_key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        signature_document = {
+            "algorithm": "Ed25519",
+            "publicKeyId": public_key_id,
+            "signatureBase64": base64.b64encode(signature).decode("ascii"),
+        }
+        signature_bytes = (json.dumps(signature_document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+        release_dir = self.root / "releases" / release_id
+        if release_dir.exists():
+            raise ControlPlaneError("LAUNCHER_RELEASE_DUPLICATE", "release directory already exists")
+        release_files = release_dir / "files"
+        self._release_artifacts(manifest, release_files)
+        _atomic_bytes(release_dir / "instance-manifest.json", manifest_bytes)
+        _atomic_bytes(release_dir / "instance-manifest.sig", signature_bytes)
+        _atomic_bytes(release_dir / "public-key.hex", (public_key.hex() + "\n").encode("ascii"))
+        self._write_public_release(manifest_bytes, signature_bytes, public_key.hex(), manifest)
+        release_record = {
+            "releaseId": release_id,
+            "releaseSequence": release_sequence,
+            "publishedAtUtc": manifest["publishedAtUtc"],
+            "manifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            "publicKeyId": public_key_id,
+        }
+        state["previousReleaseId"] = state.get("currentReleaseId")
+        state["currentReleaseId"] = release_id
+        state["releaseId"] = release_id
+        state["releaseSequence"] = release_sequence
+        state["releases"].append(release_record)
+        self._save(state, action="release.publish", details=release_record)
+        return _copy_json(release_record)
+
+    def rollback_release(self, release_id: str) -> dict[str, Any]:
+        release_id = validate_version(release_id)
+        state = self.load_state()
+        record = next((item for item in state["releases"] if item.get("releaseId") == release_id), None)
+        release_dir = self.root / "releases" / release_id
+        manifest_path = release_dir / "instance-manifest.json"
+        signature_path = release_dir / "instance-manifest.sig"
+        key_path = release_dir / "public-key.hex"
+        if record is None or not manifest_path.is_file() or not signature_path.is_file() or not key_path.is_file():
+            raise ControlPlaneError("LAUNCHER_ROLLBACK_INVALID", "immutable release is missing required files")
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+        if hashlib.sha256(manifest_bytes).hexdigest() != record.get("manifestSha256"):
+            raise ControlPlaneError("LAUNCHER_ROLLBACK_INVALID", "immutable manifest hash changed")
+        self._write_public_release(
+            manifest_bytes,
+            signature_path.read_bytes(),
+            key_path.read_text(encoding="ascii").strip(),
+            manifest,
+        )
+        state["previousReleaseId"] = state.get("currentReleaseId")
+        state["currentReleaseId"] = release_id
+        self._save(state, action="release.rollback", details={"releaseId": release_id})
+        return _copy_json(record)
 
     @staticmethod
     def _news_lines(value: Any, *, field: str) -> list[str]:

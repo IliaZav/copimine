@@ -67,6 +67,7 @@ release/
 # Project-local generated/runtime dirs
 /.worktrees/
 /artifacts/tools/
+/artifacts/launcher/
 local-runtime/
 admin-web/frontend/downloads/
 admin-web/frontend/launcher/

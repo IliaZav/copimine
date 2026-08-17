@@ -3,6 +3,8 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
+import { createAdminLauncherPages } from "./admin/launcher-pages.js";
+import { createAdminNewsPages } from "./admin/news-pages.js";
 import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r12";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
@@ -249,6 +251,8 @@ const navGroups = [
       ["security", "Безопасность", "Права, сессии и доступ", "Б"],
       ["sources", "Источники", "Плагины, файлы и реестр", "И"],
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
+      ["launcher", "Launcher", "Релизы, моды и статистика доставки", "L"],
+      ["news", "Новости", "Patch notes и item-aware изменения", "N"],
       ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
@@ -332,6 +336,8 @@ const adminSearchAliases = {
   elections: "выборы заявки кандидаты дебаты голосование блоки президент срок результаты",
   requests: "заявки обращения жалобы книга рассмотреть одобрить отклонить discord дискорд",
   "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
+  launcher: "launcher лаунчер релиз моды manifest манифест обновления публикация откат статистика загрузки",
+  news: "новости patch notes патчноуты релиз изменения предметы item textures текстуры",
   cms: "cms контент новости баннеры правила faq картинки страницы",
   admins: "админы команда доступ регистрация роли младший owner",
   security: "безопасность csrf сессии whitelist вайтлист доступ ip",
@@ -352,6 +358,8 @@ const adminSearchSectionItems = [
   { id: "players", target: "players-profile", title: "Профиль игрока", subtitle: "Профиль, инвентарь и действия", group: "Игроки", haystack: "игрок профиль инвентарь действия эффекты timeline", focusNeedle: "Игроки" },
   { id: "security", target: "security-access", title: "Доступ и сессии", subtitle: "Доступ, сессии и защита", group: "Безопасность", haystack: "доступ сессии csrf ip security auth", focusNeedle: "Доступ" },
   { id: "narcotics-recipes", target: "recipes-editor", title: "Редактор рецептов", subtitle: "Котёл, ингредиенты и результат", group: "Наркотики", haystack: "рецепты котёл варка ингредиенты жужево editor", focusNeedle: "Рецепты" },
+  { id: "launcher", target: "launcher-overview", title: "Launcher", subtitle: "Релизы, моды, подпись и статистика", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Launcher" },
+  { id: "news", target: "launcher-news-editor", title: "Новости Launcher", subtitle: "Patch notes и item-aware текстуры", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости Launcher" },
   { id: "cms", target: "cms-content", title: "CMS и баннеры", subtitle: "Тексты, баннеры и страницы", group: "CMS", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "CMS" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
@@ -6026,6 +6034,8 @@ window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
 let playerDonationPages;
 let adminCommercePages;
 let adminCmsPages;
+let adminLauncherPages;
+let adminNewsPages;
 let adminNarcoticsRecipePages;
 let pluginRegistryPages;
 let playerAccountPages;
@@ -6089,6 +6099,51 @@ function getAdminCmsPages() {
     });
   }
   return adminCmsPages;
+}
+
+function getAdminLauncherPages() {
+  if (!adminLauncherPages) {
+    adminLauncherPages = createAdminLauncherPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      pill,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminLauncherPages;
+}
+
+function getAdminNewsPages() {
+  if (!adminNewsPages) {
+    adminNewsPages = createAdminNewsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminNewsPages;
 }
 
 function getAdminNarcoticsRecipePages() {
@@ -6565,6 +6620,8 @@ async function loadCurrent(silent = false) {
     investigations: loadInvestigations,
     sources: loadSources,
     "narcotics-recipes": () => getAdminNarcoticsRecipePages().loadRecipes(),
+    launcher: () => getAdminLauncherPages().loadLauncher(),
+    news: () => getAdminNewsPages().loadNews(),
     cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
@@ -6663,6 +6720,19 @@ Object.assign(dataClickHandlers, {
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
+  adminLauncherUpload: () => getAdminLauncherPages().adminLauncherUpload(),
+  adminLauncherSaveMod: (...args) => getAdminLauncherPages().adminLauncherSaveMod(...args),
+  adminLauncherDeleteMod: (...args) => getAdminLauncherPages().adminLauncherDeleteMod(...args),
+  adminLauncherValidate: () => getAdminLauncherPages().adminLauncherValidate(),
+  adminLauncherPublish: () => getAdminLauncherPages().adminLauncherPublish(),
+  adminLauncherRollback: (...args) => getAdminLauncherPages().adminLauncherRollback(...args),
+  adminNewsEdit: (...args) => getAdminNewsPages().adminNewsEdit(...args),
+  adminNewsNew: () => getAdminNewsPages().adminNewsNew(),
+  adminNewsAddItem: () => getAdminNewsPages().adminNewsAddItem(),
+  adminNewsRemoveItem: (...args) => getAdminNewsPages().adminNewsRemoveItem(...args),
+  adminNewsSave: () => getAdminNewsPages().adminNewsSave(),
+  adminNewsPublish: (...args) => getAdminNewsPages().adminNewsPublish(...args),
+  adminNewsDelete: (...args) => getAdminNewsPages().adminNewsDelete(...args),
   adminCmsDisable: (...args) => getAdminCmsPages().adminCmsDisable(...args),
   adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
   adminCmsNew: () => getAdminCmsPages().adminCmsNew(),

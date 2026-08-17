@@ -27,6 +27,14 @@ public final class DepositJournalTest {
         check(journal.refund(refund), "REFUNDED record must be fsynced");
         check(journal.unresolved().isEmpty(), "refunded entry must leave no unresolved work");
 
+        DepositJournal.Entry pending = new DepositJournal.Entry("deposit-3", player, Material.DIAMOND, 2, 2, "PREPARED");
+        check(journal.prepare(pending), "pending refund prepare must succeed");
+        check(journal.refundPending(pending), "REFUND_PENDING record must be fsynced");
+        check(statuses(journal.unresolved()).equals(List.of("REFUND_PENDING")),
+                "full inventory refund must remain explicitly recoverable");
+        check(journal.refund(pending), "a later free slot must close the pending refund");
+        check(journal.unresolved().isEmpty(), "closed pending refund must leave no unresolved work");
+
         Files.writeString(directory.resolve("deposit-journal.tsv"), "malformed\nnot-a-uuid\tbad\n", java.nio.file.StandardOpenOption.APPEND);
         check(journal.unresolved().isEmpty(), "malformed journal lines must be ignored without losing valid state");
 

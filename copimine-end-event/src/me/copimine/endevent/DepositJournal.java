@@ -38,11 +38,17 @@ public final class DepositJournal {
         return append(entry.withStatus("REFUNDED"));
     }
 
+    /** Keep the entry durable when an exact refund cannot fit yet. */
+    public synchronized boolean refundPending(Entry entry) {
+        return append(entry.withStatus("REFUND_PENDING"));
+    }
+
     public synchronized List<Entry> unresolved() {
         Map<String, Entry> latest = latest();
         List<Entry> result = new ArrayList<>();
         for (Entry entry : latest.values()) {
-            if ("PREPARED".equals(entry.status()) || "ITEM_REMOVED".equals(entry.status())) {
+            if ("PREPARED".equals(entry.status()) || "ITEM_REMOVED".equals(entry.status())
+                    || "REFUND_PENDING".equals(entry.status())) {
                 result.add(entry);
             }
         }

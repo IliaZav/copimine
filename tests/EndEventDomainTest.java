@@ -1,4 +1,5 @@
 import me.copimine.endevent.domain.CoreDepositMath;
+import me.copimine.endevent.domain.CoreInteractionGuard;
 import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.FinalDrainMath;
@@ -14,10 +15,12 @@ public final class EndEventDomainTest {
     public static void main(String[] args) {
         testLegalStateTransitions();
         testIllegalStateTransitionsDoNotAdvance();
+        testCanonicalFinalDrainAndVictoryTransitions();
         testTransientRecoveryAndTerminalUnlock();
         testPadGeometryHasExactlyNUniquePoints();
         testDepositCapLeavesRemainder();
         testDepositRejectsOffhandAndOfficialItems();
+        testCoreInteractionGuardIsPerPlayerAndPerTick();
         testFinalDrainUsesCurrentHealthAndMinimumOne();
         testRosterRequiresExactlyNDistinctOccupants();
         testRosterIsImmutable();
@@ -56,6 +59,25 @@ public final class EndEventDomainTest {
                 "corrupt state must remain recovery required");
     }
 
+    private static void testCanonicalFinalDrainAndVictoryTransitions() {
+        EndEventStateMachine machine = new EndEventStateMachine(EventPhase.BOSS_ACTIVE);
+        check(machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.FINAL_DRAIN,
+                        "threshold", "final-drain-1").success(),
+                "boss must enter the canonical final drain phase");
+        check(machine.transition(EventPhase.FINAL_DRAIN, EventPhase.FINAL_WAVE,
+                        "telegraph-complete", "final-wave-1").success(),
+                "final drain must transition to the final wave");
+        check(machine.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_FINISH,
+                        "wave-dead", "boss-finish-1").success(),
+                "final wave must release the boss");
+        check(machine.transition(EventPhase.BOSS_FINISH, EventPhase.VICTORY_PROCESSING,
+                        "boss-dead", "victory-1").success(),
+                "boss death must enter the canonical victory saga");
+        check(machine.transition(EventPhase.VICTORY_PROCESSING, EventPhase.UNLOCKED,
+                        "rewards-complete", "unlock-1").success(),
+                "victory saga must be able to commit the terminal unlock");
+    }
+
     private static void testPadGeometryHasExactlyNUniquePoints() {
         for (int count = 1; count <= 20; count++) {
             PadLayout.Result result = PadLayout.compute(count, 0.0D, List.of(5.0D, 6.0D, 7.0D, 8.0D));
@@ -88,6 +110,18 @@ public final class EndEventDomainTest {
                 "custom protected item must not be consumed");
         check(!CoreDepositMath.canAccept(true, "GOLD_INGOT", requirements, false, false),
                 "wrong material must not be accepted");
+    }
+
+    private static void testCoreInteractionGuardIsPerPlayerAndPerTick() {
+        CoreInteractionGuard guard = new CoreInteractionGuard();
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        check(guard.accept(10L, "event", 3L, first), "first core click must be accepted");
+        check(!guard.accept(10L, "event", 3L, first), "duplicate same-tick core click must be rejected");
+        check(guard.accept(10L, "event", 3L, second), "another player may deposit in the same tick");
+        check(guard.accept(11L, "event", 3L, first), "the next tick must accept a new click");
+        check(guard.accept(11L, "event", 4L, first), "a new generation must have its own interaction key");
+        check(!guard.accept(11L, "", 4L, first), "blank event identity must fail closed");
     }
 
     private static void testFinalDrainUsesCurrentHealthAndMinimumOne() {

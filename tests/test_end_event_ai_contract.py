@@ -32,10 +32,17 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
         "runTaskTimer(this",
         "BOSS_VOID_MARK_CLEANUP",
         "clearVoidMarkZones",
+        "Snowball",
+        "EVENT_KIND_PROJECTILE",
+        "MAX_ACTIVE_RIFT_PROJECTILES = 8",
+        "BOSS_PROJECTILE_SPAWN",
+        "BOSS_PROJECTILE_HIT",
+        "cleanupRiftProjectile",
     ):
         assert marker in MAIN
     assert "random.nextInt(4)" not in MAIN
     assert "player.damage(2.0D, boss)" in MAIN
+    assert "player.damage(7.0D, boss)" in MAIN
 
 
 def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller() -> None:

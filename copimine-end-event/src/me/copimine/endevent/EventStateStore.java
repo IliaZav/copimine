@@ -57,7 +57,8 @@ public final class EventStateStore {
                 recovery.shardCooldowns(),
                 recovery.coreCharged(), recovery.halfHealthTriggered(), recovery.controlSpellUnlocked(),
                 recovery.finalDrainTriggered(), recovery.finalDrainApplied(), recovery.endUnlocked(),
-                recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.returnStoneStatus(),
+                recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.bossRewardStatus(),
+                recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
                 recovery.victoryStep(), recovery.updatedAt(),
                 "Both primary and backup event state files are invalid.", recovery.participants(),
                 recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers());
@@ -114,6 +115,9 @@ public final class EventStateStore {
             yaml.set("event.end-unlocked", snapshot.endUnlocked());
             yaml.set("event.official-boss-death-committed", snapshot.officialBossDeathCommitted());
             yaml.set("event.boss-loot-committed", snapshot.bossLootCommitted());
+            yaml.set("event.boss-reward-status", snapshot.bossRewardStatus());
+            yaml.set("event.boss-reward-recipient", snapshot.bossRewardRecipient() == null
+                    ? null : snapshot.bossRewardRecipient().toString());
             yaml.set("event.return-stone-status", snapshot.returnStoneStatus());
             yaml.set("event.victory-step", snapshot.victoryStep());
             yaml.set("event.updated-at", snapshot.updatedAt());
@@ -193,7 +197,10 @@ public final class EventStateStore {
                 yaml.getBoolean("event.control-spell-unlocked"), yaml.getBoolean("event.final-drain-triggered"),
                 yaml.getBoolean("event.final-drain-applied"), yaml.getBoolean("event.end-unlocked"),
                 yaml.getBoolean("event.official-boss-death-committed"),
-                yaml.getBoolean("event.boss-loot-committed"), yaml.getString("event.return-stone-status", "PENDING"),
+                yaml.getBoolean("event.boss-loot-committed"),
+                yaml.getString("event.boss-reward-status", "PENDING"),
+                uuidOrNull(yaml.getString("event.boss-reward-recipient", "")),
+                yaml.getString("event.return-stone-status", "PENDING"),
                 yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
                 yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
                 finalDrainAppliedPlayers);
@@ -227,6 +234,17 @@ public final class EventStateStore {
         values.entrySet().stream().sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> result.put(entry.getKey().toString(), entry.getValue()));
         return result;
+    }
+
+    private static UUID uuidOrNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(value);
+        } catch (IllegalArgumentException invalid) {
+            return null;
+        }
     }
 
     private static Set<UUID> uuids(List<String> values) {

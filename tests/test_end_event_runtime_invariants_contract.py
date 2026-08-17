@@ -22,7 +22,7 @@ def test_roster_and_combat_membership_exclude_non_survival_players() -> None:
 
 
 def test_final_ritual_waits_for_eligible_players_and_has_bounded_telegraph() -> None:
-    assert "case FINAL_RITUAL -> tickFinalRitual()" in MAIN
+    assert "case FINAL_DRAIN, FINAL_RITUAL -> tickFinalRitual()" in MAIN
     drain = MAIN[MAIN.index("private void applyFinalDrain"):
                  MAIN.index("private void scheduleFinalRitualVisual")]
     assert "eligible.isEmpty()" in drain
@@ -50,6 +50,9 @@ def test_boss_reward_waits_for_official_recipient_and_inventory_capacity() -> No
     assert "officialRewardRoster" in loot
     assert "canFitBossBundle" in loot
     assert "bossLootCommitted = true" in loot
+    assert "BOSS_REWARDS_RESERVED" in loot
+    assert "BOSS_REWARDS_DELIVERED" in loot
+    assert "BOSS_REWARDS_REVIEW_REQUIRED" in loot
 
 
 def test_official_boss_death_clears_the_live_boss_reference() -> None:
@@ -167,6 +170,21 @@ def test_countdown_commits_phase_before_spawning_the_first_wave() -> None:
     assert countdown.index("saveStateSync()") < countdown.index("spawnWave(1, false)")
 
 
+def test_recovered_committed_roster_cannot_be_replaced_by_a_late_pad_occupant() -> None:
+    countdown = MAIN[MAIN.index("RewardRoster roster = RewardRoster.commitExactly"):
+                     MAIN.index("private void cancelRitual")]
+    assert "!officialRewardRoster.isEmpty()" in countdown
+    assert "committed roster mismatch after recovery" in countdown
+    assert "officialRewardRoster.addAll(roster.players())" in countdown
+
+
+def test_boss_reward_state_and_recipient_are_durable() -> None:
+    assert "bossRewardStatus" in MAIN
+    assert "bossRewardRecipientUuid" in MAIN
+    assert 'yaml.set("event.boss-reward-status"' in STATE_STORE
+    assert 'yaml.set("event.boss-reward-recipient"' in STATE_STORE
+
+
 def test_final_drain_has_a_durable_per_player_plan_and_commit() -> None:
     drain = MAIN[MAIN.index("private void applyFinalDrain"):
                  MAIN.index("private void scheduleFinalRitualVisual")]
@@ -177,6 +195,14 @@ def test_final_drain_has_a_durable_per_player_plan_and_commit() -> None:
     assert drain.index("saveStateSync()") < drain.index("player.setHealth")
     assert "final-drain.targets" in STATE_STORE
     assert "final-drain.applied-players" in STATE_STORE
+
+
+def test_core_clicks_are_guarded_per_player_and_server_tick() -> None:
+    guard = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/CoreInteractionGuard.java").read_text(encoding="utf-8")
+    assert "serverTick" in guard
+    assert "accepted.add" in guard
+    assert "Bukkit.getCurrentTick()" in MAIN
+    assert "coreInteractionGuard.accept" in MAIN
 
 
 def test_victory_saga_issues_rewards_before_worldcore_unlock() -> None:

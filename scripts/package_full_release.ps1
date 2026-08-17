@@ -109,6 +109,7 @@ $pluginBuildScripts = @(
     (Join-Path $ProjectRoot 'copimine-artifacts\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-narcotics\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-world-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-end-event\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-admin-plugin\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'minecraft\server\plugins\AuthEffects\build-plugin.ps1')
 )
@@ -119,7 +120,8 @@ $firstPartyServerJars = @(
     'minecraft/server/plugins/CopiMineElectionCore.jar',
     'minecraft/server/plugins/CopiMineNarcotics.jar',
     'minecraft/server/plugins/CopiMineUltimateAdminPlus.jar',
-    'minecraft/server/plugins/CopiMineWorldCore.jar'
+    'minecraft/server/plugins/CopiMineWorldCore.jar',
+    'minecraft/server/plugins/CopiMineEndEvent.jar'
 )
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
@@ -519,6 +521,7 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\CopiMineNarcotics.jar',
     'minecraft\server\plugins\CopiMineUltimateAdminPlus.jar',
     'minecraft\server\plugins\CopiMineWorldCore.jar',
+    'minecraft\server\plugins\CopiMineEndEvent.jar',
     'minecraft\server\plugins\CoreProtect-CE-23.0.jar',
     'minecraft\server\plugins\emotecraft-2.4.12-bukkit.jar',
     'minecraft\server\plugins\EntityClearer.jar',

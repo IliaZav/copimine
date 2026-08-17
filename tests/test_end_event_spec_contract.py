@@ -15,8 +15,8 @@ def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
     for phase in (
         "UNCONFIGURED", "COLLECTING", "READY_FOR_PLAYERS", "COUNTDOWN",
         "WAVE_1", "INTERMISSION_1", "WAVE_2", "INTERMISSION_2", "WAVE_3",
-        "BOSS_ACTIVE", "FINAL_RITUAL", "FINAL_WAVE", "BOSS_FINISH",
-        "VICTORY", "UNLOCKED", "RECOVERY_REQUIRED",
+        "BOSS_ACTIVE", "FINAL_DRAIN", "FINAL_WAVE", "BOSS_FINISH",
+        "VICTORY_PROCESSING", "UNLOCKED", "RECOVERY_REQUIRED",
     ):
         assert re.search(rf"\b{phase}\b", PHASES)
     assert "DIAMOND: 100" in CONFIG

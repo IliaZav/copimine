@@ -39,6 +39,8 @@ public record EventSnapshot(
         boolean endUnlocked,
         boolean officialBossDeathCommitted,
         boolean bossLootCommitted,
+        String bossRewardStatus,
+        UUID bossRewardRecipient,
         String returnStoneStatus,
         String victoryStep,
         long updatedAt,
@@ -62,6 +64,8 @@ public record EventSnapshot(
         participants = Set.copyOf(participants == null ? Set.of() : participants);
         finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
         finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
+        bossRewardStatus = bossRewardStatus == null || bossRewardStatus.isBlank()
+                ? "PENDING" : bossRewardStatus;
         victoryStep = victoryStep == null ? "NONE" : victoryStep;
         returnStoneStatus = returnStoneStatus == null ? "PENDING" : returnStoneStatus;
         recoveryReason = recoveryReason == null ? "" : recoveryReason;
@@ -71,7 +75,8 @@ public record EventSnapshot(
         return new EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
                 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of());
+                false, false, false, false, false, false, false, false, "PENDING", null,
+                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of());
     }
 
     public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
@@ -82,16 +87,20 @@ public record EventSnapshot(
                 resourceRequirements, depositedResources, pads, resourceContributors,
                 officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
                 halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
-                endUnlocked, officialBossDeathCommitted, bossLootCommitted, returnStoneStatus,
-                victoryStep, updatedAt, recoveryReason, updatedParticipants, finalDrainTargets,
+                endUnlocked, officialBossDeathCommitted, bossLootCommitted,
+                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, recoveryReason,
+                updatedParticipants, finalDrainTargets,
                 finalDrainAppliedPlayers);
     }
 
     public EventPhase eventPhase() {
         try {
             String compatible = switch (phase) {
-                case "FINAL_DRAIN" -> "FINAL_RITUAL";
-                case "VICTORY_PROCESSING" -> "VICTORY";
+                // States written by the first local prototypes used these
+                // names.  Read them into the canonical state machine without
+                // losing the rest of the durable snapshot.
+                case "FINAL_RITUAL" -> "FINAL_DRAIN";
+                case "VICTORY" -> "VICTORY_PROCESSING";
                 default -> phase;
             };
             return EventPhase.valueOf(compatible);

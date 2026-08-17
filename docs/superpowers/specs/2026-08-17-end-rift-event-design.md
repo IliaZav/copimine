@@ -13,7 +13,7 @@ worlds, or production databases.
 Create a first-party Paper 1.21.1 plugin named `copimine-end-event` with main
 class `me.copimine.endevent.CopiMineEndEvent`. It is a one-time authoritative
 Paper event that collects resources at a protected core, runs a bounded ritual,
-waves, a 1000 HP boss, the 50% control phase and the 10% life drain, then
+waves, a 1200 HP boss, the 50% control phase and the 10% life drain, then
 delivers idempotent authentic rewards and permanently opens End through
 WorldCore.
 
@@ -174,8 +174,8 @@ The state enum is:
 ```text
 UNCONFIGURED, COLLECTING, READY_FOR_PLAYERS, COUNTDOWN,
 WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
-BOSS_ACTIVE, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
-VICTORY, UNLOCKED, RECOVERY_REQUIRED
+BOSS_ACTIVE, FINAL_DRAIN, FINAL_WAVE, BOSS_FINISH,
+VICTORY_PROCESSING, UNLOCKED, RECOVERY_REQUIRED
 ```
 
 Every transition is main-thread, checks expected phase/eventId/generation,
@@ -196,7 +196,7 @@ atomically when supported, and copied to a backup. Invalid or corrupted state
 enters `RECOVERY_REQUIRED` and does not guess or unlock.
 
 On startup, `UNLOCKED` is terminal and never relocks End. A transient phase
-(`COUNTDOWN`, any wave, `BOSS_ACTIVE`, `FINAL_RITUAL`, `FINAL_WAVE`, or
+(`COUNTDOWN`, any wave, `BOSS_ACTIVE`, `FINAL_DRAIN`, `FINAL_WAVE`, or
 `BOSS_FINISH`) is reconciled by cancelling tasks, removing only current
 generation tagged entities/displays, preserving resources/config/roster where
 durable, and returning to `READY_FOR_PLAYERS`. A `COUNTDOWN -> WAVE_1`
@@ -286,7 +286,7 @@ profiles and never create duplicate rewards on death/removal.
 ## Boss and spells
 
 The official boss is a persistent Enderman named `Хранитель Разлома` with
-maximum/current health 1000, no far-away removal, a 15-block core radius, and
+maximum/current health 1200, no far-away removal, a 15-block core radius, and
 a BossBar. It receives exactly +3 to its base attack attribute without
 stacking modifiers or Strength. Its melee target rotates every 5–8 seconds
 among eligible players.
@@ -302,7 +302,7 @@ One spell controller schedules the four base spells without immediate repeat:
 - `SUMMON_SERVANTS`: bounded tagged adds near 70% and 35%, subject to caps and
   the same containment/loot rules.
 
-At the first projected crossing at or below 500 HP, `halfHealthTriggered` is
+At the first projected crossing at or below 600 HP, `halfHealthTriggered` is
 persisted before effects. Spells pause briefly, living eligible players in the
 arena are healed to current max health, dead players are not resurrected, and
 `controlSpellUnlocked` is persisted. The one-time `WILL_DISTORTION` spell then
@@ -316,9 +316,9 @@ may be sent to the player; absence of CopiMineClient never blocks the player,
 spell, phase, or event. The client transforms only movement axes W/S and A/D;
 mouse, attack/use, jump, sneak, inventory, chat, and hotbar are untouched.
 
-At the first projected hit at or below 100 HP, damage is cancelled or clamped,
-the boss is set to exactly 100 HP, and `finalDrainTriggered` is persisted
-before side effects. The phase becomes `FINAL_RITUAL`, boss invulnerability and
+At the first projected hit at or below 120 HP, damage is cancelled or clamped,
+the boss is set to exactly 200 HP, and `finalDrainTriggered` is persisted
+before side effects. The phase becomes `FINAL_DRAIN`, boss invulnerability and
 normal spells/targeting begin, active control is stopped, boss returns to a
 safe core point, and the final wave starts once. Purple/black particles run
 from every eligible living player physically inside the arena to the core and
@@ -329,7 +329,7 @@ At most once, each eligible player loses 60% of current real health using
 totem, item drop, respawn, or economy/donation transaction is triggered.
 Players entering after the drain are not retroactively drained. With no
 eligible targets the boss waits invulnerable. After applying the drain, the
-boss is exactly 200/1000 HP and remains invulnerable until registered final
+boss is exactly 200/1200 HP and remains invulnerable until registered final
 wave mobs are dead; then `BOSS_FINISH` removes invulnerability and players can
 deal the last 200 HP. No second drain occurs.
 
@@ -417,8 +417,8 @@ The complete command surface is:
 
 The event config includes bounded versions of the v5 defaults: 60-second
 countdown, 10-second intermissions, N from 1–20, pad radii 5/6/7/8, wave cap
-48, wave radius 10, boss health 1000, +3 melee, boss radius 15, spell interval
-6–9 seconds, half threshold 500, final threshold 100, post-drain health 200,
+48, wave radius 10, boss health 1200, +3 melee, boss radius 15, spell interval
+6–9 seconds, half threshold 600, final threshold 120, post-drain health 200,
 drain fraction 0.60, minimum health 1.0, control 10 seconds/cooldown 24
 seconds/telegraph 30 ticks/max active 1, XP 5000/max 20 orbs, shard channel 3
 seconds/cooldown 3600 seconds, and client IDs

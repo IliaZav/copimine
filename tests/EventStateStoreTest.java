@@ -55,7 +55,7 @@ public final class EventStateStoreTest {
                 Map.of("DIAMOND", 100), Map.of("DIAMOND", 25),
                 List.of(new EventSnapshot.PadSnapshot(10, 70, 25, 5.0D, 0.0D, "minecraft:purpur_block")),
                 Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", "NONE", 123L, "", Set.of(player),
+                false, false, false, false, false, false, false, false, "PENDING", player, "PENDING", "NONE", 123L, "", Set.of(player),
                 Map.of(player, 8.0D), Set.of(player));
     }
 

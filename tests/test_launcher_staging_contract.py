@@ -40,7 +40,10 @@ def run_stage(metadata: Path, output: Path) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         text=True,
         capture_output=True,
-        timeout=180,
+        # The server-hosted release copy includes the native installer and the
+        # managed Minecraft runtime; on a Windows checkout this can exceed
+        # three minutes even when every hash check is local and healthy.
+        timeout=600,
         env=os.environ.copy(),
     )
 

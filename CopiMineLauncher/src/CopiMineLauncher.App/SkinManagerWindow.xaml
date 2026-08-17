@@ -204,7 +204,7 @@
                         <ColumnDefinition Width="*" />
                       </Grid.ColumnDefinitions>
                       <Border Grid.Column="0" Width="56" Height="68" Background="#0b1823" BorderBrush="#315b6c" BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,0,10,0">
-                        <Image Source="{Binding TextureUrl}" Stretch="Uniform" RenderOptions.BitmapScalingMode="Fant" ToolTip="Предпросмотр текстуры скина" />
+                        <Image Source="{Binding ThumbnailPath}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" ToolTip="Предпросмотр скина" />
                       </Border>
                       <StackPanel Grid.Column="1">
                         <DockPanel>
@@ -235,7 +235,7 @@
                           <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border Grid.Column="0" Width="56" Height="56" Background="#0b1823" BorderBrush="#315b6c" BorderThickness="1" CornerRadius="6" Padding="4" Margin="0,0,10,0">
-                          <Image Source="{Binding TextureUrl}" Stretch="Uniform" RenderOptions.BitmapScalingMode="Fant" ToolTip="Предпросмотр текстуры плаща" />
+                          <Image Source="{Binding ThumbnailPath}" Stretch="Uniform" RenderOptions.BitmapScalingMode="NearestNeighbor" ToolTip="Предпросмотр плаща" />
                         </Border>
                         <StackPanel Grid.Column="1">
                           <DockPanel>

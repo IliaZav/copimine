@@ -1,6 +1,9 @@
+using System.ComponentModel;
 using System.IO;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -188,12 +191,14 @@ public partial class SkinManagerWindow : UserControl
                 TagsTextBox.Text.Trim(),
                 SensitiveCheckBox.IsChecked == true);
             var page = await catalogClient.GetPageAsync(query, lifetime.Token);
-            catalogItems.AddRange(page.Items.Select(item => new CatalogItemViewModel(item)));
+            var pageItems = page.Items.Select(item => new CatalogItemViewModel(item)).ToArray();
+            catalogItems.AddRange(pageItems);
             CatalogListBox.ItemsSource = null;
             CatalogListBox.ItemsSource = catalogItems.ToArray();
             hasNextPage = page.HasNext;
             NextPageButton.IsEnabled = hasNextPage;
             CatalogPageLabel.Text = $"Страница {page.Page} · {catalogItems.Count} загружено из {page.TotalItems:N0}";
+            await PrepareCatalogThumbnailsAsync(pageItems);
             SetStatus(page.Diagnostics.Count == 0
                 ? "Каталог готов. Выберите скин для предпросмотра."
                 : "Каталог загружен с предупреждениями.");
@@ -341,6 +346,7 @@ public partial class SkinManagerWindow : UserControl
             capeItems.AddRange(items.Select(item => new CapeCatalogItemViewModel(item)));
             CapeListBox.ItemsSource = null;
             CapeListBox.ItemsSource = capeItems.ToArray();
+            await PrepareCapeThumbnailsAsync(capeItems);
             if (updateStatus)
             {
                 SetStatus(items.Count == 0
@@ -519,6 +525,70 @@ public partial class SkinManagerWindow : UserControl
         }
     }
 
+    private async Task PrepareCatalogThumbnailsAsync(IReadOnlyCollection<CatalogItemViewModel> items)
+    {
+        await RunThumbnailJobsAsync(items, async item =>
+        {
+            var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Skin, lifetime.Token);
+            var destination = GetThumbnailPath("skins", $"{item.Id}:{item.TextureUrl.AbsoluteUri}:{item.IsSlim}");
+            if (!File.Exists(destination))
+            {
+                await Task.Run(() => SkinThumbnailRenderer.RenderSkin(cachedPath, destination, item.IsSlim), lifetime.Token);
+            }
+
+            item.ThumbnailPath = destination;
+        });
+    }
+
+    private async Task PrepareCapeThumbnailsAsync(IReadOnlyCollection<CapeCatalogItemViewModel> items)
+    {
+        await RunThumbnailJobsAsync(items, async item =>
+        {
+            var cachedPath = await localStore.CacheRemoteAsync(httpClient, item.TextureUrl, CosmeticTextureKind.Cape, lifetime.Token);
+            var destination = GetThumbnailPath("capes", $"{item.Type}:{item.PlayerName}:{item.TextureUrl.AbsoluteUri}");
+            if (!File.Exists(destination))
+            {
+                await Task.Run(() => SkinThumbnailRenderer.RenderCape(cachedPath, destination), lifetime.Token);
+            }
+
+            item.ThumbnailPath = destination;
+        });
+    }
+
+    private async Task RunThumbnailJobsAsync<T>(IReadOnlyCollection<T> items, Func<T, Task> job)
+    {
+        using var gate = new SemaphoreSlim(4, 4);
+        var tasks = items.Select(async item =>
+        {
+            await gate.WaitAsync(lifetime.Token);
+            try
+            {
+                await job(item);
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // A failed thumbnail must not remove the catalog card or block selection.
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+        await Task.WhenAll(tasks);
+    }
+
+    private string GetThumbnailPath(string category, string sourceKey)
+    {
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sourceKey))).ToLowerInvariant();
+        var directory = Path.Combine(launcherDataRoot, "cosmetics", "thumbnails", category);
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, key + ".png");
+    }
+
     private async Task<string?> CopyPreviewTextureAsync(string? source, string fileStem)
     {
         if (string.IsNullOrWhiteSpace(source) || !File.Exists(source)) return null;
@@ -629,20 +699,48 @@ public partial class SkinManagerWindow : UserControl
         lifetime.Dispose();
     }
 
-    private sealed class CatalogItemViewModel(CosmeticCatalogItem item)
+    private sealed class CatalogItemViewModel(CosmeticCatalogItem item) : INotifyPropertyChanged
     {
+        private string? thumbnailPath;
+
         public string Id => item.Id;
         public Uri TextureUrl => item.TextureUrl;
         public bool IsSlim => item.IsSlim;
         public string Tags => item.Tags.Count == 0 ? "Без тегов" : string.Join(", ", item.Tags.Take(4));
+        public string? ThumbnailPath
+        {
+            get => thumbnailPath;
+            set
+            {
+                if (thumbnailPath == value) return;
+                thumbnailPath = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThumbnailPath)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
-    private sealed class CapeCatalogItemViewModel(CapeCatalogItem item)
+    private sealed class CapeCatalogItemViewModel(CapeCatalogItem item) : INotifyPropertyChanged
     {
+        private string? thumbnailPath;
+
         public string Type => item.Type;
         public Uri TextureUrl => item.TextureUrl;
         public string PlayerName => item.PlayerName;
         public bool Animated => item.IsAnimated;
         public string Source => item.Source;
+        public string? ThumbnailPath
+        {
+            get => thumbnailPath;
+            set
+            {
+                if (thumbnailPath == value) return;
+                thumbnailPath = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ThumbnailPath)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 }

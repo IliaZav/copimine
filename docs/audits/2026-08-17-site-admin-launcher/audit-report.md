@@ -45,6 +45,14 @@
 - Launcher до/после: `launcher-before-viewport.png`, `launcher-after-viewport.png`.
 - Админка до/после: `admin-real-before.png`, `admin-after.png`.
 
+## Свежая production-проверка в in-app browser
+
+- `https://copimine.ru/`: навигация содержит «Лаунчер», а старой CTA модпака нет.
+- `https://copimine.ru/launcher.html`: после холодного открытия за 1.2 секунды показаны версия `1.0.1`, EXE и MSI; обе ссылки ведут в `/downloads/launcher/`.
+- `https://copimine.ru/news.html`: отображены два patch notes (`1.0.1` и `1.0.0`) с рабочими ссылками на detail pages.
+- `https://copimine.ru/mods.html`: compatibility route открывает Launcher page, сохраняя старую ссылку без возврата старого modpack UI.
+- Production API повторно ответил `200` для `/api/public/launcher` и `/api/public/news`; приватный `/api/admin/launcher` корректно ответил `401` без сессии.
+
 ## Ограничения
 
 Production web distribution gate закрыт. Gameplay regressions (ping, bed waypoint, authorization slowness) на production не выполнялись и не будут выполняться на живых игроках; без отдельного local/staging gameplay evidence они остаются `UNVERIFIED`. Полный acceptance record не создавался, поскольку эти runtime-gates и live Paper join остаются за пределами безопасного web-only цикла.

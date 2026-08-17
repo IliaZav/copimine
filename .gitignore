@@ -68,6 +68,8 @@ release/
 /.worktrees/
 /artifacts/tools/
 local-runtime/
+admin-web/frontend/downloads/
+admin-web/frontend/launcher/
 admin-web/.venv/
 admin-web/.codex-audit-venv/
 admin-web/.venv-*/

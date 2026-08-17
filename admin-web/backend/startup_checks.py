@@ -70,7 +70,13 @@ def _merge_effective_env(file_values: dict[str, str]) -> dict[str, str]:
 
 def _auth_storage_backend(values: dict[str, str]) -> str:
     raw = str(values.get("COPIMINE_AUTH_STORAGE", "")).strip().lower()
-    return "sqlite" if raw == "sqlite" else "postgresql"
+    if raw in {"sqlite", "postgresql"}:
+        return raw
+    # Keep startup diagnostics aligned with main.py: a local install without
+    # PostgreSQL credentials uses its existing SQLite auth store. Production
+    # explicitly sets the backend and credentials instead of relying on this
+    # fallback.
+    return "postgresql" if str(values.get("POSTGRES_PASSWORD", "")).strip() else "sqlite"
 
 
 def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:

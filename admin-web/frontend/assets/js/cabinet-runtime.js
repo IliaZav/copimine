@@ -6697,7 +6697,10 @@ function wire() {
 async function boot() {
   wire();
   setBootState("loading");
-  await refreshCsrfCookie();
+  // CSRF is warmed for the first mutation, but it must not delay the auth
+  // decision. Guests should reach sign-in immediately when the backend is
+  // slow or unavailable.
+  void refreshCsrfCookie();
   await bootAuthed({ quiet: true });
 }
 

@@ -11660,22 +11660,43 @@ def elections_plugin_web_sync() -> dict[str, Any]:
     }
 
 
+def startup_check_status(key: str) -> str:
+    report = _STARTUP_REPORT if isinstance(_STARTUP_REPORT, dict) else {}
+    checks = report.get("checks", []) if isinstance(report.get("checks", []), list) else []
+    for item in checks:
+        if isinstance(item, dict) and str(item.get("key") or "") == key:
+            return str(item.get("status") or "").lower()
+    return ""
+
+
 def source_registry_sync() -> dict[str, Any]:
     rows = []
-    if pg_ready():
-        rows.append({
-            "name": "PostgreSQL",
-            "type": "database",
-            "connected": True,
-            "capabilities": [
-                "site_accounts", "player_bank", "audit", "plugin_events", "discord_sync",
-                "auth_migration", "elections_v4", "economy_snapshots",
-            ],
-            "status": "primary",
-            "lastReadAt": now_ts(),
-            "message": "Primary CopiMine V4 storage",
-            "detail": {"host": POSTGRES_HOST, "port": POSTGRES_PORT, "database": POSTGRES_DB, "schema": POSTGRES_SCHEMA},
-        })
+    postgres_configured = pg_ready()
+    postgres_verified = startup_check_status("postgres") == "ok"
+    if postgres_verified:
+        postgres_status = "connected"
+        postgres_message = "Соединение PostgreSQL подтверждено проверкой запуска"
+    elif postgres_configured:
+        postgres_status = "unavailable"
+        postgres_message = "Настройки PostgreSQL найдены, но соединение не подтверждено; откройте диагностику запуска"
+    else:
+        postgres_status = "not_configured"
+        postgres_message = "PostgreSQL не настроен; локальная авторизация использует SQLite"
+    rows.append({
+        "name": "PostgreSQL",
+        "type": "database",
+        "connected": postgres_verified,
+        "configured": postgres_configured,
+        "capabilities": [
+            "site_accounts", "player_bank", "audit", "plugin_events", "discord_sync",
+            "auth_migration", "elections_v4", "economy_snapshots",
+        ] if postgres_configured else [],
+        "status": postgres_status,
+        "role": "primary",
+        "lastReadAt": now_ts() if postgres_verified else None,
+        "message": postgres_message,
+        "detail": {"host": POSTGRES_HOST, "port": POSTGRES_PORT, "database": POSTGRES_DB, "schema": POSTGRES_SCHEMA},
+    })
     plugins = {
         "LuckPerms": ["players", "permissions"],
         "Essentials": ["players", "punishments", "teleports"],
@@ -19432,7 +19453,7 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
         "logFile": safe_location(LOG_FILE),
         "coreprotectDb": safe_location(Path(COREPROTECT_DB)),
         "adminPluginDb": safe_location(resolved_admin_db),
-        "authDb": admin_plugin_db_location(resolved_admin_db),
+        "authDb": auth_storage_location(),
         "arItemIds": AR_ITEM_IDS,
         "rconConfigured": bool(RCON_PASSWORD),
         "minecraftService": MINECRAFT_SERVICE,
@@ -19459,8 +19480,10 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
             "psutil": bool(psutil),
             "coreprotectDbExists": Path(COREPROTECT_DB).exists(),
             "adminPluginDbExists": resolved_admin_db.exists(),
-            "authDbExists": auth_storage_ready(),
+            "authDbExists": AUTH_DB_FILE.exists() if auth_storage_backend() == "sqlite" else startup_check_status("postgres") == "ok",
             "postgresPool": pg_ready(),
+            "postgresConfigured": pg_ready(),
+            "postgresConnected": startup_check_status("postgres") == "ok",
             "authBackend": auth_storage_backend(),
             "cookieAuth": True,
             "eventIngestion": bool(PLUGIN_API_KEY),

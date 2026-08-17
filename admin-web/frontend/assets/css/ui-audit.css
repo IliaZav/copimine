@@ -119,3 +119,62 @@
 .public-site .hero-side-card {
   gap: 12px;
 }
+
+/* Keep every public route on the same visual rhythm after the shared shell
+ * was consolidated.  These rules only touch the public shell and preview
+ * notice; cabinet controls keep their existing component contract. */
+.public-nav {
+  align-items: center;
+  min-height: 72px;
+}
+
+.public-nav nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.public-nav nav > a,
+.public-nav nav > .btn {
+  min-height: 38px;
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.public-actions > .btn,
+.public-actions > a.btn {
+  min-height: 44px;
+}
+
+.preview-disclaimer {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface-gradient);
+  color: var(--ink);
+}
+
+.preview-disclaimer p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.preview-disclaimer .btn {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .public-nav {
+    min-height: 64px;
+  }
+
+  .public-nav nav {
+    gap: 4px;
+  }
+}

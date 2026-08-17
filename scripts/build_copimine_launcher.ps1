@@ -17,7 +17,8 @@ $repoRoot = Split-Path -Parent $scriptRoot
 $project = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/CopiMineLauncher.App.csproj'
 $installContract = Join-Path $repoRoot 'CopiMineLauncher/packaging/launcher-install-contract.json'
 $installerAssetsScript = Join-Path $scriptRoot 'prepare_copimine_installer_assets.ps1'
-$installerLogoSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/copimine-logo.png'
+$installerLogoSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/LauncherVisuals/copimine-icon.png'
+$installerBannerSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/LauncherVisuals/installer-banner.png'
 $installerWelcome = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-welcome.txt'
 $installerReadme = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-readme.txt'
 $installerConclusion = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-conclusion.txt'
@@ -31,7 +32,7 @@ if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $installContract -PathType Leaf)) {
     throw "Launcher install contract was not found: $installContract"
 }
-foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSource, $installerWelcome, $installerReadme, $installerConclusion)) {
+foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSource, $installerBannerSource, $installerWelcome, $installerReadme, $installerConclusion)) {
     if (-not (Test-Path -LiteralPath $requiredInstallerInput -PathType Leaf)) {
         throw "Launcher installer input was not found: $requiredInstallerInput"
     }
@@ -165,7 +166,7 @@ if (Test-Path -LiteralPath $installerAssetsRoot) {
     Remove-Item -LiteralPath $installerAssetsRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $installerAssetsRoot -Force | Out-Null
-& $installerAssetsScript -SourceLogo $installerLogoSource -DestinationRoot $installerAssetsRoot
+& $installerAssetsScript -SourceLogo $installerLogoSource -SourceBanner $installerBannerSource -DestinationRoot $installerAssetsRoot
 if ($LASTEXITCODE -ne 0) {
     throw "Installer asset preparation failed with exit code $LASTEXITCODE"
 }

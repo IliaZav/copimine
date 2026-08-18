@@ -10,21 +10,17 @@ CLIENT = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.Infrastructure/Binding/L
 BACKEND = (ROOT / "admin-web/backend/main.py").read_text(encoding="utf-8")
 
 
-def test_play_gate_raises_a_ui_binding_request_instead_of_starting_minecraft():
-    for marker in (
-        "LauncherBindingRequired",
-        "LAUNCHER_LINK_REQUIRED",
-        "LauncherBindingRequired?.Invoke",
-    ):
-        assert marker in VIEW_MODEL, marker
+def test_play_is_not_blocked_by_optional_launcher_binding():
+    assert "LauncherBindingRequired" not in VIEW_MODEL
+    assert "LAUNCHER_LINK_REQUIRED" not in VIEW_MODEL
+    assert "LauncherBindingRequired" not in MAIN_WINDOW
+    assert "MessageBox.Show" not in MAIN_WINDOW
 
-    for marker in (
-        "MessageBox.Show",
-        "Аккаунт не привязан",
-        "MessageBoxButton.OKCancel",
-        "OpenAccountLinkCommand.ExecuteAsync",
-    ):
-        assert marker in MAIN_WINDOW, marker
+
+def test_binding_remains_a_browser_only_optional_profile_feature():
+    assert "OpenAccountLinkCommand" in VIEW_MODEL
+    assert "cabinet/link.html" in VIEW_MODEL
+    assert "LauncherLinkRequired" in VIEW_MODEL
 
 
 def test_binding_browser_allows_only_real_copimine_or_loopback_staging_urls():

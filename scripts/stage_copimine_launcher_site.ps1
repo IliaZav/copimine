@@ -35,10 +35,12 @@ if (-not (Test-Path -LiteralPath $sourceMetadata -PathType Leaf)) { throw "Metad
 
 function Get-Sha256Lower([string] $Path) {
     $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $stream = $null
     try {
-        $bytes = [System.IO.File]::ReadAllBytes($Path)
-        return ([BitConverter]::ToString($sha256.ComputeHash($bytes)).Replace('-', '')).ToLowerInvariant()
+        $stream = [System.IO.File]::OpenRead($Path)
+        return ([BitConverter]::ToString($sha256.ComputeHash($stream)).Replace('-', '')).ToLowerInvariant()
     } finally {
+        if ($null -ne $stream) { $stream.Dispose() }
         $sha256.Dispose()
     }
 }

@@ -132,6 +132,9 @@ public partial class LauncherViewModel : ObservableObject
     private bool isDiagnosticOpen;
 
     [ObservableProperty]
+    private bool isFirstRunDefaultsVisible;
+
+    [ObservableProperty]
     private bool isLauncherLinked;
 
     [ObservableProperty]
@@ -173,17 +176,20 @@ public partial class LauncherViewModel : ObservableObject
     public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
     public string PlayButtonText => IsLaunching ? "Запуск…" : "Играть";
     public bool HasMinecraftDefaultsSelection => MinecraftDefaultSettingsStore.IsConfigured(InstancePath);
+    public bool IsOperationInputBlocked => IsBusy && !IsFirstRunDefaultsVisible;
 
     public event EventHandler? LauncherHideRequested;
     public event EventHandler? LauncherRestoreRequested;
-    public event EventHandler? LauncherBindingRequired;
     public event EventHandler<MinecraftLaunchFailureEventArgs>? LaunchFailureRequested;
 
     partial void OnIsBusyChanged(bool value)
     {
+        OnPropertyChanged(nameof(IsOperationInputBlocked));
         PlayCommand.NotifyCanExecuteChanged();
         RepairCommand.NotifyCanExecuteChanged();
     }
+
+    partial void OnIsFirstRunDefaultsVisibleChanged(bool value) => OnPropertyChanged(nameof(IsOperationInputBlocked));
 
     partial void OnIsLaunchingChanged(bool value) => OnPropertyChanged(nameof(PlayButtonText));
 
@@ -222,12 +228,6 @@ public partial class LauncherViewModel : ObservableObject
             TraceStartup("prepare:start");
             await PrepareFirstRunAsync();
             TraceStartup("prepare:done");
-            if (launcherBindingClient is not null && !IsLauncherLinked)
-            {
-                Status = "Привязка Launcher обязательна";
-                LoadingStage = "Откройте сайт и подтвердите привязку";
-                Diagnostic = "Для запуска Minecraft сначала привяжите Launcher к аккаунту сайта. Пароль сайта и AuthMe Launcher не получает.";
-            }
         }
         finally
         {
@@ -568,16 +568,6 @@ public partial class LauncherViewModel : ObservableObject
         {
             Status = "Runtime pipeline недоступен";
             Diagnostic = "RUNTIME_COORDINATOR_NOT_CONFIGURED: composition root did not provide the signed update/launch pipeline.";
-            return;
-        }
-
-        if (launch && launcherBindingClient is not null && !IsLauncherLinked)
-        {
-            Status = "Привязка Launcher обязательна";
-            LoadingStage = "Сначала подтвердите аккаунт на сайте";
-            Diagnostic = "LAUNCHER_LINK_REQUIRED: нажмите «Привязать на сайте», войдите в свой аккаунт и подтвердите привязку. Пароль не передаётся в Launcher.";
-            IsDiagnosticOpen = true;
-            LauncherBindingRequired?.Invoke(this, EventArgs.Empty);
             return;
         }
 

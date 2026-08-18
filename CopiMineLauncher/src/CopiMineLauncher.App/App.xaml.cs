@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Net.Http;
 using System.IO;
 using CopiMineLauncher.Core;
@@ -19,6 +21,11 @@ public partial class App : Application
 {
     public App()
     {
+        // Some Windows graphics drivers expose a blank redirected WPF surface
+        // for this self-contained desktop process. The Launcher is a small UI,
+        // so a software render fallback is preferable to a white, unusable
+        // window; Minecraft keeps its own native rendering path.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         VelopackApp.Build().Run();
     }
 

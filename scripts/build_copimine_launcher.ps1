@@ -44,12 +44,12 @@ foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSour
 }
 
 $installContractDocument = Get-Content -LiteralPath $installContract -Raw | ConvertFrom-Json
-if ($installContractDocument.bindingRequired -ne $true -or
+if ($installContractDocument.bindingRequired -ne $false -or
     $installContractDocument.flow -ne 'browser' -or
     $installContractDocument.manualCodeEntry -ne $false -or
-    $installContractDocument.allowSkip -ne $false -or
-    $installContractDocument.playBlockedUntilLinked -ne $true) {
-    throw 'Launcher install contract must require browser binding, prohibit manual code entry and block play until linked.'
+    $installContractDocument.allowSkip -ne $true -or
+    $installContractDocument.playBlockedUntilLinked -ne $false) {
+    throw 'Launcher install contract must keep browser binding optional and never block play until linked.'
 }
 
 if ($ServerHostedRuntimeOnly -and $RequireOfflineBundle) {
@@ -266,6 +266,14 @@ if (Test-Path -LiteralPath $packageRoot) {
 }
 New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 
+# Cache, staging and extracted Java are transient local state.  The signed
+# bootstrap archives under launcher-bootstrap/files are the distributable
+# source of truth and remain in the package.
+$packageExclude = if ($ServerHostedRuntimeOnly) {
+    '(?i)(?:\.copimine[\\/](?:cache|staging|java)[\\/].*|(?:^|[\\/])Minecraft[\\/].*|(?:^|[\\/])launcher-bootstrap[\\/]files[\\/].*|(?:^|[\\/])CopiMineLauncher\.App\.exe\.WebView2[\\/].*)'
+} else {
+    '(?i)\.copimine[\\/]((cache|staging|java)[\\/]).*'
+}
 & $vpkPath pack `
     --packId CopiMineLauncher `
     --packTitle 'CopiMine Launcher' `
@@ -274,6 +282,7 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
     --packDir $publishRoot `
     --mainExe 'CopiMineLauncher.App.exe' `
     --icon (Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/copimine.ico') `
+    --exclude $packageExclude `
     --splashImage $installerLogo `
     --splashProgressColor '#63dfa0' `
     --msi `

@@ -26,10 +26,11 @@ public sealed class LauncherLoadingOverlayContractTests
     public void Loading_overlay_is_a_user_control_not_a_second_window()
     {
         var xaml = ReadSource("src", "CopiMineLauncher.App", "LauncherLoadingOverlay.xaml");
+        var mainWindow = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");
 
         xaml.Should().StartWith("<UserControl");
         xaml.Should().NotContain("<Window ");
-        xaml.Should().Contain("IsHitTestVisible");
+        mainWindow.Should().Contain("IsHitTestVisible=\"{Binding IsOperationInputBlocked}\"");
     }
 
     [Fact]

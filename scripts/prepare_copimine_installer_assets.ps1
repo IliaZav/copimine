@@ -72,7 +72,9 @@ function New-LogoPanel([string] $path) {
         Draw-Logo $graphics $logo 34 40 152
         $graphics.DrawString('COPIMINE', (New-Object System.Drawing.Font($fontFamily, 22, [System.Drawing.FontStyle]::Bold)), (New-Object System.Drawing.SolidBrush($teal)), 214, 86)
         $graphics.DrawString('Launcher', (New-Object System.Drawing.Font($fontFamily, 16, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)), 216, 123)
-        $graphics.DrawString('Игра и моды установятся в выбранную папку.', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($muted)), 214, 164)
+        # Keep the drawing script ASCII-only so it parses identically under
+        # Windows PowerShell 5.1 and PowerShell 7 regardless of file encoding.
+        $graphics.DrawString('Minecraft and mods will be installed in the selected folder.', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($muted)), 214, 164)
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     }
     finally {

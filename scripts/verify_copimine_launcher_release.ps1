@@ -29,18 +29,37 @@ if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
     $installer = Join-Path $root (Join-Path 'packages' $installerName)
 }
 if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "installer is missing in artifact root or packages: $installerName" }
-$bytes = [System.IO.File]::ReadAllBytes($installer)
-if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw 'installer is not a PE file' }
-$peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
-if ($peOffset -lt 64 -or $peOffset + 4 -gt $bytes.Length -or $bytes[$peOffset] -ne 0x50 -or $bytes[$peOffset + 1] -ne 0x45 -or $bytes[$peOffset + 2] -ne 0x00 -or $bytes[$peOffset + 3] -ne 0x00) { throw 'installer has no valid PE signature' }
-$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$installerInfo = Get-Item -LiteralPath $installer
+$header = New-Object byte[] 64
+$headerStream = [System.IO.File]::OpenRead($installer)
 try {
-    $digest = $sha256.ComputeHash($bytes)
+    $headerRead = $headerStream.Read($header, 0, $header.Length)
 } finally {
+    $headerStream.Dispose()
+}
+if ($installerInfo.Length -lt 64 -or $headerRead -lt 64 -or $header[0] -ne 0x4D -or $header[1] -ne 0x5A) { throw 'installer is not a PE file' }
+$peOffset = [BitConverter]::ToInt32($header, 0x3C)
+if ($peOffset -lt 64 -or $peOffset + 4 -gt $installerInfo.Length) { throw 'installer has no valid PE signature' }
+$peHeader = New-Object byte[] 4
+$peStream = [System.IO.File]::OpenRead($installer)
+try {
+    $peStream.Position = $peOffset
+    $peRead = $peStream.Read($peHeader, 0, $peHeader.Length)
+} finally {
+    $peStream.Dispose()
+}
+if ($peRead -lt 4 -or $peHeader[0] -ne 0x50 -or $peHeader[1] -ne 0x45 -or $peHeader[2] -ne 0x00 -or $peHeader[3] -ne 0x00) { throw 'installer has no valid PE signature' }
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+$installerStream = $null
+try {
+    $installerStream = [System.IO.File]::OpenRead($installer)
+    $digest = $sha256.ComputeHash($installerStream)
+} finally {
+    if ($null -ne $installerStream) { $installerStream.Dispose() }
     $sha256.Dispose()
 }
 $hash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
-if ($bytes.LongLength -ne [long]$payload.sizeBytes) { throw "installer size mismatch: $($bytes.LongLength) != $($payload.sizeBytes)" }
+if ($installerInfo.Length -ne [long]$payload.sizeBytes) { throw "installer size mismatch: $($installerInfo.Length) != $($payload.sizeBytes)" }
 if ($hash -ne $payload.sha256) { throw "installer SHA-256 mismatch: $hash != $($payload.sha256)" }
 
 if ($null -ne $payload.msiFilename) {
@@ -54,19 +73,22 @@ if ($null -ne $payload.msiFilename) {
         $msi = Join-Path $root (Join-Path 'packages' $msiName)
     }
     if (-not (Test-Path -LiteralPath $msi -PathType Leaf)) { throw "MSI is missing in artifact root or packages: $msiName" }
-    $msiBytes = [System.IO.File]::ReadAllBytes($msi)
     $msiSha = [System.Security.Cryptography.SHA256]::Create()
+    $msiStream = $null
     try {
-        $msiDigest = $msiSha.ComputeHash($msiBytes)
+        $msiStream = [System.IO.File]::OpenRead($msi)
+        $msiDigest = $msiSha.ComputeHash($msiStream)
     } finally {
+        if ($null -ne $msiStream) { $msiStream.Dispose() }
         $msiSha.Dispose()
     }
     $msiHash = [BitConverter]::ToString($msiDigest).Replace('-', '').ToLowerInvariant()
-    if ($msiBytes.LongLength -ne [long]$payload.msiSizeBytes) { throw "MSI size mismatch: $($msiBytes.LongLength) != $($payload.msiSizeBytes)" }
+    $msiInfo = Get-Item -LiteralPath $msi
+    if ($msiInfo.Length -ne [long]$payload.msiSizeBytes) { throw "MSI size mismatch: $($msiInfo.Length) != $($payload.msiSizeBytes)" }
     if ($msiHash -ne [string]$payload.msiSha256) { throw "MSI SHA-256 mismatch: $msiHash != $($payload.msiSha256)" }
     Write-Output "MSI=$msi"
     Write-Output "MSI_SHA256=$msiHash"
-    Write-Output "MSI_SIZE=$($msiBytes.LongLength)"
+    Write-Output "MSI_SIZE=$($msiInfo.Length)"
 }
 
 if ($RequireOfflineBundle) {
@@ -104,4 +126,4 @@ if ($RequireOfflineBundle) {
 Write-Output "RELEASE_VERIFY=PASS"
 Write-Output "INSTALLER=$installer"
 Write-Output "SHA256=$hash"
-Write-Output "SIZE=$($bytes.LongLength)"
+Write-Output "SIZE=$($installerInfo.Length)"

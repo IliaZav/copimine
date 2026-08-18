@@ -40,10 +40,26 @@ public sealed class LauncherInstallPathsTests
         var currentDirectory = Path.Combine(selectedInstallRoot, "current");
         var legacyInstance = Path.Combine(temp.Path, "Minecraft");
         Directory.CreateDirectory(Path.Combine(legacyInstance, ".copimine"));
-        await File.WriteAllTextAsync(Path.Combine(legacyInstance, ".copimine", "managed-state.json"), "{}");
+        await File.WriteAllTextAsync(
+            Path.Combine(legacyInstance, ".copimine", "instance.json"),
+            "{\"schemaVersion\":1,\"product\":\"CopiMine\",\"instanceId\":\"4d6f9f9f-5fd9-4e14-bdf4-9195279c7f27\"}");
 
         LauncherInstallPaths.ResolveMinecraftRoot(currentDirectory)
             .Should().Be(Path.GetFullPath(legacyInstance));
+    }
+
+    [Fact]
+    public async Task Unmarked_legacy_sibling_with_servers_dat_is_not_adopted()
+    {
+        using var temp = new LocalApplicationDataTestDirectory();
+        var selectedInstallRoot = Path.Combine(temp.Path, "CopiMine");
+        var currentDirectory = Path.Combine(selectedInstallRoot, "current");
+        var unrelatedInstance = Path.Combine(temp.Path, "Minecraft");
+        Directory.CreateDirectory(unrelatedInstance);
+        await File.WriteAllBytesAsync(Path.Combine(unrelatedInstance, "servers.dat"), new byte[] { 1, 2, 3 });
+
+        LauncherInstallPaths.ResolveMinecraftRoot(currentDirectory)
+            .Should().Be(Path.GetFullPath(Path.Combine(selectedInstallRoot, "Minecraft")));
     }
 
     [Fact]

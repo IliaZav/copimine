@@ -30,15 +30,24 @@ if ($info.Length -le 0) {
     throw "Installer is empty: $installer"
 }
 
-$bytes = [System.IO.File]::ReadAllBytes($installer)
-if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+$header = New-Object byte[] 64
+$stream = [System.IO.File]::OpenRead($installer)
+try {
+    $read = $stream.Read($header, 0, $header.Length)
+} finally {
+    $stream.Dispose()
+}
+if ($info.Length -lt 64 -or $read -lt 64 -or $header[0] -ne 0x4D -or $header[1] -ne 0x5A) {
     throw "Installer is not a Windows PE file (missing MZ header): $installer"
 }
 
 $sha256 = [System.Security.Cryptography.SHA256]::Create()
+$stream = $null
 try {
-    $digest = $sha256.ComputeHash($bytes)
+    $stream = [System.IO.File]::OpenRead($installer)
+    $digest = $sha256.ComputeHash($stream)
 } finally {
+    if ($null -ne $stream) { $stream.Dispose() }
     $sha256.Dispose()
 }
 $hash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
@@ -58,9 +67,12 @@ if (-not [string]::IsNullOrWhiteSpace($MsiPath)) {
     $msiFilename = $msiInfo.Name
     $msiDownload = "/downloads/launcher/$msiFilename"
     $msiDigest = [System.Security.Cryptography.SHA256]::Create()
+    $msiStream = $null
     try {
-        $msiHash = [BitConverter]::ToString($msiDigest.ComputeHash([System.IO.File]::ReadAllBytes($msi))).Replace('-', '').ToLowerInvariant()
+        $msiStream = [System.IO.File]::OpenRead($msi)
+        $msiHash = [BitConverter]::ToString($msiDigest.ComputeHash($msiStream)).Replace('-', '').ToLowerInvariant()
     } finally {
+        if ($null -ne $msiStream) { $msiStream.Dispose() }
         $msiDigest.Dispose()
     }
 }

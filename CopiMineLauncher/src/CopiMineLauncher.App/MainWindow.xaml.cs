@@ -17,7 +17,6 @@ public partial class MainWindow : Window
         Loaded += OnLoaded;
         viewModel.LauncherHideRequested += OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested += OnLauncherRestoreRequested;
-        viewModel.LauncherBindingRequired += OnLauncherBindingRequired;
         viewModel.LaunchFailureRequested += OnLaunchFailureRequested;
         Closed += OnClosed;
     }
@@ -56,11 +55,13 @@ public partial class MainWindow : Window
     private void ShowFirstRunDefaultsScreen()
     {
         ShowScreen(LauncherScreen.MinecraftDefaults, "Настройка Minecraft", new MinecraftDefaultsWindow(viewModel));
+        viewModel.IsFirstRunDefaultsVisible = true;
         BackButton.IsEnabled = false;
     }
 
     private void ShowScreen(LauncherScreen screen, string title, UserControl content)
     {
+        viewModel.IsFirstRunDefaultsVisible = false;
         if (currentScreen is not null)
         {
             UnsubscribeFromScreen(currentScreen);
@@ -83,6 +84,7 @@ public partial class MainWindow : Window
 
     private void ShowHomeScreen()
     {
+        viewModel.IsFirstRunDefaultsVisible = false;
         if (currentScreen is not null)
         {
             UnsubscribeFromScreen(currentScreen);
@@ -159,20 +161,6 @@ public partial class MainWindow : Window
         Focus();
     }
 
-    private async void OnLauncherBindingRequired(object? sender, EventArgs e)
-    {
-        var answer = MessageBox.Show(
-            this,
-            "Аккаунт не привязан к Launcher. Сначала привяжите аккаунт на сайте, затем повторите запуск Minecraft. Открыть страницу привязки сейчас?",
-            "Аккаунт не привязан",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
-        if (answer == MessageBoxResult.OK)
-        {
-            await viewModel.OpenAccountLinkCommand.ExecuteAsync(null);
-        }
-    }
-
     private void OnLaunchFailureRequested(object? sender, MinecraftLaunchFailureEventArgs e)
     {
         if (!Dispatcher.CheckAccess())
@@ -204,7 +192,6 @@ public partial class MainWindow : Window
 
         viewModel.LauncherHideRequested -= OnLauncherHideRequested;
         viewModel.LauncherRestoreRequested -= OnLauncherRestoreRequested;
-        viewModel.LauncherBindingRequired -= OnLauncherBindingRequired;
         viewModel.LaunchFailureRequested -= OnLaunchFailureRequested;
         Closed -= OnClosed;
     }

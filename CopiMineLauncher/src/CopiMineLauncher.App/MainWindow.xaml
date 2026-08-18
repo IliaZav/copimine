@@ -192,7 +192,9 @@
 
             <StackPanel Grid.Row="1">
               <TextBlock Text="Имя игрока" Foreground="{StaticResource LauncherSecondaryText}" />
-              <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=LostFocus}" MaxLength="16" />
+              <TextBox Text="{Binding PlayerName, UpdateSourceTrigger=LostFocus}"
+                       MaxLength="16"
+                       AutomationProperties.Name="Имя игрока" />
               <Grid Margin="0,0,0,3">
                 <Grid.ColumnDefinitions>
                   <ColumnDefinition Width="*" />
@@ -243,7 +245,7 @@
                       Padding="11"
                       Margin="0,0,0,12"
                       Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <TextBlock Text="Для запуска нужна привязка Launcher к аккаунту сайта. Пароль здесь не вводится."
+                <TextBlock Text="Привязка аккаунта к сайту необязательна для запуска. Она нужна только для синхронизации профиля и ника."
                            Foreground="#D1F1E6"
                            TextWrapping="Wrap"
                            FontSize="12" />
@@ -532,6 +534,7 @@
     <local:LauncherLoadingOverlay Panel.ZIndex="50"
                                   IsSplashVisible="{Binding IsInitializing}"
                                   IsOperationVisible="{Binding IsBusy}"
+                                  IsHitTestVisible="{Binding IsOperationInputBlocked}"
                                   Stage="{Binding LoadingStage}"
                                   Progress="{Binding ProgressPercent}"
                                   IsIndeterminate="{Binding IsProgressIndeterminate}"

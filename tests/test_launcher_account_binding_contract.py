@@ -27,15 +27,24 @@ def test_launcher_binding_uses_expiring_single_use_challenge_without_passwords()
     assert "password" not in binding_model.lower()
 
 
-def test_launcher_binding_is_required_before_play_and_has_a_persistent_device_identity():
+def test_launcher_binding_is_optional_and_does_not_gate_play():
+    """V4 account linking is convenience state, not server admission.
+
+    The old contract required a Launcher-specific device gate before Play.
+    V4 explicitly removed that behavior: a compatible CopiMineClient is the
+    only admission signal, while the optional site link may be completed from
+    the Launcher without blocking an unlinked player from starting Minecraft.
+    """
     for marker in (
         "IsLauncherLinked",
         "LauncherLinkRequired",
-        "LauncherDeviceIdentity",
-        "Привязка Launcher обязательна",
         "OpenAccountLinkCommand",
     ):
         assert marker in VIEW_MODEL or marker in APP or marker in MAIN_WINDOW, marker
+
+    assert "PlayCommand = new AsyncRelayCommand(PlayAsync, CanStartOperation)" in VIEW_MODEL
+    assert "private bool CanStartOperation() => !IsBusy;" in VIEW_MODEL
+    assert "LAUNCHER_LINK_REQUIRED" not in VIEW_MODEL
 
 
 def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_app():

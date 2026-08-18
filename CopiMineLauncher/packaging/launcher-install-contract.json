@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "bindingRequired": true,
+  "bindingRequired": false,
   "flow": "browser",
   "manualCodeEntry": false,
-  "allowSkip": false,
-  "playBlockedUntilLinked": true,
+  "allowSkip": true,
+  "playBlockedUntilLinked": false,
   "callbackProtocol": "copimine",
   "preserveLauncherDataOnUpdate": true,
   "firstRunSettings": "minecraft-defaults",

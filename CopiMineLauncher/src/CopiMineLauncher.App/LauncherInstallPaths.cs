@@ -147,16 +147,25 @@ public static class LauncherInstallPaths
         try
         {
             var root = Path.GetFullPath(path);
-            return File.Exists(Path.Combine(root, ".copimine", "managed-state.json"))
-                || File.Exists(Path.Combine(root, "servers.dat"))
-                || Directory.Exists(Path.Combine(root, "versions", "1.21.1"))
-                || Directory.EnumerateFiles(Path.Combine(root, "mods"), "*.jar", SearchOption.TopDirectoryOnly).Any();
+            var attributes = File.GetAttributes(root);
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                return false;
+            }
+
+            var markerPath = Path.Combine(root, ".copimine", "instance.json");
+            if (!File.Exists(markerPath))
+            {
+                return false;
+            }
+
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var marker = document.RootElement;
+            return marker.GetProperty("schemaVersion").GetInt32() == 1
+                && string.Equals(marker.GetProperty("product").GetString(), "CopiMine", StringComparison.Ordinal)
+                && Guid.TryParse(marker.GetProperty("instanceId").GetString(), out _);
         }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
         {
             return false;
         }

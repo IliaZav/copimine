@@ -70,4 +70,21 @@ public sealed class MinecraftLaunchFailureParserTests
         report.Kind.Should().Be(MinecraftLaunchFailureKind.JavaRuntime);
         report.Explanation.ToLowerInvariant().Should().NotContain("betterleaves");
     }
+
+    [Fact]
+    public void Duplicate_mod_id_identifies_the_additional_mod_when_the_log_names_the_id()
+    {
+        const string log = "[main/ERROR] Mod resolution failed! Duplicate mods with the same ID: sodium";
+
+        var report = MinecraftLaunchFailureParser.Parse(
+            log,
+            "C:\\CopiMine\\logs\\launcher-process.log",
+            new[] { "sodium-extra-0.6.0.jar" });
+
+        report.Kind.Should().Be(MinecraftLaunchFailureKind.ModResolution);
+        report.SuspectedModId.Should().Be("sodium");
+        report.SuspectedModFileName.Should().Be("sodium-extra-0.6.0.jar");
+        report.IsLikelyUserMod.Should().BeTrue();
+        report.Summary.Should().Contain("sodium-extra-0.6.0.jar");
+    }
 }

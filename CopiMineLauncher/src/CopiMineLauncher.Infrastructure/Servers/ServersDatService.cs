@@ -15,10 +15,12 @@ public interface IServersDatService
 
 public sealed class ServersDatService : IServersDatService
 {
+    private const long MaxDecompressedBytes = 32L * 1024 * 1024;
     private const string ServersTag = "servers";
     private const string NameTag = "name";
     private const string IpTag = "ip";
     private const string AcceptTexturesTag = "acceptTextures";
+    private const string CopiMineManagedTag = "copimineManaged";
 
     public async Task<ServersDatEvidence> EnsureCopiMineServerAsync(string serversDatPath, ManagedServerRecord record, CancellationToken cancellationToken = default)
     {
@@ -31,11 +33,15 @@ public sealed class ServersDatService : IServersDatService
         var servers = GetOrCreateServers(root);
         var existingCount = servers.Items.Count;
         var canonicalIp = CanonicalIp(record);
-        var matches = servers.Items
+        var exactAddressMatches = servers.Items
             .OfType<CompoundTag>()
-            .Where(server => string.Equals(GetString(server, NameTag), record.DisplayName, StringComparison.Ordinal)
-                || string.Equals(GetString(server, IpTag), canonicalIp, StringComparison.OrdinalIgnoreCase))
+            .Where(server => string.Equals(GetString(server, IpTag), canonicalIp, StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var managedMatches = servers.Items
+            .OfType<CompoundTag>()
+            .Where(server => GetByte(server, CopiMineManagedTag) == 1)
+            .ToList();
+        var matches = managedMatches.Count > 0 ? managedMatches : exactAddressMatches;
 
         var changed = false;
         CompoundTag managed;
@@ -58,13 +64,14 @@ public sealed class ServersDatService : IServersDatService
         changed |= SetString(managed, NameTag, record.DisplayName);
         changed |= SetString(managed, IpTag, canonicalIp);
         changed |= SetByte(managed, AcceptTexturesTag, record.AcceptTextures ? (byte)1 : (byte)0);
+        changed |= SetByte(managed, CopiMineManagedTag, 1);
 
         if (!changed)
         {
             return new(false, existingCount, matches.Count > 0 ? 1 : 0, path);
         }
 
-        var bytes = WriteRoot(root, document.Compressed);
+        var bytes = WriteRoot(root, document.Compressed, document.RootName);
         var tempPath = path + ".tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken);
@@ -134,7 +141,7 @@ public sealed class ServersDatService : IServersDatService
                 ? new GZipStream(input, CompressionMode.Decompress)
                 : input;
             using var raw = new MemoryStream();
-            payload.CopyTo(raw);
+            CopyWithLimit(payload, raw, MaxDecompressedBytes);
             raw.Position = 0;
             using var reader = new BigEndianReader(raw);
             var type = (TagType)reader.ReadByteChecked();
@@ -143,8 +150,14 @@ public sealed class ServersDatService : IServersDatService
                 throw new InvalidDataException("servers.dat root is not a compound");
             }
 
-            _ = reader.ReadString();
-            return new ServersDocument((CompoundTag)ReadPayload(reader, type), isCompressed);
+            var rootName = reader.ReadString();
+            var parsedRoot = (CompoundTag)ReadPayload(reader, type);
+            if (!reader.AtEnd)
+            {
+                throw new InvalidDataException("servers.dat contains trailing NBT bytes");
+            }
+
+            return new ServersDocument(parsedRoot, isCompressed, rootName);
         }
         catch (InvalidDataException)
         {
@@ -158,13 +171,30 @@ public sealed class ServersDatService : IServersDatService
 
     private static bool IsGzip(byte[] bytes) => bytes.Length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B;
 
-    private static byte[] WriteRoot(CompoundTag root, bool compressed)
+    private static void CopyWithLimit(Stream source, Stream destination, long maximumBytes)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            total += read;
+            if (total > maximumBytes)
+            {
+                throw new InvalidDataException("servers.dat decompressed payload is too large");
+            }
+
+            destination.Write(buffer, 0, read);
+        }
+    }
+
+    private static byte[] WriteRoot(CompoundTag root, bool compressed, string rootName)
     {
         using var raw = new MemoryStream();
         using (var writer = new BigEndianWriter(raw))
         {
             writer.WriteByte((byte)TagType.Compound);
-            writer.WriteString(string.Empty);
+            writer.WriteString(rootName);
             WritePayload(writer, root);
         }
 
@@ -183,7 +213,7 @@ public sealed class ServersDatService : IServersDatService
         return compressedOutput.ToArray();
     }
 
-    private sealed record ServersDocument(CompoundTag Root, bool Compressed);
+    private sealed record ServersDocument(CompoundTag Root, bool Compressed, string RootName = "");
 
     private static Tag ReadPayload(BigEndianReader reader, TagType type) => type switch
     {
@@ -214,6 +244,11 @@ public sealed class ServersDatService : IServersDatService
             }
 
             var name = reader.ReadString();
+            if (compound.Values.ContainsKey(name))
+            {
+                throw new InvalidDataException($"servers.dat contains a duplicate NBT tag: {name}");
+            }
+
             compound.Values[name] = ReadPayload(reader, type);
         }
     }
@@ -304,12 +339,16 @@ public sealed class ServersDatService : IServersDatService
         public CompoundTag() : base(TagType.Compound) { }
         public Dictionary<string, Tag> Values { get; } = new(StringComparer.Ordinal);
     }
+
+    private static byte GetByte(CompoundTag compound, string key) =>
+        compound.Values.TryGetValue(key, out var value) && value is ByteTag byteTag ? byteTag.Value : (byte)0;
     private sealed class IntArrayTag(int[] value) : Tag(TagType.IntArray) { public int[] Value { get; } = value; }
     private sealed class LongArrayTag(long[] value) : Tag(TagType.LongArray) { public long[] Value { get; } = value; }
 
     private sealed class BigEndianReader(Stream stream) : IDisposable
     {
         private readonly BinaryReader reader = new(stream, Encoding.UTF8, leaveOpen: true);
+        public bool AtEnd => reader.BaseStream.Position == reader.BaseStream.Length;
         public byte ReadByteChecked() => reader.ReadByte();
         public short ReadInt16() => BinaryPrimitives.ReadInt16BigEndian(reader.ReadBytes(sizeof(short)));
         public int ReadInt32() => BinaryPrimitives.ReadInt32BigEndian(reader.ReadBytes(sizeof(int)));
@@ -325,7 +364,13 @@ public sealed class ServersDatService : IServersDatService
         }
         public int[] ReadIntArray() { var count = ReadInt32(); if (count < 0 || count > 1_000_000) throw new InvalidDataException(); var values = new int[count]; for (var i = 0; i < count; i++) values[i] = ReadInt32(); return values; }
         public long[] ReadLongArray() { var count = ReadInt32(); if (count < 0 || count > 1_000_000) throw new InvalidDataException(); var values = new long[count]; for (var i = 0; i < count; i++) values[i] = ReadInt64(); return values; }
-        public string ReadString() { var length = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(sizeof(ushort))); return Encoding.UTF8.GetString(ReadBytes(length)); }
+        public string ReadString()
+        {
+            var lengthBytes = reader.ReadBytes(sizeof(ushort));
+            if (lengthBytes.Length != sizeof(ushort)) throw new EndOfStreamException();
+            var length = BinaryPrimitives.ReadUInt16BigEndian(lengthBytes);
+            return new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(ReadBytes(length));
+        }
         public void Dispose() => reader.Dispose();
     }
 

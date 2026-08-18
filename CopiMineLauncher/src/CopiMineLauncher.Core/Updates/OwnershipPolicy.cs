@@ -11,7 +11,9 @@ public sealed record ManagedFileRecord(
 
 public sealed record ManagedState(
     long ManifestSequence,
-    IReadOnlyList<ManagedFileRecord> Files)
+    IReadOnlyList<ManagedFileRecord> Files,
+    int SchemaVersion = 1,
+    string? InstanceId = null)
 {
     public static ManagedState Empty { get; } = new(0, Array.Empty<ManagedFileRecord>());
 }
@@ -55,6 +57,7 @@ public static class OwnershipPolicy
             var current = snapshot(safePath);
             var isPreviouslyManaged = previousByPath.ContainsKey(safePath)
                 || (previousComponent is not null && string.Equals(previousComponent.RelativePath, safePath, StringComparison.OrdinalIgnoreCase));
+            var installPolicy = entry.InstallPolicy.ToUpperInvariant();
 
             var launcherOwnsCurrentFile = false;
             if (entry.Ownership is "merge")
@@ -65,6 +68,16 @@ public static class OwnershipPolicy
             {
                 operations.Add(new(UpdateOperationKind.Add, entry.ComponentId, safePath, null, entry.Sha256, entry, null));
                 launcherOwnsCurrentFile = true;
+            }
+            else if (installPolicy == "PRESERVE")
+            {
+                // Existing settings remain user-owned. A missing default is
+                // added above, but a present file is never replaced or added
+                // to the managed ledger.
+            }
+            else if (installPolicy == "ADD")
+            {
+                operations.Add(new(UpdateOperationKind.Conflict, entry.ComponentId, safePath, current.Sha256, entry.Sha256, entry, "install-policy-add-would-overwrite"));
             }
             else if (!isPreviouslyManaged)
             {

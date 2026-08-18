@@ -96,7 +96,8 @@ public static class InstanceManifestAdapter
             file.SizeBytes,
             file.Sha256,
             file.Required,
-            file.Ownership.ToLowerInvariant())).ToArray();
+            file.Ownership.ToLowerInvariant(),
+            file.InstallPolicy.ToUpperInvariant())).ToArray();
 
         return new LauncherManifest(
             1,

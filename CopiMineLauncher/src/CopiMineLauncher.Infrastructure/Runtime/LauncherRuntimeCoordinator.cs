@@ -138,6 +138,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
 
             var instanceRoot = Path.GetFullPath(request.InstanceRoot);
             Directory.CreateDirectory(instanceRoot);
+            await using var instanceLock = await InstanceOperationLock.AcquireAsync(instanceRoot, cancellationToken);
 
             if (hostedMinecraftRuntime is not null)
             {

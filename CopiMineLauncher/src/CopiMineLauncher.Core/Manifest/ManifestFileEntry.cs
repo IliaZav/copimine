@@ -9,4 +9,5 @@ public sealed record ManifestFileEntry(
     long SizeBytes,
     string Sha256,
     bool Required,
-    string Ownership);
+    string Ownership,
+    string InstallPolicy = "REPLACE");

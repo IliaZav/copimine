@@ -101,6 +101,19 @@ public sealed class UpdatePlanTests
         plan.NextState.Files.Should().BeEmpty();
     }
 
+    [Fact]
+    public void Preserve_entries_do_not_replace_an_existing_user_file()
+    {
+        var entry = Entry("config", "config/copimine.json", 'a') with { InstallPolicy = "PRESERVE" };
+        var plan = OwnershipPolicy.BuildPlan(
+            FixtureManifest(entry),
+            ManagedState.Empty,
+            _ => new LocalFileSnapshot(true, 1, Hash('u')));
+
+        plan.Operations.Should().BeEmpty();
+        plan.NextState.Files.Should().BeEmpty();
+    }
+
     private static ManagedState StateFor(LauncherManifest manifest) => new(
         manifest.Sequence - 1,
         manifest.Files.Select(entry => new ManagedFileRecord(entry.ComponentId, entry.Path, entry.Sha256, entry.Version)).ToArray());

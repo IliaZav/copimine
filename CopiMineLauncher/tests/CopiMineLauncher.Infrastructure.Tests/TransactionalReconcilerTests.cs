@@ -138,6 +138,102 @@ public sealed class TransactionalReconcilerTests
     }
 
     [Fact]
+    public async Task Recovery_rejects_a_backup_path_outside_the_transaction_directory()
+    {
+        using var temp = new TemporaryDirectory();
+        var outsidePath = Path.Combine(Path.GetTempPath(), $"copimine-journal-outside-{Guid.NewGuid():N}.bin");
+        await File.WriteAllTextAsync(outsidePath, "must remain untouched");
+        try
+        {
+            var entry = Entry("a", "mods/a.jar", "old");
+            var journal = new TransactionJournal(
+                "tx",
+                2,
+                TransactionPhase.Committing,
+                DateTimeOffset.UtcNow,
+                new ManagedState(1, Array.Empty<ManagedFileRecord>()),
+                new[]
+                {
+                    new TransactionJournalEntry(
+                        UpdateOperationKind.Replace,
+                        "a",
+                        entry.Path,
+                        null,
+                        outsidePath,
+                        entry.Sha256,
+                        Hash("new"))
+                });
+            var metadataRoot = Path.Combine(temp.Path, ".copimine");
+            Directory.CreateDirectory(metadataRoot);
+            await File.WriteAllTextAsync(
+                Path.Combine(metadataRoot, "update-journal.json"),
+                JsonSerializer.Serialize(journal));
+
+            var action = () => new AtomicFileStore(temp.Path).RecoverAsync(CancellationToken.None);
+
+            await action.Should().ThrowAsync<InvalidDataException>().WithMessage("*journal*path*");
+            File.ReadAllText(outsidePath).Should().Be("must remain untouched");
+            File.Exists(Path.Combine(metadataRoot, "update-journal.json")).Should().BeTrue();
+        }
+        finally
+        {
+            File.Delete(outsidePath);
+        }
+    }
+
+    [Fact]
+    public async Task Commit_rejects_a_staged_path_outside_the_transaction_directory()
+    {
+        using var temp = new TemporaryDirectory();
+        var outsidePath = Path.Combine(Path.GetTempPath(), $"copimine-staged-outside-{Guid.NewGuid():N}.bin");
+        await File.WriteAllTextAsync(outsidePath, "must remain staged");
+        try
+        {
+            var entry = Entry("a", "mods/a.jar", "new");
+            var operation = new UpdateOperation(
+                UpdateOperationKind.Add,
+                "a",
+                entry.Path,
+                null,
+                entry.Sha256,
+                entry,
+                null,
+                outsidePath);
+            var journal = new TransactionJournal(
+                "tx",
+                1,
+                TransactionPhase.Prepared,
+                DateTimeOffset.UtcNow,
+                ManagedState.Empty,
+                new[]
+                {
+                    new TransactionJournalEntry(
+                        UpdateOperationKind.Add,
+                        "a",
+                        entry.Path,
+                        outsidePath,
+                        null,
+                        null,
+                        entry.Sha256)
+                });
+
+            var action = () => new AtomicFileStore(temp.Path).CommitAsync(
+                new[] { operation },
+                journal,
+                new ManagedState(1, new[] { new ManagedFileRecord("a", entry.Path, entry.Sha256, entry.Version) }),
+                CancellationToken.None);
+
+            await action.Should().ThrowAsync<InvalidDataException>().WithMessage("*journal*path*");
+            File.ReadAllText(outsidePath).Should().Be("must remain staged");
+            File.Exists(Path.Combine(temp.Path, "mods", "a.jar")).Should().BeFalse();
+        }
+        finally
+        {
+            File.Delete(outsidePath);
+        }
+    }
+
+    [Fact]
     public async Task Download_manager_resumes_a_partial_range_and_verifies_hash()
     {
         using var temp = new TemporaryDirectory();
@@ -174,6 +270,23 @@ public sealed class TransactionalReconcilerTests
         result.IsSuccess.Should().BeTrue();
         journalObserved.Should().BeTrue();
         File.Exists(Path.Combine(temp.Path, ".copimine", "update-journal.json")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Managed_state_with_a_different_instance_identity_is_rejected()
+    {
+        using var temp = new TemporaryDirectory();
+        var store = new AtomicFileStore(temp.Path);
+        await store.LoadStateAsync(CancellationToken.None);
+        var statePath = Path.Combine(temp.Path, ".copimine", "managed-state.json");
+        await File.WriteAllTextAsync(
+            statePath,
+            "{\"manifestSequence\":1,\"files\":[],\"schemaVersion\":1,\"instanceId\":\"4d6f9f9f-5fd9-4e14-bdf4-9195279c7f27\"}");
+
+        var action = () => store.LoadStateAsync(CancellationToken.None);
+
+        await action.Should().ThrowAsync<InvalidDataException>()
+            .WithMessage("*not trusted*");
     }
 
     [Fact]

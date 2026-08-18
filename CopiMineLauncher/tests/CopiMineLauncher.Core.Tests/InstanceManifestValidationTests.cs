@@ -19,6 +19,7 @@ public sealed class InstanceManifestValidationTests
         var internalManifest = InstanceManifestAdapter.ToLauncherManifest(document, "launcher-v1");
         internalManifest.Sequence.Should().Be(17);
         internalManifest.Files.Should().ContainSingle().Which.Ownership.Should().Be("managed");
+        internalManifest.Files.Single().InstallPolicy.Should().Be("REPLACE");
     }
 
     [Fact]

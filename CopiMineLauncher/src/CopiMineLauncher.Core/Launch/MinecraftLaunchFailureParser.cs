@@ -37,6 +37,10 @@ public static class MinecraftLaunchFailureParser
         "(?:mod|module) ['\"]?(?<id>[A-Za-z0-9_.-]+)['\"]?",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    private static readonly Regex DuplicateModPattern = new(
+        "duplicate mods? with the same (?:mod )?id[:=]\\s*['\"]?(?<id>[A-Za-z0-9_.-]+)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static MinecraftLaunchFailureReport Parse(
         string? logText,
         string logPath,
@@ -48,9 +52,11 @@ public static class MinecraftLaunchFailureParser
         var normalized = text.ToLowerInvariant();
         var resolutionMatch = ResolutionModPattern.Match(text);
         var providedByMatch = ProvidedByPattern.Match(text);
+        var duplicateMatch = DuplicateModPattern.Match(text);
         var modId = FirstNonEmpty(
             resolutionMatch.Groups["id"].Value,
             providedByMatch.Groups["id"].Value,
+            duplicateMatch.Groups["id"].Value,
             FindModReference(text));
 
         var kind = DetectKind(normalized, modId is not null);
@@ -81,6 +87,7 @@ public static class MinecraftLaunchFailureParser
     private static MinecraftLaunchFailureKind DetectKind(string normalizedLog, bool hasModId)
     {
         if (normalizedLog.Contains("mod resolution failed", StringComparison.Ordinal)
+            || normalizedLog.Contains("duplicate mods with the same", StringComparison.Ordinal)
             || normalizedLog.Contains("requires", StringComparison.Ordinal) && hasModId
             || normalizedLog.Contains("incompatible mod", StringComparison.Ordinal))
         {

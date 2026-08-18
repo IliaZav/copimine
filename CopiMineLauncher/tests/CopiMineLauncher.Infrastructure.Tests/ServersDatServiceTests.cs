@@ -92,6 +92,35 @@ public sealed class ServersDatServiceTests
         CountText(output, "acceptTextures").Should().Be(1);
     }
 
+    [Fact]
+    public async Task Same_display_name_on_another_address_is_preserved_as_a_user_server()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "servers.dat");
+        await File.WriteAllBytesAsync(path, BuildServers(
+            ("CopiMine", "community.example:25565", 7)));
+
+        await new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
+        var output = Decompress(path);
+
+        CountText(output, "community.example:25565").Should().Be(1);
+        CountText(output, "mc.copimine.ru:25565").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Trailing_nbt_bytes_are_rejected_without_overwrite()
+    {
+        using var temp = new TemporaryDirectory();
+        var path = Path.Combine(temp.Path, "servers.dat");
+        var original = BuildRawServers(("Other", "other.example:25565", 42)).Concat(new byte[] { 0x7F }).ToArray();
+        await File.WriteAllBytesAsync(path, original);
+
+        var action = () => new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
+
+        await action.Should().ThrowAsync<InvalidDataException>();
+        (await File.ReadAllBytesAsync(path)).Should().Equal(original);
+    }
+
     private static byte[] Decompress(string path) => Decompress(File.ReadAllBytes(path));
 
     private static byte[] Decompress(byte[] bytes)

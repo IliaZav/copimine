@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public final class EventStateStoreTest {
     public static void main(String[] args) throws Exception {
@@ -44,6 +48,30 @@ public final class EventStateStoreTest {
 
         Executor direct = Runnable::run;
         check(store.saveAsync(first, direct).join(), "async persistence must marshal through supplied executor");
+
+        ExecutorService pool = Executors.newFixedThreadPool(8);
+        CountDownLatch ready = new CountDownLatch(8);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<Boolean>> concurrentSaves = new java.util.ArrayList<>();
+            for (int index = 0; index < 8; index++) {
+                int saveIndex = index;
+                concurrentSaves.add(pool.submit(() -> {
+                    ready.countDown();
+                    start.await();
+                    return store.save(snapshot("concurrent-" + saveIndex,
+                            EventPhase.READY_FOR_PLAYERS.name(), 10L + saveIndex));
+                }));
+            }
+            ready.await();
+            start.countDown();
+            for (Future<Boolean> concurrentSave : concurrentSaves) {
+                check(concurrentSave.get(), "concurrent durable state save must not race on the atomic temp file");
+            }
+            check(store.load().valid(), "state must remain readable after concurrent saves");
+        } finally {
+            pool.shutdownNow();
+        }
         System.out.println("EventStateStoreTest OK");
     }
 

@@ -30,7 +30,7 @@ public final class EventLayoutStore {
         return backup == null ? EventLayoutState.empty() : backup;
     }
 
-    public boolean save(EventLayoutState state) {
+    public synchronized boolean save(EventLayoutState state) {
         if (state == null) {
             return false;
         }

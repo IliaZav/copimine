@@ -84,7 +84,7 @@ public final class EventStateStore {
         return result;
     }
 
-    public boolean save(EventSnapshot snapshot) {
+    public synchronized boolean save(EventSnapshot snapshot) {
         if (snapshot == null) {
             return false;
         }

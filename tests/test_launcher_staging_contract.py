@@ -78,6 +78,11 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
         assert runtime_file.is_file()
         assert runtime_file.stat().st_size == runtime["sizeBytes"]
         assert (output / "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe").stat().st_size > 100_000_000
+
+        assets_feed = json.loads((PACKAGE_ROOT / "assets.win.json").read_text(encoding="utf-8"))
+        for asset in assets_feed:
+            filename = asset["RelativeFileName"]
+            assert (output / "downloads/launcher" / filename).is_file(), filename
     finally:
         if output.exists():
             import shutil

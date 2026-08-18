@@ -118,6 +118,17 @@ def check_launcher_release() -> None:
         if not digest or not (managed_root / digest).is_file():
             fail("manifest runtime artifact is missing")
 
+    assets_feed_path = FRONTEND / "downloads" / "launcher" / "assets.win.json"
+    if not assets_feed_path.is_file():
+        fail("Velopack assets.win.json is missing")
+    assets_feed = json.loads(read(assets_feed_path))
+    for asset in assets_feed:
+        filename = asset.get("RelativeFileName")
+        if not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", filename):
+            fail(f"unsafe Velopack asset filename: {filename}")
+        if not (FRONTEND / "downloads" / "launcher" / filename).is_file():
+            fail(f"Velopack asset listed in assets.win.json is missing: {filename}")
+
 
 def main() -> int:
     check_navigation()

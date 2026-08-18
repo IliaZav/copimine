@@ -79,6 +79,21 @@ foreach ($feedFileName in $feedFileNames) {
         throw "Velopack feed artifact is missing: $feedFile"
     }
 }
+$assetFeedDocument = Get-Content -Raw -LiteralPath (Join-Path $packageRoot 'assets.win.json') | ConvertFrom-Json
+$assetFeed = @($assetFeedDocument)
+while ($assetFeed.Count -eq 1 -and $assetFeed[0] -is [System.Array]) {
+    $assetFeed = @($assetFeed[0])
+}
+foreach ($asset in $assetFeed) {
+    $assetFileName = [string]$asset.RelativeFileName
+    if ([string]::IsNullOrWhiteSpace($assetFileName) -or $assetFileName -notmatch '^[A-Za-z0-9._-]+$') {
+        throw "Velopack asset filename is unsafe: $assetFileName"
+    }
+    $assetSource = Join-Path $packageRoot $assetFileName
+    if (-not (Test-Path -LiteralPath $assetSource -PathType Leaf)) {
+        throw "Velopack asset listed in assets.win.json is missing: $assetSource"
+    }
+}
 $fullPackages = @(Get-ChildItem -LiteralPath $packageRoot -File -Filter '*-full.nupkg')
 if ($fullPackages.Count -eq 0) {
     throw "Velopack full package is missing from the package directory: $packageRoot"
@@ -183,6 +198,10 @@ Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $metadataDirector
 foreach ($feedFileName in $feedFileNames) {
     $feedFile = Join-Path $packageRoot $feedFileName
     Copy-Item -LiteralPath $feedFile -Destination (Join-Path $downloadDirectory $feedFileName) -Force
+}
+$assetFeed | ForEach-Object {
+    $assetFileName = [string]$_.RelativeFileName
+    Copy-Item -LiteralPath (Join-Path $packageRoot $assetFileName) -Destination (Join-Path $downloadDirectory $assetFileName) -Force
 }
 $fullPackages | Copy-Item -Destination $downloadDirectory -Force
 

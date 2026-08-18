@@ -1,0 +1,165 @@
+/* CopiMine Launcher/news: a quiet operations-board layer on the existing public shell. */
+.launcher-hero,
+.news-hero,
+.patch-detail {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  background:
+    linear-gradient(135deg, rgba(42, 196, 111, .12), transparent 42%),
+    var(--section-surface);
+}
+
+.launcher-hero::before,
+.news-hero::before,
+.patch-detail::before {
+  content: "";
+  position: absolute;
+  width: 26rem;
+  height: 26rem;
+  right: -10rem;
+  top: -13rem;
+  border: 1px solid rgba(44, 121, 199, .2);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2.5rem rgba(44, 121, 199, .035), 0 0 0 5rem rgba(44, 121, 199, .025);
+  pointer-events: none;
+}
+
+.launcher-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(18rem, .8fr);
+  gap: 1.5rem;
+  align-items: stretch;
+}
+
+.launcher-hero-copy { position: relative; z-index: 1; padding: clamp(1.5rem, 4vw, 3.25rem); }
+.launcher-hero-copy h1 { max-width: 11ch; margin: .35rem 0 1rem; letter-spacing: -.045em; }
+.launcher-hero-copy > p { max-width: 42rem; font-size: clamp(1rem, 1.4vw, 1.18rem); }
+.launcher-hero-side { position: relative; z-index: 1; display: grid; gap: .85rem; padding: clamp(1rem, 2.5vw, 1.75rem); align-content: center; }
+.launcher-release-card,
+.launcher-system-card,
+.launcher-feature-card,
+.news-card,
+.patch-item,
+.launcher-faq-card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card-glass);
+  box-shadow: var(--shadow-soft);
+}
+
+.launcher-release-card { padding: 1.1rem; }
+.launcher-release-card dl { display: grid; grid-template-columns: 1fr auto; gap: .6rem .8rem; margin: 1rem 0 0; }
+.launcher-release-card dt { color: var(--muted); }
+.launcher-release-card dd { margin: 0; font-weight: 700; text-align: right; }
+.launcher-release-card dd[data-state="unavailable"] { color: var(--red); }
+.launcher-download-state { min-height: 1.3rem; margin: .7rem 0 0; color: var(--muted); font-size: .86rem; }
+.launcher-download-state[data-state="error"] { color: var(--red); }
+.launcher-download-state[data-state="ready"] { color: var(--accent); }
+
+.launcher-feature-grid,
+.launcher-faq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.launcher-feature-card,
+.launcher-faq-card { padding: 1.15rem; }
+.launcher-feature-card h3,
+.launcher-faq-card h3 { margin: .15rem 0 .45rem; font-size: 1rem; }
+.launcher-feature-card p,
+.launcher-faq-card p { margin: 0; color: var(--muted); font-size: .93rem; }
+.launcher-feature-mark { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%; background: var(--accent-2); color: var(--accent); font-weight: 800; }
+
+.launcher-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; counter-reset: launcher-step; }
+.launcher-step { position: relative; padding: 1.2rem 1.2rem 1.2rem 4rem; border-top: 2px solid var(--accent); background: var(--surface); }
+.launcher-step::before { counter-increment: launcher-step; content: counter(launcher-step, decimal-leading-zero); position: absolute; left: 1.15rem; top: 1rem; color: var(--accent); font: 800 1.15rem/1 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.launcher-step h3 { margin: 0 0 .35rem; }
+.launcher-step p { margin: 0; color: var(--muted); }
+
+.launcher-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.launcher-shot { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.launcher-shot button { display: block; width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.launcher-shot img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.launcher-shot figcaption { padding: .7rem .8rem .85rem; color: var(--muted); font-size: .88rem; }
+.launcher-shot button:focus-visible,
+.launcher-download:focus-visible,
+.launcher-news-link:focus-visible,
+.news-card a:focus-visible,
+.text-link:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+.launcher-technical { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+.launcher-system-card { min-width: 0; padding: .9rem 1rem; }
+.launcher-system-card span { display: block; color: var(--muted); font-size: .78rem; }
+.launcher-system-card strong { display: block; margin-top: .3rem; font-size: 1rem; overflow-wrap: anywhere; word-break: break-word; }
+
+.launcher-news-grid,
+.news-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.launcher-news-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.news-card { display: flex; min-height: 100%; flex-direction: column; overflow: hidden; }
+.news-card-media { display: block; width: 100%; height: 9rem; object-fit: cover; background: var(--surface-strong); }
+.news-card-body { display: flex; flex: 1; flex-direction: column; padding: 1rem; }
+.news-card-body h3 { margin: .45rem 0 .6rem; font-size: 1.05rem; }
+.news-card-body p { margin: 0; color: var(--muted); font-size: .9rem; }
+.news-card-body ul { padding-left: 1.1rem; color: var(--muted); font-size: .88rem; }
+.news-card-body a { margin-top: auto; color: var(--accent); font-weight: 700; text-decoration: none; }
+.news-card-meta { display: flex; flex-wrap: wrap; gap: .45rem; color: var(--faint); font-size: .8rem; }
+.news-card-badge { padding: .22rem .45rem; border: 1px solid var(--chip-border); border-radius: 99px; color: var(--chip-text); background: var(--chip-bg); }
+
+.news-hero,
+.patch-detail { padding: clamp(1.35rem, 3.5vw, 2.5rem); }
+.news-hero h1,
+.patch-heading h1 { max-width: 16ch; margin: .35rem 0 .7rem; letter-spacing: -.04em; }
+.news-hero p { max-width: 38rem; }
+.patch-heading { border-bottom: 1px solid var(--line); padding-bottom: 1.2rem; }
+.patch-heading p { margin: 0; color: var(--muted); }
+.patch-summary { display: grid; gap: .45rem; max-width: 54rem; margin: 1.35rem 0 0; padding-left: 1.2rem; color: var(--ink); }
+.patch-section { margin-top: 2rem; }
+.patch-section h2 { margin-bottom: .85rem; font-size: 1.35rem; }
+.patch-group { margin: .7rem 0; padding: 1rem 1.1rem; border-left: 3px solid var(--blue); background: var(--surface); }
+.patch-group h3 { margin: 0 0 .5rem; font-size: 1rem; }
+.patch-group ul,
+.patch-item ul { margin: 0; padding-left: 1.15rem; color: var(--muted); }
+.change-kind { display: inline-block; margin-right: .35rem; padding: .12rem .35rem; border-radius: 4px; color: var(--accent); background: var(--accent-2); font: 700 .7rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace; text-transform: uppercase; }
+.change-kind-known_issue { color: var(--red); background: var(--red-2); }
+.patch-items { display: grid; gap: .85rem; }
+.patch-item { display: grid; grid-template-columns: 4rem minmax(0, 1fr); gap: 1rem; align-items: center; padding: .9rem 1rem; }
+.patch-item-icon { display: grid; place-items: center; width: 4rem; height: 4rem; border-radius: 10px; background: var(--surface-strong); }
+.patch-item-icon img { width: 3.1rem; height: 3.1rem; image-rendering: pixelated; object-fit: contain; }
+.patch-item h3 { margin: 0 0 .35rem; }
+.patch-item li { margin: .2rem 0; }
+.patch-empty { padding: 1rem; border: 1px dashed var(--line-strong); color: var(--muted); }
+
+.launcher-lightbox { width: min(92vw, 1180px); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--r-lg); background: var(--surface); color: var(--ink); box-shadow: 0 2rem 5rem rgba(0,0,0,.35); }
+.launcher-lightbox::backdrop { background: rgba(8, 14, 23, .78); }
+.launcher-lightbox figure { margin: 0; }
+.launcher-lightbox img { display: block; width: 100%; max-height: 78vh; object-fit: contain; }
+.launcher-lightbox figcaption { padding: .8rem 1rem 1rem; color: var(--muted); }
+.launcher-lightbox-close { float: right; margin: .65rem .65rem 0 0; }
+
+@media (max-width: 900px) {
+  .launcher-hero-grid { grid-template-columns: 1fr; }
+  .launcher-feature-grid,
+  .launcher-faq-grid,
+  .launcher-gallery,
+  .launcher-news-grid,
+  .news-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .launcher-technical { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 600px) {
+  .launcher-feature-grid,
+  .launcher-faq-grid,
+  .launcher-gallery,
+  .launcher-news-grid,
+  .news-list,
+  .launcher-steps,
+  .launcher-technical { grid-template-columns: 1fr; }
+  .launcher-hero-copy { padding: 1.2rem; }
+  .launcher-hero-copy h1,
+  .news-hero h1,
+  .patch-heading h1 { max-width: none; font-size: clamp(2rem, 10vw, 3rem); }
+  .patch-item { grid-template-columns: 3.4rem minmax(0, 1fr); gap: .7rem; }
+  .patch-item-icon { width: 3.4rem; height: 3.4rem; }
+  .patch-item-icon img { width: 2.7rem; height: 2.7rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

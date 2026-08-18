@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "patches": [
+    {
+      "id": "2026-08-17-launcher-1.0.2",
+      "slug": "copimine-launcher-1-0-2",
+      "version": "1.0.2",
+      "title": "CopiMine Launcher 1.0.2",
+      "publishedAt": "2026-08-17T19:30:32Z",
+      "summary": [
+        "Привязка аккаунта больше не ждёт первый ответ перед началом проверки.",
+        "Первый запуск готовит игру в фоне, поэтому окно Launcher открывается сразу.",
+        "Обновлена статическая раздача сайта и установщика с проверяемыми хэшами."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-2.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-17-launcher-1.0.1",
+      "slug": "copimine-launcher-1-0-1",
+      "version": "1.0.1",
+      "title": "CopiMine Launcher 1.0.1",
+      "publishedAt": "2026-08-17T05:00:00Z",
+      "summary": [
+        "Minecraft, Java и обязательные моды теперь загружаются из хранилища CopiMine.",
+        "Добавлена проверка и восстановление локального runtime-архива Minecraft 1.21.1.",
+        "Обновлён установщик с выбором папки и встроенным резервным способом восстановления."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-1.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-15-launcher-1.0.0",
+      "slug": "copimine-launcher-1-0-0",
+      "version": "1.0.0",
+      "title": "CopiMine Launcher 1.0.0",
+      "publishedAt": "2026-08-15T12:00:00Z",
+      "summary": [
+        "Добавлена установка отдельного Minecraft 1.21.1 с Fabric Loader 0.19.3.",
+        "Файлы клиента синхронизируются по подписанному manifest с восстановлением после сбоя.",
+        "Сервер mc.copimine.ru добавляется автоматически без удаления других серверов."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-0.html",
+      "thumbnailUrl": "/assets/patch-items/eternal_totem.webp",
+      "badges": [
+        "Launcher"
+      ]
+    }
+  ]
+}

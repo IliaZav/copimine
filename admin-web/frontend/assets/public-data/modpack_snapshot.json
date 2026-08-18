@@ -2,10 +2,10 @@
     "available":  true,
     "filename":  "CopiMineMods.zip",
     "downloadUrl":  "/downloads/CopiMineMods.zip",
-    "size":  16647034,
-    "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
-    "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69",
-    "modified":  1786267072,
+    "size":  17411926,
+    "sha1":  "8335166bfb940bade9191d364840810cf1cbbbed",
+    "sha256":  "7a1d9a5e325f5bc0f71088761af1f716452e47d27ce437429c67e253fa6d637f",
+    "modified":  1786939488,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -28,7 +28,7 @@
                                        "license":  "GPL-3.0-only",
                                        "source":  "https://github.com/xfl03/MCCustomSkinLoader",
                                        "feature":  "Клиентские скины вместо TL Skin",
-                                       "required":  false
+                                       "required":  true
                                    },
                                    {
                                        "path":  "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
@@ -49,6 +49,15 @@
                                        "required":  true
                                    },
                                    {
+                                       "path":  "mods/modmenu-11.0.4.jar",
+                                       "component":  "Mod Menu",
+                                       "version":  "11.0.4+1.21.1-fabric",
+                                       "license":  "MIT",
+                                       "source":  "https://modrinth.com/mod/modmenu",
+                                       "feature":  "Меню установленных модов",
+                                       "required":  false
+                                   },
+                                   {
                                        "path":  "mods/voicechat-fabric-1.21.1-2.6.16.jar",
                                        "component":  "Simple Voice Chat",
                                        "version":  "2.6.16+1.21.1-fabric",
@@ -64,7 +73,7 @@
                                        "license":  "GPL-3.0-only",
                                        "source":  "https://modrinth.com/mod/iris",
                                        "feature":  "Поддержка шейдеров на клиенте",
-                                       "required":  false
+                                       "required":  true
                                    },
                                    {
                                        "path":  "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
@@ -73,7 +82,7 @@
                                        "license":  "LGPL-3.0-only",
                                        "source":  "https://modrinth.com/mod/sodium",
                                        "feature":  "Оптимизация производительности клиента",
-                                       "required":  false
+                                       "required":  true
                                    }
                                ],
                      "requiredExternal":  [
@@ -85,8 +94,8 @@
                                           "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
                                       ],
                      "notes":  [
-                                   "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
-                                   "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
+                                   "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Mod Menu, Simple Voice Chat, Iris и Sodium.",
+                                   "Iris и Sodium входят в число семи обязательных модов для официального клиента.",
                                    "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
                                    "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
                                ]

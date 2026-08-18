@@ -211,15 +211,14 @@ $fatalLines = $lines | Where-Object {
   ($_ -match '\[.+/ERROR\]:')
 }
 
-# EssentialsX 2.21.x logs this on Purpur 1.21.1. Official EssentialsX stable
-# currently targets newer Paper versions, so this is a version-policy warning,
-# not a CopiMine load/runtime failure.
+# EssentialsX 2.21.x logs this on Purpur 1.21.1, and the bundled GrimAC build
+# can emit the SLF4J no-provider diagnostic. Both are known compatibility
+# warnings, not CopiMine load/runtime failures.
 $allowedFatalLines = $fatalLines | Where-Object {
-  $_ -match '\[Essentials\]' -and $_ -match 'unsupported server version|[^\x00-\x7F]+'
+  ($_.Trim() -match '\[Essentials\]' -and $_ -match 'unsupported server version|[^\x00-\x7F]+') -or
+  ($_.Trim() -match '\[GrimAC\] SLF4J\(W\): (No SLF4J providers were found\.|Defaulting to no-operation \(NOP\) logger implementation|See https://www\.slf4j\.org/codes\.html#noProviders)')
 }
-$unallowedFatalLines = $fatalLines | Where-Object {
-  -not ($_ -match '\[Essentials\]' -and $_ -match 'unsupported server version|[^\x00-\x7F]+')
-}
+$unallowedFatalLines = $fatalLines | Where-Object { $_ -notin $allowedFatalLines }
 
 if ($unallowedFatalLines.Count -gt 0) {
   $unallowedFatalLines | Select-Object -First 40

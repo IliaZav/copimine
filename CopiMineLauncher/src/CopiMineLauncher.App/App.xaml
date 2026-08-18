@@ -1,0 +1,153 @@
+<Application x:Class="CopiMineLauncher.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CopiMineLauncher.App">
+    <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
+
+        <SolidColorBrush x:Key="LauncherColors" Color="#0B1718" />
+        <SolidColorBrush x:Key="LauncherWindowBackground" Color="#07120F" />
+        <SolidColorBrush x:Key="LauncherPrimaryText" Color="#F1FAF5" />
+        <SolidColorBrush x:Key="LauncherSecondaryText" Color="#A9C1BA" />
+        <SolidColorBrush x:Key="LauncherMutedText" Color="#78958B" />
+        <SolidColorBrush x:Key="LauncherAccent" Color="#62E39B" />
+        <SolidColorBrush x:Key="LauncherAccentBright" Color="#8AF3B3" />
+        <SolidColorBrush x:Key="LauncherSurface" Color="#E6132D2A" />
+        <SolidColorBrush x:Key="LauncherSurfaceStrong" Color="#F0162C28" />
+        <SolidColorBrush x:Key="LauncherSurfaceRaised" Color="#F01B3832" />
+        <SolidColorBrush x:Key="LauncherBorder" Color="#B8285448" />
+        <SolidColorBrush x:Key="LauncherButtonSurface" Color="#E61C3A35" />
+        <SolidColorBrush x:Key="LauncherButtonHover" Color="#F02A5549" />
+        <SolidColorBrush x:Key="LauncherInputSurface" Color="#D90B1B18" />
+
+        <Style x:Key="LauncherButton" TargetType="{x:Type Button}">
+            <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+            <Setter Property="Background" Value="{StaticResource LauncherButtonSurface}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource LauncherButtonHover}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Opacity" Value="0.82" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.48" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LauncherPrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
+            <Setter Property="Background" Value="{StaticResource LauncherAccent}" />
+            <Setter Property="Foreground" Value="#06150D" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Padding" Value="16,13" />
+            <Setter Property="MinHeight" Value="54" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource LauncherAccentBright}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LauncherStackButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="MinHeight" Value="40" />
+        </Style>
+
+        <Style x:Key="LauncherCompactButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+
+        <Style x:Key="LauncherIconButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+        </Style>
+
+        <Style x:Key="LauncherCard" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{StaticResource LauncherSurface}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
+
+        <Style x:Key="LauncherTextBox" TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="{StaticResource LauncherInputSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,5,0,13" />
+            <Setter Property="MinHeight" Value="38" />
+        </Style>
+
+        <Style x:Key="LauncherComboBox" TargetType="{x:Type ComboBox}">
+            <Setter Property="Background" Value="{StaticResource LauncherInputSurface}" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Margin" Value="0,5,0,10" />
+            <Setter Property="MinHeight" Value="38" />
+        </Style>
+
+        <Style x:Key="LauncherProgressBar" TargetType="{x:Type ProgressBar}">
+            <Setter Property="Height" Value="9" />
+            <Setter Property="Background" Value="#B8071511" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherAccent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="LauncherLoadingSpinner" TargetType="{x:Type Ellipse}">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Stroke" Value="#06150D" />
+            <Setter Property="StrokeThickness" Value="3" />
+            <Setter Property="StrokeDashArray" Value="2 5" />
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <RotateTransform Angle="0" />
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsLaunching}" Value="True">
+                    <Setter Property="Visibility" Value="Visible" />
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard Name="SpinLauncher">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" To="360" Duration="0:0:0.8" RepeatBehavior="Forever" />
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <RemoveStoryboard BeginStoryboardName="SpinLauncher" />
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}" />
+        <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource LauncherTextBox}" />
+        <Style TargetType="{x:Type ComboBox}" BasedOn="{StaticResource LauncherComboBox}" />
+    </Application.Resources>
+</Application>

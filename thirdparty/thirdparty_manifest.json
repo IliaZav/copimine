@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
+                          "sha1":  "80edcf854e6a51c03598331bd17885a9c3d82fbd",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69"
+                          "sha256":  "a9adb79636cf72a68e33ccd290d5d36a1ecaab887116c8537cdf95ec7e75f3bc"
                       },
     "requiredExternal":  [
 
@@ -46,6 +46,15 @@
                                              "license":  "Apache-2.0",
                                              "source":  "https://modrinth.com/project/P7dR8mSH",
                                              "sha256":  "b791de6f6dce9c58d4ea2af6c713bbcc6dc64d0a5995a8bad6f225ee58cf17d2"
+                                         },
+                                         {
+                                             "name":  "Mod Menu",
+                                             "version":  "11.0.4+1.21.1-fabric",
+                                             "path":  "thirdparty/client-mods/modmenu-11.0.4.jar",
+                                             "sha1":  "8af1b0b9ee18eab5cd5e5c97c497f0e473c49e9a",
+                                             "license":  "MIT",
+                                             "source":  "https://modrinth.com/mod/modmenu",
+                                             "sha256":  "a88e0d67c82b0434cbf56776c482587c275ed660f635d33f53ba485dfa30dcc3"
                                          },
                                          {
                                              "name":  "Simple Voice Chat",

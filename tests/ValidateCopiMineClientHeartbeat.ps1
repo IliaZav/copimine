@@ -1,6 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $client = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\main\java\me\copimine\client\ClientBridgeProtocol.java')
+$ready = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'CopiMineClient\src\main\java\me\copimine\client\ClientReadyProtocol.java')
 $bridge = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\clientbridge\CopiMineClientBridge.java')
 $caps = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-narcotics\src\me\copimine\clientbridge\ClientCapabilityService.java')
 foreach ($needle in @('HEARTBEAT_INTERVAL_MS','sendHeartbeat','TYPE_HEARTBEAT')) {
@@ -11,5 +12,8 @@ if ($bridge -notmatch 'case ClientBridgePayloads\.HEARTBEAT -> capabilities\.tou
 }
 if ($caps -notmatch 'heartbeat-timeout') {
   throw 'Capability service must expose heartbeat timeout state.'
+}
+if ($ready -match 'HEARTBEAT|sendHeartbeat|heartbeat') {
+  throw 'Admission READY protocol must not contain a heartbeat or periodic revalidation loop.'
 }
 Write-Host 'CopiMineClient heartbeat validation passed.'

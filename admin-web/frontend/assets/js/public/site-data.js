@@ -186,23 +186,45 @@ export async function loadPublicModsPageData() {
 }
 
 export async function loadPublicHomepageData(authState = {}) {
-  const [home, server, shops] = await Promise.all([
-    loadPublicHomePageData(),
-    loadPublicServerPageData(),
-    loadPublicShopsPageData(authState),
+  // The home page used to call the home, server and shops loaders together.
+  // That repeated config/status/CMS requests and still fetched the retired
+  // modpack endpoint even though the home UI only links to Launcher.
+  const [
+    configPayload,
+    statusPayload,
+    budgetPayload,
+    historyPayload,
+    presidentPayload,
+    arCatalogPayload,
+    donationCatalogPayload,
+    cmsPayload,
+  ] = await Promise.all([
+    fetchConfigPayload(),
+    fetchStatusPayload(),
+    fetchBudgetPayload(),
+    fetchBudgetHistoryPayload(6),
+    fetchPresidentPayload(),
+    fetchArCatalogPayload(),
+    fetchDonationCatalogPayload(),
+    fetchCmsPayload(),
   ]);
 
+  const shouldLoadOwnership = Boolean(authState?.cookieAuth && authState?.role === "player" && authState?.linked);
+  const ownership = shouldLoadOwnership
+    ? await loadPlayerShopOwnership()
+    : { artifacts: { purchases: [], pending: [] }, owned: { claims: [], instances: [] } };
+
   return {
-    config: home.config,
-    status: home.status,
-    modpack: home.modpack,
-    budget: server.budget,
-    history: server.history,
-    president: server.president,
-    arCatalog: shops.arCatalog,
-    donationCatalog: shops.donationCatalog,
-    ownership: shops.ownership,
-    cms: home.cms || shops.cms || { items: [], sections: [] },
+    config: configPayload?.data || {},
+    status: statusPayload?.data || {},
+    modpack: {},
+    budget: budgetPayload?.data || {},
+    history: historyPayload?.data || {},
+    president: presidentPayload?.data || {},
+    arCatalog: arCatalogPayload?.data || { items: [] },
+    donationCatalog: donationCatalogPayload?.data || { items: [] },
+    ownership,
+    cms: cmsPayload || { items: [], sections: [] },
   };
 }
 
@@ -231,9 +253,12 @@ export async function loadPublicAuthState() {
 }
 
 export async function loadPublicTreasuryFallback() {
-  const { budget, history } = await loadPublicHomepageData();
+  const [budgetPayload, historyPayload] = await Promise.all([
+    fetchBudgetPayload(),
+    fetchBudgetHistoryPayload(6),
+  ]);
   return {
-    budgetPayload: { ok: true, data: budget },
-    historyPayload: { ok: true, data: history },
+    budgetPayload,
+    historyPayload,
   };
 }

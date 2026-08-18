@@ -1,0 +1,26 @@
+{
+  "branch": "codex/copimine-launcher-v1",
+  "baseSha": "a2ccda11d79d5a4343ec02817a55a5c5b0e1c19a",
+  "headShaAtCapture": "80962c674a2fb5c99b8810055c6dff74d4421e7e",
+  "installedDotnetSdks": [
+    "9.0.306",
+    "10.0.204"
+  ],
+  "baselineTests": {
+    "command": "D:\\Desktop\\Copimine\\.venvs\\copimine-launcher-v1\\Scripts\\python.exe -m pytest -q",
+    "passed": 294,
+    "failed": 7,
+    "warnings": 5
+  },
+  "missingGeneratedArtifactPaths": [
+    "resourcepacks/build/_stage/assets/minecraft/models/item/bow.json",
+    "resourcepacks/build/_stage/assets/copimine/models/item/artifacts/teleport_bow.json",
+    "minecraft/server/plugins/GrimAC.jar",
+    "thirdparty/grim-creative-patch/build/GrimAC-2.3.74-40684fb-creative-fix.jar",
+    "resourcepacks/build/CopiMineResourcePack.zip"
+  ],
+  "preExistingNonArtifactFailures": [
+    "tests/test_local_stack_and_treasury_controls_contract.py::test_local_stack_uses_isolated_database_and_waits_for_slow_minecraft_rcon",
+    "tests/test_local_stack_and_treasury_controls_contract.py::test_local_stack_serves_the_built_resource_pack_to_minecraft"
+  ]
+}

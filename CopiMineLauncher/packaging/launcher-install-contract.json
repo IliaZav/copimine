@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "bindingRequired": false,
+  "flow": "browser",
+  "manualCodeEntry": false,
+  "allowSkip": true,
+  "playBlockedUntilLinked": false,
+  "callbackProtocol": "copimine",
+  "preserveLauncherDataOnUpdate": true,
+  "firstRunSettings": "minecraft-defaults",
+  "preserveExistingOptions": true,
+  "minecraftDefaults": {
+    "lang": "ru_ru",
+    "narrator": "0",
+    "soundCategory_master": "0.15"
+  }
+}

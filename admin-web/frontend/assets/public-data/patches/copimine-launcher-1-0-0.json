@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-15-launcher-1.0.0",
+  "slug": "copimine-launcher-1-0-0",
+  "version": "1.0.0",
+  "title": "CopiMine Launcher 1.0.0",
+  "publishedAt": "2026-08-15T12:00:00Z",
+  "summary": [
+    "Добавлена установка отдельного Minecraft 1.21.1 с Fabric Loader 0.19.3.",
+    "Файлы клиента синхронизируются по подписанному manifest с восстановлением после сбоя.",
+    "Сервер mc.copimine.ru добавляется автоматически без удаления других серверов."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "launcher-install",
+        "title": "Установка игры",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Launcher устанавливает Java 21 и отдельный экземпляр игры, не изменяя пользовательскую основную папку Minecraft."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "transactional-reconcile",
+        "title": "Обновление файлов",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Незавершённая или повреждённая загрузка не заменяет рабочую версию managed-файла."
+          }
+        ]
+      },
+      {
+        "id": "client-ready-ack",
+        "title": "Вход на сервер",
+        "changes": [
+          {
+            "kind": "verified",
+            "text": "Совместимый CopiMineClient подтверждает protocolVersion коротким READY→ACK handshake."
+          }
+        ]
+      }
+    ],
+    "bugfixes": [
+      {
+        "id": "legacy-route",
+        "title": "Старые ссылки",
+        "changes": [
+          {
+            "kind": "changed",
+            "text": "Старая страница модпака ведёт к установщику Launcher, а ручной ZIP остаётся только аварийным legacy-артефактом."
+          }
+        ]
+      }
+    ]
+  },
+  "items": [
+    {
+      "itemId": "eternal_totem",
+      "displayName": "Eternal Totem",
+      "iconUrl": "/assets/patch-items/eternal_totem.webp",
+      "changes": [
+        {
+          "kind": "added",
+          "text": "Карточка предмета в патчноуте использует иконку из актуального resource pack mapping."
+        }
+      ]
+    }
+  ],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-15T12:30:00Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-0.html"
+}

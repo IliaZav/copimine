@@ -3,6 +3,8 @@ import { buildCsvContent } from "./shared/csv.js";
 import { resolveDonationBalance } from "./shared/player-detail-values.js";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
 import { createAdminCmsPages } from "./admin/cms-pages.js";
+import { createAdminLauncherPages } from "./admin/launcher-pages.js";
+import { createAdminNewsPages } from "./admin/news-pages.js";
 import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r12";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
@@ -10,7 +12,7 @@ import { createPlayerAccountPages } from "./player/account-pages.js";
 import { createPlayerArtifactPages } from "./player/artifact-pages.js";
 import { createPlayerDonationPages } from "./player/donation-pages.js";
 import { createPlayerTreasuryPages } from "./player/treasury-pages.js";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -226,7 +228,7 @@ const navGroups = [
       ["players", "Игроки", "Профили и действия", "И"],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
-      ["artifacts", "Лавки", "Каталог, точки в мире, покупки и выдача", "Л"],
+      ["artifacts", "Артефакты", "Каталог, точки в мире, покупки и выдача", "А"],
       ["elections", "Выборы", "Заявки, дебаты и голосование", "В"]
     ]
   },
@@ -249,6 +251,8 @@ const navGroups = [
       ["security", "Безопасность", "Права, сессии и доступ", "Б"],
       ["sources", "Источники", "Плагины, файлы и реестр", "И"],
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
+      ["launcher", "Launcher", "Релизы, моды и статистика доставки", "L"],
+      ["news", "Новости", "Patch notes и item-aware изменения", "N"],
       ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
@@ -261,12 +265,12 @@ const pageMeta = Object.fromEntries(
 
 navGroups[0].items.splice(4, 0, [
   "shops",
-  "\u041b\u0430\u0432\u043a\u0438",
+  "Каталоги",
   "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c",
   "L"
 ]);
 pageMeta.shops = {
-  title: "\u041b\u0430\u0432\u043a\u0438",
+  title: "Каталоги",
   subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c"
 };
 
@@ -332,6 +336,8 @@ const adminSearchAliases = {
   elections: "выборы заявки кандидаты дебаты голосование блоки президент срок результаты",
   requests: "заявки обращения жалобы книга рассмотреть одобрить отклонить discord дискорд",
   "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
+  launcher: "launcher лаунчер релиз моды manifest манифест обновления публикация откат статистика загрузки",
+  news: "новости patch notes патчноуты релиз изменения предметы item textures текстуры",
   cms: "cms контент новости баннеры правила faq картинки страницы",
   admins: "админы команда доступ регистрация роли младший owner",
   security: "безопасность csrf сессии whitelist вайтлист доступ ip",
@@ -352,20 +358,13 @@ const adminSearchSectionItems = [
   { id: "players", target: "players-profile", title: "Профиль игрока", subtitle: "Профиль, инвентарь и действия", group: "Игроки", haystack: "игрок профиль инвентарь действия эффекты timeline", focusNeedle: "Игроки" },
   { id: "security", target: "security-access", title: "Доступ и сессии", subtitle: "Доступ, сессии и защита", group: "Безопасность", haystack: "доступ сессии csrf ip security auth", focusNeedle: "Доступ" },
   { id: "narcotics-recipes", target: "recipes-editor", title: "Редактор рецептов", subtitle: "Котёл, ингредиенты и результат", group: "Наркотики", haystack: "рецепты котёл варка ингредиенты жужево editor", focusNeedle: "Рецепты" },
+  { id: "launcher", target: "launcher-overview", title: "Launcher", subtitle: "Релизы, моды, подпись и статистика", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Launcher" },
+  { id: "news", target: "launcher-news-editor", title: "Новости Launcher", subtitle: "Patch notes и item-aware текстуры", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости Launcher" },
   { id: "cms", target: "cms-content", title: "CMS и баннеры", subtitle: "Тексты, баннеры и страницы", group: "CMS", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "CMS" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
 
 adminSearchAliases.shops = "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d \u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442\u044b donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433 \u0446\u0435\u043d\u044b \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c";
-adminSearchSectionItems.unshift({
-  id: "shops",
-  target: "shops-overview",
-  title: "\u041b\u0430\u0432\u043a\u0438",
-  subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438 \u0432 \u043e\u0434\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435",
-  group: "\u041b\u0430\u0432\u043a\u0438",
-  haystack: "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433",
-  focusNeedle: "\u041b\u0430\u0432\u043a\u0438"
-});
 
 function fuzzyContains(text, query) {
   const normalized = cleanText(text).toLowerCase().replace(/ё/g, "е");
@@ -2771,6 +2770,7 @@ async function login(event) {
   event.preventDefault();
   if ($("loginError")) $("loginError").textContent = "";
   try {
+    const launcherReturn = launcherReturnHrefFromAuthSearch();
     const isRegister = isRegisterPage();
     const payload = { username: $("username").value.trim(), password: $("password").value };
     if (isRegister) payload.minecraft_name = $("playerMinecraftName").value.trim();
@@ -2784,6 +2784,10 @@ async function login(event) {
     state.role = data.role || "player";
     state.authRole = state.role;
     state.user = data.account || { username: data.username, role: state.role };
+    if (launcherReturn) {
+      window.location.replace(launcherReturn);
+      return;
+    }
     redirectToRoleHome(true);
   } catch (err) {
     if ($("loginError")) $("loginError").textContent = err.message;
@@ -2859,7 +2863,12 @@ async function bootAuthed(options = {}) {
     state.authRole = state.role;
     if (isAuthLandingPage()) {
       renderPublicAuthState();
-      redirectToRoleHome(true);
+      const launcherReturn = launcherReturnHrefFromAuthSearch();
+      if (launcherReturn) {
+        window.location.replace(launcherReturn);
+      } else {
+        redirectToRoleHome(true);
+      }
       return;
     }
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
@@ -2869,7 +2878,8 @@ async function bootAuthed(options = {}) {
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     if (isCabinetPage()) {
-      window.location.replace(authLandingHref("signin"));
+      const launcherReturn = launcherBindingHrefFromSearch(window.location.search);
+      window.location.replace(authLandingHref("signin", launcherReturn));
       return;
     }
     logout(false);
@@ -5838,26 +5848,65 @@ async function loadPlayerLink() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   const linked = Boolean(state.user.linked);
-  setView(`
-    <section class="layout-grid grid-2">
-      ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
-        ["Логин сайта", state.user.username || "—"],
-        ["Minecraft-ник", state.user.minecraftName || "—"],
-        ["Привязан", linked],
-        ["Создан", dt(state.user.createdAt)]
-      ]))}
-      ${panel("Привязка", "Запроси код в игре и подтверди его здесь.", safetyRail([
-        ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
-        ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
-        ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
-      ]))}
-    </section>
+  const search = new URLSearchParams(window.location.search || "");
+  const launcherChallenge = search.get("launcher_challenge")?.trim() || "";
+  const launcherCode = search.get("launcher_code")?.trim() || "";
+  const launcherNick = search.get("launcher_nick")?.trim() || "";
+  const hasLauncherAuthorization = Boolean(launcherChallenge && launcherCode);
+  let launcherAuthorization = null;
+  if (hasLauncherAuthorization) {
+    try {
+      await api("/api/player/launcher/link/authorize", {
+        method: "POST",
+        body: JSON.stringify({ challenge_id: launcherChallenge, code: launcherCode })
+      });
+      launcherAuthorization = { ok: true };
+      // The Launcher is already polling, so this hand-off is best effort. It
+      // lets browsers which registered the protocol return to the app without
+      // requiring the player to copy a code or click another button.
+      window.setTimeout(() => {
+        try {
+          window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(launcherChallenge)}`;
+        } catch (_) {
+          // A browser may block custom protocols; the success message remains
+          // visible and the Launcher polling path still completes the link.
+        }
+      }, 120);
+      try {
+        window.history.replaceState({}, document.title, "/cabinet/link.html");
+      } catch (_) {
+        // History APIs can be unavailable in an embedded or restricted view.
+      }
+    } catch (err) {
+      launcherAuthorization = { ok: false, message: err.message || "Не удалось подтвердить Launcher." };
+    }
+  }
+  const requestedNick = /^[A-Za-z0-9_]{3,16}$/.test(launcherNick)
+    ? launcherNick
+    : (state.user.minecraftName || "");
+  const launcherPanel = hasLauncherAuthorization
+    ? panel(
+      launcherAuthorization?.ok ? "Launcher привязан" : "Привязка Launcher не завершена",
+      launcherAuthorization?.ok
+        ? "Сайт подтвердил вход в ваш аккаунт."
+        : "Не удалось подтвердить запрос Launcher.",
+      launcherAuthorization?.ok
+        ? '<div class="notice">Launcher привязан. Это окно можно закрыть.</div>'
+        : `<div class="notice error">${esc(launcherAuthorization?.message || "Повтори авторизацию из Launcher.")}</div>`
+    )
+    : panel("Привязка Launcher", "Запусти привязку из Launcher и войди на сайте.", safetyRail([
+      ["1. Нажми кнопку в Launcher", "Откроется эта страница сайта.", "good"],
+      ["2. Войди в аккаунт", "После входа сайт подтвердит запрос автоматически.", "neutral"],
+      ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
+    ]));
+  const manualLinkPanels = hasLauncherAuthorization ? "" : `
     <section class="layout-grid grid-2">
       ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
         <div class="form-grid">
-          <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
+          <input id="linkMinecraftName" value="${esc(requestedNick)}" placeholder="Minecraft-ник на сервере" />
           <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
         </div>
+        ${launcherNick ? '<div class="notice">Launcher передал новый ник. Для автоматической привязки достаточно войти в аккаунт сайта; код вводить не нужно. Пароль сайта и AuthMe не передаются в Launcher.</div>' : ""}
         <div class="spacer-12"></div>
         ${playerLinkSummary(state.playerLinkRequest)}
       `)}
@@ -5868,7 +5917,20 @@ async function loadPlayerLink() {
         </div>
         ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
       `)}
+    </section>`;
+  setView(`
+    <section class="layout-grid grid-2">
+      ${panel("Статус привязки", hasLauncherAuthorization
+        ? "Launcher связывается с аккаунтом сайта после обычного входа. Код вводить не нужно."
+        : "Minecraft-ник подтверждается кодом из игры.", kv([
+        ["Логин сайта", state.user.username || "—"],
+        ["Minecraft-ник", state.user.minecraftName || "—"],
+        ["Привязан", linked],
+        ["Создан", dt(state.user.createdAt)]
+      ]))}
+      ${launcherPanel}
     </section>
+    ${manualLinkPanels}
   `);
 }
 
@@ -5963,6 +6025,8 @@ window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
 let playerDonationPages;
 let adminCommercePages;
 let adminCmsPages;
+let adminLauncherPages;
+let adminNewsPages;
 let adminNarcoticsRecipePages;
 let pluginRegistryPages;
 let playerAccountPages;
@@ -6026,6 +6090,51 @@ function getAdminCmsPages() {
     });
   }
   return adminCmsPages;
+}
+
+function getAdminLauncherPages() {
+  if (!adminLauncherPages) {
+    adminLauncherPages = createAdminLauncherPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      pill,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminLauncherPages;
+}
+
+function getAdminNewsPages() {
+  if (!adminNewsPages) {
+    adminNewsPages = createAdminNewsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminNewsPages;
 }
 
 function getAdminNarcoticsRecipePages() {
@@ -6502,6 +6611,8 @@ async function loadCurrent(silent = false) {
     investigations: loadInvestigations,
     sources: loadSources,
     "narcotics-recipes": () => getAdminNarcoticsRecipePages().loadRecipes(),
+    launcher: () => getAdminLauncherPages().loadLauncher(),
+    news: () => getAdminNewsPages().loadNews(),
     cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
@@ -6586,7 +6697,10 @@ function wire() {
 async function boot() {
   wire();
   setBootState("loading");
-  await refreshCsrfCookie();
+  // CSRF is warmed for the first mutation, but it must not delay the auth
+  // decision. Guests should reach sign-in immediately when the backend is
+  // slow or unavailable.
+  void refreshCsrfCookie();
   await bootAuthed({ quiet: true });
 }
 
@@ -6600,6 +6714,19 @@ Object.assign(dataClickHandlers, {
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
+  adminLauncherUpload: () => getAdminLauncherPages().adminLauncherUpload(),
+  adminLauncherSaveMod: (...args) => getAdminLauncherPages().adminLauncherSaveMod(...args),
+  adminLauncherDeleteMod: (...args) => getAdminLauncherPages().adminLauncherDeleteMod(...args),
+  adminLauncherValidate: () => getAdminLauncherPages().adminLauncherValidate(),
+  adminLauncherPublish: () => getAdminLauncherPages().adminLauncherPublish(),
+  adminLauncherRollback: (...args) => getAdminLauncherPages().adminLauncherRollback(...args),
+  adminNewsEdit: (...args) => getAdminNewsPages().adminNewsEdit(...args),
+  adminNewsNew: () => getAdminNewsPages().adminNewsNew(),
+  adminNewsAddItem: () => getAdminNewsPages().adminNewsAddItem(),
+  adminNewsRemoveItem: (...args) => getAdminNewsPages().adminNewsRemoveItem(...args),
+  adminNewsSave: () => getAdminNewsPages().adminNewsSave(),
+  adminNewsPublish: (...args) => getAdminNewsPages().adminNewsPublish(...args),
+  adminNewsDelete: (...args) => getAdminNewsPages().adminNewsDelete(...args),
   adminCmsDisable: (...args) => getAdminCmsPages().adminCmsDisable(...args),
   adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
   adminCmsNew: () => getAdminCmsPages().adminCmsNew(),

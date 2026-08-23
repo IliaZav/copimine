@@ -2314,14 +2314,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setViewRange(64.0F);
-            entity.setDisplayWidth(1.0F);
-            entity.setDisplayHeight(1.0F);
+            // A display exactly inside an opaque block is depth-tested away.
+            // Keep its origin at the block centre, but give the shell a small
+            // symmetric margin so all six faces remain visible without moving
+            // the Core onto the block above.
+            entity.setDisplayWidth(1.10F);
+            entity.setDisplayHeight(1.10F);
             entity.setPersistent(true);
             entity.setGravity(false);
             entity.setInvulnerable(true);
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
-                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.06F, 1.06F, 1.06F), new AxisAngle4f()));
+                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.10F, 1.10F, 1.10F), new AxisAngle4f()));
         });
         tag(display, EVENT_KIND_CORE, 0, false);
     }

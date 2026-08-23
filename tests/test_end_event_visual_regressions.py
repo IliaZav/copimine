@@ -35,17 +35,19 @@ def test_core_and_rune_displays_are_anchored_to_the_surface() -> None:
     assert "private Location runeOverlayLocation(Block floor)" in source
     assert "return floor.getLocation().add(0.5D, 1.0D, 0.5D);" in source
     assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" not in source
-    assert "new Vector3f(1.06F, 1.06F, 1.06F)" in source
+    assert "new Vector3f(1.10F, 1.10F, 1.10F)" in source
+    assert "entity.setDisplayWidth(1.10F);" in source
+    assert "entity.setDisplayHeight(1.10F);" in source
 
 
 def test_rune_model_covers_the_block_top_and_has_a_distinct_occupied_variant() -> None:
     model = json.loads((ROOT / "resourcepacks/src/assets/copimine/models/block/end_event_rune.json").read_text(encoding="utf-8"))
     occupied_model = json.loads((ROOT / "resourcepacks/src/assets/copimine/models/block/end_event_rune_occupied.json").read_text(encoding="utf-8"))
     source = MAIN.read_text(encoding="utf-8")
-    assert model["elements"][0]["from"] == [0.0, 0.03, 0.0]
-    assert model["elements"][0]["to"] == [16.0, 0.5, 16.0]
-    assert occupied_model["elements"][0]["from"] == [0.0, 0.03, 0.0]
-    assert occupied_model["elements"][0]["to"] == [16.0, 0.5, 16.0]
+    assert model["elements"][0]["from"] == [0.0, 0.01, 0.0]
+    assert model["elements"][0]["to"] == [16.0, 2.0, 16.0]
+    assert occupied_model["elements"][0]["from"] == [0.0, 0.01, 0.0]
+    assert occupied_model["elements"][0]["to"] == [16.0, 2.0, 16.0]
     assert occupied_model["textures"]["top"] == "copimine:block/end_event_rune_occupied"
     assert "MODEL_RUNE_OVERLAY_OCCUPIED = 830005" in source
     assert "padOccupants.containsKey(padKey(pad))" in source

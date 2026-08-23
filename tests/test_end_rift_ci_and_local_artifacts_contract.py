@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CI = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 STACK = (ROOT / "scripts/local-stack.ps1").read_text(encoding="utf-8")
 SYNC = ROOT / "scripts/InstallEndRiftLocalArtifacts.ps1"
+PREPARE = ROOT / "scripts/PrepareEndRiftLocalArtifacts.ps1"
 
 
 def test_ci_builds_end_event_after_typed_dependencies_and_runs_its_gate() -> None:
@@ -46,3 +47,11 @@ def test_launcher_artifact_sync_is_tracked_and_verifies_the_pack_before_copying(
         "end_event_pad_occupied",
     ):
         assert marker in sync
+
+
+def test_tracked_local_artifact_prepare_builds_pack_before_syncing_it() -> None:
+    assert PREPARE.exists()
+    prepare = PREPARE.read_text(encoding="utf-8")
+    assert "build-resourcepack.ps1" in prepare
+    assert "InstallEndRiftLocalArtifacts.ps1" in prepare
+    assert "SourceRoot" in prepare and "TargetRoot" in prepare

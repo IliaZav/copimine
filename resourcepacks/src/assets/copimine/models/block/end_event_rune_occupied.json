@@ -1,9 +1,9 @@
 {
   "parent": "minecraft:block/block",
   "textures": {
-    "particle": "copimine:block/end_event_rune",
-    "top": "copimine:block/end_event_rune",
-    "side": "copimine:block/end_event_rune"
+    "particle": "copimine:block/end_event_rune_occupied",
+    "top": "copimine:block/end_event_rune_occupied",
+    "side": "copimine:block/end_event_rune_occupied"
   },
   "elements": [
     {

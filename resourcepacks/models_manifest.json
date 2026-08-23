@@ -360,6 +360,13 @@
       "texture": "copimine:item/end_event_pad"
     },
     {
+      "id": "end_event_pad_occupied",
+      "custom_model_data": 830005,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_pad_occupied",
+      "texture": "copimine:item/end_event_pad_occupied"
+    },
+    {
       "id": "rift_core_shard",
       "custom_model_data": 830004,
       "base_material": "echo_shard",

@@ -45,9 +45,11 @@ function Assert-EndRiftPack {
             'assets/copimine/models/item/end_event_core.json',
             'assets/copimine/models/item/end_event_core_charged.json',
             'assets/copimine/models/item/end_event_pad.json',
+            'assets/copimine/models/item/end_event_pad_occupied.json',
             'assets/copimine/textures/item/end_event_core.png',
             'assets/copimine/textures/item/end_event_core_charged.png',
-            'assets/copimine/textures/item/end_event_pad.png'
+            'assets/copimine/textures/item/end_event_pad.png',
+            'assets/copimine/textures/item/end_event_pad_occupied.png'
         )
         foreach ($entry in $requiredEntries) {
             if ($entries -notcontains $entry) {
@@ -58,7 +60,7 @@ function Assert-EndRiftPack {
         $paperEntry = $archive.GetEntry('assets/minecraft/models/item/paper.json')
         $reader = New-Object System.IO.StreamReader($paperEntry.Open())
         try { $paperJson = $reader.ReadToEnd() } finally { $reader.Dispose() }
-        foreach ($marker in @('830001', '830002', '830003', 'copimine:item/end_event_core', 'copimine:item/end_event_core_charged', 'copimine:item/end_event_pad')) {
+        foreach ($marker in @('830001', '830002', '830003', '830005', 'copimine:item/end_event_core', 'copimine:item/end_event_core_charged', 'copimine:item/end_event_pad', 'copimine:item/end_event_pad_occupied')) {
             if ($paperJson -notmatch [regex]::Escape($marker)) {
                 throw "End Rift paper override is missing $marker"
             }

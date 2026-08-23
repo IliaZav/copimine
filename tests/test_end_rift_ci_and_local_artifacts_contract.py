@@ -26,8 +26,10 @@ def test_local_stack_rejects_a_pack_without_event_assets_or_paper_overrides() ->
     assert "assets/minecraft/models/item/paper.json" in STACK
     assert "copimine:item/end_event_core" in STACK
     assert "copimine:item/end_event_pad" in STACK
+    assert "copimine:item/end_event_pad_occupied" in STACK
     assert "830001" in STACK
     assert "830003" in STACK
+    assert "830005" in STACK
 
 
 def test_launcher_artifact_sync_is_tracked_and_verifies_the_pack_before_copying() -> None:
@@ -41,5 +43,6 @@ def test_launcher_artifact_sync_is_tracked_and_verifies_the_pack_before_copying(
         "assets/minecraft/models/item/paper.json",
         "end_event_core",
         "end_event_pad",
+        "end_event_pad_occupied",
     ):
         assert marker in sync

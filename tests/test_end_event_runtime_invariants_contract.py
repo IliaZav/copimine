@@ -110,7 +110,7 @@ def test_core_and_rune_visuals_never_replace_vanilla_block_materials() -> None:
     assert "coreOverlayLocation(core)" in MAIN
     assert "runeOverlayLocation(floor)" in MAIN
     assert "return core.getLocation().add(0.5D, 0.5D, 0.5D);" in MAIN
-    assert "return floor.getLocation().add(0.5D, 1.42D, 0.5D);" in MAIN
+    assert "return floor.getLocation().add(0.5D, 1.0D, 0.5D);" in MAIN
     assert "core.getLocation().add(0.5D, 1.5D, 0.5D)" not in MAIN
     assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" not in MAIN
     assert "entity.setViewRange(64.0F)" in MAIN

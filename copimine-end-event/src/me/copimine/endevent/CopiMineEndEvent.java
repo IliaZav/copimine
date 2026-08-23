@@ -39,6 +39,7 @@ import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.FinalDrainMath;
 import me.copimine.endevent.domain.PadLayout;
 import me.copimine.endevent.domain.RewardRoster;
+import me.copimine.endevent.domain.ResourceProgressFormatter;
 import me.copimine.worldcore.api.WorldAccessResult;
 import me.copimine.worldcore.api.WorldAccessService;
 import net.kyori.adventure.text.Component;
@@ -144,6 +145,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_CORE_OVERLAY = 830001;
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
     private static final int MODEL_RUNE_OVERLAY = 830003;
+    private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
@@ -1798,11 +1800,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private String resourceProgressText() {
-        List<String> values = new ArrayList<>();
-        for (Map.Entry<String, Integer> entry : resourceRequirements.entrySet()) {
-            values.add(entry.getKey() + "=" + depositedResources.getOrDefault(entry.getKey(), 0) + "/" + entry.getValue());
-        }
-        return String.join(", ", values);
+        return ResourceProgressFormatter.format(resourceRequirements, depositedResources);
     }
 
     private Location coreLocation() {
@@ -2136,11 +2134,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         // The pad coordinate is the air block above this floor.  The custom
-        // rune model is a 0.08..0.45-high slab in a centred FIXED display;
-        // 1.42 places its lower face exactly on the floor's top face.
+        // rune model is a full-width, low slab whose lower face is anchored
+        // to the floor top; the occupied variant is selected from the live
+        // pad roster so a player can see the registration immediately.
         Location displayLocation = runeOverlayLocation(floor);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
-            entity.setItemStack(overlayItem(MODEL_RUNE_OVERLAY, "end_event_pad"));
+            entity.setItemStack(runeOverlayItem(pad));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setViewRange(64.0F);
@@ -2161,7 +2160,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location runeOverlayLocation(Block floor) {
-        return floor.getLocation().add(0.5D, 1.42D, 0.5D);
+        return floor.getLocation().add(0.5D, 1.0D, 0.5D);
+    }
+
+    private ItemStack runeOverlayItem(EventSnapshot.PadSnapshot pad) {
+        boolean occupied = padOccupants.containsKey(padKey(pad));
+        return overlayItem(occupied ? MODEL_RUNE_OVERLAY_OCCUPIED : MODEL_RUNE_OVERLAY,
+                occupied ? "end_event_pad_occupied" : "end_event_pad");
+    }
+
+    private void refreshRuneOverlayVisuals() {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+            Location expected = runeOverlayLocation(floor);
+            for (Entity entity : ownedEntities.values()) {
+                if (!(entity instanceof ItemDisplay display)
+                        || !EVENT_KIND_PAD.equals(readString(display, keyKind))
+                        || !display.getWorld().equals(world)
+                        || display.getLocation().distanceSquared(expected) > 0.001D) {
+                    continue;
+                }
+                display.setItemStack(runeOverlayItem(pad));
+                break;
+            }
+        }
     }
 
     private ItemStack overlayItem(int customModelData, String modelId) {
@@ -2378,12 +2404,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updatePadOccupancy() {
+        Map<String, UUID> previousOccupants = new LinkedHashMap<>(padOccupants);
         padOccupants.clear();
         if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
+            if (!previousOccupants.isEmpty()) {
+                refreshRuneOverlayVisuals();
+            }
             return;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
+            if (!previousOccupants.isEmpty()) {
+                refreshRuneOverlayVisuals();
+            }
             return;
         }
         Set<UUID> assigned = new HashSet<>();
@@ -2406,6 +2439,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 padOccupants.put(padKey(pad), closest.getUniqueId());
                 registerParticipant(closest);
             }
+        }
+        if (!previousOccupants.equals(padOccupants)) {
+            refreshRuneOverlayVisuals();
         }
         if (padOccupants.size() == requiredPlayers) {
             beginCountdownIfReady();

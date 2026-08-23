@@ -61,12 +61,14 @@ $endRiftDomainSources = (Get-ChildItem (Join-Path $endRiftRoot 'copimine-end-eve
 
 Invoke-EndRiftStep 'Pure domain tests' {
   & javac -encoding UTF-8 -d $endRiftTestBuild $endRiftDomainSources `
-    (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
-    (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java')
+      (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
   & java -cp $endRiftTestBuild EndRiftAiPolicyTest
+  & java -cp $endRiftTestBuild ResourceProgressFormatterTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `

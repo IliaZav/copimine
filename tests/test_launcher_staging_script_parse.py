@@ -22,3 +22,9 @@ def test_launcher_staging_runner_is_valid_powershell() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_launcher_staging_runner_prints_a_copyable_stop_command() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+
+    assert 'Write-Output "STOP_COMMAND=Stop-Process -Id $($server.Id)"' in source

@@ -17,12 +17,8 @@ New-Item -ItemType Directory -Path $destination -Force | Out-Null
 
 Add-Type -AssemblyName System.Drawing
 
-$navy = [System.Drawing.Color]::FromArgb(9, 20, 30)
 $teal = [System.Drawing.Color]::FromArgb(99, 223, 160)
 $copyBackground = [System.Drawing.Color]::FromArgb(245, 247, 249)
-$copyInk = [System.Drawing.Color]::FromArgb(27, 40, 49)
-$copyMuted = [System.Drawing.Color]::FromArgb(79, 96, 106)
-$fontFamily = New-Object System.Drawing.FontFamily('Segoe UI')
 
 function Draw-Logo([System.Drawing.Graphics] $graphics, [System.Drawing.Image] $logo, [int] $x, [int] $y, [int] $size) {
     $sourceWidth = [Math]::Min($logo.Width, $logo.Height)
@@ -55,8 +51,6 @@ function New-Banner([string] $path) {
         $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(215, $copyBackground.R, $copyBackground.G, $copyBackground.B))), 362, 0, 131, 58)
         $graphics.FillRectangle((New-Object System.Drawing.SolidBrush($teal)), 0, 0, 5, 58)
         Draw-Logo $graphics $logo 18 8 42
-        $graphics.DrawString('COPIMINE LAUNCHER', (New-Object System.Drawing.Font($fontFamily, 13, [System.Drawing.FontStyle]::Bold)), (New-Object System.Drawing.SolidBrush($copyInk)), 76, 10)
-        $graphics.DrawString('Minecraft 1.21.1 · Fabric', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($copyMuted)), 77, 32)
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     }
     finally {
@@ -75,12 +69,17 @@ function New-LogoPanel([string] $path) {
         $copyAreaX = 176
         $graphics.Clear($copyBackground)
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $graphics.SetClip([System.Drawing.Rectangle]::new(0, 0, $copyAreaX, 312))
-        Draw-Cover $graphics $banner $copyAreaX 312
+        $artWidth = 493 - $copyAreaX
+        $graphics.SetClip([System.Drawing.Rectangle]::new($copyAreaX, 0, $artWidth, 312))
+        $graphics.TranslateTransform($copyAreaX, 0)
+        Draw-Cover $graphics $banner $artWidth 312
+        $graphics.ResetTransform()
         $graphics.ResetClip()
-        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(190, $navy.R, $navy.G, $navy.B))), 0, 0, $copyAreaX, 312)
-        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush($teal)), ($copyAreaX - 4), 0, 4, 312)
-        Draw-Logo $graphics $logo 28 82 118
+        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(220, $copyBackground.R, $copyBackground.G, $copyBackground.B))), $copyAreaX, 0, $artWidth, 312)
+        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush($teal)), 0, 0, 4, 312)
+        # Velopack renders only a narrow, fixed strip of this background next
+        # to its standard copy. Keep the mark in the banner instead of
+        # stretching it into a distorted vertical shape here.
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     }
     finally {
@@ -109,5 +108,4 @@ try {
 finally {
     $banner.Dispose()
     $logo.Dispose()
-    $fontFamily.Dispose()
 }

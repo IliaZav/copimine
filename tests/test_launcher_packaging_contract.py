@@ -101,6 +101,30 @@ def test_msi_background_keeps_standard_installer_copy_area_readable() -> None:
     assert "DrawString('Launcher'" not in assets
 
 
+def test_msi_banner_contains_art_only_so_the_installer_does_not_duplicate_copy() -> None:
+    assets = read("scripts/prepare_copimine_installer_assets.ps1")
+
+    assert "DrawString('COPIMINE LAUNCHER'" not in assets
+    assert "DrawString('Minecraft 1.21.1" not in assets
+    assert "FromArgb(190, $navy.R" not in assets
+
+
+def test_msi_logo_panel_does_not_distort_the_icon_in_the_fixed_left_strip() -> None:
+    assets = read("scripts/prepare_copimine_installer_assets.ps1")
+
+    panel = assets.split("function New-LogoPanel", 1)[1].split("$logo =", 1)[0]
+    assert "Draw-Logo" not in panel
+    assert "FillRectangle" in panel
+
+
+def test_installer_welcome_does_not_repeat_velopack_heading() -> None:
+    welcome = read("CopiMineLauncher/packaging/installer-welcome.txt").lstrip()
+
+    assert not welcome.startswith("Добро пожаловать")
+    assert "Minecraft 1.21.1" in welcome
+    assert "выбрать диск и папку установки" in welcome
+
+
 def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:
     stage = read("scripts/stage_copimine_launcher_site.ps1")
 

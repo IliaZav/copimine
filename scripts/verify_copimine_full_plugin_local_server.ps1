@@ -15,7 +15,22 @@ if ([string]::IsNullOrWhiteSpace($ServerRoot)) {
     $ServerRoot = Join-Path $validationRoot 'paper-full-plugins'
 }
 if ([string]::IsNullOrWhiteSpace($ServerLog)) {
-    $ServerLog = Join-Path $ServerRoot 'logs\latest.log'
+    $latestLog = Join-Path $ServerRoot 'logs\latest.log'
+    $consoleLog = Join-Path $ServerRoot 'logs\full-plugin.stdout.log'
+    $ServerLog = $latestLog
+    if (Test-Path -LiteralPath $consoleLog -PathType Leaf) {
+        $latestText = if (Test-Path -LiteralPath $latestLog -PathType Leaf) {
+            Get-Content -LiteralPath $latestLog -Raw
+        } else {
+            ''
+        }
+        # Paper rotates latest.log while the process keeps writing the
+        # redirected console stream. Prefer that stream when startup evidence
+        # is no longer present in the rotated file.
+        if ($latestText -notmatch 'Done \([0-9\.,]+s\)!') {
+            $ServerLog = $consoleLog
+        }
+    }
 }
 if ([string]::IsNullOrWhiteSpace($ManifestPath)) {
     $ManifestPath = Join-Path $ServerRoot 'full-plugin-manifest.json'

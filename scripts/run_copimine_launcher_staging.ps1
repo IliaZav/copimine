@@ -72,4 +72,4 @@ if (-not [string]::IsNullOrWhiteSpace($LauncherPath)) {
     Write-Output "LAUNCHER_COMMAND=`$env:COPIMINE_LAUNCHER_STAGING_BASE_URL=`"$baseUrl`"; .\CopiMineLauncher.App.exe"
 }
 
-Write-Output 'STOP_COMMAND=Stop-Process -Id ' + $server.Id
+Write-Output "STOP_COMMAND=Stop-Process -Id $($server.Id)"

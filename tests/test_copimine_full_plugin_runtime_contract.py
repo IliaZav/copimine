@@ -21,3 +21,10 @@ def test_full_plugin_runtime_verifier_is_manifest_driven_and_validation_guarded(
     assert "PRODUCTION_DATA_MODIFIED=NO" in source
     assert "Could not load" in source
     assert "Disabling" in source
+
+
+def test_full_plugin_runtime_verifier_falls_back_to_console_log_after_paper_rotation() -> None:
+    verifier = (ROOT / "scripts" / "verify_copimine_full_plugin_local_server.ps1").read_text(encoding="utf-8")
+
+    assert "full-plugin.stdout.log" in verifier
+    assert "Done \\(" in verifier

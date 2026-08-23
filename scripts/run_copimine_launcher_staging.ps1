@@ -58,10 +58,8 @@ if (-not [string]::IsNullOrWhiteSpace($LauncherPath)) {
     $startInfo.Environment['COPIMINE_LAUNCHER_STAGING_BASE_URL'] = $baseUrl
     if (-not [string]::IsNullOrWhiteSpace($LocalBindingBaseUrl)) {
         $bindingUri = $null
-        if (-not [Uri]::TryCreate($LocalBindingBaseUrl, [UriKind]::Absolute, [ref]$bindingUri)
-            -or -not $bindingUri.IsLoopback
-            -or -not [string]::Equals($bindingUri.Scheme, [Uri]::UriSchemeHttp, [StringComparison]::OrdinalIgnoreCase)
-            -or -not [string]::IsNullOrEmpty($bindingUri.UserInfo)) {
+        $bindingIsValid = [Uri]::TryCreate($LocalBindingBaseUrl, [UriKind]::Absolute, [ref]$bindingUri) -and $bindingUri.IsLoopback -and [string]::Equals($bindingUri.Scheme, [Uri]::UriSchemeHttp, [StringComparison]::OrdinalIgnoreCase) -and [string]::IsNullOrEmpty($bindingUri.UserInfo)
+        if (-not $bindingIsValid) {
             throw "LocalBindingBaseUrl must be a loopback HTTP URL without credentials."
         }
 

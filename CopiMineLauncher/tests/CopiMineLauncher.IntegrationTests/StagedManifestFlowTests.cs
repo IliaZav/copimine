@@ -102,7 +102,7 @@ public sealed class StagedManifestFlowTests
                 "launcher/stable/instance-manifest.json" => Path.Combine(releaseRoot, "instance-manifest.json"),
                 "launcher/stable/instance-manifest.sig" => Path.Combine(releaseRoot, "instance-manifest.sig"),
                 _ when relative.StartsWith("launcher/files/", StringComparison.Ordinal)
-                    => Path.Combine(releaseRoot, "files", Path.GetFileName(relative)),
+                    => Path.Combine(Path.GetFullPath(Path.Combine(releaseRoot, "..", "files")), Path.GetFileName(relative)),
                 _ => throw new InvalidOperationException($"Unexpected staged request: {request.RequestUri}")
             };
 

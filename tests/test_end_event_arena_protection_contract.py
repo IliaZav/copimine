@@ -106,6 +106,18 @@ def test_runes_are_repaired_while_collect_players_phase_is_live() -> None:
     assert "pads.size()" in maintenance
 
 
+def test_rune_watchdog_anchors_displays_by_block_coordinates_without_full_world_scans() -> None:
+    source = MAIN
+    maintenance = _method_body(source, "private void maintainRitualVisuals()", "private String padKey")
+    refresh = _method_body(source, "private void refreshRuneOverlayVisuals()", "private ItemStack overlayItem")
+    assert "private boolean sameRuneOverlayBlock(ItemDisplay display, Block floor)" in source
+    assert "sameRuneOverlayBlock(display, floor)" in maintenance
+    assert "sameRuneOverlayBlock(display, floor)" in refresh
+    assert "getNearbyEntities" in maintenance
+    assert "world.getEntities()" not in maintenance
+    assert "distanceSquared(expected)" not in refresh
+
+
 def test_command_usage_and_tab_completion_advertise_boundary_preview() -> None:
     assert "arena border <seconds>" in PLUGIN
     tab = _method_body(MAIN, "public List<String> onTabComplete", "private static final class CoreRemovalConfirmHolder")

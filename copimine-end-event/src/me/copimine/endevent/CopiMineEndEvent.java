@@ -2342,6 +2342,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return floor.getLocation().add(0.5D, 1.0D, 0.5D);
     }
 
+    private boolean sameRuneOverlayBlock(ItemDisplay display, Block floor) {
+        if (display == null || floor == null || display.getWorld() == null
+                || !display.getWorld().equals(floor.getWorld())) {
+            return false;
+        }
+        Location location = display.getLocation();
+        return location.getBlockX() == floor.getX()
+                && location.getBlockY() == floor.getY() + 1
+                && location.getBlockZ() == floor.getZ();
+    }
+
     private ItemStack runeOverlayItem(EventSnapshot.PadSnapshot pad) {
         boolean occupied = padOccupants.containsKey(padKey(pad));
         return overlayItem(occupied ? MODEL_RUNE_OVERLAY_OCCUPIED : MODEL_RUNE_OVERLAY,
@@ -2355,12 +2366,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         for (EventSnapshot.PadSnapshot pad : pads) {
             Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
-            Location expected = runeOverlayLocation(floor);
             for (Entity entity : ownedEntities.values()) {
                 if (!(entity instanceof ItemDisplay display)
                         || !EVENT_KIND_PAD.equals(readString(display, keyKind))
-                        || !display.getWorld().equals(world)
-                        || display.getLocation().distanceSquared(expected) > 0.001D) {
+                        || !sameRuneOverlayBlock(display, floor)) {
                     continue;
                 }
                 display.setItemStack(runeOverlayItem(pad));
@@ -2643,13 +2652,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int missing = 0;
         for (EventSnapshot.PadSnapshot pad : pads) {
-            Location expected = runeOverlayLocation(world.getBlockAt(pad.x(), pad.y() - 1, pad.z()));
+            Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+            Location expected = runeOverlayLocation(floor);
             boolean present = false;
-            for (Entity entity : world.getEntities()) {
-                if (entity instanceof ItemDisplay
+            for (Entity entity : world.getNearbyEntities(expected, 1.25D, 1.25D, 1.25D)) {
+                if (entity instanceof ItemDisplay display
                         && EVENT_KIND_PAD.equals(readString(entity, keyKind))
                         && ownedBySession(entity, eventId, generation)
-                        && entity.getLocation().distanceSquared(expected) <= 0.001D) {
+                        && sameRuneOverlayBlock(display, floor)) {
                     present = true;
                     break;
                 }

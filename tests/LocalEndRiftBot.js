@@ -36,6 +36,30 @@ const client = mc.createClient({
 })
 
 let joined = false
+let position = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }
+let positionTimer = null
+
+// minecraft-protocol does not move its local player state when a server
+// teleport arrives. Mirror the vanilla acknowledgement and keep sending the
+// accepted position so a local bot can genuinely stand on a rune.
+client.on('packet', (data, meta) => {
+  if (meta?.name !== 'position') return
+  const relative = flag => Boolean(data.flags && data.flags[flag])
+  position = {
+    x: relative('x') ? position.x + data.x : data.x,
+    y: relative('y') ? position.y + data.y : data.y,
+    z: relative('z') ? position.z + data.z : data.z,
+    yaw: relative('yaw') ? position.yaw + data.yaw : data.yaw,
+    pitch: relative('pitch') ? position.pitch + data.pitch : data.pitch
+  }
+  client.write('teleport_confirm', { teleportId: data.teleportId })
+  if (positionTimer === null) {
+    positionTimer = setInterval(() => {
+      client.write('position_look', { ...position, onGround: true })
+    }, 100)
+  }
+  console.log(`SERVER_POSITION ${username} ${position.x},${position.y},${position.z}`)
+})
 
 client.on('playerJoin', () => {
   joined = true
@@ -65,6 +89,7 @@ client.on('error', (error) => {
 })
 
 client.on('end', () => {
+  if (positionTimer !== null) clearInterval(positionTimer)
   if (!joined) process.exitCode = 1
   console.log(`PLAYER_END ${username}`)
   process.exit()

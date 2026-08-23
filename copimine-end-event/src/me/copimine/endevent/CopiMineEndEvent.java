@@ -2348,6 +2348,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(coreCharged ? MODEL_CORE_CHARGED_OVERLAY : MODEL_CORE_OVERLAY,
                     coreCharged ? "end_event_core_charged" : "end_event_core"));
+            // Keep the custom shell readable on any vanilla block and at any
+            // time of day.  Without an explicit light level the display can
+            // look like an untextured black cube even though the resource
+            // pack model is present.
+            entity.setBrightness(new Display.Brightness(15, 15));
             // The event models are authored as raw block-space cubes.  FIXED
             // applies the item-model fixed transform again in 1.21.1, which
             // leaves the display depth-tested inside the real block.  NONE
@@ -2386,6 +2391,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location displayLocation = runeOverlayLocation(floor);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(runeOverlayItem(pad));
+            entity.setBrightness(new Display.Brightness(15, 15));
             // Runes use the same raw block-space model convention as the Core;
             // NONE is required for the thin slab to render on the floor top.
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);

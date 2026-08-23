@@ -58,3 +58,17 @@ def test_ready_diagnostics_are_structured_without_raw_payload_logging() -> None:
     assert "error.getClass().getSimpleName()" in bridge
     assert "message=" not in bridge
     assert "payload hex" not in bridge.lower()
+
+
+def test_local_gate_matrix_covers_accept_reject_and_minimal_valid_client_profiles() -> None:
+    matrix = read("scripts/run_copimine_client_gate_matrix.ps1")
+    for scenario in (
+        "managed-plus-extra",
+        "no-copimine-client",
+        "no-mods",
+        "copimine-client-plus-fabric-api",
+    ):
+        assert scenario in matrix
+    assert "CLIENT_GATE_MATRIX=PASS" in matrix
+    assert "fabric-api-0.116.11+1.21.1.jar" in matrix
+    assert "The matrix may only mutate an instance below" in matrix

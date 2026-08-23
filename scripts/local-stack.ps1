@@ -569,6 +569,24 @@ function Ensure-ServerRuntimeFiles {
     }
 }
 
+function Get-FileSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha256.Dispose()
+    }
+}
+
 function Sync-LocalFirstPartyPlugins {
     $pluginPairs = @(
         @{ Source = (Join-Path $Root 'copimine-economy-core\CopiMineEconomyCore.jar'); Runtime = (Join-Path $ServerDir 'plugins\CopiMineEconomyCore.jar') },
@@ -585,8 +603,8 @@ function Sync-LocalFirstPartyPlugins {
         }
         $needsCopy = -not (Test-Path -LiteralPath $pair.Runtime)
         if (-not $needsCopy) {
-            $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pair.Source).Hash
-            $runtimeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pair.Runtime).Hash
+            $sourceHash = Get-FileSha256 -Path $pair.Source
+            $runtimeHash = Get-FileSha256 -Path $pair.Runtime
             $needsCopy = $sourceHash -ne $runtimeHash
         }
         if ($needsCopy) {

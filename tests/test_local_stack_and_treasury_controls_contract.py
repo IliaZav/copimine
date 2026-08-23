@@ -36,6 +36,13 @@ def test_local_stack_serves_the_built_resource_pack_to_minecraft():
     assert "Set-ServerProperty -Key 'resource-pack-sha1' -Value $resourcePackSha1" in LOCAL_STACK
 
 
+def test_local_stack_hashes_plugins_without_get_file_hash_cmdlet():
+    """The bundled PowerShell runtime may not ship the Get-FileHash cmdlet."""
+    assert "function Get-FileSha256" in LOCAL_STACK
+    assert "System.Security.Cryptography.SHA256" in LOCAL_STACK
+    assert "Get-FileHash" not in LOCAL_STACK
+
+
 def test_admin_treasury_controls_have_confirmed_balance_edit_and_ledger_removal():
     for marker in (
         "class AdminTreasuryBalanceSetIn(BaseModel):",

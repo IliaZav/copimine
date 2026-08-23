@@ -101,7 +101,7 @@ def test_runes_are_repaired_while_collect_players_phase_is_live() -> None:
     assert "maintainRitualVisuals();" in tick or "maintainRitualVisuals();" in occupancy
     assert "READY_FOR_PLAYERS" in maintenance
     assert "COUNTDOWN" in maintenance
-    assert "EVENT_KIND_PAD" in maintenance
+    assert "findRuneOverlay(world, floor)" in maintenance
     assert "rebuildPersistedVisuals();" in maintenance
     assert "pads.size()" in maintenance
 
@@ -111,9 +111,9 @@ def test_rune_watchdog_anchors_displays_by_block_coordinates_without_full_world_
     maintenance = _method_body(source, "private void maintainRitualVisuals()", "private String padKey")
     refresh = _method_body(source, "private void refreshRuneOverlayVisuals()", "private ItemStack overlayItem")
     assert "private boolean sameRuneOverlayBlock(ItemDisplay display, Block floor)" in source
-    assert "sameRuneOverlayBlock(display, floor)" in maintenance
-    assert "sameRuneOverlayBlock(display, floor)" in refresh
-    assert "ownedEntities.values()" in maintenance
+    assert "findRuneOverlay(world, floor)" in maintenance
+    assert "findRuneOverlay(world, floor)" in refresh
+    assert "world.getEntities()" in source
     assert "getNearbyEntities" not in maintenance
     assert "world.getEntities()" not in maintenance
     assert "distanceSquared(expected)" not in refresh

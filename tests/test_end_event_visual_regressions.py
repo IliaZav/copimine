@@ -54,6 +54,19 @@ def test_rune_model_covers_the_block_top_and_has_a_distinct_occupied_variant() -
     assert "refreshRuneOverlayVisuals" in source
 
 
+def test_visual_repair_uses_loaded_world_entities_after_chunk_unload() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    maintain = source[source.index("private void maintainRitualVisuals"):]
+    refresh = source[source.index("private void refreshRuneOverlayVisuals"):]
+    assert "private boolean hasCoreOverlay(World world, Block core)" in source
+    assert "private ItemDisplay findRuneOverlay(World world, Block floor)" in source
+    assert "world.getEntities()" in maintain
+    assert "hasCoreOverlay(world, core)" in maintain
+    assert "findRuneOverlay(world, floor)" in maintain
+    assert "findRuneOverlay(world, floor)" in refresh
+    assert "phase == EventPhase.UNLOCKED" in maintain
+
+
 def test_resourcepack_maps_idle_and_occupied_runes_without_vanilla_overrides() -> None:
     subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
     pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"

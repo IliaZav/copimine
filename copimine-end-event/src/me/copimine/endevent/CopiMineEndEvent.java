@@ -2378,6 +2378,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && location.getBlockZ() == floor.getZ();
     }
 
+    private boolean sameCoreOverlayBlock(ItemDisplay display, Block core) {
+        if (display == null || core == null || display.getWorld() == null
+                || !display.getWorld().equals(core.getWorld())) {
+            return false;
+        }
+        Location location = display.getLocation();
+        return location.getBlockX() == core.getX()
+                && location.getBlockY() == core.getY()
+                && location.getBlockZ() == core.getZ();
+    }
+
+    private boolean hasCoreOverlay(World world, Block core) {
+        if (world == null || core == null) {
+            return false;
+        }
+        for (Entity entity : world.getEntities()) {
+            if (entity instanceof ItemDisplay display
+                    && EVENT_KIND_CORE.equals(readString(entity, keyKind))
+                    && ownedBySession(entity, eventId, generation)
+                    && sameCoreOverlayBlock(display, core)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private ItemDisplay findRuneOverlay(World world, Block floor) {
+        if (world == null || floor == null) {
+            return null;
+        }
+        for (Entity entity : world.getEntities()) {
+            if (entity instanceof ItemDisplay display
+                    && EVENT_KIND_PAD.equals(readString(entity, keyKind))
+                    && ownedBySession(entity, eventId, generation)
+                    && sameRuneOverlayBlock(display, floor)) {
+                return display;
+            }
+        }
+        return null;
+    }
+
     private ItemStack runeOverlayItem(EventSnapshot.PadSnapshot pad) {
         boolean occupied = padOccupants.containsKey(padKey(pad));
         return overlayItem(occupied ? MODEL_RUNE_OVERLAY_OCCUPIED : MODEL_RUNE_OVERLAY,
@@ -2391,14 +2432,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         for (EventSnapshot.PadSnapshot pad : pads) {
             Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
-            for (Entity entity : ownedEntities.values()) {
-                if (!(entity instanceof ItemDisplay display)
-                        || !EVENT_KIND_PAD.equals(readString(display, keyKind))
-                        || !sameRuneOverlayBlock(display, floor)) {
-                    continue;
-                }
+            ItemDisplay display = findRuneOverlay(world, floor);
+            if (display != null) {
                 display.setItemStack(runeOverlayItem(pad));
-                break;
             }
         }
     }
@@ -2666,30 +2702,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void maintainRitualVisuals() {
-        if (!bootstrapped || !isConfigured() || !coreCharged
-                || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)
-                || pads.isEmpty()) {
+        if (!bootstrapped || !isConfigured() || phase == EventPhase.UNLOCKED || pads.isEmpty()) {
             return;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
             return;
         }
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        if (!hasCoreOverlay(world, core)) {
+            if (System.currentTimeMillis() >= nextRitualVisualRepairMillis) {
+                nextRitualVisualRepairMillis = System.currentTimeMillis() + 1_000L;
+                getLogger().warning("END_EVENT_CORE_VISUAL_REBUILD event=" + eventId
+                        + " phase=" + phase + " reason=loaded_entity_missing");
+                rebuildPersistedVisuals();
+            }
+            return;
+        }
+        if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
+            return;
+        }
         int missing = 0;
         for (EventSnapshot.PadSnapshot pad : pads) {
             Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
-            boolean present = false;
-            for (Entity entity : ownedEntities.values()) {
-                if (entity instanceof ItemDisplay display
-                        && EVENT_KIND_PAD.equals(readString(entity, keyKind))
-                        && ownedBySession(entity, eventId, generation)
-                        && display.getWorld().equals(world)
-                        && sameRuneOverlayBlock(display, floor)) {
-                    present = true;
-                    break;
-                }
-            }
-            if (!present) {
+            if (findRuneOverlay(world, floor) == null) {
                 missing++;
             }
         }

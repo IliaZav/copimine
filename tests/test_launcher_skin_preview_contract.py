@@ -36,6 +36,10 @@ def test_skin_manager_has_dark_dropdown_and_spaced_action_controls():
     xaml = (APP / "SkinManagerWindow.xaml").read_text(encoding="utf-8")
 
     assert 'x:Key="DarkComboBoxTemplate"' in xaml
+    assert 'x:Key="DarkTabControl"' in xaml
+    assert 'x:Key="DarkTabItem"' in xaml
+    assert 'Style="{StaticResource DarkTabControl}"' in xaml
+    assert 'ItemContainerStyle="{StaticResource DarkTabItem}"' in xaml
     assert 'x:Key="ActionButton"' in xaml
     assert 'ItemContainerStyle' in xaml
 

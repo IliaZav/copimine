@@ -94,6 +94,77 @@
       <Setter Property="Template" Value="{StaticResource DarkComboBoxTemplate}" />
       <Setter Property="ItemContainerStyle" Value="{StaticResource DarkComboBoxItem}" />
     </Style>
+    <Style x:Key="DarkTabItem" TargetType="TabItem">
+      <Setter Property="Foreground" Value="{StaticResource LauncherSecondaryText}" />
+      <Setter Property="Background" Value="{StaticResource LauncherButtonSurface}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="11,7" />
+      <Setter Property="Margin" Value="0,0,5,0" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabItem">
+            <Border x:Name="TabHeader"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="6,6,0,0"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter ContentSource="Header"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="TabHeader" Property="Background" Value="{StaticResource LauncherButtonHover}" />
+                <Setter TargetName="TabHeader" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
+                <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+              </Trigger>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="TabHeader" Property="Background" Value="{StaticResource LauncherSurfaceRaised}" />
+                <Setter TargetName="TabHeader" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
+                <Setter Property="Foreground" Value="{StaticResource LauncherAccentBright}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False">
+                <Setter TargetName="TabHeader" Property="Opacity" Value="0.5" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="DarkTabControl" TargetType="TabControl">
+      <Setter Property="Background" Value="{StaticResource LauncherInputSurface}" />
+      <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="TabControl">
+            <Grid KeyboardNavigation.TabNavigation="Local">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+              </Grid.RowDefinitions>
+              <TabPanel Grid.Row="0"
+                        IsItemsHost="True"
+                        Background="Transparent"
+                        KeyboardNavigation.TabNavigation="Local" />
+              <Border Grid.Row="1"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      CornerRadius="0,8,8,8"
+                      Padding="8">
+                <ContentPresenter ContentSource="SelectedContent" />
+              </Border>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="SkinListItem" TargetType="ListBoxItem">
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="Padding" Value="10" />
@@ -166,8 +237,10 @@
             <CheckBox x:Name="SensitiveCheckBox" Content="Показывать чувствительный контент" Foreground="#b1c7ce" Margin="0,0,0,8" />
             <Button Style="{StaticResource ActionButton}" Content="Загрузить каталог" Click="LoadCatalog_Click" />
           </StackPanel>
-          <TabControl Grid.Row="3" Background="{StaticResource LauncherInputSurface}" BorderBrush="{StaticResource LauncherBorder}" BorderThickness="1" Foreground="{StaticResource LauncherPrimaryText}">
-            <TabItem Header="Скины" Padding="10,5">
+          <TabControl Grid.Row="3"
+                      Style="{StaticResource DarkTabControl}"
+                      ItemContainerStyle="{StaticResource DarkTabItem}">
+            <TabItem Header="Скины">
               <ListBox x:Name="CatalogListBox" SelectionChanged="CatalogSelectionChanged" PreviewMouseLeftButtonDown="CatalogCardMouseDown" ItemContainerStyle="{StaticResource SkinListItem}" Background="{StaticResource LauncherInputSurface}" BorderThickness="0" Foreground="{StaticResource LauncherPrimaryText}" ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListBox.ItemTemplate>
                   <DataTemplate>
@@ -192,7 +265,7 @@
                 </ListBox.ItemTemplate>
               </ListBox>
             </TabItem>
-            <TabItem Header="Плащи по нику" Padding="10,5">
+            <TabItem Header="Плащи по нику">
               <Grid Background="{StaticResource LauncherInputSurface}">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />

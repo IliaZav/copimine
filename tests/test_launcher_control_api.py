@@ -129,6 +129,37 @@ def test_public_feed_file_and_telemetry_work_without_database(monkeypatch, tmp_p
         assert telemetry.json()["ok"] is True
 
 
+def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, tmp_path: Path) -> None:
+    """The native Launcher has no browser CSRF cookie by design."""
+    main = load_main(monkeypatch, tmp_path)
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/launcher/link/challenge",
+            json={
+                "device_id": "native-device-1234567890",
+                "minecraft_name": "SmokePlayer",
+                "launcher_version": "1.0.3",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["ok"] is True
+        assert payload["challengeId"]
+        assert payload["pollToken"]
+
+        poll = client.get(
+            "/api/launcher/link/status",
+            params={
+                "challenge_id": payload["challengeId"],
+                "device_id": "native-device-1234567890",
+                "poll_token": payload["pollToken"],
+            },
+        )
+        assert poll.status_code == 200, poll.text
+        assert poll.json()["status"] == "PENDING"
+
+
 def test_admin_launcher_mutation_requires_auth_csrf_and_confirmation(monkeypatch, tmp_path: Path) -> None:
     main = load_main(monkeypatch, tmp_path)
     from backend.launcher_control import ControlPlane

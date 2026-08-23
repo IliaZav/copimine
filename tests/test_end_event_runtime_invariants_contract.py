@@ -109,6 +109,9 @@ def test_core_and_rune_visuals_never_replace_vanilla_block_materials() -> None:
     assert "ItemDisplay.ItemDisplayTransform.NONE" in MAIN
     assert "coreOverlayLocation(core)" in MAIN
     assert "runeOverlayLocation(floor)" in MAIN
+    assert "ensureOverlayChunksLoaded(world)" in MAIN
+    assert "addPluginChunkTicket(this)" in MAIN
+    assert "removePluginChunkTickets(this)" in MAIN
     assert "return core.getLocation().add(0.5D, 0.5D, 0.5D);" in MAIN
     assert "return floor.getLocation().add(0.5D, 1.0D, 0.5D);" in MAIN
     assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" not in MAIN

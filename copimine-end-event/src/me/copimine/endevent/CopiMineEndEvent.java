@@ -515,6 +515,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void forcePhase(EventPhase next, String reason) {
         phase = next;
         stateMachine = new EndEventStateMachine(next);
+        if (next == EventPhase.UNLOCKED) {
+            releaseOverlayChunkTickets();
+        }
         getLogger().info("END_EVENT_STATE forced=" + next + " reason=" + reason);
         saveStateAsync();
     }
@@ -747,6 +750,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onDisable() {
         clearClientEffects();
         cancelSessionTasks();
+        releaseOverlayChunkTickets();
         if (tickTask != null) {
             tickTask.cancel();
         }
@@ -1839,6 +1843,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lootIssuedEntityUuids.clear();
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
+        releaseOverlayChunkTickets();
         saveStateSync();
         message(sender, "&aCore и event-owned руны восстановлены по сохранённым block data.");
     }
@@ -2223,6 +2228,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().warning("Configured End Event world is unavailable: " + worldName);
             return;
         }
+        if (phase == EventPhase.UNLOCKED) {
+            releaseOverlayChunkTickets();
+        } else {
+            ensureOverlayChunksLoaded(world);
+        }
         restoreLegacyMaterializedBlocks(world);
         if (phase == EventPhase.UNLOCKED) {
             removeOwnedVisuals();
@@ -2241,6 +2251,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnCoreText(world);
         getLogger().info("END_EVENT_PHYSICAL_VISUALS core=" + core.getType()
                 + " pads=VANILLA_FLOOR_BLOCKS displays=CORE_OVERLAY_AND_RUNE_OVERLAYS");
+    }
+
+    /**
+     * ItemDisplay entities are stored in their chunks. A configured Core may
+     * be far from spawn with no player nearby, so an unloaded chunk would
+     * make the visual look missing and trigger an endless rebuild loop. Keep
+     * only the Core and rune chunks loaded for the lifetime of this event.
+     */
+    private void ensureOverlayChunksLoaded(World world) {
+        world.removePluginChunkTickets(this);
+        Set<String> requiredChunks = new LinkedHashSet<>();
+        requiredChunks.add((coreX >> 4) + ":" + (coreZ >> 4));
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            requiredChunks.add((pad.x() >> 4) + ":" + (pad.z() >> 4));
+        }
+        for (String key : requiredChunks) {
+            String[] parts = key.split(":", 2);
+            int chunkX = Integer.parseInt(parts[0]);
+            int chunkZ = Integer.parseInt(parts[1]);
+            world.getChunkAt(chunkX, chunkZ, true).addPluginChunkTicket(this);
+        }
+    }
+
+    private void releaseOverlayChunkTickets() {
+        for (World world : Bukkit.getWorlds()) {
+            world.removePluginChunkTickets(this);
+        }
     }
 
     private void restoreLegacyMaterializedBlocks(World world) {

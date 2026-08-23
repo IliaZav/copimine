@@ -40,6 +40,9 @@ def test_core_and_rune_displays_are_anchored_to_the_surface() -> None:
     assert "entity.setDisplayHeight(1.10F);" in source
     assert "ItemDisplay.ItemDisplayTransform.NONE" in source
     assert "ItemDisplay.ItemDisplayTransform.FIXED" not in source
+    assert "world.getChunkAt(chunkX, chunkZ, true)" in source
+    assert "addPluginChunkTicket(this)" in source
+    assert "releaseOverlayChunkTickets()" in source
 
 
 def test_rune_model_covers_the_block_top_and_has_a_distinct_occupied_variant() -> None:

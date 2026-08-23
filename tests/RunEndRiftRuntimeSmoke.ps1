@@ -110,6 +110,11 @@ Assert-Text 'Artifacts loaded' $plugins 'CopiMineArtifacts'
 $status = Invoke-RconCommand 'cmend status'
 Assert-NoConfiguredCore $status
 Assert-Text 'fresh state has no boss' $status 'boss='
+if ($status -match 'coreOverlay=true') {
+  Assert-Text 'core visual status is exposed' $status 'visuals='
+  Assert-Text 'core overlay is present when configured' $status 'coreOverlay=true'
+  Assert-Text 'rune overlays are present when configured' $status 'runes='
+}
 
 $testWave = Invoke-RconCommand 'cmend test wave 1'
 Assert-Text 'test wave refuses missing Core' $testWave 'event world'
@@ -136,8 +141,9 @@ if (Test-Path -LiteralPath $LogPath) {
   $log = (Get-Content -LiteralPath $LogPath -Tail 2500) -join [Environment]::NewLine
   Assert-Text 'End Event services ready' $log 'CopiMineEndEvent services ready'
   Assert-Text 'Artifacts PostgreSQL ready' $log 'Artifacts bridge ready=true postgres=true'
-  if ($log -match 'CopiMineEndEvent failed closed') {
-    throw 'End Event failed closed during local runtime bootstrap.'
+  Assert-Text 'physical core/rune visual path' $log 'END_EVENT_PHYSICAL_VISUALS'
+  if ($log -match 'NoClassDefFoundError|CopiMineEndEvent failed closed') {
+    throw 'End Rift typed dependency or bootstrap failure was found in the local runtime log.'
   }
 }
 

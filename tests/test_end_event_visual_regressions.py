@@ -74,6 +74,15 @@ def test_visual_repair_uses_loaded_world_entities_after_chunk_unload() -> None:
     assert "phase == EventPhase.UNLOCKED" in maintain
 
 
+def test_status_and_rebuild_paths_expose_and_repair_real_core_and_rune_overlays() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    assert "visualStatusText()" in source
+    assert "coreOverlay=" in source
+    assert "runes=" in source
+    charge = source[source.index("private void updateCoreChargeState()"):source.index("private boolean allResourcesComplete()")]
+    assert "rebuildPersistedVisuals();" in charge
+
+
 def test_resourcepack_maps_idle_and_occupied_runes_without_vanilla_overrides() -> None:
     subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
     pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"

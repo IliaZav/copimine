@@ -36,6 +36,21 @@ def test_runtime_smoke_covers_refusal_paths_and_typed_dependencies() -> None:
 def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -> None:
     assert "END_RIFT_BOT_ACTION_DELAY_MS" in BOT
     assert "ACTION ${username} ${command}" in BOT
+    assert "add_resource_pack" in BOT
+    assert "resource_pack_receive" in BOT
+    assert "teleport_confirm" in BOT
+    assert "position_look" in BOT
+
+
+def test_runtime_smoke_exposes_real_core_and_rune_visual_health() -> None:
+    for expected in (
+        "coreOverlay=",
+        "coreOverlay=true",
+        "runes=",
+        "END_EVENT_PHYSICAL_VISUALS",
+        "NoClassDefFoundError",
+    ):
+        assert expected in SMOKE
 
 
 def test_local_start_script_is_bounded_to_the_isolated_runtime() -> None:

@@ -38,11 +38,39 @@ const client = mc.createClient({
 let joined = false
 let position = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }
 let positionTimer = null
+let sessionStarted = false
+
+function startSession () {
+  if (sessionStarted) return
+  sessionStarted = true
+  joined = true
+  console.log(`PLAYER_JOIN ${username}`)
+  client.chat('/register endrift-local endrift-local')
+  for (const delay of [1000, 3000, 6000]) {
+    setTimeout(() => client.chat('/login endrift-local'), delay)
+  }
+  actions.forEach((command, index) => {
+    setTimeout(() => {
+      console.log(`ACTION ${username} ${command}`)
+      client.chat(command)
+    }, actionDelayMs + index * 1500)
+  })
+}
 
 // minecraft-protocol does not move its local player state when a server
 // teleport arrives. Mirror the vanilla acknowledgement and keep sending the
 // accepted position so a local bot can genuinely stand on a rune.
 client.on('packet', (data, meta) => {
+  if (meta?.name === 'login') console.log(`CLIENT_LOGIN ${username}`)
+  if (meta?.name === 'finish_configuration') console.log(`CLIENT_FINISH_CONFIGURATION ${username}`)
+  if (meta?.name === 'disconnect') console.log(`CLIENT_DISCONNECT ${username} ${JSON.stringify(data)}`)
+  if (meta?.name === 'add_resource_pack') {
+    // The local protocol client does not render/download packs.  Report the
+    // optional pack as loaded so Paper can finish configuration and let the
+    // bot exercise the actual event state instead of hanging at the pack UI.
+    console.log(`RESOURCE_PACK ${username} ${data.uuid} ${data.hash}`)
+    client.write('resource_pack_receive', { uuid: data.uuid, result: 0 })
+  }
   if (meta?.name !== 'position') return
   const relative = flag => Boolean(data.flags && data.flags[flag])
   position = {
@@ -61,20 +89,8 @@ client.on('packet', (data, meta) => {
   console.log(`SERVER_POSITION ${username} ${position.x},${position.y},${position.z}`)
 })
 
-client.on('playerJoin', () => {
-  joined = true
-  console.log(`PLAYER_JOIN ${username}`)
-  client.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) {
-    setTimeout(() => client.chat('/login endrift-local'), delay)
-  }
-  actions.forEach((command, index) => {
-    setTimeout(() => {
-      console.log(`ACTION ${username} ${command}`)
-      client.chat(command)
-    }, actionDelayMs + index * 1500)
-  })
-})
+client.on('login', () => console.log(`CLIENT_LOGIN_EVENT ${username}`))
+client.on('playerJoin', startSession)
 
 client.on('chat', (packet) => {
   const text = JSON.stringify(packet)

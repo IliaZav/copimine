@@ -874,6 +874,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " &7roster=&f" + officialRewardRoster.size()
                 + " &7participants=&f" + participantUuids.size()
                 + " &7helpers=&f" + combatHelpers.size());
+        message(sender, "&7visuals=&f" + visualStatusText());
         message(sender, "&7wave=&f" + activeWave + " &7event-mobs=&f" + countLiveOwnedMobs()
                 + " &7boss=&f" + (bossUuid == null ? "none" : bossUuid));
         message(sender, "&7half=&f" + halfHealthTriggered + " &7final=&f" + finalDrainTriggered
@@ -2440,18 +2441,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean hasCoreOverlay(World world, Block core) {
+        return findCoreOverlay(world, core) != null;
+    }
+
+    private ItemDisplay findCoreOverlay(World world, Block core) {
         if (world == null || core == null) {
-            return false;
+            return null;
         }
         for (Entity entity : world.getEntities()) {
             if (entity instanceof ItemDisplay display
                     && EVENT_KIND_CORE.equals(readString(entity, keyKind))
                     && ownedBySession(entity, eventId, generation)
                     && sameCoreOverlayBlock(display, core)) {
-                return true;
+                return display;
             }
         }
-        return false;
+        return null;
     }
 
     private ItemDisplay findRuneOverlay(World world, Block floor) {
@@ -2500,6 +2505,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         meta.addItemFlags(ItemFlag.values());
         item.setItemMeta(meta);
         return item;
+    }
+
+    private int overlayModelData(ItemDisplay display) {
+        if (display == null) {
+            return 0;
+        }
+        ItemStack item = display.getItemStack();
+        if (item == null || !item.hasItemMeta()) {
+            return 0;
+        }
+        Integer customModelData = item.getItemMeta().getCustomModelData();
+        return customModelData == null ? 0 : customModelData;
+    }
+
+    private String visualStatusText() {
+        if (!isConfigured()) {
+            return "coreOverlay=false coreModel=0 runes=0/0 occupied=0";
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return "coreOverlay=false coreModel=0 runes=0/" + pads.size() + " occupied=0 world=unloaded";
+        }
+        ItemDisplay coreDisplay = findCoreOverlay(world, world.getBlockAt(coreX, coreY, coreZ));
+        int runeCount = 0;
+        int occupiedCount = 0;
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            ItemDisplay rune = findRuneOverlay(world, world.getBlockAt(pad.x(), pad.y() - 1, pad.z()));
+            if (rune == null) {
+                continue;
+            }
+            runeCount++;
+            if (overlayModelData(rune) == MODEL_RUNE_OVERLAY_OCCUPIED) {
+                occupiedCount++;
+            }
+        }
+        return "coreOverlay=" + (coreDisplay != null)
+                + " coreModel=" + overlayModelData(coreDisplay)
+                + " runes=" + runeCount + "/" + pads.size()
+                + " occupied=" + occupiedCount;
     }
 
     private void spawnCoreText(World world) {
@@ -5117,7 +5161,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int removed = 0;
         for (World world : Bukkit.getWorlds()) {
             for (Entity entity : new ArrayList<>(world.getEntities())) {
-                if (ownedByEvent(entity, expectedEventId)) {
+                // A previous server process may have persisted a different
+                // session id on the mob. Core removal is the hard boundary,
+                // so every entity carrying one of this plugin's event roles
+                // must disappear, independent of its old generation/session.
+                if (ownedByEvent(entity, expectedEventId) || isEndEventOwnedRole(entity)) {
                     entity.remove();
                     ownedEntities.remove(entity.getUniqueId());
                     finalWaveEntities.remove(entity.getUniqueId());
@@ -5132,6 +5180,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spellServants.clear();
         }
         getLogger().info("END_EVENT_OWNED_CLEANUP event=" + expectedEventId + " generations=all removed=" + removed);
+    }
+
+    private boolean isEndEventOwnedRole(Entity entity) {
+        String kind = readString(entity, keyKind);
+        return EVENT_KIND_CORE.equals(kind) || EVENT_KIND_PAD.equals(kind)
+                || EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_WAVE_MOB.equals(kind)
+                || EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_BOSS.equals(kind)
+                || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind);
     }
 
     private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration) {

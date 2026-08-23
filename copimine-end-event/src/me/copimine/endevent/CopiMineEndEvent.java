@@ -2666,6 +2666,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (!present) {
                 missing++;
+                getLogger().warning("END_EVENT_RUNE_VISUAL_DIAGNOSTIC pad=" + padKey(pad)
+                        + " expected=" + locationText(expected)
+                        + " nearby=" + describeNearbyRitualVisuals(world, expected)
+                        + " owned=" + describeOwnedRitualVisuals(world));
             }
         }
         if (missing > 0 && System.currentTimeMillis() >= nextRitualVisualRepairMillis) {
@@ -2674,6 +2678,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " phase=" + phase + " missing=" + missing + " expected=" + pads.size());
             rebuildPersistedVisuals();
         }
+    }
+
+    private String describeNearbyRitualVisuals(World world, Location expected) {
+        List<String> values = new ArrayList<>();
+        for (Entity entity : world.getNearbyEntities(expected, 1.25D, 1.25D, 1.25D)) {
+            if (entity instanceof ItemDisplay display) {
+                values.add(readString(display, keyKind) + "@" + locationText(display.getLocation())
+                        + ":block=" + display.getLocation().getBlockX() + ","
+                        + display.getLocation().getBlockY() + "," + display.getLocation().getBlockZ());
+            }
+        }
+        return values.isEmpty() ? "none" : String.join("|", values);
+    }
+
+    private String describeOwnedRitualVisuals(World world) {
+        List<String> values = new ArrayList<>();
+        for (Entity entity : ownedEntities.values()) {
+            if (entity instanceof ItemDisplay display && display.getWorld().equals(world)
+                    && EVENT_KIND_PAD.equals(readString(display, keyKind))) {
+                values.add(locationText(display.getLocation()) + ":block="
+                        + display.getLocation().getBlockX() + ","
+                        + display.getLocation().getBlockY() + "," + display.getLocation().getBlockZ());
+            }
+        }
+        return values.isEmpty() ? "none" : String.join("|", values);
     }
 
     private String padKey(EventSnapshot.PadSnapshot pad) {

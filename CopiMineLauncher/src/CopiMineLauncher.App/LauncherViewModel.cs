@@ -42,6 +42,7 @@ public partial class LauncherViewModel : ObservableObject
     private readonly ILauncherBindingClient? launcherBindingClient;
     private readonly LauncherBindingStateStore launcherBindingStateStore;
     private readonly Action<string, string> nicknameChangedNotifier;
+    private readonly Action launcherLinkRequiredNotifier;
     private CancellationTokenSource? operationCancellation;
     private VerifiedSelfUpdate? availableSelfUpdate;
     private bool loadingProfile;
@@ -63,7 +64,8 @@ public partial class LauncherViewModel : ObservableObject
         Action<string, string>? nicknameChangedNotifier = null,
         LauncherSettingsStore? settingsStore = null,
         ILauncherBindingClient? launcherBindingClient = null,
-        LauncherBindingStateStore? launcherBindingStateStore = null)
+        LauncherBindingStateStore? launcherBindingStateStore = null,
+        Action? launcherLinkRequiredNotifier = null)
     {
         this.patchFeedClient = patchFeedClient;
         this.runtimeCoordinator = runtimeCoordinator;
@@ -73,6 +75,7 @@ public partial class LauncherViewModel : ObservableObject
         this.launcherBindingClient = launcherBindingClient;
         this.launcherBindingStateStore = launcherBindingStateStore ?? new LauncherBindingStateStore(LauncherInstallPaths.ResolveLauncherDataRoot());
         this.nicknameChangedNotifier = nicknameChangedNotifier ?? ShowNicknameChangedWarning;
+        this.launcherLinkRequiredNotifier = launcherLinkRequiredNotifier ?? ShowLauncherLinkRequiredWarning;
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
         PatchCards.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPatchCards));
@@ -564,6 +567,18 @@ public partial class LauncherViewModel : ObservableObject
     private async Task RunOperationAsync(bool launch, bool automatic = false)
     {
         TraceStartup($"operation:start:{(launch ? "play" : "repair")}");
+        if (launch && launcherBindingClient is not null && !IsLauncherLinked)
+        {
+            Status = "Сначала привяжите аккаунт";
+            LoadingStage = "Привязка обязательна для запуска";
+            Diagnostic = "LAUNCHER_LINK_REQUIRED: сначала привяжите аккаунт к сайту кнопкой «Привязать аккаунт», затем повторите запуск.";
+            IsDiagnosticOpen = true;
+            LauncherLinkRequired = true;
+            launcherLinkRequiredNotifier();
+            TraceStartup("operation:blocked:launcher-link-required");
+            return;
+        }
+
         if (runtimeCoordinator is null)
         {
             Status = "Runtime pipeline недоступен";
@@ -1032,6 +1047,24 @@ public partial class LauncherViewModel : ObservableObject
             "Новый ник",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    private void ShowLauncherLinkRequiredWarning()
+    {
+        if (Application.Current is null)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            "Перед запуском нужно один раз привязать Launcher к аккаунту на сайте. Нажмите «ОК», чтобы открыть страницу привязки.",
+            "Аккаунт не привязан",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (result == MessageBoxResult.OK)
+        {
+            _ = OpenAccountLinkAsync();
+        }
     }
 
     private static string FormatSelfUpdateDiagnostic(SelfUpdateStatus result) =>

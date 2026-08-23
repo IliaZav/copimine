@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using CopiMineLauncher.Infrastructure.Skins;
 using FluentAssertions;
 using Xunit;
@@ -118,6 +119,56 @@ public sealed class SkinAndCosmeticTests
         capePath.Should().EndWith(Path.Combine("CustomSkinLoader", "LocalSkin", "capes", "Player.png"));
         File.Exists(skinPath).Should().BeTrue();
         File.Exists(capePath).Should().BeTrue();
+
+        var configPath = Path.Combine(temp.Path, "Minecraft", "CustomSkinLoader", "CustomSkinLoader.json");
+        File.Exists(configPath).Should().BeTrue();
+        using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+        config.RootElement.GetProperty("loadlist")[0].GetProperty("name").GetString().Should().Be("LocalSkin");
+    }
+
+    [Fact]
+    public void Custom_skin_loader_local_profile_is_first_and_external_profiles_are_preserved()
+    {
+        using var temp = new TemporaryDirectory();
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+        var configPath = Path.Combine(instanceRoot, "CustomSkinLoader", "CustomSkinLoader.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(configPath)!);
+        File.WriteAllText(configPath, """
+        {
+          "version": "14.26.1",
+          "loadlist": [
+            { "name": "Mojang", "type": "MojangAPI" },
+            { "name": "LocalSkin", "type": "Legacy", "skin": "old/{USERNAME}.png", "cape": "old/{USERNAME}.png" },
+            { "name": "ElyBy", "type": "ElyByAPI" }
+          ]
+        }
+        """);
+
+        CustomSkinLoaderConfigService.EnsureLocalSkinPriority(instanceRoot);
+
+        using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+        var loadlist = config.RootElement.GetProperty("loadlist");
+        loadlist[0].GetProperty("name").GetString().Should().Be("LocalSkin");
+        loadlist[0].GetProperty("skin").GetString().Should().Be("LocalSkin/skins/{USERNAME}.png");
+        loadlist[0].GetProperty("cape").GetString().Should().Be("LocalSkin/capes/{USERNAME}.png");
+        loadlist[0].GetProperty("checkPNG").GetBoolean().Should().BeFalse();
+        loadlist.EnumerateArray().Count(item => item.GetProperty("name").GetString() == "LocalSkin").Should().Be(1);
+        loadlist[1].GetProperty("name").GetString().Should().Be("Mojang");
+        loadlist[2].GetProperty("name").GetString().Should().Be("ElyBy");
+    }
+
+    [Fact]
+    public void Custom_skin_loader_config_is_created_when_the_instance_has_no_config()
+    {
+        using var temp = new TemporaryDirectory();
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+
+        var configPath = CustomSkinLoaderConfigService.EnsureLocalSkinPriority(instanceRoot);
+
+        configPath.Should().Be(Path.Combine(instanceRoot, "CustomSkinLoader", "CustomSkinLoader.json"));
+        using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+        config.RootElement.GetProperty("loadlist")[0].GetProperty("name").GetString().Should().Be("LocalSkin");
+        config.RootElement.GetProperty("enableCape").GetBoolean().Should().BeTrue();
     }
 
     [Fact]

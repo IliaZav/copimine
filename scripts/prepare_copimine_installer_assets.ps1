@@ -18,9 +18,10 @@ New-Item -ItemType Directory -Path $destination -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
 
 $navy = [System.Drawing.Color]::FromArgb(9, 20, 30)
-$panel = [System.Drawing.Color]::FromArgb(18, 35, 50)
 $teal = [System.Drawing.Color]::FromArgb(99, 223, 160)
-$muted = [System.Drawing.Color]::FromArgb(177, 199, 206)
+$copyBackground = [System.Drawing.Color]::FromArgb(245, 247, 249)
+$copyInk = [System.Drawing.Color]::FromArgb(27, 40, 49)
+$copyMuted = [System.Drawing.Color]::FromArgb(79, 96, 106)
 $fontFamily = New-Object System.Drawing.FontFamily('Segoe UI')
 
 function Draw-Logo([System.Drawing.Graphics] $graphics, [System.Drawing.Image] $logo, [int] $x, [int] $y, [int] $size) {
@@ -45,14 +46,17 @@ function New-Banner([string] $path) {
     $bitmap = New-Object System.Drawing.Bitmap(493, 58, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.Clear($navy)
+        # Velopack draws its standard black installer copy on top of this
+        # bitmap. Keep the whole surface light; a dark banner makes every
+        # welcome/readme step unreadable.
+        $graphics.Clear($copyBackground)
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        Draw-Cover $graphics $banner 493 58
-        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(205, $navy.R, $navy.G, $navy.B))), 0, 0, 493, 58)
+        $graphics.DrawImage($banner, [System.Drawing.Rectangle]::new(362, 0, 131, 58))
+        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(215, $copyBackground.R, $copyBackground.G, $copyBackground.B))), 362, 0, 131, 58)
         $graphics.FillRectangle((New-Object System.Drawing.SolidBrush($teal)), 0, 0, 5, 58)
         Draw-Logo $graphics $logo 18 8 42
-        $graphics.DrawString('COPIMINE LAUNCHER', (New-Object System.Drawing.Font($fontFamily, 13, [System.Drawing.FontStyle]::Bold)), (New-Object System.Drawing.SolidBrush($teal)), 76, 10)
-        $graphics.DrawString('Minecraft 1.21.1 · Fabric', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($muted)), 77, 32)
+        $graphics.DrawString('COPIMINE LAUNCHER', (New-Object System.Drawing.Font($fontFamily, 13, [System.Drawing.FontStyle]::Bold)), (New-Object System.Drawing.SolidBrush($copyInk)), 76, 10)
+        $graphics.DrawString('Minecraft 1.21.1 · Fabric', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($copyMuted)), 77, 32)
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     }
     finally {
@@ -65,16 +69,18 @@ function New-LogoPanel([string] $path) {
     $bitmap = New-Object System.Drawing.Bitmap(493, 312, [System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.Clear($navy)
+        # The MSI renderer places its own text over this image. Do not draw a
+        # second text block here and do not put a dark background under the
+        # renderer's black copy.
+        $copyAreaX = 176
+        $graphics.Clear($copyBackground)
         $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        Draw-Cover $graphics $banner 493 312
-        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(185, $navy.R, $navy.G, $navy.B))), 0, 0, 493, 312)
-        Draw-Logo $graphics $logo 34 40 152
-        $graphics.DrawString('COPIMINE', (New-Object System.Drawing.Font($fontFamily, 22, [System.Drawing.FontStyle]::Bold)), (New-Object System.Drawing.SolidBrush($teal)), 214, 86)
-        $graphics.DrawString('Launcher', (New-Object System.Drawing.Font($fontFamily, 16, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)), 216, 123)
-        # Keep the drawing script ASCII-only so it parses identically under
-        # Windows PowerShell 5.1 and PowerShell 7 regardless of file encoding.
-        $graphics.DrawString('Minecraft and mods will be installed in the selected folder.', (New-Object System.Drawing.Font($fontFamily, 9, [System.Drawing.FontStyle]::Regular)), (New-Object System.Drawing.SolidBrush($muted)), 214, 164)
+        $graphics.SetClip([System.Drawing.Rectangle]::new(0, 0, $copyAreaX, 312))
+        Draw-Cover $graphics $banner $copyAreaX 312
+        $graphics.ResetClip()
+        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(190, $navy.R, $navy.G, $navy.B))), 0, 0, $copyAreaX, 312)
+        $graphics.FillRectangle((New-Object System.Drawing.SolidBrush($teal)), ($copyAreaX - 4), 0, 4, 312)
+        Draw-Logo $graphics $logo 28 82 118
         $bitmap.Save($path, [System.Drawing.Imaging.ImageFormat]::Bmp)
     }
     finally {

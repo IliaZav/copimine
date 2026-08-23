@@ -10,8 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE_SCRIPT = ROOT / "scripts" / "stage_copimine_launcher_site.ps1"
 RELEASE_ROOT = ROOT / "artifacts" / "launcher" / "Release"
 PACKAGE_ROOT = RELEASE_ROOT / "packages"
-INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.2.exe"
-MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.2.msi"
+INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.exe"
+MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.msi"
 METADATA = RELEASE_ROOT / "metadata" / "latest.json"
 INSTANCE = RELEASE_ROOT / "instance-current"
 
@@ -88,6 +88,20 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
             import shutil
 
             shutil.rmtree(output)
+
+
+def test_staging_does_not_copy_stale_source_downloads_or_launcher_tree() -> None:
+    stage = STAGE_SCRIPT.read_text(encoding="utf-8")
+
+    assert "Where-Object { $_.Name -notin @('downloads', 'launcher') }" in stage
+
+
+def test_launcher_staging_can_wire_the_disposable_binding_backend() -> None:
+    script = (ROOT / "scripts" / "run_copimine_launcher_staging.ps1").read_text(encoding="utf-8")
+
+    assert "[string] $LocalBindingBaseUrl" in script
+    assert "COPIMINE_LAUNCHER_LOCAL_BASE_URL" in script
+    assert "LocalBindingBaseUrl" in script
 
 
 def test_staging_rejects_metadata_hash_mismatch_before_publish(tmp_path: Path) -> None:

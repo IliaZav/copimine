@@ -23,7 +23,8 @@ def _relative_imports(source: str) -> set[str]:
 def test_cabinet_runtime_import_closure_is_present_in_the_static_site_stage() -> None:
     runtime_source = RUNTIME.read_text(encoding="utf-8")
     stage_script = STAGE_SITE.read_text(encoding="utf-8")
-    assert "Get-ChildItem -LiteralPath $frontendRoot -Force | Copy-Item -Destination $destination -Recurse -Force" in stage_script
+    assert "Get-ChildItem -LiteralPath $frontendRoot -Force" in stage_script
+    assert "Where-Object { $_.Name -notin @('downloads', 'launcher') }" in stage_script
 
     for relative in _relative_imports(runtime_source):
         local = ROOT / "admin-web/frontend/assets/js" / relative

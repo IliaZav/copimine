@@ -10,17 +10,18 @@ CLIENT = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.Infrastructure/Binding/L
 BACKEND = (ROOT / "admin-web/backend/main.py").read_text(encoding="utf-8")
 
 
-def test_play_is_not_blocked_by_optional_launcher_binding():
+def test_play_is_blocked_until_launcher_binding_is_confirmed():
     assert "LauncherBindingRequired" not in VIEW_MODEL
-    assert "LAUNCHER_LINK_REQUIRED" not in VIEW_MODEL
+    assert "LAUNCHER_LINK_REQUIRED" in VIEW_MODEL
     assert "LauncherBindingRequired" not in MAIN_WINDOW
-    assert "MessageBox.Show" not in MAIN_WINDOW
+    assert "MessageBox.Show" in VIEW_MODEL
 
 
-def test_binding_remains_a_browser_only_optional_profile_feature():
+def test_binding_required_warning_offers_the_browser_flow():
     assert "OpenAccountLinkCommand" in VIEW_MODEL
     assert "cabinet/link.html" in VIEW_MODEL
     assert "LauncherLinkRequired" in VIEW_MODEL
+    assert "Привязка аккаунта обязательна перед запуском" in (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml").read_text(encoding="utf-8")
 
 
 def test_binding_browser_allows_only_real_copimine_or_loopback_staging_urls():

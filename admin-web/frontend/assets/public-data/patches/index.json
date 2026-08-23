@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-23-launcher-1.0.3",
+      "slug": "copimine-launcher-1-0-3",
+      "version": "1.0.3",
+      "title": "CopiMine Launcher 1.0.3",
+      "publishedAt": "2026-08-23T18:20:00Z",
+      "summary": [
+        "Установщик ставит Launcher, Java, Minecraft, Fabric и моды в выбранную папку.",
+        "Список серверов Minecraft сохраняется в совместимом формате.",
+        "Локальные скины и плащи сохраняются между запусками."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-3.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-17-launcher-1.0.2",
       "slug": "copimine-launcher-1-0-2",
       "version": "1.0.2",

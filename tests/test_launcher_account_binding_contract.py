@@ -27,14 +27,8 @@ def test_launcher_binding_uses_expiring_single_use_challenge_without_passwords()
     assert "password" not in binding_model.lower()
 
 
-def test_launcher_binding_is_optional_and_does_not_gate_play():
-    """V4 account linking is convenience state, not server admission.
-
-    The old contract required a Launcher-specific device gate before Play.
-    V4 explicitly removed that behavior: a compatible CopiMineClient is the
-    only admission signal, while the optional site link may be completed from
-    the Launcher without blocking an unlinked player from starting Minecraft.
-    """
+def test_launcher_binding_is_required_before_play():
+    """The launcher must complete site binding before it starts Minecraft."""
     for marker in (
         "IsLauncherLinked",
         "LauncherLinkRequired",
@@ -44,7 +38,8 @@ def test_launcher_binding_is_optional_and_does_not_gate_play():
 
     assert "PlayCommand = new AsyncRelayCommand(PlayAsync, CanStartOperation)" in VIEW_MODEL
     assert "private bool CanStartOperation() => !IsBusy;" in VIEW_MODEL
-    assert "LAUNCHER_LINK_REQUIRED" not in VIEW_MODEL
+    assert "LAUNCHER_LINK_REQUIRED" in VIEW_MODEL
+    assert "Привязка аккаунта обязательна перед запуском" in MAIN_WINDOW
 
 
 def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_app():

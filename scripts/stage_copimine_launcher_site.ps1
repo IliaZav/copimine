@@ -178,7 +178,13 @@ if (Test-Path -LiteralPath $destination) {
     Remove-Item -LiteralPath $resolvedDestination -Recurse -Force
 }
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
-Get-ChildItem -LiteralPath $frontendRoot -Force | Copy-Item -Destination $destination -Recurse -Force
+# The checkout may contain historical installer archives and an older launcher
+# runtime under these two directories. They are release inputs, not website
+# source. Copying them first made every new staging tree several gigabytes
+# larger and let stale download links survive beside the current release.
+Get-ChildItem -LiteralPath $frontendRoot -Force |
+    Where-Object { $_.Name -notin @('downloads', 'launcher') } |
+    Copy-Item -Destination $destination -Recurse -Force
 
 $downloadDirectory = Join-Path $destination 'downloads/launcher'
 $metadataDirectory = Join-Path $destination 'assets/public-data/launcher'

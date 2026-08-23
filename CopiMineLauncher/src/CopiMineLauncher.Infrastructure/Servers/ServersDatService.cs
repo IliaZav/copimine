@@ -20,6 +20,9 @@ public sealed class ServersDatService : IServersDatService
     private const string NameTag = "name";
     private const string IpTag = "ip";
     private const string AcceptTexturesTag = "acceptTextures";
+    // Older launcher builds wrote this private tag. Minecraft 1.21.1 does
+    // not tolerate it in servers.dat, so it is only used for migration and
+    // is never emitted again.
     private const string CopiMineManagedTag = "copimineManaged";
 
     public async Task<ServersDatEvidence> EnsureCopiMineServerAsync(string serversDatPath, ManagedServerRecord record, CancellationToken cancellationToken = default)
@@ -37,13 +40,18 @@ public sealed class ServersDatService : IServersDatService
             .OfType<CompoundTag>()
             .Where(server => string.Equals(GetString(server, IpTag), canonicalIp, StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var managedMatches = servers.Items
+        var legacyManagedMatches = servers.Items
             .OfType<CompoundTag>()
             .Where(server => GetByte(server, CopiMineManagedTag) == 1)
             .ToList();
-        var matches = managedMatches.Count > 0 ? managedMatches : exactAddressMatches;
+        var matches = legacyManagedMatches.Count > 0 ? legacyManagedMatches : exactAddressMatches;
 
         var changed = false;
+        foreach (var legacyServer in legacyManagedMatches)
+        {
+            changed |= legacyServer.Values.Remove(CopiMineManagedTag);
+        }
+
         CompoundTag managed;
         if (matches.Count == 0)
         {
@@ -64,14 +72,17 @@ public sealed class ServersDatService : IServersDatService
         changed |= SetString(managed, NameTag, record.DisplayName);
         changed |= SetString(managed, IpTag, canonicalIp);
         changed |= SetByte(managed, AcceptTexturesTag, record.AcceptTextures ? (byte)1 : (byte)0);
-        changed |= SetByte(managed, CopiMineManagedTag, 1);
 
+        // Minecraft 1.21.1 reads servers.dat as raw NBT. Older launcher
+        // builds and some third-party launchers leave gzip-NBT here, so a
+        // valid compressed file must be normalized even when entries match.
+        changed |= document.Compressed;
         if (!changed)
         {
             return new(false, existingCount, matches.Count > 0 ? 1 : 0, path);
         }
 
-        var bytes = WriteRoot(root, document.Compressed, document.RootName);
+        var bytes = WriteRoot(root, compressed: false, rootName: document.RootName);
         var tempPath = path + ".tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken);

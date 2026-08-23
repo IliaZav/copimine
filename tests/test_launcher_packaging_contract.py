@@ -81,6 +81,26 @@ def test_launcher_page_exposes_the_optional_folder_selecting_installer() -> None
     assert "launcherMsiBtn" in render
 
 
+def test_launcher_page_exposes_only_the_folder_selecting_installer() -> None:
+    launcher = read("admin-web/frontend/launcher.html")
+    render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+
+    assert 'id="launcherDownloadBtn"' not in launcher
+    assert launcher.count('id="launcherMsiBtn"') == 1
+    assert "Скачать для Windows" not in launcher
+    assert "launcherDownloadBtn" not in render
+
+
+def test_msi_background_keeps_standard_installer_copy_area_readable() -> None:
+    assets = read("scripts/prepare_copimine_installer_assets.ps1")
+
+    assert "$copyAreaX" in assets
+    assert "FillRectangle" in assets
+    assert "System.Drawing.Color]::FromArgb(245, 247, 249" in assets
+    assert "DrawString('COPIMINE'" not in assets
+    assert "DrawString('Launcher'" not in assets
+
+
 def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:
     stage = read("scripts/stage_copimine_launcher_site.ps1")
 

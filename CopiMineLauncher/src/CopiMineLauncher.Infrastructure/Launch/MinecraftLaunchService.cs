@@ -6,6 +6,7 @@ using CmlLib.Core.ProcessBuilder;
 using CmlLib.Core.VersionLoader;
 using CopiMineLauncher.Core.Launch;
 using CopiMineLauncher.Infrastructure.Provisioning;
+using CopiMineLauncher.Infrastructure.Skins;
 
 namespace CopiMineLauncher.Infrastructure.Launch;
 
@@ -232,6 +233,7 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
         var javaPath = request.JavaExecutablePath ?? launcher.GetDefaultJavaPath()
             ?? throw new InvalidOperationException("No Java runtime is available for Minecraft launch");
         MinecraftSettingsDefaults.EnsureDefaults(request.InstanceRoot);
+        CustomSkinLoaderConfigService.EnsureLocalSkinPriority(request.InstanceRoot);
         var options = new MLaunchOption
         {
             Session = MSession.CreateOfflineSession(request.Username),
@@ -283,6 +285,12 @@ public sealed class MinecraftLaunchService : IMinecraftLaunchService
 
         WriteLog($"START fabric={request.FabricVersionName} java={javaPath}");
         WriteLog($"COMMAND file={process.StartInfo.FileName} cwd={process.StartInfo.WorkingDirectory} args={process.StartInfo.Arguments}");
+        var serversDatPath = Path.Combine(Path.GetFullPath(request.InstanceRoot), "servers.dat");
+        if (File.Exists(serversDatPath))
+        {
+            var header = File.ReadAllBytes(serversDatPath).Take(4).Select(value => value.ToString("X2"));
+            WriteLog($"SERVERS_DAT_HEADER={string.Join(string.Empty, header)}");
+        }
         try
         {
             process.Start();

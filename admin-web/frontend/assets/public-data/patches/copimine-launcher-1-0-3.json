@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-23-launcher-1.0.3",
+  "slug": "copimine-launcher-1-0-3",
+  "version": "1.0.3",
+  "title": "CopiMine Launcher 1.0.3",
+  "publishedAt": "2026-08-23T18:20:00Z",
+  "summary": [
+    "Установщик ставит Launcher, Java, Minecraft, Fabric и моды в выбранную папку.",
+    "Список серверов Minecraft сохраняется в совместимом формате.",
+    "Локальные скины и плащи сохраняются между запусками."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "installer-folder",
+        "title": "Установка",
+        "changes": [
+          {
+            "kind": "changed",
+            "text": "На странице загрузки оставлен установщик MSI с выбором диска и папки. Он включает нужные файлы игры и Java."
+          },
+          {
+            "kind": "fixed",
+            "text": "Светлая область мастера установки больше не конфликтует с чёрным текстом Velopack."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "server-list",
+        "title": "Подключение к CopiMine",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Файл servers.dat записывается в формате, который читает Minecraft 1.21.1. Другие серверы в списке сохраняются."
+          },
+          {
+            "kind": "changed",
+            "text": "Дополнительные пользовательские моды не участвуют в решении admission. Совместимость подтверждает короткий CLIENT_READY handshake CopiMineClient."
+          }
+        ]
+      },
+      {
+        "id": "local-cosmetics",
+        "title": "Скины и плащи",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Выбранные файлы хранятся в папке LauncherData и копируются в отдельные каталоги CustomSkinLoader при подготовке игры."
+          }
+        ]
+      },
+      {
+        "id": "staging-matrix",
+        "title": "Проверки",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Добавлена матрица проверки полного набора, отсутствующего CopiMineClient, пустой папки модов и минимального валидного набора CopiMineClient + Fabric API."
+          }
+        ]
+      }
+    ],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-23T18:20:00Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-3.html"
+}

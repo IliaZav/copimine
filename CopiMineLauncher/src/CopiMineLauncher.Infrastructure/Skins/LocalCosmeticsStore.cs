@@ -16,6 +16,7 @@ public sealed class LocalCosmeticsStore
         skinLibraryRoot = Path.Combine(cosmeticsRoot, "skins");
         capeLibraryRoot = Path.Combine(cosmeticsRoot, "capes");
         cacheRoot = Path.Combine(cosmeticsRoot, "cache");
+        _ = CustomSkinLoaderConfigService.EnsureLocalSkinPriority(this.instanceRoot);
     }
 
     public string GetInstalledPath(string playerName, CosmeticTextureKind kind)

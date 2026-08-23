@@ -217,7 +217,7 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
-    public async Task Play_without_a_linked_account_is_not_blocked_by_launcher_binding_in_v4()
+    public async Task Play_without_a_linked_account_shows_required_binding_warning_and_does_not_launch()
     {
         using var temp = new TemporaryDirectory();
         await CreateReadyInstanceAsync(temp.Path);
@@ -234,9 +234,10 @@ public sealed class LauncherViewModelTests
         await viewModel.InitializeAsync();
         await viewModel.PlayCommand.ExecuteAsync(null);
 
-        runtime.PlayCalls.Should().Be(1);
+        runtime.PlayCalls.Should().Be(0);
         viewModel.IsLauncherLinked.Should().BeFalse();
-        viewModel.Diagnostic.Should().NotContain("LAUNCHER_LINK_REQUIRED");
+        viewModel.Diagnostic.Should().Contain("LAUNCHER_LINK_REQUIRED");
+        viewModel.IsDiagnosticOpen.Should().BeTrue();
     }
 
     [Fact]

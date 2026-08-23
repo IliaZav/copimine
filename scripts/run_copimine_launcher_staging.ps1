@@ -2,16 +2,26 @@
 param(
     [string] $SiteRoot = "$(Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/launcher/Release/site')",
     [int] $Port = 8181,
-    [string] $LauncherPath = ""
+    [string] $LauncherPath = "",
+    [string] $LocalBindingBaseUrl = ""
 )
 
 $ErrorActionPreference = 'Stop'
 
 $site = (Resolve-Path -LiteralPath $SiteRoot -ErrorAction Stop).Path
+$metadataPath = Join-Path $site 'assets/public-data/launcher/latest.json'
+if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+    throw "Staged Launcher metadata is missing: $metadataPath"
+}
+$metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
+$installerName = [System.IO.Path]::GetFileName([string]$metadata.filename)
+if ([string]::IsNullOrWhiteSpace($installerName) -or $installerName -ne [string]$metadata.filename -or $installerName -notmatch '\.exe$') {
+    throw "Staged Launcher metadata contains an unsafe installer filename: $($metadata.filename)"
+}
 foreach ($required in @(
     (Join-Path $site 'launcher/stable/instance-manifest.json'),
     (Join-Path $site 'launcher/stable/instance-manifest.sig'),
-    (Join-Path $site 'downloads/launcher/CopiMineLauncherSetup-1.0.2.exe'),
+    (Join-Path $site "downloads/launcher/$installerName"),
     (Join-Path $site 'Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe')
 )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -46,6 +56,18 @@ if (-not [string]::IsNullOrWhiteSpace($LauncherPath)) {
     $startInfo.WorkingDirectory = Split-Path -Parent $launcher
     $startInfo.UseShellExecute = $false
     $startInfo.Environment['COPIMINE_LAUNCHER_STAGING_BASE_URL'] = $baseUrl
+    if (-not [string]::IsNullOrWhiteSpace($LocalBindingBaseUrl)) {
+        $bindingUri = $null
+        if (-not [Uri]::TryCreate($LocalBindingBaseUrl, [UriKind]::Absolute, [ref]$bindingUri)
+            -or -not $bindingUri.IsLoopback
+            -or -not [string]::Equals($bindingUri.Scheme, [Uri]::UriSchemeHttp, [StringComparison]::OrdinalIgnoreCase)
+            -or -not [string]::IsNullOrEmpty($bindingUri.UserInfo)) {
+            throw "LocalBindingBaseUrl must be a loopback HTTP URL without credentials."
+        }
+
+        $startInfo.Environment['COPIMINE_LAUNCHER_LOCAL_BASE_URL'] = $bindingUri.AbsoluteUri.TrimEnd('/') + '/'
+        Write-Output "LOCAL_BINDING_BASE_URL=$($bindingUri.AbsoluteUri.TrimEnd('/'))"
+    }
     [System.Diagnostics.Process]::Start($startInfo) | Out-Null
     Write-Output "LAUNCHER_STARTED=$launcher"
 } else {

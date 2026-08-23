@@ -28,8 +28,7 @@ function createSummaryList(summary) {
 }
 
 export function renderLauncherMetadata(metadata) {
-  const button = document.getElementById("launcherDownloadBtn");
-  const msiButton = document.getElementById("launcherMsiBtn");
+  const button = document.getElementById("launcherMsiBtn");
   const state = document.getElementById("launcherDownloadStatus");
   const fields = {
     version: document.getElementById("launcherVersion"),
@@ -39,32 +38,20 @@ export function renderLauncherMetadata(metadata) {
     sha: document.getElementById("launcherSha256"),
   };
   text(fields.version, metadata?.version || "—");
-  text(fields.size, metadata ? formatBytes(metadata.sizeBytes) : "—");
+  text(fields.size, metadata ? formatBytes(metadata.msi?.sizeBytes ?? metadata.sizeBytes) : "—");
   text(fields.published, metadata ? formatDate(metadata.publishedAt) : "—");
   text(fields.platform, metadata ? `Windows ${metadata.minimumWindowsBuild}+ · ${metadata.architecture}` : "—");
-  text(fields.sha, metadata?.sha256 || "—");
+  text(fields.sha, metadata?.msi?.sha256 || metadata?.sha256 || "—");
   if (!(button instanceof HTMLAnchorElement) || !state) return;
-  if (!metadata) {
-    button.removeAttribute("href");
-    button.removeAttribute("download");
-    button.setAttribute("aria-disabled", "true");
-    button.classList.add("is-disabled");
-    disableMsiButton(msiButton);
+  if (!metadata?.msi) {
+    disableMsiButton(button);
     state.dataset.state = "error";
-    text(state, "Скачивание временно недоступно. Повторите позже.");
+    text(state, "Установщик с выбором папки временно недоступен.");
     return;
   }
-  button.href = metadata.downloadUrl;
-  button.download = metadata.filename;
-  button.removeAttribute("aria-disabled");
-  button.classList.remove("is-disabled");
-  if (metadata.msi) {
-    configureMsiButton(msiButton, metadata.msi);
-  } else {
-    disableMsiButton(msiButton);
-  }
+  configureMsiButton(button, metadata.msi);
   state.dataset.state = "ready";
-  text(state, `${metadata.filename} · установщик с выбором папки доступен рядом.`);
+  text(state, `${metadata.msi.filename} · выберите папку во время установки.`);
 }
 
 function configureMsiButton(button, msi) {

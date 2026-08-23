@@ -15,6 +15,11 @@ public sealed class MinecraftServerJoinSmokeTests
         var serverPort = int.Parse(Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_PORT")!);
         var serverLog = Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_LOG")!;
         var clientLog = Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_CLIENT_LOG");
+        var cosmeticLog = Path.Combine(instanceRoot, "CustomSkinLoader", "CustomSkinLoader.log");
+        var expectLocalCosmetics = string.Equals(
+            Environment.GetEnvironmentVariable("COPIMINE_SERVER_SMOKE_EXPECT_LOCAL_COSMETICS"),
+            "1",
+            StringComparison.Ordinal);
         var expectedGate = ReadExpectedGate();
         var javaPath = Path.Combine(instanceRoot, ".copimine", "java", "21.0.10", "bin", "java.exe");
 
@@ -27,11 +32,18 @@ public sealed class MinecraftServerJoinSmokeTests
             new ManagedServerRecord("CopiMine", serverHost, serverPort, AcceptTextures: true),
             CancellationToken.None);
         serversEvidence.CopiMineServerCount.Should().Be(1);
+        var serversDatBytes = await File.ReadAllBytesAsync(Path.Combine(instanceRoot, "servers.dat"));
+        serversDatBytes.Length.Should().BeGreaterThan(2);
+        serversDatBytes[0].Should().Be(0x0A);
 
         var startingLength = new FileInfo(serverLog).Length;
-        var clientStartingLength = string.IsNullOrWhiteSpace(clientLog) || !File.Exists(clientLog)
+        var clientAcknowledgementLog = ResolveClientAcknowledgementLog(instanceRoot, clientLog);
+        var clientStartingLength = !File.Exists(clientAcknowledgementLog)
             ? 0L
-            : new FileInfo(clientLog).Length;
+            : new FileInfo(clientAcknowledgementLog).Length;
+        // CustomSkinLoader can rewrite the file to the same byte length, so
+        // a byte offset is not reliable evidence for this provider log.
+        var cosmeticStartingLength = 0L;
         using var httpClient = new HttpClient();
         var service = new MinecraftLaunchService(httpClient);
         var evidence = await service.LaunchAsync(
@@ -66,13 +78,22 @@ public sealed class MinecraftServerJoinSmokeTests
                 result.Should().NotContain("CLIENT_GATE_ACCEPT");
             }
 
-            if (expectedGate == "ACCEPT" && !string.IsNullOrWhiteSpace(clientLog))
+            if (expectedGate == "ACCEPT")
             {
                 var acknowledgement = await WaitForServerLogAsync(
-                    clientLog,
+                    clientAcknowledgementLog,
                     clientStartingLength,
                     "Server accepted protocol=3");
                 acknowledgement.Should().Contain("Server accepted protocol=3");
+            }
+
+            if (expectedGate == "ACCEPT" && expectLocalCosmetics)
+            {
+                var cosmetics = await WaitForServerLogAsync(
+                    cosmeticLog,
+                    cosmeticStartingLength,
+                    "SkinUrl: (LOCAL_LEGACY)");
+                cosmetics.Should().Contain("CapeUrl: (LOCAL_LEGACY)");
             }
         }
         finally
@@ -83,6 +104,19 @@ public sealed class MinecraftServerJoinSmokeTests
                 await evidence.Process.WaitForExitAsync();
             }
         }
+    }
+
+    private static string ResolveClientAcknowledgementLog(string instanceRoot, string? configuredLog)
+    {
+        var clientLog = Path.Combine(Path.GetFullPath(instanceRoot), "logs", "copimineclient.log");
+        if (File.Exists(clientLog))
+        {
+            return clientLog;
+        }
+
+        return string.IsNullOrWhiteSpace(configuredLog)
+            ? clientLog
+            : Path.GetFullPath(configuredLog);
     }
 
     private static async Task<string> WaitForServerLogAsync(
@@ -132,7 +166,10 @@ public sealed class MinecraftServerJoinSmokeTests
         }
 
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        stream.Position = Math.Min(startingLength, stream.Length);
+        // Minecraft and CustomSkinLoader may truncate/recreate their logs on
+        // every launch. If that happened, read the new file from the start
+        // instead of seeking past the newly written evidence.
+        stream.Position = startingLength <= stream.Length ? startingLength : 0;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }

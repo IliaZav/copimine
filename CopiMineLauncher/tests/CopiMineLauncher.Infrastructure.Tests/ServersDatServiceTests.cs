@@ -19,9 +19,10 @@ public sealed class ServersDatServiceTests
         var evidence = await new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
 
         evidence.Changed.Should().BeTrue();
-        CountText(Decompress(path), "mc.copimine.ru:25565").Should().Be(1);
-        CountText(Decompress(path), "CopiMine").Should().Be(1);
-        CountText(Decompress(path), "acceptTextures").Should().Be(1);
+        CountText(ReadPayload(path), "mc.copimine.ru:25565").Should().Be(1);
+        CountText(ReadPayload(path), "CopiMine").Should().Be(1);
+        CountText(ReadPayload(path), "acceptTextures").Should().Be(1);
+        CountText(ReadPayload(path), "copimineManaged").Should().Be(0);
     }
 
     [Fact]
@@ -35,7 +36,7 @@ public sealed class ServersDatServiceTests
             ("CopiMine", "mc.copimine.ru:25565", 99)));
 
         await new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
-        var output = Decompress(path);
+        var output = ReadPayload(path);
 
         CountText(output, "mc.copimine.ru:25565").Should().Be(1);
         CountText(output, "other.example:25565").Should().Be(1);
@@ -57,8 +58,8 @@ public sealed class ServersDatServiceTests
 
         evidence.Changed.Should().BeFalse();
         second.Should().Equal(first);
-        CountText(Decompress(second), "other.example:25565").Should().Be(1);
-        CountText(Decompress(second), "custom").Should().Be(1);
+        CountText(ReadPayload(second), "other.example:25565").Should().Be(1);
+        CountText(ReadPayload(second), "custom").Should().Be(1);
     }
 
     [Fact]
@@ -76,7 +77,7 @@ public sealed class ServersDatServiceTests
     }
 
     [Fact]
-    public async Task Uncompressed_minecraft_servers_dat_is_updated_in_place()
+    public async Task Compressed_minecraft_servers_dat_is_migrated_to_minecraft_raw_nbt_format()
     {
         using var temp = new TemporaryDirectory();
         var path = Path.Combine(temp.Path, "servers.dat");
@@ -86,7 +87,7 @@ public sealed class ServersDatServiceTests
 
         evidence.Changed.Should().BeTrue();
         var output = await File.ReadAllBytesAsync(path);
-        output[0].Should().Be(10);
+        output[0].Should().Be(0x0A);
         CountText(output, "mc.copimine.ru:25565").Should().Be(1);
         CountText(output, "other.example:25565").Should().Be(1);
         CountText(output, "acceptTextures").Should().Be(1);
@@ -101,7 +102,7 @@ public sealed class ServersDatServiceTests
             ("CopiMine", "community.example:25565", 7)));
 
         await new ServersDatService().EnsureCopiMineServerAsync(path, CopiMine);
-        var output = Decompress(path);
+        var output = ReadPayload(path);
 
         CountText(output, "community.example:25565").Should().Be(1);
         CountText(output, "mc.copimine.ru:25565").Should().Be(1);
@@ -121,10 +122,15 @@ public sealed class ServersDatServiceTests
         (await File.ReadAllBytesAsync(path)).Should().Equal(original);
     }
 
-    private static byte[] Decompress(string path) => Decompress(File.ReadAllBytes(path));
+    private static byte[] ReadPayload(string path) => ReadPayload(File.ReadAllBytes(path));
 
-    private static byte[] Decompress(byte[] bytes)
+    private static byte[] ReadPayload(byte[] bytes)
     {
+        if (bytes.Length < 2 || bytes[0] != 0x1F || bytes[1] != 0x8B)
+        {
+            return bytes;
+        }
+
         using var input = new MemoryStream(bytes);
         using var gzip = new GZipStream(input, CompressionMode.Decompress);
         using var output = new MemoryStream();

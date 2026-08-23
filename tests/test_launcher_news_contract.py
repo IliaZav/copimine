@@ -16,7 +16,7 @@ def test_launcher_news_and_legacy_routes_are_static_contracts() -> None:
     news = read("admin-web/frontend/news.html")
     legacy = read("admin-web/frontend/mods.html")
     assert 'data-page-kind="public-launcher"' in launcher
-    assert 'id="launcherDownloadBtn"' in launcher
+    assert 'id="launcherDownloadBtn"' not in launcher
     assert 'id="launcherMsiBtn"' in launcher
     assert 'href="/downloads/CopiMineMods.zip"' not in launcher
     assert 'data-page-kind="public-news"' in news
@@ -54,11 +54,11 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert metadata["schemaVersion"] == 1
     assert metadata["channel"] == "stable"
     assert metadata["architecture"] == "x64"
-    assert metadata["version"] == "1.0.2"
-    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.2.exe"
-    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.2.exe"
-    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.2.msi"
-    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.2.msi"
+    assert metadata["version"] == "1.0.3"
+    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.3.exe"
+    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.3.exe"
+    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.3.msi"
+    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.3.msi"
     assert metadata["msiInstallLocation"] == "choose"
     assert metadata["releaseNotesUrl"].startswith("/news/")
     assert isinstance(metadata["sizeBytes"], int) and metadata["sizeBytes"] > 0

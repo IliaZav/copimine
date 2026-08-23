@@ -2105,14 +2105,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnCoreOverlay(World world, Block core) {
-        // The target block remains the real block selected by the admin;
-        // this core overlay stays above the preserved target block.
-        // Put the display on the top face.  Placing it at block centre makes
-        // the solid vanilla target occlude the custom texture from above.
-        // A half-block lift keeps the custom cube outside the target block's
-        // culling plane.  At the exact integer boundary Minecraft can clip an
-        // ItemDisplay into the vanilla block and make the overlay disappear.
-        Location displayLocation = core.getLocation().add(0.5D, 1.5D, 0.5D);
+        // The target block remains the real block selected by the admin.  A
+        // FIXED block-model ItemDisplay is centred on its entity location, so
+        // the overlay must share the target block's centre rather than sit one
+        // block above it.
+        Location displayLocation = coreOverlayLocation(core);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(coreCharged ? MODEL_CORE_CHARGED_OVERLAY : MODEL_CORE_OVERLAY,
                     coreCharged ? "end_event_core_charged" : "end_event_core"));
@@ -2138,12 +2135,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + floor.getLocation());
             return;
         }
-        // The rune overlay is placed on the floor block, never in the air
-        // rune overlay is placed on the floor block
-        // block used for player occupancy.
-        // Keep the rune just above the physical floor block; integer-height
-        // display origins can be clipped by the block face in the client.
-        Location displayLocation = floor.getLocation().add(0.5D, 1.5D, 0.5D);
+        // The pad coordinate is the air block above this floor.  The custom
+        // rune model is a 0.08..0.45-high slab in a centred FIXED display;
+        // 1.42 places its lower face exactly on the floor's top face.
+        Location displayLocation = runeOverlayLocation(floor);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(MODEL_RUNE_OVERLAY, "end_event_pad"));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
@@ -2159,6 +2154,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     new Vector3f(), new AxisAngle4f(), new Vector3f(1.0F, 1.0F, 1.0F), new AxisAngle4f()));
         });
         tag(display, EVENT_KIND_PAD, 0, false);
+    }
+
+    private Location coreOverlayLocation(Block core) {
+        return core.getLocation().add(0.5D, 0.5D, 0.5D);
+    }
+
+    private Location runeOverlayLocation(Block floor) {
+        return floor.getLocation().add(0.5D, 1.42D, 0.5D);
     }
 
     private ItemStack overlayItem(int customModelData, String modelId) {

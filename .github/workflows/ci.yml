@@ -154,7 +154,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($dir in @('copimine-economy-core','copimine-election-core','copimine-artifacts','copimine-narcotics','copimine-world-core','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
+          foreach ($dir in @('copimine-world-core','copimine-artifacts','copimine-end-event','copimine-economy-core','copimine-election-core','copimine-narcotics','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
             & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
           }
@@ -164,3 +164,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & .\tests\RunCopiMineValidators.ps1
           if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
+      - name: Run End Rift event gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\tests\RunEndRiftEventChecks.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'End Rift event gate failed.' }

@@ -114,7 +114,7 @@ def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_lev
     assert "candidate.setY(center.getBlockY())" in MAIN
     assert "horizontalDistanceSquared" in MAIN
     assert "offCoreLevel" in MAIN
-    assert "rune overlay is placed on the floor block" in MAIN
+    assert "The pad coordinate is the air block above this floor" in MAIN
 
 
 def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact() -> None:

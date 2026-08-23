@@ -522,10 +522,11 @@ function Ensure-LocalResourcePack {
     $builder = Join-Path $Root 'resourcepacks\build-resourcepack.py'
     $pack = Join-Path $Root 'resourcepacks\build\CopiMineResourcePack.zip'
     $sha1File = Join-Path $Root 'resourcepacks\build\CopiMineResourcePack.sha1'
+    $sha256File = Join-Path $Root 'resourcepacks\build\CopiMineResourcePack.sha256'
     $sourceRoot = Join-Path $Root 'resourcepacks\src'
     if (-not (Test-Path -LiteralPath $builder)) { throw "Resource pack builder is missing: $builder" }
 
-    $needsBuild = -not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File)
+    $needsBuild = -not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File) -or -not (Test-Path -LiteralPath $sha256File)
     if (-not $needsBuild) {
         $packTime = (Get-Item -LiteralPath $pack).LastWriteTimeUtc
         $needsBuild = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | Where-Object { $_.LastWriteTimeUtc -gt $packTime }).Count -gt 0
@@ -540,11 +541,44 @@ function Ensure-LocalResourcePack {
         if ($LASTEXITCODE -ne 0) { throw 'Local resource pack build failed. See local-runtime/logs/stack.log.' }
         if ($null -ne $propertiesBytes) { [System.IO.File]::WriteAllBytes($propertiesPath, $propertiesBytes) }
     }
-    if (-not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File)) {
+    if (-not (Test-Path -LiteralPath $pack) -or -not (Test-Path -LiteralPath $sha1File) -or -not (Test-Path -LiteralPath $sha256File)) {
         throw 'Local resource pack build output is missing.'
     }
     $sha1 = (Get-Content -LiteralPath $sha1File -Raw).Trim().ToLowerInvariant()
     if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw 'Local resource pack SHA1 is invalid.' }
+    $sha256 = (Get-Content -LiteralPath $sha256File -Raw).Trim().ToLowerInvariant()
+    if ($sha256 -notmatch '^[0-9a-f]{64}$') { throw 'Local resource pack SHA256 is invalid.' }
+    $actualSha1 = (Get-FileHash -LiteralPath $pack -Algorithm SHA1).Hash.ToLowerInvariant()
+    $actualSha256 = (Get-FileHash -LiteralPath $pack -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($actualSha1 -ne $sha1 -or $actualSha256 -ne $sha256) { throw 'Local resource pack hash does not match its sidecar files.' }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($pack)
+    try {
+        $entries = @($archive.Entries | ForEach-Object FullName)
+        foreach ($entry in @(
+            'assets/minecraft/models/item/paper.json',
+            'assets/copimine/models/item/end_event_core.json',
+            'assets/copimine/models/item/end_event_core_charged.json',
+            'assets/copimine/models/item/end_event_pad.json',
+            'assets/copimine/textures/item/end_event_core.png',
+            'assets/copimine/textures/item/end_event_core_charged.png',
+            'assets/copimine/textures/item/end_event_pad.png'
+        )) {
+            if ($entries -notcontains $entry) { throw "Local resource pack is missing End Rift asset $entry" }
+        }
+        $paperEntry = $archive.GetEntry('assets/minecraft/models/item/paper.json')
+        $reader = New-Object System.IO.StreamReader($paperEntry.Open())
+        try { $paperJson = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        foreach ($marker in @('830001', '830002', '830003', 'copimine:item/end_event_core', 'copimine:item/end_event_core_charged', 'copimine:item/end_event_pad')) {
+            if ($paperJson -notmatch [regex]::Escape($marker)) { throw "Local resource pack is missing paper override $marker" }
+        }
+        if (@($entries | Where-Object { $_ -match '^assets/minecraft/(textures|models)/block/' }).Count -ne 0) {
+            throw 'Local resource pack contains vanilla block overrides.'
+        }
+    } finally {
+        $archive.Dispose()
+    }
     Write-StackLog "Local resource pack is ready: $pack (SHA1 $sha1)."
     return $sha1
 }

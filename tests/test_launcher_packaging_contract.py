@@ -91,13 +91,11 @@ def test_launcher_installer_contract_describes_first_run_minecraft_defaults() ->
     assert '"soundCategory_master": "0.15"' in document
 
 
-def test_launcher_page_exposes_the_optional_folder_selecting_installer() -> None:
+def test_launcher_metadata_keeps_msi_payload_for_the_native_installer() -> None:
     launcher = read("admin-web/frontend/launcher.html")
-    render = read("admin-web/frontend/assets/js/public/launcher-render.js")
     data = read("admin-web/frontend/assets/js/public/launcher-data.js")
-    assert 'id="launcherMsiBtn"' in launcher
     assert "msiDownloadUrl" in data
-    assert "launcherMsiBtn" in render
+    assert 'id="launcherFolderBtn"' in launcher
 
 
 def test_launcher_page_exposes_the_native_folder_picker_installer() -> None:
@@ -115,9 +113,10 @@ def test_launcher_page_exposes_only_the_folder_selecting_installer() -> None:
     render = read("admin-web/frontend/assets/js/public/launcher-render.js")
 
     assert 'id="launcherDownloadBtn"' not in launcher
-    assert launcher.count('id="launcherMsiBtn"') == 1
+    assert 'id="launcherMsiBtn"' not in launcher
     assert "Скачать для Windows" not in launcher
     assert "launcherDownloadBtn" not in render
+    assert "launcherMsiBtn" not in render
 
 
 def test_msi_background_keeps_standard_installer_copy_area_readable() -> None:

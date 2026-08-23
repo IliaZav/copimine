@@ -29,7 +29,6 @@ function createSummaryList(summary) {
 
 export function renderLauncherMetadata(metadata) {
   const folderButton = document.getElementById("launcherFolderBtn");
-  const button = document.getElementById("launcherMsiBtn");
   const state = document.getElementById("launcherDownloadStatus");
   const fields = {
     version: document.getElementById("launcherVersion"),
@@ -39,42 +38,34 @@ export function renderLauncherMetadata(metadata) {
     sha: document.getElementById("launcherSha256"),
   };
   text(fields.version, metadata?.version || "—");
-  text(fields.size, metadata ? formatBytes(metadata.customInstaller?.sizeBytes ?? metadata.msi?.sizeBytes ?? metadata.sizeBytes) : "—");
+  text(fields.size, metadata ? formatBytes(metadata.customInstaller?.sizeBytes ?? metadata.sizeBytes) : "—");
   text(fields.published, metadata ? formatDate(metadata.publishedAt) : "—");
   text(fields.platform, metadata ? `Windows ${metadata.minimumWindowsBuild}+ · ${metadata.architecture}` : "—");
-  text(fields.sha, metadata?.customInstaller?.sha256 || metadata?.msi?.sha256 || metadata?.sha256 || "—");
+  text(fields.sha, metadata?.customInstaller?.sha256 || metadata?.sha256 || "—");
   if (!state) return;
   if (folderButton instanceof HTMLAnchorElement && metadata?.customInstaller) {
-    configureMsiButton(folderButton, metadata.customInstaller);
+    configureDownloadButton(folderButton, metadata.customInstaller);
   } else if (folderButton instanceof HTMLAnchorElement) {
-    disableMsiButton(folderButton);
-  }
-  if (button instanceof HTMLAnchorElement && metadata?.msi) {
-    configureMsiButton(button, metadata.msi);
-  } else if (button instanceof HTMLAnchorElement) {
-    disableMsiButton(button);
+    disableDownloadButton(folderButton);
   }
   if (metadata?.customInstaller) {
     state.dataset.state = "ready";
     text(state, `${metadata.customInstaller.filename} · выберите диск и папку в установщике.`);
-  } else if (metadata?.msi) {
-    state.dataset.state = "ready";
-    text(state, `${metadata.msi.filename} · выберите область установки в MSI.`);
   } else {
     state.dataset.state = "error";
     text(state, "Установщик временно недоступен.");
   }
 }
 
-function configureMsiButton(button, msi) {
+function configureDownloadButton(button, installer) {
   if (!(button instanceof HTMLAnchorElement)) return;
-  button.href = msi.downloadUrl;
-  button.download = msi.filename;
+  button.href = installer.downloadUrl;
+  button.download = installer.filename;
   button.removeAttribute("aria-disabled");
   button.classList.remove("is-disabled");
 }
 
-function disableMsiButton(button) {
+function disableDownloadButton(button) {
   if (!(button instanceof HTMLAnchorElement)) return;
   button.removeAttribute("href");
   button.removeAttribute("download");

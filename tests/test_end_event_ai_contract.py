@@ -128,6 +128,13 @@ def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> No
     assert "target.getBlockY() != anchor.getBlockY()" in MAIN
 
 
+def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_inside_it() -> None:
+    assert "private boolean isCoreBlockPosition(Location location)" in MAIN
+    assert "private Location coreBlockTopLocation()" in MAIN
+    assert "if (isCoreBlockPosition(target))" in MAIN
+    assert "event.setTo(coreBlockTopLocation());" in MAIN
+
+
 def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact() -> None:
     for marker in (
         "launchSpellFlight",

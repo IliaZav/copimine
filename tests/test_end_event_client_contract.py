@@ -24,7 +24,7 @@ def test_end_event_client_has_cleanup_and_optional_control_mixins() -> None:
     mixins = json.loads((CLIENT / "src/main/resources/copimineclient.mixins.json").read_text(encoding="utf-8"))
     assert "KeyboardInputReverseMovementMixin" in mixins["client"]
     assert "EndermanEntityRendererMixin" in mixins["client"]
-    assert "EndermiteEntityRendererMixin" in mixins["client"]
+    assert "SpiderEntityRendererMixin" in mixins["client"]
     assert "ShulkerEntityRendererMixin" in mixins["client"]
     client = (CLIENT / "src/main/java/me/copimine/client/CopiMineClient.java").read_text(encoding="utf-8")
     protocol = (CLIENT / "src/main/java/me/copimine/client/ClientBridgeProtocol.java").read_text(encoding="utf-8")
@@ -41,7 +41,7 @@ def test_end_event_client_texture_is_packaged_source() -> None:
         "end_rift_enderman.png",
         "end_rift_elite.png",
         "end_rift_guardian.png",
-        "end_rift_endermite.png",
+        "end_rift_spider.png",
         "end_rift_shulker.png",
     ):
         texture = texture_dir / name
@@ -56,8 +56,8 @@ def test_end_event_mob_bindings_are_uuid_scoped_and_not_global_overrides() -> No
     assert "END_ENTITY_BIND" in packet
     assert "entityVisuals" in state
     assert "visualForEntity" in state
-    assert "END_RIFT_ENDERMITE_V1" in server
+    assert "END_RIFT_SPIDER_V1" in server
     assert "END_RIFT_SHULKER_V1" in server
     assert "bindEventEntityClientForOnlinePlayers" in server
-    endermite_mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/EndermiteEntityRendererMixin.java").read_text(encoding="utf-8")
-    assert "textures/entity/end_rift_endermite.png" in endermite_mixin
+    spider_mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/SpiderEntityRendererMixin.java").read_text(encoding="utf-8")
+    assert "textures/entity/end_rift_spider.png" in spider_mixin

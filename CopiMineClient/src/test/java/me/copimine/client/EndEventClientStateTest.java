@@ -80,8 +80,8 @@ class EndEventClientStateTest {
     void bindsEventMobVisualsByUuidAndIgnoresStaleUnbind() {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-1", 0L,
-                "mob-uuid", "END_RIFT_ENDERMITE_V1", "control-id"), 100L));
-        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_ENDERMITE_V1"));
+                "mob-uuid", "END_RIFT_SPIDER_V1", "control-id"), 100L));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SPIDER_V1"));
 
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-2", 0L,
                 "mob-uuid", "END_RIFT_SHULKER_V1", "control-id"), 200L));

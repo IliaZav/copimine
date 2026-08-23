@@ -30,7 +30,7 @@ arena:
   containment-radius: 20.0
 
 mobs:
-  endermite:
+  spider:
     health-bonus: 10.0
     attack-damage-bonus: 2.0
 
@@ -66,22 +66,22 @@ waves:
   hard-cap: 48
   wave-1:
     endermen: 5
-    endermites: 8
+    spiders: 8
     shulkers: 0
     elite-endermen: 0
   wave-2:
     endermen: 7
-    endermites: 6
+    spiders: 6
     shulkers: 3
     elite-endermen: 0
   wave-3:
     endermen: 10
-    endermites: 0
+    spiders: 0
     shulkers: 3
     elite-endermen: 4
   final:
     endermen: 0
-    endermites: 8
+    spiders: 8
     shulkers: 2
     elite-endermen: 6
 
@@ -102,7 +102,7 @@ event-loot:
 # One deterministic additive roll set per event-owned mob death.  The legacy
 # event-loot values above remain as the local fallback if a profile is omitted.
 event-loot-rolls:
-  endermite:
+  spider:
     ENDER_PEARL: {chance: 0.15, min: 1, max: 1}
     EXPERIENCE_BOTTLE: {chance: 0.08, min: 1, max: 1}
     AMETHYST_SHARD: {chance: 0.10, min: 1, max: 3}

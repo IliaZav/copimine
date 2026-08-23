@@ -142,7 +142,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_PROJECTILE = "RIFT_PROJECTILE";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
-    private static final String CLIENT_VISUAL_ENDERMITE = "END_RIFT_ENDERMITE_V1";
+    private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
     private static final String CLIENT_VISUAL_SHULKER = "END_RIFT_SHULKER_V1";
     private static final Material EVENT_OVERLAY_ITEM = Material.PAPER;
     private static final int MODEL_CORE_OVERLAY = 830001;
@@ -1809,8 +1809,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&eCore уже удалён.");
             return;
         }
-        restoreCoreAndPads();
+        String removedEventId = eventId;
         cancelSessionTasks();
+        clearBossOnly();
+        clearWaveEntities();
+        // Core removal is a hard session boundary.  Old combat entities can
+        // carry a previous generation after a restart, so remove every entity
+        // belonging to this event id, not only the current generation.
+        cleanupOwnedEntitiesForEvent(removedEventId);
+        restoreCoreAndPads();
         clearClientEffects();
         eventId = "";
         requiredPlayers = 0;
@@ -1900,8 +1907,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location coreLocation() {
+        return coreBlockTopLocation();
+    }
+
+    private Location coreBlockTopLocation() {
         World world = Bukkit.getWorld(worldName);
         return world == null ? null : new Location(world, coreX + 0.5D, coreY + 1.0D, coreZ + 0.5D);
+    }
+
+    private boolean isCoreBlockPosition(Location location) {
+        if (location == null || location.getWorld() == null || !location.getWorld().getName().equalsIgnoreCase(worldName)) {
+            return false;
+        }
+        return location.getBlockX() == coreX
+                && location.getBlockZ() == coreZ
+                && (location.getBlockY() == coreY || location.getBlockY() == coreY + 1);
     }
 
     private String coreLocationText() {
@@ -2282,10 +2302,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnCoreOverlay(World world, Block core) {
-        // The target block remains the real block selected by the admin.  A
-        // FIXED block-model ItemDisplay is centred on its entity location.  A
-        // full cube placed at the target block's centre is depth-tested behind
-        // that opaque vanilla block, so anchor it on the block's top surface.
+        // The target block remains the real block selected by the admin.  Keep
+        // the display at the block centre and let the tiny shell expansion
+        // expose every face without moving the visual onto the block above.
         // The vanilla block itself is still preserved and restored from its
         // original BlockData when the event is removed.
         Location displayLocation = coreOverlayLocation(core);
@@ -2302,7 +2321,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setInvulnerable(true);
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
-                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.015F, 1.015F, 1.015F), new AxisAngle4f()));
+                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.06F, 1.06F, 1.06F), new AxisAngle4f()));
         });
         tag(display, EVENT_KIND_CORE, 0, false);
     }
@@ -2337,7 +2356,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location coreOverlayLocation(Block core) {
-        return core.getLocation().add(0.5D, 1.5D, 0.5D);
+        return core.getLocation().add(0.5D, 0.5D, 0.5D);
     }
 
     private Location runeOverlayLocation(Block floor) {
@@ -3248,20 +3267,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int scalePlayers = Math.max(config.minPlayers(), officialRewardRoster.size());
         double scale = Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D));
         int endermen = scaled(definition.endermen(), scale);
-        int endermites = scaled(definition.endermites(), scale);
+        int spiders = scaled(definition.spiders(), scale);
         int shulkers = scaled(definition.shulkers(), scale);
         int elites = scaled(definition.eliteEndermen(), scale);
-        int total = endermen + endermites + shulkers + elites;
+        int total = endermen + spiders + shulkers + elites;
         if (total > config.waveHardCap()) {
             int overflow = total - config.waveHardCap();
-            int[] counts = {endermen, endermites, shulkers, elites};
+            int[] counts = {endermen, spiders, shulkers, elites};
             for (int index = 0; index < counts.length && overflow > 0; index++) {
                 int remove = Math.min(overflow, Math.max(0, counts[index] - 1));
                 counts[index] -= remove;
                 overflow -= remove;
             }
             endermen = counts[0];
-            endermites = counts[1];
+            spiders = counts[1];
             shulkers = counts[2];
             elites = counts[3];
         }
@@ -3275,8 +3294,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int index = 0; index < elites; index++) {
             spawnEnderman(world, core, wave, true, wave == 4, test, index + endermen, index);
         }
-        for (int index = 0; index < endermites; index++) {
-            spawnOwnedMob(world, core, EntityType.ENDERMITE, wave,
+        for (int index = 0; index < spiders; index++) {
+            spawnOwnedMob(world, core, EntityType.SPIDER, wave,
                     wave == 4 ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
         }
         for (int index = 0; index < shulkers; index++) {
@@ -3292,7 +3311,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("FINAL_WAVE_STARTED event=" + eventId + " count=" + finalWaveEntities.size());
         } else if (!test) {
             getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
-                    + " count=" + (endermen + elites + endermites + shulkers));
+                    + " count=" + (endermen + elites + spiders + shulkers));
         }
     }
 
@@ -3346,7 +3365,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity entity = world.spawnEntity(safeSpawnLocation(core, index, 3.0D), type);
         tag(entity, kind, wave, !test);
         setLootProfile(entity, test ? "test"
-                : type == EntityType.ENDERMITE ? "endermite"
+                : type == EntityType.SPIDER ? "spider"
                 : type == EntityType.SHULKER ? "shulker" : "final-wave");
         if (entity instanceof LivingEntity living) {
             living.setPersistent(true);
@@ -3364,20 +3383,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void configureEventMobStats(LivingEntity living, EntityType type) {
-        if (living == null || type != EntityType.ENDERMITE) {
+        if (living == null || type != EntityType.SPIDER) {
             return;
         }
         AttributeInstance health = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         AttributeInstance attack = living.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
         if (health != null) {
-            double maxHealth = health.getBaseValue() + config.endermiteHealthBonus();
+            double maxHealth = health.getBaseValue() + config.spiderHealthBonus();
             health.setBaseValue(maxHealth);
             living.setHealth(maxHealth);
         }
         if (attack != null) {
-            attack.setBaseValue(attack.getBaseValue() + config.endermiteAttackDamageBonus());
+            attack.setBaseValue(attack.getBaseValue() + config.spiderAttackDamageBonus());
         }
-        getLogger().info("ENDERMITE_STATS entity=" + living.getUniqueId()
+        getLogger().info("SPIDER_STATS entity=" + living.getUniqueId()
                 + " health=" + (health == null ? "unknown" : health.getBaseValue())
                 + " attack=" + (attack == null ? "unknown" : attack.getBaseValue()));
     }
@@ -3415,6 +3434,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location target = event.getTo();
         if (anchor == null || target == null || !anchor.getWorld().equals(target.getWorld())) {
             event.setCancelled(true);
+            return;
+        }
+        if (isCoreBlockPosition(target)) {
+            // A teleport request may name the solid Core block itself.  Put
+            // the mob on its top face, not inside the block and not one block
+            // above the arena, so elevated Cores do not become mob magnets.
+            event.setTo(coreBlockTopLocation());
             return;
         }
         String kind = readString(entity, keyKind);
@@ -4310,7 +4336,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location location = boss.getLocation();
         int toSpawn = Math.min(2, config.maxSummonedServants() - spellServants.size());
         for (int index = 0; index < toSpawn; index++) {
-            Entity servant = spawnOwnedMob(location.getWorld(), location, EntityType.ENDERMITE,
+            Entity servant = spawnOwnedMob(location.getWorld(), location, EntityType.SPIDER,
                     0, EVENT_KIND_WAVE_MOB, false, index + spellServants.size());
             spellServants.add(servant.getUniqueId());
         }
@@ -4976,16 +5002,46 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean ownedBySession(Entity entity, String expectedEventId, long expectedGeneration) {
-        if (entity == null) {
+        if (!ownedByEvent(entity, expectedEventId)) {
             return false;
         }
         PersistentDataContainer data = entity.getPersistentDataContainer();
-        String legacySession = readString(entity, keyEventId);
-        String session = readString(entity, keyEventSessionId);
         long legacyGeneration = data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE);
         long taggedGeneration = data.getOrDefault(keyEventGeneration, PersistentDataType.LONG, legacyGeneration);
-        return Objects.equals(expectedEventId, session.isBlank() ? legacySession : session)
-                && expectedGeneration == taggedGeneration;
+        return expectedGeneration == taggedGeneration;
+    }
+
+    private boolean ownedByEvent(Entity entity, String expectedEventId) {
+        if (entity == null || expectedEventId == null || expectedEventId.isBlank()) {
+            return false;
+        }
+        String legacySession = readString(entity, keyEventId);
+        String session = readString(entity, keyEventSessionId);
+        return Objects.equals(expectedEventId, session.isBlank() ? legacySession : session);
+    }
+
+    private void cleanupOwnedEntitiesForEvent(String expectedEventId) {
+        if (expectedEventId == null || expectedEventId.isBlank()) {
+            return;
+        }
+        int removed = 0;
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                if (ownedByEvent(entity, expectedEventId)) {
+                    entity.remove();
+                    ownedEntities.remove(entity.getUniqueId());
+                    finalWaveEntities.remove(entity.getUniqueId());
+                    spellServants.remove(entity.getUniqueId());
+                    removed++;
+                }
+            }
+        }
+        if (expectedEventId.equals(eventId)) {
+            ownedEntities.clear();
+            finalWaveEntities.clear();
+            spellServants.clear();
+        }
+        getLogger().info("END_EVENT_OWNED_CLEANUP event=" + expectedEventId + " generations=all removed=" + removed);
     }
 
     private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration) {
@@ -5087,8 +5143,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return "";
         }
         String kind = readString(entity, keyKind);
-        if (entity.getType() == EntityType.ENDERMITE) {
-            return CLIENT_VISUAL_ENDERMITE;
+        if (entity.getType() == EntityType.SPIDER) {
+            return CLIENT_VISUAL_SPIDER;
         }
         if (entity.getType() == EntityType.SHULKER) {
             return CLIENT_VISUAL_SHULKER;

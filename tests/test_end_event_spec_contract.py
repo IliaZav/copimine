@@ -25,7 +25,7 @@ def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
     assert "BLAZE_ROD: 64" in CONFIG
     assert "boss-xp: 3000" in CONFIG
     assert "elite-endermen: 6" in CONFIG
-    assert "endermites: 8" in CONFIG
+    assert "spiders: 8" in CONFIG
     assert "shulkers: 2" in CONFIG
     assert "health-bonus: 10.0" in CONFIG
     assert "attack-damage-bonus: 2.0" in CONFIG
@@ -58,10 +58,14 @@ def test_core_command_preserves_real_target_block_and_uses_surface_overlays() ->
     assert "END_EVENT_VISUAL_CLEANUP" in MAIN
 
 
-def test_endermite_wave_stats_are_applied_as_runtime_attribute_bonuses() -> None:
+def test_spider_wave_stats_are_applied_as_runtime_attribute_bonuses_and_endermites_are_absent() -> None:
     assert "configureEventMobStats" in MAIN
-    assert "config.endermiteHealthBonus()" in MAIN
-    assert "config.endermiteAttackDamageBonus()" in MAIN
+    assert "EntityType.SPIDER" in MAIN
+    assert "config.spiderHealthBonus()" in MAIN
+    assert "config.spiderAttackDamageBonus()" in MAIN
+    assert "EntityType.ENDERMITE" not in MAIN
+    assert "endermite" not in MAIN.lower()
+    assert "endermite" not in CONFIG.lower()
     assert "Attribute.GENERIC_MAX_HEALTH" in MAIN
     assert "Attribute.GENERIC_ATTACK_DAMAGE" in MAIN
 

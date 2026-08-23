@@ -24,7 +24,7 @@ def test_end_event_assets_and_manifests_exist() -> None:
         assert path.is_file(), path
         assert path.stat().st_size > 100, path
         width, height = struct.unpack(">II", path.read_bytes()[16:24])
-        expected_dimensions = (64, 32) if path.name == "end_rift_guardian.png" else (64, 64)
+        expected_dimensions = (64, 32) if path.name == "end_rift_guardian.png" else (32, 32) if path.name.startswith("end_event_core") else (64, 64)
         assert (width, height) == expected_dimensions, path
 
 
@@ -37,7 +37,8 @@ def test_end_event_assets_are_overlay_models_and_never_override_vanilla_blocks()
     for path in block_assets.values():
         assert path.is_file(), path
         width, height = struct.unpack(">II", path.read_bytes()[16:24])
-        assert (width, height) == (16, 16), path
+        expected_dimensions = (32, 32) if path.name.startswith("end_event_core") else (16, 16)
+        assert (width, height) == expected_dimensions, path
     for forbidden in (
         ROOT / "resourcepacks/src/assets/minecraft/blockstates/crying_obsidian.json",
         ROOT / "resourcepacks/src/assets/minecraft/blockstates/respawn_anchor.json",
@@ -60,7 +61,7 @@ def test_end_event_client_mob_textures_are_native_uv_sheets() -> None:
         "end_rift_enderman.png": (64, 32),
         "end_rift_elite.png": (64, 32),
         "end_rift_guardian.png": (64, 32),
-        "end_rift_endermite.png": (32, 16),
+        "end_rift_spider.png": (64, 32),
         "end_rift_shulker.png": (64, 64),
     }
     for name, dimensions in expected.items():
@@ -72,7 +73,7 @@ def test_end_event_client_mob_textures_are_native_uv_sheets() -> None:
 
 def test_end_event_client_mob_textures_have_visible_colored_pixels() -> None:
     entity_dir = ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets" / "copimineclient" / "textures" / "entity"
-    for name in ("end_rift_enderman.png", "end_rift_elite.png", "end_rift_endermite.png", "end_rift_shulker.png", "end_rift_guardian.png"):
+    for name in ("end_rift_enderman.png", "end_rift_elite.png", "end_rift_spider.png", "end_rift_shulker.png", "end_rift_guardian.png"):
         with Image.open(entity_dir / name).convert("RGBA") as image:
             pixels = list(image.getdata())
         visible = [pixel for pixel in pixels if pixel[3] > 0]

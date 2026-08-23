@@ -45,7 +45,7 @@ def test_event_owned_loot_is_configured_and_cleanup_has_no_death_path() -> None:
     assert "addConfiguredDrops(event, config.lootProfile(\"test\")" in MAIN
     config_source = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventConfig.java").read_text(encoding="utf-8")
     for loot_accessor in ("lootProfile(\"elite-enderman\")", "lootProfile(\"final-wave\")",
-                          "lootProfile(\"common-enderman\")", "lootProfile(\"endermite\")"):
+                          "lootProfile(\"common-enderman\")", "lootProfile(\"spider\")"):
         assert loot_accessor.replace("lootProfile(", "").rstrip(")\"") in MAIN + config_source
     assert "addConfiguredDrops(event, config.lootProfile(profile), profile)" in MAIN
     spawn = MAIN[MAIN.index("private void spawnEnderman"):

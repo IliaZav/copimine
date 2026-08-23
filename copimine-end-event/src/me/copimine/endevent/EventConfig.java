@@ -29,8 +29,8 @@ public record EventConfig(
         double bossRadius,
         double containmentRadius,
         int waveHardCap,
-        double endermiteHealthBonus,
-        double endermiteAttackDamageBonus,
+        double spiderHealthBonus,
+        double spiderAttackDamageBonus,
         double musicVolume,
         MusicTrack wavesMusic,
         MusicTrack bossMusic,
@@ -124,8 +124,8 @@ public record EventConfig(
         }
         int waveCap = positiveInt(waves, "hard-cap");
         double health = positiveDouble(boss, "health");
-        double endermiteHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("endermite"), "health-bonus");
-        double endermiteAttackDamageBonus = nonNegativeDouble(mobs.getConfigurationSection("endermite"), "attack-damage-bonus");
+        double spiderHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "health-bonus");
+        double spiderAttackDamageBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "attack-damage-bonus");
         double musicVolume = boundedVolume(music.getDouble("volume", 0.85D));
         MusicTrack wavesMusic = musicTrack(music, "waves");
         MusicTrack bossMusic = musicTrack(music, "boss");
@@ -157,7 +157,7 @@ public record EventConfig(
         LinkedHashMap<String, Integer> testLoot = readOptionalMaterials(eventLoot, "test");
         LinkedHashMap<String, Map<String, LootEntry>> lootProfiles = new LinkedHashMap<>();
         lootProfiles.put("common-enderman", readLootProfiles(eventLootRolls, "common-enderman", waveMobLoot));
-        lootProfiles.put("endermite", readLootProfiles(eventLootRolls, "endermite", waveMobLoot));
+        lootProfiles.put("spider", readLootProfiles(eventLootRolls, "spider", waveMobLoot));
         lootProfiles.put("elite-enderman", readLootProfiles(eventLootRolls, "elite-enderman", eliteLoot));
         lootProfiles.put("shulker", readLootProfiles(eventLootRolls, "shulker", finalWaveLoot));
         lootProfiles.put("final-wave", readLootProfiles(eventLootRolls, "final-wave", finalWaveLoot));
@@ -181,8 +181,8 @@ public record EventConfig(
                 positiveDouble(arena, "boss-radius"),
                 positiveDouble(arena, "containment-radius"),
                 waveCap,
-                endermiteHealthBonus,
-                endermiteAttackDamageBonus,
+                spiderHealthBonus,
+                spiderAttackDamageBonus,
                 musicVolume,
                 wavesMusic,
                 bossMusic,
@@ -228,7 +228,7 @@ public record EventConfig(
         ConfigurationSection section = requiredSection(parent, key);
         return new WaveDefinition(
                 nonNegative(section, "endermen"),
-                nonNegative(section, "endermites"),
+                nonNegative(section, "spiders"),
                 nonNegative(section, "shulkers"),
                 nonNegative(section, "elite-endermen"));
     }
@@ -406,9 +406,9 @@ public record EventConfig(
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
-    public record WaveDefinition(int endermen, int endermites, int shulkers, int eliteEndermen) {
+    public record WaveDefinition(int endermen, int spiders, int shulkers, int eliteEndermen) {
         public int total() {
-            return endermen + endermites + shulkers + eliteEndermen;
+            return endermen + spiders + shulkers + eliteEndermen;
         }
     }
 

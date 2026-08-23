@@ -44,12 +44,12 @@ foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSour
 }
 
 $installContractDocument = Get-Content -LiteralPath $installContract -Raw | ConvertFrom-Json
-if ($installContractDocument.bindingRequired -ne $false -or
+if ($installContractDocument.bindingRequired -ne $true -or
     $installContractDocument.flow -ne 'browser' -or
     $installContractDocument.manualCodeEntry -ne $false -or
-    $installContractDocument.allowSkip -ne $true -or
-    $installContractDocument.playBlockedUntilLinked -ne $false) {
-    throw 'Launcher install contract must keep browser binding optional and never block play until linked.'
+    $installContractDocument.allowSkip -ne $false -or
+    $installContractDocument.playBlockedUntilLinked -ne $true) {
+    throw 'Launcher install contract must require browser binding before play, without manual code entry.'
 }
 
 if ($ServerHostedRuntimeOnly -and $RequireOfflineBundle) {

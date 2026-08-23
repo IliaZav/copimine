@@ -47,16 +47,16 @@ def test_launcher_packaging_requires_a_bundled_webview2_runtime() -> None:
     assert "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe" in build
 
 
-def test_launcher_installer_keeps_browser_binding_optional_without_manual_code_entry() -> None:
+def test_launcher_installer_requires_browser_binding_without_manual_code_entry() -> None:
     contract = ROOT / "CopiMineLauncher/packaging/launcher-install-contract.json"
     build = read("scripts/build_copimine_launcher.ps1")
 
     assert contract.is_file()
-    assert '"bindingRequired": false' in contract.read_text(encoding="utf-8")
+    assert '"bindingRequired": true' in contract.read_text(encoding="utf-8")
     assert '"flow": "browser"' in contract.read_text(encoding="utf-8")
     assert '"manualCodeEntry": false' in contract.read_text(encoding="utf-8")
-    assert '"allowSkip": true' in contract.read_text(encoding="utf-8")
-    assert '"playBlockedUntilLinked": false' in contract.read_text(encoding="utf-8")
+    assert '"allowSkip": false' in contract.read_text(encoding="utf-8")
+    assert '"playBlockedUntilLinked": true' in contract.read_text(encoding="utf-8")
     assert "launcher-install-contract.json" in build
     assert "Copy-Item" in build
 

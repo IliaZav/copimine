@@ -50,7 +50,7 @@ def test_core_command_preserves_real_target_block_and_uses_surface_overlays() ->
     assert "spawnCoreOverlay" in MAIN
     assert "spawnRuneOverlay" in MAIN
     assert "ItemDisplay" in MAIN
-    assert "setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED)" in MAIN
+    assert "setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE)" in MAIN
     assert "target block remains the real block selected by the admin" in MAIN
     assert "The pad coordinate is the air block above this floor" in MAIN
     assert "displays=CORE_OVERLAY_AND_RUNE_OVERLAYS" in MAIN

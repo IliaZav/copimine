@@ -2311,7 +2311,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(coreCharged ? MODEL_CORE_CHARGED_OVERLAY : MODEL_CORE_OVERLAY,
                     coreCharged ? "end_event_core_charged" : "end_event_core"));
-            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            // The event models are authored as raw block-space cubes.  FIXED
+            // applies the item-model fixed transform again in 1.21.1, which
+            // leaves the display depth-tested inside the real block.  NONE
+            // keeps the cube at the exact block anchor and makes its faces
+            // render over the vanilla block without replacing that block.
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setViewRange(64.0F);
             // A display exactly inside an opaque block is depth-tested away.
@@ -2344,7 +2349,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location displayLocation = runeOverlayLocation(floor);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(runeOverlayItem(pad));
-            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            // Runes use the same raw block-space model convention as the Core;
+            // NONE is required for the thin slab to render on the floor top.
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
             entity.setViewRange(64.0F);
             entity.setDisplayWidth(1.0F);

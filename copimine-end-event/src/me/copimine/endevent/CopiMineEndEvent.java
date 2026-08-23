@@ -148,6 +148,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
     private static final int MAX_ACTIVE_RIFT_PROJECTILES = 8;
+    private static final int SPELL_FLIGHT_TICKS = 8;
+    private static final String SPELL_FLIGHT_EFFECT = "spell-flight";
     private static final int RIFT_PROJECTILE_MAX_TICKS = 80;
     private static final double RIFT_PROJECTILE_SPEED = 0.65D;
     private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
@@ -2137,6 +2139,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         // The rune overlay is placed on the floor block, never in the air
+        // rune overlay is placed on the floor block
         // block used for player occupancy.
         // Keep the rune just above the physical floor block; integer-height
         // display origins can be clipped by the block face in the client.
@@ -2575,7 +2578,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (isWaveCombatKind(kind) && isLiveOwnedEntity(entity.getUniqueId())) {
-                enforceCombatLeash(entity, coreLocation(), 10.0D, "WAVE_AI_LEASH");
+                enforceCombatLeash(entity, coreLocation(), config.containmentRadius(), "WAVE_AI_LEASH");
             }
         }
     }
@@ -2666,19 +2669,95 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !isMiniBossCombatPhase() || !isActiveArenaParticipant(target)) {
             return;
         }
-        getLogger().info("MINIBOSS_SPELL_CAST entity=" + miniBoss.getUniqueId()
-                + " spell=" + spell.id() + " target=" + target.getUniqueId()
-                + " generation=" + callbackGeneration);
-        switch (spell) {
-            case RIFT_STEP -> miniBossRiftStep(miniBoss, target);
-            case VOID_SNARE -> miniBossVoidSnare(miniBoss, target, mark);
-            case ECHO_PULSE -> miniBossEchoPulse(miniBoss);
+        launchSpellFlight(miniBoss, mark, miniBossSpellParticle(spell),
+                "MINIBOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), false,
+                callbackGeneration, () -> {
+                    if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                            || !isMiniBossCombatPhase() || !isActiveArenaParticipant(target)
+                            || !miniBoss.isValid() || miniBoss.isDead()
+                            || miniBossSpells.get(miniBoss.getUniqueId()) != spell) {
+                        return;
+                    }
+                    getLogger().info("MINIBOSS_SPELL_CAST entity=" + miniBoss.getUniqueId()
+                            + " spell=" + spell.id() + " target=" + target.getUniqueId()
+                            + " generation=" + callbackGeneration);
+                    switch (spell) {
+                        case RIFT_STEP -> miniBossRiftStep(miniBoss, target);
+                        case VOID_SNARE -> miniBossVoidSnare(miniBoss, target, mark);
+                        case ECHO_PULSE -> miniBossEchoPulse(miniBoss);
+                    }
+                });
+    }
+
+    private Particle miniBossSpellParticle(EndRiftAiPolicy.MiniBossSpell spell) {
+        return switch (spell) {
+            case RIFT_STEP -> Particle.PORTAL;
+            case VOID_SNARE -> Particle.REVERSE_PORTAL;
+            case ECHO_PULSE -> Particle.END_ROD;
+        };
+    }
+
+    /**
+     * Sends every event spell through a short, visible particle flight before
+     * applying its gameplay effect.  The callback is owned by the current
+     * event generation so a reset, cancellation, or phase change cannot leave
+     * a delayed damage task behind.
+     */
+    private void launchSpellFlight(LivingEntity caster, Location destination, Particle primaryParticle,
+                                   String logMarker, String spellId, UUID targetId, boolean forced,
+                                   long callbackGeneration, Runnable impact) {
+        if (taskRegistry == null || caster == null || destination == null || primaryParticle == null
+                || impact == null || !isSpellFlightAllowed(caster, forced)
+                || caster.getWorld() == null || destination.getWorld() == null
+                || !caster.getWorld().equals(destination.getWorld())) {
+            return;
         }
+        Location start = caster.getEyeLocation().clone();
+        Location end = destination.clone().add(0.0D, 0.75D, 0.0D);
+        Vector delta = end.toVector().subtract(start.toVector());
+        getLogger().info(logMarker + " caster=" + caster.getUniqueId()
+                + " spell=" + spellId + " target=" + targetId
+                + " effect=" + SPELL_FLIGHT_EFFECT + " ticks=" + SPELL_FLIGHT_TICKS
+                + " generation=" + callbackGeneration);
+        final int[] ticks = {0};
+        final BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean allowed = taskRegistry != null
+                    && taskRegistry.owns(callbackGeneration)
+                    && isSpellFlightAllowed(caster, forced);
+            if (!allowed) {
+                holder[0].cancel();
+                return;
+            }
+            double progress = Math.min(1.0D, ++ticks[0] / (double) SPELL_FLIGHT_TICKS);
+            Location point = start.clone().add(delta.clone().multiply(progress));
+            caster.getWorld().spawnParticle(primaryParticle, point, 8,
+                    0.08D, 0.08D, 0.08D, 0.01D);
+            caster.getWorld().spawnParticle(Particle.END_ROD, point, 4,
+                    0.04D, 0.04D, 0.04D, 0.0D);
+            if (progress >= 1.0D) {
+                holder[0].cancel();
+                impact.run();
+            }
+        }, 0L, 1L);
+        taskRegistry.register(holder[0]);
+    }
+
+    private boolean isSpellFlightAllowed(LivingEntity caster, boolean forced) {
+        if (caster == null || !caster.isValid() || caster.isDead()) {
+            return false;
+        }
+        String kind = readString(caster, keyKind);
+        if (EVENT_KIND_BOSS.equals(kind)) {
+            return phase == EventPhase.BOSS_ACTIVE || forced
+                    || testCombatAiMode && isTestBoss(caster);
+        }
+        return EVENT_KIND_ELITE.equals(kind) && isMiniBossCombatPhase();
     }
 
     private void miniBossRiftStep(Enderman miniBoss, Player target) {
         Location anchor = coreLocation();
-        Location destination = findSafeCombatLocation(anchor, target.getLocation(), 10.0D);
+        Location destination = findSafeCombatLocation(anchor, target.getLocation(), config.containmentRadius());
         if (destination != null) {
             miniBoss.teleport(destination);
         }
@@ -2715,8 +2794,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void enforceCombatLeash(Entity entity, Location anchor, double radius, String logMarker) {
         if (entity == null || anchor == null || entity.getWorld() == null
-                || !entity.getWorld().equals(anchor.getWorld())
-                || entity.getLocation().distanceSquared(anchor) <= radius * radius) {
+                || !entity.getWorld().equals(anchor.getWorld())) {
+            return;
+        }
+        Location current = entity.getLocation();
+        boolean outsideHorizontalRadius = horizontalDistanceSquared(current, anchor) > radius * radius;
+        boolean offCoreLevel = current.getBlockY() != anchor.getBlockY();
+        if (!outsideHorizontalRadius && !offCoreLevel) {
             return;
         }
         Location safe = findSafeCombatLocation(anchor, anchor, radius - 0.75D);
@@ -2724,6 +2808,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info(logMarker + " entity=" + entity.getUniqueId()
                     + " location=" + locationText(safe));
         }
+    }
+
+    private double horizontalDistanceSquared(Location first, Location second) {
+        if (first == null || second == null || first.getWorld() == null || second.getWorld() == null
+                || !first.getWorld().equals(second.getWorld())) {
+            return Double.POSITIVE_INFINITY;
+        }
+        double deltaX = first.getX() - second.getX();
+        double deltaZ = first.getZ() - second.getZ();
+        return deltaX * deltaX + deltaZ * deltaZ;
     }
 
     private Location findSafeCombatLocation(Location anchor, Location preferred, double radius) {
@@ -2738,7 +2832,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location candidate = attempt < 4 && preferred != null
                     ? preferred.clone()
                     : center.clone().add(Math.cos(angle) * distance, 0.0D, Math.sin(angle) * distance);
-            if (candidate.distanceSquared(center) > safeRadius * safeRadius) {
+            // Combat teleports stay on the horizontal level of the Core block.
+            candidate.setY(center.getBlockY());
+            if (horizontalDistanceSquared(candidate, center) > safeRadius * safeRadius) {
                 continue;
             }
             Block feet = candidate.getBlock();
@@ -3040,8 +3136,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         String kind = readString(entity, keyKind);
-        double radius = EVENT_KIND_BOSS.equals(kind) ? config.bossRadius() : 10.0D;
-        if (target.distanceSquared(anchor) > radius * radius) {
+        double radius = EVENT_KIND_BOSS.equals(kind) ? config.bossRadius() : config.containmentRadius();
+        boolean outsideHorizontalRadius = horizontalDistanceSquared(target, anchor) > radius * radius;
+        boolean offCoreLevel = target.getBlockY() != anchor.getBlockY();
+        if (outsideHorizontalRadius || offCoreLevel) {
             Location safe = findSafeCombatLocation(anchor, target, radius - 0.75D);
             if (safe == null) {
                 event.setCancelled(true);
@@ -3340,8 +3438,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !isActiveArenaParticipant(target)) {
             return;
         }
-        boolean targetTooFar = boss.getLocation().distanceSquared(target.getLocation()) > 144.0D;
-        boolean arenaTooWide = boss.getLocation().distanceSquared(anchor)
+        boolean targetTooFar = horizontalDistanceSquared(boss.getLocation(), target.getLocation()) > 144.0D;
+        boolean arenaTooWide = horizontalDistanceSquared(boss.getLocation(), anchor)
                 > Math.max(1.0D, config.bossRadius() - 2.0D) * Math.max(1.0D, config.bossRadius() - 2.0D);
         if (!targetTooFar && !arenaTooWide) {
             return;
@@ -3680,7 +3778,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 holder[0].cancel();
                 if (taskRegistry.owns(callbackGeneration) && allowedPhase
                         && boss.isValid() && !boss.isDead() && bossId.equals(bossUuid)) {
-                    executeBossSpell(boss, target, mark, spell, callbackGeneration);
+                    executeBossSpell(boss, target, mark, spell, forced, callbackGeneration);
                 }
             }
         }, 0L, 5L);
@@ -3688,21 +3786,43 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void executeBossSpell(LivingEntity boss, Player target, Location mark,
-                                   EndRiftAiPolicy.BossSpell spell, long callbackGeneration) {
+                                   EndRiftAiPolicy.BossSpell spell, boolean forced,
+                                   long callbackGeneration) {
         if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                || target == null
                 || (phase != EventPhase.BOSS_ACTIVE
                 && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY_PROCESSING)))) {
             return;
         }
-        getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
-                + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
-        switch (spell) {
-            case VOID_BLAST -> voidBlast(boss, target);
-            case RIFT_PROJECTILE -> riftProjectile(boss, target);
-            case VOID_MARK -> voidMark(boss, target);
-            case SUMMON_SERVANTS -> summonServants(boss);
-            case WILL_DISTORTION -> sendControlStart(target);
-        }
+        launchSpellFlight(boss, mark, bossSpellParticle(spell),
+                "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
+                callbackGeneration, () -> {
+                    if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                            || !isSpellFlightAllowed(boss, forced)
+                            || !boss.getUniqueId().equals(bossUuid)
+                            || (spell != EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                            && !isActiveArenaParticipant(target))) {
+                        return;
+                    }
+                    getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
+                            + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
+                    switch (spell) {
+                        case VOID_BLAST -> voidBlast(boss, target);
+                        case RIFT_PROJECTILE -> riftProjectile(boss, target);
+                        case VOID_MARK -> voidMark(boss, target);
+                        case SUMMON_SERVANTS -> summonServants(boss);
+                        case WILL_DISTORTION -> sendControlStart(target);
+                    }
+                });
+    }
+
+    private Particle bossSpellParticle(EndRiftAiPolicy.BossSpell spell) {
+        return switch (spell) {
+            case VOID_BLAST -> Particle.DRAGON_BREATH;
+            case RIFT_PROJECTILE -> Particle.PORTAL;
+            case VOID_MARK, WILL_DISTORTION -> Particle.REVERSE_PORTAL;
+            case SUMMON_SERVANTS -> Particle.END_ROD;
+        };
     }
 
     private void voidBlast(LivingEntity boss, Player target) {

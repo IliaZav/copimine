@@ -56,6 +56,8 @@
 .launcher-download-state { min-height: 1.3rem; margin: .7rem 0 0; color: var(--muted); font-size: .86rem; }
 .launcher-download-state[data-state="error"] { color: var(--red); }
 .launcher-download-state[data-state="ready"] { color: var(--accent); }
+.launcher-download.is-disabled { pointer-events: none; opacity: .55; }
+.launcher-download-secondary { flex-basis: 100%; }
 
 .launcher-feature-grid,
 .launcher-faq-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }

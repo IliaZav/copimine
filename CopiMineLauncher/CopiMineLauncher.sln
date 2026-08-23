@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Infrastruc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.App", "src\CopiMineLauncher.App\CopiMineLauncher.App.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Installer", "installer\CopiMineLauncher.Installer\CopiMineLauncher.Installer.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C08}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Core.Tests", "tests\CopiMineLauncher.Core.Tests\CopiMineLauncher.Core.Tests.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CopiMineLauncher.Infrastructure.Tests", "tests\CopiMineLauncher.Infrastructure.Tests\CopiMineLauncher.Infrastructure.Tests.csproj", "{5F6C1234-7DB4-4EB5-81F8-F9C800D10C05}"
@@ -34,6 +36,10 @@ Global
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C03}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C08}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C08}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C08}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5F6C1234-7DB4-4EB5-81F8-F9C800D10C04}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $project = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/CopiMineLauncher.App.csproj'
+$folderInstallerProject = Join-Path $repoRoot 'CopiMineLauncher/installer/CopiMineLauncher.Installer/CopiMineLauncher.Installer.csproj'
 $installContract = Join-Path $repoRoot 'CopiMineLauncher/packaging/launcher-install-contract.json'
 $installerAssetsScript = Join-Path $scriptRoot 'prepare_copimine_installer_assets.ps1'
 $installerLogoSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/LauncherVisuals/copimine-icon.png'
@@ -37,7 +38,7 @@ if (-not (Test-Path -LiteralPath $project -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $installContract -PathType Leaf)) {
     throw "Launcher install contract was not found: $installContract"
 }
-foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSource, $installerBannerSource, $installerWelcome, $installerReadme, $installerConclusion)) {
+foreach ($requiredInstallerInput in @($installerAssetsScript, $installerLogoSource, $installerBannerSource, $installerWelcome, $installerReadme, $installerConclusion, $folderInstallerProject)) {
     if (-not (Test-Path -LiteralPath $requiredInstallerInput -PathType Leaf)) {
         throw "Launcher installer input was not found: $requiredInstallerInput"
     }
@@ -311,8 +312,31 @@ if (-not (Test-Path -LiteralPath $msiSource -PathType Leaf)) {
 Copy-Item -LiteralPath $setupSource -Destination $installerPath -Force
 Copy-Item -LiteralPath $msiSource -Destination $msiPath -Force
 
+$folderInstallerPublishRoot = Join-Path $publishRoot 'folder-installer'
+if (Test-Path -LiteralPath $folderInstallerPublishRoot) {
+    Remove-Item -LiteralPath $folderInstallerPublishRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Path $folderInstallerPublishRoot -Force | Out-Null
+$folderInstallerUrl = "https://copimine.ru/downloads/launcher/CopiMineLauncherSetup-$Version.msi"
+& dotnet publish $folderInstallerProject `
+    --configuration $Configuration `
+    --runtime win-x64 `
+    --self-contained true `
+    --property:Version=$Version `
+    --property:InstallerMsiUrl=$folderInstallerUrl `
+    --output $folderInstallerPublishRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Folder-selecting Launcher installer publish failed with exit code $LASTEXITCODE"
+}
+$folderInstallerSource = Join-Path $folderInstallerPublishRoot 'CopiMineLauncherFolderSetup.exe'
+$folderInstallerPath = Join-Path $packageRoot "CopiMineLauncherFolderSetup-$Version.exe"
+if (-not (Test-Path -LiteralPath $folderInstallerSource -PathType Leaf)) {
+    throw "Folder-selecting Launcher installer was not published: $folderInstallerSource"
+}
+Copy-Item -LiteralPath $folderInstallerSource -Destination $folderInstallerPath -Force
+
 if ($signatureRequested) {
-    foreach ($artifact in @($setupSource, $installerPath, $msiSource, $msiPath)) {
+    foreach ($artifact in @($setupSource, $installerPath, $msiSource, $msiPath, $folderInstallerPath)) {
         Sign-AuthenticodeArtifact $artifact
     }
 }
@@ -321,6 +345,7 @@ Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"
 Write-Output "INSTALLER_OUTPUT=$installerPath"
 Write-Output "MSI_OUTPUT=$msiPath"
+Write-Output "CUSTOM_INSTALLER_OUTPUT=$folderInstallerPath"
 if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     Write-Output "OFFLINE_BASELINE_OUTPUT=$(Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip')"
 }

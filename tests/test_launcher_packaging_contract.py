@@ -29,6 +29,25 @@ def test_launcher_packaging_produces_a_folder_selecting_msi() -> None:
     assert "downloads/launcher" in stage
 
 
+def test_launcher_packaging_produces_a_self_contained_folder_picker() -> None:
+    build = read("scripts/build_copimine_launcher.ps1")
+    metadata = read("scripts/build_launcher_public_metadata.ps1")
+    stage = read("scripts/stage_copimine_launcher_site.ps1")
+    project = ROOT / "CopiMineLauncher/installer/CopiMineLauncher.Installer/CopiMineLauncher.Installer.csproj"
+
+    assert project.is_file()
+    assert "InstallerMsiUrl" in build
+    assert "CopiMineLauncher.Installer.csproj" in build
+    assert "CUSTOM_INSTALLER_OUTPUT" in build
+    assert "CustomInstallerPath" in metadata
+    assert "customInstallerFilename" in metadata
+    assert "CustomInstallerPath" in stage
+    assert "customInstallerDownloadUrl" in stage
+    installer = read("CopiMineLauncher/installer/CopiMineLauncher.Installer/MainWindow.xaml.cs")
+    assert "InstallPathBox.Text = dialog.SelectedPath;" in installer
+    assert "Path.Combine(dialog.SelectedPath, \"CopiMine Launcher\")" not in installer
+
+
 def test_server_hosted_packaging_does_not_duplicate_runtime_payload() -> None:
     build = read("scripts/build_copimine_launcher.ps1")
 
@@ -81,6 +100,16 @@ def test_launcher_page_exposes_the_optional_folder_selecting_installer() -> None
     assert "launcherMsiBtn" in render
 
 
+def test_launcher_page_exposes_the_native_folder_picker_installer() -> None:
+    launcher = read("admin-web/frontend/launcher.html")
+    render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    data = read("admin-web/frontend/assets/js/public/launcher-data.js")
+
+    assert 'id="launcherFolderBtn"' in launcher
+    assert "customInstallerDownloadUrl" in data
+    assert "launcherFolderBtn" in render
+
+
 def test_launcher_page_exposes_only_the_folder_selecting_installer() -> None:
     launcher = read("admin-web/frontend/launcher.html")
     render = read("admin-web/frontend/assets/js/public/launcher-render.js")
@@ -122,7 +151,8 @@ def test_installer_welcome_does_not_repeat_velopack_heading() -> None:
 
     assert not welcome.startswith("Добро пожаловать")
     assert "Minecraft 1.21.1" in welcome
-    assert "выбрать диск и папку установки" in welcome
+    assert "выбора произвольного диска и папки" in welcome
+    assert "MSI-вариант оставлен как резервный" in welcome
 
 
 def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:

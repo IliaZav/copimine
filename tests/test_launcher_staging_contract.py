@@ -11,6 +11,7 @@ STAGE_SCRIPT = ROOT / "scripts" / "stage_copimine_launcher_site.ps1"
 RELEASE_ROOT = ROOT / "artifacts" / "launcher" / "Release"
 PACKAGE_ROOT = RELEASE_ROOT / "packages"
 INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.exe"
+CUSTOM_INSTALLER = PACKAGE_ROOT / "CopiMineLauncherFolderSetup-1.0.3.exe"
 MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.msi"
 METADATA = RELEASE_ROOT / "metadata" / "latest.json"
 INSTANCE = RELEASE_ROOT / "instance-current"
@@ -27,6 +28,8 @@ def run_stage(metadata: Path, output: Path) -> subprocess.CompletedProcess[str]:
             str(STAGE_SCRIPT),
             "-InstallerPath",
             str(INSTALLER),
+            "-CustomInstallerPath",
+            str(CUSTOM_INSTALLER),
             "-MsiPath",
             str(MSI),
             "-MetadataPath",
@@ -49,7 +52,7 @@ def run_stage(metadata: Path, output: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path: Path) -> None:
-    if not all(path.is_file() for path in (INSTALLER, MSI, METADATA)):
+    if not all(path.is_file() for path in (INSTALLER, CUSTOM_INSTALLER, MSI, METADATA)):
         raise AssertionError("launcher release fixture is missing; build/package the local release first")
     output = ROOT / "artifacts" / "launcher" / f"staging-contract-{os.getpid()}"
     result = run_stage(METADATA, output)
@@ -61,6 +64,8 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
         assert staged_metadata["sizeBytes"] == INSTALLER.stat().st_size
         assert staged_metadata["msiSha256"] == source_metadata["msiSha256"]
         assert staged_metadata["msiSizeBytes"] == MSI.stat().st_size
+        assert staged_metadata["customInstallerSha256"] == source_metadata["customInstallerSha256"]
+        assert staged_metadata["customInstallerSizeBytes"] == CUSTOM_INSTALLER.stat().st_size
 
         manifest_path = output / "launcher/stable/instance-manifest.json"
         signature_path = output / "launcher/stable/instance-manifest.sig"
@@ -83,6 +88,8 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
         for asset in assets_feed:
             filename = asset["RelativeFileName"]
             assert (output / "downloads/launcher" / filename).is_file(), filename
+        custom_filename = source_metadata["customInstallerFilename"]
+        assert (output / "downloads/launcher" / custom_filename).is_file()
     finally:
         if output.exists():
             import shutil

@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $InstallerPath,
+    [string] $CustomInstallerPath = "",
     [string] $MsiPath = "",
     [Parameter(Mandatory = $true)]
     [string] $Version,
@@ -51,6 +52,41 @@ try {
     $sha256.Dispose()
 }
 $hash = [BitConverter]::ToString($digest).Replace('-', '').ToLowerInvariant()
+$customInfo = $null
+$customHash = $null
+$customFilename = $null
+$customDownload = $null
+if (-not [string]::IsNullOrWhiteSpace($CustomInstallerPath)) {
+    $custom = (Resolve-Path -LiteralPath $CustomInstallerPath -ErrorAction Stop).Path
+    $customInfo = Get-Item -LiteralPath $custom -ErrorAction Stop
+    if ($customInfo.PSIsContainer -or $customInfo.Extension -ine '.exe') {
+        throw "CustomInstallerPath must point to an .exe file: $custom"
+    }
+    if ($customInfo.Length -le 0) {
+        throw "Custom installer is empty: $custom"
+    }
+    $customHeader = New-Object byte[] 64
+    $customStream = [System.IO.File]::OpenRead($custom)
+    try {
+        $customRead = $customStream.Read($customHeader, 0, $customHeader.Length)
+    } finally {
+        $customStream.Dispose()
+    }
+    if ($customInfo.Length -lt 64 -or $customRead -lt 64 -or $customHeader[0] -ne 0x4D -or $customHeader[1] -ne 0x5A) {
+        throw "Custom installer is not a Windows PE file (missing MZ header): $custom"
+    }
+    $customDigest = [System.Security.Cryptography.SHA256]::Create()
+    $customStream = $null
+    try {
+        $customStream = [System.IO.File]::OpenRead($custom)
+        $customHash = [BitConverter]::ToString($customDigest.ComputeHash($customStream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        if ($null -ne $customStream) { $customStream.Dispose() }
+        $customDigest.Dispose()
+    }
+    $customFilename = $customInfo.Name
+    $customDownload = "/downloads/launcher/$customFilename"
+}
 $msiInfo = $null
 $msiHash = $null
 $msiFilename = $null
@@ -95,6 +131,9 @@ $published = if ([string]::IsNullOrWhiteSpace($PublishedAtUtc)) {
 if ($download -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.exe$') {
     throw "downloadUrl must be a safe launcher-relative .exe URL: $download"
 }
+if ($null -ne $customDownload -and $customDownload -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.exe$') {
+    throw "customInstallerDownloadUrl must be a safe launcher-relative .exe URL: $customDownload"
+}
 if ($null -ne $msiDownload -and $msiDownload -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.msi$') {
     throw "msiDownloadUrl must be a safe launcher-relative .msi URL: $msiDownload"
 }
@@ -118,6 +157,13 @@ $payload = [ordered]@{
     releaseNotesUrl = $notes
     publishedAt = $published
 }
+if ($null -ne $customInfo) {
+    $payload.customInstallerFilename = $customFilename
+    $payload.customInstallerDownloadUrl = $customDownload
+    $payload.customInstallerSizeBytes = [long]$customInfo.Length
+    $payload.customInstallerSha256 = $customHash
+    $payload.customInstallerMode = 'folder-picker'
+}
 if ($null -ne $msiInfo) {
     $payload.msiFilename = $msiFilename
     $payload.msiDownloadUrl = $msiDownload
@@ -140,6 +186,11 @@ Move-Item -LiteralPath $temporary -Destination $destination -Force
 Write-Output "METADATA_OUTPUT=$destination"
 Write-Output "INSTALLER_SHA256=$hash"
 Write-Output "INSTALLER_SIZE=$($info.Length)"
+if ($null -ne $customInfo) {
+    Write-Output "CUSTOM_INSTALLER_OUTPUT=$custom"
+    Write-Output "CUSTOM_INSTALLER_SHA256=$customHash"
+    Write-Output "CUSTOM_INSTALLER_SIZE=$($customInfo.Length)"
+}
 if ($null -ne $msiInfo) {
     Write-Output "MSI_OUTPUT=$msi"
     Write-Output "MSI_SHA256=$msiHash"

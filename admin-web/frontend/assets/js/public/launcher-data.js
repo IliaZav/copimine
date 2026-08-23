@@ -62,9 +62,30 @@ export function parseLauncherMetadata(payload) {
       installLocation: "choose",
     };
   }
+  let customInstaller = null;
+  const hasCustomInstaller = payload.customInstallerDownloadUrl !== undefined
+    || payload.customInstallerFilename !== undefined;
+  if (hasCustomInstaller) {
+    const customFilename = String(payload.customInstallerFilename || "");
+    const customDownloadUrl = String(payload.customInstallerDownloadUrl || "");
+    if (!/^[A-Za-z0-9._-]+\.exe$/i.test(customFilename)
+      || !isSafeRelative(customDownloadUrl, "/downloads/launcher/")
+      || !customDownloadUrl.endsWith(".exe")
+      || !Number.isSafeInteger(payload.customInstallerSizeBytes)
+      || payload.customInstallerSizeBytes <= 0
+      || !/^[0-9a-f]{64}$/.test(String(payload.customInstallerSha256 || ""))
+      || payload.customInstallerMode !== "folder-picker") return null;
+    customInstaller = {
+      filename: customFilename,
+      downloadUrl: customDownloadUrl,
+      sizeBytes: payload.customInstallerSizeBytes,
+      sha256: String(payload.customInstallerSha256),
+      mode: "folder-picker",
+    };
+  }
   const publishedAt = parseDate(payload.publishedAt);
   if (!publishedAt) return null;
-  return { ...payload, version, downloadUrl, releaseNotesUrl, publishedAt, msi };
+  return { ...payload, version, downloadUrl, releaseNotesUrl, publishedAt, customInstaller, msi };
 }
 
 export function parsePatchIndex(payload) {

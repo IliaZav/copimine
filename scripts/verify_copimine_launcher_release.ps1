@@ -91,6 +91,35 @@ if ($null -ne $payload.msiFilename) {
     Write-Output "MSI_SIZE=$($msiInfo.Length)"
 }
 
+if ($null -ne $payload.customInstallerFilename) {
+    $customName = [string]$payload.customInstallerFilename
+    if ($customName -notmatch '^[A-Za-z0-9._-]+\.exe$') { throw 'metadata customInstallerFilename is unsafe' }
+    if ([string]$payload.customInstallerDownloadUrl -notmatch '^/downloads/launcher/[A-Za-z0-9._-]+\.exe$') { throw 'metadata customInstallerDownloadUrl is unsafe' }
+    if ([string]$payload.customInstallerMode -ne 'folder-picker') { throw 'metadata customInstallerMode must be folder-picker' }
+    if ([long]$payload.customInstallerSizeBytes -le 0 -or [string]$payload.customInstallerSha256 -notmatch '^[0-9a-f]{64}$') { throw 'metadata custom installer integrity fields are invalid' }
+    $customInstaller = Join-Path $root $customName
+    if (-not (Test-Path -LiteralPath $customInstaller -PathType Leaf)) {
+        $customInstaller = Join-Path $root (Join-Path 'packages' $customName)
+    }
+    if (-not (Test-Path -LiteralPath $customInstaller -PathType Leaf)) { throw "custom installer is missing in artifact root or packages: $customName" }
+    $customInfo = Get-Item -LiteralPath $customInstaller
+    $customSha256 = [System.Security.Cryptography.SHA256]::Create()
+    $customStream = $null
+    try {
+        $customStream = [System.IO.File]::OpenRead($customInstaller)
+        $customDigest = $customSha256.ComputeHash($customStream)
+    } finally {
+        if ($null -ne $customStream) { $customStream.Dispose() }
+        $customSha256.Dispose()
+    }
+    $customHash = [BitConverter]::ToString($customDigest).Replace('-', '').ToLowerInvariant()
+    if ($customInfo.Length -ne [long]$payload.customInstallerSizeBytes) { throw "custom installer size mismatch: $($customInfo.Length) != $($payload.customInstallerSizeBytes)" }
+    if ($customHash -ne [string]$payload.customInstallerSha256) { throw "custom installer SHA-256 mismatch: $customHash != $($payload.customInstallerSha256)" }
+    Write-Output "CUSTOM_INSTALLER=$customInstaller"
+    Write-Output "CUSTOM_INSTALLER_SHA256=$customHash"
+    Write-Output "CUSTOM_INSTALLER_SIZE=$($customInfo.Length)"
+}
+
 if ($RequireOfflineBundle) {
     $publishRoot = Join-Path $root 'publish'
     $offlineMetadataPath = Join-Path $publishRoot 'launcher-bootstrap/offline-minecraft-baseline.json'

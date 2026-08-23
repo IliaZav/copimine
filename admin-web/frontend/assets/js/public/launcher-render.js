@@ -28,6 +28,7 @@ function createSummaryList(summary) {
 }
 
 export function renderLauncherMetadata(metadata) {
+  const folderButton = document.getElementById("launcherFolderBtn");
   const button = document.getElementById("launcherMsiBtn");
   const state = document.getElementById("launcherDownloadStatus");
   const fields = {
@@ -38,20 +39,31 @@ export function renderLauncherMetadata(metadata) {
     sha: document.getElementById("launcherSha256"),
   };
   text(fields.version, metadata?.version || "—");
-  text(fields.size, metadata ? formatBytes(metadata.msi?.sizeBytes ?? metadata.sizeBytes) : "—");
+  text(fields.size, metadata ? formatBytes(metadata.customInstaller?.sizeBytes ?? metadata.msi?.sizeBytes ?? metadata.sizeBytes) : "—");
   text(fields.published, metadata ? formatDate(metadata.publishedAt) : "—");
   text(fields.platform, metadata ? `Windows ${metadata.minimumWindowsBuild}+ · ${metadata.architecture}` : "—");
-  text(fields.sha, metadata?.msi?.sha256 || metadata?.sha256 || "—");
-  if (!(button instanceof HTMLAnchorElement) || !state) return;
-  if (!metadata?.msi) {
-    disableMsiButton(button);
-    state.dataset.state = "error";
-    text(state, "Установщик с выбором папки временно недоступен.");
-    return;
+  text(fields.sha, metadata?.customInstaller?.sha256 || metadata?.msi?.sha256 || metadata?.sha256 || "—");
+  if (!state) return;
+  if (folderButton instanceof HTMLAnchorElement && metadata?.customInstaller) {
+    configureMsiButton(folderButton, metadata.customInstaller);
+  } else if (folderButton instanceof HTMLAnchorElement) {
+    disableMsiButton(folderButton);
   }
-  configureMsiButton(button, metadata.msi);
-  state.dataset.state = "ready";
-  text(state, `${metadata.msi.filename} · выберите папку во время установки.`);
+  if (button instanceof HTMLAnchorElement && metadata?.msi) {
+    configureMsiButton(button, metadata.msi);
+  } else if (button instanceof HTMLAnchorElement) {
+    disableMsiButton(button);
+  }
+  if (metadata?.customInstaller) {
+    state.dataset.state = "ready";
+    text(state, `${metadata.customInstaller.filename} · выберите диск и папку в установщике.`);
+  } else if (metadata?.msi) {
+    state.dataset.state = "ready";
+    text(state, `${metadata.msi.filename} · выберите область установки в MSI.`);
+  } else {
+    state.dataset.state = "error";
+    text(state, "Установщик временно недоступен.");
+  }
 }
 
 function configureMsiButton(button, msi) {

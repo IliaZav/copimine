@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $InstallerPath,
+    [string] $CustomInstallerPath = "",
     [Parameter(Mandatory = $true)]
     [string] $MsiPath,
     [Parameter(Mandatory = $true)]
@@ -17,6 +18,10 @@ $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptRoot
 $frontendRoot = Join-Path $repoRoot 'admin-web/frontend'
 $sourceInstaller = (Resolve-Path -LiteralPath $InstallerPath -ErrorAction Stop).Path
+$sourceCustomInstaller = $null
+if (-not [string]::IsNullOrWhiteSpace($CustomInstallerPath)) {
+    $sourceCustomInstaller = (Resolve-Path -LiteralPath $CustomInstallerPath -ErrorAction Stop).Path
+}
 $sourceMsi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
 $sourceMetadata = (Resolve-Path -LiteralPath $MetadataPath -ErrorAction Stop).Path
 $packageRoot = Split-Path -Parent $sourceInstaller
@@ -30,6 +35,7 @@ $destination = [System.IO.Path]::GetFullPath($OutputRoot)
 
 if (-not (Test-Path -LiteralPath $frontendRoot -PathType Container)) { throw "Frontend root is missing: $frontendRoot" }
 if (-not (Test-Path -LiteralPath $sourceInstaller -PathType Leaf)) { throw "Installer is missing: $sourceInstaller" }
+if ($null -ne $sourceCustomInstaller -and -not (Test-Path -LiteralPath $sourceCustomInstaller -PathType Leaf)) { throw "Custom installer is missing: $sourceCustomInstaller" }
 if (-not (Test-Path -LiteralPath $sourceMsi -PathType Leaf)) { throw "MSI is missing: $sourceMsi" }
 if (-not (Test-Path -LiteralPath $sourceMetadata -PathType Leaf)) { throw "Metadata is missing: $sourceMetadata" }
 
@@ -57,6 +63,22 @@ if ([long]$metadata.sizeBytes -ne [long]$installerInfo.Length) {
 $installerHash = Get-Sha256Lower $sourceInstaller
 if ([string]$metadata.sha256 -ine $installerHash) {
     throw "Launcher metadata SHA-256 mismatch: metadata=$($metadata.sha256), actual=$installerHash"
+}
+$metadataCustomFilename = [string]$metadata.customInstallerFilename
+if (-not [string]::IsNullOrWhiteSpace($metadataCustomFilename)) {
+    if ($null -eq $sourceCustomInstaller) { throw 'Metadata contains a custom folder installer but CustomInstallerPath was not provided.' }
+    $customInfo = Get-Item -LiteralPath $sourceCustomInstaller -ErrorAction Stop
+    $expectedCustomUrl = "/downloads/launcher/$metadataCustomFilename"
+    if ([string]$metadata.customInstallerDownloadUrl -ne $expectedCustomUrl) {
+        throw "Custom installer metadata URL is not tied to its filename: $($metadata.customInstallerDownloadUrl)"
+    }
+    if ($metadataCustomFilename -ne $customInfo.Name -or [long]$metadata.customInstallerSizeBytes -ne [long]$customInfo.Length) {
+        throw "Custom installer metadata does not match the artifact: $metadataCustomFilename / $($customInfo.Name)"
+    }
+    $customHash = Get-Sha256Lower $sourceCustomInstaller
+    if ([string]$metadata.customInstallerSha256 -ine $customHash) {
+        throw "Custom installer metadata SHA-256 mismatch: metadata=$($metadata.customInstallerSha256), actual=$customHash"
+    }
 }
 
 $msiInfo = Get-Item -LiteralPath $sourceMsi -ErrorAction Stop
@@ -195,6 +217,13 @@ if ([string]::IsNullOrWhiteSpace($filename) -or $filename -ne $metadata.filename
     throw "Metadata filename is not a safe installer filename: $($metadata.filename)"
 }
 Copy-Item -LiteralPath $sourceInstaller -Destination (Join-Path $downloadDirectory $filename) -Force
+if ($null -ne $sourceCustomInstaller) {
+    $customFilename = [System.IO.Path]::GetFileName($sourceCustomInstaller)
+    if ($customFilename -notmatch '^[A-Za-z0-9._-]+\.exe$') {
+        throw "Custom installer filename is unsafe: $customFilename"
+    }
+    Copy-Item -LiteralPath $sourceCustomInstaller -Destination (Join-Path $downloadDirectory $customFilename) -Force
+}
 Copy-Item -LiteralPath $sourceMsi -Destination (Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi))) -Force
 Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $metadataDirectory 'latest.json') -Force
 
@@ -236,6 +265,7 @@ if ($null -ne $sourceInstance) {
 
 Write-Output "SITE_OUTPUT=$destination"
 Write-Output "SITE_INSTALLER=$(Join-Path $downloadDirectory $filename)"
+if ($null -ne $sourceCustomInstaller) { Write-Output "SITE_CUSTOM_INSTALLER=$(Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceCustomInstaller)))" }
 Write-Output "SITE_MSI=$(Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi)))"
 Write-Output "SITE_METADATA=$(Join-Path $metadataDirectory 'latest.json')"
 if ($null -ne $sourceInstance) { Write-Output "SITE_INSTANCE_MANIFEST=$(Join-Path $destination 'launcher/stable/instance-manifest.json')" }

@@ -167,3 +167,49 @@ def test_release_verifier_checks_the_folder_selecting_msi(tmp_path: Path) -> Non
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "RELEASE_VERIFY=PASS" in result.stdout
+
+
+def test_release_verifier_rejects_folder_picker_hash_mismatch(tmp_path: Path) -> None:
+    payload = bytearray(256)
+    payload[0:2] = b"MZ"
+    payload[0x3C:0x40] = (128).to_bytes(4, "little")
+    payload[128:132] = b"PE\0\0"
+    installer = tmp_path / "CopiMineLauncherSetup-1.0.0.exe"
+    installer.write_bytes(payload)
+    custom = tmp_path / "CopiMineLauncherFolderSetup-1.0.0.exe"
+    custom_payload = bytearray(payload)
+    custom_payload[-1] = 7
+    custom.write_bytes(custom_payload)
+    metadata = tmp_path / "latest.json"
+    metadata.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "channel": "stable",
+                "version": "1.0.0",
+                "architecture": "x64",
+                "filename": installer.name,
+                "downloadUrl": "/downloads/launcher/CopiMineLauncherSetup-1.0.0.exe",
+                "sizeBytes": installer.stat().st_size,
+                "sha256": hashlib.sha256(installer.read_bytes()).hexdigest(),
+                "releaseNotesUrl": "/news/copimine-launcher-1-0-0.html",
+                "customInstallerFilename": custom.name,
+                "customInstallerDownloadUrl": f"/downloads/launcher/{custom.name}",
+                "customInstallerSizeBytes": custom.stat().st_size,
+                "customInstallerSha256": "0" * 64,
+                "customInstallerMode": "folder-picker",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_powershell(
+        ROOT / "scripts/verify_copimine_launcher_release.ps1",
+        "-ArtifactRoot",
+        str(tmp_path),
+        "-Version",
+        "1.0.0",
+    )
+
+    assert result.returncode != 0
+    assert "custom installer" in (result.stdout + result.stderr).lower()

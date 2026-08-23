@@ -113,7 +113,8 @@ def test_rune_watchdog_anchors_displays_by_block_coordinates_without_full_world_
     assert "private boolean sameRuneOverlayBlock(ItemDisplay display, Block floor)" in source
     assert "sameRuneOverlayBlock(display, floor)" in maintenance
     assert "sameRuneOverlayBlock(display, floor)" in refresh
-    assert "getNearbyEntities" in maintenance
+    assert "ownedEntities.values()" in maintenance
+    assert "getNearbyEntities" not in maintenance
     assert "world.getEntities()" not in maintenance
     assert "distanceSquared(expected)" not in refresh
 

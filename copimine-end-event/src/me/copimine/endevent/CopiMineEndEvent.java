@@ -2655,10 +2655,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
             Location expected = runeOverlayLocation(floor);
             boolean present = false;
-            for (Entity entity : world.getNearbyEntities(expected, 1.25D, 1.25D, 1.25D)) {
+            for (Entity entity : ownedEntities.values()) {
                 if (entity instanceof ItemDisplay display
                         && EVENT_KIND_PAD.equals(readString(entity, keyKind))
                         && ownedBySession(entity, eventId, generation)
+                        && display.getWorld().equals(world)
                         && sameRuneOverlayBlock(display, floor)) {
                     present = true;
                     break;

@@ -117,6 +117,17 @@ def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_lev
     assert "The pad coordinate is the air block above this floor" in MAIN
 
 
+def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> None:
+    start = MAIN.index("private void tickWaveMobAi()")
+    end = MAIN.index("private boolean isWaveCombatKind", start)
+    body = MAIN[start:end]
+    assert "enforceWaveMobContainment();" in body
+    assert body.index("enforceWaveMobContainment();") < body.index("if (!isCombatPhase())")
+    assert "private void enforceWaveMobContainment()" in MAIN
+    assert "boundedCombatRadius(config.containmentRadius())" in MAIN
+    assert "target.getBlockY() != anchor.getBlockY()" in MAIN
+
+
 def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact() -> None:
     for marker in (
         "launchSpellFlight",

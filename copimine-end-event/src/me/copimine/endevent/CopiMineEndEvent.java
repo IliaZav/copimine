@@ -46,6 +46,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -103,6 +104,8 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -146,6 +149,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
     private static final int MODEL_RUNE_OVERLAY = 830003;
     private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
+    private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
+    private static final int DEFAULT_ARENA_PREVIEW_SECONDS = 10;
+    private static final int MAX_ARENA_PREVIEW_SECONDS = 300;
+    private static final double ARENA_BOUNDARY_STEP = 0.5D;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
@@ -204,6 +211,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask tickTask;
     private BukkitTask musicLoopTask;
     private BukkitTask finalRitualVisualTask;
+    private BukkitTask arenaBoundaryTask;
     private boolean bootstrapped;
 
     private String eventId = "";
@@ -253,6 +261,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long nextWaveTargetMillis;
     private long bossSpellPauseUntilMillis;
     private long lastBossTeleportMillis;
+    private long nextRitualVisualRepairMillis;
     private int bossTargetCursor;
     private int bossSpellCursor;
     private int waveTargetCursor;
@@ -557,6 +566,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (taskRegistry != null) {
             taskRegistry.cancelAll();
         }
+        cancelArenaBoundaryPreview();
         if (finalRitualVisualTask != null) {
             finalRitualVisualTask.cancel();
             finalRitualVisualTask = null;
@@ -939,7 +949,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if ("arena".equals(group)) {
-            if (args.length > 1 && ("pos1".equalsIgnoreCase(args[1]) || "pos2".equalsIgnoreCase(args[1]))) {
+            if (args.length > 1 && ("border".equalsIgnoreCase(args[1])
+                    || "boundary".equalsIgnoreCase(args[1]))) {
+                int seconds = args.length > 2
+                        ? parseInt(args, 2, Integer.MIN_VALUE)
+                        : DEFAULT_ARENA_PREVIEW_SECONDS;
+                if (seconds == Integer.MIN_VALUE) {
+                    message(sender, "&cИспользование: /cmend arena border <seconds>.");
+                } else {
+                    showArenaBoundary(sender, seconds);
+                }
+            } else if (args.length > 1 && ("pos1".equalsIgnoreCase(args[1]) || "pos2".equalsIgnoreCase(args[1]))) {
                 Player player = playerSender(sender);
                 if (player != null) {
                     EventLayoutState.Point point = pointAt(player.getLocation());
@@ -969,8 +989,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 EventLayoutState previous = layoutState;
                 int defaultMinX = coreX - (int) Math.ceil(config.arenaRadius());
                 int defaultMaxX = coreX + (int) Math.ceil(config.arenaRadius());
-                int defaultMinY = Math.max(Bukkit.getWorld(worldName).getMinHeight(), coreY - 16);
-                int defaultMaxY = Math.min(Bukkit.getWorld(worldName).getMaxHeight() - 1, coreY + 16);
+                int verticalRadius = (int) Math.ceil(config.arenaVerticalRadius());
+                int defaultMinY = Math.max(eventWorld.getMinHeight(), coreY - verticalRadius);
+                int defaultMaxY = Math.min(eventWorld.getMaxHeight() - 1, coreY + verticalRadius);
                 int defaultMinZ = coreZ - (int) Math.ceil(config.arenaRadius());
                 int defaultMaxZ = coreZ + (int) Math.ceil(config.arenaRadius());
                 layoutState = withArenaPoints(
@@ -988,7 +1009,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 message(sender, "&7pos1=&f" + pointText(layoutState.arenaPos1())
                         + " &7pos2=&f" + pointText(layoutState.arenaPos2()));
             } else {
-                message(sender, "&e/cmend arena pos1|pos2|info|clear confirm");
+                message(sender, "&e/cmend arena pos1|pos2|info|clear confirm|border <seconds>");
             }
         } else {
             if (args.length < 2) {
@@ -1058,6 +1079,87 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String arenaBoundsText() {
         return worldName + " [" + arenaMinX + "," + arenaMinY + "," + arenaMinZ + "]..["
                 + arenaMaxX + "," + arenaMaxY + "," + arenaMaxZ + "] volume=" + arenaVolume();
+    }
+
+    private boolean showArenaBoundary(CommandSender sender, int seconds) {
+        if (!isConfigured()) {
+            message(sender, "&cСначала настрой Core.");
+            return false;
+        }
+        if (seconds < 1 || seconds > MAX_ARENA_PREVIEW_SECONDS) {
+            message(sender, "&cДлительность границы должна быть от 1 до "
+                    + MAX_ARENA_PREVIEW_SECONDS + " секунд.");
+            return false;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            message(sender, "&cEvent world не загружен; граница не показана.");
+            return false;
+        }
+        cancelArenaBoundaryPreview();
+        String previewEventId = eventId;
+        long previewGeneration = generation;
+        long expiresAt = System.currentTimeMillis() + seconds * 1000L;
+        arenaBoundaryTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!isConfigured() || !eventId.equals(previewEventId) || generation != previewGeneration
+                    || System.currentTimeMillis() >= expiresAt) {
+                cancelArenaBoundaryPreview();
+                return;
+            }
+            drawArenaBoundaryFrame(world);
+        }, 0L, 5L);
+        getLogger().info("END_EVENT_ARENA_BOUNDARY event=" + eventId + " generation=" + generation
+                + " seconds=" + seconds + " bounds=" + arenaBoundsText());
+        message(sender, "&aГраница арены показана частицами на &f" + seconds + " сек."
+                + " &7Линии: ±20 по X/Z, ±3 по Y.");
+        return true;
+    }
+
+    private void cancelArenaBoundaryPreview() {
+        if (arenaBoundaryTask != null) {
+            arenaBoundaryTask.cancel();
+            arenaBoundaryTask = null;
+        }
+    }
+
+    private void drawArenaBoundaryFrame(World world) {
+        if (world == null) {
+            return;
+        }
+        double minX = arenaMinX + 0.5D;
+        double maxX = arenaMaxX + 0.5D;
+        double minY = arenaMinY + 0.05D;
+        double maxY = arenaMaxY + 0.95D;
+        double minZ = arenaMinZ + 0.5D;
+        double maxZ = arenaMaxZ + 0.5D;
+
+        // Two horizontal rectangles show the exact top and bottom of the
+        // protected cuboid.  Four vertical lines make the volume readable
+        // without filling the arena with particles.
+        for (double x = minX; x <= maxX + 0.001D; x += ARENA_BOUNDARY_STEP) {
+            spawnArenaBoundaryPoint(world, x, minY, minZ);
+            spawnArenaBoundaryPoint(world, x, minY, maxZ);
+            spawnArenaBoundaryPoint(world, x, maxY, minZ);
+            spawnArenaBoundaryPoint(world, x, maxY, maxZ);
+        }
+        for (double z = minZ; z <= maxZ + 0.001D; z += ARENA_BOUNDARY_STEP) {
+            spawnArenaBoundaryPoint(world, minX, minY, z);
+            spawnArenaBoundaryPoint(world, maxX, minY, z);
+            spawnArenaBoundaryPoint(world, minX, maxY, z);
+            spawnArenaBoundaryPoint(world, maxX, maxY, z);
+        }
+        for (double y = minY; y <= maxY + 0.001D; y += ARENA_BOUNDARY_STEP) {
+            spawnArenaBoundaryPoint(world, minX, y, minZ);
+            spawnArenaBoundaryPoint(world, minX, y, maxZ);
+            spawnArenaBoundaryPoint(world, maxX, y, minZ);
+            spawnArenaBoundaryPoint(world, maxX, y, maxZ);
+        }
+    }
+
+    private void spawnArenaBoundaryPoint(World world, double x, double y, double z) {
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(177, 70, 255), 1.0F);
+        world.spawnParticle(Particle.DUST, new Location(world, x, y, z),
+                1, 0.0D, 0.0D, 0.0D, 0.0D, dust);
     }
 
     private String pointText(EventLayoutState.Point point) {
@@ -1547,8 +1649,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         requiredPlayers = players;
         arenaMinX = coreX - (int) Math.ceil(config.arenaRadius());
         arenaMaxX = coreX + (int) Math.ceil(config.arenaRadius());
-        arenaMinY = Math.max(player.getWorld().getMinHeight(), coreY - 16);
-        arenaMaxY = Math.min(player.getWorld().getMaxHeight() - 1, coreY + 16);
+        int verticalRadius = (int) Math.ceil(config.arenaVerticalRadius());
+        arenaMinY = Math.max(player.getWorld().getMinHeight(), coreY - verticalRadius);
+        arenaMaxY = Math.min(player.getWorld().getMaxHeight() - 1, coreY + verticalRadius);
         arenaMinZ = coreZ - (int) Math.ceil(config.arenaRadius());
         arenaMaxZ = coreZ + (int) Math.ceil(config.arenaRadius());
         layoutState = new EventLayoutState(
@@ -1612,6 +1715,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         forcePhase(EventPhase.COLLECTING, "core configured");
         rebuildPersistedVisuals();
+        showArenaBoundary(player, DEFAULT_ARENA_PREVIEW_SECONDS);
         message(player, "&aRift Core настроен: &f" + players + " игроков, event=" + eventId);
     }
 
@@ -1703,14 +1807,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void removeCore(CommandSender sender) {
         if (!isConfigured()) {
             message(sender, "&eCore уже удалён.");
-            return;
-        }
-        if (phase == EventPhase.WAVE_1 || phase == EventPhase.INTERMISSION_1 || phase == EventPhase.WAVE_2
-                || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3 || phase == EventPhase.BOSS_ACTIVE
-                || phase == EventPhase.FINAL_DRAIN || phase == EventPhase.FINAL_RITUAL
-                || phase == EventPhase.FINAL_WAVE || phase == EventPhase.BOSS_FINISH
-                || phase == EventPhase.VICTORY_PROCESSING || phase == EventPhase.VICTORY) {
-            message(sender, "&cНельзя удалять Core во время боя или victory.");
             return;
         }
         restoreCoreAndPads();
@@ -1822,8 +1918,91 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && block.getX() == coreX && block.getY() == coreY && block.getZ() == coreZ;
     }
 
+    private void openCoreRemovalConfirm(Player player) {
+        if (player == null || (!isAdmin(player) && !player.isOp())) {
+            return;
+        }
+        CoreRemovalConfirmHolder holder = new CoreRemovalConfirmHolder(
+                player.getUniqueId(), eventId, generation);
+        Inventory inventory = Bukkit.createInventory(holder, 27,
+                Component.text("Подтверждение снятия Core", NamedTextColor.DARK_RED));
+        holder.attach(inventory);
+        ItemStack filler = menuItem(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            inventory.setItem(slot, filler);
+        }
+        inventory.setItem(11, menuItem(Material.LIME_WOOL, "§aПодтвердить снятие Core", List.of(
+                "§7Вернуть исходный блок на место.",
+                "§7Удалить руны и текст Core.",
+                "§7Остановить текущий сеанс события.",
+                "§cПотребуется заново установить Core.")));
+        inventory.setItem(15, menuItem(Material.RED_WOOL, "§cОтмена", List.of("§7Ничего не менять.")));
+        player.openInventory(inventory);
+        message(player, "&eCore защищён. Подтверди снятие в открывшемся GUI.");
+    }
+
+    private ItemStack menuItem(Material material, String name, List<String> lore) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(name);
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEndEventInventoryClick(InventoryClickEvent event) {
+        Inventory top = event.getView().getTopInventory();
+        if (!(top.getHolder() instanceof CoreRemovalConfirmHolder holder)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (!(event.getWhoClicked() instanceof Player player)) {
+            return;
+        }
+        if (!holder.ownerUuid().equals(player.getUniqueId())
+                || (!isAdmin(player) && !player.isOp())) {
+            player.closeInventory();
+            message(player, "&cЭто подтверждение принадлежит другому администратору.");
+            return;
+        }
+        if (event.getClickedInventory() == null || !event.getClickedInventory().equals(top)) {
+            return;
+        }
+        if (event.getRawSlot() == 11) {
+            player.closeInventory();
+            if (!isConfigured() || !eventId.equals(holder.eventId()) || generation != holder.generation()) {
+                message(player, "&cСеанс Core уже изменился; подтверждение устарело.");
+                return;
+            }
+            removeCore(player);
+        } else if (event.getRawSlot() == 15) {
+            player.closeInventory();
+            message(player, "&7Снятие Core отменено.");
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEndEventInventoryDrag(InventoryDragEvent event) {
+        if (event.getView().getTopInventory().getHolder() instanceof CoreRemovalConfirmHolder) {
+            event.setCancelled(true);
+        }
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onArenaBlockBreak(BlockBreakEvent event) {
+        if (sameCore(event.getBlock())) {
+            event.setCancelled(true);
+            if (event.getPlayer().isOp() || isAdmin(event.getPlayer())) {
+                openCoreRemovalConfirm(event.getPlayer());
+            } else {
+                event.getPlayer().sendActionBar(Component.text(
+                        "Ядро защищено: снять его может только администратор", NamedTextColor.RED));
+            }
+            return;
+        }
         if (phase != EventPhase.UNLOCKED && (isArenaLocation(event.getBlock().getLocation())
                 || isGateLocation(event.getBlock().getLocation()))) {
             event.setCancelled(true);
@@ -2404,6 +2583,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updatePadOccupancy() {
+        maintainRitualVisuals();
         Map<String, UUID> previousOccupants = new LinkedHashMap<>(padOccupants);
         padOccupants.clear();
         if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
@@ -2440,13 +2620,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 registerParticipant(closest);
             }
         }
-        if (!previousOccupants.equals(padOccupants)) {
+        if (!previousOccupants.equals(padOccupants)
+                || (coreCharged && (phase == EventPhase.READY_FOR_PLAYERS || phase == EventPhase.COUNTDOWN))) {
             refreshRuneOverlayVisuals();
         }
         if (padOccupants.size() == requiredPlayers) {
             beginCountdownIfReady();
         } else if (phase == EventPhase.COUNTDOWN) {
             cancelRitual("pad occupancy changed");
+        }
+    }
+
+    private void maintainRitualVisuals() {
+        if (!bootstrapped || !isConfigured() || !coreCharged
+                || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)
+                || pads.isEmpty()) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        int missing = 0;
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Location expected = runeOverlayLocation(world.getBlockAt(pad.x(), pad.y() - 1, pad.z()));
+            boolean present = false;
+            for (Entity entity : world.getEntities()) {
+                if (entity instanceof ItemDisplay
+                        && EVENT_KIND_PAD.equals(readString(entity, keyKind))
+                        && ownedBySession(entity, eventId, generation)
+                        && entity.getLocation().distanceSquared(expected) <= 0.001D) {
+                    present = true;
+                    break;
+                }
+            }
+            if (!present) {
+                missing++;
+            }
+        }
+        if (missing > 0 && System.currentTimeMillis() >= nextRitualVisualRepairMillis) {
+            nextRitualVisualRepairMillis = System.currentTimeMillis() + 1_000L;
+            getLogger().warning("END_EVENT_RUNE_VISUAL_REBUILD event=" + eventId
+                    + " phase=" + phase + " missing=" + missing + " expected=" + pads.size());
+            rebuildPersistedVisuals();
         }
     }
 
@@ -2586,6 +2802,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * ownedEntities and checks the event role tag.
      */
     private void tickWaveMobAi() {
+        // Test waves deliberately do not enter the official state machine, but
+        // their event-owned mobs still need the exact same containment policy.
+        enforceWaveMobContainment();
         if (!isCombatPhase()) {
             return;
         }
@@ -2614,10 +2833,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextWaveTargetMillis = now
                     + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
         }
+    }
+
+    private void enforceWaveMobContainment() {
+        Location anchor = coreLocation();
+        if (anchor == null) {
+            return;
+        }
+        double radius = boundedCombatRadius(config.containmentRadius());
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (isWaveCombatKind(kind) && isLiveOwnedEntity(entity.getUniqueId())) {
-                enforceCombatLeash(entity, coreLocation(), config.containmentRadius(), "WAVE_AI_LEASH");
+                enforceCombatLeash(entity, anchor, radius, "WAVE_AI_LEASH");
             }
         }
     }
@@ -2857,6 +3084,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double deltaX = first.getX() - second.getX();
         double deltaZ = first.getZ() - second.getZ();
         return deltaX * deltaX + deltaZ * deltaZ;
+    }
+
+    private double boundedCombatRadius(double configuredRadius) {
+        return Math.max(1.0D, Math.min(MAX_COMBAT_RADIUS_BLOCKS, configuredRadius));
     }
 
     private Location findSafeCombatLocation(Location anchor, Location preferred, double radius) {
@@ -3175,7 +3406,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         String kind = readString(entity, keyKind);
-        double radius = EVENT_KIND_BOSS.equals(kind) ? config.bossRadius() : config.containmentRadius();
+        double radius = EVENT_KIND_BOSS.equals(kind)
+                ? boundedCombatRadius(config.bossRadius())
+                : boundedCombatRadius(config.containmentRadius());
         boolean outsideHorizontalRadius = horizontalDistanceSquared(target, anchor) > radius * radius;
         boolean offCoreLevel = target.getBlockY() != anchor.getBlockY();
         if (outsideHorizontalRadius || offCoreLevel) {
@@ -4974,7 +5207,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "core" -> List.of("set", "info", "rebuild", "remove");
-                case "arena" -> List.of("pos1", "pos2", "info", "clear");
+                case "arena" -> List.of("pos1", "pos2", "info", "clear", "border", "boundary");
                 case "gate" -> List.of("pos1", "pos2", "preview", "restore");
                 case "portalroom" -> List.of("set", "info");
                 case "resources" -> List.of("status", "add", "reset");
@@ -5034,5 +5267,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("void_blast", "rift_projectile", "void_mark", "summon", "control_reverse");
         }
         return List.of();
+    }
+
+    private static final class CoreRemovalConfirmHolder implements InventoryHolder {
+        private final UUID ownerUuid;
+        private final String eventId;
+        private final long generation;
+        private Inventory inventory;
+
+        private CoreRemovalConfirmHolder(UUID ownerUuid, String eventId, long generation) {
+            this.ownerUuid = ownerUuid;
+            this.eventId = eventId;
+            this.generation = generation;
+        }
+
+        private UUID ownerUuid() {
+            return ownerUuid;
+        }
+
+        private String eventId() {
+            return eventId;
+        }
+
+        private long generation() {
+            return generation;
+        }
+
+        private void attach(Inventory inventory) {
+            this.inventory = inventory;
+        }
+
+        @Override
+        public Inventory getInventory() {
+            return inventory;
+        }
     }
 }

@@ -24,7 +24,8 @@ ritual:
 
 arena:
   world: CopiMine
-  radius: 32.0
+  radius: 20.0
+  vertical-radius: 3.0
   boss-radius: 20.0
   containment-radius: 20.0
 

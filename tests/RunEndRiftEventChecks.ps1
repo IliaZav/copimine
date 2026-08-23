@@ -45,7 +45,7 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_item_lore_contract.py tests\test_end_event_runtime_invariants_contract.py `
       tests\test_end_event_runtime_smoke_contract.py tests\test_end_event_ai_contract.py `
       tests\test_end_event_music_contract.py tests\test_end_event_release_contract.py `
-      tests\test_end_event_visual_regressions.py
+      tests\test_end_event_visual_regressions.py tests\test_end_event_arena_protection_contract.py
   } finally {
     Pop-Location
   }

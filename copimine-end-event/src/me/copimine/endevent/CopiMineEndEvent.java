@@ -2283,9 +2283,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void spawnCoreOverlay(World world, Block core) {
         // The target block remains the real block selected by the admin.  A
-        // FIXED block-model ItemDisplay is centred on its entity location, so
-        // the overlay must share the target block's centre rather than sit one
-        // block above it.
+        // FIXED block-model ItemDisplay is centred on its entity location.  A
+        // full cube placed at the target block's centre is depth-tested behind
+        // that opaque vanilla block, so anchor it on the block's top surface.
+        // The vanilla block itself is still preserved and restored from its
+        // original BlockData when the event is removed.
         Location displayLocation = coreOverlayLocation(core);
         ItemDisplay display = world.spawn(displayLocation, ItemDisplay.class, entity -> {
             entity.setItemStack(overlayItem(coreCharged ? MODEL_CORE_CHARGED_OVERLAY : MODEL_CORE_OVERLAY,
@@ -2335,7 +2337,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location coreOverlayLocation(Block core) {
-        return core.getLocation().add(0.5D, 0.5D, 0.5D);
+        return core.getLocation().add(0.5D, 1.5D, 0.5D);
     }
 
     private Location runeOverlayLocation(Block floor) {

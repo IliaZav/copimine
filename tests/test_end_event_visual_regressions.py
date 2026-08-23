@@ -31,10 +31,9 @@ def test_resourcepack_builder_declares_every_end_event_item_asset() -> None:
 def test_core_and_rune_displays_are_anchored_to_the_surface() -> None:
     source = MAIN.read_text(encoding="utf-8")
     assert "private Location coreOverlayLocation(Block core)" in source
-    assert "return core.getLocation().add(0.5D, 0.5D, 0.5D);" in source
+    assert "return core.getLocation().add(0.5D, 1.5D, 0.5D);" in source
     assert "private Location runeOverlayLocation(Block floor)" in source
     assert "return floor.getLocation().add(0.5D, 1.0D, 0.5D);" in source
-    assert "core.getLocation().add(0.5D, 1.5D, 0.5D)" not in source
     assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" not in source
 
 

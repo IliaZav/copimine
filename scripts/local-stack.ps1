@@ -548,8 +548,8 @@ function Ensure-LocalResourcePack {
     if ($sha1 -notmatch '^[0-9a-f]{40}$') { throw 'Local resource pack SHA1 is invalid.' }
     $sha256 = (Get-Content -LiteralPath $sha256File -Raw).Trim().ToLowerInvariant()
     if ($sha256 -notmatch '^[0-9a-f]{64}$') { throw 'Local resource pack SHA256 is invalid.' }
-    $actualSha1 = (Get-FileHash -LiteralPath $pack -Algorithm SHA1).Hash.ToLowerInvariant()
-    $actualSha256 = (Get-FileHash -LiteralPath $pack -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actualSha1 = Get-FileSha1 -Path $pack
+    $actualSha256 = Get-FileSha256 -Path $pack
     if ($actualSha1 -ne $sha1 -or $actualSha256 -ne $sha256) { throw 'Local resource pack hash does not match its sidecar files.' }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -620,6 +620,24 @@ function Get-FileSha256 {
         }
     } finally {
         $sha256.Dispose()
+    }
+}
+
+function Get-FileSha1 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($sha1.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $sha1.Dispose()
     }
 }
 

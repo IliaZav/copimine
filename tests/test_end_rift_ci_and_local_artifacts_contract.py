@@ -40,7 +40,7 @@ def test_launcher_artifact_sync_is_tracked_and_verifies_the_pack_before_copying(
         "CopiMineResourcePack.zip",
         "CopiMineResourcePack.sha1",
         "CopiMineResourcePack.sha256",
-        "Get-FileHash",
+        "Get-FileDigest",
         "assets/minecraft/models/item/paper.json",
         "end_event_core",
         "end_event_pad",
@@ -55,3 +55,13 @@ def test_tracked_local_artifact_prepare_builds_pack_before_syncing_it() -> None:
     assert "build-resourcepack.ps1" in prepare
     assert "InstallEndRiftLocalArtifacts.ps1" in prepare
     assert "SourceRoot" in prepare and "TargetRoot" in prepare
+
+
+def test_local_pack_hashing_does_not_depend_on_optional_get_file_hash_cmdlet() -> None:
+    sync = SYNC.read_text(encoding="utf-8")
+    stack = STACK
+    assert "System.Security.Cryptography.SHA1" in sync
+    assert "System.Security.Cryptography.SHA256" in sync
+    assert "Get-FileHash" not in sync
+    assert "function Get-FileSha1" in stack
+    assert "Get-FileHash" not in stack

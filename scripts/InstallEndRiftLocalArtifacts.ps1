@@ -33,6 +33,31 @@ function Get-DeclaredHash {
     return $value
 }
 
+function Get-FileDigest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('SHA1', 'SHA256')]
+        [string]$Algorithm
+    )
+    $hasher = if ($Algorithm -eq 'SHA1') {
+        [System.Security.Cryptography.SHA1]::Create()
+    } else {
+        [System.Security.Cryptography.SHA256]::Create()
+    }
+    try {
+        $stream = [System.IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($hasher.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $hasher.Dispose()
+    }
+}
+
 function Assert-EndRiftPack {
     param([string]$Path)
 
@@ -77,8 +102,8 @@ function Assert-EndRiftPack {
 
 $declaredSha1 = Get-DeclaredHash -Path $sha1Path -Length 40
 $declaredSha256 = Get-DeclaredHash -Path $sha256Path -Length 64
-$actualSha1 = (Get-FileHash -LiteralPath $packPath -Algorithm SHA1).Hash.ToLowerInvariant()
-$actualSha256 = (Get-FileHash -LiteralPath $packPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualSha1 = Get-FileDigest -Path $packPath -Algorithm SHA1
+$actualSha256 = Get-FileDigest -Path $packPath -Algorithm SHA256
 if ($actualSha1 -ne $declaredSha1) { throw "Resource pack SHA1 mismatch. declared=$declaredSha1 actual=$actualSha1" }
 if ($actualSha256 -ne $declaredSha256) { throw "Resource pack SHA256 mismatch. declared=$declaredSha256 actual=$actualSha256" }
 Assert-EndRiftPack -Path $packPath
@@ -91,8 +116,8 @@ if ([System.IO.Path]::GetFullPath($sourceBuild) -ne [System.IO.Path]::GetFullPat
 }
 
 $targetPack = Join-Path $targetBuild $packName
-$targetSha1 = (Get-FileHash -LiteralPath $targetPack -Algorithm SHA1).Hash.ToLowerInvariant()
-$targetSha256 = (Get-FileHash -LiteralPath $targetPack -Algorithm SHA256).Hash.ToLowerInvariant()
+$targetSha1 = Get-FileDigest -Path $targetPack -Algorithm SHA1
+$targetSha256 = Get-FileDigest -Path $targetPack -Algorithm SHA256
 if ($targetSha1 -ne $actualSha1 -or $targetSha256 -ne $actualSha256) {
     throw 'Copied End Rift resource pack failed hash verification.'
 }

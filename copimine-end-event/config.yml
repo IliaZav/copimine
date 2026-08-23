@@ -25,8 +25,8 @@ ritual:
 arena:
   world: CopiMine
   radius: 32.0
-  boss-radius: 15.0
-  containment-radius: 10.0
+  boss-radius: 20.0
+  containment-radius: 20.0
 
 mobs:
   endermite:

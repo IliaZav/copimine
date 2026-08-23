@@ -105,3 +105,25 @@ def test_clearing_a_boss_resets_target_and_spell_cooldown_state() -> None:
     assert "nextSpellMillis = 0L;" in MAIN
     assert "private void clearBossOnly()" in MAIN
     assert "private void clearCombatAiState()" in MAIN
+
+
+def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_level() -> None:
+    assert "boss-radius: 20.0" in CONFIG
+    assert "containment-radius: 20.0" in CONFIG
+    assert "config.containmentRadius()" in MAIN
+    assert "candidate.setY(center.getBlockY())" in MAIN
+    assert "horizontalDistanceSquared" in MAIN
+    assert "offCoreLevel" in MAIN
+    assert "rune overlay is placed on the floor block" in MAIN
+
+
+def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact() -> None:
+    for marker in (
+        "launchSpellFlight",
+        "BOSS_SPELL_FLIGHT",
+        "MINIBOSS_SPELL_FLIGHT",
+        "spell-flight",
+        "spawnParticle",
+        "taskRegistry.owns(callbackGeneration)",
+    ):
+        assert marker in MAIN

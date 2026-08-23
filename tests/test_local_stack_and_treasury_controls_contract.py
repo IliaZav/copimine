@@ -22,6 +22,13 @@ def test_local_stack_uses_isolated_database_and_waits_for_slow_minecraft_rcon():
     )
 
 
+def test_local_stack_retries_postgres_consistent_recovery_state():
+    """A normal PostgreSQL crash-recovery probe must stay inside the retry window."""
+    assert "function Wait-PostgresReady" in LOCAL_STACK
+    assert "database system is not yet accepting connections" in LOCAL_STACK
+    assert "consistent recovery state has not been reached" in LOCAL_STACK
+
+
 def test_local_stack_serves_the_built_resource_pack_to_minecraft():
     assert "CopiMineResourcePack.zip" in LOCAL_STACK
     assert "resourcepacks\\build" in LOCAL_STACK

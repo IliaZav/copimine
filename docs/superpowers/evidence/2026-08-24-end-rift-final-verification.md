@@ -11,7 +11,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 - Проверка выполнялась только в `local-runtime\end-rift-server`.
 - Paper: `127.0.0.1:25566`, RCON: `127.0.0.1:25576`.
 - PostgreSQL: изолированный локальный экземпляр `127.0.0.1:55433`.
-- Launcher, сайт, production world, production DB и production deploy не запускались и не изменялись.
+- Launcher и сайт в рамках этой проверки не запускались и не изменялись; уже открытое окно лаунчера не использовалось. Production world, production DB и production deploy не затрагивались.
 - После destructive-проверки Core локальный status оставлен чистым: активных event-owned сущностей нет.
 
 ## Source/build gate
@@ -64,8 +64,8 @@ End Rift isolated runtime smoke passed.
 Финальный RCON status после повторного прогона и очистки:
 
 ```text
-state=UNCONFIGURED generation=4
-core=CopiMine 8,68,-34
+state=UNCONFIGURED generation=5
+core=CopiMine 8,68,-37
 gate=UNSET
 pads=0/0 roster=0 participants=0 helpers=0
 visuals=coreOverlay=false coreModel=0 runes=0/0 occupied=0
@@ -97,6 +97,10 @@ wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=N
 
 В логах финального запуска нет `NoClassDefFoundError` и `CopiMineEndEvent failed closed`.
 
-## GUI observation boundary
+## Реальная GUI-проверка
 
-Ресурс-пак и реальные PNG-ассеты проверены контрактами, ZIP/hash и локальной отправкой протоколу клиента. Доступный локальный Minecraft GUI в этом прогоне открыл окно без отрисовки мира, поэтому визуальное наблюдение «глазами клиента» отдельно не выдаётся за подтверждённое; это не заменяет проверку pack/model/packet contracts.
+- Fabric-клиент подключён к изолированному Paper на `127.0.0.1:25566`; локальный HTTP-сервис ресурспака временно поднят только на `127.0.0.1:8092`. Ответ ZIP: HTTP `200`, `8,411,791` байт, SHA-1 `aaa2605b2b0f2751f5eab5258173d5c6699d45be`.
+- В Minecraft после `/cmend core set 2` реально видны симметричный сине-фиолетовый Core на выбранном каменном блоке и две большие руны, лежащие на верхней поверхности блоков; ванильный блок под overlay не заменён.
+- После заполнения ресурсов status стал `READY_FOR_PLAYERS`, `coreModel=830002`, `runes=2/2`. При телепортации тестового игрока на руну status показал `occupied=1`; в GUI занятая руна реально переключилась на ярко-зелёную текстуру и осталась на поверхности блока.
+- Локальный `/cmend test ai` показал в GUI event-мобов и босса; отдельный свежий кадр содержит видимые фиолетовые частицы летящего заклинания. После проверки выполнен `/cmend core remove confirm`; status снова чистый, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`.
+- Эти наблюдения сделаны в реальном окне Minecraft, а не на концепт-рендерах. Окно лаунчера не использовалось.

@@ -635,6 +635,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         testCombatAiMode = false;
         miniBossSpells.clear();
         nextMiniBossSpellMillis.clear();
+        combatHelpers.clear();
         recentBossTargets.clear();
         previousBossSpell = null;
         bossTargetCursor = 0;

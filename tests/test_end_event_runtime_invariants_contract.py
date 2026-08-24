@@ -100,6 +100,15 @@ def test_event_mob_visual_bindings_are_cleaned_with_owned_entities() -> None:
     assert "clientVisualId" in MAIN
 
 
+def test_core_session_reset_clears_combat_helpers_with_wave_and_boss_state() -> None:
+    clear = MAIN[MAIN.index("private void clearCombatAiState"):
+                 MAIN.index("private void clearClientEffects", MAIN.index("private void clearCombatAiState"))]
+    remove = MAIN[MAIN.index("private void removeCore"):
+                  MAIN.index("private void resetEventSafely")]
+    assert "combatHelpers.clear()" in clear
+    assert "clearCombatAiState();" in remove
+
+
 def test_core_and_rune_visuals_never_replace_vanilla_block_materials() -> None:
     assert "coreBlockData = originalBlockData" in MAIN
     assert "block.setType(config.coreBlockMaterial()" not in MAIN

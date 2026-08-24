@@ -68,7 +68,11 @@ if ($manifest.environment -ne 'staging') {
     throw 'Full-plugin runtime evidence must be marked environment=staging.'
 }
 $plugins = @($manifest.plugins)
-$testPlugins = if ($null -eq $manifest.test_plugins) { @() } else { @($manifest.test_plugins) }
+$testPlugins = @(
+    if ($null -ne $manifest.test_plugins) {
+        $manifest.test_plugins
+    }
+)
 if ($plugins.Count -lt 20) {
     throw "Full-plugin runtime manifest is unexpectedly small: $($plugins.Count)."
 }

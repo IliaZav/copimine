@@ -9,6 +9,9 @@ public final class EventLayoutStoreTest {
     public static void main(String[] args) throws Exception {
         Path directory = Files.createTempDirectory("copimine-end-layout-test-");
         EventLayoutStore store = new EventLayoutStore(directory);
+        check(store.load().gateStatus().equals("UNSET"), "an empty layout must start with the explicit UNSET gate status");
+        EventLayoutState legacy = new EventLayoutState(null, null, null, null, Map.of(), "NONE", null);
+        check(legacy.gateStatus().equals("UNSET"), "legacy NONE gate status must migrate to UNSET");
         EventLayoutState first = new EventLayoutState(
                 new EventLayoutState.Point("CopiMine", 1, 64, 2),
                 new EventLayoutState.Point("CopiMine", 5, 70, 8),

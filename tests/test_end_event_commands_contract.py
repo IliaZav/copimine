@@ -17,6 +17,7 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
         "cleanup confirm", "reset confirm", "unlock confirm",
         "wave spawn", "boss spawn official confirm", "boss phase",
         "boss kill", "boss spell", "client status", "test wave", "test boss",
+        "test run creative",
     ):
         assert command.split()[0] in MAIN
     assert "Повтори /cmend resources reset confirm" in MAIN
@@ -26,6 +27,7 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
     assert "simulate-victory" in MAIN
     assert "Тестовая волна не создана: сначала настрой Core" in MAIN
     assert "Волна не создана: сначала настрой Core" in MAIN
+    assert "/cmend test run creative" in MAIN
     assert "return isConfigured() && coreLocation() != null;" in MAIN
     assert "if (!isConfigured()) {" in MAIN
 

@@ -13,11 +13,19 @@ public record EventLayoutState(
         Portal portalRoom) {
     public EventLayoutState {
         gateSnapshot = Map.copyOf(gateSnapshot == null ? Map.of() : gateSnapshot);
-        gateStatus = gateStatus == null ? "NONE" : gateStatus;
+        gateStatus = normalizeGateStatus(gateStatus);
     }
 
     public static EventLayoutState empty() {
-        return new EventLayoutState(null, null, null, null, Map.of(), "NONE", null);
+        return new EventLayoutState(null, null, null, null, Map.of(), "UNSET", null);
+    }
+
+    private static String normalizeGateStatus(String status) {
+        String normalized = status == null ? "" : status.trim().toUpperCase(java.util.Locale.ROOT);
+        return switch (normalized) {
+            case "UNSET", "PREVIEW", "OPENING", "OPENED", "RESTORED", "RESTORED_ON_BOOT" -> normalized;
+            default -> "UNSET";
+        };
     }
 
     public record Point(String world, int x, int y, int z) {

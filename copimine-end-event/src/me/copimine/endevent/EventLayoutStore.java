@@ -73,7 +73,7 @@ public final class EventLayoutStore {
                     point(yaml, "arena.pos1"), point(yaml, "arena.pos2"),
                     point(yaml, "gate.pos1"), point(yaml, "gate.pos2"),
                     snapshot(yaml.getConfigurationSection("gate.snapshot")),
-                    yaml.getString("gate.status", "NONE"),
+                    yaml.getString("gate.status", "UNSET"),
                     portal(yaml));
         } catch (RuntimeException error) {
             return null;

@@ -176,6 +176,7 @@ const fromWindow = (name) => (...args) => window[name]?.(...args);
 const CONFIRM_HEADER = "X-Copimine-Confirm";
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
+const BOOTSTRAP_TIMEOUT_MS = 20000;
 
 document.addEventListener("error", (event) => {
   const target = event.target;
@@ -1022,12 +1023,28 @@ function setBootState(mode = "loading") {
   const boot = $("bootStage");
   const app = $("app");
   const ready = mode === "ready";
+  const loading = mode === "loading";
   if (boot) boot.classList.toggle("hidden", ready);
+  if (boot) boot.setAttribute("aria-busy", loading ? "true" : "false");
   if (app) {
     app.hidden = !ready;
     app.classList.toggle("hidden", !ready);
   }
 }
+
+function renderBootError(error) {
+  const boot = $("bootStage");
+  if (!boot) return;
+  const message = describeError(error);
+  const shell = makeElement("div", "loading-error");
+  shell.append(makeElement("strong", "loading-error-title", "Сайт не ответил вовремя"));
+  shell.append(makeElement("p", "loading-error-copy", message || "Проверь соединение и повтори попытку."));
+  shell.append(makeButton("Повторить", "btn btn-primary", "retryCabinetBoot()"));
+  replaceChildrenSafe(boot, [shell]);
+  setBootState("error");
+}
+
+window.retryCabinetBoot = () => window.location.reload();
 
 function applyDynamicViewStyles(root = $("view")) {
   if (!root) return;
@@ -2878,6 +2895,13 @@ async function bootAuthed(options = {}) {
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     if (isCabinetPage()) {
+      const message = describeError(err);
+      const transient = err?.name === "AbortError"
+        || /failed to fetch|networkerror|network error|http 5\d\d|сеть|тайм-аут|timeout/i.test(message);
+      if (transient) {
+        renderBootError("Сервис не ответил. Проверь локальный сервер и повтори попытку.");
+        return;
+      }
       const launcherReturn = launcherBindingHrefFromSearch(window.location.search);
       window.location.replace(authLandingHref("signin", launcherReturn));
       return;
@@ -2891,7 +2915,7 @@ async function bootAuthed(options = {}) {
   renderNav();
   // Reveal the shell as soon as authentication and navigation are ready.  A
   // slow status/RCON query must show a useful in-page loader, not keep the
-  // whole cabinet hidden behind "Подготавливаем кабинет".
+  // Keep the whole cabinet hidden behind the initial wait screen.
   setBootState("ready");
   await setTab(state.tab);
   clearInterval(state.refreshTimer);
@@ -5899,25 +5923,14 @@ async function loadPlayerLink() {
       ["2. Войди в аккаунт", "После входа сайт подтвердит запрос автоматически.", "neutral"],
       ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
     ]));
-  const manualLinkPanels = hasLauncherAuthorization ? "" : `
-    <section class="layout-grid grid-2">
-      ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
-        <div class="form-grid">
-          <input id="linkMinecraftName" value="${esc(requestedNick)}" placeholder="Minecraft-ник на сервере" />
-          <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
-        </div>
-        ${launcherNick ? '<div class="notice">Launcher передал новый ник. Для автоматической привязки достаточно войти в аккаунт сайта; код вводить не нужно. Пароль сайта и AuthMe не передаются в Launcher.</div>' : ""}
-        <div class="spacer-12"></div>
-        ${playerLinkSummary(state.playerLinkRequest)}
-      `)}
-      ${panel("Подтвердить код", "Введи одноразовый код из Minecraft-чата.", `
-        <div class="form-grid">
-          <input id="linkCodeInput" placeholder="Например: 7H2K9M4Q" />
-          <button class="btn btn-primary full" data-click="playerConfirmLinkCode()">Подтвердить привязку</button>
-        </div>
-        ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
-      `)}
-    </section>`;
+  const automaticLinkPanel = hasLauncherAuthorization ? "" : panel(
+    "Связь с Launcher",
+    "Привязка проходит автоматически после входа на сайте.",
+    `${launcherNick
+      ? `<div class="notice">Ник ${esc(requestedNick)} получен от Launcher. Войди в аккаунт — код вводить не нужно.</div>`
+      : "<div class=\"notice\">Откройте Launcher и нажмите «Привязать аккаунт». После входа сайт подтвердит запрос автоматически.</div>"}
+     <a class="btn btn-secondary" href="/launcher.html">Открыть страницу Launcher</a>`
+  );
   setView(`
     <section class="layout-grid grid-2">
       ${panel("Статус привязки", hasLauncherAuthorization
@@ -5930,41 +5943,13 @@ async function loadPlayerLink() {
       ]))}
       ${launcherPanel}
     </section>
-    ${manualLinkPanels}
+    ${automaticLinkPanel}
   `);
 }
 
 async function loadPlayerBank() {
   return getPlayerTreasuryPages().loadPlayerBank();
 }
-
-window.playerRequestLinkCode = async () => {
-  try {
-    const minecraftName = $("linkMinecraftName")?.value?.trim() || "";
-    state.playerLinkRequest = await api("/api/player/link/request", {
-      method: "POST",
-      body: JSON.stringify({ minecraft_name: minecraftName })
-    });
-    toast(state.playerLinkRequest.deliveredInGame ? "Код привязки отправлен в Minecraft-чат." : "Код создан, но доставка в Minecraft не удалась. Зайди на сервер и запроси код снова.");
-    if (state.tab === "link") loadPlayerLink();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.playerConfirmLinkCode = async () => {
-  try {
-    const result = await api("/api/player/link/confirm", {
-      method: "POST",
-      body: JSON.stringify({ code: $("linkCodeInput")?.value?.trim() || "" })
-    });
-    state.user = result.account || state.user;
-    toast("Minecraft-аккаунт привязан.");
-    getPlayerTreasuryPages().loadPlayerBank();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
 
 window.legacyPlayerSetPinDeprecated = async () => {
   return getPlayerTreasuryPages().playerSetPin();
@@ -6701,7 +6686,23 @@ async function boot() {
   // decision. Guests should reach sign-in immediately when the backend is
   // slow or unavailable.
   void refreshCsrfCookie();
-  await bootAuthed({ quiet: true });
+  let timer;
+  try {
+    await Promise.race([
+      bootAuthed({ quiet: true }),
+      new Promise((_, reject) => {
+        timer = window.setTimeout(() => {
+          const timeout = new Error("Превышено время ожидания ответа сайта.");
+          timeout.name = "AbortError";
+          reject(timeout);
+        }, BOOTSTRAP_TIMEOUT_MS);
+      })
+    ]);
+  } catch (err) {
+    renderBootError(err);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 Object.assign(dataClickHandlers, {
@@ -6765,7 +6766,6 @@ Object.assign(dataClickHandlers, {
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerSelectDonationItem: fromWindow("playerSelectDonationItem"),
-  playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
   playerCopyDonationSessionCode: fromWindow("playerCopyDonationSessionCode"),
   playerCreateDonationSession: fromWindow("playerCreateDonationSession"),
@@ -6773,7 +6773,6 @@ Object.assign(dataClickHandlers, {
   playerPayElectionTax: fromWindow("playerPayElectionTax"),
   playerRandomizeBankPin: fromWindow("playerRandomizeBankPin"),
   playerRefreshDonationSession: fromWindow("playerRefreshDonationSession"),
-  playerRequestLinkCode: fromWindow("playerRequestLinkCode"),
   playerRequestWhitelist: fromWindow("playerRequestWhitelist"),
   playerSelectArItem: fromWindow("playerSelectArItem"),
   playerResetBankPin: fromWindow("playerResetBankPin"),

@@ -54,12 +54,40 @@ def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_ap
     ):
         assert marker in link_page.lower(), marker
 
-    assert 'const manualLinkPanels = hasLauncherAuthorization ? "" :' in link_page
     assert "Код вводить не нужно" in link_page
+    assert "const automaticLinkPanel = hasLauncherAuthorization ? \"\" :" in link_page
 
     protocol = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherProtocolRegistration.cs").read_text(encoding="utf-8")
     assert "Registry.CurrentUser" in protocol
     assert "Software" in protocol and "Classes" in protocol and "copimine" in protocol
+
+
+def test_launcher_link_page_does_not_render_the_legacy_manual_code_form():
+    link_page = (ROOT / "admin-web/frontend/assets/js/cabinet-runtime.js").read_text(encoding="utf-8")
+    start = link_page.index("async function loadPlayerLink()")
+    end = link_page.index("async function loadPlayerBank()", start)
+    rendered_link_page = link_page[start:end]
+
+    assert "linkCodeInput" not in rendered_link_page
+    assert "playerConfirmLinkCode" not in rendered_link_page
+    assert "Получить код в Minecraft" not in rendered_link_page
+    assert "Откройте Launcher" in rendered_link_page
+    assert "/api/player/launcher/link/authorize" in rendered_link_page
+
+
+def test_cabinet_boot_has_a_bounded_error_and_retry_state():
+    runtime = (ROOT / "admin-web/frontend/assets/js/cabinet-runtime.js").read_text(encoding="utf-8")
+    for marker in (
+        "function renderBootError",
+        'makeButton("Повторить", "btn btn-primary", "retryCabinetBoot()")',
+        "setBootState(\"error\")",
+        "BOOTSTRAP_TIMEOUT_MS",
+    ):
+        assert marker in runtime, marker
+
+    for page in (ROOT / "admin-web/frontend/cabinet").glob("*.html"):
+        text = page.read_text(encoding="utf-8")
+        assert "Подготавливаем кабинет" not in text, page.name
 
 
 def test_unauthenticated_launcher_binding_preserves_the_return_target_after_login():

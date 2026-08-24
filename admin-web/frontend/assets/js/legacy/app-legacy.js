@@ -3984,33 +3984,15 @@ async function loadPlayerLink() {
   const linked = Boolean(state.user.linked);
   setView(`
     <section class="layout-grid grid-2">
-      ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
+      ${panel("Статус привязки", "Связь с Launcher подтверждается после входа на сайте.", kv([
         ["Логин сайта", state.user.username || "—"],
         ["Minecraft-ник", state.user.minecraftName || "—"],
         ["Привязан", linked],
         ["Создан", dt(state.user.createdAt)]
       ]))}
-      ${panel("Привязка", "Запроси код в игре и подтверди его здесь.", safetyRail([
-        ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
-        ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
-        ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
-      ]))}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
-        <div class="form-grid">
-          <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
-          <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
-        </div>
-        <div class="spacer-12"></div>
-        ${playerLinkSummary(state.playerLinkRequest)}
-      `)}
-      ${panel("Подтвердить код", "Введи одноразовый код из Minecraft-чата.", `
-        <div class="form-grid">
-          <input id="linkCodeInput" placeholder="Например: 7H2K9M4Q" />
-          <button class="btn btn-primary full" data-click="playerConfirmLinkCode()">Подтвердить привязку</button>
-        </div>
-        ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
+      ${panel("Связь с Launcher", "Привязка проходит автоматически: Launcher откроет сайт, а после входа сам получит подтверждение.", `
+        <div class="notice">Коды и ручной ввод не используются.</div>
+        <a class="btn btn-secondary" href="/launcher.html">Открыть страницу Launcher</a>
       `)}
     </section>
   `);
@@ -4019,34 +4001,6 @@ async function loadPlayerLink() {
 async function loadPlayerBank() {
   return getPlayerTreasuryPages().loadPlayerBank();
 }
-
-window.playerRequestLinkCode = async () => {
-  try {
-    const minecraftName = $("linkMinecraftName")?.value?.trim() || "";
-    state.playerLinkRequest = await api("/api/player/link/request", {
-      method: "POST",
-      body: JSON.stringify({ minecraft_name: minecraftName })
-    });
-    toast(state.playerLinkRequest.deliveredInGame ? "Код привязки отправлен в Minecraft-чат." : "Код создан, но доставка в Minecraft не удалась. Зайди на сервер и запроси код снова.");
-    if (state.tab === "link") loadPlayerLink();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.playerConfirmLinkCode = async () => {
-  try {
-    const result = await api("/api/player/link/confirm", {
-      method: "POST",
-      body: JSON.stringify({ code: $("linkCodeInput")?.value?.trim() || "" })
-    });
-    state.user = result.account || state.user;
-    toast("Minecraft-аккаунт привязан.");
-    getPlayerTreasuryPages().loadPlayerBank();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
 
 window.legacyPlayerSetPinDeprecated = async () => {
   return getPlayerTreasuryPages().playerSetPin();
@@ -4643,7 +4597,6 @@ Object.assign(dataClickHandlers, {
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerSelectDonationItem: fromWindow("playerSelectDonationItem"),
-  playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
   playerCopyDonationSessionCode: fromWindow("playerCopyDonationSessionCode"),
   playerCreateDonationSession: fromWindow("playerCreateDonationSession"),
@@ -4651,7 +4604,6 @@ Object.assign(dataClickHandlers, {
   playerPayElectionTax: fromWindow("playerPayElectionTax"),
   playerRandomizeBankPin: fromWindow("playerRandomizeBankPin"),
   playerRefreshDonationSession: fromWindow("playerRefreshDonationSession"),
-  playerRequestLinkCode: fromWindow("playerRequestLinkCode"),
   playerRequestWhitelist: fromWindow("playerRequestWhitelist"),
   playerSelectArItem: fromWindow("playerSelectArItem"),
   playerResetBankPin: fromWindow("playerResetBankPin"),

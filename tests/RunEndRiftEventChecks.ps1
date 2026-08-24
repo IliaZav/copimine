@@ -45,7 +45,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_item_lore_contract.py tests\test_end_event_runtime_invariants_contract.py `
       tests\test_end_event_runtime_smoke_contract.py tests\test_end_event_ai_contract.py `
       tests\test_end_event_music_contract.py tests\test_end_event_release_contract.py `
-      tests\test_end_event_visual_regressions.py tests\test_end_event_arena_protection_contract.py
+      tests\test_end_event_visual_regressions.py tests\test_end_event_arena_protection_contract.py `
+      tests\test_end_event_gate_contract.py
   } finally {
     Pop-Location
   }
@@ -64,11 +65,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
       (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java')
+      (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java') `
+      (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
   & java -cp $endRiftTestBuild EndRiftAiPolicyTest
   & java -cp $endRiftTestBuild ResourceProgressFormatterTest
+  & java -cp $endRiftTestBuild GateOpeningPlanTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `

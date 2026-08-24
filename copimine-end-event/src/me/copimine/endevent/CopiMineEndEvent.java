@@ -37,6 +37,7 @@ import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.FinalDrainMath;
+import me.copimine.endevent.domain.GateOpeningPlan;
 import me.copimine.endevent.domain.PadLayout;
 import me.copimine.endevent.domain.RewardRoster;
 import me.copimine.endevent.domain.ResourceProgressFormatter;
@@ -153,6 +154,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int DEFAULT_ARENA_PREVIEW_SECONDS = 10;
     private static final int MAX_ARENA_PREVIEW_SECONDS = 300;
     private static final double ARENA_BOUNDARY_STEP = 0.5D;
+    private static final long MAX_GATE_VOLUME = 16_384L;
+    private static final int DEFAULT_GATE_TICKS_PER_LAYER = 5;
+    private static final int MIN_GATE_TICKS_PER_LAYER = 1;
+    private static final int MAX_GATE_TICKS_PER_LAYER = 200;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
@@ -166,6 +171,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String VICTORY_UNLOCKED = "END_UNLOCKED_COMMITTED";
     private static final String VICTORY_REWARDS_PENDING = "REWARDS_PENDING";
     private static final String VICTORY_REWARDS_DELIVERED = "REWARDS_DELIVERED";
+    private static final String VICTORY_GATE_OPENING = "GATE_OPENING";
+    private static final String VICTORY_GATE_OPENED = "GATE_OPENED";
     private static final String VICTORY_COMPLETE = "VICTORY_COMPLETE";
     private static final String BOSS_REWARDS_PENDING = "PENDING";
     private static final String BOSS_REWARDS_RESERVED = "BOSS_REWARDS_RESERVED";
@@ -212,6 +219,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask musicLoopTask;
     private BukkitTask finalRitualVisualTask;
     private BukkitTask arenaBoundaryTask;
+    private BukkitTask gateOpeningTask;
+    private boolean victoryGatePending;
     private boolean bootstrapped;
 
     private String eventId = "";
@@ -570,6 +579,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             taskRegistry.cancelAll();
         }
         cancelArenaBoundaryPreview();
+        cancelGateOpeningTask();
         if (finalRitualVisualTask != null) {
             finalRitualVisualTask.cancel();
             finalRitualVisualTask = null;
@@ -1018,13 +1028,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         } else {
             if (args.length < 2) {
-                message(sender, "&e/cmend gate pos1|pos2|preview|restore");
+                message(sender, "&e/cmend gate pos1|pos2|info|preview|open [ticks-per-layer]|restore confirm");
                 return;
             }
             switch (args[1].toLowerCase(Locale.ROOT)) {
                 case "pos1", "pos2" -> {
                     Player player = playerSender(sender);
                     if (player == null) {
+                        return;
+                    }
+                    if (gateOpeningTask != null || !layoutState.gateSnapshot().isEmpty()) {
+                        message(sender, "&cСначала выполни /cmend gate restore confirm; сохранённый Gate нельзя переназначить поверх старого snapshot.");
                         return;
                     }
                     EventLayoutState.Point point = pointAt(player.getLocation());
@@ -1039,9 +1053,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         message(sender, "&cGate point не сохранён durable; изменение отменено.");
                     }
                 }
+                case "info" -> {
+                    message(sender, "&7gate.pos1=&f" + pointText(layoutState.gatePos1())
+                            + " &7pos2=&f" + pointText(layoutState.gatePos2()));
+                    message(sender, "&7gate.status=&f" + layoutState.gateStatus()
+                            + " &7volume=&f" + gateVolumeText()
+                            + " &7progress=&f" + gateProgressText());
+                }
                 case "preview" -> previewGate(sender);
-                case "restore" -> restoreGate(sender);
-                default -> message(sender, "&e/cmend gate pos1|pos2|preview|restore");
+                case "open" -> {
+                    int ticks = args.length > 2
+                            ? parseInt(args, 2, Integer.MIN_VALUE)
+                            : DEFAULT_GATE_TICKS_PER_LAYER;
+                    if (ticks == Integer.MIN_VALUE) {
+                        message(sender, "&cИспользование: /cmend gate open [ticks-per-layer].");
+                    } else {
+                        openGate(sender, ticks, "admin-gate-open", false);
+                    }
+                }
+                case "restore" -> {
+                    if (!confirmed(args, 2)) {
+                        message(sender, "&cПовтори /cmend gate restore confirm.");
+                    } else {
+                        restoreGate(sender);
+                    }
+                }
+                default -> message(sender, "&e/cmend gate pos1|pos2|info|preview|open [ticks-per-layer]|restore confirm");
             }
         }
     }
@@ -1057,7 +1094,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private EventLayoutState withGatePoints(EventLayoutState.Point pos1, EventLayoutState.Point pos2) {
         return new EventLayoutState(layoutState.arenaPos1(), layoutState.arenaPos2(), pos1, pos2,
-                layoutState.gateSnapshot(), layoutState.gateStatus(), layoutState.portalRoom());
+                Map.of(), "UNSET", layoutState.portalRoom());
     }
 
     private boolean applyArenaBoundsFromLayout() {
@@ -1172,8 +1209,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void previewGate(CommandSender sender) {
-        if (isCombatPhase()) {
-            message(sender, "&cGate preview запрещён во время боя.");
+        if (isCombatPhase() || gateOpeningTask != null) {
+            message(sender, "&cGate preview запрещён во время боя или открытия.");
+            return;
+        }
+        if ("OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            message(sender, "&eGate уже открыт; сначала выполни /cmend gate restore confirm.");
             return;
         }
         List<Block> blocks = gateBlocks();
@@ -1181,30 +1222,326 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cGate pos1/pos2 не настроены, мир не изменён.");
             return;
         }
-        if (layoutState.gateStatus().equals("PREVIEW") && !layoutState.gateSnapshot().isEmpty()) {
+        if ("PREVIEW".equalsIgnoreCase(layoutState.gateStatus()) && !layoutState.gateSnapshot().isEmpty()) {
             message(sender, "&eGate уже находится в preview; повторная запись snapshot запрещена.");
             return;
         }
         EventLayoutState previous = layoutState;
+        Map<String, String> snapshot = captureGateSnapshot(blocks);
+        layoutState = withGateState(snapshot, "PREVIEW");
+        // The original block data is durable before the preview mutation.  If
+        // the save fails, no world block is touched.
+        if (!saveStateSync()) {
+            layoutState = previous;
+            message(sender, "&cGate snapshot не сохранён; preview не начат.");
+            return;
+        }
+        try {
+            for (Block block : blocks) {
+                block.setType(Material.PURPLE_STAINED_GLASS, false);
+            }
+            message(sender, "&aGate preview создан; snapshot durable сохранён. Restore вернёт каждый исходный block data.");
+        } catch (RuntimeException error) {
+            restoreGateSnapshot(previous.gatePos1(), snapshot);
+            layoutState = withGateState(Map.of(), "RESTORED");
+            saveStateSync();
+            getLogger().log(Level.WARNING, "Gate preview mutation failed; snapshot restored", error);
+            message(sender, "&cGate preview отменён и блоки восстановлены.");
+        }
+    }
+
+    private boolean openGate(CommandSender sender, int ticksPerLayer, String reason, boolean forVictory) {
+        if (ticksPerLayer < MIN_GATE_TICKS_PER_LAYER || ticksPerLayer > MAX_GATE_TICKS_PER_LAYER) {
+            message(sender, "&cИнтервал слоя должен быть от " + MIN_GATE_TICKS_PER_LAYER
+                    + " до " + MAX_GATE_TICKS_PER_LAYER + " тиков.");
+            return false;
+        }
+        if ("OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            if (forVictory) {
+                victoryGatePending = false;
+                victoryStep = VICTORY_GATE_OPENED;
+                saveStateSync();
+            }
+            message(sender, "&aGate уже открыт.");
+            return true;
+        }
+        GateOpeningPlan plan = gateOpeningPlan(sender);
+        if (plan == null) {
+            return false;
+        }
+        if (gateOpeningTask != null) {
+            if (forVictory) {
+                victoryGatePending = true;
+                victoryStep = VICTORY_GATE_OPENING;
+                saveStateSync();
+            }
+            message(sender, "&eGate уже открывается послойно.");
+            return false;
+        }
+        if ("OPENING".equalsIgnoreCase(layoutState.gateStatus())) {
+            // A stale in-memory task must never continue against an ambiguous
+            // world. Restore the durable snapshot before starting afresh.
+            restoreGateSnapshot(layoutState.gatePos1(), layoutState.gateSnapshot());
+            layoutState = withGateState(Map.of(), "RESTORED_ON_BOOT");
+            if (!saveStateSync()) {
+                message(sender, "&cСостояние Gate не удалось безопасно восстановить; открытие отменено.");
+                return false;
+            }
+        }
+        Map<String, String> snapshot = layoutState.gateSnapshot().isEmpty()
+                ? captureGateSnapshot(gateBlocks()) : layoutState.gateSnapshot();
+        if (snapshot.isEmpty() || snapshot.size() != plan.volume()) {
+            message(sender, "&cGate snapshot не совпадает с bounded cuboid; блоки не изменены.");
+            return false;
+        }
+        EventLayoutState previousLayout = layoutState;
+        String previousVictoryStep = victoryStep;
+        layoutState = withGateState(snapshot, "OPENING");
+        if (forVictory) {
+            victoryGatePending = true;
+            victoryStep = VICTORY_GATE_OPENING;
+        }
+        // Persist the complete snapshot and OPENING marker before removing a
+        // single block. Boot recovery can therefore restore every coordinate.
+        if (!saveStateSync()) {
+            layoutState = previousLayout;
+            victoryStep = previousVictoryStep;
+            victoryGatePending = false;
+            message(sender, "&cGate snapshot не сохранён durable; открытие отменено.");
+            return false;
+        }
+
+        String openingEventId = eventId;
+        long openingGeneration = generation;
+        boolean openingForVictory = forVictory;
+        boolean openingFromPreview = "PREVIEW".equalsIgnoreCase(previousLayout.gateStatus());
+        int[] layerIndex = {0};
+        List<GateOpeningPlan.Layer> layers = plan.layersDescending();
+        gateOpeningTask = Bukkit.getScheduler().runTaskTimer(this, () -> tickGateOpening(
+                openingEventId, openingGeneration, layers, layerIndex, snapshot,
+                openingForVictory, openingFromPreview),
+                0L, ticksPerLayer);
+        getLogger().info("END_EVENT_GATE_OPENING event=" + eventId + " generation=" + generation
+                + " reason=" + reason + " layers=" + layers.size() + " ticksPerLayer=" + ticksPerLayer
+                + " volume=" + plan.volume());
+        message(sender, "&aGate открывается сверху вниз: &f" + layers.size()
+                + " слоёв, интервал &f" + ticksPerLayer + " тиков.");
+        return false;
+    }
+
+    private void tickGateOpening(String openingEventId, long openingGeneration,
+                                 List<GateOpeningPlan.Layer> layers, int[] layerIndex,
+                                 Map<String, String> snapshot, boolean openingForVictory,
+                                 boolean openingFromPreview) {
+        if (!isEnabled() || !eventId.equals(openingEventId) || generation != openingGeneration) {
+            cancelGateOpeningTask();
+            return;
+        }
+        if (layerIndex[0] >= layers.size()) {
+            finishGateOpening(openingForVictory, snapshot);
+            return;
+        }
+        GateOpeningPlan.Layer layer = layers.get(layerIndex[0]++);
+        World world = Bukkit.getWorld(layoutState.gatePos1().world());
+        if (world == null) {
+            abortGateOpening("event world is unavailable", snapshot, openingForVictory);
+            return;
+        }
+        int removed = 0;
+        int conflicts = 0;
+        for (GateOpeningPlan.Point point : layer.blocks()) {
+            Block block = world.getBlockAt(point.x(), point.y(), point.z());
+            String expected = snapshot.get(gateKey(block));
+            if (expected == null) {
+                conflicts++;
+                continue;
+            }
+            if (block.getType().isAir()) {
+                if (!isAirBlockData(expected)) {
+                    removed++;
+                }
+                continue;
+            }
+            if (!sameBlockData(block, expected)
+                    && !(openingFromPreview && block.getType() == Material.PURPLE_STAINED_GLASS)) {
+                conflicts++;
+                continue;
+            }
+            block.setType(Material.AIR, false);
+            removed++;
+        }
+        // Keep the particle/sound budget proportional to one layer.
+        Location center = gateEffectLocation(world, layer.y());
+        world.spawnParticle(Particle.PORTAL, center, 28, 0.65D, 0.15D, 0.65D, 0.03D);
+        world.spawnParticle(Particle.END_ROD, center, 8, 0.35D, 0.08D, 0.35D, 0.01D);
+        world.playSound(center, Sound.BLOCK_GLASS_BREAK, SoundCategory.BLOCKS, 0.8F, 0.7F + (layerIndex[0] * 0.03F));
+        getLogger().info("END_EVENT_GATE_LAYER event=" + eventId + " generation=" + generation
+                + " y=" + layer.y() + " removed=" + removed + " conflicts=" + conflicts
+                + " index=" + layerIndex[0] + "/" + layers.size());
+        if (conflicts > 0) {
+            abortGateOpening("snapshot conflict at layer y=" + layer.y(), snapshot, openingForVictory);
+            return;
+        }
+        if (!saveStateSync()) {
+            abortGateOpening("durable save failed after layer y=" + layer.y(), snapshot, openingForVictory);
+            return;
+        }
+        if (layerIndex[0] >= layers.size()) {
+            finishGateOpening(openingForVictory, snapshot);
+        }
+    }
+
+    private void finishGateOpening(boolean openingForVictory, Map<String, String> snapshot) {
+        layoutState = withGateState(snapshot, "OPENED");
+        if (!saveStateSync()) {
+            abortGateOpening("durable OPENED state failed", snapshot, openingForVictory);
+            return;
+        }
+        cancelGateOpeningTask();
+        getLogger().info("END_EVENT_GATE_OPENED event=" + eventId + " generation=" + generation
+                + " progress=" + gateProgressText());
+        if (openingForVictory) {
+            victoryGatePending = false;
+            victoryStep = VICTORY_GATE_OPENED;
+            saveStateSync();
+            checkVictoryRewardCompletion();
+        }
+    }
+
+    private void abortGateOpening(String reason, Map<String, String> snapshot, boolean openingForVictory) {
+        cancelGateOpeningTask();
+        restoreGateSnapshot(layoutState.gatePos1(), snapshot);
+        layoutState = withGateState(Map.of(), "RESTORED");
+        if (openingForVictory) {
+            victoryGatePending = false;
+        }
+        saveStateSync();
+        getLogger().warning("END_EVENT_GATE_ABORTED event=" + eventId + " generation=" + generation
+                + " reason=" + reason);
+    }
+
+    private void cancelGateOpeningTask() {
+        if (gateOpeningTask != null) {
+            gateOpeningTask.cancel();
+            gateOpeningTask = null;
+        }
+    }
+
+    private GateOpeningPlan gateOpeningPlan(CommandSender sender) {
+        EventLayoutState.Point first = layoutState.gatePos1();
+        EventLayoutState.Point second = layoutState.gatePos2();
+        if (first == null || second == null || !first.configured() || !second.configured()) {
+            message(sender, "&cСначала задай две точки: /cmend gate pos1 и /cmend gate pos2.");
+            return null;
+        }
+        try {
+            GateOpeningPlan plan = GateOpeningPlan.from(
+                    new GateOpeningPlan.Point(first.world(), first.x(), first.y(), first.z()),
+                    new GateOpeningPlan.Point(second.world(), second.x(), second.y(), second.z()),
+                    MAX_GATE_VOLUME);
+            if (Bukkit.getWorld(first.world()) == null) {
+                message(sender, "&cМир Gate не загружен: " + first.world());
+                return null;
+            }
+            return plan;
+        } catch (IllegalArgumentException invalid) {
+            message(sender, "&cGate bounded validation failed: " + invalid.getMessage());
+            return null;
+        }
+    }
+
+    private boolean isGateConfigured() {
+        EventLayoutState.Point first = layoutState.gatePos1();
+        EventLayoutState.Point second = layoutState.gatePos2();
+        return first != null && second != null && first.configured() && second.configured()
+                && first.world().equalsIgnoreCase(second.world());
+    }
+
+    private List<Block> gateBlocks() {
+        GateOpeningPlan plan = gateOpeningPlan(null);
+        if (plan == null) {
+            return List.of();
+        }
+        World world = Bukkit.getWorld(plan.first().world());
+        List<Block> blocks = new ArrayList<>((int) plan.volume());
+        for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
+            for (GateOpeningPlan.Point point : layer.blocks()) {
+                blocks.add(world.getBlockAt(point.x(), point.y(), point.z()));
+            }
+        }
+        return blocks;
+    }
+
+    private Map<String, String> captureGateSnapshot(List<Block> blocks) {
         Map<String, String> snapshot = new LinkedHashMap<>();
         for (Block block : blocks) {
             snapshot.put(gateKey(block), block.getBlockData().getAsString());
         }
-        for (Block block : blocks) {
-            block.setType(Material.PURPLE_STAINED_GLASS, false);
+        return snapshot;
+    }
+
+    private EventLayoutState withGateState(Map<String, String> snapshot, String status) {
+        return new EventLayoutState(layoutState.arenaPos1(), layoutState.arenaPos2(),
+                layoutState.gatePos1(), layoutState.gatePos2(), snapshot, status, layoutState.portalRoom());
+    }
+
+    private String gateVolumeText() {
+        GateOpeningPlan plan = gateOpeningPlan(null);
+        return plan == null ? "invalid" : Long.toString(plan.volume());
+    }
+
+    private String gateProgressText() {
+        if (layoutState.gateSnapshot().isEmpty()) {
+            return "0/0";
         }
-        layoutState = new EventLayoutState(previous.arenaPos1(), previous.arenaPos2(), previous.gatePos1(), previous.gatePos2(),
-                snapshot, "PREVIEW", previous.portalRoom());
-        if (saveStateSync()) {
-            message(sender, "&aGate preview создан; snapshot durable сохранён. Restore вернёт каждый исходный block data.");
-        } else {
-            restoreGateSnapshot(layoutState.gatePos1(), snapshot);
-            layoutState = previous;
-            message(sender, "&cGate snapshot не сохранён; preview отменён и блоки восстановлены.");
+        World world = layoutState.gatePos1() == null ? null : Bukkit.getWorld(layoutState.gatePos1().world());
+        if (world == null) {
+            return "unknown/" + layoutState.gateSnapshot().size();
+        }
+        int removed = 0;
+        for (Map.Entry<String, String> entry : layoutState.gateSnapshot().entrySet()) {
+            String[] parts = entry.getKey().split(",", -1);
+            if (parts.length != 3) {
+                continue;
+            }
+            try {
+                Block block = world.getBlockAt(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
+                if (!isAirBlockData(entry.getValue()) && block.getType().isAir()) {
+                    removed++;
+                }
+            } catch (NumberFormatException ignored) {
+                // Corrupt layout keys do not trigger a world scan.
+            }
+        }
+        return removed + "/" + layoutState.gateSnapshot().size();
+    }
+
+    private Location gateEffectLocation(World world, int y) {
+        EventLayoutState.Point first = layoutState.gatePos1();
+        EventLayoutState.Point second = layoutState.gatePos2();
+        double x = (Math.min(first.x(), second.x()) + Math.max(first.x(), second.x())) * 0.5D + 0.5D;
+        double z = (Math.min(first.z(), second.z()) + Math.max(first.z(), second.z())) * 0.5D + 0.5D;
+        return new Location(world, x, y + 0.5D, z);
+    }
+
+    private boolean sameBlockData(Block block, String expected) {
+        return block != null && expected != null && expected.equalsIgnoreCase(block.getBlockData().getAsString());
+    }
+
+    private boolean isAirBlockData(String blockData) {
+        if (blockData == null || blockData.isBlank()) {
+            return true;
+        }
+        try {
+            return Bukkit.createBlockData(blockData).getMaterial().isAir();
+        } catch (IllegalArgumentException invalid) {
+            return false;
         }
     }
 
     private void restoreGate(CommandSender sender) {
+        cancelGateOpeningTask();
+        victoryGatePending = false;
         if (layoutState.gateSnapshot().isEmpty()) {
             message(sender, "&eУ Gate нет сохранённого snapshot.");
             return;
@@ -1221,7 +1558,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void restorePersistedGateIfNeeded() {
-        if (!"PREVIEW".equalsIgnoreCase(layoutState.gateStatus()) || layoutState.gateSnapshot().isEmpty()) {
+        boolean preview = "PREVIEW".equalsIgnoreCase(layoutState.gateStatus());
+        boolean opening = "OPENING".equalsIgnoreCase(layoutState.gateStatus());
+        if ((!preview && !opening) || layoutState.gateSnapshot().isEmpty()) {
             return;
         }
         restoreGateSnapshot(layoutState.gatePos1(), layoutState.gateSnapshot());
@@ -1232,34 +1571,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             layoutState = previous;
             getLogger().warning("Gate was restored from durable preview snapshot, but layout status could not be saved.");
         } else {
-            getLogger().info("Restored bounded gate from durable preview snapshot during local bootstrap.");
+            getLogger().info("Restored bounded gate from durable " + layoutState.gateStatus()
+                    + " snapshot during local bootstrap.");
         }
-    }
-
-    private List<Block> gateBlocks() {
-        EventLayoutState.Point first = layoutState.gatePos1();
-        EventLayoutState.Point second = layoutState.gatePos2();
-        if (first == null || second == null || !first.configured() || !first.world().equalsIgnoreCase(second.world())) {
-            return List.of();
-        }
-        long volume = (long) (Math.abs(first.x() - second.x()) + 1)
-                * (Math.abs(first.y() - second.y()) + 1) * (Math.abs(first.z() - second.z()) + 1);
-        if (volume < 1L || volume > 16_384L) {
-            return List.of();
-        }
-        World world = Bukkit.getWorld(first.world());
-        if (world == null) {
-            return List.of();
-        }
-        List<Block> blocks = new ArrayList<>((int) volume);
-        for (int x = Math.min(first.x(), second.x()); x <= Math.max(first.x(), second.x()); x++) {
-            for (int y = Math.min(first.y(), second.y()); y <= Math.max(first.y(), second.y()); y++) {
-                for (int z = Math.min(first.z(), second.z()); z <= Math.max(first.z(), second.z()); z++) {
-                    blocks.add(world.getBlockAt(x, y, z));
-                }
-            }
-        }
-        return blocks;
     }
 
     private String gateKey(Block block) {
@@ -4808,6 +5122,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             unlockEnd(null, "official-victory");
             return;
         }
+        if (isGateConfigured() && !"OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            if (!victoryGatePending) {
+                openGate(null, DEFAULT_GATE_TICKS_PER_LAYER, "official-victory", true);
+            }
+            return;
+        }
+        if (isGateConfigured()) {
+            victoryStep = VICTORY_GATE_OPENED;
+            saveStateSync();
+        } else {
+            getLogger().info("END_EVENT_GATE_OPENED event=" + eventId
+                    + " code=NO_CONFIGURED_GATE reason=official-victory");
+        }
         victoryStep = VICTORY_REWARDS_DELIVERED;
         saveStateSync();
         announceVictory();
@@ -5422,7 +5749,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "core" -> List.of("set", "info", "rebuild", "remove");
                 case "arena" -> List.of("pos1", "pos2", "info", "clear", "border", "boundary");
-                case "gate" -> List.of("pos1", "pos2", "preview", "restore");
+            case "gate" -> List.of("pos1", "pos2", "info", "preview", "open", "restore");
                 case "portalroom" -> List.of("set", "info");
                 case "resources" -> List.of("status", "add", "reset");
                 case "ritual" -> List.of("start", "cancel", "cleanup", "reset", "unlock");
@@ -5441,6 +5768,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "music".equalsIgnoreCase(args[1])) {
             return List.of("waves", "boss", "half", "final", "victory");
+        }
+        if (args.length == 3 && "gate".equalsIgnoreCase(args[0]) && "restore".equalsIgnoreCase(args[1])) {
+            return List.of("confirm");
         }
         if (args.length == 4 && "test".equalsIgnoreCase(args[0]) && "music".equalsIgnoreCase(args[1])) {
             return Bukkit.getOnlinePlayers().stream()

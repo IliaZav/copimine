@@ -21,12 +21,17 @@ public final class EventLayoutStoreTest {
         check(loaded.gateSnapshot().equals(first.gateSnapshot()), "gate snapshot must round-trip");
         check(loaded.portalRoom().world().equals("CopiMine_the_end"), "portal room must round-trip");
 
+        EventLayoutState opening = new EventLayoutState(first.arenaPos1(), first.arenaPos2(), first.gatePos1(), first.gatePos2(),
+                first.gateSnapshot(), "OPENING", first.portalRoom());
+        check(store.save(opening), "opening layout save must succeed");
+        check(store.load().gateStatus().equals("OPENING"), "opening status must round-trip before mutation");
+
         EventLayoutState second = new EventLayoutState(first.arenaPos1(), first.arenaPos2(), first.gatePos1(), first.gatePos2(),
                 Map.of(), "RESTORED", first.portalRoom());
         check(store.save(second), "second layout save must succeed");
         Files.writeString(directory.resolve("event-layout.yml"), "broken: [\n");
         EventLayoutState recovered = store.load();
-        check(recovered.gateStatus().equals("PREVIEW"), "corrupt primary must recover the previous backup");
+        check(recovered.gateStatus().equals("OPENING"), "corrupt primary must recover the previous opening snapshot");
         System.out.println("EventLayoutStoreTest OK");
     }
 

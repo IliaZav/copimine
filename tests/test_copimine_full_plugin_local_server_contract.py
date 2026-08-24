@@ -58,6 +58,16 @@ def test_binding_staging_defaults_to_the_launcher_loopback_port() -> None:
     assert "[int] $Port = 8090" in script
 
 
+def test_binding_staging_resolves_default_paths_after_script_initialization() -> None:
+    script = read("scripts/run_copimine_launcher_binding_staging.ps1")
+
+    assert '[string] $ValidationRoot = ""' in script
+    assert '[string] $PythonPath = ""' in script
+    assert "$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path" in script
+    assert "if ([string]::IsNullOrWhiteSpace($PythonPath))" in script
+    assert "New-Item -ItemType Directory -Path $ValidationRoot -Force" in script
+
+
 def test_full_plugin_server_has_a_separate_port_and_real_startup_gate() -> None:
     script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
 

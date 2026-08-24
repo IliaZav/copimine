@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -15,6 +16,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "admin-web" / "frontend"
+
+
+def release_root() -> Path:
+    configured = os.getenv("COPIMINE_SITE_RELEASE_ROOT", "").strip()
+    if configured:
+        return Path(configured).resolve()
+    candidates = [
+        path
+        for path in (ROOT / "artifacts" / "launcher" / "Release").glob("site-*")
+        if (path / "assets" / "public-data" / "launcher" / "latest.json").is_file()
+    ]
+    if candidates:
+        return max(candidates, key=lambda path: path.stat().st_mtime_ns)
+    return FRONTEND
 
 
 def fail(message: str) -> None:
@@ -68,7 +83,14 @@ def check_navigation() -> None:
 
 
 def check_launcher_release() -> None:
-    metadata_path = FRONTEND / "assets" / "public-data" / "launcher" / "latest.json"
+    launcher_page = read(FRONTEND / "launcher.html")
+    if launcher_page.count('id="launcherFolderBtn"') != 1:
+        fail("launcher page must expose exactly one folder-picker installer button")
+    if "MSI" in launcher_page or "CopiMineLauncherSetup-" in launcher_page:
+        fail("launcher page exposes a legacy installer option")
+
+    published_root = release_root()
+    metadata_path = published_root / "assets" / "public-data" / "launcher" / "latest.json"
     metadata = json.loads(read(metadata_path))
     for field in ("version", "filename", "downloadUrl", "sha256"):
         if not metadata.get(field):
@@ -86,20 +108,20 @@ def check_launcher_release() -> None:
             fail(f"launcher metadata is missing the {filename_field} package")
         if url != f"/downloads/launcher/{filename}":
             fail(f"unsafe or inconsistent download URL for {filename}")
-        artifact = FRONTEND / "downloads" / "launcher" / filename
+        artifact = published_root / "downloads" / "launcher" / filename
         if not artifact.is_file():
             fail(f"published installer is missing: {artifact.relative_to(ROOT)}")
         digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
         if artifact.stat().st_size != expected_size or digest != expected_hash:
             fail(f"installer metadata does not match bytes: {filename}")
 
-    stable = FRONTEND / "launcher" / "stable"
+    stable = published_root / "launcher" / "stable"
     manifest_path = stable / "instance-manifest.json"
     signature_path = stable / "instance-manifest.sig"
     if not manifest_path.is_file() or not signature_path.is_file():
         fail("signed stable instance manifest is incomplete")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    managed_root = stable.parent / "files"
+    managed_root = published_root / "launcher" / "files"
     for item in manifest.get("files", []):
         digest = item.get("sha256")
         if not digest:
@@ -118,7 +140,7 @@ def check_launcher_release() -> None:
         if not digest or not (managed_root / digest).is_file():
             fail("manifest runtime artifact is missing")
 
-    assets_feed_path = FRONTEND / "downloads" / "launcher" / "assets.win.json"
+    assets_feed_path = published_root / "downloads" / "launcher" / "assets.win.json"
     if not assets_feed_path.is_file():
         fail("Velopack assets.win.json is missing")
     assets_feed = json.loads(read(assets_feed_path))
@@ -126,7 +148,7 @@ def check_launcher_release() -> None:
         filename = asset.get("RelativeFileName")
         if not isinstance(filename, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", filename):
             fail(f"unsafe Velopack asset filename: {filename}")
-        if not (FRONTEND / "downloads" / "launcher" / filename).is_file():
+        if not (published_root / "downloads" / "launcher" / filename).is_file():
             fail(f"Velopack asset listed in assets.win.json is missing: {filename}")
 
 

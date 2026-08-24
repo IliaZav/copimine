@@ -1,11 +1,21 @@
 [CmdletBinding()]
 param(
     [int] $Port = 8090,
-    [string] $ValidationRoot = "$(Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/local-validation')",
-    [string] $PythonPath = "$(Join-Path (Split-Path -Parent $PSScriptRoot) '.audit-venv313/Scripts/python.exe')"
+    [string] $ValidationRoot = "",
+    [string] $PythonPath = "",
+    [string] $PublicRoot = ""
 )
 
 $ErrorActionPreference = 'Stop'
+$scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = Split-Path -Parent $scriptRoot
+if ([string]::IsNullOrWhiteSpace($ValidationRoot)) {
+    $ValidationRoot = Join-Path $repoRoot 'artifacts/local-validation'
+}
+if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+    $PythonPath = Join-Path $repoRoot '.audit-venv313/Scripts/python.exe'
+}
+$null = New-Item -ItemType Directory -Path $ValidationRoot -Force
 $root = (Resolve-Path -LiteralPath $ValidationRoot -ErrorAction Stop).Path
 $bindingRoot = Join-Path $root 'binding-staging-1.0.3'
 $adminData = Join-Path $bindingRoot 'admin-data'
@@ -13,12 +23,19 @@ $serverRoot = Join-Path $bindingRoot 'server'
 $worldRoot = Join-Path $serverRoot 'world'
 $logsRoot = Join-Path $serverRoot 'logs'
 $controlRoot = Join-Path $bindingRoot 'control'
-$publicRoot = Join-Path $bindingRoot 'public'
+$publicRoot = if ([string]::IsNullOrWhiteSpace($PublicRoot)) {
+    Join-Path $bindingRoot 'public'
+} else {
+    (Resolve-Path -LiteralPath $PublicRoot -ErrorAction Stop).Path
+}
 $resolvedPython = (Resolve-Path -LiteralPath $PythonPath -ErrorAction Stop).Path
-$adminRoot = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'admin-web') -ErrorAction Stop).Path
+$adminRoot = (Resolve-Path -LiteralPath (Join-Path $repoRoot 'admin-web') -ErrorAction Stop).Path
 
-foreach ($path in @($adminData, (Join-Path $worldRoot 'playerdata'), (Join-Path $worldRoot 'stats'), (Join-Path $worldRoot 'advancements'), $logsRoot, $controlRoot, $publicRoot)) {
+foreach ($path in @($adminData, (Join-Path $worldRoot 'playerdata'), (Join-Path $worldRoot 'stats'), (Join-Path $worldRoot 'advancements'), $logsRoot, $controlRoot)) {
     New-Item -ItemType Directory -Path $path -Force | Out-Null
+}
+if (-not (Test-Path -LiteralPath $publicRoot -PathType Container)) {
+    New-Item -ItemType Directory -Path $publicRoot -Force | Out-Null
 }
 $latestLog = Join-Path $logsRoot 'latest.log'
 if (-not (Test-Path -LiteralPath $latestLog -PathType Leaf)) {
@@ -43,7 +60,12 @@ $env:MC_WORLD_DIR = $worldRoot
 $env:MC_LOG_FILE = $latestLog
 $env:COPIMINE_LAUNCHER_CONTROL_DIR = $controlRoot
 $env:COPIMINE_LAUNCHER_PUBLIC_ROOT = $publicRoot
-$env:COPIMINE_LAUNCHER_SOURCE_MANIFEST = Join-Path $bindingRoot 'source-manifest.json'
+$env:COPIMINE_FRONTEND_ROOT = $publicRoot
+$sourceManifest = Join-Path $publicRoot 'launcher/stable/instance-manifest.json'
+if (-not (Test-Path -LiteralPath $sourceManifest -PathType Leaf)) {
+    $sourceManifest = Join-Path $bindingRoot 'source-manifest.json'
+}
+$env:COPIMINE_LAUNCHER_SOURCE_MANIFEST = $sourceManifest
 $env:COPIMINE_LAUNCHER_DOWNLOAD_ORIGIN = "$baseUrl/launcher/files"
 
 $stdout = Join-Path $bindingRoot 'backend.stdout.log'
@@ -59,4 +81,5 @@ $process = Start-Process -FilePath $resolvedPython `
 Write-Output "BINDING_STAGING_BASE_URL=$baseUrl"
 Write-Output "BINDING_STAGING_PID=$($process.Id)"
 Write-Output "BINDING_STAGING_ROOT=$bindingRoot"
+Write-Output "BINDING_STAGING_PUBLIC_ROOT=$publicRoot"
 Write-Output "STOP_COMMAND=Stop-Process -Id $($process.Id)"

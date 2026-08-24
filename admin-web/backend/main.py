@@ -102,8 +102,8 @@ from .president_law_workflow import (
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
-FRONTEND_DIR = APP_ROOT / "frontend"
 load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
+FRONTEND_DIR = Path(os.getenv("COPIMINE_FRONTEND_ROOT", APP_ROOT / "frontend")).expanduser().resolve()
 DATA_DIR = Path(os.getenv("COPIMINE_ADMIN_DATA", APP_ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THIRDPARTY_DIR = PROJECT_ROOT / "thirdparty"
@@ -15838,6 +15838,63 @@ async def launcher_stable_download(filename: str) -> FileResponse:
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Launcher release contract not found")
     return FileResponse(path, headers={"Cache-Control": "public, max-age=60"})
+
+
+def launcher_distribution_file(filename: str) -> Path:
+    """Resolve an allow-listed public Launcher package from the staged site.
+
+    The static site and the binding API may share one origin in local/staging
+    deployments.  Keep this route limited to files declared by the current
+    installer metadata or Velopack feed so it cannot become an arbitrary file
+    reader.
+    """
+    normalized = str(filename or "").strip()
+    if normalized != Path(normalized).name or not re.fullmatch(r"[A-Za-z0-9._-]+", normalized):
+        raise HTTPException(status_code=404, detail="Launcher package not found")
+
+    public_root = default_control_plane().public_root
+    if public_root is None:
+        raise HTTPException(status_code=404, detail="Launcher public root is not configured")
+    download_root = public_root / "downloads" / "launcher"
+    if not download_root.is_dir():
+        raise HTTPException(status_code=404, detail="Launcher package directory is not configured")
+
+    allowed = {"RELEASES", "releases.win.json", "assets.win.json"}
+    metadata_path = public_root / "assets" / "public-data" / "launcher" / "latest.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        metadata = {}
+    if isinstance(metadata, dict):
+        for field in ("filename", "customInstallerFilename", "msiFilename"):
+            value = metadata.get(field)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value):
+                allowed.add(value)
+
+    try:
+        feed = json.loads((download_root / "assets.win.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        feed = []
+    if isinstance(feed, list):
+        for item in feed:
+            if isinstance(item, dict):
+                value = item.get("RelativeFileName")
+                if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value):
+                    allowed.add(value)
+
+    if normalized not in allowed:
+        raise HTTPException(status_code=404, detail="Launcher package is not in the published feed")
+    path = download_root / normalized
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Launcher package not found")
+    return path
+
+
+@app.get("/downloads/launcher/{filename}")
+@app.head("/downloads/launcher/{filename}")
+async def launcher_package_download(filename: str) -> FileResponse:
+    path = launcher_distribution_file(filename)
+    return FileResponse(path, filename=path.name, headers={"Cache-Control": "public, max-age=3600, immutable"})
 
 
 @app.get("/downloads/{filename}")

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [int] $Port = 8091,
+    [int] $Port = 8090,
     [string] $ValidationRoot = "$(Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts/local-validation')",
     [string] $PythonPath = "$(Join-Path (Split-Path -Parent $PSScriptRoot) '.audit-venv313/Scripts/python.exe')"
 )

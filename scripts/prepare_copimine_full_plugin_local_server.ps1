@@ -4,6 +4,7 @@ param(
     [string] $PluginSourceRoot = "",
     [string] $ClientGatePluginPath = "",
     [string] $AdminPluginOverridePath = "",
+    [string] $TestPluginPath = "",
     [string] $OutputRoot = "",
     [int] $Port = 25568,
     [int] $DatabasePort = 55434,
@@ -22,13 +23,16 @@ if ([string]::IsNullOrWhiteSpace($BasePaperRoot)) {
     $BasePaperRoot = Join-Path $validationRoot 'paper'
 }
 if ([string]::IsNullOrWhiteSpace($PluginSourceRoot)) {
-    $PluginSourceRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot '..\..\minecraft\server\plugins'))
+    $PluginSourceRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'minecraft\server\plugins'))
 }
 if ([string]::IsNullOrWhiteSpace($ClientGatePluginPath)) {
     $ClientGatePluginPath = Join-Path $validationRoot 'paper\plugins\CopiMineNarcotics.jar'
 }
 if ([string]::IsNullOrWhiteSpace($AdminPluginOverridePath)) {
     $AdminPluginOverridePath = Join-Path $repoRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar'
+}
+if ([string]::IsNullOrWhiteSpace($TestPluginPath)) {
+    $TestPluginPath = Join-Path $validationRoot 'bed-probe\CopiMineRuntimeProbe.jar'
 }
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Join-Path $validationRoot 'paper-full-plugins'
@@ -68,12 +72,14 @@ $resolvedBasePaperRoot = Resolve-FullPath $BasePaperRoot
 $resolvedPluginSourceRoot = Resolve-FullPath $PluginSourceRoot
 $resolvedGatePluginPath = Resolve-FullPath $ClientGatePluginPath
 $resolvedAdminPluginOverridePath = Resolve-FullPath $AdminPluginOverridePath
+$resolvedTestPluginPath = Resolve-FullPath $TestPluginPath
 $resolvedOutputRoot = Resolve-FullPath $OutputRoot
 
 Assert-UnderRoot $resolvedBasePaperRoot $validationRoot 'Base Paper root'
 Assert-UnderRoot $resolvedOutputRoot $validationRoot 'The full-plugin server may only be created below the validation root'
 Assert-UnderRoot $resolvedGatePluginPath $validationRoot 'Client gate plugin'
 Assert-UnderRoot $resolvedAdminPluginOverridePath $repoRoot 'Admin plugin override'
+Assert-UnderRoot $resolvedTestPluginPath $validationRoot 'Test-only runtime probe'
 if ([string]::Equals($resolvedBasePaperRoot.TrimEnd('\'), $resolvedOutputRoot.TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
     throw 'The full-plugin server output must be separate from the gate server.'
 }
@@ -103,6 +109,11 @@ foreach ($requiredPath in @(
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required local validation path is missing: $requiredPath"
     }
+}
+
+$testPlugin = $null
+if (Test-Path -LiteralPath $resolvedTestPluginPath -PathType Leaf) {
+    $testPlugin = Get-Item -LiteralPath $resolvedTestPluginPath
 }
 
 $sourceJars = @(Get-ChildItem -LiteralPath $resolvedPluginSourceRoot -Filter '*.jar' -File | Sort-Object Name)
@@ -190,6 +201,19 @@ foreach ($jar in ($selectedJars | Sort-Object Name)) {
             source = $jar.FullName
             size = $jar.Length
             sha256 = (Get-FileHash -LiteralPath $jar.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    })
+}
+
+$manifestTestPlugins = [System.Collections.Generic.List[object]]::new()
+if ($null -ne $testPlugin) {
+    $testDestination = Join-Path $resolvedOutputRoot ('plugins\' + $testPlugin.Name)
+    Copy-Item -LiteralPath $testPlugin.FullName -Destination $testDestination -Force
+    $manifestTestPlugins.Add([ordered]@{
+            file = $testPlugin.Name
+            source = $testPlugin.FullName
+            size = $testPlugin.Length
+            sha256 = (Get-FileHash -LiteralPath $testPlugin.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            testOnly = $true
         })
 }
 
@@ -221,12 +245,14 @@ $manifest = [ordered]@{
     excluded_end_rift_event = @($excludedEndRiftEvent)
     do_not_copy = @('worlds', 'playerdata', 'databases', 'AuthMe data', 'plugin data')
     plugins = @($manifestPlugins)
+    test_plugins = @($manifestTestPlugins)
 }
 $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $resolvedOutputRoot 'full-plugin-manifest.json') -Encoding utf8
 
 Write-Output "FULL_PLUGIN_SERVER_ROOT=$resolvedOutputRoot"
 Write-Output "FULL_PLUGIN_SERVER_PORT=$Port"
 Write-Output "FULL_PLUGIN_COUNT=$($selectedJars.Count)"
+Write-Output "FULL_PLUGIN_TEST_COUNT=$($manifestTestPlugins.Count)"
 Write-Output "EXCLUDED_END_RIFT_EVENT=$($excludedEndRiftEvent -join ',')"
 Write-Output 'PRODUCTION_DATA_COPIED=NO'
 Write-Output 'STAGING_DATABASE_HOST=127.0.0.1'

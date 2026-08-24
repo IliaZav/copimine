@@ -37,6 +37,27 @@ def test_full_plugin_inventory_uses_jar_files_only_and_excludes_end_rift_event()
     assert "worlds" in script
 
 
+def test_full_plugin_server_records_test_only_runtime_probe_separately() -> None:
+    script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
+
+    assert "test_plugins" in script
+    assert "CopiMineRuntimeProbe.jar" in script
+    assert "testOnly" in script
+
+
+def test_full_plugin_server_defaults_to_the_current_checkout_plugin_inventory() -> None:
+    script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
+
+    assert "Join-Path $repoRoot 'minecraft\\server\\plugins'" in script
+    assert "Join-Path $repoRoot '..\\..\\minecraft\\server\\plugins'" not in script
+
+
+def test_binding_staging_defaults_to_the_launcher_loopback_port() -> None:
+    script = read("scripts/run_copimine_launcher_binding_staging.ps1")
+
+    assert "[int] $Port = 8090" in script
+
+
 def test_full_plugin_server_has_a_separate_port_and_real_startup_gate() -> None:
     script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
 

@@ -68,9 +68,11 @@ if ($manifest.environment -ne 'staging') {
     throw 'Full-plugin runtime evidence must be marked environment=staging.'
 }
 $plugins = @($manifest.plugins)
+$testPlugins = if ($null -eq $manifest.test_plugins) { @() } else { @($manifest.test_plugins) }
 if ($plugins.Count -lt 20) {
     throw "Full-plugin runtime manifest is unexpectedly small: $($plugins.Count)."
 }
+$expectedPluginCount = $plugins.Count + $testPlugins.Count
 
 $logText = Get-Content -LiteralPath $resolvedServerLog -Raw
 if ($logText -notmatch 'Done \([0-9\.,]+s\)!') {
@@ -93,8 +95,8 @@ $pluginListLine = [string]$logLines[$inventoryIndex]
 if ($inventoryIndex + 1 -lt $logLines.Count) {
     $pluginListLine += ' ' + [string]$logLines[$inventoryIndex + 1]
 }
-if ($pluginListLine -notmatch "Bukkit plugins \($($plugins.Count)\):") {
-    throw "Paper reported a different enabled plugin count than the manifest: $($plugins.Count)."
+if ($pluginListLine -notmatch "Bukkit plugins \($expectedPluginCount\):") {
+    throw "Paper reported a different enabled plugin count than the manifest: $expectedPluginCount."
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -125,7 +127,16 @@ function Read-PluginName([string] $JarPath) {
 
 $missing = [System.Collections.Generic.List[string]]::new()
 $hashMismatches = [System.Collections.Generic.List[string]]::new()
-foreach ($plugin in $plugins) {
+$allManifestPlugins = @(
+    $plugins | ForEach-Object { [pscustomobject]@{ Entry = $_; Label = 'main' } }
+    $testPlugins | ForEach-Object { [pscustomobject]@{ Entry = $_; Label = 'test-only' } }
+)
+foreach ($manifestPlugin in $allManifestPlugins) {
+    $plugin = $manifestPlugin.Entry
+    if ($manifestPlugin.Label -eq 'test-only' -and $plugin.testOnly -ne $true) {
+        $missing.Add("$($plugin.file) [test-only marker missing]")
+        continue
+    }
     $jarPath = Join-Path $resolvedServerRoot ('plugins\' + [string]$plugin.file)
     if (-not (Test-Path -LiteralPath $jarPath -PathType Leaf)) {
         $missing.Add([string]$plugin.file)
@@ -138,7 +149,7 @@ foreach ($plugin in $plugins) {
     $pluginName = Read-PluginName $jarPath
     $escapedName = [regex]::Escape($pluginName)
     if ($pluginListLine -notmatch "(?<![A-Za-z0-9_])$escapedName\s+\(") {
-        $missing.Add("$($plugin.file) [$pluginName]")
+        $missing.Add("$($plugin.file) [$pluginName/$($manifestPlugin.Label)]")
     }
 }
 
@@ -157,6 +168,7 @@ if ($failureLines.Count -gt 0) {
 }
 
 Write-Output "FULL_PLUGIN_RUNTIME_PLUGIN_COUNT=$($plugins.Count)"
-Write-Output "FULL_PLUGIN_RUNTIME_ENABLED=$($plugins.Count)"
+Write-Output "FULL_PLUGIN_RUNTIME_TEST_PLUGIN_COUNT=$($testPlugins.Count)"
+Write-Output "FULL_PLUGIN_RUNTIME_ENABLED=$expectedPluginCount"
 Write-Output 'PRODUCTION_DATA_MODIFIED=NO'
 Write-Output 'FULL_PLUGIN_RUNTIME=PASS'

@@ -4858,7 +4858,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = target.getLocation().clone();
         getLogger().info("BOSS_SPELL_TELEGRAPH boss=" + bossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
-        target.sendActionBar(Component.text("Хранитель готовит: " + spell.id(), NamedTextColor.LIGHT_PURPLE));
+        target.sendActionBar(Component.text("Хранитель готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {

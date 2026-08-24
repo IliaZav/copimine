@@ -7,6 +7,7 @@ public final class EndRiftAiPolicyTest {
         testBossPhaseBoundaries();
         testFairTargetRotationAvoidsRecentTargets();
         testBossSpellRotationAvoidsImmediateRepeat();
+        testEveryBossSpellHasRussianDisplayName();
         testEveryEliteHasExactlyOneDeterministicSpell();
         System.out.println("EndRiftAiPolicyTest OK");
     }
@@ -40,6 +41,24 @@ public final class EndRiftAiPolicyTest {
                 List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST, EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), first, 0);
         check(first == EndRiftAiPolicy.BossSpell.VOID_BLAST, "spell rotation must be deterministic for the first cast");
         check(second == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE, "boss must not immediately repeat a spell");
+    }
+
+    private static void testEveryBossSpellHasRussianDisplayName() {
+        String[] expected = {
+            "Взрыв Бездны",
+            "Снаряд Разлома",
+            "Клеймо Пустоты",
+            "Призыв слуг Разлома",
+            "Искажение воли"
+        };
+        EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();
+        check(spells.length == expected.length, "boss spell list changed without updating display names");
+        for (int index = 0; index < spells.length; index++) {
+            check(spells[index].displayName().equals(expected[index]),
+                    "boss spell must expose the agreed Russian display name");
+            check(!spells[index].displayName().equals(spells[index].id()),
+                    "player-facing spell name must not be the internal spell ID");
+        }
     }
 
     private static void testEveryEliteHasExactlyOneDeterministicSpell() {

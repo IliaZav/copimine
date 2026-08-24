@@ -21,20 +21,26 @@ public final class EndRiftAiPolicy {
     }
 
     public enum BossSpell {
-        VOID_BLAST("void_blast"),
-        RIFT_PROJECTILE("rift_projectile"),
-        VOID_MARK("void_mark"),
-        SUMMON_SERVANTS("summon_servants"),
-        WILL_DISTORTION("will_distortion");
+        VOID_BLAST("void_blast", "Взрыв Бездны"),
+        RIFT_PROJECTILE("rift_projectile", "Снаряд Разлома"),
+        VOID_MARK("void_mark", "Клеймо Пустоты"),
+        SUMMON_SERVANTS("summon_servants", "Призыв слуг Разлома"),
+        WILL_DISTORTION("will_distortion", "Искажение воли");
 
         private final String id;
+        private final String displayName;
 
-        BossSpell(String id) {
+        BossSpell(String id, String displayName) {
             this.id = id;
+            this.displayName = displayName;
         }
 
         public String id() {
             return id;
+        }
+
+        public String displayName() {
+            return displayName;
         }
     }
 

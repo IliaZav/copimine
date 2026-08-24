@@ -562,6 +562,15 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         return economyService;
     }
 
+    /**
+     * Exposes bootstrap state to dependent plugins without exposing JDBC
+     * handles.  AdminPlus must wait for the economy schema owner to finish
+     * before it creates shared tables of its own.
+     */
+    public boolean isDatabaseReady() {
+        return databaseReady.get();
+    }
+
     public BankService bankService() {
         return bankService;
     }

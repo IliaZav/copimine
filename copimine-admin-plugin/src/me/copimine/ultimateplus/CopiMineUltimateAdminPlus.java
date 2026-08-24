@@ -67,6 +67,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private PgConnectionPool pgPool;
     private volatile boolean dbReady = false;
     private ExecutorService dbExecutor;
+    private BukkitTask databaseDependencyRetryTask;
+    private final AtomicBoolean databaseBootstrapStarted = new AtomicBoolean(false);
     private final AtomicBoolean dbNotReadyWarned = new AtomicBoolean(false);
     private final Set<UUID> frozen = ConcurrentHashMap.newKeySet();
     private final Map<UUID, UUID> checkMode = new ConcurrentHashMap<>();
@@ -272,6 +274,40 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        // EconomyCore and ElectionCore own overlapping PostgreSQL tables and
+        // bootstrap asynchronously.  Waiting for their explicit readiness
+        // signals avoids a cold-start DDL race (duplicate pg_type/index
+        // failures) before AdminPlus creates its shared/legacy compatibility
+        // tables.
+        databaseDependencyRetryTask = Bukkit.getScheduler().runTaskTimer(
+                this, this::waitForDatabaseDependencies, 1L, 10L);
+    }
+
+    private void waitForDatabaseDependencies() {
+        if (!isEnabled() || databaseBootstrapStarted.get()) {
+            return;
+        }
+        Plugin economyPlugin = getServer().getPluginManager().getPlugin("CopiMineEconomyCore");
+        if (!(economyPlugin instanceof CopiMineEconomyCore economy) || !economyPlugin.isEnabled()) {
+            getLogger().warning("CopiMineEconomyCore is unavailable; AdminPlus database bootstrap is waiting.");
+            return;
+        }
+        if (!economy.isDatabaseReady()) {
+            return;
+        }
+
+        Plugin electionPlugin = getServer().getPluginManager().getPlugin("CopiMineElectionCore");
+        if (electionPlugin != null && electionPlugin.isEnabled()
+                && !dependencyDatabaseReady(electionPlugin)) {
+            return;
+        }
+        if (!databaseBootstrapStarted.compareAndSet(false, true)) {
+            return;
+        }
+        if (databaseDependencyRetryTask != null) {
+            databaseDependencyRetryTask.cancel();
+            databaseDependencyRetryTask = null;
+        }
         try {
             dbExecutor.execute(() -> {
                 try {
@@ -291,6 +327,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL initialization worker rejected", error);
             closePostgres();
             getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private boolean dependencyDatabaseReady(Plugin plugin) {
+        try {
+            Object ready = plugin.getClass().getMethod("isDatabaseReady").invoke(plugin);
+            return ready instanceof Boolean && (Boolean) ready;
+        } catch (NoSuchMethodException error) {
+            getLogger().warning(plugin.getName() + " does not expose isDatabaseReady(); AdminPlus will keep waiting.");
+            return false;
+        } catch (ReflectiveOperationException error) {
+            getLogger().warning(plugin.getName() + " readiness check failed: " + error.getMessage());
+            return false;
         }
     }
 
@@ -332,6 +381,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     @Override public void onDisable() {
+        if (databaseDependencyRetryTask != null) {
+            databaseDependencyRetryTask.cancel();
+            databaseDependencyRetryTask = null;
+        }
         if (sidebarTask != null) sidebarTask.cancel();
         if (inventorySnapshotTask != null) inventorySnapshotTask.cancel();
         if (nameplateTask != null) nameplateTask.cancel();
@@ -3250,7 +3303,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE TABLE IF NOT EXISTS elections(id TEXT PRIMARY KEY,status TEXT,started_at INTEGER,ended_at INTEGER,scheduled_end_at INTEGER,started_by TEXT,ended_by TEXT,winner_uuid TEXT,winner_name TEXT,notes TEXT)");
         exec("CREATE TABLE IF NOT EXISTS candidates(election_id TEXT,uuid TEXT,name TEXT,display_name TEXT,raw_votes INTEGER DEFAULT 0,admin_adjustment INTEGER DEFAULT 0,removed INTEGER DEFAULT 0)");
         ensureColumn("elections","scheduled_end_at","scheduled_end_at INTEGER DEFAULT 0"); ensureColumn("elections","winner_uuid","winner_uuid TEXT DEFAULT ''"); ensureColumn("elections","winner_name","winner_name TEXT DEFAULT ''"); ensureColumn("elections","notes","notes TEXT DEFAULT ''");
+        ensureColumn("candidates","uuid","uuid TEXT"); ensureColumn("candidates","name","name TEXT");
         ensureColumn("candidates","display_name","display_name TEXT"); ensureColumn("candidates","raw_votes","raw_votes INTEGER DEFAULT 0"); ensureColumn("candidates","admin_adjustment","admin_adjustment INTEGER DEFAULT 0"); ensureColumn("candidates","removed","removed INTEGER DEFAULT 0");
+        try {
+            List<String> candidateColumns = cols("candidates");
+            if (candidateColumns.contains("player_uuid")) {
+                exec("UPDATE candidates SET uuid=COALESCE(NULLIF(uuid,''),player_uuid) WHERE COALESCE(uuid,'')=''");
+            }
+            if (candidateColumns.contains("player_name")) {
+                exec("UPDATE candidates SET name=COALESCE(NULLIF(name,''),player_name) WHERE COALESCE(name,'')=''");
+            }
+        } catch (Exception ignored) {
+            // The compatibility columns are best-effort; the validated
+            // schema/index creation below remains the release gate.
+        }
         exec("CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,election_id TEXT,applicant_uuid TEXT,applicant_name TEXT,statement TEXT,submitted_at INTEGER,status TEXT DEFAULT 'PENDING',reviewed_by TEXT DEFAULT '',reviewed_at INTEGER DEFAULT 0,verdict_reason TEXT DEFAULT '',visible_in_game INTEGER DEFAULT 1,deleted_by TEXT DEFAULT '',deleted_at INTEGER DEFAULT 0)");
         for(String[] c:new String[][]{{"election_id","election_id TEXT"},{"applicant_uuid","applicant_uuid TEXT"},{"applicant_name","applicant_name TEXT"},{"statement","statement TEXT"},{"submitted_at","submitted_at INTEGER DEFAULT 0"},{"status","status TEXT DEFAULT 'PENDING'"},{"reviewed_by","reviewed_by TEXT DEFAULT ''"},{"reviewed_at","reviewed_at INTEGER DEFAULT 0"},{"verdict_reason","verdict_reason TEXT DEFAULT ''"},{"visible_in_game","visible_in_game INTEGER DEFAULT 1"},{"deleted_by","deleted_by TEXT DEFAULT ''"},{"deleted_at","deleted_at INTEGER DEFAULT 0"}}) ensureColumn("applications",c[0],c[1]);
         exec("CREATE TABLE IF NOT EXISTS cmv7_ballot_issues(id TEXT PRIMARY KEY,election_id TEXT,voter_uuid TEXT,voter_name TEXT,issued_at INTEGER,issued_by TEXT,used INTEGER DEFAULT 0,notes TEXT DEFAULT '')");

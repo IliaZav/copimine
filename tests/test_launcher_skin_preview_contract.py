@@ -23,6 +23,15 @@ def test_skin_manager_keeps_catalog_available_when_preview_is_unavailable():
     assert "Каталог недоступен" in code
 
 
+def test_existing_local_texture_updates_status_after_preview_is_sent():
+    code = (APP / "SkinManagerWindow.xaml.cs").read_text(encoding="utf-8")
+
+    load_method = code[code.index("private async Task LoadInstalledTexturesAsync()"):code.index("private async Task LoadCatalogAsync", code.index("private async Task LoadInstalledTexturesAsync()"))]
+    assert "await SendPreviewAsync();" in load_method
+    assert 'SetStatus("Локальные текстуры загружены в предпросмотр.");' in load_method
+    assert load_method.index("await SendPreviewAsync();") < load_method.index('SetStatus("Локальные текстуры загружены в предпросмотр.");')
+
+
 def test_diagnostics_are_selectable_read_only_text():
     xaml = (APP / "MainWindow.xaml").read_text(encoding="utf-8")
 

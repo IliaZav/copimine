@@ -68,6 +68,16 @@ def test_binding_staging_resolves_default_paths_after_script_initialization() ->
     assert "New-Item -ItemType Directory -Path $ValidationRoot -Force" in script
 
 
+def test_binding_staging_runner_can_start_launcher_against_loopback_origin() -> None:
+    script = read("scripts/run_copimine_launcher_binding_staging.ps1")
+
+    assert '[string] $LauncherPath = ""' in script
+    assert "COPIMINE_LAUNCHER_STAGING_BASE_URL" in script
+    assert "COPIMINE_LAUNCHER_LOCAL_BASE_URL" in script
+    assert "ProcessStartInfo" in script
+    assert "LAUNCHER_STARTED=" in script
+
+
 def test_full_plugin_server_has_a_separate_port_and_real_startup_gate() -> None:
     script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
 

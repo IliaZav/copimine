@@ -3,7 +3,9 @@ param(
     [int] $Port = 8090,
     [string] $ValidationRoot = "",
     [string] $PythonPath = "",
-    [string] $PublicRoot = ""
+    [string] $PublicRoot = "",
+    [string] $LauncherPath = "",
+    [string] $LocalBindingBaseUrl = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -82,4 +84,31 @@ Write-Output "BINDING_STAGING_BASE_URL=$baseUrl"
 Write-Output "BINDING_STAGING_PID=$($process.Id)"
 Write-Output "BINDING_STAGING_ROOT=$bindingRoot"
 Write-Output "BINDING_STAGING_PUBLIC_ROOT=$publicRoot"
+
+if (-not [string]::IsNullOrWhiteSpace($LauncherPath)) {
+    $launcher = (Resolve-Path -LiteralPath $LauncherPath -ErrorAction Stop).Path
+    $bindingBaseUrl = $baseUrl
+    if (-not [string]::IsNullOrWhiteSpace($LocalBindingBaseUrl)) {
+        $bindingUri = $null
+        $bindingIsValid = [Uri]::TryCreate($LocalBindingBaseUrl, [UriKind]::Absolute, [ref]$bindingUri) -and
+            $bindingUri.IsLoopback -and
+            [string]::Equals($bindingUri.Scheme, [Uri]::UriSchemeHttp, [StringComparison]::OrdinalIgnoreCase) -and
+            [string]::IsNullOrEmpty($bindingUri.UserInfo)
+        if (-not $bindingIsValid) {
+            throw "LocalBindingBaseUrl must be a loopback HTTP URL without credentials."
+        }
+        $bindingBaseUrl = $bindingUri.AbsoluteUri.TrimEnd('/')
+    }
+
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $launcher
+    $startInfo.WorkingDirectory = Split-Path -Parent $launcher
+    $startInfo.UseShellExecute = $false
+    $startInfo.Environment['COPIMINE_LAUNCHER_STAGING_BASE_URL'] = $baseUrl
+    $startInfo.Environment['COPIMINE_LAUNCHER_LOCAL_BASE_URL'] = $bindingBaseUrl
+    [System.Diagnostics.Process]::Start($startInfo) | Out-Null
+    Write-Output "LAUNCHER_STARTED=$launcher"
+    Write-Output "LOCAL_BINDING_BASE_URL=$bindingBaseUrl"
+}
+
 Write-Output "STOP_COMMAND=Stop-Process -Id $($process.Id)"

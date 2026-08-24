@@ -33,13 +33,16 @@ Assert-Contains $siteDataContent "loadPublicModsPageData" "site-data.js"
 $htmlChecks = @(
   @{ Path = $indexHtml; Marker = 'data-page-kind="public-home"' },
   @{ Path = $serverHtml; Marker = 'data-page-kind="public-server"' },
-  @{ Path = $shopsHtml; Marker = 'data-page-kind="public-shops"' },
-  @{ Path = $modsHtml; Marker = 'data-page-kind="public-mods"' }
+  @{ Path = $shopsHtml; Marker = 'data-page-kind="public-shops"' }
 )
 
 foreach ($check in $htmlChecks) {
   $html = Get-Content -Raw -Path $check.Path
   Assert-Contains $html $check.Marker ([System.IO.Path]::GetFileName($check.Path))
 }
+
+$legacyModsHtml = Get-Content -Raw -Path $modsHtml
+Assert-Contains $legacyModsHtml 'rel="canonical" href="https://copimine.ru/launcher.html"' 'mods.html'
+Assert-Contains $legacyModsHtml "window.location.replace('/launcher.html')" 'mods.html'
 
 Write-Host "ValidateCopiMineWebPublicPagesSeparateRuntime passed."

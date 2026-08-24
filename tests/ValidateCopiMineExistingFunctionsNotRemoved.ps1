@@ -9,7 +9,7 @@ $mainPy = Read-Utf8 $Paths.MainPy
 
 Require-Contains $server 'id="presidentBudgetCounter"' 'Frontend removed the public treasury counter mount from server.html'
 Require-Contains $server 'id="publicTreasuryHistory"' 'Frontend removed the public treasury history mount from server.html'
-Require-Contains $mods 'id="modpackFileGrid"' 'Frontend removed the modpack file mount from mods.html'
+Require-Contains $mods "window.location.replace('/launcher.html')" 'Frontend removed the legacy mods-to-Launcher compatibility redirect'
 Require-Contains $index 'id="publicCabinetBtn"' 'Frontend removed the guest cabinet shortcut from index.html'
 Require-Contains $index 'id="mobileNavToggle"' 'Frontend removed the mobile nav toggle contract from index.html'
 Require-Contains $dashboard 'id="logout"' 'Frontend removed the authenticated logout control from cabinet/dashboard.html'

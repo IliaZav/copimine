@@ -50,10 +50,13 @@ def test_rune_model_covers_the_block_top_and_has_a_distinct_occupied_variant() -
     model = json.loads((ROOT / "resourcepacks/src/assets/copimine/models/block/end_event_rune.json").read_text(encoding="utf-8"))
     occupied_model = json.loads((ROOT / "resourcepacks/src/assets/copimine/models/block/end_event_rune_occupied.json").read_text(encoding="utf-8"))
     source = MAIN.read_text(encoding="utf-8")
-    assert model["elements"][0]["from"] == [0.0, 0.01, 0.0]
-    assert model["elements"][0]["to"] == [16.0, 2.0, 16.0]
-    assert occupied_model["elements"][0]["from"] == [0.0, 0.01, 0.0]
-    assert occupied_model["elements"][0]["to"] == [16.0, 2.0, 16.0]
+    # ItemDisplay item models are centered on the entity origin.  The rune
+    # display is anchored at the top of the floor block, so the thin plate
+    # must be centered around the origin rather than extending below it.
+    assert model["elements"][0]["from"] == [0.0, 8.0, 0.0]
+    assert model["elements"][0]["to"] == [16.0, 10.0, 16.0]
+    assert occupied_model["elements"][0]["from"] == [0.0, 8.0, 0.0]
+    assert occupied_model["elements"][0]["to"] == [16.0, 10.0, 16.0]
     assert occupied_model["textures"]["top"] == "copimine:block/end_event_rune_occupied"
     assert "MODEL_RUNE_OVERLAY_OCCUPIED = 830005" in source
     assert "padOccupants.containsKey(padKey(pad))" in source

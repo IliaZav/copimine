@@ -64,6 +64,10 @@ client.on('packet', (data, meta) => {
   if (meta?.name === 'login') console.log(`CLIENT_LOGIN ${username}`)
   if (meta?.name === 'finish_configuration') console.log(`CLIENT_FINISH_CONFIGURATION ${username}`)
   if (meta?.name === 'disconnect') console.log(`CLIENT_DISCONNECT ${username} ${JSON.stringify(data)}`)
+  if (process.env.END_RIFT_BOT_LOG_ALL_CHAT === '1'
+      && ['system_chat', 'player_chat', 'disguised_chat', 'set_action_bar_text'].includes(meta?.name)) {
+    console.log(`CHAT_PACKET ${username} ${meta.name} ${JSON.stringify(data)}`)
+  }
   if (meta?.name === 'add_resource_pack') {
     // The local protocol client does not render/download packs.  Report the
     // optional pack as loaded so Paper can finish configuration and let the
@@ -94,6 +98,9 @@ client.on('playerJoin', startSession)
 
 client.on('chat', (packet) => {
   const text = JSON.stringify(packet)
+  if (process.env.END_RIFT_BOT_LOG_ALL_CHAT === '1') {
+    console.log(`CHAT_ALL ${text}`)
+  }
   if (text.includes('EndRift') || text.includes('CopiMine') || text.includes('AuthMe')) {
     console.log(`CHAT ${text}`)
   }

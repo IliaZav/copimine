@@ -70,6 +70,23 @@ public sealed class LauncherInstallPathsTests
     }
 
     [Fact]
+    public async Task Bundled_offline_baseline_is_detected_only_when_metadata_and_archive_exist()
+    {
+        using var temp = new LocalApplicationDataTestDirectory();
+        var appRoot = Path.Combine(temp.Path, "current");
+        var bootstrap = Path.Combine(appRoot, "launcher-bootstrap");
+        Directory.CreateDirectory(bootstrap);
+
+        LauncherInstallPaths.HasBundledOfflineMinecraftBaseline(appRoot).Should().BeFalse();
+
+        await File.WriteAllTextAsync(Path.Combine(bootstrap, "offline-minecraft-baseline.json"), "{}");
+        LauncherInstallPaths.HasBundledOfflineMinecraftBaseline(appRoot).Should().BeFalse();
+
+        await File.WriteAllBytesAsync(Path.Combine(bootstrap, "offline-minecraft-baseline.zip"), new byte[] { 1 });
+        LauncherInstallPaths.HasBundledOfflineMinecraftBaseline(appRoot).Should().BeTrue();
+    }
+
+    [Fact]
     public void Self_update_feed_uses_loopback_staging_without_touching_production()
     {
         LauncherInstallPaths.ResolveSelfUpdateFeed(new Uri("http://127.0.0.1:8287"))

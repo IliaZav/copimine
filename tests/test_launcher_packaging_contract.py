@@ -58,6 +58,19 @@ def test_server_hosted_packaging_does_not_duplicate_runtime_payload() -> None:
     assert "ServerHostedRuntimeOnly and RequireOfflineBundle are mutually exclusive" in build
 
 
+def test_offline_packaging_omits_the_duplicate_server_runtime_payload() -> None:
+    build = read("scripts/build_copimine_launcher.ps1")
+    app = read("CopiMineLauncher/src/CopiMineLauncher.App/App.xaml.cs")
+    paths = read("CopiMineLauncher/src/CopiMineLauncher.App/LauncherInstallPaths.cs")
+
+    assert "offlineRuntimeDigest" in build
+    assert r"launcher-bootstrap[\\/]files[\\/]" in build
+    assert "HasBundledOfflineMinecraftBaseline" in paths
+    assert "HasBundledOfflineMinecraftBaseline" in app
+    assert "var hostedMinecraftRuntime = hasBundledOfflineBaseline" in app
+    assert "? null" in app
+
+
 def test_launcher_packaging_requires_a_bundled_webview2_runtime() -> None:
     build = read("scripts/build_copimine_launcher.ps1")
 
@@ -152,6 +165,18 @@ def test_installer_welcome_does_not_repeat_velopack_heading() -> None:
     assert "Minecraft 1.21.1" in welcome
     assert "выбора произвольного диска и папки" in welcome
     assert "MSI-вариант оставлен как резервный" in welcome
+
+
+def test_folder_installer_layout_has_explicit_action_columns_and_readable_disabled_controls() -> None:
+    xaml = read("CopiMineLauncher/installer/CopiMineLauncher.Installer/MainWindow.xaml")
+    resources = read("CopiMineLauncher/installer/CopiMineLauncher.Installer/App.xaml")
+
+    assert xaml.count("<ColumnDefinition") >= 4
+    assert "TextWrapping=\"Wrap\"" in xaml
+    assert "Focusable=\"False\"" in xaml
+    assert "x:Key=\"PrimaryButton\"" in resources
+    assert "IsEnabled" in resources
+    assert "#5B756E" in resources
 
 
 def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:

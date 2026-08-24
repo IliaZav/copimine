@@ -60,6 +60,13 @@ public static class LauncherInstallPaths
             Path.GetFullPath(applicationBaseDirectory ?? AppContext.BaseDirectory),
             "launcher-bootstrap");
 
+    public static bool HasBundledOfflineMinecraftBaseline(string? applicationBaseDirectory = null)
+    {
+        var bootstrapRoot = ResolveLauncherBootstrapRoot(applicationBaseDirectory);
+        return File.Exists(Path.Combine(bootstrapRoot, "offline-minecraft-baseline.json"))
+            && File.Exists(Path.Combine(bootstrapRoot, "offline-minecraft-baseline.zip"));
+    }
+
     public static string ResolveLauncherDataRoot(string? localAppDataRoot = null) =>
         Path.Combine(
             Path.GetFullPath(localAppDataRoot ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),

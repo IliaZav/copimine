@@ -54,7 +54,15 @@ public partial class App : Application
             PinnedManifestKey.PublicKey,
             PinnedManifestKey.KeyId);
         var downloads = new ResumableDownloadManager(httpClient);
-        var offlineBaseline = new OfflineMinecraftBaseline(LauncherInstallPaths.ResolveLauncherBootstrapRoot());
+        var hasBundledOfflineBaseline = LauncherInstallPaths.HasBundledOfflineMinecraftBaseline();
+        var offlineBaseline = hasBundledOfflineBaseline
+            ? new OfflineMinecraftBaseline(LauncherInstallPaths.ResolveLauncherBootstrapRoot())
+            : null;
+        var hostedMinecraftRuntime = hasBundledOfflineBaseline
+            ? null
+            : new HostedMinecraftRuntimeInstaller(
+                new OfflineMinecraftBaseline(LauncherInstallPaths.ResolveLauncherBootstrapRoot()),
+                downloads);
         var runtimeCoordinator = new LauncherRuntimeCoordinator(
             manifestClient,
             new MinecraftProvisioner(httpClient),
@@ -63,7 +71,7 @@ public partial class App : Application
             new ServersDatService(),
             new MinecraftLaunchService(httpClient),
             offlineBaseline,
-            new HostedMinecraftRuntimeInstaller(offlineBaseline, downloads));
+            hostedMinecraftRuntime);
         var selfUpdate = new VelopackSelfUpdateService(
             LauncherInstallPaths.ResolveSelfUpdateFeed(GetStagingBaseUrl()),
             new VelopackUpdateBackend(),

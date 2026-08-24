@@ -269,9 +269,23 @@ New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
 
 # Cache, staging and extracted Java are transient local state.  The signed
 # bootstrap archives under launcher-bootstrap/files are the distributable
-# source of truth and remain in the package.
+# source of truth.  A full offline release already carries the complete
+# Minecraft profile in offline-minecraft-baseline.zip, so do not put the
+# identical minecraftRuntime archive into the MSI a second time.  WiX stores
+# the MSI payload in a CAB and rejects a single CAB larger than 2 GiB.
+$offlineRuntimeDigest = $null
+if (-not $ServerHostedRuntimeOnly -and $RequireOfflineBundle) {
+    $bundleManifest = Get-Content -Raw -LiteralPath (Join-Path $bootstrapDestination 'instance-manifest.json') | ConvertFrom-Json
+    $offlineRuntimeDigest = [string]$bundleManifest.minecraftRuntime.sha256
+    if ($offlineRuntimeDigest -notmatch '^[a-fA-F0-9]{64}$') {
+        throw 'The offline instance manifest must contain a valid minecraftRuntime SHA-256 before packaging.'
+    }
+}
+
 $packageExclude = if ($ServerHostedRuntimeOnly) {
     '(?i)(?:\.copimine[\\/](?:cache|staging|java)[\\/].*|(?:^|[\\/])Minecraft[\\/].*|(?:^|[\\/])launcher-bootstrap[\\/]files[\\/].*|(?:^|[\\/])CopiMineLauncher\.App\.exe\.WebView2[\\/].*)'
+} elseif (-not [string]::IsNullOrWhiteSpace($offlineRuntimeDigest)) {
+    '(?i)(?:\.copimine[\\/](?:cache|staging|java)[\\/].*|(?:^|[\\/])launcher-bootstrap[\\/]files[\\/]' + [regex]::Escape($offlineRuntimeDigest) + '$)'
 } else {
     '(?i)\.copimine[\\/]((cache|staging|java)[\\/]).*'
 }

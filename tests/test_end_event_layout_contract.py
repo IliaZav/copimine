@@ -17,10 +17,11 @@ def test_layout_commands_are_durable_and_bounded() -> None:
     assert "gateSnapshot" in MAIN
 
 
-def test_gate_preview_has_snapshot_before_mutating_and_boot_recovery() -> None:
+def test_gate_preview_has_snapshot_before_particle_preview_and_boot_recovery() -> None:
     capture = MAIN.index("Map<String, String> snapshot")
-    mutate = MAIN.index("block.setType(Material.PURPLE_STAINED_GLASS", capture)
-    assert capture < mutate
+    preview = MAIN.index("startGateSelectionPreview", capture)
+    assert capture < preview
+    assert "block.setType(Material.PURPLE_STAINED_GLASS" not in MAIN[MAIN.index("private void previewGate"):MAIN.index("private boolean openGate")]
     assert "restorePersistedGateIfNeeded" in MAIN
     assert "RESTORED_ON_BOOT" in MAIN
     assert "restoreGateSnapshot" in MAIN

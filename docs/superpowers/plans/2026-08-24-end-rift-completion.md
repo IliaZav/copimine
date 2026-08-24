@@ -59,7 +59,7 @@
 - [ ] **Step 2: Run the focused tests and record RED.**
 - [ ] **Step 3: Implement `openGate` with one generation-scoped task.** Snapshot exact `BlockData`, save `OPENING`, process one `GateOpeningPlan.Layer` per interval, set only snapshot-owned blocks to air, emit bounded particles/sound, save progress/status, and finish at `OPENED`.
 - [ ] **Step 4: Update boot recovery and `restore confirm`.** An interrupted `OPENING` restores the full snapshot before marking `RESTORED_ON_BOOT`; no world-wide scan is permitted.
-- [ ] **Step 5: Wire gate opening into the victory saga idempotently and preserve the existing `preview` behavior.**
+- [ ] **Step 5: Wire gate opening into the victory saga idempotently. `preview`, `pos1`, and `pos2` use only generation-bound particle highlights and never replace vanilla block materials.**
 - [ ] **Step 6: Run focused Java/Python tests, plugin build, and `git diff --check`.**
 - [ ] **Step 7: Commit `feat: open End Rift gate gradually from top to bottom`.**
 

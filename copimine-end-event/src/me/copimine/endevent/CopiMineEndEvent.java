@@ -159,6 +159,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int DEFAULT_GATE_TICKS_PER_LAYER = 5;
     private static final int MIN_GATE_TICKS_PER_LAYER = 1;
     private static final int MAX_GATE_TICKS_PER_LAYER = 200;
+    private static final int DEFAULT_GATE_SELECTION_PREVIEW_SECONDS = 10;
+    private static final int MAX_GATE_SELECTION_BLOCK_HIGHLIGHTS = 192;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
@@ -221,6 +223,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask musicLoopTask;
     private BukkitTask finalRitualVisualTask;
     private BukkitTask arenaBoundaryTask;
+    private BukkitTask gateSelectionPreviewTask;
     private BukkitTask gateOpeningTask;
     private BukkitTask creativeTestTask;
     private boolean victoryGatePending;
@@ -587,6 +590,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             taskRegistry.cancelAll();
         }
         cancelArenaBoundaryPreview();
+        cancelGateSelectionPreview();
         cancelGateOpeningTask();
         if (finalRitualVisualTask != null) {
             finalRitualVisualTask.cancel();
@@ -1073,6 +1077,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             ? withGatePoints(point, previous.gatePos2())
                             : withGatePoints(previous.gatePos1(), point);
                     if (saveStateSync()) {
+                        startGateSelectionPreview(sender);
                         message(sender, "&aGate " + args[1] + " сохранена: &f" + locationText(player.getLocation()));
                     } else {
                         layoutState = previous;
@@ -1194,6 +1199,131 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Highlights the selected gate without changing any world block. The
+     * first point is shown as one outlined block; after the second point is
+     * selected, only the bounded cuboid that the opening command will process
+     * is highlighted. The task is tied to the current event generation so a
+     * reset or core removal cannot leave stale particles running.
+     */
+    private void startGateSelectionPreview(CommandSender sender) {
+        cancelGateSelectionPreview();
+        EventLayoutState.Point first = layoutState.gatePos1();
+        EventLayoutState.Point second = layoutState.gatePos2();
+        if (first == null || !first.configured()) {
+            return;
+        }
+        World world = Bukkit.getWorld(first.world());
+        if (world == null) {
+            message(sender, "&cМир Gate не загружен; подсветка не запущена.");
+            return;
+        }
+        if (second != null && second.configured()) {
+            try {
+                GateOpeningPlan.from(
+                        new GateOpeningPlan.Point(first.world(), first.x(), first.y(), first.z()),
+                        new GateOpeningPlan.Point(second.world(), second.x(), second.y(), second.z()),
+                        MAX_GATE_VOLUME);
+            } catch (IllegalArgumentException invalid) {
+                message(sender, "&cТочки Gate сохранены, но bounded-подсветка не запущена: "
+                        + invalid.getMessage());
+                return;
+            }
+        }
+        String previewEventId = eventId;
+        long previewGeneration = generation;
+        long expiresAt = System.currentTimeMillis()
+                + DEFAULT_GATE_SELECTION_PREVIEW_SECONDS * 1000L;
+        gateSelectionPreviewTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (!isConfigured() || !eventId.equals(previewEventId)
+                    || generation != previewGeneration || System.currentTimeMillis() >= expiresAt
+                    || gateOpeningTask != null) {
+                cancelGateSelectionPreview();
+                return;
+            }
+            drawGateSelectionPreview(world, layoutState.gatePos1(), layoutState.gatePos2());
+        }, 0L, 5L);
+        getLogger().info("END_EVENT_GATE_SELECTION_PREVIEW event=" + eventId
+                + " generation=" + generation + " seconds=" + DEFAULT_GATE_SELECTION_PREVIEW_SECONDS
+                + " pos1=" + pointText(first) + " pos2=" + pointText(second));
+        message(sender, "&aТочка Gate подсвечена частицами на &f"
+                + DEFAULT_GATE_SELECTION_PREVIEW_SECONDS + " сек.; "
+                + "после второй точки будет выделен весь bounded-куб.");
+    }
+
+    private void cancelGateSelectionPreview() {
+        if (gateSelectionPreviewTask != null) {
+            gateSelectionPreviewTask.cancel();
+            gateSelectionPreviewTask = null;
+        }
+    }
+
+    private void drawGateSelectionPreview(World world, EventLayoutState.Point first,
+                                          EventLayoutState.Point second) {
+        if (world == null || first == null || !first.configured()) {
+            return;
+        }
+        if (second == null || !second.configured()) {
+            drawGateBlockOutline(world, first.x(), first.y(), first.z());
+            return;
+        }
+        GateOpeningPlan plan;
+        try {
+            plan = GateOpeningPlan.from(
+                    new GateOpeningPlan.Point(first.world(), first.x(), first.y(), first.z()),
+                    new GateOpeningPlan.Point(second.world(), second.x(), second.y(), second.z()),
+                    MAX_GATE_VOLUME);
+        } catch (IllegalArgumentException invalid) {
+            return;
+        }
+        int minX = Math.min(first.x(), second.x());
+        int maxX = Math.max(first.x(), second.x());
+        int minZ = Math.min(first.z(), second.z());
+        int maxZ = Math.max(first.z(), second.z());
+        int boundaryCount = 0;
+        for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
+            for (GateOpeningPlan.Point point : layer.blocks()) {
+                if (isGateBoundaryPoint(point, minX, maxX, minZ, maxZ)) {
+                    boundaryCount++;
+                }
+            }
+        }
+        int stride = Math.max(1, (int) Math.ceil(
+                boundaryCount / (double) MAX_GATE_SELECTION_BLOCK_HIGHLIGHTS));
+        int ordinal = 0;
+        for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
+            for (GateOpeningPlan.Point point : layer.blocks()) {
+                if (isGateBoundaryPoint(point, minX, maxX, minZ, maxZ)
+                        && ordinal++ % stride == 0) {
+                    drawGateBlockOutline(world, point.x(), point.y(), point.z());
+                }
+            }
+        }
+    }
+
+    private boolean isGateBoundaryPoint(GateOpeningPlan.Point point,
+                                        int minX, int maxX, int minZ, int maxZ) {
+        return point.x() == minX || point.x() == maxX
+                || point.z() == minZ || point.z() == maxZ;
+    }
+
+    private void drawGateBlockOutline(World world, int x, int y, int z) {
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(177, 70, 255), 1.1F);
+        double[] coordinates = {0.08D, 0.92D};
+        for (double dx : coordinates) {
+            for (double dy : coordinates) {
+                for (double dz : coordinates) {
+                    world.spawnParticle(Particle.DUST,
+                            new Location(world, x + dx, y + dy, z + dz),
+                            1, 0.0D, 0.0D, 0.0D, 0.0D, dust);
+                }
+            }
+        }
+        world.spawnParticle(Particle.END_ROD,
+                new Location(world, x + 0.5D, y + 0.5D, z + 0.5D),
+                2, 0.12D, 0.12D, 0.12D, 0.0D);
+    }
+
     private void drawArenaBoundaryFrame(World world) {
         if (world == null) {
             return;
@@ -1253,7 +1383,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if ("PREVIEW".equalsIgnoreCase(layoutState.gateStatus()) && !layoutState.gateSnapshot().isEmpty()) {
-            message(sender, "&eGate уже находится в preview; повторная запись snapshot запрещена.");
+            startGateSelectionPreview(sender);
+            message(sender, "&eGate уже находится в preview; snapshot не перезаписан, подсветка запущена заново.");
             return;
         }
         EventLayoutState previous = layoutState;
@@ -1266,18 +1397,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cGate snapshot не сохранён; preview не начат.");
             return;
         }
-        try {
-            for (Block block : blocks) {
-                block.setType(Material.PURPLE_STAINED_GLASS, false);
-            }
-            message(sender, "&aGate preview создан; snapshot durable сохранён. Restore вернёт каждый исходный block data.");
-        } catch (RuntimeException error) {
-            restoreGateSnapshot(previous.gatePos1(), snapshot);
-            layoutState = withGateState(Map.of(), "RESTORED");
-            saveStateSync();
-            getLogger().log(Level.WARNING, "Gate preview mutation failed; snapshot restored", error);
-            message(sender, "&cGate preview отменён и блоки восстановлены.");
-        }
+        startGateSelectionPreview(sender);
+        message(sender, "&aGate preview создан частицами; ванильные блоки не заменялись. "
+                + "Snapshot durable сохранён для безопасного открытия/restore.");
     }
 
     private boolean openGate(CommandSender sender, int ticksPerLayer, String reason, boolean forVictory) {
@@ -1308,6 +1430,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&eGate уже открывается послойно.");
             return false;
         }
+        cancelGateSelectionPreview();
         if ("OPENING".equalsIgnoreCase(layoutState.gateStatus())) {
             // A stale in-memory task must never continue against an ambiguous
             // world. Restore the durable snapshot before starting afresh.
@@ -1575,6 +1698,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void restoreGate(CommandSender sender) {
         cancelGateOpeningTask();
+        cancelGateSelectionPreview();
         victoryGatePending = false;
         if (layoutState.gateSnapshot().isEmpty()) {
             message(sender, "&eУ Gate нет сохранённого snapshot.");

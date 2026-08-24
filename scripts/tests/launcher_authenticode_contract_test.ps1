@@ -5,7 +5,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $scriptRoot)
 $buildScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/build_copimine_launcher.ps1') -Raw
 
 function Assert-Contains([string] $text, [string] $expected, [string] $description) {
-    if (-not $text.Contains($expected, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($text.IndexOf($expected, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
         throw "Authenticode contract failed: $description. Missing: $expected"
     }
 }

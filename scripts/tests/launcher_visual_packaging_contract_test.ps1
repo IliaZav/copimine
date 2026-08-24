@@ -6,7 +6,7 @@ $assetScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/prepare_co
 $buildScript = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/build_copimine_launcher.ps1') -Raw
 
 function Assert-Contains([string] $text, [string] $expected, [string] $description) {
-    if (-not $text.Contains($expected, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($text.IndexOf($expected, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
         throw "Packaging contract failed: $description. Missing: $expected"
     }
 }

@@ -37,12 +37,19 @@ public partial class App : Application
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
+        // Binding is a short control-plane request. Do not make the user wait
+        // for the full download timeout when the public endpoint is offline;
+        // the loopback staging endpoint gets its chance immediately after it.
+        var bindingHttpClient = new HttpClient(CreateHttpHandler())
+        {
+            Timeout = TimeSpan.FromSeconds(8)
+        };
         var launcherDataRoot = LauncherInstallPaths.ResolveLauncherDataRoot();
         var bindingStateStore = new LauncherBindingStateStore(launcherDataRoot);
         var deviceId = new LauncherDeviceIdentityStore(launcherDataRoot).LoadOrCreate();
-        var productionBindingClient = new HttpLauncherBindingClient(httpClient, new Uri("https://copimine.ru/"), deviceId);
+        var productionBindingClient = new HttpLauncherBindingClient(bindingHttpClient, new Uri("https://copimine.ru/"), deviceId);
         var localBindingClient = new HttpLauncherBindingClient(
-            httpClient,
+            bindingHttpClient,
             LauncherInstallPaths.ResolveLocalBindingBaseUrl(),
             deviceId);
         var bindingClient = new FallbackLauncherBindingClient(productionBindingClient, localBindingClient);

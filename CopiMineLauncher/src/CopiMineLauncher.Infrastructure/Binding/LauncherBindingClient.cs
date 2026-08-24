@@ -118,17 +118,25 @@ public sealed class FallbackLauncherBindingClient : ILauncherBindingClient
         {
             throw new LauncherBindingException(
                 "LAUNCHER_LINK_ALL_ENDPOINTS_FAILED",
-                "Реальный сайт привязки недоступен, а локальный сервер не ответил. Запустите локальный staging-сервер и повторите попытку.",
+                $"Не удалось создать привязку. Основной endpoint: {DescribeEndpointFailure(primary, primaryException ?? new LauncherBindingException("LAUNCHER_LINK_PRIMARY_UNAVAILABLE", "Основной endpoint недоступен."))}. Локальный endpoint: {DescribeEndpointFailure(local, localException)}. Запустите локальный staging-сервер и повторите попытку.",
                 new AggregateException(primaryException ?? new LauncherBindingException("LAUNCHER_LINK_PRIMARY_UNAVAILABLE", "Основной endpoint недоступен."), localException));
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new LauncherBindingException(
                 "LAUNCHER_LINK_ALL_ENDPOINTS_FAILED",
-                "Реальный сайт привязки недоступен, а локальный сервер не ответил. Запустите локальный staging-сервер и повторите попытку.",
+                $"Не удалось создать привязку. Основной endpoint: {DescribeEndpointFailure(primary, primaryException ?? new LauncherBindingException("LAUNCHER_LINK_PRIMARY_UNAVAILABLE", "Основной endpoint недоступен."))}. Локальный endpoint: {EndpointLabel(local)} не ответил вовремя. Запустите локальный staging-сервер и повторите попытку.",
                 primaryException);
         }
     }
+
+    private static string DescribeEndpointFailure(ILauncherBindingClient endpoint, LauncherBindingException exception) =>
+        $"{EndpointLabel(endpoint)}: {exception.Code} ({exception.Message})";
+
+    private static string EndpointLabel(ILauncherBindingClient endpoint) =>
+        endpoint is HttpLauncherBindingClient http
+            ? http.EndpointUri.GetLeftPart(UriPartial.Authority)
+            : "неизвестный endpoint";
 
     private static bool CanFallback(LauncherBindingException exception) =>
         exception.Code is "LAUNCHER_LINK_NETWORK_FAILED"
@@ -152,6 +160,8 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
     }
 
     public string DeviceId { get; }
+
+    internal Uri EndpointUri => baseUri;
 
     public async Task<LauncherLinkChallenge> CreateChallengeAsync(
         string minecraftName,

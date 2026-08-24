@@ -41,6 +41,24 @@ def test_gate_selection_particles_cover_one_point_then_the_bounded_cuboid() -> N
         assert marker in MAIN
 
 
+def test_second_gate_point_highlights_every_coordinate_staged_opening_processes() -> None:
+    start = MAIN.index("private void drawGateSelectionPreview")
+    end = MAIN.index("private void drawArenaBoundaryFrame", start)
+    selection = MAIN[start:end]
+
+    # The preview must describe the same complete coordinate set as the
+    # opening plan. Boundary-only sampling hides interior blocks that will be
+    # removed later and makes the two-point command misleading in-game.
+    assert "for (GateOpeningPlan.Layer layer : plan.layersDescending())" in selection
+    assert "drawGateBlockOutline(world, point.x(), point.y(), point.z())" in selection
+    assert "!world.getBlockAt(point.x(), point.y(), point.z()).getType().isAir()" in selection
+    assert "isGateBoundaryPoint" not in selection
+    assert "MAX_GATE_SELECTION_BLOCK_HIGHLIGHTS" not in selection
+    assert "solidBlocks" in MAIN
+    assert "volume=" in MAIN
+    assert "все заполненные блоки" in MAIN
+
+
 def test_gate_selection_preview_is_cancelled_with_session_tasks() -> None:
     start = MAIN.index("private void cancelSessionTasks")
     end = MAIN.index("private void cancelCreativeTestTask", start)

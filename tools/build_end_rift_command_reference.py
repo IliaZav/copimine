@@ -546,7 +546,7 @@ def main():
         doc,
         (
             ("/cmend gate pos1", "Сохраняет первую точку и на 10 секунд рисует particle-only highlight. Блоки не заменяются."),
-            ("/cmend gate pos2", "Сохраняет вторую точку, проверяет один world и bounded volume, снова рисует preview."),
+            ("/cmend gate pos2", "Сохраняет вторую точку, проверяет один world и bounded volume, затем подсвечивает каждый заполненный блок, который staged opening удалит."),
             ("/cmend gate info", "Показывает pos1, pos2, PREVIEW/OPENING/OPENED/RESTORED и progress."),
             ("/cmend gate preview", "Сохраняет durable snapshot выбранного cuboid и оставляет все block materials нетронутыми."),
             ("/cmend gate open [ticks-per-layer]", "Удаляет только точный inclusive cuboid сверху вниз по слоям с проверкой snapshot; conflicts не перезаписываются."),

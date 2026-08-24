@@ -5,6 +5,7 @@ import java.util.List;
 public final class GateOpeningPlanTest {
     public static void main(String[] args) {
         testLayersAreInclusiveAndDescending();
+        testLayersExposeEveryCoordinateForSelectionPreview();
         testWorldAndVolumeAreBounded();
         System.out.println("GateOpeningPlanTest OK");
     }
@@ -38,6 +39,23 @@ public final class GateOpeningPlanTest {
                         new GateOpeningPlan.Point("world", 0, 0, 0),
                         new GateOpeningPlan.Point("world", 2, 1, 1), 11),
                 "gate volume above the configured ceiling must be rejected");
+    }
+
+    private static void testLayersExposeEveryCoordinateForSelectionPreview() {
+        GateOpeningPlan plan = GateOpeningPlan.from(
+                new GateOpeningPlan.Point("world", 1, 10, 1),
+                new GateOpeningPlan.Point("world", 3, 11, 3),
+                18);
+
+        long coordinates = plan.layersDescending().stream()
+                .flatMap(layer -> layer.blocks().stream())
+                .count();
+        check(coordinates == plan.volume(),
+                "selection preview must receive every coordinate the staged opening processes");
+        check(plan.layersDescending().stream()
+                        .flatMap(layer -> layer.blocks().stream())
+                        .anyMatch(point -> point.x() == 2 && point.y() == 10 && point.z() == 2),
+                "selection preview must include an interior block, not only the cuboid boundary");
     }
 
     private static void expectIllegalArgument(Runnable action, String message) {

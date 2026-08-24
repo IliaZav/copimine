@@ -18,7 +18,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 
 `tests\RunEndRiftEventChecks.ps1` завершился успешно:
 
-- Python contracts: `116 passed, 14 warnings`.
+- Python contracts: `119 passed, 14 warnings`.
 - WorldCore, Artifacts, End Event и Fabric client собраны.
 - Pure domain tests: все 5 `OK`.
 - Durable persistence/layout tests: все 3 `OK`.
@@ -30,15 +30,15 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 | --- | --- |
 | WorldCore | `380793DEB02B6C51C42DAE446A39A7BF969F7DF33510989590AC50317EE90E99` |
 | Artifacts | `A2FEB49C31FA9FBA61D9D1DA655E52F888BE41FEC10F904E9FC437F0618BD7DE` |
-| End Event | `37761276E01C0B74DCC9BBC14839F37529B7A786A6D4695223797F3FE016FC79` |
-| Fabric client | `0CD49DBE1517EB2B7BC04B40990C707AF9AEF96F4E67E3432F62F4AB955AD9D6` |
+| End Event | `D6E8C88F5CF34AFEBB4B9B46EEE0D683D41FA36373C158DBA51B2A9536E81498` |
+| Fabric client (`thirdparty/client-mods/CopiMineClient-0.1.0.jar`) | `19DF801C80F93ADAC92CF10503D3B7E168A5F84703538999CFC763CC1B9C3694` |
 | Resource pack ZIP | `9D65787D380791D0E873B29F6E126E81A69D17D5BAD4B66D5AB23DB5738974AB` |
 
 Контракт музыки отдельно проверяет, что победный OGG имеет длительность `20.000 s`; focused run: `6 passed` вместе с DOCX contract.
 
 ## Локальный Paper/PostgreSQL smoke
 
-Команда `tests\RunEndRiftRuntimeSmoke.ps1` на свежем локальном запуске завершилась:
+Команда `tests\RunEndRiftRuntimeSmoke.ps1` на локальном Paper с изолированной PostgreSQL завершилась:
 
 ```text
 PASS typed plugins loaded
@@ -54,19 +54,17 @@ PASS ritual cancel requires confirmation
 PASS resource reset requires confirmation
 PASS unlock requires official death
 PASS client bridge status is available
-PASS End Event services ready
-PASS EconomyCore PostgreSQL ready
 End Rift isolated runtime smoke passed.
 ```
 
-Первый стартовый health-снимок Artifacts закономерно появляется раньше async PostgreSQL init (`ready=false`), поэтому smoke выполняет реальный `/cmartifacts reload` и проверяет успешный PostgreSQL command path плюс `CopiMineEconomyCore PostgreSQL is ready.`. Это проверяет рабочую БД, а не случайный порядок двух startup-логов.
+Smoke отдельно проверяет рабочий PostgreSQL command path Artifacts и не принимает один только факт загрузки JAR за готовность БД.
 
 Финальный RCON status после повторного прогона и очистки:
 
 ```text
-state=UNCONFIGURED generation=5
+state=UNCONFIGURED generation=7
 core=CopiMine 8,68,-37
-gate=UNSET
+arena=CopiMine [-12,65,-57]..[28,71,-17] volume=11767 gate=RESTORED portal=unset
 pads=0/0 roster=0 participants=0 helpers=0
 visuals=coreOverlay=false coreModel=0 runes=0/0 occupied=0
 wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=NONE
@@ -74,7 +72,7 @@ wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=N
 
 ## Runtime markers
 
-Источник основного creative/gate прогона: `local-runtime\end-rift-paper-local-final.out.log`; исторические маркеры сохранения vanilla-блоков — `local-runtime\end-rift-paper-local-7.out.log`. После исправления очистки JAR был установлен в изолированный Paper и проверен в `local-runtime\end-rift-paper-local-final-after-fix.out.log`.
+Источник основного creative/gate прогона: `local-runtime\end-rift-gate-preview-final.out.log`; исторические маркеры сохранения vanilla-блоков — `local-runtime\end-rift-paper-local-7.out.log`. После исправления очистки JAR был установлен в изолированный Paper и проверен в `local-runtime\end-rift-paper-local-final-after-fix.out.log`.
 
 - После `/cmend core set 2`: `coreOverlay=true coreModel=830001 runes=2/2`.
 - После полного внесения ресурсов: `READY_FOR_PLAYERS coreOverlay=true coreModel=830002 runes=2/2`; ресурсы отображались русскими цветными названиями.
@@ -88,11 +86,12 @@ wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=N
 - `CREATIVE_TEST_FINAL_WAVE`: `{spider=8, shulker=2, enderman=6}`.
 - `CREATIVE_TEST_CLEANUP` и `CREATIVE_TEST_COMPLETE`: `success=true`, `official_phase=READY_FOR_PLAYERS`, `official_roster=0`, `endUnlocked=false`.
 - `END_EVENT_GATE_SELECTION_PREVIEW`: particle-only preview; команда вернула, что vanilla blocks не заменялись, а последующий staged run обработал только snapshot-owned координаты.
+- После первой точки Gate лог зафиксировал `volume=1 solidBlocks=1`; после второй точки — `volume=27 solidBlocks=27`. Это подтверждает, что preview показывает каждый заполненный блок полного bounded cuboid, включая внутренние координаты, а не только границу.
 - Исторический локальный gate smoke дополнительно зафиксировал `GATE_TOP_UNCHANGED`, `GATE_MID_UNCHANGED`, `GATE_BOTTOM_STONE_UNCHANGED` до открытия.
-- `END_EVENT_GATE_LAYER`: на временной локальной стене 3 слоя обработаны сверху вниз (`y=71,70,69`), по `removed=9` на слой, итого `27/27`; после теста выполнен `gate restore confirm`.
+- `END_EVENT_GATE_LAYER`: на временной локальной стене 3 слоя обработаны сверху вниз (`y=71,70,69`), по `removed=9` на слой, итого `27/27`; после теста выполнен `gate restore confirm`, затем `core remove confirm`.
 - Перед удалением Core живой status показывал `event-mobs=14` и `boss=<uuid>`; после удаления — `helpers=0`, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`.
 - `END_EVENT_OWNED_CLEANUP`: `generations=all`; старые wave entities/boss/projectiles и визуальные сущности очищаются при удалении Core.
-- Финальный protocol bot получил resource pack hash `aaa2605b2b0f2751f5eab5258173d5c6699d45be`.
+- Финальный protocol bot получил resource pack hash `aaa2605b2b0f2751f5eab5258173d5c6699d45be`; tracked `minecraft/server/server.properties` после gate восстановлен на исходный production hash `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
 - `END_EVENT_MUSIC_TEST`: `track=copimine:end_rift/victory loopSeconds=0` на локальном игроке; победный файл — ровно 20 секунд.
 
 В логах финального запуска нет `NoClassDefFoundError` и `CopiMineEndEvent failed closed`.

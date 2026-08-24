@@ -160,7 +160,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MIN_GATE_TICKS_PER_LAYER = 1;
     private static final int MAX_GATE_TICKS_PER_LAYER = 200;
     private static final int DEFAULT_GATE_SELECTION_PREVIEW_SECONDS = 10;
-    private static final int MAX_GATE_SELECTION_BLOCK_HIGHLIGHTS = 192;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
@@ -1203,9 +1202,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /**
      * Highlights the selected gate without changing any world block. The
      * first point is shown as one outlined block; after the second point is
-     * selected, only the bounded cuboid that the opening command will process
-     * is highlighted. The task is tied to the current event generation so a
-     * reset or core removal cannot leave stale particles running.
+     * selected, every solid coordinate in the bounded cuboid that the opening
+     * command will process is highlighted. The task is tied to the current
+     * event generation so a reset or core removal cannot leave stale particles
+     * running.
      */
     private void startGateSelectionPreview(CommandSender sender) {
         cancelGateSelectionPreview();
@@ -1219,12 +1219,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cМир Gate не загружен; подсветка не запущена.");
             return;
         }
+        long previewVolume = 1L;
+        int solidBlocks = world.getBlockAt(first.x(), first.y(), first.z()).getType().isAir() ? 0 : 1;
         if (second != null && second.configured()) {
             try {
-                GateOpeningPlan.from(
+                GateOpeningPlan plan = GateOpeningPlan.from(
                         new GateOpeningPlan.Point(first.world(), first.x(), first.y(), first.z()),
                         new GateOpeningPlan.Point(second.world(), second.x(), second.y(), second.z()),
                         MAX_GATE_VOLUME);
+                previewVolume = plan.volume();
+                solidBlocks = 0;
+                for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
+                    for (GateOpeningPlan.Point point : layer.blocks()) {
+                        if (!world.getBlockAt(point.x(), point.y(), point.z()).getType().isAir()) {
+                            solidBlocks++;
+                        }
+                    }
+                }
             } catch (IllegalArgumentException invalid) {
                 message(sender, "&cТочки Gate сохранены, но bounded-подсветка не запущена: "
                         + invalid.getMessage());
@@ -1246,10 +1257,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }, 0L, 5L);
         getLogger().info("END_EVENT_GATE_SELECTION_PREVIEW event=" + eventId
                 + " generation=" + generation + " seconds=" + DEFAULT_GATE_SELECTION_PREVIEW_SECONDS
-                + " pos1=" + pointText(first) + " pos2=" + pointText(second));
+                + " pos1=" + pointText(first) + " pos2=" + pointText(second)
+                + " volume=" + previewVolume + " solidBlocks=" + solidBlocks);
         message(sender, "&aТочка Gate подсвечена частицами на &f"
                 + DEFAULT_GATE_SELECTION_PREVIEW_SECONDS + " сек.; "
-                + "после второй точки будет выделен весь bounded-куб.");
+                + "после второй точки будут подсвечены все заполненные блоки,"
+                + " которые откроются послойно.");
     }
 
     private void cancelGateSelectionPreview() {
@@ -1277,35 +1290,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } catch (IllegalArgumentException invalid) {
             return;
         }
-        int minX = Math.min(first.x(), second.x());
-        int maxX = Math.max(first.x(), second.x());
-        int minZ = Math.min(first.z(), second.z());
-        int maxZ = Math.max(first.z(), second.z());
-        int boundaryCount = 0;
         for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
             for (GateOpeningPlan.Point point : layer.blocks()) {
-                if (isGateBoundaryPoint(point, minX, maxX, minZ, maxZ)) {
-                    boundaryCount++;
-                }
-            }
-        }
-        int stride = Math.max(1, (int) Math.ceil(
-                boundaryCount / (double) MAX_GATE_SELECTION_BLOCK_HIGHLIGHTS));
-        int ordinal = 0;
-        for (GateOpeningPlan.Layer layer : plan.layersDescending()) {
-            for (GateOpeningPlan.Point point : layer.blocks()) {
-                if (isGateBoundaryPoint(point, minX, maxX, minZ, maxZ)
-                        && ordinal++ % stride == 0) {
+                if (!world.getBlockAt(point.x(), point.y(), point.z()).getType().isAir()) {
                     drawGateBlockOutline(world, point.x(), point.y(), point.z());
                 }
             }
         }
-    }
-
-    private boolean isGateBoundaryPoint(GateOpeningPlan.Point point,
-                                        int minX, int maxX, int minZ, int maxZ) {
-        return point.x() == minX || point.x() == maxX
-                || point.z() == minZ || point.z() == maxZ;
     }
 
     private void drawGateBlockOutline(World world, int x, int y, int z) {

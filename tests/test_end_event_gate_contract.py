@@ -43,3 +43,27 @@ def test_gate_open_emits_bounded_purple_particle_feedback() -> None:
     assert "Particle.DUST" in MAIN
     assert "DustOptions" in MAIN
     assert "END_EVENT_GATE_LAYER" in MAIN
+
+
+def test_official_victory_starts_the_same_staged_gate_opening() -> None:
+    start = MAIN.index("private void checkVictoryRewardCompletion")
+    end = MAIN.index("private void resumeVictorySaga", start)
+    victory = MAIN[start:end]
+
+    assert 'openGate(null, DEFAULT_GATE_TICKS_PER_LAYER, "official-victory", true)' in victory
+    assert "victoryGatePending" in victory
+    assert "VICTORY_GATE_OPENING" in MAIN
+    assert "tickGateOpening" in MAIN
+    assert "finishGateOpening(openingForVictory, snapshot)" in MAIN
+
+
+def test_each_gate_layer_is_snapshot_checked_before_air_mutation_and_persisted() -> None:
+    start = MAIN.index("private void tickGateOpening")
+    end = MAIN.index("private void finishGateOpening", start)
+    opening = MAIN[start:end]
+
+    assert "String expected = snapshot.get(gateKey(block))" in opening
+    assert "sameBlockData(block, expected)" in opening
+    assert "block.setType(Material.AIR, false)" in opening
+    assert "saveStateSync()" in opening
+    assert "abortGateOpening" in opening

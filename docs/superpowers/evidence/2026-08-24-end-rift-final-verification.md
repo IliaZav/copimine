@@ -18,7 +18,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 
 `tests\RunEndRiftEventChecks.ps1` завершился успешно:
 
-- Python contracts: `119 passed, 14 warnings`.
+- Python contracts: `120 passed, 14 warnings`.
 - WorldCore, Artifacts, End Event и Fabric client собраны.
 - Pure domain tests: все 5 `OK`.
 - Durable persistence/layout tests: все 3 `OK`.
@@ -30,15 +30,15 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 | --- | --- |
 | WorldCore | `380793DEB02B6C51C42DAE446A39A7BF969F7DF33510989590AC50317EE90E99` |
 | Artifacts | `A2FEB49C31FA9FBA61D9D1DA655E52F888BE41FEC10F904E9FC437F0618BD7DE` |
-| End Event | `D6E8C88F5CF34AFEBB4B9B46EEE0D683D41FA36373C158DBA51B2A9536E81498` |
-| Fabric client (`thirdparty/client-mods/CopiMineClient-0.1.0.jar`) | `19DF801C80F93ADAC92CF10503D3B7E168A5F84703538999CFC763CC1B9C3694` |
+| End Event | `C6D4054E0BDDAC06D44126DBE0503BD9B27A28D7039EF82C9138D830DDA63914` |
+| Fabric client build (`CopiMineClient/build/libs/CopiMineClient-0.1.0.jar`) | `0CD49DBE1517EB2B7BC04B40990C707AF9AEF96F4E67E3432F62F4AB955AD9D6` |
 | Resource pack ZIP | `9D65787D380791D0E873B29F6E126E81A69D17D5BAD4B66D5AB23DB5738974AB` |
 
 Контракт музыки отдельно проверяет, что победный OGG имеет длительность `20.000 s`; focused run: `6 passed` вместе с DOCX contract.
 
 ## Локальный Paper/PostgreSQL smoke
 
-Команда `tests\RunEndRiftRuntimeSmoke.ps1` на локальном Paper с изолированной PostgreSQL завершилась:
+Команда `tests\RunEndRiftRuntimeSmoke.ps1 -ServerDir .\local-runtime\end-rift-server -LogPath .\local-runtime\end-rift-paper-start.out.log` на локальном Paper с изолированной PostgreSQL завершилась:
 
 ```text
 PASS typed plugins loaded
@@ -59,15 +59,15 @@ End Rift isolated runtime smoke passed.
 
 Smoke отдельно проверяет рабочий PostgreSQL command path Artifacts и не принимает один только факт загрузки JAR за готовность БД.
 
-Финальный RCON status после повторного прогона и очистки:
+Финальный RCON status после текущего official-victory прогона и очистки Core:
 
 ```text
-state=UNCONFIGURED generation=7
-core=CopiMine 8,68,-37
-arena=CopiMine [-12,65,-57]..[28,71,-17] volume=11767 gate=RESTORED portal=unset
+state=UNCONFIGURED generation=14
+core=CopiMine 8,68,-39
+arena=unset gate=UNSET portal=unset
 pads=0/0 roster=0 participants=0 helpers=0
 visuals=coreOverlay=false coreModel=0 runes=0/0 occupied=0
-wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=NONE
+wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VICTORY_COMPLETE
 ```
 
 ## Runtime markers
@@ -88,8 +88,9 @@ wave=0 event-mobs=0 boss=none half=false final=false endUnlocked=false victory=N
 - `END_EVENT_GATE_SELECTION_PREVIEW`: particle-only preview; команда вернула, что vanilla blocks не заменялись, а последующий staged run обработал только snapshot-owned координаты.
 - После первой точки Gate лог зафиксировал `volume=1 solidBlocks=1`; после второй точки — `volume=27 solidBlocks=27`. Это подтверждает, что preview показывает каждый заполненный блок полного bounded cuboid, включая внутренние координаты, а не только границу.
 - Исторический локальный gate smoke дополнительно зафиксировал `GATE_TOP_UNCHANGED`, `GATE_MID_UNCHANGED`, `GATE_BOTTOM_STONE_UNCHANGED` до открытия.
-- `END_EVENT_GATE_LAYER`: на временной локальной стене 3 слоя обработаны сверху вниз (`y=71,70,69`), по `removed=9` на слой, итого `27/27`; после теста выполнен `gate restore confirm`, затем `core remove confirm`.
-- Перед удалением Core живой status показывал `event-mobs=14` и `boss=<uuid>`; после удаления — `helpers=0`, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`.
+- На текущем Paper generation 14 официальный путь зафиксировал `BOSS_REWARDS_DELIVERED`, `END_EVENT_GATE_OPENING reason=official-victory`, затем слои сверху вниз (`y=71,70,69`), по `removed=9 conflicts=0` на слой, `END_EVENT_GATE_OPENED progress=27/27` и `VICTORY_COMPLETE`.
+- Перед текущим official-victory живой status показывал `event-mobs=14` и `boss=<uuid>`; после `core remove confirm` — `UNCONFIGURED`, `gate=UNSET`, `helpers=0`, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`. Durable `event-layout.yml` оставлен с `gate.status=UNSET` и пустым snapshot.
+- Отдельный текущий-JAR smoke `core set → core remove` дополнительно зафиксировал `END_EVENT_OWNED_CLEANUP generations=all removed=4` и отсутствие визуальных сущностей после hard-boundary; перезапуск с permanent End unlock не реанимирует удалённый Core.
 - `END_EVENT_OWNED_CLEANUP`: `generations=all`; старые wave entities/boss/projectiles и визуальные сущности очищаются при удалении Core.
 - Финальный protocol bot получил resource pack hash `aaa2605b2b0f2751f5eab5258173d5c6699d45be`; tracked `minecraft/server/server.properties` после gate восстановлен на исходный production hash `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
 - `END_EVENT_MUSIC_TEST`: `track=copimine:end_rift/victory loopSeconds=0` на локальном игроке; победный файл — ровно 20 секунд.

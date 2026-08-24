@@ -126,6 +126,10 @@ def test_core_removal_cleans_current_and_stale_event_combat_entities() -> None:
     assert "clearBossOnly();" in remove
     assert "clearWaveEntities();" in remove
     assert "cleanupOwnedEntitiesForEvent(removedEventId);" in remove
+    assert "new EventLayoutState(null, null, null, null, Map.of(), \"UNSET\", previousLayout.portalRoom())" in remove
+    recovery = _method_body(source, "private void recoverTransientSession()", "private void cancelSessionTasks")
+    assert "if (!isConfigured())" in recovery
+    assert "forcePhase(EventPhase.UNCONFIGURED" in recovery
     cleanup = _method_body(source, "private void cleanupOwnedEntitiesForEvent(String expectedEventId)", "private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration)")
     assert "Bukkit.getWorlds()" in cleanup
     assert "ownedByEvent(entity, expectedEventId)" in cleanup
@@ -133,6 +137,12 @@ def test_core_removal_cleans_current_and_stale_event_combat_entities() -> None:
     assert "expectedGeneration" not in cleanup
     ownership = _method_body(source, "private boolean ownedByEvent(Entity entity, String expectedEventId)", "private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration)")
     assert "keyEventSessionId" in ownership
+
+
+def test_permanent_end_unlock_does_not_rehydrate_a_removed_core_on_boot() -> None:
+    bootstrap = _method_body(MAIN, "private void tryBootstrap()", "private void applySnapshot")
+    assert "if (!isConfigured())" in bootstrap
+    assert "forcePhase(EventPhase.UNCONFIGURED" in bootstrap
 
 
 def test_command_usage_and_tab_completion_advertise_boundary_preview() -> None:

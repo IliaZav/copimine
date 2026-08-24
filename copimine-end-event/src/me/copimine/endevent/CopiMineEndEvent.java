@@ -395,6 +395,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (configuredEventInProgress) {
                 getLogger().info("WorldCore already reports End unlocked; preserving active event event=" + eventId
                         + " phase=" + phase);
+            } else if (!isConfigured()) {
+                EventLayoutState previousLayout = layoutState;
+                layoutState = new EventLayoutState(null, null, null, null, Map.of(), "UNSET", previousLayout.portalRoom());
+                victoryStep = VICTORY_COMPLETE;
+                forcePhase(EventPhase.UNCONFIGURED, "WorldCore already reports End unlocked without Core");
+                saveStateSync();
             } else {
                 victoryStep = VICTORY_COMPLETE;
                 forcePhase(EventPhase.UNLOCKED, "WorldCore already reports End unlocked");
@@ -571,7 +577,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             discardUncommittedRewardStatuses();
         }
         padOccupants.clear();
-        if (victoryWasCommitted) {
+        if (!isConfigured()) {
+            EventLayoutState previousLayout = layoutState;
+            layoutState = new EventLayoutState(null, null, null, null, Map.of(), "UNSET", previousLayout.portalRoom());
+            forcePhase(EventPhase.UNCONFIGURED, "unconfigured session recovered without combat");
+            saveStateSync();
+        } else if (victoryWasCommitted) {
             forcePhase(endUnlocked ? EventPhase.UNLOCKED : EventPhase.VICTORY_PROCESSING,
                     "victory saga recovered without replaying combat");
         } else if (coreCharged && allResourcesComplete()) {
@@ -1154,6 +1165,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private String arenaBoundsText() {
+        if (!isConfigured()) {
+            return "unset";
+        }
         return worldName + " [" + arenaMinX + "," + arenaMinY + "," + arenaMinZ + "]..["
                 + arenaMaxX + "," + arenaMaxY + "," + arenaMaxZ + "] volume=" + arenaVolume();
     }
@@ -2606,6 +2620,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lootIssuedEntityUuids.clear();
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
+        EventLayoutState previousLayout = layoutState;
+        layoutState = new EventLayoutState(null, null, null, null, Map.of(), "UNSET", previousLayout.portalRoom());
         releaseOverlayChunkTickets();
         saveStateSync();
         message(sender, "&aCore и event-owned руны восстановлены по сохранённым block data.");

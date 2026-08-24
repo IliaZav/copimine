@@ -44,3 +44,11 @@ def test_creative_run_does_not_relax_the_official_pad_rule() -> None:
 def test_creative_run_covers_spell_flight_markers() -> None:
     for marker in ("BOSS_SPELL_TELEGRAPH", "BOSS_SPELL_FLIGHT", "BOSS_SPELL_CAST", "MINIBOSS_SPELL_FLIGHT"):
         assert marker in MAIN
+
+
+def test_creative_run_waits_for_miniboss_flight_before_clearing_wave_three() -> None:
+    delay = MAIN[MAIN.index("private int creativeTestStageDelay"):
+                 MAIN.index("private Player creativeTestPlayer")]
+    assert "case 8 ->" in delay
+    assert "spellTelegraphTicks()" in delay
+    assert "SPELL_FLIGHT_TICKS" in delay

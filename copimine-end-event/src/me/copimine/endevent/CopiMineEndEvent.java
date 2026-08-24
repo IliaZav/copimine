@@ -2014,8 +2014,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private int creativeTestStageDelay(int stage) {
         return Math.min(CREATIVE_TEST_MAX_STAGE_TICKS, switch (stage) {
-            case 1, 2, 4, 6, 8, 13, 15, 17, 18 -> 20;
-            case 3, 5, 7, 9, 10, 11, 12, 14 -> 50;
+            case 1, 2, 4, 6, 13, 15, 17, 18 -> 20;
+            case 3, 5, 9, 10, 11, 12, 14 -> 50;
+            case 7 -> 20;
+            case 8 -> Math.max(80, config.miniBossTuning().spellTelegraphTicks() + SPELL_FLIGHT_TICKS + 5);
             case 16 -> 40;
             default -> 20;
         });

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 
 
@@ -18,6 +19,15 @@ TRACKS = {
     "end_rift/boss_final": "boss_final.ogg",
     "end_rift/victory": "victory.ogg",
 }
+
+
+def _ogg_crc(page: bytes) -> int:
+    value = 0
+    for byte in page:
+        value ^= byte << 24
+        for _ in range(8):
+            value = ((value << 1) ^ 0x04C11DB7) & 0xFFFFFFFF if value & 0x80000000 else (value << 1) & 0xFFFFFFFF
+    return value
 
 
 def test_resource_pack_declares_five_streamed_instrumental_event_tracks() -> None:
@@ -44,6 +54,49 @@ def test_music_sources_and_no_vocal_selection_are_recorded() -> None:
         "https://opengameart.org/content/victory-theme-for-rpg",
     ):
         assert url in licenses
+
+
+def _ogg_duration_seconds(path: Path) -> float:
+    data = path.read_bytes()
+    offset = 0
+    last_granule = 0
+    last_flags = 0
+    first_packet = bytearray()
+    packet = bytearray()
+    while offset < len(data):
+        assert data[offset:offset + 4] == b"OggS", f"invalid Ogg page at {offset}"
+        header = data[offset:offset + 27]
+        segment_count = header[26]
+        lacing = data[offset + 27:offset + 27 + segment_count]
+        payload_start = offset + 27 + segment_count
+        payload_size = sum(lacing)
+        payload = data[payload_start:payload_start + payload_size]
+        last_granule = struct.unpack("<q", header[6:14])[0]
+        page = bytearray(data[offset:payload_start + payload_size])
+        stored_crc = struct.unpack("<I", page[22:26])[0]
+        page[22:26] = b"\x00\x00\x00\x00"
+        assert _ogg_crc(page) == stored_crc, f"invalid Ogg CRC at {offset}"
+        last_flags = header[5]
+        cursor = 0
+        for segment_size in lacing:
+            packet.extend(payload[cursor:cursor + segment_size])
+            cursor += segment_size
+            if segment_size < 255:
+                if not first_packet:
+                    first_packet = bytearray(packet)
+                packet.clear()
+        offset = payload_start + payload_size
+    assert first_packet[:7] == b"\x01vorbis"
+    sample_rate = struct.unpack("<I", first_packet[12:16])[0]
+    assert sample_rate > 0
+    assert last_granule > 0
+    assert last_flags & 0x04, "Ogg stream must end with EOS"
+    return last_granule / sample_rate
+
+
+def test_victory_track_is_a_compact_twenty_second_instrumental() -> None:
+    duration = _ogg_duration_seconds(PACK / "sounds" / "end_rift" / "victory.ogg")
+    assert 19.5 <= duration <= 20.5, f"victory track must be about 20 seconds, got {duration:.3f}"
 
 
 def test_music_configuration_and_phase_hooks_are_present() -> None:

@@ -11,10 +11,12 @@ const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
 const username = process.argv[2] || 'EndRiftBot'
 const durationMs = Number(process.argv[3] || 15000)
 const actionDelayMs = Number(process.env.END_RIFT_BOT_ACTION_DELAY_MS || 9000)
-const actions = (process.env.END_RIFT_BOT_ACTIONS || '')
+const environmentActions = (process.env.END_RIFT_BOT_ACTIONS || '')
   .split('|')
   .map(value => value.trim())
   .filter(Boolean)
+const cliActions = process.argv.slice(4).map(value => value.trim()).filter(Boolean)
+const actions = [...environmentActions, ...cliActions]
 
 const client = mc.createClient({
   host,

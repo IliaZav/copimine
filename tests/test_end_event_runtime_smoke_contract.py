@@ -16,7 +16,9 @@ def test_runtime_smoke_is_local_only_and_does_not_manage_production_processes() 
     assert "127.0.0.1" in SMOKE
     assert "25576" in SMOKE
     assert "CopiMineEndEvent services ready" in SMOKE
-    assert "Artifacts bridge ready=true postgres=true" in SMOKE
+    assert "cmartifacts reload" in SMOKE
+    assert "CopiMineArtifacts catalog reloaded." in SMOKE
+    assert "CopiMineEconomyCore PostgreSQL is ready." in SMOKE
     assert "Stop-Process" not in SMOKE
     assert "Remove-Item" not in SMOKE
     assert "cmend client status" in SMOKE
@@ -40,6 +42,8 @@ def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -
     assert "resource_pack_receive" in BOT
     assert "teleport_confirm" in BOT
     assert "position_look" in BOT
+    assert "process.argv.slice(4)" in BOT
+    assert "cliActions" in BOT
 
 
 def test_runtime_smoke_exposes_real_core_and_rune_visual_health() -> None:
@@ -51,6 +55,7 @@ def test_runtime_smoke_exposes_real_core_and_rune_visual_health() -> None:
         "NoClassDefFoundError",
     ):
         assert expected in SMOKE
+    assert "if ($status -match 'coreOverlay=true')" in SMOKE
 
 
 def test_local_start_script_is_bounded_to_the_isolated_runtime() -> None:

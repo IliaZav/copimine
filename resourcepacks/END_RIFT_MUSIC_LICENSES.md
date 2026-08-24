@@ -22,6 +22,6 @@
 | `sounds/end_rift/boss.ogg` | 123.428594 s | `CCF82469B09FD1C528B5CABE1A2742159A25D1DA10A4DB6D4299BE23796080BF` |
 | `sounds/end_rift/boss_half.ogg` | 26.482766 s | `0F0463B6EB7014DAF3B9A5D5A3ECF8AFB53752DE7FA247BFB67F0CF044ADBFAE` |
 | `sounds/end_rift/boss_final.ogg` | 39.916825 s | `9D206C8F34C642783EB777ACEB1A9774DB9F9F7A15D4C58B01CFABA53EAEB468` |
-| `sounds/end_rift/victory.ogg` | 56.737959 s | `1C13889FBBA225C738A98F82F845B02E08A1447DC2986EDC019D1B707888C6A8` |
+| `sounds/end_rift/victory.ogg` | 20.000000 s | `06F996282802C769D9FF4A007FB02B01835C0803319F3B265E5EF18AD2611ADD` |
 
 У `boss-battle-2-symphonic-metal` архивная подпись opening/loop перепутана самим архивом; для `boss_half.ogg` взят файл `boss_battle_#2_metal_opening.wav`, который страница помечает как фактический loop.

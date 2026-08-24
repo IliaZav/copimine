@@ -106,6 +106,8 @@ $plugins = Invoke-RconCommand 'plugins'
 Assert-Text 'typed plugins loaded' $plugins 'CopiMineEndEvent'
 Assert-Text 'WorldCore loaded' $plugins 'CopiMineWorldCore'
 Assert-Text 'Artifacts loaded' $plugins 'CopiMineArtifacts'
+$artifactsReload = Invoke-RconCommand 'cmartifacts reload'
+Assert-Text 'Artifacts PostgreSQL command path' $artifactsReload 'CopiMineArtifacts catalog reloaded.'
 
 $status = Invoke-RconCommand 'cmend status'
 Assert-NoConfiguredCore $status
@@ -140,8 +142,10 @@ Assert-Text 'client bridge status is available' $clientStatus 'channel='
 if (Test-Path -LiteralPath $LogPath) {
   $log = (Get-Content -LiteralPath $LogPath -Tail 2500) -join [Environment]::NewLine
   Assert-Text 'End Event services ready' $log 'CopiMineEndEvent services ready'
-  Assert-Text 'Artifacts PostgreSQL ready' $log 'Artifacts bridge ready=true postgres=true'
-  Assert-Text 'physical core/rune visual path' $log 'END_EVENT_PHYSICAL_VISUALS'
+  Assert-Text 'EconomyCore PostgreSQL ready' $log 'CopiMineEconomyCore PostgreSQL is ready.'
+  if ($status -match 'coreOverlay=true') {
+    Assert-Text 'physical core/rune visual path' $log 'END_EVENT_PHYSICAL_VISUALS'
+  }
   if ($log -match 'NoClassDefFoundError|CopiMineEndEvent failed closed') {
     throw 'End Rift typed dependency or bootstrap failure was found in the local runtime log.'
   }

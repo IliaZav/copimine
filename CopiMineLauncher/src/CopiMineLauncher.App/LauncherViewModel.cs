@@ -24,7 +24,8 @@ public sealed class PatchFeedCardViewModel(PatchFeedItem item, int index = 0)
     public Uri DetailUrl => item.DetailUrl;
     public Uri? ThumbnailUrl => item.ThumbnailUrl;
     public bool UsesRemoteThumbnail => item.ThumbnailUrl is not null;
-    public string ArtworkPath => $"{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.GetNewsArtwork(index)}";
+    public string ArtworkPath =>
+        $"pack://application:,,,/CopiMineLauncher.App;component/{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.GetNewsArtwork(index)}";
 }
 
 public sealed class MinecraftLaunchFailureEventArgs(MinecraftLaunchFailureReport report) : EventArgs

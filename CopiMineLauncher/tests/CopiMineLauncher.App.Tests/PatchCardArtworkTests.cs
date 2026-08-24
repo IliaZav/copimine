@@ -21,7 +21,7 @@ public sealed class PatchCardArtworkTests
             var card = constructor!.Invoke([CreateItem(index), index]);
             var artwork = (string)artworkProperty!.GetValue(card)!;
 
-            artwork.Should().Be($"{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.GetNewsArtwork(index)}");
+            artwork.Should().Be($"pack://application:,,,/CopiMineLauncher.App;component/{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.GetNewsArtwork(index)}");
         }
     }
 
@@ -35,7 +35,15 @@ public sealed class PatchCardArtworkTests
 
         card.GetType().GetProperty("UsesRemoteThumbnail")!.GetValue(card).Should().Be(false);
         ((string)card.GetType().GetProperty("ArtworkPath")!.GetValue(card)!)
-            .Should().Be($"{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.News01}");
+            .Should().Be($"pack://application:,,,/CopiMineLauncher.App;component/{LauncherVisualAssetCatalog.Root}/{LauncherVisualAssetCatalog.LauncherHomeBackground}");
+    }
+
+    [Fact]
+    public void News_cards_use_visible_materials_from_the_launcher_design_set()
+    {
+        LauncherVisualAssetCatalog.GetNewsArtwork(0).Should().Be(LauncherVisualAssetCatalog.LauncherHomeBackground);
+        LauncherVisualAssetCatalog.GetNewsArtwork(1).Should().Be(LauncherVisualAssetCatalog.UpdateBackground);
+        LauncherVisualAssetCatalog.GetNewsArtwork(2).Should().Be(LauncherVisualAssetCatalog.InstallerBanner);
     }
 
     [Fact]

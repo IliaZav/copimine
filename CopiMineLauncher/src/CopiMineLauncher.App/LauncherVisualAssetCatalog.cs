@@ -50,9 +50,9 @@ public static class LauncherVisualAssetCatalog
 
     public static string GetNewsArtwork(int index) => index switch
     {
-        0 => News01,
-        1 => News02,
-        2 => News03,
+        0 => LauncherHomeBackground,
+        1 => UpdateBackground,
+        2 => InstallerBanner,
         _ => LauncherHomeBackground
     };
 

@@ -170,6 +170,7 @@ public partial class SkinManagerWindow : UserControl
         {
             SourceLabel.Text = "Загружены последние локальные текстуры";
             await SendPreviewAsync();
+            SetStatus("Локальные текстуры загружены в предпросмотр.");
         }
     }
 

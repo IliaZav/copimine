@@ -1,13 +1,15 @@
-import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui8";
+import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui9";
 import { initCartPage } from "./cart-page.js?v=20260809publiccopy1";
-import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui8";
-import { initPublicNav } from "./public-nav.js?v=20260825siteui8";
-import { initLauncherPage } from "./launcher-page.js?v=20260825siteui8";
-import { initNewsPage } from "./news-page.js?v=20260815launchernews2";
-import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui8";
+import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui9";
+import { initPublicNav } from "./public-nav.js?v=20260825siteui9";
+import { initLauncherPage } from "./launcher-page.js?v=20260825siteui9";
+import { initNewsPage } from "./news-page.js?v=20260825siteui9";
+import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui9";
+import { initPublicMotion } from "./public-motion.js?v=20260825siteui9";
 
 initPublicNav();
 initThemeToggle();
+initPublicMotion();
 
 const pageKind = String(document.body?.dataset.pageKind || "").trim().toLowerCase();
 

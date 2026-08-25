@@ -7,7 +7,7 @@
   <title>CopiMine — Выборы</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui8" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui9" />
   <link rel="stylesheet" href="/assets/css/public-elections.css" />
 </head>
 <body data-page-kind="public-elections" class="elections-page">
@@ -19,7 +19,7 @@
         <div class="public-hero-copy">
           <div class="page-kicker-row">
             <span class="hero-kicker">Выборы CopiMine</span>
-            <span class="route-chip" id="publicElectionStage">Получаем этап</span>
+            <span class="route-chip" id="publicElectionStage">Проверяем этап</span>
           </div>
           <h1>Кто ведёт сервер дальше.</h1>
           <p>Кандидаты и результаты текущего тура. Голосование — в игре.</p>
@@ -30,8 +30,8 @@
               <span class="hero-kicker">Сейчас на сервере</span>
               <span class="elections-live-dot" aria-hidden="true"></span>
             </div>
-            <strong id="publicElectionHeroStatus" class="elections-live-status" aria-live="polite">Получаем данные</strong>
-            <p id="publicElectionHeroMeta">Проверяем актуальный этап и состав кандидатов.</p>
+            <strong id="publicElectionHeroStatus" class="elections-live-status" aria-live="polite">Проверяем выборы</strong>
+            <p id="publicElectionHeroMeta">Смотрим текущий этап и список кандидатов.</p>
             <div class="elections-hero-mini-stats" aria-label="Краткая статистика выборов">
               <span><small>Кандидаты</small><strong id="publicElectionHeroCandidates">—</strong></span>
               <span><small>Голоса</small><strong id="publicElectionHeroVotes">—</strong></span>
@@ -45,7 +45,7 @@
           <div>
             <span class="hero-kicker">Текущий тур</span>
             <h2>Панель выборов</h2>
-            <p id="publicElectionMeta" class="section-head-note">Получаем результаты текущего тура…</p>
+            <p id="publicElectionMeta" class="section-head-note">Загружаем результаты текущего тура…</p>
           </div>
           <div class="election-summary-actions">
             <button id="publicElectionRefresh" class="btn btn-secondary" type="button">Обновить</button>
@@ -63,7 +63,7 @@
           <span class="route-chip">Голоса</span>
         </div>
         <div id="publicElectionCandidates" class="election-candidate-board" aria-live="polite">
-          <article class="showcase-card"><strong>Получаем данные</strong><p>Список кандидатов появится после ответа сервера.</p></article>
+          <article class="showcase-card"><strong>Проверяем выборы</strong><p>Кандидаты появятся после ответа сервера.</p></article>
         </div>
       </section>
 
@@ -82,6 +82,6 @@
       </section>
     </div>
   </main>
-  <script type="module" src="/assets/js/public/public-page.js?v=20260825siteui8"></script>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260825siteui9"></script>
 </body>
 </html>

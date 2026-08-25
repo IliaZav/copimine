@@ -7,7 +7,7 @@
   "publishedAt": "2026-08-17T05:00:00Z",
   "summary": [
     "Minecraft, Java и обязательные моды теперь загружаются из хранилища CopiMine.",
-    "Добавлена проверка и восстановление локального runtime-архива Minecraft 1.21.1.",
+    "Добавлена проверка и восстановление локальной копии Minecraft 1.21.1.",
     "Обновлён установщик с выбором папки и встроенным резервным способом восстановления."
   ],
   "sections": {
@@ -18,11 +18,11 @@
         "changes": [
           {
             "kind": "added",
-            "text": "Launcher получает Minecraft 1.21.1, Fabric Loader 0.19.3, Java 21 и набор модов по подписанному manifest с адресов CopiMine."
+            "text": "Launcher получает Minecraft 1.21.1, Fabric Loader 0.19.3, Java 21 и нужные моды с серверов CopiMine."
           },
           {
             "kind": "fixed",
-            "text": "Повреждённая или неполная загрузка runtime не заменяет рабочую установку: файл сначала проверяется по размеру и SHA-256."
+            "text": "Повреждённый файл не затирает рабочую игру: Launcher сначала проверяет его размер и целостность."
           }
         ]
       }
@@ -30,15 +30,15 @@
     "technical": [
       {
         "id": "official-mod-set",
-        "title": "Основной набор",
+        "title": "Что входит в набор",
         "changes": [
           {
             "kind": "changed",
-            "text": "В manifest закреплены CopiMineClient, CustomSkinLoader, EmoteCraft, Fabric API, Simple Voice Chat, Iris и Sodium."
+            "text": "В набор входят CopiMineClient, CustomSkinLoader, EmoteCraft, Fabric API, Simple Voice Chat, Iris и Sodium."
           },
           {
             "kind": "added",
-            "text": "Mod Menu устанавливается вместе с набором, но остаётся необязательным для admission."
+            "text": "Mod Menu устанавливается вместе с набором, но остаётся необязательным для входа."
           }
         ]
       }
@@ -50,7 +50,7 @@
         "changes": [
           {
             "kind": "fixed",
-            "text": "Production provisioning больше не использует внешний Mojang/Fabric download fallback; при отсутствии server-hosted runtime Launcher сообщает точную причину."
+            "text": "Если нужных файлов нет на сервере, Launcher прямо скажет, чего не хватило, вместо повторной попытки через другой сайт."
           }
         ]
       }

@@ -1,5 +1,5 @@
-import { loadPatchIndexForNews } from "./patch-data.js?v=20260815launchernews2";
-import { renderNewsList } from "./patch-render.js?v=20260815launchernews2";
+import { loadPatchIndexForNews } from "./patch-data.js?v=20260825siteui9";
+import { renderNewsList } from "./patch-render.js?v=20260825siteui9";
 
 export async function initNewsPage() {
   renderNewsList(await loadPatchIndexForNews());

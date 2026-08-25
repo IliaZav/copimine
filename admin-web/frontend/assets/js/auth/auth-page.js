@@ -3,7 +3,7 @@ import {
   authLandingHref,
   defaultAppRouteForRole,
   launcherReturnHrefFromAuthSearch,
-} from "../shared/app-routes.js?v=20260825siteui8";
+} from "../shared/app-routes.js?v=20260825siteui9";
 
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";

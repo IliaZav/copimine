@@ -80,7 +80,7 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui8"
+    cache_key = "20260825siteui9"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
         assert f"/assets/cabinet.css?v={cache_key}" in source, path.name

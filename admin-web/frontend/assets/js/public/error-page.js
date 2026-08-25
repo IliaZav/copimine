@@ -1,5 +1,5 @@
-import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui8";
-import { initPublicNav } from "./public-nav.js?v=20260825siteui8";
+import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui9";
+import { initPublicNav } from "./public-nav.js?v=20260825siteui9";
 
 initPublicNav();
 initThemeToggle();

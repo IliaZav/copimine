@@ -66,12 +66,12 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825siteui8' in public_page
-    assert './site-render.js?v=20260825siteui8' in homepage
+    assert './homepage.js?v=20260825siteui9' in public_page
+    assert './site-render.js?v=20260825siteui9' in homepage
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui8"
+    cache_key = "20260825siteui9"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")

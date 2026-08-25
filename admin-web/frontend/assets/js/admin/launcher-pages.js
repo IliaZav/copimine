@@ -52,14 +52,14 @@ export function createAdminLauncherPages(deps) {
 
     setView(`
       <section id="launcher-overview" class="layout-grid launcher-admin-grid launcher-admin-metrics">
-        ${metric("Текущий релиз", releaseLabel(current), "Подписанный stable manifest", current ? "good" : "warn")}
-        ${metric("Моды", mods.length, "В управляемом черновике", mods.length ? "good" : "warn")}
+        ${metric("Последняя версия", releaseLabel(current), "Опубликованная версия", current ? "good" : "warn")}
+        ${metric("Моды", mods.length, "В списке Launcher", mods.length ? "good" : "warn")}
         ${metric("Загрузки", downloadCount, "Файлы и установщики", downloadCount ? "good" : "neutral")}
-        ${metric("События", eventCount, "Анонимная диагностика Launcher", eventCount ? "good" : "neutral")}
+        ${metric("События", eventCount, "Сигналы от Launcher", eventCount ? "good" : "neutral")}
       </section>
 
       <section class="layout-grid grid-2 launcher-admin-grid">
-        ${panel("Релиз Launcher", "Подготовка публикации не меняет игровой сервер и production-данные.", `
+        ${panel("Версия Launcher", "Подготовка публикации не меняет игровой сервер и данные игроков.", `
           <div class="kv-grid launcher-release-summary">
             <div><span>Текущий</span><strong>${esc(releaseLabel(current))}</strong></div>
             <div><span>Следующая последовательность</span><strong>${esc(nextSequence)}</strong></div>
@@ -91,7 +91,7 @@ export function createAdminLauncherPages(deps) {
         `)}
       </section>
 
-      ${panel("Управляемые моды", "Загрузка нового файла сама вычисляет SHA-256 на сервере. Публикация остаётся отдельным действием.", `
+      ${panel("Моды Launcher", "Загрузка нового файла сама проверяет его целостность. Публикация остаётся отдельным действием.", `
         <div class="launcher-upload-box">
           <div class="form-grid">
             <div class="field-stack"><label for="launcherModComponent">Component ID</label><input id="launcherModComponent" placeholder="map-helper" /></div>

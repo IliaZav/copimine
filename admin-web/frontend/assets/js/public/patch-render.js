@@ -1,10 +1,19 @@
+const CHANGE_LABELS = Object.freeze({
+  added: "Добавлено",
+  changed: "Изменено",
+  fixed: "Исправлено",
+  verified: "Проверено",
+  known_issue: "Известно",
+});
+
 function makeChangeList(changes) {
   const list = document.createElement("ul");
   (Array.isArray(changes) ? changes : []).forEach((change) => {
     const item = document.createElement("li");
     const badge = document.createElement("span");
     badge.className = `change-kind change-kind-${String(change.kind || "changed").replace(/[^a-z_]/g, "")}`;
-    badge.textContent = String(change.kind || "changed");
+    const kind = String(change.kind || "changed").toLowerCase();
+    badge.textContent = CHANGE_LABELS[kind] || "Изменение";
     item.append(badge, document.createTextNode(String(change.text || "")));
     list.append(item);
   });
@@ -44,7 +53,7 @@ export function renderNewsList(patches) {
     body.append(makeChangeList((Array.isArray(patch.summary) ? patch.summary : []).map((text) => ({ kind: "", text }))));
     const link = document.createElement("a");
     link.href = String(patch.detailUrl || "#");
-    link.textContent = "Открыть патчноут →";
+    link.textContent = "Читать изменения →";
     body.append(link);
     card.append(body);
     fragment.append(card);

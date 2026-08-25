@@ -73,7 +73,7 @@ function formatDate(value) {
 
 function formatLatency(value) {
   const ms = Number(value);
-  if (!Number.isFinite(ms) || ms <= 0) return "нет ответа";
+  if (!Number.isFinite(ms) || ms <= 0) return "нет связи";
   return `${ms.toFixed(1)} мс`;
 }
 
@@ -210,7 +210,7 @@ function buildShopEmptyState(title, detail, iconPath) {
   icon.append(createSprite(iconPath));
   const copy = makeElement("div", "shop-empty-copy");
   copy.append(
-    makeElement("span", "shop-empty-kicker", "Состояние каталога"),
+    makeElement("span", "shop-empty-kicker", "Каталог сейчас"),
     makeElement("strong", "", title),
     makeElement("p", "", detail),
   );
@@ -239,7 +239,7 @@ function buildExternalModCard(row = {}) {
   icon.append(createSprite(mcIcon("knowledge_book.png")));
   card.append(
     icon,
-    makeElement("span", "modpack-file-badge", "external"),
+    makeElement("span", "modpack-file-badge", "доп. мод"),
     makeElement("strong", "", String(row.component || "Внешний мод")),
     makeElement("p", "", String(row.feature || row.reason || "Загружается отдельно с официальной страницы.")),
   );
@@ -628,7 +628,7 @@ export function createHomepageRenderer() {
     if (modpackFileGrid) {
       if (!available || !files.length) {
         replaceChildrenSafe(modpackFileGrid, [
-          cardStrong("Список модов недоступен", "Повторите попытку позже.", "", mcIcon("bundle.png")),
+          cardStrong("Не удалось загрузить список модов", "Попробуйте ещё раз позже.", "", mcIcon("bundle.png")),
         ]);
       } else {
         replaceChildrenSafe(
@@ -696,7 +696,7 @@ export function createHomepageRenderer() {
         ].filter(Boolean).join(" · ")
       : "Голосование сейчас не запущено";
     replaceChildrenSafe(statusGrid, [
-      cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs), mcIcon("beacon.png")),
+      cardStrong("Сервер", server.online ? "Онлайн" : "Нет связи", formatLatency(server.latencyMs), mcIcon("beacon.png")),
       cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков скрыт", mcIcon("totem_of_undying.png")),
       cardStrong("Выборы", elections.active ? "Идут" : "Пауза", electionDetail, mcIcon("written_book.png")),
       cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален", mcIcon("compass_00.png")),
@@ -786,15 +786,15 @@ export function createHomepageRenderer() {
     const votingBlocks = Math.max(0, Number(summary.votingBlocks ?? 0) || 0);
     const hasElection = !unavailable && Boolean(String(election.id || election.stage || election.status || "").trim());
     const maxVotes = Math.max(1, ...candidates.map((row) => Math.max(0, Number(row.votes || 0) || 0)));
-    const stage = unavailable ? "Данные недоступны" : electionStageLabel(election.stage || election.status);
+    const stage = unavailable ? "Нет данных" : electionStageLabel(election.stage || election.status);
     const round = Math.max(1, Number(election.round || 1) || 1);
 
     if (electionStage) electionStage.textContent = stage;
     if (electionMeta) electionMeta.textContent = unavailable
-      ? "Не удалось получить данные. Нажмите «Обновить»."
+      ? "Не удалось загрузить данные. Нажмите «Обновить»."
       : hasElection
         ? `Тур ${round} · одобренных кандидатов: ${candidateCount}`
-        : "Активная кампания не запущена.";
+        : "Выборы пока не начались.";
     if (electionHeroStatus) electionHeroStatus.textContent = stage;
     if (electionHeroMeta) {
       electionHeroMeta.textContent = unavailable
@@ -815,18 +815,18 @@ export function createHomepageRenderer() {
         return card;
       };
       replaceChildrenSafe(electionStats, [
-        stat("Этап", stage, "текущий статус процесса"),
+        stat("Этап", stage, "что происходит сейчас"),
         stat("Кандидаты", String(candidateCount), "заявки одобрены"),
-        stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "агрегированный результат"),
-        stat("Блоки голосования", String(votingBlocks), "защищённые блоки в игре"),
+        stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "всего голосов"),
+        stat("Блоки голосования", String(votingBlocks), "голоса из игры"),
       ]);
     }
 
     if (electionCandidates) {
       if (!candidates.length) {
         replaceChildrenSafe(electionCandidates, [cardStrong(
-          unavailable ? "Не удалось получить список кандидатов" : candidateCount ? "Список обновится позже" : "Одобренных кандидатов пока нет",
-          unavailable ? "Повторите позже." : candidateCount ? "Список обновится позже." : "Список появится после проверки заявок.",
+          unavailable ? "Не удалось загрузить список кандидатов" : candidateCount ? "Список обновится позже" : "Одобренных кандидатов пока нет",
+          unavailable ? "Попробуйте позже." : candidateCount ? "Список обновится позже." : "Список появится после проверки заявок.",
           "",
           mcIcon("written_book.png"),
         )]);

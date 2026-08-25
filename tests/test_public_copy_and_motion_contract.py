@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+FRONTEND = ROOT / "admin-web" / "frontend"
+
+PUBLIC_PAGES = (
+    "index.html",
+    "server.html",
+    "elections.html",
+    "shops.html",
+    "launcher.html",
+    "news.html",
+    "signin.html",
+    "register.html",
+    "cart.html",
+    *(f"news/{path.name}" for path in sorted((FRONTEND / "news").glob("*.html"))),
+)
+
+
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def test_public_copy_uses_player_language_on_key_routes() -> None:
+    index = read("admin-web/frontend/index.html")
+    launcher = read("admin-web/frontend/launcher.html")
+    news = read("admin-web/frontend/news.html")
+    shops = read("admin-web/frontend/shops.html")
+    server = read("admin-web/frontend/server.html")
+
+    assert "Всё, что нужно для игры на CopiMine." in index
+    assert "Установи Launcher. Играй на CopiMine." in launcher
+    assert "Что нового на CopiMine." in news
+    assert "Выбери предметы для игры." in shops
+    assert "Что сейчас на сервере." in server
+
+    public_patch_json = sorted((FRONTEND / "assets" / "public-data" / "patches").glob("*.json"))
+    public_source = "\n".join(read(f"admin-web/frontend/{page}") for page in PUBLIC_PAGES)
+    public_source += "\n" + "\n".join(path.read_text(encoding="utf-8") for path in public_patch_json)
+    public_source += "\n" + read("admin-web/frontend/assets/js/admin/launcher-pages.js")
+    forbidden = (
+        "managed-модов",
+        "Клиентская сборка",
+        "Текущий релиз",
+        "Состав установки",
+        "Предпросмотр интерфейса",
+        "managed-модов",
+        "admission",
+        "protocolVersion",
+        "CLIENT_READY handshake",
+        "resource pack mapping",
+        "комплексная платформа",
+        "бесшовный",
+        "погрузитесь",
+        "production provisioning",
+        "external mojang/fabric download fallback",
+        "sha-256",
+        "metadata",
+        "servers.dat",
+        "ready→ack",
+        "патчноут",
+        "технические изменения",
+        "локальный staging",
+        "статической раздаче",
+        "текущий релиз",
+        "подписанный stable manifest",
+        "в управляемом черновике",
+        "анонимная диагностика launcher",
+    )
+    for phrase in forbidden:
+        assert phrase.lower() not in public_source.lower(), phrase
+
+
+def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() -> None:
+    style = read("admin-web/frontend/assets/style.css")
+    public_page = read("admin-web/frontend/assets/js/public/public-page.js")
+    motion = read("admin-web/frontend/assets/js/public/public-motion.js")
+    motion_css = read("admin-web/frontend/assets/css/public-motion.css")
+
+    assert '@import url("./css/public-motion.css")' in style
+    assert 'from "./public-motion.js?v=20260825siteui9"' in public_page
+    assert "prefers-reduced-motion" in motion
+    assert "copimineSceneDrift" in motion_css
+    assert "copimineSignalSweep" in motion_css
+    assert "overflow: clip" in motion_css
+    assert "@media (prefers-reduced-motion: reduce)" in motion_css
+    assert "--scene-x" in motion_css
+    assert "--scene-y" in motion_css
+
+
+def test_public_motion_script_does_not_add_a_second_navigation_or_dom_handlers() -> None:
+    motion = read("admin-web/frontend/assets/js/public/public-motion.js")
+
+    assert "publicMobileNavToggle" not in motion
+    assert "createElement(\"nav\")" not in motion
+    assert "addEventListener(\"pointermove\"" in motion
+    assert "requestAnimationFrame" in motion

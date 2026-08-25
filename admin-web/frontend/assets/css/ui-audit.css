@@ -178,3 +178,16 @@
     gap: 4px;
   }
 }
+
+/* Cabinet sidebar switches at the same 980px boundary used by the runtime.
+ * This closes the 761-980px gap where the sidebar was off-canvas without a
+ * visible control. */
+@media (max-width: 980px) {
+  body[data-page-kind="cabinet"] #app {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-page-kind="cabinet"] .cabinet-nav-toggle {
+    display: inline-flex !important;
+  }
+}

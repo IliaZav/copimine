@@ -2038,8 +2038,10 @@ function renderStoredTable(id) {
   const start = (t.page - 1) * t.pageSize;
   const pageRows = rows.slice(start, start + t.pageSize);
   const head = t.columns.map(col => `
-    <th data-click="sortTable('${id}','${esc(col.key)}')">
-      ${esc(col.label || col.key)}${t.sortKey === col.key ? (t.sortDir === "asc" ? " ↑" : " ↓") : ""}
+    <th scope="col" aria-sort="${t.sortKey === col.key ? (t.sortDir === "asc" ? "ascending" : "descending") : "none"}">
+      <button type="button" class="table-sort" data-click="sortTable('${id}','${esc(col.key)}')" aria-label="Сортировать по ${esc(col.label || col.key)}">
+        ${esc(col.label || col.key)}${t.sortKey === col.key ? (t.sortDir === "asc" ? " ↑" : " ↓") : ""}
+      </button>
     </th>
   `).join("");
   const body = pageRows.map((row, idx) => {
@@ -2052,7 +2054,7 @@ function renderStoredTable(id) {
   }).join("");
   return `
     <div class="toolbar">
-      <input class="grow" value="${esc(t.filter)}" data-input="filterTable" data-input-id="${esc(id)}" placeholder="Поиск по таблице" />
+      <input class="grow" value="${esc(t.filter)}" data-input="filterTable" data-input-id="${esc(id)}" placeholder="Поиск по таблице" aria-label="Поиск по таблице" />
       <button class="btn btn-secondary btn-small" data-click="exportTable('${id}','csv')">Скачать CSV</button>
       <span class="last-update">${rows.length} записей</span>
     </div>
@@ -2146,7 +2148,7 @@ function defaultTab() {
 
 function setMobileNav(open) {
   const app = $("app");
-  const toggle = $("mobileNavToggle");
+  const toggle = $("cabinetNavToggle");
   app.classList.toggle("nav-open", Boolean(open));
   if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
@@ -2185,6 +2187,7 @@ function buildNavButton([id, label, hint, icon]) {
   const button = makeElement("button", `nav-item ${state.tab === id ? "active" : ""}`);
   button.type = "button";
   button.dataset.tab = id;
+  if (state.tab === id) button.setAttribute("aria-current", "page");
   const iconNode = makeElement("span", "nav-icon", icon);
   const copy = makeElement("span");
   copy.append(
@@ -6641,16 +6644,16 @@ function wire() {
   syncTopbarActions();
   $("guestPagesBtn")?.addEventListener("click", showGuestPages);
   $("refreshBtn")?.addEventListener("click", () => loadCurrent());
-  if ($("mobileNavToggle")) {
-    $("mobileNavToggle").setAttribute("aria-expanded", "false");
-    $("mobileNavToggle").addEventListener("click", (event) => {
+  if ($("cabinetNavToggle")) {
+    $("cabinetNavToggle").setAttribute("aria-expanded", "false");
+    $("cabinetNavToggle").addEventListener("click", (event) => {
       event.stopPropagation();
       setMobileNav(!$("app")?.classList.contains("nav-open"));
     });
   }
   document.addEventListener("click", (event) => {
     if (!$("app")?.classList.contains("nav-open")) return;
-    if (event.target.closest(".sidebar") || event.target.closest("#mobileNavToggle")) return;
+    if (event.target.closest(".sidebar") || event.target.closest("#cabinetNavToggle")) return;
     setMobileNav(false);
   });
   window.addEventListener("keydown", (event) => {

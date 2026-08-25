@@ -15,6 +15,9 @@ def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
     assert '@import url("./css/website-polish.css");' in style
     assert style.rfind('@import url("./css/website-polish.css");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css");') == 1
+    for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
+        assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
 
 def test_public_navigation_collapses_before_tablet_overflow_and_preserves_accessible_state() -> None:

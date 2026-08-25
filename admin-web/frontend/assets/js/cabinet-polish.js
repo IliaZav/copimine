@@ -2,9 +2,15 @@ const SITE_LABEL = "\u041d\u0430 \u0441\u0430\u0439\u0442";
 const PANEL_LABEL = "\u041f\u0430\u043d\u0435\u043b\u044c";
 const CABINET_LABEL = "\u041a\u0430\u0431\u0438\u043d\u0435\u0442";
 
-function syncGuestSiteButton() {
+function syncGuestSiteButton(auth = {}) {
   const guestSite = document.getElementById("guestPagesBtn");
   if (!guestSite) return;
+  const role = String(auth.role || document.body?.dataset.copimineRole || "").trim().toLowerCase();
+  const isPlayer = role === "player" || document.body?.classList.contains("player-mode");
+  if (isPlayer) {
+    guestSite.hidden = true;
+    return;
+  }
   if (guestSite.hidden) guestSite.hidden = false;
   if (guestSite.textContent !== SITE_LABEL) {
     guestSite.textContent = SITE_LABEL;
@@ -30,7 +36,7 @@ function syncCabinetHeader(auth = {}) {
       : CABINET_LABEL;
   }
   if (logout) logout.classList.toggle("hidden", !authed);
-  syncGuestSiteButton();
+  syncGuestSiteButton(auth);
 }
 
 function hideBootStageIfReady() {
@@ -47,7 +53,7 @@ function hideBootStageIfReady() {
 
 function ensureCabinetNavBackdrop() {
   const app = document.getElementById("app");
-  const toggle = document.getElementById("mobileNavToggle");
+  const toggle = document.getElementById("cabinetNavToggle");
   if (!(app instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return null;
 
   toggle.classList.add("cabinet-nav-toggle");
@@ -71,7 +77,7 @@ function ensureCabinetNavBackdrop() {
 
 function syncCabinetNavState() {
   const app = document.getElementById("app");
-  const toggle = document.getElementById("mobileNavToggle");
+  const toggle = document.getElementById("cabinetNavToggle");
   const backdrop = document.querySelector(".cabinet-nav-backdrop");
   if (!(app instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return;
   const open = app.classList.contains("nav-open");
@@ -142,7 +148,6 @@ window.addEventListener("load", () => {
   const observer = new MutationObserver(() => {
     bindCabinetHeaderActions();
     hideBootStageIfReady();
-    syncGuestSiteButton();
   });
 
   const app = document.getElementById("app");

@@ -4,10 +4,13 @@
   escaping their cards.
 */
 
-body.player-mode #guestPagesBtn,
 body.panel-admin-mode #guestPagesBtn,
 body.junior-admin-mode #guestPagesBtn {
   display: inline-flex !important;
+}
+
+body.player-mode #guestPagesBtn {
+  display: none !important;
 }
 
 body.player-mode .topbar,

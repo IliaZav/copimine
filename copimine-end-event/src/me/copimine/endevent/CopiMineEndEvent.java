@@ -730,9 +730,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isEventMusicPhase() {
-        if (testCombatAiMode) {
-            return true;
-        }
         return switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,

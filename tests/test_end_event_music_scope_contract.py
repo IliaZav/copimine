@@ -41,6 +41,8 @@ def test_normal_phases_have_no_music_track_and_manual_music_check_is_local_only(
     assert "default -> null" in music_for_phase
     for phase in ("UNCONFIGURED", "COLLECTING", "READY_FOR_PLAYERS", "COUNTDOWN", "UNLOCKED"):
         assert f"case EventPhase.{phase}" not in music_for_phase
+    music_gate = _method("private boolean isEventMusicPhase()", "private boolean isVictoryMusicTail")
+    assert "testCombatAiMode" not in music_gate
     test_music = _method("private void playTestMusic", "@Override\n    public void onDisable")
     assert '"local".equalsIgnoreCase(config.environment())' in test_music
     assert "END_EVENT_MUSIC_TEST" in test_music

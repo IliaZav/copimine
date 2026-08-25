@@ -100,6 +100,18 @@ def test_local_ai_harness_ticks_boss_controller_outside_official_boss_phase() ->
     assert "phase != EventPhase.BOSS_ACTIVE && !testBossAi" in MAIN
 
 
+def test_disposable_boss_spawn_enables_real_ai_and_client_visuals() -> None:
+    start = MAIN.index("private void spawnTestBoss")
+    end = MAIN.index("private void spawnTestAi", start)
+    body = MAIN[start:end]
+    assert "testCombatAiMode = true;" in body
+    assert "halfHealthTriggered = false;" in body
+    assert "finalDrainTriggered = false;" in body
+    assert "finalDrainApplied = false;" in body
+    assert "ensureBossBar();" in body
+    assert "bindBossClientForOnlinePlayers();" in body
+
+
 def test_clearing_a_boss_resets_target_and_spell_cooldown_state() -> None:
     assert "nextTargetMillis = 0L;" in MAIN
     assert "nextSpellMillis = 0L;" in MAIN
@@ -145,3 +157,9 @@ def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact()
         "taskRegistry.owns(callbackGeneration)",
     ):
         assert marker in MAIN
+
+
+def test_final_wave_elites_keep_their_bound_spell_flight_path() -> None:
+    flight = MAIN[MAIN.index("private boolean isSpellFlightAllowed"):MAIN.index("private void miniBossRiftStep")]
+    assert "return (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind))" in flight
+    assert "&& isMiniBossCombatPhase();" in flight

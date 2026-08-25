@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/cube_all",
+  "textures": {
+    "all": "copimine:item/end_event_rift_projectile",
+    "particle": "copimine:item/end_event_rift_projectile"
+  }
+}

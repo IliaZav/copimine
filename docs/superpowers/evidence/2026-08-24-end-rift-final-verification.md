@@ -1,6 +1,6 @@
 # End Rift Event — финальная локальная проверка
 
-Дата: 24 августа 2026 года
+Дата: 25 августа 2026 года
 
 Ветка: `codex/end-rift-event`
 
@@ -14,15 +14,38 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 - Launcher и сайт в рамках этой проверки не запускались и не изменялись; уже открытое окно лаунчера не использовалось. Production world, production DB и production deploy не затрагивались.
 - После destructive-проверки Core локальный status оставлен чистым: активных event-owned сущностей нет.
 
+## Актуальный полный прогон 25 августа 2026
+
+- Локальный Paper/Purpur `127.0.0.1:25566` и RCON `127.0.0.1:25576`; после проверки оставлены Core и руны, но `event-mobs=0`, `boss=none`.
+- Актуальный status: `state=WAVE_1`, `coreOverlay=true coreModel=830002 runes=2/2 occupied=0`, все ресурсы `64/64, 64/64, 128/128, 100/100`.
+- Ванильный блок ядра не заменяется: поверх него создаётся ItemDisplay, якорь — верхняя плоскость блока; руны создаются только на твёрдом блоке и занимают его верхнюю поверхность.
+- Реальный Computer Use-снимок финальной волны показал кастомные текстуры пауков и шулкеров; client log подтвердил `resourcePresent=true` для `END_RIFT_ENDERMAN_V1` и `END_RIFT_ELITE_V1`.
+- Реальный Computer Use-снимок босса показал красно-золотую текстуру `END_RIFT_GUARDIAN_V1`, bossbar `1200/1200` и частицы. Снимок летящего `rift_projectile` показал поток частиц и летящий снаряд; Paper log подтвердил `BOSS_PROJECTILE_SPAWN model=830006` → `BOSS_PROJECTILE_HIT`.
+- Тестовый босс выбросил в мире `minecraft:ender_pearl` (1 шт.); предмет реально поднят игроком. Настоящий `Осколок Разлома` выдан локальным `CopiMineArtifacts`, в инвентаре проверены `custom_model_data=830004`, русское имя и две строки лора.
+- Команды `/cmend test music waves|boss|half|final|victory` отработали в игре; лог подтвердил пять sound id и loop values `95/123/26/39/0`.
+- Многопользовательский AI-прогон подтвердил ротацию целей по трём игрокам, telegraph → flight → cast для `void_blast`/`void_mark` и возврат босса к Core. Для стресс-игроков использовался vanilla cap `2048` HP плюс Resistance 255: атрибут Minecraft не принимает миллион HP.
+- Принудительный выход моба за пределы возвращал его на Core-level Y; горизонтальный leash — 20 блоков. У пауков фактически проверены `health=26.0 attack=4.0`.
+
+Актуальные хеши установленных локальных артефактов:
+
+| Артефакт | SHA-256 |
+| --- | --- |
+| End Event JAR | `6BB6383E72D9CA694BCF38623413DCC0325B367B4AF8543FAB0CC375F18C6AE1` |
+| Fabric client JAR | `72A5CE4DF0B8419B1A951D8A699425B3F356A79B17B249BAB0021C6DE708BEE4` |
+| Resource pack ZIP | `AF86BDB441C41A166E3A11692B86239701570AD59040F0A84DAF64810D2A0F7F` |
+| Local pack SHA-1 | `5cd3beec73f9a7eb55f7d1831f56912f73ff7e9d` |
+
+Пути исходного и установленного client JAR совпадают по SHA-256; production `minecraft/server/server.properties` восстановлен на исходный боевой SHA-1 `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
+
 ## Source/build gate
 
 `tests\RunEndRiftEventChecks.ps1` завершился успешно:
 
-- Python contracts: `120 passed, 14 warnings`.
+- Python contracts: `123 passed, 14 warnings`.
 - WorldCore, Artifacts, End Event и Fabric client собраны.
 - Pure domain tests: все 5 `OK`.
 - Durable persistence/layout tests: все 3 `OK`.
-- Resource pack собран, SHA-1: `aaa2605b2b0f2751f5eab5258173d5c6699d45be`.
+- Resource pack собран, SHA-1: `5cd3beec73f9a7eb55f7d1831f56912f73ff7e9d`.
 
 Артефакты этого прогона:
 
@@ -30,9 +53,9 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 | --- | --- |
 | WorldCore | `380793DEB02B6C51C42DAE446A39A7BF969F7DF33510989590AC50317EE90E99` |
 | Artifacts | `A2FEB49C31FA9FBA61D9D1DA655E52F888BE41FEC10F904E9FC437F0618BD7DE` |
-| End Event | `C6D4054E0BDDAC06D44126DBE0503BD9B27A28D7039EF82C9138D830DDA63914` |
-| Fabric client build (`CopiMineClient/build/libs/CopiMineClient-0.1.0.jar`) | `0CD49DBE1517EB2B7BC04B40990C707AF9AEF96F4E67E3432F62F4AB955AD9D6` |
-| Resource pack ZIP | `9D65787D380791D0E873B29F6E126E81A69D17D5BAD4B66D5AB23DB5738974AB` |
+| End Event | `6BB6383E72D9CA694BCF38623413DCC0325B367B4AF8543FAB0CC375F18C6AE1` |
+| Fabric client build (`CopiMineClient/build/libs/CopiMineClient-0.1.0.jar`) | `72A5CE4DF0B8419B1A951D8A699425B3F356A79B17B249BAB0021C6DE708BEE4` |
+| Resource pack ZIP | `AF86BDB441C41A166E3A11692B86239701570AD59040F0A84DAF64810D2A0F7F` |
 
 Контракт музыки отдельно проверяет, что победный OGG имеет длительность `20.000 s`; focused run: `6 passed` вместе с DOCX contract.
 
@@ -59,7 +82,7 @@ End Rift isolated runtime smoke passed.
 
 Smoke отдельно проверяет рабочий PostgreSQL command path Artifacts и не принимает один только факт загрузки JAR за готовность БД.
 
-Финальный RCON status после текущего official-victory прогона и очистки Core:
+Исторический RCON status после official-victory прогона и очистки Core:
 
 ```text
 state=UNCONFIGURED generation=14
@@ -92,8 +115,8 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - Перед текущим official-victory живой status показывал `event-mobs=14` и `boss=<uuid>`; после `core remove confirm` — `UNCONFIGURED`, `gate=UNSET`, `helpers=0`, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`. Durable `event-layout.yml` оставлен с `gate.status=UNSET` и пустым snapshot.
 - Отдельный текущий-JAR smoke `core set → core remove` дополнительно зафиксировал `END_EVENT_OWNED_CLEANUP generations=all removed=4` и отсутствие визуальных сущностей после hard-boundary; перезапуск с permanent End unlock не реанимирует удалённый Core.
 - `END_EVENT_OWNED_CLEANUP`: `generations=all`; старые wave entities/boss/projectiles и визуальные сущности очищаются при удалении Core.
-- Финальный protocol bot получил resource pack hash `aaa2605b2b0f2751f5eab5258173d5c6699d45be`; tracked `minecraft/server/server.properties` после gate восстановлен на исходный production hash `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
-- `END_EVENT_MUSIC_TEST`: `track=copimine:end_rift/victory loopSeconds=0` на локальном игроке; победный файл — ровно 20 секунд.
+- Финальный protocol bot исторического прогона получил старый локальный resource pack hash; актуальный локальный hash — `5cd3beec73f9a7eb55f7d1831f56912f73ff7e9d`, а tracked `minecraft/server/server.properties` восстановлен на production hash `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
+- Актуальный `END_EVENT_MUSIC_TEST` на локальном игроке подтвердил: `waves=95`, `boss=123`, `boss_half=26`, `boss_final=39`, `victory=0`; победный OGG — ровно 20 секунд.
 
 В логах финального запуска нет `NoClassDefFoundError` и `CopiMineEndEvent failed closed`.
 

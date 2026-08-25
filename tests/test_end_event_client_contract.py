@@ -8,16 +8,23 @@ ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "CopiMineClient"
 
 
-def test_end_event_uses_the_existing_bridge_channel_only() -> None:
+def test_end_event_uses_a_legacy_safe_v2_bridge_envelope() -> None:
     protocol = (CLIENT / "src/main/java/me/copimine/client/ClientBridgeProtocol.java").read_text(encoding="utf-8")
     payload = (CLIENT / "src/main/java/me/copimine/client/BridgePayload.java").read_text(encoding="utf-8")
     server = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
     assert '"copimine:client_bridge"' in protocol
-    assert "END_EVENT_MAGIC" in protocol
-    assert "COPIMINE_END_EVENT_V1" in server
+    assert 'TYPE_END_EVENT_PREFIX = "END_EVENT:"' in protocol
+    assert 'output.writeUTF("END_EVENT:" + type)' in server
+    assert 'output.writeInt(2)' in server
+    assert 'output.writeLong(System.currentTimeMillis())' in server
+    assert 'output.writeBoolean(false)' in server
+    assert 'output.writeInt(0)' in server
+    assert 'output.writeUTF(visualId == null ? "" : visualId)' in server
+    assert "COPIMINE_END_EVENT_V1" not in server
     assert "client_bridge_v2" not in protocol
     assert "client_gate" not in protocol.lower()
-    assert "EndEventPacket.readAfterMagic" in payload
+    assert "TYPE_END_EVENT_PREFIX" in payload
+    assert "applyEndEventPayload" in protocol
 
 
 def test_end_event_client_has_cleanup_and_optional_control_mixins() -> None:

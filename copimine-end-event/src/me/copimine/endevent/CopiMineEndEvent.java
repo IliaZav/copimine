@@ -151,6 +151,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
     private static final int MODEL_RUNE_OVERLAY = 830003;
     private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
+    private static final int MODEL_RIFT_PROJECTILE = 830006;
     private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
     private static final int DEFAULT_ARENA_PREVIEW_SECONDS = 10;
     private static final int MAX_ARENA_PREVIEW_SECONDS = 300;
@@ -203,6 +204,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
+    private final Map<UUID, UUID> riftProjectileVisuals = new HashMap<>();
     private final Deque<UUID> recentBossTargets = new ArrayDeque<>();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
 
@@ -3189,7 +3191,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location coreOverlayLocation(Block core) {
-        return core.getLocation().add(0.5D, 0.5D, 0.5D);
+        // ItemDisplay block models are centred on their display origin.  A
+        // centre anchor leaves the opaque vanilla block in front of the
+        // shell, so only the top face survives depth testing.  Anchor the
+        // model at the block's top plane: its lower half covers the real
+        // block and its tiny 1.10 scale margin keeps all faces visible
+        // without replacing or moving the vanilla block.
+        return core.getLocation().add(0.5D, 1.0D, 0.5D);
     }
 
     private Location runeOverlayLocation(Block floor) {
@@ -3214,7 +3222,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location location = display.getLocation();
         return location.getBlockX() == core.getX()
-                && location.getBlockY() == core.getY()
+                && location.getBlockY() == core.getY() + 1
                 && location.getBlockZ() == core.getZ();
     }
 
@@ -3961,7 +3969,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return phase == EventPhase.BOSS_ACTIVE || forced
                     || testCombatAiMode && isTestBoss(caster);
         }
-        return EVENT_KIND_ELITE.equals(kind) && isMiniBossCombatPhase();
+        return (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind))
+                && isMiniBossCombatPhase();
     }
 
     private void miniBossRiftStep(Enderman miniBoss, Player target) {
@@ -4428,8 +4437,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         clearBossOnly();
+        // /cmend boss spawn is the disposable local boss harness.  Keep the
+        // official phase untouched, but run the same target/telegraph/flight
+        // controller and bind the real client visual for every online target.
+        testCombatAiMode = true;
+        halfHealthTriggered = false;
+        finalDrainTriggered = false;
+        finalDrainApplied = false;
+        controlSpellUnlocked = false;
         Enderman boss = (Enderman) world.spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
         configureBoss(boss, true);
+        ensureBossBar();
+        bindBossClientForOnlinePlayers();
         message(sender, "&aTest boss создан: он не открывает End и не выдаёт official rewards.");
     }
 
@@ -5093,6 +5112,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         projectile.setVelocity(offset.normalize().multiply(RIFT_PROJECTILE_SPEED));
         tag(projectile, EVENT_KIND_PROJECTILE, 0, isOfficialEntity(boss));
         activeRiftProjectiles.add(projectile.getUniqueId());
+        ItemDisplay visual = boss.getWorld().spawn(start.clone(), ItemDisplay.class, display -> {
+            display.setItemStack(overlayItem(MODEL_RIFT_PROJECTILE, "end_event_rift_projectile"));
+            display.setBrightness(new Display.Brightness(15, 15));
+            display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            display.setBillboard(Display.Billboard.CENTER);
+            display.setViewRange(64.0F);
+            display.setDisplayWidth(0.70F);
+            display.setDisplayHeight(0.70F);
+            display.setPersistent(true);
+            display.setGravity(false);
+        });
+        tag(visual, EVENT_KIND_DISPLAY, 0, isOfficialEntity(boss));
+        riftProjectileVisuals.put(projectile.getUniqueId(), visual.getUniqueId());
         long callbackGeneration = generation;
         Location anchor = coreLocation();
         final int[] age = {0};
@@ -5109,9 +5141,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || anchor == null || projectile.getLocation().getWorld() == null
                     || !projectile.getLocation().getWorld().equals(anchor.getWorld())
                     || projectile.getLocation().distanceSquared(anchor) > config.bossRadius()
-                    * config.bossRadius()) {
+                    * config.bossRadius()
+                    || !isLiveProjectileVisual(projectileId)) {
                 cleanupRiftProjectile(projectileId);
                 return;
+            }
+            Entity visualEntity = Bukkit.getEntity(riftProjectileVisuals.get(projectileId));
+            if (visualEntity instanceof ItemDisplay display && display.isValid()) {
+                display.teleport(projectile.getLocation());
             }
             projectile.getWorld().spawnParticle(Particle.PORTAL, projectile.getLocation(),
                     4, 0.05D, 0.05D, 0.05D, 0.01D);
@@ -5119,6 +5156,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftProjectileTasks.put(projectileId, holder[0]);
         taskRegistry.register(holder[0]);
         getLogger().info("BOSS_PROJECTILE_SPAWN entity=" + projectileId
+                + " visual=" + visual.getUniqueId() + " model=" + MODEL_RIFT_PROJECTILE
                 + " target=" + target.getUniqueId() + " max_ticks=" + RIFT_PROJECTILE_MAX_TICKS);
     }
 
@@ -5150,6 +5188,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             task.cancel();
         }
         activeRiftProjectiles.remove(projectileId);
+        UUID visualId = riftProjectileVisuals.remove(projectileId);
+        Entity visual = visualId == null ? null : ownedEntities.remove(visualId);
+        if (visual != null && visual.isValid()) {
+            visual.remove();
+        }
         Entity projectile = ownedEntities.remove(projectileId);
         if (projectile != null && projectile.isValid()) {
             projectile.remove();
@@ -5160,8 +5203,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (UUID projectileId : new HashSet<>(activeRiftProjectiles)) {
             cleanupRiftProjectile(projectileId);
         }
+        for (UUID projectileId : new HashSet<>(riftProjectileVisuals.keySet())) {
+            cleanupRiftProjectile(projectileId);
+        }
         activeRiftProjectiles.clear();
         riftProjectileTasks.clear();
+        riftProjectileVisuals.clear();
+    }
+
+    private boolean isLiveProjectileVisual(UUID projectileId) {
+        UUID visualId = riftProjectileVisuals.get(projectileId);
+        if (visualId == null) {
+            return false;
+        }
+        Entity visual = Bukkit.getEntity(visualId);
+        return visual instanceof ItemDisplay && visual.isValid() && !visual.isDead();
     }
 
     private void voidMark(LivingEntity boss, Player target) {
@@ -6197,15 +6253,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
             java.io.DataOutputStream output = new java.io.DataOutputStream(bytes);
-            output.writeUTF("COPIMINE_END_EVENT_V1");
-            output.writeUTF(type);
-            output.writeUTF(eventId);
+            // Keep End Rift messages inside the normal bridge-v2 envelope.
+            // Older CopiMineClient builds can decode this shape and ignore the
+            // END_EVENT:* type, while newer builds route it to EndEventClientState.
+            // A private magic envelope made older clients fail the whole
+            // clientbound custom_payload packet instead of ignoring the event.
+            output.writeUTF("END_EVENT:" + type);
+            output.writeInt(2);
             output.writeLong(generation);
+            output.writeLong(System.currentTimeMillis());
+            output.writeUTF(eventId);
             output.writeUTF(instanceId == null ? "" : instanceId);
-            output.writeLong(durationMillis);
+            output.writeBoolean(false);
+            output.writeBoolean(false);
+            output.writeBoolean(false);
+            output.writeBoolean(false);
+            output.writeInt(0);
+            output.writeUTF("");
+            output.writeUTF(visualId == null ? "" : visualId);
+            output.writeInt((int) Math.max(0L, Math.min(Integer.MAX_VALUE, durationMillis)));
+            output.writeFloat(0.0F);
+            output.writeInt(0);
+            output.writeInt(0);
             output.writeUTF(subjectId == null ? "" : subjectId);
             output.writeUTF(visualId == null ? "" : visualId);
             output.writeUTF(config.clientControlId());
+            output.writeUTF("");
+            output.writeUTF("");
             output.flush();
             player.sendPluginMessage(this, config.bridgeChannel(), bytes.toByteArray());
         } catch (java.io.IOException error) {

@@ -31,10 +31,10 @@ def test_resourcepack_builder_declares_every_end_event_item_asset() -> None:
 def test_core_and_rune_displays_are_anchored_to_the_surface() -> None:
     source = MAIN.read_text(encoding="utf-8")
     assert "private Location coreOverlayLocation(Block core)" in source
-    assert "return core.getLocation().add(0.5D, 0.5D, 0.5D);" in source
+    assert "return core.getLocation().add(0.5D, 1.0D, 0.5D);" in source
     assert "private Location runeOverlayLocation(Block floor)" in source
     assert "return floor.getLocation().add(0.5D, 1.0D, 0.5D);" in source
-    assert "floor.getLocation().add(0.5D, 1.5D, 0.5D)" not in source
+    assert "core.getLocation().add(0.5D, 0.5D, 0.5D)" not in source
     assert "new Vector3f(1.10F, 1.10F, 1.10F)" in source
     assert "entity.setDisplayWidth(1.10F);" in source
     assert "entity.setDisplayHeight(1.10F);" in source
@@ -141,3 +141,33 @@ def test_built_pack_maps_event_cmds_to_event_models_not_narcotics() -> None:
         assert "assets/copimine/models/item/end_event_core.json" in names
         assert "assets/copimine/models/item/end_event_core_charged.json" in names
         assert "assets/copimine/models/item/end_event_pad.json" in names
+
+
+def test_rift_projectile_has_a_real_custom_display_and_pack_model() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    builder = BUILDER.read_text(encoding="utf-8")
+    assert "MODEL_RIFT_PROJECTILE = 830006" in source
+    assert "riftProjectileVisuals" in source
+    assert "ItemDisplay" in source
+    assert "display.teleport(projectile.getLocation())" in source
+    assert "cleanupRiftProjectile(projectileId)" in source
+    assert '"assets/copimine/models/item/end_event_rift_projectile.json"' in builder
+    assert '"assets/copimine/textures/item/end_event_rift_projectile.png"' in builder
+
+    model_path = ROOT / "resourcepacks/src/assets/copimine/models/item/end_event_rift_projectile.json"
+    model = json.loads(model_path.read_text(encoding="utf-8"))
+    assert model["textures"]["particle"] == "copimine:item/end_event_rift_projectile"
+    texture_path = ROOT / "resourcepacks/src/assets/copimine/textures/item/end_event_rift_projectile.png"
+    assert texture_path.exists()
+
+    subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
+    pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"
+    with zipfile.ZipFile(pack) as archive:
+        paper = json.loads(archive.read("assets/minecraft/models/item/paper.json"))
+        assert any(
+            entry["predicate"] == {"custom_model_data": 830006}
+            and entry["model"] == "copimine:item/end_event_rift_projectile"
+            for entry in paper["overrides"]
+        )
+        assert "assets/copimine/models/item/end_event_rift_projectile.json" in archive.namelist()
+        assert "assets/copimine/textures/item/end_event_rift_projectile.png" in archive.namelist()

@@ -94,6 +94,7 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/models/item/end_event_core_charged.json",
     "assets/copimine/models/item/end_event_pad.json",
     "assets/copimine/models/item/end_event_pad_occupied.json",
+    "assets/copimine/models/item/end_event_rift_projectile.json",
     "assets/copimine/textures/block/end_event_core.png",
     "assets/copimine/textures/block/end_event_core_charged.png",
     "assets/copimine/textures/block/end_event_rune.png",
@@ -102,6 +103,7 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/textures/item/end_event_core_charged.png",
     "assets/copimine/textures/item/end_event_pad.png",
     "assets/copimine/textures/item/end_event_pad_occupied.png",
+    "assets/copimine/textures/item/end_event_rift_projectile.png",
     "assets/copimine/sounds.json",
     "assets/copimine/sounds/end_rift/waves.ogg",
     "assets/copimine/sounds/end_rift/boss.ogg",
@@ -394,6 +396,14 @@ def build_stage() -> None:
         for entry in sorted(entries, key=lambda x: x["custom_model_data"]):
             custom_overrides.extend(item_model_overrides(entry, material))
         overrides.extend(custom_overrides)
+        if material == "paper":
+            # The boss projectile is an event-owned Paper ItemDisplay.  It is
+            # deliberately kept outside the artifact catalog so the event
+            # cannot collide with a player item mapping.
+            overrides.append({
+                "predicate": {"custom_model_data": 830006},
+                "model": "copimine:item/end_event_rift_projectile",
+            })
         # Keep vanilla special-item rendering intact.  The vanilla clock and
         # compass textures are selected by time/angle predicates. The shield
         # is deliberately absent from the manifest: vanilla shields

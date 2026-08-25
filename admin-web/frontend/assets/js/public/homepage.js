@@ -7,7 +7,7 @@ import {
   loadPublicShopsPageData,
   loadPublicTreasuryFallback,
 } from "./site-data.js?v=20260825designpass2";
-import { createHomepageRenderer } from "./site-render.js?v=20260825designpass2";
+import { createHomepageRenderer } from "./site-render.js?v=20260825designpass3";
 import { createSuccessfulLoadRegistry } from "../shared/successful-load-registry.js";
 
 const renderer = createHomepageRenderer();

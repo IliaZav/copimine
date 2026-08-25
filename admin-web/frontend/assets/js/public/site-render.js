@@ -188,7 +188,9 @@ function cardStrong(title, value, note = "", iconPath = "") {
   const card = makeElement("article", "showcase-card");
   if (iconPath) {
     const icon = makeElement("div", "showcase-card-icon");
-    icon.append(createSprite(iconPath));
+    const sprite = createSprite(iconPath);
+    sprite.loading = "eager";
+    icon.append(sprite);
     card.append(icon);
   }
   card.append(

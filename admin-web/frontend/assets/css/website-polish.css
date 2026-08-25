@@ -272,6 +272,19 @@ body.auth-screen .public-site {
   color: var(--site-forest-2) !important;
 }
 
+:root[data-theme="dark"] .public-site .btn-secondary {
+  border-color: var(--site-line-strong) !important;
+  background: var(--site-panel-soft) !important;
+  color: #d9f7e2 !important;
+}
+
+:root[data-theme="dark"] .public-site .btn-primary[aria-disabled="true"],
+:root[data-theme="dark"] .public-site .btn-primary.is-disabled {
+  border-color: var(--site-line-strong) !important;
+  background: #234b33 !important;
+  color: #d9f7e2 !important;
+}
+
 .public-site .btn-ghost {
   color: var(--site-muted) !important;
 }

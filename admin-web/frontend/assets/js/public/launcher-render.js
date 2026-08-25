@@ -126,6 +126,9 @@ export function renderLauncherNews(patches) {
 
 export function bindLauncherLightbox() {
   const fallbackSource = "/assets/launcher-screenshots/launcher-home.jpg";
+  document.querySelectorAll(".launcher-gallery img").forEach((galleryImage) => {
+    if (galleryImage instanceof HTMLImageElement) galleryImage.loading = "eager";
+  });
   const dialog = document.getElementById("launcherLightbox");
   const image = dialog?.querySelector("img");
   const caption = dialog?.querySelector("figcaption");

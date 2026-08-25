@@ -40,8 +40,29 @@ def test_launcher_gallery_buttons_have_explicit_accessible_names() -> None:
     assert all('aria-label="Открыть' in button for button in buttons)
 
 
+def test_launcher_gallery_preloads_all_release_screenshots() -> None:
+    html = read("admin-web/frontend/launcher.html")
+    renderer = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    assert html.count("/assets/launcher-screenshots/") >= 6
+    assert 'document.querySelectorAll(".launcher-gallery img")' in renderer
+    assert 'galleryImage.loading = "eager"' in renderer
+
+
 def test_patch_detail_dates_are_localized_for_readable_russian_copy() -> None:
     renderer = read("admin-web/frontend/assets/js/public/patch-detail-page.js")
     assert "function localizePatchDate" in renderer
     assert 'dateStyle: "long"' in renderer
     assert 'timeStyle: "short"' in renderer
+
+
+def test_dark_public_actions_keep_contrast_when_secondary_or_unavailable() -> None:
+    css = read("admin-web/frontend/assets/css/website-polish.css")
+    assert ':root[data-theme="dark"] .public-site .btn-secondary' in css
+    assert ':root[data-theme="dark"] .public-site .btn-primary[aria-disabled="true"]' in css
+    assert 'color: #d9f7e2 !important' in css
+
+
+def test_homepage_status_sprites_are_available_without_scroll_trigger() -> None:
+    renderer = read("admin-web/frontend/assets/js/public/site-render.js")
+    assert 'const sprite = createSprite(iconPath)' in renderer
+    assert 'sprite.loading = "eager"' in renderer

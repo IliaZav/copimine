@@ -109,14 +109,6 @@ export function renderLauncherNews(patches) {
   safePatches.forEach((patch) => {
     const card = document.createElement("article");
     card.className = "news-card";
-    if (patch.thumbnailUrl) {
-      const image = document.createElement("img");
-      image.className = "news-card-media";
-      image.loading = "lazy";
-      image.src = patch.thumbnailUrl;
-      image.alt = `Иконка предмета из обновления ${patch.version}`;
-      card.append(image);
-    }
     const body = document.createElement("div");
     body.className = "news-card-body";
     const meta = document.createElement("div");

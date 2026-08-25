@@ -93,7 +93,7 @@ def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() ->
     motion_css = read("admin-web/frontend/assets/css/public-motion.css")
 
     assert '@import url("./css/public-motion.css")' in style
-    assert 'from "./public-motion.js?v=20260825siteui17"' in public_page
+    assert 'from "./public-motion.js?v=20260825siteui18"' in public_page
     assert "prefers-reduced-motion" in motion
     assert "copimineSceneDrift" in motion_css
     assert "copimineSignalSweep" in motion_css

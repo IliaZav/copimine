@@ -94,7 +94,6 @@
 .launcher-news-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .news-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
 .news-card { display: flex; min-height: 100%; flex-direction: column; overflow: hidden; }
-.news-card-media { display: block; width: 100%; height: 9rem; object-fit: cover; background: var(--surface-strong); }
 .news-card-body { display: flex; flex: 1; flex-direction: column; padding: 1rem; }
 .news-card-body h2,
 .news-card-body h3 { margin: .45rem 0 .6rem; font-size: 1.05rem; }

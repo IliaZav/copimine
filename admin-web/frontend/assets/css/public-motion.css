@@ -91,15 +91,13 @@ body[data-page-kind^="public"] .news-hero > * {
 
 body[data-page-kind^="public"] .hero-media-art,
 body[data-page-kind^="public"] .scene-card,
-body[data-page-kind^="public"] .launcher-hero-visual,
-body[data-page-kind^="public"] .news-hero-visual {
+body[data-page-kind^="public"] .launcher-hero-visual {
   overflow: hidden;
 }
 
 body[data-page-kind^="public"] .hero-media-art::after,
 body[data-page-kind^="public"] .scene-card::after,
-body[data-page-kind^="public"] .launcher-hero-visual::after,
-body[data-page-kind^="public"] .news-hero-visual::after {
+body[data-page-kind^="public"] .launcher-hero-visual::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -112,8 +110,7 @@ body[data-page-kind^="public"] .news-hero-visual::after {
 
 body[data-page-kind^="public"] .hero-media-art img,
 body[data-page-kind^="public"] .scene-card-image,
-body[data-page-kind^="public"] .launcher-hero-visual img,
-body[data-page-kind^="public"] .news-hero-visual img {
+body[data-page-kind^="public"] .launcher-hero-visual img {
   transform: translate3d(calc(var(--scene-x, 0) * 5px), calc(var(--scene-y, 0) * 4px), 0) scale(1.05);
   animation: copimineSceneDrift 18s ease-in-out infinite;
   will-change: transform;
@@ -189,8 +186,7 @@ body[data-page-kind^="public"] .hero-sprite-chip:nth-child(3)::after { animation
 @media (pointer: fine) and (prefers-reduced-motion: no-preference) {
   body[data-page-kind^="public"][data-copimine-motion="on"] .hero-media-art img,
   body[data-page-kind^="public"][data-copimine-motion="on"] .scene-card-image,
-  body[data-page-kind^="public"][data-copimine-motion="on"] .launcher-hero-visual img,
-  body[data-page-kind^="public"][data-copimine-motion="on"] .news-hero-visual img {
+  body[data-page-kind^="public"][data-copimine-motion="on"] .launcher-hero-visual img {
     transition: transform 120ms ease-out;
   }
 }
@@ -202,11 +198,9 @@ body[data-page-kind^="public"] .hero-sprite-chip:nth-child(3)::after { animation
   body[data-page-kind^="public"] .hero-media-art::after,
   body[data-page-kind^="public"] .scene-card::after,
   body[data-page-kind^="public"] .launcher-hero-visual::after,
-  body[data-page-kind^="public"] .news-hero-visual::after,
   body[data-page-kind^="public"] .hero-media-art img,
   body[data-page-kind^="public"] .scene-card-image,
   body[data-page-kind^="public"] .launcher-hero-visual img,
-  body[data-page-kind^="public"] .news-hero-visual img,
   body[data-page-kind^="public"] .public-section,
   body[data-page-kind^="public"] .public-panel,
   body[data-page-kind^="public"] .launcher-feature-card,

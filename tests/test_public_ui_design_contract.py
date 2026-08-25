@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui17");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui17");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui17");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui18");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui18");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui18");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -42,12 +42,28 @@ def test_launcher_and_news_heroes_use_real_product_assets_without_placeholder_co
     launcher = read("admin-web/frontend/launcher.html")
     news = read("admin-web/frontend/news.html")
     assert 'launcher-home-thumb.jpg' in launcher
-    assert 'launcher-update-thumb.jpg' in news
+    assert 'class="news-hero news-hero-text-only"' in news
+    assert 'launcher-update-thumb.jpg' not in news
     lightbox_start = launcher.index('<dialog id="launcherLightbox"')
     lightbox = launcher[lightbox_start:]
     assert 'src="/assets/launcher-screenshots/launcher-home.jpg"' in lightbox
     assert 'figma.com' not in launcher.lower()
     assert 'figma.com' not in news.lower()
+
+
+def test_news_surface_is_text_first_without_photo_hero_or_media_cards() -> None:
+    news = read("admin-web/frontend/news.html")
+    launcher_render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    launcher_styles = read("admin-web/frontend/assets/css/launcher-news.css")
+    patch_render = read("admin-web/frontend/assets/js/public/patch-render.js")
+    polish = read("admin-web/frontend/assets/css/website-polish.css")
+    assert 'class="news-hero news-hero-text-only"' in news
+    assert "launcher-update-thumb.jpg" not in news
+    assert "news-hero-visual" not in news
+    assert "news-card-media" not in launcher_render
+    assert "news-card-media" not in launcher_styles
+    assert "news-card-media" not in patch_render
+    assert ".news-hero-text-only" in polish
 
 
 def test_public_polish_layer_covers_focus_motion_and_status_recovery() -> None:
@@ -74,13 +90,13 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825siteui17' in public_page
-    assert './site-render.js?v=20260825siteui17' in homepage
+    assert './homepage.js?v=20260825siteui18' in public_page
+    assert './site-render.js?v=20260825siteui18' in homepage
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui17"
-    public_script_key = "20260825siteui17"
+    cache_key = "20260825siteui18"
+    public_script_key = "20260825siteui18"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")

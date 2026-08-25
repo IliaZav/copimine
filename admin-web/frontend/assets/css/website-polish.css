@@ -377,8 +377,8 @@ body.auth-screen .public-site {
   background: rgba(0, 0, 0, .18);
 }
 
-/* Launcher and news share the same editorial hero, but each has its own real
- * product screenshot so the first viewport is not a blank gradient. */
+/* Launcher keeps its product screenshot; news is intentionally text-first so
+ * the update list starts immediately instead of reserving space for media. */
 .public-site .launcher-hero,
 .public-site .news-hero {
   border: 1px solid var(--site-line) !important;
@@ -428,8 +428,7 @@ body.auth-screen .public-site {
 .public-site .launcher-release-card { padding: 1rem; }
 .public-site .launcher-release-card dd { color: var(--site-ink); }
 
-.launcher-hero-visual,
-.news-hero-visual {
+.launcher-hero-visual {
   position: relative;
   z-index: 1;
   min-width: 0;
@@ -441,8 +440,7 @@ body.auth-screen .public-site {
   box-shadow: var(--site-shadow-soft);
 }
 
-.launcher-hero-visual img,
-.news-hero-visual img {
+.launcher-hero-visual img {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -451,11 +449,9 @@ body.auth-screen .public-site {
   transition: transform 420ms cubic-bezier(.2, .7, .2, 1), opacity 220ms ease;
 }
 
-.launcher-hero-visual:hover img,
-.news-hero-visual:hover img { transform: scale(1.035); opacity: 1; }
+.launcher-hero-visual:hover img { transform: scale(1.035); opacity: 1; }
 
-.launcher-hero-visual figcaption,
-.news-hero-visual figcaption {
+.launcher-hero-visual figcaption {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -467,8 +463,7 @@ body.auth-screen .public-site {
   color: #f5fff7;
 }
 
-.launcher-hero-visual figcaption span,
-.news-hero-visual figcaption span {
+.launcher-hero-visual figcaption span {
   color: var(--site-moss);
   font-size: .72rem;
   font-weight: 800;
@@ -476,20 +471,16 @@ body.auth-screen .public-site {
   text-transform: uppercase;
 }
 
-.launcher-hero-visual figcaption strong,
-.news-hero-visual figcaption strong { font-size: .92rem; line-height: 1.3; }
-
-.public-site .news-hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, .78fr);
-  gap: 22px;
-  align-items: center;
-  padding: clamp(1.4rem, 4vw, 2.8rem);
-}
+.launcher-hero-visual figcaption strong { font-size: .92rem; line-height: 1.3; }
 
 .public-site .news-hero-copy { position: relative; z-index: 1; }
 
-.public-site .news-hero-visual { width: 100%; }
+.public-site .news-hero-text-only {
+  display: block;
+  padding: clamp(1.4rem, 4vw, 2.8rem);
+}
+
+.public-site .news-hero-text-only .news-hero-copy { max-width: 56rem; }
 
 .public-site .launcher-feature-grid,
 .public-site .launcher-steps,
@@ -572,11 +563,9 @@ body.auth-screen .public-site {
   .public-site .hero h1,
   .public-site .page-hero h1 { max-width: 18ch; }
 
-  .public-site .launcher-hero-grid,
-  .public-site .news-hero-grid { grid-template-columns: 1fr; }
+  .public-site .launcher-hero-grid { grid-template-columns: 1fr; }
 
   .public-site .launcher-hero-side { grid-template-columns: minmax(0, 1.1fr) minmax(250px, .9fr); }
-  .public-site .news-hero-visual { max-width: 680px; }
 }
 
 @media (max-width: 620px) {
@@ -601,7 +590,6 @@ body.auth-screen .public-site {
   .public-site .launcher-gallery,
   .public-site .launcher-technical,
   .public-site .news-list { grid-template-columns: 1fr; }
-  .public-site .news-hero-grid { padding: 1.2rem; }
   .public-site .shop-empty-state { grid-template-columns: 1fr; }
   .public-site .shop-empty-copy .btn { width: 100%; }
 }

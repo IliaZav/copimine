@@ -133,9 +133,9 @@ def test_public_templates_bust_the_cache_for_the_copy_audit_release():
     for path in PUBLIC_TEMPLATES:
         if path.endswith("/mods.html"):
             continue
-        assert "style.css?v=20260825siteui7" in read(path), path
+        assert "style.css?v=20260825siteui8" in read(path), path
 
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
-    assert "./homepage.js?v=20260825siteui7" in public_page
-    assert "./site-render.js?v=20260825siteui7" in homepage
+    assert "./homepage.js?v=20260825siteui8" in public_page
+    assert "./site-render.js?v=20260825siteui8" in homepage

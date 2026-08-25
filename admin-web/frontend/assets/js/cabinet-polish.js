@@ -82,6 +82,8 @@ function syncCabinetNavState() {
   if (!(app instanceof HTMLElement) || !(toggle instanceof HTMLButtonElement)) return;
   const open = app.classList.contains("nav-open");
   toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  toggle.setAttribute("aria-label", open ? "Закрыть меню" : "Открыть меню");
+  toggle.textContent = open ? "×" : "☰";
   document.body.classList.toggle("cabinet-nav-open", open);
   if (backdrop instanceof HTMLElement) {
     backdrop.classList.toggle("is-open", open);

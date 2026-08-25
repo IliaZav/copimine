@@ -39,6 +39,17 @@ def test_cabinet_shell_uses_one_responsive_breakpoint_for_sidebar_and_toggle() -
     assert '$("cabinetNavToggle")' in runtime
 
 
+def test_mobile_nav_toggle_uses_its_current_explicit_state() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    polish = read("admin-web/frontend/assets/js/cabinet-polish.js")
+    css = read("admin-web/frontend/assets/css/ui-audit.css")
+    assert 'const isOpen = toggle?.getAttribute("aria-expanded") === "true";' in runtime
+    assert "setMobileNav(!isOpen);" in runtime
+    assert 'toggle.setAttribute("aria-label", open ? "Закрыть меню" : "Открыть меню");' in polish
+    assert '#app.nav-open .workspace .topbar' in css
+    assert 'pointer-events: auto' in css
+
+
 def test_generated_tables_have_keyboard_sorting_and_named_filters() -> None:
     runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
     assert '<th scope="col"' in runtime
@@ -69,7 +80,7 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui7"
+    cache_key = "20260825siteui8"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
         assert f"/assets/cabinet.css?v={cache_key}" in source, path.name

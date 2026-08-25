@@ -6648,7 +6648,9 @@ function wire() {
     $("cabinetNavToggle").setAttribute("aria-expanded", "false");
     $("cabinetNavToggle").addEventListener("click", (event) => {
       event.stopPropagation();
-      setMobileNav(!$("app")?.classList.contains("nav-open"));
+      const toggle = $("cabinetNavToggle");
+      const isOpen = toggle?.getAttribute("aria-expanded") === "true";
+      setMobileNav(!isOpen);
     });
   }
   document.addEventListener("click", (event) => {

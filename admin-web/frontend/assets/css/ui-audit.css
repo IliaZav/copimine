@@ -72,6 +72,29 @@
     z-index: 40;
   }
 
+  /* Keep the same control above the open drawer so it can close the drawer
+   * with a real pointer click, not only through a keyboard or nav item. */
+  body[data-page-kind="cabinet"] .cabinet-nav-toggle {
+    position: relative;
+    z-index: 50;
+  }
+
+  /* The drawer is a higher stacking context than the workspace header. Keep
+   * one close affordance above it while the other header actions stay out of
+   * the way. */
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar {
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar > :not(.cabinet-nav-toggle) {
+    visibility: hidden;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar .cabinet-nav-toggle {
+    pointer-events: auto;
+  }
+
   body.panel-admin-mode .top-actions,
   body.junior-admin-mode .top-actions,
   body.player-mode .top-actions {

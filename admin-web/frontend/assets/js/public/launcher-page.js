@@ -1,5 +1,5 @@
 import { loadLauncherMetadata, loadPatchIndex } from "./launcher-data.js?v=20260815launchernews2";
-import { bindLauncherLightbox, renderLauncherMetadata, renderLauncherNews } from "./launcher-render.js?v=20260825siteui7";
+import { bindLauncherLightbox, renderLauncherMetadata, renderLauncherNews } from "./launcher-render.js?v=20260825siteui8";
 
 export async function initLauncherPage() {
   renderLauncherMetadata(null);

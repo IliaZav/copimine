@@ -5,7 +5,7 @@ import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom
 import { createAdminCmsPages } from "./admin/cms-pages.js";
 import { createAdminLauncherPages } from "./admin/launcher-pages.js";
 import { createAdminNewsPages } from "./admin/news-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r12";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260825siteui9";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -252,9 +252,9 @@ const navGroups = [
       ["security", "Безопасность", "Права, сессии и доступ", "Б"],
       ["sources", "Источники", "Плагины, файлы и реестр", "И"],
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
-      ["launcher", "Launcher", "Релизы, моды и статистика доставки", "L"],
-      ["news", "Новости", "Patch notes и item-aware изменения", "N"],
-      ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
+      ["launcher", "Лаунчер", "Версии, моды и загрузки", "L"],
+      ["news", "Новости", "Изменения и картинки предметов", "N"],
+      ["cms", "Страницы", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
   }
@@ -359,9 +359,9 @@ const adminSearchSectionItems = [
   { id: "players", target: "players-profile", title: "Профиль игрока", subtitle: "Профиль, инвентарь и действия", group: "Игроки", haystack: "игрок профиль инвентарь действия эффекты timeline", focusNeedle: "Игроки" },
   { id: "security", target: "security-access", title: "Доступ и сессии", subtitle: "Доступ, сессии и защита", group: "Безопасность", haystack: "доступ сессии csrf ip security auth", focusNeedle: "Доступ" },
   { id: "narcotics-recipes", target: "recipes-editor", title: "Редактор рецептов", subtitle: "Котёл, ингредиенты и результат", group: "Наркотики", haystack: "рецепты котёл варка ингредиенты жужево editor", focusNeedle: "Рецепты" },
-  { id: "launcher", target: "launcher-overview", title: "Launcher", subtitle: "Релизы, моды, подпись и статистика", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Launcher" },
-  { id: "news", target: "launcher-news-editor", title: "Новости Launcher", subtitle: "Patch notes и item-aware текстуры", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости Launcher" },
-  { id: "cms", target: "cms-content", title: "CMS и баннеры", subtitle: "Тексты, баннеры и страницы", group: "CMS", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "CMS" },
+  { id: "launcher", target: "launcher-overview", title: "Лаунчер", subtitle: "Версии, моды и загрузки", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Лаунчер" },
+  { id: "news", target: "launcher-news-editor", title: "Новости лаунчера", subtitle: "Изменения и картинки предметов", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости лаунчера" },
+  { id: "cms", target: "cms-content", title: "Страницы и баннеры", subtitle: "Тексты, баннеры и страницы", group: "Страницы", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "Страницы" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
 
@@ -783,7 +783,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260721r1")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260825siteui9")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;
@@ -1333,7 +1333,7 @@ function firstRunReadinessHtml(data = {}) {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Первый запуск</h2>
-          <p class="panel-subtitle">Проверка после обновления сервера: плагины, конфиги, база и ресурспак.</p>
+          <p class="panel-subtitle">Проверка после обновления сервера: настройки, данные и пакет ресурсов.</p>
         </div>
         ${pill(`${ready}%`, ready >= 90 ? "good" : ready >= 70 ? "warn" : "bad")}
       </div>
@@ -1344,7 +1344,7 @@ function firstRunReadinessHtml(data = {}) {
             <strong>${row.ok ? "OK" : "Проверить"}</strong>
             <em>${esc(row.detail || row.value || "")}</em>
           </div>
-        `).join("") || empty("Данных first-run пока нет", "Открой админку в игре или перезапусти сервер, чтобы плагин записал startup self-check.")}
+        `).join("") || empty("Проверок пока нет", "Открой админку в игре или перезапусти сервер, чтобы сервер показал текущее состояние.")}
       </div>
       ${blockers.length ? `<div class="notice">Что мешает идеальному запуску: ${blockers.map(x => esc(x.name)).join(", ")}</div>` : ""}
     </section>

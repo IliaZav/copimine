@@ -29,15 +29,15 @@ export function createAdminNewsPages(deps) {
   }
 
   function itemEditor(items) {
-    if (!items.length) return `<div class="empty-state">Добавь item-aware запись, если patch касается конкретного предмета.</div>`;
+    if (!items.length) return `<div class="empty-state">Добавь предмет, если обновление касается конкретной вещи.</div>`;
     return items.map((item, index) => `<div class="launcher-news-item-card">
       <div class="form-grid">
-        <div class="field-stack"><label for="launcherNewsItemId-${index}">Item ID</label><input id="launcherNewsItemId-${index}" value="${esc(item.itemId || "")}" placeholder="copimine:token" /></div>
+        <div class="field-stack"><label for="launcherNewsItemId-${index}">Ключ предмета</label><input id="launcherNewsItemId-${index}" value="${esc(item.itemId || "")}" placeholder="copimine:token" /></div>
         <div class="field-stack"><label for="launcherNewsItemName-${index}">Название</label><input id="launcherNewsItemName-${index}" value="${esc(item.displayName || "")}" /></div>
         <div class="field-stack"><label for="launcherNewsItemIcon-${index}">Текстура</label><input id="launcherNewsItemIcon-${index}" value="${esc(item.iconUrl || "")}" placeholder="/assets/patch-items/token.png" /></div>
         <div class="field-stack full"><label for="launcherNewsItemChanges-${index}">Изменения, по одному в строке</label><textarea id="launcherNewsItemChanges-${index}" rows="3">${esc(asArray(item.changes).join("\n"))}</textarea></div>
       </div>
-      <button class="btn btn-danger btn-small" data-click="adminNewsRemoveItem(${index})">Удалить item</button>
+      <button class="btn btn-danger btn-small" data-click="adminNewsRemoveItem(${index})">Удалить предмет</button>
     </div>`).join("");
   }
 
@@ -53,18 +53,18 @@ export function createAdminNewsPages(deps) {
     setView(`
       <section class="layout-grid launcher-admin-grid launcher-admin-metrics">
         ${metric("Записи", list.length, "Черновики и публикации", list.length ? "good" : "warn")}
-        ${metric("Опубликованы", publishedCount, "Доступны в public feed", publishedCount ? "good" : "neutral")}
+        ${metric("Опубликованы", publishedCount, "Видны на странице новостей", publishedCount ? "good" : "neutral")}
         ${metric("Черновики", draftCount, "Можно править без публикации", draftCount ? "warn" : "good")}
-        ${metric("Item-aware", list.filter((row) => asArray(row.items).length).length, "Patch notes с текстурами", "neutral")}
+        ${metric("Предметы в изменениях", list.filter((row) => asArray(row.items).length).length, "Картинки предметов", "neutral")}
       </section>
       <section id="launcher-news-editor" class="layout-grid grid-2 launcher-admin-grid">
-        ${panel("Список patch notes", "Выбери запись, отредактируй её в этой же странице и опубликуй отдельно.", `
+        ${panel("Список обновлений", "Выбери запись, отредактируй её здесь и опубликуй отдельно.", `
           <div class="launcher-news-list">
             ${(list.map((row) => `<button class="launcher-news-list-row${row.slug === selectedSlug ? " is-active" : ""}" data-click="adminNewsEdit('${esc(row.slug)}')"><span><strong>${esc(cleanText(row.title || row.slug))}</strong><small>${esc(row.version || "без версии")}</small></span><span>${row.publishedAt ? "Опубликовано" : "Черновик"}</span></button>`).join("")) || `<div class="empty-state">Новостей пока нет.</div>`}
           </div>
           <div class="action-strip"><button class="btn btn-secondary" data-click="adminNewsNew()">Новая запись</button></div>
         `)}
-        ${panel("Публикация", "Публичный контракт обновляется только после явного подтверждения.", `
+        ${panel("Публикация", "Страница обновляется только после явного подтверждения.", `
           <div class="launcher-news-status"><span>Текущая запись</span><strong>${esc(selectedSlug || "новая")}</strong><small>${esc(active.publishedAt ? `Опубликовано ${dt(active.publishedAt)}` : "Черновик")}</small></div>
           <div class="action-strip wrap">
             <button class="btn btn-primary" data-click="adminNewsSave()">Сохранить черновик</button>
@@ -72,9 +72,9 @@ export function createAdminNewsPages(deps) {
           </div>
         `)}
       </section>
-      ${panel("Редактор новости", "Текст хранится как plain text; HTML и небезопасные ссылки не принимаются.", `
+      ${panel("Редактор новости", "Пиши обычным текстом: разметка и небезопасные ссылки не принимаются.", `
         <div class="form-grid">
-          <div class="field-stack"><label for="launcherNewsSlug">Slug</label><input id="launcherNewsSlug" value="${esc(active.slug || "")}" placeholder="copimine-launcher-1-0-1" /></div>
+          <div class="field-stack"><label for="launcherNewsSlug">Короткое имя</label><input id="launcherNewsSlug" value="${esc(active.slug || "")}" placeholder="copimine-launcher-1-0-1" /></div>
           <div class="field-stack"><label for="launcherNewsVersion">Версия</label><input id="launcherNewsVersion" value="${esc(active.version || "")}" placeholder="1.0.1" /></div>
           <div class="field-stack full"><label for="launcherNewsTitle">Заголовок</label><input id="launcherNewsTitle" value="${esc(active.title || "")}" placeholder="Что изменилось" /></div>
           <div class="field-stack full"><label for="launcherNewsSummary">Коротко, до 3 пунктов</label><textarea id="launcherNewsSummary" rows="3" placeholder="Один пункт на строку">${esc(asArray(active.summary).join("\n"))}</textarea></div>
@@ -82,14 +82,14 @@ export function createAdminNewsPages(deps) {
           <div class="field-stack"><label for="launcherNewsTechnical">Техническое</label><textarea id="launcherNewsTechnical" rows="5">${esc(asArray(active.sections?.technical).join("\n"))}</textarea></div>
           <div class="field-stack full"><label for="launcherNewsBugfixes">Исправления</label><textarea id="launcherNewsBugfixes" rows="5">${esc(asArray(active.sections?.bugfixes).join("\n"))}</textarea></div>
         </div>
-        <div class="launcher-news-items-head"><div><h3>Изменения предметов</h3><p class="muted">Можно указать texture path из <code>/assets/patch-items/</code>.</p></div><button class="btn btn-secondary btn-small" data-click="adminNewsAddItem()">Добавить item</button></div>
+        <div class="launcher-news-items-head"><div><h3>Изменения предметов</h3><p class="muted">К каждой вещи можно добавить картинку из папки с предметами.</p></div><button class="btn btn-secondary btn-small" data-click="adminNewsAddItem()">Добавить предмет</button></div>
         <div class="launcher-news-items">${itemEditor(items)}</div>
       `)}
     `);
   }
 
   async function loadNews() {
-    setLoading("Загружаю новости Launcher");
+    setLoading("Загружаю обновления лаунчера");
     const payload = await safeApi("/api/admin/launcher/news", { news: [] });
     renderNews(asArray(payload.news));
   }
@@ -156,7 +156,7 @@ export function createAdminNewsPages(deps) {
 
   async function adminNewsPublish(slug) {
     try {
-      const headers = await dangerConfirm(`Опубликовать patch notes ${slug}?`, "LAUNCHER_NEWS_PUBLISH");
+      const headers = await dangerConfirm(`Опубликовать обновление ${slug}?`, "LAUNCHER_NEWS_PUBLISH");
       if (!headers) return;
       await api(`/api/admin/launcher/news/${encodeURIComponent(slug)}/publish`, { method: "POST", headers });
       toast("Новости опубликованы");

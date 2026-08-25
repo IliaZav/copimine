@@ -98,3 +98,27 @@ def test_public_motion_script_does_not_add_a_second_navigation_or_dom_handlers()
     assert "createElement(\"nav\")" not in motion
     assert "addEventListener(\"pointermove\"" in motion
     assert "requestAnimationFrame" in motion
+
+
+def test_admin_copy_uses_plain_russian_labels() -> None:
+    preview = read("admin-web/frontend/preview-admin.html")
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    news = read("admin-web/frontend/assets/js/admin/news-pages.js")
+    source = "\n".join((preview, news))
+
+    for phrase in ("Patch notes", "item-aware", "public feed"):
+        assert phrase.lower() not in source.lower(), phrase
+
+    for phrase in (
+        "Релизы, моды и статистика доставки",
+        "Patch notes и item-aware изменения",
+        "Patch notes и item-aware текстуры",
+        "Новости Launcher",
+        "CMS и баннеры",
+        "Проверка после обновления сервера: плагины, конфиги, база и ресурспак",
+    ):
+        assert phrase.lower() not in runtime.lower(), phrase
+
+    assert "Короткие записи об обновлениях" in preview
+    assert "Версии, моды и загрузки" in runtime
+    assert "Картинки предметов" in news

@@ -59,9 +59,22 @@ def test_rune_model_covers_the_block_top_and_has_a_distinct_occupied_variant() -
     assert occupied_model["elements"][0]["to"] == [16.0, 10.0, 16.0]
     assert occupied_model["textures"]["top"] == "copimine:block/end_event_rune_occupied"
     assert "MODEL_RUNE_OVERLAY_OCCUPIED = 830005" in source
-    assert "padOccupants.containsKey(padKey(pad))" in source
+    assert "runeVisualOccupants.containsKey(padKey(pad))" in source
     assert "refreshRuneOverlayVisuals" in source
     assert source.count("entity.setBrightness(new Display.Brightness(15, 15));") >= 2
+
+
+def test_rune_visual_occupancy_is_separate_from_the_official_survival_roster() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    occupancy = source[source.index("private void updatePadOccupancy()"):source.index("private String padKey")]
+    rune_item = source[source.index("private ItemStack runeOverlayItem"):source.index("private void refreshRuneOverlayVisuals")]
+    assert "runeVisualOccupants" in source
+    assert "detectRuneOccupants(world, false)" in occupancy
+    assert "detectRuneOccupants(world, true)" in occupancy
+    assert "runeVisualOccupants.containsKey(padKey(pad))" in rune_item
+    assert "GameMode.SPECTATOR" in occupancy
+    assert "GameMode.CREATIVE" in occupancy
+    assert "padOccupants.size() == requiredPlayers" in occupancy
 
 
 def test_visual_repair_uses_loaded_world_entities_after_chunk_unload() -> None:

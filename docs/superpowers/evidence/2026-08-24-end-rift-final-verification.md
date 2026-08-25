@@ -30,7 +30,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 
 | Артефакт | SHA-256 |
 | --- | --- |
-| End Event JAR | `B9D1D9ECE52F1142C590DDF992A093F2DE6463FBC62F38E2C6338F962281BF71` |
+| End Event JAR | `E9F70F46556D69AC56EC17FC5177552435EE78E2B8547201C49729F5FCCAC122` |
 | Fabric client JAR | `72A5CE4DF0B8419B1A951D8A699425B3F356A79B17B249BAB0021C6DE708BEE4` |
 | Resource pack ZIP | `9D65787D380791D0E873B29F6E126E81A69D17D5BAD4B66D5AB23DB5738974AB` |
 | Local pack SHA-1 | `aaa2605b2b0f2751f5eab5258173d5c6699d45be` |
@@ -41,7 +41,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 
 `tests\RunEndRiftEventChecks.ps1` завершился успешно:
 
-- Python contracts: `125 passed, 14 warnings`.
+- Python contracts: `127 passed, 14 warnings`.
 - WorldCore, Artifacts, End Event и Fabric client собраны.
 - Pure domain tests: все 5 `OK`.
 - Durable persistence/layout tests: все 3 `OK`.
@@ -53,7 +53,7 @@ Worktree: `D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event`
 | --- | --- |
 | WorldCore | `380793DEB02B6C51C42DAE446A39A7BF969F7DF33510989590AC50317EE90E99` |
 | Artifacts | `A2FEB49C31FA9FBA61D9D1DA655E52F888BE41FEC10F904E9FC437F0618BD7DE` |
-| End Event | `B9D1D9ECE52F1142C590DDF992A093F2DE6463FBC62F38E2C6338F962281BF71` |
+| End Event | `E9F70F46556D69AC56EC17FC5177552435EE78E2B8547201C49729F5FCCAC122` |
 | Fabric client build (`CopiMineClient/build/libs/CopiMineClient-0.1.0.jar`) | `72A5CE4DF0B8419B1A951D8A699425B3F356A79B17B249BAB0021C6DE708BEE4` |
 | Resource pack ZIP | `9D65787D380791D0E873B29F6E126E81A69D17D5BAD4B66D5AB23DB5738974AB` |
 
@@ -123,14 +123,25 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 ## Актуальная particle-only ревизия 25 августа 2026
 
 - Сначала новые тесты были запущены в RED: старый `ItemDisplay`/model-путь и отсутствие именованных паттернов были зафиксированы как ожидаемые дефекты.
-- После реализации GREEN-прогон дал `124 passed, 14 warnings`; отдельный тест на `void_mark` сначала воспроизвёл `NullPointerException`, затем после исправления порядка построения вершин дал `1 passed`.
+- После реализации particle-only GREEN-прогон дал `127 passed, 14 warnings`; отдельный тест на `void_mark` сначала воспроизвёл `NullPointerException`, затем после исправления порядка построения вершин дал `1 passed`.
 - Все восемь паттернов теперь выбираются по имени: `void_blast`, `rift_projectile`, `void_mark`, `summon_servants`, `will_distortion`, `rift_step`, `void_snare`, `echo_pulse`. Для совместимости контракт также содержит имя `summon`.
 - `rift_projectile` оставляет только невидимый Snowball-контроллер столкновения (`setInvisible=true`, `setVisibleByDefault=false`) и серверные частицы; ItemDisplay, `MODEL_RIFT_PROJECTILE`, JSON-модель и PNG удалены.
 - На новом JAR локальный Paper подтвердил для boss spells `BOSS_SPELL_FLIGHT`/`BOSS_SPELL_CAST` с `visual=particle-only pattern=...` для `void_blast`, `rift_projectile`, `void_mark`, `summon_servants`, `will_distortion`; `BOSS_PROJECTILE_SPAWN` и `BOSS_PROJECTILE_HIT` прошли для невидимого контроллера.
 - На новом JAR локальный wave 3 подтвердил `MINIBOSS_SPELL_FLIGHT`/`MINIBOSS_SPELL_CAST` для `echo_pulse`, `rift_step`, `void_snare`; после исправления `void_mark` в текущем рестарте `latest_restart_error_lines=0`.
 - После проверки выполнены только локальные `cmend wave clear` и `cmend boss kill cleanup`; финальный status: `event-mobs=0`, `boss=none`, `coreOverlay=true coreModel=830002 runes=2/2 occupied=0`.
 - Новая сборка ресурспака не содержит `assets/copimine/models/item/end_event_rift_projectile.json` и `assets/copimine/textures/item/end_event_rift_projectile.png`; SHA-1: `aaa2605b2b0f2751f5eab5258173d5c6699d45be`.
-- Попытка снять новый Computer Use-кадр остановилась до выбора окна: локальный `node_repl` вернул `failed to write kernel assets: Системе не удается найти указанный путь`. Поэтому ниже не выдаются исторические GUI-кадры за доказательство именно particle-only ревизии; runtime-доказательство этой ревизии — свежий Paper log и GREEN-тесты.
+- Computer Use `node_repl` в этом окружении вернул `failed to write kernel assets: Системе не удается найти указанный путь`; particle-only ревизия поэтому подтверждена свежим Paper log, GREEN-тестами и локальным Fabric-клиентом, запущенным напрямую на `127.0.0.1:25566`.
+
+## Актуальная проверка occupied-руны и HP хранителей — 25 августа 2026
+
+- Красные контракты сначала воспроизвели оба дефекта: отображение occupied-руны зависело от survival-only `padOccupants`, а элитные хранители получали `80.0/80.0` HP.
+- Исправление разделяет `runeVisualOccupants` и официальный `padOccupants`: Creative-оператор может увидеть визуальное переключение, но не попадает в ритуальный roster и не запускает countdown. `runeOverlayItem` теперь выбирает occupied-модель по визуальному реестру.
+- У элитных хранителей в `spawnEnderman` установлены `maxHealth=40.0` и `health=40.0`; основной босс по-прежнему имеет `1200.0` HP.
+- После установки JAR `E9F70F46556D69AC56EC17FC5177552435EE78E2B8547201C49729F5FCCAC122` на локальный Paper реальный клиент `EndRiftScreen` стоял на паде `CopiMine 13,69,-39`: status показал `pads=0/2`, `runes=2/2 occupied=1`, а Paper log — `RUNE_OCCUPANCY_CHANGED ... visual=1 official=0`.
+- При уходе на `CopiMine 13,69,-35` тот же клиент получил `runes=2/2 occupied=0`; после возврата на пад снова `occupied=1`. Это проверяет именно переход состояния на живом сервере, а не только статический ресурс-пак.
+- Реальные кадры из Minecraft сохранены в `local-runtime\\rune-captures\\creative-idle-feet-minecraft-only.png` и `local-runtime\\rune-captures\\creative-occupied-feet-minecraft-only.png`: во втором кадре руна ярко-зелёная, полностью лежит на верхней плоскости блока и не висит в воздухе.
+- Для HP выполнена локальная `cmend wave spawn 3`; RCON NBT-запрос вернул для именованных элитных сущностей `Элитный эндермен · Кандалы Пустоты ... 40.0f` и `Элитный эндермен · Импульс Эха ... 40.0f`. После этого выполнены `cmend wave clear` и проверка status: `event-mobs=0`, `boss=none`.
+- Для обхода AuthMe во время GUI-проверки был обратимо перемещён только локальный `AuthMe-5.6.0.jar`; перед завершением он возвращён на место. Локальный Paper остановлен, production и launcher/site не затрагивались.
 
 ## Реальная GUI-проверка
 

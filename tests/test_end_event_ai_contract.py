@@ -59,6 +59,16 @@ def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller(
     assert "miniBossSpell = null" not in MAIN
 
 
+def test_rift_guardians_have_exactly_40_health() -> None:
+    start = MAIN.index("private void spawnEnderman")
+    end = MAIN.index("private Entity spawnOwnedMob", start)
+    body = MAIN[start:end]
+    assert "max.setBaseValue(40.0D);" in body
+    assert "enderman.setHealth(40.0D);" in body
+    assert "max.setBaseValue(80.0D);" not in body
+    assert "enderman.setHealth(80.0D);" not in body
+
+
 def test_ai_config_has_separate_cooldowns_and_telegraphs_for_boss_and_minibosses() -> None:
     for marker in (
         "recent-target-memory: 3",

@@ -191,6 +191,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> shardChannelStarts = new HashMap<>();
     private final Map<UUID, BukkitTask> shardChannelTasks = new HashMap<>();
     private final Map<String, UUID> padOccupants = new LinkedHashMap<>();
+    // This map drives only the visible rune state.  It deliberately remains
+    // separate from the official survival-only roster so a local OP can see
+    // the occupied texture while testing in Creative without starting the
+    // real ritual or changing reward eligibility.
+    private final Map<String, UUID> runeVisualOccupants = new LinkedHashMap<>();
     private final Map<UUID, String> playerCategories = new HashMap<>();
     private final Set<UUID> combatHelpers = new LinkedHashSet<>();
     private final Set<UUID> finalWaveEntities = new HashSet<>();
@@ -577,6 +582,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             discardUncommittedRewardStatuses();
         }
         padOccupants.clear();
+        runeVisualOccupants.clear();
         if (!isConfigured()) {
             EventLayoutState previousLayout = layoutState;
             layoutState = new EventLayoutState(null, null, null, null, Map.of(), "UNSET", previousLayout.portalRoom());
@@ -2472,6 +2478,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         recoveryReason = "";
         activeWave = 0;
         padOccupants.clear();
+        runeVisualOccupants.clear();
         stateMachine = new EndEventStateMachine(EventPhase.UNCONFIGURED);
         phase = EventPhase.UNCONFIGURED;
         taskRegistry = new EventTaskRegistry(generation);
@@ -3259,7 +3266,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private ItemStack runeOverlayItem(EventSnapshot.PadSnapshot pad) {
-        boolean occupied = padOccupants.containsKey(padKey(pad));
+        boolean occupied = runeVisualOccupants.containsKey(padKey(pad));
         return overlayItem(occupied ? MODEL_RUNE_OVERLAY_OCCUPIED : MODEL_RUNE_OVERLAY,
                 occupied ? "end_event_pad_occupied" : "end_event_pad");
     }
@@ -3532,21 +3539,57 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void updatePadOccupancy() {
         maintainRitualVisuals();
+        Map<String, UUID> previousVisualOccupants = new LinkedHashMap<>(runeVisualOccupants);
         Map<String, UUID> previousOccupants = new LinkedHashMap<>(padOccupants);
+        runeVisualOccupants.clear();
         padOccupants.clear();
-        if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
-            if (!previousOccupants.isEmpty()) {
+        if (!coreCharged) {
+            if (!previousVisualOccupants.isEmpty() || !previousOccupants.isEmpty()) {
                 refreshRuneOverlayVisuals();
             }
             return;
         }
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            if (!previousOccupants.isEmpty()) {
+            if (!previousVisualOccupants.isEmpty() || !previousOccupants.isEmpty()) {
                 refreshRuneOverlayVisuals();
             }
             return;
         }
+        // Visual occupancy accepts Creative operators but still rejects dead
+        // and Spectator players.  This is presentation-only and cannot start
+        // the ritual or enter the official reward roster.
+        runeVisualOccupants.putAll(detectRuneOccupants(world, false));
+        boolean visualChanged = !previousVisualOccupants.equals(runeVisualOccupants);
+        if (visualChanged) {
+            refreshRuneOverlayVisuals();
+        }
+        if (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN) {
+            if (visualChanged) {
+                getLogger().info("RUNE_OCCUPANCY_CHANGED event=" + eventId
+                        + " visual=" + runeVisualOccupants.size() + " official=0");
+            }
+            return;
+        }
+        padOccupants.putAll(detectRuneOccupants(world, true));
+        boolean officialChanged = !previousOccupants.equals(padOccupants);
+        if (officialChanged) {
+            refreshRuneOverlayVisuals();
+        }
+        if (visualChanged || officialChanged) {
+            getLogger().info("RUNE_OCCUPANCY_CHANGED event=" + eventId
+                    + " visual=" + runeVisualOccupants.size()
+                    + " official=" + padOccupants.size());
+        }
+        if (padOccupants.size() == requiredPlayers) {
+            beginCountdownIfReady();
+        } else if (phase == EventPhase.COUNTDOWN) {
+            cancelRitual("pad occupancy changed");
+        }
+    }
+
+    private Map<String, UUID> detectRuneOccupants(World world, boolean officialRoster) {
+        Map<String, UUID> occupants = new LinkedHashMap<>();
         Set<UUID> assigned = new HashSet<>();
         List<Player> players = new ArrayList<>(Bukkit.getOnlinePlayers());
         players.sort(Comparator.comparing(player -> player.getUniqueId().toString()));
@@ -3556,7 +3599,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     .filter(player -> player.getWorld().equals(world) && !player.isDead()
                             && player.getHealth() > 0.0D
                             && player.getGameMode() != org.bukkit.GameMode.SPECTATOR
-                            && player.getGameMode() != org.bukkit.GameMode.CREATIVE
+                            && (!officialRoster || player.getGameMode() != org.bukkit.GameMode.CREATIVE)
                             && !assigned.contains(player.getUniqueId()))
                     .filter(player -> player.getLocation().distanceSquared(padLocation)
                             <= config.padOccupancyRadius() * config.padOccupancyRadius())
@@ -3564,19 +3607,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     .orElse(null);
             if (closest != null) {
                 assigned.add(closest.getUniqueId());
-                padOccupants.put(padKey(pad), closest.getUniqueId());
-                registerParticipant(closest);
+                occupants.put(padKey(pad), closest.getUniqueId());
+                if (officialRoster) {
+                    registerParticipant(closest);
+                }
             }
         }
-        if (!previousOccupants.equals(padOccupants)
-                || (coreCharged && (phase == EventPhase.READY_FOR_PLAYERS || phase == EventPhase.COUNTDOWN))) {
-            refreshRuneOverlayVisuals();
-        }
-        if (padOccupants.size() == requiredPlayers) {
-            beginCountdownIfReady();
-        } else if (phase == EventPhase.COUNTDOWN) {
-            cancelRitual("pad occupancy changed");
-        }
+        return occupants;
     }
 
     private void maintainRitualVisuals() {
@@ -3713,6 +3750,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             rewardStatuses.clear();
             activeWave = 0;
             padOccupants.clear();
+            runeVisualOccupants.clear();
             clearCombatAiState();
             forcePhase(EventPhase.READY_FOR_PLAYERS, "official roster commit could not be persisted");
             getLogger().severe("RITUAL_COMMIT_FAILED event=" + eventId + " generation=" + generation);
@@ -3726,6 +3764,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase == EventPhase.COUNTDOWN) {
             phaseDeadlineMillis = 0L;
             padOccupants.clear();
+            runeVisualOccupants.clear();
             transition(EventPhase.READY_FOR_PLAYERS, reason, eventId + ":ritual-cancel:" + UUID.randomUUID());
             getLogger().info("RITUAL_CANCELLED event=" + eventId + " reason=" + reason);
         }
@@ -4444,8 +4483,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             EndRiftAiPolicy.MiniBossSpell miniBossSpell = EndRiftAiPolicy.miniBossSpell(wave, abilityIndex);
             AttributeInstance max = enderman.getAttribute(Attribute.GENERIC_MAX_HEALTH);
             if (max != null) {
-                max.setBaseValue(80.0D);
-                enderman.setHealth(80.0D);
+                max.setBaseValue(40.0D);
+                enderman.setHealth(40.0D);
             }
             AttributeInstance attack = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
             if (attack != null) {
@@ -5871,6 +5910,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stopControl(uuid);
         cancelShardChannel(uuid);
         padOccupants.values().removeIf(uuid::equals);
+        runeVisualOccupants.values().removeIf(uuid::equals);
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
@@ -5879,6 +5919,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stopControl(uuid);
         cancelShardChannel(uuid);
         padOccupants.values().removeIf(uuid::equals);
+        runeVisualOccupants.values().removeIf(uuid::equals);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
@@ -5894,6 +5935,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stopControl(uuid);
         cancelShardChannel(uuid);
         padOccupants.values().removeIf(uuid::equals);
+        runeVisualOccupants.values().removeIf(uuid::equals);
         if (isCombatPhase()) {
             bindBossClient(event.getPlayer());
             bindEventEntitiesClient(event.getPlayer());

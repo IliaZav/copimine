@@ -868,7 +868,10 @@ export function createHomepageRenderer() {
       presidentName.textContent = "Президент пока не выбран";
       presidentMeta.textContent = "Должность свободна.";
       skinShell?.classList.add("hidden");
-      if (skinImage) skinImage.removeAttribute("src");
+      if (skinImage) {
+        skinImage.src = fallbackAvatar;
+        skinImage.alt = "Скин президента не выбран";
+      }
       return;
     }
     presidentName.textContent = name;
@@ -969,7 +972,8 @@ export function createHomepageRenderer() {
       skinImage.dataset.bound = "true";
       skinImage.addEventListener("error", () => {
         skinShell?.classList.add("hidden");
-        skinImage.removeAttribute("src");
+        skinImage.src = fallbackAvatar;
+        skinImage.alt = "Предпросмотр скина временно недоступен";
       });
     }
   }

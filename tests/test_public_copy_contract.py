@@ -137,5 +137,5 @@ def test_public_templates_bust_the_cache_for_the_copy_audit_release():
 
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
-    assert "./homepage.js?v=20260809publiccopy1" in public_page
-    assert "./site-render.js?v=20260809publiccopy1" in homepage
+    assert "./homepage.js?v=20260825siteui1" in public_page
+    assert "./site-render.js?v=20260825siteui1" in homepage

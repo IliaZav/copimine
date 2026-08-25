@@ -94,13 +94,15 @@ def test_confirmation_gui_cannot_be_modified_or_used_by_another_player() -> None
     assert "CoreRemovalConfirmHolder" in drag
 
 
-def test_runes_are_repaired_while_collect_players_phase_is_live() -> None:
+def test_runes_are_repaired_while_charged_event_is_live() -> None:
     tick = _method_body(MAIN, "private void tick()", "private void updatePadOccupancy")
     occupancy = _method_body(MAIN, "private void updatePadOccupancy()", "private String padKey")
     maintenance = _method_body(MAIN, "private void maintainRitualVisuals()", "private String padKey")
     assert "maintainRitualVisuals();" in tick or "maintainRitualVisuals();" in occupancy
-    assert "READY_FOR_PLAYERS" in maintenance
-    assert "COUNTDOWN" in maintenance
+    assert "if (!coreCharged)" in maintenance
+    assert "phase == EventPhase.UNLOCKED" in maintenance
+    assert "READY_FOR_PLAYERS" not in maintenance
+    assert "COUNTDOWN" not in maintenance
     assert "findRuneOverlay(world, floor)" in maintenance
     assert "rebuildPersistedVisuals();" in maintenance
     assert "pads.size()" in maintenance

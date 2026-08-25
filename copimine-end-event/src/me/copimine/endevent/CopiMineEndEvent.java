@@ -3634,7 +3634,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN)) {
+        if (!coreCharged) {
             return;
         }
         int missing = 0;

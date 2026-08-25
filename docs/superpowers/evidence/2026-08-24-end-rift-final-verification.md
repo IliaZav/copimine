@@ -152,3 +152,11 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - После заполнения ресурсов status стал `READY_FOR_PLAYERS`, `coreModel=830002`, `runes=2/2`. При телепортации тестового игрока на руну status показал `occupied=1`; в GUI занятая руна реально переключилась на ярко-зелёную текстуру и осталась на поверхности блока.
 - Локальный `/cmend test ai` показал в GUI event-мобов и босса; отдельный свежий кадр содержит видимые фиолетовые частицы летящего заклинания. После проверки выполнен `/cmend core remove confirm`; status снова чистый, `event-mobs=0`, `boss=none`, `coreOverlay=false`, `runes=0/0`.
 - Эти наблюдения сделаны в реальном окне Minecraft, а не на концепт-рендерах. Окно лаунчера не использовалось.
+
+## Watchdog свободных рун в боевой фазе — 25 августа 2026
+
+- RED runtime reproduction на локальном Paper: при `state=WAVE_1`, `coreOverlay=true`, `runes=2/2` удаление одной принадлежащей событию `ItemDisplay` командой `execute positioned 13.5 69 -39 run kill @e[type=minecraft:item_display,distance=..0.5]` оставляло `runes=1/2`; восстановление в боевой фазе не запускалось.
+- Причина была в лишнем ограничении `maintainRitualVisuals()`: watchdog работал только в `READY_FOR_PLAYERS` и `COUNTDOWN`, хотя руны должны оставаться видимыми во всех заряженных фазах до `UNLOCKED`.
+- После минимального исправления и установки нового JAR повтор того же сценария вернул `runes=2/2`; Paper записал `END_EVENT_RUNE_VISUAL_REBUILD ... phase=WAVE_1 missing=1 expected=2`, затем заново создал core/rune overlays.
+- Добавлены регрессионные контракты на ремонт рун в боевых фазах и обновлён устаревший контракт арены. End Event suite: `128 passed, 14 warnings`; `RunEndRiftEventChecks.ps1`: `End Rift local checks passed`.
+- Свежий кадр реального Minecraft с точным видом на свободную руну сохранён в `local-runtime\\rune-captures\\idle-exact-pad-view.png`; это игровой кадр, а не концепт. Production `server.properties` после gate восстановлен на SHA1 `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.

@@ -90,6 +90,14 @@ def test_visual_repair_uses_loaded_world_entities_after_chunk_unload() -> None:
     assert "phase == EventPhase.UNLOCKED" in maintain
 
 
+def test_visual_repair_keeps_runes_visible_during_combat_phases() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    maintain = source[source.index("private void maintainRitualVisuals"):source.index("private String padKey")]
+    assert "if (!coreCharged) {\n            return;\n        }" in maintain
+    assert "phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN" not in maintain
+    assert "if (missing > 0 && System.currentTimeMillis() >= nextRitualVisualRepairMillis)" in maintain
+
+
 def test_status_and_rebuild_paths_expose_and_repair_real_core_and_rune_overlays() -> None:
     source = MAIN.read_text(encoding="utf-8")
     assert "visualStatusText()" in source

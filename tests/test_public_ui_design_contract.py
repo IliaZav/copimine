@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css");' in style
-    assert style.rfind('@import url("./css/website-polish.css");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui11");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui11");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui11");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -28,6 +28,8 @@ def test_public_navigation_collapses_before_tablet_overflow_and_preserves_access
     assert '@media (max-width: 900px)' in css
     assert '.public-nav.public-nav-open nav' in css
     assert '.public-mobile-toggle' in css
+    assert '.public-mobile-toggle:hover' in css
+    assert '.public-mobile-toggle:focus-visible' in css
 
 
 def test_launcher_and_news_heroes_use_real_product_assets_without_placeholder_copy() -> None:
@@ -71,7 +73,7 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui9"
+    cache_key = "20260825siteui11"
     public_script_key = "20260825siteui10"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:

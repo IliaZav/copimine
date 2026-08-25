@@ -162,6 +162,13 @@ body.auth-screen .public-site {
   background: rgba(112, 227, 155, .12) !important;
 }
 
+.public-mobile-toggle:hover,
+.public-mobile-toggle:focus-visible {
+  color: #ffffff !important;
+  border-color: rgba(112, 227, 155, .62) !important;
+  background: rgba(112, 227, 155, .2) !important;
+}
+
 /* Shared page rhythm: fewer floating gradients, clearer content starts. */
 .public-page-shell {
   padding: 26px 0 64px;

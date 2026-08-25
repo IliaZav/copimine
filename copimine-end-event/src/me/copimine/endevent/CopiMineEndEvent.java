@@ -548,6 +548,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phase = next;
         getLogger().info("END_EVENT_STATE event=" + eventId + " generation=" + generation
                 + " from=" + current + " to=" + next + " reason=" + reason);
+        if (!isEventMusicPhase() && !isVictoryMusicTail(current, next)) {
+            stopEventMusic();
+        }
         if (persist) {
             saveStateAsync();
         }
@@ -555,10 +558,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void forcePhase(EventPhase next, String reason) {
+        EventPhase previous = phase;
         phase = next;
         stateMachine = new EndEventStateMachine(next);
         if (next == EventPhase.UNLOCKED) {
             releaseOverlayChunkTickets();
+        }
+        if (!isEventMusicPhase() && !isVictoryMusicTail(previous, next)) {
+            stopEventMusic();
         }
         getLogger().info("END_EVENT_STATE forced=" + next + " reason=" + reason);
         saveStateAsync();
@@ -717,12 +724,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3 -> config.wavesMusic();
             case BOSS_ACTIVE -> halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
             case FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> config.bossFinalMusic();
+            case VICTORY_PROCESSING, VICTORY -> config.victoryMusic();
             default -> null;
         };
     }
 
+    private boolean isEventMusicPhase() {
+        if (testCombatAiMode) {
+            return true;
+        }
+        return switch (phase) {
+            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
+                    VICTORY_PROCESSING, VICTORY -> true;
+            default -> false;
+        };
+    }
+
+    private boolean isVictoryMusicTail(EventPhase previous, EventPhase next) {
+        return next == EventPhase.UNLOCKED
+                && (previous == EventPhase.VICTORY_PROCESSING || previous == EventPhase.VICTORY)
+                && config != null
+                && config.victoryMusic() != null
+                && !config.victoryMusic().soundId().isBlank();
+    }
+
     private void playEventMusic(EventConfig.MusicTrack track) {
-        if (track == null || track.soundId().isBlank()) {
+        if (!isEventMusicPhase() || track == null || track.soundId().isBlank()) {
+            stopEventMusic();
             return;
         }
         if (track.soundId().equals(activeMusicTrackId)
@@ -738,7 +767,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (track.loopSeconds() > 0) {
             long period = Math.max(20L, track.loopSeconds() * 20L);
             musicLoopTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
-                if (!isCombatPhase()) {
+                if (!isEventMusicPhase()) {
                     stopEventMusic();
                     return;
                 }
@@ -776,7 +805,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void syncEventMusic(Player player) {
         EventConfig.MusicTrack track = musicForPhase();
-        if (track == null || player == null || !isActiveArenaParticipant(player)) {
+        if (!isEventMusicPhase() || track == null || player == null || !isActiveArenaParticipant(player)) {
+            if (!isEventMusicPhase() && player != null) {
+                stopEventMusic(player);
+            }
             return;
         }
         if (activeMusicTrackId.isBlank()) {
@@ -789,6 +821,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void playTestMusic(Player player, String requested) {
+        if (config == null || !"local".equalsIgnoreCase(config.environment())) {
+            message(player, "&cЛокальная проверка музыки разрешена только при environment=local.");
+            return;
+        }
         EventConfig.MusicTrack track = switch (requested.toLowerCase(Locale.ROOT)) {
             case "waves", "wave" -> config.wavesMusic();
             case "boss" -> config.bossMusic();
@@ -5894,15 +5930,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .reduce((left, right) -> left + ", " + right).orElse("участники");
         String rewardNames = officialRewardRoster.stream().map(this::offlineName).sorted()
                 .reduce((left, right) -> left + ", " + right).orElse("никто");
+        boolean victoryMusicAllowed = phase == EventPhase.VICTORY_PROCESSING || phase == EventPhase.VICTORY;
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendTitle("§5ЭНД ОТКРЫТ", "§dХранитель Разлома пал", 10, 80, 20);
             player.sendMessage("§5Энд открыт. Все участники: §f" + names
                     + " §7| §5Наградный roster: §f" + rewardNames);
             player.playSound(player.getLocation(), Sound.UI_TOAST_CHALLENGE_COMPLETE, 1.0F, 1.0F);
-            player.playSound(player.getLocation(), config.victoryMusic().soundId(), SoundCategory.MUSIC,
-                    (float) config.musicVolume(), 1.0F);
+            if (victoryMusicAllowed) {
+                player.playSound(player.getLocation(), config.victoryMusic().soundId(), SoundCategory.MUSIC,
+                        (float) config.musicVolume(), 1.0F);
+            }
         }
-        getLogger().info("END_EVENT_MUSIC track=" + config.victoryMusic().soundId() + " phase=VICTORY_PROCESSING");
+        if (victoryMusicAllowed) {
+            activeMusicTrackId = config.victoryMusic().soundId();
+            getLogger().info("END_EVENT_MUSIC track=" + config.victoryMusic().soundId()
+                    + " phase=" + phase);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)

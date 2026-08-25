@@ -168,3 +168,12 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - GREEN negative runtime: при намеренно отсутствующем пароле получено `guard-log-count=1`, `class-loading-error-count=0`, `end-event-services-ready-count=0`; спустя ожидание новых class-loading ошибок нет.
 - GREEN positive runtime с локальной PostgreSQL: `RunEndRiftRecoverySmoke.ps1` прошёл `state=UNLOCKED|UNCONFIGURED`, `endUnlocked=true`, `VICTORY_COMPLETE`, `safe unconfigured transition`; `RunEndRiftRuntimeSmoke.ps1` прошёл все typed dependency/refusal/client checks.
 - Recovery smoke дополнен проверкой `NoClassDefFoundError|ClassNotFoundException` и принимает штатный переход в `UNCONFIGURED`, когда WorldCore уже открыт, а ядро отсутствует; production process и конфигурация не использовались.
+
+## Проверка области действия кастомной музыки — 25 августа 2026
+
+- В `CopiMineEndEvent` добавлен единый `isEventMusicPhase()`: автоматические waves/boss/final/victory-треки разрешены только для боевых фаз и `VICTORY_PROCESSING`/`VICTORY`; `UNCONFIGURED`, `COLLECTING`, `READY_FOR_PLAYERS`, `COUNTDOWN`, `UNLOCKED` не получают музыкальный трек.
+- Переход или принудительный выход из обычной фазы вызывает `stopEventMusic()`; loop-task и join-sync дополнительно проверяют фазу, поэтому оставшийся активный трек гасится при выходе из ивента. Победный OGG получает отдельный короткий tail до естественного завершения после `VICTORY_PROCESSING -> UNLOCKED`.
+- Чистый локальный boot после установки JAR `local-runtime\CopiMineEndEvent-music-scope.jar` (`SHA-256 2DA9EF8E04DCCE628AE4DC3CC8B326F0AA91C1D3FD7C71477A2EE608DF4621F8`) оставил `state=COLLECTING`; в `local-runtime\end-rift-final-music-scope-start.out.log` отсутствует `END_EVENT_MUSIC track=`. Это проверяет обычную игру без автоматического event music.
+- RCON того же запуска подтвердил сохранённые локальные границы и визуалы: `core=CopiMine 8,68,-39`, `arena=[-12,65,-59]..[28,71,-19]`, `gate.pos1=29,68,-40`, `gate.pos2=29,71,-38`, `portalroom=CopiMine 31.5,68.0,-42.5`, `runes=2/2`.
+- Явная команда `/cmend test music ...` оставлена только для `environment: local` и логируется отдельным `END_EVENT_MUSIC_TEST`; она не является автоматическим воспроизведением обычной игры. Локальный музыкальный контракт подтвердил все пять треков и победную длительность около 20 секунд.
+- End Rift test suite после изменения: `135 passed, 14 warnings`; focused music/scene run: `10 passed`. PowerShell-сценарий локальной сцены прошёл parser check и строгую проверку Core/arena/gate/portal; ванильные текстуры не переопределяются.

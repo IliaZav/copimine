@@ -87,7 +87,7 @@ client.on('packet', (data, meta) => {
     pitch: relative('pitch') ? position.pitch + data.pitch : data.pitch
   }
   client.write('teleport_confirm', { teleportId: data.teleportId })
-  if (positionTimer === null) {
+  if (positionTimer === null && process.env.END_RIFT_BOT_HOLD_POSITION !== '1') {
     positionTimer = setInterval(() => {
       client.write('position_look', { ...position, onGround: true })
     }, 100)

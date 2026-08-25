@@ -151,7 +151,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
     private static final int MODEL_RUNE_OVERLAY = 830003;
     private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
-    private static final int MODEL_RIFT_PROJECTILE = 830006;
     private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
     private static final int DEFAULT_ARENA_PREVIEW_SECONDS = 10;
     private static final int MAX_ARENA_PREVIEW_SECONDS = 300;
@@ -204,7 +203,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
-    private final Map<UUID, UUID> riftProjectileVisuals = new HashMap<>();
     private final Deque<UUID> recentBossTargets = new ArrayDeque<>();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
 
@@ -3886,7 +3884,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !isMiniBossCombatPhase() || !isCombatTarget(target)) {
             return;
         }
-        launchSpellFlight(miniBoss, mark, miniBossSpellParticle(spell),
+        launchSpellFlight(miniBoss, mark,
                 "MINIBOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), false,
                 callbackGeneration, () -> {
                     if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
@@ -3906,24 +3904,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 });
     }
 
-    private Particle miniBossSpellParticle(EndRiftAiPolicy.MiniBossSpell spell) {
-        return switch (spell) {
-            case RIFT_STEP -> Particle.PORTAL;
-            case VOID_SNARE -> Particle.REVERSE_PORTAL;
-            case ECHO_PULSE -> Particle.END_ROD;
-        };
-    }
-
     /**
      * Sends every event spell through a short, visible particle flight before
      * applying its gameplay effect.  The callback is owned by the current
      * event generation so a reset, cancellation, or phase change cannot leave
      * a delayed damage task behind.
      */
-    private void launchSpellFlight(LivingEntity caster, Location destination, Particle primaryParticle,
+    private void launchSpellFlight(LivingEntity caster, Location destination,
                                    String logMarker, String spellId, UUID targetId, boolean forced,
                                    long callbackGeneration, Runnable impact) {
-        if (taskRegistry == null || caster == null || destination == null || primaryParticle == null
+        if (taskRegistry == null || caster == null || destination == null
                 || impact == null || !isSpellFlightAllowed(caster, forced)
                 || caster.getWorld() == null || destination.getWorld() == null
                 || !caster.getWorld().equals(destination.getWorld())) {
@@ -3934,7 +3924,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Vector delta = end.toVector().subtract(start.toVector());
         getLogger().info(logMarker + " caster=" + caster.getUniqueId()
                 + " spell=" + spellId + " target=" + targetId
-                + " effect=" + SPELL_FLIGHT_EFFECT + " ticks=" + SPELL_FLIGHT_TICKS
+                + " effect=" + SPELL_FLIGHT_EFFECT + " visual=particle-only pattern=" + spellId
+                + " ticks=" + SPELL_FLIGHT_TICKS
                 + " generation=" + callbackGeneration);
         final int[] ticks = {0};
         final BukkitTask[] holder = new BukkitTask[1];
@@ -3948,16 +3939,198 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             double progress = Math.min(1.0D, ++ticks[0] / (double) SPELL_FLIGHT_TICKS);
             Location point = start.clone().add(delta.clone().multiply(progress));
-            caster.getWorld().spawnParticle(primaryParticle, point, 8,
-                    0.08D, 0.08D, 0.08D, 0.01D);
-            caster.getWorld().spawnParticle(Particle.END_ROD, point, 4,
-                    0.04D, 0.04D, 0.04D, 0.0D);
+            spawnSpellFlightPattern(caster.getWorld(), point, delta, spellId, ticks[0]);
             if (progress >= 1.0D) {
                 holder[0].cancel();
                 impact.run();
             }
         }, 0L, 1L);
         taskRegistry.register(holder[0]);
+    }
+
+    /**
+     * Renders one named, particle-only flight pattern for each event spell.
+     * There is intentionally no ItemDisplay or custom model in this path:
+     * the geometry is sent by the server as vanilla particles and therefore
+     * remains visible without changing any vanilla texture.
+     */
+    private void spawnSpellFlightPattern(World world, Location point, Vector direction,
+                                          String spellId, int tick) {
+        if (world == null || point == null || direction == null || spellId == null) {
+            return;
+        }
+        Vector forward = direction.clone();
+        if (forward.lengthSquared() < 0.0001D) {
+            forward = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        forward.normalize();
+        Vector reference = Math.abs(forward.getY()) > 0.85D
+                ? new Vector(1.0D, 0.0D, 0.0D)
+                : new Vector(0.0D, 1.0D, 0.0D);
+        Vector side = forward.clone().crossProduct(reference);
+        if (side.lengthSquared() < 0.0001D) {
+            side = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        side.normalize();
+        Vector vertical = side.clone().crossProduct(forward).normalize();
+        double phase = tick * 0.78D;
+
+        switch (spellId) {
+            case "void_blast" -> {
+                world.spawnParticle(Particle.DRAGON_BREATH, point, 12,
+                        0.14D, 0.14D, 0.14D, 0.015D);
+                world.spawnParticle(Particle.DUST, point, 7,
+                        0.04D, 0.04D, 0.04D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(244, 39, 125), 1.35F));
+                spawnPatternRing(world, point, side, vertical, 0.18D + (tick % 3) * 0.05D,
+                        10, phase, Particle.FLAME);
+            }
+            case "rift_projectile" -> spawnRiftProjectileTrail(point, direction, tick);
+            case "void_mark" -> {
+                Particle.DustOptions markDust = new Particle.DustOptions(Color.fromRGB(190, 76, 255), 1.25F);
+                double halfDiagonal = 0.31D + (tick % 2) * 0.04D;
+                Location[] corners = new Location[4];
+                for (int i = 0; i < corners.length; i++) {
+                    double angle = phase * 0.35D + Math.PI / 4.0D + i * Math.PI / 2.0D;
+                    corners[i] = point.clone()
+                            .add(side.clone().multiply(Math.cos(angle) * halfDiagonal))
+                            .add(vertical.clone().multiply(Math.sin(angle) * halfDiagonal));
+                    world.spawnParticle(Particle.END_ROD, corners[i], 2,
+                            0.015D, 0.015D, 0.015D, 0.0D);
+                    world.spawnParticle(Particle.DUST, corners[i], 2,
+                            0.015D, 0.015D, 0.015D, 0.0D, markDust);
+                }
+                for (int i = 0; i < corners.length; i++) {
+                    spawnPatternSegment(world, corners[i], corners[(i + 1) % corners.length],
+                            Particle.END_ROD, markDust);
+                }
+            }
+            case "summon", "summon_servants" -> {
+                Vector up = new Vector(0.0D, 1.0D, 0.0D);
+                for (int i = 0; i < 6; i++) {
+                    double angle = phase + i * Math.PI / 3.0D;
+                    Location spiral = point.clone()
+                            .add(side.clone().multiply(Math.cos(angle) * 0.24D))
+                            .add(vertical.clone().multiply(Math.sin(angle) * 0.24D))
+                            .add(up.clone().multiply((i - 2.5D) * 0.07D));
+                    world.spawnParticle(Particle.SOUL_FIRE_FLAME, spiral, 2,
+                            0.015D, 0.015D, 0.015D, 0.005D);
+                    world.spawnParticle(Particle.WITCH, spiral, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D);
+                }
+            }
+            case "will_distortion" -> {
+                for (int i = 0; i < 6; i++) {
+                    double along = (i - 2.5D) * 0.15D;
+                    double swing = i % 2 == 0 ? -0.26D : 0.26D;
+                    Location zig = point.clone()
+                            .add(forward.clone().multiply(along))
+                            .add(side.clone().multiply(swing))
+                            .add(vertical.clone().multiply(Math.sin(phase + i) * 0.08D));
+                    world.spawnParticle(Particle.ELECTRIC_SPARK, zig, 2,
+                            0.02D, 0.02D, 0.02D, 0.01D);
+                    world.spawnParticle(Particle.WITCH, zig, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D);
+                }
+            }
+            case "rift_step" -> {
+                for (int i = 0; i < 6; i++) {
+                    double angle = phase + i * Math.PI / 3.0D;
+                    Vector along = forward.clone().multiply((i - 2.5D) * 0.12D);
+                    Location first = point.clone().add(along.clone())
+                            .add(side.clone().multiply(Math.cos(angle) * 0.23D))
+                            .add(vertical.clone().multiply(Math.sin(angle) * 0.23D));
+                    Location second = point.clone().add(along)
+                            .subtract(side.clone().multiply(Math.cos(angle) * 0.23D))
+                            .add(vertical.clone().multiply(Math.sin(angle) * 0.23D));
+                    world.spawnParticle(Particle.PORTAL, first, 2,
+                            0.015D, 0.015D, 0.015D, 0.01D);
+                    world.spawnParticle(Particle.END_ROD, second, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D);
+                }
+            }
+            case "void_snare" -> {
+                double radius = Math.max(0.16D, 0.44D - tick * 0.035D);
+                spawnPatternRing(world, point, side, vertical, radius, 12, phase,
+                        Particle.REVERSE_PORTAL);
+                for (int i = 0; i < 6; i++) {
+                    double angle = phase + i * Math.PI / 3.0D;
+                    Location chain = point.clone()
+                            .add(side.clone().multiply(Math.cos(angle) * radius))
+                            .add(vertical.clone().multiply(Math.sin(angle) * radius));
+                    world.spawnParticle(Particle.SMOKE, chain, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D);
+                }
+            }
+            case "echo_pulse" -> {
+                double radius = 0.10D + tick * 0.075D;
+                spawnPatternRing(world, point, side, vertical, radius, 14, phase,
+                        Particle.SCULK_SOUL);
+                world.spawnParticle(Particle.SONIC_BOOM, point, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+            default -> world.spawnParticle(Particle.END_ROD, point, 4,
+                    0.06D, 0.06D, 0.06D, 0.0D);
+        }
+    }
+
+    private void spawnRiftProjectileTrail(Location point, Vector direction, int tick) {
+        if (point == null || point.getWorld() == null || direction == null) {
+            return;
+        }
+        World world = point.getWorld();
+        Vector forward = direction.clone();
+        if (forward.lengthSquared() < 0.0001D) {
+            forward = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        forward.normalize();
+        Vector reference = Math.abs(forward.getY()) > 0.85D
+                ? new Vector(1.0D, 0.0D, 0.0D)
+                : new Vector(0.0D, 1.0D, 0.0D);
+        Vector side = forward.clone().crossProduct(reference).normalize();
+        Vector vertical = side.clone().crossProduct(forward).normalize();
+        Particle.DustOptions riftDust = new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.20F);
+        for (int i = 0; i < 8; i++) {
+            double angle = tick * 0.95D + i * Math.PI / 4.0D;
+            double radius = 0.16D + i * 0.025D;
+            Location spiral = point.clone()
+                    .add(side.clone().multiply(Math.cos(angle) * radius))
+                    .add(vertical.clone().multiply(Math.sin(angle) * radius))
+                    .add(forward.clone().multiply((i - 3.5D) * 0.035D));
+            world.spawnParticle(Particle.REVERSE_PORTAL, spiral, 2,
+                    0.015D, 0.015D, 0.015D, 0.01D);
+            world.spawnParticle(Particle.DUST, spiral, 1,
+                    0.01D, 0.01D, 0.01D, 0.0D, riftDust);
+        }
+        world.spawnParticle(Particle.DRAGON_BREATH, point, 5,
+                0.04D, 0.04D, 0.04D, 0.01D);
+    }
+
+    private void spawnPatternRing(World world, Location center, Vector axisA, Vector axisB,
+                                  double radius, int points, double phase, Particle particle) {
+        for (int i = 0; i < points; i++) {
+            double angle = phase + (Math.PI * 2.0D * i / points);
+            Location ringPoint = center.clone()
+                    .add(axisA.clone().multiply(Math.cos(angle) * radius))
+                    .add(axisB.clone().multiply(Math.sin(angle) * radius));
+            world.spawnParticle(particle, ringPoint, 1,
+                    0.0D, 0.0D, 0.0D, 0.0D);
+        }
+    }
+
+    private void spawnPatternSegment(World world, Location start, Location end, Particle particle,
+                                     Particle.DustOptions dust) {
+        Vector delta = end.toVector().subtract(start.toVector());
+        int steps = 4;
+        for (int i = 1; i < steps; i++) {
+            Location linePoint = start.clone().add(delta.clone().multiply(i / (double) steps));
+            world.spawnParticle(particle, linePoint, 1,
+                    0.0D, 0.0D, 0.0D, 0.0D);
+            if (dust != null) {
+                world.spawnParticle(Particle.DUST, linePoint, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D, dust);
+            }
+        }
     }
 
     private boolean isSpellFlightAllowed(LivingEntity caster, boolean forced) {
@@ -5048,7 +5221,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY_PROCESSING)))) {
             return;
         }
-        launchSpellFlight(boss, mark, bossSpellParticle(spell),
+        launchSpellFlight(boss, mark,
                 "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
                 callbackGeneration, () -> {
                     if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
@@ -5068,15 +5241,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case WILL_DISTORTION -> sendControlStart(target);
                     }
                 });
-    }
-
-    private Particle bossSpellParticle(EndRiftAiPolicy.BossSpell spell) {
-        return switch (spell) {
-            case VOID_BLAST -> Particle.DRAGON_BREATH;
-            case RIFT_PROJECTILE -> Particle.PORTAL;
-            case VOID_MARK, WILL_DISTORTION -> Particle.REVERSE_PORTAL;
-            case SUMMON_SERVANTS -> Particle.END_ROD;
-        };
     }
 
     private void voidBlast(LivingEntity boss, Player target) {
@@ -5108,23 +5272,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Snowball projectile = boss.getWorld().spawn(start, Snowball.class);
         projectile.setGravity(false);
+        projectile.setInvisible(true);
+        projectile.setVisibleByDefault(false);
         projectile.setShooter(boss);
         projectile.setVelocity(offset.normalize().multiply(RIFT_PROJECTILE_SPEED));
         tag(projectile, EVENT_KIND_PROJECTILE, 0, isOfficialEntity(boss));
         activeRiftProjectiles.add(projectile.getUniqueId());
-        ItemDisplay visual = boss.getWorld().spawn(start.clone(), ItemDisplay.class, display -> {
-            display.setItemStack(overlayItem(MODEL_RIFT_PROJECTILE, "end_event_rift_projectile"));
-            display.setBrightness(new Display.Brightness(15, 15));
-            display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-            display.setBillboard(Display.Billboard.CENTER);
-            display.setViewRange(64.0F);
-            display.setDisplayWidth(0.70F);
-            display.setDisplayHeight(0.70F);
-            display.setPersistent(true);
-            display.setGravity(false);
-        });
-        tag(visual, EVENT_KIND_DISPLAY, 0, isOfficialEntity(boss));
-        riftProjectileVisuals.put(projectile.getUniqueId(), visual.getUniqueId());
         long callbackGeneration = generation;
         Location anchor = coreLocation();
         final int[] age = {0};
@@ -5141,22 +5294,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || anchor == null || projectile.getLocation().getWorld() == null
                     || !projectile.getLocation().getWorld().equals(anchor.getWorld())
                     || projectile.getLocation().distanceSquared(anchor) > config.bossRadius()
-                    * config.bossRadius()
-                    || !isLiveProjectileVisual(projectileId)) {
+                    * config.bossRadius()) {
                 cleanupRiftProjectile(projectileId);
                 return;
             }
-            Entity visualEntity = Bukkit.getEntity(riftProjectileVisuals.get(projectileId));
-            if (visualEntity instanceof ItemDisplay display && display.isValid()) {
-                display.teleport(projectile.getLocation());
-            }
-            projectile.getWorld().spawnParticle(Particle.PORTAL, projectile.getLocation(),
-                    4, 0.05D, 0.05D, 0.05D, 0.01D);
+            spawnRiftProjectileTrail(projectile.getLocation(), projectile.getVelocity(), age[0]);
         }, 1L, 1L);
         riftProjectileTasks.put(projectileId, holder[0]);
         taskRegistry.register(holder[0]);
         getLogger().info("BOSS_PROJECTILE_SPAWN entity=" + projectileId
-                + " visual=" + visual.getUniqueId() + " model=" + MODEL_RIFT_PROJECTILE
+                + " visual=particle-only pattern=rift_projectile"
                 + " target=" + target.getUniqueId() + " max_ticks=" + RIFT_PROJECTILE_MAX_TICKS);
     }
 
@@ -5188,11 +5335,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             task.cancel();
         }
         activeRiftProjectiles.remove(projectileId);
-        UUID visualId = riftProjectileVisuals.remove(projectileId);
-        Entity visual = visualId == null ? null : ownedEntities.remove(visualId);
-        if (visual != null && visual.isValid()) {
-            visual.remove();
-        }
         Entity projectile = ownedEntities.remove(projectileId);
         if (projectile != null && projectile.isValid()) {
             projectile.remove();
@@ -5203,21 +5345,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (UUID projectileId : new HashSet<>(activeRiftProjectiles)) {
             cleanupRiftProjectile(projectileId);
         }
-        for (UUID projectileId : new HashSet<>(riftProjectileVisuals.keySet())) {
-            cleanupRiftProjectile(projectileId);
-        }
         activeRiftProjectiles.clear();
         riftProjectileTasks.clear();
-        riftProjectileVisuals.clear();
-    }
-
-    private boolean isLiveProjectileVisual(UUID projectileId) {
-        UUID visualId = riftProjectileVisuals.get(projectileId);
-        if (visualId == null) {
-            return false;
-        }
-        Entity visual = Bukkit.getEntity(visualId);
-        return visual instanceof ItemDisplay && visual.isValid() && !visual.isDead();
     }
 
     private void voidMark(LivingEntity boss, Player target) {

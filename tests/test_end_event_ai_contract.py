@@ -159,6 +159,17 @@ def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact()
         assert marker in MAIN
 
 
+def test_every_boss_and_miniboss_flight_uses_a_named_visual_pattern() -> None:
+    flight = MAIN[MAIN.index("private void launchSpellFlight"):MAIN.index("private boolean isSpellFlightAllowed")]
+    assert "spawnSpellFlightPattern" in flight
+    assert "spawnRiftProjectileTrail" in MAIN
+    for spell_id in (
+        "void_blast", "rift_projectile", "void_mark", "summon", "will_distortion",
+        "rift_step", "void_snare", "echo_pulse",
+    ):
+        assert f'case "{spell_id}"' in MAIN
+
+
 def test_final_wave_elites_keep_their_bound_spell_flight_path() -> None:
     flight = MAIN[MAIN.index("private boolean isSpellFlightAllowed"):MAIN.index("private void miniBossRiftStep")]
     assert "return (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind))" in flight

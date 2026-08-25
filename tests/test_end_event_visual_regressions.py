@@ -143,31 +143,39 @@ def test_built_pack_maps_event_cmds_to_event_models_not_narcotics() -> None:
         assert "assets/copimine/models/item/end_event_pad.json" in names
 
 
-def test_rift_projectile_has_a_real_custom_display_and_pack_model() -> None:
+def test_spell_projectiles_are_particle_only_and_each_spell_has_a_unique_pattern() -> None:
     source = MAIN.read_text(encoding="utf-8")
     builder = BUILDER.read_text(encoding="utf-8")
-    assert "MODEL_RIFT_PROJECTILE = 830006" in source
-    assert "riftProjectileVisuals" in source
-    assert "ItemDisplay" in source
-    assert "display.teleport(projectile.getLocation())" in source
-    assert "cleanupRiftProjectile(projectileId)" in source
-    assert '"assets/copimine/models/item/end_event_rift_projectile.json"' in builder
-    assert '"assets/copimine/textures/item/end_event_rift_projectile.png"' in builder
+    assert "private void spawnSpellFlightPattern(" in source
+    assert "private void spawnRiftProjectileTrail(" in source
+    assert "projectile.setInvisible(true);" in source
+    assert "projectile.setVisibleByDefault(false);" in source
+    assert "MODEL_RIFT_PROJECTILE" not in source
+    assert "riftProjectileVisuals" not in source
+    assert "end_event_rift_projectile" not in source
+    assert '"assets/copimine/models/item/end_event_rift_projectile.json"' not in builder
+    assert '"assets/copimine/textures/item/end_event_rift_projectile.png"' not in builder
+    for spell_id in (
+        "void_blast", "rift_projectile", "void_mark", "summon", "will_distortion",
+        "rift_step", "void_snare", "echo_pulse",
+    ):
+        assert f'case "{spell_id}"' in source
 
     model_path = ROOT / "resourcepacks/src/assets/copimine/models/item/end_event_rift_projectile.json"
-    model = json.loads(model_path.read_text(encoding="utf-8"))
-    assert model["textures"]["particle"] == "copimine:item/end_event_rift_projectile"
     texture_path = ROOT / "resourcepacks/src/assets/copimine/textures/item/end_event_rift_projectile.png"
-    assert texture_path.exists()
+    assert not model_path.exists()
+    assert not texture_path.exists()
 
     subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
     pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"
     with zipfile.ZipFile(pack) as archive:
-        paper = json.loads(archive.read("assets/minecraft/models/item/paper.json"))
-        assert any(
-            entry["predicate"] == {"custom_model_data": 830006}
-            and entry["model"] == "copimine:item/end_event_rift_projectile"
-            for entry in paper["overrides"]
-        )
-        assert "assets/copimine/models/item/end_event_rift_projectile.json" in archive.namelist()
-        assert "assets/copimine/textures/item/end_event_rift_projectile.png" in archive.namelist()
+        assert "assets/copimine/models/item/end_event_rift_projectile.json" not in archive.namelist()
+        assert "assets/copimine/textures/item/end_event_rift_projectile.png" not in archive.namelist()
+
+
+def test_void_mark_pattern_initializes_all_glyph_corners_before_joining_edges() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    pattern = source[source.index('case "void_mark" -> {'):source.index('case "summon", "summon_servants"')]
+    loop = "for (int i = 0; i < corners.length; i++)"
+    assert pattern.count(loop) >= 2
+    assert pattern.index("corners[i] =") < pattern.rindex("spawnPatternSegment")

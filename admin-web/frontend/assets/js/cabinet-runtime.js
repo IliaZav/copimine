@@ -5,7 +5,7 @@ import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom
 import { createAdminCmsPages } from "./admin/cms-pages.js";
 import { createAdminLauncherPages } from "./admin/launcher-pages.js";
 import { createAdminNewsPages } from "./admin/news-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260825siteui9";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260825siteui16";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
 import { createPlayerAccountPages } from "./player/account-pages.js";
@@ -783,7 +783,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260825siteui9")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260825siteui16")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;

@@ -39,6 +39,15 @@ def test_cabinet_shell_uses_one_responsive_breakpoint_for_sidebar_and_toggle() -
     assert '$("cabinetNavToggle")' in runtime
 
 
+def test_cabinet_public_header_collapses_before_it_can_wrap() -> None:
+    css = read("admin-web/frontend/assets/css/release-ui.css")
+    nav = read("admin-web/frontend/assets/js/public/public-nav.js")
+    assert "@media (max-width: 1080px)" in css
+    assert ".public-nav.public-nav-open nav" in css
+    assert ".public-nav .public-mobile-toggle:not(.hidden)" in css
+    assert 'window.matchMedia("(max-width: 1080px)")' in nav
+
+
 def test_mobile_nav_toggle_uses_its_current_explicit_state() -> None:
     runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
     polish = read("admin-web/frontend/assets/js/cabinet-polish.js")
@@ -80,7 +89,7 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui9"
+    cache_key = "20260825siteui16"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
         assert f"/assets/cabinet.css?v={cache_key}" in source, path.name

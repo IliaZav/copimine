@@ -6,8 +6,8 @@ import {
   loadPublicServerPageData,
   loadPublicShopsPageData,
   loadPublicTreasuryFallback,
-} from "./site-data.js?v=20260825siteui9";
-import { createHomepageRenderer } from "./site-render.js?v=20260825siteui10";
+} from "./site-data.js?v=20260825siteui16";
+import { createHomepageRenderer } from "./site-render.js?v=20260825siteui17";
 import { createSuccessfulLoadRegistry } from "../shared/successful-load-registry.js";
 
 const renderer = createHomepageRenderer();
@@ -22,16 +22,30 @@ function bindCopyIpButton() {
   button.dataset.bound = "true";
   button.addEventListener("click", async () => {
     const ipNode = document.getElementById("serverIpText");
+    const status = document.getElementById("copyIpStatus");
     const ip = ipNode?.dataset.serverAddress?.trim() || ipNode?.textContent?.trim() || "copimine.ru";
     if (!ip) return;
     try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard unavailable");
       await navigator.clipboard.writeText(ip);
       button.textContent = "Адрес скопирован";
+      if (status) {
+        status.dataset.state = "success";
+        status.textContent = "Адрес скопирован в буфер обмена.";
+      }
       window.setTimeout(() => {
         button.textContent = `Скопировать ${ip}`;
+        if (status) {
+          status.dataset.state = "";
+          status.textContent = "";
+        }
       }, 1400);
     } catch (_error) {
-      button.textContent = ip;
+      button.textContent = "Скопировать адрес";
+      if (status) {
+        status.dataset.state = "error";
+        status.textContent = `Не удалось скопировать автоматически. Адрес: ${ip}`;
+      }
     }
   });
 }

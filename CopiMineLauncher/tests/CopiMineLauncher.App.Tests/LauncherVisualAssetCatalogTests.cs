@@ -88,6 +88,25 @@ public sealed class LauncherVisualAssetCatalogTests
         decoder.Frames[0].PixelHeight.Should().BeLessThan(220);
     }
 
+    [Fact]
+    public void Skin_preview_contains_local_shader_landscapes_without_hud_or_player_assets()
+    {
+        var root = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            "..", "..", "..", "..", "..",
+            "src", "CopiMineLauncher.App", "Assets", "SkinPreview"));
+
+        foreach (var name in new[] { "shader-forest.jpg", "shader-river.jpg", "shader-mountain.jpg" })
+        {
+            var path = Path.Combine(root, name);
+            File.Exists(path).Should().BeTrue(name);
+            new FileInfo(path).Length.Should().BeGreaterThan(50_000, name);
+        }
+
+        File.ReadAllText(Path.Combine(root, "ASSET-CREDITS.txt"))
+            .Should().Contain("imgur.com/gallery/minecraft-4k-shaders-screenshots-OZ53f");
+    }
+
     private static string ResolveAssetRoot()
     {
         var sourceRoot = Path.GetFullPath(Path.Combine(

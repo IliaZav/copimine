@@ -13,7 +13,7 @@ if ($text -notmatch '(?s)\.preview-nav-backdrop\s*\{[^}]*z-index\s*:\s*50') {
 }
 foreach ($page in @($player, $admin)) {
   $html = Get-Content -LiteralPath $page -Raw -Encoding UTF8
-  if ($html -notmatch 'preview\.css\?v=20260718r3') { throw "Preview stylesheet cache-buster missing: $page" }
+  if ($html -notmatch 'preview\.css\?v=20260825siteui15') { throw "Preview stylesheet cache-buster missing: $page" }
 }
 
 Write-Host 'CopiMine preview mobile menu contract OK'

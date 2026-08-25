@@ -95,6 +95,19 @@ def test_network_text_is_not_inserted_as_html() -> None:
     assert 'pageKind === "public-patch"' in public_page
 
 
+def test_news_cards_show_publication_date_and_keep_summary_copy_clean() -> None:
+    patch_render = read("admin-web/frontend/assets/js/public/patch-render.js")
+    launcher_render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    styles = read("admin-web/frontend/assets/css/launcher-news.css")
+    assert 'className = "news-card-date"' in patch_render
+    assert 'className = "news-card-date"' in launcher_render
+    assert "publishedAt" in patch_render
+    assert "publishedAt" in launcher_render
+    assert 'map((text) => ({ kind: "", text }))' not in patch_render
+    assert ".news-card-body h2" in styles
+    assert ".news-card-summary" in styles
+
+
 def test_launcher_lightbox_has_explicit_escape_close_handler() -> None:
     source = read("admin-web/frontend/assets/js/public/launcher-render.js")
     launcher = read("admin-web/frontend/launcher.html")

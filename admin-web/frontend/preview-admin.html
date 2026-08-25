@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex,nofollow" />
   <title>CopiMine — Предпросмотр админки</title>
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui11" />
-  <link rel="stylesheet" href="/assets/css/preview.css?v=20260825siteui9" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui17" />
+  <link rel="stylesheet" href="/assets/css/preview.css?v=20260825siteui15" />
 </head>
 <body class="preview-shell" data-page-kind="preview-admin">
   <main class="preview-layout">
@@ -20,7 +20,7 @@
         </div>
       </div>
 
-      <div class="preview-nav">
+      <div class="preview-nav" data-preview-static="true">
         <section class="preview-nav-group">
           <h3>Сервер</h3>
           <div class="preview-nav-item is-active"><div class="preview-nav-icon">О</div><div class="preview-nav-copy"><strong>Обзор</strong><span>Сводка, сервисы и ключевые события</span></div></div>
@@ -46,7 +46,7 @@
     </aside>
 
     <section class="preview-main">
-      <aside class="preview-disclaimer" role="note">
+      <aside id="previewDemoNotice" class="preview-disclaimer" role="note">
         <strong>Демо панели</strong>
         <p>Это пример экрана. Для настоящих данных войдите в рабочую панель.</p>
         <a class="btn btn-primary" href="/signin.html">Открыть рабочий кабинет</a>
@@ -116,14 +116,14 @@
       </section>
 
       <section class="preview-section">
-        <div class="preview-metric-label">Последние события</div>
-        <table class="preview-table">
+        <div id="previewAdminEventsTitle" class="preview-metric-label">Последние события</div>
+        <table class="preview-table" aria-labelledby="previewAdminEventsTitle">
           <thead>
             <tr>
-              <th>Время</th>
-              <th>Раздел</th>
-              <th>Событие</th>
-              <th>Статус</th>
+              <th scope="col">Время</th>
+              <th scope="col">Раздел</th>
+              <th scope="col">Событие</th>
+              <th scope="col">Статус</th>
             </tr>
           </thead>
           <tbody>
@@ -135,6 +135,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/assets/js/preview-nav.js?v=20260825siteui9"></script>
+  <script type="module" src="/assets/js/preview-nav.js?v=20260825siteui15"></script>
 </body>
 </html>

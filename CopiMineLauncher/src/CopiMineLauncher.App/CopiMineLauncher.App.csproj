@@ -39,7 +39,11 @@
     <Content Include="Assets\LauncherVisuals\news-03-source.webp" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SkinPreview\skin-preview.html" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SkinPreview\skinview3d.bundle.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-forest.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-river.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-mountain.jpg" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\SkinPreview\skinview3d.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\SkinPreview\ASSET-CREDITS.txt" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\WebView2\MicrosoftEdgeWebView2Setup.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

@@ -27,8 +27,19 @@ function createSummaryList(summary) {
   return list;
 }
 
+function createNewsCardDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const time = document.createElement("time");
+  time.className = "news-card-date";
+  time.dateTime = date.toISOString();
+  time.textContent = formatDate(date);
+  return time;
+}
+
 export function renderLauncherMetadata(metadata) {
   const folderButton = document.getElementById("launcherFolderBtn");
+  const retryButton = document.getElementById("launcherRetryBtn");
   const state = document.getElementById("launcherDownloadStatus");
   const fields = {
     version: document.getElementById("launcherVersion"),
@@ -49,12 +60,21 @@ export function renderLauncherMetadata(metadata) {
     disableDownloadButton(folderButton);
   }
   if (metadata?.customInstaller) {
+    setRetryButtonVisible(retryButton, false);
     state.dataset.state = "ready";
     text(state, `${metadata.customInstaller.filename} · выберите диск и папку в установщике.`);
   } else {
+    setRetryButtonVisible(retryButton, true);
     state.dataset.state = "error";
     text(state, "Установщик временно недоступен.");
   }
+}
+
+function setRetryButtonVisible(button, visible) {
+  if (!(button instanceof HTMLButtonElement)) return;
+  button.hidden = !visible;
+  button.classList.toggle("hidden", !visible);
+  button.setAttribute("aria-hidden", visible ? "false" : "true");
 }
 
 function configureDownloadButton(button, installer) {
@@ -62,6 +82,7 @@ function configureDownloadButton(button, installer) {
   button.href = installer.downloadUrl;
   button.download = installer.filename;
   button.removeAttribute("aria-disabled");
+  button.removeAttribute("tabindex");
   button.classList.remove("is-disabled");
 }
 
@@ -70,6 +91,7 @@ function disableDownloadButton(button) {
   button.removeAttribute("href");
   button.removeAttribute("download");
   button.setAttribute("aria-disabled", "true");
+  button.setAttribute("tabindex", "-1");
   button.classList.add("is-disabled");
 }
 
@@ -108,6 +130,8 @@ export function renderLauncherNews(patches) {
       badgeNode.textContent = String(badge || "").trim().toLowerCase() === "launcher" ? "Лаунчер" : String(badge || "");
       meta.append(badgeNode);
     });
+    const publishedDate = createNewsCardDate(patch.publishedAt);
+    if (publishedDate) meta.append(publishedDate);
     body.append(meta);
     const heading = document.createElement("h3");
     heading.textContent = patch.title;

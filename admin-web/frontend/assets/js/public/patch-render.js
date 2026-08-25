@@ -10,6 +10,27 @@ function localizeBadge(value) {
   return String(value || "").trim().toLowerCase() === "launcher" ? "Лаунчер" : String(value || "");
 }
 
+function createPublishedDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const time = document.createElement("time");
+  time.className = "news-card-date";
+  time.dateTime = date.toISOString();
+  time.textContent = new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(date);
+  return time;
+}
+
+function makeSummaryList(summary) {
+  const list = document.createElement("ul");
+  list.className = "news-card-summary";
+  (Array.isArray(summary) ? summary : []).slice(0, 3).forEach((value) => {
+    const item = document.createElement("li");
+    item.textContent = String(value || "");
+    list.append(item);
+  });
+  return list;
+}
+
 function makeChangeList(changes) {
   const list = document.createElement("ul");
   (Array.isArray(changes) ? changes : []).forEach((change) => {
@@ -50,11 +71,13 @@ export function renderNewsList(patches) {
       badge.textContent = localizeBadge(value);
       meta.append(badge);
     });
+    const publishedDate = createPublishedDate(patch.publishedAt);
+    if (publishedDate) meta.append(publishedDate);
     body.append(meta);
     const heading = document.createElement("h2");
     heading.textContent = String(patch.title || "Обновление");
     body.append(heading);
-    body.append(makeChangeList((Array.isArray(patch.summary) ? patch.summary : []).map((text) => ({ kind: "", text }))));
+    body.append(makeSummaryList(patch.summary));
     const link = document.createElement("a");
     link.href = String(patch.detailUrl || "#");
     link.textContent = "Читать изменения →";

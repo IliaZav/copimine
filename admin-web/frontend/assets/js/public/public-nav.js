@@ -45,7 +45,7 @@ export function initPublicNav() {
     setExpanded(toggle, false);
   }
 
-  const media = window.matchMedia("(max-width: 900px)");
+  const media = window.matchMedia("(max-width: 1080px)");
 
   const closeMenu = () => {
     shell.classList.remove("public-nav-open");

@@ -31,64 +31,17 @@
       let capeAnimationTimer = null;
       let capeAnimationImage = null;
 
+      const backgroundAssets = {
+        ice: "shader-river.jpg",
+        night: "shader-mountain.jpg",
+        forest: "shader-forest.jpg",
+        sunset: "shader-river.jpg",
+        clean: "shader-mountain.jpg"
+      };
+
       function createBackground(name) {
-        const image = document.createElement("canvas");
-        image.width = 1200;
-        image.height = 720;
-        const ctx = image.getContext("2d");
-        const gradients = {
-          ice: ["#9fb8ef", "#dce9fb"],
-          night: ["#111d42", "#26395e"],
-          forest: ["#173d3b", "#5b8067"],
-          sunset: ["#5f405b", "#e0a068"],
-          clean: ["#172532", "#35566a"]
-        };
-        const colors = gradients[name] || gradients.ice;
-        const gradient = ctx.createLinearGradient(0, 0, 0, image.height);
-        gradient.addColorStop(0, colors[0]);
-        gradient.addColorStop(1, colors[1]);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, image.width, image.height);
-
-        if (name === "ice") {
-          ctx.fillStyle = "rgba(255,255,255,.26)";
-          for (let i = 0; i < 70; i++) {
-            const x = (i * 173) % image.width;
-            const y = 40 + ((i * 89) % 300);
-            const size = 7 + (i % 4) * 4;
-            ctx.fillRect(x, y, size, size);
-            ctx.fillRect(x + size, y + size, size * 1.4, size);
-          }
-          ctx.fillStyle = "rgba(255,255,255,.18)";
-          ctx.fillRect(0, 520, image.width, 200);
-        } else if (name === "night") {
-          ctx.fillStyle = "rgba(255,255,220,.75)";
-          for (let i = 0; i < 70; i++) {
-            const x = (i * 97) % image.width;
-            const y = 30 + ((i * 53) % 330);
-            ctx.fillRect(x, y, 2 + (i % 3), 2 + (i % 3));
-          }
-          ctx.fillStyle = "rgba(0,0,0,.24)";
-          ctx.fillRect(0, 500, image.width, 220);
-        } else if (name === "forest") {
-          ctx.fillStyle = "rgba(4,22,20,.3)";
-          for (let x = -40; x < image.width + 80; x += 62) {
-            ctx.beginPath();
-            ctx.moveTo(x, 580);
-            ctx.lineTo(x + 35, 300 + (x % 95));
-            ctx.lineTo(x + 90, 580);
-            ctx.fill();
-          }
-        } else if (name === "sunset") {
-          ctx.fillStyle = "rgba(255,220,160,.33)";
-          ctx.beginPath();
-          ctx.arc(960, 130, 82, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(40,20,50,.22)";
-          ctx.fillRect(0, 540, image.width, 180);
-        }
-
-        return image.toDataURL("image/png");
+        const asset = backgroundAssets[name] || backgroundAssets.ice;
+        return `/${asset}?v=${encodeURIComponent(asset)}`;
       }
 
       function damageAnimation() {

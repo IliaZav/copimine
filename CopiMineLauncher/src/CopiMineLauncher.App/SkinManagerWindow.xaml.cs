@@ -93,6 +93,9 @@ public partial class SkinManagerWindow : UserControl
         Directory.CreateDirectory(previewRoot);
         CopyPreviewAsset("skin-preview.html");
         CopyPreviewAsset("skinview3d.bundle.js");
+        CopyPreviewAsset("shader-forest.jpg");
+        CopyPreviewAsset("shader-river.jpg");
+        CopyPreviewAsset("shader-mountain.jpg");
         await WritePreviewConfigAsync();
 
         await EnsureWebView2RuntimeAsync();

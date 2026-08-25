@@ -1,11 +1,11 @@
-import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui10";
-import { initCartPage } from "./cart-page.js?v=20260825siteui10";
-import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui10";
-import { initPublicNav } from "./public-nav.js?v=20260825siteui10";
-import { initLauncherPage } from "./launcher-page.js?v=20260825siteui10";
-import { initNewsPage } from "./news-page.js?v=20260825siteui10";
-import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui10";
-import { initPublicMotion } from "./public-motion.js?v=20260825siteui10";
+import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui17";
+import { initCartPage } from "./cart-page.js?v=20260825siteui17";
+import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui17";
+import { initPublicNav } from "./public-nav.js?v=20260825siteui17";
+import { initLauncherPage } from "./launcher-page.js?v=20260825siteui17";
+import { initNewsPage } from "./news-page.js?v=20260825siteui17";
+import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui17";
+import { initPublicMotion } from "./public-motion.js?v=20260825siteui17";
 
 initPublicNav();
 initThemeToggle();

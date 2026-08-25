@@ -1,4 +1,4 @@
-import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui9";
+import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui15";
 
 function initPreviewNavigation() {
   initThemeToggle();

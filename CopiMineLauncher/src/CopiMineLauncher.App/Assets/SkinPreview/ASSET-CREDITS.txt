@@ -1,0 +1,12 @@
+Фоны предпросмотра скина
+
+shader-forest.jpg
+shader-river.jpg
+shader-mountain.jpg
+
+Источник кадров: N00byEdge, «Minecraft 4K Shaders Screenshots»
+https://imgur.com/gallery/minecraft-4k-shaders-screenshots-OZ53f
+
+Кадры используются как локальные декоративные фоны предпросмотра. Перед
+коммерческим распространением Launcher проверьте разрешение автора на
+распространение этих изображений и сохраните актуальные условия источника.

@@ -316,10 +316,11 @@ function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink
   visual.append(image);
 
   const body = makeElement("div", "shop-product-body");
+  const description = makeElement("p", "shop-product-description", customerFacingItemDescription(row));
   body.append(
     makeElement("span", "shop-product-category", shopCategoryLabel(row.category, mode)),
     makeElement("h3", "", String(row.display_name || itemId || "Товар")),
-    makeElement("p", "", customerFacingItemDescription(row)),
+    description,
   );
 
   const footer = makeElement("div", "shop-product-footer");

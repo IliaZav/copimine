@@ -48,6 +48,32 @@ public sealed class LauncherThemeContractTests
         skins.Should().NotContain("<Window ");
     }
 
+    [Fact]
+    public void Main_window_keeps_a_large_canvas_for_the_full_launcher_controls()
+    {
+        var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");
+
+        xaml.Should().Contain("Width=\"1360\" Height=\"860\" MinWidth=\"1180\" MinHeight=\"720\"");
+        xaml.Should().Contain("Opacity=\"0.86\"");
+        xaml.Should().Contain("#80061210");
+    }
+
+    [Fact]
+    public void Skin_preview_uses_packaged_minecraft_frames_instead_of_generated_gradients()
+    {
+        var code = ReadSource("src", "CopiMineLauncher.App", "SkinManagerWindow.xaml.cs");
+        var preview = ReadSource("src", "CopiMineLauncher.App", "Assets", "SkinPreview", "skin-preview.html");
+
+        code.Should().Contain("CopyPreviewAsset(\"shader-forest.jpg\")");
+        code.Should().Contain("CopyPreviewAsset(\"shader-river.jpg\")");
+        code.Should().Contain("CopyPreviewAsset(\"shader-mountain.jpg\")");
+        preview.Should().Contain("shader-river.jpg");
+        preview.Should().Contain("shader-mountain.jpg");
+        preview.Should().Contain("shader-forest.jpg");
+        preview.Should().NotContain("createLinearGradient");
+        preview.Should().NotContain("ctx.fillRect");
+    }
+
     private static string ReadSource(params string[] parts)
     {
         var path = Path.Combine(

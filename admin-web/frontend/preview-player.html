@@ -6,8 +6,8 @@
   <meta name="robots" content="noindex,nofollow" />
   <title>CopiMine — Предпросмотр кабинета</title>
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui11" />
-  <link rel="stylesheet" href="/assets/css/preview.css?v=20260825siteui9" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui17" />
+  <link rel="stylesheet" href="/assets/css/preview.css?v=20260825siteui15" />
 </head>
 <body class="preview-shell" data-page-kind="preview-player">
   <main class="preview-layout">
@@ -20,7 +20,7 @@
         </div>
       </div>
 
-      <div class="preview-nav">
+      <div class="preview-nav" data-preview-static="true">
         <section class="preview-nav-group">
           <h3>Игрок</h3>
           <div class="preview-nav-item"><div class="preview-nav-icon">К</div><div class="preview-nav-copy"><strong>Кабинет</strong><span>Сводка аккаунта и история</span></div></div>
@@ -33,7 +33,7 @@
     </aside>
 
     <section class="preview-main">
-      <aside class="preview-disclaimer" role="note">
+      <aside id="previewDemoNotice" class="preview-disclaimer" role="note">
         <strong>Демо кабинета</strong>
         <p>Это пример экрана. Для баланса, покупок и истории войдите в кабинет.</p>
         <a class="btn btn-primary" href="/signin.html">Войти в кабинет</a>
@@ -101,7 +101,7 @@
                 <input class="preview-input" placeholder="4-8 цифр" />
               </label>
             </div>
-            <button class="preview-button is-primary">Сохранить PIN</button>
+            <button type="button" class="preview-button is-primary" disabled aria-describedby="previewDemoNotice">Сохранить PIN</button>
           </div>
         </article>
 
@@ -130,20 +130,20 @@
                 <input class="preview-input" placeholder="Необязательно" />
               </label>
             </div>
-            <button class="preview-button is-primary">Отправить AR</button>
+            <button type="button" class="preview-button is-primary" disabled aria-describedby="previewDemoNotice">Отправить AR</button>
           </div>
         </article>
       </section>
 
       <section class="preview-section">
-        <div class="preview-metric-label">Журнал операций</div>
-        <table class="preview-table">
+        <div id="previewPlayerOperationsTitle" class="preview-metric-label">Журнал операций</div>
+        <table class="preview-table" aria-labelledby="previewPlayerOperationsTitle">
           <thead>
             <tr>
-              <th>Время</th>
-              <th>Тип</th>
-              <th>Детали</th>
-              <th>Сумма</th>
+              <th scope="col">Время</th>
+              <th scope="col">Тип</th>
+              <th scope="col">Детали</th>
+              <th scope="col">Сумма</th>
             </tr>
           </thead>
           <tbody>
@@ -156,6 +156,6 @@
       </section>
     </section>
   </main>
-  <script type="module" src="/assets/js/preview-nav.js?v=20260825siteui9"></script>
+  <script type="module" src="/assets/js/preview-nav.js?v=20260825siteui15"></script>
 </body>
 </html>

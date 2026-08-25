@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         Title="CopiMine Launcher"
         Icon="/CopiMineLauncher.App;component/Assets/copimine.ico"
-        Width="1240" Height="800" MinWidth="1000" MinHeight="650"
+        Width="1360" Height="860" MinWidth="1180" MinHeight="720"
         Background="{StaticResource LauncherWindowBackground}"
         Foreground="{StaticResource LauncherPrimaryText}"
         WindowStartupLocation="CenterScreen">
@@ -15,14 +15,14 @@
   <Grid>
     <Image Source="Assets/LauncherVisuals/launcher-home-background.png"
            Stretch="UniformToFill"
-           Opacity="0.72"
+           Opacity="0.86"
            IsHitTestVisible="False" />
     <Border IsHitTestVisible="False">
       <Border.Background>
         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-          <GradientStop Color="#B3061210" Offset="0" />
-          <GradientStop Color="#7A081A18" Offset="0.52" />
-          <GradientStop Color="#E307100E" Offset="1" />
+          <GradientStop Color="#80061210" Offset="0" />
+          <GradientStop Color="#4A081A18" Offset="0.52" />
+          <GradientStop Color="#B007100E" Offset="1" />
         </LinearGradientBrush>
       </Border.Background>
     </Border>

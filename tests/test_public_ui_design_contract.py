@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui11");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui11");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui11");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui17");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui17");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui17");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -23,13 +23,19 @@ def test_public_styles_end_with_one_intentional_polish_layer() -> None:
 def test_public_navigation_collapses_before_tablet_overflow_and_preserves_accessible_state() -> None:
     nav = read("admin-web/frontend/assets/js/public/public-nav.js")
     css = read("admin-web/frontend/assets/css/website-polish.css")
-    assert 'window.matchMedia("(max-width: 900px)")' in nav
+    assert 'window.matchMedia("(max-width: 1080px)")' in nav
     assert 'setExpanded(toggle, false)' in nav
-    assert '@media (max-width: 900px)' in css
+    assert '@media (max-width: 1080px)' in css
     assert '.public-nav.public-nav-open nav' in css
     assert '.public-mobile-toggle' in css
     assert '.public-mobile-toggle:hover' in css
     assert '.public-mobile-toggle:focus-visible' in css
+
+
+def test_cart_route_marks_both_cart_shortcuts_as_the_current_page() -> None:
+    cart = read("admin-web/frontend/cart.html")
+    assert 'id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-current="page"' in cart
+    assert 'class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" aria-current="page"' in cart
 
 
 def test_launcher_and_news_heroes_use_real_product_assets_without_placeholder_copy() -> None:
@@ -68,13 +74,13 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825siteui10' in public_page
-    assert './site-render.js?v=20260825siteui10' in homepage
+    assert './homepage.js?v=20260825siteui17' in public_page
+    assert './site-render.js?v=20260825siteui17' in homepage
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui11"
-    public_script_key = "20260825siteui10"
+    cache_key = "20260825siteui17"
+    public_script_key = "20260825siteui17"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")
@@ -92,3 +98,36 @@ def test_public_shell_assets_share_the_current_release_cache_key() -> None:
     assert f'./launcher-page.js?v={public_script_key}' in public_page
     assert f'./site-render.js?v={public_script_key}' in homepage
     assert f'./launcher-render.js?v={public_script_key}' in launcher_page
+
+
+def test_public_shop_descriptions_are_not_truncated_without_an_accessible_reveal() -> None:
+    renderer = read("admin-web/frontend/assets/js/public/site-render.js")
+    audit_css = read("admin-web/frontend/assets/css/ui-audit.css")
+    assert '"shop-product-description"' in renderer
+    assert "customerFacingItemDescription(row)" in renderer
+    assert "-webkit-line-clamp" not in audit_css
+    assert ".shop-product-description" in audit_css
+
+
+def test_launcher_unavailable_state_has_a_keyboard_safe_retry_action() -> None:
+    launcher = read("admin-web/frontend/launcher.html")
+    render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    page = read("admin-web/frontend/assets/js/public/launcher-page.js")
+    assert 'id="launcherRetryBtn"' in launcher
+    assert 'id="launcherDownloadStatus"' in launcher
+    assert 'aria-describedby="launcherDownloadStatus"' in launcher
+    assert 'getElementById("launcherRetryBtn")' in render
+    assert 'tabindex", "-1"' in render or 'setAttribute("tabindex", "-1")' in render
+    assert 'retryButton.addEventListener("click"' in page
+    assert "loadLauncherMetadata" in page
+
+
+def test_copy_ip_failure_has_a_live_status_instead_of_replacing_the_button_with_raw_ip() -> None:
+    index = read("admin-web/frontend/index.html")
+    homepage = read("admin-web/frontend/assets/js/public/homepage.js")
+    assert 'id="copyIpStatus"' in index
+    assert 'role="status"' in index
+    assert 'aria-live="polite"' in index
+    assert "copyIpStatus" in homepage
+    assert "Не удалось скопировать" in homepage
+    assert 'button.textContent = ip' not in homepage

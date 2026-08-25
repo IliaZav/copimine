@@ -160,3 +160,11 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - После минимального исправления и установки нового JAR повтор того же сценария вернул `runes=2/2`; Paper записал `END_EVENT_RUNE_VISUAL_REBUILD ... phase=WAVE_1 missing=1 expected=2`, затем заново создал core/rune overlays.
 - Добавлены регрессионные контракты на ремонт рун в боевых фазах и обновлён устаревший контракт арены. End Event suite: `128 passed, 14 warnings`; `RunEndRiftEventChecks.ps1`: `End Rift local checks passed`.
 - Свежий кадр реального Minecraft с точным видом на свободную руну сохранён в `local-runtime\\rune-captures\\idle-exact-pad-view.png`; это игровой кадр, а не концепт. Production `server.properties` после gate восстановлен на SHA1 `e4fb6d8b39d4f3175f39da18c5457b180b4ff13f`.
+
+## Fail-closed зависимостей и recovery smoke — 25 августа 2026
+
+- RED runtime на изолированной копии Paper: без `POSTGRES_PASSWORD` `CopiMineEconomyCore` корректно остановил PostgreSQL init, вслед за ним `CopiMineArtifacts` отключился, но End Rift продолжал вызывать `tryBootstrap()` и повторял `NoClassDefFoundError: me/copimine/artifacts/api/EventArtifactRewardService`.
+- Причина устранена в `tryBootstrap()`: до загрузки typed service проверяется `isEnabled()` для `CopiMineWorldCore` и `CopiMineArtifacts`; при отключённой зависимости отменяется bootstrap task и сам End Rift отключается с одним сообщением `End Rift dependencies are unavailable; disabling to prevent partial startup.`
+- GREEN negative runtime: при намеренно отсутствующем пароле получено `guard-log-count=1`, `class-loading-error-count=0`, `end-event-services-ready-count=0`; спустя ожидание новых class-loading ошибок нет.
+- GREEN positive runtime с локальной PostgreSQL: `RunEndRiftRecoverySmoke.ps1` прошёл `state=UNLOCKED|UNCONFIGURED`, `endUnlocked=true`, `VICTORY_COMPLETE`, `safe unconfigured transition`; `RunEndRiftRuntimeSmoke.ps1` прошёл все typed dependency/refusal/client checks.
+- Recovery smoke дополнен проверкой `NoClassDefFoundError|ClassNotFoundException` и принимает штатный переход в `UNCONFIGURED`, когда WorldCore уже открыт, а ядро отсутствует; production process и конфигурация не использовались.

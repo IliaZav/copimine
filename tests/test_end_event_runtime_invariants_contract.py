@@ -151,6 +151,14 @@ def test_bootstrap_preserves_an_active_core_even_when_worldcore_is_already_unloc
         assert marker in MAIN
 
 
+def test_bootstrap_disables_cleanly_when_artifacts_dependency_is_no_longer_enabled() -> None:
+    bootstrap = MAIN[MAIN.index("private void tryBootstrap"):MAIN.index("private void applySnapshot")]
+    assert 'getPlugin("CopiMineArtifacts")' in bootstrap
+    assert "artifactsPlugin.isEnabled()" in bootstrap
+    assert "disablePlugin(this)" in bootstrap
+    assert "EventArtifactRewardService.class" in bootstrap
+
+
 def test_recovery_preserves_a_committed_official_roster() -> None:
     recovery = MAIN[MAIN.index("private void recoverTransientSession"):
                     MAIN.index("private void cancelSessionTasks")]

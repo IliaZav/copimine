@@ -69,9 +69,12 @@ def test_local_start_script_is_bounded_to_the_isolated_runtime() -> None:
 
 def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> None:
     for expected in (
-        "local-runtime", "UNLOCKED", "VICTORY_COMPLETE", "persistent phase=",
+        "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED)", "VICTORY_COMPLETE", "persistent phase=",
         "END_EVENT_STATE forced=UNLOCKED",
+        "END_EVENT_STATE forced=UNCONFIGURED",
         "WorldCore already reports End unlocked; preserving active event",
+        "NoClassDefFoundError",
+        "ClassNotFoundException",
     ):
         assert expected in RECOVERY
     assert "Stop-Process" not in RECOVERY

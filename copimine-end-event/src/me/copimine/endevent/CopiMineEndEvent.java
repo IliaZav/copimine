@@ -118,6 +118,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
@@ -376,6 +377,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void tryBootstrap() {
         if (bootstrapped || !isEnabled()) {
+            return;
+        }
+        Plugin worldCorePlugin = Bukkit.getPluginManager().getPlugin("CopiMineWorldCore");
+        Plugin artifactsPlugin = Bukkit.getPluginManager().getPlugin("CopiMineArtifacts");
+        if (worldCorePlugin == null || !worldCorePlugin.isEnabled()
+                || artifactsPlugin == null || !artifactsPlugin.isEnabled()) {
+            getLogger().severe("End Rift dependencies are unavailable; disabling to prevent partial startup.");
+            if (bootstrapTask != null) {
+                bootstrapTask.cancel();
+                bootstrapTask = null;
+            }
+            getServer().getPluginManager().disablePlugin(this);
             return;
         }
         worldAccessService = Bukkit.getServicesManager().load(WorldAccessService.class);

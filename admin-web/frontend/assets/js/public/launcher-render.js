@@ -125,6 +125,7 @@ export function renderLauncherNews(patches) {
 }
 
 export function bindLauncherLightbox() {
+  const fallbackSource = "/assets/launcher-screenshots/launcher-home.jpg";
   const dialog = document.getElementById("launcherLightbox");
   const image = dialog?.querySelector("img");
   const caption = dialog?.querySelector("figcaption");
@@ -160,8 +161,8 @@ export function bindLauncherLightbox() {
     }
   });
   dialog.addEventListener("close", () => {
-    image.removeAttribute("src");
-    image.alt = "";
+    image.src = fallbackSource;
+    image.alt = "Предварительный просмотр скриншота CopiMine Launcher";
     caption.textContent = "";
   });
 }

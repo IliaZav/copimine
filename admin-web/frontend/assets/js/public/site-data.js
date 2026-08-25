@@ -62,11 +62,11 @@ async function fetchPresidentPayload() {
 }
 
 async function fetchArCatalogPayload() {
-  return fetchJson("/api/public/shop/ar-items", { ok: false, data: { items: [] } });
+  return fetchJson("/api/public/shop/ar-items", { ok: false, data: { items: [], _unavailable: true } });
 }
 
 async function fetchDonationCatalogPayload() {
-  return fetchJson("/api/public/shop/donation-items", { ok: false, data: { items: [] } });
+  return fetchJson("/api/public/shop/donation-items", { ok: false, data: { items: [], _unavailable: true } });
 }
 
 async function fetchCmsPayload() {

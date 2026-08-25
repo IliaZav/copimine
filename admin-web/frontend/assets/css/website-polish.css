@@ -307,6 +307,49 @@ body.auth-screen .public-site {
   color: #f4cf80 !important;
 }
 
+.public-site .shop-empty-state {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 150px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px dashed #d2ad65;
+  border-radius: 6px;
+  background: #fff8e9;
+  color: #79561d;
+}
+
+.public-site .shop-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  border: 1px solid rgba(121, 86, 29, .22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .55);
+}
+
+.public-site .shop-empty-icon img { width: 44px; height: 44px; image-rendering: pixelated; }
+.public-site .shop-empty-copy { display: grid; gap: 7px; min-width: 0; }
+.public-site .shop-empty-copy strong { color: inherit; font-size: 1.08rem; }
+.public-site .shop-empty-copy p { max-width: 62ch; margin: 0; color: inherit; }
+.public-site .shop-empty-kicker { color: inherit; font: 800 .72rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.public-site .shop-empty-copy .public-actions { margin-top: 5px; }
+.public-site .shop-empty-copy .btn { width: max-content; }
+
+:root[data-theme="dark"] .public-site .shop-empty-state {
+  border-color: #b9914a;
+  background: #332716;
+  color: #f4cf80;
+}
+
+:root[data-theme="dark"] .public-site .shop-empty-icon {
+  border-color: rgba(244, 207, 128, .25);
+  background: rgba(0, 0, 0, .18);
+}
+
 /* Launcher and news share the same editorial hero, but each has its own real
  * product screenshot so the first viewport is not a blank gradient. */
 .public-site .launcher-hero,
@@ -531,6 +574,8 @@ body.auth-screen .public-site {
   .public-site .launcher-technical,
   .public-site .news-list { grid-template-columns: 1fr; }
   .public-site .news-hero-grid { padding: 1.2rem; }
+  .public-site .shop-empty-state { grid-template-columns: 1fr; }
+  .public-site .shop-empty-copy .btn { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

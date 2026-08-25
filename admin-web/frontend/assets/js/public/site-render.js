@@ -201,6 +201,27 @@ function cardStrong(title, value, note = "", iconPath = "") {
   return card;
 }
 
+function buildShopEmptyState(title, detail, iconPath) {
+  const card = makeElement("article", "shop-empty-state");
+  card.setAttribute("role", "status");
+  const icon = makeElement("div", "shop-empty-icon");
+  icon.append(createSprite(iconPath));
+  const copy = makeElement("div", "shop-empty-copy");
+  copy.append(
+    makeElement("span", "shop-empty-kicker", "Состояние каталога"),
+    makeElement("strong", "", title),
+    makeElement("p", "", detail),
+  );
+  const actions = makeElement("div", "public-actions public-actions-compact");
+  const retry = makeElement("a", "btn btn-secondary", "Повторить загрузку");
+  retry.href = window.location.href || "/shops.html";
+  retry.setAttribute("data-shop-retry", "true");
+  actions.append(retry);
+  copy.append(actions);
+  card.append(icon, copy);
+  return card;
+}
+
 function buildModpackMeta(label, value) {
   const card = makeElement("article", "modpack-stat");
   card.append(
@@ -510,13 +531,25 @@ export function createHomepageRenderer() {
     if (arShopMount) {
       const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
         ? arCatalog.items.map((row) => buildShopProductItem(row, "ar", purchaseReady, needsLink, shopItemAvailability(row, "ar", ownership)))
-        : [cardStrong("AR-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("diamond_ore.png"))];
+        : [buildShopEmptyState(
+          arCatalog?._unavailable ? "AR-каталог временно недоступен" : "В AR-каталоге пока пусто",
+          arCatalog?._unavailable
+            ? "Сервис каталога не ответил. Обновите страницу — текущие товары и остатки загрузятся заново."
+            : "Новые предметы появятся здесь после публикации.",
+          mcIcon("diamond_ore.png"),
+        )];
       replaceChildrenSafe(arShopMount, cards);
     }
     if (donationShopMount) {
       const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
         ? donationCatalog.items.map((row) => buildShopProductItem(row, "donation", purchaseReady, needsLink, shopItemAvailability(row, "donation", ownership)))
-        : [cardStrong("Донат-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("totem_of_undying.png"))];
+        : [buildShopEmptyState(
+          donationCatalog?._unavailable ? "Донат-каталог временно недоступен" : "В донат-каталоге пока пусто",
+          donationCatalog?._unavailable
+            ? "Сервис каталога не ответил. Обновите страницу — доступные наборы загрузятся заново."
+            : "Новые наборы появятся здесь после публикации.",
+          mcIcon("totem_of_undying.png"),
+        )];
       replaceChildrenSafe(donationShopMount, cards);
     }
     syncShopCartButton();

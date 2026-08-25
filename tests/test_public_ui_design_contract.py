@@ -66,5 +66,5 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825siteui1' in public_page
-    assert './site-render.js?v=20260825siteui1' in homepage
+    assert './homepage.js?v=20260825designpass2' in public_page
+    assert './site-render.js?v=20260825designpass2' in homepage

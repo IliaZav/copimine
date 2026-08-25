@@ -105,7 +105,7 @@ export function renderLauncherNews(patches) {
     (Array.isArray(patch.badges) ? patch.badges.slice(0, 3) : []).forEach((badge) => {
       const badgeNode = document.createElement("span");
       badgeNode.className = "news-card-badge";
-      badgeNode.textContent = badge;
+      badgeNode.textContent = String(badge || "").trim().toLowerCase() === "launcher" ? "Лаунчер" : String(badge || "");
       meta.append(badgeNode);
     });
     body.append(meta);

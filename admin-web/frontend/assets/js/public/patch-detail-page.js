@@ -1,5 +1,5 @@
 import { loadPatchDetail } from "./patch-data.js?v=20260825siteui9";
-import { renderPatchDetail } from "./patch-render.js?v=20260825siteui9";
+import { renderPatchDetail } from "./patch-render.js?v=20260825siteui10";
 
 function localizePatchDate() {
   const time = document.querySelector("[data-patch-detail] time[datetime]");

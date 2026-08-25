@@ -32,7 +32,7 @@ def test_public_copy_uses_player_language_on_key_routes() -> None:
     server = read("admin-web/frontend/server.html")
 
     assert "Всё, что нужно для игры на CopiMine." in index
-    assert "Установи Launcher. Играй на CopiMine." in launcher
+    assert "Установи лаунчер. Играй на CopiMine." in launcher
     assert "Что нового на CopiMine." in news
     assert "Выбери предметы для игры." in shops
     assert "Что сейчас на сервере." in server
@@ -69,6 +69,18 @@ def test_public_copy_uses_player_language_on_key_routes() -> None:
         "подписанный stable manifest",
         "в управляемом черновике",
         "анонимная диагностика launcher",
+        "Launcher устанавливает Java",
+        "установщик Launcher",
+        "Launcher получает Minecraft",
+        "Launcher сначала проверяет",
+        "окно Launcher открывается",
+        "возвращает Launcher к проверке",
+        "сбой Launcher заканчивает",
+        "показ окна Launcher",
+        "Установщики Launcher",
+        "Установщик ставит Launcher",
+        "папке Launcher",
+        "локального копии",
     )
     for phrase in forbidden:
         assert phrase.lower() not in public_source.lower(), phrase
@@ -81,7 +93,7 @@ def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() ->
     motion_css = read("admin-web/frontend/assets/css/public-motion.css")
 
     assert '@import url("./css/public-motion.css")' in style
-    assert 'from "./public-motion.js?v=20260825siteui9"' in public_page
+    assert 'from "./public-motion.js?v=20260825siteui10"' in public_page
     assert "prefers-reduced-motion" in motion
     assert "copimineSceneDrift" in motion_css
     assert "copimineSignalSweep" in motion_css
@@ -125,3 +137,38 @@ def test_admin_copy_uses_plain_russian_labels() -> None:
     assert "Discord — ждёт подключения" in preview
     assert "Версии, моды и загрузки" in runtime
     assert "Картинки предметов" in news
+
+
+def test_public_actions_and_statuses_avoid_mixed_technical_copy() -> None:
+    index = read("admin-web/frontend/index.html")
+    server = read("admin-web/frontend/server.html")
+    launcher = read("admin-web/frontend/launcher.html")
+    site_render = read("admin-web/frontend/assets/js/public/site-render.js")
+    launcher_render = read("admin-web/frontend/assets/js/public/launcher-render.js")
+    patch_render = read("admin-web/frontend/assets/js/public/patch-render.js")
+    cart = read("admin-web/frontend/cart.html")
+    cart_render = read("admin-web/frontend/assets/js/public/cart-page.js")
+    source = "\n".join((index, server, launcher, site_render, cart))
+
+    for phrase in (
+        "Скачать Launcher",
+        "Скопировать copimine.ru",
+        "Ресурспак обязателен",
+        "Ресурспак опционален",
+        "Установи Launcher. Играй",
+        "Внутри Launcher",
+        "AR и donation",
+        "Donation-корзина",
+        "PIN donation-баланса",
+        "Оплатить donation-корзину",
+    ):
+        assert phrase.lower() not in source.lower(), phrase
+
+    assert "Скачать лаунчер" in source
+    assert "Скопировать адрес" in source
+    assert "Пакет ресурсов" in source
+    assert "локальной копии" in read("admin-web/frontend/assets/public-data/patches/index.json")
+    assert "донат-магазина" in cart_render
+    assert "донат-корзину" in cart_render
+    assert "Лаунчер" in launcher_render
+    assert "Лаунчер" in patch_render

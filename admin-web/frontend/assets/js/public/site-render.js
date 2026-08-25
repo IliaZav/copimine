@@ -619,7 +619,7 @@ export function createHomepageRenderer() {
     if (modpackMetaGrid) {
       const metaCards = [
         buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
-        buildModpackMeta("Loader", manifest.loader || "Fabric"),
+        buildModpackMeta("Загрузчик", manifest.loader || "Fabric"),
         buildModpackMeta("Модов", String(files.length || 0)),
       ];
       if (requiredExternal.length) metaCards.push(buildModpackMeta("Отдельно", String(requiredExternal.length)));
@@ -639,7 +639,7 @@ export function createHomepageRenderer() {
             icon.append(createSprite(mcIcon("bundle.png")));
             card.append(
               icon,
-              makeElement("span", "modpack-file-badge", "mods"),
+              makeElement("span", "modpack-file-badge", "доп. мод"),
               makeElement("strong", "", String(file.component || "Мод")),
               makeElement("p", "", String(file.version || "без версии")),
             );
@@ -679,7 +679,7 @@ export function createHomepageRenderer() {
     }
     if (downloadLauncherBtn) {
       downloadLauncherBtn.href = "/launcher.html";
-      downloadLauncherBtn.textContent = "Скачать Launcher";
+      downloadLauncherBtn.textContent = "Скачать лаунчер";
     }
     renderModpack(modpack, config);
   }
@@ -699,7 +699,7 @@ export function createHomepageRenderer() {
       cardStrong("Сервер", server.online ? "Онлайн" : "Нет связи", formatLatency(server.latencyMs), mcIcon("beacon.png")),
       cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков скрыт", mcIcon("totem_of_undying.png")),
       cardStrong("Выборы", elections.active ? "Идут" : "Пауза", electionDetail, mcIcon("written_book.png")),
-      cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален", mcIcon("compass_00.png")),
+      cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Пакет ресурсов обязателен" : "Пакет ресурсов по желанию", mcIcon("compass_00.png")),
     ]);
   }
 

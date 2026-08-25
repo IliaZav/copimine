@@ -214,7 +214,7 @@ function buildEmptyState(currency) {
   const state = makeElement("div", "cart-empty-state");
   state.append(
     makeElement("strong", "", "Здесь пока нет предметов"),
-    makeElement("p", "", `Добавьте товары из ${currency === "ar" ? "AR-магазина" : "donation-магазина"}.`),
+    makeElement("p", "", `Добавьте товары из ${currency === "ar" ? "AR-магазина" : "донат-магазина"}.`),
   );
   const link = makeElement("a", "btn btn-secondary", "Перейти к лавке");
   link.href = "/shops.html";
@@ -297,7 +297,7 @@ function shouldRefreshCatalogAfterCheckoutError(message) {
   const staleCatalogFragments = [
     "Цена предметов изменилась",
     "Один из AR-предметов больше недоступен",
-    "Один из donation-предметов больше недоступен",
+    "Один из донат-предметов больше недоступен",
     "Один из выбранных предметов пока нельзя купить на сайте",
     "Для одного из выбранных предметов не задана цена",
     "Лимит поставки",
@@ -400,7 +400,7 @@ async function checkoutCurrency(currency) {
   } finally {
     if (button instanceof HTMLButtonElement) {
       button.dataset.loading = "false";
-      button.textContent = currency === "ar" ? "Оплатить AR-корзину" : "Оплатить donation-корзину";
+      button.textContent = currency === "ar" ? "Оплатить AR-корзину" : "Оплатить донат-корзину";
     }
     renderCart();
   }

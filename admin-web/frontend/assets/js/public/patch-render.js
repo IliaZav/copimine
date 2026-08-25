@@ -6,6 +6,10 @@ const CHANGE_LABELS = Object.freeze({
   known_issue: "Известно",
 });
 
+function localizeBadge(value) {
+  return String(value || "").trim().toLowerCase() === "launcher" ? "Лаунчер" : String(value || "");
+}
+
 function makeChangeList(changes) {
   const list = document.createElement("ul");
   (Array.isArray(changes) ? changes : []).forEach((change) => {
@@ -43,7 +47,7 @@ export function renderNewsList(patches) {
     (Array.isArray(patch.badges) ? patch.badges.slice(0, 3) : []).forEach((value) => {
       const badge = document.createElement("span");
       badge.className = "news-card-badge";
-      badge.textContent = String(value);
+      badge.textContent = localizeBadge(value);
       meta.append(badge);
     });
     body.append(meta);

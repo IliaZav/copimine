@@ -106,7 +106,7 @@ def test_admin_copy_uses_plain_russian_labels() -> None:
     news = read("admin-web/frontend/assets/js/admin/news-pages.js")
     source = "\n".join((preview, news))
 
-    for phrase in ("Patch notes", "item-aware", "public feed"):
+    for phrase in ("Patch notes", "item-aware", "public feed", "Сайт: online", "minecraft: active", "admin: active", "discord: standby"):
         assert phrase.lower() not in source.lower(), phrase
 
     for phrase in (
@@ -120,5 +120,8 @@ def test_admin_copy_uses_plain_russian_labels() -> None:
         assert phrase.lower() not in runtime.lower(), phrase
 
     assert "Короткие записи об обновлениях" in preview
+    assert "Сайт: работает" in preview
+    assert "Игра — работает" in preview
+    assert "Discord — ждёт подключения" in preview
     assert "Версии, моды и загрузки" in runtime
     assert "Картинки предметов" in news

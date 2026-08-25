@@ -19,8 +19,8 @@ def test_existing_session_on_auth_page_preserves_launcher_return_target():
 
 
 def test_binding_fix_is_cache_busted_on_auth_and_link_pages():
-    assert 'from "./auth/auth-page.js?v=20260817r3"' in BOOTSTRAP
-    assert 'from "./shared/app-routes.js?v=20260817r3"' in BOOTSTRAP
+    assert 'from "./auth/auth-page.js?v=20260825siteui7"' in BOOTSTRAP
+    assert 'from "./shared/app-routes.js?v=20260825siteui7"' in BOOTSTRAP
     for relative in ("signin.html", "register.html", "cabinet/link.html"):
         html = (ROOT / "admin-web/frontend" / relative).read_text(encoding="utf-8")
-        assert '/assets/app.js?v=20260817r3' in html
+        assert '/assets/app.js?v=20260825siteui7' in html

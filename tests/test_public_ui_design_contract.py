@@ -66,5 +66,26 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825designpass3' in public_page
-    assert './site-render.js?v=20260825designpass3' in homepage
+    assert './homepage.js?v=20260825siteui7' in public_page
+    assert './site-render.js?v=20260825siteui7' in homepage
+
+
+def test_public_shell_assets_share_the_current_release_cache_key() -> None:
+    cache_key = "20260825siteui7"
+    pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
+    for path in pages:
+        source = path.read_text(encoding="utf-8")
+        if "/assets/style.css" in source:
+            assert f"/assets/style.css?v={cache_key}" in source, path.name
+        if "/assets/js/public/public-page.js" in source:
+            assert f"/assets/js/public/public-page.js?v={cache_key}" in source, path.name
+        if "/assets/css/launcher-news.css" in source:
+            assert f"/assets/css/launcher-news.css?v={cache_key}" in source, path.name
+
+    public_page = read("admin-web/frontend/assets/js/public/public-page.js")
+    homepage = read("admin-web/frontend/assets/js/public/homepage.js")
+    launcher_page = read("admin-web/frontend/assets/js/public/launcher-page.js")
+    assert f'./homepage.js?v={cache_key}' in public_page
+    assert f'./launcher-page.js?v={cache_key}' in public_page
+    assert f'./site-render.js?v={cache_key}' in homepage
+    assert f'./launcher-render.js?v={cache_key}' in launcher_page

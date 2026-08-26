@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui19");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui19");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui19");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui20");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui20");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui20");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -96,6 +96,14 @@ def test_public_polish_layer_covers_focus_motion_and_status_recovery() -> None:
         assert selector in css
 
 
+def test_auth_autofill_keeps_the_form_inside_the_active_theme() -> None:
+    css = read("admin-web/frontend/assets/css/website-polish.css")
+    assert ".public-site .auth-card input:-webkit-autofill" in css
+    assert ".public-site .auth-card input:-moz-autofill" in css
+    assert "-webkit-box-shadow" in css
+    assert ':root[data-theme="dark"] .public-site .auth-card input:-webkit-autofill' in css
+
+
 def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     server = read("admin-web/frontend/server.html")
     renderer = read("admin-web/frontend/assets/js/public/site-render.js")
@@ -108,17 +116,18 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui19"
+    style_cache_key = "20260825siteui20"
+    launcher_news_cache_key = "20260825siteui19"
     public_script_key = "20260825siteui19"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")
         if "/assets/style.css" in source:
-            assert f"/assets/style.css?v={cache_key}" in source, path.name
+            assert f"/assets/style.css?v={style_cache_key}" in source, path.name
         if "/assets/js/public/public-page.js" in source:
             assert f"/assets/js/public/public-page.js?v={public_script_key}" in source, path.name
         if "/assets/css/launcher-news.css" in source:
-            assert f"/assets/css/launcher-news.css?v={cache_key}" in source, path.name
+            assert f"/assets/css/launcher-news.css?v={launcher_news_cache_key}" in source, path.name
 
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")

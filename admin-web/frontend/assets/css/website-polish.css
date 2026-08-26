@@ -549,6 +549,36 @@ body.auth-screen .public-site {
 .public-site .auth-card select,
 .public-site .auth-card textarea { background: var(--site-panel) !important; }
 
+/* Keep browser autofill inside the public auth theme. */
+.public-site .auth-card input:-webkit-autofill,
+.public-site .auth-card input:-webkit-autofill:hover,
+.public-site .auth-card input:-webkit-autofill:focus,
+.public-site .auth-card input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--site-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--site-panel) inset;
+  box-shadow: 0 0 0 1000px var(--site-panel) inset;
+  background-clip: padding-box;
+}
+
+.public-site .auth-card input:-moz-autofill {
+  color: var(--site-ink);
+  background-color: var(--site-panel) !important;
+}
+
+:root[data-theme="dark"] .public-site .auth-card input:-webkit-autofill,
+:root[data-theme="dark"] .public-site .auth-card input:-webkit-autofill:hover,
+:root[data-theme="dark"] .public-site .auth-card input:-webkit-autofill:focus,
+:root[data-theme="dark"] .public-site .auth-card input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--site-ink);
+  -webkit-box-shadow: 0 0 0 1000px var(--site-panel) inset;
+  box-shadow: 0 0 0 1000px var(--site-panel) inset;
+}
+
+:root[data-theme="dark"] .public-site .auth-card input:-moz-autofill {
+  color: var(--site-ink);
+  background-color: var(--site-panel) !important;
+}
+
 /* Collapse before the full desktop nav can wrap onto a second line. */
 @media (max-width: 1080px) {
   .public-nav {

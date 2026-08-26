@@ -1,6 +1,6 @@
 import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui16";
 import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260825siteui16";
-import { initPublicNav } from "./public/public-nav.js?v=20260825siteui16";
+import { initPublicNav } from "./public/public-nav.js?v=20260825siteui21";
 import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260825siteui16";
 
 const LEGACY_PUBLIC_REDIRECTS = new Map([

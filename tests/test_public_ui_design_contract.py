@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui20");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui20");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui20");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui21");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui21");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui21");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -30,6 +30,15 @@ def test_public_navigation_collapses_before_tablet_overflow_and_preserves_access
     assert '.public-mobile-toggle' in css
     assert '.public-mobile-toggle:hover' in css
     assert '.public-mobile-toggle:focus-visible' in css
+
+
+def test_public_shell_handles_narrow_viewports_without_a_second_horizontal_scrollbar() -> None:
+    css = read("admin-web/frontend/assets/css/website-polish.css")
+    assert "@media (max-width: 340px)" in css
+    assert "body[data-page-kind^=\"public\"]" in css
+    assert "body.auth-screen" in css
+    assert "min-width: 0" in css
+    assert "overflow-x: clip" in css
 
 
 def test_cart_route_marks_both_cart_shortcuts_as_the_current_page() -> None:
@@ -116,9 +125,10 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    style_cache_key = "20260825siteui20"
+    style_cache_key = "20260825siteui21"
     launcher_news_cache_key = "20260825siteui19"
-    public_script_key = "20260825siteui19"
+    public_script_key = "20260825siteui21"
+    public_module_key = "20260825siteui19"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")
@@ -132,10 +142,10 @@ def test_public_shell_assets_share_the_current_release_cache_key() -> None:
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     launcher_page = read("admin-web/frontend/assets/js/public/launcher-page.js")
-    assert f'./homepage.js?v={public_script_key}' in public_page
-    assert f'./launcher-page.js?v={public_script_key}' in public_page
-    assert f'./site-render.js?v={public_script_key}' in homepage
-    assert f'./launcher-render.js?v={public_script_key}' in launcher_page
+    assert f'./homepage.js?v={public_module_key}' in public_page
+    assert f'./launcher-page.js?v={public_module_key}' in public_page
+    assert f'./site-render.js?v={public_module_key}' in homepage
+    assert f'./launcher-render.js?v={public_module_key}' in launcher_page
 
 
 def test_public_shop_descriptions_are_not_truncated_without_an_accessible_reveal() -> None:

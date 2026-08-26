@@ -90,13 +90,14 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
     cache_key = "20260825siteui16"
+    app_cache_key = "20260825siteui21"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
         assert f"/assets/cabinet.css?v={cache_key}" in source, path.name
-        assert f"/assets/app.js?v={cache_key}" in source, path.name
+        assert f"/assets/app.js?v={app_cache_key}" in source, path.name
         assert f"/assets/js/cabinet-polish.js?v={cache_key}" in source, path.name
 
     app = read("admin-web/frontend/assets/app.js")
     bootstrap = read("admin-web/frontend/assets/js/bootstrap.js")
-    assert f"./js/bootstrap.js?v={cache_key}" in app
+    assert f"./js/bootstrap.js?v={app_cache_key}" in app
     assert f"./cabinet-runtime.js?v={cache_key}" in bootstrap

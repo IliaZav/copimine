@@ -638,6 +638,15 @@ body.auth-screen .public-site {
   .public-site .news-hero-text-only { grid-template-columns: 1fr; gap: 20px; }
 }
 
+/* The global shell has a 320px floor; release it on the narrowest public viewports so the vertical scrollbar does not create horizontal drift. */
+@media (max-width: 340px) {
+  body[data-page-kind^="public"],
+  body.auth-screen {
+    min-width: 0;
+    overflow-x: clip;
+  }
+}
+
 @media (max-width: 620px) {
   body[data-page-kind^="public"] .public-site,
   body.auth-screen .public-site { width: min(calc(100% - 20px), 1240px); }

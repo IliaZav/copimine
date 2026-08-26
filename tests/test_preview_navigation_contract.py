@@ -5,7 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "admin-web" / "frontend"
 PREVIEW_PAGES = ("preview-admin.html", "preview-player.html")
 CURRENT_UI_VERSION = "20260825siteui16"
-PREVIEW_UI_VERSION = "20260825siteui15"
+PREVIEW_UI_VERSION = "20260825siteui16"
+ERROR_UI_VERSION = "20260825siteui21"
 
 
 def test_preview_pages_use_the_same_cache_busted_navigation() -> None:
@@ -25,6 +26,14 @@ def test_preview_open_toggle_moves_into_the_drawer_header() -> None:
     assert ".preview-nav-open .preview-nav-toggle" in css
     assert "position: fixed" in css
     assert "top: 16px" in css
+
+
+def test_preview_shell_does_not_force_a_horizontal_scrollbar_at_320px() -> None:
+    css = (FRONTEND / "assets" / "css" / "preview.css").read_text(encoding="utf-8")
+    assert "@media (max-width: 340px)" in css
+    assert "body.preview-shell" in css
+    assert "min-width: 0" in css
+    assert "overflow-x: clip" in css
 
 
 def test_preview_demo_does_not_present_static_content_as_live_controls() -> None:
@@ -54,4 +63,4 @@ def test_cabinet_runtime_dynamic_modules_use_current_ui_version() -> None:
 def test_error_pages_use_current_error_script_version() -> None:
     for page in ("404.html", "error.html"):
         source = (FRONTEND / page).read_text(encoding="utf-8")
-        assert f"/assets/js/public/error-page.js?v={CURRENT_UI_VERSION}" in source
+        assert f"/assets/js/public/error-page.js?v={ERROR_UI_VERSION}" in source

@@ -1,5 +1,59 @@
+import { getShopCartCount } from "./shop-cart.js";
+
 const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
 const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
+const CART_PATH = "/cart.html";
+
+function createCartLink(mobile = false) {
+  const link = document.createElement("a");
+  link.className = mobile ? "shop-cart-button shop-cart-mobile-shortcut" : "shop-cart-button";
+  link.href = CART_PATH;
+
+  const label = document.createElement("span");
+  label.textContent = "Корзина";
+  const count = document.createElement("span");
+  count.className = "shop-cart-count";
+  count.setAttribute("aria-live", "polite");
+  count.textContent = "0";
+  link.append(label, count);
+  return link;
+}
+
+function syncCartButtons(shell, count = getShopCartCount()) {
+  const safeCount = Number.isFinite(Number(count)) ? Math.max(0, Number(count)) : 0;
+  const current = window.location.pathname.endsWith(CART_PATH);
+  shell.querySelectorAll(".shop-cart-count").forEach((node) => {
+    node.textContent = String(safeCount);
+  });
+  shell.querySelectorAll(".shop-cart-button").forEach((node) => {
+    node.classList.toggle("has-items", safeCount > 0);
+    node.setAttribute("aria-label", safeCount ? `Корзина: ${safeCount} предмета` : "Корзина пуста");
+    if (current) node.setAttribute("aria-current", "page");
+    else node.removeAttribute("aria-current");
+  });
+}
+
+function ensureCartShortcuts(shell, nav) {
+  let desktop = nav.querySelector(`.shop-cart-button[href="${CART_PATH}"]`);
+  if (!(desktop instanceof HTMLAnchorElement)) {
+    desktop = createCartLink();
+    nav.append(desktop);
+  }
+
+  let mobile = shell.querySelector(`.shop-cart-mobile-shortcut[href="${CART_PATH}"]`);
+  if (!(mobile instanceof HTMLAnchorElement)) {
+    mobile = createCartLink(true);
+    shell.append(mobile);
+  }
+
+  if (shell.dataset.cartBound !== "true") {
+    shell.dataset.cartBound = "true";
+    window.addEventListener("shopCartChanged", (event) => {
+      syncCartButtons(shell, event.detail?.count);
+    });
+  }
+  syncCartButtons(shell);
+}
 
 function setExpanded(button, expanded) {
   button.setAttribute("aria-expanded", expanded ? "true" : "false");
@@ -29,6 +83,8 @@ export function initPublicNav() {
   if (!(shell instanceof HTMLElement) || !(nav instanceof HTMLElement) || !(brand instanceof HTMLElement)) {
     return;
   }
+
+  ensureCartShortcuts(shell, nav);
 
   // Several public pages predate this module and already contain
   // #mobileNavToggle. Reuse that element so the enhancer never adds a second

@@ -559,3 +559,10 @@
   .preview-actions { grid-template-columns: 1fr; }
   .preview-table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
 }
+
+@media (max-width: 340px) {
+  body.preview-shell {
+    min-width: 0;
+    overflow-x: clip;
+  }
+}

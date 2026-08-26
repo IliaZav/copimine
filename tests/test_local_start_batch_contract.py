@@ -1,4 +1,8 @@
 from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
 import json
 
 
@@ -32,12 +36,10 @@ def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
         "codex/end-rift-event",
         "deploy\\plugin_versions.json",
         "Get-CurrentPluginSources",
+        "$sourcePluginDir",
+        "Join-Path $sourcePluginDir $fileName",
         "Sync-CurrentPlugins",
         "Expected 30 current server plugins",
-        "CopiMineElectionCore.jar",
-        "CopiMineNarcotics.jar",
-        "CopiMineUltimateAdminPlus.jar",
-        "voicechat-bukkit-2.6.16.jar",
         "Get-FileDigest",
         "Get-FileSha256",
         "Get-FileSha1",
@@ -55,6 +57,9 @@ def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
         "/resourcepacks/CopiMineResourcePack.zip",
         "localadmin123",
         "resource-pack-sha1",
+        "--skip-server-properties",
+        "Assert-LocalStartupPrerequisites",
+        "Assert-TrackedProductionPropertiesClean",
         "runes=2/2",
         "coreOverlay=true",
         "ops.json",
@@ -146,3 +151,109 @@ def test_local_session_validates_uvicorn_listener_children_before_stopping() -> 
     assert "verifiedWebsiteProcessIds" in text
     assert "listenerProcess" in text
     assert "Get-CimInstance Win32_Process -Filter" in text
+
+
+def test_local_batch_supports_noninteractive_invocation_without_forced_pause() -> None:
+    text = BATCH.read_text(encoding="utf-8")
+
+    assert "COPIMINE_NO_PAUSE" in text
+    assert "COPIMINE_NO_CLIENT" in text
+    assert "where powershell.exe" in text
+
+
+def test_local_runner_builds_pack_without_mutating_tracked_server_properties(tmp_path: Path) -> None:
+    source_pack = ROOT / "resourcepacks"
+    isolated_root = tmp_path / "project"
+    isolated_pack = isolated_root / "resourcepacks"
+    shutil.copytree(source_pack / "src", isolated_pack / "src")
+    for name in ("build-resourcepack.py", "models_manifest.json", "item_texture_sources.json"):
+        shutil.copy2(source_pack / name, isolated_pack / name)
+    isolated_catalog = isolated_root / "copimine-artifacts" / "items.yml"
+    isolated_catalog.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / "copimine-artifacts" / "items.yml", isolated_catalog)
+
+    isolated_properties = isolated_root / "minecraft" / "server" / "server.properties"
+    isolated_properties.parent.mkdir(parents=True)
+    tracked_properties = ROOT / "minecraft" / "server" / "server.properties"
+    original = tracked_properties.read_bytes()
+    isolated_original = re.sub(
+        rb"resource-pack-sha1=[0-9a-f]{40}",
+        b"resource-pack-sha1=" + (b"0" * 40),
+        original,
+    )
+    assert isolated_original != original
+    isolated_properties.write_bytes(isolated_original)
+
+    result = subprocess.run(
+        [sys.executable, str(isolated_pack / "build-resourcepack.py"), "--skip-server-properties"],
+        cwd=isolated_pack,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert isolated_properties.read_bytes() == isolated_original
+
+
+def test_local_runner_uses_only_current_worktree_plugin_sources() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "mainCheckoutRoot" not in text
+    assert "voiceChatCandidates" not in text
+    assert "minecraft\\server\\plugins" in text
+    assert "--skip-server-properties" in text
+
+
+def test_local_runner_rejects_dirty_tracked_production_properties_before_stopping_paper() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "Assert-TrackedProductionPropertiesClean" in text
+    startup = text.index("$currentPluginSources = @(Get-CurrentPluginSources)")
+    guard_call = text.index("$trackedProductionPropertiesSha256 = Assert-TrackedProductionPropertiesClean", startup)
+    paper_stop_call = text.index("Stop-ExistingLocalPaper\n", startup)
+    assert guard_call < paper_stop_call
+
+
+def test_local_runner_checks_isolated_postgres_before_stopping_paper() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    first_postgres_call = text.index("Ensure-LocalPostgres\n", text.index("$currentPluginSources = @(Get-CurrentPluginSources)"))
+    first_paper_stop_call = text.index("Stop-ExistingLocalPaper\n")
+    assert first_postgres_call < first_paper_stop_call
+
+
+def test_local_runner_checks_local_baseline_and_website_environment_before_stopping_paper() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "serverPropertiesBaseline" in text
+    first_environment_call = text.index("Ensure-LocalWebsiteEnvironment\n", text.index("$currentPluginSources = @(Get-CurrentPluginSources)"))
+    first_paper_stop_call = text.index("Stop-ExistingLocalPaper\n")
+    assert first_environment_call < first_paper_stop_call
+
+
+def test_local_runner_preflights_resource_pack_and_website_port_owners() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "Assert-LocalResourcePackPortSafe" in text
+    assert "Assert-LocalWebsitePortSafe" in text
+    first_pack_check = text.index("Assert-LocalResourcePackPortSafe\n", text.index("$currentPluginSources = @(Get-CurrentPluginSources)"))
+    first_website_check = text.index("Assert-LocalWebsitePortSafe\n", text.index("$currentPluginSources = @(Get-CurrentPluginSources)"))
+    first_paper_stop_call = text.index("Stop-ExistingLocalPaper\n")
+    assert first_pack_check < first_paper_stop_call
+    assert first_website_check < first_paper_stop_call
+
+
+def test_local_runner_suppresses_resource_pack_download_progress_noise() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "$ProgressPreference = 'SilentlyContinue'" in text
+
+
+def test_local_runner_discovers_minecraft_launcher_and_does_not_report_false_success() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "COPIMINE_LAUNCHER_PATH" in text
+    assert "function Get-MinecraftLauncherPath" in text
+    assert "D:\\.minecraft\\TLauncher.exe" in text
+    assert "TLauncher.exe" in text
+    assert "throw 'Minecraft launcher was requested but no supported launcher was found.'" in text

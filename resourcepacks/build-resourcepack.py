@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -634,12 +635,22 @@ def pack_zip() -> tuple[Path, str]:
     return zip_path, sha1
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Build the CopiMine resource pack")
+    parser.add_argument(
+        "--skip-server-properties",
+        action="store_true",
+        help="Build the archive without changing the tracked server.properties file",
+    )
+    args = parser.parse_args(argv)
     build_stage()
     zip_path, sha1 = pack_zip()
-    update_server_properties_sha1(sha1)
+    if not args.skip_server_properties:
+        update_server_properties_sha1(sha1)
     print(f"Built {zip_path}")
     print(f"SHA1 {sha1}")
+    if args.skip_server_properties:
+        print("Skipped tracked server.properties update")
 
 
 if __name__ == "__main__":

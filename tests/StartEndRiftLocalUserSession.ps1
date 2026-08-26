@@ -6,13 +6,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $worktreeRoot = (Resolve-Path (Join-Path $scriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $worktreeRoot 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $localRuntimeRoot 'end-rift-server')).Path
-$mainCheckoutRoot = (Resolve-Path (Join-Path $worktreeRoot '..\..')).Path
-$desktopRoot = (Resolve-Path (Join-Path $worktreeRoot '..\..\..')).Path
+$sourcePluginDir = (Resolve-Path (Join-Path $worktreeRoot 'minecraft\server\plugins')).Path
 $targetPluginDir = (Resolve-Path (Join-Path $serverDir 'plugins')).Path
 $sourcePackDir = (Resolve-Path (Join-Path $worktreeRoot 'resourcepacks\build')).Path
 $targetPackDir = Join-Path $serverDir 'resourcepacks\build'
@@ -62,6 +62,7 @@ function Assert-UnderRoot {
 }
 
 Assert-UnderRoot -Path $serverDir -Root $localRuntimeRoot -Label 'Local server'
+Assert-UnderRoot -Path $sourcePluginDir -Root $worktreeRoot -Label 'Current worktree plugin source'
 Assert-UnderRoot -Path $targetPluginDir -Root $localRuntimeRoot -Label 'Local plugin directory'
 Assert-UnderRoot -Path $targetPackDir -Root $localRuntimeRoot -Label 'Local resource-pack directory'
 Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreSQL data directory'
@@ -161,6 +162,19 @@ function Get-FileSha1 {
 function Get-FileSha256 {
   param([Parameter(Mandatory = $true)][string]$Path)
   return Get-FileDigest -Path $Path -Algorithm 'SHA256'
+}
+
+function Assert-TrackedProductionPropertiesClean {
+  $relativePath = 'minecraft/server/server.properties'
+  $status = @(& git -C $worktreeRoot status --porcelain=v1 --untracked-files=no -- $relativePath)
+  $statusExit = $LASTEXITCODE
+  if ($statusExit -ne 0) {
+    throw 'Unable to verify the tracked production server.properties state with Git.'
+  }
+  if (@($status | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0) {
+    throw "Refused local start because tracked production $relativePath is dirty. Restore or commit it before using the local launcher; the launcher will never overwrite it."
+  }
+  return Get-FileSha256 -Path (Join-Path $worktreeRoot $relativePath)
 }
 
 function New-LocalSecret {
@@ -452,12 +466,12 @@ function Set-LocalServerProperty {
 }
 
 function Build-And-Sync-ResourcePack {
-  $python = (Get-Command python.exe -ErrorAction Stop).Source
+  $python = $websitePython
   $builder = Join-Path $worktreeRoot 'resourcepacks\build-resourcepack.py'
   if (-not (Test-Path -LiteralPath $builder -PathType Leaf)) { throw "Resource-pack builder is missing: $builder" }
   Write-Host 'Building the current resource pack from the checked-out source.'
   Push-Location $worktreeRoot
-  try { & $python $builder } finally { Pop-Location }
+  try { & $python $builder '--skip-server-properties' } finally { Pop-Location }
   if ($LASTEXITCODE -ne 0) { throw "Resource-pack build failed with exit code $LASTEXITCODE." }
   if (-not (Test-Path -LiteralPath $pack -PathType Leaf)) { throw "Built resource pack is missing: $pack" }
 
@@ -527,41 +541,6 @@ function Get-CurrentPluginSources {
     throw "Plugin version manifest is missing: $pluginManifestPath"
   }
   $manifest = Get-Content -LiteralPath $pluginManifestPath -Raw | ConvertFrom-Json
-  $sourceByFile = [ordered]@{
-    'AuthEffects.jar' = Join-Path $worktreeRoot 'minecraft\server\plugins\AuthEffects.jar'
-    'AuthMe-5.6.0.jar' = Join-Path $worktreeRoot 'minecraft\server\plugins\AuthMe-5.6.0.jar'
-    'ClearLag.jar' = Join-Path $worktreeRoot 'minecraft\server\plugins\ClearLag.jar'
-    'CopiMineArtifacts.jar' = Join-Path $worktreeRoot 'copimine-artifacts\CopiMineArtifacts.jar'
-    'CopiMineEconomyCore.jar' = Join-Path $worktreeRoot 'copimine-economy-core\CopiMineEconomyCore.jar'
-    'CopiMineElectionCore.jar' = Join-Path $worktreeRoot 'copimine-election-core\CopiMineElectionCore.jar'
-    'CopiMineNarcotics.jar' = Join-Path $worktreeRoot 'copimine-narcotics\CopiMineNarcotics.jar'
-    'CopiMineUltimateAdminPlus.jar' = Join-Path $worktreeRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar'
-    'CopiMineWorldCore.jar' = Join-Path $worktreeRoot 'copimine-world-core\CopiMineWorldCore.jar'
-    'CopiMineEndEvent.jar' = Join-Path $worktreeRoot 'copimine-end-event\CopiMineEndEvent.jar'
-    'CoreProtect-CE-23.0.jar' = Join-Path $worktreeRoot 'thirdparty\server-plugins\CoreProtect-CE-23.0.jar'
-    'emotecraft-2.4.12-bukkit.jar' = Join-Path $worktreeRoot 'thirdparty\server-plugins\emotecraft-2.4.12-bukkit.jar'
-  }
-  $mainPluginDir = Join-Path $mainCheckoutRoot 'minecraft\server\plugins'
-  foreach ($name in @(
-      'Chunky-Bukkit-1.4.40.jar', 'EntityClearer.jar', 'EssentialsX-2.22.0.jar',
-      'EssentialsXChat-2.22.0.jar', 'EssentialsXSpawn-2.22.0.jar', 'FarmControl-1.3.0.jar',
-      'GrimAC.jar', 'GSit-3.5.1.jar', 'ImageFrame.jar', 'LuckPerms-Bukkit-5.5.42.jar',
-      'PlaceholderAPI-2.12.3.jar', 'ProtocolLib.jar', 'SeeMore-1.0.2.jar', 'TAB.v6.0.1.jar',
-      'Vault.jar', 'worldedit-bukkit-7.3.9.jar', 'worldguard-bukkit-7.0.12-dist.jar'
-    )) {
-    $sourceByFile[$name] = Join-Path $mainPluginDir $name
-  }
-  $voiceChatCandidates = @(
-    (Join-Path (Join-Path (Join-Path $desktopRoot 'release-build-602498f-clean2') 'minecraft\server\plugins') 'voicechat-bukkit-2.6.16.jar'),
-    (Join-Path (Join-Path (Join-Path $desktopRoot 'release-build-602498f-clean3') 'minecraft\server\plugins') 'voicechat-bukkit-2.6.16.jar')
-  )
-  $voiceChatSource = @($voiceChatCandidates | Where-Object {
-      Test-Path -LiteralPath $_ -PathType Leaf
-    } | Select-Object -First 1) | Select-Object -First 1
-  if ($null -ne $voiceChatSource) {
-    $sourceByFile['voicechat-bukkit-2.6.16.jar'] = [string]$voiceChatSource
-  }
-
   $manifestEntries = @($manifest.plugins.PSObject.Properties)
   if ($manifestEntries.Count -ne 30) {
     throw "Expected 30 current server plugins in $pluginManifestPath, found $($manifestEntries.Count)."
@@ -570,15 +549,9 @@ function Get-CurrentPluginSources {
   foreach ($entry in $manifestEntries) {
     $fileName = $entry.Name
     $expectedVersion = [string]$entry.Value
-    if ($sourceByFile.Keys -notcontains $fileName) {
-      throw "No local source mapping exists for current plugin $fileName."
-    }
-    $sourcePath = [string](@($sourceByFile[$fileName]) | Select-Object -First 1)
-    if ([string]::IsNullOrWhiteSpace($sourcePath)) {
-      throw "No local source mapping exists for current plugin $fileName."
-    }
+    $sourcePath = Join-Path $sourcePluginDir $fileName
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) {
-      throw "Current plugin source is missing: $fileName at $sourcePath"
+      throw "Current worktree plugin source is missing: $fileName at $sourcePath"
     }
     $descriptor = Read-PluginDescriptor -JarPath $sourcePath
     if ($descriptor.PluginVersion -ne $expectedVersion) {
@@ -594,6 +567,29 @@ function Get-CurrentPluginSources {
     }
   }
   return $sources
+}
+
+function Assert-LocalStartupPrerequisites {
+  param([Parameter(Mandatory = $true)][object[]]$PluginSources)
+  $builder = Join-Path $worktreeRoot 'resourcepacks\build-resourcepack.py'
+  $paper = Join-Path $serverDir 'purpur.jar'
+  foreach ($required in @(
+      $builder,
+      $paper,
+      $pgCtl,
+      $websitePython,
+      $serverPropertiesBaseline,
+      (Join-Path $scriptRoot 'InvokeEndRiftLocalRcon.ps1'),
+      (Join-Path $scriptRoot 'StartEndRiftLocal.ps1'),
+      (Join-Path $scriptRoot 'SetupEndRiftLocalScene.ps1')
+    )) {
+    if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+      throw "Required local startup file is missing: $required"
+    }
+  }
+  $java = Get-Command java.exe -ErrorAction SilentlyContinue
+  if ($null -eq $java) { throw 'Java is not available on PATH for the local Paper server.' }
+  if ($PluginSources.Count -ne 30) { throw "Expected 30 current plugin sources, found $($PluginSources.Count)." }
 }
 
 function Sync-CurrentPlugins {
@@ -700,6 +696,27 @@ function Ensure-ResourcePackHttpServer {
   }
 }
 
+function Assert-LocalResourcePackPortSafe {
+  $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $packPort -ErrorAction SilentlyContinue)
+  if ($listeners.Count -eq 0) { return }
+  $existingPid = 0
+  if (Test-Path -LiteralPath $packPidFile -PathType Leaf) {
+    [int]::TryParse((Get-Content -LiteralPath $packPidFile -Raw).Trim(), [ref]$existingPid) | Out-Null
+  }
+  if ($existingPid -le 0) {
+    throw "Resource-pack HTTP port $packPort is occupied without a verifiable local PID file."
+  }
+  $process = Get-CimInstance Win32_Process -Filter "ProcessId=$existingPid" -ErrorAction SilentlyContinue
+  $commandLine = if ($process) { [string]$process.CommandLine } else { '' }
+  if (-not $process -or $commandLine -notmatch '(?i)-m\s+http\.server\s+' + [Regex]::Escape([string]$packPort)) {
+    throw "Resource-pack HTTP port $packPort is occupied by an unverified process; refusing to stop it."
+  }
+  $owners = @($listeners | Select-Object -ExpandProperty OwningProcess | Sort-Object -Unique)
+  if ($owners.Count -ne 1 -or [int]$owners[0] -ne $existingPid) {
+    throw "Resource-pack HTTP port $packPort is not exclusively owned by the verified local process PID=$existingPid."
+  }
+}
+
 function Get-LocalWebsiteProcessFromPidFile {
   $processId = 0
   if (Test-Path -LiteralPath $websitePidFile -PathType Leaf) {
@@ -717,6 +734,25 @@ function Assert-LocalWebsiteProcessIdentity {
       $commandLine -notmatch '(?i)--port\s+' + [Regex]::Escape([string]$websitePort) -or
       $commandLine.IndexOf($adminWebDir, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
     throw "Refused to stop an unverified process on local website port $websitePort."
+  }
+}
+
+function Assert-LocalWebsitePortSafe {
+  $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $websitePort -ErrorAction SilentlyContinue)
+  $process = Get-LocalWebsiteProcessFromPidFile
+  if ($process) { Assert-LocalWebsiteProcessIdentity -Process $process }
+  $verifiedIds = @()
+  if ($process) { $verifiedIds += [int]$process.ProcessId }
+  foreach ($ownerId in @($listeners | ForEach-Object { [int]$_.OwningProcess } | Sort-Object -Unique)) {
+    $listenerProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$ownerId" -ErrorAction SilentlyContinue
+    if (-not $listenerProcess) {
+      throw "Local website port $websitePort is owned by PID $ownerId, but its process could not be inspected."
+    }
+    Assert-LocalWebsiteProcessIdentity -Process $listenerProcess
+    $verifiedIds += [int]$listenerProcess.ProcessId
+  }
+  if ($listeners.Count -gt 0 -and @($verifiedIds | Sort-Object -Unique).Count -eq 0) {
+    throw "Port $websitePort is occupied but no verified local website process was found."
   }
 }
 
@@ -842,29 +878,57 @@ function Setup-LocalScene {
   if ($LASTEXITCODE -ne 0) { throw "Local scene setup failed with exit code $LASTEXITCODE." }
 }
 
+function Get-MinecraftLauncherPath {
+  $candidates = @()
+  if (-not [string]::IsNullOrWhiteSpace($env:COPIMINE_LAUNCHER_PATH)) {
+    $candidates += $env:COPIMINE_LAUNCHER_PATH
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:APPDATA)) {
+    $candidates += Join-Path $env:APPDATA '.minecraft\TLauncher.exe'
+  }
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $candidates += Join-Path $env:USERPROFILE '.minecraft\TLauncher.exe'
+  }
+  $candidates += @(
+    'D:\.minecraft\TLauncher.exe',
+    'C:\.minecraft\TLauncher.exe'
+  )
+  foreach ($candidate in @($candidates | Select-Object -Unique)) {
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+      return (Resolve-Path -LiteralPath $candidate).Path
+    }
+  }
+  return ''
+}
+
 function Launch-MinecraftClientIfNeeded {
   if (-not $LaunchClient) { return }
   $client = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
       Where-Object {
         $_.Name -ieq 'javaw.exe' -and
         $_.CommandLine -and
-        $_.CommandLine -match '(?i)net\.fabricmc\.loader\.impl\.launch\.knot\.KnotClient' -and
-        $_.CommandLine -match '(?i)ServerRP'
+        $_.CommandLine -match '(?i)net\.fabricmc\.loader\.impl\.launch\.knot\.KnotClient'
       })
   if ($client.Count -gt 0) {
     Write-Host "Minecraft client is already running (PID=$($client[0].ProcessId)); leaving it untouched."
     return
   }
-  $launcher = 'C:\Users\zavod\AppData\Roaming\.minecraft\TLauncher.exe'
-  if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) {
-    Write-Warning "TLauncher was not found at $launcher; start Minecraft manually and connect to 127.0.0.1:$serverPort."
+  $runningLauncher = @(Get-Process -Name 'TLauncher' -ErrorAction SilentlyContinue)
+  if ($runningLauncher.Count -gt 0) {
+    Write-Host "TLauncher is already running (PID=$($runningLauncher[0].Id)); leaving it untouched."
     return
   }
-  Start-Process -FilePath $launcher | Out-Null
-  Write-Host 'TLauncher started. Select the local 1.21.1 profile and connect to 127.0.0.1:25566.'
+  $launcher = Get-MinecraftLauncherPath
+  if ([string]::IsNullOrWhiteSpace($launcher)) {
+    throw 'Minecraft launcher was requested but no supported launcher was found.'
+  }
+  Start-Process -FilePath $launcher -WorkingDirectory (Split-Path -Parent $launcher) | Out-Null
+  Write-Host "TLauncher started from $launcher. Select the local 1.21.1 profile and connect to 127.0.0.1:$serverPort."
 }
 
-Stop-ExistingLocalPaper
+$currentPluginSources = @(Get-CurrentPluginSources)
+Assert-LocalStartupPrerequisites -PluginSources $currentPluginSources
+$trackedProductionPropertiesSha256 = Assert-TrackedProductionPropertiesClean
 $radminVpnAddress = Get-RadminVpnAddress
 if (-not [string]::IsNullOrWhiteSpace($radminVpnAddress)) {
   $resourcePackBindAddress = $radminVpnAddress
@@ -873,14 +937,21 @@ if (-not [string]::IsNullOrWhiteSpace($radminVpnAddress)) {
 } else {
   Write-Warning 'Radmin VPN IPv4 address was not found; resource pack will remain available only on 127.0.0.1.'
 }
+Ensure-LocalPostgres
+Ensure-LocalWebsiteEnvironment
+Assert-LocalResourcePackPortSafe
+Assert-LocalWebsitePortSafe
+Stop-ExistingLocalPaper
 Ensure-LocalVanillaBedRespawn
 Normalize-LocalServerProperties
 Build-And-Sync-ResourcePack
+if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.properties')) -ne $trackedProductionPropertiesSha256) {
+  throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'
+}
 $currentPluginSources = @(Sync-CurrentPlugins)
 Set-LocalServerProperty -Key 'server-port' -Value ([string]$serverPort)
 Set-LocalServerProperty -Key 'enable-rcon' -Value 'true'
 Set-LocalServerProperty -Key 'rcon.port' -Value ([string]$rconPort)
-Ensure-LocalPostgres
 Ensure-ResourcePackHttpServer
 Start-LocalPaper
 Setup-LocalScene

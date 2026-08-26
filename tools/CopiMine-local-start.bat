@@ -4,11 +4,25 @@ title CopiMine local End Rift test
 
 set "WORKTREE=D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event"
 set "RUNNER=%WORKTREE%\tests\StartEndRiftLocalUserSession.ps1"
+set "RADMIN_HELPER=%WORKTREE%\tools\Get-CopiMineRadminAddress.ps1"
+
+where powershell.exe >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Windows PowerShell is not available on PATH.
+    if /i not "%COPIMINE_NO_PAUSE%"=="1" pause
+    exit /b 1
+)
 
 if not exist "%RUNNER%" (
     echo [ERROR] Local End Rift runner is missing:
     echo         %RUNNER%
-    pause
+    if /i not "%COPIMINE_NO_PAUSE%"=="1" pause
+    exit /b 1
+)
+if not exist "%RADMIN_HELPER%" (
+    echo [ERROR] Radmin VPN helper is missing:
+    echo         %RADMIN_HELPER%
+    if /i not "%COPIMINE_NO_PAUSE%"=="1" pause
     exit /b 1
 )
 
@@ -27,14 +41,18 @@ echo PostgreSQL: 127.0.0.1:55433 / database copimine
 echo Worktree: %WORKTREE%
 echo.
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RUNNER%" -AdminNickname "SudoKillDash9" -LaunchClient
+if /i "%COPIMINE_NO_CLIENT%"=="1" (
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RUNNER%" -AdminNickname "SudoKillDash9"
+) else (
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%RUNNER%" -AdminNickname "SudoKillDash9" -LaunchClient
+)
 set "exitCode=%ERRORLEVEL%"
 
 if not "%exitCode%"=="0" (
     echo.
     echo [ERROR] Local session failed with exit code %exitCode%.
     echo Check local-runtime\user-session-logs, local-runtime\end-rift-server\logs\latest.log and the local website log.
-    pause
+    if /i not "%COPIMINE_NO_PAUSE%"=="1" pause
     exit /b %exitCode%
 )
 
@@ -42,5 +60,5 @@ echo.
 echo [OK] Local website, PostgreSQL, server, all plugins, resource-pack HTTP and OP are ready.
 if defined RADMIN_IP (echo Connect Minecraft and your friend to %RADMIN_IP%:25566 so the resource pack downloads.) else (echo Connect Minecraft to 127.0.0.1:25566; see runner output for the Radmin address.)
 echo Open the local website at http://127.0.0.1:8093/ (localadmin / localadmin123).
-pause
+if /i not "%COPIMINE_NO_PAUSE%"=="1" pause
 exit /b 0

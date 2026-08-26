@@ -89,7 +89,8 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui16"
+    cache_key = "20260826cabinetui23"
+    runtime_cache_key = "20260825siteui16"
     app_cache_key = "20260825siteui22"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
@@ -100,4 +101,21 @@ def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
     app = read("admin-web/frontend/assets/app.js")
     bootstrap = read("admin-web/frontend/assets/js/bootstrap.js")
     assert f"./js/bootstrap.js?v={app_cache_key}" in app
-    assert f"./cabinet-runtime.js?v={cache_key}" in bootstrap
+    assert f"./cabinet-runtime.js?v={runtime_cache_key}" in bootstrap
+
+
+def test_cabinet_public_header_uses_the_same_forest_shell_as_public_pages() -> None:
+    cabinet_css = read("admin-web/frontend/assets/cabinet.css")
+    shell_css = read("admin-web/frontend/assets/css/cabinet-shell-polish.css")
+
+    assert '@import url("./css/cabinet-shell-polish.css?v=20260826cabinetui23");' in cabinet_css
+    assert 'body[data-page-kind="cabinet"] > .public-nav' in shell_css
+    assert "border-radius: 6px !important" in shell_css
+    assert "padding: 8px 12px !important" in shell_css
+    assert "linear-gradient(135deg, var(--cabinet-site-forest), var(--cabinet-site-forest-2))" in shell_css
+    assert ".public-nav .shop-cart-button" in shell_css
+
+    for path in cabinet_templates():
+        source = path.read_text(encoding="utf-8")
+        assert "/assets/cabinet.css?v=20260826cabinetui23" in source, path.name
+        assert "/assets/js/cabinet-polish.js?v=20260826cabinetui23" in source, path.name

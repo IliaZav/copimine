@@ -157,6 +157,18 @@ def test_public_shop_descriptions_are_not_truncated_without_an_accessible_reveal
     assert ".shop-product-description" in audit_css
 
 
+def test_demoted_status_page_uses_the_shared_card_rhythm_without_inline_layout() -> None:
+    demoted = read("admin-web/frontend/cabinet/demoted.html")
+    polish = read("admin-web/frontend/assets/css/website-polish.css")
+
+    assert 'class="demoted-page"' in demoted
+    assert 'class="demoted-card"' in demoted
+    assert 'class="demoted-actions"' in demoted
+    assert 'style=' not in demoted
+    assert ".demoted-page" in polish
+    assert ".demoted-card" in polish
+
+
 def test_launcher_unavailable_state_has_a_keyboard_safe_retry_action() -> None:
     launcher = read("admin-web/frontend/launcher.html")
     render = read("admin-web/frontend/assets/js/public/launcher-render.js")

@@ -5,6 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SETUP = (ROOT / "tests/SetupEndRiftLocalScene.ps1").read_text(encoding="utf-8")
+SMOKE = (ROOT / "tests/RunEndRiftLocalSceneSmoke.ps1").read_text(encoding="utf-8")
 PACK = ROOT / "tests/assets/copimine-local-spawn"
 PLUGIN = (ROOT / "copimine-end-event/plugin.yml").read_text(encoding="utf-8")
 
@@ -70,3 +71,21 @@ def test_room_has_no_roof_and_gate_is_exactly_twelve_obsidian_blocks() -> None:
         "cmend portalroom info",
     ):
         assert marker in SETUP
+
+
+def test_local_scene_smoke_proves_gate_open_restore_and_portal_survival() -> None:
+    for marker in (
+        "local-runtime",
+        "server-port'] -ne '25566'",
+        "RconPort -ne 25576",
+        "cmend gate open 1",
+        "gate.status=§fOPENED",
+        "minecraft:air replace minecraft:obsidian",
+        "cmend gate restore confirm",
+        "gate.status=§fRESTORED",
+        "minecraft:end_portal",
+        "End Rift local scene smoke passed.",
+    ):
+        assert marker in SMOKE
+    assert "minecraft/server" not in SMOKE
+    assert "production" not in SMOKE.lower()

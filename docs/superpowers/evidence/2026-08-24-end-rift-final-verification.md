@@ -192,3 +192,10 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - `SetupEndRiftLocalScene.ps1` повторно завершился с exit code `0` только на Paper `25566`; итоговый status: `COLLECTING`, `coreOverlay=true`, `runes=2/2`, `event-mobs=0`, `boss=none`, Gate `RESTORED`.
 - Для надёжной связи с командными блоками кнопки размещаются на стене в `0,64,-17` и `3,64,-17` как `minecraft:stone_button[face=wall,facing=south,powered=false]`; командные блоки находятся непосредственно за ними в `0,64,-16` и `3,64,-16`.
 - RCON Paper-проверка после `powered=true` показала у блока включения `powered:1b`, после возврата кнопки в `powered=false` — `powered:0b`; NBT команд подтверждён: `function copimine:spawn/max_on` и `function copimine:spawn/max_clear`. Это не меняет ванильные текстуры и остаётся локальной стендовой конфигурацией.
+
+## Свежий smoke сцены, Gate и spawn-станции — 26 августа 2026
+
+- `tests/RunEndRiftLocalSceneSmoke.ps1` на чисто перезапущенном изолированном Paper подтвердил `COLLECTING`, Core `8,68,-39`, арена `[-12,65,-59]..[28,71,-19]`, `runes=2/2`, Gate `RESTORED`, активный `end_portal` и отсутствие крыши у portal-room.
+- Тест вызвал реальную команду `/cmend gate open 1`: Gate дошёл до `OPENED progress=12/12`, проход стал воздухом, проверка `fill ... air replace minecraft:obsidian` вернула `No blocks were filled`, а `end_portal` сохранился. Затем `/cmend gate restore confirm` восстановил Gate и повторная проверка увидела obsidian во всех слоях.
+- Для обеих spawn-кнопок smoke проверил точный wall-button state, NBT-функции и электрическую цепь `powered 1b -> 0b`. На реальном локальном игроке `FP3` отдельный прогон `execute as FP3 at @s run function copimine:spawn/max_on` вернул снятие `Health Boost` и `Resistance`, а `max_clear` после этого оставил эффекты отсутствующими.
+- Результат smoke: все проверки `PASS`, финальная сцена оставлена закрытой и восстановленной; локальные порты `25566/25576` использовались отдельно от production.

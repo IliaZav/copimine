@@ -99,6 +99,31 @@ function Invoke-SceneCommand {
   return $result
 }
 
+function Assert-SceneCondition {
+  param(
+    [Parameter(Mandatory = $true)][string]$Label,
+    [Parameter(Mandatory = $true)][string]$CommandText
+  )
+  $result = Invoke-SceneCommand $CommandText
+  if (($result -join [Environment]::NewLine) -notmatch 'The time is') {
+    throw "Local scene condition failed: $Label. Actual response: $result"
+  }
+  Write-Host "PASS $Label"
+}
+
+function Assert-SceneCommandText {
+  param(
+    [Parameter(Mandatory = $true)][string]$Label,
+    [Parameter(Mandatory = $true)][string]$CommandText,
+    [Parameter(Mandatory = $true)][string]$Expected
+  )
+  $result = Invoke-SceneCommand $CommandText
+  if (($result -join [Environment]::NewLine) -notmatch [regex]::Escape($Expected)) {
+    throw "Local scene command failed: $Label. Expected '$Expected'. Actual response: $result"
+  }
+  Write-Host "PASS $Label"
+}
+
 # CopiMine is the primary overworld; Minecraft's /execute dimension argument
 # uses the dimension key rather than Bukkit's custom world name.
 $world = 'minecraft:overworld'
@@ -227,10 +252,20 @@ $gateInfo = Invoke-SceneCommand 'cmend gate info'
 $portalInfo = Invoke-SceneCommand 'cmend portalroom info'
 if ($status -notmatch 'core=.*CopiMine 8,68,-39' -or
     $status -notmatch 'arena=.*CopiMine \[-12,65,-59\].*\[28,71,-19\]' -or
+    $status -notmatch 'coreOverlay=true' -or
+    $status -notmatch 'runes=2/2' -or
     $gateInfo -notmatch 'gate\.pos1=.*CopiMine 29,68,-40.*pos2=.*CopiMine 29,71,-38' -or
+    $gateInfo -notmatch 'gate\.status=.*RESTORED' -or
     $portalInfo -notmatch 'portalroom=.*CopiMine 31\.5,68\.0,-42\.5') {
   throw "Local scene metadata does not match the rebuilt scene. Status: $status Gate: $gateInfo Portal: $portalInfo"
 }
+Assert-SceneCondition 'closed gate is obsidian' "execute in $world run execute if block $gateX $gateMinY $gateMinZ minecraft:obsidian run time query gametime"
+Assert-SceneCondition 'portal plane is active' "execute in $world run execute if block 33 68 -39 minecraft:end_portal run time query gametime"
+Assert-SceneCondition 'portal room has no roof' "execute in $world run execute if block $roomMinX $roomClearTopY $roomMinZ minecraft:air run time query gametime"
+Assert-SceneCondition 'enable station button is a wall button' "execute in $world run execute if block $spawnStationX1 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
+Assert-SceneCondition 'clear station button is a wall button' "execute in $world run execute if block $spawnStationX2 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
+Assert-SceneCommandText 'enable command block function' "execute in $world run data get block $spawnStationX1 $spawnStationY $spawnStationZ Command" 'function copimine:spawn/max_on'
+Assert-SceneCommandText 'clear command block function' "execute in $world run data get block $spawnStationX2 $spawnStationY $spawnStationZ Command" 'function copimine:spawn/max_clear'
 Write-Host "Local End Rift scene rebuilt at arena [$arenaMinX,$arenaMinY,$arenaMinZ]..[$arenaMaxX,$arenaMaxY,$arenaMaxZ]."
 Write-Host "Obsidian gate: [$gateX,$gateMinY,$gateMinZ]..[$gateX,$gateMaxY,$gateMaxZ] (3 wide x 4 high; no roof)."
 Write-Host "Portal room: [$roomMinX,$floorY,$roomMinZ]..[$roomMaxX,$roomTopY,$roomMaxZ], portal plane 33..35,68,-40..-38."

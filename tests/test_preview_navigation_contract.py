@@ -6,7 +6,7 @@ FRONTEND = ROOT / "admin-web" / "frontend"
 PREVIEW_PAGES = ("preview-admin.html", "preview-player.html")
 CURRENT_UI_VERSION = "20260825siteui16"
 PREVIEW_UI_VERSION = "20260825siteui16"
-ERROR_UI_VERSION = "20260825siteui21"
+ERROR_UI_VERSION = "20260825siteui22"
 
 
 def test_preview_pages_use_the_same_cache_busted_navigation() -> None:

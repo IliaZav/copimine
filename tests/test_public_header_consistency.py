@@ -77,16 +77,17 @@ def test_runtime_public_header_adds_the_same_cart_shortcuts_to_every_shell() -> 
 
 def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:
     source = read(FRONTEND / "cabinet" / "demoted.html")
-    assert '/assets/app.js?v=20260825siteui21' in source
+    assert '/assets/app.js?v=20260825siteui22' in source
 
 
-def test_legacy_modpack_route_redirects_before_rendering_a_legacy_page() -> None:
+def test_legacy_modpack_route_redirects_with_a_branded_legacy_fallback() -> None:
     mods = read(FRONTEND / "mods.html")
     assert 'http-equiv="refresh"' not in mods.lower()
-    assert "Ссылка сохранена" not in mods
-    assert "Страница модпака" not in mods
     assert re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", mods)
     assert 'href="/launcher.html"' in mods
+    assert 'data-page-kind="public-legacy"' in mods
+    assert 'class="legacy-redirect-card"' in mods
+    assert 'display: none' not in mods
 
 
 def test_legacy_hash_routes_skip_the_compatibility_page() -> None:

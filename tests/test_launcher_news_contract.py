@@ -26,6 +26,24 @@ def test_launcher_news_and_legacy_routes_are_static_contracts() -> None:
     assert "Скачать модпак" not in legacy
 
 
+def test_legacy_mods_route_has_a_branded_fallback_before_redirect() -> None:
+    legacy = read("admin-web/frontend/mods.html")
+
+    assert 'data-page-kind="public-legacy"' in legacy
+    assert 'class="public-nav public-nav-auth"' in legacy
+    assert 'class="legacy-redirect-card"' in legacy
+    assert 'href="/launcher.html"' in legacy
+    assert 'href="/assets/style.css?v=' in legacy
+    assert "location.replace('/launcher.html')" in legacy
+    assert 'display: none' not in legacy
+
+
+def test_legacy_public_kind_skips_homepage_fetch() -> None:
+    public_page = read("admin-web/frontend/assets/js/public/public-page.js")
+
+    assert 'pageKind === "public-legacy"' in public_page
+
+
 def test_public_navigation_exposes_launcher_and_news() -> None:
     for name in ("index.html", "server.html", "elections.html", "shops.html", "signin.html", "register.html", "cart.html", "404.html", "error.html"):
         page = read(f"admin-web/frontend/{name}")

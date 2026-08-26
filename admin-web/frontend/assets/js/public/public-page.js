@@ -1,7 +1,7 @@
 import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui19";
 import { initCartPage } from "./cart-page.js?v=20260825siteui19";
 import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui19";
-import { initPublicNav } from "./public-nav.js?v=20260825siteui21";
+import { initPublicNav } from "./public-nav.js?v=20260825siteui22";
 import { initLauncherPage } from "./launcher-page.js?v=20260825siteui19";
 import { initNewsPage } from "./news-page.js?v=20260825siteui19";
 import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui19";
@@ -21,6 +21,8 @@ if (pageKind === "public-cart") {
   void initNewsPage();
 } else if (pageKind === "public-patch") {
   void initPatchDetailPage();
+} else if (pageKind === "public-legacy") {
+  // The legacy hand-off has its own static fallback and must not fetch homepage data.
 } else if (document.querySelector(".public-site")) {
   bindHomepageEvents();
   window.setTimeout(() => {

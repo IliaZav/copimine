@@ -81,7 +81,9 @@ def test_public_pages_use_one_navigation_and_one_common_css_entrypoint() -> None
 def test_compatibility_and_preview_routes_are_not_second_products() -> None:
     mods = read("admin-web/frontend/mods.html")
     assert "location.replace('/launcher.html')" in mods
-    assert "Страница модпака" not in mods
+    assert 'data-page-kind="public-legacy"' in mods
+    assert 'class="legacy-redirect-card"' in mods
+    assert 'href="/launcher.html"' in mods
 
     for page in ("preview-admin.html", "preview-player.html"):
         html = read(f"admin-web/frontend/{page}").lower()

@@ -3,22 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="robots" content="noindex,follow" />
+  <meta name="description" content="Старая страница модпака CopiMine переехала на страницу Launcher." />
   <link rel="canonical" href="https://copimine.ru/launcher.html" />
   <title>CopiMine — страница обновлена</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
-  <style>
-    html[data-legacy-redirect="true"] body { display: none; }
-    body { margin: 0; padding: 2rem; font: 16px/1.5 system-ui, sans-serif; }
-  </style>
+  <script src="/assets/js/theme/theme-bootstrap.js"></script>
+  <link rel="stylesheet" href="/assets/style.css?v=20260825siteui22" />
+</head>
+<body data-page-kind="public-legacy">
+  <main class="public-site public-site-compact">
+    <header class="public-nav public-nav-auth"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span></a><button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/server.html">Сервер</a><a href="/elections.html">Выборы</a><a href="/shops.html">Лавки</a><a href="/launcher.html" aria-current="page">Лаунчер</a><a href="/news.html">Новости</a><a id="publicSigninLink" href="/signin.html">Войти</a><a id="publicRegisterLink" href="/register.html">Регистрация</a><button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button><button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button></nav></header>
+
+    <div class="public-page-shell legacy-redirect-shell">
+      <section class="legacy-redirect-card" aria-labelledby="legacyRedirectTitle">
+        <div class="legacy-redirect-copy">
+          <span class="hero-kicker">Ссылка сохранена</span>
+          <h1 id="legacyRedirectTitle">Страница модпака переехала.</h1>
+          <p>Скачивание сборки, обновления и новости теперь находятся в Launcher.</p>
+          <div class="public-actions">
+            <a class="btn btn-primary" href="/launcher.html">Открыть Launcher</a>
+            <a class="btn btn-secondary" href="/news.html">Посмотреть новости</a>
+          </div>
+          <p class="legacy-redirect-note">Если переход не начался, нажми кнопку выше.</p>
+        </div>
+        <aside class="legacy-redirect-side" aria-label="CopiMine Launcher">
+          <img src="/assets/launcher-screenshots/launcher-home-thumb.jpg" alt="Главное окно CopiMine Launcher" />
+          <strong>Скачай лаунчер и играй на CopiMine.</strong>
+        </aside>
+      </section>
+    </div>
+  </main>
   <script>
-    document.documentElement.dataset.legacyRedirect = "true";
     window.location.replace('/launcher.html');
   </script>
-</head>
-<body>
-  <main>
-    <p>Переходим на страницу Launcher. Если переход не начался, <a href="/launcher.html">откройте её вручную</a>.</p>
-  </main>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260825siteui22"></script>
 </body>
 </html>

@@ -23,4 +23,4 @@ def test_binding_fix_is_cache_busted_on_auth_and_link_pages():
     assert 'from "./shared/app-routes.js?v=20260825siteui16"' in BOOTSTRAP
     for relative in ("signin.html", "register.html", "cabinet/link.html"):
         html = (ROOT / "admin-web/frontend" / relative).read_text(encoding="utf-8")
-        assert '/assets/app.js?v=20260825siteui21' in html
+        assert '/assets/app.js?v=20260825siteui22' in html

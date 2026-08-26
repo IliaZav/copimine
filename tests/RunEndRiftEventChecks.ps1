@@ -49,7 +49,7 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_gate_contract.py tests\test_end_event_bossbar_contract.py `
       tests\test_end_event_client_texture_quality_contract.py tests\test_end_event_creative_run_contract.py `
       tests\test_end_event_spell_names_contract.py tests\test_end_event_gate_selection_contract.py `
-      tests\test_end_event_command_reference_contract.py
+      tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py
   } finally {
     Pop-Location
   }

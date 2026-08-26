@@ -52,3 +52,27 @@ def test_creative_run_waits_for_miniboss_flight_before_clearing_wave_three() -> 
     assert "case 8 ->" in delay
     assert "spellTelegraphTicks()" in delay
     assert "SPELL_FLIGHT_TICKS" in delay
+
+
+def test_creative_run_accepts_an_idle_local_event_when_worldcore_already_unlocked() -> None:
+    start = MAIN[MAIN.index("private void startCreativeTest"):
+                 MAIN.index("private boolean officialCombatStateActive")]
+    tick = MAIN[MAIN.index("private void tickCreativeTest"):
+                MAIN.index("private int creativeTestStageDelay")]
+
+    # The local scene intentionally keeps the End open so the portal can be
+    # inspected.  That permanent WorldCore fact must not block a disposable
+    # test while the End Rift event itself is still idle and uncommitted.
+    assert "phase != EventPhase.COLLECTING" in start
+    assert "endUnlocked || phase == EventPhase.UNLOCKED" not in start
+    assert "phase != EventPhase.COLLECTING" in tick
+    assert "|| endUnlocked ||" not in tick
+
+
+def test_creative_cleanup_clears_transient_ai_helpers_and_spell_state() -> None:
+    cleanup = MAIN[MAIN.index("private void finishCreativeTest"):
+                   MAIN.index("private void handleWave")]
+
+    # A completed disposable run must not leave the operator in the helper
+    # set or leave mini-boss/boss targeting state attached to the next run.
+    assert "clearCombatAiState();" in cleanup

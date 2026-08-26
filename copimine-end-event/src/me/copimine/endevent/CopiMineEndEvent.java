@@ -1840,6 +1840,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             depositedResources.replaceAll((key, ignored) -> 0);
             coreCharged = false;
+            rebuildPersistedVisuals();
             forcePhase(EventPhase.COLLECTING, "admin resource reset");
             saveStateSync();
             message(sender, "&aПрогресс ресурсов сброшен в локальном состоянии события.");
@@ -2015,9 +2016,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&eCreative full-run уже выполняется; для остановки: /cmend test run creative cancel.");
             return;
         }
-        if (endUnlocked || phase == EventPhase.UNLOCKED || !officialRewardRoster.isEmpty()
+        if (phase != EventPhase.COLLECTING || !officialRewardRoster.isEmpty()
                 || officialCombatStateActive()) {
-            message(sender, "&cCreative full-run остановлен: активная official session или End уже разблокирован.");
+            message(sender, "&cCreative full-run остановлен: активная official session или ивент уже не в COLLECTING.");
             return;
         }
         if (!isArenaLocation(player.getLocation())) {
@@ -2059,7 +2060,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player player = creativeTestPlayer();
         if (player == null || player.getGameMode() != GameMode.CREATIVE
                 || !isArenaLocation(player.getLocation()) || creativeTestGeneration != generation
-                || endUnlocked || !officialRewardRoster.isEmpty()) {
+                || phase != EventPhase.COLLECTING || !officialRewardRoster.isEmpty()) {
             finishCreativeTest(false, "operator/session guard failed");
             return;
         }
@@ -2249,9 +2250,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " official_roster=" + officialRewardRoster.size());
         clearWaveEntities();
         clearBossOnly();
-        clearActiveRiftProjectiles();
-        clearVoidMarkZones();
-        testCombatAiMode = false;
+        clearCombatAiState();
         controlSpellUnlocked = false;
         halfHealthTriggered = false;
         finalDrainTriggered = false;

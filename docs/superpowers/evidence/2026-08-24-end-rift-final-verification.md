@@ -186,3 +186,9 @@ wave=3 event-mobs=0 boss=none half=false final=false endUnlocked=true victory=VI
 - Положительный прогон: два изолированных offline-игрока заняли обе руны (`RUNE_OCCUPANCY_CHANGED ... visual=2 official=2`), countdown завершился через 60 секунд, официальный state перешёл в `WAVE_1`, generation `19`, создано `10` event-mobs. В тот же момент Paper записал `END_EVENT_MUSIC track=copimine:end_rift/waves phase=WAVE_1 loopSeconds=95`.
 - После проверки вызвано локальное `/cmend core remove confirm`: лог подтвердил `END_EVENT_OWNED_CLEANUP ... removed=4`; затем Core/руны восстановлены на прежнем месте, Gate получил status `RESTORED`, а `SetupEndRiftLocalScene.ps1` завершился с exit code `0`. Финальный локальный status: `COLLECTING`, `coreOverlay=true`, `runes=2/2`, `event-mobs=0`, `boss=none`.
 - Итог: автоматическое event music включается только в активных боевых/победных фазах. Уже начатый короткий victory-tail после победы — единственное предусмотренное завершение трека; обычная игра его не запускает. `/cmend test music ...` остаётся отдельной local-only диагностикой и не является автоматическим воспроизведением.
+
+## Локальная проверка spawn-станции — 26 августа 2026
+
+- `SetupEndRiftLocalScene.ps1` повторно завершился с exit code `0` только на Paper `25566`; итоговый status: `COLLECTING`, `coreOverlay=true`, `runes=2/2`, `event-mobs=0`, `boss=none`, Gate `RESTORED`.
+- Для надёжной связи с командными блоками кнопки размещаются на стене в `0,64,-17` и `3,64,-17` как `minecraft:stone_button[face=wall,facing=south,powered=false]`; командные блоки находятся непосредственно за ними в `0,64,-16` и `3,64,-16`.
+- RCON Paper-проверка после `powered=true` показала у блока включения `powered:1b`, после возврата кнопки в `powered=false` — `powered:0b`; NBT команд подтверждён: `function copimine:spawn/max_on` и `function copimine:spawn/max_clear`. Это не меняет ванильные текстуры и остаётся локальной стендовой конфигурацией.

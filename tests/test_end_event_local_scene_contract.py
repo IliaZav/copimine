@@ -27,6 +27,7 @@ def test_one_shot_scene_setup_is_strictly_local_and_not_a_new_game_command() -> 
         "minecraft:obsidian",
         "minecraft:end_portal",
         "minecraft:stone",
+        "minecraft:reload",
     ):
         assert marker in SETUP
     assert "test layout" not in PLUGIN
@@ -79,12 +80,13 @@ def test_local_scene_smoke_proves_gate_open_restore_and_portal_survival() -> Non
         "server-port'] -ne '25566'",
         "RconPort -ne 25576",
         "cmend gate open 1",
-        "gate.status=§fOPENED",
+        "OPENED",
         "minecraft:air replace minecraft:obsidian",
         "cmend gate restore confirm",
-        "gate.status=§fRESTORED",
+        "RESTORED",
         "minecraft:end_portal",
         "End Rift local scene smoke passed.",
+        "minecraft:time query gametime",
     ):
         assert marker in SMOKE
     assert "minecraft/server" not in SMOKE

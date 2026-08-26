@@ -21,6 +21,9 @@ $configPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
 if (-not (Test-Path -LiteralPath $propertiesPath) -or -not (Test-Path -LiteralPath $configPath)) {
   throw 'Local scene setup requires the isolated End Rift server files.'
 }
+if ((Get-Item -LiteralPath $propertiesPath).Length -gt 1048576) {
+  throw 'Local scene setup refused an unexpectedly large server.properties file.'
+}
 if ((Get-Content -LiteralPath $configPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Local scene setup refused a non-local End Rift configuration.'
 }
@@ -156,7 +159,9 @@ if (Test-Path -LiteralPath $datapackTarget) {
 New-Item -ItemType Directory -Path (Split-Path $datapackTarget) -Force | Out-Null
 Copy-Item -LiteralPath $datapackSource -Destination $datapackTarget -Recurse -Force
 
-Invoke-SceneCommand 'reload confirm'
+# Use the namespaced vanilla command so EssentialsX cannot intercept this local
+# data-pack reload and the one-shot setup never reloads every server plugin.
+Invoke-SceneCommand 'minecraft:reload'
 Invoke-SceneCommand 'datapack enable "file/copimine-local-spawn"'
 Start-Sleep -Seconds 2
 $datapacks = Invoke-SceneCommand 'datapack list enabled'
@@ -259,11 +264,11 @@ if ($status -notmatch 'core=.*CopiMine 8,68,-39' -or
     $portalInfo -notmatch 'portalroom=.*CopiMine 31\.5,68\.0,-42\.5') {
   throw "Local scene metadata does not match the rebuilt scene. Status: $status Gate: $gateInfo Portal: $portalInfo"
 }
-Assert-SceneCondition 'closed gate is obsidian' "execute in $world run execute if block $gateX $gateMinY $gateMinZ minecraft:obsidian run time query gametime"
-Assert-SceneCondition 'portal plane is active' "execute in $world run execute if block 33 68 -39 minecraft:end_portal run time query gametime"
-Assert-SceneCondition 'portal room has no roof' "execute in $world run execute if block $roomMinX $roomClearTopY $roomMinZ minecraft:air run time query gametime"
-Assert-SceneCondition 'enable station button is a wall button' "execute in $world run execute if block $spawnStationX1 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
-Assert-SceneCondition 'clear station button is a wall button' "execute in $world run execute if block $spawnStationX2 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
+Assert-SceneCondition 'closed gate is obsidian' "execute in $world run execute if block $gateX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
+Assert-SceneCondition 'portal plane is active' "execute in $world run execute if block 33 68 -39 minecraft:end_portal run minecraft:time query gametime"
+Assert-SceneCondition 'portal room has no roof' "execute in $world run execute if block $roomMinX $roomClearTopY $roomMinZ minecraft:air run minecraft:time query gametime"
+Assert-SceneCondition 'enable station button is a wall button' "execute in $world run execute if block $spawnStationX1 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+Assert-SceneCondition 'clear station button is a wall button' "execute in $world run execute if block $spawnStationX2 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
 Assert-SceneCommandText 'enable command block function' "execute in $world run data get block $spawnStationX1 $spawnStationY $spawnStationZ Command" 'function copimine:spawn/max_on'
 Assert-SceneCommandText 'clear command block function' "execute in $world run data get block $spawnStationX2 $spawnStationY $spawnStationZ Command" 'function copimine:spawn/max_clear'
 Write-Host "Local End Rift scene rebuilt at arena [$arenaMinX,$arenaMinY,$arenaMinZ]..[$arenaMaxX,$arenaMaxY,$arenaMaxZ]."

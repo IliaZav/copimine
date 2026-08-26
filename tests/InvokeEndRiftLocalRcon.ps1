@@ -21,13 +21,17 @@ $propertiesPath = Join-Path $ServerDir 'server.properties'
 if (-not (Test-Path -LiteralPath $propertiesPath)) {
   throw 'Local RCON server.properties is missing.'
 }
-$properties = @{}
-foreach ($line in Get-Content -LiteralPath $propertiesPath) {
-  if ($line -match '^([^#=]+)=(.*)$') {
-    $properties[$matches[1].Trim()] = $matches[2].Trim()
+$propertiesLength = (Get-Item -LiteralPath $propertiesPath).Length
+if ($propertiesLength -gt 1048576) {
+  Write-Warning 'Local RCON is reading only rcon.password from an oversized properties file so the verified server can be stopped safely.'
+}
+$rconPassword = ''
+foreach ($line in [IO.File]::ReadLines($propertiesPath)) {
+  if ($line -match '^rcon\.password=(.*)$') {
+    $rconPassword = [string]$matches[1].Trim()
+    break
   }
 }
-$rconPassword = $properties['rcon.password']
 if ([string]::IsNullOrWhiteSpace($rconPassword)) {
   throw 'Local RCON password is missing.'
 }

@@ -25,6 +25,9 @@ $envPath = Join-Path $localRuntimeRoot 'end-rift.env'
 if ((-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) -or (-not (Test-Path -LiteralPath $eventConfigPath -PathType Leaf))) {
   throw 'Local End Rift server.properties or plugin config is missing.'
 }
+if ((Get-Item -LiteralPath $propertiesPath).Length -gt 1048576) {
+  throw 'Local End Rift startup refused an unexpectedly large server.properties file.'
+}
 if ((Get-Content -LiteralPath $eventConfigPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused to start a non-local End Rift configuration.'
 }

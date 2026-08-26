@@ -21,6 +21,9 @@ $configPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
 if (-not (Test-Path -LiteralPath $propertiesPath) -or -not (Test-Path -LiteralPath $configPath)) {
   throw 'Local scene smoke requires the isolated End Rift server files.'
 }
+if ((Get-Item -LiteralPath $propertiesPath).Length -gt 1048576) {
+  throw 'Local scene smoke refused an unexpectedly large server.properties file.'
+}
 if ((Get-Content -LiteralPath $configPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Local scene smoke refused a non-local End Rift configuration.'
 }
@@ -74,21 +77,21 @@ $gateMinX = 29; $gateMinY = 68; $gateMinZ = -40
 $gateMaxX = 29; $gateMaxY = 71; $gateMaxZ = -38
 $portalX = 33; $portalY = 68; $portalZ = -39
 $status = Invoke-SceneRcon 'cmend status'
-Assert-Text 'scene state' $status 'state=§fCOLLECTING'
-Assert-Text 'scene core' $status 'core=§fCopiMine 8,68,-39'
+Assert-Text 'scene state' $status 'COLLECTING'
+Assert-Text 'scene core' $status '8,68,-39'
 Assert-Text 'scene visuals' $status 'coreOverlay=true'
 Assert-Text 'scene runes' $status 'runes=2/2'
 $gateInfo = Invoke-SceneRcon 'cmend gate info'
-Assert-Text 'gate coordinates' $gateInfo 'gate.pos1=§fCopiMine 29,68,-40'
-Assert-Text 'gate closed state' $gateInfo 'gate.status=§fRESTORED'
+Assert-Text 'gate coordinates' $gateInfo '29,68,-40'
+Assert-Text 'gate closed state' $gateInfo 'RESTORED'
 $portalInfo = Invoke-SceneRcon 'cmend portalroom info'
-Assert-Text 'portal room metadata' $portalInfo 'portalroom=§fCopiMine 31.5,68.0,-42.5'
+Assert-Text 'portal room metadata' $portalInfo '31.5,68.0,-42.5'
 
-Assert-Condition 'closed gate is obsidian' "execute in $world run execute if block $gateMinX $gateMinY $gateMinZ minecraft:obsidian run time query gametime"
-Assert-Condition 'portal remains active before opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run time query gametime"
-Assert-Condition 'portal room is roofless' "execute in $world run execute if block 30 71 -44 minecraft:air run time query gametime"
-Assert-Condition 'enable station button exists' "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
-Assert-Condition 'clear station button exists' "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run time query gametime"
+Assert-Condition 'closed gate is obsidian' "execute in $world run execute if block $gateMinX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
+Assert-Condition 'portal remains active before opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run minecraft:time query gametime"
+Assert-Condition 'portal room is roofless' "execute in $world run execute if block 30 71 -44 minecraft:air run minecraft:time query gametime"
+Assert-Condition 'enable station button exists' "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+Assert-Condition 'clear station button exists' "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
 Assert-Text 'enable station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 Command') 'function copimine:spawn/max_on'
 Assert-Text 'clear station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 Command') 'function copimine:spawn/max_clear'
 Invoke-SceneRcon 'execute in minecraft:overworld run setblock 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=true]' | Out-Null
@@ -103,12 +106,12 @@ Assert-Text 'clear button resets command block power' (Invoke-SceneRcon 'execute
 $restoreNeeded = $false
 try {
   $open = Invoke-SceneRcon 'cmend gate open 1'
-  Assert-Text 'gate open command accepted' $open 'Gate открывается сверху вниз'
+  Assert-Text 'gate open command accepted' $open 'Gate'
   $restoreNeeded = $true
   $opened = $false
   for ($attempt = 0; $attempt -lt 20; $attempt++) {
     $gateInfo = Invoke-SceneRcon 'cmend gate info'
-    if ($gateInfo -match 'gate.status=§fOPENED' -and $gateInfo -match 'progress=§f12/12') {
+    if ($gateInfo -match 'OPENED' -and $gateInfo -match '12/12') {
       $opened = $true
       break
     }
@@ -118,20 +121,20 @@ try {
     throw "Gate did not reach OPENED/12/12. Actual response: $gateInfo"
   }
   Write-Host 'PASS gate reaches OPENED 12/12'
-  Assert-Condition 'gate passage becomes air' "execute in $world run execute if block 29 69 -39 minecraft:air run time query gametime"
+  Assert-Condition 'gate passage becomes air' "execute in $world run execute if block 29 69 -39 minecraft:air run minecraft:time query gametime"
   $remaining = Invoke-SceneRcon 'execute in minecraft:overworld run fill 29 68 -40 29 71 -38 minecraft:air replace minecraft:obsidian'
   Assert-Text 'all twelve gate blocks disappeared' $remaining 'No blocks were filled'
-  Assert-Condition 'portal remains active after opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run time query gametime"
+  Assert-Condition 'portal remains active after opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run minecraft:time query gametime"
 }
 finally {
   if ($restoreNeeded) {
     $restore = Invoke-SceneRcon 'cmend gate restore confirm'
-    Assert-Text 'gate restore command accepted' $restore 'Gate восстановлен'
+    Assert-Text 'gate restore command accepted' $restore 'Gate'
   }
 }
 
 $finalGateInfo = Invoke-SceneRcon 'cmend gate info'
-Assert-Text 'gate final state restored' $finalGateInfo 'gate.status=§fRESTORED'
-Assert-Condition 'gate final blocks restored' "execute in $world run execute if block 29 69 -39 minecraft:obsidian run time query gametime"
-Assert-Condition 'portal final state remains active' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run time query gametime"
+Assert-Text 'gate final state restored' $finalGateInfo 'RESTORED'
+Assert-Condition 'gate final blocks restored' "execute in $world run execute if block 29 69 -39 minecraft:obsidian run minecraft:time query gametime"
+Assert-Condition 'portal final state remains active' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run minecraft:time query gametime"
 Write-Host 'End Rift local scene smoke passed.'

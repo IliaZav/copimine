@@ -5,7 +5,7 @@
     "sourceArtifacts":  {
                             "gitCommit":  "60f7e8e8d2f0c6923e9c788239ea40ed7eef1a6d",
                             "serverPlugins":  {
-                                                  "minecraft/server/plugins/AuthEffects.jar":  "90ba4f8692b83b75b38d450c99a5642499db09325e5d4caaf16ea46fd0d90db9",
+                                                  "minecraft/server/plugins/AuthEffects.jar":  "14427cd86435ed0354e8a20a1f96f14803eeb818e2ce4f2a70ed256df3b9e063",
                                                   "minecraft/server/plugins/CopiMineArtifacts.jar":  "30215fe1fe32a29038b6c239b200685478d346bf7ea24909424e0162ebc0964e",
                                                   "minecraft/server/plugins/CopiMineEconomyCore.jar":  "5af9f3d24159e2edae606373200cf8996e0d936d966bfd349793e7ebb7dbcd9d",
                                                   "minecraft/server/plugins/CopiMineElectionCore.jar":  "7df1ed5d6fcd97433682906e3498ec99c7659790092a364392607e1dd44326f4",

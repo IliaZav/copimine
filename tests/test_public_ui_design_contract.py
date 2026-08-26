@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui18");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui18");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui18");') == 1
+    assert '@import url("./css/website-polish.css?v=20260825siteui19");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui19");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260825siteui19");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -66,6 +66,19 @@ def test_news_surface_is_text_first_without_photo_hero_or_media_cards() -> None:
     assert ".news-hero-text-only" in polish
 
 
+def test_text_only_news_hero_has_a_useful_release_summary() -> None:
+    news = read("admin-web/frontend/news.html")
+    patch_render = read("admin-web/frontend/assets/js/public/patch-render.js")
+    polish = read("admin-web/frontend/assets/css/website-polish.css")
+    assert 'class="news-hero-summary"' in news
+    assert 'id="newsHeroCount"' in news
+    assert 'id="newsHeroLatest"' in news
+    assert "newsHeroCount" in patch_render
+    assert "newsHeroLatest" in patch_render
+    assert ".news-hero-summary" in polish
+    assert "grid-template-columns" in polish
+
+
 def test_public_polish_layer_covers_focus_motion_and_status_recovery() -> None:
     css = read("admin-web/frontend/assets/css/website-polish.css")
     for selector in (
@@ -90,13 +103,13 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
     assert '<img id="presidentSkinImage" src="/assets/brand/copimine-logo.png"' in server
     assert 'skinImage.src = fallbackAvatar;' in renderer
-    assert './homepage.js?v=20260825siteui18' in public_page
-    assert './site-render.js?v=20260825siteui18' in homepage
+    assert './homepage.js?v=20260825siteui19' in public_page
+    assert './site-render.js?v=20260825siteui19' in homepage
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260825siteui18"
-    public_script_key = "20260825siteui18"
+    cache_key = "20260825siteui19"
+    public_script_key = "20260825siteui19"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
         source = path.read_text(encoding="utf-8")

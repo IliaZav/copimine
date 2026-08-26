@@ -476,11 +476,50 @@ body.auth-screen .public-site {
 .public-site .news-hero-copy { position: relative; z-index: 1; }
 
 .public-site .news-hero-text-only {
-  display: block;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, .55fr);
+  align-items: end;
+  gap: clamp(1.5rem, 5vw, 5rem);
   padding: clamp(1.4rem, 4vw, 2.8rem);
 }
 
 .public-site .news-hero-text-only .news-hero-copy { max-width: 56rem; }
+
+.public-site .news-hero-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-self: stretch;
+  min-width: 0;
+}
+
+.public-site .news-hero-stat {
+  display: grid;
+  align-content: end;
+  gap: 7px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 13px 14px;
+  border: 1px solid var(--site-line);
+  border-top: 2px solid var(--site-moss);
+  background: var(--site-panel-soft);
+  box-shadow: var(--site-shadow-soft);
+}
+
+.public-site .news-hero-stat span {
+  color: var(--site-muted);
+  font: 800 .7rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.public-site .news-hero-stat strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--site-ink);
+  font-size: .96rem;
+  line-height: 1.25;
+}
 
 .public-site .launcher-feature-grid,
 .public-site .launcher-steps,
@@ -566,6 +605,7 @@ body.auth-screen .public-site {
   .public-site .launcher-hero-grid { grid-template-columns: 1fr; }
 
   .public-site .launcher-hero-side { grid-template-columns: minmax(0, 1.1fr) minmax(250px, .9fr); }
+  .public-site .news-hero-text-only { grid-template-columns: 1fr; gap: 20px; }
 }
 
 @media (max-width: 620px) {
@@ -590,6 +630,8 @@ body.auth-screen .public-site {
   .public-site .launcher-gallery,
   .public-site .launcher-technical,
   .public-site .news-list { grid-template-columns: 1fr; }
+  .public-site .news-hero-summary { grid-template-columns: 1fr; }
+  .public-site .news-hero-stat { min-height: 0; }
   .public-site .shop-empty-state { grid-template-columns: 1fr; }
   .public-site .shop-empty-copy .btn { width: 100%; }
 }

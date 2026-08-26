@@ -48,6 +48,10 @@ function makeChangeList(changes) {
 export function renderNewsList(patches) {
   const mount = document.getElementById("newsList");
   if (!mount) return;
+  const count = document.getElementById("newsHeroCount");
+  const latest = document.getElementById("newsHeroLatest");
+  if (count) count.textContent = patches.length ? String(patches.length) : "Пока нет";
+  if (latest) latest.textContent = patches[0]?.version ? `v${String(patches[0].version)}` : "Пока нет";
   const fragment = document.createDocumentFragment();
   if (!patches.length) {
     const empty = document.createElement("p");

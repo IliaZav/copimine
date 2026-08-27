@@ -129,6 +129,24 @@ def test_clearing_a_boss_resets_target_and_spell_cooldown_state() -> None:
     assert "private void clearCombatAiState()" in MAIN
 
 
+def test_disposable_test_phase_state_is_not_persisted_and_cleanup_clears_it() -> None:
+    half_start = MAIN.index("private void triggerHalfPhase")
+    half_end = MAIN.index("private List<Player> activeLivingPlayers", half_start)
+    half_body = MAIN[half_start:half_end]
+    assert "if (!isTestBoss(boss) && !saveStateSync())" in half_body
+
+    clear_start = MAIN.index("private void clearBossOnly()")
+    clear_end = MAIN.index("private void tickBoss()", clear_start)
+    clear_body = MAIN[clear_start:clear_end]
+    assert "boolean disposableTest = testCombatAiMode || (boss != null && isTestBoss(boss));" in clear_body
+    assert "if (disposableTest)" in clear_body
+    assert "halfHealthTriggered = false;" in clear_body
+    assert "controlSpellUnlocked = false;" in clear_body
+    assert "finalDrainTriggered = false;" in clear_body
+    assert "finalDrainApplied = false;" in clear_body
+    assert "if (disposableTest && !saveStateSync())" in clear_body
+
+
 def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_level() -> None:
     assert "boss-radius: 20.0" in CONFIG
     assert "containment-radius: 20.0" in CONFIG

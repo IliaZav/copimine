@@ -4860,6 +4860,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearBossOnly() {
         LivingEntity boss = liveBoss();
+        boolean disposableTest = testCombatAiMode || (boss != null && isTestBoss(boss));
         if (boss != null) {
             boss.remove();
         }
@@ -4879,6 +4880,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lastBossTeleportMillis = 0L;
         servantsSummonedAt70 = false;
         servantsSummonedAt35 = false;
+        if (disposableTest) {
+            halfHealthTriggered = false;
+            controlSpellUnlocked = false;
+            finalDrainTriggered = false;
+            finalDrainApplied = false;
+            finalDrainTargets.clear();
+            finalDrainAppliedPlayers.clear();
+            if (disposableTest && !saveStateSync()) {
+                getLogger().warning("Disposable test cleanup could not persist cleared phase markers event=" + eventId);
+            }
+        }
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
         clearClientEffects();
@@ -5040,7 +5052,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         halfHealthTriggered = true;
         controlSpellUnlocked = true;
         // Persist the threshold marker before healing/control side effects.
-        if (!saveStateSync()) {
+        if (!isTestBoss(boss) && !saveStateSync()) {
             forcePhase(EventPhase.RECOVERY_REQUIRED, "half phase could not be persisted");
             return;
         }

@@ -52,6 +52,7 @@ def test_core_setup_and_boundary_command_start_a_visible_wireframe_preview() -> 
 
 def test_arena_boundary_draws_top_bottom_edges_and_vertical_edges() -> None:
     draw = _method_body(MAIN, "private void drawArenaBoundaryFrame(World world)", "private void spawnArenaBoundaryPoint")
+    point = _method_body(MAIN, "private void spawnArenaBoundaryPoint(World world, double x, double y, double z)", "private String pointText")
     assert "arenaMinX" in draw and "arenaMaxX" in draw
     assert "arenaMinY" in draw and "arenaMaxY" in draw
     assert "arenaMinZ" in draw and "arenaMaxZ" in draw
@@ -59,6 +60,7 @@ def test_arena_boundary_draws_top_bottom_edges_and_vertical_edges() -> None:
     assert "for (double x" in draw
     assert "for (double z" in draw
     assert "for (double y" in draw
+    assert "Particle.END_ROD" in point
 
 
 def test_breaking_core_is_cancelled_and_admin_gets_explicit_confirmation_gui() -> None:

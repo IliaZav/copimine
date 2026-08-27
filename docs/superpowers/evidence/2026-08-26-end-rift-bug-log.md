@@ -1,6 +1,6 @@
 # CopiMine End Rift — журнал багов и проверок
 
-Дата среза: 2026-08-26. Область: только `codex/end-rift-event`, локальный
+Дата среза: 2026-08-27. Область: только `codex/end-rift-event`, локальный
 Paper/PostgreSQL и локальный Fabric-клиент. Боевой `minecraft/server`, боевой
 мир/БД, лаунчер и сайт в изменения не входили.
 
@@ -26,6 +26,8 @@ Paper/PostgreSQL и локальный Fabric-клиент. Боевой `minecr
 | E-014 | Creative full-run не запускался при уже открытом Энде | `WorldCore` хранит постоянный факт открытия Энда, а idle event остаётся `COLLECTING`; precondition ошибочно запрещал `endUnlocked` | RED reproduced in GUI; GREEN fresh `CREATIVE_TEST_START` → `CREATIVE_TEST_COMPLETE` |
 | E-015 | После disposable full-run в status оставался `helpers=1` | `finishCreativeTest` очищал mobs/boss, но не весь transient AI/helper state; добавлен `clearCombatAiState()` | regression contract GREEN; свежий post-fix full-run 26.08.2026 завершён `CREATIVE_TEST_COMPLETE success=true`, итоговый `cmend status`: `helpers=0`, `event-mobs=0`, `boss=none` |
 | E-016 | Нельзя было доказать, что в runtime лежит весь актуальный набор и что лавка не пуста | Источник проекта и manifest не были сведены в одну completion-проверку | 30 source JAR = 30 manifest JAR = 30 loaded Bukkit plugins; shop API: 26 AR + 9 donation, all enabled/valid |
+| E-017 | Полный pytest после проверки текстур снова делал production-шаблон dirty | В `test_end_event_visual_regressions.py` и полном `RunEndRiftEventChecks.ps1` builder вызывался без безопасного режима; добавлены `--skip-server-properties`/`-SkipServerProperties`, wrapper и AST-регрессионные контракты | fresh full event checks: `142 passed`; full project suite: `486 passed`; safe pack build оставил production SHA-256 неизменным |
+| E-018 | В новой волне мобы складывались на ядре вместо спавна по арене | `coreLocation()` — верхняя грань блока; `safeSpawnLocation()` проверял пол на один блок выше пола арены и при неудаче возвращал ядро. Спавн переведён на floor-level anchor, неудача больше не даёт fallback на ядро | TDD RED на elevated-Core spawn contract → GREEN; Paper runtime wave 1: `event-mobs=10`, все проверенные позиции `y=68`; namespaced teleport из арены на `100,100,100` вернул моба к `[0.5,68,-39.5]`; waves 2/3/final: `event-mobs=13`, Endermite probe пуст; cleanup: `event-mobs=0`, `boss=none` |
 
 ## Источники доказательств
 

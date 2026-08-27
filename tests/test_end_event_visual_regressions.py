@@ -108,7 +108,13 @@ def test_status_and_rebuild_paths_expose_and_repair_real_core_and_rune_overlays(
 
 
 def test_resourcepack_maps_idle_and_occupied_runes_without_vanilla_overrides() -> None:
-    subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, str(BUILDER), "--skip-server-properties"],
+        cwd=BUILDER.parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"
     with zipfile.ZipFile(pack) as archive:
         paper = json.loads(archive.read("assets/minecraft/models/item/paper.json"))
@@ -133,7 +139,7 @@ def test_resourcepack_maps_idle_and_occupied_runes_without_vanilla_overrides() -
 
 def test_built_pack_maps_event_cmds_to_event_models_not_narcotics() -> None:
     result = subprocess.run(
-        [sys.executable, str(BUILDER)],
+        [sys.executable, str(BUILDER), "--skip-server-properties"],
         cwd=BUILDER.parent,
         check=True,
         capture_output=True,
@@ -187,7 +193,13 @@ def test_spell_projectiles_are_particle_only_and_each_spell_has_a_unique_pattern
     assert not model_path.exists()
     assert not texture_path.exists()
 
-    subprocess.run([sys.executable, str(BUILDER)], cwd=BUILDER.parent, check=True, capture_output=True, text=True)
+    subprocess.run(
+        [sys.executable, str(BUILDER), "--skip-server-properties"],
+        cwd=BUILDER.parent,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     pack = ROOT / "resourcepacks/build/CopiMineResourcePack.zip"
     with zipfile.ZipFile(pack) as archive:
         assert "assets/copimine/models/item/end_event_rift_projectile.json" not in archive.namelist()

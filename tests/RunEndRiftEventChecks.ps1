@@ -34,7 +34,7 @@ Invoke-EndRiftStep 'Fabric client tests and build' {
   }
 }
 Invoke-EndRiftStep 'Resourcepack build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'resourcepacks\build-resourcepack.ps1')
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
 }
 Invoke-EndRiftStep 'Python event contracts' {
   Push-Location $endRiftRoot

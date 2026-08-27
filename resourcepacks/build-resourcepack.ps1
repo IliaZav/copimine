@@ -1,4 +1,13 @@
+param(
+  [switch]$SkipServerProperties
+)
+
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-python (Join-Path $root 'build-resourcepack.py')
+$builder = Join-Path $root 'build-resourcepack.py'
+if ($SkipServerProperties) {
+  python $builder '--skip-server-properties'
+} else {
+  python $builder
+}

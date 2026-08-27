@@ -157,6 +157,24 @@ def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_insi
     assert "event.setTo(coreBlockTopLocation());" in MAIN
 
 
+def test_wave_spawns_use_the_floor_below_an_elevated_core_and_never_fall_back_onto_it() -> None:
+    start = MAIN.index("private Location safeSpawnLocation(Location core, int index, double offset)")
+    end = MAIN.index("@EventHandler(priority = EventPriority.HIGHEST", start)
+    body = MAIN[start:end]
+    assert "Location floorAnchor = core.clone().subtract(0.0D, 1.0D, 0.0D);" in body
+    assert "Location candidate = spawnLocation(floorAnchor, index + attempt, offset);" in body
+    assert "return null;" in body
+    assert "return core.clone();" not in body
+
+
+def test_wave_leash_uses_the_core_block_level_floor_instead_of_the_core_top() -> None:
+    start = MAIN.index("private void enforceWaveMobContainment()")
+    end = MAIN.index("private boolean isWaveCombatKind", start)
+    body = MAIN[start:end]
+    assert "private Location coreCombatAnchorLocation()" in MAIN
+    assert "Location anchor = coreCombatAnchorLocation();" in body
+
+
 def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact() -> None:
     for marker in (
         "launchSpellFlight",

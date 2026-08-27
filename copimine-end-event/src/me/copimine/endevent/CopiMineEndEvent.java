@@ -1417,9 +1417,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnArenaBoundaryPoint(World world, double x, double y, double z) {
+        Location point = new Location(world, x, y, z);
         Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(177, 70, 255), 1.0F);
-        world.spawnParticle(Particle.DUST, new Location(world, x, y, z),
-                1, 0.0D, 0.0D, 0.0D, 0.0D, dust);
+        world.spawnParticle(Particle.DUST, point, 1,
+                0.0D, 0.0D, 0.0D, 0.0D, dust);
+        // Keep the wireframe readable with reduced-particle settings and
+        // shader packs: the colored dust carries the identity, while the
+        // bright rod makes each half-block edge unmissable in-game.
+        world.spawnParticle(Particle.END_ROD, point, 1,
+                0.0D, 0.0D, 0.0D, 0.0D);
     }
 
     private String pointText(EventLayoutState.Point point) {
@@ -2746,6 +2752,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return coreBlockTopLocation();
     }
 
+    private Location coreCombatAnchorLocation() {
+        World world = Bukkit.getWorld(worldName);
+        // Entity feet belong at the Core block's Y, on the arena floor below
+        // it. The visual/core interaction anchor remains the top face.
+        return world == null ? null : new Location(world, coreX + 0.5D, coreY, coreZ + 0.5D);
+    }
+
     private Location coreBlockTopLocation() {
         World world = Bukkit.getWorld(worldName);
         return world == null ? null : new Location(world, coreX + 0.5D, coreY + 1.0D, coreZ + 0.5D);
@@ -3869,7 +3882,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void enforceWaveMobContainment() {
-        Location anchor = coreLocation();
+        Location anchor = coreCombatAnchorLocation();
         if (anchor == null) {
             return;
         }
@@ -4231,7 +4244,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void miniBossRiftStep(Enderman miniBoss, Player target) {
-        Location anchor = coreLocation();
+        Location anchor = coreCombatAnchorLocation();
         Location destination = findSafeCombatLocation(anchor, target.getLocation(), config.containmentRadius());
         if (destination != null) {
             miniBoss.teleport(destination);
@@ -4516,6 +4529,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void spawnEnderman(World world, Location core, int wave, boolean elite,
                                boolean finalWave, boolean test, int index, int abilityIndex) {
         Location location = safeSpawnLocation(core, index, elite ? 4.0D : 2.0D);
+        if (location == null) {
+            getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob.");
+            return;
+        }
         Enderman enderman = (Enderman) world.spawnEntity(location, EntityType.ENDERMAN);
         String kind = finalWave ? EVENT_KIND_FINAL_WAVE : elite ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
         tag(enderman, kind, wave, !test);
@@ -4553,7 +4570,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,
                                  String kind, boolean test, int index) {
-        Entity entity = world.spawnEntity(safeSpawnLocation(core, index, 3.0D), type);
+        Location location = safeSpawnLocation(core, index, 3.0D);
+        if (location == null) {
+            getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob type=" + type);
+            return null;
+        }
+        Entity entity = world.spawnEntity(location, type);
         tag(entity, kind, wave, !test);
         setLootProfile(entity, test ? "test"
                 : type == EntityType.SPIDER ? "spider"
@@ -4602,8 +4624,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null || core.getWorld() == null) {
             return core;
         }
+        // coreLocation() is the top face of the solid Core block.  Wave mobs
+        // need their feet one block lower so the arena floor is tested below
+        // them; otherwise every elevated-arena candidate fails the floor test
+        // and the old fallback stacks the whole wave on the Core.
+        Location floorAnchor = core.clone().subtract(0.0D, 1.0D, 0.0D);
         for (int attempt = 0; attempt < 12; attempt++) {
-            Location candidate = spawnLocation(core, index + attempt, offset);
+            Location candidate = spawnLocation(floorAnchor, index + attempt, offset);
             Block feet = candidate.getBlock();
             Block head = feet.getRelative(BlockFace.UP);
             Block floor = feet.getRelative(BlockFace.DOWN);
@@ -4612,7 +4639,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return candidate;
             }
         }
-        return core.clone();
+        return null;
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -4621,7 +4648,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity == null || !ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
-        Location anchor = coreLocation();
+        String kind = readString(entity, keyKind);
+        Location anchor = isWaveCombatKind(kind) ? coreCombatAnchorLocation() : coreLocation();
         Location target = event.getTo();
         if (anchor == null || target == null || !anchor.getWorld().equals(target.getWorld())) {
             event.setCancelled(true);
@@ -4634,7 +4662,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setTo(coreBlockTopLocation());
             return;
         }
-        String kind = readString(entity, keyKind);
         double radius = EVENT_KIND_BOSS.equals(kind)
                 ? boundedCombatRadius(config.bossRadius())
                 : boundedCombatRadius(config.containmentRadius());

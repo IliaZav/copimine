@@ -8,6 +8,7 @@ client-facing visual set is complete without replacing vanilla textures.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 import zipfile
@@ -117,6 +118,35 @@ def test_resource_reset_rebuilds_the_core_visual_after_clearing_charge() -> None
     assert "rebuildPersistedVisuals();" in reset
 
 
+def test_visual_regression_builder_calls_preserve_the_tracked_production_properties() -> None:
+    visual_tests_path = ROOT / "tests/test_end_event_visual_regressions.py"
+    visual_tests = visual_tests_path.read_text(encoding="utf-8")
+    tree = ast.parse(visual_tests, filename=str(visual_tests_path))
+    builder_calls = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != "run":
+            continue
+        source = ast.get_source_segment(visual_tests, node) or ""
+        if "str(BUILDER)" in source:
+            builder_calls.append(source)
+
+    assert builder_calls
+    assert all("--skip-server-properties" in call for call in builder_calls)
+
+
+def test_full_event_checks_builder_preserves_the_tracked_production_properties() -> None:
+    checks = (ROOT / "tests/RunEndRiftEventChecks.ps1").read_text(encoding="utf-8")
+    start = checks.index("Invoke-EndRiftStep 'Resourcepack build'")
+    end = checks.index("Invoke-EndRiftStep 'Python event contracts'", start)
+    resourcepack_step = checks[start:end]
+    assert "build-resourcepack.ps1" in resourcepack_step
+    assert "-SkipServerProperties" in resourcepack_step
+    wrapper = (ROOT / "resourcepacks/build-resourcepack.ps1").read_text(encoding="utf-8")
+    assert "--skip-server-properties" in wrapper
+
+
 def test_pack_contains_the_complete_event_visual_set_and_no_vanilla_texture_override() -> None:
     block_textures = (
         "end_event_core.png",
@@ -182,6 +212,8 @@ def test_completion_bug_log_is_traceable_to_current_runtime_and_regression_tests
         "E-014",
         "E-015",
         "E-016",
+        "E-017",
+        "E-018",
         "test_end_event_creative_run_contract.py",
         "RunEndRiftLocalSceneSmoke.ps1",
         "plugin_versions.json",

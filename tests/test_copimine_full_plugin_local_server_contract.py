@@ -110,6 +110,23 @@ def test_full_plugin_runtime_verifier_rejects_partial_plugin_initialization() ->
     assert "Simple Voice Chat registration failed" in script
 
 
+def test_full_plugin_staging_database_grants_plugin_role_ownership() -> None:
+    script = read("scripts/start_copimine_full_plugin_local_postgres.ps1")
+
+    assert "ALTER SCHEMA copimine_test OWNER TO copimine_test" in script
+    assert "ALTER TABLE candidates OWNER TO copimine_test" in script
+    assert "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA copimine_test TO copimine_test" in script
+    assert "GRANT USAGE, CREATE ON SCHEMA copimine_test TO copimine_test" in script
+
+
+def test_disposable_postgres_start_does_not_pipe_pg_ctl_output() -> None:
+    script = read("scripts/start_copimine_full_plugin_local_postgres.ps1")
+
+    start_line = next(line for line in script.splitlines() if "$pgCtl -D $resolvedDataRoot" in line)
+    assert "-w start" in start_line
+    assert "| Out-Host" not in start_line
+
+
 def test_full_plugin_gate_matrix_waits_for_cold_start_before_reject_timeout() -> None:
     script = read("scripts/run_copimine_client_gate_matrix.ps1")
 

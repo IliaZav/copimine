@@ -77,7 +77,9 @@ if (-not $ready) {
 
 if ($listener.Count -eq 0) {
     $logPath = Join-Path $resolvedDataRoot 'server.log'
-    & $pgCtl -D $resolvedDataRoot -l $logPath -o "-p $Port -h 127.0.0.1" -w start | Out-Host
+    # Do not pipe pg_ctl output: on Windows the postgres child inherits the
+    # pipe handle and pg_ctl can stay open after reporting "server started".
+    & $pgCtl -D $resolvedDataRoot -l $logPath -o "-p $Port -h 127.0.0.1" -w start
     if ($LASTEXITCODE -ne 0) {
         throw "pg_ctl start failed with exit code $LASTEXITCODE."
     }
@@ -153,10 +155,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "The disposable candidate compatibility schema could not be prepared. ExitCode=$LASTEXITCODE"
 }
 
+# A previous interrupted bootstrap may have created the synthetic tables as
+# postgres.  The plugins connect as copimine_test and must be able to run
+# their own idempotent startup DDL without waiting forever on permission
+# retries.  This is limited to the disposable staging schema.
+$stagingOwnershipSql = @'
+SET search_path TO copimine_test;
+ALTER SCHEMA copimine_test OWNER TO copimine_test;
+ALTER TABLE candidates OWNER TO copimine_test;
+GRANT USAGE, CREATE ON SCHEMA copimine_test TO copimine_test;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA copimine_test TO copimine_test;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA copimine_test TO copimine_test;
+ALTER DEFAULT PRIVILEGES FOR ROLE copimine_test IN SCHEMA copimine_test
+    GRANT ALL PRIVILEGES ON TABLES TO copimine_test;
+ALTER DEFAULT PRIVILEGES FOR ROLE copimine_test IN SCHEMA copimine_test
+    GRANT ALL PRIVILEGES ON SEQUENCES TO copimine_test;
+'@
+& $psql -w -h 127.0.0.1 -p $Port -U postgres -d copimine_test -v ON_ERROR_STOP=1 -c $stagingOwnershipSql | Out-Host
+if ($LASTEXITCODE -ne 0) {
+    throw "The disposable staging schema ownership could not be prepared. ExitCode=$LASTEXITCODE"
+}
+
 Write-Output "LOCAL_POSTGRES_ROOT=$resolvedDataRoot"
 Write-Output "LOCAL_POSTGRES_BIN=$resolvedBin"
 Write-Output "LOCAL_POSTGRES_PORT=$Port"
 Write-Output 'LOCAL_POSTGRES_DB=copimine_test'
 Write-Output 'LOCAL_POSTGRES_DATA_COPIED=NO'
 Write-Output 'LOCAL_STAGING_SCHEMA_COMPATIBILITY=ELECTION_CANDIDATE_ALIASES_ONLY'
+Write-Output 'LOCAL_STAGING_ROLE_OWNERSHIP=READY'
 Write-Output 'LOCAL_POSTGRES_READY=YES'

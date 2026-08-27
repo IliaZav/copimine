@@ -113,6 +113,40 @@ def test_local_session_stops_paper_before_rewriting_server_properties() -> None:
     assert "Wait-Process -Id $processId" in text
 
 
+def test_local_runner_restarts_verified_paper_when_the_local_server_is_already_open() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    stop_function = text[text.index("function Stop-ExistingLocalPaper"):text.index("function Normalize-LocalServerProperties")]
+
+    assert "Stop-ExistingLocalPaper" in text
+    assert "Start-LocalPaper" in text
+    assert text.index("Stop-ExistingLocalPaper\n") < text.index("Start-LocalPaper\n")
+    assert "Invoke-LocalRcon -CommandText 'stop'" in stop_function
+    assert "Wait-TcpPort -HostName '127.0.0.1' -Port $serverPort -Expected $false" in stop_function
+    assert "Stop-Process -Id $processId -Force" in stop_function
+
+
+def test_local_runner_grants_op_only_to_whitelisted_accounts_present_in_local_authme_db() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "function Grant-LocalWhitelistOperators" in text
+    assert "$whitelistPath = Join-Path $serverDir 'whitelist.json'" in text
+    assert "$authmeDb = Join-Path $serverDir 'plugins\\AuthMe\\authme.db'" in text
+    grant_function = text[text.index("function Grant-LocalWhitelistOperators"):text.index("function Get-MinecraftLauncherPath")]
+    for marker in (
+        "whitelist.json",
+        "sqlite3",
+        "SELECT username, realname FROM authme",
+        "op $name",
+        "^[A-Za-z0-9_]{1,16}$",
+        "local-whitelist-authme.py",
+        "[IO.File]::WriteAllText($queryPath",
+        "& $python $queryPath $authmeDb $whitelistPath",
+    ):
+        assert marker in grant_function
+    assert "-c $queryScript" not in grant_function
+    assert text.rindex("Grant-LocalWhitelistOperators") > text.index("Start-LocalPaper\n")
+
+
 def test_local_session_normalizes_paper_resource_pack_prompt_growth() -> None:
     text = RUNNER.read_text(encoding="utf-8")
 
@@ -220,6 +254,35 @@ def test_local_runner_checks_isolated_postgres_before_stopping_paper() -> None:
     first_postgres_call = text.index("Ensure-LocalPostgres\n", text.index("$currentPluginSources = @(Get-CurrentPluginSources)"))
     first_paper_stop_call = text.index("Stop-ExistingLocalPaper\n")
     assert first_postgres_call < first_paper_stop_call
+
+
+def test_local_runner_detaches_postgres_start_and_waits_for_readiness() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    postgres_function = text[text.index("function Ensure-LocalPostgres"):text.index("function Ensure-ResourcePackHttpServer")]
+
+    assert "Start-Process -FilePath $pgCtl" in postgres_function
+    assert "RedirectStandardOutput $pgCtlOut" in postgres_function
+    assert "RedirectStandardError $pgCtlErr" in postgres_function
+    assert "-l `\"$postgresLog`\"" in postgres_function
+    assert "Wait-TcpPort -HostName '127.0.0.1' -Port $postgresPort -Expected $true" in postgres_function
+    assert "$pgCtlProcess.WaitForExit(5000) | Out-Null" in postgres_function
+    assert "([string](Get-Content -LiteralPath $pgCtlErr -Raw" in postgres_function
+    assert "$statusOutput = @(& $pgCtl -D $pgDataDir status 2>&1)" in postgres_function
+    assert "$statusExit = $LASTEXITCODE" in postgres_function
+    assert "$pgCtlProcess.ExitCode" not in postgres_function
+    assert "& $pgCtl -D $pgDataDir -o '-p 55433 -h 127.0.0.1' -w start" not in postgres_function
+
+
+def test_local_runner_moves_only_a_proven_stale_postgres_pid_file() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    postgres_function = text[text.index("function Ensure-LocalPostgres"):text.index("function Ensure-ResourcePackHttpServer")]
+
+    assert "$postmasterPidPath = Join-Path $pgDataDir 'postmaster.pid'" in postgres_function
+    assert "Get-Process -Id $stalePid" in postgres_function
+    assert "Get-NetTCPConnection -State Listen -LocalPort $postgresPort" in postgres_function
+    assert "([string]$pidLine).Trim()" in postgres_function
+    assert "Move-Item -LiteralPath $postmasterPidPath" in postgres_function
+    assert "$postmasterPidPath.stale-" in postgres_function
 
 
 def test_local_runner_checks_local_baseline_and_website_environment_before_stopping_paper() -> None:

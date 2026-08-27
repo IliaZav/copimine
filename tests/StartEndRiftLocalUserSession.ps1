@@ -27,6 +27,8 @@ $serverProperties = Join-Path $serverDir 'server.properties'
 $serverPropertiesBaseline = Join-Path $serverDir 'server.properties.pre-local-resourcepack'
 $essentialsConfig = Join-Path $serverDir 'plugins\Essentials\config.yml'
 $eventConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
+$whitelistPath = Join-Path $serverDir 'whitelist.json'
+$authmeDb = Join-Path $serverDir 'plugins\AuthMe\authme.db'
 $adminWebDir = Join-Path $worktreeRoot 'admin-web'
 $websitePort = 8093
 $websitePidFile = Join-Path $localRuntimeRoot 'copimine-local-web.pid'
@@ -68,6 +70,8 @@ Assert-UnderRoot -Path $targetPackDir -Root $localRuntimeRoot -Label 'Local reso
 Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreSQL data directory'
 Assert-UnderRoot -Path $serverPropertiesBaseline -Root $localRuntimeRoot -Label 'Local server.properties baseline'
 Assert-UnderRoot -Path $essentialsConfig -Root $localRuntimeRoot -Label 'Local Essentials configuration'
+Assert-UnderRoot -Path $whitelistPath -Root $localRuntimeRoot -Label 'Local whitelist'
+Assert-UnderRoot -Path $authmeDb -Root $localRuntimeRoot -Label 'Local AuthMe database'
 Assert-UnderRoot -Path $websiteEnvFile -Root $localRuntimeRoot -Label 'Local website environment'
 Assert-UnderRoot -Path $websiteDataDir -Root $localRuntimeRoot -Label 'Local website data'
 Assert-UnderRoot -Path $websiteBackupsDir -Root $localRuntimeRoot -Label 'Local website backups'
@@ -623,13 +627,53 @@ function Ensure-LocalPostgres {
   if (-not (Test-Path -LiteralPath $pgCtl -PathType Leaf)) { throw "Local PostgreSQL pg_ctl is missing: $pgCtl" }
   & $pgCtl -D $pgDataDir status 2>&1 | Out-Host
   if ($LASTEXITCODE -eq 0) { return }
+
+  $postmasterPidPath = Join-Path $pgDataDir 'postmaster.pid'
+  if (Test-Path -LiteralPath $postmasterPidPath -PathType Leaf) {
+    $stalePid = 0
+    $pidLine = Get-Content -LiteralPath $postmasterPidPath -TotalCount 1 -ErrorAction Stop
+    $pidLine = ([string]$pidLine).Trim()
+    [int]::TryParse($pidLine, [ref]$stalePid) | Out-Null
+    $staleProcess = if ($stalePid -gt 0) { Get-Process -Id $stalePid -ErrorAction SilentlyContinue } else { $null }
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $postgresPort -ErrorAction SilentlyContinue)
+    if ($null -ne $staleProcess -or $listeners.Count -gt 0 -or (Test-TcpPort -HostName '127.0.0.1' -Port $postgresPort)) {
+      throw "Local PostgreSQL has a live process or listener while pg_ctl reports it stopped; refusing to move $postmasterPidPath."
+    }
+    $staleBackup = "$postmasterPidPath.stale-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
+    Move-Item -LiteralPath $postmasterPidPath -Destination $staleBackup -Force
+    Write-Host "Moved confirmed stale PostgreSQL pid file to $staleBackup."
+  }
+
   if (Test-TcpPort -HostName '127.0.0.1' -Port $postgresPort) {
     throw "Port $postgresPort is occupied but is not owned by the approved local PostgreSQL cluster."
   }
   Write-Host "Starting isolated PostgreSQL on 127.0.0.1:$postgresPort."
-  & $pgCtl -D $pgDataDir -o '-p 55433 -h 127.0.0.1' -w start
-  if ($LASTEXITCODE -ne 0 -or -not (Wait-TcpPort -HostName '127.0.0.1' -Port $postgresPort -Expected $true -TimeoutSeconds 20)) {
-    throw 'Isolated PostgreSQL did not become ready.'
+  $pgCtlOut = Join-Path $logsDir 'postgres-ctl.start.stdout.log'
+  $pgCtlErr = Join-Path $logsDir 'postgres-ctl.start.stderr.log'
+  $postgresLog = Join-Path $logsDir 'postgres.log'
+  Remove-Item -LiteralPath $pgCtlOut, $pgCtlErr, $postgresLog -Force -ErrorAction SilentlyContinue
+  $pgCtlArgs = "-D `"$pgDataDir`" -l `"$postgresLog`" -o `"-p $postgresPort -h 127.0.0.1`" -w start"
+  $pgCtlProcess = Start-Process -FilePath $pgCtl `
+    -ArgumentList $pgCtlArgs `
+    -RedirectStandardOutput $pgCtlOut `
+    -RedirectStandardError $pgCtlErr `
+    -WindowStyle Hidden `
+    -PassThru
+  $ready = Wait-TcpPort -HostName '127.0.0.1' -Port $postgresPort -Expected $true -TimeoutSeconds 60
+  if (-not $ready) {
+    $ctlError = if (Test-Path -LiteralPath $pgCtlErr) { (Get-Content -LiteralPath $pgCtlErr -Raw).Trim() } else { '' }
+    $serverError = if (Test-Path -LiteralPath $postgresLog) { (Get-Content -LiteralPath $postgresLog -Tail 20 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
+    throw "Isolated PostgreSQL did not become ready. pg_ctl stderr=$ctlError postgres log=$serverError"
+  }
+  if (-not $pgCtlProcess.HasExited) {
+    $pgCtlProcess.WaitForExit(5000) | Out-Null
+  }
+  $statusOutput = @(& $pgCtl -D $pgDataDir status 2>&1)
+  $statusExit = $LASTEXITCODE
+  if ($statusExit -ne 0) {
+    $ctlError = if (Test-Path -LiteralPath $pgCtlErr) { ([string](Get-Content -LiteralPath $pgCtlErr -Raw -ErrorAction SilentlyContinue)).Trim() } else { '' }
+    $statusText = ($statusOutput -join "`n").Trim()
+    throw "Isolated PostgreSQL did not remain running after startup. pg_ctl status=$statusText stderr=$ctlError"
   }
 }
 
@@ -878,6 +922,73 @@ function Setup-LocalScene {
   if ($LASTEXITCODE -ne 0) { throw "Local scene setup failed with exit code $LASTEXITCODE." }
 }
 
+function Grant-LocalWhitelistOperators {
+  if (-not (Test-Path -LiteralPath $whitelistPath -PathType Leaf)) {
+    throw "Local whitelist is missing: $whitelistPath"
+  }
+  if (-not (Test-Path -LiteralPath $authmeDb -PathType Leaf)) {
+    throw "Local AuthMe database is missing: $authmeDb"
+  }
+
+  $python = (Get-Command python.exe -ErrorAction Stop).Source
+  $queryScript = @'
+import json
+import re
+import sqlite3
+import sys
+
+authme_path, whitelist_path = sys.argv[1], sys.argv[2]
+with sqlite3.connect(authme_path) as connection:
+    rows = connection.execute("SELECT username, realname FROM authme").fetchall()
+
+accounts = {}
+for username, realname in rows:
+    for value in (username, realname):
+        if value:
+            accounts[str(value).casefold()] = str(realname or username)
+
+with open(whitelist_path, encoding="utf-8") as stream:
+    entries = json.load(stream)
+    if not isinstance(entries, list):
+        raise SystemExit("Local whitelist.json must contain a JSON array.")
+
+for entry in entries:
+    if not isinstance(entry, dict):
+        continue
+    name = str(entry.get("name") or "").strip()
+    if re.fullmatch(r"[A-Za-z0-9_]{1,16}", name) and name.casefold() in accounts:
+        print(accounts[name.casefold()])
+'@
+  $queryPath = Join-Path $logsDir 'local-whitelist-authme.py'
+  $utf8 = [Text.UTF8Encoding]::new($false)
+  try {
+    [IO.File]::WriteAllText($queryPath, $queryScript, $utf8)
+    $matchedNames = @(& $python $queryPath $authmeDb $whitelistPath)
+    $pythonExit = $LASTEXITCODE
+  } finally {
+    Remove-Item -LiteralPath $queryPath -Force -ErrorAction SilentlyContinue
+  }
+  if ($pythonExit -ne 0) {
+    throw "Could not read local whitelist/AuthMe intersection."
+  }
+  $opNames = @(
+    $matchedNames |
+      ForEach-Object { ([string]$_).Trim() } |
+      Where-Object { $_ -match '^[A-Za-z0-9_]{1,16}$' } |
+      Select-Object -Unique
+  )
+  foreach ($name in $opNames) {
+    $command = "op $name"
+    $opResponse = Invoke-LocalRcon -CommandText $command
+    if ($opResponse) { Write-Host $opResponse }
+  }
+  if ($opNames.Count -eq 0) {
+    Write-Host 'Local whitelist/AuthMe OP sync: 0 matching accounts.'
+  } else {
+    Write-Host "Local whitelist/AuthMe OP sync: granted OP to $($opNames.Count) account(s): $($opNames -join ', ')."
+  }
+}
+
 function Get-MinecraftLauncherPath {
   $candidates = @()
   if (-not [string]::IsNullOrWhiteSpace($env:COPIMINE_LAUNCHER_PATH)) {
@@ -972,6 +1083,7 @@ if ($status -notmatch 'coreOverlay=true' -or $status -notmatch 'runes=2/2') {
 }
 Write-Host $status
 
+Grant-LocalWhitelistOperators
 $opResponse = Invoke-LocalRcon -CommandText ("op " + $AdminNickname)
 if ($opResponse) { Write-Host $opResponse }
 $opsPath = Join-Path $serverDir 'ops.json'

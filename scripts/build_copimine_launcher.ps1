@@ -9,6 +9,7 @@ param(
     [switch] $RequireOfflineBundle,
     [switch] $ServerHostedRuntimeOnly,
     [switch] $SkipPackaging,
+    [string] $PackagingTempRoot = '',
     [string] $SignToolPath = '',
     [string] $SigningCertificateThumbprint = '',
     [string] $TimestampUrl = 'https://timestamp.digicert.com',
@@ -27,8 +28,10 @@ $installerBannerSource = Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLaunc
 $installerWelcome = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-welcome.txt'
 $installerReadme = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-readme.txt'
 $installerConclusion = Join-Path $repoRoot 'CopiMineLauncher/packaging/installer-conclusion.txt'
+$metadataScript = Join-Path $scriptRoot 'build_launcher_public_metadata.ps1'
 $publishRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/publish"
 $packageRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/packages"
+$metadataRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/metadata"
 $installerAssetsRoot = Join-Path $repoRoot "artifacts/launcher/$Configuration/installer-assets"
 $signatureRequested = $RequireAuthenticodeSignature -or -not [string]::IsNullOrWhiteSpace($SigningCertificateThumbprint)
 
@@ -289,7 +292,28 @@ $packageExclude = if ($ServerHostedRuntimeOnly) {
 } else {
     '(?i)\.copimine[\\/]((cache|staging|java)[\\/]).*'
 }
-& $vpkPath pack `
+$hadTemp = Test-Path -LiteralPath Env:TEMP
+$hadTmp = Test-Path -LiteralPath Env:TMP
+$originalTemp = $env:TEMP
+$originalTmp = $env:TMP
+$velopackTempRoot = if ([string]::IsNullOrWhiteSpace($PackagingTempRoot)) {
+    Join-Path $repoRoot "artifacts/launcher/$Configuration/.velopack-temp"
+} else {
+    [System.IO.Path]::GetFullPath($PackagingTempRoot)
+}
+if (Test-Path -LiteralPath $velopackTempRoot -PathType Leaf) {
+    throw "PackagingTempRoot points to a file: $velopackTempRoot"
+}
+New-Item -ItemType Directory -Path $velopackTempRoot -Force | Out-Null
+try {
+    # WiX creates and reopens a temporary MSI database.  On a developer
+    # machine the system TEMP volume can be nearly full even when the source
+    # volume has plenty of space, which produces the opaque WIX0223 error.
+    # Keep the packaging scratch space on the selected workspace volume while
+    # restoring the caller's environment after Velopack exits.
+    $env:TEMP = $velopackTempRoot
+    $env:TMP = $velopackTempRoot
+    & $vpkPath pack `
     --packId CopiMineLauncher `
     --packTitle 'CopiMine Launcher' `
     --packAuthors 'CopiMine' `
@@ -309,8 +333,13 @@ $packageExclude = if ($ServerHostedRuntimeOnly) {
     --instConclusion $installerConclusion `
     --shortcuts 'Desktop,StartMenuRoot' `
     --outputDir $packageRoot
-if ($LASTEXITCODE -ne 0) {
-    throw "vpk packaging failed with exit code $LASTEXITCODE"
+    $vpkExitCode = $LASTEXITCODE
+} finally {
+    if ($hadTemp) { $env:TEMP = $originalTemp } else { Remove-Item Env:TEMP -ErrorAction SilentlyContinue }
+    if ($hadTmp) { $env:TMP = $originalTmp } else { Remove-Item Env:TMP -ErrorAction SilentlyContinue }
+}
+if ($vpkExitCode -ne 0) {
+    throw "vpk packaging failed with exit code $vpkExitCode"
 }
 
 $setupSource = Join-Path $packageRoot 'CopiMineLauncher-win-Setup.exe'
@@ -355,11 +384,26 @@ if ($signatureRequested) {
     }
 }
 
+New-Item -ItemType Directory -Path $metadataRoot -Force | Out-Null
+$releaseNotesName = ($Version -replace '[^0-9A-Za-z]+', '-')
+$metadataPath = Join-Path $metadataRoot 'latest.json'
+& $metadataScript `
+    -InstallerPath $installerPath `
+    -CustomInstallerPath $folderInstallerPath `
+    -MsiPath $msiPath `
+    -Version $Version `
+    -OutputPath $metadataPath `
+    -ReleaseNotesUrl "/news/copimine-launcher-$releaseNotesName.html"
+if ($LASTEXITCODE -ne 0) {
+    throw "Launcher public metadata generation failed with exit code $LASTEXITCODE"
+}
+
 Write-Output "PUBLISH_OUTPUT=$publishRoot"
 Write-Output "PACKAGE_OUTPUT=$packageRoot"
 Write-Output "INSTALLER_OUTPUT=$installerPath"
 Write-Output "MSI_OUTPUT=$msiPath"
 Write-Output "CUSTOM_INSTALLER_OUTPUT=$folderInstallerPath"
+Write-Output "METADATA_OUTPUT=$metadataPath"
 if (-not [string]::IsNullOrWhiteSpace($OfflineMinecraftRoot)) {
     Write-Output "OFFLINE_BASELINE_OUTPUT=$(Join-Path $bootstrapDestination 'offline-minecraft-baseline.zip')"
 }

@@ -103,6 +103,25 @@ def test_staging_does_not_copy_stale_source_downloads_or_launcher_tree() -> None
     assert "Where-Object { $_.Name -notin @('downloads', 'launcher') }" in stage
 
 
+def test_launcher_build_publishes_metadata_from_the_artifacts_it_just_built() -> None:
+    build = (ROOT / "scripts" / "build_copimine_launcher.ps1").read_text(encoding="utf-8")
+
+    assert "build_launcher_public_metadata.ps1" in build
+    assert "-InstallerPath $installerPath" in build
+    assert "-CustomInstallerPath $folderInstallerPath" in build
+    assert "-MsiPath $msiPath" in build
+    assert "-OutputPath $metadataPath" in build
+
+
+def test_launcher_build_isolates_velopack_temp_files_from_a_small_system_temp() -> None:
+    build = (ROOT / "scripts" / "build_copimine_launcher.ps1").read_text(encoding="utf-8")
+
+    assert "PackagingTempRoot" in build
+    assert "$env:TEMP" in build
+    assert "$env:TMP" in build
+    assert "finally" in build
+
+
 def test_launcher_staging_can_wire_the_disposable_binding_backend() -> None:
     script = (ROOT / "scripts" / "run_copimine_launcher_staging.ps1").read_text(encoding="utf-8")
 

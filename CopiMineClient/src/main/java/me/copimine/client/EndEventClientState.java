@@ -11,6 +11,7 @@ public final class EndEventClientState {
     private String bossUuid = "";
     private String bossBindingInstance = "";
     private String bossVisualId = "";
+    private final Map<String, BossPhaseBinding> bossPhase = new HashMap<>();
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private String controlInstance = "";
     private long controlExpiresAt;
@@ -21,17 +22,20 @@ public final class EndEventClientState {
         }
         if (!eventId.isBlank() && !Objects.equals(eventId, packet.eventId())) {
             clearEffects();
+            eventId = packet.eventId();
+            generation = packet.generation();
         } else if (!eventId.isBlank() && packet.generation() < generation) {
             return false;
-        }
-        if (!Objects.equals(eventId, packet.eventId()) || packet.generation() > generation) {
-            clearEffects();
+        } else if (!Objects.equals(eventId, packet.eventId())) {
             eventId = packet.eventId();
+            generation = packet.generation();
+        } else if (packet.generation() > generation) {
             generation = packet.generation();
         }
         return switch (packet.type()) {
             case "END_BOSS_BIND" -> bindBoss(packet);
             case "END_BOSS_UNBIND" -> unbindBoss(packet);
+            case "END_BOSS_PHASE" -> applyBossPhase(packet);
             case "END_ENTITY_BIND" -> bindEntity(packet);
             case "END_ENTITY_UNBIND" -> unbindEntity(packet);
             case "END_CONTROL_START" -> startControl(packet, nowMillis);
@@ -72,6 +76,22 @@ public final class EndEventClientState {
         return bossUuid;
     }
 
+    public synchronized String bossPhaseForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "";
+        }
+        BossPhaseBinding binding = bossPhase.get(uuid);
+        return binding == null ? "" : binding.phaseId();
+    }
+
+    public synchronized long bossPhaseTransitionMillisForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return 0L;
+        }
+        BossPhaseBinding binding = bossPhase.get(uuid);
+        return binding == null ? 0L : binding.transitionDurationMillis();
+    }
+
     public synchronized String controlInstanceId() {
         return controlInstance;
     }
@@ -94,6 +114,9 @@ public final class EndEventClientState {
         if (packet.subjectId().isBlank() || packet.instanceId().isBlank()) {
             return false;
         }
+        if (!Objects.equals(bossUuid, packet.subjectId())) {
+            bossPhase.clear();
+        }
         bossUuid = packet.subjectId();
         bossBindingInstance = packet.instanceId();
         bossVisualId = packet.visualId().isBlank() ? "END_RIFT_GUARDIAN_V1" : packet.visualId();
@@ -104,9 +127,26 @@ public final class EndEventClientState {
         if (bossUuid.isBlank() || !Objects.equals(bossBindingInstance, packet.instanceId())) {
             return false;
         }
+        bossPhase.remove(bossUuid);
         bossUuid = "";
         bossBindingInstance = "";
         bossVisualId = "";
+        return true;
+    }
+
+    public synchronized boolean applyBossPhase(EndEventPacket packet) {
+        if (packet.subjectId().isBlank()
+                || packet.instanceId().isBlank()
+                || packet.phaseId().isBlank()
+                || bossUuid.isBlank()
+                || !Objects.equals(bossUuid, packet.subjectId())
+                || !Objects.equals(bossBindingInstance, packet.instanceId())) {
+            return false;
+        }
+        bossPhase.put(packet.subjectId(), new BossPhaseBinding(
+                packet.instanceId(),
+                packet.phaseId(),
+                packet.durationMillis()));
         return true;
     }
 
@@ -160,11 +200,15 @@ public final class EndEventClientState {
         bossUuid = "";
         bossBindingInstance = "";
         bossVisualId = "";
+        bossPhase.clear();
         entityVisuals.clear();
         controlInstance = "";
         controlExpiresAt = 0L;
     }
 
     private record EntityVisualBinding(String instanceId, String visualId) {
+    }
+
+    private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis) {
     }
 }

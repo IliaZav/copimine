@@ -86,6 +86,32 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     image.save(OUT / name, format="PNG", optimize=False)
 
 
+def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
+                              accent: tuple[int, int, int], core: tuple[int, int, int]) -> None:
+    image = atlas((128, 128), palette, seed)
+    draw = ImageDraw.Draw(image)
+    panel_lines(draw, 128, 128, palette[1])
+    # The boss model uses broad custom cuboids on a 128x128 sheet. Large torso,
+    # shoulder, arm, horn, shard, and chest-rift regions are all marked so one
+    # geometry can carry distinct readable phase surfaces.
+    draw.rectangle((3, 3, 55, 47), outline=(*accent, 255), width=3)
+    draw.rectangle((4, 64, 37, 96), outline=(*palette[-1], 255), width=2)
+    draw.rectangle((56, 4, 91, 31), outline=(*accent, 255), width=2)
+    draw.rectangle((88, 4, 109, 61), outline=(*palette[-1], 255), width=2)
+    draw.rectangle((42, 64, 58, 91), outline=(*accent, 255), width=2)
+    draw.rectangle((0, 84, 27, 111), outline=(*palette[-1], 255), width=2)
+    draw.rectangle((28, 84, 43, 111), outline=(*core, 255), width=2)
+    for x in range(8, 120, 13):
+        draw.line((x, 9, 127 - x // 2, 121), fill=(*accent, 190), width=1)
+    for y in range(12, 120, 17):
+        draw.line((8, y, 118, (y * 3 + seed) % 120), fill=(*palette[-1], 180), width=1)
+    sigil(draw, (64, 64), 21, [accent, palette[-1], core], seed % 11)
+    sigil(draw, (31, 24), 9, [palette[-1], accent, core], (seed + 5) % 13)
+    for radius in (8, 14, 24):
+        draw.ellipse((64 - radius, 64 - radius, 64 + radius, 64 + radius), outline=(*core, 220), width=1)
+    image.save(OUT / name, format="PNG", optimize=False)
+
+
 def spider_sheet() -> None:
     palette = [(36, 8, 37), (67, 12, 54), (103, 19, 69), (17, 39, 72), (31, 76, 105), (184, 44, 106)]
     image = atlas((64, 32), palette, 71)
@@ -141,6 +167,41 @@ def main() -> None:
         43,
         (248, 207, 83),
         (255, 240, 137),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_awakening.png",
+        [(20, 18, 50), (44, 30, 83), (83, 43, 119), (132, 56, 151), (207, 93, 167), (255, 188, 115)],
+        151,
+        (255, 188, 115),
+        (255, 232, 179),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_hunter.png",
+        [(10, 35, 37), (16, 70, 67), (21, 108, 93), (40, 146, 111), (173, 151, 62), (255, 222, 111)],
+        163,
+        (173, 151, 62),
+        (159, 255, 226),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_distortion.png",
+        [(24, 14, 59), (48, 24, 102), (77, 33, 146), (38, 95, 153), (54, 178, 188), (224, 81, 216)],
+        179,
+        (54, 178, 188),
+        (248, 173, 255),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_absorption.png",
+        [(8, 26, 56), (16, 55, 91), (23, 92, 132), (37, 129, 165), (90, 208, 188), (197, 255, 214)],
+        191,
+        (90, 208, 188),
+        (223, 255, 237),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_catastrophe.png",
+        [(52, 9, 25), (93, 15, 34), (143, 25, 39), (192, 45, 45), (242, 89, 54), (255, 226, 107)],
+        211,
+        (242, 89, 54),
+        (255, 245, 157),
     )
     spider_sheet()
     shulker_sheet()

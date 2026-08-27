@@ -21,6 +21,7 @@ public record EndEventPacket(
     private static final Set<String> TYPES = Set.of(
             "END_BOSS_BIND",
             "END_BOSS_UNBIND",
+            "END_BOSS_PHASE",
             "END_ENTITY_BIND",
             "END_ENTITY_UNBIND",
             "END_CONTROL_START",
@@ -49,6 +50,11 @@ public record EndEventPacket(
 
     /** The legacy bossId wire slot carries the bounded visual id for mob binds. */
     public String visualId() {
+        return bossId;
+    }
+
+    /** The legacy bossId wire slot also carries the bounded boss phase/model id. */
+    public String phaseId() {
         return bossId;
     }
 

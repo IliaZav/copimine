@@ -25,6 +25,7 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_PING = "ping";
     public static final String END_EVENT_MAGIC = "COPIMINE_END_EVENT_V1";
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
+    public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -325,6 +326,14 @@ public final class ClientBridgeProtocol {
 
     public static String endEventVisualForEntity(String uuid) {
         return END_EVENT_STATE.visualForEntity(uuid);
+    }
+
+    public static String bossPhaseForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseForEntity(uuid);
+    }
+
+    public static long bossPhaseTransitionMillisForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseTransitionMillisForEntity(uuid);
     }
 
     public static void clearEndEventState() {

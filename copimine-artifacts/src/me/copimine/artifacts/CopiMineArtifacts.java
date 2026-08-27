@@ -3379,6 +3379,69 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
               || this.isInfiniteTorchItem(stack);
     }
 
+    /**
+     * Creative clients report an outside-window drop as an inventory event,
+     * sometimes with the physical item in the cursor and sometimes in the
+     * clicked slot.  Cancel the destructive action first and let the existing
+     * bounded journal writer remove the copy only after its fsync boundary.
+     * Player-inventory moves are deliberately left to vanilla handling.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void handleCreativeDonationLoss(InventoryCreativeEvent event) {
+       if (event == null || this.customShopItemsAreVanilla()) {
+          return;
+       }
+       Player player = event.getWhoClicked() instanceof Player p ? p : null;
+       if (player == null) {
+          return;
+       }
+
+       ItemStack candidate = event.getCursor();
+       OfficialDonationRef ref = this.officialDonationRef(candidate);
+       if (ref == null) {
+          candidate = event.getCurrentItem();
+          ref = this.officialDonationRef(candidate);
+       }
+       if (ref == null || this.creativeDonationActionKeepsPlayerInventory(event, player)) {
+          return;
+       }
+
+       boolean outsideWindow = event.getRawSlot() < 0;
+       boolean drop = event.getClick() == ClickType.DROP
+             || event.getClick() == ClickType.CONTROL_DROP;
+       if (!outsideWindow && !drop) {
+          // A click in an external container is a transport operation, not a
+          // deletion.  Do not create a reclaim row for a still-existing item.
+          return;
+       }
+
+       event.setCancelled(true);
+       // The event remains physically intact while the bounded writer waits
+       // for FileChannel.force(true).  This update prevents a creative client
+       // from displaying a stale cleared cursor after cancellation.
+       player.updateInventory();
+       String reason = outsideWindow ? "creative-outside" : "creative-drop";
+       if (!this.recordDonationLossOnce(ref, reason)) {
+          this.getLogger().warning("Creative donation loss journal is unavailable; preserving the physical item: " + ref.uniqueItemId());
+          return;
+       }
+       this.flushPendingDonationLossJournalAsync();
+    }
+
+    private boolean creativeDonationActionKeepsPlayerInventory(InventoryCreativeEvent event, Player player) {
+       if (event == null || player == null || event.getView() == null || event.getRawSlot() < 0) {
+          return false;
+       }
+       if (event.getClick() == ClickType.DROP || event.getClick() == ClickType.CONTROL_DROP) {
+          return false;
+       }
+       InventoryView view = event.getView();
+       Inventory top = view.getTopInventory();
+       int rawSlot = event.getRawSlot();
+       return event.getClickedInventory() == player.getInventory()
+             || (view.getBottomInventory() == player.getInventory() && rawSlot >= top.getSize());
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onUtilityArtifactCreative(InventoryCreativeEvent event) {
        if (event != null && (this.isUtilityArtifactItem(event.getCursor())

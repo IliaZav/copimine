@@ -22,7 +22,7 @@ Require 'case PICKUP, PLAYER_QUIT, UNLOAD' 'Pickup and unload causes must be exc
 Require 'InventoryCreativeEvent' 'Creative inventory deletion must be handled explicitly.'
 Require 'handleCreativeDonationLoss' 'Creative cursor deletion must use the durable loss journal.'
 Require 'candidate = event.getCurrentItem();' 'Creative outside-window deletion must also handle clients that report the item in the clicked slot.'
-Require 'player::updateInventory' 'Creative deletion must synchronize the cleared cursor back to the client.'
+Require 'player.updateInventory();' 'Creative deletion must synchronize the cancelled cursor back to the client.'
 $destroyHandler = [regex]::Match($source, '(?s)@EventHandler\(\s*priority\s*=\s*EventPriority\.(?<priority>[A-Z_]+),\s*ignoreCancelled\s*=\s*(?<ignore>true|false)\s*\)\s*public void onDonationItemDestroyed\(EntityDamageEvent')
 if (-not $destroyHandler.Success) { throw 'Donation loss damage handler annotation was not found.' }
 if ($destroyHandler.Groups['priority'].Value -ne 'HIGHEST') { throw 'Loss damage handling must run at HIGHEST so the item is protected before vanilla damage removes it.' }

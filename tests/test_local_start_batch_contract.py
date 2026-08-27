@@ -202,6 +202,13 @@ def test_local_session_validates_uvicorn_listener_children_before_stopping() -> 
     assert "Get-CimInstance Win32_Process -Filter" in text
 
 
+def test_local_website_cleanup_tolerates_a_pid_race() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    website_cleanup = text[text.index("function Stop-ExistingLocalWebsite"):text.index("function Start-LocalWebsite")]
+
+    assert "Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue" in website_cleanup
+
+
 def test_local_batch_supports_noninteractive_invocation_without_forced_pause() -> None:
     text = BATCH.read_text(encoding="utf-8")
 

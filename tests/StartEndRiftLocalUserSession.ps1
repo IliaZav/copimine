@@ -821,7 +821,7 @@ function Stop-ExistingLocalWebsite {
     foreach ($processId in $verifiedWebsiteProcessIds) {
       if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
         Write-Host "Stopping orphaned isolated local website PID=$processId."
-        Stop-Process -Id $processId -Force -ErrorAction Stop
+        Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
       }
     }
     Remove-Item -LiteralPath $websitePidFile -Force -ErrorAction SilentlyContinue
@@ -833,7 +833,7 @@ function Stop-ExistingLocalWebsite {
   Write-Host "Stopping existing isolated local website process tree: $($verifiedWebsiteProcessIds -join ', ')."
   foreach ($processId in $verifiedWebsiteProcessIds) {
     if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
-      Stop-Process -Id $processId -Force -ErrorAction Stop
+      Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
     }
   }
   if (-not (Wait-TcpPort -HostName '127.0.0.1' -Port $websitePort -Expected $false -TimeoutSeconds 15)) {

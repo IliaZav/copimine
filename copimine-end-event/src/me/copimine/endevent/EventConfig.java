@@ -40,7 +40,10 @@ public record EventConfig(
         WaveDefinition wave1,
         WaveDefinition wave2,
         WaveDefinition wave3,
+        WaveDefinition wave4,
+        WaveDefinition wave5,
         WaveDefinition finalWave,
+        Map<Integer, Map<String, Integer>> waveRewards,
         Map<String, Integer> waveMobLoot,
         Map<String, Integer> eliteLoot,
         Map<String, Integer> finalWaveLoot,
@@ -86,6 +89,7 @@ public record EventConfig(
         resourceRequirements = Map.copyOf(resourceRequirements);
         resourceBundle = Map.copyOf(resourceBundle);
         padRadii = List.copyOf(padRadii);
+        waveRewards = copyWaveRewards(waveRewards);
         waveMobLoot = Map.copyOf(waveMobLoot);
         eliteLoot = Map.copyOf(eliteLoot);
         finalWaveLoot = Map.copyOf(finalWaveLoot);
@@ -192,7 +196,10 @@ public record EventConfig(
                 wave(waves, "wave-1"),
                 wave(waves, "wave-2"),
                 wave(waves, "wave-3"),
+                wave(waves, "wave-4"),
+                wave(waves, "wave-5"),
                 wave(waves, "final"),
+                readWaveRewards(plugin.getConfig().getConfigurationSection("wave-rewards")),
                 waveMobLoot,
                 eliteLoot,
                 finalWaveLoot,
@@ -231,6 +238,31 @@ public record EventConfig(
                 nonNegative(section, "spiders"),
                 nonNegative(section, "shulkers"),
                 nonNegative(section, "elite-endermen"));
+    }
+
+    private static Map<Integer, Map<String, Integer>> readWaveRewards(ConfigurationSection parent) {
+        if (parent == null) {
+            throw new IllegalStateException("Missing configuration section: wave-rewards");
+        }
+        LinkedHashMap<Integer, Map<String, Integer>> rewards = new LinkedHashMap<>();
+        for (int wave = 1; wave <= 5; wave++) {
+            rewards.put(wave, readMaterials(requiredSection(parent, "wave-" + wave),
+                    "wave-rewards.wave-" + wave));
+        }
+        return rewards;
+    }
+
+    private static Map<Integer, Map<String, Integer>> copyWaveRewards(
+            Map<Integer, Map<String, Integer>> rewards) {
+        LinkedHashMap<Integer, Map<String, Integer>> copied = new LinkedHashMap<>();
+        if (rewards != null) {
+            rewards.forEach((wave, materials) -> {
+                if (wave != null && wave > 0) {
+                    copied.put(wave, Map.copyOf(materials == null ? Map.of() : materials));
+                }
+            });
+        }
+        return Map.copyOf(copied);
     }
 
     private static int[] secondsRange(ConfigurationSection parent, String key) {
@@ -439,6 +471,10 @@ public record EventConfig(
 
     public Map<String, LootEntry> lootProfile(String profileId) {
         return lootProfiles.getOrDefault(profileId, Map.of());
+    }
+
+    public Map<String, Integer> waveReward(int wave) {
+        return waveRewards.getOrDefault(wave, Map.of());
     }
 
     public record MiniBossTuning(

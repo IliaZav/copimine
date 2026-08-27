@@ -16,6 +16,7 @@ public final class EndEventDomainTest {
         testLegalStateTransitions();
         testIllegalStateTransitionsDoNotAdvance();
         testCanonicalFinalDrainAndVictoryTransitions();
+        testFiveInitialWavesLeadToBoss();
         testTransientRecoveryAndTerminalUnlock();
         testPadGeometryHasExactlyNUniquePoints();
         testDepositCapLeavesRemainder();
@@ -76,6 +77,25 @@ public final class EndEventDomainTest {
         check(machine.transition(EventPhase.VICTORY_PROCESSING, EventPhase.UNLOCKED,
                         "rewards-complete", "unlock-1").success(),
                 "victory saga must be able to commit the terminal unlock");
+    }
+
+    private static void testFiveInitialWavesLeadToBoss() {
+        EndEventStateMachine machine = new EndEventStateMachine(EventPhase.COUNTDOWN);
+        EventPhase[] expected = {
+                EventPhase.WAVE_1, EventPhase.INTERMISSION_1,
+                EventPhase.WAVE_2, EventPhase.INTERMISSION_2,
+                EventPhase.WAVE_3, EventPhase.INTERMISSION_3,
+                EventPhase.WAVE_4, EventPhase.INTERMISSION_4,
+                EventPhase.WAVE_5, EventPhase.BOSS_ACTIVE
+        };
+        EventPhase current = EventPhase.COUNTDOWN;
+        for (int index = 0; index < expected.length; index++) {
+            EventPhase next = expected[index];
+            check(machine.transition(current, next, "test-five-waves", "five-waves-" + index).success(),
+                    "initial wave sequence must allow " + current + " -> " + next);
+            check(machine.phase() == next, "state machine must advance to " + next);
+            current = next;
+        }
     }
 
     private static void testPadGeometryHasExactlyNUniquePoints() {

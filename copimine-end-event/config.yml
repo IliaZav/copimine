@@ -79,6 +79,16 @@ waves:
     spiders: 0
     shulkers: 3
     elite-endermen: 4
+  wave-4:
+    endermen: 8
+    spiders: 6
+    shulkers: 4
+    elite-endermen: 2
+  wave-5:
+    endermen: 12
+    spiders: 8
+    shulkers: 4
+    elite-endermen: 6
   final:
     endermen: 0
     spiders: 8
@@ -89,15 +99,44 @@ waves:
 # directly and therefore never enters EntityDeathEvent or creates kill loot.
 event-loot:
   wave-mob:
-    ENDER_PEARL: 1
-  elite:
     ENDER_PEARL: 2
     AMETHYST_SHARD: 1
+  elite:
+    ENDER_PEARL: 4
+    AMETHYST_SHARD: 2
+    EXPERIENCE_BOTTLE: 2
   final-wave:
-    ENDER_PEARL: 2
-    SHULKER_SHELL: 1
+    ENDER_PEARL: 4
+    SHULKER_SHELL: 2
+    AMETHYST_SHARD: 2
   test:
     ENDER_PEARL: 1
+
+# Guaranteed event loot appears at the Core after each initial wave.  The
+# marker is persisted before the Item entities are created, so a restart
+# cannot duplicate a wave reward.
+wave-rewards:
+  wave-1:
+    ENDER_PEARL: 8
+    AMETHYST_SHARD: 4
+  wave-2:
+    ENDER_PEARL: 12
+    AMETHYST_SHARD: 8
+    EXPERIENCE_BOTTLE: 2
+  wave-3:
+    ENDER_PEARL: 16
+    AMETHYST_SHARD: 12
+    DIAMOND: 2
+  wave-4:
+    ENDER_PEARL: 20
+    AMETHYST_SHARD: 16
+    DIAMOND: 4
+    EXPERIENCE_BOTTLE: 4
+  wave-5:
+    ENDER_PEARL: 24
+    AMETHYST_SHARD: 20
+    DIAMOND: 6
+    ECHO_SHARD: 2
 
 # One deterministic additive roll set per event-owned mob death.  The legacy
 # event-loot values above remain as the local fallback if a profile is omitted.
@@ -129,17 +168,17 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
-  health: 1200.0
-  attack-damage-bonus: 3.0
+  health: 2500.0
+  attack-damage-bonus: 5.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
   teleport-cooldown-seconds: 12
-  spell-cooldown-seconds: [6, 9]
+  spell-cooldown-seconds: [5, 8]
   spell-telegraph-ticks: 30
   final-ritual-telegraph-ticks: 80
-  half-health: 600.0
-  final-threshold: 120.0
-  final-health: 200.0
+  half-health: 1250.0
+  final-threshold: 250.0
+  final-health: 400.0
   final-drain-fraction: 0.60
   final-drain-min-health: 1.0
   control-duration-seconds: 10

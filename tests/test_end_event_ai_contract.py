@@ -8,10 +8,11 @@ MAIN = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.jav
 CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 
 
-def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_1200_hp() -> None:
-    assert "health: 1200.0" in CONFIG
-    assert "half-health: 600.0" in CONFIG
-    assert "final-threshold: 120.0" in CONFIG
+def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_2500_hp() -> None:
+    assert "health: 2500.0" in CONFIG
+    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "half-health: 1250.0" in CONFIG
+    assert "final-threshold: 250.0" in CONFIG
     assert "bossFinalHealth()" in MAIN
 
 
@@ -27,7 +28,9 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
         "BOSS_AI_TARGET",
         "BOSS_AI_LEASH",
         "MAX_ACTIVE_VOID_MARKS = 2",
-        "VOID_MARK_DURATION_SECONDS = 6",
+        "VOID_MARK_DURATION_SECONDS = 18",
+        "MAX_POTION_AMPLIFIER = 255",
+        "ARENA_INFERNO_DURATION_TICKS = 100",
         "VOID_MARK_RADIUS_BLOCKS = 3",
         "runTaskTimer(this",
         "BOSS_VOID_MARK_CLEANUP",
@@ -43,6 +46,38 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
     assert "random.nextInt(4)" not in MAIN
     assert "player.damage(2.0D, boss)" in MAIN
     assert "player.damage(7.0D, boss)" in MAIN
+
+
+def test_boss_uses_the_floor_combat_anchor_and_can_take_damage_after_absorption() -> None:
+    tick = MAIN[MAIN.index("private void tickBoss()"):MAIN.index("private int randomSeconds", MAIN.index("private void tickBoss()"))]
+    teleport = MAIN[MAIN.index("private void maintainBossTeleport"):MAIN.index("@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)", MAIN.index("private void maintainBossTeleport"))]
+    damage = MAIN[MAIN.index("public void onBossDamage"):MAIN.index("private void applyBossDamage", MAIN.index("public void onBossDamage"))]
+    assert "Location core = coreCombatAnchorLocation();" in tick
+    assert "Location anchor = coreCombatAnchorLocation();" in teleport
+    assert "phase == EventPhase.BOSS_FINISH" in damage
+    assert "finalDrainTriggered" in damage
+    assert "event.setCancelled(true);" in damage
+    assert "return;" in damage
+
+
+def test_boss_debuffs_are_max_level_and_three_times_longer() -> None:
+    assert "MAX_POTION_AMPLIFIER = 255" in MAIN
+    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void voidBlast"):MAIN.index("private void riftProjectile")]
+    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void riftProjectile"):MAIN.index("private void cleanupRiftProjectile")]
+    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void voidMark"):MAIN.index("private void cancelVoidMark")]
+    for method, next_method in (
+        ("private void miniBossRiftStep", "private void miniBossVoidSnare"),
+        ("private void miniBossVoidSnare", "private void miniBossEchoPulse"),
+        ("private void miniBossEchoPulse", "private void enforceCombatLeash"),
+    ):
+        assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index(method):MAIN.index(next_method)]
+
+
+def test_arena_inferno_is_a_five_second_owned_spell() -> None:
+    assert "ARENA_INFERNO" in MAIN
+    assert "arenaInferno" in MAIN
+    assert "FIRE" in MAIN
+    assert "ARENA_INFERNO_DURATION_TICKS = 100" in MAIN
 
 
 def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller() -> None:
@@ -104,8 +139,9 @@ def test_local_ai_harness_runs_real_controllers_without_touching_official_phase(
 
 def test_local_ai_harness_ticks_boss_controller_outside_official_boss_phase() -> None:
     """The local harness deliberately stays out of the official state machine."""
-    assert "if (testCombatAiMode && liveBoss() != null)" in MAIN
-    assert "tickBoss();" in MAIN
+    tick = MAIN[MAIN.index("private void tick()"):MAIN.index("private void updatePadOccupancy")]
+    assert "testCombatAiMode && liveBoss() != null" in tick
+    assert "tickBoss();" in tick
     assert "&& !(testCombatAiMode && isTestBoss(boss))" in MAIN
     assert "phase != EventPhase.BOSS_ACTIVE && !testBossAi" in MAIN
 
@@ -172,7 +208,8 @@ def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_insi
     assert "private boolean isCoreBlockPosition(Location location)" in MAIN
     assert "private Location coreBlockTopLocation()" in MAIN
     assert "if (isCoreBlockPosition(target))" in MAIN
-    assert "event.setTo(coreBlockTopLocation());" in MAIN
+    assert "Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D);" in MAIN
+    assert "event.setTo(safe);" in MAIN
 
 
 def test_wave_spawns_use_the_floor_below_an_elevated_core_and_never_fall_back_onto_it() -> None:

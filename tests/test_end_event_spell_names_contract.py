@@ -19,6 +19,7 @@ def test_boss_spells_have_player_facing_russian_names() -> None:
         "VOID_MARK": "Клеймо Пустоты",
         "SUMMON_SERVANTS": "Призыв слуг Разлома",
         "WILL_DISTORTION": "Искажение воли",
+        "ARENA_INFERNO": "Пламя Разлома",
     }
 
     for spell, display_name in expected_names.items():

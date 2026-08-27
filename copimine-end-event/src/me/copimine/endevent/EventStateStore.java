@@ -61,7 +61,7 @@ public final class EventStateStore {
                 recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
                 recovery.victoryStep(), recovery.updatedAt(),
                 "Both primary and backup event state files are invalid.", recovery.participants(),
-                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers());
+                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers(), recovery.waveRewardsIssued());
         return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
     }
 
@@ -129,6 +129,7 @@ public final class EventStateStore {
             yaml.set("participants.all", uuidStrings(snapshot.participants()));
             yaml.set("final-drain.targets", uuidDoubleMap(snapshot.finalDrainTargets()));
             yaml.set("final-drain.applied-players", uuidStrings(snapshot.finalDrainAppliedPlayers()));
+            yaml.set("rewards.wave-rewards-issued", snapshot.waveRewardsIssued().stream().sorted().toList());
             yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
             yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
             List<Map<String, Object>> pads = new ArrayList<>();
@@ -180,6 +181,7 @@ public final class EventStateStore {
         Set<UUID> participants = uuids(yaml.getStringList("participants.all"));
         Map<UUID, Double> finalDrainTargets = uuidDoubles(yaml.getConfigurationSection("final-drain.targets"));
         Set<UUID> finalDrainAppliedPlayers = uuids(yaml.getStringList("final-drain.applied-players"));
+        Set<Integer> waveRewardsIssued = new LinkedHashSet<>(yaml.getIntegerList("rewards.wave-rewards-issued"));
         Map<UUID, String> statuses = uuidStatuses(yaml.getConfigurationSection("rewards.statuses"));
         Map<UUID, Long> cooldowns = uuidLongs(yaml.getConfigurationSection("rewards.shard-cooldowns"));
         return new EventSnapshot(
@@ -203,7 +205,7 @@ public final class EventStateStore {
                 yaml.getString("event.return-stone-status", "PENDING"),
                 yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
                 yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
-                finalDrainAppliedPlayers);
+                finalDrainAppliedPlayers, waveRewardsIssued);
     }
 
     private void writeAtomic(String content) throws IOException {

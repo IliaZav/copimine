@@ -75,18 +75,35 @@ def test_configured_waves_use_spiders_and_keep_the_requested_combat_numbers() ->
     assert "endermite" not in CONFIG.lower()
     assert "health-bonus: 10.0" in CONFIG
     assert "attack-damage-bonus: 2.0" in CONFIG
-    assert "health: 1200.0" in CONFIG
-    assert "half-health: 600.0" in CONFIG
-    assert "final-threshold: 120.0" in CONFIG
+    assert "health: 2500.0" in CONFIG
+    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "half-health: 1250.0" in CONFIG
+    assert "final-threshold: 250.0" in CONFIG
 
     wave_blocks = [
         _block(CONFIG, "  wave-1:\n", "  wave-2:\n"),
         _block(CONFIG, "  wave-2:\n", "  wave-3:\n"),
-        _block(CONFIG, "  wave-3:\n", "  final:\n"),
+        _block(CONFIG, "  wave-3:\n", "  wave-4:\n"),
+        _block(CONFIG, "  wave-4:\n", "  wave-5:\n"),
+        _block(CONFIG, "  wave-5:\n", "  final:\n"),
         _block(CONFIG, "  final:\n", "\n# Event-owned mobs"),
     ]
     assert all(re.search(r"(?m)^    spiders:\s*\d+\s*$", block) for block in wave_blocks)
     assert all("endermite" not in block.lower() for block in wave_blocks)
+
+
+def test_event_announces_every_wave_on_screen_and_drops_rewards_at_the_core() -> None:
+    for marker in (
+        "WAVE_4", "WAVE_5", "INTERMISSION_3", "INTERMISSION_4",
+        "sendTitle", "spawnWaveCompletionLoot", "wave-rewards",
+        "coreCombatAnchorLocation", "ItemStack",
+    ):
+        assert marker in MAIN or marker in CONFIG
+
+
+def test_final_boss_entry_has_a_delayed_epic_announcement() -> None:
+    for marker in ("BOSS_SPAWN_DELAY", "Хранитель Разлома пробуждается", "sendTitle"):
+        assert marker in MAIN
 
 
 def test_every_flying_spell_has_a_named_particle_pattern_and_bounded_flight() -> None:

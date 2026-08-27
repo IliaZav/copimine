@@ -13,13 +13,13 @@ public final class EndRiftAiPolicyTest {
     }
 
     private static void testBossPhaseBoundaries() {
-        check(EndRiftAiPolicy.bossPhase(1200.0D, 1200.0D, 600.0D, 120.0D, false, false)
+        check(EndRiftAiPolicy.bossPhase(2500.0D, 2500.0D, 1250.0D, 250.0D, false, false)
                         == EndRiftAiPolicy.BossPhase.NORMAL,
                 "full-health boss must start in normal phase");
-        check(EndRiftAiPolicy.bossPhase(600.0D, 1200.0D, 600.0D, 120.0D, false, false)
+        check(EndRiftAiPolicy.bossPhase(1250.0D, 2500.0D, 1250.0D, 250.0D, false, false)
                         == EndRiftAiPolicy.BossPhase.HALF,
                 "boss must enter half phase at exactly 50 percent");
-        check(EndRiftAiPolicy.bossPhase(120.0D, 1200.0D, 600.0D, 120.0D, true, false)
+        check(EndRiftAiPolicy.bossPhase(250.0D, 2500.0D, 1250.0D, 250.0D, true, false)
                         == EndRiftAiPolicy.BossPhase.FINAL,
                 "boss must enter final phase at exactly 10 percent");
     }
@@ -49,7 +49,8 @@ public final class EndRiftAiPolicyTest {
             "Снаряд Разлома",
             "Клеймо Пустоты",
             "Призыв слуг Разлома",
-            "Искажение воли"
+            "Искажение воли",
+            "Пламя Разлома"
         };
         EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();
         check(spells.length == expected.length, "boss spell list changed without updating display names");

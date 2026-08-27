@@ -84,7 +84,7 @@ public final class EventStateStoreTest {
                 List.of(new EventSnapshot.PadSnapshot(10, 70, 25, 5.0D, 0.0D, "minecraft:purpur_block")),
                 Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(),
                 false, false, false, false, false, false, false, false, "PENDING", player, "PENDING", "NONE", 123L, "", Set.of(player),
-                Map.of(player, 8.0D), Set.of(player));
+                Map.of(player, 8.0D), Set.of(player), Set.of(1, 2));
     }
 
     private static void check(boolean condition, String message) {

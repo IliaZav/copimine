@@ -10,6 +10,10 @@ public enum EventPhase {
     WAVE_2,
     INTERMISSION_2,
     WAVE_3,
+    INTERMISSION_3,
+    WAVE_4,
+    INTERMISSION_4,
+    WAVE_5,
     BOSS_ACTIVE,
     /** Canonical final threshold phase. */
     FINAL_DRAIN,

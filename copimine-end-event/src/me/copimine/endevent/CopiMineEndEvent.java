@@ -75,6 +75,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
@@ -90,9 +91,11 @@ import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockFadeEvent;
 import org.bukkit.event.block.BlockFromToEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
@@ -143,6 +146,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_BOSS = "BOSS";
     private static final String EVENT_KIND_FINAL_WAVE = "FINAL_WAVE";
     private static final String EVENT_KIND_PROJECTILE = "RIFT_PROJECTILE";
+    private static final String EVENT_KIND_WAVE_REWARD = "WAVE_REWARD";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
@@ -162,7 +166,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MAX_GATE_TICKS_PER_LAYER = 200;
     private static final int DEFAULT_GATE_SELECTION_PREVIEW_SECONDS = 10;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
-    private static final int VOID_MARK_DURATION_SECONDS = 6;
+    private static final int VOID_MARK_DURATION_SECONDS = 18;
+    private static final int BOSS_BLAST_DEBUFF_TICKS = 240;
+    private static final int BOSS_PROJECTILE_DEBUFF_TICKS = 240;
+    private static final int VOID_MARK_DEBUFF_TICKS = 75;
+    private static final int MINI_RIFT_STEP_DEBUFF_TICKS = 150;
+    private static final int MINI_VOID_SNARE_DEBUFF_TICKS = 240;
+    private static final int MINI_ECHO_PULSE_DEBUFF_TICKS = 180;
+    private static final int MAX_POTION_AMPLIFIER = 255;
+    private static final int BOSS_SPAWN_DELAY_TICKS = 60;
+    private static final int ARENA_INFERNO_DURATION_TICKS = 100;
+    private static final int FINAL_WAVE_NUMBER = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
     private static final int MAX_ACTIVE_RIFT_PROJECTILES = 8;
     private static final int SPELL_FLIGHT_TICKS = 8;
@@ -200,6 +214,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, String> playerCategories = new HashMap<>();
     private final Set<UUID> combatHelpers = new LinkedHashSet<>();
     private final Set<UUID> finalWaveEntities = new HashSet<>();
+    private final Set<Block> arenaInfernoBlocks = new LinkedHashSet<>();
     private final Set<UUID> lootIssuedEntityUuids = new HashSet<>();
     private final Set<UUID> spellServants = new HashSet<>();
     private final Map<UUID, String> entityBindingInstances = new HashMap<>();
@@ -231,6 +246,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask gateSelectionPreviewTask;
     private BukkitTask gateOpeningTask;
     private BukkitTask creativeTestTask;
+    private BukkitTask bossSpawnTask;
+    private BukkitTask arenaInfernoTask;
     private boolean victoryGatePending;
     private boolean bootstrapped;
 
@@ -265,6 +282,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean finalDrainApplied;
     private final Map<UUID, Double> finalDrainTargets = new LinkedHashMap<>();
     private final Set<UUID> finalDrainAppliedPlayers = new LinkedHashSet<>();
+    private final Set<Integer> waveRewardsIssued = new LinkedHashSet<>();
     private boolean endUnlocked;
     private boolean officialBossDeathCommitted;
     private boolean bossLootCommitted;
@@ -281,6 +299,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long nextWaveTargetMillis;
     private long bossSpellPauseUntilMillis;
     private long lastBossTeleportMillis;
+    private int lastCountdownAnnouncement = -1;
     private long nextRitualVisualRepairMillis;
     private int bossTargetCursor;
     private int bossSpellCursor;
@@ -477,6 +496,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         finalDrainTargets.putAll(snapshot.finalDrainTargets());
         finalDrainAppliedPlayers.clear();
         finalDrainAppliedPlayers.addAll(snapshot.finalDrainAppliedPlayers());
+        waveRewardsIssued.clear();
+        waveRewardsIssued.addAll(snapshot.waveRewardsIssued());
         coreCharged = snapshot.coreCharged();
         halfHealthTriggered = snapshot.halfHealthTriggered();
         controlSpellUnlocked = snapshot.controlSpellUnlocked();
@@ -509,7 +530,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted, bossRewardStatus,
                 bossRewardRecipientUuid, returnStoneStatus, victoryStep, updatedAt, recoveryReason,
                 participantUuids, finalDrainTargets,
-                finalDrainAppliedPlayers);
+                finalDrainAppliedPlayers, waveRewardsIssued);
     }
 
     private boolean saveStateSync() {
@@ -622,6 +643,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void cancelSessionTasks() {
         cancelCreativeTestTask();
+        cancelBossSpawnTask();
+        clearArenaInferno();
         if (taskRegistry != null) {
             taskRegistry.cancelAll();
         }
@@ -721,7 +744,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private EventConfig.MusicTrack musicForPhase() {
         return switch (phase) {
-            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3 -> config.wavesMusic();
+            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5 -> config.wavesMusic();
             case BOSS_ACTIVE -> halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
             case FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> config.bossFinalMusic();
             case VICTORY_PROCESSING, VICTORY -> config.victoryMusic();
@@ -732,6 +756,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isEventMusicPhase() {
         return switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
                     VICTORY_PROCESSING, VICTORY -> true;
             default -> false;
@@ -1937,7 +1962,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test run creative | wave <1|2|3|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
+            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -1970,9 +1995,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("wave".equalsIgnoreCase(args[1])) {
             int wave = "final".equalsIgnoreCase(args.length > 2 ? args[2] : "")
-                    ? 4 : parseInt(args, 2, 0);
-            if (wave < 1 || wave > 4) {
-                message(sender, "&cВолна должна быть 1, 2, 3 или final.");
+                    ? FINAL_WAVE_NUMBER : parseInt(args, 2, 0);
+            if (wave < 1 || wave > 5 && wave != FINAL_WAVE_NUMBER) {
+                message(sender, "&cВолна должна быть 1, 2, 3, 4, 5 или final.");
                 return;
             }
             if (!hasSpawnAnchor()) {
@@ -1991,7 +2016,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test run creative | wave <1|2|3|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
+        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | ai | boss | music <waves|boss|half|final|victory> [player]");
     }
 
     /**
@@ -2056,6 +2081,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean officialCombatStateActive() {
         return switch (phase) {
             case COUNTDOWN, WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
                     VICTORY_PROCESSING, VICTORY, UNLOCKED, RECOVERY_REQUIRED -> true;
             default -> false;
@@ -2193,7 +2219,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " drainFraction=" + config.finalDrainFraction());
             }
             case 16 -> {
-                spawnWave(4, true);
+                spawnWave(FINAL_WAVE_NUMBER, true);
                 getLogger().info("CREATIVE_TEST_FINAL_WAVE event=" + eventId + " generation=" + generation
                         + " live=" + countLiveOwnedMobs() + " composition=" + liveOwnedComposition());
             }
@@ -2218,7 +2244,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null || core.getWorld() == null) {
             return;
         }
-        Enderman boss = (Enderman) core.getWorld().spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+        Location spawn = safeBossSpawnLocation();
+        if (spawn == null) {
+            return;
+        }
+        Enderman boss = (Enderman) core.getWorld().spawnEntity(spawn, EntityType.ENDERMAN);
         configureBoss(boss, true);
         if (boss instanceof Mob mob) {
             mob.setTarget(player);
@@ -2276,7 +2306,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleWave(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend wave spawn <1|2|3|final> | clear");
+            message(sender, "&e/cmend wave spawn <1|2|3|4|5|final> | clear");
             return;
         }
         if ("clear".equalsIgnoreCase(args[1])) {
@@ -2286,9 +2316,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("spawn".equalsIgnoreCase(args[1])) {
             String requested = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "";
-            int wave = "final".equals(requested) ? 4 : parseInt(args, 2, 0);
-            if (wave < 1 || wave > 3 && wave != 4) {
-                message(sender, "&cВолна должна быть 1, 2, 3 или final.");
+            int wave = "final".equals(requested) ? FINAL_WAVE_NUMBER : parseInt(args, 2, 0);
+            if (wave < 1 || wave > 5 && wave != FINAL_WAVE_NUMBER) {
+                message(sender, "&cВолна должна быть 1, 2, 3, 4, 5 или final.");
                 return;
             }
             if (!hasSpawnAnchor()) {
@@ -2381,18 +2411,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         telegraphBossSpell(boss, target, EndRiftAiPolicy.BossSpell.WILL_DISTORTION, true);
                     }
                     message(sender, "&aControl reversal test requested.");
-                } else if (List.of("void_blast", "rift_projectile", "void_mark", "summon", "summon_servants")
+                } else if (List.of("void_blast", "rift_projectile", "void_mark", "summon", "summon_servants",
+                        "arena_inferno")
                         .contains(spell)) {
                     EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
                         case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
                         case "rift_projectile" -> EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE;
                         case "void_mark" -> EndRiftAiPolicy.BossSpell.VOID_MARK;
+                        case "arena_inferno" -> EndRiftAiPolicy.BossSpell.ARENA_INFERNO;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
                     };
                     castBossSpell(boss, requestedSpell, true);
                     message(sender, "&aBoss spell test requested: &f" + requestedSpell.id());
                 } else {
-                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|void_mark|summon|control_reverse>");
+                    message(sender, "&e/cmend boss spell <void_blast|rift_projectile|void_mark|summon|arena_inferno|control_reverse>");
                 }
             }
             default -> message(sender, "&e/cmend boss spawn [official confirm]|info|damage <n>|phase <normal|half|final>|kill <cleanup|simulate-victory confirm>|spell <type>");
@@ -2514,6 +2546,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         finalDrainApplied = false;
         finalDrainTargets.clear();
         finalDrainAppliedPlayers.clear();
+        waveRewardsIssued.clear();
         bossKillerUuid = null;
         clearCombatAiState();
         lootIssuedEntityUuids.clear();
@@ -2669,6 +2702,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         rewardRequestsInFlight.clear();
         finalDrainTargets.clear();
         finalDrainAppliedPlayers.clear();
+        waveRewardsIssued.clear();
         coreCharged = false;
         bossKillerUuid = null;
         bossLootCommitted = false;
@@ -2691,7 +2725,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (phase == EventPhase.WAVE_1 || phase == EventPhase.INTERMISSION_1 || phase == EventPhase.WAVE_2
-                || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3 || phase == EventPhase.BOSS_ACTIVE
+                || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3
+                || phase == EventPhase.INTERMISSION_3 || phase == EventPhase.WAVE_4
+                || phase == EventPhase.INTERMISSION_4 || phase == EventPhase.WAVE_5
+                || phase == EventPhase.BOSS_ACTIVE
                 || phase == EventPhase.FINAL_DRAIN || phase == EventPhase.FINAL_RITUAL
                 || phase == EventPhase.FINAL_WAVE || phase == EventPhase.BOSS_FINISH
                 || phase == EventPhase.VICTORY_PROCESSING || phase == EventPhase.VICTORY) {
@@ -2705,6 +2742,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         rewardStatuses.clear();
         finalDrainTargets.clear();
         finalDrainAppliedPlayers.clear();
+        waveRewardsIssued.clear();
         bossLootCommitted = false;
         bossRewardStatus = BOSS_REWARDS_PENDING;
         bossRewardRecipientUuid = null;
@@ -2926,6 +2964,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onArenaFire(BlockBurnEvent event) {
+        if (isProtectedEventLocation(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onArenaIgnite(BlockIgniteEvent event) {
+        if (isProtectedEventLocation(event.getBlock().getLocation())
+                && !arenaInfernoBlocks.contains(event.getBlock())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onArenaFireSpread(BlockSpreadEvent event) {
         if (isProtectedEventLocation(event.getBlock().getLocation())) {
             event.setCancelled(true);
         }
@@ -3574,13 +3627,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         updateCombatHelpers();
         tickWaveMobAi();
         tickMiniBosses();
-        if (testCombatAiMode && liveBoss() != null) {
+        // Official boss phases are handled by the switch below.  The extra
+        // call is only for the disposable local AI harness, which deliberately
+        // keeps the official phase outside BOSS_ACTIVE.
+        if (testCombatAiMode && liveBoss() != null
+                && phase != EventPhase.BOSS_ACTIVE && phase != EventPhase.BOSS_FINISH) {
             tickBoss();
         }
         switch (phase) {
             case COUNTDOWN -> tickCountdown();
-            case INTERMISSION_1, INTERMISSION_2 -> tickIntermission();
-            case WAVE_1, WAVE_2, WAVE_3, FINAL_WAVE -> tickWaveCompletion();
+            case INTERMISSION_1, INTERMISSION_2, INTERMISSION_3, INTERMISSION_4 -> tickIntermission();
+            case WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_5, FINAL_WAVE -> tickWaveCompletion();
             case BOSS_ACTIVE, BOSS_FINISH -> tickBoss();
             case FINAL_DRAIN, FINAL_RITUAL -> tickFinalRitual();
             default -> {
@@ -3738,6 +3795,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         phaseDeadlineMillis = System.currentTimeMillis() + config.countdownSeconds() * 1000L;
         if (transition(EventPhase.COUNTDOWN, "all unique pads occupied", eventId + ":countdown")) {
+            lastCountdownAnnouncement = config.countdownSeconds();
+            announceEventTitle("§5РИТУАЛ НАЧАТ", "§dСоберите игроков на рунах — "
+                    + config.countdownSeconds() + " сек.", true);
             getLogger().info("RITUAL_STARTED event=" + eventId + " generation=" + generation);
         }
     }
@@ -3755,6 +3815,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (player != null && player.isOnline()) {
                     player.sendActionBar(Component.text("Ритуал: " + seconds, NamedTextColor.LIGHT_PURPLE));
                 }
+            }
+            if (seconds != lastCountdownAnnouncement) {
+                if (seconds <= 5 || seconds % 10 == 0) {
+                    announceEventTitle("§5РИТУАЛ НАЧАТ", "§fДо открытия Разлома: "
+                            + seconds + " сек.", true);
+                }
+                lastCountdownAnnouncement = seconds;
             }
         }
         if (remaining > 0L) {
@@ -3821,6 +3888,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void cancelRitual(String reason) {
         if (phase == EventPhase.COUNTDOWN) {
             phaseDeadlineMillis = 0L;
+            lastCountdownAnnouncement = -1;
             padOccupants.clear();
             runeVisualOccupants.clear();
             transition(EventPhase.READY_FOR_PLAYERS, reason, eventId + ":ritual-cancel:" + UUID.randomUUID());
@@ -4250,15 +4318,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             miniBoss.teleport(destination);
         }
         target.damage(config.miniBossTuning().riftStepDamage(), miniBoss);
-        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 50, 0, false, true, true));
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                MINI_RIFT_STEP_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
         miniBoss.getWorld().spawnParticle(Particle.PORTAL, target.getLocation().add(0.0D, 1.0D, 0.0D),
                 24, 0.5D, 0.8D, 0.5D, 0.02D);
     }
 
     private void miniBossVoidSnare(Enderman miniBoss, Player target, Location mark) {
         target.damage(config.miniBossTuning().voidSnareDamage(), miniBoss);
-        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 80, 1, false, true, true));
-        target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, true, true));
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                MINI_VOID_SNARE_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
+        target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
+                MINI_VOID_SNARE_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
         miniBoss.getWorld().spawnParticle(Particle.REVERSE_PORTAL, mark, 28, 1.2D, 0.1D, 1.2D, 0.02D);
     }
 
@@ -4274,7 +4345,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 push = new Vector(0.0D, 0.25D, 0.0D);
             }
             player.setVelocity(push.normalize().multiply(0.35D).setY(0.22D));
-            player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 60, 0, false, true, true));
+            player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
+                    MINI_ECHO_PULSE_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
         }
         miniBoss.getWorld().spawnParticle(Particle.END_ROD, center.add(0.0D, 1.0D, 0.0D),
                 32, 1.0D, 0.6D, 1.0D, 0.03D);
@@ -4291,7 +4363,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!outsideHorizontalRadius && !offCoreLevel) {
             return;
         }
-        Location safe = findSafeCombatLocation(anchor, anchor, radius - 0.75D);
+        // The anchor is the solid Core block.  Never prefer it as an entity
+        // destination: resolve to a nearby passable floor position instead.
+        Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D);
         if (safe != null && entity.teleport(safe)) {
             getLogger().info(logMarker + " entity=" + entity.getUniqueId()
                     + " location=" + locationText(safe));
@@ -4345,6 +4419,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         return switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
+                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> true;
             default -> false;
         };
@@ -4352,7 +4427,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean isMiniBossCombatPhase() {
         return testCombatAiMode || phase == EventPhase.WAVE_1 || phase == EventPhase.WAVE_2
-                || phase == EventPhase.WAVE_3 || phase == EventPhase.FINAL_WAVE;
+                || phase == EventPhase.WAVE_3 || phase == EventPhase.WAVE_4
+                || phase == EventPhase.WAVE_5 || phase == EventPhase.FINAL_WAVE;
     }
 
     private boolean isActiveArenaParticipant(Player player) {
@@ -4393,15 +4469,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phaseDeadlineMillis <= 0L || System.currentTimeMillis() < phaseDeadlineMillis) {
             return;
         }
-        if (phase == EventPhase.INTERMISSION_1) {
-            activeWave = 2;
-            if (transition(EventPhase.WAVE_2, "intermission complete", eventId + ":wave:2")) {
-                spawnWave(2, false);
-            }
-        } else if (phase == EventPhase.INTERMISSION_2) {
-            activeWave = 3;
-            if (transition(EventPhase.WAVE_3, "intermission complete", eventId + ":wave:3")) {
-                spawnWave(3, false);
+        EventPhase nextPhase = switch (phase) {
+            case INTERMISSION_1 -> EventPhase.WAVE_2;
+            case INTERMISSION_2 -> EventPhase.WAVE_3;
+            case INTERMISSION_3 -> EventPhase.WAVE_4;
+            case INTERMISSION_4 -> EventPhase.WAVE_5;
+            default -> null;
+        };
+        if (nextPhase != null) {
+            int nextWave = switch (nextPhase) {
+                case WAVE_2 -> 2;
+                case WAVE_3 -> 3;
+                case WAVE_4 -> 4;
+                case WAVE_5 -> 5;
+                default -> 0;
+            };
+            activeWave = nextWave;
+            if (transition(nextPhase, "intermission complete", eventId + ":wave:" + nextWave)) {
+                spawnWave(nextWave, false);
             }
         }
         phaseDeadlineMillis = 0L;
@@ -4424,7 +4509,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        if (activeWave < 1 || activeWave > 3) {
+        if (activeWave < 1 || activeWave > 5) {
             return;
         }
         boolean live = ownedEntities.values().stream().anyMatch(entity -> {
@@ -4436,19 +4521,127 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (live) {
             return;
         }
-        getLogger().info("WAVE_COMPLETED event=" + eventId + " wave=" + activeWave);
-        if (activeWave == 1) {
+        int completedWave = activeWave;
+        if (!spawnWaveCompletionLoot(completedWave)) {
+            return;
+        }
+        announceWaveComplete(completedWave);
+        getLogger().info("WAVE_COMPLETED event=" + eventId + " wave=" + completedWave);
+        if (completedWave == 1) {
             phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
             transition(EventPhase.INTERMISSION_1, "wave 1 defeated", eventId + ":intermission:1");
-        } else if (activeWave == 2) {
+        } else if (completedWave == 2) {
             phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
             transition(EventPhase.INTERMISSION_2, "wave 2 defeated", eventId + ":intermission:2");
-        } else if (activeWave == 3) {
+        } else if (completedWave == 3) {
+            phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
+            transition(EventPhase.INTERMISSION_3, "wave 3 defeated", eventId + ":intermission:3");
+        } else if (completedWave == 4) {
+            phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
+            transition(EventPhase.INTERMISSION_4, "wave 4 defeated", eventId + ":intermission:4");
+        } else if (completedWave == 5) {
             activeWave = 0;
-            if (transition(EventPhase.BOSS_ACTIVE, "wave 3 defeated", eventId + ":boss-active")) {
-                spawnOfficialBoss(null);
+            if (transition(EventPhase.BOSS_ACTIVE, "wave 5 defeated", eventId + ":boss-active")) {
+                scheduleOfficialBossSpawn();
             }
         }
+    }
+
+    /**
+     * Drops the guaranteed reward bundle physically on the Core after a wave.
+     * The wave number is committed after the item entities are created, while
+     * the persistent item tags make a retry after a process interruption
+     * discover an already-created bundle instead of duplicating it.
+     */
+    private boolean spawnWaveCompletionLoot(int wave) {
+        if (waveRewardsIssued.contains(wave)) {
+            return true;
+        }
+        World world = Bukkit.getWorld(worldName);
+        Location drop = coreLocation();
+        Map<String, Integer> configured = config.waveReward(wave);
+        if (world == null || drop == null || configured.isEmpty()) {
+            getLogger().severe("WAVE_REWARD_FAILED event=" + eventId + " wave=" + wave
+                    + " reason=missing-world-core-or-config");
+            return false;
+        }
+        if (hasExistingWaveReward(world, wave)) {
+            waveRewardsIssued.add(wave);
+            if (!saveStateSync()) {
+                waveRewardsIssued.remove(wave);
+                return false;
+            }
+            getLogger().info("WAVE_REWARD_RECOVERED event=" + eventId + " wave=" + wave);
+            return true;
+        }
+
+        List<Item> spawned = new ArrayList<>();
+        try {
+            for (Map.Entry<String, Integer> entry : configured.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey()).toList()) {
+                Material material = Material.matchMaterial(entry.getKey());
+                int amount = entry.getValue() == null ? 0 : entry.getValue();
+                if (material == null || amount < 1) {
+                    continue;
+                }
+                Item item = world.dropItem(drop.clone().add(0.0D, 0.15D, 0.0D),
+                        new ItemStack(material, amount));
+                item.setPickupDelay(20);
+                item.setVelocity(new Vector(0.0D, 0.18D, 0.0D));
+                tag(item, EVENT_KIND_WAVE_REWARD, wave, true);
+                setLootProfile(item, "wave-reward");
+                spawned.add(item);
+            }
+            if (spawned.isEmpty()) {
+                getLogger().severe("WAVE_REWARD_FAILED event=" + eventId + " wave=" + wave
+                        + " reason=no-valid-materials");
+                return false;
+            }
+            waveRewardsIssued.add(wave);
+            if (!saveStateSync()) {
+                waveRewardsIssued.remove(wave);
+                for (Item item : spawned) {
+                    ownedEntities.remove(item.getUniqueId());
+                    if (item.isValid()) {
+                        item.remove();
+                    }
+                }
+                getLogger().severe("WAVE_REWARD_FAILED event=" + eventId + " wave=" + wave
+                        + " reason=state-commit-failed");
+                return false;
+            }
+        } catch (RuntimeException error) {
+            waveRewardsIssued.remove(wave);
+            for (Item item : spawned) {
+                ownedEntities.remove(item.getUniqueId());
+                if (item.isValid()) {
+                    item.remove();
+                }
+            }
+            getLogger().log(Level.SEVERE, "WAVE_REWARD_FAILED event=" + eventId + " wave=" + wave,
+                    error);
+            return false;
+        }
+
+        world.spawnParticle(Particle.TOTEM_OF_UNDYING, drop.clone().add(0.0D, 0.6D, 0.0D),
+                32, 0.55D, 0.45D, 0.55D, 0.05D);
+        world.spawnParticle(Particle.END_ROD, drop.clone().add(0.0D, 0.8D, 0.0D),
+                20, 0.35D, 0.35D, 0.35D, 0.03D);
+        world.playSound(drop, Sound.ENTITY_PLAYER_LEVELUP, 0.85F, 1.15F);
+        getLogger().info("WAVE_REWARD_SPAWNED event=" + eventId + " wave=" + wave
+                + " location=" + locationText(drop) + " items=" + configured);
+        return true;
+    }
+
+    private boolean hasExistingWaveReward(World world, int wave) {
+        if (world == null || eventId.isBlank()) {
+            return false;
+        }
+        return world.getEntitiesByClass(Item.class).stream()
+                .anyMatch(item -> item.isValid()
+                        && EVENT_KIND_WAVE_REWARD.equals(readString(item, keyKind))
+                        && wave == readInt(item, keyWave, 0)
+                        && ownedByEvent(item, eventId));
     }
 
     private void spawnWave(int wave, boolean test) {
@@ -4458,11 +4651,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().warning("Cannot spawn End Event wave without configured world/core.");
             return;
         }
+        boolean finalWave = wave == FINAL_WAVE_NUMBER;
         EventConfig.WaveDefinition definition = switch (wave) {
             case 1 -> config.wave1();
             case 2 -> config.wave2();
             case 3 -> config.wave3();
-            case 4 -> config.finalWave();
+            case 4 -> config.wave4();
+            case 5 -> config.wave5();
+            case FINAL_WAVE_NUMBER -> config.finalWave();
             default -> null;
         };
         if (definition == null) {
@@ -4490,33 +4686,119 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!test) {
             activeWave = wave;
-            playEventMusic(wave == 4 ? config.bossFinalMusic() : config.wavesMusic());
+            playEventMusic(finalWave ? config.bossFinalMusic() : config.wavesMusic());
+            announceWaveStart(wave, finalWave);
+            spawnWaveArrivalEffect(world, core, wave, finalWave);
         }
         for (int index = 0; index < endermen; index++) {
-            spawnEnderman(world, core, wave, false, wave == 4, test, index, index);
+            spawnEnderman(world, core, wave, false, finalWave, test, index, index);
         }
         for (int index = 0; index < elites; index++) {
-            spawnEnderman(world, core, wave, true, wave == 4, test, index + endermen, index);
+            spawnEnderman(world, core, wave, true, finalWave, test, index + endermen, index);
         }
         for (int index = 0; index < spiders; index++) {
             spawnOwnedMob(world, core, EntityType.SPIDER, wave,
-                    wave == 4 ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
+                    finalWave ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
         }
         for (int index = 0; index < shulkers; index++) {
             spawnOwnedMob(world, core, EntityType.SHULKER, wave,
-                    wave == 4 ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
+                    finalWave ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
         }
-        if (wave == 4 && !test) {
+        if (finalWave && !test) {
                 finalWaveEntities.addAll(ownedEntities.keySet().stream()
                     .filter(id -> {
                         Entity entity = ownedEntities.get(id);
-                        return entity != null && isOfficialEntity(entity) && readInt(entity, keyWave, 0) == 4;
+                        return entity != null && isOfficialEntity(entity) && readInt(entity, keyWave, 0) == FINAL_WAVE_NUMBER;
                     }).toList());
             getLogger().info("FINAL_WAVE_STARTED event=" + eventId + " count=" + finalWaveEntities.size());
         } else if (!test) {
             getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
                     + " count=" + (endermen + elites + spiders + shulkers));
         }
+    }
+
+    private void scheduleOfficialBossSpawn() {
+        cancelBossSpawnTask();
+        long callbackGeneration = generation;
+        announceEventTitle("§5ПОСЛЕДНИЙ РУБЕЖ ПАЛ", "§dРазлом раскрывает своё сердце...", true);
+        getLogger().info("BOSS_SPAWN_DELAY event=" + eventId + " ticks=" + BOSS_SPAWN_DELAY_TICKS
+                + " generation=" + callbackGeneration);
+        bossSpawnTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+            bossSpawnTask = null;
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || phase != EventPhase.BOSS_ACTIVE || liveBoss() != null) {
+                return;
+            }
+            announceEventTitle("§dХранитель Разлома пробуждается", "§5Пустота требует последнюю жертву", true);
+            spawnOfficialBoss(null);
+        }, BOSS_SPAWN_DELAY_TICKS);
+        if (taskRegistry != null) {
+            taskRegistry.register(bossSpawnTask);
+        }
+    }
+
+    private void cancelBossSpawnTask() {
+        if (bossSpawnTask != null) {
+            bossSpawnTask.cancel();
+            bossSpawnTask = null;
+        }
+    }
+
+    private void announceWaveStart(int wave, boolean finalWave) {
+        String subtitle = finalWave ? "Финальная стража уже внутри" : switch (wave) {
+            case 1 -> "Тени собираются у ядра";
+            case 2 -> "Пустота режет пространство";
+            case 3 -> "Охотники Разлома вышли на след";
+            case 4 -> "Арена больше не подчиняется миру";
+            case 5 -> "Последний рубеж перед Хранителем";
+            default -> "Разлом выпускает своих слуг";
+        };
+        announceEventTitle(finalWave ? "§4ФИНАЛЬНАЯ ВОЛНА" : "§dВОЛНА " + wave,
+                "§f" + subtitle, true);
+    }
+
+    private void announceWaveComplete(int wave) {
+        announceEventTitle("§aВОЛНА " + wave + " ПОВЕРЖЕНА",
+                "§eНаграда появилась у ядра", true);
+    }
+
+    private void announceEventTitle(String title, String subtitle, boolean chat) {
+        for (Player player : eventAudience()) {
+            player.sendTitle(title, subtitle, 5, 45, 10);
+            if (chat) {
+                player.sendMessage(ChatColor.LIGHT_PURPLE + title.replace("§", "")
+                        + ChatColor.GRAY + " — " + ChatColor.WHITE + subtitle.replace("§", ""));
+            }
+        }
+    }
+
+    private List<Player> eventAudience() {
+        Set<UUID> audience = new LinkedHashSet<>();
+        audience.addAll(padOccupants.values());
+        audience.addAll(officialRewardRoster);
+        audience.addAll(combatHelpers);
+        return Bukkit.getOnlinePlayers().stream()
+                .map(player -> (Player) player)
+                .filter(player -> audience.contains(player.getUniqueId()) || isArenaLocation(player.getLocation()))
+                .toList();
+    }
+
+    private void spawnWaveArrivalEffect(World world, Location core, int wave, boolean finalWave) {
+        if (world == null || core == null) {
+            return;
+        }
+        Particle particle = finalWave ? Particle.DRAGON_BREATH
+                : switch (wave) {
+                    case 1 -> Particle.END_ROD;
+                    case 2 -> Particle.REVERSE_PORTAL;
+                    case 3 -> Particle.FLAME;
+                    case 4, 5 -> Particle.DRAGON_BREATH;
+                    default -> Particle.PORTAL;
+                };
+        Location center = core.clone().add(0.0D, 0.5D, 0.0D);
+        world.spawnParticle(particle, center, finalWave ? 64 : 36, 1.2D, 0.6D, 1.2D, 0.03D);
+        world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, finalWave ? 1.0F : 0.65F,
+                finalWave ? 0.45F : 0.8F);
     }
 
     private int scaled(int base, double scale) {
@@ -4589,7 +4871,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         ownedEntities.put(entity.getUniqueId(), entity);
         bindEventEntityClientForOnlinePlayers(entity);
-        if (wave == 4 && !test) {
+        if (wave == FINAL_WAVE_NUMBER && !test) {
             finalWaveEntities.add(entity.getUniqueId());
         }
         return entity;
@@ -4642,6 +4924,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return null;
     }
 
+    private Location safeBossSpawnLocation() {
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null || config == null) {
+            return null;
+        }
+        double radius = Math.min(6.0D, boundedCombatRadius(config.bossRadius()) - 1.0D);
+        return findSafeCombatLocation(anchor, null, Math.max(1.0D, radius));
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOwnedEntityTeleport(EntityTeleportEvent event) {
         Entity entity = event.getEntity();
@@ -4649,22 +4940,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         String kind = readString(entity, keyKind);
-        Location anchor = isWaveCombatKind(kind) ? coreCombatAnchorLocation() : coreLocation();
+        Location anchor = (isWaveCombatKind(kind) || EVENT_KIND_BOSS.equals(kind))
+                ? coreCombatAnchorLocation() : coreLocation();
         Location target = event.getTo();
         if (anchor == null || target == null || !anchor.getWorld().equals(target.getWorld())) {
             event.setCancelled(true);
             return;
         }
-        if (isCoreBlockPosition(target)) {
-            // A teleport request may name the solid Core block itself.  Put
-            // the mob on its top face, not inside the block and not one block
-            // above the arena, so elevated Cores do not become mob magnets.
-            event.setTo(coreBlockTopLocation());
-            return;
-        }
         double radius = EVENT_KIND_BOSS.equals(kind)
                 ? boundedCombatRadius(config.bossRadius())
                 : boundedCombatRadius(config.containmentRadius());
+        if (isCoreBlockPosition(target)) {
+            // A teleport request may name the solid Core block itself.  Never
+            // put a combat entity inside/on top of the Core: resolve it to a
+            // nearby floor position on the Core's combat level instead.
+            Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D);
+            if (safe == null) {
+                event.setCancelled(true);
+            } else {
+                event.setTo(safe);
+            }
+            return;
+        }
         boolean outsideHorizontalRadius = horizontalDistanceSquared(target, anchor) > radius * radius;
         boolean offCoreLevel = target.getBlockY() != anchor.getBlockY();
         if (outsideHorizontalRadius || offCoreLevel) {
@@ -4681,7 +4978,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
-                    || EVENT_KIND_FINAL_WAVE.equals(kind)) {
+                    || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_WAVE_REWARD.equals(kind)) {
                 entity.remove();
                 ownedEntities.remove(entity.getUniqueId());
                 finalWaveEntities.remove(entity.getUniqueId());
@@ -4729,7 +5026,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         finalDrainTriggered = false;
         finalDrainApplied = false;
         controlSpellUnlocked = false;
-        Enderman boss = (Enderman) world.spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+        Location spawn = safeBossSpawnLocation();
+        if (spawn == null) {
+            message(sender, "&cНе найдена свободная площадка для тестового босса рядом с ядром.");
+            return;
+        }
+        Enderman boss = (Enderman) world.spawnEntity(spawn, EntityType.ENDERMAN);
         configureBoss(boss, true);
         ensureBossBar();
         bindBossClientForOnlinePlayers();
@@ -4751,8 +5053,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnWave(3, true);
         Location core = coreLocation();
         if (core != null && core.getWorld() != null) {
-            Enderman boss = (Enderman) core.getWorld().spawnEntity(
-                    core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+            Location spawn = safeBossSpawnLocation();
+            if (spawn == null) {
+                return;
+            }
+            Enderman boss = (Enderman) core.getWorld().spawnEntity(spawn, EntityType.ENDERMAN);
             configureBoss(boss, true);
         }
         List<Player> eligiblePlayers = activeLivingPlayers();
@@ -4763,9 +5068,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnOfficialBoss(CommandSender sender) {
-        if (!isConfigured() || (!endUnlocked && phase != EventPhase.BOSS_ACTIVE && phase != EventPhase.WAVE_3)) {
+        if (!isConfigured() || (!endUnlocked && phase != EventPhase.BOSS_ACTIVE && phase != EventPhase.WAVE_5)) {
             if (sender != null) {
-                message(sender, "&cОфициальный boss доступен только после Wave 3 или в BOSS_ACTIVE.");
+                message(sender, "&cОфициальный boss доступен только после Wave 5 или в BOSS_ACTIVE.");
             }
             return;
         }
@@ -4775,14 +5080,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        if (phase == EventPhase.WAVE_3) {
+        if (phase == EventPhase.WAVE_5) {
             transition(EventPhase.BOSS_ACTIVE, "admin confirmed official boss", eventId + ":boss-confirm");
         }
-        Location core = coreLocation();
+        Location core = safeBossSpawnLocation();
         if (core == null) {
             return;
         }
-        Enderman boss = (Enderman) core.getWorld().spawnEntity(core.clone().add(0.0D, 1.0D, 0.0D), EntityType.ENDERMAN);
+        Enderman boss = (Enderman) core.getWorld().spawnEntity(core, EntityType.ENDERMAN);
         configureBoss(boss, false);
         getLogger().info("BOSS_SPAWNED event=" + eventId + " boss=" + boss.getUniqueId());
         if (sender != null) {
@@ -4797,6 +5102,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         setLootProfile(boss, test ? "test" : "boss");
         if (test) {
             tagTestBoss(boss);
+        } else {
+            testCombatAiMode = false;
         }
         boss.setPersistent(true);
         boss.setRemoveWhenFarAway(false);
@@ -4904,7 +5211,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null) {
             return;
         }
-        Location core = coreLocation();
+        Location core = coreCombatAnchorLocation();
         enforceCombatLeash(boss, core, config.bossRadius(), "BOSS_AI_LEASH");
         if (bossBar != null) {
             double max = Math.max(1.0D, boss.getMaxHealth());
@@ -4983,7 +5290,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 < config.bossTeleportCooldownSeconds() * 1000L) {
             return;
         }
-        Location anchor = coreLocation();
+        Location anchor = coreCombatAnchorLocation();
         if (anchor == null || !(mob.getTarget() instanceof Player target)
                 || !isCombatTarget(target)) {
             return;
@@ -5012,6 +5319,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (isTestBoss(boss)) {
+            return;
+        }
+        if (phase == EventPhase.BOSS_FINISH && finalDrainTriggered && !boss.isInvulnerable()) {
+            // FINAL_WAVE has released the boss.  Let the normal Bukkit damage
+            // pipeline run so player attacks can finally kill it and emit the
+            // existing official EntityDeathEvent victory transaction.
             return;
         }
         if (phase != EventPhase.BOSS_ACTIVE || boss.isInvulnerable()) {
@@ -5093,9 +5406,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         clearClientEffects();
-        Location core = coreLocation();
-        if (core != null) {
-            boss.teleport(core.clone().add(0.0D, 1.0D, 0.0D));
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor != null) {
+            Location safe = findSafeCombatLocation(anchor, null, config.bossRadius() - 1.0D);
+            if (safe != null) {
+                boss.teleport(safe);
+            }
         }
         boss.setHealth(Math.min(config.bossFinalHealth(), boss.getMaxHealth()));
         if (!transition(EventPhase.FINAL_DRAIN, "boss crossed final threshold", eventId + ":final-drain")) {
@@ -5218,7 +5534,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if ((phase == EventPhase.FINAL_DRAIN || phase == EventPhase.FINAL_RITUAL)
                         && taskRegistry.owns(callbackGeneration)) {
                     if (transition(EventPhase.FINAL_WAVE, "final ritual visual complete", eventId + ":final-wave")) {
-                        spawnWave(4, false);
+                        spawnWave(FINAL_WAVE_NUMBER, false);
                     }
                 }
             }
@@ -5249,7 +5565,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 EndRiftAiPolicy.BossSpell.VOID_BLAST,
                 EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                 EndRiftAiPolicy.BossSpell.VOID_MARK,
-                EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS));
+                EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
+                EndRiftAiPolicy.BossSpell.ARENA_INFERNO));
         if (controlSpellUnlocked && controlInstances.isEmpty()) {
             available.add(EndRiftAiPolicy.BossSpell.WILL_DISTORTION);
         }
@@ -5362,6 +5679,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case VOID_MARK -> voidMark(boss, target);
                         case SUMMON_SERVANTS -> summonServants(boss);
                         case WILL_DISTORTION -> sendControlStart(target);
+                        case ARENA_INFERNO -> arenaInferno(boss);
                     }
                 });
     }
@@ -5378,9 +5696,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     push = new Vector(0.0D, 0.3D, 0.0D);
                 }
                 player.setVelocity(push.normalize().multiply(0.45D).setY(0.3D));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, 80, 0, false, true, true));
+                player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
+                        BOSS_BLAST_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
             }
         }
+    }
+
+    private void arenaInferno(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null || coreCombatAnchorLocation() == null) {
+            return;
+        }
+        clearArenaInferno();
+        World world = boss.getWorld();
+        int minX = Math.max(arenaMinX, coreX - (int) Math.floor(config.arenaRadius()));
+        int maxX = Math.min(arenaMaxX, coreX + (int) Math.floor(config.arenaRadius()));
+        int minZ = Math.max(arenaMinZ, coreZ - (int) Math.floor(config.arenaRadius()));
+        int maxZ = Math.min(arenaMaxZ, coreZ + (int) Math.floor(config.arenaRadius()));
+        int fireY = coreY;
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                Block fire = world.getBlockAt(x, fireY, z);
+                Block floor = fire.getRelative(BlockFace.DOWN);
+                if (fire.isPassable() && !fire.isLiquid() && floor.getType().isSolid()
+                        && !floor.isLiquid() && isArenaLocation(fire.getLocation())) {
+                    fire.setType(Material.FIRE, false);
+                    arenaInfernoBlocks.add(fire);
+                }
+            }
+        }
+        Location center = coreCombatAnchorLocation().add(0.0D, 0.8D, 0.0D);
+        world.spawnParticle(Particle.FLAME, center, 120, config.arenaRadius() * 0.55D,
+                0.45D, config.arenaRadius() * 0.55D, 0.04D);
+        world.spawnParticle(Particle.SOUL_FIRE_FLAME, center, 60, config.arenaRadius() * 0.35D,
+                0.25D, config.arenaRadius() * 0.35D, 0.02D);
+        world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.5F);
+        announceEventTitle("§4ПЛАМЯ РАЗЛОМА", "§cВся арена горит пять секунд", true);
+        getLogger().info("BOSS_SPELL_ARENA_INFERNO event=" + eventId
+                + " blocks=" + arenaInfernoBlocks.size()
+                + " duration_ticks=" + ARENA_INFERNO_DURATION_TICKS);
+        arenaInfernoTask = Bukkit.getScheduler().runTaskLater(this,
+                this::clearArenaInferno, ARENA_INFERNO_DURATION_TICKS);
+        if (taskRegistry != null) {
+            taskRegistry.register(arenaInfernoTask);
+        }
+    }
+
+    private void clearArenaInferno() {
+        if (arenaInfernoTask != null) {
+            arenaInfernoTask.cancel();
+            arenaInfernoTask = null;
+        }
+        for (Block block : new ArrayList<>(arenaInfernoBlocks)) {
+            if (block != null && block.getType() == Material.FIRE) {
+                block.setType(Material.AIR, false);
+            }
+        }
+        arenaInfernoBlocks.clear();
     }
 
     private void riftProjectile(LivingEntity boss, Player target) {
@@ -5442,7 +5813,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && (phase == EventPhase.BOSS_ACTIVE || testCombatAiMode && isTestBoss(boss))) {
             player.damage(7.0D, boss);
             player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
-                    80, 1, false, true, true));
+                    BOSS_PROJECTILE_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
             getLogger().info("BOSS_PROJECTILE_HIT entity=" + projectile.getUniqueId()
                     + " target=" + player.getUniqueId());
         }
@@ -5505,9 +5876,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         <= VOID_MARK_RADIUS_BLOCKS * VOID_MARK_RADIUS_BLOCKS) {
                     player.damage(2.0D, boss);
                     player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,
-                            25, 0, false, true, true));
+                            VOID_MARK_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
-                            25, 0, false, true, true));
+                            VOID_MARK_DEBUFF_TICKS, MAX_POTION_AMPLIFIER, false, true, true));
                 }
             }
             elapsedSeconds[0]++;
@@ -5568,13 +5939,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location location = boss.getLocation();
         int toSpawn = Math.min(2, config.maxSummonedServants() - spellServants.size());
+        int spawned = 0;
         for (int index = 0; index < toSpawn; index++) {
             Entity servant = spawnOwnedMob(location.getWorld(), location, EntityType.SPIDER,
                     0, EVENT_KIND_WAVE_MOB, false, index + spellServants.size());
-            spellServants.add(servant.getUniqueId());
+            if (servant != null) {
+                spellServants.add(servant.getUniqueId());
+                spawned++;
+            }
         }
         getLogger().info("BOSS_SERVANTS_SUMMON boss=" + boss.getUniqueId()
-                + " threshold=" + (at35 ? "35" : "70") + " count=" + toSpawn);
+                + " threshold=" + (at35 ? "35" : "70") + " count=" + spawned);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -6309,7 +6684,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return EVENT_KIND_CORE.equals(kind) || EVENT_KIND_PAD.equals(kind)
                 || EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_WAVE_MOB.equals(kind)
                 || EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_BOSS.equals(kind)
-                || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind);
+                || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind)
+                || EVENT_KIND_WAVE_REWARD.equals(kind);
     }
 
     private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration) {
@@ -6574,10 +6950,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             };
         }
         if (args.length == 3 && "wave".equalsIgnoreCase(args[0]) && "spawn".equalsIgnoreCase(args[1])) {
-            return List.of("1", "2", "3", "final");
+            return List.of("1", "2", "3", "4", "5", "final");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "wave".equalsIgnoreCase(args[1])) {
-            return List.of("1", "2", "3", "final");
+            return List.of("1", "2", "3", "4", "5", "final");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "run".equalsIgnoreCase(args[1])) {
             return List.of("creative");
@@ -6628,7 +7004,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("confirm");
         }
         if (args.length == 3 && "boss".equalsIgnoreCase(args[0]) && "spell".equalsIgnoreCase(args[1])) {
-            return List.of("void_blast", "rift_projectile", "void_mark", "summon", "control_reverse");
+            return List.of("void_blast", "rift_projectile", "void_mark", "summon", "arena_inferno", "control_reverse");
         }
         return List.of();
     }

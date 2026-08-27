@@ -47,7 +47,8 @@ public record EventSnapshot(
         String recoveryReason,
         Set<UUID> participants,
         Map<UUID, Double> finalDrainTargets,
-        Set<UUID> finalDrainAppliedPlayers) {
+        Set<UUID> finalDrainAppliedPlayers,
+        Set<Integer> waveRewardsIssued) {
 
     public EventSnapshot {
         eventId = eventId == null ? "" : eventId;
@@ -64,6 +65,7 @@ public record EventSnapshot(
         participants = Set.copyOf(participants == null ? Set.of() : participants);
         finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
         finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
+        waveRewardsIssued = Set.copyOf(waveRewardsIssued == null ? Set.of() : waveRewardsIssued);
         bossRewardStatus = bossRewardStatus == null || bossRewardStatus.isBlank()
                 ? "PENDING" : bossRewardStatus;
         victoryStep = victoryStep == null ? "NONE" : victoryStep;
@@ -76,7 +78,7 @@ public record EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
                 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
                 false, false, false, false, false, false, false, false, "PENDING", null,
-                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of());
+                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of(), Set.of());
     }
 
     public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
@@ -90,7 +92,7 @@ public record EventSnapshot(
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted,
                 bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, recoveryReason,
                 updatedParticipants, finalDrainTargets,
-                finalDrainAppliedPlayers);
+                finalDrainAppliedPlayers, waveRewardsIssued);
     }
 
     public EventPhase eventPhase() {

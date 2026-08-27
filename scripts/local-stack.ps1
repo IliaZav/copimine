@@ -478,13 +478,68 @@ function Resolve-WebsitePython {
     $sibling = Join-Path (Split-Path $Root -Parent) 'opt\copimine\admin-web\.codex-venv\Scripts\python.exe'
     if (Test-Path -LiteralPath $sibling) { return $sibling }
     $local = Join-Path $Runtime 'venv\Scripts\python.exe'
-    if (Test-Path -LiteralPath $local) { return $local }
+    $localVenvRoot = Join-Path $Runtime 'venv'
+    $requirementsPath = Join-Path $AdminWebDir 'requirements.txt'
+
+    if (Test-Path -LiteralPath $local -PathType Leaf) {
+        $localVersion = (& $local -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null | Select-Object -Last 1)
+        if ($localVersion -and $localVersion.Trim() -eq '3.13') {
+            & $local -m pip install --disable-pip-version-check -r $requirementsPath 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'admin-web dependencies are not compatible with the local Python 3.13 environment. See local-runtime/logs/stack.log.' }
+            return $local
+        }
+        Write-StackLog "Replacing an incompatible local Python environment ($($localVersion.Trim())). Python 3.13 is required by the pinned admin-web dependencies."
+        Remove-Item -LiteralPath $localVenvRoot -Recurse -Force
+    } elseif (Test-Path -LiteralPath $localVenvRoot -PathType Container) {
+        Write-StackLog 'Removing an incomplete local Python environment before recreation.'
+        Remove-Item -LiteralPath $localVenvRoot -Recurse -Force
+    }
+
+    $pythonCandidates = [System.Collections.Generic.List[string]]::new()
+    $pyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        $resolved313 = @(& $pyLauncher.Source '-3.13' '-c' 'import sys; print(sys.executable)' 2>$null) | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0 -and $resolved313) {
+            $pythonCandidates.Add($resolved313.ToString().Trim())
+        }
+    }
+    foreach ($candidate in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe'),
+        (Join-Path $env:ProgramFiles 'Python313\python.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Python313\python.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            $pythonCandidates.Add($candidate)
+        }
+    }
     $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
-    if (-not $pythonCommand) { throw 'Python 3 is required to start admin-web.' }
+    if ($pythonCommand) { $pythonCandidates.Add($pythonCommand.Source) }
+
+    $basePython = $null
+    foreach ($candidate in $pythonCandidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $candidateVersion = (& $candidate -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null | Select-Object -Last 1)
+        if ($candidateVersion -and $candidateVersion.Trim() -eq '3.13') {
+            $basePython = $candidate
+            break
+        }
+    }
+    if (-not $basePython) {
+        throw 'Python 3.13 is required to start admin-web because the pinned psycopg[binary]==3.2.3 dependency has no Python 3.14 wheel.'
+    }
     Write-StackLog 'Creating the local admin-web Python environment.'
-    & $pythonCommand.Source -m venv (Split-Path $local -Parent) 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+    & $basePython -m venv $localVenvRoot 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Python virtual environment creation failed.' }
-    & $local -m pip install --disable-pip-version-check -r (Join-Path $AdminWebDir 'requirements.txt') 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+    $venvDeadline = (Get-Date).AddSeconds(30)
+    while (-not (Test-Path -LiteralPath $local -PathType Leaf) -and (Get-Date) -lt $venvDeadline) {
+        # Python/Defender can finish copying the interpreter just after the
+        # venv process exits. Do not race the first pip invocation.
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not (Test-Path -LiteralPath $local -PathType Leaf)) {
+        throw "Python venv did not produce the interpreter: $local"
+    }
+    & $local -m pip install --disable-pip-version-check -r $requirementsPath 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'admin-web dependency installation failed. See local-runtime/logs/stack.log.' }
     return $local
 }
@@ -492,20 +547,40 @@ function Resolve-WebsitePython {
 function Ensure-ServerRuntimeFiles {
     $jar = Join-Path $ServerDir 'purpur.jar'
     if (-not (Test-Path -LiteralPath $jar)) {
-        $source = Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\purpur.jar'
-        if (-not (Test-Path -LiteralPath $source)) { throw "purpur.jar is missing: $jar" }
+        $source = @(
+            (Join-Path $Root 'artifacts\local-validation\paper\purpur.jar'),
+            (Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\purpur.jar')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $source) { throw "purpur.jar is missing from the disposable fixture and fallback: $jar" }
         Copy-Item -LiteralPath $source -Destination $jar -Force
-        Write-StackLog 'Copied Purpur from the local release runtime.'
+        Write-StackLog "Copied Purpur from the local disposable fixture: $source"
     }
     $eula = Join-Path $ServerDir 'eula.txt'
     if (-not (Test-Path -LiteralPath $eula)) { Set-Content -LiteralPath $eula -Value 'eula=true' -Encoding ASCII }
-    $voicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.11.jar'
+    $voicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.16.jar'
+    $legacyVoicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.11.jar'
+    $legacyRemappedVoicechat = Join-Path $ServerDir 'plugins\.paper-remapped\voicechat-bukkit-2.6.11.jar'
+    if (Test-Path -LiteralPath $legacyVoicechat -PathType Leaf) {
+        Remove-Item -LiteralPath $legacyVoicechat -Force
+        Write-StackLog 'Removed the stale local Simple Voice Chat 2.6.11 plugin before staging 2.6.16.'
+    }
+    if (Test-Path -LiteralPath $legacyRemappedVoicechat -PathType Leaf) {
+        Remove-Item -LiteralPath $legacyRemappedVoicechat -Force
+        Write-StackLog 'Removed the stale local remapped Simple Voice Chat 2.6.11 plugin.'
+    }
     if (-not (Test-Path -LiteralPath $voicechat)) {
-        $sourceVoicechat = Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\plugins\voicechat-bukkit-2.6.11.jar'
-        if (Test-Path -LiteralPath $sourceVoicechat) {
-            Copy-Item -LiteralPath $sourceVoicechat -Destination $voicechat -Force
-            Write-StackLog 'Copied the local Simple Voice Chat API dependency.'
+        $sourceVoicechat = @(
+            (Join-Path $Root 'artifacts\local-validation\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'artifacts\local-validation\full-plugin-source-20260824\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'artifacts\local-validation\paper-full-plugins-clean-20260824\plugins\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'minecraft\server\plugins\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\plugins\voicechat-bukkit-2.6.16.jar')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $sourceVoicechat) {
+            throw 'Simple Voice Chat 2.6.16 is required for the local plugin stack; stage the official JAR in artifacts/local-validation/voicechat-bukkit-2.6.16.jar.'
         }
+        Copy-Item -LiteralPath $sourceVoicechat -Destination $voicechat -Force
+        Write-StackLog "Copied the local Simple Voice Chat 2.6.16 API dependency: $sourceVoicechat"
     }
 }
 
@@ -561,6 +636,59 @@ function Find-MinecraftProcess {
     return @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'purpur\.jar' -and $_.CommandLine -match $needle })
 }
 
+function Assert-MinecraftStartupHealthy {
+    param([int]$TimeoutSeconds = 30)
+    $logPath = Join-Path $ServerDir 'logs\latest.log'
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $content = ''
+    do {
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            $content = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+            if ($content -match 'Done \(') { break }
+        }
+        if (@(Find-MinecraftProcess).Count -eq 0) {
+            throw "Minecraft exited before startup completed. Inspect $logPath."
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    if ($content -notmatch 'Done \(') {
+        throw "Minecraft did not report a completed startup within $TimeoutSeconds seconds. Inspect $logPath."
+    }
+
+    foreach ($pattern in @(
+        '(?im)Could not load plugin',
+        '(?im)InvalidPluginException:',
+        '(?im)NoClassDefFoundError:',
+        '(?im)ClassNotFoundException:'
+    )) {
+        $failure = [regex]::Match($content, $pattern)
+        if ($failure.Success) {
+            throw "Minecraft plugin startup failed ($pattern). Inspect $logPath."
+        }
+    }
+
+    foreach ($pluginName in @(
+        'AuthEffects',
+        'AuthMe',
+        'ClearLag',
+        'CopiMineArtifacts',
+        'CopiMineEconomyCore',
+        'CopiMineElectionCore',
+        'CopiMineNarcotics',
+        'CopiMineUltimateAdminPlus',
+        'CopiMineWorldCore',
+        'GrimAC',
+        'voicechat'
+    )) {
+        $marker = '\[' + [regex]::Escape($pluginName) + '\] Enabling '
+        if ($content -notmatch $marker) {
+            throw "Minecraft plugin '$pluginName' did not reach its enabling phase. Inspect $logPath."
+        }
+    }
+    Write-StackLog 'Minecraft startup gate passed: completed startup with all required local plugins enabled.'
+}
+
 function Start-Website {
     if (Test-TcpPort -TargetHost '127.0.0.1' -Port $WebsitePort) { throw "Port $WebsitePort is already in use." }
     $python = Resolve-WebsitePython
@@ -605,6 +733,7 @@ function Start-Minecraft {
         throw 'Minecraft did not open port 25565. See local-runtime/logs/minecraft.stdout.log and minecraft/server/logs/latest.log.'
     }
     if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 180)) { throw 'Minecraft RCON did not become ready.' }
+    Assert-MinecraftStartupHealthy
     [void](Send-RconCommand -Command 'save-all')
     $adminFile = Join-Path $Runtime 'local-admin.txt'
     if (Test-Path -LiteralPath $adminFile) {

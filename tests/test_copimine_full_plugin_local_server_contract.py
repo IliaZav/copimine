@@ -37,6 +37,16 @@ def test_full_plugin_inventory_uses_jar_files_only_and_excludes_end_rift_event()
     assert "worlds" in script
 
 
+def test_full_plugin_inventory_prefers_the_release_voicechat_version() -> None:
+    script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
+
+    assert "voicechat-bukkit-2.6.16.jar" in script
+    assert "voicechat-bukkit-2.6.11.jar" in script
+    assert "excludedLegacyVoicechat" in script
+    assert "excluded_legacy_voicechat" in script
+    assert "EXCLUDED_LEGACY_VOICECHAT" in script
+
+
 def test_full_plugin_server_records_test_only_runtime_probe_separately() -> None:
     script = read("scripts/prepare_copimine_full_plugin_local_server.ps1")
 
@@ -88,6 +98,16 @@ def test_full_plugin_server_has_a_separate_port_and_real_startup_gate() -> None:
     assert "Done \\(" in script
     assert "CLIENT_GATE_SERVER_READY" in script
     assert "Start-Process" in script
+
+
+def test_full_plugin_runtime_verifier_rejects_partial_plugin_initialization() -> None:
+    script = read("scripts/verify_copimine_full_plugin_local_server.ps1")
+
+    assert "InvalidPluginException" in script
+    assert "NoClassDefFoundError" in script
+    assert "ClassNotFoundException" in script
+    assert "Failed to register events" in script
+    assert "Simple Voice Chat registration failed" in script
 
 
 def test_full_plugin_gate_matrix_waits_for_cold_start_before_reject_timeout() -> None:

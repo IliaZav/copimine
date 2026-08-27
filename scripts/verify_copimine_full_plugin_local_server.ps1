@@ -165,7 +165,13 @@ if ($hashMismatches.Count -gt 0) {
 }
 
 $failureLines = @($logText -split "`r?`n" | Where-Object {
-    $_ -match 'Could not load' -or $_ -match 'Disabling\s+[^ ]+\s+because'
+    $_ -match 'Could not load' -or
+    $_ -match 'Disabling\s+[^ ]+\s+because' -or
+    $_ -match 'InvalidPluginException:' -or
+    $_ -match 'NoClassDefFoundError:' -or
+    $_ -match 'ClassNotFoundException:' -or
+    $_ -match 'Failed to register events' -or
+    $_ -match 'Simple Voice Chat registration failed'
 })
 if ($failureLines.Count -gt 0) {
     throw "Paper reported plugin load failures: $($failureLines -join ' | ')"

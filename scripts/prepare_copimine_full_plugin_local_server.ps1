@@ -120,12 +120,23 @@ $sourceJars = @(Get-ChildItem -LiteralPath $resolvedPluginSourceRoot -Filter '*.
 if ($sourceJars.Count -lt 20) {
     throw "The local main-server plugin inventory is unexpectedly small: $($sourceJars.Count) JAR files."
 }
+$releaseVoicechat = $sourceJars | Where-Object {
+    [string]::Equals($_.Name, 'voicechat-bukkit-2.6.16.jar', [StringComparison]::OrdinalIgnoreCase)
+} | Select-Object -First 1
+if ($null -eq $releaseVoicechat) {
+    throw 'The local full-plugin inventory must contain the release Simple Voice Chat 2.6.16 plugin.'
+}
 
 $selectedJars = [System.Collections.Generic.List[object]]::new()
 $excludedEndRiftEvent = [System.Collections.Generic.List[string]]::new()
+$excludedLegacyVoicechat = [System.Collections.Generic.List[string]]::new()
 foreach ($jar in $sourceJars) {
     if ([string]::Equals($jar.Name, 'CopiMineEndEvent.jar', [StringComparison]::OrdinalIgnoreCase)) {
         $excludedEndRiftEvent.Add($jar.Name)
+        continue
+    }
+    if ([string]::Equals($jar.Name, 'voicechat-bukkit-2.6.11.jar', [StringComparison]::OrdinalIgnoreCase)) {
+        $excludedLegacyVoicechat.Add($jar.Name)
         continue
     }
     if ([string]::Equals($jar.Name, 'CopiMineNarcotics.jar', [StringComparison]::OrdinalIgnoreCase)) {
@@ -243,6 +254,7 @@ $manifest = [ordered]@{
     serverPort = $Port
     sourcePluginRoot = $resolvedPluginSourceRoot
     excluded_end_rift_event = @($excludedEndRiftEvent)
+    excluded_legacy_voicechat = @($excludedLegacyVoicechat)
     do_not_copy = @('worlds', 'playerdata', 'databases', 'AuthMe data', 'plugin data')
     plugins = @($manifestPlugins)
     test_plugins = @($manifestTestPlugins)
@@ -254,6 +266,7 @@ Write-Output "FULL_PLUGIN_SERVER_PORT=$Port"
 Write-Output "FULL_PLUGIN_COUNT=$($selectedJars.Count)"
 Write-Output "FULL_PLUGIN_TEST_COUNT=$($manifestTestPlugins.Count)"
 Write-Output "EXCLUDED_END_RIFT_EVENT=$($excludedEndRiftEvent -join ',')"
+Write-Output "EXCLUDED_LEGACY_VOICECHAT=$($excludedLegacyVoicechat -join ',')"
 Write-Output 'PRODUCTION_DATA_COPIED=NO'
 Write-Output 'STAGING_DATABASE_HOST=127.0.0.1'
 Write-Output 'STAGING_DATABASE_NAME=copimine_test'

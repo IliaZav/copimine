@@ -912,7 +912,7 @@ function Start-LocalPaper {
   $errLog = Join-Path $logsDir 'paper.err.log'
   $starter = Join-Path $scriptRoot 'StartEndRiftLocal.ps1'
   & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $starter `
-    -ServerDir $serverDir -LogPath $outLog -ErrPath $errLog -ReadyTimeoutSeconds 90
+    -ServerDir $serverDir -LogPath $outLog -ErrPath $errLog -ReadyTimeoutSeconds 180
   if ($LASTEXITCODE -ne 0) { throw "Local Paper startup failed with exit code $LASTEXITCODE." }
 }
 

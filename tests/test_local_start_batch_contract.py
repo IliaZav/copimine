@@ -20,6 +20,7 @@ def test_local_start_batch_points_only_to_the_end_rift_worktree() -> None:
     assert "StartEndRiftLocalUserSession.ps1" in text
     assert "-ExecutionPolicy Bypass" in text
     assert "-AdminNickname \"SudoKillDash9\"" in text
+    assert "-AdminNickname \"ilia228008\"" not in text
     assert "-LaunchClient" in text
     assert "Get-CopiMineRadminAddress.ps1" in text
     assert "25566" in text
@@ -123,6 +124,20 @@ def test_local_runner_restarts_verified_paper_when_the_local_server_is_already_o
     assert "Invoke-LocalRcon -CommandText 'stop'" in stop_function
     assert "Wait-TcpPort -HostName '127.0.0.1' -Port $serverPort -Expected $false" in stop_function
     assert "Stop-Process -Id $processId -Force" in stop_function
+
+
+def test_local_runner_allows_the_cold_paper_start_to_finish() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "-ReadyTimeoutSeconds 180" in text
+
+
+def test_local_paper_startup_timeout_cleans_up_the_started_process() -> None:
+    text = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    timeout_block = text[text.index("if (-not $ready)"):text.index("Write-Output \"Started isolated local Paper", text.index("if (-not $ready)"))]
+
+    assert "$paper.Kill()" in timeout_block
+    assert "$paper.WaitForExit(10000) | Out-Null" in timeout_block
 
 
 def test_local_runner_grants_op_only_to_whitelisted_accounts_present_in_local_authme_db() -> None:

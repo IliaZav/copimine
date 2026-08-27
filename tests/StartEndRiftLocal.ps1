@@ -84,6 +84,10 @@ if (-not $ready) {
   if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
     Get-Content -LiteralPath $LogPath -Tail 120
   }
+  if (-not $paper.HasExited) {
+    try { $paper.Kill() } catch { }
+    $paper.WaitForExit(10000) | Out-Null
+  }
   throw "Local Paper PID $($paper.Id) did not become ready within $ReadyTimeoutSeconds seconds."
 }
 

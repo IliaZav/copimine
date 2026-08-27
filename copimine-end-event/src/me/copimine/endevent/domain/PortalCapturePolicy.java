@@ -15,9 +15,15 @@ public final class PortalCapturePolicy {
 
     public static PortalState tick(PortalState state, boolean occupied, long nowMillis) {
         if (state == null) throw new IllegalArgumentException("state is required");
+        if (nowMillis < 0L) throw new IllegalArgumentException("timestamp must be non-negative");
         if (nowMillis < state.lastUpdateMillis()) return state;
         if (state.completed()) return state;
-        if (state.lastUpdateMillis() == nowMillis) return state;
+        if (state.lastUpdateMillis() == nowMillis) {
+            if (occupied && state.lastOccupiedMillis() != nowMillis) {
+                return new PortalState(false, state.progressMillis(), nowMillis, nowMillis);
+            }
+            return state;
+        }
 
         long elapsed = nowMillis - state.lastUpdateMillis();
         long progress = state.progressMillis();

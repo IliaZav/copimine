@@ -13,7 +13,9 @@ public final class TowerDefensePolicy {
     private TowerDefensePolicy() { }
 
     public static CoreState start(int players, long nowMillis) {
-        if (players < 0 || nowMillis < 0L) throw new IllegalArgumentException("invalid tower start");
+        if (players < 0 || nowMillis < 0L || nowMillis > Long.MAX_VALUE - DEFENSE_MILLIS) {
+            throw new IllegalArgumentException("invalid tower start");
+        }
         double health = Math.min(MAX_HEALTH, BASE_HEALTH + Math.max(0, players - 2) * HEALTH_PER_EXTRA_PLAYER);
         return new CoreState(players, health, health, nowMillis, nowMillis + DEFENSE_MILLIS,
                 Set.of(), 1, Outcome.ACTIVE);
@@ -29,6 +31,7 @@ public final class TowerDefensePolicy {
 
     public static CoreState finish(CoreState state, long nowMillis) {
         if (state == null) throw new IllegalArgumentException("state is required");
+        if (nowMillis < 0L) throw new IllegalArgumentException("timestamp must be non-negative");
         if (state.outcome() != Outcome.ACTIVE) return state;
         Outcome outcome = state.currentHealth() <= 0.0D || nowMillis > state.deadlineMillis()
                 ? Outcome.FAILURE : Outcome.SUCCESS;
@@ -36,7 +39,10 @@ public final class TowerDefensePolicy {
     }
 
     public static CoreState retry(CoreState state, long nowMillis) {
-        if (state == null || nowMillis < 0L) throw new IllegalArgumentException("invalid retry");
+        if (state == null || nowMillis < 0L || nowMillis > Long.MAX_VALUE - DEFENSE_MILLIS) {
+            throw new IllegalArgumentException("invalid retry");
+        }
+        if (state.outcome() != Outcome.FAILURE) return state;
         return new CoreState(state.players(), state.maxHealth(), state.maxHealth(), nowMillis,
                 nowMillis + DEFENSE_MILLIS, Set.of(), state.attempt() + 1, Outcome.ACTIVE);
     }
@@ -51,8 +57,10 @@ public final class TowerDefensePolicy {
                             long deadlineMillis, Set<String> appliedAttackIds, int attempt, Outcome outcome) {
         public CoreState {
             appliedAttackIds = Set.copyOf(appliedAttackIds == null ? Set.of() : appliedAttackIds);
-            if (players < 0 || maxHealth <= 0.0D || currentHealth < 0.0D || currentHealth > maxHealth
-                    || startedAtMillis < 0L || deadlineMillis < startedAtMillis || attempt < 1 || outcome == null) {
+            if (players < 0 || !finite(maxHealth) || maxHealth <= 0.0D || maxHealth > MAX_HEALTH
+                    || !finite(currentHealth) || currentHealth < 0.0D || currentHealth > maxHealth
+                    || startedAtMillis < 0L || deadlineMillis < startedAtMillis || attempt < 1 || outcome == null
+                    || appliedAttackIds.stream().anyMatch(id -> id == null || id.trim().isEmpty())) {
                 throw new IllegalArgumentException("invalid core state");
             }
         }

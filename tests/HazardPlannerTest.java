@@ -8,24 +8,46 @@ public final class HazardPlannerTest {
     public static void main(String[] args) {
         Map<HazardPlanner.Point, String> snapshot = new HashMap<>();
         for (int x = 0; x < 5; x++) for (int z = 0; z < 5; z++) snapshot.put(new HazardPlanner.Point(x, z), "STONE_" + x + "_" + z);
+        snapshot.put(new HazardPlanner.Point(99, 99), "STALE");
+        snapshot.remove(new HazardPlanner.Point(0, 0));
         HazardPlanner.Point protectedPoint = new HazardPlanner.Point(2, 2);
         HazardPlanner.Pattern previous = new HazardPlanner.Pattern(snapshot);
         HazardPlanner.Plan plan = HazardPlanner.plan(0, 4, 0, 4, Set.of(protectedPoint), previous, 8, 0.80D, 77L);
         check(plan.hazardCells().size() <= 8, "hazards must respect the cap");
         check(!plan.hazardCells().contains(protectedPoint), "protected cells must never be mutated");
         check(plan.safeCells().size() >= 20, "safe ratio must be met");
-        check(plan.originalBlocks().keySet().equals(snapshot.keySet()), "snapshot keys must be preserved exactly");
+        check(plan.originalBlocks().keySet().equals(plan.hazardCells()), "each hazard must have exactly one original snapshot entry");
+        check(!plan.originalBlocks().containsKey(new HazardPlanner.Point(99, 99)), "stale snapshot keys must be filtered");
+        check(!plan.originalBlocks().containsKey(new HazardPlanner.Point(0, 0)), "missing snapshots must not be fabricated");
+        check(plan.originalBlocks().keySet().stream().allMatch(p -> p.x() >= 0 && p.x() <= 4 && p.z() >= 0 && p.z() <= 4),
+                "snapshot keys must stay inside the inclusive bounds");
         check(plan.hazardCells().stream().allMatch(p -> p.x() >= 0 && p.x() <= 4 && p.z() >= 0 && p.z() <= 4),
                 "hazards must stay inside inclusive bounds");
         check(isConnected(plan.safeCells()), "safe cells must be connected");
         check(plan.equals(HazardPlanner.plan(0, 4, 0, 4, Set.of(protectedPoint), previous, 8, 0.80D, 77L)),
                 "same seed and inputs must produce the same plan");
+        boolean invalidPlan = false;
+        try { new HazardPlanner.Plan(Set.of(protectedPoint), Set.of(), Map.of()); }
+        catch (IllegalArgumentException expected) { invalidPlan = true; }
+        check(invalidPlan, "plans must reject missing original snapshots for hazards");
         check(HazardPlanner.plan(0, 1, 0, 1, Set.of(), previous, 0, 1.0D, 2L).hazardCells().isEmpty(),
                 "zero mutation cap must produce no hazards");
         boolean rejected = false;
         try { HazardPlanner.plan(2, 1, 0, 1, Set.of(), previous, 1, 0.5D, 2L); }
         catch (IllegalArgumentException expected) { rejected = true; }
         check(rejected, "invalid bounds must fail closed");
+        rejected = false;
+        try { HazardPlanner.plan(0, 1, 0, 1, Set.of(), previous, -1, 0.5D, 2L); }
+        catch (IllegalArgumentException expected) { rejected = true; }
+        check(rejected, "negative mutation caps must fail closed");
+        rejected = false;
+        try { HazardPlanner.plan(0, 1, 0, 1, Set.of(), previous, 1, 1.1D, 2L); }
+        catch (IllegalArgumentException expected) { rejected = true; }
+        check(rejected, "safe ratios above one must fail closed");
+        rejected = false;
+        try { new HazardPlanner.Pattern(Map.of(new HazardPlanner.Point(0, 0), "")); }
+        catch (IllegalArgumentException expected) { rejected = true; }
+        check(rejected, "blank snapshot blocks must fail closed");
         System.out.println("HazardPlannerTest OK");
     }
 

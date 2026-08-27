@@ -15,6 +15,9 @@ public final class PortalCapturePolicyTest {
         grace = PortalCapturePolicy.tick(grace, false, 2_449L);
         grace = PortalCapturePolicy.tick(grace, true, 2_449L);
         check(grace.progressMillis() == 999L, "a gap within grace must preserve progress");
+        check(grace.lastOccupiedMillis() == 2_449L, "same-timestamp re-entry must record the occupied time");
+        PortalCapturePolicy.PortalState boundary = PortalCapturePolicy.tick(grace, false, 2_899L);
+        check(boundary.progressMillis() == grace.progressMillis(), "re-entry at the same timestamp must preserve the grace boundary");
         PortalCapturePolicy.PortalState decayed = PortalCapturePolicy.tick(grace, false, 10_000L);
         check(decayed.progressMillis() < grace.progressMillis(), "a gap beyond grace must decay progress");
         check(decayed.progressMillis() == 0L, "long gaps must fail closed to zero progress");
@@ -22,6 +25,10 @@ public final class PortalCapturePolicyTest {
         PortalCapturePolicy.PortalState first = PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, 0L);
         PortalCapturePolicy.PortalState second = PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, 0L);
         check(first.equals(second), "independent portals must not share mutable state");
+        boolean invalidTime = false;
+        try { PortalCapturePolicy.tick(PortalCapturePolicy.initial(), true, -1L); }
+        catch (IllegalArgumentException expected) { invalidTime = true; }
+        check(invalidTime, "negative portal timestamps must fail closed");
         System.out.println("PortalCapturePolicyTest OK");
     }
 

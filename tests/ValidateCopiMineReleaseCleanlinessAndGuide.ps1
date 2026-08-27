@@ -33,7 +33,7 @@ Require-Path $source 'Clean AdminPlus source file is missing.'
 Require-Path $pluginYml 'Clean AdminPlus plugin.yml is missing.'
 Require-Path (Join-Path $plugins 'CopiMineUltimateAdminPlus.jar') 'Active CopiMineUltimateAdminPlus.jar is missing.'
 Require-Path (Join-Path $plugins 'CopiMineArtifacts.jar') 'Active CopiMineArtifacts.jar is missing.'
-Require-Path (Join-Path $plugins 'CopiMineUltimateAdmin\copimine_ultimate.db') 'Runtime CopiMine DB must stay in plugins\CopiMineUltimateAdmin.'
+Require-Text $source 'POSTGRES_PASSWORD' 'AdminPlus runtime storage must use the configured PostgreSQL connection; do not require the retired SQLite database path.'
 Require-Path $guide 'Root transfer guide COPIMINE_TRANSFER_GUIDE.txt is missing.'
 
 $legacyRootDirs = @(
@@ -66,6 +66,7 @@ Get-ChildItem -LiteralPath $root -File |
     ForEach-Object { $errors.Add("Legacy installer/script must be removed from release root: $($_.Name)") }
 
 Require-Missing (Join-Path $plugins 'old-plugins') 'Active server plugins folder must not contain old-plugins archive.'
+Require-Missing (Join-Path $plugins 'CopiMineUltimateAdmin') 'Retired SQLite AdminPlus data folder must not be shipped; runtime storage is PostgreSQL.'
 Require-Missing (Join-Path $plugins 'CopiMineUltimateAdminPlus') 'Stale CopiMineUltimateAdminPlus data folder must be removed; runtime DB is CopiMineUltimateAdmin.'
 
 $activeCopiMineJars = @(Get-ChildItem -LiteralPath $plugins -File -Filter 'CopiMine*.jar' | Select-Object -ExpandProperty Name | Sort-Object)
@@ -94,7 +95,7 @@ Get-ChildItem -LiteralPath $plugins -File |
 
 Require-Text $index '<html lang="ru">' 'Frontend index must stay Russian-localized.'
 Require-Text $index 'login-copy' 'Login screen helper block is missing.'
-Require-Text $index 'Аккаунт и файлы сервера' 'Login screen must use concise human-readable account copy.'
+Require-Text $index 'Баланс и покупки' 'Login screen must use concise human-readable account copy.'
 Require-Text $style 'release-readiness-card' 'Release readiness visual card styles are missing.'
 Require-Text $style 'safety-rail' 'Sensitive-action safety rail styles are missing.'
 Require-Text $guide '\b\d{2,3}%' 'Transfer guide must explain project readiness percentage.'

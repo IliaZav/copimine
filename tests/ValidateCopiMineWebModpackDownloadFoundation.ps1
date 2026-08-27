@@ -28,7 +28,7 @@ if ($backendText -notmatch '@app\.get\("/api/public/modpack"\)') {
     throw "Backend missing /api/public/modpack endpoint"
 }
 
-if ($modsText -notmatch '/launcher\.html' -or $modsText -notmatch 'meta http-equiv="refresh"') {
+if ($modsText -notmatch '/launcher\.html' -or $modsText -notmatch "location\.replace\('/launcher\.html'\)") {
     throw "Legacy mods page must redirect to the canonical Launcher page"
 }
 

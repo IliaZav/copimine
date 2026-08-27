@@ -157,13 +157,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         }
         ClientReadyAdmission.PendingClientAdmission pending = admission.onJoin(player.getUniqueId(), System.currentTimeMillis());
         long delayTicks = Math.max(1L, (configService.clientGateTimeoutSeconds() * 20L) + 1L);
-        BukkitTask timeoutTask = Bukkit.getScheduler().runTaskLater(plugin,
-                () -> handleAdmissionTimeout(player.getUniqueId(), pending.joinAttemptId()),
-                delayTicks);
-        BukkitTask previous = admissionTimeoutTasks.put(player.getUniqueId(), timeoutTask);
-        if (previous != null) {
-            previous.cancel();
-        }
+        scheduleAdmissionTimeout(player.getUniqueId(), pending.joinAttemptId(), delayTicks);
         plugin.getLogger().fine("CLIENT_GATE_PENDING player=" + player.getName()
                 + " uuid=" + player.getUniqueId()
                 + " attempt=" + pending.joinAttemptId()
@@ -271,11 +265,35 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     private void handleAdmissionTimeout(UUID playerId, UUID expectedAttemptId) {
+        ClientReadyAdmission.PendingClientAdmission current = admission.snapshot(playerId);
+        if (current == null || !expectedAttemptId.equals(current.joinAttemptId())) {
+            plugin.getLogger().fine("STALE_JOIN_ATTEMPT_IGNORED playerUuid=" + playerId
+                    + " attempt=" + expectedAttemptId);
+            return;
+        }
+
         admissionTimeoutTasks.remove(playerId);
-        ClientReadyAdmission.ReadyDecision decision = admission.onTimeout(playerId, expectedAttemptId, System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        ClientReadyAdmission.ReadyDecision decision = admission.onTimeout(playerId, expectedAttemptId, now);
         if (decision.decision() == ClientReadyAdmission.Decision.STALE_ATTEMPT) {
             plugin.getLogger().fine("STALE_JOIN_ATTEMPT_IGNORED playerUuid=" + playerId
                     + " attempt=" + expectedAttemptId);
+            return;
+        }
+        if (decision.decision() == ClientReadyAdmission.Decision.NOT_DUE) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                admission.onQuit(playerId);
+                return;
+            }
+            long deadline = decision.state().startedAtMillis() + admission.timeoutMillis();
+            long remainingMillis = Math.max(1L, deadline - now);
+            long retryTicks = Math.max(1L, (remainingMillis + 49L) / 50L);
+            scheduleAdmissionTimeout(playerId, expectedAttemptId, retryTicks);
+            plugin.getLogger().fine("CLIENT_GATE_TIMEOUT_RECHECK player=" + player.getName()
+                    + " uuid=" + playerId
+                    + " attempt=" + expectedAttemptId
+                    + " remainingMs=" + remainingMillis);
             return;
         }
         if (decision.decision() != ClientReadyAdmission.Decision.TIMEOUT) {
@@ -289,6 +307,16 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                 + " waitedMs=" + admission.timeoutMillis());
         if (player != null && player.isOnline() && configService.clientGateRequired()) {
             player.kickPlayer(userMessage("CLIENT_READY_TIMEOUT"));
+        }
+    }
+
+    private void scheduleAdmissionTimeout(UUID playerId, UUID attemptId, long delayTicks) {
+        BukkitTask timeoutTask = Bukkit.getScheduler().runTaskLater(plugin,
+                () -> handleAdmissionTimeout(playerId, attemptId),
+                Math.max(1L, delayTicks));
+        BukkitTask previous = admissionTimeoutTasks.put(playerId, timeoutTask);
+        if (previous != null) {
+            previous.cancel();
         }
     }
 

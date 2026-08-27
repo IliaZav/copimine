@@ -60,6 +60,14 @@ def test_ready_diagnostics_are_structured_without_raw_payload_logging() -> None:
     assert "payload hex" not in bridge.lower()
 
 
+def test_gate_timeout_rechecks_when_scheduler_fires_before_wall_clock_deadline() -> None:
+    bridge = read("copimine-narcotics/src/me/copimine/clientbridge/CopiMineClientBridge.java")
+
+    assert "Decision.NOT_DUE" in bridge
+    assert "CLIENT_GATE_TIMEOUT_RECHECK" in bridge
+    assert "scheduleAdmissionTimeout" in bridge
+
+
 def test_local_gate_matrix_covers_accept_reject_and_minimal_valid_client_profiles() -> None:
     matrix = read("scripts/run_copimine_client_gate_matrix.ps1")
     for scenario in (

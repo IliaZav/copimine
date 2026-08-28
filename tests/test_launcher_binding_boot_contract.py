@@ -39,4 +39,4 @@ def test_dynamic_runtime_failure_leaves_a_recoverable_boot_screen() -> None:
     assert "Повторить" in app
     assert "cabinetRuntimePromise = null" in app
     assert "loadCabinetRuntime" in app
-    assert "cabinet-runtime.js?v=20260828launcherlink1" in app
+    assert "cabinet-runtime.js?v=20260828launcherlink2" in app

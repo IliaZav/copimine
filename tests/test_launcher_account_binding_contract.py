@@ -75,6 +75,7 @@ def test_launcher_link_page_requires_confirmation_before_authorizing_and_returns
     assert "window.cancelLauncherLink = cancelLauncherLink" in rendered_link_page
     assert "hasLauncherAuthorization" not in rendered_link_page
     assert "hasLauncherRequest\n        ? \"Проверьте аккаунт" in rendered_link_page
+    assert "await refreshCsrfCookie();" in rendered_link_page
 
     before_confirmation = rendered_link_page.split("async function confirmLauncherLink()", 1)[0]
     assert '/api/player/launcher/link/authorize' not in before_confirmation

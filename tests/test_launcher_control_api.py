@@ -174,6 +174,77 @@ def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, t
         assert poll.json()["status"] == "PENDING"
 
 
+def test_launcher_binding_confirmation_completes_once_and_returns_linked_status(monkeypatch, tmp_path: Path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    main.secrets.choice = lambda alphabet: "2"
+    account = {
+        "id": "staging-account-1",
+        "username": "staging-player",
+        "minecraft_uuid": "",
+        "minecraft_name": "",
+    }
+    with main.auth_conn() as conn:
+        main.ensure_v4_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO site_accounts(
+                id,username,username_norm,password_hash,role,enabled,
+                minecraft_uuid,minecraft_name,created_at,updated_at,last_login_at,registration_ip
+            ) VALUES(%s,%s,%s,%s,'player',1,'','',0,0,0,'')
+            """,
+            (account["id"], account["username"], account["username"], "staging-hash"),
+        )
+        conn.commit()
+
+    main.app.dependency_overrides[main.require_player] = lambda: account
+    try:
+        with TestClient(main.app) as client:
+            challenge_response = client.post(
+                "/api/launcher/link/challenge",
+                json={
+                    "device_id": "native-device-binding-1234567890",
+                    "minecraft_name": "StagingPlayer",
+                    "launcher_version": "1.0.3",
+                },
+            )
+            assert challenge_response.status_code == 200, challenge_response.text
+            challenge = challenge_response.json()
+            csrf = client.get("/api/auth/csrf")
+            assert csrf.status_code == 200, csrf.text
+            csrf_token = client.cookies.get("cm_csrf")
+            assert csrf_token
+            headers = {"X-CSRF-Token": csrf_token}
+
+            authorized = client.post(
+                "/api/player/launcher/link/authorize",
+                json={"challenge_id": challenge["challengeId"], "code": "22222222"},
+                headers=headers,
+            )
+            assert authorized.status_code == 200, authorized.text
+            assert authorized.json()["linked"] is True
+
+            linked = client.get(
+                "/api/launcher/link/status",
+                params={
+                    "challenge_id": challenge["challengeId"],
+                    "device_id": "native-device-binding-1234567890",
+                    "poll_token": challenge["pollToken"],
+                },
+            )
+            assert linked.status_code == 200, linked.text
+            assert linked.json()["status"] == "LINKED"
+            assert linked.json()["siteUsername"] == account["username"]
+
+            replay = client.post(
+                "/api/player/launcher/link/authorize",
+                json={"challenge_id": challenge["challengeId"], "code": "22222222"},
+                headers=headers,
+            )
+            assert replay.status_code == 403, replay.text
+    finally:
+        main.app.dependency_overrides.pop(main.require_player, None)
+
+
 def test_admin_launcher_mutation_requires_auth_csrf_and_confirmation(monkeypatch, tmp_path: Path) -> None:
     main = load_main(monkeypatch, tmp_path)
     from backend.launcher_control import ControlPlane

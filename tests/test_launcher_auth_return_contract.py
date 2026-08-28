@@ -31,6 +31,6 @@ def test_launcher_link_runtime_cache_key_changes_when_binding_flow_changes():
     bootstrap = (ROOT / "admin-web/frontend/assets/js/bootstrap.js").read_text(encoding="utf-8")
     link = (ROOT / "admin-web/frontend/cabinet/link.html").read_text(encoding="utf-8")
 
-    assert 'app.js?v=20260828launcherlink1' in link
-    assert 'js/bootstrap.js?v=20260828launcherlink1' in app
-    assert 'cabinet-runtime.js?v=20260828launcherlink1' in bootstrap
+    assert 'app.js?v=20260828launcherlink2' in link
+    assert 'js/bootstrap.js?v=20260828launcherlink2' in app
+    assert 'cabinet-runtime.js?v=20260828launcherlink2' in bootstrap

@@ -5946,6 +5946,10 @@ async function confirmLauncherLink() {
   }
 
   try {
+    // boot() warms the CSRF cookie in the background.  The player can click
+    // the confirmation button before that request finishes, so make the
+    // mutation self-sufficient instead of turning a fast click into a 403.
+    await refreshCsrfCookie();
     await api("/api/player/launcher/link/authorize", {
       method: "POST",
       body: JSON.stringify({ challenge_id: challengeId, code })

@@ -88,6 +88,13 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert len(metadata["msiSha256"]) == 64 and metadata["msiSha256"] == metadata["msiSha256"].lower()
 
 
+def test_next_launcher_release_notes_page_exists() -> None:
+    notes = ROOT / "admin-web/frontend/news/copimine-launcher-1-0-5.html"
+
+    assert notes.is_file()
+    assert 'data-page-kind="public-patch"' in notes.read_text(encoding="utf-8")
+
+
 def test_launcher_gallery_references_real_capture_assets() -> None:
     launcher = read("admin-web/frontend/launcher.html")
     expected = (

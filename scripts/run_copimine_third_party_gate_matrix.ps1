@@ -2,7 +2,7 @@
 param(
     [ValidateSet('all', 'managed-plus-extra', 'no-copimine-client', 'no-mods', 'copimine-client-plus-fabric-api')]
     [string] $Scenario = 'all',
-    [string] $InstanceRoot = 'D:\Desktop\Copimine\copimine-main\.worktrees\site-launcher-audit\artifacts\local-validation\msi-install-1.0.3-20260823\CopiMine Launcher\Minecraft',
+    [string]$InstanceRoot = '',
     [string] $ServerHost = '127.0.0.1',
     [int] $ServerPort = 25567,
     [string] $ServerLog = 'D:\Desktop\Copimine\copimine-main\.worktrees\site-launcher-audit\artifacts\local-validation\paper\logs\latest.log',
@@ -12,9 +12,19 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$resolvedInstanceRoot = [IO.Path]::GetFullPath($InstanceRoot)
 $resolvedValidationRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\artifacts\local-validation'))
 $resolvedServerLog = [IO.Path]::GetFullPath($ServerLog)
+if ([string]::IsNullOrWhiteSpace($InstanceRoot)) {
+    $candidateRoots = @(Get-ChildItem -LiteralPath $resolvedValidationRoot -Directory -Filter 'msi-install-*' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        ForEach-Object { Join-Path $_.FullName 'CopiMine Launcher\Minecraft' } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+    if ($candidateRoots.Count -eq 0) {
+        throw "No disposable Launcher install fixture was found below $resolvedValidationRoot. Pass -InstanceRoot explicitly."
+    }
+    $InstanceRoot = $candidateRoots[0]
+}
+$resolvedInstanceRoot = [IO.Path]::GetFullPath($InstanceRoot)
 if (-not $resolvedInstanceRoot.StartsWith($resolvedValidationRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw "The direct matrix may only mutate an instance below $resolvedValidationRoot."
 }

@@ -80,3 +80,14 @@ def test_local_gate_matrix_covers_accept_reject_and_minimal_valid_client_profile
     assert "CLIENT_GATE_MATRIX=PASS" in matrix
     assert "fabric-api-0.116.11+1.21.1.jar" in matrix
     assert "The matrix may only mutate an instance below" in matrix
+
+
+def test_gate_matrices_do_not_pin_a_removed_dated_install_fixture() -> None:
+    for relative in (
+        "scripts/run_copimine_client_gate_matrix.ps1",
+        "scripts/run_copimine_third_party_gate_matrix.ps1",
+    ):
+        matrix = read(relative)
+        assert "[string]$InstanceRoot = ''" in matrix
+        assert "Get-ChildItem -LiteralPath $resolvedValidationRoot -Directory -Filter 'msi-install-*'" in matrix
+        assert "msi-install-1.0.3-20260823" not in matrix

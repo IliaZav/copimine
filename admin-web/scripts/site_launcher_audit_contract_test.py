@@ -151,6 +151,33 @@ def check_launcher_release() -> None:
         if not (published_root / "downloads" / "launcher" / filename).is_file():
             fail(f"Velopack asset listed in assets.win.json is missing: {filename}")
 
+    if published_root != FRONTEND:
+        source_metadata = json.loads(read(FRONTEND / "assets" / "public-data" / "launcher" / "latest.json"))
+        metadata_fields = (
+            "version",
+            "filename",
+            "downloadUrl",
+            "sizeBytes",
+            "sha256",
+            "customInstallerFilename",
+            "customInstallerDownloadUrl",
+            "customInstallerSizeBytes",
+            "customInstallerSha256",
+            "msiFilename",
+            "msiDownloadUrl",
+            "msiSizeBytes",
+            "msiSha256",
+        )
+        for field in metadata_fields:
+            if source_metadata.get(field) != metadata.get(field):
+                fail(f"tracked launcher metadata is stale for {field}")
+
+        source_stable = FRONTEND / "launcher" / "stable"
+        if (source_stable / "instance-manifest.json").read_bytes() != manifest_path.read_bytes():
+            fail("tracked instance manifest is stale compared with the published release")
+        if (source_stable / "instance-manifest.sig").read_bytes() != signature_path.read_bytes():
+            fail("tracked instance manifest signature is stale compared with the published release")
+
 
 def main() -> int:
     check_navigation()

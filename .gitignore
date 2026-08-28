@@ -70,7 +70,11 @@ release/
 /artifacts/launcher/
 local-runtime/
 admin-web/frontend/downloads/
-admin-web/frontend/launcher/
+admin-web/frontend/launcher/*
+!admin-web/frontend/launcher/stable/
+admin-web/frontend/launcher/stable/*
+!admin-web/frontend/launcher/stable/instance-manifest.json
+!admin-web/frontend/launcher/stable/instance-manifest.sig
 admin-web/.venv/
 admin-web/.codex-audit-venv/
 admin-web/.venv-*/

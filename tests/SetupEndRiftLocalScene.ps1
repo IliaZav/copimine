@@ -169,6 +169,13 @@ if ($datapacks -notmatch 'copimine-local-spawn') {
   throw "The local spawn datapack did not load. Actual response: $datapacks"
 }
 
+# A previous disposable run may have left a durable Core at another location.
+# Remove only that local event state before rebuilding the bounded scene; the
+# command is refused by the plugin unless its configuration is environment:
+# local, and it never touches production world or player data.
+Invoke-SceneCommand 'cmend core remove confirm' | Out-Null
+Start-Sleep -Milliseconds 500
+
 # Clear only the authorized local arena/room footprint, then build the stone
 # floor, low stone arena boundary, portal room, active End portal, and the
 # snapshot-owned obsidian gate.
@@ -208,6 +215,13 @@ foreach ($command in @(
 )) {
   Invoke-SceneCommand $command | Out-Null
 }
+
+# Rebind the durable event metadata to the exact block and Gate just rebuilt
+# above. This makes repeated local starts deterministic even after a prior
+# manual Core placement or interrupted test session.
+Invoke-SceneCommand "cmend core setat $coreX $coreY $coreZ 2" | Out-Null
+Invoke-SceneCommand "cmend gate setat $gateX $gateMinY $gateMinZ $gateX $gateMaxY $gateMaxZ" | Out-Null
+Start-Sleep -Milliseconds 500
 
 <#
 $enableSign = '{front_text:{messages:[''{'"text":"ЭФФЕКТЫ","color":"dark_purple"}'' , ''{'"text":"ВКЛЮЧИТЬ","color":"green"}'' , ''{'"text":"нажми кнопку","color":"gray"}'' , ''{'"text":"","color":"gray"}'']}}'
@@ -260,7 +274,7 @@ if ($status -notmatch 'core=.*CopiMine 8,68,-39' -or
     $status -notmatch 'coreOverlay=true' -or
     $status -notmatch 'runes=2/2' -or
     $gateInfo -notmatch 'gate\.pos1=.*CopiMine 29,68,-40.*pos2=.*CopiMine 29,71,-38' -or
-    $gateInfo -notmatch 'gate\.status=.*RESTORED' -or
+    $gateInfo -notmatch 'gate\.status=.*UNSET' -or
     $portalInfo -notmatch 'portalroom=.*CopiMine 31\.5,68\.0,-42\.5') {
   throw "Local scene metadata does not match the rebuilt scene. Status: $status Gate: $gateInfo Portal: $portalInfo"
 }

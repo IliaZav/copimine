@@ -104,7 +104,9 @@ client.on('packet', (data, meta) => {
   console.log(`SERVER_POSITION ${username} ${position.x},${position.y},${position.z}`)
 })
 
-client.on('playerJoin', startSession)
+// Start only after configuration/resource-pack negotiation has entered the
+// play state; `playerJoin` is not a reliable self-player signal here.
+client.once('login', startSession)
 client.on('error', error => {
   console.error(`BOT_ERROR ${username} ${error.stack || error}`)
   process.exitCode = 1

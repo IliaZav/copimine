@@ -13,6 +13,7 @@ $worktreeRoot = (Resolve-Path (Join-Path $scriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $worktreeRoot 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $localRuntimeRoot 'end-rift-server')).Path
 $sourcePluginDir = (Resolve-Path (Join-Path $worktreeRoot 'minecraft\server\plugins')).Path
+$sourceEventConfig = Join-Path $worktreeRoot 'copimine-end-event\config.yml'
 $targetPluginDir = (Resolve-Path (Join-Path $serverDir 'plugins')).Path
 $sourcePackDir = (Resolve-Path (Join-Path $worktreeRoot 'resourcepacks\build')).Path
 $targetPackDir = Join-Path $serverDir 'resourcepacks\build'
@@ -65,6 +66,7 @@ function Assert-UnderRoot {
 
 Assert-UnderRoot -Path $serverDir -Root $localRuntimeRoot -Label 'Local server'
 Assert-UnderRoot -Path $sourcePluginDir -Root $worktreeRoot -Label 'Current worktree plugin source'
+Assert-UnderRoot -Path $sourceEventConfig -Root $worktreeRoot -Label 'Current worktree End Rift config source'
 Assert-UnderRoot -Path $targetPluginDir -Root $localRuntimeRoot -Label 'Local plugin directory'
 Assert-UnderRoot -Path $targetPackDir -Root $localRuntimeRoot -Label 'Local resource-pack directory'
 Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreSQL data directory'
@@ -78,6 +80,7 @@ Assert-UnderRoot -Path $websiteBackupsDir -Root $localRuntimeRoot -Label 'Local 
 
 if (-not (Test-Path -LiteralPath $serverProperties -PathType Leaf)) { throw "Local server.properties is missing: $serverProperties" }
 if (-not (Test-Path -LiteralPath $eventConfig -PathType Leaf)) { throw "Local End Rift config is missing: $eventConfig" }
+if (-not (Test-Path -LiteralPath $sourceEventConfig -PathType Leaf)) { throw "Current worktree End Rift config source is missing: $sourceEventConfig" }
 if (-not (Test-Path -LiteralPath $adminWebDir -PathType Container)) { throw "Local admin-web source is missing: $adminWebDir" }
 if ((Get-Content -LiteralPath $eventConfig -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused to start a non-local End Rift configuration.'
@@ -623,6 +626,26 @@ function Sync-CurrentPlugins {
   return $sourceEntries
 }
 
+function Sync-CurrentEventConfig {
+  $sourceText = Get-Content -LiteralPath $sourceEventConfig -Raw -Encoding UTF8
+  if ($sourceText -notmatch '(?m)^environment:\s*local\s*$') {
+    throw 'Refused to sync a non-local End Rift configuration into the isolated server.'
+  }
+  $sourceHash = Get-FileSha256 -Path $sourceEventConfig
+  $targetHash = if (Test-Path -LiteralPath $eventConfig -PathType Leaf) {
+    Get-FileSha256 -Path $eventConfig
+  } else {
+    ''
+  }
+  if ($sourceHash -ne $targetHash) {
+    Copy-Item -LiteralPath $sourceEventConfig -Destination $eventConfig -Force
+    Write-Host 'Synchronized current End Rift config into isolated local Paper.'
+  }
+  if ((Get-FileSha256 -Path $eventConfig) -ne $sourceHash) {
+    throw 'Local End Rift config hash mismatch after sync.'
+  }
+}
+
 function Ensure-LocalPostgres {
   if (-not (Test-Path -LiteralPath $pgCtl -PathType Leaf)) { throw "Local PostgreSQL pg_ctl is missing: $pgCtl" }
   & $pgCtl -D $pgDataDir status 2>&1 | Out-Host
@@ -1060,6 +1083,7 @@ if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.prop
   throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'
 }
 $currentPluginSources = @(Sync-CurrentPlugins)
+Sync-CurrentEventConfig
 Set-LocalServerProperty -Key 'server-port' -Value ([string]$serverPort)
 Set-LocalServerProperty -Key 'enable-rcon' -Value 'true'
 Set-LocalServerProperty -Key 'rcon.port' -Value ([string]$rconPort)

@@ -44,6 +44,7 @@ def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -
     assert "position_look" in BOT
     assert "process.argv.slice(4)" in BOT
     assert "cliActions" in BOT
+    assert "client.once('login', startSession)" in BOT
 
 
 def test_runtime_smoke_exposes_real_core_and_rune_visual_health() -> None:

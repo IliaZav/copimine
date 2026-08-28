@@ -42,8 +42,8 @@ public final class WaveObjectivePolicy {
     }
 
     public enum Objective {
-        AWAKENING("Awakening", cap(0)), HUNT("Hunt", cap(1)), PORTALS("Portals", cap(2)),
-        TOWER_DEFENSE("Tower Defense", cap(3)), RIFT_STORM("Rift Storm", cap(4));
+        AWAKENING("Пробуждение", cap(0)), HUNT("Охота", cap(1)), PORTALS("Порталы", cap(2)),
+        TOWER_DEFENSE("Оборона ядра", cap(3)), RIFT_STORM("Шторм Разлома", cap(4));
         private final String title;
         private final int mobCap;
         Objective(String title, int mobCap) { this.title = title; this.mobCap = mobCap; }

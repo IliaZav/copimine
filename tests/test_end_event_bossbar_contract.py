@@ -24,9 +24,12 @@ def test_official_boss_creates_a_visible_health_bar_for_active_players() -> None
     assert "bossBar.setVisible(true)" in ensure
     assert "bossBar.addPlayer(player)" in ensure
     assert "bossBar.setProgress" in tick
-    assert "boss.getHealth() / max" in tick
+    assert "virtualHealth / max" in tick
     assert "bossBar.setTitle" in tick
     assert "bossBar.removePlayer(player)" in tick
+    assert "bossBarLastUpdateMillis" in MAIN
+    assert "now - bossBarLastUpdateMillis < 200L" in MAIN
+    assert "bossBarLastTitle" in MAIN
 
 
 def test_boss_bar_is_removed_when_the_boss_or_event_session_is_cleaned() -> None:

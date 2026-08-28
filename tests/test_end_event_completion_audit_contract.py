@@ -76,9 +76,10 @@ def test_configured_waves_use_spiders_and_keep_the_requested_combat_numbers() ->
     assert "health-bonus: 10.0" in CONFIG
     assert "attack-damage-bonus: 2.0" in CONFIG
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "attack-damage-bonus: 8.0" in CONFIG
     assert "half-health: 1250.0" in CONFIG
     assert "final-threshold: 250.0" in CONFIG
+    assert "wave-reward-shared-rare:" in CONFIG
 
     wave_blocks = [
         _block(CONFIG, "  wave-1:\n", "  wave-2:\n"),
@@ -102,8 +103,9 @@ def test_event_announces_every_wave_on_screen_and_drops_rewards_at_the_core() ->
 
 
 def test_final_boss_entry_has_a_delayed_epic_announcement() -> None:
-    for marker in ("BOSS_SPAWN_DELAY", "Хранитель Разлома пробуждается", "sendTitle"):
-        assert marker in MAIN
+    assert "BOSS_SPAWN_DELAY" in MAIN
+    assert "хранитель разлома пробуждается" in MAIN.lower()
+    assert "sendTitle" in MAIN
 
 
 def test_every_flying_spell_has_a_named_particle_pattern_and_bounded_flight() -> None:

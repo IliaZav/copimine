@@ -65,26 +65,31 @@ music:
 waves:
   hard-cap: 48
   wave-1:
+    type: awakening
     endermen: 5
     spiders: 8
     shulkers: 0
     elite-endermen: 0
   wave-2:
+    type: hunt
     endermen: 7
     spiders: 6
     shulkers: 3
     elite-endermen: 0
   wave-3:
+    type: portals
     endermen: 10
     spiders: 0
     shulkers: 3
     elite-endermen: 4
   wave-4:
+    type: tower_defense
     endermen: 8
     spiders: 6
     shulkers: 4
     elite-endermen: 2
   wave-5:
+    type: rift_storm
     endermen: 12
     spiders: 8
     shulkers: 4
@@ -118,25 +123,42 @@ event-loot:
 wave-rewards:
   wave-1:
     ENDER_PEARL: 8
-    AMETHYST_SHARD: 4
+    EXPERIENCE_BOTTLE: 8
+    COOKED_BEEF: 16
+    ARROW: 8
+    IRON_INGOT: 4
   wave-2:
     ENDER_PEARL: 12
-    AMETHYST_SHARD: 8
-    EXPERIENCE_BOTTLE: 2
+    EXPERIENCE_BOTTLE: 12
+    GOLD_INGOT: 8
+    GOLDEN_CARROT: 12
+    GOLDEN_APPLE: 1
   wave-3:
-    ENDER_PEARL: 16
-    AMETHYST_SHARD: 12
+    ENDER_PEARL: 12
+    EXPERIENCE_BOTTLE: 16
     DIAMOND: 2
+    AMETHYST_SHARD: 8
+    ECHO_SHARD: 2
   wave-4:
-    ENDER_PEARL: 20
-    AMETHYST_SHARD: 16
-    DIAMOND: 4
-    EXPERIENCE_BOTTLE: 4
+    ENDER_PEARL: 16
+    EXPERIENCE_BOTTLE: 24
+    DIAMOND: 3
+    GOLDEN_APPLE: 2
+    ECHO_SHARD: 2
   wave-5:
     ENDER_PEARL: 24
-    AMETHYST_SHARD: 20
-    DIAMOND: 6
-    ECHO_SHARD: 2
+    EXPERIENCE_BOTTLE: 32
+    DIAMOND: 5
+    GOLDEN_APPLE: 3
+    ECHO_SHARD: 4
+    AMETHYST_SHARD: 16
+
+wave-reward-shared-rare:
+  wave-1: 0.0
+  wave-2: 0.0
+  wave-3: 0.0
+  wave-4: 0.35
+  wave-5: 0.50
 
 # One deterministic additive roll set per event-owned mob death.  The legacy
 # event-loot values above remain as the local fallback if a profile is omitted.
@@ -169,7 +191,8 @@ event-loot-rolls:
 
 boss:
   health: 2500.0
-  attack-damage-bonus: 5.0
+  # The previous configured bonus was 3.0; this is exactly +5 over it.
+  attack-damage-bonus: 8.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
   teleport-cooldown-seconds: 12
@@ -184,6 +207,11 @@ boss:
   control-duration-seconds: 10
   control-cooldown-seconds: 24
   max-summoned-servants: 4
+  debuff-amplifier: 3
+  arena-inferno:
+    telegraph-ticks: 50
+    duration-ticks: 100
+    minimum-safe-ratio: 0.35
 
 rewards:
   boss-xp: 3000

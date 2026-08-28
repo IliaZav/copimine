@@ -96,7 +96,12 @@ client.on('packet', (data, meta) => {
 })
 
 client.on('login', () => console.log(`CLIENT_LOGIN_EVENT ${username}`))
-client.on('playerJoin', startSession)
+// The protocol client emits `login` after configuration/resource-pack
+// negotiation.  `playerJoin` is not guaranteed for the local self-player and
+// can fire before the connection reaches the play state, which made the
+// harness send AuthMe/chat packets too early and produced a server-side
+// "Failed to decode packet serverbound/minecraft:hello" disconnect.
+client.once('login', startSession)
 
 client.on('chat', (packet) => {
   const text = JSON.stringify(packet)

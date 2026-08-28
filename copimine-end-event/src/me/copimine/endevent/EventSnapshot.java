@@ -48,7 +48,13 @@ public record EventSnapshot(
         Set<UUID> participants,
         Map<UUID, Double> finalDrainTargets,
         Set<UUID> finalDrainAppliedPlayers,
-        Set<Integer> waveRewardsIssued) {
+        Set<Integer> waveRewardsIssued,
+        String bossStage,
+        String bossCastState,
+        long bossCastDeadlineMillis,
+        boolean absorptionTriggered,
+        boolean judgmentTriggered,
+        boolean judgmentCompleted) {
 
     public EventSnapshot {
         eventId = eventId == null ? "" : eventId;
@@ -66,6 +72,9 @@ public record EventSnapshot(
         finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
         finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
         waveRewardsIssued = Set.copyOf(waveRewardsIssued == null ? Set.of() : waveRewardsIssued);
+        bossStage = bossStage == null || bossStage.isBlank() ? "AWAKENING" : bossStage;
+        bossCastState = bossCastState == null || bossCastState.isBlank() ? "NONE" : bossCastState;
+        bossCastDeadlineMillis = Math.max(0L, bossCastDeadlineMillis);
         bossRewardStatus = bossRewardStatus == null || bossRewardStatus.isBlank()
                 ? "PENDING" : bossRewardStatus;
         victoryStep = victoryStep == null ? "NONE" : victoryStep;
@@ -78,7 +87,8 @@ public record EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
                 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
                 false, false, false, false, false, false, false, false, "PENDING", null,
-                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of(), Set.of());
+                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of(), Set.of(),
+                "AWAKENING", "NONE", 0L, false, false, false);
     }
 
     public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
@@ -92,7 +102,8 @@ public record EventSnapshot(
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted,
                 bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, recoveryReason,
                 updatedParticipants, finalDrainTargets,
-                finalDrainAppliedPlayers, waveRewardsIssued);
+                finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
+                bossCastDeadlineMillis, absorptionTriggered, judgmentTriggered, judgmentCompleted);
     }
 
     public EventPhase eventPhase() {

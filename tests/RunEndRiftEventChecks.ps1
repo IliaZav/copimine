@@ -49,7 +49,10 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_gate_contract.py tests\test_end_event_bossbar_contract.py `
       tests\test_end_event_client_texture_quality_contract.py tests\test_end_event_creative_run_contract.py `
       tests\test_end_event_spell_names_contract.py tests\test_end_event_gate_selection_contract.py `
-      tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py
+      tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py `
+      tests\test_end_event_boss_regressions_contract.py tests\test_end_event_wave_objective_contract.py `
+      tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
+      tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py
   } finally {
     Pop-Location
   }
@@ -69,23 +72,35 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java') `
-      (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java')
+      (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossMovementPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveObjectivePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveRewardPolicyTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
   & java -cp $endRiftTestBuild EndRiftAiPolicyTest
   & java -cp $endRiftTestBuild ResourceProgressFormatterTest
   & java -cp $endRiftTestBuild GateOpeningPlanTest
+  & java -cp $endRiftTestBuild BossDamagePolicyTest
+  & java -cp $endRiftTestBuild BossMovementPolicyTest
+  & java -cp $endRiftTestBuild BossStagePolicyTest
+  & java -cp $endRiftTestBuild WaveObjectivePolicyTest
+  & java -cp $endRiftTestBuild WaveRewardPolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
     (Join-Path $endRiftRoot 'tests\EventStateStoreTest.java') `
     (Join-Path $endRiftRoot 'tests\DepositJournalTest.java') `
-    (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java')
+    (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java') `
+    (Join-Path $endRiftRoot 'tests\HazardMutationJournalTest.java')
   $endRiftRunClasspath = @($endRiftTestBuild, (Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path) + $endRiftTestClasspathEntries
   $endRiftRunClasspathText = $endRiftRunClasspath -join [IO.Path]::PathSeparator
   & java -cp $endRiftRunClasspathText EventStateStoreTest
   & java -cp $endRiftRunClasspathText DepositJournalTest
   & java -cp $endRiftRunClasspathText EventLayoutStoreTest
+  & java -cp $endRiftRunClasspathText HazardMutationJournalTest
 }
 
 Write-Host '== Local artifact hashes =='

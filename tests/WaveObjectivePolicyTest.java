@@ -15,6 +15,11 @@ public final class WaveObjectivePolicyTest {
             check(WaveObjectivePolicy.mobCap(wave) == expectedCap, "objective mob cap must match config composition at max scale and hard cap");
             check(WaveObjectivePolicy.mobCap(wave) <= 48, "objective mob cap must not exceed the config hard cap");
         }
+        check(WaveObjectivePolicy.title(1).equals("Пробуждение"), "wave 1 title must be Russian");
+        check(WaveObjectivePolicy.title(2).equals("Охота"), "wave 2 title must be Russian");
+        check(WaveObjectivePolicy.title(3).equals("Порталы"), "wave 3 title must be Russian");
+        check(WaveObjectivePolicy.title(4).equals("Оборона ядра"), "wave 4 title must be Russian");
+        check(WaveObjectivePolicy.title(5).equals("Шторм Разлома"), "wave 5 title must be Russian");
         check(WaveObjectivePolicy.isComplete(1, new WaveObjectivePolicy.Progress(10, 10, 0, 0, false, false)), "awakening predicate");
         check(WaveObjectivePolicy.isComplete(2, new WaveObjectivePolicy.Progress(10, 10, 0, 0, false, false)), "hunt predicate");
         check(WaveObjectivePolicy.isComplete(3, new WaveObjectivePolicy.Progress(0, 0, 3, 3, false, false)), "portal predicate");

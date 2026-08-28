@@ -61,7 +61,9 @@ public final class EventStateStore {
                 recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
                 recovery.victoryStep(), recovery.updatedAt(),
                 "Both primary and backup event state files are invalid.", recovery.participants(),
-                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers(), recovery.waveRewardsIssued());
+                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers(), recovery.waveRewardsIssued(),
+                recovery.bossStage(), recovery.bossCastState(), recovery.bossCastDeadlineMillis(),
+                recovery.absorptionTriggered(), recovery.judgmentTriggered(), recovery.judgmentCompleted());
         return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
     }
 
@@ -130,6 +132,12 @@ public final class EventStateStore {
             yaml.set("final-drain.targets", uuidDoubleMap(snapshot.finalDrainTargets()));
             yaml.set("final-drain.applied-players", uuidStrings(snapshot.finalDrainAppliedPlayers()));
             yaml.set("rewards.wave-rewards-issued", snapshot.waveRewardsIssued().stream().sorted().toList());
+            yaml.set("boss.stage", snapshot.bossStage());
+            yaml.set("boss.cast-state", snapshot.bossCastState());
+            yaml.set("boss.cast-deadline-millis", snapshot.bossCastDeadlineMillis());
+            yaml.set("boss.absorption-triggered", snapshot.absorptionTriggered());
+            yaml.set("boss.judgment-triggered", snapshot.judgmentTriggered());
+            yaml.set("boss.judgment-completed", snapshot.judgmentCompleted());
             yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
             yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
             List<Map<String, Object>> pads = new ArrayList<>();
@@ -205,7 +213,13 @@ public final class EventStateStore {
                 yaml.getString("event.return-stone-status", "PENDING"),
                 yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
                 yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
-                finalDrainAppliedPlayers, waveRewardsIssued);
+                finalDrainAppliedPlayers, waveRewardsIssued,
+                yaml.getString("boss.stage", "AWAKENING"),
+                yaml.getString("boss.cast-state", "NONE"),
+                yaml.getLong("boss.cast-deadline-millis", 0L),
+                yaml.getBoolean("boss.absorption-triggered", false),
+                yaml.getBoolean("boss.judgment-triggered", false),
+                yaml.getBoolean("boss.judgment-completed", false));
     }
 
     private void writeAtomic(String content) throws IOException {

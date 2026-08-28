@@ -16,9 +16,9 @@
                                              "name":  "CopiMineClient",
                                              "version":  "0.1.0",
                                              "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                             "sha1":  "b50462eb9aeb186c6e96503442a7f69e1990616c",
+                                             "sha1":  "395f0c9350f912ba13a9f6a6513fcfb7eeb6e2ea",
                                              "license":  "Proprietary",
-                                             "sha256":  "19df801c80f93adac92cf10503d3b7e168a5f84703538999cfc763cc1b9c3694"
+                                             "sha256":  "b8621fe61f0dc0da6f3b58fce5f62c41b1abea8e1eef02e2ac80b218d62e5e59"
                                          },
                                          {
                                              "name":  "CustomSkinLoader",

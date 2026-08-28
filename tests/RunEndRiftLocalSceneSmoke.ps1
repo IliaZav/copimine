@@ -83,7 +83,7 @@ Assert-Text 'scene visuals' $status 'coreOverlay=true'
 Assert-Text 'scene runes' $status 'runes=2/2'
 $gateInfo = Invoke-SceneRcon 'cmend gate info'
 Assert-Text 'gate coordinates' $gateInfo '29,68,-40'
-Assert-Text 'gate closed state' $gateInfo 'RESTORED'
+Assert-Text 'gate closed state' $gateInfo 'UNSET'
 $portalInfo = Invoke-SceneRcon 'cmend portalroom info'
 Assert-Text 'portal room metadata' $portalInfo '31.5,68.0,-42.5'
 

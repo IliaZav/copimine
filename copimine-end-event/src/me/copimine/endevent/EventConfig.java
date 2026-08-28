@@ -44,6 +44,7 @@ public record EventConfig(
         WaveDefinition wave5,
         WaveDefinition finalWave,
         Map<Integer, Map<String, Integer>> waveRewards,
+        Map<Integer, Double> waveRewardSharedRareChances,
         Map<String, Integer> waveMobLoot,
         Map<String, Integer> eliteLoot,
         Map<String, Integer> finalWaveLoot,
@@ -51,6 +52,7 @@ public record EventConfig(
         Map<String, Map<String, LootEntry>> lootProfiles,
         double bossHealth,
         double bossAttackDamageBonus,
+        int debuffAmplifier,
         int bossTargetMinSeconds,
         int bossTargetMaxSeconds,
         int bossSpellMinSeconds,
@@ -90,6 +92,8 @@ public record EventConfig(
         resourceBundle = Map.copyOf(resourceBundle);
         padRadii = List.copyOf(padRadii);
         waveRewards = copyWaveRewards(waveRewards);
+        waveRewardSharedRareChances = Map.copyOf(waveRewardSharedRareChances == null
+                ? Map.of() : waveRewardSharedRareChances);
         waveMobLoot = Map.copyOf(waveMobLoot);
         eliteLoot = Map.copyOf(eliteLoot);
         finalWaveLoot = Map.copyOf(finalWaveLoot);
@@ -97,6 +101,9 @@ public record EventConfig(
         lootProfiles = copyLootProfiles(lootProfiles);
         if (miniBossTuning == null) {
             throw new IllegalArgumentException("mini boss tuning is required");
+        }
+        if (debuffAmplifier < 0 || debuffAmplifier > 3) {
+            throw new IllegalArgumentException("debuff amplifier must be between 0 and 3");
         }
     }
 
@@ -200,6 +207,7 @@ public record EventConfig(
                 wave(waves, "wave-5"),
                 wave(waves, "final"),
                 readWaveRewards(plugin.getConfig().getConfigurationSection("wave-rewards")),
+                readWaveRewardSharedRareChances(plugin.getConfig().getConfigurationSection("wave-reward-shared-rare")),
                 waveMobLoot,
                 eliteLoot,
                 finalWaveLoot,
@@ -207,6 +215,7 @@ public record EventConfig(
                 lootProfiles,
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
+                boundedAmplifier(boss.getInt("debuff-amplifier", 3)),
                 target[0], target[1], spells[0], spells[1],
                 positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
                 bossTeleportCooldownSeconds, miniBossTuning, finalRitualTelegraphTicks,
@@ -263,6 +272,20 @@ public record EventConfig(
             });
         }
         return Map.copyOf(copied);
+    }
+
+    private static Map<Integer, Double> readWaveRewardSharedRareChances(ConfigurationSection parent) {
+        LinkedHashMap<Integer, Double> chances = new LinkedHashMap<>();
+        for (int wave = 1; wave <= 5; wave++) {
+            double chance = parent == null ? (wave >= 4 ? 0.25D : 0.0D)
+                    : parent.getDouble("wave-" + wave, -1.0D);
+            if (Double.isNaN(chance) || Double.isInfinite(chance) || chance < 0.0D || chance > 1.0D) {
+                throw new IllegalStateException("wave-reward-shared-rare.wave-" + wave
+                        + " must be between 0 and 1");
+            }
+            chances.put(wave, chance);
+        }
+        return Map.copyOf(chances);
     }
 
     private static int[] secondsRange(ConfigurationSection parent, String key) {
@@ -421,6 +444,13 @@ public record EventConfig(
         return value;
     }
 
+    private static int boundedAmplifier(int value) {
+        if (value < 0 || value > 3) {
+            throw new IllegalStateException("boss.debuff-amplifier must be between 0 and 3");
+        }
+        return value;
+    }
+
     private static MusicTrack musicTrack(ConfigurationSection parent, String key) {
         ConfigurationSection section = requiredSection(parent, key);
         String soundId = text(section.getString("sound", ""), "");
@@ -475,6 +505,14 @@ public record EventConfig(
 
     public Map<String, Integer> waveReward(int wave) {
         return waveRewards.getOrDefault(wave, Map.of());
+    }
+
+    public int debuffAmplifier() {
+        return debuffAmplifier;
+    }
+
+    public double waveRewardSharedRareChance(int wave) {
+        return waveRewardSharedRareChances.getOrDefault(wave, 0.0D);
     }
 
     public record MiniBossTuning(

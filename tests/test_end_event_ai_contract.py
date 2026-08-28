@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -10,7 +11,7 @@ CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 
 def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_2500_hp() -> None:
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "attack-damage-bonus: 8.0" in CONFIG
     assert "half-health: 1250.0" in CONFIG
     assert "final-threshold: 250.0" in CONFIG
     assert "bossFinalHealth()" in MAIN
@@ -28,8 +29,8 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
         "BOSS_AI_TARGET",
         "BOSS_AI_LEASH",
         "MAX_ACTIVE_VOID_MARKS = 2",
-        "VOID_MARK_DURATION_SECONDS = 18",
-        "MAX_POTION_AMPLIFIER = 255",
+        "VOID_MARK_DURATION_SECONDS = 10",
+        "MAX_POTION_AMPLIFIER = 3",
         "ARENA_INFERNO_DURATION_TICKS = 100",
         "VOID_MARK_RADIUS_BLOCKS = 3",
         "runTaskTimer(this",
@@ -44,8 +45,9 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
     ):
         assert marker in MAIN
     assert "random.nextInt(4)" not in MAIN
-    assert "player.damage(2.0D, boss)" in MAIN
-    assert "player.damage(7.0D, boss)" in MAIN
+    assert "BOSS_BLAST_DAMAGE = 12.0D" in MAIN
+    assert "BOSS_PROJECTILE_DAMAGE = 12.0D" in MAIN
+    assert "VOID_MARK_DAMAGE = 4.0D" in MAIN
 
 
 def test_boss_uses_the_floor_combat_anchor_and_can_take_damage_after_absorption() -> None:
@@ -60,24 +62,73 @@ def test_boss_uses_the_floor_combat_anchor_and_can_take_damage_after_absorption(
     assert "return;" in damage
 
 
+def test_boss_has_a_bounded_stuck_detector_and_reasoned_teleport_log() -> None:
+    assert "private void detectBossStuck" in MAIN
+    stuck = MAIN[MAIN.index("private void detectBossStuck"):MAIN.index("@EventHandler(priority = EventPriority.HIGHEST", MAIN.index("private void detectBossStuck"))]
+    assert "now - bossLastProgressAt < 4_000L" in stuck
+    assert "moved >= 0.5D" in stuck
+    assert "reason=stuck" in stuck
+    assert "BOSS_MOVE_TELEPORT" in stuck
+    assert "nextBossStuckTeleportMillis" in MAIN
+
+
+def test_boss_leash_runs_before_any_cast_state_can_short_circuit_movement() -> None:
+    tick = MAIN[MAIN.index("private void tickBoss()"):MAIN.index("private void synchronizeBossStage", MAIN.index("private void tickBoss()"))]
+    assert tick.index("Location core = coreCombatAnchorLocation();") < tick.index("if (bossCastState == BossCastState.ABSORPTION_CHANNEL")
+    assert tick.index("enforceCombatLeash(boss, core") < tick.index("if (bossCastState == BossCastState.ABSORPTION_CHANNEL")
+
+
+def test_boss_does_not_choose_a_core_standing_target_as_a_reason_to_collapse_back_to_core() -> None:
+    maintain = MAIN[MAIN.index("private void maintainBossTeleport"):MAIN.index("private void detectBossStuck")]
+    assert "targetOnCore" in maintain
+    assert "isCoreBlockPosition(target.getLocation())" in maintain
+    assert "target-on-core" in maintain
+
+
 def test_boss_debuffs_are_max_level_and_three_times_longer() -> None:
-    assert "MAX_POTION_AMPLIFIER = 255" in MAIN
-    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void voidBlast"):MAIN.index("private void riftProjectile")]
-    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void riftProjectile"):MAIN.index("private void cleanupRiftProjectile")]
-    assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index("private void voidMark"):MAIN.index("private void cancelVoidMark")]
+    assert "MAX_POTION_AMPLIFIER = 255" not in MAIN
+    assert "configuredDebuffAmplifier()" in MAIN
+    assert "MAX_POTION_AMPLIFIER = 3" in MAIN
+    assert "DEBUFF_DURATION_MULTIPLIER = 3" in MAIN
+    for constant, base in (
+        ("BOSS_BLAST_DEBUFF_TICKS", "BASE_BOSS_DEBUFF_TICKS"),
+        ("BOSS_PROJECTILE_DEBUFF_TICKS", "BASE_BOSS_DEBUFF_TICKS"),
+        ("VOID_MARK_DEBUFF_TICKS", "BASE_VOID_MARK_DEBUFF_TICKS"),
+        ("BOSS_JUDGMENT_WITHER_DEBUFF_TICKS", "BASE_JUDGMENT_WITHER_DEBUFF_TICKS"),
+        ("BOSS_JUDGMENT_WEAKNESS_DEBUFF_TICKS", "BASE_JUDGMENT_WEAKNESS_DEBUFF_TICKS"),
+        ("ARENA_INFERNO_DEBUFF_TICKS", "BASE_ARENA_INFERNO_DEBUFF_TICKS"),
+    ):
+        assert re.search(
+            rf"{constant}\s*=\s*{base}\s*\*\s*DEBUFF_DURATION_MULTIPLIER",
+            MAIN,
+        )
+    assert "configuredDebuffAmplifier()" in MAIN[MAIN.index("private void voidBlast"):MAIN.index("private void riftProjectile")]
+    assert "configuredDebuffAmplifier()" in MAIN[MAIN.index("private void riftProjectile"):MAIN.index("private void cleanupRiftProjectile")]
+    mark = MAIN[MAIN.index("private void voidMark"):MAIN.index("private void cancelVoidMark")]
+    assert "PotionEffectType.WITHER" in mark
+    assert "VOID_MARK_DEBUFF_TICKS, configuredDebuffAmplifier()" in mark
+    assert "BOSS_JUDGMENT_WITHER_DEBUFF_TICKS, configuredDebuffAmplifier()" in MAIN
+    assert "BOSS_JUDGMENT_WEAKNESS_DEBUFF_TICKS, configuredDebuffAmplifier()" in MAIN
+    assert "ARENA_INFERNO_DEBUFF_TICKS, configuredDebuffAmplifier()" in MAIN
     for method, next_method in (
         ("private void miniBossRiftStep", "private void miniBossVoidSnare"),
         ("private void miniBossVoidSnare", "private void miniBossEchoPulse"),
         ("private void miniBossEchoPulse", "private void enforceCombatLeash"),
     ):
-        assert "MAX_POTION_AMPLIFIER" in MAIN[MAIN.index(method):MAIN.index(next_method)]
+        assert "configuredDebuffAmplifier()" in MAIN[MAIN.index(method):MAIN.index(next_method)]
 
 
 def test_arena_inferno_is_a_five_second_owned_spell() -> None:
     assert "ARENA_INFERNO" in MAIN
     assert "arenaInferno" in MAIN
-    assert "FIRE" in MAIN
+    inferno = MAIN[MAIN.index("private void arenaInferno"):MAIN.index("private void clearArenaInferno")]
+    assert "Material.FIRE" in inferno
+    assert "HazardMutationJournal.Entry" in inferno
+    assert "hazardJournal.prepare" in inferno
+    assert "restoreArenaInfernoBlocks" in MAIN
+    assert "player.setFireTicks" in inferno
     assert "ARENA_INFERNO_DURATION_TICKS = 100" in MAIN
+    assert "real_fire=true" in inferno
 
 
 def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller() -> None:
@@ -187,9 +238,12 @@ def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_lev
     assert "boss-radius: 20.0" in CONFIG
     assert "containment-radius: 20.0" in CONFIG
     assert "config.containmentRadius()" in MAIN
-    assert "candidate.setY(center.getBlockY())" in MAIN
+    assert "MIN_BOSS_CORE_DISTANCE_BLOCKS = 3.5D" in MAIN
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS = 2.5D" in MAIN
+    assert "BossMovementPolicy.chooseSafeDestination" in MAIN
+    assert "BossMovementPolicy.chooseStuckFallback" in MAIN
     assert "horizontalDistanceSquared" in MAIN
-    assert "offCoreLevel" in MAIN
+    assert "configuredCombatVerticalRadius()" in MAIN
     assert "The pad coordinate is the air block above this floor" in MAIN
 
 
@@ -201,14 +255,14 @@ def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> No
     assert body.index("enforceWaveMobContainment();") < body.index("if (!isCombatPhase())")
     assert "private void enforceWaveMobContainment()" in MAIN
     assert "boundedCombatRadius(config.containmentRadius())" in MAIN
-    assert "target.getBlockY() != anchor.getBlockY()" in MAIN
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS" in MAIN
 
 
 def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_inside_it() -> None:
     assert "private boolean isCoreBlockPosition(Location location)" in MAIN
     assert "private Location coreBlockTopLocation()" in MAIN
     assert "if (isCoreBlockPosition(target))" in MAIN
-    assert "Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D);" in MAIN
+    assert "Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minimum);" in MAIN
     assert "event.setTo(safe);" in MAIN
 
 
@@ -216,10 +270,11 @@ def test_wave_spawns_use_the_floor_below_an_elevated_core_and_never_fall_back_on
     start = MAIN.index("private Location safeSpawnLocation(Location core, int index, double offset)")
     end = MAIN.index("@EventHandler(priority = EventPriority.HIGHEST", start)
     body = MAIN[start:end]
-    assert "Location floorAnchor = core.clone().subtract(0.0D, 1.0D, 0.0D);" in body
+    assert "Location floorAnchor = coreCombatAnchorLocation();" in body
+    assert "coreY + 1" in MAIN[MAIN.index("private int combatLevelY()"):MAIN.index("private Location coreBlockTopLocation")]
     assert "Location candidate = spawnLocation(floorAnchor, index + attempt, offset);" in body
     assert "return null;" in body
-    assert "return core.clone();" not in body
+    assert "core.clone().subtract(0.0D, 1.0D, 0.0D)" not in body
 
 
 def test_wave_leash_uses_the_core_block_level_floor_instead_of_the_core_top() -> None:

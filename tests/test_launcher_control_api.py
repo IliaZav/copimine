@@ -129,6 +129,20 @@ def test_public_feed_file_and_telemetry_work_without_database(monkeypatch, tmp_p
         assert telemetry.json()["ok"] is True
 
 
+def test_velopack_stable_feed_alias_is_served_by_the_allowlisted_download_route(monkeypatch, tmp_path: Path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    download_root = tmp_path / "public" / "downloads" / "launcher"
+    download_root.mkdir(parents=True)
+    feed = '{"Assets":[{"PackageId":"CopiMineLauncher","Version":"1.0.3"}]}\n'
+    (download_root / "releases.stable.json").write_text(feed, encoding="utf-8")
+
+    with TestClient(main.app) as client:
+        response = client.get("/downloads/launcher/releases.stable.json")
+
+    assert response.status_code == 200, response.text
+    assert response.content == (download_root / "releases.stable.json").read_bytes()
+
+
 def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, tmp_path: Path) -> None:
     """The native Launcher has no browser CSRF cookie by design."""
     main = load_main(monkeypatch, tmp_path)

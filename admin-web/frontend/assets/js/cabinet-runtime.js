@@ -5879,65 +5879,40 @@ async function loadPlayerLink() {
   const launcherChallenge = search.get("launcher_challenge")?.trim() || "";
   const launcherCode = search.get("launcher_code")?.trim() || "";
   const launcherNick = search.get("launcher_nick")?.trim() || "";
-  const hasLauncherAuthorization = Boolean(launcherChallenge && launcherCode);
-  let launcherAuthorization = null;
-  if (hasLauncherAuthorization) {
-    try {
-      await api("/api/player/launcher/link/authorize", {
-        method: "POST",
-        body: JSON.stringify({ challenge_id: launcherChallenge, code: launcherCode })
-      });
-      launcherAuthorization = { ok: true };
-      // The Launcher is already polling, so this hand-off is best effort. It
-      // lets browsers which registered the protocol return to the app without
-      // requiring the player to copy a code or click another button.
-      window.setTimeout(() => {
-        try {
-          window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(launcherChallenge)}`;
-        } catch (_) {
-          // A browser may block custom protocols; the success message remains
-          // visible and the Launcher polling path still completes the link.
-        }
-      }, 120);
-      try {
-        window.history.replaceState({}, document.title, "/cabinet/link.html");
-      } catch (_) {
-        // History APIs can be unavailable in an embedded or restricted view.
-      }
-    } catch (err) {
-      launcherAuthorization = { ok: false, message: err.message || "Не удалось подтвердить Launcher." };
-    }
-  }
+  const hasLauncherRequest = Boolean(launcherChallenge && launcherCode);
   const requestedNick = /^[A-Za-z0-9_]{3,16}$/.test(launcherNick)
     ? launcherNick
     : (state.user.minecraftName || "");
-  const launcherPanel = hasLauncherAuthorization
+  const launcherPanel = hasLauncherRequest
     ? panel(
-      launcherAuthorization?.ok ? "Launcher привязан" : "Привязка Launcher не завершена",
-      launcherAuthorization?.ok
-        ? "Сайт подтвердил вход в ваш аккаунт."
-        : "Не удалось подтвердить запрос Launcher.",
-      launcherAuthorization?.ok
-        ? '<div class="notice">Launcher привязан. Это окно можно закрыть.</div>'
-        : `<div class="notice error">${esc(launcherAuthorization?.message || "Повтори авторизацию из Launcher.")}</div>`
-    )
+      "Подтвердите привязку Launcher",
+      "Проверьте, что это ваш Launcher, и подтвердите связь с аккаунтом.",
+      `<div class="notice" id="launcherLinkRequest">${requestedNick
+        ? `Launcher запрашивает привязку для ника <strong>${esc(requestedNick)}</strong>.`
+        : "Launcher запрашивает привязку к этому аккаунту."}
+      </div>
+      <div id="launcherLinkError" class="notice error hidden" role="alert"></div>
+      <div class="action-strip">
+        <button id="launcherLinkConfirm" class="btn btn-primary" type="button" data-click="confirmLauncherLink()">Привязать Launcher к этому аккаунту</button>
+        <button class="btn btn-secondary" type="button" data-click="cancelLauncherLink()">Отмена</button>
+      </div>`
     : panel("Привязка Launcher", "Запусти привязку из Launcher и войди на сайте.", safetyRail([
       ["1. Нажми кнопку в Launcher", "Откроется эта страница сайта.", "good"],
-      ["2. Войди в аккаунт", "После входа сайт подтвердит запрос автоматически.", "neutral"],
+      ["2. Войди в аккаунт", "После входа появится кнопка подтверждения.", "neutral"],
       ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
     ]));
-  const automaticLinkPanel = hasLauncherAuthorization ? "" : panel(
+  const automaticLinkPanel = hasLauncherRequest ? "" : panel(
     "Связь с Launcher",
-    "Привязка проходит автоматически после входа на сайте.",
+    "После входа подтверди привязку на этой странице.",
     `${launcherNick
       ? `<div class="notice">Ник ${esc(requestedNick)} получен от Launcher. Войди в аккаунт — код вводить не нужно.</div>`
-      : "<div class=\"notice\">Откройте Launcher и нажмите «Привязать аккаунт». После входа сайт подтвердит запрос автоматически.</div>"}
+      : "<div class=\"notice\">Откройте Launcher и нажмите «Привязать аккаунт». После входа на этой странице появится кнопка подтверждения.</div>"}
      <a class="btn btn-secondary" href="/launcher.html">Открыть страницу Launcher</a>`
   );
   setView(`
     <section class="layout-grid grid-2">
-      ${panel("Статус привязки", hasLauncherAuthorization
-        ? "Launcher связывается с аккаунтом сайта после обычного входа. Код вводить не нужно."
+      ${panel("Статус привязки", hasLauncherRequest
+        ? "Проверьте аккаунт на этой странице и подтвердите привязку. Код вводить не нужно."
         : "Minecraft-ник подтверждается кодом из игры.", kv([
         ["Логин сайта", state.user.username || "—"],
         ["Minecraft-ник", state.user.minecraftName || "—"],
@@ -5949,6 +5924,102 @@ async function loadPlayerLink() {
     ${automaticLinkPanel}
   `);
 }
+
+async function confirmLauncherLink() {
+  const search = new URLSearchParams(window.location.search || "");
+  const challengeId = search.get("launcher_challenge")?.trim() || "";
+  const code = search.get("launcher_code")?.trim() || "";
+  const button = $("launcherLinkConfirm");
+  const errorNode = $("launcherLinkError");
+  if (!challengeId || !code) {
+    operationAlert("Запрос привязки Launcher отсутствует или уже устарел.", true);
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Подтверждаем…";
+  }
+  if (errorNode) {
+    errorNode.textContent = "";
+    errorNode.classList.add("hidden");
+  }
+
+  try {
+    await api("/api/player/launcher/link/authorize", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId, code })
+    });
+
+    const username = String(state.user?.username || "вашему аккаунту").trim();
+    const message = `Привязка подтверждена к аккаунту ${username}. Эту страницу можно закрыть.`;
+    operationAlert(message);
+    try {
+      window.alert(message);
+    } catch (_) {
+      // Some embedded browsers disable native dialogs; the in-page status remains visible.
+    }
+    try {
+      window.history.replaceState({}, document.title, "/cabinet/link.html");
+    } catch (_) {
+      // History APIs can be unavailable in an embedded or restricted view.
+    }
+
+    const requestNode = $("launcherLinkRequest");
+    if (requestNode) {
+      requestNode.className = "notice success";
+      requestNode.textContent = message;
+    }
+    if (button) {
+      button.textContent = "Привязка подтверждена";
+      button.disabled = true;
+    }
+
+    // The Launcher is already polling. The protocol callback is a best-effort
+    // fast path; the visible success state is the fallback when the browser
+    // blocks custom protocols or refuses to close a regular tab.
+    window.setTimeout(() => {
+      try {
+        window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(challengeId)}`;
+      } catch (_) {
+        // The Launcher polling path still completes the link.
+      }
+      window.setTimeout(() => {
+        try {
+          window.close();
+        } catch (_) {
+          // A normal browser tab may refuse to close itself.
+        }
+      }, 180);
+    }, 80);
+  } catch (err) {
+    const message = err?.message || "Не удалось подтвердить привязку Launcher.";
+    if (errorNode) {
+      errorNode.textContent = message;
+      errorNode.classList.remove("hidden");
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Привязать Launcher к этому аккаунту";
+    }
+    operationAlert(message, true);
+  }
+}
+
+function cancelLauncherLink() {
+  const returnTarget = "/launcher.html";
+  try {
+    window.history.replaceState({}, document.title, "/cabinet/link.html");
+  } catch (_) {
+    // History APIs can be unavailable in an embedded or restricted view.
+  }
+  window.location.href = returnTarget;
+}
+
+// The cabinet uses delegated data-click actions. Module-scoped functions are
+// not window properties, so expose only these two page actions explicitly.
+window.confirmLauncherLink = confirmLauncherLink;
+window.cancelLauncherLink = cancelLauncherLink;
 
 async function loadPlayerBank() {
   return getPlayerTreasuryPages().loadPlayerBank();

@@ -55,7 +55,29 @@ def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_ap
         assert marker in link_page.lower(), marker
 
     assert "Код вводить не нужно" in link_page
-    assert "const automaticLinkPanel = hasLauncherAuthorization ? \"\" :" in link_page
+    assert "const automaticLinkPanel = hasLauncherRequest ? \"\" :" in link_page
+
+
+def test_launcher_link_page_requires_confirmation_before_authorizing_and_returns_to_launcher():
+    link_page = (ROOT / "admin-web/frontend/assets/js/cabinet-runtime.js").read_text(encoding="utf-8")
+    start = link_page.index("async function loadPlayerLink()")
+    end = link_page.index("async function loadPlayerBank()", start)
+    rendered_link_page = link_page[start:end]
+
+    assert "async function confirmLauncherLink()" in rendered_link_page
+    assert 'data-click="confirmLauncherLink()"' in rendered_link_page
+    assert "Привязать Launcher к этому аккаунту" in rendered_link_page
+    assert "window.alert" in rendered_link_page
+    assert "Привязка подтверждена к аккаунту" in rendered_link_page
+    assert "window.close()" in rendered_link_page
+    assert "copimine://launcher/link?challenge=" in rendered_link_page
+    assert "window.confirmLauncherLink = confirmLauncherLink" in rendered_link_page
+    assert "window.cancelLauncherLink = cancelLauncherLink" in rendered_link_page
+    assert "hasLauncherAuthorization" not in rendered_link_page
+    assert "hasLauncherRequest\n        ? \"Проверьте аккаунт" in rendered_link_page
+
+    before_confirmation = rendered_link_page.split("async function confirmLauncherLink()", 1)[0]
+    assert '/api/player/launcher/link/authorize' not in before_confirmation
 
     protocol = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherProtocolRegistration.cs").read_text(encoding="utf-8")
     assert "Registry.CurrentUser" in protocol

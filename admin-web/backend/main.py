@@ -15859,7 +15859,7 @@ def launcher_distribution_file(filename: str) -> Path:
     if not download_root.is_dir():
         raise HTTPException(status_code=404, detail="Launcher package directory is not configured")
 
-    allowed = {"RELEASES", "releases.win.json", "assets.win.json"}
+    allowed = {"RELEASES", "releases.win.json", "releases.stable.json", "assets.win.json"}
     metadata_path = public_root / "assets" / "public-data" / "launcher" / "latest.json"
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))

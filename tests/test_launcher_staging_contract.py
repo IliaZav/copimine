@@ -85,6 +85,11 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
         assert (output / "Assets/WebView2/MicrosoftEdgeWebView2RuntimeInstallerX64.exe").stat().st_size > 100_000_000
 
         assets_feed = json.loads((PACKAGE_ROOT / "assets.win.json").read_text(encoding="utf-8"))
+        assert (output / "downloads/launcher/releases.stable.json").read_bytes() == (
+            PACKAGE_ROOT / "releases.win.json"
+        ).read_bytes()
+        staged_assets_feed = json.loads((output / "downloads/launcher/assets.win.json").read_text(encoding="utf-8"))
+        assert any(item["RelativeFileName"] == "releases.stable.json" for item in staged_assets_feed)
         for asset in assets_feed:
             filename = asset["RelativeFileName"]
             assert (output / "downloads/launcher" / filename).is_file(), filename

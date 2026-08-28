@@ -234,10 +234,35 @@ foreach ($feedFileName in $feedFileNames) {
     $feedFile = Join-Path $packageRoot $feedFileName
     Copy-Item -LiteralPath $feedFile -Destination (Join-Path $downloadDirectory $feedFileName) -Force
 }
+# Velopack 1.2 asks for releases.<channel>.json when the Launcher supplies
+# its product channel (stable). vpk also emits releases.win.json for the
+# Windows RID, so publish the same verified document under both names. This
+# keeps existing installs from failing with a 404 while the public feed stays
+# a single immutable release.
+Copy-Item -LiteralPath (Join-Path $packageRoot 'releases.win.json') -Destination (Join-Path $downloadDirectory 'releases.stable.json') -Force
 $assetFeed | ForEach-Object {
     $assetFileName = [string]$_.RelativeFileName
     Copy-Item -LiteralPath (Join-Path $packageRoot $assetFileName) -Destination (Join-Path $downloadDirectory $assetFileName) -Force
 }
+# Keep the stable-channel alias in the public asset allowlist as well. The
+# production FastAPI download route derives its safe filenames from this
+# document, so an unlisted alias would still return 404 even when the file is
+# present on disk.
+$stagedAssetsFeedPath = Join-Path $downloadDirectory 'assets.win.json'
+$stagedAssetsFeed = [System.Collections.Generic.List[object]]::new()
+foreach ($asset in $assetFeed) {
+    $stagedAssetsFeed.Add([ordered]@{
+        RelativeFileName = [string]$asset.RelativeFileName
+        Type = [string]$asset.Type
+    })
+}
+$stagedAssetsFeed.Add([ordered]@{
+    RelativeFileName = 'releases.stable.json'
+    Type = 'ReleaseFeed'
+})
+$stagedAssetsFeedJson = $stagedAssetsFeed | ConvertTo-Json -Depth 4 -Compress
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($stagedAssetsFeedPath, $stagedAssetsFeedJson + [Environment]::NewLine, $utf8NoBom)
 $fullPackages | Copy-Item -Destination $downloadDirectory -Force
 
 $offlineDestination = Join-Path $destination 'launcher-bootstrap'

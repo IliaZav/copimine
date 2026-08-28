@@ -161,6 +161,7 @@ def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, t
         assert payload["ok"] is True
         assert payload["challengeId"]
         assert payload["pollToken"]
+        assert "/launcher-link.html?launcher_challenge=" in payload["authorizationUrl"]
 
         poll = client.get(
             "/api/launcher/link/status",

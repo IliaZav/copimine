@@ -302,7 +302,8 @@ public sealed class HttpLauncherBindingClient : ILauncherBindingClient
                 && !(uri.IsLoopback && string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)))
             || !string.IsNullOrEmpty(uri.UserInfo)
             || (!uri.IsLoopback && !uri.Host.Equals("copimine.ru", StringComparison.OrdinalIgnoreCase) && !uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase))
-            || !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal))
+            || (!uri.AbsolutePath.Equals("/launcher-link.html", StringComparison.Ordinal)
+                && !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal)))
         {
             throw new LauncherBindingException(code, "Сервис привязки вернул недопустимый адрес сайта.");
         }

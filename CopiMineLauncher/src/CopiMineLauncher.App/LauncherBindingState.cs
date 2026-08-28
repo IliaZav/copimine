@@ -167,7 +167,9 @@ public sealed class LauncherBindingStateStore
                 || string.Equals(uri.Host, "www.copimine.ru", StringComparison.OrdinalIgnoreCase)
                 || uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase));
         var local = string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
-        return (production || local) && uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal);
+        return (production || local)
+            && (uri.AbsolutePath.Equals("/launcher-link.html", StringComparison.Ordinal)
+                || uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal));
     }
 
     private static void WriteJsonAtomically<T>(string destination, T value)

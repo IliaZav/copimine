@@ -1,0 +1,190 @@
+.launcher-link-page {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 14% 12%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
+    radial-gradient(circle at 88% 84%, color-mix(in srgb, var(--accent-2, #6ed39a) 13%, transparent), transparent 32%),
+    var(--page-bg, var(--background, #0b1511));
+  color: var(--ink);
+}
+
+.launcher-link-page::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  content: "";
+  opacity: .28;
+  background-image: linear-gradient(color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(to bottom, #000, transparent 92%);
+}
+
+.launcher-link-shell {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 32px 18px;
+}
+
+.launcher-link-card {
+  width: min(100%, 560px);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent) 6%);
+  box-shadow: 0 26px 80px color-mix(in srgb, #000 35%, transparent), 0 0 0 1px color-mix(in srgb, var(--ink) 4%, transparent) inset;
+}
+
+.launcher-link-head {
+  display: grid;
+  gap: 12px;
+  padding: 28px 30px 24px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 68%);
+}
+
+.launcher-link-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: .9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.launcher-link-brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 10px;
+}
+
+.launcher-link-eyebrow {
+  margin: 8px 0 0;
+  color: var(--accent);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.launcher-link-head h1 {
+  max-width: 18ch;
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.25rem);
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+
+.launcher-link-head p {
+  max-width: 48ch;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.launcher-link-body {
+  display: grid;
+  gap: 16px;
+  min-height: 210px;
+  padding: 26px 30px;
+  align-content: center;
+}
+
+.launcher-link-status {
+  display: grid;
+  gap: 16px;
+}
+
+.launcher-link-notice {
+  display: grid;
+  gap: 7px;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2, var(--surface)) 88%, var(--accent) 12%);
+}
+
+.launcher-link-notice strong {
+  color: var(--ink);
+}
+
+.launcher-link-notice span,
+.launcher-link-meta {
+  color: var(--muted);
+  font-size: .88rem;
+  line-height: 1.5;
+}
+
+.launcher-link-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.launcher-link-actions .btn {
+  min-height: 42px;
+}
+
+.launcher-link-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: var(--muted);
+}
+
+.launcher-link-spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: launcher-link-spin .8s linear infinite;
+}
+
+.launcher-link-page[data-state="error"] .launcher-link-card {
+  border-color: color-mix(in srgb, var(--red, #e36f6f) 48%, var(--line));
+}
+
+.launcher-link-error {
+  color: var(--red, #e36f6f);
+}
+
+.launcher-link-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 30px 22px;
+  border-top: 1px solid var(--line);
+}
+
+.launcher-link-foot small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.launcher-link-foot button {
+  flex: 0 0 auto;
+}
+
+@keyframes launcher-link-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+  .launcher-link-shell { padding: 14px; }
+  .launcher-link-head,
+  .launcher-link-body { padding-inline: 20px; }
+  .launcher-link-foot { padding-inline: 20px; }
+  .launcher-link-foot { align-items: flex-start; flex-direction: column; }
+  .launcher-link-foot button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher-link-spinner { animation: none; }
+}

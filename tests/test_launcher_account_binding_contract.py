@@ -6,6 +6,10 @@ BACKEND = (ROOT / "admin-web/backend/main.py").read_text(encoding="utf-8")
 VIEW_MODEL = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherViewModel.cs").read_text(encoding="utf-8")
 APP = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/App.xaml.cs").read_text(encoding="utf-8")
 MAIN_WINDOW = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml").read_text(encoding="utf-8")
+APP_ROUTES = (ROOT / "admin-web/frontend/assets/js/shared/app-routes.js").read_text(encoding="utf-8")
+HIDDEN_LINK_PAGE = ROOT / "admin-web/frontend/launcher-link.html"
+HIDDEN_LINK_RUNTIME = ROOT / "admin-web/frontend/assets/js/launcher-link-page.js"
+LEGACY_LINK_REDIRECT = ROOT / "admin-web/frontend/assets/js/launcher-link-legacy-redirect.js"
 
 
 def test_launcher_binding_uses_expiring_single_use_challenge_without_passwords():
@@ -123,6 +127,57 @@ def test_unauthenticated_launcher_binding_preserves_the_return_target_after_logi
         "if (launcherReturn) {",
     ):
         assert marker in routes or marker in runtime, marker
+
+
+def test_launcher_binding_uses_a_standalone_page_for_both_authenticated_and_guest_flows():
+    assert HIDDEN_LINK_PAGE.is_file()
+    assert HIDDEN_LINK_RUNTIME.is_file()
+    page = HIDDEN_LINK_PAGE.read_text(encoding="utf-8")
+    runtime = HIDDEN_LINK_RUNTIME.read_text(encoding="utf-8")
+
+    assert 'data-page-kind="launcher-link"' in page
+    for marker in (
+        "/api/player/me",
+        "/api/player/launcher/link/authorize",
+        "authLandingHref(\"signin\"",
+        "authLandingHref(\"register\"",
+        "window.alert",
+        "copimine://launcher/link?challenge=",
+        "window.close()",
+        "launcher_challenge",
+        "launcher_code",
+    ):
+        assert marker in runtime, marker
+
+    # The normal cabinet link tab stays on the cabinet shell; only a
+    # Launcher-created challenge uses the standalone, non-navigation page.
+    assert 'link: "/cabinet/link.html"' in APP_ROUTES
+    assert 'return query ? `${LAUNCHER_BINDING_PATH}?${query}` : "";' in APP_ROUTES
+    assert 'const safePath = target.pathname === LAUNCHER_BINDING_PATH' in APP_ROUTES
+    assert 'target.pathname === LEGACY_LAUNCHER_BINDING_PATH' in APP_ROUTES
+
+
+def test_launcher_binding_page_never_asks_the_user_to_type_the_one_time_code():
+    runtime = HIDDEN_LINK_RUNTIME.read_text(encoding="utf-8")
+    for marker in ("linkCodeInput", "Введите код привязки", "input name=\"launcher_code\""):
+        assert marker not in runtime
+
+
+def test_legacy_binding_url_redirects_valid_requests_to_the_standalone_page():
+    page = (ROOT / "admin-web/frontend/cabinet/link.html").read_text(encoding="utf-8")
+    redirect = LEGACY_LINK_REDIRECT.read_text(encoding="utf-8")
+    assert 'launcher-link-legacy-redirect.js?v=20260828launcherlink3' in page
+    assert "launcherBindingHrefFromSearch" in redirect
+    assert 'window.location.pathname === "/cabinet/link.html"' in redirect
+    assert 'window.location.replace(target)' in redirect
+
+
+def test_backend_and_native_launcher_accept_the_standalone_binding_path():
+    assert 'f"{ADMIN_PUBLIC_BASE_URL}/launcher-link.html?launcher_challenge=' in BACKEND
+    assert 'uri.AbsolutePath.Equals("/launcher-link.html", StringComparison.Ordinal)' in VIEW_MODEL
+    assert 'uri.AbsolutePath.Equals("/launcher-link.html", StringComparison.Ordinal)' in (
+        ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/LauncherBindingState.cs"
+    ).read_text(encoding="utf-8")
 
 
 def test_launcher_nickname_change_is_a_server_side_identity_operation():

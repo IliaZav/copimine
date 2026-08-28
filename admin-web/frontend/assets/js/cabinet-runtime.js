@@ -12,7 +12,7 @@ import { createPlayerAccountPages } from "./player/account-pages.js";
 import { createPlayerArtifactPages } from "./player/artifact-pages.js";
 import { createPlayerDonationPages } from "./player/donation-pages.js";
 import { createPlayerTreasuryPages } from "./player/treasury-pages.js";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260828launcherlink3";
 
 const $ = (id) => document.getElementById(id);
 

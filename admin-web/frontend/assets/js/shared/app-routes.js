@@ -44,6 +44,8 @@ export const ROLE_HOME_ROUTES = Object.freeze({
 const LAUNCHER_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{16,96}$/;
 const LAUNCHER_CODE_PATTERN = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{8}$/;
 const MINECRAFT_NAME_PATTERN = /^[A-Za-z0-9_]{3,16}$/;
+const LAUNCHER_BINDING_PATH = "/launcher-link.html";
+const LEGACY_LAUNCHER_BINDING_PATH = "/cabinet/link.html";
 
 function launcherBindingQuery(search = "") {
   const source = new URLSearchParams(String(search || "").replace(/^\?/, ""));
@@ -62,7 +64,7 @@ function launcherBindingQuery(search = "") {
 
 export function launcherBindingHrefFromSearch(search = "") {
   const query = launcherBindingQuery(search);
-  return query ? `/cabinet/link.html?${query}` : "";
+  return query ? `${LAUNCHER_BINDING_PATH}?${query}` : "";
 }
 
 export function launcherReturnHrefFromAuthSearch(search = "") {
@@ -71,7 +73,9 @@ export function launcherReturnHrefFromAuthSearch(search = "") {
   if (!raw) return "";
   try {
     const target = new URL(raw, window.location.origin);
-    if (target.origin !== window.location.origin || target.pathname !== "/cabinet/link.html") return "";
+    const safePath = target.pathname === LAUNCHER_BINDING_PATH
+      || target.pathname === LEGACY_LAUNCHER_BINDING_PATH;
+    if (target.origin !== window.location.origin || !safePath) return "";
     return launcherBindingHrefFromSearch(target.search);
   } catch {
     return "";

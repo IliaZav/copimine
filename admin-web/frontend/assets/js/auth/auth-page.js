@@ -3,7 +3,7 @@ import {
   authLandingHref,
   defaultAppRouteForRole,
   launcherReturnHrefFromAuthSearch,
-} from "../shared/app-routes.js?v=20260825siteui16";
+} from "../shared/app-routes.js?v=20260828launcherlink3";
 
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
@@ -109,6 +109,23 @@ function setRecoveryStatus(message = "", error = false) {
 function syncAuthForm() {
   const register = isRegisterPage();
   $("minecraftNameGroup")?.classList.toggle("hidden", !register);
+  const launcherReturn = launcherReturnHrefFromAuthSearch(window.location.search);
+  const switchToSignin = document.querySelector("[data-auth-switch='signin']");
+  const switchToRegister = document.querySelector("[data-auth-switch='register']");
+  if (switchToSignin) switchToSignin.href = authLandingHref("signin", launcherReturn);
+  if (switchToRegister) switchToRegister.href = authLandingHref("register", launcherReturn);
+
+  if (register && launcherReturn) {
+    try {
+      const requestedNick = new URL(launcherReturn, window.location.origin).searchParams.get("launcher_nick") || "";
+      const nicknameInput = $("playerMinecraftName");
+      if (/^[A-Za-z0-9_]{3,16}$/.test(requestedNick) && nicknameInput && !nicknameInput.value) {
+        nicknameInput.value = requestedNick;
+      }
+    } catch (_error) {
+      // Invalid return targets are ignored by launcherReturnHrefFromAuthSearch.
+    }
+  }
 }
 
 function redirectToRoleHome(role = "") {

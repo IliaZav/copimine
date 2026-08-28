@@ -904,7 +904,7 @@ public partial class LauncherViewModel : ObservableObject
         if (launcherBindingClient is null)
         {
             var encodedName = Uri.EscapeDataString(PlayerName.Trim());
-            OpenBindingUrl(new Uri($"https://copimine.ru/cabinet/link.html?launcher_nick={encodedName}"));
+            OpenBindingUrl(new Uri($"https://copimine.ru/launcher-link.html?launcher_nick={encodedName}"));
             return;
         }
 
@@ -1033,7 +1033,9 @@ public partial class LauncherViewModel : ObservableObject
                 || string.Equals(uri.Host, "www.copimine.ru", StringComparison.OrdinalIgnoreCase)
                 || uri.Host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase));
         var isLoopback = string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) && uri.IsLoopback;
-        if ((!isProduction && !isLoopback) || !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal))
+        if ((!isProduction && !isLoopback)
+            || (!uri.AbsolutePath.Equals("/launcher-link.html", StringComparison.Ordinal)
+                && !uri.AbsolutePath.Equals("/cabinet/link.html", StringComparison.Ordinal)))
         {
             throw new InvalidOperationException("Сервис привязки вернул недопустимый адрес.");
         }

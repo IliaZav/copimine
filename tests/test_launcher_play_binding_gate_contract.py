@@ -19,7 +19,7 @@ def test_play_is_blocked_until_launcher_binding_is_confirmed():
 
 def test_binding_required_warning_offers_the_browser_flow():
     assert "OpenAccountLinkCommand" in VIEW_MODEL
-    assert "cabinet/link.html" in VIEW_MODEL
+    assert "launcher-link.html" in VIEW_MODEL
     assert "LauncherLinkRequired" in VIEW_MODEL
     assert "Привязка аккаунта обязательна перед запуском" in (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml").read_text(encoding="utf-8")
 
@@ -27,7 +27,7 @@ def test_binding_required_warning_offers_the_browser_flow():
 def test_binding_browser_allows_only_real_copimine_or_loopback_staging_urls():
     assert "IsLoopback" in VIEW_MODEL
     assert "UseShellExecute = true" in VIEW_MODEL
-    assert "cabinet/link.html" in VIEW_MODEL
+    assert "launcher-link.html" in VIEW_MODEL
     assert "FallbackLauncherBindingClient" in APP
     assert "http://127.0.0.1:8090/" in PATHS
     assert "COPIMINE_LAUNCHER_LOCAL_BASE_URL" in PATHS

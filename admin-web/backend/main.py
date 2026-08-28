@@ -7162,7 +7162,7 @@ def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[s
         )
         conn.commit()
     authorization_url = (
-        f"{ADMIN_PUBLIC_BASE_URL}/cabinet/link.html?launcher_challenge={quote(challenge_id)}"
+        f"{ADMIN_PUBLIC_BASE_URL}/launcher-link.html?launcher_challenge={quote(challenge_id)}"
         f"&launcher_code={quote(code)}&launcher_nick={quote(minecraft_name)}"
     )
     return {

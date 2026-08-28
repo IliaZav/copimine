@@ -1,6 +1,7 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.EndEventTextureCatalog;
 import net.minecraft.client.render.entity.SpiderEntityRenderer;
 import net.minecraft.entity.mob.SpiderEntity;
 import net.minecraft.util.Identifier;
@@ -19,7 +20,10 @@ public abstract class SpiderEntityRendererMixin {
     private void copimine$spiderTexture(SpiderEntity entity, CallbackInfoReturnable<Identifier> cir) {
         if (entity != null && "END_RIFT_SPIDER_V1".equals(
                 ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString()))) {
-            cir.setReturnValue(COPIMINE_SPIDER_TEXTURE);
+            EndEventTextureCatalog.logLookup("mob:END_RIFT_SPIDER_V1", COPIMINE_SPIDER_TEXTURE);
+            if (EndEventTextureCatalog.isAvailable(COPIMINE_SPIDER_TEXTURE)) {
+                cir.setReturnValue(COPIMINE_SPIDER_TEXTURE);
+            }
         }
     }
 }

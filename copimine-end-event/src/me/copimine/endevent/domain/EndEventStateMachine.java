@@ -42,7 +42,7 @@ public final class EndEventStateMachine {
         return switch (persisted) {
             case COUNTDOWN, WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2,
                     WAVE_3, INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
-                    BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
+                    BOSS_CINEMATIC, BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
                     VICTORY_PROCESSING, VICTORY -> EventPhase.READY_FOR_PLAYERS;
             default -> persisted;
         };
@@ -62,8 +62,13 @@ public final class EndEventStateMachine {
         map.put(EventPhase.INTERMISSION_3, EnumSet.of(EventPhase.WAVE_4));
         map.put(EventPhase.WAVE_4, EnumSet.of(EventPhase.INTERMISSION_4));
         map.put(EventPhase.INTERMISSION_4, EnumSet.of(EventPhase.WAVE_5));
-        map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.BOSS_ACTIVE));
-        map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(EventPhase.FINAL_DRAIN, EventPhase.FINAL_RITUAL));
+        map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE));
+        map.put(EventPhase.BOSS_CINEMATIC, EnumSet.of(EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
+        // Canonical five-stage fights finish directly after the one-shot
+        // Judgment cast.  The legacy final-drain route remains available for
+        // old snapshots and compatibility tests.
+        map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(
+                EventPhase.BOSS_FINISH, EventPhase.FINAL_DRAIN, EventPhase.FINAL_RITUAL));
         map.put(EventPhase.FINAL_DRAIN, EnumSet.of(EventPhase.FINAL_WAVE));
         map.put(EventPhase.FINAL_RITUAL, EnumSet.of(EventPhase.FINAL_WAVE));
         map.put(EventPhase.FINAL_WAVE, EnumSet.of(EventPhase.BOSS_FINISH));

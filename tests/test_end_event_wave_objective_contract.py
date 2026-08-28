@@ -63,6 +63,18 @@ def test_rift_storm_uses_bounded_journaled_floor_and_web_mutations() -> None:
     assert "hazardJournal.markRestored" in restore
     assert "restoreRiftStormBlocks();" in update
     assert "riftStormLastDamageSecond" in update
+    assert "int stormFloorY = combatFloorY();" in planner
+    assert "world.getBlockAt(x, stormFloorY, z)" in planner
+    assert "world.getBlockAt(point.x(), stormFloorY, point.z())" in apply
+    assert "private int combatFloorY()" in SOURCE
+    assert "world.getBlockAt(entry.getKey().x(), stormFloorY, entry.getKey().z())" in restore
+
+
+def test_wave_four_spawn_composition_is_capped_after_player_scaling() -> None:
+    spawn = _method_body("spawnWave")
+    assert "WaveMechanicsPolicy.capTowerCounts" in spawn
+    assert "WAVE_TOWER_COMPOSITION_CAP" in spawn
+    assert "wave == 4" in spawn
 
 
 def test_portal_wave_has_floor_visuals_and_bounded_speed_knockback() -> None:

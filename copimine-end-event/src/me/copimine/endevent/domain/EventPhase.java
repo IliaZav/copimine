@@ -14,6 +14,8 @@ public enum EventPhase {
     WAVE_4,
     INTERMISSION_4,
     WAVE_5,
+    /** Durable hand-off after Wave V and before a combat entity exists. */
+    BOSS_CINEMATIC,
     BOSS_ACTIVE,
     /** Canonical final threshold phase. */
     FINAL_DRAIN,

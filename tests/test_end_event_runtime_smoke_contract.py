@@ -6,6 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SMOKE = (ROOT / "tests/RunEndRiftRuntimeSmoke.ps1").read_text(encoding="utf-8")
 BOT = (ROOT / "tests/LocalEndRiftBot.js").read_text(encoding="utf-8")
+BOSS_BOT = (ROOT / "tests/LocalEndRiftBossCombatBot.js").read_text(encoding="utf-8")
+BOSS_PACKET_BOT = (ROOT / "tests/LocalEndRiftBossPacketBot.js").read_text(encoding="utf-8")
+LIVE_BOSS = (ROOT / "tests/RunEndRiftBossDamageLive.ps1").read_text(encoding="utf-8")
+AI_PHASES = (ROOT / "tests/RunEndRiftAiPhasesLive.ps1").read_text(encoding="utf-8")
+PACKET_TRACE = (ROOT / "tests/PacketUseEntityTracePlugin.java").read_text(encoding="utf-8")
 START = (ROOT / "tests/StartEndRiftLocal.ps1").read_text(encoding="utf-8")
 RECOVERY = (ROOT / "tests/RunEndRiftRecoverySmoke.ps1").read_text(encoding="utf-8")
 
@@ -45,6 +50,69 @@ def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -
     assert "process.argv.slice(4)" in BOT
     assert "cliActions" in BOT
     assert "client.once('login', startSession)" in BOT
+
+
+def test_local_boss_probe_uses_real_survival_attack_packets_and_never_production_paths() -> None:
+    for expected in (
+        "Mineflayer", "use_entity", "bot.attack(", "RESOURCE_PACK",
+        "auth: 'offline'", "127.0.0.1", "25566", "attackDelayMs",
+        "refreshedDistance", "setQuickBarSlot",
+    ):
+        assert expected in BOSS_BOT
+    assert "production" in BOSS_BOT.lower()
+    assert "Stop-Process" not in BOSS_BOT
+    assert "Remove-Item" not in BOSS_BOT
+
+
+def test_low_level_boss_probe_matches_uuid_and_sends_use_entity_attack() -> None:
+    for expected in (
+        "use_entity", "objectUUID", "END_RIFT_BOSS_UUID", "mouse: 1",
+        "END_RIFT_TARGET_ENTITY_TYPE", "arm_animation", "resource_pack_receive", "25566",
+    ):
+        assert expected in BOSS_PACKET_BOT
+    assert "no command-based" in BOSS_PACKET_BOT
+    assert "boss damage" in BOSS_PACKET_BOT
+    assert "127.0.0.1" in BOSS_PACKET_BOT
+
+
+def test_live_boss_damage_probe_crosses_absorption_before_player_attack() -> None:
+    for expected in (
+        "environment:\\s*local", "cmend boss damage 1500", "LocalEndRiftBossCombatBot.js",
+        "afterAbsorption", "1.8D", " 90 0", "gamemode survival",
+        "END_RIFT_BOSS_ATTACK_DELAY_MS",
+        "LIVE_BOSS_DAMAGE_PASS", "LIVE_BOSS_DAMAGE_CLEANUP_PASS",
+        "PLAYER_END .*attacks=[1-9]", "cmend boss kill cleanup", "event-mobs=0",
+    ):
+        assert expected in LIVE_BOSS
+    assert "production" in LIVE_BOSS.lower()
+    assert "Remove-Item" not in LIVE_BOSS
+    assert "EnvironmentVariables['END_RIFT_BOSS_UUID']" in LIVE_BOSS
+    assert ".Environment['END_RIFT_BOSS_UUID']" not in LIVE_BOSS
+    assert "if ($null -ne $startInfo.ArgumentList)" in LIVE_BOSS
+    assert "$startInfo.Arguments" in LIVE_BOSS
+    assert LIVE_BOSS.index("Wait-LocalBot") < LIVE_BOSS.index("Get-BossPosition $bossUuid")
+    assert "AttackGameMode" in LIVE_BOSS
+    assert "if ($AttackGameMode -eq 'survival')" in LIVE_BOSS
+
+
+def test_live_ai_phase_probe_covers_all_waves_and_boss_stage_boundaries_locally() -> None:
+    for expected in (
+        "environment:\\s*local", "LocalEndRiftBot.js", "cmend test wave",
+        "cmend debug ai", "mobile", "targeted", "outside", "onCore",
+        "AWAKENING", "HUNTER", "DISTORTION", "ABSORPTION", "CATASTROPHE",
+        "cmend boss damage 500", "cmend boss damage 250", "cmend wave clear",
+        "cmend boss kill cleanup",
+    ):
+        assert expected in AI_PHASES
+    assert "production" in AI_PHASES.lower()
+    assert "Remove-Item" not in AI_PHASES
+    assert "Stop-Process" not in AI_PHASES
+
+
+def test_local_packet_trace_is_scoped_to_use_entity_and_unregistered_on_disable() -> None:
+    assert "PacketType.Play.Client.USE_ENTITY" in PACKET_TRACE
+    assert "USE_ENTITY_TRACE" in PACKET_TRACE
+    assert "removePacketListeners(this)" in PACKET_TRACE
 
 
 def test_runtime_smoke_exposes_real_core_and_rune_visual_health() -> None:

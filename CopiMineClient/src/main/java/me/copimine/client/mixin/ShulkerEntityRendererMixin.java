@@ -1,6 +1,7 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.EndEventTextureCatalog;
 import net.minecraft.client.render.entity.ShulkerEntityRenderer;
 import net.minecraft.entity.mob.ShulkerEntity;
 import net.minecraft.util.Identifier;
@@ -19,7 +20,10 @@ public abstract class ShulkerEntityRendererMixin {
     private void copimine$shulkerTexture(ShulkerEntity entity, CallbackInfoReturnable<Identifier> cir) {
         if (entity != null && "END_RIFT_SHULKER_V1".equals(
                 ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString()))) {
-            cir.setReturnValue(COPIMINE_SHULKER_TEXTURE);
+            EndEventTextureCatalog.logLookup("mob:END_RIFT_SHULKER_V1", COPIMINE_SHULKER_TEXTURE);
+            if (EndEventTextureCatalog.isAvailable(COPIMINE_SHULKER_TEXTURE)) {
+                cir.setReturnValue(COPIMINE_SHULKER_TEXTURE);
+            }
         }
     }
 }

@@ -93,6 +93,15 @@ public final class CopiMineClient implements ClientModInitializer {
                                                     + ", channel=" + ClientBridgeProtocol.MOD_CHANNEL));
                                     return 1;
                                 }))
+                        .then(ClientCommandManager.literal("endrift")
+                                .then(ClientCommandManager.literal("textures")
+                                        .executes(context -> {
+                                            context.getSource().sendFeedback(Text.literal("End Rift textures:"));
+                                            for (String line : EndEventTextureCatalog.diagnosticLines()) {
+                                                context.getSource().sendFeedback(Text.literal(" - " + line));
+                                            }
+                                            return 1;
+                                        })))
                         .then(ClientCommandManager.literal("debug")
                                 .then(ClientCommandManager.literal("on").executes(context -> {
                                     config.setDebugOverlay(true);

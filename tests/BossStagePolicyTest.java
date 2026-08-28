@@ -9,6 +9,8 @@ public final class BossStagePolicyTest {
         testLargeHitReportsEveryCrossedStage();
         testJudgmentIsOneShotAtTwoHundredFifty();
         testStageSpellPoolsAreProgressiveAndNamed();
+        testThresholdSummonsAreReachableAndAbsorptionHasPressureTools();
+        testBossMovementProfileEscalatesByStage();
         System.out.println("BossStagePolicyTest OK");
     }
 
@@ -48,6 +50,37 @@ public final class BossStagePolicyTest {
                 check(!spell.displayName().equals(spell.id()), "spell display name must not be an internal id");
             }
         }
+    }
+
+    private static void testThresholdSummonsAreReachableAndAbsorptionHasPressureTools() {
+        check(BossStagePolicy.spellPool(BossStage.HUNTER)
+                        .contains(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS),
+                "the 70 percent summon window must be reachable in Hunter");
+        check(BossStagePolicy.spellPool(BossStage.ABSORPTION)
+                        .contains(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS),
+                "the 35 percent summon window must be reachable in Absorption");
+        check(BossStagePolicy.spellPool(BossStage.ABSORPTION)
+                        .contains(EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE),
+                "Absorption must keep a moving projectile pressure tool");
+        check(BossStagePolicy.spellPool(BossStage.ABSORPTION)
+                        .contains(EndRiftAiPolicy.BossSpell.VOID_MARK),
+                "Absorption must keep an area denial pressure tool");
+    }
+
+    private static void testBossMovementProfileEscalatesByStage() {
+        double awakening = BossStagePolicy.movementSpeed(BossStage.AWAKENING);
+        double hunter = BossStagePolicy.movementSpeed(BossStage.HUNTER);
+        double distortion = BossStagePolicy.movementSpeed(BossStage.DISTORTION);
+        double absorption = BossStagePolicy.movementSpeed(BossStage.ABSORPTION);
+        double catastrophe = BossStagePolicy.movementSpeed(BossStage.CATASTROPHE);
+        check(awakening < hunter && hunter < distortion,
+                "the opening stages must teach the fight before accelerating");
+        check(distortion > absorption,
+                "Absorption must create a readable channel window");
+        check(absorption < catastrophe,
+                "Catastrophe must be the fastest pressure stage");
+        check(awakening >= 0.8D && catastrophe <= 1.4D,
+                "movement speeds must stay inside the bounded arena budget");
     }
 
     private static void check(boolean condition, String message) {

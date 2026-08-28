@@ -7,11 +7,16 @@ import net.minecraft.client.model.ModelPartBuilder;
 import net.minecraft.client.model.ModelPartData;
 import net.minecraft.client.model.ModelTransform;
 import net.minecraft.client.model.TexturedModelData;
-import net.minecraft.client.render.entity.model.SinglePartEntityModel;
+import net.minecraft.client.render.entity.model.EndermanEntityModel;
 import net.minecraft.entity.mob.EndermanEntity;
 import net.minecraft.util.math.MathHelper;
 
-public final class RiftGuardianModel extends SinglePartEntityModel<EndermanEntity> {
+/**
+ * The Enderman renderer also hands its model to Enderman-specific feature and
+ * shadow renderers. Extending the vanilla Enderman model keeps that runtime
+ * contract intact while the body parts below provide the custom silhouette.
+ */
+public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity> {
     private final ModelPart root;
     private final ModelPart torso;
     private final ModelPart leftShoulder;
@@ -27,30 +32,42 @@ public final class RiftGuardianModel extends SinglePartEntityModel<EndermanEntit
     private long transitionDurationMillis;
 
     public RiftGuardianModel(ModelPart root) {
+        super(root);
         this.root = root;
-        this.torso = root.getChild("torso");
-        this.leftShoulder = root.getChild("left_shoulder");
-        this.rightShoulder = root.getChild("right_shoulder");
+        ModelPart body = root.getChild("body");
+        this.torso = body.getChild("torso");
+        this.leftShoulder = body.getChild("left_shoulder");
+        this.rightShoulder = body.getChild("right_shoulder");
         this.leftArm = root.getChild("left_arm");
         this.rightArm = root.getChild("right_arm");
-        this.leftHorn = root.getChild("left_horn");
-        this.rightHorn = root.getChild("right_horn");
-        this.leftShard = root.getChild("left_shard");
-        this.rightShard = root.getChild("right_shard");
-        this.chestRift = root.getChild("chest_rift");
+        this.leftHorn = body.getChild("left_horn");
+        this.rightHorn = body.getChild("right_horn");
+        this.leftShard = body.getChild("left_shard");
+        this.rightShard = body.getChild("right_shard");
+        this.chestRift = body.getChild("chest_rift");
     }
 
     public static TexturedModelData getTexturedModelData() {
         ModelData modelData = new ModelData();
         ModelPartData root = modelData.getRoot();
-        root.addChild("torso", ModelPartBuilder.create()
+        // EndermanEntityModel requires these seven named parts. The body is
+        // an empty carrier so all custom geometry is rendered by Biped's
+        // normal body pass and remains compatible with Iris shadows/features.
+        root.addChild("head", ModelPartBuilder.create()
+                        .uv(0, 96).cuboid(-7.0F, -39.0F, -7.0F, 14.0F, 14.0F, 14.0F),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        root.addChild("hat", ModelPartBuilder.create(),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        ModelPartData body = root.addChild("body", ModelPartBuilder.create(),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        body.addChild("torso", ModelPartBuilder.create()
                         .uv(0, 0).cuboid(-9.0F, -25.0F, -5.0F, 18.0F, 21.0F, 10.0F)
                         .uv(0, 64).cuboid(-6.0F, -31.0F, -4.0F, 12.0F, 7.0F, 8.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
-        root.addChild("left_shoulder", ModelPartBuilder.create()
+        body.addChild("left_shoulder", ModelPartBuilder.create()
                         .uv(56, 0).cuboid(0.0F, -23.0F, -4.0F, 9.0F, 7.0F, 8.0F),
                 ModelTransform.pivot(8.5F, 24.0F, 0.0F));
-        root.addChild("right_shoulder", ModelPartBuilder.create()
+        body.addChild("right_shoulder", ModelPartBuilder.create()
                         .uv(56, 15).cuboid(-9.0F, -23.0F, -4.0F, 9.0F, 7.0F, 8.0F),
                 ModelTransform.pivot(-8.5F, 24.0F, 0.0F));
         root.addChild("left_arm", ModelPartBuilder.create()
@@ -59,21 +76,27 @@ public final class RiftGuardianModel extends SinglePartEntityModel<EndermanEntit
         root.addChild("right_arm", ModelPartBuilder.create()
                         .uv(88, 30).cuboid(-3.0F, -1.0F, -2.5F, 5.0F, 25.0F, 5.0F),
                 ModelTransform.pivot(-16.0F, 1.5F, 0.0F));
-        root.addChild("left_horn", ModelPartBuilder.create()
+        body.addChild("left_horn", ModelPartBuilder.create()
                         .uv(42, 64).cuboid(0.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
                 ModelTransform.of(4.0F, 24.0F, 0.0F, 0.0F, 0.0F, 0.35F));
-        root.addChild("right_horn", ModelPartBuilder.create()
+        body.addChild("right_horn", ModelPartBuilder.create()
                         .uv(42, 77).cuboid(-4.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
                 ModelTransform.of(-4.0F, 24.0F, 0.0F, 0.0F, 0.0F, -0.35F));
-        root.addChild("left_shard", ModelPartBuilder.create()
+        body.addChild("left_shard", ModelPartBuilder.create()
                         .uv(0, 84).cuboid(-1.5F, -2.0F, -1.5F, 3.0F, 12.0F, 3.0F),
                 ModelTransform.of(14.0F, -3.0F, -1.0F, 0.25F, 0.0F, 0.65F));
-        root.addChild("right_shard", ModelPartBuilder.create()
+        body.addChild("right_shard", ModelPartBuilder.create()
                         .uv(14, 84).cuboid(-1.5F, -2.0F, -1.5F, 3.0F, 12.0F, 3.0F),
                 ModelTransform.of(-14.0F, -3.0F, -1.0F, 0.25F, 0.0F, -0.65F));
-        root.addChild("chest_rift", ModelPartBuilder.create()
+        body.addChild("chest_rift", ModelPartBuilder.create()
                         .uv(28, 84).cuboid(-3.0F, -20.5F, -5.6F, 6.0F, 10.0F, 1.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        root.addChild("right_leg", ModelPartBuilder.create()
+                        .uv(56, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
+                ModelTransform.pivot(-5.0F, 1.5F, 0.0F));
+        root.addChild("left_leg", ModelPartBuilder.create()
+                        .uv(80, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
+                ModelTransform.pivot(5.0F, 1.5F, 0.0F));
         return TexturedModelData.of(modelData, 128, 128);
     }
 
@@ -82,7 +105,6 @@ public final class RiftGuardianModel extends SinglePartEntityModel<EndermanEntit
         this.transitionDurationMillis = MathHelper.clamp(transitionDurationMillis, 0L, 600_000L);
     }
 
-    @Override
     public ModelPart getPart() {
         return root;
     }

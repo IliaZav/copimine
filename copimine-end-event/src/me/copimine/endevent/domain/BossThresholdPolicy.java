@@ -24,7 +24,12 @@ public final class BossThresholdPolicy {
         double finalLimit = clamp(finalThreshold, 0.0D, safeMax);
         double halfLimit = clamp(halfThreshold, finalLimit, safeMax);
         if (!halfAlreadyTriggered && projected <= halfLimit) {
-            return new Decision(true, false, halfLimit);
+            // Clamp only a true downward crossing up to the readable phase
+            // boundary.  If a previous large hit already left the boss below
+            // half health, the next hit must continue downward; returning
+            // halfLimit here would silently heal the boss.
+            double applied = current > halfLimit ? halfLimit : projected;
+            return new Decision(true, false, applied);
         }
         if (projected <= finalLimit) {
             return new Decision(false, true, clamp(finalHealth, 1.0D, safeMax));

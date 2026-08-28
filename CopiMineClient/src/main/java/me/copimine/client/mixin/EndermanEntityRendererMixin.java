@@ -2,6 +2,7 @@ package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.CopiMineClientLogger;
+import me.copimine.client.EndEventTextureCatalog;
 import me.copimine.client.RiftGuardianModelRenderer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -47,6 +48,12 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         if (entity == null || !ClientBridgeProtocol.isBoundEndBoss(entity.getUuid().toString())) {
             return;
         }
+        Identifier texture = copimine$guardianRenderer.textureForPhase(
+                ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()));
+        EndEventTextureCatalog.logLookup("boss-model", texture);
+        if (!EndEventTextureCatalog.isAvailable(texture)) {
+            return;
+        }
         copimine$vanillaModel = model;
         model = copimine$guardianRenderer.modelForPhase(
                 ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()),
@@ -69,8 +76,12 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
             return;
         }
         if (ClientBridgeProtocol.isBoundEndBoss(entity.getUuid().toString())) {
-            cir.setReturnValue(copimine$guardianRenderer.textureForPhase(
-                    ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString())));
+            Identifier bossTexture = copimine$guardianRenderer.textureForPhase(
+                    ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()));
+            EndEventTextureCatalog.logLookup("boss", bossTexture);
+            if (EndEventTextureCatalog.isAvailable(bossTexture)) {
+                cir.setReturnValue(bossTexture);
+            }
             return;
         }
         String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
@@ -81,14 +92,14 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
             default -> null;
         };
         if (!visual.isBlank() && COPIMINE_LOGGED_RENDER_ENTITIES.add(entity.getUuid().toString())) {
-            boolean resourcePresent = texture != null
-                    && MinecraftClient.getInstance().getResourceManager().getResource(texture).isPresent();
+            boolean resourcePresent = EndEventTextureCatalog.isAvailable(texture);
             CopiMineClientLogger.info("End Rift renderer visual=" + visual
                     + ", uuid=" + entity.getUuid()
                     + ", texture=" + texture
                     + ", resourcePresent=" + resourcePresent);
         }
-        if (texture != null) {
+        EndEventTextureCatalog.logLookup("mob:" + visual, texture);
+        if (texture != null && EndEventTextureCatalog.isAvailable(texture)) {
             cir.setReturnValue(texture);
         }
     }

@@ -76,8 +76,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossMovementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\CombatMovementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveObjectivePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveRewardPolicyTest.java')
+      (Join-Path $endRiftRoot 'tests\WaveRewardPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveMechanicsPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossCastPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
   & java -cp $endRiftTestBuild EndRiftAiPolicyTest
@@ -86,8 +91,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
   & java -cp $endRiftTestBuild BossDamagePolicyTest
   & java -cp $endRiftTestBuild BossMovementPolicyTest
   & java -cp $endRiftTestBuild BossStagePolicyTest
+  & java -cp $endRiftTestBuild CombatMovementPolicyTest
   & java -cp $endRiftTestBuild WaveObjectivePolicyTest
   & java -cp $endRiftTestBuild WaveRewardPolicyTest
+  & java -cp $endRiftTestBuild WaveMechanicsPolicyTest
+  & java -cp $endRiftTestBuild StormPatternPolicyTest
+  & java -cp $endRiftTestBuild BossCastPolicyTest
+  & java -cp $endRiftTestBuild EndEventStateMachineTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `

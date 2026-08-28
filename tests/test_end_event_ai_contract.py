@@ -258,6 +258,115 @@ def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> No
     assert "MIN_WAVE_CORE_DISTANCE_BLOCKS" in MAIN
 
 
+def test_event_combat_mobs_and_boss_reenable_ai_after_a_stale_no_ai_flag() -> None:
+    wave_start = MAIN.index("private void spawnEnderman")
+    wave_end = MAIN.index("private Entity spawnOwnedMob", wave_start)
+    wave_body = MAIN[wave_start:wave_end]
+    owned_start = MAIN.index("private Entity spawnOwnedMob")
+    owned_end = MAIN.index("private void applyWaveThreeModifiers", owned_start)
+    owned_body = MAIN[owned_start:owned_end]
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick_end = MAIN.index("private void enforceWaveMobContainment", tick_start)
+    tick_body = MAIN[tick_start:tick_end]
+    boss_start = MAIN.index("private void tickBoss()")
+    boss_end = MAIN.index("private void reconcileBossCastProjection", boss_start)
+    boss_body = MAIN[boss_start:boss_end]
+
+    assert "enderman.setAI(true);" in wave_body
+    assert "enderman.setAware(true);" in wave_body
+    assert "mob.setAI(true);" in owned_body
+    assert "mob.setAware(true);" in owned_body
+    assert "ensureEventCombatAi(entity);" in tick_body
+    assert "ensureEventCombatAi(boss);" in boss_body
+
+
+def test_mobile_wave_mobs_request_bounded_pathing_instead_of_only_receiving_a_target() -> None:
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick_end = MAIN.index("private void enforceWaveMobContainment", tick_start)
+    tick_body = MAIN[tick_start:tick_end]
+    path_start = MAIN.index("private void maintainWaveMobPath")
+    path_end = MAIN.index("private boolean isWaveCombatKind", path_start)
+    path_body = MAIN[path_start:path_end]
+
+    assert "maintainWaveMobPath(mob, target, kind, now);" in tick_body
+    assert "mob.getPathfinder().moveTo(destination" in path_body
+    assert "WAVE_AI_PATH" in path_body
+    assert "EntityType.SHULKER" in path_body
+    assert "isCoreBlockPosition(destination)" in path_body
+    assert "boundedCombatRadius(config.containmentRadius())" in path_body
+
+
+def test_mobile_and_boss_ai_have_a_bounded_steering_fallback_when_pathfinder_rejects() -> None:
+    """A rejected navigation request must still produce a safe, visible step."""
+    for marker in (
+        "CombatMovementPolicy",
+        "requestBoundedCombatMovement",
+        "mob.getPathfinder().moveTo(destination, speed)",
+        "mob.setVelocity",
+        "fallback=velocity",
+        "isSafeCombatStep",
+        "MAX_COMBAT_STEP_BLOCKS",
+    ):
+        assert marker in MAIN
+    boss = MAIN[MAIN.index("private void maintainBossPath"):MAIN.index("private void telegraphBossSpell")]
+    wave = MAIN[MAIN.index("private void maintainWaveMobPath"):MAIN.index("private Location waveCoreFlankDestination")]
+    assert "requestBoundedCombatMovement" in boss
+    assert "requestBoundedCombatMovement" in wave
+    assert "MIN_BOSS_CORE_DISTANCE_BLOCKS" in boss
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS" in wave
+
+
+def test_mobile_wave_ai_revalidates_targets_and_repaths_after_each_containment_correction() -> None:
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick_end = MAIN.index("private void enforceWaveMobContainment", tick_start)
+    tick_body = MAIN[tick_start:tick_end]
+    compact = re.sub(r"\s+", " ", tick_body)
+
+    assert "Player currentTarget = mob.getTarget() instanceof Player player && isCombatTarget(player) ? player : null;" in compact
+    assert "if (mob.getTarget() != null && currentTarget == null)" in compact
+    assert "mob.setTarget(null);" in compact
+    assert "mob.getPathfinder().stopPathfinding();" in compact
+    assert compact.count("maintainWaveMobPath(mob, target, kind, now);") == 1
+    assert compact.index("maintainWaveMobPath(mob, target, kind, now);") > compact.index("Player target = currentTarget;")
+
+
+def test_wave_ai_spreads_core_standing_targets_across_safe_flanks() -> None:
+    path_start = MAIN.index("private void maintainWaveMobPath")
+    path_end = MAIN.index("private boolean isWaveCombatKind", path_start)
+    path_body = MAIN[path_start:path_end]
+    assert "waveCoreFlankDestination(anchor, mob)" in path_body
+    assert "findSafeCombatLocation(anchor, waveCoreFlankDestination(anchor, mob)" in path_body
+    flank_start = MAIN.index("private Location waveCoreFlankDestination")
+    flank_end = MAIN.index("private boolean isWaveCombatKind", flank_start)
+    flank_body = MAIN[flank_start:flank_end]
+    assert "mob.getUniqueId()" in flank_body
+    assert "Math.cos(angle)" in flank_body
+    assert "Math.sin(angle)" in flank_body
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS" in flank_body
+
+
+def test_wave_four_tower_roles_follow_the_entity_wave_in_local_probes() -> None:
+    body = MAIN[MAIN.index("private void tagTowerRole"):MAIN.index("private WaveMechanicsPolicy.TowerRole towerRole")]
+    assert "readInt(entity, keyWave, 0) != 4" in body
+    assert "activeWave != 4" not in body
+    assert "WAVE_TOWER_ROLE" in body
+
+
+def test_end_rift_slowness_is_consistently_three_seconds() -> None:
+    assert "SLOWNESS_DEBUFF_TICKS = 60" in MAIN
+    for method, next_method in (
+        ("private void miniBossRiftStep", "private void miniBossVoidSnare"),
+        ("private void miniBossVoidSnare", "private void miniBossEchoPulse"),
+        ("private void miniBossEchoPulse", "private void enforceCombatLeash"),
+        ("private void updateCorePulseObjective", "private boolean isWaveOneSafeSector"),
+        ("private void updateRiftStormObjective", "private void clearWaveObjectiveState"),
+        ("private void riftProjectile", "private void cleanupRiftProjectile"),
+        ("private void voidMark", "private void cancelVoidMark"),
+    ):
+        body = MAIN[MAIN.index(method):MAIN.index(next_method, MAIN.index(method))]
+        assert "PotionEffectType.SLOWNESS" not in body or "SLOWNESS_DEBUFF_TICKS" in body
+
+
 def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_inside_it() -> None:
     assert "private boolean isCoreBlockPosition(Location location)" in MAIN
     assert "private Location coreBlockTopLocation()" in MAIN

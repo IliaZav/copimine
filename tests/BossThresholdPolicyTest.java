@@ -22,6 +22,12 @@ public final class BossThresholdPolicyTest {
                 200.0D, 500.0D, 1200.0D, 600.0D, 120.0D, 200.0D, true, true);
         check(!after.triggerHalf() && !after.triggerFinal(), "threshold side effects must be exactly once");
         check(close(after.appliedHealth(), 200.0D), "invulnerable final boss health must not be lowered by policy");
+
+        BossThresholdPolicy.Decision lateHalf = BossThresholdPolicy.evaluate(
+                1000.0D, 5.0D, 2500.0D, 1250.0D, 250.0D, 400.0D, false, false);
+        check(lateHalf.triggerHalf(), "a late half-phase marker must still trigger once");
+        check(close(lateHalf.appliedHealth(), 995.0D),
+                "a damage event below half health must never heal the boss to the threshold");
         System.out.println("BossThresholdPolicyTest OK");
     }
 

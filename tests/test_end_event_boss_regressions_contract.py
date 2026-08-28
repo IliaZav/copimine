@@ -63,6 +63,21 @@ def test_boss_damage_path_releases_expired_absorption_before_evaluating_hit() ->
     assert "boss.setInvulnerable(false)" in damage
 
 
+def test_boss_damage_path_audits_real_player_damage_events_before_policy_gates() -> None:
+    damage = _body("public void onBossDamage", "private void applyBossDamage")
+    assert "BOSS_DAMAGE_EVENT" in damage
+    assert "event.getFinalDamage()" in damage
+    assert "event.isCancelled()" in damage
+    assert "event instanceof EntityDamageByEntityEvent" in damage
+
+
+def test_unlocked_local_official_boss_harness_enters_active_phase_before_spawn() -> None:
+    spawn = _body("private void spawnOfficialBoss", "private void configureBoss")
+    assert "endUnlocked" in spawn
+    assert "forcePhase(EventPhase.BOSS_ACTIVE" in spawn
+    assert "official boss local harness" in spawn
+
+
 def test_final_phase_failure_paths_clear_entity_invulnerability_before_recovery() -> None:
     body = _body("private void triggerFinalPhase", "private void applyFinalDrain")
     save_failure = body[body.index("if (!saveStateSync())"):body.index("clearClientEffects")]
@@ -75,3 +90,13 @@ def test_boss_balance_contract_is_2500_hp_with_five_point_increment_and_level_fo
     assert "health: 2500.0" in CONFIG
     assert "attack-damage-bonus: 8.0" in CONFIG
     assert "debuff-amplifier: 3" in CONFIG
+
+
+def test_boss_cleanup_removes_spell_servants_and_their_ai_state() -> None:
+    cleanup = _body("private void clearBossOnly", "private void tickBoss")
+    assert "clearBossServants();" in cleanup
+    helper = _body("private void clearBossServants", "private void tickBoss")
+    assert "spellServants" in helper
+    assert "servant.remove();" in helper
+    assert "miniBossSpells.remove(servantId);" in helper
+    assert "nextMiniBossSpellMillis.remove(servantId);" in helper

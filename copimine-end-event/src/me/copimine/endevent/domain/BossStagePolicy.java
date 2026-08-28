@@ -41,14 +41,19 @@ public final class BossStagePolicy {
             case HUNTER -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
-                    EndRiftAiPolicy.BossSpell.VOID_MARK);
+                    EndRiftAiPolicy.BossSpell.VOID_MARK,
+                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case DISTORTION -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.WILL_DISTORTION,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
-            case ABSORPTION -> List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST);
+            case ABSORPTION -> List.of(
+                    EndRiftAiPolicy.BossSpell.VOID_BLAST,
+                    EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.VOID_MARK,
+                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case CATASTROPHE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
@@ -56,6 +61,24 @@ public final class BossStagePolicy {
                     EndRiftAiPolicy.BossSpell.WILL_DISTORTION,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO);
+        };
+    }
+
+    /**
+     * Per-stage pathing speed.  Absorption deliberately slows the boss for
+     * its readable channel/recovery beat; Catastrophe then becomes a bounded,
+     * unmistakable escalation instead of five visually identical stages.
+     */
+    public static double movementSpeed(BossStage stage) {
+        if (stage == null) {
+            return 1.0D;
+        }
+        return switch (stage) {
+            case AWAKENING -> 0.95D;
+            case HUNTER -> 1.05D;
+            case DISTORTION -> 1.18D;
+            case ABSORPTION -> 0.92D;
+            case CATASTROPHE -> 1.28D;
         };
     }
 

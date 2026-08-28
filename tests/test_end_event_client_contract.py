@@ -56,6 +56,29 @@ def test_end_event_client_texture_is_packaged_source() -> None:
         assert texture.stat().st_size > 100
 
 
+def test_end_event_texture_catalog_covers_every_bound_entity_and_exposes_diagnostics() -> None:
+    catalog = (CLIENT / "src/main/java/me/copimine/client/EndEventTextureCatalog.java").read_text(encoding="utf-8")
+    client = (CLIENT / "src/main/java/me/copimine/client/CopiMineClient.java").read_text(encoding="utf-8")
+    for visual_id in (
+        "END_RIFT_ENDERMAN_V1",
+        "END_RIFT_ELITE_V1",
+        "END_RIFT_SPIDER_V1",
+        "END_RIFT_SHULKER_V1",
+    ):
+        assert visual_id in catalog
+    assert "getResourceManager().getResource(texture).isPresent()" in catalog
+    assert "copimineclient endrift textures" not in client
+    assert 'literal("endrift")' in client
+    assert 'literal("textures")' in client
+    for mixin_name in (
+        "EndermanEntityRendererMixin.java",
+        "SpiderEntityRendererMixin.java",
+        "ShulkerEntityRendererMixin.java",
+    ):
+        mixin = (CLIENT / "src/main/java/me/copimine/client/mixin" / mixin_name).read_text(encoding="utf-8")
+        assert "EndEventTextureCatalog.isAvailable" in mixin
+
+
 def test_end_event_mob_bindings_are_uuid_scoped_and_not_global_overrides() -> None:
     state = (CLIENT / "src/main/java/me/copimine/client/EndEventClientState.java").read_text(encoding="utf-8")
     packet = (CLIENT / "src/main/java/me/copimine/client/EndEventPacket.java").read_text(encoding="utf-8")
@@ -68,3 +91,22 @@ def test_end_event_mob_bindings_are_uuid_scoped_and_not_global_overrides() -> No
     assert "bindEventEntityClientForOnlinePlayers" in server
     spider_mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/SpiderEntityRendererMixin.java").read_text(encoding="utf-8")
     assert "textures/entity/end_rift_spider.png" in spider_mixin
+
+
+def test_client_bindings_retry_after_authentication_or_delayed_arena_entry() -> None:
+    server = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+    assert "clientBindingReadyPlayers" in server
+    assert "refreshClientBindingsForOnlinePlayers" in server
+    assert "refreshClientBindingsForPlayer" in server
+    assert "nextClientBindingRefreshMillis" in server
+    assert "clientBindingReadyPlayers.remove(uuid)" in server
+
+
+def test_guardian_model_is_assignable_to_the_enderman_renderer_model_contract() -> None:
+    model = (CLIENT / "src/main/java/me/copimine/client/RiftGuardianModel.java").read_text(encoding="utf-8")
+
+    assert "extends EndermanEntityModel<EndermanEntity>" in model
+    assert "super(root);" in model
+    assert "SinglePartEntityModel" not in model
+    for required_part in ("head", "hat", "body", "right_arm", "left_arm", "right_leg", "left_leg"):
+        assert f'root.addChild("{required_part}"' in model

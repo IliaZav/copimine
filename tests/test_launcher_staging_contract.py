@@ -10,11 +10,20 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE_SCRIPT = ROOT / "scripts" / "stage_copimine_launcher_site.ps1"
 RELEASE_ROOT = ROOT / "artifacts" / "launcher" / "Release"
 PACKAGE_ROOT = RELEASE_ROOT / "packages"
-INSTALLER = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.exe"
-CUSTOM_INSTALLER = PACKAGE_ROOT / "CopiMineLauncherFolderSetup-1.0.3.exe"
-MSI = PACKAGE_ROOT / "CopiMineLauncherSetup-1.0.3.msi"
 METADATA = RELEASE_ROOT / "metadata" / "latest.json"
 INSTANCE = RELEASE_ROOT / "instance-current"
+
+
+def release_version() -> str:
+    if METADATA.is_file():
+        return str(json.loads(METADATA.read_text(encoding="utf-8"))["version"])
+    return "1.0.3"
+
+
+RELEASE_VERSION = release_version()
+INSTALLER = PACKAGE_ROOT / f"CopiMineLauncherSetup-{RELEASE_VERSION}.exe"
+CUSTOM_INSTALLER = PACKAGE_ROOT / f"CopiMineLauncherFolderSetup-{RELEASE_VERSION}.exe"
+MSI = PACKAGE_ROOT / f"CopiMineLauncherSetup-{RELEASE_VERSION}.msi"
 
 
 def run_stage(metadata: Path, output: Path) -> subprocess.CompletedProcess[str]:

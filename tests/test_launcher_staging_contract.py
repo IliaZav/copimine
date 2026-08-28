@@ -104,6 +104,9 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
             assert (output / "downloads/launcher" / filename).is_file(), filename
         custom_filename = source_metadata["customInstallerFilename"]
         assert (output / "downloads/launcher" / custom_filename).is_file()
+        feed_index = output / "downloads/launcher/index.html"
+        assert feed_index.is_file()
+        assert "Обновления CopiMine Launcher" in feed_index.read_text(encoding="utf-8")
     finally:
         if output.exists():
             import shutil

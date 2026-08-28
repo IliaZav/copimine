@@ -24,6 +24,7 @@ if (-not [string]::IsNullOrWhiteSpace($CustomInstallerPath)) {
 }
 $sourceMsi = (Resolve-Path -LiteralPath $MsiPath -ErrorAction Stop).Path
 $sourceMetadata = (Resolve-Path -LiteralPath $MetadataPath -ErrorAction Stop).Path
+$sourceFeedIndex = Join-Path $frontendRoot 'launcher-feed-index.html'
 $packageRoot = Split-Path -Parent $sourceInstaller
 $publishRoot = Join-Path (Split-Path -Parent $packageRoot) 'publish'
 $offlineRoot = Join-Path $publishRoot 'launcher-bootstrap'
@@ -34,6 +35,7 @@ $sourceInstance = if ([string]::IsNullOrWhiteSpace($InstanceReleaseRoot)) { $nul
 $destination = [System.IO.Path]::GetFullPath($OutputRoot)
 
 if (-not (Test-Path -LiteralPath $frontendRoot -PathType Container)) { throw "Frontend root is missing: $frontendRoot" }
+if (-not (Test-Path -LiteralPath $sourceFeedIndex -PathType Leaf)) { throw "Launcher feed index is missing: $sourceFeedIndex" }
 if (-not (Test-Path -LiteralPath $sourceInstaller -PathType Leaf)) { throw "Installer is missing: $sourceInstaller" }
 if ($null -ne $sourceCustomInstaller -and -not (Test-Path -LiteralPath $sourceCustomInstaller -PathType Leaf)) { throw "Custom installer is missing: $sourceCustomInstaller" }
 if (-not (Test-Path -LiteralPath $sourceMsi -PathType Leaf)) { throw "MSI is missing: $sourceMsi" }
@@ -264,6 +266,7 @@ $stagedAssetsFeedJson = $stagedAssetsFeed | ConvertTo-Json -Depth 4 -Compress
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($stagedAssetsFeedPath, $stagedAssetsFeedJson + [Environment]::NewLine, $utf8NoBom)
 $fullPackages | Copy-Item -Destination $downloadDirectory -Force
+Copy-Item -LiteralPath $sourceFeedIndex -Destination (Join-Path $downloadDirectory 'index.html') -Force
 
 $offlineDestination = Join-Path $destination 'launcher-bootstrap'
 $webView2Destination = Join-Path $destination 'Assets/WebView2'

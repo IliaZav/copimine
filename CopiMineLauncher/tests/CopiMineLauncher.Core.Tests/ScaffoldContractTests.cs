@@ -24,4 +24,14 @@ public sealed class ScaffoldContractTests
         LauncherVersionInfo.Product.Should().Be("CopiMineLauncher");
         LauncherVersionInfo.Version.Should().Be("1.0.3");
     }
+
+    [Fact]
+    public void Runtime_version_matches_the_core_assembly_version()
+    {
+        var assemblyVersion = typeof(LauncherVersionInfo).Assembly.GetName().Version;
+
+        assemblyVersion.Should().NotBeNull();
+        LauncherVersionInfo.Version.Should().Be(
+            $"{assemblyVersion!.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}");
+    }
 }

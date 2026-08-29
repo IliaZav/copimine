@@ -5,8 +5,10 @@ import me.copimine.endevent.domain.BossTeleportPermitPolicy;
 public final class CombatTacticsPolicyTest {
     public static void main(String[] args) {
         testBossTacticsChangeByStageAndCycle();
+        testBossFeintIsBoundedAndDeterministic();
         testBossNeverReceivesCoreCollapsePlan();
         testWaveRolesAreDistinctAndDeterministic();
+        testWaveManeuversAreBoundedAndRepeatable();
         testTeleportPermitIsSingleUseAndBounded();
         System.out.println("CombatTacticsPolicyTest OK");
     }
@@ -33,6 +35,20 @@ public final class CombatTacticsPolicyTest {
                 "outer-ring plan must stay outside the Core safety distance");
     }
 
+    private static void testBossFeintIsBoundedAndDeterministic() {
+        CombatTacticsPolicy.BossPlan first = CombatTacticsPolicy.bossPlan(
+                BossStage.HUNTER, 1, 10.0D, false);
+        CombatTacticsPolicy.BossPlan second = CombatTacticsPolicy.bossPlan(
+                BossStage.HUNTER, 1, 10.0D, false);
+        check(first.tactic() == CombatTacticsPolicy.BossTactic.PHANTOM_FEINT,
+                "Hunter cycle one must use the readable phantom feint");
+        check(first.tactic() == second.tactic()
+                        && first.preferredDistance() == second.preferredDistance(),
+                "boss feint plan must be deterministic");
+        check(first.preferredDistance() >= CombatTacticsPolicy.MIN_BOSS_DISTANCE,
+                "boss feint must keep the minimum Core distance");
+    }
+
     private static void testWaveRolesAreDistinctAndDeterministic() {
         CombatTacticsPolicy.MobTactic raider = CombatTacticsPolicy.waveTactic(4, "RAIDER", 0);
         CombatTacticsPolicy.MobTactic breaker = CombatTacticsPolicy.waveTactic(4, "BREAKER", 1);
@@ -44,6 +60,22 @@ public final class CombatTacticsPolicyTest {
         check(CombatTacticsPolicy.waveTactic(5, "ELITE", 0)
                         == CombatTacticsPolicy.MobTactic.STORM_HUNTER,
                 "Wave V elites must hunt through the storm instead of using a generic route");
+    }
+
+    private static void testWaveManeuversAreBoundedAndRepeatable() {
+        CombatTacticsPolicy.MobManeuver first = CombatTacticsPolicy.waveManeuver(
+                5, "ELITE", 1, 2);
+        CombatTacticsPolicy.MobManeuver second = CombatTacticsPolicy.waveManeuver(
+                5, "ELITE", 1, 2);
+        check(first == second, "wave maneuver must be deterministic for a stable slot");
+        check(first != CombatTacticsPolicy.MobManeuver.HOLD_LINE,
+                "Wave V elite must make a visible tactical movement beat");
+        check(CombatTacticsPolicy.waveManeuver(4, "ARTILLERY", 0, 0)
+                        == CombatTacticsPolicy.MobManeuver.CROSS_FIRE,
+                "artillery must alternate through a cross-fire beat");
+        check(CombatTacticsPolicy.waveManeuver(4, "BREAKER", 2, 0)
+                        == CombatTacticsPolicy.MobManeuver.FALLBACK,
+                "a breaker must retreat briefly on its recovery beat");
     }
 
     private static void testTeleportPermitIsSingleUseAndBounded() {

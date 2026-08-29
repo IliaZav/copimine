@@ -41,6 +41,7 @@ public record EventConfig(
         MusicTrack bossHalfMusic,
         MusicTrack bossFinalMusic,
         MusicTrack victoryMusic,
+        Map<String, MusicTrack> phaseMusic,
         WaveDefinition wave1,
         WaveDefinition wave2,
         WaveDefinition wave3,
@@ -103,6 +104,7 @@ public record EventConfig(
         finalWaveLoot = Map.copyOf(finalWaveLoot);
         testLoot = Map.copyOf(testLoot);
         lootProfiles = copyLootProfiles(lootProfiles);
+        phaseMusic = Map.copyOf(phaseMusic == null ? Map.of() : phaseMusic);
         if (miniBossTuning == null) {
             throw new IllegalArgumentException("mini boss tuning is required");
         }
@@ -152,6 +154,7 @@ public record EventConfig(
         MusicTrack bossHalfMusic = musicTrack(music, "boss-half");
         MusicTrack bossFinalMusic = musicTrack(music, "boss-final");
         MusicTrack victoryMusic = musicTrack(music, "victory");
+        Map<String, MusicTrack> phaseMusic = readPhaseMusic(requiredSection(music, "phase"));
         double half = positiveDouble(boss, "half-health");
         double finalThreshold = positiveDouble(boss, "final-threshold");
         double finalHealth = positiveDouble(boss, "final-health");
@@ -214,6 +217,7 @@ public record EventConfig(
                 bossHalfMusic,
                 bossFinalMusic,
                 victoryMusic,
+                phaseMusic,
                 wave(waves, "wave-1"),
                 wave(waves, "wave-2"),
                 wave(waves, "wave-3"),
@@ -479,6 +483,18 @@ public record EventConfig(
         return new MusicTrack(soundId, loopSeconds);
     }
 
+    private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent) {
+        List<String> requiredKeys = List.of(
+                "wave-1", "wave-2", "wave-3", "wave-4", "wave-5",
+                "intermission-1", "intermission-2", "intermission-3", "intermission-4",
+                "boss-cinematic", "final-drain", "final-ritual", "final-wave", "boss-finish");
+        LinkedHashMap<String, MusicTrack> tracks = new LinkedHashMap<>();
+        for (String key : requiredKeys) {
+            tracks.put(key, musicTrack(parent, key));
+        }
+        return tracks;
+    }
+
     private static String text(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
@@ -517,6 +533,14 @@ public record EventConfig(
 
     public Map<String, LootEntry> lootProfile(String profileId) {
         return lootProfiles.getOrDefault(profileId, Map.of());
+    }
+
+    public MusicTrack phaseMusic(String phaseKey) {
+        return phaseMusic.get(phaseKey);
+    }
+
+    public List<MusicTrack> allMusicTracks() {
+        return List.copyOf(new java.util.LinkedHashSet<>(phaseMusic.values()));
     }
 
     public Map<String, Integer> waveReward(int wave) {

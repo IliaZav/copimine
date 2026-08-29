@@ -17,6 +17,7 @@ public final class CombatTacticsPolicy {
         RING_ORBIT,
         FLANK,
         CROSSCUT,
+        PHANTOM_FEINT,
         ABSORPTION_RETREAT,
         CATASTROPHE_PRESSURE
     }
@@ -30,6 +31,15 @@ public final class CombatTacticsPolicy {
         ARTILLERY_SCREEN,
         STORM_HUNTER,
         ELITE_HUNTER
+    }
+
+    /** Short deterministic movement beats used between target rotations. */
+    public enum MobManeuver {
+        HOLD_LINE,
+        SIDE_STEP,
+        FALLBACK,
+        CROSS_FIRE,
+        PINCH
     }
 
     /**
@@ -48,9 +58,18 @@ public final class CombatTacticsPolicy {
         return switch (safeStage) {
             case AWAKENING -> new BossPlan(BossTactic.RING_ORBIT, 6.5D, true,
                     false, safeCycle % 2 == 0 ? 1.0D : -1.0D);
-            case HUNTER -> new BossPlan(BossTactic.FLANK, 4.5D, true,
-                    false, safeCycle % 2 == 0 ? 1.0D : -1.0D);
-            case DISTORTION -> new BossPlan(BossTactic.CROSSCUT, 6.0D, true,
+            case HUNTER -> switch (Math.floorMod(safeCycle, 3)) {
+                case 1 -> new BossPlan(BossTactic.PHANTOM_FEINT, 7.5D, true,
+                        false, safeCycle % 2 == 0 ? 1.0D : -1.0D);
+                case 2 -> new BossPlan(BossTactic.CROSSCUT, 5.2D, true,
+                        false, safeCycle % 2 == 0 ? -1.0D : 1.0D);
+                default -> new BossPlan(BossTactic.FLANK, 4.5D, true,
+                        false, safeCycle % 2 == 0 ? 1.0D : -1.0D);
+            };
+            case DISTORTION -> Math.floorMod(safeCycle, 3) == 1
+                    ? new BossPlan(BossTactic.PHANTOM_FEINT, 7.0D, true,
+                    false, safeCycle % 2 == 0 ? -1.0D : 1.0D)
+                    : new BossPlan(BossTactic.CROSSCUT, 6.0D, true,
                     false, safeCycle % 2 == 0 ? -1.0D : 1.0D);
             case ABSORPTION -> new BossPlan(BossTactic.ABSORPTION_RETREAT, 8.0D, true,
                     true, safeCycle % 2 == 0 ? 1.0D : -1.0D);
@@ -83,6 +102,37 @@ public final class CombatTacticsPolicy {
             case 2 -> MobTactic.MARKED_HUNTER;
             case 3 -> MobTactic.PORTAL_GUARD;
             default -> slot % 2 == 0 ? MobTactic.ASSAULT : MobTactic.ELITE_HUNTER;
+        };
+    }
+
+    /**
+     * Choose a bounded movement beat for one mob.  The slot is stable for a
+     * generation, while cycle changes the readable response every few
+     * seconds; no wall-clock randomness can make the mob leave the arena.
+     */
+    public static MobManeuver waveManeuver(int wave, String role, int cycle, int slot) {
+        String normalized = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
+        int safeWave = Math.max(1, Math.min(6, wave));
+        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 4);
+        if ("ARTILLERY".equals(normalized)) {
+            return beat % 2 == 0 ? MobManeuver.CROSS_FIRE : MobManeuver.HOLD_LINE;
+        }
+        if ("BREAKER".equals(normalized)) {
+            return beat == 2 ? MobManeuver.FALLBACK : MobManeuver.PINCH;
+        }
+        if (safeWave == 5 || "ELITE".equals(normalized)) {
+            return switch (beat) {
+                case 0 -> MobManeuver.SIDE_STEP;
+                case 1 -> MobManeuver.CROSS_FIRE;
+                case 2 -> MobManeuver.FALLBACK;
+                default -> MobManeuver.PINCH;
+            };
+        }
+        return switch (safeWave) {
+            case 2 -> beat % 2 == 0 ? MobManeuver.PINCH : MobManeuver.SIDE_STEP;
+            case 3 -> beat == 1 ? MobManeuver.SIDE_STEP : MobManeuver.HOLD_LINE;
+            case 4 -> beat % 2 == 0 ? MobManeuver.CROSS_FIRE : MobManeuver.FALLBACK;
+            default -> beat == 2 ? MobManeuver.SIDE_STEP : MobManeuver.HOLD_LINE;
         };
     }
 

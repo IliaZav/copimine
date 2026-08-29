@@ -23,5 +23,75 @@
     "sounds": [
       {"name": "copimine:end_rift/victory", "stream": true}
     ]
+  },
+  "end_rift/wave_1": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_1", "stream": true}
+    ]
+  },
+  "end_rift/wave_2": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_2", "stream": true}
+    ]
+  },
+  "end_rift/wave_3": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_3", "stream": true}
+    ]
+  },
+  "end_rift/wave_4": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_4", "stream": true}
+    ]
+  },
+  "end_rift/wave_5": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_5", "stream": true}
+    ]
+  },
+  "end_rift/intermission_1": {
+    "sounds": [
+      {"name": "copimine:end_rift/intermission_1", "stream": true}
+    ]
+  },
+  "end_rift/intermission_2": {
+    "sounds": [
+      {"name": "copimine:end_rift/intermission_2", "stream": true}
+    ]
+  },
+  "end_rift/intermission_3": {
+    "sounds": [
+      {"name": "copimine:end_rift/intermission_3", "stream": true}
+    ]
+  },
+  "end_rift/intermission_4": {
+    "sounds": [
+      {"name": "copimine:end_rift/intermission_4", "stream": true}
+    ]
+  },
+  "end_rift/boss_cinematic": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_cinematic", "stream": true}
+    ]
+  },
+  "end_rift/final_drain": {
+    "sounds": [
+      {"name": "copimine:end_rift/final_drain", "stream": true}
+    ]
+  },
+  "end_rift/final_ritual": {
+    "sounds": [
+      {"name": "copimine:end_rift/final_ritual", "stream": true}
+    ]
+  },
+  "end_rift/final_wave": {
+    "sounds": [
+      {"name": "copimine:end_rift/final_wave", "stream": true}
+    ]
+  },
+  "end_rift/boss_finish": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_finish", "stream": true}
+    ]
   }
 }

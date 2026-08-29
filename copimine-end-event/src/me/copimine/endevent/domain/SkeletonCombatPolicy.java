@@ -38,6 +38,37 @@ public final class SkeletonCombatPolicy {
         return wave == 2 && focusMarkedPlayer && markedTargetEligible;
     }
 
+    /** The short movement beat used while a skeleton keeps its firing lane. */
+    public enum Maneuver {
+        HOLD_LINE,
+        SIDE_STEP,
+        FALLBACK,
+        CROSS_FIRE
+    }
+
+    public static Maneuver maneuverForWave(int wave, boolean miniBoss, int cycle, int slot) {
+        int safeWave = Math.max(1, Math.min(6, wave));
+        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 4);
+        if (safeWave == 4) {
+            return beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.HOLD_LINE;
+        }
+        if (safeWave == 5 || safeWave == 6) {
+            return switch (beat) {
+                case 0 -> Maneuver.SIDE_STEP;
+                case 1 -> Maneuver.CROSS_FIRE;
+                case 2 -> Maneuver.FALLBACK;
+                default -> miniBoss ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
+            };
+        }
+        if (safeWave == 2) {
+            return beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.SIDE_STEP;
+        }
+        if (safeWave == 3) {
+            return beat == 1 ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
+        }
+        return beat == 2 ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
+    }
+
     /**
      * Return the readable battlefield job for a skeleton in one wave.  The
      * Bukkit controller uses this as a compact, deterministic input for

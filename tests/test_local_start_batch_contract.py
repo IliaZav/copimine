@@ -141,6 +141,16 @@ def test_local_paper_startup_timeout_cleans_up_the_started_process() -> None:
 
     assert "$paper.Kill()" in timeout_block
     assert "$paper.WaitForExit(10000) | Out-Null" in timeout_block
+    assert "[int]$ReadyTimeoutSeconds = 120" in text
+
+
+def test_local_paper_starter_hashes_without_optional_filehash_autoload() -> None:
+    text = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "function Get-LocalSha256" in text
+    assert "[Security.Cryptography.SHA256]::Create()" in text
+    assert "[IO.File]::OpenRead($LiteralPath)" in text
+    assert "Get-FileHash" not in text
 
 
 def test_local_runner_grants_op_only_to_whitelisted_accounts_present_in_local_authme_db() -> None:

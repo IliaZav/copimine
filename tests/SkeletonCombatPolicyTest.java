@@ -52,6 +52,20 @@ public final class SkeletonCombatPolicyTest {
         require(SkeletonCombatPolicy.behaviorForWave(3, true).minimumRange()
                         < SkeletonCombatPolicy.behaviorForWave(3, false).minimumRange(),
                 "miniboss skeletons must close their ranged lane slightly");
+
+        require(SkeletonCombatPolicy.maneuverForWave(1, false, 2, 0)
+                        == SkeletonCombatPolicy.Maneuver.SIDE_STEP,
+                "wave one skeletons need a small readable side step");
+        require(SkeletonCombatPolicy.maneuverForWave(4, false, 0, 0)
+                        == SkeletonCombatPolicy.Maneuver.CROSS_FIRE,
+                "wave four artillery skeletons need a cross-fire beat");
+        require(SkeletonCombatPolicy.maneuverForWave(5, true, 2, 0)
+                        == SkeletonCombatPolicy.Maneuver.FALLBACK,
+                "wave five miniboss skeletons need a bounded fallback beat");
+        SkeletonCombatPolicy.Maneuver firstManeuver = SkeletonCombatPolicy.maneuverForWave(5, true, 2, 0);
+        SkeletonCombatPolicy.Maneuver secondManeuver = SkeletonCombatPolicy.maneuverForWave(5, true, 2, 0);
+        require(firstManeuver == secondManeuver,
+                "skeleton maneuver selection must be deterministic");
     }
 
     private static void require(boolean condition, String message) {

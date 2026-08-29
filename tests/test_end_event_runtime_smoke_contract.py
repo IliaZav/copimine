@@ -193,7 +193,7 @@ def test_local_start_script_synchronizes_the_current_end_event_jar_before_boot()
     for expected in (
         "copimine-end-event\\CopiMineEndEvent.jar",
         "plugins\\CopiMineEndEvent.jar",
-        "Get-FileHash",
+            "Get-LocalSha256",
         "Synchronized local End Rift plugin",
         "copimine-end-event\\config.yml",
         "plugins\\CopiMineEndEvent\\config.yml",

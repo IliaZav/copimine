@@ -66,6 +66,51 @@ music:
   victory:
     sound: copimine:end_rift/victory
     loop-seconds: 0
+  # Each event beat has its own instrumental arrangement.  The legacy tracks
+  # above remain as safe fallbacks for old commands and recovery snapshots.
+  phase:
+    wave-1:
+      sound: copimine:end_rift/wave_1
+      loop-seconds: 48
+    wave-2:
+      sound: copimine:end_rift/wave_2
+      loop-seconds: 46
+    wave-3:
+      sound: copimine:end_rift/wave_3
+      loop-seconds: 44
+    wave-4:
+      sound: copimine:end_rift/wave_4
+      loop-seconds: 50
+    wave-5:
+      sound: copimine:end_rift/wave_5
+      loop-seconds: 54
+    intermission-1:
+      sound: copimine:end_rift/intermission_1
+      loop-seconds: 14
+    intermission-2:
+      sound: copimine:end_rift/intermission_2
+      loop-seconds: 14
+    intermission-3:
+      sound: copimine:end_rift/intermission_3
+      loop-seconds: 16
+    intermission-4:
+      sound: copimine:end_rift/intermission_4
+      loop-seconds: 16
+    boss-cinematic:
+      sound: copimine:end_rift/boss_cinematic
+      loop-seconds: 22
+    final-drain:
+      sound: copimine:end_rift/final_drain
+      loop-seconds: 24
+    final-ritual:
+      sound: copimine:end_rift/final_ritual
+      loop-seconds: 20
+    final-wave:
+      sound: copimine:end_rift/final_wave
+      loop-seconds: 48
+    boss-finish:
+      sound: copimine:end_rift/boss_finish
+      loop-seconds: 20
 
 waves:
   hard-cap: 48

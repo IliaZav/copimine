@@ -77,6 +77,40 @@ def test_debug_subcommands_are_tab_completed() -> None:
     assert 'case "debug" -> List.of("packets", "objectives", "hazards", "perf", "ai")' in completion
 
 
+def test_debug_packets_reports_a_five_second_runtime_budget_window() -> None:
+    start = MAIN.index("private void handleDebug")
+    end = MAIN.index("private void handleStatus", start)
+    debug = MAIN[start:end]
+    for marker in (
+        "RUNTIME_DIAGNOSTICS",
+        "packetQualityMode=",
+        "pluginMessagesPerSecond=",
+        "estimatedParticlePacketsPerSecond=",
+        "particleBatchesPerSecond=",
+        "sampleIntervalMs=",
+        "ownedLiving=",
+        "temporaryDisplays=",
+        "activeProjectiles=",
+        "gcCollections=",
+        "gcPauseMs=",
+        "serverThreadCpuPercent=",
+        "lastPlayerPings=",
+    ):
+        assert marker in debug
+
+
+def test_runtime_sampler_is_windowed_and_not_a_second_repeating_task() -> None:
+    assert "RUNTIME_DIAGNOSTICS_WINDOW_MILLIS = 5_000L" in MAIN
+    assert "sampleRuntimeDiagnostics();" in MAIN
+    assert "now - runtimeDiagnosticsWindowStartedAtMillis < RUNTIME_DIAGNOSTICS_WINDOW_MILLIS" in MAIN
+    assert "ManagementFactory.getGarbageCollectorMXBeans()" in MAIN
+    assert "getCurrentThreadCpuTime()" in MAIN
+    tick_start = MAIN.index("private void tick()")
+    tick_end = MAIN.index("private void updatePadOccupancy", tick_start)
+    tick = MAIN[tick_start:tick_end]
+    assert tick.count("runTaskTimer") == 0
+
+
 def test_local_visual_test_command_reports_uuid_role_binding_and_asset_path() -> None:
     assert '"visuals".equalsIgnoreCase(args[1])' in MAIN
     start = MAIN.index("private void handleTestVisuals")

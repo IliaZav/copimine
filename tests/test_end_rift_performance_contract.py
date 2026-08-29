@@ -43,3 +43,35 @@ def test_boss_projectile_trail_is_sent_only_to_nearby_event_players() -> None:
     trail_end = MAIN.index("private void spawnPatternRing", trail_start)
     trail = MAIN[trail_start:trail_end]
     assert "world.spawnParticle" not in trail
+
+
+def test_local_performance_probe_is_bounded_and_does_not_mutate_game_state() -> None:
+    probe = (ROOT / "tests/RunEndRiftPerformanceLive.ps1").read_text(encoding="utf-8")
+    for marker in (
+        "DurationSeconds = 900",
+        "SampleSeconds = 5",
+        "EndRiftPerfA",
+        "EndRiftPerfB",
+        "LocalEndRiftMobCombatBot.js",
+        "Get-RuntimeDiagnosticSample",
+        "Assert-PlayersStillConnected",
+        "connected_players",
+        "event_mobs",
+        "paper_cpu_percent",
+        "paper_working_set_mb",
+        "PERF_PASS",
+        "Export-Csv",
+        "environment:\\s*local",
+        "codex/end-rift-event",
+    ):
+        assert marker in probe, marker
+    for forbidden in (
+        "StartEndRiftLocal",
+        "minecraft:reload",
+        "cmend core remove",
+        "cmend core setat",
+        "cmend resources",
+        "save-all",
+        "stop",
+    ):
+        assert forbidden not in probe, forbidden

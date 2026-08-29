@@ -30,7 +30,8 @@ BUG_LOG = ROOT / "docs/superpowers/evidence/2026-08-26-end-rift-bug-log.md"
 
 
 def _block(text: str, marker: str, next_marker: str) -> str:
-    start = text.index(marker)
+    waves_start = text.index("\nwaves:\n") + 1
+    start = text.index(marker, waves_start)
     end = text.index(next_marker, start)
     return text[start:end]
 

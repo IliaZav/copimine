@@ -16,7 +16,8 @@ CLIENT_CATALOG = ROOT / "CopiMineClient/src/main/java/me/copimine/client/EndEven
 
 def _wave_block(name: str, next_name: str | None = None) -> str:
     text = CONFIG.read_text(encoding="utf-8")
-    start = text.index(f"  {name}:\n")
+    waves_start = text.index("\nwaves:\n") + 1
+    start = text.index(f"  {name}:\n", waves_start)
     end = text.index(f"  {next_name}:\n", start) if next_name else text.index("\n# Event-owned mobs", start)
     return text[start:end]
 

@@ -208,7 +208,20 @@ def test_spell_projectiles_are_particle_only_and_each_spell_has_a_unique_pattern
 
 def test_void_mark_pattern_initializes_all_glyph_corners_before_joining_edges() -> None:
     source = MAIN.read_text(encoding="utf-8")
-    pattern = source[source.index('case "void_mark" -> {'):source.index('case "summon", "summon_servants"')]
+    # The runtime diagnostics mapper also names this spell.  Anchor the
+    # assertion to the final visual-pattern cases, not to whichever switch
+    # happens to appear first in the source file.
+    pattern = source[source.rindex('case "void_mark" -> {'):source.rindex('case "summon", "summon_servants"')]
     loop = "for (int i = 0; i < corners.length; i++)"
     assert pattern.count(loop) >= 2
     assert pattern.index("corners[i] =") < pattern.rindex("spawnPatternSegment")
+
+
+def test_particle_segment_uses_required_data_for_colored_dust() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    helper = source[source.index("private void spawnPatternSegment"):source.index("private void spawnEventParticle")]
+    assert "particle == Particle.DUST" in helper
+    assert "Particle.DustOptions safeDust = dust != null" in helper
+    assert "? dust : new Particle.DustOptions(Color.WHITE, 1.0F);" in helper
+    assert "spawnParticle(Particle.DUST, linePoint, 1" in helper
+    assert "player.spawnParticle(particle, linePoint, 1" in helper

@@ -3,6 +3,8 @@ package me.copimine.endevent;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.Collection;
@@ -55,6 +57,7 @@ import me.copimine.endevent.domain.RewardRoster;
 import me.copimine.endevent.domain.ResourceProgressFormatter;
 import me.copimine.endevent.domain.StormPatternPolicy;
 import me.copimine.endevent.domain.SkeletonCombatPolicy;
+import me.copimine.endevent.domain.SpellVisualPolicy;
 import me.copimine.endevent.domain.TowerDefensePolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WaveObjectivePolicy;
@@ -262,9 +265,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double RIFT_PROJECTILE_SPEED = 0.65D;
     private static final int EVENT_ARROW_MAX_TICKS = 100;
     private static final int EVENT_ARROW_TRAIL_INTERVAL_TICKS = 2;
+    private static final long RUNTIME_DIAGNOSTICS_WINDOW_MILLIS = 5_000L;
+    private static final String PACKET_QUALITY_FULL = "FULL";
+    private static final String PACKET_QUALITY_REDUCED = "REDUCED";
+    private static final String PACKET_QUALITY_MINIMAL_SAFE = "MINIMAL_SAFE";
     private static final String ARROW_SPELL_SKELETON = "skeleton";
     private static final long TOWER_PLAYER_AGGRO_MILLIS = 4_000L;
     private static final double TOWER_PLAYER_ALERT_RADIUS = 8.0D;
+    // Small deterministic steering beats keep movement readable without
+    // creating another repeating task per mob.
+    private static final long SKELETON_MANEUVER_CYCLE_MILLIS = 4_000L;
+    private static final long BOSS_FEINT_COOLDOWN_MILLIS = 8_000L;
     private static final int CREATIVE_TEST_MAX_STAGE_TICKS = 100;
     private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
     private static final String VICTORY_UNLOCK_PENDING = "END_UNLOCK_PENDING";
@@ -348,6 +359,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Integer> activeEventArrowAges = new LinkedHashMap<>();
     private final Map<UUID, Long> nextSkeletonArrowMillis = new HashMap<>();
     private final Deque<UUID> recentBossTargets = new ArrayDeque<>();
+    private long runtimeDiagnosticsWindowStartedAtMillis;
+    private long runtimeDiagnosticsLastSampleMillis;
+    private long runtimeDiagnosticsParticlePackets;
+    private long runtimeDiagnosticsParticleBatches;
+    private long runtimeDiagnosticsPluginMessages;
+    private long runtimeDiagnosticsLastGcCollections = -1L;
+    private long runtimeDiagnosticsLastGcPauseMillis = -1L;
+    private long runtimeDiagnosticsLastThreadCpuNanos = -1L;
+    private long runtimeDiagnosticsLastThreadCpuWallMillis = -1L;
+    private RuntimeDiagnosticsSnapshot runtimeDiagnosticsSnapshot = RuntimeDiagnosticsSnapshot.empty();
     /** PlayerJoinEvent can run before AuthMe finishes; bindings are retried after eligibility changes. */
     private final Set<UUID> clientBindingReadyPlayers = new HashSet<>();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
@@ -443,6 +464,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long bossLastProgressAt;
     private long nextBossStuckTeleportMillis;
     private long lastBossPathRequestMillis;
+    private long lastBossFeintMillis;
     private int bossTacticCycle;
     private long nextBossTacticMillis;
     private long nextClientBindingRefreshMillis;
@@ -1026,6 +1048,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " from=" + current + " to=" + next + " reason=" + reason);
         if (!isEventMusicPhase() && !isVictoryMusicTail(current, next)) {
             stopEventMusic();
+        } else if (isEventMusicPhase()) {
+            playEventMusic(musicForPhase());
         }
         if (persist) {
             saveStateAsync();
@@ -1042,6 +1066,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!isEventMusicPhase() && !isVictoryMusicTail(previous, next)) {
             stopEventMusic();
+        } else if (isEventMusicPhase()) {
+            playEventMusic(musicForPhase());
         }
         getLogger().info("END_EVENT_STATE forced=" + next + " reason=" + reason);
         saveStateAsync();
@@ -1177,6 +1203,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellPauseUntilMillis = 0L;
         lastBossTeleportMillis = 0L;
         lastBossPathRequestMillis = 0L;
+        lastBossFeintMillis = 0L;
         bossTacticCycle = 0;
         nextBossTacticMillis = 0L;
         servantsSummonedAt70 = false;
@@ -1223,14 +1250,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private EventConfig.MusicTrack musicForPhase() {
         return switch (phase) {
-            case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
-                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5 -> config.wavesMusic();
-            case BOSS_CINEMATIC -> config.bossMusic();
+            case WAVE_1 -> phaseMusicOrLegacy("wave-1", config.wavesMusic());
+            case WAVE_2 -> phaseMusicOrLegacy("wave-2", config.wavesMusic());
+            case WAVE_3 -> phaseMusicOrLegacy("wave-3", config.wavesMusic());
+            case WAVE_4 -> phaseMusicOrLegacy("wave-4", config.wavesMusic());
+            case WAVE_5 -> phaseMusicOrLegacy("wave-5", config.wavesMusic());
+            case INTERMISSION_1 -> phaseMusicOrLegacy("intermission-1", config.wavesMusic());
+            case INTERMISSION_2 -> phaseMusicOrLegacy("intermission-2", config.wavesMusic());
+            case INTERMISSION_3 -> phaseMusicOrLegacy("intermission-3", config.wavesMusic());
+            case INTERMISSION_4 -> phaseMusicOrLegacy("intermission-4", config.wavesMusic());
+            case BOSS_CINEMATIC -> phaseMusicOrLegacy("boss-cinematic", config.bossMusic());
             case BOSS_ACTIVE -> halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
-            case FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> config.bossFinalMusic();
+            case FINAL_DRAIN -> phaseMusicOrLegacy("final-drain", config.bossFinalMusic());
+            case FINAL_RITUAL -> phaseMusicOrLegacy("final-ritual", config.bossFinalMusic());
+            case FINAL_WAVE -> phaseMusicOrLegacy("final-wave", config.bossFinalMusic());
+            case BOSS_FINISH -> phaseMusicOrLegacy("boss-finish", config.bossFinalMusic());
             case VICTORY_PROCESSING, VICTORY -> config.victoryMusic();
             default -> null;
         };
+    }
+
+    private EventConfig.MusicTrack phaseMusicOrLegacy(String key, EventConfig.MusicTrack fallback) {
+        EventConfig.MusicTrack phaseTrack = config == null ? null : config.phaseMusic(key);
+        return phaseTrack == null ? fallback : phaseTrack;
     }
 
     private boolean isEventMusicPhase() {
@@ -1299,9 +1341,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (player == null || config == null) {
             return;
         }
-        for (EventConfig.MusicTrack track : List.of(
+        List<EventConfig.MusicTrack> tracks = new ArrayList<>(List.of(
                 config.wavesMusic(), config.bossMusic(), config.bossHalfMusic(),
-                config.bossFinalMusic(), config.victoryMusic())) {
+                config.bossFinalMusic(), config.victoryMusic()));
+        tracks.addAll(config.allMusicTracks());
+        for (EventConfig.MusicTrack track : new LinkedHashSet<>(tracks)) {
             player.stopSound(track.soundId(), SoundCategory.MUSIC);
         }
     }
@@ -1328,16 +1372,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(player, "&cЛокальная проверка музыки разрешена только при environment=local.");
             return;
         }
-        EventConfig.MusicTrack track = switch (requested.toLowerCase(Locale.ROOT)) {
+        String normalized = requested.toLowerCase(Locale.ROOT);
+        EventConfig.MusicTrack track = switch (normalized) {
             case "waves", "wave" -> config.wavesMusic();
             case "boss" -> config.bossMusic();
             case "half", "boss-half" -> config.bossHalfMusic();
             case "final", "boss-final" -> config.bossFinalMusic();
             case "victory" -> config.victoryMusic();
-            default -> null;
+            default -> config.phaseMusic(normalized);
         };
         if (track == null) {
-            message(player, "&e/cmend test music <waves|boss|half|final|victory>");
+            message(player, "&e/cmend test music <waves|boss|half|final|victory|wave-1|wave-2|wave-3|wave-4|wave-5|intermission-1|...|boss-finish>");
             return;
         }
         stopEventMusic(player);
@@ -1471,14 +1516,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if ("all".equals(section) || "packets".equals(section)) {
-            String pings = Bukkit.getOnlinePlayers().stream()
-                    .map(player -> player.getName() + "=" + player.getPing() + "ms")
-                    .sorted(String.CASE_INSENSITIVE_ORDER)
-                    .collect(java.util.stream.Collectors.joining(","));
+            sampleRuntimeDiagnostics();
+            RuntimeDiagnosticsSnapshot diagnostics = runtimeDiagnosticsSnapshot;
             message(sender, "&7CLIENT_BINDINGS audience=" + eventAudience().size()
                     + " entityBindings=" + entityBindingInstances.size()
                     + " bossBinding=" + (!bossBindingInstanceId.isBlank())
-                    + " pings=" + (pings.isBlank() ? "none" : pings));
+                    + " lastPlayerPings=" + (diagnostics.lastPlayerPings().isBlank()
+                    ? "none" : diagnostics.lastPlayerPings()));
+            message(sender, "&7RUNTIME_DIAGNOSTICS sampleIntervalMs=" + diagnostics.sampleIntervalMillis()
+                    + " packetQualityMode=" + diagnostics.packetQualityMode()
+                    + " pluginMessagesPerSecond=" + formatRate(diagnostics.pluginMessagesPerSecond())
+                    + " estimatedParticlePacketsPerSecond="
+                    + formatRate(diagnostics.estimatedParticlePacketsPerSecond())
+                    + " particleBatchesPerSecond=" + formatRate(diagnostics.particleBatchesPerSecond()));
+            message(sender, "&7RUNTIME_DIAGNOSTICS ownedLiving=" + diagnostics.ownedLivingEntities()
+                    + " temporaryDisplays=" + diagnostics.temporaryDisplays()
+                    + " activeProjectiles=" + diagnostics.activeProjectiles()
+                    + " gcCollections=" + diagnostics.gcCollections()
+                    + " gcPauseMs=" + diagnostics.gcPauseMillis()
+                    + " serverThreadCpuPercent=" + formatRate(diagnostics.serverThreadCpuPercent())
+                    + " tps=" + diagnostics.tps()
+                    + " mspt=" + formatRate(diagnostics.mspt()));
         }
         if ("all".equals(section) || "objectives".equals(section)) {
             int liveObjectiveMobs = activeWave >= 1 && activeWave <= 5
@@ -1618,6 +1676,152 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return java.util.Arrays.stream(tps)
                 .mapToObj(value -> String.format(Locale.ROOT, "%.2f", value))
                 .collect(java.util.stream.Collectors.joining("/"));
+    }
+
+    /**
+     * Roll one bounded five-second window on the existing event tick.  The
+     * sampler deliberately uses only the already-owned entity map and the
+     * online-player list; it never starts a second repeating task or scans a
+     * world.  The resulting snapshot is both human-readable through RCON and
+     * useful as evidence for the two-player local run.
+     */
+    private void sampleRuntimeDiagnostics() {
+        long now = System.currentTimeMillis();
+        if (runtimeDiagnosticsWindowStartedAtMillis <= 0L) {
+            runtimeDiagnosticsWindowStartedAtMillis = now;
+            runtimeDiagnosticsLastThreadCpuWallMillis = now;
+            return;
+        }
+        long elapsed = now - runtimeDiagnosticsWindowStartedAtMillis;
+        if (now - runtimeDiagnosticsWindowStartedAtMillis < RUNTIME_DIAGNOSTICS_WINDOW_MILLIS) {
+            return;
+        }
+
+        List<Player> onlinePlayers = new ArrayList<>(Bukkit.getOnlinePlayers());
+        onlinePlayers.sort(Comparator.comparing(Player::getName, String.CASE_INSENSITIVE_ORDER));
+        String playerPings = onlinePlayers.stream()
+                .map(player -> player.getName() + "=" + Math.max(0, player.getPing()) + "ms")
+                .collect(java.util.stream.Collectors.joining(","));
+        int maxPing = onlinePlayers.stream().mapToInt(player -> Math.max(0, player.getPing()))
+                .max().orElse(0);
+        int averagePing = onlinePlayers.isEmpty() ? 0
+                : (int) Math.round(onlinePlayers.stream()
+                .mapToInt(player -> Math.max(0, player.getPing()))
+                .average().orElse(0.0D));
+
+        int ownedLiving = 0;
+        int temporaryDisplays = 0;
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (entity instanceof LivingEntity && isLiveOwnedEntity(entity.getUniqueId())) {
+                ownedLiving++;
+            }
+            if (entity instanceof Display && entity.isValid() && !entity.isDead()) {
+                temporaryDisplays++;
+            }
+        }
+
+        double particlePacketsPerSecond = runtimeDiagnosticsParticlePackets * 1000.0D / elapsed;
+        double particleBatchesPerSecond = runtimeDiagnosticsParticleBatches * 1000.0D / elapsed;
+        double pluginMessagesPerSecond = runtimeDiagnosticsPluginMessages * 1000.0D / elapsed;
+        double mspt = averageTickMillis();
+        long gcCollections = ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(bean -> Math.max(0L, bean.getCollectionCount()))
+                .sum();
+        long gcPauseMillis = ManagementFactory.getGarbageCollectorMXBeans().stream()
+                .mapToLong(bean -> Math.max(0L, bean.getCollectionTime()))
+                .sum();
+        long gcDelta = runtimeDiagnosticsLastGcCollections < 0L ? 0L
+                : Math.max(0L, gcCollections - runtimeDiagnosticsLastGcCollections);
+        long gcPauseDelta = runtimeDiagnosticsLastGcPauseMillis < 0L ? 0L
+                : Math.max(0L, gcPauseMillis - runtimeDiagnosticsLastGcPauseMillis);
+
+        ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+        long threadCpuNanos = threadBean.isCurrentThreadCpuTimeSupported()
+                ? Math.max(0L, threadBean.getCurrentThreadCpuTime()) : -1L;
+        double serverThreadCpuPercent = 0.0D;
+        if (threadCpuNanos >= 0L && runtimeDiagnosticsLastThreadCpuNanos >= 0L
+                && runtimeDiagnosticsLastThreadCpuWallMillis > 0L) {
+            long cpuDeltaNanos = Math.max(0L, threadCpuNanos - runtimeDiagnosticsLastThreadCpuNanos);
+            long wallDeltaMillis = Math.max(1L, now - runtimeDiagnosticsLastThreadCpuWallMillis);
+            serverThreadCpuPercent = Math.min(999.0D,
+                    cpuDeltaNanos / 1_000_000.0D / wallDeltaMillis * 100.0D);
+        }
+
+        String quality = packetQualityMode(mspt, particlePacketsPerSecond, pluginMessagesPerSecond);
+        runtimeDiagnosticsSnapshot = new RuntimeDiagnosticsSnapshot(
+                now, elapsed, quality, playerPings, averagePing, maxPing,
+                onlinePlayers.size(), ownedLiving, temporaryDisplays, activeRiftProjectiles.size(),
+                particlePacketsPerSecond, particleBatchesPerSecond, pluginMessagesPerSecond,
+                gcDelta, gcPauseDelta, serverThreadCpuPercent, formatTps(getServer().getTPS()), mspt);
+        runtimeDiagnosticsLastSampleMillis = now;
+        runtimeDiagnosticsWindowStartedAtMillis = now;
+        runtimeDiagnosticsParticlePackets = 0L;
+        runtimeDiagnosticsParticleBatches = 0L;
+        runtimeDiagnosticsPluginMessages = 0L;
+        runtimeDiagnosticsLastGcCollections = gcCollections;
+        runtimeDiagnosticsLastGcPauseMillis = gcPauseMillis;
+        runtimeDiagnosticsLastThreadCpuNanos = threadCpuNanos;
+        runtimeDiagnosticsLastThreadCpuWallMillis = now;
+
+        if (bootstrapped && isConfigured()) {
+            getLogger().info("END_EVENT_RUNTIME_DIAGNOSTICS event=" + eventId
+                    + " phase=" + phase + " sample_interval_ms=" + elapsed
+                    + " packet_quality=" + quality
+                    + " pings=" + (playerPings.isBlank() ? "none" : playerPings)
+                    + " avg_ping_ms=" + averagePing + " max_ping_ms=" + maxPing
+                    + " owned_living=" + ownedLiving + " displays=" + temporaryDisplays
+                    + " projectiles=" + activeRiftProjectiles.size()
+                    + " particle_packets_sec=" + formatRate(particlePacketsPerSecond)
+                    + " plugin_messages_sec=" + formatRate(pluginMessagesPerSecond)
+                    + " gc_collections=" + gcDelta + " gc_pause_ms=" + gcPauseDelta
+                    + " server_thread_cpu_percent=" + formatRate(serverThreadCpuPercent));
+        }
+    }
+
+    private double averageTickMillis() {
+        long[] tickTimes = getServer().getTickTimes();
+        if (tickTimes == null || tickTimes.length == 0) {
+            return 0.0D;
+        }
+        long totalNanos = 0L;
+        for (long tickTime : tickTimes) {
+            totalNanos += Math.max(0L, tickTime);
+        }
+        return totalNanos / (double) tickTimes.length / 1_000_000.0D;
+    }
+
+    private String packetQualityMode(double mspt, double particlePacketsPerSecond,
+                                     double pluginMessagesPerSecond) {
+        if (mspt >= 40.0D || particlePacketsPerSecond >= 4_000.0D
+                || pluginMessagesPerSecond >= 40.0D) {
+            return PACKET_QUALITY_MINIMAL_SAFE;
+        }
+        if (mspt >= 25.0D || particlePacketsPerSecond >= 1_800.0D
+                || pluginMessagesPerSecond >= 20.0D) {
+            return PACKET_QUALITY_REDUCED;
+        }
+        return PACKET_QUALITY_FULL;
+    }
+
+    private String formatRate(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value)) {
+            return "unavailable";
+        }
+        return String.format(Locale.ROOT, "%.2f", Math.max(0.0D, value));
+    }
+
+    private int estimatedSpellFlightParticles(String spellId) {
+        SpellVisualPolicy.VisualProfile profile = SpellVisualPolicy.profile(spellId);
+        return profile == null ? 8 : profile.estimatedParticles();
+    }
+
+    private void recordParticleEmission(int estimatedParticles) {
+        runtimeDiagnosticsParticleBatches++;
+        runtimeDiagnosticsParticlePackets += Math.max(0, estimatedParticles);
+    }
+
+    private void recordPluginMessage() {
+        runtimeDiagnosticsPluginMessages++;
     }
 
     private void handleStatus(CommandSender sender) {
@@ -2678,7 +2882,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
+            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -2715,7 +2919,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ? current
                     : args.length > 3 ? Bukkit.getPlayerExact(args[3]) : null;
             if (player == null) {
-                message(sender, "&cУкажи онлайн-игрока: /cmend test music <waves|boss|half|final|victory> <player>.");
+                message(sender, "&cУкажи онлайн-игрока: /cmend test music <phase> <player>.");
                 return;
             }
             playTestMusic(player, requested);
@@ -2744,7 +2948,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
+        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
     }
 
     /**
@@ -4859,6 +5063,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!bootstrapped || !isEnabled()) {
             return;
         }
+        sampleRuntimeDiagnostics();
         expireControlEffects();
         updatePadOccupancy();
         updateCombatHelpers();
@@ -5344,6 +5549,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean miniBoss = isSkeletonMiniBoss(skeleton);
         int wave = readInt(skeleton, keyWave, 1);
         SkeletonCombatPolicy.WaveBehavior behavior = SkeletonCombatPolicy.behaviorForWave(wave, miniBoss);
+        int maneuverCycle = (int) Math.floorMod(
+                now / SKELETON_MANEUVER_CYCLE_MILLIS, 4L);
+        int maneuverSlot = Math.floorMod(skeleton.getUniqueId().hashCode(), 4);
+        SkeletonCombatPolicy.Maneuver maneuver = SkeletonCombatPolicy.maneuverForWave(
+                wave, miniBoss, maneuverCycle, maneuverSlot);
         double distance = Math.sqrt(horizontalDistanceSquared(skeleton.getLocation(), target.getLocation()));
         double minimum = behavior.minimumRange();
         double maximum = behavior.maximumRange();
@@ -5353,7 +5563,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Location destination = skeletonRangedDestination(anchor, skeleton, target,
-                minimum + 2.0D, behavior);
+                minimum + 2.0D, behavior, maneuver);
         if (destination == null) {
             nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
             return;
@@ -5376,6 +5586,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " target=" + target.getUniqueId() + " distance=" + String.format(Locale.ROOT, "%.2f", distance)
                         + " firing_lane=" + String.format(Locale.ROOT, "%.1f", minimum)
                         + "-" + String.format(Locale.ROOT, "%.1f", maximum)
+                        + " maneuver=" + maneuver
                         + " destination=" + locationText(destination));
             }
         }
@@ -5423,7 +5634,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Location skeletonRangedDestination(Location anchor, Skeleton skeleton,
                                                Player target, double desiredDistance,
-                                               SkeletonCombatPolicy.WaveBehavior behavior) {
+                                               SkeletonCombatPolicy.WaveBehavior behavior,
+                                               SkeletonCombatPolicy.Maneuver maneuver) {
         if (anchor == null || skeleton == null || target == null) {
             return null;
         }
@@ -5450,6 +5662,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         radial.normalize();
         Location preferred = tacticalTarget.clone().add(radial.multiply(desiredDistance));
+        Vector side = new Vector(-radial.getZ(), 0.0D, radial.getX());
+        long stableBits = skeleton.getUniqueId().getLeastSignificantBits();
+        double sideSign = (stableBits & 1L) == 0L ? 1.0D : -1.0D;
+        if (maneuver != null) {
+            switch (maneuver) {
+                case SIDE_STEP -> preferred.add(side.multiply(sideSign * 2.0D));
+                case CROSS_FIRE -> preferred.add(side.multiply(-sideSign * 2.75D));
+                case FALLBACK -> preferred.add(radial.multiply(2.0D));
+                case HOLD_LINE -> { }
+            }
+        }
         return findSafeCombatLocation(anchor, preferred,
                 boundedCombatRadius(config.containmentRadius()) - 1.0D,
                 MIN_WAVE_CORE_DISTANCE_BLOCKS);
@@ -5536,15 +5759,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (preferred == null) {
             return null;
         }
+        String maneuverRole = towerRole != null ? towerRole.name()
+                : (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind)
+                ? "ELITE" : "MOB");
+        int maneuverWave = Math.max(1, readInt(mob, keyWave, activeWave));
+        int maneuverCycle = (int) Math.floorMod(
+                now / SKELETON_MANEUVER_CYCLE_MILLIS, 4L);
+        int maneuverSlot = Math.floorMod(mob.getUniqueId().hashCode(), 4);
+        CombatTacticsPolicy.MobManeuver maneuver = CombatTacticsPolicy.waveManeuver(
+                maneuverWave, maneuverRole, maneuverCycle, maneuverSlot);
+        preferred = applyMobManeuver(preferred, anchor, mob, target, maneuver);
         Location destination = findSafeCombatLocation(anchor, preferred,
                 boundedCombatRadius(config.containmentRadius()) - 1.0D,
                 MIN_WAVE_CORE_DISTANCE_BLOCKS);
         if (destination != null) {
             getLogger().fine("WAVE_AI_TACTIC_DESTINATION entity=" + mob.getUniqueId()
                     + " role=" + kind + " tactic=" + tactic
+                    + " maneuver=" + maneuver
                     + " destination=" + locationText(destination));
         }
         return destination;
+    }
+
+    /**
+     * Apply one small lateral or retreat beat before the common safety
+     * resolver.  The offset is intentionally tiny and deterministic: it
+     * gives players a readable dodge window without making a mob teleport or
+     * turning pathfinding into an expensive steering simulation.
+     */
+    private Location applyMobManeuver(Location preferred, Location anchor, Mob mob,
+                                      Player target, CombatTacticsPolicy.MobManeuver maneuver) {
+        if (preferred == null || anchor == null || mob == null || maneuver == null
+                || maneuver == CombatTacticsPolicy.MobManeuver.HOLD_LINE) {
+            return preferred;
+        }
+        Location origin = target == null ? anchor : target.getLocation();
+        Vector away = preferred.toVector().subtract(origin.toVector());
+        away.setY(0.0D);
+        if (away.lengthSquared() < 0.04D) {
+            away = mob.getLocation().toVector().subtract(origin.toVector());
+            away.setY(0.0D);
+        }
+        if (away.lengthSquared() < 0.04D) {
+            away = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        away.normalize();
+        Vector side = new Vector(-away.getZ(), 0.0D, away.getX());
+        long stableBits = mob.getUniqueId().getLeastSignificantBits();
+        double sideSign = (stableBits & 1L) == 0L ? 1.0D : -1.0D;
+        Location moved = preferred.clone();
+        switch (maneuver) {
+            case SIDE_STEP -> moved.add(side.multiply(sideSign * 1.5D));
+            case CROSS_FIRE -> moved.add(side.multiply(-sideSign * 2.25D));
+            case FALLBACK -> moved.add(away.multiply(1.5D));
+            case PINCH -> moved.add(side.multiply(sideSign * 1.25D));
+            case HOLD_LINE -> { }
+        }
+        return moved;
     }
 
     private Location stableCombatRingLocation(Location anchor, Entity entity,
@@ -5808,6 +6079,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isEventParticleViewer(viewer, point)) {
                 continue;
             }
+            if (PACKET_QUALITY_MINIMAL_SAFE.equals(runtimeDiagnosticsSnapshot.packetQualityMode())
+                    && age % 4 != 0) {
+                continue;
+            }
+            recordParticleEmission(switch (spell) {
+                case "arrow_salvo" -> 4;
+                case "rift_arrows" -> 4;
+                default -> 2;
+            });
             if (EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell)) {
                 viewer.spawnParticle(Particle.END_ROD, point, 2,
                         0.04D, 0.04D, 0.04D, 0.01D);
@@ -6007,6 +6287,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 default -> Particle.END_ROD;
             };
             spawnEventParticle(effect, particle, 8, 0.65D, 0.15D, 0.65D, 0.01D);
+            renderSpellTelegraphVisual(miniBoss, mark, spell.id(), ticks[0],
+                    config.miniBossTuning().spellTelegraphTicks());
             if (ticks[0] >= config.miniBossTuning().spellTelegraphTicks()) {
                 holder[0].cancel();
                 if (taskRegistry.owns(callbackGeneration) && isMiniBossCombatPhase()
@@ -6036,6 +6318,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     getLogger().info("MINIBOSS_SPELL_CAST entity=" + miniBoss.getUniqueId()
                             + " spell=" + spell.id() + " target=" + target.getUniqueId()
                             + " generation=" + callbackGeneration);
+                    renderSpellImpactVisual(miniBoss,
+                            spell == EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE
+                                    ? miniBoss.getLocation() : mark,
+                            spell.id());
                     switch (spell) {
                         case RIFT_STEP -> miniBossRiftStep(miniBoss, target);
                         case VOID_SNARE -> miniBossVoidSnare(miniBoss, target, mark);
@@ -6043,6 +6329,257 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case ARROW_SALVO -> miniBossArrowSalvo(miniBoss, target);
                     }
                 });
+    }
+
+    /** Render one short impact burst; unlike the telegraph this is one bounded
+     * batch per cast, so a busy arena cannot accumulate visual tasks. */
+    private void renderSpellImpactVisual(LivingEntity caster, Location mark, String spellId) {
+        SpellVisualPolicy.VisualProfile profile = SpellVisualPolicy.profile(spellId);
+        if (caster == null || mark == null || profile == null || caster.getWorld() == null
+                || mark.getWorld() == null || !caster.getWorld().equals(mark.getWorld())) {
+            return;
+        }
+        Location center = mark.clone().add(0.0D, 0.12D, 0.0D);
+        Location origin = caster.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+        Vector forward = center.toVector().subtract(origin.toVector());
+        if (forward.lengthSquared() < 0.0001D) {
+            forward = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        forward.normalize();
+        Vector horizontal = forward.clone();
+        horizontal.setY(0.0D);
+        if (horizontal.lengthSquared() < 0.0001D) {
+            horizontal = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        horizontal.normalize();
+        Vector side = new Vector(-horizontal.getZ(), 0.0D, horizontal.getX()).normalize();
+        Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        Particle.DustOptions dust = new Particle.DustOptions(
+                Color.fromRGB(190, 76, 255), 1.25F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) {
+                continue;
+            }
+            switch (spellId) {
+                case "void_blast" -> {
+                    spawnPatternRing(viewer, center, side, horizontal, 0.85D, 24,
+                            0.0D, Particle.DRAGON_BREATH);
+                    spawnPatternRing(viewer, center, side, horizontal, 1.65D, 32,
+                            0.25D, Particle.FLAME);
+                }
+                case "rift_projectile" -> {
+                    spawnPatternRing(viewer, center, side, up, 0.48D, 18,
+                            0.0D, Particle.REVERSE_PORTAL);
+                    viewer.spawnParticle(Particle.END_ROD, center, 12,
+                            0.18D, 0.18D, 0.18D, 0.02D);
+                }
+                case "rift_arrows", "arrow_salvo" -> {
+                    Particle trail = "arrow_salvo".equals(spellId)
+                            ? Particle.CRIT : Particle.SOUL_FIRE_FLAME;
+                    for (int lane = -1; lane <= 1; lane++) {
+                        Vector offset = side.clone().multiply(lane * 0.28D);
+                        spawnPatternSegment(viewer, origin.clone().add(offset),
+                                center.clone().add(offset), trail, dust);
+                    }
+                }
+                case "void_mark" -> {
+                    Location[] corners = new Location[4];
+                    double radius = 1.45D;
+                    for (int index = 0; index < corners.length; index++) {
+                        double angle = Math.PI / 4.0D + index * Math.PI / 2.0D;
+                        corners[index] = center.clone()
+                                .add(side.clone().multiply(Math.cos(angle) * radius))
+                                .add(horizontal.clone().multiply(Math.sin(angle) * radius));
+                    }
+                    for (int index = 0; index < corners.length; index++) {
+                        spawnPatternSegment(viewer, corners[index], corners[(index + 1) % corners.length],
+                                Particle.REVERSE_PORTAL, dust);
+                    }
+                }
+                case "summon", "summon_servants" -> {
+                    spawnPatternRing(viewer, origin, side, horizontal, 1.05D, 24,
+                            0.0D, Particle.SOUL_FIRE_FLAME);
+                    viewer.spawnParticle(Particle.WITCH, origin, 18,
+                            0.25D, 0.75D, 0.25D, 0.02D);
+                }
+                case "will_distortion" -> {
+                    Location first = origin.clone().add(side.clone().multiply(0.45D));
+                    Location second = center.clone().subtract(side.clone().multiply(0.45D));
+                    spawnPatternSegment(viewer, first, second, Particle.ELECTRIC_SPARK, dust);
+                    spawnPatternSegment(viewer, second, center.clone().add(side.clone().multiply(0.45D)),
+                            Particle.ELECTRIC_SPARK, dust);
+                }
+                case "arena_inferno" -> {
+                    spawnPatternRing(viewer, center, side, horizontal, 2.5D, 36,
+                            0.0D, Particle.SOUL_FIRE_FLAME);
+                    spawnPatternRing(viewer, center, side, horizontal, 3.4D, 48,
+                            0.18D, Particle.FLAME);
+                }
+                case "rift_step" -> {
+                    spawnPatternRing(viewer, origin, side, up, 0.75D, 20,
+                            0.0D, Particle.PORTAL);
+                    spawnPatternRing(viewer, center, side, up, 0.75D, 20,
+                            0.35D, Particle.END_ROD);
+                }
+                case "void_snare" -> {
+                    spawnPatternRing(viewer, center, side, up, 1.15D, 20,
+                            0.0D, Particle.REVERSE_PORTAL);
+                    spawnPatternRing(viewer, center, side, up, 0.55D, 12,
+                            0.4D, Particle.SMOKE);
+                }
+                case "echo_pulse" -> {
+                    spawnPatternRing(viewer, center, side, horizontal, 2.2D, 36,
+                            0.0D, Particle.SCULK_SOUL);
+                    viewer.spawnParticle(Particle.SONIC_BOOM, center, 1,
+                            0.0D, 0.0D, 0.0D, 0.0D);
+                }
+                default -> viewer.spawnParticle(Particle.END_ROD, center, 8,
+                        0.18D, 0.18D, 0.18D, 0.02D);
+            }
+        }
+        getLogger().info("SPELL_IMPACT_VISUAL spell=" + spellId
+                + " profile=" + profile.displayName());
+    }
+
+    /**
+     * Render the readable wind-up for both boss and elite spells.  Every
+     * spell has a different silhouette: rings, glyphs, lanes, chains or a
+     * pulse.  The effect is audience-scoped and particle-only, so it never
+     * replaces a vanilla texture or creates a hidden gameplay entity.
+     */
+    private void renderSpellTelegraphVisual(LivingEntity caster, Location mark,
+                                            String spellId, int elapsedTicks,
+                                            int totalTelegraphTicks) {
+        SpellVisualPolicy.VisualProfile profile = SpellVisualPolicy.profile(spellId);
+        if (caster == null || mark == null || spellId == null || profile == null
+                || caster.getWorld() == null || mark.getWorld() == null
+                || !caster.getWorld().equals(mark.getWorld())) {
+            return;
+        }
+        Location origin = caster.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+        Location destination = mark.clone().add(0.0D, 0.12D, 0.0D);
+        Vector direction = destination.toVector().subtract(origin.toVector());
+        if (direction.lengthSquared() < 0.0001D) {
+            direction = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        double travelDistance = Math.max(1.0D, direction.length());
+        direction.normalize();
+        Vector horizontal = direction.clone();
+        horizontal.setY(0.0D);
+        if (horizontal.lengthSquared() < 0.0001D) {
+            horizontal = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        horizontal.normalize();
+        Vector side = new Vector(-horizontal.getZ(), 0.0D, horizontal.getX()).normalize();
+        Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        double progress = Math.max(0.0D, Math.min(1.0D,
+                elapsedTicks / (double) Math.max(1, totalTelegraphTicks)));
+        double phaseAngle = elapsedTicks * 0.24D;
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, destination)
+                    && !isEventParticleViewer(viewer, origin)) {
+                continue;
+            }
+            switch (spellId) {
+                case "void_blast" -> {
+                    double radius = 0.65D + progress * 1.15D;
+                    spawnPatternRing(viewer, destination, side, horizontal, radius, 18,
+                            phaseAngle, Particle.DRAGON_BREATH);
+                    spawnPatternSegment(viewer, origin, destination, Particle.END_ROD,
+                            new Particle.DustOptions(Color.fromRGB(244, 39, 125), 1.15F));
+                }
+                case "rift_projectile" -> {
+                    Location moving = origin.clone().add(direction.clone().multiply(progress));
+                    spawnPatternRing(viewer, moving, side, up, 0.26D + progress * 0.10D,
+                            14, phaseAngle, Particle.REVERSE_PORTAL);
+                    spawnPatternSegment(viewer, origin, moving, Particle.DUST,
+                            new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.20F));
+                }
+                case "rift_arrows", "arrow_salvo" -> {
+                    Particle trail = "arrow_salvo".equals(spellId) ? Particle.CRIT : Particle.SOUL_FIRE_FLAME;
+                    Color color = "arrow_salvo".equals(spellId)
+                            ? Color.fromRGB(244, 60, 255) : Color.fromRGB(255, 72, 72);
+                    Particle.DustOptions dust = new Particle.DustOptions(color, 1.10F);
+                    for (int lane = -1; lane <= 1; lane++) {
+                        double offset = lane * (0.22D + progress * 0.10D);
+                        Location laneStart = origin.clone().add(side.clone().multiply(offset));
+                        Location laneEnd = destination.clone().add(side.clone().multiply(offset * 1.4D));
+                        spawnPatternSegment(viewer, laneStart, laneEnd, trail, dust);
+                    }
+                }
+                case "void_mark" -> {
+                    double radius = 0.80D + progress * 1.35D;
+                    Location[] corners = new Location[4];
+                    for (int index = 0; index < corners.length; index++) {
+                        double angle = Math.PI / 4.0D + index * Math.PI / 2.0D + phaseAngle * 0.35D;
+                        corners[index] = destination.clone()
+                                .add(side.clone().multiply(Math.cos(angle) * radius))
+                                .add(horizontal.clone().multiply(Math.sin(angle) * radius));
+                        viewer.spawnParticle(Particle.END_ROD, corners[index], 2,
+                                0.015D, 0.015D, 0.015D, 0.0D);
+                    }
+                    Particle.DustOptions dust = new Particle.DustOptions(
+                            Color.fromRGB(190, 76, 255), 1.30F);
+                    for (int index = 0; index < corners.length; index++) {
+                        spawnPatternSegment(viewer, corners[index], corners[(index + 1) % corners.length],
+                                Particle.REVERSE_PORTAL, dust);
+                    }
+                }
+                case "summon_servants" -> {
+                    Location center = origin.clone().add(0.0D, 0.25D, 0.0D);
+                    spawnPatternRing(viewer, center, side, horizontal, 0.70D + progress * 0.50D,
+                            16, phaseAngle, Particle.SOUL_FIRE_FLAME);
+                    spawnPatternSegment(viewer, center.clone().subtract(up.clone().multiply(0.45D)),
+                            center.clone().add(up.clone().multiply(0.85D)),
+                            Particle.WITCH, new Particle.DustOptions(Color.fromRGB(125, 47, 255), 1.0F));
+                }
+                case "will_distortion" -> {
+                    Location previous = origin;
+                    for (int index = 1; index <= 6; index++) {
+                        double along = Math.min(1.0D, progress + index * 0.04D);
+                        double sway = (index % 2 == 0 ? -1.0D : 1.0D) * 0.35D;
+                        Location next = origin.clone().add(direction.clone().multiply(
+                                        travelDistance * along))
+                                .add(side.clone().multiply(sway));
+                        spawnPatternSegment(viewer, previous, next, Particle.ELECTRIC_SPARK,
+                                new Particle.DustOptions(Color.fromRGB(84, 236, 255), 1.0F));
+                        previous = next;
+                    }
+                }
+                case "arena_inferno" -> {
+                    double radius = 1.4D + progress * 2.5D;
+                    spawnPatternRing(viewer, destination, side, horizontal, radius, 24,
+                            phaseAngle, Particle.SOUL_FIRE_FLAME);
+                    spawnPatternRing(viewer, destination, side, horizontal, radius * 0.72D,
+                            18, -phaseAngle, Particle.FLAME);
+                }
+                case "rift_step" -> {
+                    for (int lane = -1; lane <= 1; lane += 2) {
+                        Location laneStart = origin.clone().add(side.clone().multiply(lane * 0.18D));
+                        Location laneEnd = destination.clone().add(side.clone().multiply(lane * 0.30D));
+                        spawnPatternSegment(viewer, laneStart, laneEnd, Particle.PORTAL,
+                                new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.0F));
+                    }
+                }
+                case "void_snare" -> {
+                    double outer = Math.max(0.22D, 1.20D - progress * 0.65D);
+                    spawnPatternRing(viewer, destination, side, up, outer, 16,
+                            phaseAngle, Particle.REVERSE_PORTAL);
+                    spawnPatternRing(viewer, destination, side, up, outer * 0.58D, 10,
+                            -phaseAngle, Particle.SMOKE);
+                }
+                case "echo_pulse" -> {
+                    Location center = origin.clone();
+                    double radius = 0.25D + progress * 2.20D;
+                    spawnPatternRing(viewer, center, side, horizontal, radius, 24,
+                            phaseAngle, Particle.SCULK_SOUL);
+                    viewer.spawnParticle(Particle.SONIC_BOOM, center, 1,
+                            0.0D, 0.0D, 0.0D, 0.0D);
+                }
+                default -> viewer.spawnParticle(Particle.END_ROD, destination, 4,
+                        0.08D, 0.08D, 0.08D, 0.01D);
+            }
+        }
     }
 
     /**
@@ -6122,6 +6659,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!world.equals(point.getWorld()) || player.getLocation().distanceSquared(point) > 64.0D * 64.0D) {
             return;
         }
+        if (PACKET_QUALITY_MINIMAL_SAFE.equals(runtimeDiagnosticsSnapshot.packetQualityMode())
+                && tick % 4 != 0) {
+            return;
+        }
+        recordParticleEmission(estimatedSpellFlightParticles(spellId));
         Vector forward = direction.clone();
         if (forward.lengthSquared() < 0.0001D) {
             forward = new Vector(0.0D, 0.0D, 1.0D);
@@ -6264,6 +6806,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || player.getLocation().distanceSquared(point) > 64.0D * 64.0D) {
             return;
         }
+        recordParticleEmission(29);
         Vector forward = direction.clone();
         if (forward.lengthSquared() < 0.0001D) {
             forward = new Vector(0.0D, 0.0D, 1.0D);
@@ -6298,6 +6841,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || player.getLocation().distanceSquared(center) > 64.0D * 64.0D) {
             return;
         }
+        recordParticleEmission(Math.max(0, points));
         for (int i = 0; i < points; i++) {
             double angle = phase + (Math.PI * 2.0D * i / points);
             Location ringPoint = center.clone()
@@ -6317,13 +6861,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Vector delta = end.toVector().subtract(start.toVector());
         int steps = 4;
+        recordParticleEmission((steps - 1) * (dust == null ? 1 : 2));
         for (int i = 1; i < steps; i++) {
             Location linePoint = start.clone().add(delta.clone().multiply(i / (double) steps));
-            player.spawnParticle(particle, linePoint, 1,
-                    0.0D, 0.0D, 0.0D, 0.0D);
-            if (dust != null) {
+            if (particle == Particle.DUST) {
+                // Particle.DUST requires DustOptions as its data payload;
+                // sending it through the generic overload throws on Paper
+                // and aborts the repeating telegraph task.
+                Particle.DustOptions safeDust = dust != null
+                        ? dust : new Particle.DustOptions(Color.WHITE, 1.0F);
                 player.spawnParticle(Particle.DUST, linePoint, 1,
-                        0.0D, 0.0D, 0.0D, 0.0D, dust);
+                        0.0D, 0.0D, 0.0D, 0.0D, safeDust);
+            } else {
+                player.spawnParticle(particle, linePoint, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+                if (dust != null) {
+                    player.spawnParticle(Particle.DUST, linePoint, 1,
+                            0.0D, 0.0D, 0.0D, 0.0D, dust);
+                }
             }
         }
     }
@@ -7041,7 +7596,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!test) {
             activeWave = wave;
-            playEventMusic(finalWave ? config.bossFinalMusic() : config.wavesMusic());
+            playEventMusic(finalWave
+                    ? phaseMusicOrLegacy("final-wave", config.bossFinalMusic())
+                    : phaseMusicOrLegacy("wave-" + wave, config.wavesMusic()));
             announceWaveStart(wave, finalWave);
             spawnWaveArrivalEffect(world, core, wave, finalWave);
             startWaveObjective(wave, world, core);
@@ -7933,7 +8490,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             saveStateAsync();
         }
         announceEventTitle("§5ПОСЛЕДНИЙ РУБЕЖ ПАЛ", "§dРазлом раскрывает своё сердце...", true);
-        playEventMusic(config.bossMusic());
+        playEventMusic(phaseMusicOrLegacy("boss-cinematic", config.bossMusic()));
         getLogger().info("BOSS_CINEMATIC_STARTED event=" + eventId + " ticks=" + BOSS_CINEMATIC_DURATION_TICKS
                 + " generation=" + callbackGeneration);
         int elapsedAtSchedule = (int) Math.max(0L, Math.min(BOSS_CINEMATIC_DURATION_TICKS,
@@ -8753,7 +9310,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!test) {
             ensureBossBar();
             bindBossClientForOnlinePlayers();
-            playEventMusic(config.bossMusic());
+            playEventMusic(musicForPhase());
             nextTargetMillis = 0L;
             nextSpellMillis = 0L;
             recentBossTargets.clear();
@@ -8909,6 +9466,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextSpellMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
         lastBossTeleportMillis = 0L;
+        lastBossFeintMillis = 0L;
         cancelBossCastTask();
         bossStage = BossStage.AWAKENING;
         bossCastState = BossCastState.NONE;
@@ -9455,6 +10013,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !from.getWorld().equals(to.getWorld())) {
             return;
         }
+        recordParticleEmission(Math.max(0, points));
         Vector delta = to.toVector().subtract(from.toVector()).multiply(1.0D / Math.max(1, points));
         Location current = from.clone();
         for (int index = 0; index < points; index++) {
@@ -9768,7 +10327,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellPauseUntilMillis = System.currentTimeMillis() + 3_000L;
         nextSpellMillis = bossSpellPauseUntilMillis;
         boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM, 1.0F, 0.6F);
-        playEventMusic(config.bossHalfMusic());
+        playEventMusic(musicForPhase());
         getLogger().info("BOSS_PHASE_50 event=" + eventId + " boss=" + boss.getUniqueId()
                 + " spell_unlocked=will_distortion spell_pause_ms=3000");
         getLogger().info("BOSS_AI_PHASE event=" + eventId + " phase=HALF control_spell=WILL_DISTORTION");
@@ -9842,7 +10401,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossCastDeadlineMillis = 0L;
             return;
         }
-        playEventMusic(config.bossFinalMusic());
+        playEventMusic(musicForPhase());
         if (bossBar != null) {
             bossBar.setTitle("Хранитель Разлома — ПОГЛОЩЕНИЕ ЖИЗНИ");
         }
@@ -9977,6 +10536,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || viewer.getLocation().distanceSquared(from) > 64.0D * 64.0D) {
             return;
         }
+        recordParticleEmission(Math.max(0, points));
         Vector delta = to.toVector().subtract(from.toVector()).multiply(1.0D / Math.max(1, points));
         Location current = from.clone();
         for (int index = 0; index < points; index++) {
@@ -10067,6 +10627,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boss.getPersistentDataContainer().set(keyCombatTactic,
                     PersistentDataType.STRING, plan.tactic().name());
         }
+        if (plan.tactic() == CombatTacticsPolicy.BossTactic.PHANTOM_FEINT
+                && !targetOnCore
+                && now - lastBossFeintMillis >= BOSS_FEINT_COOLDOWN_MILLIS) {
+            Location feint = bossFlankTargetLocation(anchor, mob, target,
+                    plan.preferredDistance(), -plan.orbitDirection());
+            feint = findSafeCombatLocation(anchor, feint,
+                    boundedCombatRadius(config.bossRadius()) - 1.0D,
+                    MIN_BOSS_CORE_DISTANCE_BLOCKS);
+            if (feint != null && horizontalDistanceSquared(mob.getLocation(), feint) >= 9.0D) {
+                Location from = mob.getLocation().clone();
+                if (teleportCombatEntity(mob, feint)) {
+                    lastBossFeintMillis = now;
+                    lastBossPathRequestMillis = now;
+                    // The destination is already safe; this is only a visual
+                    // marker for the short tactical reposition.
+                    spawnEventParticle(from.add(0.0D, 1.0D, 0.0D), Particle.REVERSE_PORTAL,
+                            28, 0.8D, 0.6D, 0.8D, 0.02D);
+                    spawnEventParticle(feint.clone().add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
+                            20, 0.45D, 0.75D, 0.45D, 0.02D);
+                    mob.getWorld().playSound(feint, Sound.ENTITY_ENDERMAN_TELEPORT,
+                            0.8F, 1.15F);
+                    getLogger().info("BOSS_AI_FEINT boss=" + mob.getUniqueId()
+                            + " target=" + target.getUniqueId()
+                            + " phase=" + bossStage + " destination=" + locationText(feint));
+                    return;
+                }
+            }
+        }
         Location destination = bossTacticalDestination(anchor, mob, target, plan);
         if (destination == null) {
             return;
@@ -10114,6 +10702,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         plan.preferredDistance(), plan.preferredDistance() + 2.0D);
                 case FLANK, CROSSCUT -> bossFlankTargetLocation(anchor, boss, target,
                         plan.preferredDistance(), plan.orbitDirection());
+                case PHANTOM_FEINT -> bossFlankTargetLocation(anchor, boss, target,
+                        plan.preferredDistance(), -plan.orbitDirection());
                 case ABSORPTION_RETREAT -> stableCombatRingLocation(anchor, boss, 8.0D, 10.5D);
                 case CATASTROPHE_PRESSURE -> target.getLocation();
             };
@@ -10174,6 +10764,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                     ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
             spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
+            renderSpellTelegraphVisual(boss, mark, spell.id(), ticks[0],
+                    config.bossSpellTelegraphTicks());
             if (ticks[0] >= config.bossSpellTelegraphTicks()) {
                 holder[0].cancel();
                 if (taskRegistry.owns(callbackGeneration) && allowedPhase
@@ -10206,6 +10798,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                     getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
                             + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
+                    renderSpellImpactVisual(boss,
+                            spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                                    ? boss.getLocation() : mark,
+                            spell.id());
                     switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, target);
                         case RIFT_PROJECTILE -> riftProjectile(boss, target);
@@ -10264,7 +10860,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     String original = floor.getBlockData().getAsString();
                     arenaInfernoOriginalBlocks.put(point, original);
                     journalEntries.add(new HazardMutationJournal.Entry(
-                            x, fireY - 1, z, original, "", "MAGMA_BLOCK"));
+                            x, fireY - 1, z, original, "", "MAGMA"));
                 }
             }
         }
@@ -11719,6 +12315,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             output.writeUTF("");
             output.writeUTF("");
             output.flush();
+            recordPluginMessage();
             player.sendPluginMessage(this, config.bridgeChannel(), bytes.toByteArray());
         } catch (java.io.IOException error) {
             getLogger().log(Level.FINE, "End client bridge packet could not be encoded", error);
@@ -11818,6 +12415,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("void_blast", "rift_projectile", "void_mark", "summon", "arena_inferno", "control_reverse");
         }
         return List.of();
+    }
+
+    private record RuntimeDiagnosticsSnapshot(long sampledAtMillis, long sampleIntervalMillis,
+                                              String packetQualityMode, String lastPlayerPings,
+                                              int averagePing, int maxPing, int onlinePlayers,
+                                              int ownedLivingEntities, int temporaryDisplays,
+                                              int activeProjectiles,
+                                              double estimatedParticlePacketsPerSecond,
+                                              double particleBatchesPerSecond,
+                                              double pluginMessagesPerSecond,
+                                              long gcCollections, long gcPauseMillis,
+                                              double serverThreadCpuPercent, String tps,
+                                              double mspt) {
+        private static RuntimeDiagnosticsSnapshot empty() {
+            return new RuntimeDiagnosticsSnapshot(0L, 0L, PACKET_QUALITY_FULL, "", 0, 0,
+                    0, 0, 0, 0, 0.0D, 0.0D, 0.0D, 0L, 0L, 0.0D,
+                    "unavailable", 0.0D);
+        }
     }
 
     private static final class CoreRemovalConfirmHolder implements InventoryHolder {

@@ -3,7 +3,10 @@ param(
   [string]$ServerDir = '',
   [string]$LogPath = '',
   [string]$ErrPath = '',
-  [int]$ReadyTimeoutSeconds = 45
+  # A cold local Paper boot with all pinned plugins can legitimately take
+  # longer than 45 seconds.  Keep the fail-closed cleanup, but do not kill a
+  # healthy server just before it reaches the Done marker.
+  [int]$ReadyTimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +26,20 @@ $propertiesPath = Join-Path $ServerDir 'server.properties'
 $eventConfigPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
 $configSourcePath = Join-Path $worktreeRoot 'copimine-end-event\config.yml'
 $envPath = Join-Path $localRuntimeRoot 'end-rift.env'
+
+function Get-LocalSha256 {
+  param([Parameter(Mandatory = $true)][string]$LiteralPath)
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  $stream = $null
+  try {
+    $stream = [IO.File]::OpenRead($LiteralPath)
+    return (([BitConverter]::ToString($hasher.ComputeHash($stream)) -replace '-', '').ToLowerInvariant())
+  } finally {
+    if ($stream) { $stream.Dispose() }
+    $hasher.Dispose()
+  }
+}
+
 if ((-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) -or (-not (Test-Path -LiteralPath $eventConfigPath -PathType Leaf))) {
   throw 'Local End Rift server.properties or plugin config is missing.'
 }
@@ -36,13 +53,13 @@ $sourceConfigText = Get-Content -LiteralPath $configSourcePath -Raw
 if ($sourceConfigText -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused to synchronize a non-local End Rift configuration.'
 }
-$sourceConfigHash = (Get-FileHash -LiteralPath $configSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
-$targetConfigHash = (Get-FileHash -LiteralPath $eventConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$sourceConfigHash = Get-LocalSha256 -LiteralPath $configSourcePath
+$targetConfigHash = Get-LocalSha256 -LiteralPath $eventConfigPath
 if ($sourceConfigHash -ne $targetConfigHash) {
   Copy-Item -LiteralPath $configSourcePath -Destination $eventConfigPath -Force
   Write-Output "Synchronized local End Rift config from current source: $eventConfigPath"
 }
-$verifiedConfigHash = (Get-FileHash -LiteralPath $eventConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$verifiedConfigHash = Get-LocalSha256 -LiteralPath $eventConfigPath
 if ($sourceConfigHash -ne $verifiedConfigHash) {
   throw "Local End Rift config hash mismatch after synchronization: source=$sourceConfigHash target=$verifiedConfigHash"
 }
@@ -58,9 +75,9 @@ if (-not (Test-Path -LiteralPath $pluginSourcePath -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath (Split-Path $pluginTargetPath -Parent) -PathType Container)) {
   New-Item -ItemType Directory -Path (Split-Path $pluginTargetPath -Parent) -Force | Out-Null
 }
-$sourcePluginHash = (Get-FileHash -LiteralPath $pluginSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$sourcePluginHash = Get-LocalSha256 -LiteralPath $pluginSourcePath
 $targetPluginHash = if (Test-Path -LiteralPath $pluginTargetPath -PathType Leaf) {
-  (Get-FileHash -LiteralPath $pluginTargetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  Get-LocalSha256 -LiteralPath $pluginTargetPath
 } else {
   ''
 }
@@ -68,7 +85,7 @@ if ($sourcePluginHash -ne $targetPluginHash) {
   Copy-Item -LiteralPath $pluginSourcePath -Destination $pluginTargetPath -Force
   Write-Output "Synchronized local End Rift plugin from current build: $pluginTargetPath"
 }
-$verifiedPluginHash = (Get-FileHash -LiteralPath $pluginTargetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$verifiedPluginHash = Get-LocalSha256 -LiteralPath $pluginTargetPath
 if ($sourcePluginHash -ne $verifiedPluginHash) {
   throw "Local End Rift plugin hash mismatch after synchronization: source=$sourcePluginHash target=$verifiedPluginHash"
 }

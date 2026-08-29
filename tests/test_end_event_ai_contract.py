@@ -128,6 +128,8 @@ def test_arena_inferno_is_a_five_second_owned_spell() -> None:
     inferno = MAIN[MAIN.index("private void arenaInferno"):MAIN.index("private void clearArenaInferno")]
     assert "Material.MAGMA_BLOCK" in inferno
     assert "HazardMutationJournal.Entry" in inferno
+    assert '"MAGMA"' in inferno
+    assert '"MAGMA_BLOCK"' not in inferno
     assert "hazardJournal.prepare" in inferno
     assert "restoreArenaInfernoBlocks" in MAIN
     assert "player.setFireTicks" not in inferno
@@ -552,6 +554,8 @@ def test_boss_and_miniboss_spells_have_a_visible_particle_flight_before_impact()
         "spell-flight",
         "spawnParticle",
         "taskRegistry.owns(callbackGeneration)",
+        "renderSpellImpactVisual",
+        "SPELL_IMPACT_VISUAL",
     ):
         assert marker in MAIN
 
@@ -561,10 +565,29 @@ def test_every_boss_and_miniboss_flight_uses_a_named_visual_pattern() -> None:
     assert "spawnSpellFlightPattern" in flight
     assert "spawnRiftProjectileTrail" in MAIN
     for spell_id in (
-        "void_blast", "rift_projectile", "void_mark", "summon", "will_distortion",
-        "rift_step", "void_snare", "echo_pulse",
+        "void_blast", "rift_projectile", "rift_arrows", "arrow_salvo", "void_mark",
+        "summon_servants", "will_distortion", "arena_inferno", "rift_step",
+        "void_snare", "echo_pulse",
     ):
         assert f'case "{spell_id}"' in MAIN
+
+
+def test_spell_telegraph_and_impact_visuals_use_the_named_particle_policy() -> None:
+    visual = MAIN[MAIN.index("private void renderSpellImpactVisual"):
+                  MAIN.index("private void renderSpellTelegraphVisual")]
+    telegraph = MAIN[MAIN.index("private void renderSpellTelegraphVisual"):
+                     MAIN.index("private void launchSpellFlight")]
+    assert "SpellVisualPolicy.profile(spellId)" in visual
+    assert "for (Player viewer : eventAudience())" in visual
+    assert "Particle.DustOptions" in visual
+    assert "visual=particle-only" in MAIN
+    for spell_id in (
+        "void_blast", "rift_projectile", "rift_arrows", "arrow_salvo", "void_mark",
+        "summon_servants", "will_distortion", "arena_inferno", "rift_step",
+        "void_snare", "echo_pulse",
+    ):
+        assert f'"{spell_id}"' in telegraph
+        assert f'"{spell_id}"' in visual
 
 
 def test_final_wave_elites_keep_their_bound_spell_flight_path() -> None:
@@ -586,3 +609,45 @@ def test_boss_runtime_applies_one_coherent_phase_combat_profile() -> None:
         "BOSS_ABSORPTION_BUFF",
     ):
         assert marker in MAIN
+
+
+def test_boss_feint_and_wave_maneuvers_are_small_deterministic_bounded_beats() -> None:
+    for marker in (
+        "PHANTOM_FEINT",
+        "BOSS_FEINT_COOLDOWN_MILLIS = 8_000L",
+        "BOSS_AI_FEINT",
+        "teleportCombatEntity(mob, feint)",
+        "SKELETON_MANEUVER_CYCLE_MILLIS = 4_000L",
+        "SkeletonCombatPolicy.maneuverForWave",
+        "CombatTacticsPolicy.waveManeuver",
+        "WAVE_AI_TACTIC_DESTINATION",
+        "maneuver=",
+        "applyMobManeuver",
+    ):
+        assert marker in MAIN
+    boss = MAIN[MAIN.index("private void maintainBossPath"):MAIN.index("private void telegraphBossSpell")]
+    assert "!targetOnCore" in boss
+    assert "findSafeCombatLocation(anchor, feint" in boss
+    assert "MIN_BOSS_CORE_DISTANCE_BLOCKS" in boss
+    wave = MAIN[MAIN.index("private Location applyMobManeuver"):MAIN.index("private Location stableCombatRingLocation")]
+    assert "case SIDE_STEP" in wave
+    assert "case CROSS_FIRE" in wave
+    assert "case FALLBACK" in wave
+    assert "case PINCH" in wave
+    assert "moved.add" in wave
+
+
+def test_skeleton_ai_keeps_player_only_targets_while_maneuvering() -> None:
+    posture = MAIN[MAIN.index("private void maintainSkeletonCombatPosture"):
+                   MAIN.index("private void maintainSkeletonTowerPosture")]
+    assert "isCombatTarget(target)" in posture
+    assert "SkeletonCombatPolicy.maneuverForWave" in posture
+    assert "skeletonRangedDestination(anchor, skeleton, target" in posture
+    assert "maneuver" in posture
+    targeting = MAIN[MAIN.index("public void onEventSkeletonTarget"):
+                     MAIN.index("public void onEventSkeletonShootBow")]
+    arrow = MAIN[MAIN.index("public void onEventSkeletonShootBow"):
+                 MAIN.index("public void onCustomEventArrowDamage")]
+    assert "SkeletonCombatPolicy.canTargetPlayersOnly" in targeting
+    assert "target instanceof Player" in targeting
+    assert "event.getEntity() instanceof Player" in arrow

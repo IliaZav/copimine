@@ -63,7 +63,9 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
       tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
-      tests\test_end_event_skeleton_behavior_docs_contract.py
+      tests\test_end_event_skeleton_behavior_docs_contract.py `
+      tests\test_end_event_boss_ai_behavior_docs_contract.py `
+      tests\test_end_event_spell_matrix_contract.py
   } finally {
     Pop-Location
   }
@@ -95,6 +97,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossCastPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
@@ -114,6 +117,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild StormPatternPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossCastPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild CombatTacticsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
 }

@@ -41,10 +41,16 @@ def test_public_shell_handles_narrow_viewports_without_a_second_horizontal_scrol
     assert "overflow-x: clip" in css
 
 
-def test_cart_route_marks_both_cart_shortcuts_as_the_current_page() -> None:
+def test_cart_route_has_one_canonical_cart_control() -> None:
     cart = read("admin-web/frontend/cart.html")
     assert 'id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-current="page"' in cart
-    assert 'class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" aria-current="page"' in cart
+    assert "shop-cart-mobile-shortcut" not in cart
+    assert cart.count('href="/cart.html"') == 1
+
+
+def test_shop_route_does_not_ship_a_second_mobile_cart_control() -> None:
+    shops = read("admin-web/frontend/shops.html")
+    assert "shop-cart-mobile-shortcut" not in shops
 
 
 def test_launcher_and_news_heroes_use_real_product_assets_without_placeholder_copy() -> None:

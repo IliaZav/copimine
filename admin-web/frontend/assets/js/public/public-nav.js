@@ -4,9 +4,9 @@ const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435
 const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
 const CART_PATH = "/cart.html";
 
-function createCartLink(mobile = false) {
+function createCartLink() {
   const link = document.createElement("a");
-  link.className = mobile ? "shop-cart-button shop-cart-mobile-shortcut" : "shop-cart-button";
+  link.className = "shop-cart-button";
   link.href = CART_PATH;
 
   const label = document.createElement("span");
@@ -34,16 +34,21 @@ function syncCartButtons(shell, count = getShopCartCount()) {
 }
 
 function ensureCartShortcuts(shell, nav) {
-  let desktop = nav.querySelector(`.shop-cart-button[href="${CART_PATH}"]`);
+  const cartLinks = [...shell.querySelectorAll(`a.shop-cart-button[href="${CART_PATH}"]`)].filter(
+    (node) => node instanceof HTMLAnchorElement,
+  );
+  let desktop = cartLinks.find((node) => nav.contains(node));
   if (!(desktop instanceof HTMLAnchorElement)) {
     desktop = createCartLink();
     nav.append(desktop);
   }
 
-  let mobile = shell.querySelector(`.shop-cart-mobile-shortcut[href="${CART_PATH}"]`);
-  if (!(mobile instanceof HTMLAnchorElement)) {
-    mobile = createCartLink(true);
-    shell.append(mobile);
+  // There used to be a second cart shortcut outside <nav> for mobile. It was
+  // easy for stale CSS or a second module boot to display both controls at
+  // once. Keep one canonical link in the navigation and remove every legacy
+  // duplicate before syncing its state.
+  for (const link of cartLinks) {
+    if (link !== desktop) link.remove();
   }
 
   if (shell.dataset.cartBound !== "true") {

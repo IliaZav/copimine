@@ -67,12 +67,13 @@ def test_all_site_headers_use_the_same_primary_navigation_order() -> None:
         assert "<small>Сайт сервера</small>" in header, page
 
 
-def test_runtime_public_header_adds_the_same_cart_shortcuts_to_every_shell() -> None:
+def test_runtime_public_header_keeps_one_canonical_cart_link() -> None:
     nav = read(FRONTEND / "assets" / "js" / "public" / "public-nav.js")
     assert "getShopCartCount" in nav
     assert "shop-cart-button" in nav
-    assert "shop-cart-mobile-shortcut" in nav
     assert "ensureCartShortcuts" in nav
+    assert "querySelectorAll(`a.shop-cart-button[href=\"${CART_PATH}\"]`)" in nav
+    assert "link.remove()" in nav
 
 
 def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:

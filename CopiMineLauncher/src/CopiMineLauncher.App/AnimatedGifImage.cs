@@ -83,7 +83,11 @@ public sealed class AnimatedGifImage : Image, IDisposable
                 return;
             }
 
-            timer = new DispatcherTimer(DispatcherPriority.Render, Dispatcher)
+            // Render-priority timers can be starved on a dispatcher that has
+            // no active render pass yet (notably during the splash window's
+            // first layout). Normal priority keeps the frame clock moving
+            // while WPF still updates the Image on the UI thread.
+            timer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
             {
                 Interval = sequence.Durations[CurrentFrameIndex]
             };

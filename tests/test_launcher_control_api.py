@@ -144,6 +144,23 @@ def test_velopack_stable_feed_alias_is_served_by_the_allowlisted_download_route(
     assert response.content == (download_root / "releases.stable.json").read_bytes()
 
 
+def test_legacy_launcher_metadata_path_is_served_from_the_canonical_public_metadata(monkeypatch, tmp_path: Path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    download_root = tmp_path / "public" / "downloads" / "launcher"
+    metadata_root = tmp_path / "public" / "assets" / "public-data" / "launcher"
+    download_root.mkdir(parents=True)
+    metadata_root.mkdir(parents=True)
+    metadata = {"schemaVersion": 1, "channel": "stable", "version": "1.0.8", "filename": "CopiMineLauncherSetup-1.0.8.exe"}
+    metadata_bytes = (json.dumps(metadata) + "\n").encode("utf-8")
+    (metadata_root / "latest.json").write_bytes(metadata_bytes)
+
+    with TestClient(main.app) as client:
+        response = client.get("/downloads/launcher/latest.json")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == metadata
+
+
 @pytest.mark.parametrize("legacy_name", ("releases.json", "release.win.json", "releases.windows.json"))
 def test_legacy_velopack_feed_names_are_served_from_the_published_windows_feed(
     monkeypatch, tmp_path: Path, legacy_name: str

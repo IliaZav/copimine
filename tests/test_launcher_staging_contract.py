@@ -101,8 +101,10 @@ def test_staging_copies_verified_installer_metadata_and_native_release(tmp_path:
             assert (output / "downloads/launcher" / legacy_name).read_bytes() == (
                 PACKAGE_ROOT / "releases.win.json"
             ).read_bytes()
+        assert (output / "downloads/launcher/latest.json").read_bytes() == METADATA.read_bytes()
         staged_assets_feed = json.loads((output / "downloads/launcher/assets.win.json").read_text(encoding="utf-8"))
         assert any(item["RelativeFileName"] == "releases.stable.json" for item in staged_assets_feed)
+        assert any(item["RelativeFileName"] == "latest.json" for item in staged_assets_feed)
         for legacy_name in ("releases.json", "release.win.json", "releases.windows.json"):
             assert any(item["RelativeFileName"] == legacy_name for item in staged_assets_feed)
         for asset in assets_feed:

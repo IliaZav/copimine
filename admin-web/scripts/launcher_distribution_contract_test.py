@@ -115,6 +115,10 @@ def main() -> int:
             release_feed = client.get("/downloads/launcher/RELEASES")
             assert release_feed.status_code == 200, release_feed.text
 
+            metadata_alias = client.get("/downloads/launcher/latest.json")
+            assert metadata_alias.status_code == 200, metadata_alias.text
+            assert metadata_alias.json()["version"] == "1.0.3"
+
             public_launcher = client.get("/api/public/launcher")
             assert public_launcher.status_code == 200, public_launcher.text
             assert public_launcher.json()["data"]["installer"]["filename"] == installer.name

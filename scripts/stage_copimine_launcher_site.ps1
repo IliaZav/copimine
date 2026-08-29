@@ -229,6 +229,11 @@ if ($null -ne $sourceCustomInstaller) {
 }
 Copy-Item -LiteralPath $sourceMsi -Destination (Join-Path $downloadDirectory ([System.IO.Path]::GetFileName($sourceMsi))) -Force
 Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $metadataDirectory 'latest.json') -Force
+# A few older Launcher builds requested the public release metadata from the
+# download directory instead of the canonical assets path. Keep that request
+# as a compatibility alias so an already installed client does not turn a
+# harmless feed migration into SELF_UPDATE_CHECK_FAILED (404).
+Copy-Item -LiteralPath $sourceMetadata -Destination (Join-Path $downloadDirectory 'latest.json') -Force
 
 # Velopack self-update checks the feed in this same directory.  Publishing
 # only the public installer would make the Launcher install successfully but
@@ -268,6 +273,10 @@ foreach ($asset in $assetFeed) {
 $stagedAssetsFeed.Add([ordered]@{
     RelativeFileName = 'releases.stable.json'
     Type = 'ReleaseFeed'
+})
+$stagedAssetsFeed.Add([ordered]@{
+    RelativeFileName = 'latest.json'
+    Type = 'LauncherMetadataCompatibilityAlias'
 })
 foreach ($legacyFeedAlias in $legacyFeedAliases) {
     $stagedAssetsFeed.Add([ordered]@{

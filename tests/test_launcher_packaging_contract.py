@@ -190,6 +190,7 @@ def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:
         "RELEASES",
         "releases.win.json",
         "releases.stable.json",
+        "latest.json",
         "releases.json",
         "release.win.json",
         "releases.windows.json",

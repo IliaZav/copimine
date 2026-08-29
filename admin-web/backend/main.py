@@ -15872,6 +15872,7 @@ def launcher_distribution_file(filename: str) -> Path:
         "RELEASES",
         "releases.win.json",
         "releases.stable.json",
+        "latest.json",
         "releases.json",
         "release.win.json",
         "releases.windows.json",
@@ -15907,6 +15908,12 @@ def launcher_distribution_file(filename: str) -> Path:
 
     if normalized not in allowed:
         raise HTTPException(status_code=404, detail="Launcher package is not in the published feed")
+    if normalized == "latest.json" and not path.is_file():
+        # Compatibility for clients that looked for release metadata under
+        # the feed directory. The canonical copy remains under assets/; do
+        # not make this route a general file reader.
+        if metadata_path.is_file():
+            path = metadata_path
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Launcher package not found")
     return path

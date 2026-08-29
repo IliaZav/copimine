@@ -98,6 +98,36 @@ def test_wave_four_spawn_composition_is_capped_after_player_scaling() -> None:
     assert "wave == 4" in spawn
 
 
+def test_wave_four_spawns_role_diverse_groups_on_an_owned_schedule() -> None:
+    spawn = _method_body("spawnWave")
+    assert "pacedTowerWave = !test && wave == 4" in spawn
+    assert "WaveMechanicsPolicy.towerSpawnGroups" in spawn
+    assert "spawnNextTowerGroup(world, core)" in spawn
+    assert "scheduleTowerSpawnGroups(world, core)" in spawn
+    assert "planned=" in spawn and "groups=" in spawn
+    assert "WAVE_TOWER_GROUP_SPAWN" in SOURCE
+    assert "towerGroupCadenceSeconds" in SOURCE
+    clear = _method_body("clearWaveObjectiveState")
+    assert "cancelTowerSpawnTask()" in clear
+    failure = _method_body("handleTowerDefenseFailure")
+    assert "cancelTowerSpawnTask()" in failure
+
+
+def test_tower_ai_pauses_core_damage_while_player_aggro_is_active() -> None:
+    body = _method_body("updateTowerObjective")
+    assert "hasTowerPlayerAggro(entity, now)" in body
+    aggro_guard = body[body.index("hasTowerPlayerAggro(entity, now)"):]
+    assert "continue;" in aggro_guard
+
+
+def test_tower_ai_alerts_on_a_nearby_player_before_committing_core_damage() -> None:
+    tick = _method_body("tickWaveMobAi")
+    assert "findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS)" in tick
+    assert "towerAggroUntil.put(entity.getUniqueId(), now + TOWER_PLAYER_AGGRO_MILLIS)" in tick
+    objective = _method_body("updateTowerObjective")
+    assert "findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS) != null" in objective
+
+
 def test_portal_wave_has_floor_visuals_and_bounded_speed_knockback() -> None:
     assert "spawnPortalObjectiveVisuals" in SOURCE
     assert "refreshPortalObjectiveVisuals" in SOURCE
@@ -135,6 +165,19 @@ def test_tower_defense_retry_cannot_be_replaced_by_empty_objective_rehydration()
     assert "WAVE_RETRY_STARTED" in retry
 
 
+def test_local_tower_failure_probe_uses_the_real_damage_and_retry_boundary() -> None:
+    """The live failure probe must enter the same cleanup/retry path as a destroyed Core."""
+    assert "handleTestTowerFailure" in SOURCE
+    body = _method_body("handleTestTowerFailure")
+    assert "environment()" in body
+    assert '"local"' in body
+    assert "TowerDefensePolicy.damage" in body
+    assert "TowerDefensePolicy.finish" in body
+    assert "handleTowerDefenseFailure()" in body
+    assert "WAVE_TEST_FAILURE_INJECTED" in body
+    assert "blindness_ticks=100" in _method_body("handleTowerDefenseFailure")
+
+
 def test_wave_one_and_two_objectives_are_live_controllers_not_auto_completed() -> None:
     start = SOURCE.index("private void startWaveObjective")
     end = SOURCE.index("private void planRiftStorm", start)
@@ -151,3 +194,14 @@ def test_wave_one_and_two_objectives_are_live_controllers_not_auto_completed() -
     assert "PotionEffectType.RESISTANCE" in SOURCE
     assert "sendActionBar" in SOURCE
     assert "playSound" in SOURCE
+
+
+def test_wave_two_guarantees_an_initial_mark_before_a_fast_wave_can_finish() -> None:
+    start = SOURCE.index("if (wave == 2) {")
+    end = SOURCE.index("String objective = WaveObjectivePolicy.objective(wave).name();", start)
+    body = SOURCE[start:end]
+    assert "WAVE_TWO_INITIAL_MARK_MIN_SECONDS" in SOURCE
+    assert "WAVE_TWO_INITIAL_MARK_MAX_SECONDS" in SOURCE
+    assert "waveTwoNextMarkMillis = waveObjectiveStartedMillis" in body
+    assert "randomSeconds(WAVE_TWO_INITIAL_MARK_MIN_SECONDS, WAVE_TWO_INITIAL_MARK_MAX_SECONDS)" in body
+    assert "initial_mark_delay_seconds=2-4" in body

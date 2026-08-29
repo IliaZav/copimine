@@ -19,4 +19,18 @@ public final class BossDamagePolicy {
     public static double incomingDamageMultiplier(BossCastState castState) {
         return castState == BossCastState.EXHAUSTED ? 1.5D : 1.0D;
     }
+
+    /**
+     * Apply the exhausted-window bonus to the already-finalized incoming hit
+     * exactly once.  The Bukkit adapter must call this before it cancels the
+     * original event; reading getFinalDamage() after changing the event would
+     * apply the multiplier twice.
+     */
+    public static double applyIncomingDamage(double incomingDamage, BossCastState castState) {
+        if (!Double.isFinite(incomingDamage) || incomingDamage <= 0.0D) {
+            return 0.0D;
+        }
+        double adjusted = incomingDamage * incomingDamageMultiplier(castState);
+        return Double.isFinite(adjusted) ? adjusted : 0.0D;
+    }
 }

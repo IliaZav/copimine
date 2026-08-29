@@ -8,7 +8,8 @@
     "KeyboardInputReverseMovementMixin",
     "EndermanEntityRendererMixin",
     "SpiderEntityRendererMixin",
-    "ShulkerEntityRendererMixin"
+    "ShulkerEntityRendererMixin",
+    "SkeletonEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

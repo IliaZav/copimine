@@ -29,6 +29,7 @@ def test_debug_command_exposes_bounded_runtime_diagnostics() -> None:
         "AI_DIAGNOSTICS",
         "aiEnabled=",
         "targeted=",
+        "coreObjective=",
         "outside=",
         "eventAudience().size()",
         "entityBindingInstances.size()",

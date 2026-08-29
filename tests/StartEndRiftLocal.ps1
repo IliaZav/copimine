@@ -21,12 +21,30 @@ if (-not $ServerDir.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCa
 
 $propertiesPath = Join-Path $ServerDir 'server.properties'
 $eventConfigPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
+$configSourcePath = Join-Path $worktreeRoot 'copimine-end-event\config.yml'
 $envPath = Join-Path $localRuntimeRoot 'end-rift.env'
 if ((-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) -or (-not (Test-Path -LiteralPath $eventConfigPath -PathType Leaf))) {
   throw 'Local End Rift server.properties or plugin config is missing.'
 }
 if ((Get-Item -LiteralPath $propertiesPath).Length -gt 1048576) {
   throw 'Local End Rift startup refused an unexpectedly large server.properties file.'
+}
+if (-not (Test-Path -LiteralPath $configSourcePath -PathType Leaf)) {
+  throw "Current local End Rift config is missing: $configSourcePath"
+}
+$sourceConfigText = Get-Content -LiteralPath $configSourcePath -Raw
+if ($sourceConfigText -notmatch '(?m)^environment:\s*local\s*$') {
+  throw 'Refused to synchronize a non-local End Rift configuration.'
+}
+$sourceConfigHash = (Get-FileHash -LiteralPath $configSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$targetConfigHash = (Get-FileHash -LiteralPath $eventConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($sourceConfigHash -ne $targetConfigHash) {
+  Copy-Item -LiteralPath $configSourcePath -Destination $eventConfigPath -Force
+  Write-Output "Synchronized local End Rift config from current source: $eventConfigPath"
+}
+$verifiedConfigHash = (Get-FileHash -LiteralPath $eventConfigPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($sourceConfigHash -ne $verifiedConfigHash) {
+  throw "Local End Rift config hash mismatch after synchronization: source=$sourceConfigHash target=$verifiedConfigHash"
 }
 if ((Get-Content -LiteralPath $eventConfigPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused to start a non-local End Rift configuration.'

@@ -26,7 +26,8 @@ def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
     assert "boss-xp: 3000" in CONFIG
     assert "elite-endermen: 6" in CONFIG
     assert "spiders: 8" in CONFIG
-    assert "shulkers: 2" in CONFIG
+    assert "skeletons: 2" in CONFIG
+    assert "elite-skeletons: 1" in CONFIG
     assert "health-bonus: 10.0" in CONFIG
     assert "attack-damage-bonus: 2.0" in CONFIG
     assert "visuals:" not in CONFIG

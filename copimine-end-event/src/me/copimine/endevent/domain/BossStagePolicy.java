@@ -42,26 +42,31 @@ public final class BossStagePolicy {
         return switch (stage) {
             case AWAKENING -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
-                    EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE);
+                    EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS);
             case HUNTER -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case DISTORTION -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.WILL_DISTORTION,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case ABSORPTION -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case CATASTROPHE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                    EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.WILL_DISTORTION,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,

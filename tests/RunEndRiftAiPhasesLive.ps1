@@ -2,7 +2,10 @@
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$BotName = 'EndRiftAiPhases',
-  [int]$BotDurationSeconds = 100
+  # The full wave + boss + teleport-guard matrix can run for more than a
+  # minute on a cold local Paper process. Keep the probe alive for the whole
+  # scenario so a disconnected bot cannot look like an AI targeting failure.
+  [int]$BotDurationSeconds = 180
 )
 
 # Local-only Paper smoke. It creates disposable event entities in the isolated
@@ -40,7 +43,7 @@ function Invoke-LocalRcon {
 
 function Get-AiDiagnostics {
   param([Parameter(Mandatory = $true)][string]$Text)
-  $match = [Regex]::Match($Text, 'AI_DIAGNOSTICS.*stage=([A-Z_]+).*mobile=(\d+)\s+aiEnabled=(\d+)\s+targeted=(\d+)\s+outside=(\d+)\s+onCore=(\d+)')
+  $match = [Regex]::Match($Text, 'AI_DIAGNOSTICS.*stage=([A-Z_]+).*mobile=(\d+)\s+aiEnabled=(\d+)\s+targeted=(\d+)\s+coreObjective=(\d+)\s+outside=(\d+)\s+onCore=(\d+)')
   if (-not $match.Success) {
     throw "AI diagnostics did not contain a complete controller snapshot:`n$Text"
   }
@@ -48,8 +51,9 @@ function Get-AiDiagnostics {
     Mobile = [int]$match.Groups[2].Value
     AiEnabled = [int]$match.Groups[3].Value
     Targeted = [int]$match.Groups[4].Value
-    Outside = [int]$match.Groups[5].Value
-    OnCore = [int]$match.Groups[6].Value
+    CoreObjective = [int]$match.Groups[5].Value
+    Outside = [int]$match.Groups[6].Value
+    OnCore = [int]$match.Groups[7].Value
     Stage = $match.Groups[1].Value
     Raw = $Text
   }
@@ -83,7 +87,7 @@ function Assert-AiSnapshot {
   $snapshot = Get-AiDiagnostics $Text
   if (($snapshot.Mobile -lt $MinimumMobile) -or
       ($snapshot.AiEnabled -ne $snapshot.Mobile) -or
-      ($snapshot.Targeted -lt 1) -or
+      (($snapshot.Targeted + $snapshot.CoreObjective) -lt 1) -or
       ($snapshot.Outside -ne 0) -or
       ($snapshot.OnCore -ne 0)) {
     throw "$Label failed bounded AI invariant:`n$($snapshot.Raw)"
@@ -94,7 +98,7 @@ function Assert-AiSnapshot {
   if (-not [string]::IsNullOrWhiteSpace($ExpectedStage) -and $snapshot.Stage -ne $ExpectedStage) {
     throw "$Label expected stage $ExpectedStage but received $($snapshot.Stage):`n$($snapshot.Raw)"
   }
-  Write-Output "LIVE_AI_PASS label=$Label mobile=$($snapshot.Mobile) targeted=$($snapshot.Targeted) outside=$($snapshot.Outside) onCore=$($snapshot.OnCore) stage=$($snapshot.Stage)"
+  Write-Output "LIVE_AI_PASS label=$Label mobile=$($snapshot.Mobile) targeted=$($snapshot.Targeted) coreObjective=$($snapshot.CoreObjective) outside=$($snapshot.Outside) onCore=$($snapshot.OnCore) stage=$($snapshot.Stage)"
   return $snapshot
 }
 
@@ -117,6 +121,55 @@ function Hold-BotAtCombatPosition {
   # containment invariant itself is never relaxed.
   $null = Invoke-LocalRcon -CommandText ("tp $BotName $($Core[0] + 6) $($Core[1]) $($Core[2]) 180 0")
   Start-Sleep -Milliseconds 250
+}
+
+function Get-AppendedLogText {
+  param([Parameter(Mandatory = $true)][int64]$PreviousLength)
+  $current = Get-Content -LiteralPath $paperLog -Raw
+  if ($current.Length -le $PreviousLength) {
+    return ''
+  }
+  return $current.Substring($PreviousLength)
+}
+
+function Get-LogCharacterLength {
+  return ([string](Get-Content -LiteralPath $paperLog -Raw)).Length
+}
+
+function Assert-SkeletonWaveEvidence {
+  param(
+    [Parameter(Mandatory = $true)][int]$Wave,
+    [Parameter(Mandatory = $true)][string]$ExpectedBehavior,
+    [Parameter(Mandatory = $true)][bool]$ExpectedMiniBoss,
+    [Parameter(Mandatory = $true)][int64]$PreviousLogLength
+  )
+  $delta = Get-AppendedLogText -PreviousLength $PreviousLogLength
+  $common = "WAVE_SKELETON_BEHAVIOR.*wave=$Wave.*variant=COMMON.*behavior=$ExpectedBehavior"
+  if ($delta -notmatch $common) {
+    throw "Wave $Wave did not emit the common skeleton behavior '$ExpectedBehavior'.`n$delta"
+  }
+  if ($delta -notmatch "SKELETON_ARROW_SHOT.*variant=COMMON.*target=PLAYER_ONLY") {
+    throw "Wave $Wave did not produce a real player-only common skeleton arrow.`n$delta"
+  }
+  if ($Wave -eq 4) {
+    if ($delta -notmatch 'WAVE_SKELETON_TOWER.*variant=.*target=CORE_ONLY') {
+      throw "Wave 4 skeletons did not hold the Core-only artillery posture.`n$delta"
+    }
+  } elseif ($delta -notmatch "WAVE_SKELETON_KITE .* behavior=$ExpectedBehavior") {
+    throw "Wave $Wave did not run the ranged posture for '$ExpectedBehavior'.`n$delta"
+  }
+  if ($ExpectedMiniBoss) {
+    if ($delta -notmatch "WAVE_SKELETON_BEHAVIOR.*wave=$Wave.*variant=MINIBOSS.*behavior=$ExpectedBehavior.*spell=ARROW_SALVO") {
+      throw "Wave $Wave did not emit the elite skeleton behavior '$ExpectedBehavior'.`n$delta"
+    }
+    if ($delta -notmatch 'MINIBOSS_SPELL_CAST .* spell=arrow_salvo') {
+      throw "Wave $Wave did not cast the elite skeleton arrow spell.`n$delta"
+    }
+    if ($delta -notmatch 'EVENT_ARROW_VOLLEY_SPAWN .* spell=arrow_salvo') {
+      throw "Wave $Wave did not create the bounded particle arrow volley.`n$delta"
+    }
+  }
+  Write-Output "LIVE_SKELETON_WAVE_PASS wave=$Wave behavior=$ExpectedBehavior miniBoss=$ExpectedMiniBoss"
 }
 
 $botProcess = $null
@@ -162,6 +215,7 @@ try {
 
   foreach ($wave in 1..5) {
     $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+    $logBeforeWave = Get-LogCharacterLength
     $response = Invoke-LocalRcon -CommandText ("cmend test wave $wave")
     if ($response -match '(?i)not created|refused|event world') {
       throw "Local test wave $wave was refused:`n$response"
@@ -169,8 +223,18 @@ try {
     Start-Sleep -Seconds 3
     Hold-BotAtCombatPosition -Core $core
     Assert-AiSnapshot -Label ("wave-$wave") -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
+    $expectedBehavior = switch ($wave) {
+      1 { 'bone_line' }
+      2 { 'marked_hunt' }
+      3 { 'portal_guard' }
+      4 { 'tower_artillery' }
+      5 { 'storm_kite' }
+    }
+    Assert-SkeletonWaveEvidence -Wave $wave -ExpectedBehavior $expectedBehavior `
+      -ExpectedMiniBoss ($wave -ge 3) -PreviousLogLength $logBeforeWave
   }
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+  $logBeforeFinalWave = Get-LogCharacterLength
   $response = Invoke-LocalRcon -CommandText 'cmend test wave final'
   if ($response -match '(?i)not created|refused|event world') {
     throw "Local final test wave was refused:`n$response"
@@ -178,6 +242,8 @@ try {
   Start-Sleep -Seconds 3
   Hold-BotAtCombatPosition -Core $core
   Assert-AiSnapshot -Label 'final-wave' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
+  Assert-SkeletonWaveEvidence -Wave 6 -ExpectedBehavior 'final_volley' `
+    -ExpectedMiniBoss $true -PreviousLogLength $logBeforeFinalWave
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
 
   $response = Invoke-LocalRcon -CommandText 'cmend boss spawn'

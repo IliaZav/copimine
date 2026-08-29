@@ -137,6 +137,21 @@ def test_live_ai_phase_probe_covers_all_waves_and_boss_stage_boundaries_locally(
         "TEST_TELEPORT_GUARD",
     ):
         assert expected in AI_PHASES
+    for expected in (
+        "WAVE_SKELETON_BEHAVIOR",
+        "bone_line",
+        "marked_hunt",
+        "portal_guard",
+        "tower_artillery",
+        "storm_kite",
+        "final_volley",
+        "SKELETON_ARROW_SHOT",
+        "WAVE_SKELETON_TOWER",
+        "MINIBOSS_SPELL_CAST",
+        "arrow_salvo",
+        "EVENT_ARROW_VOLLEY_SPAWN",
+    ):
+        assert expected in AI_PHASES
     assert "production" in AI_PHASES.lower()
     assert "Remove-Item" not in AI_PHASES
     assert "Stop-Process" not in AI_PHASES
@@ -180,15 +195,20 @@ def test_local_start_script_synchronizes_the_current_end_event_jar_before_boot()
         "plugins\\CopiMineEndEvent.jar",
         "Get-FileHash",
         "Synchronized local End Rift plugin",
+        "copimine-end-event\\config.yml",
+        "plugins\\CopiMineEndEvent\\config.yml",
+        "Synchronized local End Rift config",
     ):
         assert expected in START
 
 
 def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> None:
     for expected in (
-        "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED)", "VICTORY_COMPLETE", "persistent phase=",
+        "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)", "event-state.yml",
+        "phase:\\s*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)", "end-unlocked:\\s*true", "persistent phase=",
         "END_EVENT_STATE forced=UNLOCKED",
         "END_EVENT_STATE forced=UNCONFIGURED",
+        "END_EVENT_STATE forced=READY_FOR_PLAYERS",
         "WorldCore already reports End unlocked; preserving active event",
         "NoClassDefFoundError",
         "ClassNotFoundException",

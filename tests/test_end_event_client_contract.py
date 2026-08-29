@@ -50,6 +50,8 @@ def test_end_event_client_texture_is_packaged_source() -> None:
         "end_rift_guardian.png",
         "end_rift_spider.png",
         "end_rift_shulker.png",
+        "end_rift_skeleton.png",
+        "end_rift_elite_skeleton.png",
     ):
         texture = texture_dir / name
         assert texture.is_file()
@@ -64,6 +66,8 @@ def test_end_event_texture_catalog_covers_every_bound_entity_and_exposes_diagnos
         "END_RIFT_ELITE_V1",
         "END_RIFT_SPIDER_V1",
         "END_RIFT_SHULKER_V1",
+        "END_RIFT_SKELETON_V1",
+        "END_RIFT_ELITE_SKELETON_V1",
     ):
         assert visual_id in catalog
     assert "getResourceManager().getResource(texture).isPresent()" in catalog
@@ -74,6 +78,7 @@ def test_end_event_texture_catalog_covers_every_bound_entity_and_exposes_diagnos
         "EndermanEntityRendererMixin.java",
         "SpiderEntityRendererMixin.java",
         "ShulkerEntityRendererMixin.java",
+        "SkeletonEntityRendererMixin.java",
     ):
         mixin = (CLIENT / "src/main/java/me/copimine/client/mixin" / mixin_name).read_text(encoding="utf-8")
         assert "EndEventTextureCatalog.isAvailable" in mixin
@@ -87,7 +92,9 @@ def test_end_event_mob_bindings_are_uuid_scoped_and_not_global_overrides() -> No
     assert "entityVisuals" in state
     assert "visualForEntity" in state
     assert "END_RIFT_SPIDER_V1" in server
-    assert "END_RIFT_SHULKER_V1" in server
+    assert "END_RIFT_SKELETON_V1" in server
+    assert "END_RIFT_ELITE_SKELETON_V1" in server
+    assert "END_RIFT_SHULKER_V1" not in server
     assert "bindEventEntityClientForOnlinePlayers" in server
     spider_mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/SpiderEntityRendererMixin.java").read_text(encoding="utf-8")
     assert "textures/entity/end_rift_spider.png" in spider_mixin

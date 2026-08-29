@@ -54,6 +54,7 @@ import me.copimine.endevent.domain.PortalCapturePolicy;
 import me.copimine.endevent.domain.RewardRoster;
 import me.copimine.endevent.domain.ResourceProgressFormatter;
 import me.copimine.endevent.domain.StormPatternPolicy;
+import me.copimine.endevent.domain.SkeletonCombatPolicy;
 import me.copimine.endevent.domain.TowerDefensePolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WaveObjectivePolicy;
@@ -91,6 +92,8 @@ import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Enderman;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.AbstractArrow;
+import org.bukkit.entity.Arrow;
 import org.bukkit.entity.BlockDisplay;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
@@ -98,7 +101,7 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
-import org.bukkit.entity.Shulker;
+import org.bukkit.entity.Skeleton;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
@@ -120,6 +123,8 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
+import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.EntityTeleportEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
@@ -171,7 +176,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
-    private static final String CLIENT_VISUAL_SHULKER = "END_RIFT_SHULKER_V1";
+    private static final String CLIENT_VISUAL_SKELETON = "END_RIFT_SKELETON_V1";
+    private static final String CLIENT_VISUAL_ELITE_SKELETON = "END_RIFT_ELITE_SKELETON_V1";
     private static final Material EVENT_OVERLAY_ITEM = Material.PAPER;
     private static final int MODEL_CORE_OVERLAY = 830001;
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
@@ -239,18 +245,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
     private static final long BOSS_TACTIC_REFRESH_MILLIS = 2_500L;
     private static final long COMBAT_TELEPORT_PERMIT_MILLIS = 1_000L;
+    private static final int WAVE_TWO_INITIAL_MARK_MIN_SECONDS = 2;
+    private static final int WAVE_TWO_INITIAL_MARK_MAX_SECONDS = 4;
     private static final int WAVE_TWO_MARK_REVEAL_TICKS = 30;
     private static final int WAVE_TWO_MARK_DURATION_TICKS = 220;
     private static final long WAVE_REWARD_OWNER_WINDOW_MILLIS = 30_000L;
     private static final int FINAL_WAVE_NUMBER = 6;
     private static final int MAX_ACTIVE_VOID_MARKS = 2;
     private static final int MAX_ACTIVE_RIFT_PROJECTILES = 8;
+    private static final int MAX_ACTIVE_EVENT_ARROWS = 24;
     private static final int JUDGMENT_SAFE_ZONE_BLOCK_HEIGHT = 2;
     private static final int SPELL_FLIGHT_TICKS = 8;
     private static final int SPELL_FLIGHT_RENDER_INTERVAL_TICKS = 2;
     private static final String SPELL_FLIGHT_EFFECT = "spell-flight";
     private static final int RIFT_PROJECTILE_MAX_TICKS = 80;
     private static final double RIFT_PROJECTILE_SPEED = 0.65D;
+    private static final int EVENT_ARROW_MAX_TICKS = 100;
+    private static final int EVENT_ARROW_TRAIL_INTERVAL_TICKS = 2;
+    private static final String ARROW_SPELL_SKELETON = "skeleton";
+    private static final long TOWER_PLAYER_AGGRO_MILLIS = 4_000L;
+    private static final double TOWER_PLAYER_ALERT_RADIUS = 8.0D;
     private static final int CREATIVE_TEST_MAX_STAGE_TICKS = 100;
     private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
     private static final String VICTORY_UNLOCK_PENDING = "END_UNLOCK_PENDING";
@@ -301,6 +315,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Integer> riftStormLastDamageSecond = new HashMap<>();
     private final Map<UUID, Long> towerNextAttackAt = new HashMap<>();
     private final Map<UUID, Integer> towerAttackSequences = new HashMap<>();
+    private final Map<UUID, Long> towerAggroUntil = new HashMap<>();
     private TowerDefensePolicy.CoreState towerDefenseState;
     /** Failed Tower Defense state held until the owned retry task respawns the wave. */
     private TowerDefensePolicy.CoreState pendingTowerDefenseRetry;
@@ -330,6 +345,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
+    private final Map<UUID, Integer> activeEventArrowAges = new LinkedHashMap<>();
+    private final Map<UUID, Long> nextSkeletonArrowMillis = new HashMap<>();
     private final Deque<UUID> recentBossTargets = new ArrayDeque<>();
     /** PlayerJoinEvent can run before AuthMe finishes; bindings are retried after eligibility changes. */
     private final Set<UUID> clientBindingReadyPlayers = new HashSet<>();
@@ -359,6 +376,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask arenaInfernoTask;
     private BukkitTask bossCastTask;
     private BukkitTask towerRetryTask;
+    private BukkitTask towerSpawnTask;
+    private List<WaveMechanicsPolicy.WaveCounts> towerSpawnSchedule = List.of();
+    private int towerSpawnGroupIndex;
+    private int towerSpawnEntityOffset;
+    private long towerNextSpawnAtMillis;
     private boolean victoryGatePending;
     private boolean bootstrapped;
 
@@ -480,6 +502,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyTowerAttackAt;
     private NamespacedKey keyTowerAttackSequence;
     private NamespacedKey keyCombatTactic;
+    private NamespacedKey keyArrowSpell;
 
     @Override
     public void onEnable() {
@@ -526,6 +549,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyTowerAttackAt = new NamespacedKey(this, "end_event_tower_attack_at");
             keyTowerAttackSequence = new NamespacedKey(this, "end_event_tower_attack_sequence");
             keyCombatTactic = new NamespacedKey(this, "end_event_combat_tactic");
+            keyArrowSpell = new NamespacedKey(this, "end_event_arrow_spell");
             keyArtifactItemId = new NamespacedKey("copimineartifacts", "artifact_item_id");
             keyArtifactUniqueId = new NamespacedKey("copimineartifacts", "artifact_unique_item_id");
             registerCommandsAndListeners();
@@ -1089,6 +1113,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
+        clearActiveEventArrows();
         for (BukkitTask task : shardChannelTasks.values()) {
             if (task != null) {
                 task.cancel();
@@ -1123,12 +1148,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearCombatAiState() {
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
+        clearActiveEventArrows();
         clearJudgmentVisuals();
         testCombatAiMode = false;
         miniBossSpells.clear();
         waveMobTactics.clear();
         combatTeleportPermits.clear();
         blockedTeleportLogAt.clear();
+        nextSkeletonArrowMillis.clear();
         nextMiniBossSpellMillis.clear();
         nextWavePathRequestMillis.clear();
         lastWavePathLogMillis.clear();
@@ -1456,12 +1483,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if ("all".equals(section) || "objectives".equals(section)) {
             int liveObjectiveMobs = activeWave >= 1 && activeWave <= 5
                     ? countLiveWaveEntitiesForWave(activeWave) : 0;
+            String tower = towerDefenseState == null
+                    ? "tower=none"
+                    : "tower=" + towerDefenseState.outcome()
+                    + " towerHealth=" + Math.round(towerDefenseState.currentHealth())
+                    + "/" + Math.round(towerDefenseState.maxHealth())
+                    + " towerAttempt=" + towerDefenseState.attempt()
+                    + " towerDeadline=" + towerDefenseState.deadlineMillis();
             message(sender, "&7OBJECTIVE_DIAGNOSTICS phase=" + phase
                     + " wave=" + activeWave + " complete=" + waveObjectiveComplete
                     + " trackedMobs=" + waveObjectiveMobCount + " liveMobs=" + liveObjectiveMobs
                     + " visuals=" + waveObjectiveVisuals.size()
                     + " marked=" + (waveTwoMarkedPlayerUuid == null ? "none" : waveTwoMarkedPlayerUuid)
-                    + " pulseDeadline=" + waveOnePulseDeadlineMillis);
+                    + " pulseDeadline=" + waveOnePulseDeadlineMillis + " " + tower);
         }
         if ("all".equals(section) || "hazards".equals(section)) {
             HazardMutationJournal.Snapshot journal = hazardJournal == null
@@ -1502,8 +1536,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int mobile = 0;
             int aiEnabled = 0;
             int targeted = 0;
+            int coreObjective = 0;
             int outside = 0;
             int onCore = 0;
+            long diagnosticNow = System.currentTimeMillis();
             List<String> samples = new ArrayList<>();
             List<String> outsideSamples = new ArrayList<>();
             for (Entity entity : new ArrayList<>(ownedEntities.values())) {
@@ -1518,6 +1554,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 if (mob.getTarget() instanceof Player player && isCombatTarget(player)) {
                     targeted++;
+                }
+                if (isTowerDefenseMob(entity) && !hasTowerPlayerAggro(entity, diagnosticNow)) {
+                    coreObjective++;
                 }
                 if (anchor != null) {
                     double radius = boundedCombatRadius(config == null ? MAX_COMBAT_RADIUS_BLOCKS
@@ -1550,6 +1589,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             message(sender, "&7AI_DIAGNOSTICS phase=" + phase + " stage=" + bossStage
                     + " mobile=" + mobile + " aiEnabled=" + aiEnabled + " targeted=" + targeted
+                    + " coreObjective=" + coreObjective
                     + " outside=" + outside + " onCore=" + onCore
                     + " bossCast=" + bossCastState + " stepCap=" + MAX_COMBAT_STEP_BLOCKS);
             BossStagePolicy.CombatProfile profile = currentBossCombatProfile();
@@ -2638,7 +2678,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
+            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -2663,6 +2703,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("teleport".equalsIgnoreCase(args[1])) {
             handleTestTeleport(sender, args);
+            return;
+        }
+        if ("tower".equalsIgnoreCase(args[1])) {
+            handleTestTowerFailure(sender, args);
             return;
         }
         if ("music".equalsIgnoreCase(args[1])) {
@@ -2700,7 +2744,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
+        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <waves|boss|half|final|victory> [player]");
+    }
+
+    /**
+     * Local-only failure injection for the official Tower Defense retry test.
+     * It uses the same immutable damage transition as a real Core attack and
+     * then enters the production cleanup/retry boundary.  This is deliberately
+     * not exposed outside environment=local, and it never grants rewards or
+     * skips a wave on its own.
+     */
+    private void handleTestTowerFailure(CommandSender sender, String[] args) {
+        if (config == null || !"local".equalsIgnoreCase(config.environment())) {
+            message(sender, "&cWAVE_TEST_FAILURE_GUARD разрешён только при environment=local.");
+            return;
+        }
+        if (args.length < 3 || !("fail".equalsIgnoreCase(args[2])
+                || "failure".equalsIgnoreCase(args[2]))) {
+            message(sender, "&e/cmend test tower fail");
+            return;
+        }
+        if (phase != EventPhase.WAVE_4 || activeWave != 4
+                || towerDefenseState == null
+                || towerDefenseState.outcome() != TowerDefensePolicy.Outcome.ACTIVE) {
+            message(sender, "&cWAVE_TEST_FAILURE_GUARD доступен только во время активной official Wave 4.");
+            return;
+        }
+        double healthBefore = towerDefenseState.currentHealth();
+        String attackId = "test:tower-failure:" + eventId + ":" + generation;
+        long now = System.currentTimeMillis();
+        towerDefenseState = TowerDefensePolicy.damage(towerDefenseState, attackId, healthBefore);
+        // A real objective tick finalizes a depleted Core before entering the
+        // failure handler.  Keep the local injection on that same immutable
+        // ACTIVE -> FAILURE boundary so retry() cannot silently restart as
+        // attempt one.
+        towerDefenseState = TowerDefensePolicy.finish(towerDefenseState, now);
+        getLogger().warning("WAVE_TEST_FAILURE_INJECTED event=" + eventId
+                + " wave=4 attempt=" + towerDefenseState.attempt()
+                + " core_health_before=" + healthBefore
+                + " core_health_after=" + towerDefenseState.currentHealth()
+                + " attack_id=" + attackId);
+        if (towerDefenseState.outcome() == TowerDefensePolicy.Outcome.FAILURE) {
+            handleTowerDefenseFailure();
+        }
+        message(sender, "&eWAVE_TEST_FAILURE_INJECTED: Core Wave 4 помечен разрушенным; ожидается clean retry.");
     }
 
     /**
@@ -3209,12 +3296,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         telegraphBossSpell(boss, target, EndRiftAiPolicy.BossSpell.WILL_DISTORTION, true);
                     }
                     message(sender, "&aControl reversal test requested.");
-                } else if (List.of("void_blast", "rift_projectile", "void_mark", "summon", "summon_servants",
+                } else if (List.of("void_blast", "rift_projectile", "rift_arrows", "void_mark", "summon", "summon_servants",
                         "arena_inferno")
                         .contains(spell)) {
                     EndRiftAiPolicy.BossSpell requestedSpell = switch (spell) {
                         case "void_blast" -> EndRiftAiPolicy.BossSpell.VOID_BLAST;
                         case "rift_projectile" -> EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE;
+                        case "rift_arrows" -> EndRiftAiPolicy.BossSpell.RIFT_ARROWS;
                         case "void_mark" -> EndRiftAiPolicy.BossSpell.VOID_MARK;
                         case "arena_inferno" -> EndRiftAiPolicy.BossSpell.ARENA_INFERNO;
                         default -> EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS;
@@ -3959,6 +4047,165 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Vanilla skeletons can acquire animals and other monsters as targets.
+     * Event skeletons are explicitly player-only: every target transition is
+     * checked here and the controller rechecks it before every shot.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEventSkeletonTarget(EntityTargetLivingEntityEvent event) {
+        if (!(event.getEntity() instanceof Skeleton skeleton) || !isEventSkeleton(skeleton)) {
+            return;
+        }
+        LivingEntity target = event.getTarget();
+        if (target == null) {
+            skeleton.setTarget(null);
+            return;
+        }
+        if (!(target instanceof Player player)
+                || !SkeletonCombatPolicy.canTargetPlayersOnly("PLAYER", isCombatTarget(player))) {
+            event.setCancelled(true);
+            skeleton.setTarget(null);
+            getLogger().info("SKELETON_TARGET_BLOCKED entity=" + skeleton.getUniqueId()
+                    + " target=" + (target == null ? "none" : target.getType())
+                    + " reason=PLAYER_ONLY");
+            return;
+        }
+        skeleton.setTarget(player);
+    }
+
+    /** Tag every ordinary skeleton arrow so its trail and cleanup are bounded. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEventSkeletonShootBow(EntityShootBowEvent event) {
+        if (!(event.getEntity() instanceof Skeleton skeleton) || !isEventSkeleton(skeleton)
+                || !(event.getProjectile() instanceof Arrow arrow)) {
+            return;
+        }
+        boolean miniBoss = isSkeletonMiniBoss(skeleton);
+        SkeletonCombatPolicy.ArrowProfile profile = SkeletonCombatPolicy.arrowProfile(miniBoss);
+        long now = System.currentTimeMillis();
+        long nextAllowed = nextSkeletonArrowMillis.getOrDefault(skeleton.getUniqueId(), 0L);
+        if (now < nextAllowed) {
+            event.setCancelled(true);
+            if (arrow.isValid() && !arrow.isDead()) {
+                arrow.remove();
+            }
+            getLogger().info("SKELETON_ARROW_COOLDOWN_BLOCKED entity=" + skeleton.getUniqueId()
+                    + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
+                    + " retry_ms=" + (nextAllowed - now)
+                    + " cooldown_ticks=" + profile.cooldownTicks());
+            return;
+        }
+        nextSkeletonArrowMillis.put(skeleton.getUniqueId(),
+                now + profile.cooldownTicks() * 50L);
+        tag(arrow, EVENT_KIND_PROJECTILE, readInt(skeleton, keyWave, 0), isOfficialEntity(skeleton));
+        tagArrowSpell(arrow, miniBoss ? EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id()
+                : ARROW_SPELL_SKELETON);
+        arrow.setDamage(profile.damage());
+        arrow.setCritical(true);
+        arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+        arrow.setColor(miniBoss ? Color.fromRGB(244, 60, 255) : Color.fromRGB(228, 228, 198));
+        trackEventArrow(arrow);
+        getLogger().info("SKELETON_ARROW_SHOT entity=" + skeleton.getUniqueId()
+                + " arrow=" + arrow.getUniqueId() + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
+                + " target=PLAYER_ONLY damage=" + profile.damage()
+                + " trail=" + profile.particlePattern());
+    }
+
+    /** Ordinary skeleton arrows may hurt eligible players, never event mobs. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onEventSkeletonArrowDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Arrow arrow)
+                || !(arrow.getShooter() instanceof Skeleton skeleton)
+                || !isEventSkeleton(skeleton) || !isEventArrow(arrow)) {
+            return;
+        }
+        String spell = readString(arrow, keyArrowSpell);
+        if (!ARROW_SPELL_SKELETON.equals(spell)) {
+            onCustomEventArrowDamage(event, arrow, spell);
+            return;
+        }
+        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)) {
+            event.setCancelled(true);
+            getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
+                    + " target=" + event.getEntity().getType());
+            cleanupEventArrow(arrow.getUniqueId());
+            return;
+        }
+        getLogger().info("SKELETON_ARROW_PLAYER_HIT arrow=" + arrow.getUniqueId()
+                + " shooter=" + skeleton.getUniqueId() + " target=" + player.getUniqueId()
+                + " damage=" + event.getFinalDamage());
+    }
+
+    /** Boss and miniboss spell arrows use one authoritative player-only hit. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCustomEventArrowDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Arrow arrow) || !isEventArrow(arrow)) {
+            return;
+        }
+        String spell = readString(arrow, keyArrowSpell);
+        if (ARROW_SPELL_SKELETON.equals(spell)) {
+            return;
+        }
+        onCustomEventArrowDamage(event, arrow, spell);
+    }
+
+    private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell) {
+        boolean alreadyCancelled = event.isCancelled();
+        if (alreadyCancelled) {
+            cleanupEventArrow(arrow.getUniqueId());
+            return;
+        }
+        event.setCancelled(true);
+        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)) {
+            cleanupEventArrow(arrow.getUniqueId());
+            getLogger().info("EVENT_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
+                    + " spell=" + spell + " target=" + event.getEntity().getType());
+            return;
+        }
+        LivingEntity shooter = arrow.getShooter() instanceof LivingEntity living ? living : null;
+        boolean miniBoss = EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell);
+        double damage = miniBoss ? SkeletonCombatPolicy.arrowProfile(true).damage()
+                : BOSS_PROJECTILE_DAMAGE;
+        if (shooter != null && shooter.isValid() && !shooter.isDead()) {
+            player.damage(damage, shooter);
+        } else {
+            player.damage(damage);
+        }
+        int debuffTicks = miniBoss ? SLOWNESS_DEBUFF_TICKS : BOSS_PROJECTILE_DEBUFF_TICKS;
+        player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
+                debuffTicks, configuredDebuffAmplifier(), false, true, true));
+        getLogger().info("EVENT_ARROW_PLAYER_HIT arrow=" + arrow.getUniqueId()
+                + " spell=" + spell + " target=" + player.getUniqueId()
+                + " damage=" + damage + " slowness_ticks=" + debuffTicks);
+        cleanupEventArrow(arrow.getUniqueId());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEventArrowHit(ProjectileHitEvent event) {
+        if (event.getEntity() instanceof Arrow arrow && isEventArrow(arrow)) {
+            cleanupEventArrow(arrow.getUniqueId());
+        }
+    }
+
+    /** A tower mob may be distracted by the player who hit it, but only briefly. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onTowerMobDamagedByPlayer(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Mob mob)
+                || !(event.getDamager() instanceof Player attacker)
+                || !isTowerDefenseMob(mob)
+                || !isCombatTarget(attacker)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long expiresAt = now + TOWER_PLAYER_AGGRO_MILLIS;
+        towerAggroUntil.put(mob.getUniqueId(), expiresAt);
+        mob.setTarget(attacker);
+        getLogger().info("WAVE_TOWER_AGGRO entity=" + mob.getUniqueId()
+                + " role=" + towerRole(mob) + " target=" + attacker.getUniqueId()
+                + " duration_ms=" + TOWER_PLAYER_AGGRO_MILLIS);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPortalWaveMobAttack(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player victim)
@@ -4617,6 +4864,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         updateCombatHelpers();
         tickWaveMobAi();
         tickMiniBosses();
+        tickEventArrowProjectiles();
         refreshClientBindingsForOnlinePlayers();
         // Official boss phases are handled by the switch below.  The extra
         // call is only for the disposable local AI harness, which deliberately
@@ -4952,11 +5200,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String kind = readString(entity, keyKind);
             if (!(entity instanceof Mob mob) || !isWaveCombatKind(kind)
                     || !isLiveOwnedEntity(entity.getUniqueId())
-                    || !isWaveAiCombatPhase(readInt(entity, keyWave, 0))) {
+                    || !isWaveAiCombatEntity(entity)) {
                 continue;
             }
+            boolean towerMob = isTowerDefenseMob(entity);
+            boolean playerAggro = towerMob && hasTowerPlayerAggro(entity, now);
             Player currentTarget = mob.getTarget() instanceof Player player && isCombatTarget(player)
                     ? player : null;
+            if (towerMob && !playerAggro) {
+                Player alertTarget = findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS);
+                if (alertTarget != null) {
+                    // A tower mob that reaches the Core while a player is
+                    // already nearby must engage that player instead of
+                    // silently free-casting its objective attack.  Refreshing
+                    // the same bounded aggro window makes the decision
+                    // readable to players and gives the objective a fair
+                    // counterplay loop.
+                    currentTarget = alertTarget;
+                    playerAggro = true;
+                    towerAggroUntil.put(entity.getUniqueId(), now + TOWER_PLAYER_AGGRO_MILLIS);
+                    mob.setTarget(alertTarget);
+                    getLogger().info("WAVE_TOWER_ALERT entity=" + entity.getUniqueId()
+                            + " role=" + towerRole(entity) + " target=" + alertTarget.getUniqueId()
+                            + " radius=" + TOWER_PLAYER_ALERT_RADIUS
+                            + " duration_ms=" + TOWER_PLAYER_AGGRO_MILLIS);
+                }
+            }
+            if (towerMob && currentTarget != null && !playerAggro) {
+                // Tower mobs return to their Core job after the short player
+                // aggro window instead of following a stale target forever.
+                mob.setTarget(null);
+                mob.getPathfinder().stopPathfinding();
+                currentTarget = null;
+            }
             if (mob.getTarget() != null && currentTarget == null) {
                 // A player can leave the arena, disconnect, die, or be changed
                 // by another plugin between controller ticks.  Clear both the
@@ -4969,11 +5245,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
 
             Player target = currentTarget;
-            if ((rotateTargets || target == null) && !candidateIds.isEmpty()) {
-                Player markedTarget = activeWave == 2 && waveTwoMarkedPlayerUuid != null
-                        ? Bukkit.getPlayer(waveTwoMarkedPlayerUuid) : null;
-                if (markedTarget != null && isCombatTarget(markedTarget)) {
+            boolean keepTowerAggro = towerMob && playerAggro && target != null;
+            int entityWave = readInt(entity, keyWave, activeWave);
+            Player markedTarget = entityWave == 2 && waveTwoMarkedPlayerUuid != null
+                    ? Bukkit.getPlayer(waveTwoMarkedPlayerUuid) : null;
+            boolean markedTargetEligible = markedTarget != null && isCombatTarget(markedTarget);
+            boolean markedTargetPriority = SkeletonCombatPolicy.shouldPrioritizeMarkedTarget(
+                    entityWave, entityWave == 2, markedTargetEligible);
+            boolean markedTargetNeedsRefresh = markedTargetPriority
+                    && (target == null || !target.getUniqueId().equals(markedTarget.getUniqueId()));
+            if (!keepTowerAggro && (rotateTargets || target == null || markedTargetNeedsRefresh)
+                    && !candidateIds.isEmpty()) {
+                if (markedTargetPriority) {
                     target = markedTarget;
+                    if (entity instanceof Skeleton) {
+                        getLogger().info("WAVE_SKELETON_MARKED_TARGET entity=" + entity.getUniqueId()
+                                + " target=" + target.getUniqueId() + " wave=" + entityWave
+                                + " priority=immediate");
+                    }
                 } else {
                     UUID current = target == null ? null : target.getUniqueId();
                     EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
@@ -4981,10 +5270,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
                 }
                 if (target != null && isCombatTarget(target)) {
-                    mob.setTarget(target);
+                    if (!towerMob || playerAggro) {
+                        mob.setTarget(target);
+                    } else {
+                        // The selected player is only a deterministic input
+                        // for the controller.  Do not hand it to vanilla AI:
+                        // until a player actually hits the tower mob, it must
+                        // keep advancing toward its Core objective.
+                        mob.setTarget(null);
+                    }
                     getLogger().info("WAVE_AI_TARGET entity=" + entity.getUniqueId()
                             + " role=" + kind + " target=" + target.getUniqueId()
-                            + " rotation=" + (rotateTargets ? "scheduled" : "reacquired"));
+                            + " rotation=" + (markedTargetPriority ? "marked" : rotateTargets ? "scheduled" : "reacquired")
+                            + " objective=" + (towerMob && !playerAggro ? "core" : "player"));
                 } else {
                     mob.setTarget(null);
                     mob.getPathfinder().stopPathfinding();
@@ -4992,16 +5290,192 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             if (target != null && isCombatTarget(target)) {
+                boolean towerCoreJob = towerMob && !playerAggro;
+                if (towerCoreJob) {
+                    // The deterministic player choice above is only a
+                    // diagnostic input for a tower mob.  Until a player hits
+                    // it, a skeleton must hold its artillery ring around the
+                    // Core instead of silently kiting toward that player.
+                    if (mob instanceof Skeleton skeleton) {
+                        maintainSkeletonTowerPosture(skeleton, kind, now);
+                    } else {
+                        maintainWaveMobPath(mob, null, kind, now);
+                    }
+                    continue;
+                }
                 // Re-request navigation on every controller tick.  The request
                 // itself is throttled per mob, so a large wave gets reliable
                 // movement without flooding Paper with path computations.
-                maintainWaveMobPath(mob, target, kind, now);
+                if (mob instanceof Skeleton skeleton) {
+                    maintainSkeletonCombatPosture(skeleton, target, kind, now);
+                } else {
+                    maintainWaveMobPath(mob, target, kind, now);
+                }
+            } else if (towerMob && !playerAggro) {
+                // Tower mobs keep a Core objective even when there is no player
+                // target.  Passing null is intentional: the path controller
+                // resolves the role's safe attack ring without handing a fake
+                // player target to vanilla AI.
+                maintainWaveMobPath(mob, null, kind, now);
             }
         }
         if (rotateTargets && !candidateIds.isEmpty()) {
             nextWaveTargetMillis = now
                     + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
         }
+    }
+
+    /**
+     * Ranged skeletons keep a readable firing lane instead of pathing into
+     * melee range. The destination is still resolved by the common collision,
+     * height, Core and arena-bound checks, so this posture cannot escape the
+     * event box or walk through hazards.
+     */
+    private void maintainSkeletonCombatPosture(Skeleton skeleton, Player target,
+                                                String kind, long now) {
+        if (skeleton == null || target == null || !isCombatTarget(target)
+                || now < nextWavePathRequestMillis.getOrDefault(skeleton.getUniqueId(), 0L)) {
+            return;
+        }
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null) {
+            return;
+        }
+        boolean miniBoss = isSkeletonMiniBoss(skeleton);
+        int wave = readInt(skeleton, keyWave, 1);
+        SkeletonCombatPolicy.WaveBehavior behavior = SkeletonCombatPolicy.behaviorForWave(wave, miniBoss);
+        double distance = Math.sqrt(horizontalDistanceSquared(skeleton.getLocation(), target.getLocation()));
+        double minimum = behavior.minimumRange();
+        double maximum = behavior.maximumRange();
+        if (distance >= minimum && distance <= maximum) {
+            skeleton.getPathfinder().stopPathfinding();
+            nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+            return;
+        }
+        Location destination = skeletonRangedDestination(anchor, skeleton, target,
+                minimum + 2.0D, behavior);
+        if (destination == null) {
+            nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+            return;
+        }
+        double speed = miniBoss ? 1.15D : 1.05D;
+        boolean moved = skeleton.getPathfinder().moveTo(destination, speed);
+        if (!moved) {
+            moved = requestBoundedCombatMovement(skeleton, destination, speed, anchor,
+                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    "WAVE_SKELETON_PATH");
+        }
+        nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+        if (moved) {
+            long lastLog = lastWavePathLogMillis.getOrDefault(skeleton.getUniqueId(), 0L);
+            if (now - lastLog >= 2_000L) {
+                lastWavePathLogMillis.put(skeleton.getUniqueId(), now);
+                getLogger().info("WAVE_SKELETON_KITE entity=" + skeleton.getUniqueId()
+                        + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
+                        + " behavior=" + behavior.id()
+                        + " target=" + target.getUniqueId() + " distance=" + String.format(Locale.ROOT, "%.2f", distance)
+                        + " firing_lane=" + String.format(Locale.ROOT, "%.1f", minimum)
+                        + "-" + String.format(Locale.ROOT, "%.1f", maximum)
+                        + " destination=" + locationText(destination));
+            }
+        }
+    }
+
+    /** Hold the Wave IV artillery ring while the Core remains the objective. */
+    private void maintainSkeletonTowerPosture(Skeleton skeleton, String kind, long now) {
+        if (skeleton == null || !isEventSkeleton(skeleton)
+                || now < nextWavePathRequestMillis.getOrDefault(skeleton.getUniqueId(), 0L)) {
+            return;
+        }
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null) {
+            return;
+        }
+        Location destination = waveTacticalDestination(skeleton, null, kind, now);
+        if (destination == null || isCoreBlockPosition(destination)) {
+            nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+            return;
+        }
+        double speed = isSkeletonMiniBoss(skeleton) ? 1.15D : 1.05D;
+        if (horizontalDistanceSquared(skeleton.getLocation(), destination) <= 4.0D) {
+            skeleton.getPathfinder().stopPathfinding();
+            nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+            return;
+        }
+        boolean moved = skeleton.getPathfinder().moveTo(destination, speed);
+        if (!moved) {
+            moved = requestBoundedCombatMovement(skeleton, destination, speed, anchor,
+                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    "WAVE_SKELETON_TOWER_PATH");
+        }
+        nextWavePathRequestMillis.put(skeleton.getUniqueId(), now + WAVE_PATH_REQUEST_INTERVAL_MILLIS);
+        if (moved) {
+            long lastLog = lastWavePathLogMillis.getOrDefault(skeleton.getUniqueId(), 0L);
+            if (now - lastLog >= 2_000L) {
+                lastWavePathLogMillis.put(skeleton.getUniqueId(), now);
+                getLogger().info("WAVE_SKELETON_TOWER entity=" + skeleton.getUniqueId()
+                        + " variant=" + (isSkeletonMiniBoss(skeleton) ? "MINIBOSS" : "COMMON")
+                        + " behavior=tower_artillery target=CORE_ONLY destination="
+                        + locationText(destination));
+            }
+        }
+    }
+
+    private Location skeletonRangedDestination(Location anchor, Skeleton skeleton,
+                                               Player target, double desiredDistance,
+                                               SkeletonCombatPolicy.WaveBehavior behavior) {
+        if (anchor == null || skeleton == null || target == null) {
+            return null;
+        }
+        Location tacticalTarget = target.getLocation();
+        if (behavior != null && behavior.guardsObjective()
+                && readInt(skeleton, keyWave, 0) == 3) {
+            Location portal = nearestOpenPortal(skeleton.getLocation());
+            if (portal != null && horizontalDistanceSquared(target.getLocation(), portal) > 36.0D) {
+                // Keep a portal sentinel on a safe firing station around the
+                // objective while its Mob target remains the player. This
+                // prevents the skeleton from abandoning the portal whenever
+                // somebody crosses the arena.
+                tacticalTarget = portal;
+            }
+        }
+        Vector radial = skeleton.getLocation().toVector().subtract(tacticalTarget.toVector());
+        radial.setY(0.0D);
+        if (radial.lengthSquared() < 0.04D) {
+            radial = tacticalTarget.toVector().subtract(anchor.toVector());
+            radial.setY(0.0D);
+        }
+        if (radial.lengthSquared() < 0.04D) {
+            radial = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        radial.normalize();
+        Location preferred = tacticalTarget.clone().add(radial.multiply(desiredDistance));
+        return findSafeCombatLocation(anchor, preferred,
+                boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                MIN_WAVE_CORE_DISTANCE_BLOCKS);
+    }
+
+    private Location nearestOpenPortal(Location from) {
+        if (from == null || from.getWorld() == null) {
+            return null;
+        }
+        List<Location> portals = wavePortals.getOrDefault(3, List.of());
+        List<PortalCapturePolicy.PortalState> states = portalCaptureStates.getOrDefault(3, List.of());
+        Location nearest = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (int index = 0; index < portals.size(); index++) {
+            Location portal = portals.get(index);
+            if (portal == null || !from.getWorld().equals(portal.getWorld())
+                    || index < states.size() && states.get(index).completed()) {
+                continue;
+            }
+            double distance = horizontalDistanceSquared(from, portal);
+            if (distance < nearestDistance) {
+                nearest = portal;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
     }
 
     private void enforceWaveMobContainment() {
@@ -5025,22 +5499,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * hunters attack from a moving flank.  The final location is always
      * passed through the same collision/height/Core safety resolver.
      */
-    private Location waveTacticalDestination(Mob mob, Player target, String kind) {
+    private Location waveTacticalDestination(Mob mob, Player target, String kind, long now) {
         Location anchor = coreCombatAnchorLocation();
-        if (anchor == null || mob == null || target == null) {
+        WaveMechanicsPolicy.TowerRole towerRole = towerRole(mob);
+        boolean towerPlayerAggro = isTowerDefenseMob(mob) && hasTowerPlayerAggro(mob, now);
+        boolean towerCoreJob = towerRole != null && isTowerDefenseMob(mob) && !towerPlayerAggro;
+        if (anchor == null || mob == null
+                || (!towerCoreJob && (target == null || !isCombatTarget(target)))) {
             return null;
         }
         CombatTacticsPolicy.MobTactic tactic = combatTactic(
                 mob, Math.floorMod(mob.getUniqueId().hashCode(), 128));
         Location preferred;
-        switch (tactic) {
-            case CORE_BREAKER -> preferred = stableCombatRingLocation(anchor, mob, 5.5D, 8.0D);
-            case ARTILLERY_SCREEN -> preferred = stableCombatRingLocation(anchor, mob, 9.0D, 12.0D);
-            case PORTAL_GUARD -> preferred = isCoreBlockPosition(target.getLocation())
-                    ? stableCombatRingLocation(anchor, mob, 6.0D, 9.0D) : target.getLocation();
-            case STORM_HUNTER, ELITE_HUNTER -> preferred = flankTargetLocation(anchor, mob, target);
-            case MARKED_HUNTER, RAIDER_RUSH, ASSAULT -> preferred = target.getLocation();
-            default -> preferred = target.getLocation();
+        if (towerCoreJob) {
+            // Every tower role has a reachable, safe Core stance.  The old
+            // breaker route used a 5.5-8 block ring while its attack check
+            // only accepted 2.25 blocks, making the role cosmetic rather than
+            // functional.  The ranges live in the pure policy and are now
+            // mirrored by updateTowerObjective().
+            preferred = switch (towerRole) {
+                case RAIDER -> stableCombatRingLocation(anchor, mob, 3.0D, 3.75D);
+                case BREAKER -> stableCombatRingLocation(anchor, mob, 3.0D, 4.0D);
+                case ARTILLERY -> stableCombatRingLocation(anchor, mob, 9.0D, 12.0D);
+            };
+        } else {
+            switch (tactic) {
+                case CORE_BREAKER -> preferred = stableCombatRingLocation(anchor, mob, 3.0D, 4.0D);
+                case ARTILLERY_SCREEN -> preferred = stableCombatRingLocation(anchor, mob, 9.0D, 12.0D);
+                case PORTAL_GUARD -> preferred = isCoreBlockPosition(target.getLocation())
+                        ? stableCombatRingLocation(anchor, mob, 6.0D, 9.0D) : target.getLocation();
+                case STORM_HUNTER, ELITE_HUNTER -> preferred = flankTargetLocation(anchor, mob, target);
+                case MARKED_HUNTER, RAIDER_RUSH, ASSAULT -> preferred = target.getLocation();
+                default -> preferred = target.getLocation();
+            }
         }
         if (preferred == null) {
             return null;
@@ -5093,15 +5584,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Endermen do not reliably start vanilla melee navigation from a Bukkit
-     * target assignment alone.  Request a bounded path for mobile wave mobs so
-     * the target controller produces visible movement as well as combat intent.
-     * Shulkers are intentionally excluded: their role is a stationary ranged
-     * turret and their vanilla projectile AI remains active.
+     * Endermen and skeletons do not reliably start useful navigation from a
+     * Bukkit target assignment alone. Request a bounded path for mobile wave
+     * mobs so the target controller produces visible movement as well as combat
+     * intent. Skeletons use the ranged posture below and never receive a mob
+     * target.
      */
     private void maintainWaveMobPath(Mob mob, Player target, String kind, long now) {
-        if (mob == null || target == null || !isCombatTarget(target)
-                || mob.getType() == EntityType.SHULKER
+        boolean towerJob = mob != null && isTowerDefenseMob(mob)
+                && !hasTowerPlayerAggro(mob, now);
+        if (mob == null || (!towerJob && (target == null || !isCombatTarget(target)))
                 || now < nextWavePathRequestMillis.getOrDefault(mob.getUniqueId(), 0L)) {
             return;
         }
@@ -5109,7 +5601,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (anchor == null) {
             return;
         }
-        Location destination = waveTacticalDestination(mob, target, kind);
+        Location destination = waveTacticalDestination(mob, target, kind, now);
         if (destination == null || isCoreBlockPosition(destination)) {
             // A player standing on the Core is a valid combat target, but it
             // is not a valid mob destination.  Give each mob a stable flank
@@ -5146,7 +5638,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (now - lastLog >= 2_000L) {
                 lastWavePathLogMillis.put(mob.getUniqueId(), now);
                 getLogger().info("WAVE_AI_PATH entity=" + mob.getUniqueId()
-                        + " role=" + kind + " target=" + target.getUniqueId()
+                        + " role=" + kind + " target=" + (target == null ? "core" : target.getUniqueId())
                         + " tactic=" + combatTactic(mob, mob.getUniqueId().hashCode())
                         + " speed=" + speed + " destination=" + locationText(destination));
             }
@@ -5233,6 +5725,125 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_FINAL_WAVE.equals(kind);
     }
 
+    private boolean isEventSkeleton(Entity entity) {
+        return entity instanceof Skeleton
+                && isWaveCombatKind(readString(entity, keyKind));
+    }
+
+    private boolean isSkeletonMiniBoss(Entity entity) {
+        return isEventSkeleton(entity) && !readString(entity, keyMiniBossSpell).isBlank();
+    }
+
+    private boolean isEventArrow(Entity entity) {
+        return entity instanceof Arrow
+                && EVENT_KIND_PROJECTILE.equals(readString(entity, keyKind))
+                && activeEventArrowAges.containsKey(entity.getUniqueId());
+    }
+
+    private void tagArrowSpell(Arrow arrow, String spellId) {
+        if (arrow != null && keyArrowSpell != null && spellId != null && !spellId.isBlank()) {
+            arrow.getPersistentDataContainer().set(keyArrowSpell,
+                    PersistentDataType.STRING, spellId);
+        }
+    }
+
+    private void trackEventArrow(Arrow arrow) {
+        if (arrow == null || !arrow.isValid()) {
+            return;
+        }
+        while (activeEventArrowAges.size() >= MAX_ACTIVE_EVENT_ARROWS) {
+            UUID oldest = activeEventArrowAges.keySet().iterator().next();
+            cleanupEventArrow(oldest);
+        }
+        activeEventArrowAges.put(arrow.getUniqueId(), 0);
+    }
+
+    /** One generation-owned controller renders and expires all event arrows. */
+    private void tickEventArrowProjectiles() {
+        if (activeEventArrowAges.isEmpty()) {
+            return;
+        }
+        int processed = 0;
+        for (UUID arrowId : new ArrayList<>(activeEventArrowAges.keySet())) {
+            if (++processed > MAX_ACTIVE_EVENT_ARROWS) {
+                break;
+            }
+            Entity entity = Bukkit.getEntity(arrowId);
+            if (!(entity instanceof Arrow arrow) || !arrow.isValid() || arrow.isDead()
+                    || !isEventArrowPhaseAllowed(arrow)) {
+                cleanupEventArrow(arrowId);
+                continue;
+            }
+            int age = activeEventArrowAges.getOrDefault(arrowId, 0) + 1;
+            if (age >= EVENT_ARROW_MAX_TICKS) {
+                cleanupEventArrow(arrowId);
+                continue;
+            }
+            activeEventArrowAges.put(arrowId, age);
+            if (age % EVENT_ARROW_TRAIL_INTERVAL_TICKS == 0) {
+                spawnEventArrowTrail(arrow, readString(arrow, keyArrowSpell), age);
+            }
+        }
+    }
+
+    private boolean isEventArrowPhaseAllowed(Arrow arrow) {
+        if (arrow == null || !(arrow.getShooter() instanceof Entity shooter)) {
+            return false;
+        }
+        String kind = readString(shooter, keyKind);
+        if (EVENT_KIND_BOSS.equals(kind)) {
+            return phase == EventPhase.BOSS_ACTIVE
+                    || testCombatAiMode && isTestBoss(shooter);
+        }
+        return isEventSkeleton(shooter)
+                && (isCombatPhase() || testCombatAiMode || hasLiveTestWaveEntities());
+    }
+
+    private void spawnEventArrowTrail(Arrow arrow, String spell, int age) {
+        if (arrow == null || arrow.getWorld() == null) {
+            return;
+        }
+        Location point = arrow.getLocation().clone().add(0.0D, 0.04D, 0.0D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, point)) {
+                continue;
+            }
+            if (EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell)) {
+                viewer.spawnParticle(Particle.END_ROD, point, 2,
+                        0.04D, 0.04D, 0.04D, 0.01D);
+                viewer.spawnParticle(Particle.DUST, point, 2,
+                        0.03D, 0.03D, 0.03D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(244, 60, 255), 1.0F));
+            } else if (EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id().equals(spell)) {
+                viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 2,
+                        0.04D, 0.04D, 0.04D, 0.005D);
+                viewer.spawnParticle(Particle.CRIT, point, 2,
+                        0.03D, 0.03D, 0.03D, 0.01D);
+            } else {
+                viewer.spawnParticle(Particle.CRIT, point, 2,
+                        0.035D, 0.035D, 0.035D, 0.01D);
+            }
+        }
+    }
+
+    private void cleanupEventArrow(UUID arrowId) {
+        if (arrowId == null) {
+            return;
+        }
+        activeEventArrowAges.remove(arrowId);
+        Entity arrow = ownedEntities.remove(arrowId);
+        if (arrow != null && arrow.isValid() && !arrow.isDead()) {
+            arrow.remove();
+        }
+    }
+
+    private void clearActiveEventArrows() {
+        for (UUID arrowId : new ArrayList<>(activeEventArrowAges.keySet())) {
+            cleanupEventArrow(arrowId);
+        }
+        activeEventArrowAges.clear();
+    }
+
     /**
      * The official boss death is the hard boundary for every wave combat
      * entity.  Do this synchronously before the boss EntityDeathEvent is
@@ -5274,6 +5885,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spellServants.remove(entityId);
             miniBossSpells.remove(entityId);
             nextMiniBossSpellMillis.remove(entityId);
+            nextSkeletonArrowMillis.remove(entityId);
             nextWavePathRequestMillis.remove(entityId);
             lastWavePathLogMillis.remove(entityId);
             waveMobTactics.remove(entityId);
@@ -5284,6 +5896,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spellServants.clear();
         miniBossSpells.clear();
         nextMiniBossSpellMillis.clear();
+        nextSkeletonArrowMillis.clear();
         nextWavePathRequestMillis.clear();
         lastWavePathLogMillis.clear();
         waveMobTactics.clear();
@@ -5291,6 +5904,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         blockedTeleportLogAt.clear();
         towerNextAttackAt.clear();
         towerAttackSequences.clear();
+        towerAggroUntil.clear();
         towerAttackSequence = 0;
         getLogger().info("END_EVENT_WAVE_COMBAT_CLEANUP event=" + eventId
                 + " reason=" + reason + " removed=" + removed);
@@ -5330,7 +5944,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long now = System.currentTimeMillis();
         for (Map.Entry<UUID, EndRiftAiPolicy.MiniBossSpell> entry : new HashMap<>(miniBossSpells).entrySet()) {
             Entity entity = ownedEntities.get(entry.getKey());
-            if (!(entity instanceof Enderman miniBoss) || !isLiveOwnedEntity(entity.getUniqueId())) {
+            if (!(entity instanceof LivingEntity miniBoss) || !isLiveOwnedEntity(entity.getUniqueId())
+                    || !isMiniBossCombatEntity(miniBoss)) {
                 miniBossSpells.remove(entry.getKey());
                 nextMiniBossSpellMillis.remove(entry.getKey());
                 continue;
@@ -5343,7 +5958,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
                 continue;
             }
-            Player current = miniBoss.getTarget() instanceof Player player && isCombatTarget(player)
+            Player current = miniBoss instanceof Mob mob && mob.getTarget() instanceof Player player
+                    && isCombatTarget(player)
                     ? player : null;
             List<UUID> candidateIds = candidates.stream().map(Player::getUniqueId)
                     .sorted(Comparator.comparing(UUID::toString)).toList();
@@ -5354,14 +5970,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
                 continue;
             }
-            miniBoss.setTarget(target);
+            if (miniBoss instanceof Mob mob) {
+                mob.setTarget(target);
+            }
             nextMiniBossSpellMillis.put(entity.getUniqueId(), now
                     + randomSeconds(config.miniBossTuning().spellMinSeconds(), config.miniBossTuning().spellMaxSeconds()) * 1000L);
             telegraphMiniBossSpell(miniBoss, target, entry.getValue());
         }
     }
 
-    private void telegraphMiniBossSpell(Enderman miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell) {
+    private void telegraphMiniBossSpell(LivingEntity miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell) {
         if (taskRegistry == null || miniBoss == null || target == null || !isCombatTarget(target)) {
             return;
         }
@@ -5383,8 +6001,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ticks[0] += 5;
             Location effect = spell == EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE
                     ? miniBoss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
-            Particle particle = spell == EndRiftAiPolicy.MiniBossSpell.VOID_SNARE
-                    ? Particle.REVERSE_PORTAL : Particle.END_ROD;
+            Particle particle = switch (spell) {
+                case VOID_SNARE -> Particle.REVERSE_PORTAL;
+                case ARROW_SALVO -> Particle.CRIT;
+                default -> Particle.END_ROD;
+            };
             spawnEventParticle(effect, particle, 8, 0.65D, 0.15D, 0.65D, 0.01D);
             if (ticks[0] >= config.miniBossTuning().spellTelegraphTicks()) {
                 holder[0].cancel();
@@ -5397,7 +6018,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         taskRegistry.register(holder[0]);
     }
 
-    private void executeMiniBossSpell(Enderman miniBoss, Player target, Location mark,
+    private void executeMiniBossSpell(LivingEntity miniBoss, Player target, Location mark,
                                       EndRiftAiPolicy.MiniBossSpell spell, long callbackGeneration) {
         if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
                 || !isMiniBossCombatPhase() || !isCombatTarget(target)) {
@@ -5419,6 +6040,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case RIFT_STEP -> miniBossRiftStep(miniBoss, target);
                         case VOID_SNARE -> miniBossVoidSnare(miniBoss, target, mark);
                         case ECHO_PULSE -> miniBossEchoPulse(miniBoss);
+                        case ARROW_SALVO -> miniBossArrowSalvo(miniBoss, target);
                     }
                 });
     }
@@ -5527,6 +6149,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         10, phase, Particle.FLAME);
             }
             case "rift_projectile" -> spawnRiftProjectileTrail(player, point, direction, tick);
+            case "arrow_salvo" -> {
+                Particle.DustOptions salvoDust = new Particle.DustOptions(
+                        Color.fromRGB(244, 60, 255), 1.15F);
+                player.spawnParticle(Particle.END_ROD, point, 5,
+                        0.05D, 0.05D, 0.05D, 0.01D);
+                player.spawnParticle(Particle.DUST, point, 5,
+                        0.04D, 0.04D, 0.04D, 0.0D, salvoDust);
+                spawnPatternRing(player, point, side, vertical,
+                        0.13D + (tick % 3) * 0.04D, 8, phase, Particle.CRIT);
+            }
+            case "rift_arrows" -> {
+                Particle.DustOptions riftArrowDust = new Particle.DustOptions(
+                        Color.fromRGB(255, 72, 72), 1.25F);
+                player.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 7,
+                        0.06D, 0.06D, 0.06D, 0.01D);
+                player.spawnParticle(Particle.DUST, point, 5,
+                        0.04D, 0.04D, 0.04D, 0.0D, riftArrowDust);
+                Vector arrowSide = side.clone().multiply(0.22D);
+                spawnPatternSegment(player, point.clone().subtract(arrowSide),
+                        point.clone().add(arrowSide), Particle.CRIT, riftArrowDust);
+            }
             case "void_mark" -> {
                 Particle.DustOptions markDust = new Particle.DustOptions(Color.fromRGB(190, 76, 255), 1.25F);
                 double halfDiagonal = 0.31D + (tick % 2) * 0.04D;
@@ -5698,7 +6341,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && isMiniBossCombatPhase();
     }
 
-    private void miniBossRiftStep(Enderman miniBoss, Player target) {
+    private boolean isMiniBossCombatEntity(Entity entity) {
+        return entity instanceof LivingEntity
+                && (EVENT_KIND_ELITE.equals(readString(entity, keyKind))
+                || EVENT_KIND_FINAL_WAVE.equals(readString(entity, keyKind)))
+                && !readString(entity, keyMiniBossSpell).isBlank();
+    }
+
+    private void miniBossRiftStep(LivingEntity miniBoss, Player target) {
         Location anchor = coreCombatAnchorLocation();
         Location destination = findSafeCombatLocation(anchor, target.getLocation(), config.containmentRadius());
         if (destination != null) {
@@ -5711,7 +6361,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 24, 0.5D, 0.8D, 0.5D, 0.02D);
     }
 
-    private void miniBossVoidSnare(Enderman miniBoss, Player target, Location mark) {
+    private void miniBossVoidSnare(LivingEntity miniBoss, Player target, Location mark) {
         target.damage(config.miniBossTuning().voidSnareDamage(), miniBoss);
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, configuredDebuffAmplifier(), false, true, true));
@@ -5720,7 +6370,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnEventParticle(mark, Particle.REVERSE_PORTAL, 28, 1.2D, 0.1D, 1.2D, 0.02D);
     }
 
-    private void miniBossEchoPulse(Enderman miniBoss) {
+    private void miniBossEchoPulse(LivingEntity miniBoss) {
         Location center = miniBoss.getLocation();
         for (Player player : activeLivingPlayers()) {
             if (player.getLocation().distanceSquared(center) > 25.0D) {
@@ -5737,6 +6387,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         spawnEventParticle(center.add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
                 32, 1.0D, 0.6D, 1.0D, 0.03D);
+    }
+
+    private void miniBossArrowSalvo(LivingEntity miniBoss, Player target) {
+        if (miniBoss == null || target == null || !isCombatTarget(target)) {
+            return;
+        }
+        riftArrowVolley(miniBoss, target, EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id(),
+                SkeletonCombatPolicy.arrowProfile(true));
+        spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
+                18, 0.45D, 0.7D, 0.45D, 0.02D);
+        miniBoss.getWorld().playSound(miniBoss.getLocation(), Sound.ENTITY_SKELETON_SHOOT,
+                0.9F, 1.35F);
     }
 
     private void enforceCombatLeash(Entity entity, Location anchor, double radius, String logMarker) {
@@ -5919,6 +6581,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case FINAL_WAVE_NUMBER -> phase == EventPhase.FINAL_WAVE;
             default -> false;
         };
+    }
+
+    /**
+     * Wave zero is reserved for boss-servant summons.  They are not an
+     * official numbered wave, but while the boss is active they still belong
+     * to this generation's bounded AI controller and must chase players.
+     */
+    private boolean isWaveAiCombatEntity(Entity entity) {
+        if (entity == null || !isWaveCombatKind(readString(entity, keyKind))) {
+            return false;
+        }
+        if (isWaveAiCombatPhase(readInt(entity, keyWave, 0))) {
+            return true;
+        }
+        // Disposable `/cmend test wave` entities intentionally live while
+        // the official state machine is READY_FOR_PLAYERS.  They are still
+        // event-owned and must exercise the same path/target controller; a
+        // natural mob can never reach this method because tickWaveMobAi()
+        // iterates only ownedEntities.
+        if (!isOfficialEntity(entity)
+                && "local".equalsIgnoreCase(config == null ? "" : config.environment())) {
+            return true;
+        }
+        return spellServants.contains(entity.getUniqueId())
+                && (phase == EventPhase.BOSS_ACTIVE || testCombatAiMode);
     }
 
     private boolean isMiniBossCombatPhase() {
@@ -6319,12 +7006,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double scale = Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D));
         int endermen = scaled(definition.endermen(), scale);
         int spiders = scaled(definition.spiders(), scale);
-        int shulkers = scaled(definition.shulkers(), scale);
+        int skeletons = scaled(definition.skeletons(), scale);
         int elites = scaled(definition.eliteEndermen(), scale);
-        int total = endermen + spiders + shulkers + elites;
+        int eliteSkeletons = scaled(definition.eliteSkeletons(), scale);
+        int total = endermen + spiders + skeletons + elites + eliteSkeletons;
         if (total > config.waveHardCap()) {
             int overflow = total - config.waveHardCap();
-            int[] counts = {endermen, spiders, shulkers, elites};
+            int[] counts = {endermen, spiders, skeletons, elites, eliteSkeletons};
             for (int index = 0; index < counts.length && overflow > 0; index++) {
                 int remove = Math.min(overflow, Math.max(0, counts[index] - 1));
                 counts[index] -= remove;
@@ -6332,21 +7020,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             endermen = counts[0];
             spiders = counts[1];
-            shulkers = counts[2];
+            skeletons = counts[2];
             elites = counts[3];
+            eliteSkeletons = counts[4];
         }
         if (!finalWave && wave == 4) {
             WaveMechanicsPolicy.WaveCounts capped = WaveMechanicsPolicy.capTowerCounts(
-                    new WaveMechanicsPolicy.WaveCounts(endermen, spiders, shulkers, elites),
+                    new WaveMechanicsPolicy.WaveCounts(endermen, spiders, skeletons, elites, eliteSkeletons),
                     scalePlayers);
             endermen = capped.endermen();
             spiders = capped.spiders();
-            shulkers = capped.shulkers();
+            skeletons = capped.skeletons();
             elites = capped.eliteEndermen();
+            eliteSkeletons = capped.eliteSkeletons();
             getLogger().info("WAVE_TOWER_COMPOSITION_CAP event=" + eventId
                     + " players=" + scalePlayers + " cap=" + capped.total()
                     + " composition=endermen:" + endermen + ",spiders:" + spiders
-                    + ",shulkers:" + shulkers + ",elite:" + elites);
+                    + ",skeletons:" + skeletons + ",elite_endermen:" + elites
+                    + ",elite_skeletons:" + eliteSkeletons);
         }
         if (!test) {
             activeWave = wave;
@@ -6355,19 +7046,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnWaveArrivalEffect(world, core, wave, finalWave);
             startWaveObjective(wave, world, core);
         }
-        for (int index = 0; index < endermen; index++) {
-            spawnEnderman(world, core, wave, false, finalWave, test, index, index);
-        }
-        for (int index = 0; index < elites; index++) {
-            spawnEnderman(world, core, wave, true, finalWave, test, index + endermen, index);
-        }
-        for (int index = 0; index < spiders; index++) {
-            spawnOwnedMob(world, core, EntityType.SPIDER, wave,
-                    finalWave ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
-        }
-        for (int index = 0; index < shulkers; index++) {
-            spawnOwnedMob(world, core, EntityType.SHULKER, wave,
-                    finalWave ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB, test, index);
+        boolean pacedTowerWave = !test && wave == 4;
+        if (pacedTowerWave) {
+            towerSpawnSchedule = WaveMechanicsPolicy.towerSpawnGroups(
+                    new WaveMechanicsPolicy.WaveCounts(endermen, spiders, skeletons, elites, eliteSkeletons), scalePlayers);
+            towerSpawnGroupIndex = 0;
+            towerSpawnEntityOffset = 0;
+            towerNextSpawnAtMillis = 0L;
+            spawnNextTowerGroup(world, core);
+            scheduleTowerSpawnGroups(world, core);
+        } else {
+            spawnWaveGroup(world, core, wave, finalWave, test,
+                    new WaveMechanicsPolicy.WaveCounts(endermen, spiders, skeletons, elites, eliteSkeletons), 0);
         }
         if (finalWave && !test) {
                 finalWaveEntities.addAll(ownedEntities.keySet().stream()
@@ -6380,8 +7070,103 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (wave <= 2) {
                 waveObjectiveMobCount = countLiveWaveEntitiesForWave(wave);
             }
-            getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
-                    + " count=" + (endermen + elites + spiders + shulkers));
+            if (pacedTowerWave) {
+                getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
+                        + " count=" + countLiveWaveEntitiesForWave(wave)
+                        + " planned=" + towerSpawnSchedule.stream()
+                        .mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum()
+                        + " groups=" + towerSpawnSchedule.size());
+            } else {
+                getLogger().info("WAVE_STARTED event=" + eventId + " wave=" + wave
+                        + " count=" + (endermen + elites + spiders + skeletons + eliteSkeletons));
+            }
+        }
+    }
+
+    private void spawnWaveGroup(World world, Location core, int wave, boolean finalWave, boolean test,
+                                WaveMechanicsPolicy.WaveCounts group, int baseIndex) {
+        if (world == null || core == null || group == null) {
+            return;
+        }
+        String kind = finalWave ? EVENT_KIND_FINAL_WAVE : EVENT_KIND_WAVE_MOB;
+        int nextIndex = baseIndex;
+        for (int index = 0; index < group.endermen(); index++) {
+            spawnEnderman(world, core, wave, false, finalWave, test, nextIndex, nextIndex);
+            nextIndex++;
+        }
+        for (int index = 0; index < group.eliteEndermen(); index++) {
+            spawnEnderman(world, core, wave, true, finalWave, test, nextIndex, nextIndex);
+            nextIndex++;
+        }
+        for (int index = 0; index < group.eliteSkeletons(); index++) {
+            spawnSkeleton(world, core, wave, true, finalWave, test, nextIndex, nextIndex);
+            nextIndex++;
+        }
+        for (int index = 0; index < group.spiders(); index++) {
+            spawnOwnedMob(world, core, EntityType.SPIDER, wave, kind, test, nextIndex);
+            nextIndex++;
+        }
+        for (int index = 0; index < group.skeletons(); index++) {
+            spawnSkeleton(world, core, wave, false, finalWave, test, nextIndex, nextIndex);
+            nextIndex++;
+        }
+    }
+
+    private void spawnNextTowerGroup(World world, Location core) {
+        if (towerSpawnGroupIndex >= towerSpawnSchedule.size()) {
+            return;
+        }
+        int groupNumber = towerSpawnGroupIndex + 1;
+        WaveMechanicsPolicy.WaveCounts group = towerSpawnSchedule.get(towerSpawnGroupIndex);
+        spawnWaveGroup(world, core, 4, false, false, group, towerSpawnEntityOffset);
+        towerSpawnEntityOffset += group.total();
+        towerSpawnGroupIndex++;
+        long now = System.currentTimeMillis();
+        if (towerSpawnGroupIndex < towerSpawnSchedule.size()) {
+            List<Integer> cadence = WaveMechanicsPolicy.towerGroupCadenceSeconds();
+            int cadenceIndex = Math.min(groupNumber - 1, cadence.size() - 1);
+            towerNextSpawnAtMillis = now + cadence.get(cadenceIndex) * 1000L;
+        } else {
+            towerNextSpawnAtMillis = 0L;
+        }
+        getLogger().info("WAVE_TOWER_GROUP_SPAWN event=" + eventId
+                + " wave=4 group=" + groupNumber + "/" + towerSpawnSchedule.size()
+                + " spawned=" + group.total() + " total_spawned=" + towerSpawnEntityOffset
+                + " composition=endermen:" + group.endermen()
+                + ",spiders:" + group.spiders() + ",skeletons:" + group.skeletons()
+                + ",elite_endermen:" + group.eliteEndermen()
+                + ",elite_skeletons:" + group.eliteSkeletons()
+                + " next_ms=" + towerNextSpawnAtMillis);
+    }
+
+    private void scheduleTowerSpawnGroups(World world, Location core) {
+        cancelTowerSpawnTask();
+        if (towerSpawnGroupIndex >= towerSpawnSchedule.size() || taskRegistry == null) {
+            return;
+        }
+        long callbackGeneration = generation;
+        towerSpawnTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || phase != EventPhase.WAVE_4 || activeWave != 4
+                    || towerDefenseState == null
+                    || towerDefenseState.outcome() != TowerDefensePolicy.Outcome.ACTIVE) {
+                cancelTowerSpawnTask();
+                return;
+            }
+            if (towerNextSpawnAtMillis > 0L && System.currentTimeMillis() >= towerNextSpawnAtMillis) {
+                spawnNextTowerGroup(world, core);
+                if (towerSpawnGroupIndex >= towerSpawnSchedule.size()) {
+                    cancelTowerSpawnTask();
+                }
+            }
+        }, 20L, 20L);
+        taskRegistry.register(towerSpawnTask);
+    }
+
+    private void cancelTowerSpawnTask() {
+        if (towerSpawnTask != null) {
+            towerSpawnTask.cancel();
+            towerSpawnTask = null;
         }
     }
 
@@ -6404,10 +7189,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (wave == 2) {
             waveTwoNextMarkMillis = waveObjectiveStartedMillis
-                    + randomSeconds(12, 16) * 1000L;
+                    + randomSeconds(WAVE_TWO_INITIAL_MARK_MIN_SECONDS, WAVE_TWO_INITIAL_MARK_MAX_SECONDS) * 1000L;
             getLogger().info("WAVE_OBJECTIVE_STARTED event=" + eventId
                     + " wave=2 type=MARKED_HUNT interval_seconds=12-16 mark_ticks="
-                    + WAVE_TWO_MARK_DURATION_TICKS);
+                    + WAVE_TWO_MARK_DURATION_TICKS + " initial_mark_delay_seconds=2-4");
             return;
         }
         String objective = WaveObjectivePolicy.objective(wave).name();
@@ -6458,6 +7243,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             towerAttackSequence = 0;
             towerNextAttackAt.clear();
             towerAttackSequences.clear();
+            towerAggroUntil.clear();
             getLogger().info("WAVE_OBJECTIVE_STARTED event=" + eventId
                     + " wave=4 type=TOWER_DEFENSE core_hp=" + towerDefenseState.maxHealth()
                     + " deadline=" + towerDefenseState.deadlineMillis());
@@ -6921,7 +7707,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (role == null) {
                 continue;
             }
-            double range = role == WaveMechanicsPolicy.TowerRole.ARTILLERY ? 12.0D : 2.25D;
+            // A player who has just damaged a tower mob has successfully
+            // pulled its attention away from the Core.  Do not let the
+            // objective controller keep applying Core damage while vanilla
+            // navigation is honoring that short, visible aggro window.
+            if (hasTowerPlayerAggro(entity, now)
+                    || findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS) != null) {
+                continue;
+            }
+            double range = role.coreAttackRange();
             if (horizontalDistanceSquared(entity.getLocation(), core) > range * range
                     || Math.abs(entity.getLocation().getY() - core.getY()) > 2.0D) {
                 continue;
@@ -6945,7 +7739,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("WAVE_OBJECTIVE_TOWER_ATTACK event=" + eventId
                     + " entity=" + entity.getUniqueId() + " role=" + role
                     + " damage=" + damage + " sequence=" + attackSequence
-                    + " attempt=" + state.attempt());
+                    + " range=" + range + " attempt=" + state.attempt());
         }
         towerDefenseState = state;
         if (state.currentHealth() <= 0.0D) {
@@ -6985,10 +7779,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void handleTowerDefenseFailure() {
         TowerDefensePolicy.CoreState failed = towerDefenseState;
         waveObjectiveComplete = false;
+        cancelTowerSpawnTask();
         getLogger().warning("WAVE_OBJECTIVE_FAILED event=" + eventId
                 + " wave=4 type=TOWER_DEFENSE attempt="
                 + (failed == null ? "unknown" : failed.attempt())
-                + " reason=core-destroyed retry=true");
+                + " reason=core-destroyed retry=true blindness_ticks=100");
         announceEventTitle("§4ЯДРО ПРОРВАНО", "§fВолна 4 будет перезапущена", true);
         for (Player player : eventAudience()) {
             player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 0, false, true, true));
@@ -7083,6 +7878,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearWaveObjectiveState() {
+        cancelTowerSpawnTask();
         if (towerRetryTask != null) {
             towerRetryTask.cancel();
             towerRetryTask = null;
@@ -7097,6 +7893,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormLastDamageSecond.clear();
         nextRiftStormPullMillis = 0L;
         towerDefenseState = null;
+        towerSpawnSchedule = List.of();
+        towerSpawnGroupIndex = 0;
+        towerSpawnEntityOffset = 0;
+        towerNextSpawnAtMillis = 0L;
         waveObjectiveStartedMillis = 0L;
         waveObjectiveComplete = false;
         waveObjectiveLastSecond = -1;
@@ -7351,6 +8151,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void spawnSkeleton(World world, Location core, int wave, boolean miniBoss,
+                               boolean finalWave, boolean test, int index, int abilityIndex) {
+        String kind = finalWave ? EVENT_KIND_FINAL_WAVE
+                : miniBoss ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
+        Entity entity = spawnOwnedMob(world, core, EntityType.SKELETON, wave, kind, test, index);
+        if (!(entity instanceof Skeleton skeleton)) {
+            return;
+        }
+        skeleton.setPersistent(true);
+        skeleton.setRemoveWhenFarAway(false);
+        skeleton.setCanPickupItems(false);
+        skeleton.setAI(true);
+        skeleton.setAware(true);
+        skeleton.setTarget(null);
+        if (skeleton.getEquipment() != null) {
+            skeleton.getEquipment().setItemInMainHand(new ItemStack(Material.BOW));
+            skeleton.getEquipment().setItemInMainHandDropChance(0.0F);
+        }
+        if (miniBoss) {
+            AttributeInstance max = skeleton.getAttribute(Attribute.GENERIC_MAX_HEALTH);
+            if (max != null) {
+                max.setBaseValue(config.skeletonEliteHealth());
+                skeleton.setHealth(config.skeletonEliteHealth());
+            }
+            AttributeInstance attack = skeleton.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+            if (attack != null) {
+                attack.setBaseValue(attack.getBaseValue() + config.skeletonEliteAttackDamageBonus());
+            }
+            EndRiftAiPolicy.MiniBossSpell spell = EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO;
+            tagMiniBossSpell(skeleton, spell);
+            miniBossSpells.put(skeleton.getUniqueId(), spell);
+            nextMiniBossSpellMillis.put(skeleton.getUniqueId(), 0L);
+            skeleton.setCustomName(ChatColor.GOLD + (finalWave
+                    ? "Элитный костяной стрелок" : "Костяной стрелок Разлома")
+                    + ChatColor.DARK_PURPLE + " · " + spell.displayName());
+            skeleton.setCustomNameVisible(true);
+            spawnEventParticle(skeleton.getLocation().add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
+                    12, 0.35D, 0.65D, 0.35D, 0.02D);
+        } else {
+            skeleton.setCustomName(ChatColor.AQUA + "Стрелок Разлома");
+            skeleton.setCustomNameVisible(true);
+        }
+        applyWaveThreeModifiers(skeleton, wave);
+        bindEventEntityClientForOnlinePlayers(skeleton);
+        SkeletonCombatPolicy.WaveBehavior behavior = SkeletonCombatPolicy.behaviorForWave(wave, miniBoss);
+        getLogger().info("WAVE_SKELETON_BEHAVIOR entity=" + skeleton.getUniqueId()
+                + " wave=" + wave + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
+                + " behavior=" + behavior.id() + " target=PLAYER_ONLY"
+                + " spell=" + (miniBoss ? "ARROW_SALVO" : "VANILLA_BOW")
+                + " arrow_profile=" + SkeletonCombatPolicy.arrowProfile(miniBoss).particlePattern()
+                + " focus_marked=" + behavior.focusMarkedPlayer()
+                + " guards_objective=" + behavior.guardsObjective()
+                + " hazard_aware=" + behavior.hazardAware()
+                + " tactic=" + behavior.tactic()
+                + " combat_role=" + combatTactic(skeleton, abilityIndex));
+    }
+
     private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,
                                  String kind, boolean test, int index) {
         Location location = safeSpawnLocation(core, index, 3.0D);
@@ -7362,7 +8219,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tag(entity, kind, wave, !test);
         setLootProfile(entity, test ? "test"
                 : type == EntityType.SPIDER ? "spider"
-                : type == EntityType.SHULKER ? "shulker" : "final-wave");
+                : type == EntityType.SKELETON
+                ? EVENT_KIND_ELITE.equals(kind) ? "elite-skeleton"
+                : EVENT_KIND_FINAL_WAVE.equals(kind) ? "final-wave" : "skeleton"
+                : "final-wave");
         if (entity instanceof LivingEntity living) {
             living.setPersistent(true);
             configureEventMobStats(living, type);
@@ -7394,20 +8254,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void configureEventMobStats(LivingEntity living, EntityType type) {
-        if (living == null || type != EntityType.SPIDER) {
+        if (living == null || (type != EntityType.SPIDER && type != EntityType.SKELETON)) {
             return;
         }
         AttributeInstance health = living.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         AttributeInstance attack = living.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
+        boolean skeleton = type == EntityType.SKELETON;
+        double healthBonus = skeleton ? config.skeletonHealthBonus() : config.spiderHealthBonus();
+        double attackBonus = skeleton ? config.skeletonAttackDamageBonus() : config.spiderAttackDamageBonus();
         if (health != null) {
-            double maxHealth = health.getBaseValue() + config.spiderHealthBonus();
+            double maxHealth = health.getBaseValue() + healthBonus;
             health.setBaseValue(maxHealth);
             living.setHealth(maxHealth);
         }
         if (attack != null) {
-            attack.setBaseValue(attack.getBaseValue() + config.spiderAttackDamageBonus());
+            attack.setBaseValue(attack.getBaseValue() + attackBonus);
         }
-        getLogger().info("SPIDER_STATS entity=" + living.getUniqueId()
+        getLogger().info((skeleton ? "SKELETON_STATS" : "SPIDER_STATS") + " entity=" + living.getUniqueId()
                 + " health=" + (health == null ? "unknown" : health.getBaseValue())
                 + " attack=" + (attack == null ? "unknown" : attack.getBaseValue()));
     }
@@ -7418,12 +8281,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         // The role is part of the mob's job, not a random slot.  This keeps
-        // spiders rushing players, endermen breaking the Core and shulkers
+        // spiders rushing players, endermen breaking the Core and skeletons
         // covering the arena from a fixed artillery ring on every restart.
         WaveMechanicsPolicy.TowerRole role = switch (entity.getType()) {
             case SPIDER -> WaveMechanicsPolicy.TowerRole.RAIDER;
             case ENDERMAN -> WaveMechanicsPolicy.TowerRole.BREAKER;
-            case SHULKER -> WaveMechanicsPolicy.TowerRole.ARTILLERY;
+            case SKELETON -> WaveMechanicsPolicy.TowerRole.ARTILLERY;
             default -> switch (Math.floorMod(slot, 3)) {
                 case 0 -> WaveMechanicsPolicy.TowerRole.RAIDER;
                 case 1 -> WaveMechanicsPolicy.TowerRole.BREAKER;
@@ -7506,6 +8369,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " value=" + role);
             return null;
         }
+    }
+
+    private boolean isTowerDefenseMob(Entity entity) {
+        return entity != null
+                && readInt(entity, keyWave, 0) == 4
+                && isWaveCombatKind(readString(entity, keyKind))
+                && towerRole(entity) != null;
+    }
+
+    private boolean hasTowerPlayerAggro(Entity entity, long now) {
+        if (entity == null || !isTowerDefenseMob(entity)) {
+            return false;
+        }
+        long expiresAt = towerAggroUntil.getOrDefault(entity.getUniqueId(), 0L);
+        if (expiresAt > now) {
+            return true;
+        }
+        towerAggroUntil.remove(entity.getUniqueId());
+        return false;
+    }
+
+    private Player findNearestCombatPlayer(Entity entity, double radius) {
+        if (entity == null || entity.getWorld() == null || !Double.isFinite(radius) || radius < 0.0D) {
+            return null;
+        }
+        double radiusSquared = radius * radius;
+        Player nearest = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (Player player : activeLivingPlayers()) {
+            if (!isCombatTarget(player) || !entity.getWorld().equals(player.getWorld())) {
+                continue;
+            }
+            double distance = horizontalDistanceSquared(entity.getLocation(), player.getLocation());
+            if (distance > radiusSquared) {
+                continue;
+            }
+            if (nearest == null || distance < nearestDistance
+                    || (Math.abs(distance - nearestDistance) < 0.0001D
+                    && player.getUniqueId().toString().compareTo(nearest.getUniqueId().toString()) < 0)) {
+                nearest = player;
+                nearestDistance = distance;
+            }
+        }
+        return nearest;
     }
 
     private Location spawnLocation(Location core, int index, double offset) {
@@ -7634,6 +8541,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearWaveEntities() {
         clearWaveObjectiveState();
+        clearActiveEventArrows();
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
@@ -7646,6 +8554,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 waveMobTactics.remove(entity.getUniqueId());
                 combatTeleportPermits.remove(entity.getUniqueId());
                 blockedTeleportLogAt.remove(entity.getUniqueId());
+                towerAggroUntil.remove(entity.getUniqueId());
+                nextSkeletonArrowMillis.remove(entity.getUniqueId());
             }
         }
         spellServants.clear();
@@ -7654,8 +8564,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveMobTactics.clear();
         combatTeleportPermits.clear();
         blockedTeleportLogAt.clear();
+        nextSkeletonArrowMillis.clear();
         towerNextAttackAt.clear();
         towerAttackSequences.clear();
+        towerAggroUntil.clear();
         towerAttackSequence = 0;
         lootIssuedEntityUuids.clear();
     }
@@ -8021,6 +8933,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
+        clearActiveEventArrows();
         clearJudgmentVisuals();
         combatTeleportPermits.clear();
         blockedTeleportLogAt.clear();
@@ -8721,12 +9634,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // permanently immune after a bounded cast has ended.
                 boss.setInvulnerable(false);
             }
-            double multiplier = BossDamagePolicy.incomingDamageMultiplier(bossCastState);
-            if (multiplier != 1.0D) {
-                event.setDamage(Math.max(0.0D, event.getDamage()) * multiplier);
-            }
+            // Capture the final event damage before cancelling it.  Mutating
+            // event damage and then reading getFinalDamage() made the
+            // exhausted 1.5x bonus get applied a second time by Bukkit's
+            // recalculation path.
+            double incomingDamage = Math.max(0.0D, event.getFinalDamage());
+            double effectiveDamage = BossDamagePolicy.applyIncomingDamage(
+                    incomingDamage, bossCastState);
             event.setCancelled(true);
-            applyBossDamage(boss, Math.max(0.0D, event.getFinalDamage()) * multiplier,
+            applyBossDamage(boss, effectiveDamage,
                     event instanceof EntityDamageByEntityEvent byEntity ? byEntity.getDamager() : null);
             return;
         }
@@ -8746,8 +9662,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // state, never an independent sticky flag.
             boss.setInvulnerable(false);
         }
+        double incomingDamage = Math.max(0.0D, event.getFinalDamage());
+        double effectiveDamage = BossDamagePolicy.applyIncomingDamage(
+                incomingDamage, bossCastState);
         event.setCancelled(true);
-        applyBossDamage(boss, Math.max(0.0D, event.getFinalDamage()), event instanceof EntityDamageByEntityEvent byEntity
+        applyBossDamage(boss, effectiveDamage, event instanceof EntityDamageByEntityEvent byEntity
                 ? byEntity.getDamager() : null);
     }
 
@@ -9247,8 +10166,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             ticks[0] += 5;
-            Particle particle = spell == EndRiftAiPolicy.BossSpell.VOID_BLAST
-                    ? Particle.DRAGON_BREATH : Particle.REVERSE_PORTAL;
+            Particle particle = switch (spell) {
+                case VOID_BLAST -> Particle.DRAGON_BREATH;
+                case RIFT_ARROWS -> Particle.CRIT;
+                default -> Particle.REVERSE_PORTAL;
+            };
             Location effect = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                     ? boss.getLocation().add(0.0D, 1.0D, 0.0D) : mark;
             spawnEventParticle(effect, particle, 12, 0.9D, 0.2D, 0.9D, 0.02D);
@@ -9287,6 +10209,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, target);
                         case RIFT_PROJECTILE -> riftProjectile(boss, target);
+                        case RIFT_ARROWS -> riftArrowVolley(boss, target,
+                                EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id(),
+                                new SkeletonCombatPolicy.ArrowProfile(3, BOSS_PROJECTILE_DAMAGE, 60, "rift_salvo"));
                         case VOID_MARK -> voidMark(boss, target);
                         case SUMMON_SERVANTS -> summonServants(boss);
                         case WILL_DISTORTION -> sendControlStart(target);
@@ -9524,6 +10449,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " target=" + target.getUniqueId() + " max_ticks=" + RIFT_PROJECTILE_MAX_TICKS);
     }
 
+    /**
+     * Fire a bounded, player-only arrow volley. The server arrow supplies
+     * collision and hit timing; it is hidden from the vanilla renderer and
+     * given a distinct particle trail so every cast remains readable without
+     * changing any vanilla texture.
+     */
+    private void riftArrowVolley(LivingEntity caster, Player target, String spellId,
+                                 SkeletonCombatPolicy.ArrowProfile profile) {
+        if (caster == null || target == null || !isCombatTarget(target)
+                || caster.getWorld() == null || profile == null
+                || activeEventArrowAges.size() >= MAX_ACTIVE_EVENT_ARROWS) {
+            return;
+        }
+        Location start = caster.getEyeLocation().clone();
+        Vector base = target.getEyeLocation().toVector().subtract(start.toVector());
+        if (base.lengthSquared() < 0.01D) {
+            return;
+        }
+        base.normalize();
+        Vector side = base.clone().crossProduct(new Vector(0.0D, 1.0D, 0.0D));
+        if (side.lengthSquared() < 0.0001D) {
+            side = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        side.normalize();
+        int count = Math.min(profile.arrowCount(),
+                MAX_ACTIVE_EVENT_ARROWS - activeEventArrowAges.size());
+        for (int index = 0; index < count; index++) {
+            double lateral = (index - (count - 1) / 2.0D) * 0.12D;
+            double vertical = (index - (count - 1) / 2.0D) * 0.035D;
+            Vector direction = base.clone()
+                    .add(side.clone().multiply(lateral))
+                    .add(new Vector(0.0D, vertical, 0.0D))
+                    .normalize();
+            Arrow arrow = caster.getWorld().spawn(start, Arrow.class);
+            arrow.setGravity(false);
+            arrow.setVisibleByDefault(false);
+            arrow.setShooter(caster);
+            arrow.setVelocity(direction.multiply(0.78D));
+            arrow.setDamage(0.0D);
+            arrow.setCritical(true);
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+            arrow.setColor(Color.fromRGB(244, 60, 255));
+            tag(arrow, EVENT_KIND_PROJECTILE, readInt(caster, keyWave, 0), isOfficialEntity(caster));
+            tagArrowSpell(arrow, spellId);
+            trackEventArrow(arrow);
+        }
+        spawnEventParticle(start, Particle.END_ROD, 20, 0.25D, 0.25D, 0.25D, 0.02D);
+        getLogger().info("EVENT_ARROW_VOLLEY_SPAWN caster=" + caster.getUniqueId()
+                + " spell=" + spellId + " target=" + target.getUniqueId()
+                + " arrows=" + count + " pattern=" + profile.particlePattern()
+                + " max_ticks=" + EVENT_ARROW_MAX_TICKS);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onRiftProjectileHit(ProjectileHitEvent event) {
         if (!(event.getEntity() instanceof Snowball projectile)
@@ -9721,6 +10699,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spellServants.remove(entity.getUniqueId());
             miniBossSpells.remove(entity.getUniqueId());
             nextMiniBossSpellMillis.remove(entity.getUniqueId());
+            nextSkeletonArrowMillis.remove(entity.getUniqueId());
+            towerAggroUntil.remove(entity.getUniqueId());
             ownedEntities.remove(entity.getUniqueId());
         }
     }
@@ -10407,6 +11387,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveMobTactics.remove(entity.getUniqueId());
                     combatTeleportPermits.remove(entity.getUniqueId());
                     blockedTeleportLogAt.remove(entity.getUniqueId());
+                    towerAggroUntil.remove(entity.getUniqueId());
                     removed++;
                 }
             }
@@ -10418,6 +11399,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveMobTactics.clear();
             combatTeleportPermits.clear();
             blockedTeleportLogAt.clear();
+            towerAggroUntil.clear();
         }
         getLogger().info("END_EVENT_OWNED_CLEANUP event=" + expectedEventId + " generations=all removed=" + removed);
     }
@@ -10445,6 +11427,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     waveMobTactics.remove(entity.getUniqueId());
                     combatTeleportPermits.remove(entity.getUniqueId());
                     blockedTeleportLogAt.remove(entity.getUniqueId());
+                    towerAggroUntil.remove(entity.getUniqueId());
                 }
             }
         }
@@ -10455,6 +11438,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveMobTactics.clear();
             combatTeleportPermits.clear();
             blockedTeleportLogAt.clear();
+            towerAggroUntil.clear();
         }
     }
 
@@ -10468,12 +11452,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spellServants.remove(entity.getUniqueId());
             miniBossSpells.remove(entity.getUniqueId());
             nextMiniBossSpellMillis.remove(entity.getUniqueId());
+            nextSkeletonArrowMillis.remove(entity.getUniqueId());
             nextWavePathRequestMillis.remove(entity.getUniqueId());
             lastWavePathLogMillis.remove(entity.getUniqueId());
             judgmentVisuals.remove(entity.getUniqueId());
             waveMobTactics.remove(entity.getUniqueId());
             combatTeleportPermits.remove(entity.getUniqueId());
             blockedTeleportLogAt.remove(entity.getUniqueId());
+            towerAggroUntil.remove(entity.getUniqueId());
+            activeEventArrowAges.remove(entity.getUniqueId());
             if (bossUuid != null && bossUuid.equals(entity.getUniqueId()) && !officialBossDeathCommitted) {
                 bossUuid = null;
                 bossKillerUuid = null;
@@ -10585,8 +11572,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity.getType() == EntityType.SPIDER) {
             return CLIENT_VISUAL_SPIDER;
         }
-        if (entity.getType() == EntityType.SHULKER) {
-            return CLIENT_VISUAL_SHULKER;
+        if (entity.getType() == EntityType.SKELETON) {
+            return isSkeletonMiniBoss(entity) ? CLIENT_VISUAL_ELITE_SKELETON : CLIENT_VISUAL_SKELETON;
         }
         if (entity.getType() == EntityType.ENDERMAN) {
             if (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind)) {

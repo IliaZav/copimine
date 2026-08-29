@@ -24,6 +24,7 @@ public final class EndRiftAiPolicy {
         VOID_BLAST("void_blast", "Взрыв Бездны"),
         RIFT_PROJECTILE("rift_projectile", "Снаряд Разлома"),
         VOID_MARK("void_mark", "Клеймо Пустоты"),
+        RIFT_ARROWS("rift_arrows", "Шквал Стрел Разлома"),
         SUMMON_SERVANTS("summon_servants", "Призыв слуг Разлома"),
         WILL_DISTORTION("will_distortion", "Искажение воли"),
         ARENA_INFERNO("arena_inferno", "Пламя Разлома");
@@ -48,7 +49,8 @@ public final class EndRiftAiPolicy {
     public enum MiniBossSpell {
         RIFT_STEP("rift_step", "Рывок Разлома"),
         VOID_SNARE("void_snare", "Кандалы Пустоты"),
-        ECHO_PULSE("echo_pulse", "Импульс Эха");
+        ECHO_PULSE("echo_pulse", "Импульс Эха"),
+        ARROW_SALVO("arrow_salvo", "Залп Разлома");
 
         private final String id;
         private final String displayName;

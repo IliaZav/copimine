@@ -68,6 +68,8 @@ def test_end_event_client_mob_textures_are_native_uv_sheets() -> None:
         "end_rift_guardian.png": (64, 32),
         "end_rift_spider.png": (64, 32),
         "end_rift_shulker.png": (64, 64),
+        "end_rift_skeleton.png": (64, 32),
+        "end_rift_elite_skeleton.png": (64, 32),
     }
     for name, dimensions in expected.items():
         path = entity_dir / name

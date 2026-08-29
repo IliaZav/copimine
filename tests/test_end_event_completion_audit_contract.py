@@ -76,7 +76,7 @@ def test_configured_waves_use_spiders_and_keep_the_requested_combat_numbers() ->
     assert "health-bonus: 10.0" in CONFIG
     assert "attack-damage-bonus: 2.0" in CONFIG
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "attack-damage-bonus: 8.0" in CONFIG
     assert "half-health: 1250.0" in CONFIG
     assert "final-threshold: 250.0" in CONFIG
     assert "wave-reward-shared-rare:" in CONFIG

@@ -7,6 +7,7 @@ public final class BossDamagePolicyTest {
         testDamageIsAllowedNormallyAndAfterExpiredCast();
         testOnlyActiveBoundedCastBlocksDamage();
         testExhaustedWindowAmplifiesIncomingDamage();
+        testExhaustedMultiplierIsAppliedExactlyOnce();
         System.out.println("BossDamagePolicyTest OK");
     }
 
@@ -31,6 +32,15 @@ public final class BossDamagePolicyTest {
                 "exhausted boss must take 50 percent more damage");
         check(BossDamagePolicy.damageAllowed(BossStage.CATASTROPHE, BossCastState.EXHAUSTED, 1L, 999999L),
                 "exhausted boss must remain damageable");
+    }
+
+    private static void testExhaustedMultiplierIsAppliedExactlyOnce() {
+        check(BossDamagePolicy.applyIncomingDamage(10.0D, BossCastState.EXHAUSTED) == 15.0D,
+                "exhausted multiplier must be applied once to the incoming damage");
+        check(BossDamagePolicy.applyIncomingDamage(10.0D, BossCastState.NONE) == 10.0D,
+                "normal damage must not be changed by the cast policy");
+        check(BossDamagePolicy.applyIncomingDamage(Double.NaN, BossCastState.EXHAUSTED) == 0.0D,
+                "non-finite incoming damage must fail closed");
     }
 
     private static void check(boolean condition, String message) {

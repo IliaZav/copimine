@@ -12,6 +12,8 @@ ENTITY_NAMES = (
     "end_rift_elite.png",
     "end_rift_spider.png",
     "end_rift_shulker.png",
+    "end_rift_skeleton.png",
+    "end_rift_elite_skeleton.png",
     "end_rift_guardian.png",
 )
 

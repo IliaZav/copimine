@@ -42,7 +42,7 @@ def test_boss_final_release_explicitly_clears_invulnerability_before_player_dama
     assert "damageAllowed" in damage
     assert "event.setCancelled(true);" in damage
     assert "applyBossDamage(boss" in damage
-    assert "incomingDamageMultiplier" in damage
+    assert "applyIncomingDamage" in damage
     assert "bossCastState = BossCastState.NONE;" in final_wave
     assert "bossCastDeadlineMillis = 0L;" in final_wave
     assert "bossSpellPauseUntilMillis = 0L;" in final_wave
@@ -106,9 +106,9 @@ def test_final_phase_failure_paths_clear_entity_invulnerability_before_recovery(
     assert "boss.setInvulnerable(false)" in transition_failure
 
 
-def test_boss_balance_contract_is_2500_hp_with_five_point_increment_and_level_four_effects() -> None:
+def test_boss_balance_contract_is_2500_hp_with_eight_point_configured_bonus_and_level_four_effects() -> None:
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "attack-damage-bonus: 8.0" in CONFIG
     assert "debuff-amplifier: 3" in CONFIG
     assert "control-duration-seconds: 20" in CONFIG
 

@@ -16,6 +16,7 @@ def test_boss_spells_have_player_facing_russian_names() -> None:
     expected_names = {
         "VOID_BLAST": "Взрыв Бездны",
         "RIFT_PROJECTILE": "Снаряд Разлома",
+        "RIFT_ARROWS": "Шквал Стрел Разлома",
         "VOID_MARK": "Клеймо Пустоты",
         "SUMMON_SERVANTS": "Призыв слуг Разлома",
         "WILL_DISTORTION": "Искажение воли",

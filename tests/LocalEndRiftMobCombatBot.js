@@ -44,7 +44,7 @@ function isConfiguredArenaMob(entity) {
 
 function eventMobs() {
   return Object.values(bot.entities)
-    .filter(entity => entity && ['spider', 'enderman', 'shulker'].includes(entity.name))
+    .filter(entity => entity && ['spider', 'enderman', 'skeleton'].includes(entity.name))
     .filter(isConfiguredArenaMob)
     .filter(entity => bot.entity && distance(entity.position, bot.entity.position) <= 32)
 }
@@ -122,7 +122,7 @@ bot.once('spawn', () => {
 })
 
 bot.on('entitySpawn', entity => {
-  if (entity && ['spider', 'enderman', 'shulker'].includes(entity.name)) {
+  if (entity && ['spider', 'enderman', 'skeleton'].includes(entity.name)) {
     console.log(`ENTITY_SPAWN ${username} id=${entity.id} type=${entity.name}`)
   }
 })

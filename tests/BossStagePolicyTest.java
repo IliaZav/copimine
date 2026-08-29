@@ -59,7 +59,7 @@ public final class BossStagePolicyTest {
     }
 
     private static void testStageSpellPoolsAreProgressiveAndNamed() {
-        check(BossStagePolicy.spellPool(BossStage.AWAKENING).size() == 2, "Awakening must have the base pool");
+        check(BossStagePolicy.spellPool(BossStage.AWAKENING).size() == 3, "Awakening must have the base arrow pool");
         check(BossStagePolicy.spellPool(BossStage.CATASTROPHE).contains(EndRiftAiPolicy.BossSpell.ARENA_INFERNO),
                 "Catastrophe must unlock Arena Inferno");
         for (BossStage stage : BossStage.values()) {

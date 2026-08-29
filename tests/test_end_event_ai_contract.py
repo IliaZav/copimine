@@ -11,7 +11,7 @@ CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 
 def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_2500_hp() -> None:
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 5.0" in CONFIG
+    assert "attack-damage-bonus: 8.0" in CONFIG
     assert "half-health: 1250.0" in CONFIG
     assert "final-threshold: 250.0" in CONFIG
     assert "bossFinalHealth()" in MAIN
@@ -343,7 +343,9 @@ def test_mobile_wave_mobs_request_bounded_pathing_instead_of_only_receiving_a_ta
     assert "maintainWaveMobPath(mob, target, kind, now);" in tick_body
     assert "mob.getPathfinder().moveTo(destination" in path_body
     assert "WAVE_AI_PATH" in path_body
-    assert "EntityType.SHULKER" in path_body
+    assert "Skeleton" in MAIN
+    assert "maintainSkeletonCombatPosture" in tick_body
+    assert "EntityType.SHULKER" not in MAIN
     assert "isCoreBlockPosition(destination)" in path_body
     assert "boundedCombatRadius(config.containmentRadius())" in path_body
 
@@ -352,10 +354,59 @@ def test_final_wave_entities_stay_on_the_same_mobile_ai_controller() -> None:
     """The post-Judgment add-on wave must not become a static mob showcase."""
     start = MAIN.index("private void tickWaveMobAi()")
     body = MAIN[start:MAIN.index("private void enforceWaveMobContainment", start)]
-    assert "isWaveAiCombatPhase(readInt(entity, keyWave, 0))" in body
+    assert "isWaveAiCombatEntity(entity)" in body
     phase_start = MAIN.index("private boolean isWaveAiCombatPhase")
     phase_body = MAIN[phase_start:MAIN.index("private boolean isMiniBossCombatPhase", phase_start)]
     assert "case FINAL_WAVE" in phase_body
+
+
+def test_boss_servants_with_wave_zero_are_admitted_to_the_live_ai_controller() -> None:
+    """Summoned servants are not a numbered wave, but must still chase targets."""
+    helper_start = MAIN.index("private boolean isWaveAiCombatEntity")
+    helper = MAIN[helper_start:MAIN.index("private boolean isMiniBossCombatPhase", helper_start)]
+    assert "spellServants.contains(entity.getUniqueId())" in helper
+    assert "phase == EventPhase.BOSS_ACTIVE" in helper
+    summon = MAIN[MAIN.index("private void summonServants"):MAIN.index("public void onOwnedEntityDeath")]
+    assert "spawnOwnedMob(location.getWorld(), location, EntityType.SPIDER" in summon
+    assert "0, EVENT_KIND_WAVE_MOB" in summon
+
+
+def test_disposable_local_waves_are_admitted_without_enabling_natural_mob_ai() -> None:
+    helper_start = MAIN.index("private boolean isWaveAiCombatEntity")
+    helper = MAIN[helper_start:MAIN.index("private boolean isMiniBossCombatPhase", helper_start)]
+    assert "!isOfficialEntity(entity)" in helper
+    assert "isWaveCombatKind(readString(entity, keyKind))" in helper
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick = MAIN[tick_start:MAIN.index("private void enforceWaveMobContainment", tick_start)]
+    assert "isWaveAiCombatEntity(entity)" in tick
+
+
+def test_tower_roles_have_reachable_core_stances_and_short_player_aggro() -> None:
+    objective = MAIN[MAIN.index("private void updateTowerObjective"):MAIN.index("private void handleTowerDefenseFailure")]
+    assert "role.coreAttackRange()" in objective
+    assert "WAVE_OBJECTIVE_TOWER_ATTACK" in objective
+    assert "onTowerMobDamagedByPlayer" in MAIN
+    assert "TOWER_PLAYER_AGGRO_MILLIS = 4_000L" in MAIN
+    assert "towerAggroUntil" in MAIN
+
+
+def test_tower_mobs_request_a_core_path_when_not_distracted() -> None:
+    """Tower mobs need a real navigation request, not only an objective log."""
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick = MAIN[tick_start:MAIN.index("private void enforceWaveMobContainment", tick_start)]
+    assert "maintainWaveMobPath(mob, null, kind, now)" in tick
+    path_start = MAIN.index("private void maintainWaveMobPath")
+    path = MAIN[path_start:MAIN.index("private boolean requestBoundedCombatMovement", path_start)]
+    assert "boolean towerJob = mob != null && isTowerDefenseMob(mob)" in path
+    assert "waveTacticalDestination(mob, target, kind, now)" in path
+    assert 'target == null ? "core" : target.getUniqueId()' in path
+
+
+def test_exhausted_boss_damage_uses_the_finalized_hit_once() -> None:
+    damage = MAIN[MAIN.index("public void onBossDamage"):MAIN.index("private void applyBossDamage")]
+    assert damage.count("BossDamagePolicy.applyIncomingDamage") == 2
+    assert "event.setDamage(Math.max(0.0D, event.getDamage()) * multiplier)" not in damage
+    assert "double incomingDamage = Math.max(0.0D, event.getFinalDamage())" in damage
 
 
 def test_official_cinematic_starts_final_wave_before_boss_spawn() -> None:

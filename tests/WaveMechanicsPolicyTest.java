@@ -18,13 +18,33 @@ public final class WaveMechanicsPolicyTest {
         check(WaveMechanicsPolicy.towerMobCap(5) == 22, "five-player tower cap");
         check(WaveMechanicsPolicy.towerMobCap(20) == 28, "large tower cap");
         WaveMechanicsPolicy.WaveCounts capped = WaveMechanicsPolicy.capTowerCounts(
-                new WaveMechanicsPolicy.WaveCounts(16, 12, 8, 4), 20);
+                new WaveMechanicsPolicy.WaveCounts(16, 12, 8, 4, 3), 20);
         check(capped.total() == 28, "scaled Wave IV composition must obey the 28-mob cap");
         check(capped.endermen() >= 0 && capped.spiders() >= 0
-                        && capped.shulkers() >= 0 && capped.eliteEndermen() >= 0,
+                        && capped.skeletons() >= 0 && capped.eliteEndermen() >= 0
+                        && capped.eliteSkeletons() >= 0,
                 "tower cap must never create negative mob counts");
+        WaveMechanicsPolicy.WaveCounts eliteSkeletonHeavy = WaveMechanicsPolicy.capTowerCounts(
+                new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 40), 2);
+        check(eliteSkeletonHeavy.total() == 16,
+                "elite skeletons must be included in the tower hard cap");
         check(List.of(14, 12, 10).equals(WaveMechanicsPolicy.towerGroupCadenceSeconds()),
                 "tower groups must use the bounded cadence");
+        List<WaveMechanicsPolicy.WaveCounts> towerGroups = WaveMechanicsPolicy.towerSpawnGroups(
+                new WaveMechanicsPolicy.WaveCounts(6, 5, 3, 2, 1), 2);
+        check(towerGroups.size() == 4, "two-player tower must arrive in four groups");
+        check(towerGroups.get(0).total() <= 4, "the first tower group must be bounded");
+        check(towerGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 16,
+                "tower groups must preserve the capped composition total");
+        check(towerGroups.stream().allMatch(group -> group.total() > 0),
+                "tower schedule must not contain empty groups");
+        check(towerGroups.get(0).endermen() > 0 && towerGroups.get(0).spiders() > 0
+                        && towerGroups.get(0).skeletons() > 0 && towerGroups.get(0).eliteEndermen() > 0,
+                "the opening tower group must demonstrate the four core roles");
+        check(towerGroups.stream().anyMatch(group -> group.eliteSkeletons() > 0),
+                "the tower schedule must demonstrate the elite skeleton role");
+        check(towerGroups.stream().allMatch(group -> group.total() <= 4),
+                "each tower arrival group must remain at or below four mobs");
         check(WaveMechanicsPolicy.TowerRole.RAIDER.minDamage() == 12.0D
                         && WaveMechanicsPolicy.TowerRole.RAIDER.maxDamage() == 18.0D,
                 "raider damage range");
@@ -34,6 +54,15 @@ public final class WaveMechanicsPolicyTest {
         check(WaveMechanicsPolicy.TowerRole.ARTILLERY.minDamage() == 15.0D
                         && WaveMechanicsPolicy.TowerRole.ARTILLERY.maxDamage() == 22.0D,
                 "artillery damage range");
+        check(WaveMechanicsPolicy.TowerRole.RAIDER.coreAttackRange() == 3.75D,
+                "raider must be able to reach the Core from its safe ring");
+        check(WaveMechanicsPolicy.TowerRole.BREAKER.coreAttackRange() == 4.25D,
+                "breaker must be able to reach the Core from its safe ring");
+        check(WaveMechanicsPolicy.TowerRole.BREAKER.coreAttackRange()
+                        > WaveMechanicsPolicy.TowerRole.RAIDER.coreAttackRange(),
+                "breaker must occupy a distinct outer stance");
+        check(WaveMechanicsPolicy.TowerRole.ARTILLERY.coreAttackRange() == 12.0D,
+                "artillery must keep its bounded ranged stance");
         double damageA = WaveMechanicsPolicy.roleDamage(WaveMechanicsPolicy.TowerRole.BREAKER, "mob-a", 1);
         double damageB = WaveMechanicsPolicy.roleDamage(WaveMechanicsPolicy.TowerRole.BREAKER, "mob-a", 1);
         check(damageA == damageB && damageA >= 28.0D && damageA <= 38.0D,

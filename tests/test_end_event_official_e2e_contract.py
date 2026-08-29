@@ -89,6 +89,12 @@ def test_official_driver_waits_for_all_five_waves_and_every_boss_stage_in_order(
     assert positions == sorted(positions)
 
 
+def test_official_driver_observes_wave_two_mark_and_skeleton_retarget() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "WAVE_OBJECTIVE_MARK.*wave=2" in source
+    assert "WAVE_SKELETON_MARKED_TARGET.*wave=2" in source
+
+
 def test_official_driver_restricts_player_probe_targets_to_the_event_arena() -> None:
     source = DRIVER.read_text(encoding="utf-8")
     bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
@@ -112,6 +118,28 @@ def test_official_driver_sweeps_the_arena_during_tower_defense() -> None:
     ) in source
 
 
+def test_official_driver_observes_paced_tower_groups_before_waiting_180_seconds() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "WAVE_TOWER_GROUP_SPAWN.*group=1/4.*spawned=[1-4]" in source
+    assert "WAVE_TOWER_GROUP_SPAWN.*group=2/4" in source
+
+
+def test_official_driver_has_a_local_wave_four_failure_and_clean_retry_probe() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    for marker in (
+        "[switch]$TowerFailureProbe",
+        "cmend test tower fail",
+        "WAVE_TEST_FAILURE_INJECTED",
+        "WAVE_OBJECTIVE_FAILED.*wave=4",
+        "event-mobs=0",
+        "WAVE_RETRY_OBJECTIVE_RESET",
+        "WAVE_RETRY_STARTED",
+        "OFFICIAL_W4_FAILURE_CLEANUP_PASS",
+        "OFFICIAL_W4_RETRY_PASS",
+    ):
+        assert marker in source
+
+
 def test_official_driver_reaches_the_outer_spawn_ring_without_shortcuts() -> None:
     source = DRIVER.read_text(encoding="utf-8")
     for marker in (
@@ -130,3 +158,13 @@ def test_official_survival_players_have_a_real_melee_fixture_for_all_wave_mobs()
     assert "effect give $name minecraft:strength 1000 20 true" in source
     bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
     assert "attackTimer = setInterval(attackNearest, 400)" in bot
+
+
+def test_official_driver_can_close_on_live_mob_positions_after_objective_deadline() -> None:
+    """The survival probe must reach valid outer-ring mobs, not delete them."""
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "function Get-CombatMobPositions" in source
+    assert "cmend debug ai" in source
+    assert "function Keep-PlayersAtCombatMobs" in source
+    assert "Keep-PlayersAtCombatMobs" in source
+    assert "WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs" in source

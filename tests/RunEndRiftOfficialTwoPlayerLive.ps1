@@ -5,7 +5,8 @@ param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'EndRiftOfficialB',
   [int]$BotDurationSeconds = 1200,
-  [int]$TimeoutSeconds = 1100
+  [int]$TimeoutSeconds = 1100,
+  [switch]$TowerFailureProbe
 )
 
 # Local-only official two-player run.  This driver prepares the isolated event
@@ -133,7 +134,7 @@ function Keep-PlayersAtCombatSweep {
     [pscustomobject]@{ X = $Core[0] + 6.5D; Y = [double]$Core[1]; Z = $Core[2] + 5.5D },
     [pscustomobject]@{ X = $Core[0] + 6.5D; Y = [double]$Core[1]; Z = $Core[2] - 5.5D },
     # Cover the outer spawn ring as well.  Wave 5 can legitimately place a
-    # shulker at about ten blocks from the core; visiting only the inner ring
+    # skeleton at about ten blocks from the core; visiting only the inner ring
     # makes the protocol clients miss a valid target and leaves the official
     # run waiting forever even though the server AI is active.
     [pscustomobject]@{ X = $Core[0] + 1.5D; Y = [double]$Core[1]; Z = $Core[2] - 10.5D },
@@ -146,6 +147,35 @@ function Keep-PlayersAtCombatSweep {
   $script:CombatSweepIndex++
   Teleport-Player -Name $FirstBotName -X $first.X -Y $first.Y -Z $first.Z
   Teleport-Player -Name $SecondBotName -X $second.X -Y $second.Y -Z $second.Z
+}
+
+function Get-CombatMobPositions {
+  $debug = Invoke-LocalRcon -CommandText 'cmend debug ai'
+  $targetsLine = (($debug -split "`r?`n") | Where-Object { $_ -match 'AI_TARGETS' }) -join ' '
+  $matches = [Regex]::Matches($targetsLine,
+    '(?:WAVE_MOB|ELITE|FINAL_WAVE):[0-9a-fA-F-]+=[^;]*?\s(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)')
+  $positions = @()
+  foreach ($match in $matches) {
+    $positions += [pscustomobject]@{
+      X = [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+      Y = [double]::Parse($match.Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture)
+      Z = [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
+    }
+  }
+  return ,$positions
+}
+
+function Keep-PlayersAtCombatMobs {
+  param([Parameter(Mandatory = $true)][int[]]$Core)
+  $mobs = @(Get-CombatMobPositions)
+  if ($mobs.Count -eq 0) {
+    Keep-PlayersAtCombatSweep -Core $Core
+    return
+  }
+  $first = $mobs[0]
+  $second = if ($mobs.Count -gt 1) { $mobs[1] } else { $first }
+  Teleport-Player -Name $FirstBotName -X ($first.X + 1.8D) -Y $first.Y -Z $first.Z
+  Teleport-Player -Name $SecondBotName -X ($second.X - 1.8D) -Y $second.Y -Z $second.Z
 }
 
 function Keep-PlayersAtPoint {
@@ -291,7 +321,7 @@ try {
   # the isolated PostgreSQL data directory.
   $null = Invoke-LocalRcon -CommandText 'cmend core remove confirm'
   Start-Sleep -Milliseconds 500
-  foreach ($mobType in @('spider', 'enderman', 'shulker')) {
+  foreach ($mobType in @('spider', 'enderman', 'skeleton')) {
     # The local flat test scene may contain naturally spawned mobs from an
     # earlier manual session.  Remove only those three types inside the
     # bounded arena footprint after event-owned entities were cleaned; no
@@ -350,6 +380,8 @@ try {
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_MARK.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'WAVE_SKELETON_MARKED_TARGET.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3' -WaitSeconds 30
@@ -368,8 +400,34 @@ try {
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4' -WaitSeconds 30
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=4.*TOWER_DEFENSE' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=1/4.*spawned=[1-4]' -WaitSeconds 20
+  if ($TowerFailureProbe) {
+    # This remains an official two-player session: only the bounded local
+    # probe asks the plugin to apply a synthetic Core-destroying attack.  The
+    # plugin then runs its real failure cleanup and owned retry scheduler.
+    $null = Invoke-LocalRcon -CommandText 'cmend test tower fail'
+    Wait-LogRegex -Pattern 'WAVE_TEST_FAILURE_INJECTED.*wave=4' -WaitSeconds 20
+    Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_FAILED.*wave=4.*retry=true' -WaitSeconds 20
+    $failedStatus = Invoke-LocalRcon -CommandText 'cmend status'
+    if ($failedStatus -notmatch 'wave=.*4' -or $failedStatus -notmatch 'event-mobs=.*0') {
+      throw "Wave 4 failure did not synchronously remove the old event mobs:`n$failedStatus"
+    }
+    Write-Evidence "OFFICIAL_W4_FAILURE_CLEANUP_PASS event=$eventId wave=4 event-mobs=0"
+    Wait-LogRegex -Pattern 'WAVE_RETRY_OBJECTIVE_RESET.*wave=4' -WaitSeconds 30
+    Wait-LogRegex -Pattern 'WAVE_RETRY_STARTED.*wave=4' -WaitSeconds 30
+    $retryStatus = Invoke-LocalRcon -CommandText 'cmend debug objectives'
+    if ($retryStatus -notmatch 'wave=4' -or $retryStatus -notmatch 'towerAttempt=2') {
+      throw "Wave 4 retry did not start as attempt 2:`n$retryStatus"
+    }
+    Write-Evidence "OFFICIAL_W4_RETRY_PASS event=$eventId wave=4 attempt=2 old_mobs_cleared=true"
+  }
+  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=2/4' -WaitSeconds 35 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+  if ($TowerFailureProbe) {
+    Write-Evidence "OFFICIAL_W4_RETRY_COMPLETED_PASS event=$eventId wave=4 attempt=2 objective=success"
+    return
+  }
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=5' -WaitSeconds 30
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=5.*RIFT_STORM' -WaitSeconds 20

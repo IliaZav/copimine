@@ -16,6 +16,15 @@ function Invoke-EndRiftStep {
   }
 }
 
+function Invoke-EndRiftJavaMain {
+  param([string]$Classpath, [string]$MainClass)
+  & java -cp $Classpath $MainClass
+  $exitCode = $LASTEXITCODE
+  if ($exitCode -ne 0) {
+    throw "Java test $MainClass failed with exit code $exitCode"
+  }
+}
+
 Invoke-EndRiftStep 'WorldCore build' {
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-world-core\build-plugin.ps1')
 }
@@ -53,7 +62,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_boss_regressions_contract.py tests\test_end_event_wave_objective_contract.py `
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
       tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
-      tests\test_end_event_official_e2e_contract.py
+      tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
+      tests\test_end_event_skeleton_behavior_docs_contract.py
   } finally {
     Pop-Location
   }
@@ -75,6 +85,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java') `
       (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java') `
       (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\SkeletonCombatPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossMovementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\CombatMovementPolicyTest.java') `
@@ -86,23 +97,25 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java')
-  & java -cp $endRiftTestBuild EndEventDomainTest
-  & java -cp $endRiftTestBuild BossThresholdPolicyTest
-  & java -cp $endRiftTestBuild EndRiftAiPolicyTest
-  & java -cp $endRiftTestBuild ResourceProgressFormatterTest
-  & java -cp $endRiftTestBuild GateOpeningPlanTest
-  & java -cp $endRiftTestBuild BossDamagePolicyTest
-  & java -cp $endRiftTestBuild BossMovementPolicyTest
-  & java -cp $endRiftTestBuild BossStagePolicyTest
-  & java -cp $endRiftTestBuild CombatMovementPolicyTest
-  & java -cp $endRiftTestBuild WaveObjectivePolicyTest
-  & java -cp $endRiftTestBuild WaveRewardPolicyTest
-  & java -cp $endRiftTestBuild WaveMechanicsPolicyTest
-  & java -cp $endRiftTestBuild StormPatternPolicyTest
-  & java -cp $endRiftTestBuild BossCastPolicyTest
-  & java -cp $endRiftTestBuild CombatTacticsPolicyTest
-  & java -cp $endRiftTestBuild BossStatsPolicyTest
-  & java -cp $endRiftTestBuild EndEventStateMachineTest
+  if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
+  Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossThresholdPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild EndRiftAiPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild ResourceProgressFormatterTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild GateOpeningPlanTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonCombatPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossMovementPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossStagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild CombatMovementPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveObjectivePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveRewardPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveMechanicsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild StormPatternPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossCastPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTacticsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
@@ -110,12 +123,13 @@ Invoke-EndRiftStep 'Durable persistence and layout tests' {
     (Join-Path $endRiftRoot 'tests\DepositJournalTest.java') `
     (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java') `
     (Join-Path $endRiftRoot 'tests\HazardMutationJournalTest.java')
+  if ($LASTEXITCODE -ne 0) { throw 'Persistence/layout javac failed.' }
   $endRiftRunClasspath = @($endRiftTestBuild, (Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path) + $endRiftTestClasspathEntries
   $endRiftRunClasspathText = $endRiftRunClasspath -join [IO.Path]::PathSeparator
-  & java -cp $endRiftRunClasspathText EventStateStoreTest
-  & java -cp $endRiftRunClasspathText DepositJournalTest
-  & java -cp $endRiftRunClasspathText EventLayoutStoreTest
-  & java -cp $endRiftRunClasspathText HazardMutationJournalTest
+  Invoke-EndRiftJavaMain $endRiftRunClasspathText EventStateStoreTest
+  Invoke-EndRiftJavaMain $endRiftRunClasspathText DepositJournalTest
+  Invoke-EndRiftJavaMain $endRiftRunClasspathText EventLayoutStoreTest
+  Invoke-EndRiftJavaMain $endRiftRunClasspathText HazardMutationJournalTest
 }
 
 Write-Host '== Local artifact hashes =='

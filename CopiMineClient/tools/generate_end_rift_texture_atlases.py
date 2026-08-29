@@ -145,6 +145,28 @@ def shulker_sheet() -> None:
     image.save(OUT / "end_rift_shulker.png", format="PNG", optimize=False)
 
 
+def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
+                   accent: tuple[int, int, int], eye: tuple[int, int, int]) -> None:
+    """Paint a readable 64x32 skeleton UV sheet with bone plates and sigils."""
+    image = atlas((64, 32), palette, seed)
+    draw = ImageDraw.Draw(image)
+    panel_lines(draw, 64, 32, palette[1])
+    # Rib and joint bands keep the vanilla skeleton silhouette readable while
+    # the angular rift marks make the two server-bound variants distinct.
+    for y in (3, 8, 13, 18, 23, 28):
+        draw.line((2, y, 19, y + 1), fill=(*accent, 255), width=1)
+        draw.line((44, y + 1, 61, y), fill=(*accent, 255), width=1)
+    draw.rectangle((24, 3, 39, 15), outline=(*accent, 255), width=2)
+    draw.rectangle((27, 6, 30, 9), fill=(*eye, 255))
+    draw.rectangle((33, 6, 36, 9), fill=(*eye, 255))
+    draw.line((30, 12, 33, 12), fill=(*palette[-1], 255), width=1)
+    sigil(draw, (12, 23), 4, [accent, palette[-1], eye], seed % 7)
+    sigil(draw, (51, 22), 4, [palette[-1], accent, eye], (seed + 3) % 9)
+    for x in range(3, 62, 9):
+        draw.point((x, (x * 7 + seed) % 31), fill=(*accent, 255))
+    image.save(OUT / name, format="PNG", optimize=False)
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     enderman_sheet(
@@ -205,6 +227,20 @@ def main() -> None:
     )
     spider_sheet()
     shulker_sheet()
+    skeleton_sheet(
+        "end_rift_skeleton.png",
+        [(218, 213, 191), (164, 162, 151), (101, 110, 112), (47, 67, 82), (28, 128, 151), (89, 226, 211)],
+        227,
+        (28, 128, 151),
+        (198, 255, 241),
+    )
+    skeleton_sheet(
+        "end_rift_elite_skeleton.png",
+        [(240, 226, 194), (186, 151, 90), (111, 68, 72), (52, 19, 49), (208, 46, 134), (255, 117, 231)],
+        239,
+        (208, 46, 134),
+        (255, 220, 246),
+    )
 
 
 if __name__ == "__main__":

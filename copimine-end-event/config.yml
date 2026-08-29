@@ -33,6 +33,11 @@ mobs:
   spider:
     health-bonus: 10.0
     attack-damage-bonus: 2.0
+  skeleton:
+    health-bonus: 4.0
+    attack-damage-bonus: 1.0
+    elite-health: 40.0
+    elite-attack-damage-bonus: 2.0
 
 mini-bosses:
   spell-cooldown-seconds: [8, 12]
@@ -68,37 +73,43 @@ waves:
     type: awakening
     endermen: 5
     spiders: 8
-    shulkers: 0
+    skeletons: 4
     elite-endermen: 0
+    elite-skeletons: 0
   wave-2:
     type: hunt
     endermen: 7
     spiders: 6
-    shulkers: 3
+    skeletons: 3
     elite-endermen: 0
+    elite-skeletons: 0
   wave-3:
     type: portals
     endermen: 10
     spiders: 0
-    shulkers: 3
+    skeletons: 3
     elite-endermen: 4
+    elite-skeletons: 1
   wave-4:
     type: tower_defense
     endermen: 8
     spiders: 6
-    shulkers: 4
+    skeletons: 4
     elite-endermen: 2
+    elite-skeletons: 1
   wave-5:
     type: rift_storm
     endermen: 12
     spiders: 8
-    shulkers: 4
+    skeletons: 4
     elite-endermen: 6
+    elite-skeletons: 2
   final:
     endermen: 0
     spiders: 8
-    shulkers: 2
+    skeletons: 2
     elite-endermen: 6
+    elite-skeletons: 1
 
 # Event-owned mobs use these bounded drops.  Recovery/cleanup removes entities
 # directly and therefore never enters EntityDeathEvent or creates kill loot.
@@ -112,7 +123,7 @@ event-loot:
     EXPERIENCE_BOTTLE: 2
   final-wave:
     ENDER_PEARL: 4
-    SHULKER_SHELL: 2
+    BONE: 4
     AMETHYST_SHARD: 2
   test:
     ENDER_PEARL: 1
@@ -167,6 +178,10 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 0.15, min: 1, max: 1}
     EXPERIENCE_BOTTLE: {chance: 0.08, min: 1, max: 1}
     AMETHYST_SHARD: {chance: 0.10, min: 1, max: 3}
+  skeleton:
+    ARROW: {chance: 0.18, min: 1, max: 3}
+    BONE: {chance: 0.22, min: 1, max: 2}
+    EXPERIENCE_BOTTLE: {chance: 0.08, min: 1, max: 2}
   common-enderman:
     DIAMOND: {chance: 0.03, min: 1, max: 1}
     GOLDEN_APPLE: {chance: 0.04, min: 1, max: 1}
@@ -179,10 +194,11 @@ event-loot-rolls:
     ECHO_SHARD: {chance: 0.08, min: 1, max: 1}
     NETHERITE_SCRAP: {chance: 0.02, min: 1, max: 1}
     EXPERIENCE_BOTTLE: {chance: 0.25, min: 2, max: 5}
-  shulker:
-    SHULKER_SHELL: {chance: 0.20, min: 1, max: 1}
-    DIAMOND: {chance: 0.05, min: 1, max: 1}
-    ECHO_SHARD: {chance: 0.04, min: 1, max: 1}
+  elite-skeleton:
+    ARROW: {chance: 0.45, min: 2, max: 6}
+    BONE: {chance: 0.40, min: 2, max: 4}
+    DIAMOND: {chance: 0.12, min: 1, max: 2}
+    ECHO_SHARD: {chance: 0.08, min: 1, max: 1}
   final-wave:
     ENDER_PEARL: {chance: 0.25, min: 1, max: 2}
     AMETHYST_SHARD: {chance: 0.15, min: 1, max: 3}
@@ -191,8 +207,9 @@ event-loot-rolls:
 
 boss:
   health: 2500.0
-  # Vanilla Enderman damage is 3.0; this configured increment makes it 8.0.
-  attack-damage-bonus: 5.0
+  # The configured increment is exactly +5 over the previous 3.0 default.
+  # BossStatsPolicy applies this value to the vanilla base once per hit.
+  attack-damage-bonus: 8.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
   teleport-cooldown-seconds: 12

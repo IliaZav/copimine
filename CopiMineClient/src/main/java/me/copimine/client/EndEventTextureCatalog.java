@@ -69,6 +69,8 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));
         textures.put("END_RIFT_SPIDER_V1", entityTexture("end_rift_spider.png"));
         textures.put("END_RIFT_SHULKER_V1", entityTexture("end_rift_shulker.png"));
+        textures.put("END_RIFT_SKELETON_V1", entityTexture("end_rift_skeleton.png"));
+        textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));
         return Map.copyOf(textures);
     }
 

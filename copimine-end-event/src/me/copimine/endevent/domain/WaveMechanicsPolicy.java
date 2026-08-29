@@ -16,6 +16,7 @@ public final class WaveMechanicsPolicy {
     private static final int MAX_PORTALS = 6;
     private static final int STORM_FLOOR_CAP = 160;
     private static final int STORM_WEB_CAP = 12;
+    private static final int TOWER_GROUP_SIZE = 4;
 
     private WaveMechanicsPolicy() {
     }
@@ -52,14 +53,18 @@ public final class WaveMechanicsPolicy {
      */
     public static WaveCounts capTowerCounts(WaveCounts requested, int players) {
         if (requested == null) {
-            return new WaveCounts(0, 0, 0, 0);
+            return new WaveCounts(0, 0, 0, 0, 0);
         }
         int[] counts = {
                 Math.max(0, requested.endermen()),
                 Math.max(0, requested.spiders()),
-                Math.max(0, requested.shulkers()),
-                Math.max(0, requested.eliteEndermen())};
-        int total = counts[0] + counts[1] + counts[2] + counts[3];
+                Math.max(0, requested.skeletons()),
+                Math.max(0, requested.eliteEndermen()),
+                Math.max(0, requested.eliteSkeletons())};
+        int total = 0;
+        for (int count : counts) {
+            total += count;
+        }
         int cap = towerMobCap(players);
         while (total > cap) {
             int selected = 0;
@@ -74,11 +79,103 @@ public final class WaveMechanicsPolicy {
             counts[selected]--;
             total--;
         }
-        return new WaveCounts(counts[0], counts[1], counts[2], counts[3]);
+        return new WaveCounts(counts[0], counts[1], counts[2], counts[3], counts[4]);
     }
 
     public static List<Integer> towerGroupCadenceSeconds() {
         return List.of(14, 12, 10);
+    }
+
+    /**
+     * Split the bounded Wave IV composition into small, role-diverse arrival
+     * groups.  The Bukkit controller owns the clock; this method only defines
+     * a deterministic plan so a restart or a retry cannot accidentally spawn
+     * the complete tower composition in one tick.
+     */
+    public static List<WaveCounts> towerSpawnGroups(WaveCounts requested, int players) {
+        WaveCounts capped = capTowerCounts(requested, players);
+        int total = capped.total();
+        if (total == 0) {
+            return List.of();
+        }
+        int groupCount = Math.max(1, (total + TOWER_GROUP_SIZE - 1) / TOWER_GROUP_SIZE);
+        int[] remaining = {
+                Math.max(0, capped.endermen()),
+                Math.max(0, capped.spiders()),
+                Math.max(0, capped.skeletons()),
+                Math.max(0, capped.eliteEndermen()),
+                Math.max(0, capped.eliteSkeletons())};
+        int[][] groups = new int[groupCount][remaining.length];
+        int[] groupTotals = new int[groupCount];
+
+        // Seed each group with one unit of every available role.  This keeps
+        // the opening of the defense readable: players see the breaker,
+        // raider and artillery jobs immediately instead of receiving a block
+        // of identical entities.
+        for (int type = 0; type < remaining.length; type++) {
+            int seeded = Math.min(remaining[type], groupCount);
+            // Keep the four original roles readable in the opening group;
+            // place the fifth elite-skeleton role in the next group so the
+            // bounded group size remains four while every role still appears
+            // early in the deterministic schedule.
+            int seedOffset = type >= 4 && groupCount > 1 ? 1 : 0;
+            for (int group = 0; group < seeded; group++) {
+                int targetGroup = nextAvailableGroup((group + seedOffset) % groupCount,
+                        groupTotals);
+                if (targetGroup < 0) {
+                    break;
+                }
+                groups[targetGroup][type]++;
+                groupTotals[targetGroup]++;
+            }
+            remaining[type] -= seeded;
+        }
+
+        // Distribute the remainder to the currently smallest group.  The
+        // rotating tie-break keeps equal compositions stable across retries.
+        int tieCursor = 0;
+        for (int type = 0; type < remaining.length; type++) {
+            while (remaining[type]-- > 0) {
+                int selected = tieCursor % groupCount;
+                for (int offset = 1; offset < groupCount; offset++) {
+                    int candidate = (tieCursor + offset) % groupCount;
+                    if (groupTotals[candidate] < TOWER_GROUP_SIZE
+                            && (groupTotals[selected] >= TOWER_GROUP_SIZE
+                            || groupTotals[candidate] < groupTotals[selected])) {
+                        selected = candidate;
+                    }
+                }
+                if (groupTotals[selected] >= TOWER_GROUP_SIZE) {
+                    selected = nextAvailableGroup(selected, groupTotals);
+                }
+                if (selected < 0) {
+                    break;
+                }
+                groups[selected][type]++;
+                groupTotals[selected]++;
+                tieCursor = (selected + 1) % groupCount;
+            }
+        }
+
+        List<WaveCounts> result = new ArrayList<>(groupCount);
+        for (int[] group : groups) {
+            result.add(new WaveCounts(group[0], group[1], group[2], group[3], group[4]));
+        }
+        return List.copyOf(result);
+    }
+
+    private static int nextAvailableGroup(int preferred, int[] groupTotals) {
+        if (groupTotals == null || groupTotals.length == 0) {
+            return -1;
+        }
+        int start = Math.floorMod(preferred, groupTotals.length);
+        for (int offset = 0; offset < groupTotals.length; offset++) {
+            int candidate = (start + offset) % groupTotals.length;
+            if (groupTotals[candidate] < TOWER_GROUP_SIZE) {
+                return candidate;
+            }
+        }
+        return -1;
     }
 
     public static int floorMutationCap(int availableCells) {
@@ -161,18 +258,21 @@ public final class WaveMechanicsPolicy {
     }
 
     public enum TowerRole {
-        RAIDER(12.0D, 18.0D, 1_500L),
-        BREAKER(28.0D, 38.0D, 2_000L),
-        ARTILLERY(15.0D, 22.0D, 2_500L);
+        RAIDER(12.0D, 18.0D, 1_500L, 3.75D),
+        BREAKER(28.0D, 38.0D, 2_000L, 4.25D),
+        ARTILLERY(15.0D, 22.0D, 2_500L, 12.0D);
 
         private final double minDamage;
         private final double maxDamage;
         private final long attackIntervalMillis;
+        private final double coreAttackRange;
 
-        TowerRole(double minDamage, double maxDamage, long attackIntervalMillis) {
+        TowerRole(double minDamage, double maxDamage, long attackIntervalMillis,
+                  double coreAttackRange) {
             this.minDamage = minDamage;
             this.maxDamage = maxDamage;
             this.attackIntervalMillis = attackIntervalMillis;
+            this.coreAttackRange = coreAttackRange;
         }
 
         public double minDamage() {
@@ -186,12 +286,18 @@ public final class WaveMechanicsPolicy {
         public long attackIntervalMillis() {
             return attackIntervalMillis;
         }
+
+        public double coreAttackRange() {
+            return coreAttackRange;
+        }
     }
 
-    public record WaveCounts(int endermen, int spiders, int shulkers, int eliteEndermen) {
+    public record WaveCounts(int endermen, int spiders, int skeletons,
+                             int eliteEndermen, int eliteSkeletons) {
         public int total() {
             return Math.max(0, endermen) + Math.max(0, spiders)
-                    + Math.max(0, shulkers) + Math.max(0, eliteEndermen);
+                    + Math.max(0, skeletons) + Math.max(0, eliteEndermen)
+                    + Math.max(0, eliteSkeletons);
         }
     }
 }

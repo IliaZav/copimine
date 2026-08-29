@@ -31,6 +31,10 @@ public record EventConfig(
         int waveHardCap,
         double spiderHealthBonus,
         double spiderAttackDamageBonus,
+        double skeletonHealthBonus,
+        double skeletonAttackDamageBonus,
+        double skeletonEliteHealth,
+        double skeletonEliteAttackDamageBonus,
         double musicVolume,
         MusicTrack wavesMusic,
         MusicTrack bossMusic,
@@ -137,6 +141,11 @@ public record EventConfig(
         double health = positiveDouble(boss, "health");
         double spiderHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "health-bonus");
         double spiderAttackDamageBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "attack-damage-bonus");
+        ConfigurationSection skeleton = mobs.getConfigurationSection("skeleton");
+        double skeletonHealthBonus = nonNegativeDouble(skeleton, "health-bonus");
+        double skeletonAttackDamageBonus = nonNegativeDouble(skeleton, "attack-damage-bonus");
+        double skeletonEliteHealth = positiveDouble(skeleton, "elite-health");
+        double skeletonEliteAttackDamageBonus = nonNegativeDouble(skeleton, "elite-attack-damage-bonus");
         double musicVolume = boundedVolume(music.getDouble("volume", 0.85D));
         MusicTrack wavesMusic = musicTrack(music, "waves");
         MusicTrack bossMusic = musicTrack(music, "boss");
@@ -169,8 +178,9 @@ public record EventConfig(
         LinkedHashMap<String, Map<String, LootEntry>> lootProfiles = new LinkedHashMap<>();
         lootProfiles.put("common-enderman", readLootProfiles(eventLootRolls, "common-enderman", waveMobLoot));
         lootProfiles.put("spider", readLootProfiles(eventLootRolls, "spider", waveMobLoot));
+        lootProfiles.put("skeleton", readLootProfiles(eventLootRolls, "skeleton", waveMobLoot));
         lootProfiles.put("elite-enderman", readLootProfiles(eventLootRolls, "elite-enderman", eliteLoot));
-        lootProfiles.put("shulker", readLootProfiles(eventLootRolls, "shulker", finalWaveLoot));
+        lootProfiles.put("elite-skeleton", readLootProfiles(eventLootRolls, "elite-skeleton", eliteLoot));
         lootProfiles.put("final-wave", readLootProfiles(eventLootRolls, "final-wave", finalWaveLoot));
         lootProfiles.put("test", readLootProfiles(eventLootRolls, "test", testLoot));
 
@@ -194,6 +204,10 @@ public record EventConfig(
                 waveCap,
                 spiderHealthBonus,
                 spiderAttackDamageBonus,
+                skeletonHealthBonus,
+                skeletonAttackDamageBonus,
+                skeletonEliteHealth,
+                skeletonEliteAttackDamageBonus,
                 musicVolume,
                 wavesMusic,
                 bossMusic,
@@ -245,8 +259,9 @@ public record EventConfig(
         return new WaveDefinition(
                 nonNegative(section, "endermen"),
                 nonNegative(section, "spiders"),
-                nonNegative(section, "shulkers"),
-                nonNegative(section, "elite-endermen"));
+                nonNegative(section, "skeletons"),
+                nonNegative(section, "elite-endermen"),
+                nonNegative(section, "elite-skeletons"));
     }
 
     private static Map<Integer, Map<String, Integer>> readWaveRewards(ConfigurationSection parent) {
@@ -468,9 +483,10 @@ public record EventConfig(
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
-    public record WaveDefinition(int endermen, int spiders, int shulkers, int eliteEndermen) {
+    public record WaveDefinition(int endermen, int spiders, int skeletons,
+                                 int eliteEndermen, int eliteSkeletons) {
         public int total() {
-            return endermen + spiders + shulkers + eliteEndermen;
+            return endermen + spiders + skeletons + eliteEndermen + eliteSkeletons;
         }
     }
 

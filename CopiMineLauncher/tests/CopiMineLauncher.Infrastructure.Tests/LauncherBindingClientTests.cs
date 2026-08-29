@@ -82,6 +82,62 @@ public sealed class LauncherBindingClientTests
     }
 
     [Fact]
+    public async Task A_new_launcher_process_uses_the_endpoint_recorded_in_the_pending_challenge()
+    {
+        var firstLocalCalls = 0;
+        var restartedPrimaryCalls = 0;
+        var restartedLocalCalls = 0;
+        using var firstPrimaryHttp = new HttpClient(new RecordingHandler(_ => throw new HttpRequestException("real site is offline")));
+        using var firstLocalHttp = new HttpClient(new RecordingHandler(_ =>
+        {
+            firstLocalCalls++;
+            return Json("""
+            {
+              "challengeId": "challenge-restart-123456",
+              "pollToken": "poll-restart-abcdefghijklmnopqrstuvwxyz-123456",
+              "authorizationUrl": "http://127.0.0.1:8090/cabinet/link.html?launcher_challenge=challenge-restart-123456",
+              "expiresAt": "2026-08-15T18:00:00Z",
+              "minecraftName": "Player"
+            }
+            """);
+        }));
+        var first = new FallbackLauncherBindingClient(
+            new HttpLauncherBindingClient(firstPrimaryHttp, new Uri("https://copimine.ru/"), "cm-device-1234567890"),
+            new HttpLauncherBindingClient(firstLocalHttp, new Uri("http://127.0.0.1:8090/"), "cm-device-1234567890"));
+        var challenge = await first.CreateChallengeAsync("Player", "1.0.0", CancellationToken.None);
+
+        using var restartedPrimaryHttp = new HttpClient(new RecordingHandler(_ =>
+        {
+            restartedPrimaryCalls++;
+            throw new InvalidOperationException("a restarted Launcher must not poll the production endpoint for a loopback challenge");
+        }));
+        using var restartedLocalHttp = new HttpClient(new RecordingHandler(_ =>
+        {
+            restartedLocalCalls++;
+            return Json("""
+            {
+              "linked": true,
+              "status": "LINKED",
+              "siteAccountId": "local-account",
+              "siteUsername": "local-player",
+              "minecraftName": "Player",
+              "launcherAccessToken": "poll-restart-abcdefghijklmnopqrstuvwxyz-123456"
+            }
+            """);
+        }));
+        var restarted = new FallbackLauncherBindingClient(
+            new HttpLauncherBindingClient(restartedPrimaryHttp, new Uri("https://copimine.ru/"), "cm-device-1234567890"),
+            new HttpLauncherBindingClient(restartedLocalHttp, new Uri("http://127.0.0.1:8090/"), "cm-device-1234567890"));
+
+        var status = await restarted.GetStatusAsync(challenge, CancellationToken.None);
+
+        status.Linked.Should().BeTrue();
+        restartedPrimaryCalls.Should().Be(0);
+        restartedLocalCalls.Should().Be(1);
+        firstLocalCalls.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Fallback_binding_client_uses_loopback_when_primary_returns_501()
     {
         var localCalls = 0;

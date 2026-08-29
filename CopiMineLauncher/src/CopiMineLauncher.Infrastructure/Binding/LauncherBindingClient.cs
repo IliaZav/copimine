@@ -93,7 +93,7 @@ public sealed class FallbackLauncherBindingClient : ILauncherBindingClient
     }
 
     public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken) =>
-        (selected ?? primary).GetStatusAsync(challenge, cancellationToken);
+        ResolveEndpointForChallenge(challenge).GetStatusAsync(challenge, cancellationToken);
 
     public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(
         string accessToken,
@@ -132,6 +132,32 @@ public sealed class FallbackLauncherBindingClient : ILauncherBindingClient
 
     private static string DescribeEndpointFailure(ILauncherBindingClient endpoint, LauncherBindingException exception) =>
         $"{EndpointLabel(endpoint)}: {exception.Code} ({exception.Message})";
+
+    private ILauncherBindingClient ResolveEndpointForChallenge(LauncherLinkChallenge challenge)
+    {
+        ArgumentNullException.ThrowIfNull(challenge);
+
+        // The pending challenge is persisted and the callback may be handled
+        // by a fresh Launcher process. Route polling from the challenge URL so
+        // a loopback staging challenge never falls back to production after a
+        // restart.
+        if (MatchesEndpoint(challenge.AuthorizationUrl, local)) return local;
+        if (MatchesEndpoint(challenge.AuthorizationUrl, primary)) return primary;
+        return selected ?? primary;
+    }
+
+    private static bool MatchesEndpoint(Uri challengeUrl, ILauncherBindingClient endpoint) =>
+        endpoint is HttpLauncherBindingClient http
+        && string.Equals(challengeUrl.Scheme, http.EndpointUri.Scheme, StringComparison.OrdinalIgnoreCase)
+        && challengeUrl.Port == http.EndpointUri.Port
+        && (challengeUrl.IsLoopback && http.EndpointUri.IsLoopback
+            ? string.Equals(challengeUrl.Host, http.EndpointUri.Host, StringComparison.OrdinalIgnoreCase)
+            : IsCopiMineHost(challengeUrl.Host) && IsCopiMineHost(http.EndpointUri.Host));
+
+    private static bool IsCopiMineHost(string host) =>
+        string.Equals(host, "copimine.ru", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(host, "www.copimine.ru", StringComparison.OrdinalIgnoreCase)
+        || host.EndsWith(".copimine.ru", StringComparison.OrdinalIgnoreCase);
 
     private static string EndpointLabel(ILauncherBindingClient endpoint) =>
         endpoint is HttpLauncherBindingClient http

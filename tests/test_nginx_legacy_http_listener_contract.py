@@ -23,3 +23,8 @@ def test_standalone_https_reconfigure_also_removes_legacy_http_vhost():
 def test_launcher_feed_without_trailing_slash_redirects_to_canonical_feed_root():
     assert "location = /downloads/launcher" in NGINX_HTTPS
     assert "return 308 /downloads/launcher/;" in NGINX_HTTPS
+
+
+def test_launcher_metadata_compatibility_alias_uses_the_canonical_public_file():
+    assert "location = /downloads/launcher/latest.json" in NGINX_HTTPS
+    assert "assets/public-data/launcher/latest.json" in NGINX_HTTPS

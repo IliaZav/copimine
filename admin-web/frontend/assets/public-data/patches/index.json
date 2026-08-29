@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-29-launcher-1.0.8",
+      "slug": "copimine-launcher-1-0-8",
+      "version": "1.0.8",
+      "title": "CopiMine Launcher 1.0.8",
+      "publishedAt": "2026-08-29T12:00:00Z",
+      "summary": [
+        "Исправлена проверка MSI перед запуском установщика.",
+        "Старый кэш новостей больше не выдаётся за свежие данные.",
+        "Обновлена web-оболочка: одна корзина, стабильная мобильная навигация и понятная причина ошибки кабинета."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-8.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-29-launcher-1.0.7",
       "slug": "copimine-launcher-1-0-7",
       "version": "1.0.7",

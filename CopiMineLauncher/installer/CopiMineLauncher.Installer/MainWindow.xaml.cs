@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 using System.Reflection;
 using System.Windows;
+using CopiMineLauncher.Core.Installation;
 
 namespace CopiMineLauncher.Installer;
 
@@ -100,11 +101,37 @@ public partial class MainWindow : Window
 
     private async Task DownloadMsiAsync(string destination, CancellationToken cancellationToken)
     {
+        var expected = ResolveExpectedMsiIntegrity()
+            ?? throw new InvalidOperationException("У установщика нет опубликованной проверки целостности MSI. Скачивание остановлено.");
         using var response = await Http.GetAsync(msiUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is long contentLength && contentLength != expected.SizeBytes)
+        {
+            throw new InvalidDataException($"INSTALLER_MSI_SIZE_MISMATCH: сервер сообщил {contentLength} байт, ожидалось {expected.SizeBytes}.");
+        }
+
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
         await using var output = File.Create(destination);
         await input.CopyToAsync(output, cancellationToken);
+        await MsiIntegrityVerifier.VerifyFileAsync(destination, expected.SizeBytes, expected.Sha256, cancellationToken);
+    }
+
+    private static MsiExpectedIntegrity? ResolveExpectedMsiIntegrity()
+    {
+        var metadata = Assembly.GetEntryAssembly()?
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .ToDictionary(attribute => attribute.Key, attribute => attribute.Value, StringComparer.Ordinal);
+        if (metadata is null
+            || !metadata.TryGetValue("CopiMineInstallerMsiSha256", out var sha256)
+            || !metadata.TryGetValue("CopiMineInstallerMsiSizeBytes", out var sizeText)
+            || !long.TryParse(sizeText, out var sizeBytes)
+            || sizeBytes <= 0
+            || string.IsNullOrWhiteSpace(sha256))
+        {
+            return null;
+        }
+
+        return new MsiExpectedIntegrity(sizeBytes, sha256);
     }
 
     private static async Task<int> RunMsiAsync(string msiPath, string installPath)
@@ -200,4 +227,6 @@ public partial class MainWindow : Window
             // Temporary installer data is harmless if an antivirus still has a handle.
         }
     }
+
+    private sealed record MsiExpectedIntegrity(long SizeBytes, string Sha256);
 }

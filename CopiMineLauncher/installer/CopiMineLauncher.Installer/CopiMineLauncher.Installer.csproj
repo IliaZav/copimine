@@ -20,6 +20,13 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
+    <AssemblyMetadata Include="CopiMineInstallerMsiSha256" Value="$(InstallerMsiSha256)" Condition="'$(InstallerMsiSha256)' != ''" />
+    <AssemblyMetadata Include="CopiMineInstallerMsiSizeBytes" Value="$(InstallerMsiSizeBytes)" Condition="'$(InstallerMsiSizeBytes)' != ''" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CopiMineLauncher.Core\CopiMineLauncher.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <Resource Include="..\..\src\CopiMineLauncher.App\Assets\copimine.ico" Link="Assets\copimine.ico" />
     <Resource Include="..\..\src\CopiMineLauncher.App\Assets\LauncherVisuals\copimine-icon.png" Link="Assets\copimine-icon.png" />
   </ItemGroup>

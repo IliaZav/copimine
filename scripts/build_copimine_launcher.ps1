@@ -361,12 +361,16 @@ if (Test-Path -LiteralPath $folderInstallerPublishRoot) {
 }
 New-Item -ItemType Directory -Path $folderInstallerPublishRoot -Force | Out-Null
 $folderInstallerUrl = "https://copimine.ru/downloads/launcher/CopiMineLauncherSetup-$Version.msi"
+$publishedMsi = Get-Item -LiteralPath $msiPath -ErrorAction Stop
+$publishedMsiSha256 = (Get-FileHash -LiteralPath $msiPath -Algorithm SHA256).Hash.ToLowerInvariant()
 & dotnet publish $folderInstallerProject `
     --configuration $Configuration `
     --runtime win-x64 `
     --self-contained true `
     --property:Version=$Version `
     --property:InstallerMsiUrl=$folderInstallerUrl `
+    --property:InstallerMsiSha256=$publishedMsiSha256 `
+    --property:InstallerMsiSizeBytes=$publishedMsi.Length `
     --output $folderInstallerPublishRoot
 if ($LASTEXITCODE -ne 0) {
     throw "Folder-selecting Launcher installer publish failed with exit code $LASTEXITCODE"

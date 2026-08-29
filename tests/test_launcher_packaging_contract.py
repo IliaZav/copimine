@@ -46,6 +46,10 @@ def test_launcher_packaging_produces_a_self_contained_folder_picker() -> None:
     installer = read("CopiMineLauncher/installer/CopiMineLauncher.Installer/MainWindow.xaml.cs")
     assert "InstallPathBox.Text = dialog.SelectedPath;" in installer
     assert "Path.Combine(dialog.SelectedPath, \"CopiMine Launcher\")" not in installer
+    assert "MsiIntegrityVerifier.VerifyFileAsync" in installer
+    assert "CopiMineInstallerMsiSha256" in read("CopiMineLauncher/installer/CopiMineLauncher.Installer/CopiMineLauncher.Installer.csproj")
+    assert "InstallerMsiSha256" in build
+    assert "InstallerMsiSizeBytes" in build
 
 
 def test_server_hosted_packaging_does_not_duplicate_runtime_payload() -> None:

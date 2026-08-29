@@ -8,6 +8,8 @@ namespace CopiMineLauncher.App.Tests;
 
 public sealed class AnimatedGifImageTests
 {
+    private static readonly TimeSpan PlaybackProbeTimeout = TimeSpan.FromSeconds(15);
+
     [Fact]
     public async Task Splash_animation_changes_frame_on_a_real_sta_dispatcher()
     {
@@ -104,7 +106,11 @@ public sealed class AnimatedGifImageTests
         thread.SetApartmentState(ApartmentState.STA);
         thread.IsBackground = true;
         thread.Start();
-        return result.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        // Decoding the packaged, multi-megabyte GIF can legitimately take longer
+        // on a cold CI/desktop run while another test project is starting. The
+        // probe still has a finite bound; it must not turn a slow decode into a
+        // false animation failure.
+        return result.Task.WaitAsync(PlaybackProbeTimeout);
     }
 
     private static string SourcePath(string name) => Path.Combine(

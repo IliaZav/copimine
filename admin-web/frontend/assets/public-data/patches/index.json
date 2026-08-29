@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-29-launcher-1.0.9",
+      "slug": "copimine-launcher-1-0-9",
+      "version": "1.0.9",
+      "title": "CopiMine Launcher 1.0.9",
+      "publishedAt": "2026-08-29T16:00:00Z",
+      "summary": [
+        "Анимированные заставки лаунчера теперь проигрываются плавно и без лишней нагрузки на память.",
+        "Загрузка кадров GIF стала отложенной: при старте открывается только нужный кадр.",
+        "Обновлён пакет Windows и его проверяемая раздача."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-9.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-29-launcher-1.0.8",
       "slug": "copimine-launcher-1-0-8",
       "version": "1.0.8",

@@ -2384,6 +2384,7 @@ async function setTab(tab) {
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
+  document.title = `CopiMine - ${meta.title}`;
   syncWorkspaceMode();
   renderNav();
   renderAdminSearchDock();

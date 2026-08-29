@@ -106,6 +106,11 @@ def test_cabinet_site_button_uses_root_route_and_existing_item_artwork() -> None
     assert not (FRONTEND / "assets" / "mc-icons" / "item" / "lectern.png").exists()
 
 
+def test_cabinet_updates_browser_title_when_switching_sections() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert 'document.title = `CopiMine - ${meta.title}`' in runtime
+
+
 def test_sources_view_explains_database_roles_without_secrets() -> None:
     registry = read("admin-web/frontend/assets/js/admin/plugin-registry-pages.js")
     assert "PostgreSQL" in registry

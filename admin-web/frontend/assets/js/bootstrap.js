@@ -1,6 +1,6 @@
 import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui16";
 import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260829launcherlink6";
-import { initPublicNav } from "./public/public-nav.js?v=20260825siteui22";
+import { initPublicNav } from "./public/public-nav.js?v=20260829siteui23";
 import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260829launcherlink6";
 
 const LEGACY_PUBLIC_REDIRECTS = new Map([
@@ -26,13 +26,15 @@ function showCabinetRuntimeFailure(error) {
   document.body?.setAttribute("data-boot-state", "error");
   const boot = document.getElementById("bootStage");
   if (!boot) return;
+  const technicalReason = String(error?.message || error || "Неизвестная ошибка").trim();
   boot.setAttribute("aria-busy", "false");
   const message = document.createElement("div");
   message.className = "loading boot-error";
   message.setAttribute("role", "alert");
   message.textContent = "Кабинет не загрузился. Проверьте соединение и повторите попытку.";
   const detail = document.createElement("p");
-  detail.textContent = "Если ошибка повторится, откройте сайт позже или сообщите в поддержку.";
+  detail.className = "boot-error-detail";
+  detail.textContent = `Техническая причина: ${technicalReason}`;
   const retry = document.createElement("button");
   retry.type = "button";
   retry.className = "btn btn-primary";
@@ -44,8 +46,7 @@ function showCabinetRuntimeFailure(error) {
     requestCabinetRuntime();
   }, { once: true });
   boot.replaceChildren(message, detail, retry);
-  const diagnostic = error?.stack || error?.message || String(error || "unknown error");
-  console.error("CopiMine cabinet runtime failed to load", diagnostic);
+  console.error("CopiMine cabinet runtime failed to load", error?.stack || technicalReason);
 }
 
 function currentHashRoute(hashValue = window.location.hash) {

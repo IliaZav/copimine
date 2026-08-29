@@ -13,9 +13,9 @@ def read(relative: str) -> str:
 
 def test_public_styles_end_with_one_intentional_polish_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
-    assert '@import url("./css/website-polish.css?v=20260825siteui22");' in style
-    assert style.rfind('@import url("./css/website-polish.css?v=20260825siteui22");') > style.rfind('@import url("./css/ui-audit.css");')
-    assert style.count('@import url("./css/website-polish.css?v=20260825siteui22");') == 1
+    assert '@import url("./css/website-polish.css?v=20260829siteui23");' in style
+    assert style.rfind('@import url("./css/website-polish.css?v=20260829siteui23");') > style.rfind('@import url("./css/ui-audit.css");')
+    assert style.count('@import url("./css/website-polish.css?v=20260829siteui23");') == 1
     for page in ("index.html", "server.html", "shops.html", "launcher.html", "news.html", "signin.html", "register.html"):
         assert "website-polish.css" not in read(f"admin-web/frontend/{page}")
 
@@ -132,9 +132,9 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    style_cache_key = "20260825siteui22"
+    style_cache_key = "20260829siteui23"
     launcher_news_cache_key = "20260825siteui19"
-    public_script_key = "20260825siteui22"
+    public_script_key = "20260829siteui23"
     public_module_key = "20260825siteui19"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:

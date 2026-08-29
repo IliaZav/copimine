@@ -89,7 +89,7 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260826cabinetui23"
+    cache_key = "20260829cabinetui24"
     runtime_cache_key = "20260829launcherlink6"
     app_cache_key = "20260829launcherlink6"
     for path in cabinet_templates():
@@ -104,11 +104,18 @@ def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
     assert f"./cabinet-runtime.js?v={runtime_cache_key}" in bootstrap
 
 
+def test_cabinet_boot_failure_shows_the_technical_reason_instead_of_a_blank_generic_error() -> None:
+    bootstrap = read("admin-web/frontend/assets/js/bootstrap.js")
+    assert "Техническая причина:" in bootstrap
+    assert "error?.message" in bootstrap
+    assert 'className = "boot-error-detail"' in bootstrap
+
+
 def test_cabinet_public_header_uses_the_same_forest_shell_as_public_pages() -> None:
     cabinet_css = read("admin-web/frontend/assets/cabinet.css")
     shell_css = read("admin-web/frontend/assets/css/cabinet-shell-polish.css")
 
-    assert '@import url("./css/cabinet-shell-polish.css?v=20260826cabinetui23");' in cabinet_css
+    assert '@import url("./css/cabinet-shell-polish.css?v=20260829cabinetui24");' in cabinet_css
     assert 'body[data-page-kind="cabinet"] > .public-nav' in shell_css
     assert "border-radius: 6px !important" in shell_css
     assert "padding: 8px 12px !important" in shell_css
@@ -117,5 +124,5 @@ def test_cabinet_public_header_uses_the_same_forest_shell_as_public_pages() -> N
 
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
-        assert "/assets/cabinet.css?v=20260826cabinetui23" in source, path.name
-        assert "/assets/js/cabinet-polish.js?v=20260826cabinetui23" in source, path.name
+        assert "/assets/cabinet.css?v=20260829cabinetui24" in source, path.name
+        assert "/assets/js/cabinet-polish.js?v=20260829cabinetui24" in source, path.name

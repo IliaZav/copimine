@@ -1,7 +1,7 @@
 import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui19";
 import { initCartPage } from "./cart-page.js?v=20260825siteui19";
 import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui19";
-import { initPublicNav } from "./public-nav.js?v=20260825siteui22";
+import { initPublicNav } from "./public-nav.js?v=20260829siteui23";
 import { initLauncherPage } from "./launcher-page.js?v=20260825siteui19";
 import { initNewsPage } from "./news-page.js?v=20260825siteui19";
 import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui19";

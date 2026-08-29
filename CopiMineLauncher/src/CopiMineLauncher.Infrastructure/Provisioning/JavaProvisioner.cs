@@ -66,7 +66,7 @@ public sealed class JavaProvisioner : IJavaProvisioner
         return new(finalExecutable, versionOutput, true);
     }
 
-    private static void ExtractZipSafely(string archivePath, string destinationRoot)
+    internal static void ExtractZipSafely(string archivePath, string destinationRoot)
     {
         var fullRoot = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         using var archive = ZipFile.OpenRead(archivePath);
@@ -90,9 +90,32 @@ public sealed class JavaProvisioner : IJavaProvisioner
                 throw new InvalidDataException("Java archive contains a path outside its staging root");
             }
 
+            if (IsDirectoryEntry(entry))
+            {
+                Directory.CreateDirectory(target);
+                continue;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             entry.ExtractToFile(target, overwrite: true);
         }
+    }
+
+    private static bool IsDirectoryEntry(ZipArchiveEntry entry)
+    {
+        if (entry.FullName.EndsWith("/", StringComparison.Ordinal)
+            || entry.FullName.EndsWith("\\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var attributes = unchecked((uint)entry.ExternalAttributes);
+        const uint dosDirectoryAttribute = 0x10;
+        const uint unixDirectoryMask = 0xF000;
+        const uint unixDirectoryType = 0x4000;
+
+        return (attributes & dosDirectoryAttribute) != 0
+            || ((attributes >> 16) & unixDirectoryMask) == unixDirectoryType;
     }
 
     private static string? NormalizeArchiveEntryPath(string entryName)

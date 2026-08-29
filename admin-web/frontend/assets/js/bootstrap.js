@@ -44,7 +44,8 @@ function showCabinetRuntimeFailure(error) {
     requestCabinetRuntime();
   }, { once: true });
   boot.replaceChildren(message, detail, retry);
-  console.error("CopiMine cabinet runtime failed to load", error);
+  const diagnostic = error?.stack || error?.message || String(error || "unknown error");
+  console.error("CopiMine cabinet runtime failed to load", diagnostic);
 }
 
 function currentHashRoute(hashValue = window.location.hash) {

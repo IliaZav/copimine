@@ -41,6 +41,7 @@ def test_dynamic_runtime_failure_leaves_a_recoverable_boot_screen() -> None:
     assert "cabinetRuntimePromise = null" in app
     assert "loadCabinetRuntime" in app
     assert "cabinet-runtime.js?v=20260829launcherlink4" in app
+    assert "error?.stack" in app
 
 
 def test_cabinet_boot_chain_busts_stale_runtime_cache_after_a_live_syntax_failure() -> None:

@@ -1,4 +1,4 @@
-import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink4";
+import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink5";
 
 const statusRoot = document.getElementById("launcherLinkStatus");
 const closeButton = document.getElementById("launcherLinkClose");

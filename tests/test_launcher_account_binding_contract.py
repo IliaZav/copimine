@@ -178,7 +178,7 @@ def test_expired_binding_request_has_a_clear_recovery_path_in_both_site_surfaces
 def test_legacy_binding_url_redirects_valid_requests_to_the_standalone_page():
     page = (ROOT / "admin-web/frontend/cabinet/link.html").read_text(encoding="utf-8")
     redirect = LEGACY_LINK_REDIRECT.read_text(encoding="utf-8")
-    assert 'launcher-link-legacy-redirect.js?v=20260829launcherlink4' in page
+    assert 'launcher-link-legacy-redirect.js?v=20260829launcherlink5' in page
     assert "launcherBindingHrefFromSearch" in redirect
     assert 'window.location.pathname === "/cabinet/link.html"' in redirect
     assert 'window.location.replace(target)' in redirect

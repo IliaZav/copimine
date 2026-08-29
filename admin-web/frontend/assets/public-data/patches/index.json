@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-29-launcher-1.0.7",
+      "slug": "copimine-launcher-1-0-7",
+      "version": "1.0.7",
+      "title": "CopiMine Launcher 1.0.7",
+      "publishedAt": "2026-08-29T06:59:58Z",
+      "summary": [
+        "Исправлена проверка обновлений и старых адресов Windows-feed.",
+        "Перед запуском перепроверяются обязательные файлы игры и моды.",
+        "Повреждённый или неполный файл теперь останавливает запуск с понятной причиной."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-7.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-29-launcher-1.0.6",
       "slug": "copimine-launcher-1-0-6",
       "version": "1.0.6",

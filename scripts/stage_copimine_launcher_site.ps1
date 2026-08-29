@@ -97,6 +97,7 @@ if ([string]$metadata.msiSha256 -ine $msiHash) {
 }
 
 $feedFileNames = @('RELEASES', 'releases.win.json', 'assets.win.json')
+$legacyFeedAliases = @('releases.json', 'release.win.json', 'releases.windows.json')
 foreach ($feedFileName in $feedFileNames) {
     $feedFile = Join-Path $packageRoot $feedFileName
     if (-not (Test-Path -LiteralPath $feedFile -PathType Leaf)) {
@@ -242,6 +243,12 @@ foreach ($feedFileName in $feedFileNames) {
 # keeps existing installs from failing with a 404 while the public feed stays
 # a single immutable release.
 Copy-Item -LiteralPath (Join-Path $packageRoot 'releases.win.json') -Destination (Join-Path $downloadDirectory 'releases.stable.json') -Force
+# Older Velopack clients used one of these generic Windows feed names. Keep
+# them as immutable aliases of the same verified feed so an existing install
+# does not surface SELF_UPDATE_CHECK_FAILED after an upgrade of the website.
+foreach ($legacyFeedAlias in $legacyFeedAliases) {
+    Copy-Item -LiteralPath (Join-Path $packageRoot 'releases.win.json') -Destination (Join-Path $downloadDirectory $legacyFeedAlias) -Force
+}
 $assetFeed | ForEach-Object {
     $assetFileName = [string]$_.RelativeFileName
     Copy-Item -LiteralPath (Join-Path $packageRoot $assetFileName) -Destination (Join-Path $downloadDirectory $assetFileName) -Force
@@ -262,6 +269,12 @@ $stagedAssetsFeed.Add([ordered]@{
     RelativeFileName = 'releases.stable.json'
     Type = 'ReleaseFeed'
 })
+foreach ($legacyFeedAlias in $legacyFeedAliases) {
+    $stagedAssetsFeed.Add([ordered]@{
+        RelativeFileName = $legacyFeedAlias
+        Type = 'ReleaseFeedCompatibilityAlias'
+    })
+}
 $stagedAssetsFeedJson = $stagedAssetsFeed | ConvertTo-Json -Depth 4 -Compress
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 [System.IO.File]::WriteAllText($stagedAssetsFeedPath, $stagedAssetsFeedJson + [Environment]::NewLine, $utf8NoBom)

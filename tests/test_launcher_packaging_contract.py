@@ -182,7 +182,16 @@ def test_folder_installer_layout_has_explicit_action_columns_and_readable_disabl
 def test_launcher_site_stages_the_velopack_feed_for_self_updates() -> None:
     stage = read("scripts/stage_copimine_launcher_site.ps1")
 
-    for marker in ("RELEASES", "releases.win.json", "releases.stable.json", "assets.win.json", "-full.nupkg"):
+    for marker in (
+        "RELEASES",
+        "releases.win.json",
+        "releases.stable.json",
+        "releases.json",
+        "release.win.json",
+        "releases.windows.json",
+        "assets.win.json",
+        "-full.nupkg",
+    ):
         assert marker in stage
 
 

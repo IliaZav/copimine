@@ -15859,7 +15859,19 @@ def launcher_distribution_file(filename: str) -> Path:
     if not download_root.is_dir():
         raise HTTPException(status_code=404, detail="Launcher package directory is not configured")
 
-    allowed = {"RELEASES", "releases.win.json", "releases.stable.json", "assets.win.json"}
+    # Velopack has used a few feed filenames across client generations. Keep
+    # the compatibility aliases explicit and resolve them only to the
+    # published Windows feed below; never turn this route into a directory
+    # reader.
+    allowed = {
+        "RELEASES",
+        "releases.win.json",
+        "releases.stable.json",
+        "releases.json",
+        "release.win.json",
+        "releases.windows.json",
+        "assets.win.json",
+    }
     metadata_path = public_root / "assets" / "public-data" / "launcher" / "latest.json"
     try:
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -15882,9 +15894,14 @@ def launcher_distribution_file(filename: str) -> Path:
                 if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value):
                     allowed.add(value)
 
+    path = download_root / normalized
+    if normalized in {"releases.json", "release.win.json", "releases.windows.json"} and not path.is_file():
+        canonical = download_root / "releases.win.json"
+        if canonical.is_file():
+            path = canonical
+
     if normalized not in allowed:
         raise HTTPException(status_code=404, detail="Launcher package is not in the published feed")
-    path = download_root / normalized
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Launcher package not found")
     return path

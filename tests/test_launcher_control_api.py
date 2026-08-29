@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -141,6 +142,23 @@ def test_velopack_stable_feed_alias_is_served_by_the_allowlisted_download_route(
 
     assert response.status_code == 200, response.text
     assert response.content == (download_root / "releases.stable.json").read_bytes()
+
+
+@pytest.mark.parametrize("legacy_name", ("releases.json", "release.win.json", "releases.windows.json"))
+def test_legacy_velopack_feed_names_are_served_from_the_published_windows_feed(
+    monkeypatch, tmp_path: Path, legacy_name: str
+) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    download_root = tmp_path / "public" / "downloads" / "launcher"
+    download_root.mkdir(parents=True)
+    feed = b'{"Assets":[{"PackageId":"CopiMineLauncher","Version":"1.0.3"}]}\n'
+    (download_root / "releases.win.json").write_bytes(feed)
+
+    with TestClient(main.app) as client:
+        response = client.get(f"/downloads/launcher/{legacy_name}")
+
+    assert response.status_code == 200, response.text
+    assert response.content == feed
 
 
 def test_velopack_feed_root_without_trailing_slash_redirects_to_canonical_root(monkeypatch, tmp_path: Path) -> None:

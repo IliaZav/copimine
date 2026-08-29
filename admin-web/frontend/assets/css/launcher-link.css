@@ -172,6 +172,106 @@
   flex: 0 0 auto;
 }
 
+.launcher-link-success {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  width: min(100%, 560px);
+  text-align: center;
+  animation: launcher-link-success-in .28s ease-out both;
+}
+
+.launcher-link-success-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #f4f4f4;
+  font-size: .95rem;
+  font-weight: 700;
+}
+
+.launcher-link-success-logo {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border: 1px solid #526a5b;
+  border-radius: 9px;
+}
+
+.launcher-link-success-eyebrow {
+  color: #6fe0a4;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.launcher-link-success h1 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(2rem, 5vw, 2.7rem);
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+
+.launcher-link-success p {
+  max-width: 42ch;
+  margin: 2px 0 0;
+  color: #c9c9c9;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.launcher-link-success-caption {
+  color: #8f8f8f;
+  font-size: .88rem;
+}
+
+.launcher-link-success-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.launcher-link-success-actions .launcher-link-meta {
+  flex-basis: 100%;
+}
+
+.launcher-link-page[data-state="success"] {
+  background: #171717;
+  color: #f4f4f4;
+}
+
+.launcher-link-page[data-state="success"]::before {
+  display: none;
+}
+
+.launcher-link-page[data-state="success"] .launcher-link-card {
+  width: min(100%, 720px);
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.launcher-link-page[data-state="success"] .launcher-link-head,
+.launcher-link-page[data-state="success"] .launcher-link-foot {
+  display: none;
+}
+
+.launcher-link-page[data-state="success"] .launcher-link-body {
+  min-height: 300px;
+  padding: 30px 24px;
+}
+
+@keyframes launcher-link-success-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes launcher-link-spin {
   to { transform: rotate(360deg); }
 }
@@ -186,5 +286,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .launcher-link-spinner { animation: none; }
+  .launcher-link-spinner,
+  .launcher-link-success { animation: none; }
 }

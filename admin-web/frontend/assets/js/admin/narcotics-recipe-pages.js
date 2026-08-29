@@ -1,4 +1,4 @@
-import { readRecipeDragIndex, writeRecipeDragIndex } from "../shared/recipe-drag.js?v=20260829launcherlink5";
+import { readRecipeDragIndex, writeRecipeDragIndex } from "../shared/recipe-drag.js?v=20260829launcherlink6";
 
 const RECIPE_ITEM_TABS = [
   {

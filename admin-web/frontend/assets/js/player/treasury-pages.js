@@ -1,4 +1,4 @@
-import { fullTaxPaymentAmount, isPlayerBankRoute } from "../shared/player-bank.js?v=20260829launcherlink5";
+import { fullTaxPaymentAmount, isPlayerBankRoute } from "../shared/player-bank.js?v=20260829launcherlink6";
 
 export function createPlayerTreasuryPages(deps) {
   const {

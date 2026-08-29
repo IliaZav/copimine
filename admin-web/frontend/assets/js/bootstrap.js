@@ -1,7 +1,7 @@
 import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui16";
-import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260829launcherlink5";
+import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260829launcherlink6";
 import { initPublicNav } from "./public/public-nav.js?v=20260825siteui22";
-import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260829launcherlink5";
+import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260829launcherlink6";
 
 const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["start", "index.html"],
@@ -21,39 +21,6 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
 ]);
 
 let cabinetRuntimePromise = null;
-
-const CABINET_IMPORT_PROBES = [
-  "./cabinet-runtime.js?v=20260829launcherlink5&probe=boot",
-  "./shared/browser-state.js?v=20260829launcherlink5&probe=boot",
-  "./shared/csv.js?v=20260829launcherlink5&probe=boot",
-  "./shared/dom.js?v=20260829launcherlink5&probe=boot",
-  "./shared/app-routes.js?v=20260829launcherlink5&probe=boot",
-  "./shared/player-detail-values.js?v=20260829launcherlink5&probe=boot",
-  "./shared/player-bank.js?v=20260829launcherlink5&probe=boot",
-  "./shared/recipe-drag.js?v=20260829launcherlink5&probe=boot",
-  "./admin/cms-pages.js?v=20260829launcherlink5&probe=boot",
-  "./admin/commerce-pages.js?v=20260829launcherlink5&probe=boot",
-  "./admin/launcher-pages.js?v=20260829launcherlink5&probe=boot",
-  "./admin/news-pages.js?v=20260829launcherlink5&probe=boot",
-  "./admin/narcotics-recipe-pages.js?v=20260829launcherlink5&probe=boot",
-  "./admin/plugin-registry-pages.js?v=20260829launcherlink5&probe=boot",
-  "./player/account-pages.js?v=20260829launcherlink5&probe=boot",
-  "./player/artifact-pages.js?v=20260829launcherlink5&probe=boot",
-  "./player/donation-pages.js?v=20260829launcherlink5&probe=boot",
-  "./player/treasury-pages.js?v=20260829launcherlink5&probe=boot",
-];
-
-async function diagnoseCabinetRuntimeImports() {
-  for (const specifier of CABINET_IMPORT_PROBES) {
-    try {
-      await import(specifier);
-      console.info("CopiMine cabinet import probe passed", specifier);
-    } catch (probeError) {
-      const detail = probeError?.stack || probeError?.message || String(probeError || "unknown error");
-      console.error(`CopiMine cabinet import probe failed ${specifier}: ${detail}`);
-    }
-  }
-}
 
 function showCabinetRuntimeFailure(error) {
   document.body?.setAttribute("data-boot-state", "error");
@@ -79,7 +46,6 @@ function showCabinetRuntimeFailure(error) {
   boot.replaceChildren(message, detail, retry);
   const diagnostic = error?.stack || error?.message || String(error || "unknown error");
   console.error("CopiMine cabinet runtime failed to load", diagnostic);
-  void diagnoseCabinetRuntimeImports();
 }
 
 function currentHashRoute(hashValue = window.location.hash) {
@@ -110,7 +76,7 @@ function normalizeAuthHashRoute() {
 
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260829launcherlink5")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260829launcherlink6")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";

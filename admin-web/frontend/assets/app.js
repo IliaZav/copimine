@@ -1,1 +1,1 @@
-import "./js/bootstrap.js?v=20260829launcherlink5";
+import "./js/bootstrap.js?v=20260829launcherlink6";

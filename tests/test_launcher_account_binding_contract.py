@@ -141,7 +141,7 @@ def test_launcher_binding_uses_a_standalone_page_for_both_authenticated_and_gues
         "/api/player/launcher/link/authorize",
         "authLandingHref(\"signin\"",
         "authLandingHref(\"register\"",
-        "window.alert",
+        "window.confirm",
         "copimine://launcher/link?challenge=",
         "window.close()",
         "launcher_challenge",
@@ -155,6 +155,26 @@ def test_launcher_binding_uses_a_standalone_page_for_both_authenticated_and_gues
     assert 'return query ? `${LAUNCHER_BINDING_PATH}?${query}` : "";' in APP_ROUTES
     assert 'const safePath = target.pathname === LAUNCHER_BINDING_PATH' in APP_ROUTES
     assert 'target.pathname === LEGACY_LAUNCHER_BINDING_PATH' in APP_ROUTES
+
+
+def test_launcher_link_success_screen_offers_a_native_app_open_prompt():
+    runtime = HIDDEN_LINK_RUNTIME.read_text(encoding="utf-8")
+    styles = (ROOT / "admin-web/frontend/assets/css/launcher-link.css").read_text(encoding="utf-8")
+
+    for marker in (
+        "function renderSuccess(account)",
+        "function openLauncherApp()",
+        "Открыть CopiMine Launcher",
+        "Открыть CopiMine Launcher?",
+        'setPageState("success")',
+    ):
+        assert marker in runtime, marker
+    for marker in (
+        '.launcher-link-page[data-state="success"]',
+        ".launcher-link-success",
+        ".launcher-link-success-actions",
+    ):
+        assert marker in styles, marker
 
 
 def test_launcher_binding_page_never_asks_the_user_to_type_the_one_time_code():
@@ -178,7 +198,7 @@ def test_expired_binding_request_has_a_clear_recovery_path_in_both_site_surfaces
 def test_legacy_binding_url_redirects_valid_requests_to_the_standalone_page():
     page = (ROOT / "admin-web/frontend/cabinet/link.html").read_text(encoding="utf-8")
     redirect = LEGACY_LINK_REDIRECT.read_text(encoding="utf-8")
-    assert 'launcher-link-legacy-redirect.js?v=20260829launcherlink5' in page
+    assert 'launcher-link-legacy-redirect.js?v=20260829launcherlink6' in page
     assert "launcherBindingHrefFromSearch" in redirect
     assert 'window.location.pathname === "/cabinet/link.html"' in redirect
     assert 'window.location.replace(target)' in redirect

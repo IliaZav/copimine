@@ -1,18 +1,18 @@
-import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./shared/browser-state.js?v=20260829launcherlink5";
-import { buildCsvContent } from "./shared/csv.js?v=20260829launcherlink5";
-import { resolveDonationBalance } from "./shared/player-detail-values.js?v=20260829launcherlink5";
-import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js?v=20260829launcherlink5";
-import { createAdminCmsPages } from "./admin/cms-pages.js?v=20260829launcherlink5";
-import { createAdminLauncherPages } from "./admin/launcher-pages.js?v=20260829launcherlink5";
-import { createAdminNewsPages } from "./admin/news-pages.js?v=20260829launcherlink5";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260829launcherlink5";
-import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js?v=20260829launcherlink5";
-import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js?v=20260829launcherlink5";
-import { createPlayerAccountPages } from "./player/account-pages.js?v=20260829launcherlink5";
-import { createPlayerArtifactPages } from "./player/artifact-pages.js?v=20260829launcherlink5";
-import { createPlayerDonationPages } from "./player/donation-pages.js?v=20260829launcherlink5";
-import { createPlayerTreasuryPages } from "./player/treasury-pages.js?v=20260829launcherlink5";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260829launcherlink5";
+import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./shared/browser-state.js?v=20260829launcherlink6";
+import { buildCsvContent } from "./shared/csv.js?v=20260829launcherlink6";
+import { resolveDonationBalance } from "./shared/player-detail-values.js?v=20260829launcherlink6";
+import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js?v=20260829launcherlink6";
+import { createAdminCmsPages } from "./admin/cms-pages.js?v=20260829launcherlink6";
+import { createAdminLauncherPages } from "./admin/launcher-pages.js?v=20260829launcherlink6";
+import { createAdminNewsPages } from "./admin/news-pages.js?v=20260829launcherlink6";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260829launcherlink6";
+import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js?v=20260829launcherlink6";
+import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js?v=20260829launcherlink6";
+import { createPlayerAccountPages } from "./player/account-pages.js?v=20260829launcherlink6";
+import { createPlayerArtifactPages } from "./player/artifact-pages.js?v=20260829launcherlink6";
+import { createPlayerDonationPages } from "./player/donation-pages.js?v=20260829launcherlink6";
+import { createPlayerTreasuryPages } from "./player/treasury-pages.js?v=20260829launcherlink6";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260829launcherlink6";
 
 const $ = (id) => document.getElementById(id);
 
@@ -5898,6 +5898,7 @@ async function loadPlayerLink() {
         <button id="launcherLinkConfirm" class="btn btn-primary" type="button" data-click="confirmLauncherLink()">Привязать Launcher к этому аккаунту</button>
         <button class="btn btn-secondary" type="button" data-click="cancelLauncherLink()">Отмена</button>
       </div>`
+    )
     : panel("Привязка Launcher", "Запусти привязку из Launcher и войди на сайте.", safetyRail([
       ["1. Нажми кнопку в Launcher", "Откроется эта страница сайта.", "good"],
       ["2. Войди в аккаунт", "После входа появится кнопка подтверждения.", "neutral"],

@@ -1,4 +1,4 @@
-import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink5";
+import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink6";
 
 const statusRoot = document.getElementById("launcherLinkStatus");
 const closeButton = document.getElementById("launcherLinkClose");
@@ -31,6 +31,10 @@ function actionButton(label, className = "btn btn-primary") {
   const button = element("button", className, label);
   button.type = "button";
   return button;
+}
+
+function launcherAppUri() {
+  return `copimine://launcher/link?challenge=${encodeURIComponent(challengeId)}`;
 }
 
 function renderBody(...children) {
@@ -85,6 +89,56 @@ function renderExpiredRequest() {
   actions.append(buttonLink("Открыть Launcher и создать новую привязку", "/launcher.html"));
   renderBody(notice, actions);
   setPageState("expired");
+}
+
+function openLauncherApp() {
+  if (!challengeId) return false;
+  let confirmed = true;
+  try {
+    confirmed = window.confirm("Открыть CopiMine Launcher?\n\nЕсли приложение установлено, браузер передаст ему результат привязки.");
+  } catch (_) {
+    confirmed = true;
+  }
+  if (!confirmed) return false;
+  try {
+    window.location.href = launcherAppUri();
+    window.setTimeout(() => {
+      if (!document.hidden) {
+        const hint = element("span", "launcher-link-meta", "Если Launcher не открылся, нажмите кнопку ещё раз.");
+        document.querySelector(".launcher-link-success-actions")?.append(hint);
+      }
+    }, 900);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function renderSuccess(account) {
+  const username = String(account?.username || "вашему аккаунту").trim();
+  const success = element("div", "launcher-link-success");
+  const brand = element("div", "launcher-link-success-brand");
+  const logo = element("img", "launcher-link-success-logo");
+  logo.src = "/assets/brand/copimine-logo.png";
+  logo.alt = "CopiMine";
+  brand.append(logo, element("span", "", "CopiMine Launcher"));
+  const actions = element("div", "launcher-link-success-actions");
+  const openButton = actionButton("Открыть CopiMine Launcher");
+  openButton.addEventListener("click", () => void openLauncherApp());
+  const closeButton = actionButton("Закрыть вкладку", "btn btn-secondary");
+  closeButton.addEventListener("click", closePage);
+  actions.append(openButton, closeButton);
+  success.append(
+    brand,
+    element("div", "launcher-link-success-eyebrow", "Вход выполнен"),
+    element("h1", "", "Готово"),
+    element("p", "", `Вы вошли в систему. Аккаунт ${username} привязан к Launcher.`),
+    element("span", "launcher-link-success-caption", "Теперь эту вкладку можно закрыть."),
+    actions,
+  );
+  renderBody(success);
+  setPageState("success");
+  window.setTimeout(() => openLauncherApp(), 140);
 }
 
 function renderError(message, retry = true) {
@@ -174,17 +228,7 @@ async function confirmBinding(confirmButton, cancelButton, account) {
       method: "POST",
       body: JSON.stringify({ challenge_id: challengeId, code: launcherCode })
     });
-    const username = String(account?.username || "вашему аккаунту").trim();
-    const message = `Привязка подтверждена к аккаунту ${username}. Эту страницу можно закрыть.`;
-    const notice = element("div", "launcher-link-notice");
-    notice.append(element("strong", "", "Готово"), element("span", "", message));
-    renderBody(notice);
-    setPageState("success");
-    try { window.alert(message); } catch (_) { /* The in-page message remains available. */ }
-    window.setTimeout(() => {
-      try { window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(challengeId)}`; } catch (_) { /* polling is the fallback */ }
-      window.setTimeout(closePage, 260);
-    }, 80);
+    renderSuccess(account);
   } catch (error) {
     confirmButton.disabled = false;
     cancelButton.disabled = false;

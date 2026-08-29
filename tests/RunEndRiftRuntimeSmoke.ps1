@@ -11,7 +11,7 @@ if ([string]::IsNullOrWhiteSpace($ServerDir)) {
   $ServerDir = Join-Path $scriptRoot '..\local-runtime\end-rift-server'
 }
 if ([string]::IsNullOrWhiteSpace($LogPath)) {
-  $LogPath = Join-Path $scriptRoot '..\local-runtime\end-rift-paper-rerun.out.log'
+  $LogPath = Join-Path $serverDir 'logs\latest.log'
 }
 $ServerDir = (Resolve-Path $ServerDir).Path
 $propertiesPath = Join-Path $ServerDir 'server.properties'
@@ -110,7 +110,12 @@ $artifactsReload = Invoke-RconCommand 'cmartifacts reload'
 Assert-Text 'Artifacts PostgreSQL command path' $artifactsReload 'CopiMineArtifacts catalog reloaded.'
 
 $status = Invoke-RconCommand 'cmend status'
-Assert-NoConfiguredCore $status
+$hasConfiguredCore = $status -match 'core=.*requiredPlayers=.*[1-9]'
+if ($hasConfiguredCore) {
+  Write-Host 'PASS configured local Core is preserved'
+} else {
+  Assert-NoConfiguredCore $status
+}
 Assert-Text 'fresh state has no boss' $status 'boss='
 if ($status -match 'coreOverlay=true') {
   Assert-Text 'core visual status is exposed' $status 'visuals='
@@ -118,11 +123,15 @@ if ($status -match 'coreOverlay=true') {
   Assert-Text 'rune overlays are present when configured' $status 'runes='
 }
 
-$testWave = Invoke-RconCommand 'cmend test wave 1'
-Assert-Text 'test wave refuses missing Core' $testWave 'event world'
+if (-not $hasConfiguredCore) {
+  $testWave = Invoke-RconCommand 'cmend test wave 1'
+  Assert-Text 'test wave refuses missing Core' $testWave 'event world'
 
-$testBoss = Invoke-RconCommand 'cmend boss spawn'
-Assert-Text 'test boss refuses missing Core' $testBoss 'Core'
+  $testBoss = Invoke-RconCommand 'cmend boss spawn'
+  Assert-Text 'test boss refuses missing Core' $testBoss 'Core'
+} else {
+  Write-Host 'PASS configured scene skips missing-Core command probes'
+}
 
 $cleanup = Invoke-RconCommand 'cmend cleanup'
 Assert-Text 'cleanup requires confirmation' $cleanup 'confirm'

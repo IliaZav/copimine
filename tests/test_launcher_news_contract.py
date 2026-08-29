@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 
@@ -72,14 +73,14 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert metadata["schemaVersion"] == 1
     assert metadata["channel"] == "stable"
     assert metadata["architecture"] == "x64"
-    assert metadata["version"] == "1.0.7"
-    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.7.exe"
-    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.7.exe"
-    assert metadata["customInstallerFilename"] == "CopiMineLauncherFolderSetup-1.0.7.exe"
-    assert metadata["customInstallerDownloadUrl"] == "/downloads/launcher/CopiMineLauncherFolderSetup-1.0.7.exe"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", metadata["version"])
+    assert metadata["filename"] == f"CopiMineLauncherSetup-{metadata['version']}.exe"
+    assert metadata["downloadUrl"] == f"/downloads/launcher/{metadata['filename']}"
+    assert metadata["customInstallerFilename"] == f"CopiMineLauncherFolderSetup-{metadata['version']}.exe"
+    assert metadata["customInstallerDownloadUrl"] == f"/downloads/launcher/{metadata['customInstallerFilename']}"
     assert metadata["customInstallerMode"] == "folder-picker"
-    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.7.msi"
-    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.7.msi"
+    assert metadata["msiFilename"] == f"CopiMineLauncherSetup-{metadata['version']}.msi"
+    assert metadata["msiDownloadUrl"] == f"/downloads/launcher/{metadata['msiFilename']}"
     assert metadata["msiInstallLocation"] == "choose"
     assert metadata["releaseNotesUrl"].startswith("/news/")
     assert isinstance(metadata["sizeBytes"], int) and metadata["sizeBytes"] > 0
@@ -89,7 +90,10 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
 
 
 def test_next_launcher_release_notes_page_exists() -> None:
-    notes = ROOT / "admin-web/frontend/news/copimine-launcher-1-0-7.html"
+    metadata = json.loads(
+        (ROOT / "admin-web/frontend/assets/public-data/launcher/latest.json").read_text(encoding="utf-8")
+    )
+    notes = ROOT / "admin-web/frontend" / metadata["releaseNotesUrl"].lstrip("/")
 
     assert notes.is_file()
     assert 'data-page-kind="public-patch"' in notes.read_text(encoding="utf-8")

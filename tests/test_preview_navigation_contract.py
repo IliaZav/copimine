@@ -4,7 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "admin-web" / "frontend"
 PREVIEW_PAGES = ("preview-admin.html", "preview-player.html")
-CURRENT_UI_VERSION = "20260825siteui16"
+CURRENT_UI_VERSION = "20260829launcherlink6"
+LEGACY_UI_VERSION = "20260825siteui16"
 PREVIEW_UI_VERSION = "20260825siteui16"
 ERROR_UI_VERSION = "20260825siteui22"
 
@@ -57,7 +58,7 @@ def test_preview_tables_expose_header_scope_and_a_label() -> None:
 def test_cabinet_runtime_dynamic_modules_use_current_ui_version() -> None:
     source = (FRONTEND / "assets" / "js" / "cabinet-runtime.js").read_text(encoding="utf-8")
     assert f'./admin/commerce-pages.js?v={CURRENT_UI_VERSION}' in source
-    assert f'./legacy/app-legacy.js?v={CURRENT_UI_VERSION}' in source
+    assert f'./legacy/app-legacy.js?v={LEGACY_UI_VERSION}' in source
 
 
 def test_error_pages_use_current_error_script_version() -> None:

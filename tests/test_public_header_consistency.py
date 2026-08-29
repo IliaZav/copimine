@@ -71,6 +71,8 @@ def test_runtime_public_header_keeps_one_canonical_cart_link() -> None:
     nav = read(FRONTEND / "assets" / "js" / "public" / "public-nav.js")
     assert "getShopCartCount" in nav
     assert "shop-cart-button" in nav
+    assert "shop-cart-mobile-shortcut" in nav
+    assert "createCartLink(true)" in nav
     assert "ensureCartShortcuts" in nav
     assert "querySelectorAll(`a.shop-cart-button[href=\"${CART_PATH}\"]`)" in nav
     assert "link.remove()" in nav

@@ -4,9 +4,9 @@ const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435
 const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
 const CART_PATH = "/cart.html";
 
-function createCartLink() {
+function createCartLink(mobile = false) {
   const link = document.createElement("a");
-  link.className = "shop-cart-button";
+  link.className = mobile ? "shop-cart-button shop-cart-mobile-shortcut" : "shop-cart-button";
   link.href = CART_PATH;
 
   const label = document.createElement("span");
@@ -43,19 +43,37 @@ function ensureCartShortcuts(shell, nav) {
     nav.append(desktop);
   }
 
-  // There used to be a second cart shortcut outside <nav> for mobile. It was
-  // easy for stale CSS or a second module boot to display both controls at
-  // once. Keep one canonical link in the navigation and remove every legacy
-  // duplicate before syncing its state.
-  for (const link of cartLinks) {
-    if (link !== desktop) link.remove();
+  let mobile = cartLinks.find((node) => node !== desktop && node.classList.contains("shop-cart-mobile-shortcut"));
+  if (!(mobile instanceof HTMLAnchorElement)) {
+    mobile = createCartLink(true);
+    shell.append(mobile);
   }
+
+  // Desktop and compact headers use two presentations of the same action.
+  // Keep exactly one node for each presentation and remove every stale copy
+  // before syncing its state. The visibility sync below also uses inline
+  // !important so an older cached stylesheet cannot show both controls.
+  for (const link of cartLinks) {
+    if (link !== desktop && link !== mobile) link.remove();
+  }
+
+  const media = window.matchMedia("(max-width: 1080px)");
+  const syncCartVisibility = () => {
+    const compact = media.matches;
+    desktop.style.setProperty("display", compact ? "none" : "inline-flex", "important");
+    mobile.style.setProperty("display", compact ? "inline-flex" : "none", "important");
+  };
+  syncCartVisibility();
 
   if (shell.dataset.cartBound !== "true") {
     shell.dataset.cartBound = "true";
     window.addEventListener("shopCartChanged", (event) => {
       syncCartButtons(shell, event.detail?.count);
     });
+  }
+  if (shell.dataset.cartVisibilityBound !== "true") {
+    shell.dataset.cartVisibilityBound = "true";
+    media.addEventListener("change", syncCartVisibility);
   }
   syncCartButtons(shell);
 }

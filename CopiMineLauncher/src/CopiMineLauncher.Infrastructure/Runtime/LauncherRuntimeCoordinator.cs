@@ -32,7 +32,8 @@ public sealed record LauncherOperationResult(
     MinecraftProvisioningResult? Minecraft = null,
     ServersDatEvidence? ServersDat = null,
     LaunchEvidence? Launch = null,
-    MinecraftLaunchFailureReport? LaunchFailure = null);
+    MinecraftLaunchFailureReport? LaunchFailure = null,
+    InstanceIntegrityResult? Integrity = null);
 
 public interface ITransactionalReconcilerFactory
 {
@@ -83,6 +84,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
     private readonly ITransactionalReconcilerFactory reconcilerFactory;
     private readonly IServersDatService serversDatService;
     private readonly IMinecraftLaunchService launchService;
+    private readonly IInstanceIntegrityVerifier integrityVerifier;
     private readonly IOfflineMinecraftBaseline? offlineMinecraftBaseline;
     private readonly IHostedMinecraftRuntimeInstaller? hostedMinecraftRuntime;
 
@@ -94,7 +96,8 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         IServersDatService serversDatService,
         IMinecraftLaunchService launchService,
         IOfflineMinecraftBaseline? offlineMinecraftBaseline = null,
-        IHostedMinecraftRuntimeInstaller? hostedMinecraftRuntime = null)
+        IHostedMinecraftRuntimeInstaller? hostedMinecraftRuntime = null,
+        IInstanceIntegrityVerifier? integrityVerifier = null)
     {
         this.manifestClient = manifestClient ?? throw new ArgumentNullException(nameof(manifestClient));
         this.minecraftProvisioner = minecraftProvisioner ?? throw new ArgumentNullException(nameof(minecraftProvisioner));
@@ -102,6 +105,7 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
         this.reconcilerFactory = reconcilerFactory ?? throw new ArgumentNullException(nameof(reconcilerFactory));
         this.serversDatService = serversDatService ?? throw new ArgumentNullException(nameof(serversDatService));
         this.launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
+        this.integrityVerifier = integrityVerifier ?? new ManifestInstanceIntegrityVerifier();
         this.offlineMinecraftBaseline = offlineMinecraftBaseline;
         this.hostedMinecraftRuntime = hostedMinecraftRuntime;
     }
@@ -181,6 +185,23 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                     reconciliation);
             }
 
+            progress?.Report(new("integrity", "Проверяем контрольные суммы установленной сборки…"));
+            var integrity = await integrityVerifier.VerifyAsync(
+                instanceRoot,
+                manifest.ReconcilerManifest,
+                cancellationToken);
+            if (!integrity.IsValid)
+            {
+                return new(
+                    false,
+                    operation,
+                    integrity.ErrorCode ?? "MANAGED_FILE_VERIFICATION_FAILED",
+                    integrity.Diagnostic ?? "Managed instance integrity verification did not complete.",
+                    manifest,
+                    reconciliation,
+                    Integrity: integrity);
+            }
+
             progress?.Report(new("preflight", "Проверяем целостность архивов модов…"));
             MinecraftInstancePreflight.ValidateModArchives(instanceRoot);
 
@@ -236,7 +257,8 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                 java,
                 minecraft,
                 servers,
-                launchEvidence);
+                launchEvidence,
+                Integrity: integrity);
         }
         catch (ManifestFetchException exception)
         {

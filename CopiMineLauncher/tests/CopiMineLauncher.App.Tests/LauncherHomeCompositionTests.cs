@@ -29,6 +29,17 @@ public sealed class LauncherHomeCompositionTests
     }
 
     [Fact]
+    public void Update_card_exposes_the_verified_latest_version_state_separately_from_the_action()
+    {
+        var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");
+
+        xaml.Should().Contain("IsLatestVersionVerified");
+        xaml.Should().Contain("Text=\"✓\"");
+        xaml.Should().Contain("Text=\"Последняя версия установлена\"");
+        xaml.Should().Contain("Content=\"{Binding SelfUpdateActionText}\"");
+    }
+
+    [Fact]
     public void Home_does_not_leave_the_news_panel_blank_when_the_feed_is_unavailable()
     {
         var app = ReadSource("src", "CopiMineLauncher.App", "App.xaml");

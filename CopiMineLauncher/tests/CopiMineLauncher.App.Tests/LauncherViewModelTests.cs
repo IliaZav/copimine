@@ -6,6 +6,7 @@ using CopiMineLauncher.Infrastructure.Binding;
 using CopiMineLauncher.Infrastructure.Launch;
 using CopiMineLauncher.Infrastructure.News;
 using CopiMineLauncher.Infrastructure.Runtime;
+using CopiMineLauncher.Infrastructure.SelfUpdate;
 using FluentAssertions;
 using Xunit;
 
@@ -375,6 +376,56 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Launcher_does_not_show_latest_version_before_a_successful_feed_check()
+    {
+        using var temp = new TemporaryDirectory();
+        var selfUpdate = new FakeSelfUpdateService
+        {
+            Result = new(
+                SelfUpdateStatusKind.Failed,
+                "1.0.6",
+                ErrorCode: "SELF_UPDATE_CHECK_FAILED",
+                Diagnostic: "GET /releases.stable.json returned 404 Not Found.")
+        };
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            selfUpdateService: selfUpdate)
+        {
+            InstancePath = temp.Path
+        };
+
+        viewModel.IsLatestVersionVerified.Should().BeFalse();
+        viewModel.SelfUpdateStatus.Should().Be("Версия не проверена");
+
+        await viewModel.CheckSelfUpdateCommand.ExecuteAsync(null);
+
+        viewModel.IsLatestVersionVerified.Should().BeFalse();
+        viewModel.SelfUpdateStatus.Should().Be("Не удалось проверить обновление");
+        viewModel.Diagnostic.Should().Contain("SELF_UPDATE_CHECK_FAILED");
+    }
+
+    [Fact]
+    public async Task Launcher_shows_latest_version_only_after_the_feed_confirms_no_update()
+    {
+        using var temp = new TemporaryDirectory();
+        var selfUpdate = new FakeSelfUpdateService
+        {
+            Result = new(SelfUpdateStatusKind.NoUpdate, "1.0.6")
+        };
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            selfUpdateService: selfUpdate)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.CheckSelfUpdateCommand.ExecuteAsync(null);
+
+        viewModel.IsLatestVersionVerified.Should().BeTrue();
+        viewModel.SelfUpdateStatus.Should().Be("Последняя версия установлена");
+    }
+
+    [Fact]
     public async Task User_mod_launch_failure_opens_the_structured_failure_dialog_request()
     {
         using var temp = new TemporaryDirectory();
@@ -612,6 +663,18 @@ public sealed class LauncherViewModelTests
 
         public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class FakeSelfUpdateService : ISelfUpdateService
+    {
+        public SelfUpdateStatus Result { get; init; } = new(SelfUpdateStatusKind.NoUpdate, "1.0.6");
+
+        public Task<SelfUpdateStatus> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(Result);
+
+        public Task<SelfUpdateStatus> ApplyAsync(VerifiedSelfUpdate update, CancellationToken cancellationToken) => Task.FromResult(Result);
+
+        public Task<SelfUpdateStatus> RecoverAsync(CancellationToken cancellationToken) =>
+            Task.FromResult(new SelfUpdateStatus(SelfUpdateStatusKind.NoUpdate, Result.CurrentVersion));
     }
 
     private sealed class TemporaryDirectory : IDisposable

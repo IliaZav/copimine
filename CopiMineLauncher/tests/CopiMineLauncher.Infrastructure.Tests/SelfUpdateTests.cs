@@ -120,6 +120,24 @@ public sealed class SelfUpdateTests
         result.ErrorCode.Should().Be("SELF_UPDATE_SOURCE_NOT_ALLOWED");
     }
 
+    [Fact]
+    public async Task Non_velopack_installation_is_not_reported_as_latest_version()
+    {
+        using var temp = new TemporaryDirectory();
+        var backend = new FakeVelopackBackend(null)
+        {
+            CheckException = new SelfUpdateCheckException(
+                "SELF_UPDATE_NOT_INSTALLED",
+                "The current Launcher is not installed by Velopack.")
+        };
+        var service = CreateService(temp.Path, backend, "1.0.6");
+
+        var result = await service.CheckAsync(CancellationToken.None);
+
+        result.Kind.Should().Be(SelfUpdateStatusKind.Failed);
+        result.ErrorCode.Should().Be("SELF_UPDATE_NOT_INSTALLED");
+    }
+
     private static VelopackSelfUpdateService CreateService(string stateRoot, FakeVelopackBackend backend, string currentVersion) =>
         new(
             new Uri("https://copimine.ru/launcher"),
@@ -165,11 +183,18 @@ public sealed class SelfUpdateTests
 
         public bool ThrowOnApply { get; init; }
 
+        public Exception? CheckException { get; init; }
+
         public Action? BeforeApply { get; set; }
 
         public Task<VelopackUpdateCandidate?> CheckAsync(Uri feedUri, string channel, CancellationToken cancellationToken)
         {
             CheckCalls++;
+            if (CheckException is not null)
+            {
+                return Task.FromException<VelopackUpdateCandidate?>(CheckException);
+            }
+
             return Task.FromResult(candidate);
         }
 

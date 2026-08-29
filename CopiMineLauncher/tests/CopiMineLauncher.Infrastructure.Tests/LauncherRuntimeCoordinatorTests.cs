@@ -173,6 +173,38 @@ public sealed class LauncherRuntimeCoordinatorTests
         result.LaunchFailure.Should().BeSameAs(report);
     }
 
+    [Fact]
+    public async Task Play_stops_before_launch_when_a_managed_file_changes_after_reconciliation()
+    {
+        using var temp = new TemporaryDirectory();
+        var events = new List<string>();
+        var services = FixtureServices(events, ReconciliationStatus.Updated);
+        var coordinator = new LauncherRuntimeCoordinator(
+            services.ManifestClient,
+            services.Minecraft,
+            services.Java,
+            services.ReconcilerFactory,
+            services.Servers,
+            services.Launch,
+            integrityVerifier: new FakeIntegrityVerifier(new(
+                false,
+                0,
+                "MANAGED_FILE_HASH_MISMATCH",
+                "Контрольная сумма mods/CopiMineClient.jar не совпадает с manifest."), events));
+
+        var result = await coordinator.PlayAsync(
+            new LauncherOperationRequest(temp.Path, "Steve"),
+            CancellationToken.None);
+
+        result.Succeeded.Should().BeFalse();
+        result.ErrorCode.Should().Be("MANAGED_FILE_HASH_MISMATCH");
+        services.Java.Calls.Should().Be(0);
+        services.Minecraft.Calls.Should().Be(0);
+        services.Servers.Calls.Should().Be(0);
+        services.Launch.Calls.Should().Be(0);
+        events.Should().ContainInOrder("manifest", "reconcile", "integrity");
+    }
+
     private static ServicesFixture FixtureServices(List<string> events, ReconciliationStatus reconciliationStatus)
     {
         var verified = CreateVerifiedManifest();
@@ -202,19 +234,7 @@ public sealed class LauncherRuntimeCoordinatorTests
             "1.0.0",
             new InstanceMinecraft("1.21.1", "0.19.3", 21),
             new InstanceManifestServer("CopiMine", "mc.copimine.ru", true),
-            new[]
-            {
-                new InstanceManifestFile(
-                    "copimine-client",
-                    "mods/CopiMineClient.jar",
-                    "https://copimine.ru/launcher/files/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                    new string('b', 64),
-                    1,
-                    "MANAGED",
-                    true,
-                    "mod",
-                    "1.4.0")
-            },
+            Array.Empty<InstanceManifestFile>(),
             Array.Empty<InstanceConfigPolicy>(),
             "https://copimine.ru/news.html",
             17,
@@ -322,6 +342,18 @@ public sealed class LauncherRuntimeCoordinatorTests
                 request.FabricVersionName,
                 request.InstanceRoot,
                 request.JavaExecutablePath ?? "java.exe"));
+        }
+    }
+
+    private sealed class FakeIntegrityVerifier(InstanceIntegrityResult result, List<string>? events = null) : IInstanceIntegrityVerifier
+    {
+        public Task<InstanceIntegrityResult> VerifyAsync(
+            string instanceRoot,
+            LauncherManifest manifest,
+            CancellationToken cancellationToken)
+        {
+            events?.Add("integrity");
+            return Task.FromResult(result);
         }
     }
 

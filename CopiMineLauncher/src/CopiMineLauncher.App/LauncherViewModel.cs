@@ -109,7 +109,10 @@ public partial class LauncherViewModel : ObservableObject
     private string playerName = "CopiMinePlayer";
 
     [ObservableProperty]
-    private string selfUpdateStatus = "Обновлено";
+    private string selfUpdateStatus = "Версия не проверена";
+
+    [ObservableProperty]
+    private bool isLatestVersionVerified;
 
     [ObservableProperty]
     private bool isBusy;
@@ -179,6 +182,7 @@ public partial class LauncherViewModel : ObservableObject
     public string LauncherDataPath => LauncherInstallPaths.ResolveLauncherDataRoot();
     public int MaximumRamLimitMb => LauncherMemoryLimits.MaximumRamMb;
     public string PlayButtonText => IsLaunching ? "Запуск…" : "Играть";
+    public string SelfUpdateActionText => availableSelfUpdate is null ? "Проверить обновления" : "Установить обновление";
     public bool HasMinecraftDefaultsSelection => MinecraftDefaultSettingsStore.IsConfigured(InstancePath);
     public bool IsOperationInputBlocked => IsBusy && !IsFirstRunDefaultsVisible;
 
@@ -480,6 +484,7 @@ public partial class LauncherViewModel : ObservableObject
         try
         {
             var result = await selfUpdateService.RecoverAsync(CancellationToken.None);
+            IsLatestVersionVerified = false;
             if (result.Kind == SelfUpdateStatusKind.PendingRestart)
             {
                 SelfUpdateStatus = "Обновлено после перезапуска";
@@ -504,17 +509,21 @@ public partial class LauncherViewModel : ObservableObject
             return;
         }
 
+        IsLatestVersionVerified = false;
         SelfUpdateStatus = "Проверяем обновление…";
         try
         {
             var result = await selfUpdateService.CheckAsync(CancellationToken.None);
             availableSelfUpdate = result.Update;
+            OnPropertyChanged(nameof(SelfUpdateActionText));
             SelfUpdateStatus = result.Kind switch
             {
                 SelfUpdateStatusKind.UpdateAvailable => $"Доступна новая версия: v{result.Update!.Version}",
                 SelfUpdateStatusKind.Failed => "Не удалось проверить обновление",
-                _ => "Обновлено"
+                SelfUpdateStatusKind.NoUpdate => "Последняя версия установлена",
+                _ => "Версия не проверена"
             };
+            IsLatestVersionVerified = result.Kind == SelfUpdateStatusKind.NoUpdate && result.IsSuccess;
             if (result.Kind == SelfUpdateStatusKind.Failed)
             {
                 Diagnostic = FormatSelfUpdateDiagnostic(result);
@@ -527,6 +536,8 @@ public partial class LauncherViewModel : ObservableObject
         catch (Exception exception)
         {
             availableSelfUpdate = null;
+            OnPropertyChanged(nameof(SelfUpdateActionText));
+            IsLatestVersionVerified = false;
             SelfUpdateStatus = "Не удалось проверить обновление";
             Diagnostic = $"SELF_UPDATE_CHECK_FAILED: {exception.Message}";
         }
@@ -536,7 +547,8 @@ public partial class LauncherViewModel : ObservableObject
     {
         if (selfUpdateService is null)
         {
-            SelfUpdateStatus = "Обновление доступно в установленной версии";
+            IsLatestVersionVerified = false;
+            SelfUpdateStatus = "Проверка обновлений недоступна";
             return;
         }
 
@@ -551,15 +563,18 @@ public partial class LauncherViewModel : ObservableObject
         }
 
         Status = "Скачиваем обновление…";
+        IsLatestVersionVerified = false;
         var result = await selfUpdateService.ApplyAsync(availableSelfUpdate, CancellationToken.None);
         if (result.Kind == SelfUpdateStatusKind.PendingRestart)
         {
             SelfUpdateStatus = "Обновление установлено. Перезапустите Launcher.";
             Status = "Обновлено";
             availableSelfUpdate = null;
+            OnPropertyChanged(nameof(SelfUpdateActionText));
         }
         else
         {
+            IsLatestVersionVerified = false;
             SelfUpdateStatus = "Обновление не установлено";
             Diagnostic = FormatSelfUpdateDiagnostic(result);
         }
@@ -617,11 +632,12 @@ public partial class LauncherViewModel : ObservableObject
 
                     Status = value.Message;
                     LoadingStage = value.Message;
-                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "preflight" or "java" or "minecraft";
+                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "integrity" or "preflight" or "java" or "minecraft";
                     ProgressPercent = value.Stage switch
                     {
                         "manifest" => 2,
                         "reconcile" => 28,
+                        "integrity" => 36,
                         "preflight" => 36,
                         "java" => 46,
                         "minecraft" => 72,
@@ -829,6 +845,11 @@ public partial class LauncherViewModel : ObservableObject
             {
                 lines.Add("Recovery: previous transaction was recovered before planning.");
             }
+        }
+
+        if (result.Integrity is not null)
+        {
+            lines.Add($"Managed files: {(result.Integrity.IsValid ? "PASS" : "FAIL")} ({result.Integrity.VerifiedFileCount} verified)");
         }
 
         if (result.Java is not null)

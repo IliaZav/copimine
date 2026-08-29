@@ -15,6 +15,17 @@ public enum SelfUpdateStatusKind
     Failed
 }
 
+public sealed class SelfUpdateCheckException : Exception
+{
+    public SelfUpdateCheckException(string code, string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+        Code = code;
+    }
+
+    public string Code { get; }
+}
+
 public sealed record SelfUpdateStatus(
     SelfUpdateStatusKind Kind,
     string CurrentVersion,
@@ -110,6 +121,10 @@ public sealed class VelopackSelfUpdateService : ISelfUpdateService
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (SelfUpdateCheckException exception)
+        {
+            return Failed(currentVersion, exception.Code, exception.Message);
         }
         catch (Exception exception)
         {
@@ -332,7 +347,9 @@ public sealed class VelopackUpdateBackend : IVelopackUpdateBackend
         var manager = CreateManager(feedUri, channel);
         if (!manager.IsInstalled)
         {
-            return null;
+            throw new SelfUpdateCheckException(
+                "SELF_UPDATE_NOT_INSTALLED",
+                "Текущая установка Launcher не зарегистрирована в Velopack; проверка обновлений остановлена.");
         }
 
         var information = await manager.CheckForUpdatesAsync();

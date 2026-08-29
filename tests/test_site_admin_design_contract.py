@@ -98,6 +98,14 @@ def test_cabinet_boot_does_not_wait_for_csrf_warmup() -> None:
     assert "await refreshCsrfCookie()" not in boot
 
 
+def test_cabinet_site_button_uses_root_route_and_existing_item_artwork() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert 'window.location.href = "/index.html"' in runtime
+    assert 'window.location.href = "index.html"' not in runtime
+    assert 'src="/assets/mc-icons/item/lectern_front.png"' in runtime
+    assert not (FRONTEND / "assets" / "mc-icons" / "item" / "lectern.png").exists()
+
+
 def test_sources_view_explains_database_roles_without_secrets() -> None:
     registry = read("admin-web/frontend/assets/js/admin/plugin-registry-pages.js")
     assert "PostgreSQL" in registry

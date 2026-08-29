@@ -2663,8 +2663,8 @@ function redirectToRoleHome(replace = true) {
   }
 
 function showGuestPages() {
-    window.location.href = "index.html";
-  }
+    window.location.href = "/index.html";
+}
 
 function syncTopbarActions() {
   const guestButton = $("guestPagesBtn");
@@ -4228,7 +4228,7 @@ async function loadElectionsLegacy() {
           <span>голосов</span>
         </div>
         <div class="hero-tile">
-          <img src="/assets/mc-icons/item/lectern.png" alt="" />
+          <img src="/assets/mc-icons/item/lectern_front.png" alt="" />
           <strong>${esc(votingBlocks.filter((row) => number(row.active) > 0).length)}</strong>
           <span>активных блоков</span>
         </div>
@@ -4385,7 +4385,7 @@ async function loadElections() {
         <div class="hero-board">
           <div class="hero-tile"><img src="/assets/mc-icons/item/writable_book.png" alt="" /><strong>${applications.length}</strong><span>заявок</span></div>
           <div class="hero-tile"><img src="/assets/mc-icons/item/paper.png" alt="" /><strong>${pending.length}</strong><span>на проверке</span></div>
-          <div class="hero-tile"><img src="/assets/mc-icons/item/lectern.png" alt="" /><strong>${activeBlocks.length}</strong><span>активных блоков</span></div>
+          <div class="hero-tile"><img src="/assets/mc-icons/item/lectern_front.png" alt="" /><strong>${activeBlocks.length}</strong><span>активных блоков</span></div>
         </div>
       </section>
       ${renderRpElectionAdminPanel(applications, votingBlocks, election)}

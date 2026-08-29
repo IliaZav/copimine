@@ -19,6 +19,7 @@ public interface IPatchFeedClient
 
 public sealed class PatchFeedClient : IPatchFeedClient
 {
+    private static readonly TimeSpan MaxCacheAge = TimeSpan.FromDays(7);
     private static readonly Uri FeedUri = new("https://copimine.ru/assets/public-data/patches/index.json", UriKind.Absolute);
     private readonly HttpClient httpClient;
     private readonly string cachePath;
@@ -62,6 +63,12 @@ public sealed class PatchFeedClient : IPatchFeedClient
 
         try
         {
+            var cacheFile = new FileInfo(cachePath);
+            if (DateTimeOffset.UtcNow - cacheFile.LastWriteTimeUtc > MaxCacheAge)
+            {
+                return new(Array.Empty<PatchFeedItem>(), diagnostics.Append("PATCH_FEED_CACHE_STALE").ToArray(), false);
+            }
+
             var json = await File.ReadAllTextAsync(cachePath, cancellationToken);
             var parsed = PatchFeedParser.Parse(json);
             if (!parsed.IsDocumentValid)

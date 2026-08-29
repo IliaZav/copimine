@@ -55,6 +55,23 @@ public sealed class PatchFeedClientTests
         result.Diagnostics.Should().Contain(item => item.Contains("CACHE_INVALID"));
     }
 
+    [Fact]
+    public async Task Stale_cache_is_ignored_and_reported_instead_of_being_shown_as_current()
+    {
+        using var temp = new TemporaryDirectory();
+        var cachePath = Path.Combine(temp.Path, "patch-feed.json");
+        await File.WriteAllTextAsync(cachePath, ValidFeed());
+        File.SetLastWriteTimeUtc(cachePath, DateTime.UtcNow.AddDays(-8));
+        using var http = new HttpClient(new ThrowingHandler()) { BaseAddress = new Uri("https://copimine.ru/") };
+        var client = new PatchFeedClient(http, cachePath);
+
+        var result = await client.GetLatestAsync(CancellationToken.None);
+
+        result.FromCache.Should().BeFalse();
+        result.Items.Should().BeEmpty();
+        result.Diagnostics.Should().Contain("PATCH_FEED_CACHE_STALE");
+    }
+
     private static string ValidFeed() => """
     {"schemaVersion":1,"patches":[{"id":"good","version":"1.0.0","title":"Good","publishedAt":"2026-08-15T12:00:00Z","summary":["One"],"detailUrl":"/news/good.html"}]}
     """;

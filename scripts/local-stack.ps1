@@ -15,6 +15,8 @@ $PostgresRoot = Join-Path $Runtime 'postgresql'
 $PostgresData = Join-Path $Runtime 'postgres-data'
 $LocalEnvFile = Join-Path $Runtime 'local.env'
 $PropertiesBackup = Join-Path $Runtime 'server.properties.before-local-stack'
+$VoiceChatPort = 24455
+$VoiceChatPropertiesBackup = Join-Path $Runtime 'voicechat-server.properties.before-local-stack'
 $ServerDir = Join-Path $Root 'minecraft\server'
 $AdminWebDir = Join-Path $Root 'admin-web'
 $WebsitePort = 8090
@@ -208,6 +210,26 @@ function Set-ServerProperty {
     [System.IO.File]::WriteAllText($path, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $utf8)
 }
 
+function Set-VoiceChatProperty {
+    param([string]$Key, [string]$Value)
+    $path = Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties'
+    if (-not (Test-Path -LiteralPath $path)) { throw "Simple Voice Chat properties are missing: $path" }
+    $pattern = '^\s*' + [regex]::Escape($Key) + '='
+    $found = $false
+    $lines = @()
+    foreach ($line in Get-Content -LiteralPath $path) {
+        if ($line -match $pattern) {
+            $lines += "$Key=$Value"
+            $found = $true
+        } else {
+            $lines += $line
+        }
+    }
+    if (-not $found) { $lines += "$Key=$Value" }
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($path, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $utf8)
+}
+
 function Backup-AndPatchServerProperties {
     $path = Join-Path $ServerDir 'server.properties'
     if (-not (Test-Path -LiteralPath $path)) { throw "Minecraft server.properties is missing: $path" }
@@ -222,6 +244,17 @@ function Backup-AndPatchServerProperties {
     Set-ServerProperty -Key 'require-resource-pack' -Value 'false'
     Set-ServerProperty -Key 'resource-pack' -Value ''
     Set-ServerProperty -Key 'resource-pack-sha1' -Value ''
+}
+
+function Backup-AndPatchVoiceChatProperties {
+    $path = Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties'
+    if (-not (Test-Path -LiteralPath $path)) { throw "Simple Voice Chat properties are missing: $path" }
+    if (Test-Path -LiteralPath $VoiceChatPropertiesBackup) {
+        Copy-Item -LiteralPath $VoiceChatPropertiesBackup -Destination $path -Force
+        Remove-Item -LiteralPath $VoiceChatPropertiesBackup -Force
+    }
+    Copy-Item -LiteralPath $path -Destination $VoiceChatPropertiesBackup -Force
+    Set-VoiceChatProperty -Key 'port' -Value ([string]$VoiceChatPort)
 }
 
 function Restore-ServerProperties {
@@ -584,6 +617,14 @@ function Ensure-ServerRuntimeFiles {
     }
 }
 
+function Restore-VoiceChatProperties {
+    if (Test-Path -LiteralPath $VoiceChatPropertiesBackup) {
+        Copy-Item -LiteralPath $VoiceChatPropertiesBackup -Destination (Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties') -Force
+        Remove-Item -LiteralPath $VoiceChatPropertiesBackup -Force
+        Write-StackLog 'Restored minecraft/server/plugins/voicechat/voicechat-server.properties.'
+    }
+}
+
 function Send-RconCommand {
     param([string]$Command)
     $password = $script:LocalValues['RCON_PASSWORD']
@@ -632,8 +673,20 @@ function Send-RconCommand {
 }
 
 function Find-MinecraftProcess {
-    $needle = [regex]::Escape($ServerDir)
-    return @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'purpur\.jar' -and $_.CommandLine -match $needle })
+    $trackedId = Read-PidFile -Name 'minecraft'
+    if ($trackedId -gt 0) {
+        $tracked = Get-CimInstance Win32_Process -Filter "ProcessId=$trackedId" -ErrorAction SilentlyContinue
+        if ($tracked -and $tracked.CommandLine -match '(?i)-jar\s+purpur\.jar(?:\s|$)') {
+            return @($tracked)
+        }
+    }
+
+    # Start-Process records the exact Java PID above. The fallback is only for
+    # recovery after a stale pid file and is narrowed to this runner's heap
+    # profile so it cannot select the other local/event server.
+    return @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -match '(?i)-Xms1G\s+-Xmx2G\s+-jar\s+purpur\.jar(?:\s|$)'
+    })
 }
 
 function Assert-MinecraftStartupHealthy {
@@ -708,6 +761,7 @@ function Start-Minecraft {
     Ensure-ServerRuntimeFiles
     if (Test-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort) { throw "Port $MinecraftPort is already in use." }
     Backup-AndPatchServerProperties
+    Backup-AndPatchVoiceChatProperties
     $resourcePackBuild = Join-Path $Root 'resourcepacks\build'
     $resourcePackZip = Join-Path $resourcePackBuild 'CopiMineResourcePack.zip'
     if (-not (Test-Path -LiteralPath $resourcePackZip -PathType Leaf)) {
@@ -770,6 +824,7 @@ function Stop-Minecraft {
     Remove-PidFile -Name 'minecraft'
     if (Wait-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort -Expected $false -TimeoutSeconds 20) { Write-StackLog 'Minecraft stopped.' } else { Write-StackLog 'Minecraft port is still occupied; inspect the process and logs.' }
     Restore-ServerProperties
+    Restore-VoiceChatProperties
 }
 
 function Stop-Postgres {

@@ -42,6 +42,10 @@ def test_local_stack_bootstraps_purpur_from_the_disposable_fixture():
 
 def test_local_stack_bootstraps_the_release_voicechat_api_and_verifies_plugin_startup():
     assert "voicechat-bukkit-2.6.16.jar" in LOCAL_STACK
+    assert "$VoiceChatPort = 24455" in LOCAL_STACK
+    assert "$VoiceChatPropertiesBackup" in LOCAL_STACK
+    assert "function Backup-AndPatchVoiceChatProperties" in LOCAL_STACK
+    assert "function Restore-VoiceChatProperties" in LOCAL_STACK
     assert "legacyVoicechat" in LOCAL_STACK
     assert "stale local Simple Voice Chat 2.6.11" in LOCAL_STACK
     assert "artifacts\\local-validation\\full-plugin-source-20260824" in LOCAL_STACK
@@ -51,6 +55,12 @@ def test_local_stack_bootstraps_the_release_voicechat_api_and_verifies_plugin_st
     assert "NoClassDefFoundError" in LOCAL_STACK
     assert "CopiMineUltimateAdminPlus" in LOCAL_STACK
     assert "Assert-MinecraftStartupHealthy" in LOCAL_STACK
+
+
+def test_local_stack_tracks_its_java_pid_before_declaring_startup_failed():
+    assert "Read-PidFile -Name 'minecraft'" in LOCAL_STACK
+    assert "ProcessId=$trackedId" in LOCAL_STACK
+    assert "-Xms1G\\s+-Xmx2G\\s+-jar\\s+purpur\\.jar" in LOCAL_STACK
 
 
 def test_admin_treasury_controls_have_confirmed_balance_edit_and_ledger_removal():

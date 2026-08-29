@@ -143,6 +143,16 @@ def test_velopack_stable_feed_alias_is_served_by_the_allowlisted_download_route(
     assert response.content == (download_root / "releases.stable.json").read_bytes()
 
 
+def test_velopack_feed_root_without_trailing_slash_redirects_to_canonical_root(monkeypatch, tmp_path: Path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+
+    with TestClient(main.app, follow_redirects=False) as client:
+        response = client.get("/downloads/launcher")
+
+    assert response.status_code == 308, response.text
+    assert response.headers["location"] == "/downloads/launcher/"
+
+
 def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, tmp_path: Path) -> None:
     """The native Launcher has no browser CSRF cookie by design."""
     main = load_main(monkeypatch, tmp_path)

@@ -72,7 +72,7 @@ except Exception:  # pragma: no cover
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
@@ -15888,6 +15888,12 @@ def launcher_distribution_file(filename: str) -> Path:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Launcher package not found")
     return path
+
+
+@app.get("/downloads/launcher", include_in_schema=False)
+@app.head("/downloads/launcher", include_in_schema=False)
+async def launcher_distribution_root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/downloads/launcher/", status_code=308)
 
 
 @app.get("/downloads/launcher/{filename}")

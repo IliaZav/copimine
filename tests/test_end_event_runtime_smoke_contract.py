@@ -204,8 +204,8 @@ def test_local_start_script_synchronizes_the_current_end_event_jar_before_boot()
 
 def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> None:
     for expected in (
-        "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)", "event-state.yml",
-        "phase:\\s*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)", "end-unlocked:\\s*true", "persistent phase=",
+        "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYERS)", "event-state.yml",
+        "phase:\\s*(?:UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYERS)", "end-unlocked:\\s*true", "persistent phase=",
         "END_EVENT_STATE forced=UNLOCKED",
         "END_EVENT_STATE forced=UNCONFIGURED",
         "END_EVENT_STATE forced=READY_FOR_PLAYERS",

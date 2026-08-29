@@ -26,7 +26,7 @@ if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
   throw 'Recovery smoke did not find the durable End Rift event-state.yml snapshot.'
 }
 $stateText = Get-Content -LiteralPath $statePath -Raw
-if ($stateText -notmatch '(?m)^\s*phase:\s*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)\s*$') {
+if ($stateText -notmatch '(?m)^\s*phase:\s*(?:UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYERS)\s*$') {
   throw 'Recovery smoke found an unsafe or missing durable End Rift phase in event-state.yml.'
 }
 if ($stateText -notmatch '(?m)^\s*end-unlocked:\s*true\s*$') {
@@ -44,12 +44,12 @@ if ($pluginsNormalized -notmatch 'CopiMineEndEvent' -or $pluginsNormalized -notm
 }
 $status = & powershell -NoProfile -ExecutionPolicy Bypass -File $helper -ServerDir $ServerDir -RconPort $RconPort -CommandText 'cmend status'
 $statusText = $status -join [Environment]::NewLine
-$safeState = $statusText -match 'state=.*(?:UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS)'
+$safeState = $statusText -match 'state=.*(?:UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYERS)'
 $endUnlocked = $statusText -match 'endUnlocked=.*true'
 if (-not $safeState -or -not $endUnlocked) {
-  throw "Recovery smoke expected a safe unlocked state (UNLOCKED, UNCONFIGURED, or READY_FOR_PLAYERS with endUnlocked=true). Actual status: $statusText"
+  throw "Recovery smoke expected a safe unlocked state (UNLOCKED, UNCONFIGURED, COLLECTING, or READY_FOR_PLAYERS with endUnlocked=true). Actual status: $statusText"
 }
-Write-Host 'PASS recovery state=UNLOCKED|UNCONFIGURED|READY_FOR_PLAYERS'
+Write-Host 'PASS recovery state=UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYERS'
 Write-Host 'PASS recovery endUnlocked=true'
 Write-Host 'PASS recovery durable event-state phase and end-unlocked=true'
 if (Test-Path -LiteralPath $LogPath -PathType Leaf) {

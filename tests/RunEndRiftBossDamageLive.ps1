@@ -186,6 +186,26 @@ try {
       throw "Local boss cleanup left event entities behind:`n$cleanupStatus"
     }
     Write-Output 'LIVE_BOSS_DAMAGE_CLEANUP_PASS event-mobs=0 boss=none'
+
+    # The official-boss harness intentionally enters BOSS_ACTIVE.  Restore
+    # only the configured local scene so a later restart never rehydrates a
+    # deliberately removed harness boss as RECOVERY_REQUIRED.  This is not a
+    # world/player-data reset and is bounded to the isolated End Rift Core.
+    $null = Invoke-LocalRcon -CommandText 'cmend core remove confirm'
+    $null = Invoke-LocalRcon -CommandText 'cmend core setat 8 68 -39 2'
+    $null = Invoke-LocalRcon -CommandText 'cmend resources reset confirm'
+    foreach ($resource in @(
+      'DIAMOND 100', 'ENDER_EYE 64', 'AMETHYST_SHARD 128', 'BLAZE_ROD 64'
+    )) {
+      $null = Invoke-LocalRcon -CommandText ("cmend resources add $resource")
+    }
+    $restoredStatus = Get-Status
+    if (($restoredStatus -notmatch 'state=.*READY_FOR_PLAYERS') -or
+        ($restoredStatus -notmatch 'boss=.*none') -or
+        ($restoredStatus -notmatch 'event-mobs=.*0')) {
+      throw "Local boss harness scene restore failed:`n$restoredStatus"
+    }
+    Write-Output 'LIVE_BOSS_DAMAGE_SCENE_RESTORE_PASS state=READY_FOR_PLAYERS boss=none event-mobs=0'
   } catch {
     Write-Error $_
   }

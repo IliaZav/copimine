@@ -169,7 +169,7 @@ def test_recovery_preserves_a_committed_official_roster() -> None:
 def test_final_ritual_owns_one_bounded_visual_task() -> None:
     assert "finalRitualVisualTask" in MAIN
     visual = MAIN[MAIN.index("private void scheduleFinalRitualVisual"):
-                  MAIN.index("private void spawnParticleLine(Location")]
+                  MAIN.index("private void spawnParticleLine(Player")]
     assert "finalRitualVisualTask != null" in visual
     assert "finalRitualVisualTask = holder[0]" in visual
 

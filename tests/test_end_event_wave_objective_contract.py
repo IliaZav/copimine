@@ -13,7 +13,15 @@ SOURCE = (
 
 
 def _method_body(name: str) -> str:
-    marker = f"private void {name}"
+    marker = next(
+        candidate
+        for candidate in (
+            f"private void {name}",
+            f"private boolean {name}",
+            f"private int {name}",
+        )
+        if candidate in SOURCE
+    )
     start = SOURCE.index(marker)
     next_marker = SOURCE.find("\n    private ", start + len(marker))
     return SOURCE[start:] if next_marker < 0 else SOURCE[start:next_marker]
@@ -23,6 +31,12 @@ def test_wave_completion_cannot_advance_before_special_objective_is_complete() -
     body = _method_body("tickWaveCompletion")
     assert "if (!tickWaveObjective())" in body
     assert body.index("if (!tickWaveObjective())") < body.index("boolean live")
+
+
+def test_completed_wave_objective_is_not_tick_processed_again() -> None:
+    body = _method_body("tickWaveObjective")
+    assert "if (waveObjectiveComplete)" in body
+    assert "return true;" in body[body.index("if (waveObjectiveComplete)"):]
 
 
 def test_all_special_wave_objectives_have_runtime_controllers() -> None:
@@ -46,6 +60,13 @@ def test_wave_objective_cleanup_is_explicit_and_retry_is_owned() -> None:
     assert "private void clearWaveObjectiveState()" in SOURCE
     assert "towerRetryTask" in SOURCE
     assert "taskRegistry.register(towerRetryTask)" in SOURCE
+
+
+def test_tower_deadline_uses_the_exact_deadline_for_late_scheduler_ticks() -> None:
+    body = _method_body("updateTowerObjective")
+    deadline_branch = body[body.index("if (now >= state.deadlineMillis())"):]
+    assert "completeAtDeadline(state, now)" in deadline_branch
+    assert "TowerDefensePolicy.finish(state, now)" not in deadline_branch
 
 
 def test_rift_storm_uses_bounded_journaled_floor_and_web_mutations() -> None:
@@ -84,6 +105,34 @@ def test_portal_wave_has_floor_visuals_and_bounded_speed_knockback() -> None:
     assert "PotionEffectType.SPEED" in SOURCE
     assert "Knockback II-equivalent" in SOURCE
     assert "onPortalWaveMobAttack" in SOURCE
+
+
+def test_portal_capture_centers_use_the_playable_floor_anchor() -> None:
+    start = SOURCE.index("if (wave == 3) {")
+    end = SOURCE.index("} else if (wave == 4) {", start)
+    body = SOURCE[start:end]
+    assert "Location portalAnchor = coreCombatAnchorLocation();" in body
+    assert "portalAnchor.clone().add" in body
+    assert "floor_y=" in body
+    assert "coreLocation().add(Math.cos(angle) * 8.0D" not in body
+
+
+def test_portal_objective_emits_one_completion_marker_after_all_portals_are_captured() -> None:
+    body = _method_body("updatePortalObjective")
+    assert "boolean wasComplete = waveObjectiveComplete;" in body
+    assert "WAVE_OBJECTIVE_COMPLETE" in body
+    assert "if (waveObjectiveComplete && !wasComplete)" in body
+    assert body.count("announceEventTitle(\"§aПОРТАЛЫ ЗАПЕЧАТАНЫ\"") == 1
+
+
+def test_tower_defense_retry_cannot_be_replaced_by_empty_objective_rehydration() -> None:
+    """A failed tower must wait for its scheduled mob respawn before ticking a new objective."""
+    body = _method_body("tickWaveObjective")
+    assert "towerRetryTask != null" in body
+    assert "return false" in body
+    retry = _method_body("handleTowerDefenseFailure")
+    assert "spawnWave(4, false)" in retry
+    assert "WAVE_RETRY_STARTED" in retry
 
 
 def test_wave_one_and_two_objectives_are_live_controllers_not_auto_completed() -> None:

@@ -17,7 +17,7 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
         "cleanup confirm", "reset confirm", "unlock confirm",
         "wave spawn", "boss spawn official confirm", "boss phase",
         "boss kill", "boss spell", "client status", "test wave", "test boss",
-        "test run creative",
+        "test run creative", "test teleport",
     ):
         assert command.split()[0] in MAIN
     assert "Повтори /cmend resources reset confirm" in MAIN

@@ -70,11 +70,11 @@ try {
   if ($stderr) { [IO.File]::WriteAllText($botErr, $stderr.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) }
   $botText = if (Test-Path $botLog) { Get-Content $botLog -Raw } else { '' }
   $moved = ([Regex]::Matches($botText, 'MOB_MOVED')).Count
-  $hurt = ([Regex]::Matches((Get-Content $paperLog -Raw), 'BUKKIT_DAMAGE damager=(SPIDER|ENDERMAN):[^\r\n]* entity=PLAYER:[^\r\n]* cancelled=false')).Count
+  $hurt = ([Regex]::Matches((Get-Content $paperLog -Raw), 'WAVE_MOB_DAMAGE .*victim=.* cancelled=false')).Count
   $attacks = ([Regex]::Matches($botText, 'PLAYER_ATTACK')).Count
   if ($moved -lt 1) { throw "RED: no live wave mob moved; bot log=$botLog" }
   if ($attacks -lt 1) { throw "RED: player could not reach and attack a live wave mob; bot log=$botLog" }
-  if ($hurt -lt 1) { throw "RED: no live wave mob attack reached the player; Paper trace=$paperLog" }
+  if ($hurt -lt 1) { throw "RED: no live wave mob attack reached the player; End Rift log=$paperLog" }
   $paper = Get-Content $paperLog -Raw
   $ai = ([Regex]::Matches($paper, 'WAVE_AI_TARGET')).Count
   $paths = ([Regex]::Matches($paper, 'WAVE_AI_PATH')).Count

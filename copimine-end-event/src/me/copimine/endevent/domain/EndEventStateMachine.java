@@ -63,7 +63,8 @@ public final class EndEventStateMachine {
         map.put(EventPhase.WAVE_4, EnumSet.of(EventPhase.INTERMISSION_4));
         map.put(EventPhase.INTERMISSION_4, EnumSet.of(EventPhase.WAVE_5));
         map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE));
-        map.put(EventPhase.BOSS_CINEMATIC, EnumSet.of(EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
+        map.put(EventPhase.BOSS_CINEMATIC, EnumSet.of(
+                EventPhase.FINAL_WAVE, EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
         // Canonical five-stage fights finish directly after the one-shot
         // Judgment cast.  The legacy final-drain route remains available for
         // old snapshots and compatibility tests.
@@ -71,7 +72,7 @@ public final class EndEventStateMachine {
                 EventPhase.BOSS_FINISH, EventPhase.FINAL_DRAIN, EventPhase.FINAL_RITUAL));
         map.put(EventPhase.FINAL_DRAIN, EnumSet.of(EventPhase.FINAL_WAVE));
         map.put(EventPhase.FINAL_RITUAL, EnumSet.of(EventPhase.FINAL_WAVE));
-        map.put(EventPhase.FINAL_WAVE, EnumSet.of(EventPhase.BOSS_FINISH));
+        map.put(EventPhase.FINAL_WAVE, EnumSet.of(EventPhase.BOSS_ACTIVE, EventPhase.BOSS_FINISH));
         map.put(EventPhase.BOSS_FINISH, EnumSet.of(EventPhase.VICTORY_PROCESSING, EventPhase.VICTORY));
         map.put(EventPhase.VICTORY_PROCESSING, EnumSet.of(EventPhase.UNLOCKED));
         map.put(EventPhase.VICTORY, EnumSet.of(EventPhase.UNLOCKED));

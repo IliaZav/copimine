@@ -11,6 +11,12 @@ public final class TowerDefensePolicyTest {
                 "finish at the deadline with health must succeed");
         check(TowerDefensePolicy.finish(two, 180_101L).outcome() == TowerDefensePolicy.Outcome.FAILURE,
                 "finish after the deadline must fail");
+        check(TowerDefensePolicy.completeAtDeadline(two, 180_101L).outcome()
+                        == TowerDefensePolicy.Outcome.SUCCESS,
+                "a late server tick must commit a healthy defense at its deadline");
+        check(TowerDefensePolicy.completeAtDeadline(two, 180_099L).outcome()
+                        == TowerDefensePolicy.Outcome.ACTIVE,
+                "a defense must remain active before its deadline");
 
         TowerDefensePolicy.CoreState damaged = TowerDefensePolicy.damage(two, "hit-1", 100.0D);
         check(damaged.currentHealth() == 1_100.0D, "valid attack must damage the core");
@@ -23,6 +29,10 @@ public final class TowerDefensePolicyTest {
 
         TowerDefensePolicy.CoreState failed = TowerDefensePolicy.finish(
                 TowerDefensePolicy.damage(two, "lethal", 2_000.0D), 101L);
+        check(TowerDefensePolicy.completeAtDeadline(
+                TowerDefensePolicy.damage(two, "lethal-late", 2_000.0D), 180_101L).outcome()
+                        == TowerDefensePolicy.Outcome.FAILURE,
+                "a depleted defense must still fail on a late tick");
         TowerDefensePolicy.CoreState retry = TowerDefensePolicy.retry(failed, 5_000L);
         check(retry.attempt() == failed.attempt() + 1, "retry must advance attempt");
         check(retry.currentHealth() == retry.maxHealth(), "retry must restore full health");

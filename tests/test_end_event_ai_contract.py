@@ -11,7 +11,7 @@ CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 
 def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_2500_hp() -> None:
     assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 8.0" in CONFIG
+    assert "attack-damage-bonus: 5.0" in CONFIG
     assert "half-health: 1250.0" in CONFIG
     assert "final-threshold: 250.0" in CONFIG
     assert "bossFinalHealth()" in MAIN
@@ -42,6 +42,10 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
         "BOSS_PROJECTILE_SPAWN",
         "BOSS_PROJECTILE_HIT",
         "cleanupRiftProjectile",
+        "CombatTacticsPolicy",
+        "BossTeleportPermitPolicy",
+        "BOSS_TACTIC",
+        "WAVE_AI_TACTIC",
     ):
         assert marker in MAIN
     assert "random.nextInt(4)" not in MAIN
@@ -122,13 +126,26 @@ def test_arena_inferno_is_a_five_second_owned_spell() -> None:
     assert "ARENA_INFERNO" in MAIN
     assert "arenaInferno" in MAIN
     inferno = MAIN[MAIN.index("private void arenaInferno"):MAIN.index("private void clearArenaInferno")]
-    assert "Material.FIRE" in inferno
+    assert "Material.MAGMA_BLOCK" in inferno
     assert "HazardMutationJournal.Entry" in inferno
     assert "hazardJournal.prepare" in inferno
     assert "restoreArenaInfernoBlocks" in MAIN
-    assert "player.setFireTicks" in inferno
+    assert "player.setFireTicks" not in inferno
     assert "ARENA_INFERNO_DURATION_TICKS = 100" in MAIN
-    assert "real_fire=true" in inferno
+    assert "real_fire=false" in inferno
+    assert "damage_interval_ticks=20" in inferno
+
+
+def test_judgment_phase_has_visible_safe_zone_geometry_and_cleanup() -> None:
+    judgment = MAIN[MAIN.index("private void applyJudgmentPulse"):MAIN.index("private void finishBossCast")]
+    visual = MAIN[MAIN.index("private void spawnJudgmentSafeZoneVisual"):MAIN.index("private void clearJudgmentVisuals")]
+    assert "BlockDisplay" in visual
+    assert "TextDisplay" in visual
+    assert "БЕЗОПАСНАЯ ЗОНА" in visual
+    assert "judgmentVisuals" in visual
+    assert "BOSS_JUDGMENT_SAFE_ZONE" in MAIN
+    assert "spawnJudgmentSafeZoneVisual(zone, radius, pulse)" in judgment
+    assert "clearJudgmentVisuals" in MAIN
 
 
 def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller() -> None:
@@ -280,6 +297,41 @@ def test_event_combat_mobs_and_boss_reenable_ai_after_a_stale_no_ai_flag() -> No
     assert "ensureEventCombatAi(boss);" in boss_body
 
 
+def test_boss_and_wave_mob_tactics_are_persisted_and_used_for_destination_selection() -> None:
+    assert "keyCombatTactic" in MAIN
+    assert "assignCombatTactic" in MAIN
+    assert "waveTacticalDestination" in MAIN
+    assert "bossTacticalDestination" in MAIN
+    assert "plan.tactic()" in MAIN
+    assert "waveMobTactics" in MAIN
+
+
+def test_internal_combat_teleports_use_single_use_permits_and_external_teleports_are_cancelled() -> None:
+    teleport = MAIN[MAIN.index("public void onOwnedEntityTeleport"):MAIN.index("private void clearWaveEntities")]
+    assert "BossTeleportPermitPolicy.accept" in teleport
+    assert "event.setCancelled(true)" in teleport
+    assert "teleportCombatEntity" in MAIN
+    assert "combatTeleportPermits" in MAIN
+
+
+def test_event_combat_entities_have_a_selector_safe_ownership_tag() -> None:
+    tag_start = MAIN.index("private void tag(Entity entity")
+    tag_end = MAIN.index("private void setLootProfile", tag_start)
+    tag_body = MAIN[tag_start:tag_end]
+    assert "addScoreboardTag" in tag_body
+    assert "copimine_end_event" in tag_body
+
+
+def test_local_teleport_guard_probe_calls_entity_teleport_without_an_internal_permit() -> None:
+    test_start = MAIN.index("private void handleTest(CommandSender sender, String[] args)")
+    test_end = MAIN.index("private void handleTestVisuals", test_start)
+    test_body = MAIN[test_start:test_end]
+    assert "handleTestTeleport" in test_body
+    assert "TEST_TELEPORT_GUARD" in MAIN
+    assert "entity.teleport" in MAIN
+    assert '"local".equalsIgnoreCase(config.environment())' in MAIN
+
+
 def test_mobile_wave_mobs_request_bounded_pathing_instead_of_only_receiving_a_target() -> None:
     tick_start = MAIN.index("private void tickWaveMobAi()")
     tick_end = MAIN.index("private void enforceWaveMobContainment", tick_start)
@@ -294,6 +346,53 @@ def test_mobile_wave_mobs_request_bounded_pathing_instead_of_only_receiving_a_ta
     assert "EntityType.SHULKER" in path_body
     assert "isCoreBlockPosition(destination)" in path_body
     assert "boundedCombatRadius(config.containmentRadius())" in path_body
+
+
+def test_final_wave_entities_stay_on_the_same_mobile_ai_controller() -> None:
+    """The post-Judgment add-on wave must not become a static mob showcase."""
+    start = MAIN.index("private void tickWaveMobAi()")
+    body = MAIN[start:MAIN.index("private void enforceWaveMobContainment", start)]
+    assert "isWaveAiCombatPhase(readInt(entity, keyWave, 0))" in body
+    phase_start = MAIN.index("private boolean isWaveAiCombatPhase")
+    phase_body = MAIN[phase_start:MAIN.index("private boolean isMiniBossCombatPhase", phase_start)]
+    assert "case FINAL_WAVE" in phase_body
+
+
+def test_official_cinematic_starts_final_wave_before_boss_spawn() -> None:
+    """The real event must not skip its final combat wave after the cinematic."""
+    machine = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EndEventStateMachine.java").read_text(
+        encoding="utf-8"
+    )
+    assert re.search(
+        r"map\.put\(EventPhase\.BOSS_CINEMATIC, EnumSet\.of\(\s*"
+        r"EventPhase\.FINAL_WAVE, EventPhase\.BOSS_ACTIVE, EventPhase\.READY_FOR_PLAYERS\)\)",
+        machine,
+    )
+    assert re.search(
+        r"map\.put\(EventPhase\.FINAL_WAVE, EnumSet\.of\("
+        r"EventPhase\.BOSS_ACTIVE, EventPhase\.BOSS_FINISH\)\)",
+        machine,
+    )
+    cinematic = MAIN[MAIN.index("private void scheduleOfficialBossSpawn") : MAIN.index("private void renderBossCinematic")]
+    assert "transition(EventPhase.FINAL_WAVE" in cinematic
+    assert "spawnWave(FINAL_WAVE_NUMBER, false)" in cinematic
+    final_completion = MAIN[MAIN.index("private void tickWaveCompletion") : MAIN.index("/**\n     * Drops the guaranteed reward bundle", MAIN.index("private void tickWaveCompletion"))]
+    assert "WAVE_COMPLETED event=" in final_completion
+    assert "liveBoss()" in final_completion
+    assert "transition(EventPhase.BOSS_ACTIVE" in final_completion
+    assert "final wave defeated; boss awakens" in final_completion
+
+
+def test_wave_mob_damage_is_observable_from_the_event_plugin_without_trace_plugin() -> None:
+    """The strict 30-plugin local runtime must still prove real mob hits."""
+    method_start = MAIN.index("public void onPortalWaveMobAttack")
+    attack_start = MAIN.rfind("@EventHandler", 0, method_start)
+    attack_end = MAIN.index("private boolean isArenaLocation", attack_start)
+    attack_body = MAIN[attack_start:attack_end]
+    assert "@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)" in attack_body
+    assert "WAVE_MOB_DAMAGE" in attack_body
+    assert "event.getFinalDamage()" in attack_body
+    assert "event.isCancelled()" in attack_body
 
 
 def test_mobile_and_boss_ai_have_a_bounded_steering_fallback_when_pathfinder_rejects() -> None:
@@ -421,3 +520,18 @@ def test_final_wave_elites_keep_their_bound_spell_flight_path() -> None:
     flight = MAIN[MAIN.index("private boolean isSpellFlightAllowed"):MAIN.index("private void miniBossRiftStep")]
     assert "return (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind))" in flight
     assert "&& isMiniBossCombatPhase();" in flight
+
+
+def test_boss_runtime_applies_one_coherent_phase_combat_profile() -> None:
+    for marker in (
+        "BossStagePolicy.CombatProfile",
+        "BossStagePolicy.combatProfile(bossStage, absorptionCompleted)",
+        "profile.movementSpeed()",
+        "profile.spellCooldownMultiplier()",
+        "profile.teleportCooldownMultiplier()",
+        "profile.targetRotationMultiplier()",
+        "profile.meleeDamageBonus()",
+        "absorptionAttackEmpowered",
+        "BOSS_ABSORPTION_BUFF",
+    ):
+        assert marker in MAIN

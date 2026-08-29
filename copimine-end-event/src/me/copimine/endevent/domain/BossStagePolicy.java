@@ -15,18 +15,23 @@ public final class BossStagePolicy {
     }
 
     public static StageTransition transition(BossStage previous, double health, boolean judgmentTriggered) {
-        BossStage current = stageFor(health, judgmentTriggered);
+        BossStage requested = stageFor(health, judgmentTriggered);
+        boolean judgment = !judgmentTriggered && finite(health) && health <= JUDGMENT_THRESHOLD;
+        // Physical Bukkit health is a projection of the authoritative virtual
+        // value and can briefly recover while a cast, reconnect, or another
+        // plugin is being reconciled.  Named combat phases are one-way: a
+        // transient increase must never undo mechanics players have already
+        // learned or re-arm an earlier phase's spells.
+        BossStage current = previous != null && requested.ordinal() < previous.ordinal()
+                ? previous : requested;
         List<BossStage> entered = new ArrayList<>();
         if (previous == null) {
             entered.add(current);
         } else if (previous != current) {
-            int first = Math.min(previous.ordinal(), current.ordinal());
-            int last = Math.max(previous.ordinal(), current.ordinal());
-            for (int ordinal = first + 1; ordinal <= last; ordinal++) {
+            for (int ordinal = previous.ordinal() + 1; ordinal <= current.ordinal(); ordinal++) {
                 entered.add(BossStage.values()[ordinal]);
             }
         }
-        boolean judgment = !judgmentTriggered && finite(health) && health <= JUDGMENT_THRESHOLD;
         return new StageTransition(current, List.copyOf(entered), judgment);
     }
 
@@ -70,20 +75,64 @@ public final class BossStagePolicy {
      * unmistakable escalation instead of five visually identical stages.
      */
     public static double movementSpeed(BossStage stage) {
-        if (stage == null) {
-            return 1.0D;
-        }
-        return switch (stage) {
-            case AWAKENING -> 0.95D;
-            case HUNTER -> 1.05D;
-            case DISTORTION -> 1.18D;
-            case ABSORPTION -> 0.92D;
-            case CATASTROPHE -> 1.28D;
+        return combatProfile(stage, false).movementSpeed();
+    }
+
+    /**
+     * Return the complete bounded combat posture for one named stage.  Keeping
+     * these values together prevents the live adapter from accidentally
+     * applying a faster path speed without also applying the matching cooldown
+     * and entity budget rules.
+     *
+     * <p>The second argument means that the five-second Absorption channel has
+     * completed.  It is deliberately not inferred from the stage alone: a
+     * restarted fight can be in the Absorption health band while its channel
+     * is still active.</p>
+     */
+    public static CombatProfile combatProfile(BossStage stage, boolean absorptionCompleted) {
+        BossStage safeStage = stage == null ? BossStage.AWAKENING : stage;
+        return switch (safeStage) {
+            case AWAKENING -> new CombatProfile(
+                    0.95D, 1.00D, 1.00D, 1.00D, 0.0D, 0.0D, 4);
+            case HUNTER -> new CombatProfile(
+                    1.05D, 0.90D, 0.80D, 0.80D, 0.5D, 0.0D, 4);
+            case DISTORTION -> new CombatProfile(
+                    1.18D, 0.82D, 0.88D, 0.90D, 1.0D, 0.0D, 4);
+            case ABSORPTION -> absorptionCompleted
+                    ? new CombatProfile(
+                    1.08D, 0.82D, 0.85D, 0.85D, 2.0D, 4.0D, 4)
+                    : new CombatProfile(
+                    0.92D, 1.00D, 1.00D, 1.00D, 1.0D, 0.0D, 4);
+            case CATASTROPHE -> new CombatProfile(
+                    1.28D, 0.70D, 0.65D, 0.75D, 3.0D, 0.0D, 3);
         };
     }
 
     public static double judgmentThreshold() {
         return JUDGMENT_THRESHOLD;
+    }
+
+    public record CombatProfile(double movementSpeed,
+                                double spellCooldownMultiplier,
+                                double teleportCooldownMultiplier,
+                                double targetRotationMultiplier,
+                                double meleeDamageBonus,
+                                double nextMeleeAttackBonus,
+                                int summonCap) {
+        public CombatProfile {
+            movementSpeed = finite(movementSpeed) ? Math.max(0.1D, movementSpeed) : 1.0D;
+            spellCooldownMultiplier = boundedMultiplier(spellCooldownMultiplier);
+            teleportCooldownMultiplier = boundedMultiplier(teleportCooldownMultiplier);
+            targetRotationMultiplier = boundedMultiplier(targetRotationMultiplier);
+            meleeDamageBonus = finite(meleeDamageBonus) ? Math.max(0.0D, meleeDamageBonus) : 0.0D;
+            nextMeleeAttackBonus = finite(nextMeleeAttackBonus)
+                    ? Math.max(0.0D, nextMeleeAttackBonus) : 0.0D;
+            summonCap = Math.max(0, summonCap);
+        }
+
+        private static double boundedMultiplier(double value) {
+            return finite(value) ? Math.max(0.50D, Math.min(1.25D, value)) : 1.0D;
+        }
     }
 
     public record StageTransition(BossStage current, List<BossStage> entered, boolean triggerJudgment) {

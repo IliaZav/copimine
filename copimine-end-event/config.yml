@@ -191,8 +191,8 @@ event-loot-rolls:
 
 boss:
   health: 2500.0
-  # The previous configured bonus was 3.0; this is exactly +5 over it.
-  attack-damage-bonus: 8.0
+  # Vanilla Enderman damage is 3.0; this configured increment makes it 8.0.
+  attack-damage-bonus: 5.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
   teleport-cooldown-seconds: 12
@@ -204,7 +204,7 @@ boss:
   final-health: 400.0
   final-drain-fraction: 0.60
   final-drain-min-health: 1.0
-  control-duration-seconds: 10
+  control-duration-seconds: 20
   control-cooldown-seconds: 24
   max-summoned-servants: 4
   debuff-amplifier: 3

@@ -25,6 +25,7 @@ const bot = mineflayer.createBot({
 
 let spawned = false
 let attackTimer = null
+let followTimer = null
 let attackCount = 0
 let bossSeen = false
 
@@ -42,6 +43,39 @@ function bossEntity () {
     .filter(entity => bot.entity && entity.position.distanceTo(bot.entity.position) <= 40)
     .sort((first, second) => first.position.distanceTo(bot.entity.position)
       - second.position.distanceTo(bot.entity.position))[0]
+}
+
+function stopFollowing () {
+  if (typeof bot.setControlState !== 'function') return
+  for (const control of ['forward', 'back', 'left', 'right', 'sprint']) {
+    bot.setControlState(control, false)
+  }
+}
+
+function followBoss () {
+  if (!bot.entity || typeof bot.setControlState !== 'function') return
+  const boss = bossEntity()
+  if (!boss) {
+    stopFollowing()
+    return
+  }
+  const distance = bot.entity.position.distanceTo(boss.position)
+  if (distance > 3.0) {
+    bot.setControlState('back', false)
+    bot.setControlState('forward', true)
+    bot.setControlState('sprint', distance > 5.0)
+  } else if (distance < 1.8) {
+    bot.setControlState('forward', false)
+    bot.setControlState('sprint', false)
+    bot.setControlState('back', true)
+  } else {
+    bot.setControlState('forward', false)
+    bot.setControlState('back', false)
+    bot.setControlState('sprint', false)
+  }
+  bot.lookAt(boss.position.offset(0, 1.0, 0), true).catch(error => {
+    console.error(`FOLLOW_ERROR ${username} ${error.stack || error}`)
+  })
 }
 
 function tryAttack () {
@@ -90,6 +124,11 @@ bot.once('spawn', () => {
   for (const delay of [1000, 3000, 6000]) {
     setTimeout(() => bot.chat('/login endrift-local'), delay)
   }
+  // The real boss deliberately changes position between attacks.  Keep this
+  // survival client moving toward the current server entity instead of
+  // turning a mobile-boss damage check into a static-coordinate check.
+  followTimer = setInterval(followBoss, 250)
+  followBoss()
   setTimeout(() => {
     attackTimer = setInterval(tryAttack, attackEveryMs)
     tryAttack()
@@ -109,6 +148,8 @@ bot.on('error', error => {
 })
 bot.on('end', () => {
   if (attackTimer !== null) clearInterval(attackTimer)
+  if (followTimer !== null) clearInterval(followTimer)
+  stopFollowing()
   if (!spawned || attackCount === 0) process.exitCode = 1
   console.log(`PLAYER_END ${username} attacks=${attackCount} bossSeen=${bossSeen}`)
   process.exit()

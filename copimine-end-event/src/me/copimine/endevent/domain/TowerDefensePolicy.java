@@ -38,6 +38,22 @@ public final class TowerDefensePolicy {
         return state.withOutcome(outcome);
     }
 
+    /**
+     * Commit a healthy defense when the scheduler observes its deadline late.
+     * Bukkit ticks are discrete, so requiring the observed timestamp to equal
+     * the deadline would turn normal tick drift into a false failure.  The
+     * policy still evaluates health at the exact deadline and therefore keeps
+     * a depleted Core a failure.
+     */
+    public static CoreState completeAtDeadline(CoreState state, long observedNowMillis) {
+        if (state == null) throw new IllegalArgumentException("state is required");
+        if (observedNowMillis < 0L) throw new IllegalArgumentException("timestamp must be non-negative");
+        if (state.outcome() != Outcome.ACTIVE || observedNowMillis < state.deadlineMillis()) {
+            return state;
+        }
+        return finish(state, state.deadlineMillis());
+    }
+
     public static CoreState retry(CoreState state, long nowMillis) {
         if (state == null || nowMillis < 0L || nowMillis > Long.MAX_VALUE - DEFENSE_MILLIS) {
             throw new IllegalArgumentException("invalid retry");

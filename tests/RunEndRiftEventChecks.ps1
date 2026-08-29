@@ -52,7 +52,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py `
       tests\test_end_event_boss_regressions_contract.py tests\test_end_event_wave_objective_contract.py `
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
-      tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py
+      tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
+      tests\test_end_event_official_e2e_contract.py
   } finally {
     Pop-Location
   }
@@ -82,6 +83,8 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\WaveMechanicsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossCastPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java')
   & java -cp $endRiftTestBuild EndEventDomainTest
   & java -cp $endRiftTestBuild BossThresholdPolicyTest
@@ -97,6 +100,8 @@ Invoke-EndRiftStep 'Pure domain tests' {
   & java -cp $endRiftTestBuild WaveMechanicsPolicyTest
   & java -cp $endRiftTestBuild StormPatternPolicyTest
   & java -cp $endRiftTestBuild BossCastPolicyTest
+  & java -cp $endRiftTestBuild CombatTacticsPolicyTest
+  & java -cp $endRiftTestBuild BossStatsPolicyTest
   & java -cp $endRiftTestBuild EndEventStateMachineTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {

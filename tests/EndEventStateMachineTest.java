@@ -10,6 +10,13 @@ public final class EndEventStateMachineTest {
         check(machine.transition(EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE,
                 "cinematic complete", "event:boss").success(),
                 "cinematic must hand off to active boss combat");
+        EndEventStateMachine officialSequence = new EndEventStateMachine(EventPhase.BOSS_CINEMATIC);
+        check(officialSequence.transition(EventPhase.BOSS_CINEMATIC, EventPhase.FINAL_WAVE,
+                "cinematic complete; final wave", "event:final-wave").success(),
+                "the official cinematic must hand off to the final wave");
+        check(officialSequence.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_ACTIVE,
+                "final wave defeated; boss awakens", "event:boss-after-final-wave").success(),
+                "the final wave must hand off to active boss combat when no boss exists yet");
         check(!machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.WAVE_5,
                 "backwards", "event:bad").success(), "combat must not go back to wave five");
         check(EndEventStateMachine.recoveryPhase(EventPhase.BOSS_CINEMATIC) == EventPhase.READY_FOR_PLAYERS,

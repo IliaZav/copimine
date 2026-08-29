@@ -71,6 +71,15 @@ public final class EndEventDomainTest {
         check(machine.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_FINISH,
                         "wave-dead", "boss-finish-1").success(),
                 "final wave must release the boss");
+        EndEventStateMachine officialSequence = new EndEventStateMachine(EventPhase.BOSS_CINEMATIC);
+        check(machine.phase() == EventPhase.BOSS_FINISH,
+                "legacy final-wave route must remain independently complete");
+        check(officialSequence.transition(EventPhase.BOSS_CINEMATIC, EventPhase.FINAL_WAVE,
+                        "cinematic-complete", "official-final-wave-1").success(),
+                "official cinematic must start the final wave");
+        check(officialSequence.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_ACTIVE,
+                        "final-wave-dead", "official-boss-1").success(),
+                "official final wave must awaken the boss after it is defeated");
         check(machine.transition(EventPhase.BOSS_FINISH, EventPhase.VICTORY_PROCESSING,
                         "boss-dead", "victory-1").success(),
                 "boss death must enter the canonical victory saga");

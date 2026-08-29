@@ -32,6 +32,30 @@ if ((Get-Content -LiteralPath $eventConfigPath -Raw) -notmatch '(?m)^environment
   throw 'Refused to start a non-local End Rift configuration.'
 }
 
+$pluginSourcePath = Join-Path $worktreeRoot 'copimine-end-event\CopiMineEndEvent.jar'
+$pluginTargetPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent.jar'
+if (-not (Test-Path -LiteralPath $pluginSourcePath -PathType Leaf)) {
+  throw "Current local End Rift plugin build is missing: $pluginSourcePath"
+}
+if (-not (Test-Path -LiteralPath (Split-Path $pluginTargetPath -Parent) -PathType Container)) {
+  New-Item -ItemType Directory -Path (Split-Path $pluginTargetPath -Parent) -Force | Out-Null
+}
+$sourcePluginHash = (Get-FileHash -LiteralPath $pluginSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$targetPluginHash = if (Test-Path -LiteralPath $pluginTargetPath -PathType Leaf) {
+  (Get-FileHash -LiteralPath $pluginTargetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+} else {
+  ''
+}
+if ($sourcePluginHash -ne $targetPluginHash) {
+  Copy-Item -LiteralPath $pluginSourcePath -Destination $pluginTargetPath -Force
+  Write-Output "Synchronized local End Rift plugin from current build: $pluginTargetPath"
+}
+$verifiedPluginHash = (Get-FileHash -LiteralPath $pluginTargetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($sourcePluginHash -ne $verifiedPluginHash) {
+  throw "Local End Rift plugin hash mismatch after synchronization: source=$sourcePluginHash target=$verifiedPluginHash"
+}
+Write-Output "Verified local End Rift plugin SHA256=$verifiedPluginHash"
+
 $properties = @{}
 foreach ($line in Get-Content -LiteralPath $propertiesPath) {
   if ($line -match '^([^#=]+)=(.*)$') {

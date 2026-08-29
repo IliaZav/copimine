@@ -7,10 +7,12 @@ public final class BossStagePolicyTest {
     public static void main(String[] args) {
         testExactThresholdsAndTitles();
         testLargeHitReportsEveryCrossedStage();
+        testStageNeverRegressesAfterTransientHealthRecovery();
         testJudgmentIsOneShotAtTwoHundredFifty();
         testStageSpellPoolsAreProgressiveAndNamed();
         testThresholdSummonsAreReachableAndAbsorptionHasPressureTools();
         testBossMovementProfileEscalatesByStage();
+        testPostAbsorptionProfileAddsBoundedEnrage();
         System.out.println("BossStagePolicyTest OK");
     }
 
@@ -38,6 +40,22 @@ public final class BossStagePolicyTest {
                 "250 HP must trigger Judgment");
         check(!BossStagePolicy.transition(BossStage.CATASTROPHE, 100.0D, true).triggerJudgment(),
                 "a persisted Judgment marker must suppress a second trigger");
+    }
+
+    private static void testStageNeverRegressesAfterTransientHealthRecovery() {
+        BossStagePolicy.StageTransition recovery = BossStagePolicy.transition(
+                BossStage.CATASTROPHE, 800.0D, false);
+        check(recovery.current() == BossStage.CATASTROPHE,
+                "a transient health recovery must not move the fight back to Absorption");
+        check(recovery.entered().isEmpty(),
+                "a blocked stage regression must not report a fake crossed stage");
+
+        BossStagePolicy.StageTransition judgment = BossStagePolicy.transition(
+                BossStage.CATASTROPHE, 250.0D, false);
+        check(judgment.current() == BossStage.CATASTROPHE,
+                "Judgment must remain in the terminal named stage");
+        check(judgment.triggerJudgment(),
+                "blocking a stage regression must not suppress Judgment");
     }
 
     private static void testStageSpellPoolsAreProgressiveAndNamed() {
@@ -81,6 +99,30 @@ public final class BossStagePolicyTest {
                 "Catastrophe must be the fastest pressure stage");
         check(awakening >= 0.8D && catastrophe <= 1.4D,
                 "movement speeds must stay inside the bounded arena budget");
+    }
+
+    private static void testPostAbsorptionProfileAddsBoundedEnrage() {
+        BossStagePolicy.CombatProfile channel = BossStagePolicy.combatProfile(
+                BossStage.ABSORPTION, false);
+        BossStagePolicy.CombatProfile recovered = BossStagePolicy.combatProfile(
+                BossStage.ABSORPTION, true);
+        BossStagePolicy.CombatProfile catastrophe = BossStagePolicy.combatProfile(
+                BossStage.CATASTROPHE, true);
+
+        check(recovered.movementSpeed() >= channel.movementSpeed() * 1.15D,
+                "absorption completion must grant at least a bounded 15 percent movement buff");
+        check(recovered.movementSpeed() <= channel.movementSpeed() * 1.20D + 0.001D,
+                "absorption movement buff must stay below the 20 percent design cap");
+        check(recovered.spellCooldownMultiplier() <= 0.85D,
+                "absorption completion must shorten spell cooldowns");
+        check(recovered.nextMeleeAttackBonus() > 0.0D,
+                "absorption completion must arm one empowered next melee attack");
+        check(catastrophe.movementSpeed() > recovered.movementSpeed(),
+                "catastrophe must remain faster than the recovered absorption stage");
+        check(catastrophe.summonCap() < channel.summonCap(),
+                "catastrophe must reduce summon cap to protect the server budget");
+        check(catastrophe.teleportCooldownMultiplier() < 1.0D,
+                "catastrophe must use a shorter but bounded teleport cooldown");
     }
 
     private static void check(boolean condition, String message) {

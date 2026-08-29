@@ -52,6 +52,11 @@ def test_local_bot_can_delay_actions_until_authentication_has_time_to_finish() -
     assert "client.once('login', startSession)" in BOT
 
 
+def test_local_raw_bot_answers_keep_alive_packets_for_long_phase_probes() -> None:
+    assert "client.on('keep_alive'" in BOT
+    assert "keepAliveId: packet.keepAliveId" in BOT
+
+
 def test_local_boss_probe_uses_real_survival_attack_packets_and_never_production_paths() -> None:
     for expected in (
         "Mineflayer", "use_entity", "bot.attack(", "RESOURCE_PACK",
@@ -62,6 +67,14 @@ def test_local_boss_probe_uses_real_survival_attack_packets_and_never_production
     assert "production" in BOSS_BOT.lower()
     assert "Stop-Process" not in BOSS_BOT
     assert "Remove-Item" not in BOSS_BOT
+
+
+def test_local_boss_probe_follows_a_mobile_boss_before_attacking() -> None:
+    for expected in (
+        "setControlState", "forward", "followTimer", "clearInterval",
+        "distanceTo", "stop",
+    ):
+        assert expected in BOSS_BOT
 
 
 def test_low_level_boss_probe_matches_uuid_and_sends_use_entity_attack() -> None:
@@ -95,18 +108,43 @@ def test_live_boss_damage_probe_crosses_absorption_before_player_attack() -> Non
     assert "if ($AttackGameMode -eq 'survival')" in LIVE_BOSS
 
 
+def test_live_boss_damage_probe_restores_the_local_scene_after_official_harness() -> None:
+    for expected in (
+        "cmend core remove confirm", "cmend core setat 8 68 -39 2",
+        "cmend resources reset confirm", "cmend resources add $resource",
+        "DIAMOND 100", "ENDER_EYE 64", "AMETHYST_SHARD 128", "BLAZE_ROD 64",
+        "state=.*READY_FOR_PLAYERS",
+    ):
+        assert expected in LIVE_BOSS
+
+
+def test_local_mob_probe_does_not_fight_mineflayers_teleport_controller() -> None:
+    source = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    assert "bot._client.write('position'" not in source
+    assert "positionTimer = setInterval" not in source
+
+
 def test_live_ai_phase_probe_covers_all_waves_and_boss_stage_boundaries_locally() -> None:
     for expected in (
-        "environment:\\s*local", "LocalEndRiftBot.js", "cmend test wave",
+        "environment:\\s*local", "LocalEndRiftMobCombatBot.js", "cmend test wave",
+        "cmend test teleport wave", "cmend test teleport boss",
         "cmend debug ai", "mobile", "targeted", "outside", "onCore",
         "AWAKENING", "HUNTER", "DISTORTION", "ABSORPTION", "CATASTROPHE",
         "cmend boss damage 500", "cmend boss damage 250", "cmend wave clear",
         "cmend boss kill cleanup",
+        "BOSS_AI_PATH", "WAVE_AI_TACTIC", "BOSS_JUDGMENT_SAFE_ZONE",
+        "AI_OUTSIDE", "BOSS_TELEPORT_BLOCKED", "WAVE_TELEPORT_BLOCKED",
+        "TEST_TELEPORT_GUARD",
     ):
         assert expected in AI_PHASES
     assert "production" in AI_PHASES.lower()
     assert "Remove-Item" not in AI_PHASES
     assert "Stop-Process" not in AI_PHASES
+
+
+def test_long_ai_phase_probe_uses_the_physics_capable_local_client() -> None:
+    assert "LocalEndRiftMobCombatBot.js" in AI_PHASES
+    assert "LocalEndRiftBot.js" not in AI_PHASES
 
 
 def test_local_packet_trace_is_scoped_to_use_entity_and_unregistered_on_disable() -> None:
@@ -136,6 +174,16 @@ def test_local_start_script_is_bounded_to_the_isolated_runtime() -> None:
     assert "Remove-Item" not in START
 
 
+def test_local_start_script_synchronizes_the_current_end_event_jar_before_boot() -> None:
+    for expected in (
+        "copimine-end-event\\CopiMineEndEvent.jar",
+        "plugins\\CopiMineEndEvent.jar",
+        "Get-FileHash",
+        "Synchronized local End Rift plugin",
+    ):
+        assert expected in START
+
+
 def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> None:
     for expected in (
         "local-runtime", "state=.*(?:UNLOCKED|UNCONFIGURED)", "VICTORY_COMPLETE", "persistent phase=",
@@ -148,3 +196,24 @@ def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> Non
         assert expected in RECOVERY
     assert "Stop-Process" not in RECOVERY
     assert "Remove-Item" not in RECOVERY
+
+
+def test_active_event_rehydrates_wave_entities_objective_and_phase_deadline_after_restart() -> None:
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
+        encoding="utf-8"
+    )
+    snapshot = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventSnapshot.java").read_text(
+        encoding="utf-8"
+    )
+    store = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventStateStore.java").read_text(
+        encoding="utf-8"
+    )
+    for expected in (
+        "restorePersistedCombatRuntime();",
+        "reindexPersistedCombatEntities();",
+        "waveForPhase(phase)",
+        "phaseDeadlineMillis = snapshot.phaseDeadlineMillis();",
+        "event.phase-deadline-millis",
+        "yaml.getLong(\"event.phase-deadline-millis\", 0L)",
+    ):
+        assert expected in (source + snapshot + store)

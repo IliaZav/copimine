@@ -13,7 +13,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
-$botScript = Join-Path $root 'tests\LocalEndRiftBot.js'
+$botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $botLog = Join-Path $runtimeRoot 'ai-phases-live-bot.log'
 $botErr = Join-Path $runtimeRoot 'ai-phases-live-bot.err.log'
@@ -88,6 +88,9 @@ function Assert-AiSnapshot {
       ($snapshot.OnCore -ne 0)) {
     throw "$Label failed bounded AI invariant:`n$($snapshot.Raw)"
   }
+  if ($snapshot.Raw -match 'AI_OUTSIDE') {
+    throw "$Label reported an entity outside the combat bounds:`n$($snapshot.Raw)"
+  }
   if (-not [string]::IsNullOrWhiteSpace($ExpectedStage) -and $snapshot.Stage -ne $ExpectedStage) {
     throw "$Label expected stage $ExpectedStage but received $($snapshot.Stage):`n$($snapshot.Raw)"
   }
@@ -106,10 +109,21 @@ function Wait-LocalBot {
   throw "Local AI phase bot did not join in time: $BotName"
 }
 
+function Hold-BotAtCombatPosition {
+  param([Parameter(Mandatory = $true)][int[]]$Core)
+  # Survival mobs can legitimately knock the probe outside the 40x7x40 test
+  # volume while the controller is being inspected.  Put only the disposable
+  # probe player back on the combat floor before taking a snapshot; the mob
+  # containment invariant itself is never relaxed.
+  $null = Invoke-LocalRcon -CommandText ("tp $BotName $($Core[0] + 6) $($Core[1]) $($Core[2]) 180 0")
+  Start-Sleep -Milliseconds 250
+}
+
 $botProcess = $null
 $stdoutTask = $null
 $stderrTask = $null
 $bossUuid = $null
+$bossUuids = [System.Collections.Generic.List[string]]::new()
 try {
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
@@ -153,6 +167,7 @@ try {
       throw "Local test wave $wave was refused:`n$response"
     }
     Start-Sleep -Seconds 3
+    Hold-BotAtCombatPosition -Core $core
     Assert-AiSnapshot -Label ("wave-$wave") -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
   }
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
@@ -161,6 +176,7 @@ try {
     throw "Local final test wave was refused:`n$response"
   }
   Start-Sleep -Seconds 3
+  Hold-BotAtCombatPosition -Core $core
   Assert-AiSnapshot -Label 'final-wave' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
 
@@ -169,7 +185,9 @@ try {
     throw "Local test boss was refused:`n$response"
   }
   $bossUuid = Get-BossUuid (Invoke-LocalRcon -CommandText 'cmend status')
+  $bossUuids.Add($bossUuid)
   Start-Sleep -Seconds 2
+  Hold-BotAtCombatPosition -Core $core
   Assert-AiSnapshot -Label 'boss-awakening' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') -ExpectedStage 'AWAKENING' | Out-Null
 
   $bossStageChecks = @(
@@ -185,6 +203,7 @@ try {
   foreach ($check in $bossStageChecks) {
     $null = Invoke-LocalRcon -CommandText ("cmend boss damage $($check.Damage)")
     Start-Sleep -Seconds $check.Wait
+    Hold-BotAtCombatPosition -Core $core
     $debug = Invoke-LocalRcon -CommandText 'cmend debug ai'
     $snapshot = Assert-AiSnapshot -Label $check.Label -Text $debug -ExpectedStage $check.Expected
     if ($check.Label -eq 'boss-judgment' -and $debug -notmatch 'bossCast=JUDGMENT_CAST') {
@@ -192,14 +211,87 @@ try {
     }
   }
 
+  # Do not let the disposable boss from the stage matrix compete for the
+  # single bot target while the wave teleport probe is running.
+  $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
+  Wait-LocalBot
+  Hold-BotAtCombatPosition -Core $core
+
+  # Exercise the hard teleport boundary from the server command path.  These
+  # are deliberately issued at the current event entities, then the same AI
+  # snapshot proves the cancelled request did not leave an entity outside.
+  $logBeforeWaveTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+  $response = Invoke-LocalRcon -CommandText 'cmend test wave 1'
+  if ($response -match '(?i)not created|refused|event world') {
+    throw "Teleport guard wave setup was refused:`n$response"
+  }
+  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 6
+  $waveTeleportProbe = Invoke-LocalRcon -CommandText 'cmend test teleport wave'
+  if ($waveTeleportProbe -notmatch 'TEST_TELEPORT_GUARD') {
+    $waveTeleportProbe = (Get-Content -LiteralPath $paperLog -Raw)
+  }
+  if ($waveTeleportProbe -notmatch 'TEST_TELEPORT_GUARD.*kind=wave.*moved=false.*outside=false') {
+    throw "Wave teleport probe was not cancelled safely:`n$waveTeleportProbe"
+  }
+  Hold-BotAtCombatPosition -Core $core
+  Assert-AiSnapshot -Label 'wave-teleport-guard' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
+  $logAfterWaveTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $newWaveGuardLog = if ($logAfterWaveTeleportGuard.Length -gt $logBeforeWaveTeleportGuard.Length) {
+    $logAfterWaveTeleportGuard.Substring($logBeforeWaveTeleportGuard.Length)
+  } else { '' }
+  if ($newWaveGuardLog -notmatch 'WAVE_TELEPORT_BLOCKED') {
+    throw "Wave teleport guard did not append a cancelled external teleport marker."
+  }
+  $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+
+  $logBeforeBossTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $response = Invoke-LocalRcon -CommandText 'cmend boss spawn'
+  if ($response -match '(?i)missing|refused|core') {
+    throw "Teleport guard boss setup was refused:`n$response"
+  }
+  $teleportGuardBossUuid = Get-BossUuid (Invoke-LocalRcon -CommandText 'cmend status')
+  $bossUuids.Add($teleportGuardBossUuid)
+  Start-Sleep -Seconds 2
+  Start-Sleep -Seconds 6
+  $bossTeleportProbe = Invoke-LocalRcon -CommandText 'cmend test teleport boss'
+  if ($bossTeleportProbe -notmatch 'TEST_TELEPORT_GUARD') {
+    $bossTeleportProbe = (Get-Content -LiteralPath $paperLog -Raw)
+  }
+  if ($bossTeleportProbe -notmatch 'TEST_TELEPORT_GUARD.*kind=boss.*moved=false.*outside=false') {
+    throw "Boss teleport probe was not cancelled safely:`n$bossTeleportProbe"
+  }
+  Hold-BotAtCombatPosition -Core $core
+  Assert-AiSnapshot -Label 'boss-teleport-guard' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') -ExpectedStage 'AWAKENING' | Out-Null
+  $logAfterBossTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $newBossGuardLog = if ($logAfterBossTeleportGuard.Length -gt $logBeforeBossTeleportGuard.Length) {
+    $logAfterBossTeleportGuard.Substring($logBeforeBossTeleportGuard.Length)
+  } else { '' }
+  if ($newBossGuardLog -notmatch 'BOSS_TELEPORT_BLOCKED') {
+    throw "Boss teleport guard did not append a cancelled external teleport marker."
+  }
+  $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
+
   $log = Get-Content -LiteralPath $paperLog -Raw
-  $bossLog = ($log -split "`r?`n") | Where-Object { $_ -match ('boss=' + [Regex]::Escape($bossUuid)) }
+  $bossLog = ($log -split "`r?`n") | Where-Object {
+    $line = $_
+    $bossUuids | Where-Object { $line -match ('boss=' + [Regex]::Escape($_)) }
+  }
+  if (-not ($bossLog -match 'BOSS_AI_PATH')) {
+    throw "No bounded boss path marker was recorded for the disposable bosses: $($bossUuids -join ', ')"
+  }
   foreach ($marker in @(
     'BOSS_AI_TARGET', 'BOSS_STAGE_TRANSITION', 'BOSS_CAST_STATE.*ABSORPTION_CHANNEL',
-    'BOSS_CAST_STATE.*JUDGMENT_CAST'
+    'BOSS_CAST_STATE.*JUDGMENT_CAST', 'BOSS_JUDGMENT_SAFE_ZONE'
   )) {
     if (-not ($bossLog -match $marker)) {
       throw "Local boss log for $bossUuid did not contain $marker."
+    }
+  }
+  foreach ($marker in @('WAVE_AI_TACTIC', 'WAVE_AI_PATH', 'WAVE_MOB_DAMAGE')) {
+    if (-not ($log -match $marker)) {
+      throw "Local event log did not contain $marker."
     }
   }
   Write-Output "LIVE_AI_PHASES_PASS boss=$bossUuid waves=1,2,3,4,5,final stages=AWAKENING,HUNTER,DISTORTION,ABSORPTION,CATASTROPHE,JUDGMENT"

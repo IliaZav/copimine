@@ -25,6 +25,9 @@ const client = mc.createClient({
   version: '1.21.1',
   auth: 'offline',
   disableChatSigning: true,
+  // The phase harness owns the reply explicitly below.  Keeping a single
+  // handler avoids duplicate keep-alive packets on long local runs.
+  keepAlive: false,
   clientSettings: {
     locale: 'en_us',
     viewDistance: 8,
@@ -41,6 +44,15 @@ let joined = false
 let position = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }
 let positionTimer = null
 let sessionStarted = false
+
+client.on('keep_alive', packet => {
+  if (process.env.END_RIFT_BOT_LOG_KEEP_ALIVE === '1') {
+    console.log(`KEEP_ALIVE ${username} ${packet.keepAliveId}`)
+  }
+  client.write('keep_alive', {
+    keepAliveId: packet.keepAliveId
+  })
+})
 
 function startSession () {
   if (sessionStarted) return

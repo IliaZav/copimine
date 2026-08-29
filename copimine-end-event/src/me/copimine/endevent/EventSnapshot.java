@@ -44,6 +44,7 @@ public record EventSnapshot(
         String returnStoneStatus,
         String victoryStep,
         long updatedAt,
+        long phaseDeadlineMillis,
         String recoveryReason,
         Set<UUID> participants,
         Map<UUID, Double> finalDrainTargets,
@@ -53,6 +54,8 @@ public record EventSnapshot(
         String bossCastState,
         long bossCastDeadlineMillis,
         boolean absorptionTriggered,
+        boolean absorptionCompleted,
+        boolean absorptionAttackEmpowered,
         boolean judgmentTriggered,
         boolean judgmentCompleted) {
 
@@ -87,8 +90,8 @@ public record EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
                 0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
                 false, false, false, false, false, false, false, false, "PENDING", null,
-                "PENDING", "NONE", 0L, "", Set.of(), Map.of(), Set.of(), Set.of(),
-                "AWAKENING", "NONE", 0L, false, false, false);
+                "PENDING", "NONE", 0L, 0L, "", Set.of(), Map.of(), Set.of(), Set.of(),
+                "AWAKENING", "NONE", 0L, false, false, false, false, false);
     }
 
     public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
@@ -100,10 +103,12 @@ public record EventSnapshot(
                 officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
                 halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted,
-                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, recoveryReason,
+                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, phaseDeadlineMillis,
+                recoveryReason,
                 updatedParticipants, finalDrainTargets,
                 finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
-                bossCastDeadlineMillis, absorptionTriggered, judgmentTriggered, judgmentCompleted);
+                bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
+                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted);
     }
 
     public EventPhase eventPhase() {

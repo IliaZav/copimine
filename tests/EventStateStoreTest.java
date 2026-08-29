@@ -28,6 +28,12 @@ public final class EventStateStoreTest {
         check(store.load().source().equals("PRIMARY"), "first load must use primary state");
         check(store.load().snapshot().participants().contains(helper),
                 "non-roster combat helper must survive a state round trip");
+        check(store.load().snapshot().phaseDeadlineMillis() == 456L,
+                "phase deadline must survive a state round trip");
+        check(!store.load().snapshot().absorptionCompleted(),
+                "unfinished absorption channel must remain unfinished after a state round trip");
+        check(store.load().snapshot().absorptionAttackEmpowered(),
+                "one-shot post-absorption attack marker must survive a state round trip");
 
         EventSnapshot second = snapshot("second-event", EventPhase.READY_FOR_PLAYERS.name(), 4L);
         check(store.save(second), "second durable state save must succeed");
@@ -83,9 +89,9 @@ public final class EventStateStoreTest {
                 Map.of("DIAMOND", 100), Map.of("DIAMOND", 25),
                 List.of(new EventSnapshot.PadSnapshot(10, 70, 25, 5.0D, 0.0D, "minecraft:purpur_block")),
                 Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", player, "PENDING", "NONE", 123L, "", Set.of(player),
+                false, false, false, false, false, false, false, false, "PENDING", player, "PENDING", "NONE", 123L, 456L, "", Set.of(player),
                 Map.of(player, 8.0D), Set.of(player), Set.of(1, 2),
-                "ABSORPTION", "ABSORPTION_CHANNEL", 123456L, true, false, false);
+                "ABSORPTION", "ABSORPTION_CHANNEL", 123456L, true, false, true, false, false);
     }
 
     private static void check(boolean condition, String message) {

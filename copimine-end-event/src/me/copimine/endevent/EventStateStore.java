@@ -59,11 +59,13 @@ public final class EventStateStore {
                 recovery.finalDrainTriggered(), recovery.finalDrainApplied(), recovery.endUnlocked(),
                 recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.bossRewardStatus(),
                 recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
-                recovery.victoryStep(), recovery.updatedAt(),
+                recovery.victoryStep(), recovery.updatedAt(), recovery.phaseDeadlineMillis(),
                 "Both primary and backup event state files are invalid.", recovery.participants(),
                 recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers(), recovery.waveRewardsIssued(),
                 recovery.bossStage(), recovery.bossCastState(), recovery.bossCastDeadlineMillis(),
-                recovery.absorptionTriggered(), recovery.judgmentTriggered(), recovery.judgmentCompleted());
+                recovery.absorptionTriggered(), recovery.absorptionCompleted(),
+                recovery.absorptionAttackEmpowered(), recovery.judgmentTriggered(),
+                recovery.judgmentCompleted());
         return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
     }
 
@@ -123,6 +125,7 @@ public final class EventStateStore {
             yaml.set("event.return-stone-status", snapshot.returnStoneStatus());
             yaml.set("event.victory-step", snapshot.victoryStep());
             yaml.set("event.updated-at", snapshot.updatedAt());
+            yaml.set("event.phase-deadline-millis", snapshot.phaseDeadlineMillis());
             yaml.set("event.recovery-reason", snapshot.recoveryReason());
             yaml.set("resources.requirements", snapshot.resourceRequirements());
             yaml.set("resources.deposited", snapshot.depositedResources());
@@ -136,6 +139,8 @@ public final class EventStateStore {
             yaml.set("boss.cast-state", snapshot.bossCastState());
             yaml.set("boss.cast-deadline-millis", snapshot.bossCastDeadlineMillis());
             yaml.set("boss.absorption-triggered", snapshot.absorptionTriggered());
+            yaml.set("boss.absorption-completed", snapshot.absorptionCompleted());
+            yaml.set("boss.absorption-attack-empowered", snapshot.absorptionAttackEmpowered());
             yaml.set("boss.judgment-triggered", snapshot.judgmentTriggered());
             yaml.set("boss.judgment-completed", snapshot.judgmentCompleted());
             yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
@@ -212,12 +217,15 @@ public final class EventStateStore {
                 uuidOrNull(yaml.getString("event.boss-reward-recipient", "")),
                 yaml.getString("event.return-stone-status", "PENDING"),
                 yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
+                yaml.getLong("event.phase-deadline-millis", 0L),
                 yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
                 finalDrainAppliedPlayers, waveRewardsIssued,
                 yaml.getString("boss.stage", "AWAKENING"),
                 yaml.getString("boss.cast-state", "NONE"),
                 yaml.getLong("boss.cast-deadline-millis", 0L),
                 yaml.getBoolean("boss.absorption-triggered", false),
+                yaml.getBoolean("boss.absorption-completed", false),
+                yaml.getBoolean("boss.absorption-attack-empowered", false),
                 yaml.getBoolean("boss.judgment-triggered", false),
                 yaml.getBoolean("boss.judgment-completed", false));
     }

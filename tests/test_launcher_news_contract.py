@@ -72,14 +72,14 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
     assert metadata["schemaVersion"] == 1
     assert metadata["channel"] == "stable"
     assert metadata["architecture"] == "x64"
-    assert metadata["version"] == "1.0.3"
-    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.3.exe"
-    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.3.exe"
-    assert metadata["customInstallerFilename"] == "CopiMineLauncherFolderSetup-1.0.3.exe"
-    assert metadata["customInstallerDownloadUrl"] == "/downloads/launcher/CopiMineLauncherFolderSetup-1.0.3.exe"
+    assert metadata["version"] == "1.0.6"
+    assert metadata["filename"] == "CopiMineLauncherSetup-1.0.6.exe"
+    assert metadata["downloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.6.exe"
+    assert metadata["customInstallerFilename"] == "CopiMineLauncherFolderSetup-1.0.6.exe"
+    assert metadata["customInstallerDownloadUrl"] == "/downloads/launcher/CopiMineLauncherFolderSetup-1.0.6.exe"
     assert metadata["customInstallerMode"] == "folder-picker"
-    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.3.msi"
-    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.3.msi"
+    assert metadata["msiFilename"] == "CopiMineLauncherSetup-1.0.6.msi"
+    assert metadata["msiDownloadUrl"] == "/downloads/launcher/CopiMineLauncherSetup-1.0.6.msi"
     assert metadata["msiInstallLocation"] == "choose"
     assert metadata["releaseNotesUrl"].startswith("/news/")
     assert isinstance(metadata["sizeBytes"], int) and metadata["sizeBytes"] > 0
@@ -89,7 +89,7 @@ def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() 
 
 
 def test_next_launcher_release_notes_page_exists() -> None:
-    notes = ROOT / "admin-web/frontend/news/copimine-launcher-1-0-5.html"
+    notes = ROOT / "admin-web/frontend/news/copimine-launcher-1-0-6.html"
 
     assert notes.is_file()
     assert 'data-page-kind="public-patch"' in notes.read_text(encoding="utf-8")

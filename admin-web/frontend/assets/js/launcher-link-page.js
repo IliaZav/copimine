@@ -1,4 +1,4 @@
-import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260828launcherlink3";
+import { authLandingHref, launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink4";
 
 const statusRoot = document.getElementById("launcherLinkStatus");
 const closeButton = document.getElementById("launcherLinkClose");
@@ -73,6 +73,18 @@ function renderGuest() {
   );
   renderBody(notice, actions);
   setPageState("guest");
+}
+
+function renderExpiredRequest() {
+  const notice = element("div", "launcher-link-notice");
+  notice.append(
+    element("strong", "launcher-link-error", "Срок действия привязки истёк"),
+    element("span", "", "Откройте Launcher и создайте новую привязку. Старый одноразовый запрос больше нельзя подтвердить."),
+  );
+  const actions = element("div", "launcher-link-actions");
+  actions.append(buttonLink("Открыть Launcher и создать новую привязку", "/launcher.html"));
+  renderBody(notice, actions);
+  setPageState("expired");
 }
 
 function renderError(message, retry = true) {
@@ -177,6 +189,10 @@ async function confirmBinding(confirmButton, cancelButton, account) {
     confirmButton.disabled = false;
     cancelButton.disabled = false;
     confirmButton.textContent = "Подтвердить привязку";
+    if (error?.status === 403 && /ист[её]к|неверен/i.test(String(error.message || ""))) {
+      renderExpiredRequest();
+      return;
+    }
     renderError(error instanceof Error ? error.message : "Сервис привязки вернул ошибку.");
   }
 }

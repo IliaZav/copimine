@@ -136,6 +136,11 @@ YOOKASSA_SETTINGS = YooKassaSettings.from_env()
 DONATION_PROVIDER = "YOOKASSA" if YOOKASSA_SETTINGS.enabled else "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
 DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
+LAUNCHER_LINK_CHALLENGE_TTL_SECONDS = max(
+    5 * 60,
+    int(os.getenv("LAUNCHER_LINK_CHALLENGE_TTL_SECONDS", str(30 * 60))),
+)
+LAUNCHER_LINK_CHALLENGE_TTL_MS = LAUNCHER_LINK_CHALLENGE_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
 MANAGED_RESOURCEPACK_URL = os.getenv(
     "COPIMINE_RESOURCEPACK_URL",
@@ -7135,7 +7140,7 @@ def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[s
     code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
     poll_token = secrets.token_urlsafe(32)
     now = donation_now_ms()
-    expires = now + (15 * 60 * 1000)
+    expires = now + LAUNCHER_LINK_CHALLENGE_TTL_MS
     device_hash = launcher_secret_hash("device", device_id)
     with auth_conn() as conn:
         ensure_v4_schema(conn)

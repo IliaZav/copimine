@@ -203,6 +203,24 @@ def test_native_launcher_challenge_is_not_blocked_by_browser_csrf(monkeypatch, t
         assert poll.json()["status"] == "PENDING"
 
 
+def test_launcher_challenge_allows_time_for_login_round_trip(monkeypatch, tmp_path: Path) -> None:
+    main = load_main(monkeypatch, tmp_path)
+    monkeypatch.setattr(main, "donation_now_ms", lambda: 1_000_000)
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/api/launcher/link/challenge",
+            json={
+                "device_id": "native-device-ttl-1234567890",
+                "minecraft_name": "RoundTripPlayer",
+                "launcher_version": "1.0.3",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["expiresAt"] - 1_000_000 == 30 * 60 * 1000
+
+
 def test_launcher_binding_confirmation_completes_once_and_returns_linked_status(monkeypatch, tmp_path: Path) -> None:
     main = load_main(monkeypatch, tmp_path)
     main.secrets.choice = lambda alphabet: "2"

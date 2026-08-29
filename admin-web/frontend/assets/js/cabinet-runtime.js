@@ -12,7 +12,7 @@ import { createPlayerAccountPages } from "./player/account-pages.js";
 import { createPlayerArtifactPages } from "./player/artifact-pages.js";
 import { createPlayerDonationPages } from "./player/donation-pages.js";
 import { createPlayerTreasuryPages } from "./player/treasury-pages.js";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260828launcherlink3";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260829launcherlink4";
 
 const $ = (id) => document.getElementById(id);
 
@@ -962,7 +962,9 @@ async function api(url, opts = {}) {
       if (refreshed) return api(url, { ...opts, skipAuthReset: true, retryOn401: false });
       logout(false);
     }
-    throw new Error(describeError(data.detail ?? data.error ?? `HTTP ${res.status}`));
+    const error = new Error(describeError(data.detail ?? data.error ?? `HTTP ${res.status}`));
+    error.status = res.status;
+    throw error;
   }
   return data;
 }
@@ -5998,6 +6000,10 @@ async function confirmLauncherLink() {
     }, 80);
   } catch (err) {
     const message = err?.message || "Не удалось подтвердить привязку Launcher.";
+    if (err?.status === 403 && /ист[её]к|неверен/i.test(String(message))) {
+      renderExpiredLauncherLink();
+      return;
+    }
     if (errorNode) {
       errorNode.textContent = message;
       errorNode.classList.remove("hidden");
@@ -6008,6 +6014,26 @@ async function confirmLauncherLink() {
     }
     operationAlert(message, true);
   }
+}
+
+function renderExpiredLauncherLink() {
+  const requestNode = $("launcherLinkRequest");
+  if (requestNode) {
+    requestNode.className = "notice error";
+    requestNode.textContent = "Срок действия привязки истёк. Откройте Launcher и создайте новую привязку.";
+  }
+  const button = $("launcherLinkConfirm");
+  if (button) {
+    button.disabled = false;
+    button.textContent = "Открыть Launcher";
+    button.dataset.click = "cancelLauncherLink()";
+  }
+  const errorNode = $("launcherLinkError");
+  if (errorNode) {
+    errorNode.textContent = "Старый одноразовый запрос больше нельзя подтвердить.";
+    errorNode.classList.remove("hidden");
+  }
+  operationAlert("Срок действия привязки истёк. Создайте новый запрос в Launcher.", true);
 }
 
 function cancelLauncherLink() {

@@ -23,6 +23,8 @@ $WebsitePort = 8090
 $MinecraftPort = 25565
 $RconPort = 25575
 $PostgresPort = 55432
+$MinecraftJvmXms = if ($env:MC_JVM_XMS) { $env:MC_JVM_XMS.Trim() } else { '512M' }
+$MinecraftJvmXmx = if ($env:MC_JVM_XMX) { $env:MC_JVM_XMX.Trim() } else { '1536M' }
 $PostgresDownloadUrl = 'https://get.enterprisedb.com/postgresql/postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresZip = Join-Path $Downloads 'postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresLog = Join-Path $Logs 'postgresql.log'
@@ -34,6 +36,18 @@ $StackLog = Join-Path $Logs 'stack.log'
 
 foreach ($directory in @($Runtime, $Logs, $Pids, $Downloads)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
+}
+
+function Get-Sha1Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return ([BitConverter]::ToString($sha1.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $sha1.Dispose()
+    }
 }
 
 function Write-StackLog {
@@ -767,7 +781,7 @@ function Start-Minecraft {
     if (-not (Test-Path -LiteralPath $resourcePackZip -PathType Leaf)) {
         throw "Built resource pack is missing: $resourcePackZip. Run resourcepacks/build-resourcepack.py first."
     }
-    $resourcePackSha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $resourcePackZip).Hash.ToLowerInvariant()
+    $resourcePackSha1 = Get-Sha1Hex -Path $resourcePackZip
     Set-ServerProperty -Key 'resource-pack' -Value "http://127.0.0.1:$WebsitePort/resourcepacks/CopiMineResourcePack.zip"
     Set-ServerProperty -Key 'resource-pack-sha1' -Value $resourcePackSha1
     $java = (Get-Command java.exe -ErrorAction SilentlyContinue).Source
@@ -780,7 +794,7 @@ function Start-Minecraft {
     $env:POSTGRES_PASSWORD = $script:LocalValues['POSTGRES_PASSWORD']
     $env:POSTGRES_SCHEMA = 'copimine'
     $env:RCON_PASSWORD = $script:LocalValues['RCON_PASSWORD']
-    $proc = Start-Process -FilePath $java -ArgumentList @('-Xms1G', '-Xmx2G', '-jar', 'purpur.jar', 'nogui') -WorkingDirectory $ServerDir -RedirectStandardOutput $MinecraftOutLog -RedirectStandardError $MinecraftErrLog -WindowStyle Hidden -PassThru
+    $proc = Start-Process -FilePath $java -ArgumentList @("-Xms$MinecraftJvmXms", "-Xmx$MinecraftJvmXmx", '-jar', 'purpur.jar', 'nogui') -WorkingDirectory $ServerDir -RedirectStandardOutput $MinecraftOutLog -RedirectStandardError $MinecraftErrLog -WindowStyle Hidden -PassThru
     Write-PidFile -Name 'minecraft' -ProcessId $proc.Id
     if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort -Expected $true -TimeoutSeconds 120)) {
         if (-not (Get-ProcessIfAlive -ProcessId $proc.Id)) { throw 'Minecraft exited during startup. See local-runtime/logs/minecraft.stderr.log and minecraft/server/logs/latest.log.' }

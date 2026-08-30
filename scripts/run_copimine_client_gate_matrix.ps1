@@ -142,3 +142,4 @@ foreach ($definition in $scenarios) {
 }
 
 Write-Host "`nCLIENT_GATE_MATRIX=PASS" -ForegroundColor Green
+exit 0

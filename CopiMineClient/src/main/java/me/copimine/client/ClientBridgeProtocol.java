@@ -26,6 +26,7 @@ public final class ClientBridgeProtocol {
     public static final String END_EVENT_MAGIC = "COPIMINE_END_EVENT_V1";
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
+    public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -138,7 +139,12 @@ public final class ClientBridgeProtocol {
                     payload.mode(),
                     payload.clearPolicy(),
                     payload.source());
-            if (END_EVENT_STATE.apply(packet, System.currentTimeMillis())) {
+            long nowMillis = System.currentTimeMillis();
+            boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
+                    ? END_EVENT_STATE.applyBossBar(packet, payload.intensity(),
+                    payload.fadeInMillis(), payload.fadeOutMillis(), nowMillis)
+                    : END_EVENT_STATE.apply(packet, nowMillis);
+            if (applied) {
                 CopiMineClientLogger.info("End Rift client state applied: type=" + eventType + ", event=" + packet.eventId() + ", generation=" + packet.generation());
             } else {
                 CopiMineClientLogger.warn("End Rift client state ignored packet: type=" + eventType + ", event=" + packet.eventId());
@@ -334,6 +340,10 @@ public final class ClientBridgeProtocol {
 
     public static long bossPhaseTransitionMillisForEntity(String uuid) {
         return END_EVENT_STATE.bossPhaseTransitionMillisForEntity(uuid);
+    }
+
+    public static EndEventClientState.BossBarState endBossBar() {
+        return END_EVENT_STATE.bossBar();
     }
 
     public static void clearEndEventState() {

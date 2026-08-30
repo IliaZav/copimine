@@ -88,27 +88,82 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
 
 def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
                               accent: tuple[int, int, int], core: tuple[int, int, int]) -> None:
-    image = atlas((128, 128), palette, seed)
+    # Keep the 128x128 UV sheet fully opaque, but make the surface itself
+    # readable at Minecraft scale.  The previous version filled the atlas
+    # with crossing guide lines; on the large torso cuboid that became a red
+    # checkerboard instead of armour.  This version uses restrained panels,
+    # mirrored cracks, and a few high-contrast emissive areas.
+    image = Image.new("RGBA", (128, 128), (*palette[0], 255))
     draw = ImageDraw.Draw(image)
-    panel_lines(draw, 128, 128, palette[1])
-    # The boss model uses broad custom cuboids on a 128x128 sheet. Large torso,
-    # shoulder, arm, horn, shard, and chest-rift regions are all marked so one
-    # geometry can carry distinct readable phase surfaces.
-    draw.rectangle((3, 3, 55, 47), outline=(*accent, 255), width=3)
-    draw.rectangle((4, 64, 37, 96), outline=(*palette[-1], 255), width=2)
-    draw.rectangle((56, 4, 91, 31), outline=(*accent, 255), width=2)
-    draw.rectangle((88, 4, 109, 61), outline=(*palette[-1], 255), width=2)
-    draw.rectangle((42, 64, 58, 91), outline=(*accent, 255), width=2)
-    draw.rectangle((0, 84, 27, 111), outline=(*palette[-1], 255), width=2)
-    draw.rectangle((28, 84, 43, 111), outline=(*core, 255), width=2)
-    for x in range(8, 120, 13):
-        draw.line((x, 9, 127 - x // 2, 121), fill=(*accent, 190), width=1)
-    for y in range(12, 120, 17):
-        draw.line((8, y, 118, (y * 3 + seed) % 120), fill=(*palette[-1], 180), width=1)
-    sigil(draw, (64, 64), 21, [accent, palette[-1], core], seed % 11)
-    sigil(draw, (31, 24), 9, [palette[-1], accent, core], (seed + 5) % 13)
-    for radius in (8, 14, 24):
-        draw.ellipse((64 - radius, 64 - radius, 64 + radius, 64 + radius), outline=(*core, 220), width=1)
+
+    def rgba(color: tuple[int, int, int], alpha: int = 255) -> tuple[int, int, int, int]:
+        return (*color, alpha)
+
+    def panel(box: tuple[int, int, int, int], fill: tuple[int, int, int], edge: tuple[int, int, int], width: int = 1) -> None:
+        draw.rectangle(box, fill=rgba(fill), outline=rgba(edge), width=width)
+
+    # A very low-frequency 4px material grain keeps the armour from looking
+    # flat without introducing noisy diagonals over every mapped face.
+    for y in range(0, 128, 4):
+        for x in range(0, 128, 4):
+            if ((x // 4) * 3 + (y // 4) * 5 + seed) % 5 == 0:
+                draw.rectangle((x, y, x + 3, y + 3), fill=rgba(palette[1], 150))
+
+    # Deliberate UV islands used by the custom torso, shoulders, arms, shards,
+    # legs, and head.  Alternating dark plates provide silhouette highlights
+    # while leaving the bright lines sparse enough to read in motion.
+    uv_panels = (
+        ((0, 0, 55, 47), palette[1], palette[2]),
+        ((56, 4, 91, 31), palette[2], accent),
+        ((88, 4, 109, 61), palette[1], palette[-1]),
+        ((4, 64, 37, 96), palette[2], accent),
+        ((42, 64, 58, 91), palette[1], palette[-1]),
+        ((0, 84, 27, 111), palette[1], accent),
+        ((28, 84, 43, 111), palette[2], core),
+        ((0, 96, 15, 111), palette[2], accent),
+    )
+    for index, (box, fill, edge) in enumerate(uv_panels):
+        panel(box, fill, edge, 1 if index < 6 else 2)
+
+    # The primary 18x21 torso face: a mirrored collar and central crack make
+    # the boss read as a guardian rather than a recoloured Enderman.
+    torso_dark = palette[0]
+    draw.rectangle((1, 1, 17, 20), fill=rgba(torso_dark), outline=rgba(accent))
+    draw.line((2, 3, 5, 7, 3, 11, 6, 15, 5, 19), fill=rgba(accent), width=1, joint="curve")
+    draw.line((15, 3, 12, 7, 14, 11, 11, 15, 12, 19), fill=rgba(accent), width=1, joint="curve")
+    draw.line((8, 2, 8, 6, 9, 9, 8, 13, 8, 19), fill=rgba(core), width=1)
+    draw.line((9, 2, 9, 6, 8, 9), fill=rgba(palette[-1]), width=1)
+    draw.rectangle((6, 7, 10, 11), outline=rgba(core), width=1)
+    draw.point((8, 9), fill=rgba(palette[-1]))
+
+    # Symmetric armour seams on the larger UV islands.
+    for left, right, top, bottom in ((57, 90, 6, 29), (5, 36, 66, 94), (1, 26, 86, 109)):
+        mid = (left + right) // 2
+        draw.line((mid, top + 2, mid - 3, top + 8, mid, top + 14, mid - 2, bottom - 2),
+                  fill=rgba(accent), width=1, joint="curve")
+        draw.line((mid, top + 2, mid + 3, top + 8, mid, top + 14, mid + 2, bottom - 2),
+                  fill=rgba(palette[-1]), width=1, joint="curve")
+        draw.line((left + 2, top + 4, left + 1, bottom - 3), fill=rgba(palette[2], 220), width=1)
+        draw.line((right - 2, top + 4, right - 1, bottom - 3), fill=rgba(palette[2], 220), width=1)
+
+    # Chest-rift UV (28..34, 84..94) is intentionally bright: this is the
+    # emissive focal point visible on the front of the in-game model.
+    draw.rectangle((29, 84, 34, 94), fill=rgba(core), outline=rgba(palette[-1]), width=1)
+    draw.line((31, 85, 30, 88, 32, 91, 31, 94), fill=rgba(palette[0]), width=1)
+    draw.point((32, 87), fill=rgba(palette[-1]))
+
+    # Head island (0..13, 96..109): two eyes and a compact forehead mark.
+    draw.rectangle((1, 97, 13, 109), fill=rgba(palette[0]), outline=rgba(accent))
+    draw.rectangle((3, 101, 5, 102), fill=rgba(core))
+    draw.rectangle((9, 101, 11, 102), fill=rgba(core))
+    draw.line((7, 98, 6, 101, 7, 104, 7, 108), fill=rgba(accent), width=1)
+
+    # A central shard sigil is kept sparse so it remains a crisp accent when
+    # the texture is sampled at distance.
+    draw.polygon([(64, 50), (72, 64), (64, 78), (56, 64)], fill=rgba(palette[0]), outline=rgba(core))
+    draw.line((64, 53, 64, 75), fill=rgba(accent), width=1)
+    draw.line((59, 64, 69, 64), fill=rgba(palette[-1]), width=1)
+    draw.point((64, 64), fill=rgba(core))
     image.save(OUT / name, format="PNG", optimize=False)
 
 
@@ -165,6 +220,69 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     for x in range(3, 62, 9):
         draw.point((x, (x * 7 + seed) % 31), fill=(*accent, 255))
     image.save(OUT / name, format="PNG", optimize=False)
+
+
+def bossbar_frame() -> None:
+    """Paint a transparent 256x32 HUD frame around the health fill."""
+    gui_out = OUT.parent / "gui"
+    gui_out.mkdir(parents=True, exist_ok=True)
+    image = Image.new("RGBA", (256, 32), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    shadow = (5, 6, 14, 245)
+    steel = (105, 112, 132, 255)
+    steel_light = (214, 220, 224, 255)
+    steel_dark = (38, 42, 61, 255)
+    bone = (211, 193, 162, 255)
+    bone_light = (255, 237, 190, 255)
+    violet = (130, 72, 210, 255)
+    ember = (238, 116, 53, 255)
+
+    # Angular upper and lower rails leave the centre transparent so the Java
+    # renderer can draw a phase-coloured health fill underneath this frame.
+    draw.line((18, 5, 238, 5), fill=shadow, width=2)
+    draw.line((15, 7, 241, 7), fill=steel_dark, width=2)
+    draw.line((18, 8, 238, 8), fill=steel_light, width=1)
+    draw.line((18, 23, 238, 23), fill=steel_dark, width=2)
+    draw.line((15, 25, 241, 25), fill=shadow, width=2)
+    draw.line((19, 22, 237, 22), fill=steel, width=1)
+
+    left_end = [(0, 15), (8, 7), (19, 7), (27, 11), (21, 15),
+                (27, 19), (19, 25), (8, 25)]
+    right_end = [(255 - x, y) for x, y in left_end]
+    draw.polygon(left_end, fill=shadow)
+    draw.polygon(right_end, fill=shadow)
+    draw.line((1, 15, 9, 8, 20, 8), fill=bone_light, width=2, joint="curve")
+    draw.line((1, 15, 9, 23, 20, 23), fill=bone, width=2, joint="curve")
+    draw.line((254, 15, 246, 8, 235, 8), fill=bone_light, width=2, joint="curve")
+    draw.line((254, 15, 246, 23, 235, 23), fill=bone, width=2, joint="curve")
+
+    # Mirrored metal ribs make the silhouette read as an ornate frame rather
+    # than a flat paper strip at Minecraft's normal HUD scale.
+    for start in (23, 33, 43, 53):
+        draw.polygon([(start, 9), (start + 4, 9), (start + 17, 21),
+                      (start + 13, 21)], fill=steel_dark)
+        draw.line((start + 1, 10, start + 14, 20), fill=steel_light, width=1)
+        mirror = 255 - start
+        draw.polygon([(mirror, 9), (mirror - 4, 9), (mirror - 17, 21),
+                      (mirror - 13, 21)], fill=steel_dark)
+        draw.line((mirror - 1, 10, mirror - 14, 20), fill=steel_light, width=1)
+
+    # Bone hooks and small bolts break up the rails without obscuring text.
+    for x in (29, 48, 67, 188, 207, 226):
+        draw.rectangle((x, 5, x + 3, 8), fill=bone)
+        draw.point((x + 1, 6), fill=bone_light)
+    for x in (12, 244):
+        draw.rectangle((x, 14, x + 2, 17), fill=bone_light)
+        draw.point((x + 1, 15), fill=ember)
+
+    # A restrained central rift sigil anchors the title and is deliberately
+    # symmetric around the exact midpoint of the 256px sheet.
+    draw.polygon([(128, 7), (135, 14), (128, 23), (121, 14)], fill=shadow)
+    draw.line((128, 8, 134, 14, 128, 21, 122, 14, 128, 8), fill=violet, width=1, joint="curve")
+    draw.line((128, 10, 128, 19), fill=ember, width=1)
+    draw.point((128, 14), fill=bone_light)
+
+    image.save(gui_out / "end_rift_bossbar_frame.png", format="PNG", optimize=False)
 
 
 def main() -> None:
@@ -241,6 +359,7 @@ def main() -> None:
         (208, 46, 134),
         (255, 220, 246),
     )
+    bossbar_frame()
 
 
 if __name__ == "__main__":

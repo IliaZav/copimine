@@ -42,6 +42,19 @@ def test_end_event_client_has_cleanup_and_optional_control_mixins() -> None:
     assert "endEventVisualForEntity" in protocol
 
 
+def test_custom_end_rift_boss_bar_is_registered_and_keeps_vanilla_bars_scoped() -> None:
+    mixins = json.loads((CLIENT / "src/main/resources/copimineclient.mixins.json").read_text(encoding="utf-8"))
+    state = (CLIENT / "src/main/java/me/copimine/client/EndEventClientState.java").read_text(encoding="utf-8")
+    hud = (CLIENT / "src/main/java/me/copimine/client/EndRiftBossBarHud.java").read_text(encoding="utf-8")
+    mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/EndRiftBossBarHudMixin.java").read_text(encoding="utf-8")
+    frame = CLIENT / "src/main/resources/assets/copimineclient/textures/gui/end_rift_bossbar_frame.png"
+    assert "EndRiftBossBarHudMixin" in mixins["client"]
+    assert "BossBarState" in state and "hasActiveBossBar" in state
+    assert "copimineclient" in hud and "end_rift_bossbar_frame.png" in hud
+    assert "title.startsWith(\"Страж Разлома\")" in mixin
+    assert frame.is_file() and frame.stat().st_size > 100
+
+
 def test_end_event_client_texture_is_packaged_source() -> None:
     texture_dir = CLIENT / "src/main/resources/assets/copimineclient/textures/entity"
     for name in (
@@ -82,6 +95,17 @@ def test_end_event_texture_catalog_covers_every_bound_entity_and_exposes_diagnos
     ):
         mixin = (CLIENT / "src/main/java/me/copimine/client/mixin" / mixin_name).read_text(encoding="utf-8")
         assert "EndEventTextureCatalog.isAvailable" in mixin
+
+
+def test_skeleton_renderer_mixin_uses_the_runtime_abstract_skeleton_signature() -> None:
+    mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/SkeletonEntityRendererMixin.java").read_text(encoding="utf-8")
+
+    # Yarn's 1.21.1 renderer accepts AbstractSkeletonEntity.  Keeping the
+    # contract here prevents a compile-valid but runtime-invalid injection
+    # from making the client drop back to vanilla rendering or crash at load.
+    assert "import net.minecraft.entity.mob.AbstractSkeletonEntity;" in mixin
+    assert "AbstractSkeletonEntity entity" in mixin
+    assert "(SkeletonEntity entity" not in mixin
 
 
 def test_end_event_mob_bindings_are_uuid_scoped_and_not_global_overrides() -> None:

@@ -22,6 +22,7 @@ public record EndEventPacket(
             "END_BOSS_BIND",
             "END_BOSS_UNBIND",
             "END_BOSS_PHASE",
+            "END_BOSS_BAR",
             "END_ENTITY_BIND",
             "END_ENTITY_UNBIND",
             "END_CONTROL_START",

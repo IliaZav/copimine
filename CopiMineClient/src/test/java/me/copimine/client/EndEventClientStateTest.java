@@ -2,6 +2,7 @@ package me.copimine.client;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -15,6 +16,44 @@ class EndEventClientStateTest {
         assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L, "control-1", 10_000L, "", "boss-id", "control-id"), 100L));
         assertTrue(state.isReverseActive(101L));
         assertTrue(state.controlInstanceId().equals("control-1"));
+    }
+
+    @Test
+    void acceptsOnlyTheBoundBossBarAndKeepsHealthPhaseAndCastState() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "DISTORTION|JUDGMENT_CAST", "control-id"),
+                0.736F, 1_840, 2_500, 200L));
+
+        EndEventClientState.BossBarState bar = state.bossBar();
+        assertTrue(state.hasActiveBossBar());
+        assertEquals("DISTORTION", bar.phaseId());
+        assertEquals("JUDGMENT_CAST", bar.castState());
+        assertEquals(1_840, bar.health());
+        assertEquals(2_500, bar.maxHealth());
+        assertEquals(0.736F, bar.progress(), 0.0001F);
+
+        assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "other-binding", 1_000L, "other-boss", "CATASTROPHE|NONE", "control-id"),
+                1.0F, 2_500, 2_500, 300L));
+        assertTrue(state.hasActiveBossBar());
+    }
+
+    @Test
+    void staleBossBarCannotReplaceANewerGenerationSnapshot() {
+        EndEventClientState state = new EndEventClientState();
+        state.apply(packet("END_BOSS_BIND", "event-1", 2L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L);
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 2L,
+                "boss-bind", 1_000L, "boss-uuid", "AWAKENING|NONE", "control-id"),
+                1.0F, 2_500, 2_500, 110L));
+        assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "CATASTROPHE|NONE", "control-id"),
+                0.1F, 250, 2_500, 120L));
+        assertEquals("AWAKENING", state.bossBar().phaseId());
     }
 
     @Test

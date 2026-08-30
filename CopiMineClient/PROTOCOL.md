@@ -40,7 +40,7 @@ Message envelope:
 23. `status:string`
 
 Server -> Client:
-- `visual_start`
+  - `visual_start`
   - fields used now: `seq`, `effectId`, `shaderpack`, `durationMillis`, `intensity`, `fadeInMillis`, `fadeOutMillis`, `source`, `clearPolicy`
   - client tries built-in ZIP shaderpack switching first
   - if that fails, client falls back to local post-processing
@@ -48,6 +48,17 @@ Server -> Client:
 - `visual_stop`
 - `visual_clear_all`
 - `ping`
+- `END_EVENT:END_BOSS_BAR` (optional End Rift HUD snapshot)
+  - `seq`: event generation
+  - `sessionId`: event id
+  - `clientVersion`: boss binding instance id
+  - `intensity`: health progress from `0.0` to `1.0`
+  - `fadeInMillis`: rounded current boss health
+  - `fadeOutMillis`: rounded configured maximum health
+  - `mode`: UUID of the bound Rift Guardian
+  - `shaderpack` / `clearPolicy`: `PHASE|CAST_STATE`, for example `DISTORTION|JUDGMENT_CAST`
+  - the client accepts the snapshot only when both the boss UUID and binding instance match;
+    a missing client mod keeps the normal server BossBar fallback
 
 Client -> Server:
 - `hello`

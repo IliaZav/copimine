@@ -3,7 +3,7 @@ package me.copimine.client.mixin;
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.EndEventTextureCatalog;
 import net.minecraft.client.render.entity.SkeletonEntityRenderer;
-import net.minecraft.entity.mob.SkeletonEntity;
+import net.minecraft.entity.mob.AbstractSkeletonEntity;
 import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -19,7 +19,7 @@ public abstract class SkeletonEntityRendererMixin {
             "copimineclient", "textures/entity/end_rift_elite_skeleton.png");
 
     @Inject(method = "getTexture", at = @At("HEAD"), cancellable = true)
-    private void copimine$skeletonTexture(SkeletonEntity entity,
+    private void copimine$skeletonTexture(AbstractSkeletonEntity entity,
                                           CallbackInfoReturnable<Identifier> cir) {
         if (entity == null) {
             return;

@@ -137,6 +137,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -9703,6 +9704,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossBarLastProgress = progress;
         bossBarLastTitle = renderedTitle;
         bossBarLastColor = color;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (desiredAudience.contains(player.getUniqueId())) {
+                sendBossBarVisualUpdate(player, boss, bossStage);
+            }
+        }
     }
 
     private void startAbsorptionChannel(LivingEntity boss) {
@@ -11691,6 +11697,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         runeVisualOccupants.values().removeIf(uuid::equals);
     }
 
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        clientBindingReadyPlayers.remove(player.getUniqueId());
+        if (!isCombatPhase() && !testCombatAiMode) {
+            return;
+        }
+        // The client clears its event state while the death screen is active.
+        // Rebind after the respawn packet has put the player back in the world;
+        // this also restores the custom boss bar instead of leaving the vanilla
+        // fallback visible after a death during a fight.
+        Bukkit.getScheduler().runTaskLater(this, () -> refreshClientBindingsForPlayer(player), 2L);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onShardChannelDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof Player player) {
@@ -12202,6 +12222,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
                 bossUuid.toString(), config.clientBossId());
         sendBossPhaseVisualUpdate(player, Bukkit.getEntity(bossUuid), bossStage);
+        sendBossBarVisualUpdate(player, Bukkit.getEntity(bossUuid), bossStage);
     }
 
     private void sendBossPhaseVisualUpdate(Player player, Entity boss, BossStage stage) {
@@ -12213,6 +12234,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // the server-side fight remains fully authoritative without it.
         sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
                 0L, bossUuid.toString(), stage.name());
+    }
+
+    /** Send the richer HUD snapshot used by the optional custom client bar. */
+    private void sendBossBarVisualUpdate(Player player, Entity entity, BossStage stage) {
+        if (player == null || entity == null || !(entity instanceof LivingEntity boss)
+                || stage == null || bossUuid == null
+                || !bossUuid.equals(boss.getUniqueId())
+                || bossBindingInstanceId.isBlank()) {
+            return;
+        }
+        double max = Math.max(1.0D, config.bossHealth());
+        double health = Math.max(0.0D, Math.min(max, bossVirtualHealth(boss)));
+        int encodedHealth = (int) Math.round(health);
+        int encodedMax = (int) Math.round(max);
+        float progress = (float) Math.max(0.0D, Math.min(1.0D, health / max));
+        String phaseSpec = stage.name() + "|" + bossCastState.name();
+        sendClientPacket(player, "END_BOSS_BAR", bossBindingInstanceId, 1_000L,
+                boss.getUniqueId().toString(), phaseSpec, encodedHealth, encodedMax, progress);
     }
 
     private void sendBossPhaseVisualUpdate(Entity boss, BossStage stage) {
@@ -12281,6 +12320,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,
                                   String subjectId, String visualId) {
+        sendClientPacket(player, type, instanceId, durationMillis, subjectId, visualId,
+                0, 0, 0.0F);
+    }
+
+    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,
+                                  String subjectId, String visualId, int health, int maxHealth,
+                                  float progress) {
         if (player == null || !player.isOnline() || config.bridgeChannel().isBlank()) {
             return;
         }
@@ -12306,9 +12352,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             output.writeUTF("");
             output.writeUTF(visualId == null ? "" : visualId);
             output.writeInt((int) Math.max(0L, Math.min(Integer.MAX_VALUE, durationMillis)));
-            output.writeFloat(0.0F);
-            output.writeInt(0);
-            output.writeInt(0);
+            output.writeFloat(Float.isFinite(progress)
+                    ? Math.max(0.0F, Math.min(1.0F, progress)) : 0.0F);
+            output.writeInt(Math.max(0, Math.min(10_000, health)));
+            output.writeInt(Math.max(0, Math.min(10_000, maxHealth)));
             output.writeUTF(subjectId == null ? "" : subjectId);
             output.writeUTF(visualId == null ? "" : visualId);
             output.writeUTF(config.clientControlId());

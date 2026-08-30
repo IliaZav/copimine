@@ -20,7 +20,12 @@ EXPECTED = {
     "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD"),
     "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
     "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK"),
+    "berserker_heart": (200, "BERSERKER_HEART", "NETHER_STAR"),
+    "zhilorez_pickaxe": (250, "VEIN_MINER", "NETHERITE_PICKAXE"),
+    "night_cloak": (150, "NIGHT_CLOAK", "PHANTOM_MEMBRANE"),
 }
+
+OWNER_BOUND_OVERRIDES = {"night_cloak": False}
 
 
 def _donation_blocks(text: str) -> dict[str, str]:
@@ -65,7 +70,8 @@ def test_donation_catalog_has_one_backend_and_runtime_contract_per_item() -> Non
         assert _field(block, "source") == "DONATION_SHOP"
         assert _field(block, "enabled").lower() == "true"
         assert int(_field(block, "max-stack")) == 1
-        assert _field(block, "owner-bound").lower() == "true"
+        expected_owner_bound = OWNER_BOUND_OVERRIDES.get(item_id, True)
+        assert _field(block, "owner-bound").lower() == str(expected_owner_bound).lower()
         assert _field(block, "effect-description")
 
     java = JAVA.read_text(encoding="utf-8")

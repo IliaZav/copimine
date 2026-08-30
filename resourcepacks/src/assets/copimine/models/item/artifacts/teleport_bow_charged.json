@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/crossbow_arrow",
   "textures": {
-    "layer0": "copimine:item/artifacts/explosive_crossbow_charged"
+    "layer0": "copimine:item/artifacts/teleport_bow_charged"
   }
 }

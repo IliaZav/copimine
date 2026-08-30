@@ -57,10 +57,8 @@ class NewArtifactsReleaseContractTest(unittest.TestCase):
         self.assertIn("owner-bound: false", cloak)
         self.assertIn("effect-profile-id: NIGHT_CLOAK", cloak)
 
-    def test_retired_compass_is_disabled_and_has_no_active_teleport_wiring(self) -> None:
-        compass_start = self.items.index("    - item-id: gde_moy_lut_blyat_compass\n")
-        compass = self.items[compass_start:]
-        self.assertIn("enabled: false", compass)
+    def test_retired_compass_is_removed_and_has_no_active_teleport_wiring(self) -> None:
+        self.assertNotIn("item-id: gde_moy_lut_blyat_compass", self.items)
         interact = self.java[self.java.index("private Set<String> artifactInteractEffects") : self.java.index("private Set<String> artifactCombatEffects")]
         self.assertNotIn("LOOT_COMPASS", interact)
         self.assertNotIn('case "LOOT_COMPASS"', self.java)

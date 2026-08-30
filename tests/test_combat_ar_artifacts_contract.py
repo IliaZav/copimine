@@ -46,9 +46,9 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         block = item_block("combat_crossbow")
         require_all(
             block,
-            "material: BOW",
+            "material: CROSSBOW",
             "source: AR_SHOP",
-            'name: "&dЛук телепортации"',
+            'name: "&6Арбалет телепортации"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 200",

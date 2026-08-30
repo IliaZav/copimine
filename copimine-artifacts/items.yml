@@ -700,29 +700,6 @@ donation-catalog:
       lore:
         - "&7Освобождает от налогов на 3 месяца"
 
-    - item-id: gde_moy_lut_blyat_compass
-      display-name: "&6Компас телепортации"
-      base-material: COMPASS
-      price-donation: 100
-      # Retired tombstone: preserve DB history and PDC authentication for the
-      # already-issued instance, but never expose or activate new purchases.
-      enabled: false
-      source: DONATION_SHOP
-      owner-bound: true
-      reclaim-policy: LOSS_ONLY
-      consume-policy: PERSISTENT
-      effect-profile-id: LOOT_COMPASS
-      effect-description: "Телепортация по направлению взгляда"
-      cooldown-seconds: 200
-      proc-chance: 1.0
-      max-stack: 1
-      repairable: false
-      custom-texture-mode-allowed: true
-      custom-model-data: 20010
-      visual-effect-id: ""
-      lore:
-        - "&7Телепортация по направлению взгляда"
-
     - item-id: berserker_heart
       display-name: "&dСердце берсерка"
       base-material: NETHER_STAR

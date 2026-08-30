@@ -15818,8 +15818,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             this.runSync(() -> this.sendArTheftUnavailableMessages(attacker));
             return;
          }
-         String accountCode = account.code() == null ? "" : account.code().trim().toUpperCase(Locale.ROOT);
-         if (!(accountCode.isBlank() || Set.of("NO_BANK_ACCOUNT", "ACCOUNT_NOT_FOUND", "ACCOUNT_MISSING", "NO_ACCOUNT", "INSUFFICIENT_AR").contains(accountCode))) return;
          // Physical AR is deliberately not a fallback.  Inventory removal,
          // bank credit and compensation cannot be made one atomic operation
          // across the EconomyCore bridge.  Refusing the steal is safer than

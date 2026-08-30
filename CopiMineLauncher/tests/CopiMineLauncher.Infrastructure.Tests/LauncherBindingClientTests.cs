@@ -208,7 +208,7 @@ public sealed class LauncherBindingClientTests
         var status = await client.GetStatusAsync(challenge, CancellationToken.None);
 
         challenge.AuthorizationUrl.IsLoopback.Should().BeTrue();
-        challenge.AuthorizationUrl.AbsolutePath.Should().Be("/cabinet/link.html");
+        challenge.AuthorizationUrl.AbsolutePath.Should().Be("/launcher-link.html");
         status.Linked.Should().BeFalse();
         status.Status.Should().Be("PENDING");
     }

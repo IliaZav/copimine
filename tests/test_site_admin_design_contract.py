@@ -139,6 +139,11 @@ def test_admin_navigation_has_a_loader_for_every_section() -> None:
     assert 'cms: () => getAdminCmsPages().loadCms()' in loader_block
 
 
+def test_cabinet_runtime_does_not_keep_a_second_elections_renderer() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert "loadElectionsLegacy" not in runtime
+
+
 def test_sources_view_explains_database_roles_without_secrets() -> None:
     registry = read("admin-web/frontend/assets/js/admin/plugin-registry-pages.js")
     assert "PostgreSQL" in registry

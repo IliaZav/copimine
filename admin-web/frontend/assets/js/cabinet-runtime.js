@@ -4130,141 +4130,10 @@ function rpVotingBlockCards(blocks = []) {
   }).join("")}</div>`;
 }
 
-async function loadElectionsLegacy() {
-  setLoading("Загружаю выборы");
-  const [data, detail] = await Promise.all([
-    safeApi("/api/elections/overview", {}),
-    safeApi("/api/elections/detail?limit=500", {})
-  ]);
-  const web = data.pluginWeb || {};
-  const overview = web.overview || detail.summary || {};
-  const election = detail.election || {};
-  const summary = detail.summary || {};
-  const candidateRows = firstArray(detail.candidates, web.candidates, getPath(data, "groups.candidates.0.rows", []));
-  const fraudRows = [...asArray(detail.antiFraud), ...asArray(web.antiFraud), ...asArray(data.antiFraud)];
-  const applicationRows = asArray(detail.applications);
-  const votingBlocks = asArray(detail.votingBlocks);
-  const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|station|seal|book)/i.test(String(row.action || row.type || "")));
-  const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
-  const electionLoadErrors = [data.error, detail.error].filter(Boolean).map((value) => cleanText(value));
-  state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
-  setView(`
-    ${electionLoadErrors.length ? `<div class="notice bad">Не удалось обновить часть данных выборов: ${esc(electionLoadErrors.join("; "))}. Повтори обновление позже.</div>` : ""}
-    ${renderRpElectionAdminPanel(applicationRows, votingBlocks)}
-    <section class="dashboard-hero election-hero">
-      <div class="hero-copy">
-        <span class="hero-kicker">Выборы CopiMine</span>
-        <h2>${esc(electionStageLabel(election.current_stage || election.status || web.stageTitle, "Пауза"))}</h2>
-        <p>Заявки, кандидаты, дебаты, голосование и срок президента.</p>
-        <div class="hero-actions">
-          ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
-          ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
-          ${pill(detail.president?.president_name || detail.president?.minecraft_name || overview.president ? `Президент: ${esc(detail.president?.president_name || detail.president?.minecraft_name || overview.president)}` : "Президент ещё не выбран", detail.president?.president_name || detail.president?.minecraft_name || overview.president ? "good" : "warn")}
-        </div>
-      </div>
-      <div class="hero-board">
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/writable_book.png" alt="" />
-          <strong>${esc(summary.applications ?? applicationRows.length)}</strong>
-          <span>заявок</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/paper.png" alt="" />
-          <strong>${esc(summary.totalVotes ?? 0)}</strong>
-          <span>голосов</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/lectern_front.png" alt="" />
-          <strong>${esc(votingBlocks.filter((row) => number(row.active) > 0).length)}</strong>
-          <span>активных блоков</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/diamond.png" alt="" />
-          <strong>${formatAr(treasuryBudget)}</strong>
-          <span>открытая казна</span>
-        </div>
-      </div>
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Состояние кампании", "Этап, кандидаты и президентский срок.", kv([
-        ["Этап", electionStageLabel(election.current_stage || election.status || web.stageTitle, "—")],
-        ["Тур", election.current_round || summary.round || web.raw?.round || "1"],
-        ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        ["Лимит кандидатов", election.candidate_limit ?? web.raw?.candidateLimit ?? "4"],
-        ["Срок президента", election.president_term_days ? `${election.president_term_days} дн.` : "—"],
-        ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
-      ]), siteBulletList([
-        "Сводка по выборам.",
-        "Кандидаты и результаты голосования.",
-        "Смена этапов только в игре."
-      ]))}
-      ${panel("Пульт кампании", "Кнопки управления доступны в игровом AdminHub.", `
-        <div class="book-status-strip">
-          ${pill("Только просмотр", "warn")}
-          ${pill("Игровой GUI", "neutral")}
-          ${pill("Аудит включён", "good")}
-        </div>
-        <div class="spacer-12"></div>
-        ${siteBulletList([
-          "Заявки принимаются на сайте.",
-          "Кандидаты и этапы подтверждаются в игровом GUI.",
-          "Голосование идёт только на сервере."
-        ])}
-      `)}
-      ${panel("Заявки кандидатов", "Заявки с сайта и решение администратора.", `
-        ${electionApplicationCards(applicationRows)}
-      `)}
-      ${panel("Кандидаты и результаты", "До четырёх кандидатов и открытый счёт голосов.", `
-        ${candidateCards(candidateRows)}
-        <div class="spacer-12"></div>
-        ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
-      `)}
-      ${panel("Блоки голосования", "Защищённые блоки, через которые игроки голосуют в игре.", `
-        ${rpVotingBlockCards(votingBlocks)}
-        <div class="spacer-12"></div>
-        ${kv([
-          ["Активных блоков", votingBlocks.filter((row) => number(row.active) > 0).length],
-          ["Всего голосов", summary.totalVotes ?? 0],
-          ["Ошибок проверки", fraudRows.length || "не найдено"]
-        ])}
-      `)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Президентский срок", "Победитель получает полномочия ровно на 7 дней.", kv([
-        ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        ["Срок", election.president_term_days ? `${election.president_term_days} дн.` : "7 дн."],
-        ["Смена президента", "Только после отставки или решения администрации"]
-      ]))}
-      ${panel("Казна", "Баланс, владелец и история.", kv([
-        ["Баланс", formatAr(treasuryBudget)],
-        ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
-        ["Источник", "игровая экономика и витрины"],
-        ["Публичность", "только открытые записи"]
-      ]))}
-    </section>
-    ${panel("Журнал кампании", "Записи о заявках, этапах, голосах и президенте.", `
-      <div class="ledger election-ledger">
-        ${auditRows.length ? auditRows.slice(0, 40).map((row) => `
-          <article class="ledger-row">
-            <div>
-              <strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong>
-              <span>${esc(row.actor || row.actor_name || row.player_name || "Система")}</span>
-            </div>
-            <div>
-              <span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span>
-            </div>
-            <p>${esc(short(row.details || row.notes || row.message || row.target_name || "", 220) || "Без дополнительных заметок")}</p>
-          </article>
-        `).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}
-      </div>
-    `)}
-  `);
-}
 
 /*
- * RP election admin surface.  The former mixed election dashboard is kept
- * above only as a migration reference and is never routed to.  This function
- * is the sole renderer for the AdminHub elections tab.
+ * RP election admin surface. This function is the sole renderer for the
+ * AdminHub elections tab.
  */
 async function loadElections() {
   setLoading("Загружаю RP-выборы");
@@ -4340,7 +4209,7 @@ async function loadElections() {
       ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
       ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
       ${panel("Законы президента", "Ожидающие законы можно прочитать в книге и одобрить или отклонить. Одобренные попадают в livebar, сайт и игровой GUI.", `<div class="book-status-strip"><span class="pill warn">На рассмотрении: ${pendingLaws.length}</span><span class="pill good">Опубликовано: ${publishedLaws.length}</span></div><div class="spacer-12"></div>${presidentLawCards(pendingLaws, publishedLaws)}`)}
-      ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
+      ${panel("История кампании", "События новой RP-кампании без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
     </section>
   `);
 }
@@ -6591,7 +6460,7 @@ async function loadPlayerElections() {
         <label>X<input id="rpBlockX" type="number" value="0"></label><label>Y<input id="rpBlockY" type="number" value="64"></label><label>Z<input id="rpBlockZ" type="number" value="0"></label>
         <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>
       </div>
-      <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для нового workflow не нужны.</p>
+      <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для этого сценария не нужны.</p>
       <div class="check-list">${applicationRows.filter((row) => String(row.admin_status || "").toUpperCase() === "APPROVED" && String(row.status || "").toUpperCase() === "APPROVED").map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала открой приём заявок и проверь анкеты.")}</div>
       <div class="book-status-strip"><span class="pill neutral">Блоков: ${esc(votingBlocks.length)}</span>${votingBlocks.slice(0, 8).map((row) => `<span class="pill good">${esc(row.world)} ${esc(row.x)},${esc(row.y)},${esc(row.z)}</span>`).join("")}</div>
     `)}

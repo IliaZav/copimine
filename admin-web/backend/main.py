@@ -7131,6 +7131,63 @@ def launcher_secret_hash(kind: str, value: str) -> str:
     return sha256_hex(f"copimine-launcher:{kind}:{value}")
 
 
+def ensure_launcher_binding_schema(conn: Any) -> None:
+    """Check the small Launcher-binding schema without running the global migration.
+
+    The full v4 schema is intentionally a deployment concern.  A binding
+    request must not opportunistically alter unrelated player/game tables, and
+    a missing production migration must be reported as an actionable service
+    error rather than as an invalid one-time code.
+    """
+    tables = {"launcher_link_challenges", "launcher_account_links"}
+    if auth_storage_backend() == "sqlite":
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS launcher_link_challenges(
+                challenge_id TEXT PRIMARY KEY,
+                device_id_hash TEXT NOT NULL,
+                minecraft_name TEXT NOT NULL DEFAULT '',
+                launcher_version TEXT NOT NULL DEFAULT '',
+                code_hash TEXT NOT NULL,
+                poll_token_hash TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                site_account_id TEXT NOT NULL DEFAULT '',
+                created_at BIGINT NOT NULL DEFAULT 0,
+                expires_at BIGINT NOT NULL DEFAULT 0,
+                authorized_at BIGINT NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS launcher_account_links(
+                device_id_hash TEXT PRIMARY KEY,
+                site_account_id TEXT NOT NULL,
+                minecraft_name TEXT NOT NULL DEFAULT '',
+                launcher_version TEXT NOT NULL DEFAULT '',
+                linked_at BIGINT NOT NULL DEFAULT 0,
+                updated_at BIGINT NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_expiry ON launcher_link_challenges(status,expires_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_device ON launcher_link_challenges(device_id_hash,status,created_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_account_links_site ON launcher_account_links(site_account_id,updated_at DESC)")
+        return
+
+    rows = conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema=current_schema() AND table_name IN (%s,%s)",
+        tuple(sorted(tables)),
+    ).fetchall()
+    present = {str(row_get(row, "table_name", "") or "") for row in rows}
+    missing = sorted(tables - present)
+    if missing:
+        detail = "LAUNCHER_LINK_SCHEMA_UNAVAILABLE: отсутствуют таблицы " + ", ".join(missing)
+        LOGGER.error(detail)
+        raise HTTPException(status_code=503, detail=detail)
+
+
 def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[str, Any]:
     device_id = normalize_launcher_device_id(data.device_id)
     minecraft_name = data.minecraft_name.strip()
@@ -7143,7 +7200,7 @@ def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[s
     expires = now + LAUNCHER_LINK_CHALLENGE_TTL_MS
     device_hash = launcher_secret_hash("device", device_id)
     with auth_conn() as conn:
-        ensure_v4_schema(conn)
+        ensure_launcher_binding_schema(conn)
         conn.execute(
             "UPDATE launcher_link_challenges SET status='EXPIRED' WHERE device_id_hash=%s AND status='PENDING'",
             (device_hash,),
@@ -7185,7 +7242,7 @@ def authorize_launcher_link_sync(account: dict[str, Any], data: LauncherLinkAuth
     code_hash = launcher_secret_hash("code", data.code.strip().upper())
     now = donation_now_ms()
     with auth_conn() as conn:
-        ensure_v4_schema(conn)
+        ensure_launcher_binding_schema(conn)
         row = conn.execute(
             "SELECT * FROM launcher_link_challenges WHERE challenge_id=%s AND status='PENDING' AND expires_at>%s FOR UPDATE",
             (challenge_id, now),
@@ -7236,7 +7293,7 @@ def launcher_link_status_sync(challenge_id: str, device_id: str, poll_token: str
     poll_hash = launcher_secret_hash("poll", str(poll_token or ""))
     now = donation_now_ms()
     with auth_conn() as conn:
-        ensure_v4_schema(conn)
+        ensure_launcher_binding_schema(conn)
         row = conn.execute(
             """
             SELECT c.status,c.expires_at,c.site_account_id,c.minecraft_name,
@@ -7276,7 +7333,7 @@ def launcher_account_for_access_token_sync(data: LauncherNicknameChangeIn) -> di
     device_hash = launcher_secret_hash("device", normalize_launcher_device_id(data.device_id))
     access_hash = launcher_secret_hash("poll", str(data.access_token or "").strip())
     with auth_conn() as conn:
-        ensure_v4_schema(conn)
+        ensure_launcher_binding_schema(conn)
         row = conn.execute(
             """
             SELECT l.site_account_id,l.minecraft_name AS launcher_minecraft_name,

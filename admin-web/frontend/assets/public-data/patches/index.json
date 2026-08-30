@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-30-launcher-1.0.10",
+      "slug": "copimine-launcher-1-0-10",
+      "version": "1.0.10",
+      "title": "CopiMine Launcher 1.0.10",
+      "publishedAt": "2026-08-30T09:21:20Z",
+      "summary": [
+        "Привязка Launcher теперь проходит на отдельной странице сайта и возвращает результат без ручного ввода кода.",
+        "Старые адреса проверки обновлений снова ведут на тот же Windows-feed, поэтому установленный Launcher не получает 404.",
+        "При синхронизации меняются только управляемые файлы; дополнительные моды игрока остаются на месте."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-10.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-29-launcher-1.0.9",
       "slug": "copimine-launcher-1-0-9",
       "version": "1.0.9",

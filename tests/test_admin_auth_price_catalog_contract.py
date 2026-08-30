@@ -103,7 +103,7 @@ def test_requested_catalog_descriptions_are_player_facing_and_not_stale():
         "ne_segodnya_suka_shield": "На него всем похуй",
         "kaska_prorab_huev": "С маленьким шансом уменьшает урон от падения и даёт эффект спешки и скорости",
         "mne_pohuy_ya_v_tanke_vest": "Уменьшает любой входящий урон на 20% и с небольшим шансом даёт бафф",
-        "kosa_nalogovoy_inspekcii": "Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели",
+        "kosa_nalogovoy_inspekcii": "Вампиризм; шанс 2.5% украсть 1–3 AR со счёта цели",
         "nu_ty_i_nakopal_blyat_pickaxe": "При ударе по врагу закапывает его в трапку",
         "batin_remen_sudnogo_dnya": "Большой урон, бьёт противника молнией, даёт владельцу эффект скорости и накладывает дебафф на цель",
     }

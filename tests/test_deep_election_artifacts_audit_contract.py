@@ -157,32 +157,19 @@ def test_artifact_reclaim_covers_loss_sources_and_durable_journal():
     assert "onQuit" in ARTIFACTS and "actionCooldowns.entrySet().removeIf" in ARTIFACTS
 
 
-def test_foreign_donation_pickup_is_quarantined_before_storage_or_duplication():
-    """A non-owner pickup must be journaled first and removed by unique id."""
-    assert "EntityPickupItemEvent" in ARTIFACTS
-    assert "foreignDonationRef" in ARTIFACTS
-    assert "rawDonationIdentity" in ARTIFACTS
-    assert "onForeignDonationPickup" in ARTIFACTS
-    assert "onForeignDonationDrop" in ARTIFACTS
-    assert "onForeignDonationPlace" in ARTIFACTS
-    assert "onDonationInventoryOpen" in ARTIFACTS
-    assert "quarantineForeignDonation" in ARTIFACTS
-    assert "recordDonationLossOnce(ref, reason)" in ARTIFACTS
-    # Removal is intentionally deferred until the durable loss-journal writer
-    # completes; it then scrubs every online inventory/entity copy by ID.
-    assert "removeDonationInstanceFromOnlineInventories(uniqueId)" in ARTIFACTS
-    assert "removeUniqueItemFromInventory" in ARTIFACTS
-    assert "event.getClick() == ClickType.NUMBER_KEY" in ARTIFACTS
-    assert "event.getClick() == ClickType.SWAP_OFFHAND" in ARTIFACTS
-    assert "getItem(event.getHotbarButton())" in ARTIFACTS
-    # Physical removal is guarded by the durable append in both pickup and
-    # drop handlers, so a DB/journal failure leaves the only copy intact.
-    pickup = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationPickup"):ARTIFACTS.index("public void onForeignDonationDrop")]
-    drop = ARTIFACTS[ARTIFACTS.index("public void onForeignDonationDrop"):ARTIFACTS.index("public void onDonationInventoryOpen")]
-    assert "event.setCancelled(true);" in pickup
-    assert "this.quarantineForeignDonation(player, ref, \"foreign-pickup\");" in pickup
-    assert "event.setCancelled(true);" in drop
-    assert "this.quarantineForeignDonation(event.getPlayer(), ref, \"foreign-drop\");" in drop
+def test_donation_transfer_uses_vanilla_drop_and_pickup_without_quarantine():
+    """A transferred donation item must never be deleted as a foreign copy."""
+    boundary = ARTIFACTS[ARTIFACTS.index("private boolean customShopItemsAreVanilla"):
+                         ARTIFACTS.index("private boolean isRepairLockedItem")]
+    assert "return true;" in boundary
+    for start, end in (
+        ("public void onForeignDonationPickup", "public void onForeignDonationDrop"),
+        ("public void onForeignDonationDrop", "public void onDonationInventoryOpen"),
+        ("public void onForeignDonationPlace", "public void onForeignDonationPickup"),
+    ):
+        handler = ARTIFACTS[ARTIFACTS.index(start):ARTIFACTS.index(end)]
+        assert "if (this.customShopItemsAreVanilla())" in handler
+        assert handler.index("if (this.customShopItemsAreVanilla())") < handler.index("return;")
 
 
 def test_retired_artifact_compass_is_absent_from_catalog_and_runtime():
@@ -204,7 +191,8 @@ def test_artifact_permissions_and_world_mutations_are_closed():
     assert "BlockExplodeEvent" in ARTIFACTS
     assert "BlockPistonExtendEvent" in ARTIFACTS
     assert "Material.AIR" in ARTIFACTS
-    assert "strikeLightningEffect" in ARTIFACTS
+    assert "strikeLightning(" in ARTIFACTS
+    assert "strikeLightningEffect" not in ARTIFACTS
 
 
 def test_artifact_item_meta_is_not_overwritten_after_attack_modifier():

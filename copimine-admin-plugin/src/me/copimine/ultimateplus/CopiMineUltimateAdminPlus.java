@@ -925,6 +925,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Iterator<ItemStack> iter=e.getDrops().iterator();
         while(iter.hasNext()){
             ItemStack drop=iter.next();
+            // CopiMineArtifacts consumes this item at death. It must never
+            // enter AdminPlus' generic respawn-return queue.
+            if(isGravediggerContract(drop)){ iter.remove(); continue; }
             if(isPresidentMandate(drop)) continue;
             if(electionCoreOwns(drop)) continue;
             if(artifactsCoreOwns(drop)) continue;
@@ -5242,6 +5245,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int discardedNonRecoverable=0;
         for(ItemStack item:pending){
             if(item==null||item.getType()==Material.AIR)continue;
+            if(isGravediggerContract(item)){ discardedNonRecoverable++; continue; }
             // AR is a ledger currency, not a recoverable custom item.  Older
             // AdminPlus builds could leave a certified/legacy AR stack in
             // this compatibility queue after a death; discard that stale
@@ -5273,6 +5277,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             audit(p.getName(),"ULTRA7_OFFICIAL_ITEM_RESTORE_PENDING","reason="+reason+" restored="+restored+" left="+rest.size(),true);
         }
         if(!rest.isEmpty())warn(p,"Освободи слот: часть официальных предметов ждет безопасного возврата.");
+    }
+
+    private boolean isGravediggerContract(ItemStack item){
+        if(item==null||item.getType()==Material.AIR||!item.hasItemMeta()) return false;
+        ItemMeta meta=item.getItemMeta();
+        if(meta==null) return false;
+        String itemId=meta.getPersistentDataContainer().get(
+                new NamespacedKey("copimineartifacts","artifact_item_id"),
+                PersistentDataType.STRING);
+        return "gravedigger_contract".equalsIgnoreCase(itemId);
     }
 
     private boolean isProtectedOfficialItem(ItemStack it){

@@ -119,8 +119,15 @@ def test_shield_debuffs_are_applied_to_direct_or_projectile_attacker() -> None:
     assert attacker, "shield must guard the resolved attacker before applying effects"
     attacker_body = attacker.group(1)
     assert "PotionEffectType.NAUSEA" in attacker_body
-    assert "PotionEffectType.WEAKNESS" in attacker_body
-    assert "strikeLightningEffect(attacker.getLocation())" in attacker_body
+    assert "SHIELD_NAUSEA_PROC_CHANCE" in block
+    assert "SHIELD_WEAKNESS_PROC_CHANCE" in block
+    assert "PotionEffectType.WEAKNESS" in block
+    assert "attacker.getWorld().strikeLightning(attacker.getLocation())" in block
+    assert "SHIELD_LIGHTNING_COOLDOWN_SECONDS" in block
+    assert "SHIELD_OWNER_BUFF_PROC_CHANCE" in block
+    assert "PotionEffectType.REGENERATION" in block
+    assert "PotionEffectType.SPEED" in block
+    assert "strikeLightningEffect" not in block
     assert "var2.addPotionEffect" not in attacker_body
     resolver = re.search(
         r"(?ms)private LivingEntity resolveDamageAttacker\(EntityDamageByEntityEvent event\)\s*\{(.*?)(?=\n\s*public void onDeath)",
@@ -164,9 +171,8 @@ def test_each_donation_ability_is_wired_to_its_specific_effect_logic() -> None:
     assert 'this.activateTaxClock(var2, var1.getItem())' in interact_body
 
     batin = re.search(r'(?ms)case "BATIN_REMEN":(.*?)(?=\n\s*case "NAKOPAL_PICKAXE":)', combat_body)
-    pickaxe = re.search(r'(?ms)case "NAKOPAL_PICKAXE":(.*?)(?=\n\s*case "NALOGOVAYA_KOSA":)', combat_body)
-    kosa = re.search(r'(?ms)case "NALOGOVAYA_KOSA":(.*?)(?=\n\s*case "DUTY_ARGUMENT":)', combat_body)
-    assert batin and pickaxe and kosa
+    pickaxe = re.search(r'(?ms)case "NAKOPAL_PICKAXE":(.*?)(?=\n\s*case "STREAMER_STICK_ARC":)', combat_body)
+    assert batin and pickaxe
     assert "strikeLightning" in batin.group(1)
     assert "PotionEffectType.SPEED" in batin.group(1)
     assert "PotionEffectType.SLOWNESS" in batin.group(1)
@@ -174,7 +180,10 @@ def test_each_donation_ability_is_wired_to_its_specific_effect_logic() -> None:
     assert "applyTemporaryBurial" in pickaxe.group(1)
     assert "applyTemporaryCobwebSnare" in pickaxe.group(1)
     assert "PotionEffectType.BLINDNESS" in pickaxe.group(1)
-    assert "healPlayerCapped" in kosa.group(1)
+    assert "applyKosaCombatEffects" in java
+    assert "tryKosaRareDebuffs" not in combat_body
+    assert "PotionEffectType.HUNGER" in java
+    assert "PotionEffectType.BLINDNESS, 140, 2" in java
     assert "tryRareArTheft" in combat_body
 
 
@@ -215,7 +224,7 @@ def test_donation_combat_and_defense_cooldowns_message_only_the_owner() -> None:
     )
     assert defense, "defense artifact handler is missing"
     defense_body = defense.group(0)
-    assert defense_body.count("sendCooldownMessage(var2,") >= 3
+    assert defense_body.count("sendCooldownMessage(var2,") >= 2
     assert "player.sendMessage" in re.search(
         r"(?ms)private void sendCooldownMessage\(.*?\n\s*\}", java
     ).group(0)

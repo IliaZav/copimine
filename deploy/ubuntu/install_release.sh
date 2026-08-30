@@ -515,7 +515,9 @@ server {
     listen 443 ssl http2 default_server;
     listen [::]:443 ssl http2 default_server;
     server_name __COPIMINE_PUBLIC_SERVER_NAMES__;
-    client_max_body_size 8m;
+    # Event videos are streamed and checked by the application; nginx must not
+    # reject a valid upload solely because of its size.
+    client_max_body_size 0;
 
     ssl_certificate __COPIMINE_PUBLIC_CERT__;
     ssl_certificate_key __COPIMINE_PUBLIC_KEY__;

@@ -283,6 +283,47 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Launcher_binding_reuses_a_live_pending_challenge_instead_of_expiring_the_browser_tab()
+    {
+        using var temp = new TemporaryDirectory();
+        var challenge = new LauncherLinkChallenge(
+            "challenge-reused-123456",
+            "poll-token-reused-123456",
+            new Uri("https://copimine.ru/launcher-link.html?launcher_challenge=challenge-reused-123456&launcher_code=ABCDEFGH&launcher_nick=CopiMinePlayer"),
+            DateTimeOffset.UtcNow.AddMinutes(5),
+            "CopiMinePlayer");
+        var binding = new RecordingLauncherBindingClient
+        {
+            Status = new LauncherLinkStatus(
+                true,
+                "AUTHORIZED",
+                "account-reused",
+                "player-login",
+                "CopiMinePlayer",
+                "access-token-reused"),
+        };
+        var bindingStore = new LauncherBindingStateStore(Path.Combine(temp.Path, "launcher-data"));
+        bindingStore.SavePendingChallenge(challenge);
+        var opened = new List<Uri>();
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            launcherBindingClient: binding,
+            launcherBindingStateStore: bindingStore,
+            bindingUrlOpener: opened.Add)
+        {
+            PlayerName = "CopiMinePlayer",
+            InstancePath = temp.Path,
+        };
+
+        await viewModel.OpenAccountLinkCommand.ExecuteAsync(null);
+
+        binding.CreateCalls.Should().Be(0);
+        binding.StatusCalls.Should().Be(1);
+        opened.Should().ContainSingle().Which.Should().Be(challenge.AuthorizationUrl);
+        viewModel.IsLauncherLinked.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Launcher_is_restored_when_minecraft_process_exits()
     {
         using var temp = new TemporaryDirectory();
@@ -654,6 +695,34 @@ public sealed class LauncherViewModelTests
 
         public Task<LauncherLinkChallenge> CreateChallengeAsync(string minecraftName, string launcherVersion, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
+
+        public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken)
+        {
+            StatusCalls++;
+            return Task.FromResult(Status);
+        }
+
+        public Task<LauncherNicknameChangeResult> ChangeNicknameAsync(string accessToken, string oldMinecraftName, string newMinecraftName, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class RecordingLauncherBindingClient : ILauncherBindingClient
+    {
+        public string DeviceId => "cm-device-reused-1234567890";
+        public LauncherLinkStatus Status { get; init; } = new(false, "PENDING");
+        public int CreateCalls { get; private set; }
+        public int StatusCalls { get; private set; }
+
+        public Task<LauncherLinkChallenge> CreateChallengeAsync(string minecraftName, string launcherVersion, CancellationToken cancellationToken)
+        {
+            CreateCalls++;
+            return Task.FromResult(new LauncherLinkChallenge(
+                "challenge-new-123456",
+                "poll-token-new-123456",
+                new Uri("https://copimine.ru/launcher-link.html?launcher_challenge=challenge-new-123456&launcher_code=ABCDEFGH&launcher_nick=" + minecraftName),
+                DateTimeOffset.UtcNow.AddMinutes(5),
+                minecraftName));
+        }
 
         public Task<LauncherLinkStatus> GetStatusAsync(LauncherLinkChallenge challenge, CancellationToken cancellationToken)
         {

@@ -44,6 +44,7 @@ public partial class LauncherViewModel : ObservableObject
     private readonly LauncherBindingStateStore launcherBindingStateStore;
     private readonly Action<string, string> nicknameChangedNotifier;
     private readonly Action launcherLinkRequiredNotifier;
+    private readonly Action<Uri> bindingUrlOpener;
     private CancellationTokenSource? operationCancellation;
     private VerifiedSelfUpdate? availableSelfUpdate;
     private bool loadingProfile;
@@ -66,7 +67,8 @@ public partial class LauncherViewModel : ObservableObject
         LauncherSettingsStore? settingsStore = null,
         ILauncherBindingClient? launcherBindingClient = null,
         LauncherBindingStateStore? launcherBindingStateStore = null,
-        Action? launcherLinkRequiredNotifier = null)
+        Action? launcherLinkRequiredNotifier = null,
+        Action<Uri>? bindingUrlOpener = null)
     {
         this.patchFeedClient = patchFeedClient;
         this.runtimeCoordinator = runtimeCoordinator;
@@ -77,6 +79,7 @@ public partial class LauncherViewModel : ObservableObject
         this.launcherBindingStateStore = launcherBindingStateStore ?? new LauncherBindingStateStore(LauncherInstallPaths.ResolveLauncherDataRoot());
         this.nicknameChangedNotifier = nicknameChangedNotifier ?? ShowNicknameChangedWarning;
         this.launcherLinkRequiredNotifier = launcherLinkRequiredNotifier ?? ShowLauncherLinkRequiredWarning;
+        this.bindingUrlOpener = bindingUrlOpener ?? OpenBindingUrl;
         InstancePath = defaultInstancePath ?? LauncherInstallPaths.ResolveMinecraftRoot();
         PatchCards = new ObservableCollection<PatchFeedCardViewModel>();
         PatchCards.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPatchCards));
@@ -933,9 +936,15 @@ public partial class LauncherViewModel : ObservableObject
         {
             Status = "Создаём безопасную привязку…";
             LoadingStage = "Откройте страницу сайта";
-            var challenge = await launcherBindingClient.CreateChallengeAsync(PlayerName.Trim(), LauncherVersionInfo.Version, CancellationToken.None);
-            launcherBindingStateStore.SavePendingChallenge(challenge);
-            OpenBindingUrl(challenge.AuthorizationUrl);
+            var requestedName = PlayerName.Trim();
+            var challenge = launcherBindingStateStore.LoadPendingChallenge();
+            if (challenge is null || !string.Equals(challenge.MinecraftName, requestedName, StringComparison.OrdinalIgnoreCase))
+            {
+                challenge = await launcherBindingClient.CreateChallengeAsync(requestedName, LauncherVersionInfo.Version, CancellationToken.None);
+                launcherBindingStateStore.SavePendingChallenge(challenge);
+            }
+
+            bindingUrlOpener(challenge.AuthorizationUrl);
             Status = "Ожидаем подтверждение на сайте…";
             Diagnostic = $"Проверьте страницу привязки в браузере. Запрос действует до {challenge.ExpiresAtUtc.ToLocalTime():HH:mm}. Пароль сайта и AuthMe не передаются.";
 

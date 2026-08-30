@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-30",
+  "events": [
+    {
+      "slug": "end-rift",
+      "status": "current",
+      "eyebrow": "Событие сейчас",
+      "title": "Разлом Энда",
+      "summary": "Ядро просыпается. Соберите команду, зарядите разлом и пройдите шесть волн до босса.",
+      "body": "Это общий рейд в Энде: сначала готовим ресурсы, затем держим оборону и переживаем шторм. После финала проход остаётся открытым.",
+      "heroImage": "/assets/events/end-rift/end-city.jpg",
+      "portraitImage": "/assets/events/end-rift/enderman.png",
+      "accent": "#b887ff",
+      "requirements": [
+        { "name": "Алмазы", "value": "100" },
+        { "name": "Око Эндера", "value": "64" },
+        { "name": "Осколки аметиста", "value": "128" },
+        { "name": "Огненный стержень", "value": "64" }
+      ],
+      "waves": [
+        { "number": 1, "name": "Пробуждение", "description": "Разлом открывается, а первая волна проверяет, как команда держит строй." },
+        { "number": 2, "name": "Охота", "description": "Эндермены давят с разных сторон. Не разбегайтесь далеко от группы." },
+        { "number": 3, "name": "Порталы", "description": "На поле появляются новые точки угрозы — их нужно удержать вместе." },
+        { "number": 4, "name": "Оборона ядра", "description": "Защищайте ядро разлома, пока волны становятся плотнее." },
+        { "number": 5, "name": "Шторм Разлома", "description": "Самая нервная часть рейда: пространство сжимается, а атаки идут сериями." },
+        { "number": 6, "name": "Последний рубеж", "description": "Финальная волна. После неё появляется настоящий босс события." }
+      ],
+      "bossPhases": [
+        { "name": "Пробуждение", "range": "2500–2001 HP", "description": "Босс входит в бой и отмечает ближайших игроков." },
+        { "name": "Охотник", "range": "2000–1501 HP", "description": "Атаки становятся резче, безопасная дистанция меняется." },
+        { "name": "Искажение", "range": "1500–1001 HP", "description": "На арене появляются дополнительные опасные зоны." },
+        { "name": "Поглощение", "range": "1000–501 HP", "description": "Команде важно не потерять темп и не оставить ядро без защиты." },
+        { "name": "Катастрофа", "range": "500–0 HP", "description": "Последний рывок. На 250 HP начинается Суд Разлома." }
+      ],
+      "rewards": [
+        "Осколок ядра Разлома всем участникам финального боя",
+        "Камень возвращения",
+        "3000 опыта",
+        "16 жемчуга Края и 16 плодов хоруса"
+      ],
+      "videos": [],
+      "credits": [
+        { "label": "Кадр Энда", "url": "https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png" },
+        { "label": "Кадр города Края", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_-_End_city.jpg" },
+        { "label": "Кадр эндермена", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_Enderman.png" }
+      ],
+      "creditsHtml": "Кадры: Xbox México / Wikimedia Commons (commons.wikimedia.org), CC BY 3.0"
+    },
+    {
+      "slug": "future-1",
+      "status": "upcoming",
+      "eyebrow": "Скоро",
+      "title": "Ночная охота",
+      "summary": "Следующая история уже собирается. Подробности появятся, когда команда откроет первую точку.",
+      "body": "Пока здесь только место для будущего события — без дат и обещаний, которых ещё нет.",
+      "heroImage": "/assets/events/end-rift/end-landscape.png",
+      "portraitImage": "/assets/events/end-rift/enderman.png",
+      "accent": "#6f8cff",
+      "requirements": [],
+      "waves": [],
+      "bossPhases": [],
+      "rewards": [],
+      "videos": [],
+      "credits": [],
+      "creditsHtml": ""
+    },
+    {
+      "slug": "future-2",
+      "status": "upcoming",
+      "eyebrow": "Скоро",
+      "title": "Острова грозы",
+      "summary": "Ещё один слот для будущего события. Сценарий и награды объявим отдельно.",
+      "body": "Страница уже готова принимать материалы, но само событие пока не запущено.",
+      "heroImage": "/assets/events/end-rift/end-city.jpg",
+      "portraitImage": "",
+      "accent": "#d06bff",
+      "requirements": [],
+      "waves": [],
+      "bossPhases": [],
+      "rewards": [],
+      "videos": [],
+      "credits": [],
+      "creditsHtml": ""
+    }
+  ]
+}

@@ -842,6 +842,24 @@ class SiteCmsEntryIn(BaseModel):
     enabled: bool = True
 
 
+class EventPageIn(BaseModel):
+    slug: str = Field(min_length=2, max_length=64)
+    eyebrow: str = Field(default="Событие", max_length=80)
+    title: str = Field(min_length=1, max_length=160)
+    status: str = Field(default="upcoming", max_length=20)
+    summary: str = Field(default="", max_length=600)
+    body: str = Field(default="", max_length=3000)
+    hero_image: str = Field(default="", max_length=240)
+    portrait_image: str = Field(default="", max_length=240)
+    accent: str = Field(default="#b887ff", max_length=20)
+    requirements: list[dict[str, Any]] = Field(default_factory=list)
+    waves: list[dict[str, Any]] = Field(default_factory=list)
+    boss_phases: list[dict[str, Any]] = Field(default_factory=list)
+    rewards: list[str] = Field(default_factory=list)
+    sort_order: int = Field(default=100, ge=0, le=100000)
+    enabled: bool = True
+
+
 class LauncherModEditIn(BaseModel):
     version: Optional[str] = Field(default=None, min_length=1, max_length=64)
     filename: Optional[str] = Field(default=None, min_length=5, max_length=128)
@@ -2404,6 +2422,52 @@ def _ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS site_event_pages(
+            slug TEXT PRIMARY KEY,
+            eyebrow TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'upcoming',
+            summary TEXT NOT NULL DEFAULT '',
+            body TEXT NOT NULL DEFAULT '',
+            hero_image_path TEXT NOT NULL DEFAULT '',
+            portrait_image_path TEXT NOT NULL DEFAULT '',
+            accent TEXT NOT NULL DEFAULT '#b887ff',
+            requirements_json TEXT NOT NULL DEFAULT '[]',
+            waves_json TEXT NOT NULL DEFAULT '[]',
+            boss_phases_json TEXT NOT NULL DEFAULT '[]',
+            rewards_json TEXT NOT NULL DEFAULT '[]',
+            credits_json TEXT NOT NULL DEFAULT '[]',
+            credits_html TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at BIGINT NOT NULL DEFAULT 0,
+            updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute("ALTER TABLE site_event_pages ADD COLUMN IF NOT EXISTS portrait_image_path TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS site_event_media(
+            id BIGSERIAL PRIMARY KEY,
+            event_slug TEXT NOT NULL REFERENCES site_event_pages(slug) ON DELETE CASCADE,
+            media_type TEXT NOT NULL DEFAULT 'video',
+            title TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            poster_url TEXT NOT NULL DEFAULT '',
+            filename TEXT NOT NULL DEFAULT '',
+            mime_type TEXT NOT NULL DEFAULT 'video/mp4',
+            size_bytes BIGINT NOT NULL DEFAULT 0,
+            sha256 TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            uploaded_at BIGINT NOT NULL DEFAULT 0,
+            uploaded_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS cmv4_bank_accounts(
             account_id TEXT PRIMARY KEY,
             owner_uuid TEXT NOT NULL,
@@ -3313,6 +3377,8 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts(locked_until DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_security_events_time ON security_events(time DESC,action)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_site_cms_section_order ON site_cms_entries(section,enabled,sort_order,entry_key)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_site_event_pages_status_order ON site_event_pages(enabled,status,sort_order,slug)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_site_event_media_slug_order ON site_event_media(event_slug,enabled,sort_order,id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_accounts_owner ON cmv4_bank_accounts(owner_uuid,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_ledger_account_time ON cmv4_bank_ledger(account_id,created_at DESC)")
@@ -6517,6 +6583,10 @@ def sanitize_public_plain_text(value: Any, max_len: int = 160) -> str:
 
 
 CMS_SECTIONS = {"home", "news", "faq", "rules", "shops", "banners"}
+EVENT_STATUSES = {"current", "upcoming", "archived"}
+EVENT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+UPLOAD_VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogv", ".m4v", ".mov"}
+EVENTS_STATIC_FILE = FRONTEND_DIR / "assets" / "public-data" / "events.json"
 DEFAULT_CMS_ENTRIES: list[dict[str, Any]] = [
     {
         "entry_key": "home_status",
@@ -6687,6 +6757,326 @@ def delete_site_cms_entry_sync(entry_key: str, actor: str) -> dict[str, Any]:
         conn.commit()
     audit_event(actor, "cms.entry.disable", target=key, details={})
     return {"ok": True, "key": key, "enabled": False}
+
+
+def read_static_events_payload() -> dict[str, Any]:
+    try:
+        payload = json.loads(EVENTS_STATIC_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"schemaVersion": 1, "events": []}
+    if not isinstance(payload, dict) or not isinstance(payload.get("events"), list):
+        return {"schemaVersion": 1, "events": []}
+    return payload
+
+
+def normalize_event_slug(value: Any) -> str:
+    slug = str(value or "").strip().lower()
+    if not EVENT_SLUG_RE.fullmatch(slug):
+        raise HTTPException(status_code=400, detail="Некорректный ключ события")
+    return slug
+
+
+def sanitize_event_accent(value: Any) -> str:
+    accent = str(value or "").strip().lower()
+    if not re.fullmatch(r"#[0-9a-f]{6}", accent):
+        return "#b887ff"
+    return accent
+
+
+def normalize_event_objects(value: Any, fields: tuple[str, ...], max_items: int = 40) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for raw in value if isinstance(value, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        item: dict[str, Any] = {}
+        for field in fields:
+            if field == "number":
+                try:
+                    item[field] = max(0, min(99, int(raw.get(field) or 0)))
+                except (TypeError, ValueError):
+                    item[field] = 0
+            else:
+                item[field] = sanitize_cms_text(raw.get(field), 400)
+        result.append(item)
+        if len(result) >= max_items:
+            break
+    return result
+
+
+def normalize_event_rewards(value: Any) -> list[str]:
+    result: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        clean = sanitize_cms_text(item, 400)
+        if clean:
+            result.append(clean)
+        if len(result) >= 40:
+            break
+    return result
+
+
+def static_event_defaults() -> list[dict[str, Any]]:
+    payload = read_static_events_payload()
+    defaults: list[dict[str, Any]] = []
+    for raw in payload.get("events", []):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            slug = normalize_event_slug(raw.get("slug"))
+        except HTTPException:
+            continue
+        try:
+            sort_order = max(0, min(100000, int(raw.get("sortOrder") or 100)))
+        except (TypeError, ValueError):
+            sort_order = 100
+        raw_status = str(raw.get("status") or "upcoming").strip().lower()
+        defaults.append({
+            "slug": slug,
+            "eyebrow": sanitize_cms_text(raw.get("eyebrow"), 80),
+            "title": sanitize_cms_text(raw.get("title"), 160),
+            "status": raw_status if raw_status in EVENT_STATUSES else "upcoming",
+            "summary": sanitize_cms_text(raw.get("summary"), 600),
+            "body": sanitize_cms_text(raw.get("body"), 3000),
+            "hero_image_path": sanitize_cms_asset_path(raw.get("heroImage")),
+            "portrait_image_path": sanitize_cms_asset_path(raw.get("portraitImage")),
+            "accent": sanitize_event_accent(raw.get("accent")),
+            "requirements_json": pg_json_dumps(normalize_event_objects(raw.get("requirements"), ("name", "value"))),
+            "waves_json": pg_json_dumps(normalize_event_objects(raw.get("waves"), ("number", "name", "description"))),
+            "boss_phases_json": pg_json_dumps(normalize_event_objects(raw.get("bossPhases"), ("name", "range", "description"))),
+            "rewards_json": pg_json_dumps(normalize_event_rewards(raw.get("rewards"))),
+            "credits_json": pg_json_dumps(normalize_event_objects(raw.get("credits"), ("label", "url"))),
+            "credits_html": sanitize_cms_text(raw.get("creditsHtml"), 300),
+            "sort_order": sort_order,
+        })
+    return defaults
+
+
+def seed_event_defaults(conn: Any) -> None:
+    now = donation_now_ms()
+    for event in static_event_defaults():
+        conn.execute(
+            """
+            INSERT INTO site_event_pages(
+                slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                requirements_json,waves_json,boss_phases_json,rewards_json,
+                credits_json,credits_html,sort_order,enabled,updated_at,updated_by
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,'system')
+            ON CONFLICT(slug) DO NOTHING
+            """,
+            (
+                event["slug"], event["eyebrow"], event["title"], event["status"], event["summary"], event["body"],
+                event["hero_image_path"], event["portrait_image_path"], event["accent"], event["requirements_json"], event["waves_json"],
+                event["boss_phases_json"], event["rewards_json"], event["credits_json"], event["credits_html"],
+                int(event["sort_order"]), now,
+            ),
+        )
+
+
+def public_event_media(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(row.get("id") or 0),
+        "type": str(row.get("media_type") or "video"),
+        "title": sanitize_cms_text(row.get("title"), 160),
+        "url": sanitize_cms_asset_path(row.get("url")),
+        "posterUrl": sanitize_cms_asset_path(row.get("poster_url")),
+        "filename": Path(str(row.get("filename") or "")).name,
+        "mimeType": str(row.get("mime_type") or "video/mp4")[:80],
+        "sizeBytes": int(row.get("size_bytes") or 0),
+        "sha256": str(row.get("sha256") or "")[:128],
+        "uploadedAt": int(row.get("uploaded_at") or 0),
+    }
+
+
+def public_event_page(row: dict[str, Any], videos: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+    return {
+        "slug": str(row.get("slug") or ""),
+        "status": str(row.get("status") or "upcoming"),
+        "eyebrow": sanitize_cms_text(row.get("eyebrow"), 80),
+        "title": sanitize_cms_text(row.get("title"), 160),
+        "summary": sanitize_cms_text(row.get("summary"), 600),
+        "body": sanitize_cms_text(row.get("body"), 3000),
+        "heroImage": sanitize_cms_asset_path(row.get("hero_image_path")),
+        "portraitImage": sanitize_cms_asset_path(row.get("portrait_image_path")),
+        "accent": sanitize_event_accent(row.get("accent")),
+        "requirements": pg_json_loads(row.get("requirements_json"), []),
+        "waves": pg_json_loads(row.get("waves_json"), []),
+        "bossPhases": pg_json_loads(row.get("boss_phases_json"), []),
+        "rewards": pg_json_loads(row.get("rewards_json"), []),
+        "videos": videos or [],
+        "credits": pg_json_loads(row.get("credits_json"), []),
+        "creditsHtml": sanitize_cms_text(row.get("credits_html"), 300),
+        "sortOrder": int(row.get("sort_order") or 0),
+        "enabled": bool(int(row.get("enabled") or 0)),
+        "updatedAt": int(row.get("updated_at") or 0),
+        "updatedBy": str(row.get("updated_by") or ""),
+    }
+
+
+def read_events_sync(include_disabled: bool = False) -> dict[str, Any]:
+    if not pg_ready():
+        payload = copy.deepcopy(read_static_events_payload())
+        for event in payload.get("events", []):
+            if isinstance(event, dict):
+                event.setdefault("videos", [])
+        return payload
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        seed_event_defaults(conn)
+        where = "" if include_disabled else "WHERE enabled=1"
+        rows = conn.execute(
+            f"""
+            SELECT slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                   requirements_json,waves_json,boss_phases_json,rewards_json,
+                   credits_json,credits_html,sort_order,enabled,updated_at,updated_by
+            FROM site_event_pages {where}
+            ORDER BY sort_order ASC,slug ASC
+            """
+        ).fetchall()
+        media_where = "" if include_disabled else "WHERE enabled=1"
+        media_rows = conn.execute(
+            f"""
+            SELECT id,event_slug,media_type,title,url,poster_url,filename,mime_type,
+                   size_bytes,sha256,sort_order,enabled,uploaded_at,uploaded_by
+            FROM site_event_media {media_where}
+            ORDER BY event_slug ASC,sort_order ASC,id ASC
+            """
+        ).fetchall()
+        conn.commit()
+    media_by_event: dict[str, list[dict[str, Any]]] = {}
+    for raw in media_rows:
+        row = dict(raw)
+        media_by_event.setdefault(str(row.get("event_slug") or ""), []).append(public_event_media(row))
+    return {
+        "schemaVersion": 1,
+        "events": [public_event_page(dict(row), media_by_event.get(str(row.get("slug") or ""), [])) for row in rows],
+        "source": "postgresql",
+    }
+
+
+def upsert_event_sync(data: EventPageIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    slug = normalize_event_slug(data.slug)
+    status = str(data.status or "upcoming").strip().lower()
+    if status not in EVENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Неизвестный статус события")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO site_event_pages(
+                slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                requirements_json,waves_json,boss_phases_json,rewards_json,
+                sort_order,enabled,updated_at,updated_by
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(slug) DO UPDATE SET
+                eyebrow=EXCLUDED.eyebrow,title=EXCLUDED.title,status=EXCLUDED.status,
+                summary=EXCLUDED.summary,body=EXCLUDED.body,hero_image_path=EXCLUDED.hero_image_path,
+                portrait_image_path=EXCLUDED.portrait_image_path,
+                accent=EXCLUDED.accent,requirements_json=EXCLUDED.requirements_json,
+                waves_json=EXCLUDED.waves_json,boss_phases_json=EXCLUDED.boss_phases_json,
+                rewards_json=EXCLUDED.rewards_json,sort_order=EXCLUDED.sort_order,
+                enabled=EXCLUDED.enabled,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by
+            """,
+            (
+                slug, sanitize_cms_text(data.eyebrow, 80), sanitize_cms_text(data.title, 160), status,
+                sanitize_cms_text(data.summary, 600), sanitize_cms_text(data.body, 3000),
+                sanitize_cms_asset_path(data.hero_image), sanitize_cms_asset_path(data.portrait_image), sanitize_event_accent(data.accent),
+                pg_json_dumps(normalize_event_objects(data.requirements, ("name", "value"))),
+                pg_json_dumps(normalize_event_objects(data.waves, ("number", "name", "description"))),
+                pg_json_dumps(normalize_event_objects(data.boss_phases, ("name", "range", "description"))),
+                pg_json_dumps(normalize_event_rewards(data.rewards)), int(data.sort_order), int(bool(data.enabled)), now, actor,
+            ),
+        )
+        row = conn.execute("SELECT * FROM site_event_pages WHERE slug=%s", (slug,)).fetchone()
+        conn.commit()
+    audit_event(actor, "events.page.save", target=slug, details={"status": status})
+    return public_event_page(dict(row), [])
+
+
+async def save_event_video(file: UploadFile, slug: str, title: str, poster_url: str, actor: str) -> dict[str, Any]:
+    safe_slug = normalize_event_slug(slug)
+    filename = Path(file.filename).name if file.filename else ""
+    extension = Path(filename).suffix.lower()
+    if not filename or extension not in UPLOAD_VIDEO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Поддерживаются видео MP4, WebM, OGV, M4V и MOV")
+    content_type = str(file.content_type or "application/octet-stream").lower()
+    if not content_type.startswith("video/") and content_type != "application/octet-stream":
+        raise HTTPException(status_code=400, detail="Файл не похож на видео")
+    event_media_root = (FRONTEND_DIR / "assets/events" / safe_slug).resolve()
+    event_media_root.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", filename).strip(".-") or f"event-{uuid.uuid4().hex}{extension}"
+    target_path = (event_media_root / f"{uuid.uuid4().hex[:12]}-{safe_name}").resolve()
+    if not target_path.is_relative_to(event_media_root):
+        raise HTTPException(status_code=400, detail="Путь видео недопустим")
+    part_path = target_path.with_name(target_path.name + ".part")
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with part_path.open("wb") as handle:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+        os.replace(part_path, target_path)
+        if not pg_ready():
+            raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            event = conn.execute("SELECT 1 FROM site_event_pages WHERE slug=%s AND enabled=1", (safe_slug,)).fetchone()
+            if not event:
+                raise HTTPException(status_code=404, detail="Событие не найдено")
+            now = donation_now_ms()
+            conn.execute(
+                """
+                INSERT INTO site_event_media(event_slug,media_type,title,url,poster_url,filename,mime_type,size_bytes,sha256,sort_order,enabled,uploaded_at,uploaded_by)
+                VALUES(%s,'video',%s,%s,%s,%s,%s,%s,%s,100,1,%s,%s)
+                """,
+                (
+                    safe_slug, sanitize_cms_text(title, 160) or safe_name,
+                    f"/assets/events/{safe_slug}/{target_path.name}", sanitize_cms_asset_path(poster_url),
+                    target_path.name, content_type, size, digest.hexdigest(), now, actor,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM site_event_media WHERE event_slug=%s AND filename=%s ORDER BY id DESC LIMIT 1",
+                (safe_slug, target_path.name),
+            ).fetchone()
+            conn.commit()
+        result = public_event_media(dict(row))
+        audit_event(actor, "events.media.upload", target=safe_slug, details={"filename": target_path.name, "size": size, "sha256": digest.hexdigest()})
+        return result
+    except Exception:
+        part_path.unlink(missing_ok=True)
+        target_path.unlink(missing_ok=True)
+        raise
+
+
+def delete_event_media_sync(slug: str, media_id: int, actor: str) -> dict[str, Any]:
+    safe_slug = normalize_event_slug(slug)
+    try:
+        safe_id = int(media_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор видео") from exc
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute("SELECT filename FROM site_event_media WHERE id=%s AND event_slug=%s", (safe_id, safe_slug)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Видео не найдено")
+        root = (FRONTEND_DIR / "assets/events" / safe_slug).resolve()
+        target = (root / Path(str(row.get("filename") or "")).name).resolve()
+        if not target.is_relative_to(root):
+            raise HTTPException(status_code=400, detail="Путь видео недопустим")
+        target.unlink(missing_ok=True)
+        conn.execute("DELETE FROM site_event_media WHERE id=%s AND event_slug=%s", (safe_id, safe_slug))
+        conn.commit()
+    audit_event(actor, "events.media.delete", target=safe_slug, details={"mediaId": safe_id})
+    return {"ok": True, "id": safe_id, "slug": safe_slug}
 
 
 def public_president_budget_payload_sync() -> dict[str, Any]:
@@ -12891,6 +13281,11 @@ async def public_config() -> dict[str, Any]:
 @app.get("/api/public/cms")
 async def public_cms() -> dict[str, Any]:
     return {"ok": True, "data": await bg(read_site_cms_sync, False)}
+
+
+@app.get("/api/public/events")
+async def public_events() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(read_events_sync, False)}
 
 
 @app.get("/api/public/launcher")
@@ -19585,6 +19980,42 @@ async def admin_cms_disable_entry(entry_key: str, request: Request, username: st
     require_sensitive_confirm(request, "CMS_DISABLE")
     check_rate_limit(request, "admin-cms-disable", limit=20, window_seconds=60)
     return await bg(delete_site_cms_entry_sync, entry_key, username)
+
+
+@app.get("/api/admin/events")
+async def admin_events(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(read_events_sync, True)
+
+
+@app.put("/api/admin/events/{slug}")
+async def admin_event_save(slug: str, data: EventPageIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-save", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "EVENTS_SAVE")
+    if data.slug != slug:
+        raise HTTPException(status_code=400, detail="Ключ события в пути и форме не совпадает")
+    return {"ok": True, "event": await bg(upsert_event_sync, data, username)}
+
+
+@app.post("/api/admin/events/{slug}/videos")
+async def admin_event_video_upload(
+    slug: str,
+    request: Request,
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    poster_url: str = Form(""),
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-video-upload", limit=10, window_seconds=300)
+    require_sensitive_confirm(request, "EVENTS_MEDIA_UPLOAD")
+    media = await save_event_video(file, slug, title, poster_url, username)
+    return {"ok": True, "media": media}
+
+
+@app.delete("/api/admin/events/{slug}/videos/{media_id}")
+async def admin_event_video_delete(slug: str, media_id: int, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-video-delete", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "EVENTS_MEDIA_DELETE")
+    return await bg(delete_event_media_sync, slug, media_id, username)
 
 
 @app.get("/api/admin/security/ip-alerts")

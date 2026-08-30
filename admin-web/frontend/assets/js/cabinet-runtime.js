@@ -5,6 +5,7 @@ import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom
 import { createAdminCmsPages } from "./admin/cms-pages.js?v=20260829launcherlink6";
 import { createAdminLauncherPages } from "./admin/launcher-pages.js?v=20260829launcherlink6";
 import { createAdminNewsPages } from "./admin/news-pages.js?v=20260829launcherlink6";
+import { createAdminEventsPages } from "./admin/events-pages.js?v=20260830events1";
 import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260829launcherlink6";
 import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js?v=20260829launcherlink6";
 import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js?v=20260829launcherlink6";
@@ -254,6 +255,7 @@ const navGroups = [
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
       ["launcher", "Лаунчер", "Версии, моды и загрузки", "L"],
       ["news", "Новости", "Изменения и картинки предметов", "N"],
+      ["events", "Ивенты", "События, материалы и видео", "E"],
       ["cms", "Страницы", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
@@ -339,6 +341,7 @@ const adminSearchAliases = {
   "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
   launcher: "launcher лаунчер релиз моды manifest манифест обновления публикация откат статистика загрузки",
   news: "новости patch notes патчноуты релиз изменения предметы item textures текстуры",
+  events: "ивенты события end rift энд эндермены волны босс видео календарь",
   cms: "cms контент новости баннеры правила faq картинки страницы",
   admins: "админы команда доступ регистрация роли младший owner",
   security: "безопасность csrf сессии whitelist вайтлист доступ ip",
@@ -361,6 +364,7 @@ const adminSearchSectionItems = [
   { id: "narcotics-recipes", target: "recipes-editor", title: "Редактор рецептов", subtitle: "Котёл, ингредиенты и результат", group: "Наркотики", haystack: "рецепты котёл варка ингредиенты жужево editor", focusNeedle: "Рецепты" },
   { id: "launcher", target: "launcher-overview", title: "Лаунчер", subtitle: "Версии, моды и загрузки", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Лаунчер" },
   { id: "news", target: "launcher-news-editor", title: "Новости лаунчера", subtitle: "Изменения и картинки предметов", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости лаунчера" },
+  { id: "events", target: "events-editor", title: "Ивенты", subtitle: "События, материалы и видео", group: "Контент", haystack: "ивенты события end rift энд календарь видео", focusNeedle: "Ивенты" },
   { id: "cms", target: "cms-content", title: "Страницы и баннеры", subtitle: "Тексты, баннеры и страницы", group: "Страницы", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "Страницы" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
@@ -5932,6 +5936,7 @@ let adminCommercePages;
 let adminCmsPages;
 let adminLauncherPages;
 let adminNewsPages;
+let adminEventsPages;
 let adminNarcoticsRecipePages;
 let pluginRegistryPages;
 let playerAccountPages;
@@ -6040,6 +6045,28 @@ function getAdminNewsPages() {
     });
   }
   return adminNewsPages;
+}
+
+function getAdminEventsPages() {
+  if (!adminEventsPages) {
+    adminEventsPages = createAdminEventsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminEventsPages;
 }
 
 function getAdminNarcoticsRecipePages() {
@@ -6518,6 +6545,7 @@ async function loadCurrent(silent = false) {
     "narcotics-recipes": () => getAdminNarcoticsRecipePages().loadRecipes(),
     launcher: () => getAdminLauncherPages().loadLauncher(),
     news: () => getAdminNewsPages().loadNews(),
+    events: () => getAdminEventsPages().loadEvents(),
     cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
@@ -6650,6 +6678,11 @@ Object.assign(dataClickHandlers, {
   adminNewsSave: () => getAdminNewsPages().adminNewsSave(),
   adminNewsPublish: (...args) => getAdminNewsPages().adminNewsPublish(...args),
   adminNewsDelete: (...args) => getAdminNewsPages().adminNewsDelete(...args),
+  adminEventSelect: (...args) => getAdminEventsPages().adminEventSelect(...args),
+  adminEventNew: () => getAdminEventsPages().adminEventNew(),
+  adminEventSave: () => getAdminEventsPages().adminEventSave(),
+  adminEventUploadVideo: (...args) => getAdminEventsPages().adminEventUploadVideo(...args),
+  adminEventDeleteVideo: (...args) => getAdminEventsPages().adminEventDeleteVideo(...args),
   adminCmsDisable: (...args) => getAdminCmsPages().adminCmsDisable(...args),
   adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
   adminCmsNew: () => getAdminCmsPages().adminCmsNew(),

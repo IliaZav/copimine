@@ -73,6 +73,18 @@ async function fetchCmsPayload() {
   return fetchJson("/api/public/cms", { items: [], sections: [] });
 }
 
+async function fetchEventsPayload() {
+  const apiPayload = await fetchJson("/api/public/events", { ok: false, data: {} });
+  if (apiPayload?.ok === true && Array.isArray(apiPayload?.data?.events)) {
+    return apiPayload.data;
+  }
+  return fetchJson("/assets/public-data/events.json", { schemaVersion: 1, events: [] });
+}
+
+export async function loadPublicEventsPageData() {
+  return fetchEventsPayload();
+}
+
 export async function loadPublicHomePageData() {
   const [configPayload, statusPayload, modpackPayload, staticModpack, cmsPayload] = await Promise.all([
     fetchConfigPayload(),

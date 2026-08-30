@@ -80,13 +80,13 @@ try {
   $status = Get-Status
   $bossUuid = Get-BossUuid $status
 
-  # Start at 2500 HP and cross the real 1000 HP Absorption threshold.  The
+  # Start at 5000 virtual HP and cross the real 2000 HP Absorption threshold.  The
   # five-second cast is allowed to finish before the player probe attacks.
-  $null = Invoke-LocalRcon -CommandText 'cmend boss damage 1500'
+  $null = Invoke-LocalRcon -CommandText 'cmend boss damage 3000'
   Start-Sleep -Seconds 7
   $afterAbsorption = Get-Status
-  if ($afterAbsorption -notmatch 'hp=.*?1000/2500') {
-    throw "Local boss did not reach the post-Absorption 1000 HP checkpoint:`n$afterAbsorption"
+  if ($afterAbsorption -notmatch 'hp=.*?2000/5000') {
+    throw "Local boss did not reach the post-Absorption 2000 HP checkpoint:`n$afterAbsorption"
   }
 
   $node = (Get-Command node.exe -ErrorAction Stop).Source
@@ -161,10 +161,10 @@ try {
   }
 
   $finalStatus = Get-Status
-  $finalMatch = [Regex]::Match($finalStatus, 'hp=.*?([0-9.]+)/2500')
+  $finalMatch = [Regex]::Match($finalStatus, 'hp=.*?([0-9.]+)/5000')
   if (-not $finalMatch.Success) { throw "Local boss final HP is missing:`n$finalStatus" }
   $finalHealth = [double]::Parse($finalMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-  if ($finalHealth -ge 1000.0D) {
+  if ($finalHealth -ge 2000.0D) {
     throw "Real survival player attacks did not reduce the post-Absorption boss HP:`n$finalStatus`n$stdout"
   }
   $damageLines = Select-String -LiteralPath (Join-Path $serverDir 'logs\latest.log') `

@@ -24,6 +24,11 @@
       {"name": "copimine:end_rift/victory", "stream": true}
     ]
   },
+  "end_rift/ritual_wait": {
+    "sounds": [
+      {"name": "copimine:end_rift/ritual_wait", "stream": true}
+    ]
+  },
   "end_rift/wave_1": {
     "sounds": [
       {"name": "copimine:end_rift/wave_1", "stream": true}

@@ -24,7 +24,7 @@ $evidencePath = Join-Path $runtimeRoot 'visual-five-player-live.log'
 $botLogDirectory = Join-Path $runtimeRoot 'visual-five-player-bots'
 $botNames = @('EndRiftVisualA', 'EndRiftVisualB', 'EndRiftVisualC', 'EndRiftVisualD', 'EndRiftVisualE')
 $musicPhases = @(
-  'wave-1', 'intermission-1', 'wave-2', 'intermission-2', 'wave-3',
+  'ritual-wait', 'wave-1', 'intermission-1', 'wave-2', 'intermission-2', 'wave-3',
   'intermission-3', 'wave-4', 'intermission-4', 'wave-5', 'boss-cinematic',
   'final-wave', 'boss', 'boss-half', 'boss-finish', 'victory'
 )

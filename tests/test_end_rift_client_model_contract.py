@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIENT = ROOT / "CopiMineClient"
-JAR = CLIENT / "build/libs/CopiMineClient-0.1.0.jar"
+JAR = CLIENT / "build/libs/CopiMineClient-0.1.1.jar"
 SOURCE_ROOT = CLIENT / "src/main/java/me/copimine/client"
 TEXTURE_ROOT = CLIENT / "src/main/resources/assets/copimineclient/textures/entity"
 

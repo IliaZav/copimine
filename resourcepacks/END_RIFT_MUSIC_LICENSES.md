@@ -1,5 +1,12 @@
 # End Rift music credits
 
+`ritual_wait.ogg` — tense instrumental waiting bed with no vocals.  It is
+currently a byte-identical copy of `boss_cinematic.ogg` on purpose: the
+waiting stage has its own Minecraft sound event and can be replaced by a
+separate arrangement later without changing plugin code.  SHA-256:
+`EC53DBDFC32FC5F25A6265C91FB1E9C30BC2986A617CADD970E338C845906769`;
+duration: about 22 seconds.
+
 Все пять файлов в resource pack — инструментальные треки без слов, перекодированные в OGG для Minecraft. В репозиторий добавлены только производные OGG-файлы и этот список источников. Все источники опубликованы под CC0; для безопасности сохранены авторы и страницы с исходными файлами.
 
 | Фаза | Автор | Источник | Лицензия |

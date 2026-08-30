@@ -74,12 +74,12 @@ def test_creative_driver_covers_every_disposable_stage_in_order() -> None:
 
 def test_configured_waves_use_spiders_and_keep_the_requested_combat_numbers() -> None:
     assert "endermite" not in CONFIG.lower()
-    assert "health-bonus: 10.0" in CONFIG
-    assert "attack-damage-bonus: 2.0" in CONFIG
-    assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 8.0" in CONFIG
-    assert "half-health: 1250.0" in CONFIG
-    assert "final-threshold: 250.0" in CONFIG
+    assert "health-bonus: 14.0" in CONFIG
+    assert "attack-damage-bonus: 3.0" in CONFIG
+    assert "health: 5000.0" in CONFIG
+    assert "attack-damage-bonus: 11.0" in CONFIG
+    assert "half-health: 2500.0" in CONFIG
+    assert "final-threshold: 500.0" in CONFIG
     assert "wave-reward-shared-rare:" in CONFIG
 
     wave_blocks = [

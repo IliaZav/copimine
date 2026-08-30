@@ -1,0 +1,75 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/obsidian",
+    "frame": "minecraft:block/obsidian",
+    "rift": "copimine:item/end_event_portal"
+  },
+  "elements": [
+    {
+      "from": [0.0, 0.0, 2.0],
+      "to": [16.0, 2.0, 14.0],
+      "faces": {
+        "down": {"texture": "#frame", "cullface": "down"},
+        "up": {"texture": "#frame"},
+        "north": {"texture": "#frame", "cullface": "north"},
+        "south": {"texture": "#frame", "cullface": "south"},
+        "west": {"texture": "#frame", "cullface": "west"},
+        "east": {"texture": "#frame", "cullface": "east"}
+      }
+    },
+    {
+      "from": [0.0, 0.0, 2.0],
+      "to": [3.0, 14.0, 14.0],
+      "faces": {
+        "down": {"texture": "#frame", "cullface": "down"},
+        "up": {"texture": "#frame"},
+        "north": {"texture": "#frame", "cullface": "north"},
+        "south": {"texture": "#frame", "cullface": "south"},
+        "west": {"texture": "#frame", "cullface": "west"},
+        "east": {"texture": "#frame"}
+      }
+    },
+    {
+      "from": [13.0, 0.0, 2.0],
+      "to": [16.0, 14.0, 14.0],
+      "faces": {
+        "down": {"texture": "#frame", "cullface": "down"},
+        "up": {"texture": "#frame"},
+        "north": {"texture": "#frame", "cullface": "north"},
+        "south": {"texture": "#frame", "cullface": "south"},
+        "west": {"texture": "#frame"},
+        "east": {"texture": "#frame", "cullface": "east"}
+      }
+    },
+    {
+      "from": [3.0, 11.0, 2.0],
+      "to": [13.0, 14.0, 14.0],
+      "faces": {
+        "down": {"texture": "#frame"},
+        "up": {"texture": "#frame"},
+        "north": {"texture": "#frame", "cullface": "north"},
+        "south": {"texture": "#frame", "cullface": "south"},
+        "west": {"texture": "#frame"},
+        "east": {"texture": "#frame"}
+      }
+    },
+    {
+      "from": [3.05, 2.05, 1.88],
+      "to": [12.95, 11.0, 2.0],
+      "faces": {
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"}
+      }
+    },
+    {
+      "from": [3.05, 2.05, 13.95],
+      "to": [12.95, 11.0, 14.07],
+      "faces": {
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"}
+      }
+    }
+  ]
+}

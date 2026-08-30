@@ -31,10 +31,10 @@ def test_guide_covers_admin_command_surface():
 def test_guide_matches_current_core_values():
     for value in [
         "countdown-seconds: 60",
-        "intermission-seconds: 10",
+        "intermission-seconds: 20",
         "radius: 20.0",
         "vertical-radius: 3.0",
-        "health: 2500.0",
+        "health: 5000.0",
         "elite-health: 40.0",
         "arena-inferno:",
         "duration-ticks: 100",

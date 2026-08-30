@@ -2,15 +2,15 @@ package me.copimine.endevent.domain;
 
 /**
  * Authoritative boss health stages.  The thresholds are expressed in absolute
- * HP because the event has a fixed 2500 HP default and must not drift when a
+ * HP because the event has a fixed 5000 HP default and must not drift when a
  * large hit crosses more than one boundary.
  */
 public enum BossStage {
-    AWAKENING(2500.0D, 2001.0D, "Страж Разлома — Пробуждение", "PURPLE"),
-    HUNTER(2000.0D, 1501.0D, "Страж Разлома — Охотник", "BLUE"),
-    DISTORTION(1500.0D, 1001.0D, "Страж Разлома — Искажение", "PINK"),
-    ABSORPTION(1000.0D, 501.0D, "Страж Разлома — Поглощение", "YELLOW"),
-    CATASTROPHE(500.0D, 0.0D, "Страж Разлома — Катастрофа", "RED");
+    AWAKENING(5000.0D, 4001.0D, "Страж Разлома — Пробуждение", "PURPLE"),
+    HUNTER(4000.0D, 3001.0D, "Страж Разлома — Охотник", "BLUE"),
+    DISTORTION(3000.0D, 2001.0D, "Страж Разлома — Искажение", "PINK"),
+    ABSORPTION(2000.0D, 1001.0D, "Страж Разлома — Поглощение", "YELLOW"),
+    CATASTROPHE(1000.0D, 0.0D, "Страж Разлома — Катастрофа", "RED");
 
     private final double upperInclusive;
     private final double lowerInclusive;

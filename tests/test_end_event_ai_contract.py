@@ -9,11 +9,11 @@ MAIN = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.jav
 CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 
 
-def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_2500_hp() -> None:
-    assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 8.0" in CONFIG
-    assert "half-health: 1250.0" in CONFIG
-    assert "final-threshold: 250.0" in CONFIG
+def test_boss_health_and_phase_thresholds_are_explicitly_balanced_for_5000_hp() -> None:
+    assert "health: 5000.0" in CONFIG
+    assert "attack-damage-bonus: 11.0" in CONFIG
+    assert "half-health: 2500.0" in CONFIG
+    assert "final-threshold: 500.0" in CONFIG
     assert "bossFinalHealth()" in MAIN
 
 
@@ -159,6 +159,9 @@ def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller(
         "MINIBOSS_SPELL_TELEGRAPH",
         "MINIBOSS_SPELL_CAST",
         "EVENT_KIND_ELITE",
+        "RIFT_EUPHORIA",
+        "randomNarcoticEffect",
+        "Эйфория Пустоты",
     ):
         assert marker in MAIN
     assert "miniBossSpell = null" not in MAIN

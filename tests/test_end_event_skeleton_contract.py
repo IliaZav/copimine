@@ -9,6 +9,7 @@ SERVER = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.ja
 CONFIG = ROOT / "copimine-end-event/config.yml"
 AI = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EndRiftAiPolicy.java"
 POLICY = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/SkeletonCombatPolicy.java"
+CLIENT = ROOT / "CopiMineClient"
 CLIENT_MIXINS = ROOT / "CopiMineClient/src/main/resources/copimineclient.mixins.json"
 CLIENT_TEXTURES = ROOT / "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity"
 CLIENT_CATALOG = ROOT / "CopiMineClient/src/main/java/me/copimine/client/EndEventTextureCatalog.java"
@@ -56,6 +57,13 @@ def test_skeleton_ai_accepts_only_eligible_players_and_filters_arrows() -> None:
         "SKELETON_TARGET_BLOCKED",
         "SKELETON_ARROW_PLAYER_HIT",
         "setTarget(null)",
+        "SkeletonArrowPolicy",
+        "POISON_NAUSEA",
+        "EXPLOSIVE",
+        "createExplosion",
+        "breakBlocks=false",
+        "PotionEffectType.POISON",
+        "PotionEffectType.NAUSEA",
     ):
         assert marker in server
     assert "event.setCancelled(true)" in server
@@ -66,6 +74,54 @@ def test_skeleton_ai_accepts_only_eligible_players_and_filters_arrows() -> None:
     ]
     assert "SKELETON_ARROW_NON_PLAYER_BLOCKED" in non_player_branch
     assert "cleanupEventArrow(arrow.getUniqueId())" in non_player_branch
+
+
+def test_skeleton_arrow_payloads_are_bounded_and_non_destructive() -> None:
+    policy = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/SkeletonArrowPolicy.java").read_text(
+        encoding="utf-8"
+    )
+    server = SERVER.read_text(encoding="utf-8")
+    for marker in (
+        "STATUS_CHANCE_PERCENT = 20",
+        "STATUS_DURATION_TICKS = 7 * 20",
+        "STATUS_AMPLIFIER = 2",
+        "ArrowKind",
+        "isStatusRoll",
+        "breaksBlocks()",
+    ):
+        assert marker in policy
+    assert "world.createExplosion" in server
+    explosive = server[server.index("private void detonateExplosiveArrow"):server.index("private void clearActiveEventArrows")]
+    assert "false, false" in explosive
+    assert "PotionEffectType.POISON" in server
+    assert "PotionEffectType.NAUSEA" in server
+    assert "SkeletonArrowPolicy.STATUS_DURATION_TICKS" in server
+
+
+def test_wave_commander_is_one_per_difficult_wave_and_aura_is_removed() -> None:
+    server = SERVER.read_text(encoding="utf-8")
+    policy = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/WaveCommanderPolicy.java").read_text(
+        encoding="utf-8"
+    )
+    for marker in (
+        "WaveCommanderPolicy",
+        "WAVE_COMMANDER",
+        "tickWaveCommanderAura",
+        "keyWaveCommander",
+        "keyCommanderAura",
+        "PotionEffectType.STRENGTH",
+        "removePotionEffect(PotionEffectType.STRENGTH)",
+        "WaveCommanderPolicy.MAX_LIVE_MOBS",
+    ):
+        assert marker in server
+    for marker in (
+        "FIRST_DIFFICULT_WAVE = 3",
+        "LAST_DIFFICULT_WAVE = 6",
+        "shouldAssign",
+        "AURA_RADIUS_BLOCKS = 10.0D",
+        "MAX_LIVE_MOBS = 56",
+    ):
+        assert marker in policy
 
 
 def test_both_skeleton_variants_have_stable_roles_and_arrow_spell() -> None:
@@ -135,6 +191,14 @@ def test_client_has_uuid_scoped_skeleton_textures_and_renderer() -> None:
     for visual in ("END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1"):
         assert visual in catalog
         assert visual in SERVER.read_text(encoding="utf-8")
+
+
+def test_skeleton_texture_diagnostics_do_not_grow_with_transient_entity_uuids() -> None:
+    mixin = (CLIENT / "src/main/java/me/copimine/client/mixin/SkeletonEntityRendererMixin.java").read_text(
+        encoding="utf-8"
+    )
+    assert 'String bindingKey = visual + "|" + resourcePresent;' in mixin
+    assert 'entity.getUuid() + "|"' not in mixin
 
 
 def test_wave_ai_logs_skeleton_behavior_per_wave_without_mob_aggro() -> None:

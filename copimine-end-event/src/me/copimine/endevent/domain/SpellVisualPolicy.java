@@ -40,6 +40,7 @@ public final class SpellVisualPolicy {
         add(profiles, "rift_step", "двойной след", "PORTAL", "END_ROD", 3, 24);
         add(profiles, "void_snare", "схлопывающиеся цепи", "REVERSE_PORTAL", "SMOKE", 3, 18);
         add(profiles, "echo_pulse", "удар эхом", "SCULK_SOUL", "SONIC_BOOM", 3, 22);
+        add(profiles, "rift_euphoria", "Эйфория Пустоты", "WITCH", "REVERSE_PORTAL", 4, 36);
         return Map.copyOf(profiles);
     }
 

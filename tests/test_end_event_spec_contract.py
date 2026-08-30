@@ -28,8 +28,8 @@ def test_latest_event_phase_names_and_resource_balance_are_present() -> None:
     assert "spiders: 8" in CONFIG
     assert "skeletons: 2" in CONFIG
     assert "elite-skeletons: 1" in CONFIG
-    assert "health-bonus: 10.0" in CONFIG
-    assert "attack-damage-bonus: 2.0" in CONFIG
+    assert "health-bonus: 14.0" in CONFIG
+    assert "attack-damage-bonus: 3.0" in CONFIG
     assert "visuals:" not in CONFIG
     assert "core-block:" not in CONFIG
     assert "pad-block:" not in CONFIG
@@ -72,7 +72,9 @@ def test_spider_wave_stats_are_applied_as_runtime_attribute_bonuses_and_endermit
 
 
 def test_wave_scaling_is_bounded_for_small_and_large_official_rosters() -> None:
-    assert "Math.max(0.8D, Math.min(2.0D, scalePlayers / 5.0D))" in MAIN
+    assert "WaveScalingPolicy.scale" in MAIN
+    assert "WaveScalingPolicy.mobStrengthMultiplier" in MAIN
+    assert "WaveScalingPolicy.effectMultiplier" in MAIN
 
 
 def test_final_ritual_is_direct_health_control_and_stops_normal_boss_loop() -> None:

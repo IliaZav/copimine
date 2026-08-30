@@ -16,7 +16,7 @@ resources:
 
 ritual:
   countdown-seconds: 60
-  intermission-seconds: 10
+  intermission-seconds: 20
   min-players: 2
   max-players: 20
   pad-radii: [5.0, 6.0, 7.0, 8.0]
@@ -31,11 +31,11 @@ arena:
 
 mobs:
   spider:
-    health-bonus: 10.0
-    attack-damage-bonus: 2.0
+    health-bonus: 14.0
+    attack-damage-bonus: 3.0
   skeleton:
-    health-bonus: 4.0
-    attack-damage-bonus: 1.0
+    health-bonus: 8.0
+    attack-damage-bonus: 2.0
     elite-health: 40.0
     elite-attack-damage-bonus: 2.0
 
@@ -66,6 +66,11 @@ music:
   victory:
     sound: copimine:end_rift/victory
     loop-seconds: 0
+  # Short, tense instrumental bed while players are still taking their rune
+  # positions.  It is selected only by READY_FOR_PLAYERS and COUNTDOWN.
+  ritual-wait:
+    sound: copimine:end_rift/ritual_wait
+    loop-seconds: 22
   # Each event beat has its own instrumental arrangement.  The legacy tracks
   # above remain as safe fallbacks for old commands and recovery snapshots.
   phase:
@@ -113,48 +118,48 @@ music:
       loop-seconds: 20
 
 waves:
-  hard-cap: 48
+  hard-cap: 56
   wave-1:
     type: awakening
-    endermen: 5
-    spiders: 8
-    skeletons: 4
+    endermen: 7
+    spiders: 10
+    skeletons: 5
     elite-endermen: 0
     elite-skeletons: 0
   wave-2:
     type: hunt
-    endermen: 7
-    spiders: 6
-    skeletons: 3
+    endermen: 9
+    spiders: 8
+    skeletons: 4
     elite-endermen: 0
     elite-skeletons: 0
   wave-3:
     type: portals
-    endermen: 10
-    spiders: 0
-    skeletons: 3
+    endermen: 12
+    spiders: 1
+    skeletons: 5
     elite-endermen: 4
     elite-skeletons: 1
   wave-4:
     type: tower_defense
-    endermen: 8
-    spiders: 6
-    skeletons: 4
-    elite-endermen: 2
+    endermen: 10
+    spiders: 8
+    skeletons: 5
+    elite-endermen: 3
     elite-skeletons: 1
   wave-5:
     type: rift_storm
-    endermen: 12
-    spiders: 8
-    skeletons: 4
+    endermen: 14
+    spiders: 10
+    skeletons: 6
     elite-endermen: 6
     elite-skeletons: 2
   final:
     endermen: 0
-    spiders: 8
-    skeletons: 2
+    spiders: 10
+    skeletons: 3
     elite-endermen: 6
-    elite-skeletons: 1
+    elite-skeletons: 2
 
 # Event-owned mobs use these bounded drops.  Recovery/cleanup removes entities
 # directly and therefore never enters EntityDeathEvent or creates kill loot.
@@ -251,19 +256,19 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
-  health: 2500.0
-  # The configured increment is exactly +5 over the previous 3.0 default.
+  health: 5000.0
+  # The configured increment is exactly +3 over the previous 8.0 value.
   # BossStatsPolicy applies this value to the vanilla base once per hit.
-  attack-damage-bonus: 8.0
+  attack-damage-bonus: 11.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
   teleport-cooldown-seconds: 12
   spell-cooldown-seconds: [5, 8]
   spell-telegraph-ticks: 30
   final-ritual-telegraph-ticks: 80
-  half-health: 1250.0
-  final-threshold: 250.0
-  final-health: 400.0
+  half-health: 2500.0
+  final-threshold: 500.0
+  final-health: 650.0
   final-drain-fraction: 0.60
   final-drain-min-health: 1.0
   control-duration-seconds: 20

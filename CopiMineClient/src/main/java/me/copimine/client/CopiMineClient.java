@@ -15,7 +15,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.text.Text;
 
 public final class CopiMineClient implements ClientModInitializer {
-    public static final String CLIENT_VERSION = "0.1.0";
+    public static final String CLIENT_VERSION = "0.1.1";
 
     private final ClientConfig config = ClientConfig.load();
     private final ClientVisualManager visualManager = new ClientVisualManager(config);

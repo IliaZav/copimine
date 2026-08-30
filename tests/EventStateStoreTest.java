@@ -18,6 +18,12 @@ public final class EventStateStoreTest {
     public static void main(String[] args) throws Exception {
         Path directory = Files.createTempDirectory("copimine-end-state-test-");
         EventStateStore store = new EventStateStore(directory, "event-state.yml", "event-state.yml.bak", 1);
+        expectRejected(() -> new EventStateStore(directory, "../outside.yml", "event-state.yml.bak", 1),
+                "state file path traversal must be rejected");
+        expectRejected(() -> new EventStateStore(directory, "event-state.yml", "..\\outside.yml", 1),
+                "backup path traversal must be rejected");
+        expectRejected(() -> new EventStateStore(directory, "nested/event-state.yml", "event-state.yml.bak", 1),
+                "nested state file paths must be rejected");
 
         EventSnapshot first = snapshot("first-event", EventPhase.COLLECTING.name(), 3L);
         UUID helper = UUID.nameUUIDFromBytes("helper".getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -97,6 +103,16 @@ public final class EventStateStoreTest {
     private static void check(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);
+        }
+    }
+
+    private static void expectRejected(Runnable action, String message) {
+        try {
+            action.run();
+            throw new AssertionError(message);
+        } catch (IllegalArgumentException expected) {
+            // Expected: state and backup files must stay direct children of the
+            // plugin data directory.
         }
     }
 }

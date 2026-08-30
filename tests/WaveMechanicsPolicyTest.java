@@ -14,24 +14,24 @@ public final class WaveMechanicsPolicyTest {
         check(WaveMechanicsPolicy.portalCount(11) == 6, "more than ten players must cap at six portals");
         check(WaveMechanicsPolicy.portalCount(0) == 3, "invalid local roster must fail to the minimum portal plan");
 
-        check(WaveMechanicsPolicy.towerMobCap(2) == 16, "two-player tower cap");
-        check(WaveMechanicsPolicy.towerMobCap(5) == 22, "five-player tower cap");
-        check(WaveMechanicsPolicy.towerMobCap(20) == 28, "large tower cap");
+        check(WaveMechanicsPolicy.towerMobCap(2) == 33, "two-player tower cap");
+        check(WaveMechanicsPolicy.towerMobCap(5) == 40, "five-player tower cap");
+        check(WaveMechanicsPolicy.towerMobCap(20) == 56, "large tower cap");
         WaveMechanicsPolicy.WaveCounts capped = WaveMechanicsPolicy.capTowerCounts(
-                new WaveMechanicsPolicy.WaveCounts(16, 12, 8, 4, 3), 20);
-        check(capped.total() == 28, "scaled Wave IV composition must obey the 28-mob cap");
+                new WaveMechanicsPolicy.WaveCounts(24, 16, 12, 6, 4), 20);
+        check(capped.total() == 56, "scaled Wave IV composition must obey the 56-mob cap");
         check(capped.endermen() >= 0 && capped.spiders() >= 0
                         && capped.skeletons() >= 0 && capped.eliteEndermen() >= 0
                         && capped.eliteSkeletons() >= 0,
                 "tower cap must never create negative mob counts");
         WaveMechanicsPolicy.WaveCounts eliteSkeletonHeavy = WaveMechanicsPolicy.capTowerCounts(
                 new WaveMechanicsPolicy.WaveCounts(0, 0, 0, 0, 40), 2);
-        check(eliteSkeletonHeavy.total() == 16,
+        check(eliteSkeletonHeavy.total() == 33,
                 "elite skeletons must be included in the tower hard cap");
         check(List.of(14, 12, 10).equals(WaveMechanicsPolicy.towerGroupCadenceSeconds()),
                 "tower groups must use the bounded cadence");
         List<WaveMechanicsPolicy.WaveCounts> towerGroups = WaveMechanicsPolicy.towerSpawnGroups(
-                new WaveMechanicsPolicy.WaveCounts(6, 5, 3, 2, 1), 2);
+                new WaveMechanicsPolicy.WaveCounts(6, 5, 2, 2, 1), 2);
         check(towerGroups.size() == 4, "two-player tower must arrive in four groups");
         check(towerGroups.get(0).total() <= 4, "the first tower group must be bounded");
         check(towerGroups.stream().mapToInt(WaveMechanicsPolicy.WaveCounts::total).sum() == 16,

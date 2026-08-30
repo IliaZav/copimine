@@ -77,6 +77,21 @@ def test_rune_visual_occupancy_is_separate_from_the_official_survival_roster() -
     assert "padOccupants.size() == requiredPlayers" in occupancy
 
 
+def test_rune_overlay_returns_to_idle_when_a_player_leaves_or_ritual_is_cancelled() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    for handler_name, next_handler in (
+        ("public void onPlayerQuit", "public void onPlayerDeath"),
+        ("public void onPlayerDeath", "public void onPlayerRespawn"),
+        ("public void onPlayerChangedWorld", "public void onShardInteract"),
+    ):
+        handler = source[source.index(handler_name):source.index(next_handler)]
+        assert "runeVisualOccupants.values().removeIf" in handler
+        assert "refreshRuneOverlayVisuals" in handler
+    cancel = source[source.index("private void cancelRitual"):source.index("private void updateCombatHelpers")]
+    assert "runeVisualOccupants.clear();" in cancel
+    assert "refreshRuneOverlayVisuals();" in cancel
+
+
 def test_visual_repair_uses_loaded_world_entities_after_chunk_unload() -> None:
     source = MAIN.read_text(encoding="utf-8")
     maintain = source[source.index("private void maintainRitualVisuals"):]

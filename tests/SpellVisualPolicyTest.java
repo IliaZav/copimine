@@ -5,7 +5,7 @@ public final class SpellVisualPolicyTest {
     private static final String[] SPELLS = {
             "void_blast", "rift_projectile", "rift_arrows", "arrow_salvo",
             "void_mark", "summon_servants", "will_distortion", "arena_inferno",
-            "rift_step", "void_snare", "echo_pulse"
+            "rift_step", "void_snare", "echo_pulse", "rift_euphoria"
     };
 
     public static void main(String[] args) {

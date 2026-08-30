@@ -65,7 +65,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
-      tests\test_end_event_spell_matrix_contract.py
+      tests\test_end_event_spell_matrix_contract.py `
+      tests\test_end_event_wavefront_contract.py
   } finally {
     Pop-Location
   }
@@ -88,6 +89,9 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java') `
       (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SkeletonCombatPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\SkeletonArrowPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveCommanderPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossMovementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\CombatMovementPolicyTest.java') `
@@ -99,7 +103,8 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java')
+      (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossThresholdPolicyTest
@@ -108,6 +113,9 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild GateOpeningPlanTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossDamagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonCombatPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonArrowPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveCommanderPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossMovementPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild CombatMovementPolicyTest
@@ -120,6 +128,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveVisualPolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
@@ -140,6 +149,6 @@ Write-Host '== Local artifact hashes =='
 Get-FileHash (Join-Path $endRiftRoot 'copimine-world-core\CopiMineWorldCore.jar') -Algorithm SHA256
 Get-FileHash (Join-Path $endRiftRoot 'copimine-artifacts\CopiMineArtifacts.jar') -Algorithm SHA256
 Get-FileHash (Join-Path $endRiftRoot 'copimine-end-event\CopiMineEndEvent.jar') -Algorithm SHA256
-Get-FileHash (Join-Path $endRiftRoot 'CopiMineClient\build\libs\CopiMineClient-0.1.0.jar') -Algorithm SHA256
+Get-FileHash (Join-Path $endRiftRoot 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar') -Algorithm SHA256
 Get-FileHash (Join-Path $endRiftRoot 'resourcepacks\build\CopiMineResourcePack.zip') -Algorithm SHA256
 Write-Host 'End Rift local checks passed.'

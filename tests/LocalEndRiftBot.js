@@ -11,6 +11,8 @@ const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
 const username = process.argv[2] || 'EndRiftBot'
 const durationMs = Number(process.argv[3] || 15000)
 const actionDelayMs = Number(process.env.END_RIFT_BOT_ACTION_DELAY_MS || 9000)
+const authPassword = process.env.END_RIFT_BOT_PASSWORD || 'endrift-local'
+const skipRegister = process.env.END_RIFT_BOT_SKIP_REGISTER === '1'
 const environmentActions = (process.env.END_RIFT_BOT_ACTIONS || '')
   .split('|')
   .map(value => value.trim())
@@ -59,9 +61,11 @@ function startSession () {
   sessionStarted = true
   joined = true
   console.log(`PLAYER_JOIN ${username}`)
-  client.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) {
-    setTimeout(() => client.chat('/login endrift-local'), delay)
+  if (!skipRegister) {
+    client.chat(`/register ${authPassword} ${authPassword}`)
+  }
+  for (const delay of (skipRegister ? [250, 1500, 3500] : [1000, 3000, 6000])) {
+    setTimeout(() => client.chat(`/login ${authPassword}`), delay)
   }
   actions.forEach((command, index) => {
     setTimeout(() => {
@@ -78,6 +82,10 @@ client.on('packet', (data, meta) => {
   if (meta?.name === 'login') console.log(`CLIENT_LOGIN ${username}`)
   if (meta?.name === 'finish_configuration') console.log(`CLIENT_FINISH_CONFIGURATION ${username}`)
   if (meta?.name === 'disconnect') console.log(`CLIENT_DISCONNECT ${username} ${JSON.stringify(data)}`)
+  if (process.env.END_RIFT_BOT_LOG_SOUND === '1'
+      && ['sound_effect', 'entity_sound_effect'].includes(meta?.name)) {
+    console.log(`SOUND_PACKET ${username} ${meta.name} ${JSON.stringify(data)}`)
+  }
   if (process.env.END_RIFT_BOT_LOG_ALL_CHAT === '1'
       && ['system_chat', 'player_chat', 'disguised_chat', 'set_action_bar_text'].includes(meta?.name)) {
     console.log(`CHAT_PACKET ${username} ${meta.name} ${JSON.stringify(data)}`)

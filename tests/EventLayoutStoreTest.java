@@ -39,7 +39,7 @@ public final class EventLayoutStoreTest {
         check(store.save(second), "second layout save must succeed");
         Files.writeString(directory.resolve("event-layout.yml"), "broken: [\n");
         EventLayoutState recovered = store.load();
-        check(recovered.gateStatus().equals("OPENING"), "corrupt primary must recover the previous opening snapshot");
+        check(recovered.gateStatus().equals("CLOSING"), "corrupt primary must recover the immediately previous closing snapshot");
         System.out.println("EventLayoutStoreTest OK");
     }
 

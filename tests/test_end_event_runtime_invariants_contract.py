@@ -21,6 +21,14 @@ def test_roster_and_combat_membership_exclude_non_survival_players() -> None:
         assert "getHealth()" in source
 
 
+def test_event_configuration_and_state_files_fail_closed() -> None:
+    assert 'getConfig().getString("environment", "")' in EVENT_CONFIG
+    assert "local or staging" in EVENT_CONFIG
+    assert "safeChildPath" in STATE_STORE
+    assert "toAbsolutePath().normalize()" in STATE_STORE
+    assert "getParent()" in STATE_STORE
+
+
 def test_final_ritual_waits_for_eligible_players_and_has_bounded_telegraph() -> None:
     assert "case FINAL_DRAIN, FINAL_RITUAL -> tickFinalRitual()" in MAIN
     drain = MAIN[MAIN.index("private void applyFinalDrain"):

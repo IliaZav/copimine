@@ -50,7 +50,8 @@ public final class EndRiftAiPolicy {
         RIFT_STEP("rift_step", "Рывок Разлома"),
         VOID_SNARE("void_snare", "Кандалы Пустоты"),
         ECHO_PULSE("echo_pulse", "Импульс Эха"),
-        ARROW_SALVO("arrow_salvo", "Залп Разлома");
+        ARROW_SALVO("arrow_salvo", "Залп Разлома"),
+        RIFT_EUPHORIA("rift_euphoria", "Эйфория Пустоты");
 
         private final String id;
         private final String displayName;
@@ -66,6 +67,45 @@ public final class EndRiftAiPolicy {
 
         public String displayName() {
             return displayName;
+        }
+    }
+
+    /**
+     * The mini-boss spell selects one bounded visual/effect profile.  These
+     * identifiers mirror the already shipped narcotics visual catalog, while
+     * the event remains safe if the optional client bridge is unavailable.
+     */
+    public enum NarcoticEffect {
+        DESATURATE("DESATURATE", "Пелена", "DARKNESS"),
+        COLOR_CONVOLVE("COLOR_CONVOLVE", "Цветной срыв", "NAUSEA"),
+        SCAN_PINCUSHION("SCAN_PINCUSHION", "Иглы сканера", "GLOWING"),
+        GREEN_NOISE("GREEN_NOISE", "Зелёный шум", "POISON"),
+        INVERT("INVERT", "Обратный свет", "BLINDNESS"),
+        WOBBLE("WOBBLE", "Качание пустоты", "NAUSEA"),
+        BLOBS("BLOBS", "Пятна разлома", "SLOWNESS"),
+        PENCIL("PENCIL", "Линии на сетчатке", "MINING_FATIGUE"),
+        CHAOS("CHAOS", "Хаос в крови", "WEAKNESS");
+
+        private final String id;
+        private final String displayName;
+        private final String potionEffectId;
+
+        NarcoticEffect(String id, String displayName, String potionEffectId) {
+            this.id = id;
+            this.displayName = displayName;
+            this.potionEffectId = potionEffectId;
+        }
+
+        public String id() {
+            return id;
+        }
+
+        public String displayName() {
+            return displayName;
+        }
+
+        public String potionEffectId() {
+            return potionEffectId;
         }
     }
 
@@ -151,6 +191,12 @@ public final class EndRiftAiPolicy {
         MiniBossSpell[] spells = MiniBossSpell.values();
         int offset = Math.max(0, wave - 3);
         return spells[Math.floorMod(offset + eliteSlot, spells.length)];
+    }
+
+    /** Stable for a cast seed, but still distributes the profiles uniformly. */
+    public static NarcoticEffect randomNarcoticEffect(long seed) {
+        NarcoticEffect[] effects = NarcoticEffect.values();
+        return effects[Math.floorMod(seed, effects.length)];
     }
 
     public record TargetChoice(UUID target, int nextCursor) {

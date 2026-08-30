@@ -90,7 +90,7 @@ def test_low_level_boss_probe_matches_uuid_and_sends_use_entity_attack() -> None
 
 def test_live_boss_damage_probe_crosses_absorption_before_player_attack() -> None:
     for expected in (
-        "environment:\\s*local", "cmend boss damage 1500", "LocalEndRiftBossCombatBot.js",
+        "environment:\\s*local", "cmend boss damage 3000", "LocalEndRiftBossCombatBot.js",
         "afterAbsorption", "1.8D", " 90 0", "gamemode survival",
         "END_RIFT_BOSS_ATTACK_DELAY_MS",
         "LIVE_BOSS_DAMAGE_PASS", "LIVE_BOSS_DAMAGE_CLEANUP_PASS",
@@ -130,7 +130,7 @@ def test_live_ai_phase_probe_covers_all_waves_and_boss_stage_boundaries_locally(
         "cmend test teleport wave", "cmend test teleport boss",
         "cmend debug ai", "mobile", "targeted", "outside", "onCore",
         "AWAKENING", "HUNTER", "DISTORTION", "ABSORPTION", "CATASTROPHE",
-        "cmend boss damage 500", "cmend boss damage 250", "cmend wave clear",
+        "Damage = 1000", "Damage = 500", "cmend wave clear",
         "cmend boss kill cleanup",
         "BOSS_AI_PATH", "WAVE_AI_TACTIC", "BOSS_JUDGMENT_SAFE_ZONE",
         "AI_OUTSIDE", "BOSS_TELEPORT_BLOCKED", "WAVE_TELEPORT_BLOCKED",

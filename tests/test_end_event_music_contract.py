@@ -10,6 +10,7 @@ PACK = ROOT / "resourcepacks" / "src" / "assets" / "copimine"
 PLUGIN = ROOT / "copimine-end-event"
 MAIN = (PLUGIN / "src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
 CONFIG = (PLUGIN / "config.yml").read_text(encoding="utf-8")
+RUNE_WAIT_LIVE = (ROOT / "tests/RunEndRiftRuneWaitMusicLive.ps1").read_text(encoding="utf-8")
 
 
 TRACKS = {
@@ -21,6 +22,7 @@ TRACKS = {
 }
 
 PHASE_TRACKS = {
+    "end_rift/ritual_wait": "ritual_wait.ogg",
     "end_rift/wave_1": "wave_1.ogg",
     "end_rift/wave_2": "wave_2.ogg",
     "end_rift/wave_3": "wave_3.ogg",
@@ -76,6 +78,7 @@ def test_resource_pack_declares_one_distinct_streamed_track_for_each_event_beat(
 
 def test_each_phase_track_is_a_valid_ogg_with_the_configured_duration() -> None:
     expected_seconds = {
+        "ritual_wait.ogg": 22,
         "wave_1.ogg": 48, "wave_2.ogg": 46, "wave_3.ogg": 44,
         "wave_4.ogg": 50, "wave_5.ogg": 54,
         "intermission_1.ogg": 14, "intermission_2.ogg": 14,
@@ -153,6 +156,7 @@ def test_music_configuration_and_phase_hooks_are_present() -> None:
     for key in ("waves:", "boss:", "boss-half:", "boss-final:", "victory:"):
         assert key in CONFIG
     for key in (
+        "ritual-wait:",
         "wave-1:", "wave-2:", "wave-3:", "wave-4:", "wave-5:",
         "intermission-1:", "intermission-2:", "intermission-3:", "intermission-4:",
         "boss-cinematic:", "final-drain:", "final-ritual:",
@@ -177,5 +181,36 @@ def test_music_configuration_and_phase_hooks_are_present() -> None:
         'case WAVE_1 -> phaseMusicOrLegacy("wave-1"',
         'case INTERMISSION_4 -> phaseMusicOrLegacy("intermission-4"',
         'case FINAL_RITUAL -> phaseMusicOrLegacy("final-ritual"',
+        'case READY_FOR_PLAYERS -> config.ritualWaitMusic()',
+        'case COUNTDOWN -> config.ritualWaitMusic()',
+        "isRitualMusicPhase",
     ):
         assert hook in MAIN
+
+
+def test_rune_wait_music_reaches_players_who_join_or_respawn_during_wait() -> None:
+    join = MAIN[MAIN.index("public void onPlayerJoin") : MAIN.index("public void onPlayerQuit")]
+    respawn = MAIN[MAIN.index("public void onPlayerRespawn") : MAIN.index("public void onShardChannelDamage")]
+    changed_world = MAIN[MAIN.index("public void onPlayerChangedWorld") : MAIN.index("public void onShardInteract")]
+    for handler in (join, respawn, changed_world):
+        assert "isEventMusicPhase()" in handler
+        assert "refreshClientBindingsForPlayer" in handler
+
+
+def test_live_rune_wait_probe_uses_real_pad_occupancy_and_automatic_music() -> None:
+    for marker in (
+        "environment:\\s*local",
+        "server-port=25566",
+        "rcon\\.port=25576",
+        "READY_FOR_PLAYERS",
+        "Get-PadCoordinates",
+        "Teleport-ToPad",
+        "state=COUNTDOWN",
+        "pads=2/2",
+        "SOUND_PACKET .*sound_effect.*ritual_wait",
+        "LIVE_RUNE_WAIT_MUSIC_PASS",
+        "LIVE_RUNE_WAIT_MUSIC_CLEANUP_PASS",
+        "cmend ritual cancel",
+        "cmend wave clear",
+    ):
+        assert marker in RUNE_WAIT_LIVE

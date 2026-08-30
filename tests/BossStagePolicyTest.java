@@ -8,7 +8,7 @@ public final class BossStagePolicyTest {
         testExactThresholdsAndTitles();
         testLargeHitReportsEveryCrossedStage();
         testStageNeverRegressesAfterTransientHealthRecovery();
-        testJudgmentIsOneShotAtTwoHundredFifty();
+        testJudgmentIsOneShotAtFiveHundred();
         testStageSpellPoolsAreProgressiveAndNamed();
         testThresholdSummonsAreReachableAndAbsorptionHasPressureTools();
         testBossMovementProfileEscalatesByStage();
@@ -17,11 +17,11 @@ public final class BossStagePolicyTest {
     }
 
     private static void testExactThresholdsAndTitles() {
-        check(BossStagePolicy.stageFor(2500.0D, false) == BossStage.AWAKENING, "2500 must be Awakening");
-        check(BossStagePolicy.stageFor(2000.0D, false) == BossStage.HUNTER, "2000 must be Hunter");
-        check(BossStagePolicy.stageFor(1500.0D, false) == BossStage.DISTORTION, "1500 must be Distortion");
-        check(BossStagePolicy.stageFor(1000.0D, false) == BossStage.ABSORPTION, "1000 must be Absorption");
-        check(BossStagePolicy.stageFor(500.0D, false) == BossStage.CATASTROPHE, "500 must be Catastrophe");
+        check(BossStagePolicy.stageFor(5000.0D, false) == BossStage.AWAKENING, "5000 must be Awakening");
+        check(BossStagePolicy.stageFor(4000.0D, false) == BossStage.HUNTER, "4000 must be Hunter");
+        check(BossStagePolicy.stageFor(3000.0D, false) == BossStage.DISTORTION, "3000 must be Distortion");
+        check(BossStagePolicy.stageFor(2000.0D, false) == BossStage.ABSORPTION, "2000 must be Absorption");
+        check(BossStagePolicy.stageFor(1000.0D, false) == BossStage.CATASTROPHE, "1000 must be Catastrophe");
         check(BossStage.AWAKENING.bossBarTitle().equals("Страж Разлома — Пробуждение"), "title must be Russian");
         check(BossStage.values().length == 5, "there must be five named stages");
     }
@@ -35,9 +35,9 @@ public final class BossStagePolicyTest {
                 "large hit must report all crossed stages in order");
     }
 
-    private static void testJudgmentIsOneShotAtTwoHundredFifty() {
-        check(BossStagePolicy.transition(BossStage.CATASTROPHE, 250.0D, false).triggerJudgment(),
-                "250 HP must trigger Judgment");
+    private static void testJudgmentIsOneShotAtFiveHundred() {
+        check(BossStagePolicy.transition(BossStage.CATASTROPHE, 500.0D, false).triggerJudgment(),
+                "500 HP must trigger Judgment");
         check(!BossStagePolicy.transition(BossStage.CATASTROPHE, 100.0D, true).triggerJudgment(),
                 "a persisted Judgment marker must suppress a second trigger");
     }
@@ -51,7 +51,7 @@ public final class BossStagePolicyTest {
                 "a blocked stage regression must not report a fake crossed stage");
 
         BossStagePolicy.StageTransition judgment = BossStagePolicy.transition(
-                BossStage.CATASTROPHE, 250.0D, false);
+                BossStage.CATASTROPHE, 500.0D, false);
         check(judgment.current() == BossStage.CATASTROPHE,
                 "Judgment must remain in the terminal named stage");
         check(judgment.triggerJudgment(),

@@ -41,6 +41,7 @@ public record EventConfig(
         MusicTrack bossHalfMusic,
         MusicTrack bossFinalMusic,
         MusicTrack victoryMusic,
+        MusicTrack ritualWaitMusic,
         Map<String, MusicTrack> phaseMusic,
         WaveDefinition wave1,
         WaveDefinition wave2,
@@ -154,6 +155,7 @@ public record EventConfig(
         MusicTrack bossHalfMusic = musicTrack(music, "boss-half");
         MusicTrack bossFinalMusic = musicTrack(music, "boss-final");
         MusicTrack victoryMusic = musicTrack(music, "victory");
+        MusicTrack ritualWaitMusic = musicTrack(music, "ritual-wait");
         Map<String, MusicTrack> phaseMusic = readPhaseMusic(requiredSection(music, "phase"));
         double half = positiveDouble(boss, "half-health");
         double finalThreshold = positiveDouble(boss, "final-threshold");
@@ -186,10 +188,15 @@ public record EventConfig(
         lootProfiles.put("elite-skeleton", readLootProfiles(eventLootRolls, "elite-skeleton", eliteLoot));
         lootProfiles.put("final-wave", readLootProfiles(eventLootRolls, "final-wave", finalWaveLoot));
         lootProfiles.put("test", readLootProfiles(eventLootRolls, "test", testLoot));
+        String environment = text(plugin.getConfig().getString("environment", ""), "");
+        if (!"local".equalsIgnoreCase(environment) && !"staging".equalsIgnoreCase(environment)) {
+            throw new IllegalStateException(
+                    "End Rift Event environment must be explicitly local or staging; got '" + environment + "'");
+        }
 
         return new EventConfig(
                 persistence.getInt("schema-version", 1),
-                text(plugin.getConfig().getString("environment", "local"), "local"),
+                environment,
                 text(persistence.getString("file", "event-state.yml"), "event-state.yml"),
                 text(persistence.getString("backup-file", "event-state.yml.bak"), "event-state.yml.bak"),
                 requirements,
@@ -217,6 +224,7 @@ public record EventConfig(
                 bossHalfMusic,
                 bossFinalMusic,
                 victoryMusic,
+                ritualWaitMusic,
                 phaseMusic,
                 wave(waves, "wave-1"),
                 wave(waves, "wave-2"),

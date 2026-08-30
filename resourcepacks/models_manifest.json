@@ -372,6 +372,20 @@
       "base_material": "echo_shard",
       "model": "copimine:item/rift_core_shard",
       "texture": "copimine:item/rift_core_shard"
+    },
+    {
+      "id": "end_event_wave_ring",
+      "custom_model_data": 830006,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_wave_ring",
+      "texture": "copimine:item/end_event_wave_ring"
+    },
+    {
+      "id": "end_event_portal",
+      "custom_model_data": 830007,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_portal",
+      "texture": "copimine:item/end_event_portal"
     }
   ]
 }

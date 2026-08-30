@@ -5,7 +5,7 @@ import java.util.List;
 
 /** Pure transitions for health stages, spell availability and one-shot Judgment. */
 public final class BossStagePolicy {
-    private static final double JUDGMENT_THRESHOLD = 250.0D;
+    private static final double JUDGMENT_THRESHOLD = 500.0D;
 
     private BossStagePolicy() {
     }

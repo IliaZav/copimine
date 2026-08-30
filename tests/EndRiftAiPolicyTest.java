@@ -10,6 +10,7 @@ public final class EndRiftAiPolicyTest {
         testBossSpellRotationAvoidsImmediateRepeat();
         testEveryBossSpellHasRussianDisplayName();
         testEveryEliteHasExactlyOneDeterministicSpell();
+        testEuphoriaSpellHasBoundedRandomNarcoticEffect();
         System.out.println("EndRiftAiPolicyTest OK");
     }
 
@@ -90,6 +91,23 @@ public final class EndRiftAiPolicyTest {
         }
         check(EndRiftAiPolicy.miniBossSpell(3, 0) != EndRiftAiPolicy.miniBossSpell(3, 1),
                 "adjacent elite mini-bosses must not all share one spell");
+    }
+
+    private static void testEuphoriaSpellHasBoundedRandomNarcoticEffect() {
+        check(EndRiftAiPolicy.MiniBossSpell.RIFT_EUPHORIA.displayName()
+                        .equals("Эйфория Пустоты"),
+                "the mini-boss spell must have a Russian player-facing name");
+        check(EndRiftAiPolicy.MiniBossSpell.RIFT_EUPHORIA.id()
+                        .equals("rift_euphoria"),
+                "the mini-boss spell id must be stable");
+        EndRiftAiPolicy.NarcoticEffect first = EndRiftAiPolicy.randomNarcoticEffect(0L);
+        EndRiftAiPolicy.NarcoticEffect second = EndRiftAiPolicy.randomNarcoticEffect(1L);
+        check(first != null && !first.id().isBlank() && !first.potionEffectId().isBlank(),
+                "every narcotic profile must be usable without the client mod");
+        check(second != null && !second.displayName().equals(second.id()),
+                "every narcotic profile needs a readable Russian name");
+        check(EndRiftAiPolicy.randomNarcoticEffect(0L) == first,
+                "the selected profile must be stable for a cast seed");
     }
 
     private static void check(boolean condition, String message) {

@@ -71,7 +71,7 @@ def test_absorption_threshold_pins_health_before_the_channel_can_be_skipped() ->
     damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
     assert "setBossVirtualHealth(boss, BossStage.ABSORPTION.upperInclusive());" in damage
     assert "setBossVirtualHealth(boss, projectedHealth);" not in damage[:damage.index(
-        "// Judgment begins at exactly 250 HP")
+        "// Judgment begins at exactly 500 HP")
     ]
     assert "BOSS_CAST_STATE" in MAIN
 
@@ -106,9 +106,9 @@ def test_final_phase_failure_paths_clear_entity_invulnerability_before_recovery(
     assert "boss.setInvulnerable(false)" in transition_failure
 
 
-def test_boss_balance_contract_is_2500_hp_with_eight_point_configured_bonus_and_level_four_effects() -> None:
-    assert "health: 2500.0" in CONFIG
-    assert "attack-damage-bonus: 8.0" in CONFIG
+def test_boss_balance_contract_is_5000_hp_with_eleven_point_configured_bonus_and_level_four_effects() -> None:
+    assert "health: 5000.0" in CONFIG
+    assert "attack-damage-bonus: 11.0" in CONFIG
     assert "debuff-amplifier: 3" in CONFIG
     assert "control-duration-seconds: 20" in CONFIG
 

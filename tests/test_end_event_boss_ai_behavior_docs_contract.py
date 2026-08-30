@@ -11,7 +11,7 @@ def test_boss_ai_document_covers_all_stages_and_bounded_maneuvers() -> None:
     text = DOC.read_text(encoding="utf-8")
     for marker in (
         "Пробуждение", "Охота", "Искажение", "Поглощение", "Катастрофа",
-        "2500 HP", "PHANTOM_FEINT", "8 секунд", "20 блоков", "telegraph",
+        "5000 HP", "PHANTOM_FEINT", "8 секунд", "20 блоков", "telegraph",
         "particle flight", "impact", "REVERSE_PORTAL", "END_ROD",
     ):
         assert marker in text, marker

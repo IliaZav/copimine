@@ -29,9 +29,28 @@ public final class EventStateStore {
     private final int schemaVersion;
 
     public EventStateStore(Path dataFolder, String fileName, String backupFileName, int schemaVersion) {
-        this.path = dataFolder.resolve(fileName);
-        this.backupPath = dataFolder.resolve(backupFileName);
+        this.path = safeChildPath(dataFolder, fileName, "state");
+        this.backupPath = safeChildPath(dataFolder, backupFileName, "backup state");
         this.schemaVersion = schemaVersion;
+    }
+
+    private static Path safeChildPath(Path dataFolder, String fileName, String label) {
+        if (dataFolder == null) {
+            throw new IllegalArgumentException("EventStateStore data directory is required");
+        }
+        if (fileName == null || fileName.isBlank()
+                || fileName.contains("/") || fileName.contains("\\")
+                || ".".equals(fileName) || "..".equals(fileName)) {
+            throw new IllegalArgumentException("EventStateStore " + label
+                    + " file must be a direct child filename: " + fileName);
+        }
+        Path root = dataFolder.toAbsolutePath().normalize();
+        Path candidate = root.resolve(fileName).normalize();
+        if (!root.equals(candidate.getParent())) {
+            throw new IllegalArgumentException("EventStateStore " + label
+                    + " file must remain under the plugin data directory: " + fileName);
+        }
+        return candidate;
     }
 
     public LoadResult load() {

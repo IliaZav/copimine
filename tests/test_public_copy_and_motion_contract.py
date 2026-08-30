@@ -34,6 +34,7 @@ def test_public_copy_uses_player_language_on_key_routes() -> None:
     assert "Всё, что нужно для игры на CopiMine." in index
     assert "Установи лаунчер. Играй на CopiMine." in launcher
     assert "Что нового на CopiMine." in news
+    assert "Новые версии, исправления и заметки по серверу." in news
     assert "Выбери предметы для игры." in shops
     assert "Что сейчас на сервере." in server
 

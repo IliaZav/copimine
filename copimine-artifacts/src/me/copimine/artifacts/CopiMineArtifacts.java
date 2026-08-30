@@ -164,7 +164,6 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.inventory.meta.CompassMeta;
 import org.bukkit.inventory.meta.BundleMeta;
 import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.BookMeta;
@@ -198,7 +197,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final String ARTIFACT_LIMIT_PLAYER = "ARTIFACT_LIMIT_PLAYER";
    private static final String GUI_BACK_LABEL = "&aНазад";
    private static final int VISUAL_REPAIR_BATCH_SIZE = 8;
-   private static final int COMPASS_COOLDOWN_SECONDS = 200;
    private static final int TELEPORT_BOW_DEBUFF_TICKS = 100;
    private static final long COBBLESTONE_TRAIL_LIFETIME_TICKS = 15 * 20;
    private static final double AR_SWORD_ATTACK_DAMAGE = 12.5D;
@@ -208,8 +206,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private static final int MAX_COBBLESTONE_TRAIL_BLOCKS = 256;
    private static final double COBBLESTONE_TRAIL_MAX_STEP = 0.75D;
    private static final int MAX_TRAIL_BLOCKS_PER_TICK = 8;
-   /** One chunk is sixteen blocks; the actual limit is the world's view distance. */
-   private static final double MAX_COMPASS_TELEPORT_DISTANCE = 16.0D;
    private static final Map<String, Integer> ARTIFACT_MODEL_DATA = Map.of("zmei_gorynych", 10001);
    // The catalog YAML is the single source of truth for effect probability.
    // This fallback is only used when a deployment has no items.yml yet.
@@ -234,7 +230,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
     * notification for the same official donation instance.
     */
    private final Set<String> lossJournalInFlight = ConcurrentHashMap.newKeySet();
-   private final Map<UUID, Location> lastDeathLocations = new ConcurrentHashMap<>();
    private final Map<String, String> instanceToItem = new ConcurrentHashMap<>();
    private final Map<String, CopiMineArtifacts.OfficialInstanceBinding> instanceBindings = new ConcurrentHashMap<>();
    private final Map<UUID, CombatProjectileState> combatProjectiles = new ConcurrentHashMap<>();
@@ -298,10 +293,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keySource;
    private NamespacedKey keyBound;
    private NamespacedKey keyReclaimable;
-   private NamespacedKey keyLastDeathWorld;
-   private NamespacedKey keyLastDeathX;
-   private NamespacedKey keyLastDeathY;
-   private NamespacedKey keyLastDeathZ;
    private NamespacedKey keyProjectileAbility;
    private NamespacedKey keyProjectileOwner;
    private NamespacedKey keyExplosiveTnt;
@@ -309,7 +300,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private NamespacedKey keyReturnStoneCooldownUntil;
    private NamespacedKey keyAngelWingsCooldownUntil;
    private NamespacedKey keyTeleportBowCooldownUntil;
-   private NamespacedKey keyCompassCooldownUntil;
    private NamespacedKey attackDamageKey;
    private NamespacedKey visualEntityTypeKey;
    private NamespacedKey visualKindKey;
@@ -342,10 +332,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keySource = new NamespacedKey(this, "artifact_source");
       this.keyBound = new NamespacedKey(this, "artifact_bound");
       this.keyReclaimable = new NamespacedKey(this, "artifact_reclaimable");
-      this.keyLastDeathWorld = new NamespacedKey(this, "last_death_world");
-      this.keyLastDeathX = new NamespacedKey(this, "last_death_x");
-      this.keyLastDeathY = new NamespacedKey(this, "last_death_y");
-      this.keyLastDeathZ = new NamespacedKey(this, "last_death_z");
       this.keyProjectileAbility = new NamespacedKey(this, "combat_projectile_ability");
       this.keyProjectileOwner = new NamespacedKey(this, "combat_projectile_owner");
       this.keyExplosiveTnt = new NamespacedKey(this, "explosive_artifact_tnt");
@@ -353,7 +339,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       this.keyReturnStoneCooldownUntil = new NamespacedKey(this, "return_stone_cooldown_until");
       this.keyAngelWingsCooldownUntil = new NamespacedKey(this, "angel_wings_cooldown_until");
       this.keyTeleportBowCooldownUntil = new NamespacedKey(this, "teleport_bow_cooldown_until");
-      this.keyCompassCooldownUntil = new NamespacedKey(this, "compass_cooldown_until");
       this.loadPendingInfiniteTorchRestores();
       this.attackDamageKey = new NamespacedKey(this, "artifact_attack_damage");
       this.visualEntityTypeKey = new NamespacedKey("copimine", "visual_entity_type");
@@ -2674,7 +2659,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       long currentTick = Bukkit.getCurrentTick();
       this.repairKitInteractionGuards.entrySet().removeIf(entry -> currentTick - entry.getValue().tick() > 2L);
       this.pozdnyakovNauseaCooldowns.entrySet().removeIf(entry -> entry.getValue() == null || entry.getValue() <= nowSeconds);
-      this.lastDeathLocations.keySet().removeIf(uuid -> Bukkit.getPlayer(uuid) == null);
    }
 
    private void normalizeVanillaShieldItems(Player player) {
@@ -2783,15 +2767,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       Player player = var1.getEntity();
       this.cancelReturnStoneChannel(player);
       this.cancelAngelWingsFlight(player);
-      if (player != null && player.getWorld() != null) {
-         Location deathLocation = player.getLocation().clone();
-         this.lastDeathLocations.put(player.getUniqueId(), deathLocation);
-         PersistentDataContainer pdc = player.getPersistentDataContainer();
-         pdc.set(this.keyLastDeathWorld, PersistentDataType.STRING, player.getWorld().getName());
-         pdc.set(this.keyLastDeathX, PersistentDataType.INTEGER, deathLocation.getBlockX());
-         pdc.set(this.keyLastDeathY, PersistentDataType.INTEGER, deathLocation.getBlockY());
-         pdc.set(this.keyLastDeathZ, PersistentDataType.INTEGER, deathLocation.getBlockZ());
-      }
    }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -3767,15 +3742,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                      this.activateTaxClock(var2, var1.getItem());
                      yield true;
                   }
-                  case "LOOT_COMPASS" -> this.activateLootCompass(var2, var1.getItem());
                   case "ETERNAL_BOOST" -> this.triggerEternalBoost(var2);
                   case "ANGEL_WINGS" -> this.activateAngelWings(var2);
                   default -> false;
                };
                if (var10) {
-                  long cooldownSeconds = "LOOT_COMPASS".equals(var4)
-                     ? COMPASS_COOLDOWN_SECONDS
-                     : "ANGEL_WINGS".equals(var4)
+                  long cooldownSeconds = "ANGEL_WINGS".equals(var4)
                         ? AngelWingsFlightPolicy.COOLDOWN_SECONDS
                         : Math.max(1, var3.cooldownSeconds());
                   this.storeActionCooldown(var2, var3, var6 + cooldownSeconds);
@@ -3786,7 +3758,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            AngelWingsFlightPolicy.nextCooldownUntil(var6)
                      );
                   }
-                  if (!var3.visualEffectId().isBlank() && !"LOOT_COMPASS".equalsIgnoreCase(var4)) {
+                  if (!var3.visualEffectId().isBlank()) {
                      this.visualEffects.applyTo(var2, var3.visualEffectId(), Math.max(4, var3.cooldownSeconds()));
                   }
 
@@ -4032,7 +4004,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   }
                   if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
                         && world.getWorldBorder().isInside(candidate)
-                        && this.isSafeCompassLocation(candidate)) {
+                        && this.isSafeTeleportLocation(candidate)) {
                      return candidate;
                   }
                }
@@ -4608,7 +4580,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                   Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
                   if (world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)
                         && world.getWorldBorder().isInside(candidate)
-                        && this.isSafeCompassLocation(candidate)) {
+                        && this.isSafeTeleportLocation(candidate)) {
                      return candidate;
                   }
                }
@@ -14846,154 +14818,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       );
    }
 
-   private boolean legacyPointCompassToLastDeath(Player var1, ItemStack var2) {
-      Location var3 = this.lastDeathLocations.get(var1.getUniqueId());
-      if (var3 == null) {
-         var3 = this.persistedLastDeathLocation(var1);
-      }
-      if (var3 != null && var3.getWorld() != null) {
-         if ((var2 == null ? null : var2.getItemMeta()) instanceof CompassMeta var5) {
-            var5.setLodestone(var3);
-            var5.setLodestoneTracked(false);
-            var2.setItemMeta(var5);
-         }
-
-         // Keep the target on this artifact only. Player#setCompassTarget is
-         // global for the player and makes every ordinary compass inherit the
-         // death location, which turns a vanilla compass into the donation one.
-         var1.sendMessage(
-            this.color(
-               "&aКомпас обновлён на вашу последнюю точку смерти."
-            )
-         );
-         return true;
-      } else {
-         var1.sendMessage(
-            this.color(
-               "&eПоследняя точка смерти ещё не записана."
-            )
-         );
-         return false;
-      }
-   }
-
-   private boolean activateLootCompass(Player player, ItemStack ignored) {
-      if (player == null || player.getWorld() == null) {
-         return false;
-      }
-      double maxDistance = compassTeleportDistance(player);
-      Location origin = player.getLocation().clone();
-      Location eye = player.getEyeLocation();
-      Vector direction = eye.getDirection().normalize();
-      // Do not let a compass click synchronously load an arbitrary chunk.  A
-      // target outside the sent/loaded range is reported as unavailable and
-      // leaves the player in place instead of stalling the main tick.
-      if (!this.isLoadedCompassChunk(player.getWorld(), eye.getBlockX(), eye.getBlockZ())) {
-         return false;
-      }
-      if (!this.areCompassChunksLoaded(player.getWorld(), eye, direction, maxDistance)) {
-         player.sendMessage(this.color("&eВ направлении взгляда есть ещё не загруженные чанки; подойдите ближе и повторите."));
-         return false;
-      }
-      RayTraceResult hit = player.getWorld().rayTraceBlocks(eye, direction, maxDistance, FluidCollisionMode.NEVER, true);
-      Location requested = hit == null
-         ? eye.clone().add(direction.clone().multiply(maxDistance))
-         : hit.getHitPosition().toLocation(player.getWorld()).subtract(direction.clone().multiply(1.75D));
-      if (!this.isLoadedCompassChunk(player.getWorld(), requested.getBlockX(), requested.getBlockZ())) {
-         player.sendMessage(this.color("&eТочка вне загруженной дальности прорисовки; подойдите ближе и повторите."));
-         return false;
-      }
-      Location safe = this.findSafeCompassLocation(origin, requested, maxDistance);
-      if (safe == null) {
-         player.sendMessage(this.color("&eНе удалось найти безопасную точку в направлении взгляда."));
-         return false;
-      }
-      if (!player.teleport(safe)) {
-         return false;
-      }
-      player.sendMessage(this.color("&aКомпас телепортации перенёс вас по направлению взгляда. &7Дальность: " + Math.round(maxDistance) + " блоков."));
-      return true;
-   }
-
-   private double compassTeleportDistance(Player player) {
-      if (player == null || player.getWorld() == null) {
-         return MAX_COMPASS_TELEPORT_DISTANCE;
-      }
-       int viewDistanceChunks = player.getViewDistance();
-       if (viewDistanceChunks <= 0) {
-          viewDistanceChunks = player.getClientViewDistance();
-       }
-       if (viewDistanceChunks <= 0) {
-          viewDistanceChunks = player.getWorld().getViewDistance();
-       }
-       // Leave a small margin so the destination is inside the server's sent
-       // chunk ring rather than on its unloaded edge.
-       return Math.max(MAX_COMPASS_TELEPORT_DISTANCE, viewDistanceChunks * 16.0D - 2.0D);
-   }
-
-   private boolean isLoadedCompassChunk(World world, int blockX, int blockZ) {
-      return world != null && world.isChunkLoaded(blockX >> 4, blockZ >> 4);
-   }
-
-   private boolean areCompassChunksLoaded(World world, Location origin, Vector direction, double distance) {
-      if (world == null || origin == null || direction == null) {
-         return false;
-      }
-      // Sample every block (plus both endpoints) before invoking Bukkit's
-      // ray tracer. This prevents an accidental chunk load in the middle of
-      // a long ray when the client has not received that chunk yet.
-      for (double travelled = 0.0D; travelled <= distance + 0.5D; travelled += 1.0D) {
-         Location point = origin.clone().add(direction.clone().multiply(travelled));
-         if (!this.isLoadedCompassChunk(world, point.getBlockX(), point.getBlockZ())) {
-            return false;
-         }
-      }
-      return true;
-   }
-
-   private Location findSafeCompassLocation(Location origin, Location requested, double maxDistance) {
-      if (origin == null || requested == null || origin.getWorld() == null || requested.getWorld() != origin.getWorld()) return null;
-      Vector offset = requested.toVector().subtract(origin.toVector());
-      if (offset.lengthSquared() > maxDistance * maxDistance) requested = origin.clone().add(offset.normalize().multiply(maxDistance));
-      World world = origin.getWorld();
-      int baseX = requested.getBlockX();
-      int baseZ = requested.getBlockZ();
-      double offsetLength = offset.length();
-      Vector offsetDirection = offsetLength <= 0.001D ? new Vector(0, 0, 0) : offset.clone().normalize();
-      if (!this.isLoadedCompassChunk(world, baseX, baseZ) || !world.getWorldBorder().isInside(requested)
-            || offsetLength > 0.001D && !this.areCompassChunksLoaded(world, origin, offsetDirection, Math.min(maxDistance, offsetLength))) {
-         return null;
-      }
-      // A downward ray can hit the side of a cave or a deep underground
-      // block.  Never use that Y directly: resolve the target column to its
-      // highest safe surface first, then search only around that surface.
-      int surfaceY = world.getHighestBlockYAt(baseX, baseZ);
-      // In the Nether the highest column is often the bedrock roof.  A
-      // surface-derived target there would place the player on/inside the
-      // roof (or in an unusable ceiling pocket), so reject the column rather
-      // than teleporting through the dimension's normal play area.
-      if (world.getEnvironment() == World.Environment.NETHER
-            && surfaceY >= world.getMaxHeight() - 3) {
-         return null;
-      }
-      int baseY = Math.max(world.getMinHeight() + 1, surfaceY + 1);
-      for (int radius = 0; radius <= 2; radius++) {
-         for (int dy = -4; dy <= 4; dy++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-               for (int dz = -radius; dz <= radius; dz++) {
-                   Location candidate = new Location(world, baseX + dx + 0.5D, baseY + dy, baseZ + dz + 0.5D);
-                   if (candidate.distanceSquared(origin) <= maxDistance * maxDistance
-                         && world.getWorldBorder().isInside(candidate)
-                         && this.isLoadedCompassChunk(world, candidate.getBlockX(), candidate.getBlockZ())
-                         && this.isSafeCompassLocation(candidate)) return candidate;
-               }
-            }
-         }
-      }
-      return null;
-   }
-
-   private boolean isSafeCompassLocation(Location location) {
+   private boolean isSafeTeleportLocation(Location location) {
       World world = location.getWorld();
       if (world == null) return false;
       Block feet = world.getBlockAt(location);
@@ -15004,8 +14829,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             || feet.isLiquid() || head.isLiquid() || floor.isLiquid()) {
          return false;
       }
-      if (this.isCompassHazard(feet.getType()) || this.isCompassHazard(head.getType())
-            || this.isCompassHazard(floor.getType())) {
+      if (this.isTeleportHazard(feet.getType()) || this.isTeleportHazard(head.getType())
+            || this.isTeleportHazard(floor.getType())) {
          return false;
       }
       // Keep a small horizontal safety margin around cactus/fire/magma and
@@ -15016,7 +14841,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if ((dx == 0 && dz == 0)) continue;
             Material nearbyFeet = world.getBlockAt(feet.getX() + dx, feet.getY(), feet.getZ() + dz).getType();
             Material nearbyFloor = world.getBlockAt(floor.getX() + dx, floor.getY(), floor.getZ() + dz).getType();
-            if (this.isCompassHazard(nearbyFeet) || this.isCompassHazard(nearbyFloor)) {
+            if (this.isTeleportHazard(nearbyFeet) || this.isTeleportHazard(nearbyFloor)) {
                return false;
             }
          }
@@ -15027,7 +14852,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             .noneMatch(entity -> entity instanceof LivingEntity && !entity.isDead());
    }
 
-   private boolean isCompassHazard(Material material) {
+   private boolean isTeleportHazard(Material material) {
       if (material == null) {
          return true;
       }
@@ -15037,19 +14862,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                END_PORTAL, NETHER_PORTAL, VOID_AIR -> true;
          default -> false;
       };
-   }
-
-   private Location persistedLastDeathLocation(Player player) {
-      PersistentDataContainer pdc = player.getPersistentDataContainer();
-      String worldName = pdc.get(this.keyLastDeathWorld, PersistentDataType.STRING);
-      Integer x = pdc.get(this.keyLastDeathX, PersistentDataType.INTEGER);
-      Integer y = pdc.get(this.keyLastDeathY, PersistentDataType.INTEGER);
-      Integer z = pdc.get(this.keyLastDeathZ, PersistentDataType.INTEGER);
-      if (worldName == null || worldName.isBlank() || x == null || y == null || z == null) {
-         return null;
-      }
-      World world = Bukkit.getWorld(worldName);
-      return world == null ? null : new Location(world, x + 0.5D, y, z + 0.5D);
    }
 
    private boolean triggerEternalBoost(Player var1) {
@@ -15234,7 +15046,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private Set<String> artifactInteractEffects() {
-      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS", "ETERNAL_BOOST", "RETURN_STONE", "ANGEL_WINGS");
+      return Set.of("HASTE_BURST_LONG", "WIND_HAMMER", "FARMER_SWEEP", "DEBUFF_AMULET", "TAX_CLOCK", "ETERNAL_BOOST", "RETURN_STONE", "ANGEL_WINGS");
    }
 
    private Set<String> artifactDefenseEffects() {
@@ -16077,11 +15889,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                cooldownUntil,
                data.getOrDefault(this.keyTeleportBowCooldownUntil, PersistentDataType.LONG, 0L)
          );
-      } else if ("LOOT_COMPASS".equalsIgnoreCase(item.effect())) {
-         cooldownUntil = Math.max(
-               cooldownUntil,
-               data.getOrDefault(this.keyCompassCooldownUntil, PersistentDataType.LONG, 0L)
-         );
       }
       return cooldownUntil;
    }
@@ -16095,8 +15902,6 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       PersistentDataContainer data = player.getPersistentDataContainer();
       if ("AR_CROSSBOW_TELEPORT".equalsIgnoreCase(item.effect())) {
          data.set(this.keyTeleportBowCooldownUntil, PersistentDataType.LONG, cooldownUntil);
-      } else if ("LOOT_COMPASS".equalsIgnoreCase(item.effect())) {
-         data.set(this.keyCompassCooldownUntil, PersistentDataType.LONG, cooldownUntil);
       }
    }
 

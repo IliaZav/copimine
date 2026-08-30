@@ -60,7 +60,6 @@ def test_requested_catalog_prices_cover_all_20_ids_and_preserve_admin_only_item(
         "vechniy_razgon_firework": 9999,
     }
     expected_donation = {
-        "gde_moy_lut_blyat_compass": 100,
         "vremya_platit_nalogi_clock": 300,
         "pohuy_na_debaffy_amulet": 150,
         "ne_segodnya_suka_shield": 50,
@@ -99,7 +98,6 @@ def test_requested_catalog_descriptions_are_player_facing_and_not_stale():
         "vechniy_razgon_firework": "Бесконечный фейерверк с маленьким кд после каждого использования",
     }
     expected_donation_lore = {
-        "gde_moy_lut_blyat_compass": "Телепортация по направлению взгляда",
         "vremya_platit_nalogi_clock": "Освобождает от налогов на 3 месяца",
         "pohuy_na_debaffy_amulet": "При нажатии ПКМ заменяет дебафф на бафф",
         "ne_segodnya_suka_shield": "На него всем похуй",

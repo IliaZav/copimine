@@ -20,7 +20,6 @@ EXPECTED = {
     "ne_segodnya_suka_shield": (50, "NOT_TODAY_SHIELD", "SHIELD"),
     "pohuy_na_debaffy_amulet": (150, "DEBUFF_AMULET", "HEART_OF_THE_SEA"),
     "vremya_platit_nalogi_clock": (300, "TAX_CLOCK", "CLOCK"),
-    "gde_moy_lut_blyat_compass": (100, "LOOT_COMPASS", "COMPASS"),
 }
 
 
@@ -73,7 +72,7 @@ def test_donation_catalog_has_one_backend_and_runtime_contract_per_item() -> Non
     interact = _method_body(java, "artifactInteractEffects")
     combat = _method_body(java, "artifactCombatEffects")
     defense = _method_body(java, "artifactDefenseEffects")
-    assert {"DEBUFF_AMULET", "TAX_CLOCK", "LOOT_COMPASS"} <= set(re.findall(r'"([A-Z_]+)"', interact))
+    assert {"DEBUFF_AMULET", "TAX_CLOCK"} <= set(re.findall(r'"([A-Z_]+)"', interact))
     assert {"BATIN_REMEN", "NAKOPAL_PICKAXE", "NALOGOVAYA_KOSA"} <= set(re.findall(r'"([A-Z_]+)"', combat))
     assert {"PRORAB_HELMET", "TANK_VEST", "NOT_TODAY_SHIELD"} <= set(re.findall(r'"([A-Z_]+)"', defense))
 
@@ -163,7 +162,6 @@ def test_each_donation_ability_is_wired_to_its_specific_effect_logic() -> None:
 
     assert 'case "DEBUFF_AMULET" -> this.cleanseAllowedDebuff(var2)' in interact_body
     assert 'this.activateTaxClock(var2, var1.getItem())' in interact_body
-    assert 'case "LOOT_COMPASS" -> this.activateLootCompass(var2, var1.getItem())' in interact_body
 
     batin = re.search(r'(?ms)case "BATIN_REMEN":(.*?)(?=\n\s*case "NAKOPAL_PICKAXE":)', combat_body)
     pickaxe = re.search(r'(?ms)case "NAKOPAL_PICKAXE":(.*?)(?=\n\s*case "NALOGOVAYA_KOSA":)', combat_body)

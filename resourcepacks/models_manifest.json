@@ -163,14 +163,6 @@
       "animation": {"frame_count": 64, "frametime": 1, "interpolate": false}
     },
     {
-      "id": "gde_moy_lut_blyat_compass",
-      "custom_model_data": 20010,
-      "base_material": "compass",
-      "model": "minecraft:item/gde_moy_lut_blyt_compass",
-      "texture": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
-      "animation": {"frame_count": 32, "frametime": 1, "interpolate": false}
-    },
-    {
       "id": "feta",
       "custom_model_data": 810001,
       "base_material": "white_dye",

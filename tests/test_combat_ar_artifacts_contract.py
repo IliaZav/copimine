@@ -224,14 +224,12 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "this.expireSpawnedCobblestone()",
         )
 
-    def test_teleport_bow_and_compass_cooldowns_survive_relog(self) -> None:
+    def test_teleport_bow_cooldown_survives_relog(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
             "keyTeleportBowCooldownUntil",
-            "keyCompassCooldownUntil",
             'new NamespacedKey(this, "teleport_bow_cooldown_until")',
-            'new NamespacedKey(this, "compass_cooldown_until")',
             "actionCooldownUntil(var2, var3)",
             "storeActionCooldown(var2, var3",
             "PersistentDataType.LONG",
@@ -270,7 +268,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "for (int dy = -2; dy <= 3; dy++)",
             "for (int dx = -radius; dx <= radius; dx++)",
             "for (int dz = -radius; dz <= radius; dz++)",
-            "this.isSafeCompassLocation(candidate)",
+            "this.isSafeTeleportLocation(candidate)",
         )
 
     def test_explosive_tnt_cannot_damage_its_owner(self) -> None:

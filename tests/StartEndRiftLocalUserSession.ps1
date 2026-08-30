@@ -450,6 +450,38 @@ function Normalize-LocalServerProperties {
   }
 }
 
+function Normalize-LocalRadminJoinNetworkProperties {
+  # Radmin adds a real WAN-sized RTT to the local test path.  Keep the event
+  # arena intact while reducing the join burst and preventing a delayed
+  # movement packet from becoming a false floating kick.  These keys are
+  # written only to the isolated runtime server.properties by design.
+  Set-LocalServerProperty -Key 'view-distance' -Value '6'
+  Set-LocalServerProperty -Key 'simulation-distance' -Value '4'
+  Set-LocalServerProperty -Key 'entity-broadcast-range-percentage' -Value '75'
+  Set-LocalServerProperty -Key 'network-compression-threshold' -Value '256'
+  Set-LocalServerProperty -Key 'allow-flight' -Value 'true'
+
+  $expected = @{
+    'view-distance' = '6'
+    'simulation-distance' = '4'
+    'entity-broadcast-range-percentage' = '75'
+    'network-compression-threshold' = '256'
+    'allow-flight' = 'true'
+  }
+  $actual = @{}
+  foreach ($line in Get-Content -LiteralPath $serverProperties -Encoding UTF8) {
+    if ($line -match '^([^=]+)=(.*)$' -and $expected.ContainsKey($matches[1])) {
+      $actual[$matches[1]] = $matches[2]
+    }
+  }
+  foreach ($key in $expected.Keys) {
+    if ($actual[$key] -ne $expected[$key]) {
+      throw "Local Radmin join property mismatch for ${key}: expected=$($expected[$key]) actual=$($actual[$key])"
+    }
+  }
+  Write-Host 'Applied the local Radmin join profile: view=6 simulation=4 broadcast=75 compression=256 allow-flight=true.'
+}
+
 function Set-LocalPurpurProperty {
   param(
     [Parameter(Mandatory = $true)][string]$Key,
@@ -1169,6 +1201,7 @@ Stop-ExistingLocalPaper
 Normalize-LocalPurpurProperties
 Ensure-LocalVanillaBedRespawn
 Normalize-LocalServerProperties
+Normalize-LocalRadminJoinNetworkProperties
 Build-And-Sync-ResourcePack
 if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.properties')) -ne $trackedProductionPropertiesSha256) {
   throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'

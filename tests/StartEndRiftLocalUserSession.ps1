@@ -26,6 +26,7 @@ $pack = Join-Path $sourcePackDir 'CopiMineResourcePack.zip'
 $targetPack = Join-Path $targetPackDir 'CopiMineResourcePack.zip'
 $serverProperties = Join-Path $serverDir 'server.properties'
 $serverPropertiesBaseline = Join-Path $serverDir 'server.properties.pre-local-resourcepack'
+$purpurConfig = Join-Path $serverDir 'purpur.yml'
 $essentialsConfig = Join-Path $serverDir 'plugins\Essentials\config.yml'
 $eventConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
 $whitelistPath = Join-Path $serverDir 'whitelist.json'
@@ -73,6 +74,7 @@ Assert-UnderRoot -Path $targetPluginDir -Root $localRuntimeRoot -Label 'Local pl
 Assert-UnderRoot -Path $targetPackDir -Root $localRuntimeRoot -Label 'Local resource-pack directory'
 Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreSQL data directory'
 Assert-UnderRoot -Path $serverPropertiesBaseline -Root $localRuntimeRoot -Label 'Local server.properties baseline'
+Assert-UnderRoot -Path $purpurConfig -Root $localRuntimeRoot -Label 'Local Purpur configuration'
 Assert-UnderRoot -Path $essentialsConfig -Root $localRuntimeRoot -Label 'Local Essentials configuration'
 Assert-UnderRoot -Path $whitelistPath -Root $localRuntimeRoot -Label 'Local whitelist'
 Assert-UnderRoot -Path $opsPath -Root $localRuntimeRoot -Label 'Local operators'
@@ -83,6 +85,7 @@ Assert-UnderRoot -Path $websiteDataDir -Root $localRuntimeRoot -Label 'Local web
 Assert-UnderRoot -Path $websiteBackupsDir -Root $localRuntimeRoot -Label 'Local website backups'
 
 if (-not (Test-Path -LiteralPath $serverProperties -PathType Leaf)) { throw "Local server.properties is missing: $serverProperties" }
+if (-not (Test-Path -LiteralPath $purpurConfig -PathType Leaf)) { throw "Local purpur.yml is missing: $purpurConfig" }
 if (-not (Test-Path -LiteralPath $eventConfig -PathType Leaf)) { throw "Local End Rift config is missing: $eventConfig" }
 if (-not (Test-Path -LiteralPath $sourceEventConfig -PathType Leaf)) { throw "Current worktree End Rift config source is missing: $sourceEventConfig" }
 if (-not (Test-Path -LiteralPath $adminWebDir -PathType Container)) { throw "Local admin-web source is missing: $adminWebDir" }
@@ -445,6 +448,45 @@ function Normalize-LocalServerProperties {
   if ((Get-Item -LiteralPath $serverProperties).Length -gt 1048576) {
     throw "Local server.properties remains unexpectedly large after normalization: $serverProperties"
   }
+}
+
+function Set-LocalPurpurProperty {
+  param(
+    [Parameter(Mandatory = $true)][string]$Key,
+    [Parameter(Mandatory = $true)][string]$Value
+  )
+  if ((Get-Item -LiteralPath $purpurConfig).Length -gt 1048576) {
+    throw "Refused to rewrite an unexpectedly large local purpur.yml: $purpurConfig"
+  }
+  $lines = @(Get-Content -LiteralPath $purpurConfig -Encoding UTF8)
+  $pattern = '^(\s*)' + [Regex]::Escape($Key) + '\s*:'
+  $replaced = $false
+  for ($index = 0; $index -lt $lines.Count; $index++) {
+    if ($lines[$index] -match $pattern) {
+      $lines[$index] = $matches[1] + $Key + ': ' + $Value
+      $replaced = $true
+    }
+  }
+  if (-not $replaced) {
+    throw "Local purpur.yml does not contain the expected property: $Key"
+  }
+  $utf8 = [Text.UTF8Encoding]::new($false)
+  [IO.File]::WriteAllText($purpurConfig, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $utf8)
+}
+
+function Normalize-LocalPurpurProperties {
+  Set-LocalPurpurProperty -Key 'use-alternate-keepalive' -Value 'true'
+  $configuredKeepalive = ''
+  foreach ($line in Get-Content -LiteralPath $purpurConfig -Encoding UTF8) {
+    if ($line -match '^\s*use-alternate-keepalive\s*:\s*(true|false)\s*$') {
+      $configuredKeepalive = $matches[1].ToLowerInvariant()
+      break
+    }
+  }
+  if ($configuredKeepalive -ne 'true') {
+    throw "Local Purpur alternate keep-alive is not enabled: $configuredKeepalive"
+  }
+  Write-Host 'Enabled Purpur alternate keep-alive for the local Radmin test server.'
 }
 
 function Set-LocalEssentialsProperty {
@@ -1124,6 +1166,7 @@ Ensure-LocalWebsiteEnvironment
 Assert-LocalResourcePackPortSafe
 Assert-LocalWebsitePortSafe
 Stop-ExistingLocalPaper
+Normalize-LocalPurpurProperties
 Ensure-LocalVanillaBedRespawn
 Normalize-LocalServerProperties
 Build-And-Sync-ResourcePack

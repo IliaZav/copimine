@@ -119,10 +119,16 @@ def test_wave_transition_diagnostics_are_async_and_capture_stalls_and_failures()
     for marker in (
         "ArrayBlockingQueue",
         "ThreadPoolExecutor",
+        "ConcurrentHashMap",
         "WAVE_TRANSITION_STARTED",
         "WAVE_TRANSITION_COMMITTED",
         "WAVE_TRANSITION_FAILED",
         "WAVE_MAIN_THREAD_STALL",
+        "activeTasks",
+        "operationMillis",
+        "stackTrace",
+        "StringWriter",
+        "printStackTrace",
         "jsonLine",
         "closeAndFlush",
     ):
@@ -135,6 +141,7 @@ def test_wave_transition_diagnostics_are_async_and_capture_stalls_and_failures()
         "lastMainThreadTickAtMillis",
         "WAVE_MAIN_THREAD_STALL",
         "runTaskTimerAsynchronously",
+        "taskRegistry.size()",
         "diagnostics.closeAndFlush",
     ):
         assert marker in SERVER

@@ -460,6 +460,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private volatile String lastMainThreadPhase = "UNCONFIGURED";
     private volatile int lastMainThreadWave;
     private volatile long lastMainThreadGeneration;
+    private boolean diagnosticsFailureInjection;
     private volatile long lastDiagnosticsStallReportAtMillis;
     private int waveFrontWave;
     private boolean waveFrontFinal;
@@ -1531,11 +1532,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         lastDiagnosticsStallReportAtMillis = now;
         long age = now - last;
-        diagnostics.recordMainThreadStall(lastMainThreadPhase, lastMainThreadWave,
-                lastMainThreadGeneration, age);
+        diagnostics.recordMainThreadStall(eventId, lastMainThreadPhase, lastMainThreadWave,
+                lastMainThreadGeneration, age, activeEventTaskCount());
         getLogger().warning("WAVE_MAIN_THREAD_STALL event=" + eventId
                 + " phase=" + lastMainThreadPhase + " wave=" + lastMainThreadWave
                 + " age_ms=" + age + " generation=" + lastMainThreadGeneration);
+    }
+
+    private int activeEventTaskCount() {
+        return taskRegistry == null ? 0 : taskRegistry.size();
     }
 
     private boolean isAdmin(CommandSender sender) {
@@ -3260,7 +3265,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -3303,6 +3308,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             playTestMusic(player, requested);
             return;
         }
+        if ("diagnostics".equalsIgnoreCase(args[1])) {
+            handleTestDiagnosticsFailure(sender, args);
+            return;
+        }
         if ("wave".equalsIgnoreCase(args[1])) {
             int wave = "final".equalsIgnoreCase(args.length > 2 ? args[2] : "")
                     ? FINAL_WAVE_NUMBER : parseInt(args, 2, 0);
@@ -3326,7 +3335,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+    }
+
+    /**
+     * Local-only probe for the wave-transition diagnostic boundary.  The
+     * normal spawn path catches the injected exception, writes a full stack
+     * trace to the asynchronous JSONL journal, and leaves official state
+     * untouched because this call is explicitly a test wave.
+     */
+    private void handleTestDiagnosticsFailure(CommandSender sender, String[] args) {
+        if (config == null || !"local".equalsIgnoreCase(config.environment())) {
+            message(sender, "&cWAVE_DIAGNOSTICS_TEST разрешён только при environment=local.");
+            return;
+        }
+        if (args.length < 3 || !"fail".equalsIgnoreCase(args[2])) {
+            message(sender, "&e/cmend test diagnostics fail [wave]");
+            return;
+        }
+        int wave = args.length > 3 ? parseInt(args, 3, 2) : 2;
+        if (wave < 1 || wave > 5) {
+            message(sender, "&cТестовая волна должна быть от 1 до 5.");
+            return;
+        }
+        if (!hasSpawnAnchor()) {
+            message(sender, "&cWAVE_DIAGNOSTICS_TEST не создан: нет настроенного Core.");
+            return;
+        }
+        try {
+            diagnosticsFailureInjection = true;
+            spawnWave(wave, true);
+        } finally {
+            diagnosticsFailureInjection = false;
+        }
+        message(sender, "&aWAVE_DIAGNOSTICS_FAILURE_INJECTED wave=" + wave
+                + "; полный stack trace записан в diagnostics/wave-transitions.jsonl.");
     }
 
     /**
@@ -6159,6 +6202,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
 
             Player target = currentTarget;
+            UUID previousTargetId = target == null ? null : target.getUniqueId();
             boolean keepTowerAggro = towerMob && playerAggro && target != null;
             int entityWave = readInt(entity, keyWave, activeWave);
             Player markedTarget = entityWave == 2 && waveTwoMarkedPlayerUuid != null
@@ -6173,7 +6217,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (markedTargetPriority) {
                     target = markedTarget;
                     if (entity instanceof Skeleton) {
-                        getLogger().info("WAVE_SKELETON_MARKED_TARGET entity=" + entity.getUniqueId()
+                        getLogger().fine("WAVE_SKELETON_MARKED_TARGET entity=" + entity.getUniqueId()
                                 + " target=" + target.getUniqueId() + " wave=" + entityWave
                                 + " priority=immediate");
                     }
@@ -6197,10 +6241,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         // keep advancing toward its Core objective.
                         mob.setTarget(null);
                     }
-                    getLogger().info("WAVE_AI_TARGET entity=" + entity.getUniqueId()
+                    String targetMessage = "WAVE_AI_TARGET entity=" + entity.getUniqueId()
                             + " role=" + kind + " target=" + target.getUniqueId()
                             + " rotation=" + (markedTargetPriority ? "marked" : rotateTargets ? "scheduled" : "reacquired")
-                            + " objective=" + (towerMob && !playerAggro ? "core" : "player"));
+                            + " objective=" + (towerMob && !playerAggro ? "core" : "player");
+                    // Initial acquisition and an actual target change are
+                    // state diagnostics; repeated refreshes stay debug-only.
+                    if (previousTargetId == null
+                            || !previousTargetId.equals(target.getUniqueId())) {
+                        getLogger().info(targetMessage);
+                    } else {
+                        getLogger().fine(targetMessage);
+                    }
                 } else {
                     mob.setTarget(null);
                     mob.getPathfinder().stopPathfinding();
@@ -6429,14 +6481,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             long lastLog = lastWavePathLogMillis.getOrDefault(skeleton.getUniqueId(), 0L);
             if (now - lastLog >= 2_000L) {
                 lastWavePathLogMillis.put(skeleton.getUniqueId(), now);
-                getLogger().info("WAVE_SKELETON_KITE entity=" + skeleton.getUniqueId()
+                String message = "WAVE_SKELETON_KITE entity=" + skeleton.getUniqueId()
                         + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
                         + " behavior=" + behavior.id()
                         + " target=" + target.getUniqueId() + " distance=" + String.format(Locale.ROOT, "%.2f", distance)
                         + " firing_lane=" + String.format(Locale.ROOT, "%.1f", minimum)
                         + "-" + String.format(Locale.ROOT, "%.1f", maximum)
                         + " maneuver=" + maneuver
-                        + " destination=" + locationText(destination));
+                        + " destination=" + locationText(destination);
+                // The first successful posture is a useful state transition;
+                // later two-second refreshes remain debug-only.
+                if (lastLog == 0L) {
+                    getLogger().info(message);
+                } else {
+                    getLogger().fine(message);
+                }
             }
         }
     }
@@ -6473,10 +6532,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             long lastLog = lastWavePathLogMillis.getOrDefault(skeleton.getUniqueId(), 0L);
             if (now - lastLog >= 2_000L) {
                 lastWavePathLogMillis.put(skeleton.getUniqueId(), now);
-                getLogger().info("WAVE_SKELETON_TOWER entity=" + skeleton.getUniqueId()
+                String message = "WAVE_SKELETON_TOWER entity=" + skeleton.getUniqueId()
                         + " variant=" + (isSkeletonMiniBoss(skeleton) ? "MINIBOSS" : "COMMON")
                         + " behavior=tower_artillery target=CORE_ONLY destination="
-                        + locationText(destination));
+                        + locationText(destination);
+                if (lastLog == 0L) {
+                    getLogger().info(message);
+                } else {
+                    getLogger().fine(message);
+                }
             }
         }
     }
@@ -6757,10 +6821,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             long lastLog = lastWavePathLogMillis.getOrDefault(mob.getUniqueId(), 0L);
             if (now - lastLog >= 2_000L) {
                 lastWavePathLogMillis.put(mob.getUniqueId(), now);
-                getLogger().info("WAVE_AI_PATH entity=" + mob.getUniqueId()
+                String message = "WAVE_AI_PATH entity=" + mob.getUniqueId()
                         + " role=" + kind + " target=" + (target == null ? "core" : target.getUniqueId())
                         + " tactic=" + combatTactic(mob, mob.getUniqueId().hashCode())
-                        + " speed=" + speed + " destination=" + locationText(destination));
+                        + " speed=" + speed + " destination=" + locationText(destination);
+                if (lastLog == 0L) {
+                    getLogger().info(message);
+                } else {
+                    getLogger().fine(message);
+                }
             }
         }
     }
@@ -6798,7 +6867,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         velocity.setX(step.x()).setY(Math.max(-0.20D, Math.min(0.20D, vertical))).setZ(step.z());
         mob.setVelocity(velocity);
-        getLogger().info(logMarker + " entity=" + mob.getUniqueId()
+        getLogger().fine(logMarker + " entity=" + mob.getUniqueId()
                 + " fallback=velocity step=" + String.format(Locale.ROOT, "%.3f,%.3f", step.x(), step.z())
                 + " destination=" + locationText(destination));
         return true;
@@ -8903,6 +8972,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().warning("Cannot spawn End Event wave without configured world/core.");
             if (diagnostics != null) {
                 diagnostics.recordWaveTransitionFailed(eventId, generation, wave,
+                        activeEventTaskCount(),
                         new IllegalStateException("configured world/core unavailable"));
             }
             return;
@@ -8920,6 +8990,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (definition == null) {
             if (diagnostics != null) {
                 diagnostics.recordWaveTransitionFailed(eventId, generation, wave,
+                        activeEventTaskCount(),
                         new IllegalArgumentException("unknown wave definition"));
             }
             return;
@@ -8965,7 +9036,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 WaveScalingPolicy.effectMultiplier(scalePlayers)));
         if (diagnostics != null) {
             diagnostics.recordWaveTransitionStarted(eventId, generation, fromWave, wave,
-                    plannedMobs, test ? "local-test" : "official");
+                    plannedMobs, activeEventTaskCount(), test ? "local-test" : "official");
+        }
+        if (diagnosticsFailureInjection) {
+            diagnosticsFailureInjection = false;
+            throw new IllegalStateException("local diagnostics failure probe");
         }
         if (!test) {
             activeWave = wave;
@@ -9014,11 +9089,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (diagnostics != null) {
             diagnostics.recordWaveTransitionCommitted(eventId, generation, wave,
-                    countLiveWaveEntitiesForWave(wave));
+                    countLiveWaveEntitiesForWave(wave), activeEventTaskCount());
         }
         } catch (RuntimeException error) {
             if (diagnostics != null) {
-                diagnostics.recordWaveTransitionFailed(eventId, generation, wave, error);
+                diagnostics.recordWaveTransitionFailed(eventId, generation, wave,
+                        activeEventTaskCount(), error);
             }
             getLogger().log(Level.SEVERE, "WAVE_TRANSITION_FAILED event=" + eventId
                     + " generation=" + generation + " from_wave=" + fromWave
@@ -9088,7 +9164,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         WaveVisualPolicy.Frame frame = WaveVisualPolicy.frame(
                 waveFrontWave, waveFrontElapsedTicks, false);
         renderWaveFrontFrame(anchor, frame);
-        getLogger().info("WAVE_FRONT_FRAME event=" + eventId
+        // A frame is emitted every five ticks; keep it available at FINE so
+        // normal server logs contain state transitions, not animation spam.
+        getLogger().fine("WAVE_FRONT_FRAME event=" + eventId
                 + " generation=" + callbackGeneration + " wave=" + frame.wave()
                 + " elapsed_ticks=" + frame.elapsedTicks()
                 + " radius=" + String.format(Locale.ROOT, "%.2f", frame.outerRadius())
@@ -10726,7 +10804,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         living.addPotionEffect(new PotionEffect(PotionEffectType.SPEED,
                 20 * 240, 0, false, true, true));
-        getLogger().info("WAVE_PORTAL_MOB_MODIFIERS entity=" + living.getUniqueId()
+        getLogger().fine("WAVE_PORTAL_MOB_MODIFIERS entity=" + living.getUniqueId()
                 + " speed=I attack_knockback=II-equivalent");
     }
 
@@ -10748,7 +10826,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (attack != null) {
             attack.setBaseValue(attack.getBaseValue() + attackBonus);
         }
-        getLogger().info((skeleton ? "SKELETON_STATS" : "SPIDER_STATS") + " entity=" + living.getUniqueId()
+        getLogger().fine((skeleton ? "SKELETON_STATS" : "SPIDER_STATS") + " entity=" + living.getUniqueId()
                 + " health=" + (health == null ? "unknown" : health.getBaseValue())
                 + " attack=" + (attack == null ? "unknown" : attack.getBaseValue()));
     }
@@ -10786,7 +10864,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             living.setCustomName(ChatColor.DARK_RED + displayName);
             living.setCustomNameVisible(true);
         }
-        getLogger().info("WAVE_TOWER_ROLE entity=" + entity.getUniqueId()
+        getLogger().fine("WAVE_TOWER_ROLE entity=" + entity.getUniqueId()
                 + " role=" + role + " attack_interval_ms=" + role.attackIntervalMillis());
     }
 
@@ -14484,7 +14562,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "wave" -> List.of("spawn", "clear");
                 case "boss" -> List.of("spawn", "official", "info", "damage", "phase", "kill", "spell");
                 case "client" -> List.of("status", "bindboss", "clear");
-                 case "test" -> List.of("run", "wave", "boss", "teleport", "visuals", "music");
+                 case "test" -> List.of("run", "wave", "boss", "teleport", "visuals", "music", "diagnostics");
                  default -> List.of();
             };
         }
@@ -14497,6 +14575,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "teleport".equalsIgnoreCase(args[1])) {
             return List.of("wave", "boss");
         }
+        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "diagnostics".equalsIgnoreCase(args[1])) {
+            return List.of("fail");
+        }
+        if (args.length == 4 && "test".equalsIgnoreCase(args[0]) && "diagnostics".equalsIgnoreCase(args[1])
+                && "fail".equalsIgnoreCase(args[2])) {
+            return List.of("1", "2", "3", "4", "5");
+        }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "run".equalsIgnoreCase(args[1])) {
             return List.of("creative");
         }
@@ -14505,7 +14590,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of("cancel");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "music".equalsIgnoreCase(args[1])) {
-            return List.of("waves", "boss", "half", "final", "victory");
+            return List.of("ritual-wait", "waves", "boss", "half", "final", "victory");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "visuals".equalsIgnoreCase(args[1])) {
             return List.of("mobs", "boss");

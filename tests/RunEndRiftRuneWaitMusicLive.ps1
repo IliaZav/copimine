@@ -100,6 +100,22 @@ function Read-LogSince {
   }
 }
 
+function Wait-LogPattern {
+  param(
+    [Parameter(Mandatory = $true)][int64]$Offset,
+    [Parameter(Mandatory = $true)][string]$Pattern,
+    [Parameter(Mandatory = $true)][string]$Label
+  )
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    if ((Read-LogSince -Offset $Offset) -match $Pattern) {
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Rune wait music probe timed out waiting for $Label."
+}
+
 function Wait-PlayersOnline {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
@@ -117,8 +133,16 @@ function Prepare-AuthMeAccounts {
     # This is an isolated local Paper database.  Pre-registering the disposable
     # probes avoids AuthMe's concurrent /register executor race when two clients
     # connect in the same tick; the real player flow still uses /login.
+    $unregisterOffset = Get-LogByteOffset
     $null = Invoke-LocalRcon ("authme unregister $name")
+    Wait-LogPattern -Offset $unregisterOffset `
+      -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
+      -Label ("AuthMe unregister $name")
+    $registerOffset = Get-LogByteOffset
     $null = Invoke-LocalRcon ("authme register $name endrift-local")
+    Wait-LogPattern -Offset $registerOffset `
+      -Pattern ("AuthMe\].*Rcon registered " + [Regex]::Escape($name)) `
+      -Label ("AuthMe register $name")
   }
 }
 

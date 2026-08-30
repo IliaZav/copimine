@@ -10,7 +10,7 @@ depend:
 commands:
   cmend:
     description: Управление End Rift Event
-    usage: /cmend <status|debug|recovery|core|arena|gate|door|portalroom|resources|ritual|wave|boss|client|test|cleanup|reset|unlock>; /cmend core setat <x> <y> <z> <N>; /cmend gate|door setat <x1> <y1> <z1> <x2> <y2> <z2>; /cmend arena border <seconds>; /cmend gate|door pos1|pos2|open|close [ticks-per-layer]; /cmend gate|door restore confirm; /cmend gate|door delete confirm; /cmend debug packets|objectives|hazards|perf|ai; /cmend test run creative|visuals mobs|boss
+    usage: /cmend <status|debug|recovery|core|arena|gate|door|portalroom|resources|ritual|wave|boss|client|test|cleanup|reset|unlock>; /cmend core setat <x> <y> <z> <N>; /cmend gate|door setat <x1> <y1> <z1> <x2> <y2> <z2>; /cmend arena border <seconds>; /cmend gate|door pos1|pos2|open|close [ticks-per-layer]; /cmend gate|door restore confirm; /cmend gate|door delete confirm; /cmend debug packets|objectives|hazards|perf|ai; /cmend test run creative|diagnostics fail|visuals mobs|boss
 permissions:
   copimine.endevent.admin:
     description: Управление End Rift Event

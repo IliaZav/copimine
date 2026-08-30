@@ -62,7 +62,13 @@ if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
   $hasForcedUnconfigured = $logText -match 'END_EVENT_STATE forced=UNCONFIGURED reason=WorldCore already reports End unlocked without Core'
   $hasForcedReady = $logText -match 'END_EVENT_STATE forced=READY_FOR_PLAYERS'
   $hasAlreadyUnlocked = $logText -match 'WorldCore already reports End unlocked; preserving active event'
-  $hasUnlockPath = $hasForcedUnlock -or $hasForcedUnconfigured -or $hasForcedReady -or $hasAlreadyUnlocked
+  $hasPersistedSceneReindex = $logText -match 'END_EVENT_COMBAT_REINDEX event='
+  $hasReadyServices = $logText -match 'CopiMineEndEvent services ready; phase=READY_FOR_PLAYERS'
+  # A configured local scene may already be safely unlocked.  In that case
+  # startup preserves its persisted phase and reindexes owned visuals/entities
+  # instead of emitting a second forced-unlock transition.
+  $hasUnlockPath = $hasForcedUnlock -or $hasForcedUnconfigured -or $hasForcedReady -or
+    $hasAlreadyUnlocked -or ($hasPersistedSceneReindex -and $hasReadyServices)
   if (-not $hasPersistedPhase -or -not $hasUnlockPath) {
     throw 'Recovery smoke did not observe persisted phase plus a durable WorldCore unlock path.'
   }
@@ -72,6 +78,8 @@ if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
     Write-Host 'PASS recovery persisted phase and safe unconfigured transition'
   } elseif ($hasForcedReady) {
     Write-Host 'PASS recovery persisted phase and forced ready transition'
+  } elseif ($hasPersistedSceneReindex -and $hasReadyServices) {
+    Write-Host 'PASS recovery persisted phase and reindexed configured local scene'
   } else {
     Write-Host 'PASS recovery persisted phase and idempotent already-unlocked transition'
   }

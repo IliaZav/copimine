@@ -186,6 +186,7 @@ def test_music_configuration_and_phase_hooks_are_present() -> None:
         "isRitualMusicPhase",
     ):
         assert hook in MAIN
+    assert 'List.of("ritual-wait", "waves", "boss", "half", "final", "victory")' in MAIN
 
 
 def test_rune_wait_music_reaches_players_who_join_or_respawn_during_wait() -> None:

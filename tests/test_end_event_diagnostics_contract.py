@@ -77,6 +77,65 @@ def test_debug_subcommands_are_tab_completed() -> None:
     assert 'case "debug" -> List.of("packets", "objectives", "hazards", "perf", "ai")' in completion
 
 
+def test_local_diagnostics_failure_probe_exercises_the_wave_transition_catch() -> None:
+    for marker in (
+        '"diagnostics".equalsIgnoreCase(args[1])',
+        "handleTestDiagnosticsFailure",
+        "diagnosticsFailureInjection",
+        "local diagnostics failure probe",
+        "spawnWave(wave, true)",
+        "environment=local",
+    ):
+        assert marker in MAIN
+
+
+def test_live_diagnostics_probe_is_local_only_and_checks_full_failure_record() -> None:
+    script = (ROOT / "tests/RunEndRiftDiagnosticsFailureLive.ps1").read_text(encoding="utf-8")
+    for marker in (
+        "environment:\\s*local",
+        "server-port=25566",
+        "rcon\\.port=25576",
+        "codex/end-rift-event",
+        "local-runtime directory",
+        "cmend test diagnostics fail",
+        "WAVE_TRANSITION_STARTED",
+        "toWave",
+        "WAVE_TRANSITION_FAILED",
+        "activeTasks",
+        "operationMillis",
+        "errorType",
+        "errorMessage",
+        "stackTrace",
+        "officialState=READY_FOR_PLAYERS",
+        "eventMobs=0",
+        "boss=none",
+        "pads=0/2",
+    ):
+        assert marker in script
+
+
+def test_repeating_per_mob_path_details_are_not_default_info_log_spam() -> None:
+    for marker in (
+        'getLogger().fine((skeleton ? "SKELETON_STATS"',
+    ):
+        assert marker in MAIN
+    assert 'String targetMessage = "WAVE_AI_TARGET' in MAIN
+    assert 'String message = "WAVE_AI_PATH' in MAIN
+    # Spawn-time role/behavior and the first successful posture are state
+    # transitions; only their repeating refreshes remain debug-only.
+    for marker in (
+        'getLogger().info("WAVE_SKELETON_BEHAVIOR',
+        'getLogger().info("WAVE_AI_TACTIC',
+        'getLogger().info(message);',
+        'getLogger().fine(message);',
+    ):
+        assert marker in MAIN
+
+
+def test_repeating_wave_animation_frames_are_debug_only() -> None:
+    assert 'getLogger().fine("WAVE_FRONT_FRAME' in MAIN
+
+
 def test_debug_packets_reports_a_five_second_runtime_budget_window() -> None:
     start = MAIN.index("private void handleDebug")
     end = MAIN.index("private void handleStatus", start)

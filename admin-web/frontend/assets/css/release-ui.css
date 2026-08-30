@@ -1228,7 +1228,7 @@ body.junior-admin-mode .creative-item span {
   font-variant-numeric: tabular-nums;
 }
 :root[data-theme="dark"] .shop-cart-count { color: #06110b; }
-.shop-cart-mobile-shortcut { display: none; }
+.shop-cart-compact { display: none; }
 
 .shop-storefront {
   display: grid;
@@ -1469,8 +1469,7 @@ body.junior-admin-mode .creative-item span {
   .admin-shell { width: min(calc(100% - 20px), 1240px); }
 
   .public-nav { align-items: center; flex-wrap: wrap; min-height: 68px; padding: 8px; }
-  .public-nav > .shop-cart-mobile-shortcut { display: inline-flex; margin-left: auto; }
-  .public-nav nav .shop-cart-button { display: none !important; }
+  .public-nav > .shop-cart-compact { display: inline-flex; margin-left: auto; }
   .public-brand-logo { width: 48px !important; height: 48px !important; flex-basis: 48px; }
   .public-mobile-toggle:not(.hidden),
   .mobile-only:not(.hidden) { display: inline-flex !important; }

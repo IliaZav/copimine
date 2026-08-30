@@ -111,6 +111,34 @@ def test_cabinet_updates_browser_title_when_switching_sections() -> None:
     assert 'document.title = `CopiMine - ${meta.title}`' in runtime
 
 
+def test_cabinet_runtime_does_not_keep_the_dead_duplicate_auth_renderer() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert "syncAuthUiLegacyUnused" not in runtime
+    assert "if (true)" not in runtime
+
+
+def test_cabinet_runtime_keeps_one_delegated_action_registry() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    assert runtime.count("function wireDataClickDelegation()") == 1
+    assert runtime.count("Object.assign(dataClickHandlers") == 1
+    assert 'console.warn("Unknown data-click handler", parsed.fn)' in runtime
+
+
+def test_admin_navigation_has_a_loader_for_every_section() -> None:
+    runtime = read("admin-web/frontend/assets/js/cabinet-runtime.js")
+    nav_block = runtime[runtime.index("const navGroups = ["): runtime.index("const pageMeta =")]
+    loader_block = runtime[runtime.index("const adminLoaders = {"): runtime.index("const playerLoaders =")]
+
+    nav_ids = set(re.findall(r'\["([a-z0-9-]+)",\s*"[^\"]+",', nav_block))
+    nav_ids.add("shops")  # inserted into the first group for legacy route order
+    loader_ids = set(re.findall(r'^\s+["\']?([a-z0-9-]+)["\']?\s*:', loader_block, flags=re.MULTILINE))
+
+    assert nav_ids - loader_ids == set()
+    assert 'launcher: () => getAdminLauncherPages().loadLauncher()' in loader_block
+    assert 'news: () => getAdminNewsPages().loadNews()' in loader_block
+    assert 'cms: () => getAdminCmsPages().loadCms()' in loader_block
+
+
 def test_sources_view_explains_database_roles_without_secrets() -> None:
     registry = read("admin-web/frontend/assets/js/admin/plugin-registry-pages.js")
     assert "PostgreSQL" in registry

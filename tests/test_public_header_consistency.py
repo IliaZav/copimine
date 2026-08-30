@@ -71,11 +71,21 @@ def test_runtime_public_header_keeps_one_canonical_cart_link() -> None:
     nav = read(FRONTEND / "assets" / "js" / "public" / "public-nav.js")
     assert "getShopCartCount" in nav
     assert "shop-cart-button" in nav
-    assert "shop-cart-mobile-shortcut" in nav
-    assert "createCartLink(true)" in nav
-    assert "ensureCartShortcuts" in nav
+    assert "shop-cart-mobile-shortcut" not in nav
+    assert "createCartLink(true)" not in nav
+    assert "ensureCartButton" in nav
+    assert "shop-cart-compact" in nav
+    assert "header.append(cart)" in nav
+    assert "nav.append(cart)" in nav
+    assert 'media.addEventListener("change", syncCartPlacement)' in nav
     assert "querySelectorAll(`a.shop-cart-button[href=\"${CART_PATH}\"]`)" in nav
     assert "link.remove()" in nav
+
+
+def test_static_headers_do_not_ship_duplicate_cart_controls() -> None:
+    for page in PUBLIC_PAGES:
+        header = header_markup(read(page), page)
+        assert header.count('class="shop-cart-button"') <= 1, page
 
 
 def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:

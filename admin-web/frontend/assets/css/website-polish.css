@@ -54,9 +54,9 @@ body.auth-screen .public-site {
 .public-nav {
   min-height: 68px;
   margin-top: 14px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   border: 1px solid rgba(104, 205, 143, .28) !important;
-  border-radius: 6px !important;
+  border-radius: 14px !important;
   background: linear-gradient(135deg, var(--site-forest), var(--site-forest-2)) !important;
   box-shadow: 0 12px 28px rgba(9, 31, 19, .16) !important;
 }
@@ -72,7 +72,7 @@ body.auth-screen .public-site {
   height: 48px !important;
   flex-basis: 48px;
   border: 1px solid rgba(255, 255, 255, .22);
-  border-radius: 4px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, .08);
   box-shadow: none;
 }
@@ -93,7 +93,7 @@ body.auth-screen .public-site {
   min-height: 38px;
   padding: 7px 9px;
   border-color: transparent !important;
-  border-radius: 4px !important;
+  border-radius: 9px !important;
   color: rgba(241, 255, 244, .74) !important;
   font-size: .84rem;
   letter-spacing: .01em;
@@ -127,7 +127,7 @@ body.auth-screen .public-site {
   min-height: 38px;
   padding: 7px 9px;
   border: 1px solid rgba(112, 227, 155, .3) !important;
-  border-radius: 4px !important;
+  border-radius: 9px !important;
   background: rgba(112, 227, 155, .1) !important;
   color: #f1fff4 !important;
   font-size: .84rem;
@@ -148,7 +148,13 @@ body.auth-screen .public-site {
   color: #fff !important;
 }
 
-.public-nav > .shop-cart-mobile-shortcut { display: none !important; }
+.public-nav > .shop-cart-compact {
+  display: none;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  margin-left: 0;
+}
 
 .public-nav .shop-cart-count {
   display: inline-grid;
@@ -236,7 +242,7 @@ body.auth-screen .public-site {
 .public-site .public-hero-side,
 .public-site .hero-side-card,
 .public-site .hero-media-card {
-  border-radius: 6px !important;
+  border-radius: 14px !important;
 }
 
 .public-site .public-section,
@@ -489,7 +495,7 @@ body.auth-screen .public-site {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
-  align-self: stretch;
+  align-self: end;
   min-width: 0;
 }
 
@@ -498,10 +504,11 @@ body.auth-screen .public-site {
   align-content: end;
   gap: 7px;
   min-width: 0;
-  min-height: 92px;
-  padding: 13px 14px;
+  min-height: 128px;
+  padding: 16px;
   border: 1px solid var(--site-line);
   border-top: 2px solid var(--site-moss);
+  border-radius: 12px;
   background: var(--site-panel-soft);
   box-shadow: var(--site-shadow-soft);
 }
@@ -583,19 +590,23 @@ body.auth-screen .public-site {
 @media (max-width: 1080px) {
   .public-nav {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px 12px;
     align-items: center;
   }
 
-  .public-nav .public-mobile-toggle:not(.hidden) {
+  .public-nav > .public-mobile-toggle:not(.hidden),
+  .public-nav > .mobile-only:not(.hidden) {
     display: inline-flex !important;
+    grid-column: 3;
+    grid-row: 1;
     justify-self: end;
   }
 
-  .public-nav > .shop-cart-mobile-shortcut {
+  .public-nav > .shop-cart-compact {
     display: inline-flex !important;
-    justify-self: end;
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .public-nav nav { display: none !important; }
@@ -651,6 +662,7 @@ body.auth-screen .public-site {
   body[data-page-kind^="public"] .public-site,
   body.auth-screen .public-site { width: min(calc(100% - 20px), 1240px); }
   .public-nav { margin-top: 10px; padding: 7px; }
+  .public-nav > .shop-cart-compact { min-width: 0; padding-inline: 8px; }
   .public-nav .public-brand { min-width: 0; }
   .public-nav .public-brand-copy small { display: none; }
   .public-page-shell { padding-top: 18px; }
@@ -829,5 +841,37 @@ body.auth-screen .public-site {
     scroll-behavior: auto !important;
     animation-duration: .01ms !important;
     transition-duration: .01ms !important;
+  }
+}
+
+/* Final surface pass: the public shell uses one radius and one compact
+ * rhythm, including the launcher/news routes that have their own stylesheet. */
+.public-site .launcher-hero,
+.public-site .news-hero,
+.public-site .patch-detail {
+  border-radius: 16px !important;
+}
+
+.public-site .launcher-release-card,
+.public-site .launcher-system-card,
+.public-site .launcher-feature-card,
+.public-site .launcher-faq-card,
+.public-site .news-card,
+.public-site .launcher-step {
+  border-radius: 12px !important;
+}
+
+.public-site .news-hero-text-only {
+  min-height: 0;
+}
+
+.public-site .news-hero-summary {
+  align-self: end;
+}
+
+@media (max-width: 620px) {
+  .public-site .news-hero-text-only {
+    gap: 18px;
+    padding: 22px 18px;
   }
 }

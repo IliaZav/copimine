@@ -41,17 +41,22 @@ def test_public_shell_handles_narrow_viewports_without_a_second_horizontal_scrol
     assert "overflow-x: clip" in css
 
 
-def test_cart_route_has_one_static_cart_control_and_runtime_compact_variant() -> None:
+def test_cart_route_has_one_static_cart_control_and_runtime_reuses_one_node() -> None:
     cart = read("admin-web/frontend/cart.html")
+    nav = read("admin-web/frontend/assets/js/public/public-nav.js")
     assert 'id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-current="page"' in cart
     assert "shop-cart-mobile-shortcut" not in cart
     assert cart.count('href="/cart.html"') == 1
+    assert "header.append(cart)" in nav
+    assert "nav.append(cart)" in nav
 
 
-def test_shop_route_has_one_static_cart_control_and_runtime_compact_variant() -> None:
+def test_shop_route_has_one_static_cart_control_and_runtime_reuses_one_node() -> None:
     shops = read("admin-web/frontend/shops.html")
+    nav = read("admin-web/frontend/assets/js/public/public-nav.js")
     assert shops.count('id="shopCartButton"') == 1
     assert "shop-cart-mobile-shortcut" not in shops
+    assert "shop-cart-compact" in nav
 
 
 def test_launcher_and_news_heroes_use_real_product_assets_without_placeholder_copy() -> None:
@@ -198,3 +203,19 @@ def test_copy_ip_failure_has_a_live_status_instead_of_replacing_the_button_with_
     assert "copyIpStatus" in homepage
     assert "Не удалось скопировать" in homepage
     assert 'button.textContent = ip' not in homepage
+
+
+def test_final_site_audit_uses_a_compact_hero_and_shared_surface_rhythm() -> None:
+    public = read("admin-web/frontend/assets/css/website-polish.css")
+    cabinet = read("admin-web/frontend/assets/css/cabinet-shell-polish.css")
+
+    assert ".public-nav > .shop-cart-compact" in public
+    assert "grid-template-columns: minmax(0, 1fr) auto auto" in public
+    assert ".public-site .news-hero-summary" in public
+    assert "align-self: end" in public
+    assert ".public-site .news-hero-stat" in public
+    assert "border-radius: 12px" in public
+    assert "grid-template-columns: 272px minmax(0, 1fr)" in cabinet
+    assert "body.panel-admin-mode .workspace" in cabinet
+    assert "body.player-mode .workspace" in cabinet
+    assert "@media (prefers-reduced-motion: reduce)" in cabinet

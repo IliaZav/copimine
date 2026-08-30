@@ -419,8 +419,6 @@ export function createHomepageRenderer() {
   const publicRegisterLink = document.getElementById("publicRegisterLink");
   const cabinetButton = document.getElementById("publicCabinetBtn");
   const logoutButton = document.getElementById("publicLogoutBtn");
-  const heroMiniTitle = document.getElementById("heroMiniTitle");
-  const heroMiniText = document.getElementById("heroMiniText");
   const modpackSummaryLead = document.getElementById("modpackSummaryLead");
   const modpackMetaGrid = document.getElementById("modpackMetaGrid");
   const modpackFileGrid = document.getElementById("modpackFileGrid");
@@ -586,32 +584,12 @@ export function createHomepageRenderer() {
   }
 
   function renderModpack(modpack = {}, config = {}) {
-    if (document.body?.dataset.pageKind === "public-home") {
-      if (heroMiniTitle) heroMiniTitle.textContent = "CopiMine Launcher";
-      if (heroMiniText) heroMiniText.textContent = "Java 21 · Minecraft 1.21.1 · Fabric 0.19.3.";
-      return;
-    }
     const manifest = modpack && typeof modpack === "object" ? (modpack.manifest || {}) : {};
     const files = Array.isArray(manifest.files) ? manifest.files : [];
     const requiredExternal = Array.isArray(manifest.requiredExternal) ? manifest.requiredExternal : [];
     const available = Boolean(modpack.available);
     const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
 
-    if (heroMiniTitle) {
-      heroMiniTitle.textContent = available
-        ? "Сборка для входа"
-        : "Сборка недоступна";
-    }
-    if (heroMiniText) {
-      if (available) {
-        const versionText = `${manifest.loader || "Fabric"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim();
-        const fileText = `${files.length || 0} модов`;
-        const externalText = requiredExternal.length ? `, отдельно ещё ${requiredExternal.length}` : "";
-        heroMiniText.textContent = `${versionText} · ${fileText}${externalText}`;
-      } else {
-        heroMiniText.textContent = "Сборка сейчас недоступна.";
-      }
-    }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
         ? "Сборка готова к загрузке."

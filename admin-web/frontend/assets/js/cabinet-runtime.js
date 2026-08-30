@@ -2703,61 +2703,6 @@ function wirePublicSite() {
   loadPublicStatus();
 }
 
-function syncAuthUiLegacyUnused() {
-  const isRegister = isRegisterPage();
-  const loginCard = $("loginForm");
-  if (!loginCard) return;
-
-  $("minecraftNameGroup")?.classList.toggle("hidden", !isRegister);
-
-  const brandText = loginCard.querySelector(".login-brand p");
-  const lead = loginCard.querySelector(".login-copy strong");
-  const support = loginCard.querySelector(".login-copy span");
-  const usernameLabel = loginCard.querySelector('label[for="username"]');
-  const passwordLabel = loginCard.querySelector('label[for="password"]');
-  const submit = loginCard.querySelector('button[type="submit"]');
-  const note = loginCard.querySelector(".login-note");
-
-  if (true) {
-    if (brandText) brandText.textContent = "Личный кабинет CopiMine";
-    if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
-    if (support) support.textContent = isRegister
-      ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
-      : "Войдите логином сайта. После входа будут доступны онлайн-банк, удалённые покупки и история операций.";
-    if (usernameLabel) usernameLabel.textContent = "Логин сайта";
-    if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-    $("username").placeholder = "Придумай логин";
-    $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введите пароль";
-    if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
-    if (note) note.textContent = isRegister
-      ? "Пароль от Minecraft здесь никогда не нужен. Укажи свой игровой ник и подтверди его кодом в игре."
-      : "После входа можно привязать игровой аккаунт, настроить PIN и пользоваться переводами.";
-  } else {
-    if (brandText) brandText.textContent = "Рабочий кабинет сервера";
-    if (lead) lead.textContent = "Вход";
-    if (support) support.textContent = "Доступ к админке получают только сотрудники сервера с действующим логином.";
-    if (usernameLabel) usernameLabel.textContent = "Minecraft-ник";
-    if (passwordLabel) passwordLabel.textContent = "Пароль";
-    $("username").placeholder = "Например, Cells";
-    $("password").placeholder = "Введите пароль";
-    if (submit) submit.textContent = "Войти";
-    if (note) note.textContent = "Если доступ не открывается, проверь логин и обратись к старшей команде сервера.";
-  }
-  if (brandText) brandText.textContent = isRegister ? "Новый кабинет" : "Вход в CopiMine";
-  if (lead) lead.textContent = isRegister ? "Регистрация" : "Вход";
-  if (support) support.textContent = isRegister
-    ? "Создайте аккаунт сайта."
-    : "Введите логин и пароль, чтобы открыть свой кабинет.";
-  if (usernameLabel) usernameLabel.textContent = "Логин сайта";
-  if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-  if ($("username")) $("username").placeholder = isRegister ? "Придумай логин" : "Введи логин";
-  if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
-  if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
-  if (note) note.textContent = isRegister
-    ? "Создайте аккаунт сайта."
-    : "После входа откроется кабинет этого аккаунта.";
-}
-
 function syncAuthUi() {
   const isRegister = isRegisterPage();
   const form = $("loginForm");

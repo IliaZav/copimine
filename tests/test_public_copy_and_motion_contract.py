@@ -86,6 +86,13 @@ def test_public_copy_uses_player_language_on_key_routes() -> None:
         assert phrase.lower() not in public_source.lower(), phrase
 
 
+def test_homepage_does_not_repeat_the_launcher_promo_in_the_hero() -> None:
+    index = read("admin-web/frontend/index.html")
+
+    assert 'class="hero-side-note"' not in index
+    assert "Игра, проверка файлов и запуск — в одном окне." not in index
+
+
 def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() -> None:
     style = read("admin-web/frontend/assets/style.css")
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")

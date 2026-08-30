@@ -4,9 +4,9 @@ const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435
 const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
 const CART_PATH = "/cart.html";
 
-function createCartLink(mobile = false) {
+function createCartLink() {
   const link = document.createElement("a");
-  link.className = mobile ? "shop-cart-button shop-cart-mobile-shortcut" : "shop-cart-button";
+  link.className = "shop-cart-button";
   link.href = CART_PATH;
 
   const label = document.createElement("span");
@@ -33,37 +33,33 @@ function syncCartButtons(shell, count = getShopCartCount()) {
   });
 }
 
-function ensureCartShortcuts(shell, nav) {
+function ensureCartButton(shell, nav) {
   const cartLinks = [...shell.querySelectorAll(`a.shop-cart-button[href="${CART_PATH}"]`)].filter(
     (node) => node instanceof HTMLAnchorElement,
   );
-  let desktop = cartLinks.find((node) => nav.contains(node));
-  if (!(desktop instanceof HTMLAnchorElement)) {
-    desktop = createCartLink();
-    nav.append(desktop);
+  const header = nav.closest(".public-nav");
+  if (!(header instanceof HTMLElement)) return;
+
+  let cart = cartLinks.find((node) => nav.contains(node)) || cartLinks[0];
+  if (!(cart instanceof HTMLAnchorElement)) {
+    cart = createCartLink();
   }
 
-  let mobile = cartLinks.find((node) => node !== desktop && node.classList.contains("shop-cart-mobile-shortcut"));
-  if (!(mobile instanceof HTMLAnchorElement)) {
-    mobile = createCartLink(true);
-    shell.append(mobile);
-  }
-
-  // Desktop and compact headers use two presentations of the same action.
-  // Keep exactly one node for each presentation and remove every stale copy
-  // before syncing its state. The visibility sync below also uses inline
-  // !important so an older cached stylesheet cannot show both controls.
   for (const link of cartLinks) {
-    if (link !== desktop && link !== mobile) link.remove();
+    if (link !== cart) link.remove();
   }
-
   const media = window.matchMedia("(max-width: 1080px)");
-  const syncCartVisibility = () => {
+  const syncCartPlacement = () => {
     const compact = media.matches;
-    desktop.style.setProperty("display", compact ? "none" : "inline-flex", "important");
-    mobile.style.setProperty("display", compact ? "inline-flex" : "none", "important");
+    if (compact) {
+      header.append(cart);
+      cart.classList.add("shop-cart-compact");
+    } else {
+      nav.append(cart);
+      cart.classList.remove("shop-cart-compact");
+    }
   };
-  syncCartVisibility();
+  syncCartPlacement();
 
   if (shell.dataset.cartBound !== "true") {
     shell.dataset.cartBound = "true";
@@ -71,9 +67,9 @@ function ensureCartShortcuts(shell, nav) {
       syncCartButtons(shell, event.detail?.count);
     });
   }
-  if (shell.dataset.cartVisibilityBound !== "true") {
-    shell.dataset.cartVisibilityBound = "true";
-    media.addEventListener("change", syncCartVisibility);
+  if (shell.dataset.cartPlacementBound !== "true") {
+    shell.dataset.cartPlacementBound = "true";
+    media.addEventListener("change", syncCartPlacement);
   }
   syncCartButtons(shell);
 }
@@ -107,7 +103,7 @@ export function initPublicNav() {
     return;
   }
 
-  ensureCartShortcuts(shell, nav);
+  ensureCartButton(shell, nav);
 
   // Several public pages predate this module and already contain
   // #mobileNavToggle. Reuse that element so the enhancer never adds a second

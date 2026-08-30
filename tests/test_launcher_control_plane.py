@@ -335,3 +335,45 @@ def test_public_news_serves_static_feed_when_backend_state_is_empty(tmp_path: Pa
     assert plane.list_news(include_drafts=True)[0]["slug"] == "launcher-static"
     assert plane.public_news_detail("launcher-static")["version"] == "1.0.1"
     assert plane.dashboard()["news"][0]["slug"] == "launcher-static"
+
+
+def test_public_news_merges_new_static_releases_with_existing_control_state(tmp_path: Path) -> None:
+    public = tmp_path / "public"
+    patches = public / "assets" / "public-data" / "patches"
+    patches.mkdir(parents=True)
+    static_latest = {
+        "id": "launcher-1.0.10",
+        "slug": "launcher-1-0-10",
+        "version": "1.0.10",
+        "title": "Launcher 1.0.10",
+        "publishedAt": "2026-08-30T09:00:00Z",
+        "summary": ["Latest release"],
+        "detailUrl": "/news/launcher-1-0-10.html",
+    }
+    (patches / "index.json").write_text(
+        json.dumps({"schemaVersion": 1, "patches": [static_latest]}), encoding="utf-8"
+    )
+    (patches / "launcher-1-0-10.json").write_text(
+        json.dumps({**static_latest, "sections": {"general": [{"title": "Details"}]}, "items": []}),
+        encoding="utf-8",
+    )
+
+    plane = control.ControlPlane(tmp_path / "control", public_root=public)
+    state = plane.load_state()
+    state["publishedNews"] = [
+        {
+            "id": "launcher-1.0.9",
+            "slug": "launcher-1-0-9",
+            "version": "1.0.9",
+            "title": "Launcher 1.0.9",
+            "publishedAt": "2026-08-29T09:00:00Z",
+            "summary": ["Previous release"],
+            "detailUrl": "/news/launcher-1-0-9.html",
+        }
+    ]
+    (tmp_path / "control" / "state.json").write_text(json.dumps(state), encoding="utf-8")
+
+    news = plane.public_news()
+
+    assert [item["slug"] for item in news] == ["launcher-1-0-10", "launcher-1-0-9"]
+    assert plane.public_news_detail("launcher-1-0-10")["sections"]["general"][0]["title"] == "Details"

@@ -1025,13 +1025,17 @@ class ControlPlane:
     def list_news(self, *, include_drafts: bool = False) -> list[dict[str, Any]]:
         state = self.load_state()
         result = _copy_json(state["publishedNews"])
-        # The generated static feed is the deployable source of truth until
-        # the control-plane state has its first explicitly published record.
-        # Keep the admin editor useful in a fresh install as well as the
-        # public pages; an empty control-state file must not hide releases
-        # that are already present in the static contract.
-        if not result:
-            result = self._static_news()
+        # Static contracts can be deployed independently of the control-plane
+        # state. Merge releases that have not been explicitly published into
+        # state yet, so an older state file cannot hide a freshly deployed
+        # public release. Explicit control-plane records win on a duplicate
+        # slug because they may contain an intentional admin edit.
+        static_news = self._static_news()
+        known_slugs = {str(item.get("slug") or "") for item in result}
+        result = [
+            *_copy_json([item for item in static_news if str(item.get("slug") or "") not in known_slugs]),
+            *result,
+        ]
         if include_drafts:
             result.extend(_copy_json(state["draftNews"]))
         return result
@@ -1226,7 +1230,12 @@ class ControlPlane:
 
     def public_news_detail(self, slug: str) -> dict[str, Any]:
         slug = _safe_slug(slug)
-        item = next((row for row in self.list_news() if row.get("slug") == slug), None)
+        state = self.load_state()
+        # Prefer an explicitly published control-plane record. For releases
+        # delivered as static contracts, read the detail document before the
+        # compact index entry so the public API does not discard sections or
+        # item metadata merely because an older state file exists.
+        item = next((row for row in state["publishedNews"] if row.get("slug") == slug), None)
         if item is None and self.public_root:
             detail_path = self.public_root / "assets" / "public-data" / "patches" / f"{slug}.json"
             try:
@@ -1235,6 +1244,8 @@ class ControlPlane:
                     item = payload
             except (OSError, json.JSONDecodeError):
                 item = None
+        if item is None:
+            item = next((row for row in self._static_news() if row.get("slug") == slug), None)
         if item is None:
             raise ControlPlaneError("LAUNCHER_NEWS_NOT_FOUND", "published news was not found", field="slug")
         return item

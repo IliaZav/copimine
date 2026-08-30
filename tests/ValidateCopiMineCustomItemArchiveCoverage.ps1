@@ -78,7 +78,7 @@ foreach ($row in $sourceRows) {
   switch ($catalogRow.Catalog) {
     'AR' { if ([string]$row.source_group -notin @('No_Donate', 'Generated')) { $errors.Add("AR item has invalid source group $($row.source_group): $id") } }
     'ADMIN_ONLY' { if ([string]$row.source_group -ne 'User_Supplied') { $errors.Add("Admin-only item has invalid source group: $id") } }
-    'DONATION' { if ([string]$row.source_group -ne 'Donate') { $errors.Add("Donation item has invalid source group: $id") } }
+    'DONATION' { if ([string]$row.source_group -notin @('Donate', 'Generated')) { $errors.Add("Donation item has invalid source group $($row.source_group): $id") } }
   }
   $pair = "$([string]$catalogRow.Material.ToUpperInvariant()):$([int]$catalogRow.ModelData)"
   if (-not $manifestPairs.ContainsKey($pair)) { $errors.Add("Missing resource-pack manifest override: $id") }

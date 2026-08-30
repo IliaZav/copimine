@@ -66,8 +66,13 @@ Get-ChildItem -LiteralPath $root -File |
     ForEach-Object { $errors.Add("Legacy installer/script must be removed from release root: $($_.Name)") }
 
 Require-Missing (Join-Path $plugins 'old-plugins') 'Active server plugins folder must not contain old-plugins archive.'
-Require-Missing (Join-Path $plugins 'CopiMineUltimateAdmin') 'Retired SQLite AdminPlus data folder must not be shipped; runtime storage is PostgreSQL.'
-Require-Missing (Join-Path $plugins 'CopiMineUltimateAdminPlus') 'Stale CopiMineUltimateAdminPlus data folder must be removed; runtime DB is CopiMineUltimateAdmin.'
+# The local Paper harness may create ignored plugin-data folders.  Release
+# packaging uses Git's tracked-file allowlist, so validate that these runtime
+# paths are not tracked rather than deleting a live local test configuration.
+foreach ($runtimePath in @('minecraft/server/plugins/CopiMineUltimateAdmin', 'minecraft/server/plugins/CopiMineUltimateAdminPlus')) {
+    $tracked = @(git -C $root ls-files -- "$runtimePath/**")
+    if ($tracked.Count -gt 0) { $errors.Add("Runtime plugin data must not be tracked: $runtimePath") }
+}
 
 $activeCopiMineJars = @(Get-ChildItem -LiteralPath $plugins -File -Filter 'CopiMine*.jar' | Select-Object -ExpandProperty Name | Sort-Object)
 $requiredCopiMineJars = @(

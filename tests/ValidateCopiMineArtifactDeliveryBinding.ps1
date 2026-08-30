@@ -42,7 +42,7 @@ if ($economy -notmatch 'stealFromPlayerAccount') {
 }
 
 $itemsPath = Join-Path $root 'copimine-artifacts/items.yml'
-$items = Get-Content -Raw -LiteralPath $itemsPath
+$items = Get-Content -Raw -Encoding UTF8 -LiteralPath $itemsPath
 $kosaBlockStart = $items.IndexOf('item-id: kosa_nalogovoy_inspekcii', [StringComparison]::Ordinal)
 if ($kosaBlockStart -lt 0) { throw 'Kosa catalog item is missing.' }
 $kosaBlock = $items.Substring($kosaBlockStart, [Math]::Min(1000, $items.Length - $kosaBlockStart))

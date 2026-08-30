@@ -23,17 +23,16 @@ class DonationCreativeLossContractTest(unittest.TestCase):
 
     def test_creative_deletion_handler_is_durable_first_and_preserves_item_on_failure(self) -> None:
         source = self.source
-        start = source.index("public void handleCreativeDonationLoss(InventoryCreativeEvent event)")
-        body = source[start : source.index("\n    @EventHandler", start)]
+        start = source.index("private void handleCreativeDonationLoss(InventoryCreativeEvent event, Player player)")
+        body = source[start : source.index("\n    private boolean isCreativeDeletion", start)]
 
         self.assertIn("candidate = event.getCursor();", body)
         self.assertIn("candidate = event.getCurrentItem();", body)
-        self.assertIn("creativeDonationActionKeepsPlayerInventory(event, player)", body)
         self.assertIn("event.setCancelled(true);", body)
         self.assertIn("player.updateInventory();", body)
         self.assertIn("recordDonationLossOnce(ref", body)
         self.assertIn("flushPendingDonationLossJournalAsync();", body)
-        self.assertIn("if (!this.recordDonationLossOnce(ref, reason))", body)
+        self.assertIn('if (this.recordDonationLossOnce(ref, "creative"))', body)
         self.assertNotIn("setItemOnCursor", body)
         self.assertNotIn("setCursor", body)
         self.assertNotIn("setCurrentItem", body)
@@ -53,14 +52,14 @@ class DonationCreativeLossContractTest(unittest.TestCase):
 
     def test_creative_policy_keeps_player_inventory_moves_but_catches_drop_and_outside_window(self) -> None:
         source = self.source
-        start = source.index("private boolean creativeDonationActionKeepsPlayerInventory")
-        helper = source[start : source.index("\n    private ", start + 10)]
+        start = source.index("private boolean isCreativeDeletion")
+        helper = source[start : source.index("\n    @EventHandler", start)]
 
         self.assertIn("event.getRawSlot() < 0", helper)
         self.assertIn("event.getClick() == ClickType.DROP", helper)
         self.assertIn("event.getClick() == ClickType.CONTROL_DROP", helper)
-        self.assertIn("event.getClickedInventory() == player.getInventory()", helper)
-        self.assertIn("view.getBottomInventory() == player.getInventory()", helper)
+        self.assertIn("clicked != player.getInventory()", helper)
+        self.assertIn("event.getRawSlot() < view.getTopInventory().getSize()", helper)
 
 
 if __name__ == "__main__":

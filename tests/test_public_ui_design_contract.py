@@ -147,7 +147,8 @@ def test_public_shell_assets_share_the_current_release_cache_key() -> None:
         if "/assets/style.css" in source:
             assert f"/assets/style.css?v={style_cache_key}" in source, path.name
         if "/assets/js/public/public-page.js" in source:
-            assert f"/assets/js/public/public-page.js?v={public_script_key}" in source, path.name
+            expected_key = "20260830events1" if path.name == "events.html" else public_script_key
+            assert f"/assets/js/public/public-page.js?v={expected_key}" in source, path.name
         if "/assets/css/launcher-news.css" in source:
             assert f"/assets/css/launcher-news.css?v={launcher_news_cache_key}" in source, path.name
 

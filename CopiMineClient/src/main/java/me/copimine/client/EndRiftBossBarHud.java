@@ -15,12 +15,17 @@ import net.minecraft.util.Identifier;
 public final class EndRiftBossBarHud {
     private static final Identifier FRAME = Identifier.of(
             "copimineclient", "textures/gui/end_rift_bossbar_frame.png");
-    private static final int WIDTH = 256;
-    private static final int HEIGHT = 32;
-    private static final int INNER_LEFT = 18;
-    private static final int INNER_RIGHT = 238;
-    private static final int INNER_TOP = 10;
-    private static final int INNER_BOTTOM = 22;
+    // The artwork is intentionally kept at a dense source resolution and
+    // drawn smaller than native.  This keeps the crystals and bone filigree
+    // clean on both a 854x480 test client and larger screens.
+    private static final int SOURCE_WIDTH = 2172;
+    private static final int SOURCE_HEIGHT = 724;
+    private static final int WIDTH = 384;
+    private static final int HEIGHT = 128;
+    private static final int INNER_LEFT = 54;
+    private static final int INNER_RIGHT = 330;
+    private static final int INNER_TOP = 48;
+    private static final int INNER_BOTTOM = 80;
 
     private EndRiftBossBarHud() {
     }
@@ -58,21 +63,23 @@ public final class EndRiftBossBarHud {
             context.fill(x + INNER_LEFT, y + INNER_TOP,
                     x + INNER_LEFT + filled, y + INNER_TOP + 2, brighten(phaseColor));
         }
+        int notchStep = (INNER_RIGHT - INNER_LEFT) / 10;
         for (int notch = 1; notch < 10; notch++) {
-            int notchX = x + INNER_LEFT + notch * 22;
+            int notchX = x + INNER_LEFT + notch * notchStep;
             context.fill(notchX, y + INNER_TOP + 1, notchX + 1,
                     y + INNER_BOTTOM - 1, 0x6A080914);
         }
 
-        context.drawTexture(FRAME, x, y, 0, 0, WIDTH, HEIGHT, WIDTH, HEIGHT);
+        context.drawTexture(FRAME, x, y, 0, 0, WIDTH, HEIGHT,
+                SOURCE_WIDTH, SOURCE_HEIGHT);
 
         String title = "СТРАЖ РАЗЛОМА";
         String phase = phaseLabel(state.phaseId(), state.castState());
         String health = phase + "  •  " + state.health() + " / " + state.maxHealth() + " HP";
         context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(title),
-                context.getScaledWindowWidth() / 2, y + 2, 0xFFF6E8FF);
+                context.getScaledWindowWidth() / 2, y + 42, 0xFFF6E8FF);
         context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(health),
-                context.getScaledWindowWidth() / 2, y + 16, 0xFFFFFFFF);
+                context.getScaledWindowWidth() / 2, y + 59, 0xFFFFFFFF);
     }
 
     private static String phaseLabel(String phaseId, String castState) {

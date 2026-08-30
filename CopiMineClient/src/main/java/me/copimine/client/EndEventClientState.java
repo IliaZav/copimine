@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Locale;
 
 /** Main-thread-owned client state for the optional End Rift boss/reverse-control visuals. */
 public final class EndEventClientState {
@@ -122,7 +123,52 @@ public final class EndEventClientState {
             return "";
         }
         BossPhaseBinding binding = bossPhase.get(uuid);
-        return binding == null ? "" : binding.phaseId();
+        return binding == null ? "" : basePhase(binding.phaseId());
+    }
+
+    /** Returns the current model animation without exposing the wire suffix as a phase id. */
+    public synchronized String bossAnimationForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "";
+        }
+        BossPhaseBinding binding = bossPhase.get(uuid);
+        if (binding == null) {
+            return "";
+        }
+        String raw = binding.phaseId() == null ? "" : binding.phaseId().trim();
+        int separator = raw.indexOf('|');
+        if (separator >= 0) {
+            return normalizeAnimation(raw.substring(separator + 1));
+        }
+        BossBarState bar = bossBar;
+        if (bar != null && Objects.equals(bar.bossUuid(), uuid)
+                && Objects.equals(bar.instanceId(), binding.instanceId())
+                && !"NONE".equals(bar.castState())) {
+            return normalizeAnimation(bar.castState());
+        }
+        return "IDLE";
+    }
+
+    public synchronized String bossCastStateForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "NONE";
+        }
+        BossBarState bar = bossBar;
+        if (bar != null && Objects.equals(bar.bossUuid(), uuid)
+                && Objects.equals(bar.instanceId(), bossBindingInstance)) {
+            return bar.castState();
+        }
+        BossPhaseBinding binding = bossPhase.get(uuid);
+        if (binding == null || binding.phaseId() == null) {
+            return "NONE";
+        }
+        String raw = binding.phaseId();
+        int separator = raw.indexOf('|');
+        if (separator < 0) {
+            return "NONE";
+        }
+        String animation = normalizeAnimation(raw.substring(separator + 1));
+        return BOSS_CAST_STATES.contains(animation) ? animation : "NONE";
     }
 
     public synchronized long bossPhaseTransitionMillisForEntity(String uuid) {
@@ -237,6 +283,22 @@ public final class EndEventClientState {
         controlInstance = "";
         controlExpiresAt = 0L;
         return true;
+    }
+
+    private static String basePhase(String phaseId) {
+        if (phaseId == null) {
+            return "";
+        }
+        int separator = phaseId.indexOf('|');
+        return phaseId.substring(0, separator < 0 ? phaseId.length() : separator)
+                .trim().toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizeAnimation(String animationId) {
+        if (animationId == null || animationId.isBlank()) {
+            return "IDLE";
+        }
+        return animationId.trim().toUpperCase(Locale.ROOT);
     }
 
     private void clearEffects() {

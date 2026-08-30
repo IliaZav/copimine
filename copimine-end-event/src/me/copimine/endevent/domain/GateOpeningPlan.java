@@ -2,6 +2,7 @@ package me.copimine.endevent.domain;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -80,6 +81,13 @@ public final class GateOpeningPlan {
 
     public List<Layer> layersDescending() {
         return layersDescending;
+    }
+
+    /** Returns a defensive bottom-to-top view for the animated close action. */
+    public List<Layer> layersAscending() {
+        List<Layer> ascending = new ArrayList<>(layersDescending);
+        Collections.reverse(ascending);
+        return List.copyOf(ascending);
     }
 
     public record Point(String world, int x, int y, int z) {

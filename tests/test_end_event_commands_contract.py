@@ -12,7 +12,7 @@ CONFIG = (PLUGIN / "config.yml").read_text(encoding="utf-8")
 def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
     for command in (
         "core set", "arena pos1", "arena pos2", "arena clear confirm",
-        "gate preview", "gate restore", "portalroom set", "resources add",
+        "gate preview", "gate close", "gate restore", "portalroom set", "resources add",
         "resources reset confirm", "ritual start", "ritual cancel confirm",
         "cleanup confirm", "reset confirm", "unlock confirm",
         "wave spawn", "boss spawn official confirm", "boss phase",
@@ -30,6 +30,7 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
     assert "/cmend test run creative" in MAIN
     assert "return isConfigured() && coreLocation() != null;" in MAIN
     assert "if (!isConfigured()) {" in MAIN
+    assert "/cmend gate close" in MAIN
 
 
 def test_dangerous_paths_are_never_console_or_production_mutations() -> None:

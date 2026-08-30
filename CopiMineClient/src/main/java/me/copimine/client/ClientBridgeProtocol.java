@@ -342,6 +342,14 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.bossPhaseTransitionMillisForEntity(uuid);
     }
 
+    public static String bossAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.bossAnimationForEntity(uuid);
+    }
+
+    public static String bossCastStateForEntity(String uuid) {
+        return END_EVENT_STATE.bossCastStateForEntity(uuid);
+    }
+
     public static EndEventClientState.BossBarState endBossBar() {
         return END_EVENT_STATE.bossBar();
     }

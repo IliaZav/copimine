@@ -105,6 +105,7 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Skeleton;
+import org.bukkit.entity.Spider;
 import org.bukkit.entity.Snowball;
 import org.bukkit.entity.TextDisplay;
 import org.bukkit.event.EventHandler;
@@ -127,6 +128,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
+import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.EntityTeleportEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
@@ -135,6 +137,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
@@ -142,6 +145,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.event.inventory.InventoryPickupItemEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -170,6 +174,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_CORE = "CORE";
     private static final String EVENT_KIND_PAD = "PAD";
     private static final String EVENT_KIND_DISPLAY = "DISPLAY";
+    private static final String EVENT_KIND_MEMORIAL = "VICTORY_MEMORIAL";
     private static final String EVENT_KIND_WAVE_MOB = "WAVE_MOB";
     private static final String EVENT_KIND_ELITE = "ELITE";
     private static final String EVENT_KIND_BOSS = "BOSS";
@@ -195,7 +200,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MAX_ARENA_PREVIEW_SECONDS = 300;
     private static final double ARENA_BOUNDARY_STEP = 0.5D;
     private static final long MAX_GATE_VOLUME = 16_384L;
-    private static final int DEFAULT_GATE_TICKS_PER_LAYER = 5;
+    // The previous default was 5 ticks per layer (~1 second for the usual
+    // four-layer door).  Thirty ticks per layer makes that same door take
+    // about 6 seconds, adding the requested five-second cinematic beat.
+    private static final int DEFAULT_GATE_TICKS_PER_LAYER = 30;
     private static final int MIN_GATE_TICKS_PER_LAYER = 1;
     private static final int MAX_GATE_TICKS_PER_LAYER = 200;
     private static final int DEFAULT_GATE_SELECTION_PREVIEW_SECONDS = 10;
@@ -247,6 +255,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final double WAVE_ONE_PULSE_DAMAGE = 6.0D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     private static final long WAVE_PATH_REQUEST_INTERVAL_MILLIS = 500L;
+    private static final long WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L;
+    private static final long WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L;
+    private static final double WAVE_MOB_PROGRESS_DISTANCE_SQUARED = 0.5625D;
     private static final long BOSS_TACTIC_REFRESH_MILLIS = 2_500L;
     private static final long COMBAT_TELEPORT_PERMIT_MILLIS = 1_000L;
     private static final int WAVE_TWO_INITIAL_MARK_MIN_SECONDS = 2;
@@ -262,6 +273,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int SPELL_FLIGHT_TICKS = 8;
     private static final int SPELL_FLIGHT_RENDER_INTERVAL_TICKS = 2;
     private static final String SPELL_FLIGHT_EFFECT = "spell-flight";
+    private static final long BOSS_PHASE_VISUAL_TRANSITION_MILLIS = 1_200L;
+    private static final int SPELL_VISUAL_MAX_POINTS = 48;
+    private static final int ARENA_VISUAL_MAX_CELLS = 96;
+    private static final int PORTAL_VISUAL_POINTS = 18;
+    private static final int STORM_VISUAL_MAX_CELLS = 72;
     private static final int RIFT_PROJECTILE_MAX_TICKS = 80;
     private static final double RIFT_PROJECTILE_SPEED = 0.65D;
     private static final int EVENT_ARROW_MAX_TICKS = 100;
@@ -286,6 +302,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String VICTORY_GATE_OPENING = "GATE_OPENING";
     private static final String VICTORY_GATE_OPENED = "GATE_OPENED";
     private static final String VICTORY_COMPLETE = "VICTORY_COMPLETE";
+    private static final String LEGACY_CORE_REMOVAL_TEXT = "подтверждение снятия core";
     private static final String BOSS_REWARDS_PENDING = "PENDING";
     private static final String BOSS_REWARDS_RESERVED = "BOSS_REWARDS_RESERVED";
     private static final String BOSS_REWARDS_DELIVERED = "BOSS_REWARDS_DELIVERED";
@@ -346,6 +363,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private StormPatternPolicy.Pattern lastStormPattern;
     private int stormPatternPhase;
     private long nextRiftStormPullMillis;
+    private long nextRiftStormVisualMillis;
     private UUID towerDefenseVisualUuid;
     private int towerAttackSequence;
     private final Map<UUID, String> entityBindingInstances = new HashMap<>();
@@ -353,6 +371,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> nextMiniBossSpellMillis = new HashMap<>();
     private final Map<UUID, Long> nextWavePathRequestMillis = new HashMap<>();
     private final Map<UUID, Long> lastWavePathLogMillis = new HashMap<>();
+    private final Map<UUID, Deque<UUID>> recentWaveTargets = new HashMap<>();
+    private final Map<UUID, Location> waveLastProgressLocations = new HashMap<>();
+    private final Map<UUID, Long> waveLastProgressAt = new HashMap<>();
+    private final Map<UUID, Long> nextWaveStuckRepositionMillis = new HashMap<>();
+    private long nextWaveRoleVisualMillis;
     private final Map<UUID, BukkitTask> activeVoidMarkTasks = new LinkedHashMap<>();
     private final Map<UUID, Location> activeVoidMarkCenters = new LinkedHashMap<>();
     private final Set<UUID> activeRiftProjectiles = new HashSet<>();
@@ -623,6 +646,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         taskRegistry = new EventTaskRegistry(Math.max(1L, generation));
         recoverHazardJournal();
         restorePersistedGateIfNeeded();
+        removeLegacyCoreRemovalTextDisplays();
         boolean configuredEventInProgress = isConfigured()
                 && phase != EventPhase.UNCONFIGURED
                 && phase != EventPhase.UNLOCKED
@@ -1186,6 +1210,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextMiniBossSpellMillis.clear();
         nextWavePathRequestMillis.clear();
         lastWavePathLogMillis.clear();
+        recentWaveTargets.clear();
+        waveLastProgressLocations.clear();
+        waveLastProgressAt.clear();
+        nextWaveStuckRepositionMillis.clear();
+        nextWaveRoleVisualMillis = 0L;
         combatHelpers.clear();
         recentBossTargets.clear();
         previousBossSpell = null;
@@ -1480,7 +1509,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         switch (group) {
             case "core" -> handleCore(sender, args);
-            case "arena", "gate", "portalroom" -> handleLayout(sender, group, args);
+            case "arena", "gate", "door", "portalroom" -> handleLayout(sender, group, args);
             case "resources" -> handleResources(sender, args);
             case "ritual" -> handleRitual(sender, args);
             case "cleanup" -> {
@@ -1505,7 +1534,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case "wave" -> handleWave(sender, args);
             case "boss" -> handleBoss(sender, args);
             case "client" -> handleClient(sender, args);
-            default -> message(sender, "&eИспользование: /cmend status|debug|recovery|core|arena|gate|portalroom|resources|ritual|wave|boss|client|test|cleanup|reset|unlock");
+            default -> message(sender, "&eИспользование: /cmend status|debug|recovery|core|arena|gate|door|portalroom|resources|ritual|wave|boss|client|test|cleanup|reset|unlock");
         }
         return true;
     }
@@ -1920,6 +1949,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        String layoutCommand = "door".equals(group) ? "door" : "gate";
         if (!isConfigured()) {
             message(sender, "&cСначала настрой Core.");
             return;
@@ -1938,7 +1968,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else if (args.length > 1 && ("pos1".equalsIgnoreCase(args[1]) || "pos2".equalsIgnoreCase(args[1]))) {
                 Player player = playerSender(sender);
                 if (player != null) {
-                    EventLayoutState.Point point = pointAt(player.getLocation());
+                    EventLayoutState.Point point = pointAtTargetBlock(player);
+                    if (point == null) {
+                        message(sender, "&cНаведи прицел на реальный блок в радиусе 8 блоков и повтори команду.");
+                        return;
+                    }
                     if (!worldName.equalsIgnoreCase(point.world())) {
                         message(sender, "&cArena point должен находиться в event world: " + worldName);
                     } else {
@@ -1948,7 +1982,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 : withArenaPoints(previous.arenaPos1(), point);
                         boolean complete = layoutState.arenaPos1() != null && layoutState.arenaPos2() != null;
                         if ((!complete || applyArenaBoundsFromLayout()) && saveStateSync()) {
-                            message(sender, "&aArena " + args[1] + " сохранена: &f" + locationText(player.getLocation()));
+                            message(sender, "&aArena " + args[1] + " сохранена: &f" + pointText(point));
                         } else {
                             layoutState = previous;
                             message(sender, "&cArena requires same-world pos1/pos2 и durable save; изменение отменено.");
@@ -1989,7 +2023,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         } else {
             if (args.length < 2) {
-                message(sender, "&e/cmend gate pos1|pos2|setat <x1> <y1> <z1> <x2> <y2> <z2>|info|preview|open [ticks-per-layer]|restore confirm");
+                message(sender, "&e/cmend " + layoutCommand + " pos1|pos2|setat <x1> <y1> <z1> <x2> <y2> <z2>|info|preview|open [ticks-per-layer]|close [ticks-per-layer]|restore confirm|delete confirm");
                 return;
             }
             switch (args[1].toLowerCase(Locale.ROOT)) {
@@ -2003,7 +2037,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         message(sender, "&cСначала выполни /cmend gate restore confirm; сохранённый Gate нельзя переназначить поверх старого snapshot.");
                         return;
                     }
-                    EventLayoutState.Point point = pointAt(player.getLocation());
+                    EventLayoutState.Point point = pointAtTargetBlock(player);
+                    if (point == null) {
+                        message(sender, "&cНаведи прицел на реальный блок в радиусе 8 блоков и повтори команду.");
+                        return;
+                    }
                     EventLayoutState.Point other = "pos1".equalsIgnoreCase(args[1])
                             ? previousPoint(layoutState.gatePos2()) : previousPoint(layoutState.gatePos1());
                     if (other != null && other.configured()
@@ -2017,7 +2055,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             : withGatePoints(previous.gatePos1(), point);
                     if (saveStateSync()) {
                         startGateSelectionPreview(sender);
-                        message(sender, "&aGate " + args[1] + " сохранена: &f" + locationText(player.getLocation()));
+                        message(sender, "&aGate " + args[1] + " сохранена: &f" + pointText(point));
                     } else {
                         layoutState = previous;
                         message(sender, "&cGate point не сохранён durable; изменение отменено.");
@@ -2041,14 +2079,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         openGate(sender, ticks, "admin-gate-open", false);
                     }
                 }
+                case "close" -> {
+                    int ticks = args.length > 2
+                            ? parseInt(args, 2, Integer.MIN_VALUE)
+                            : DEFAULT_GATE_TICKS_PER_LAYER;
+                    if (ticks == Integer.MIN_VALUE) {
+                        message(sender, "&cИспользование: /cmend " + layoutCommand + " close [ticks-per-layer].");
+                    } else {
+                        closeGate(sender, ticks);
+                    }
+                }
                 case "restore" -> {
                     if (!confirmed(args, 2)) {
-                        message(sender, "&cПовтори /cmend gate restore confirm.");
+                        message(sender, "&cПовтори /cmend " + layoutCommand + " restore confirm.");
                     } else {
                         restoreGate(sender);
                     }
                 }
-            default -> message(sender, "&e/cmend gate pos1|pos2|setat <x1> <y1> <z1> <x2> <y2> <z2>|info|preview|open [ticks-per-layer]|restore confirm");
+                case "delete" -> {
+                    if (!confirmed(args, 2)) {
+                        message(sender, "&cПовтори /cmend " + layoutCommand + " delete confirm.");
+                    } else {
+                        deleteGate(sender);
+                    }
+                }
+                default -> message(sender, "&e/cmend " + layoutCommand + " pos1|pos2|setat <x1> <y1> <z1> <x2> <y2> <z2>|info|preview|open [ticks-per-layer]|close [ticks-per-layer]|restore confirm|delete confirm");
             }
         }
     }
@@ -2113,8 +2168,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private EventLayoutState.Point pointAt(Location location) {
-        return new EventLayoutState.Point(location.getWorld().getName(), location.getBlockX(), location.getBlockY(), location.getBlockZ());
+    private EventLayoutState.Point pointAtTargetBlock(Player player) {
+        if (player == null || player.getWorld() == null) {
+            return null;
+        }
+        Block target = player.getTargetBlockExact(8);
+        if (target == null || target.getType().isAir() || target.isLiquid()) {
+            return null;
+        }
+        return new EventLayoutState.Point(target.getWorld().getName(), target.getX(), target.getY(), target.getZ());
     }
 
     /**
@@ -2135,6 +2197,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventLayoutState withGatePoints(EventLayoutState.Point pos1, EventLayoutState.Point pos2) {
         return new EventLayoutState(layoutState.arenaPos1(), layoutState.arenaPos2(), pos1, pos2,
                 Map.of(), "UNSET", layoutState.portalRoom());
+    }
+
+    /**
+     * Remove only the configured Gate/Door metadata.  If a durable snapshot
+     * exists, restore those exact block states before forgetting the layout so
+     * a local preview/open/delete cycle cannot strand a half-open passage.
+     */
+    private void deleteGate(CommandSender sender) {
+        if (isVictoryGateLockedOpen()) {
+            message(sender, "&cПосле победы дверь зафиксирована открытой; удаление Gate запрещено.");
+            return;
+        }
+        cancelGateOpeningTask();
+        cancelGateSelectionPreview();
+        EventLayoutState previous = layoutState;
+        if (!previous.gateSnapshot().isEmpty()) {
+            restoreGateSnapshot(previous.gatePos1(), previous.gateSnapshot());
+        }
+        layoutState = withGatePoints(null, null);
+        if (saveStateSync()) {
+            victoryGatePending = false;
+            message(sender, "&aДверь удалена из layout; сохранённые блоки восстановлены, бой и Core не затронуты.");
+            getLogger().info("END_EVENT_GATE_DELETED event=" + eventId + " generation=" + generation
+                    + " restored_snapshot=" + (!previous.gateSnapshot().isEmpty()));
+            return;
+        }
+        // The world was restored before the metadata write.  Keep the old
+        // state in memory so a retry still has a durable recovery path.
+        layoutState = previous;
+        message(sender, "&cДверь восстановлена в мире, но layout не удалось сохранить; удаление отменено.");
     }
 
     private EventLayoutState.Point previousPoint(EventLayoutState.Point point) {
@@ -2384,7 +2476,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if ("OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
-            message(sender, "&eGate уже открыт; сначала выполни /cmend gate restore confirm.");
+            message(sender, "&eGate уже открыт; для красивого закрытия выполни /cmend gate close.");
             return;
         }
         List<Block> blocks = gateBlocks();
@@ -2492,6 +2584,152 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return false;
     }
 
+    /** Rebuilds an opened passage from its durable snapshot, one layer at a time. */
+    private boolean closeGate(CommandSender sender, int ticksPerLayer) {
+        if (isVictoryGateLockedOpen()) {
+            message(sender, "&cПосле победы дверь зафиксирована открытой; закрытие запрещено.");
+            return false;
+        }
+        if (ticksPerLayer < MIN_GATE_TICKS_PER_LAYER || ticksPerLayer > MAX_GATE_TICKS_PER_LAYER) {
+            message(sender, "&cИнтервал слоя должен быть от " + MIN_GATE_TICKS_PER_LAYER
+                    + " до " + MAX_GATE_TICKS_PER_LAYER + " тиков.");
+            return false;
+        }
+        if (gateOpeningTask != null) {
+            message(sender, "&eGate уже анимируется; дождись завершения текущей операции.");
+            return false;
+        }
+        if (!isGateConfigured()) {
+            message(sender, "&cGate pos1/pos2 не настроены.");
+            return false;
+        }
+        if (!"OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            message(sender, "&eGate уже закрыт или ещё не открыт: &f" + layoutState.gateStatus());
+            return false;
+        }
+        GateOpeningPlan plan = gateOpeningPlan(sender);
+        if (plan == null) {
+            return false;
+        }
+        Map<String, String> snapshot = layoutState.gateSnapshot();
+        if (snapshot.isEmpty() || snapshot.size() != plan.volume()) {
+            message(sender, "&cGate snapshot не совпадает с bounded cuboid; блоки не изменены.");
+            return false;
+        }
+        EventLayoutState previousLayout = layoutState;
+        layoutState = withGateState(snapshot, "CLOSING");
+        if (!saveStateSync()) {
+            layoutState = previousLayout;
+            message(sender, "&cСостояние закрытия Gate не сохранено durable; блоки не изменены.");
+            return false;
+        }
+
+        String closingEventId = eventId;
+        long closingGeneration = generation;
+        int[] layerIndex = {0};
+        List<GateOpeningPlan.Layer> layers = plan.layersAscending();
+        gateOpeningTask = Bukkit.getScheduler().runTaskTimer(this, () -> tickGateClosing(
+                closingEventId, closingGeneration, layers, layerIndex, snapshot),
+                0L, ticksPerLayer);
+        getLogger().info("END_EVENT_GATE_CLOSING event=" + eventId + " generation=" + generation
+                + " layers=" + layers.size() + " ticksPerLayer=" + ticksPerLayer
+                + " volume=" + plan.volume());
+        message(sender, "&dGate закрывается снизу вверх: &f" + layers.size()
+                + " слоёв, интервал &f" + ticksPerLayer + " тиков.");
+        return true;
+    }
+
+    private void tickGateClosing(String closingEventId, long closingGeneration,
+                                 List<GateOpeningPlan.Layer> layers, int[] layerIndex,
+                                 Map<String, String> snapshot) {
+        if (!isEnabled() || !eventId.equals(closingEventId) || generation != closingGeneration) {
+            cancelGateOpeningTask();
+            return;
+        }
+        if (layerIndex[0] >= layers.size()) {
+            finishGateClosing(snapshot);
+            return;
+        }
+        GateOpeningPlan.Layer layer = layers.get(layerIndex[0]++);
+        World world = Bukkit.getWorld(layoutState.gatePos1().world());
+        if (world == null) {
+            abortGateClosing("event world is unavailable", snapshot);
+            return;
+        }
+        int restored = 0;
+        int conflicts = 0;
+        for (GateOpeningPlan.Point point : layer.blocks()) {
+            Block block = world.getBlockAt(point.x(), point.y(), point.z());
+            String expected = snapshot.get(gateKey(block));
+            if (expected == null) {
+                conflicts++;
+                continue;
+            }
+            if (isAirBlockData(expected)) {
+                if (!block.getType().isAir()) {
+                    conflicts++;
+                }
+                continue;
+            }
+            if (sameBlockData(block, expected)) {
+                restored++;
+                continue;
+            }
+            if (!block.getType().isAir()) {
+                conflicts++;
+                continue;
+            }
+            restoreBlock(block, expected);
+            restored++;
+        }
+
+        Location center = gateEffectLocation(world, layer.y());
+        renderFinalDoorOpening(world, layer.y(), layerIndex[0], layers.size(), false);
+        world.spawnParticle(Particle.REVERSE_PORTAL, center, 28,
+                0.65D, 0.15D, 0.65D, 0.03D);
+        world.spawnParticle(Particle.END_ROD, center, 8,
+                0.35D, 0.08D, 0.35D, 0.01D);
+        world.spawnParticle(Particle.DUST, center, 14,
+                0.6D, 0.18D, 0.6D, 0.0D,
+                new Particle.DustOptions(Color.fromRGB(190, 76, 255), 1.15F));
+        world.playSound(center, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
+                SoundCategory.BLOCKS, 0.85F, 0.65F + (layerIndex[0] * 0.04F));
+        getLogger().info("END_EVENT_GATE_CLOSING_LAYER event=" + eventId + " generation=" + generation
+                + " y=" + layer.y() + " restored=" + restored + " conflicts=" + conflicts
+                + " index=" + layerIndex[0] + "/" + layers.size());
+        if (conflicts > 0) {
+            abortGateClosing("snapshot conflict at layer y=" + layer.y(), snapshot);
+            return;
+        }
+        if (!saveStateSync()) {
+            abortGateClosing("durable save failed after layer y=" + layer.y(), snapshot);
+            return;
+        }
+        if (layerIndex[0] >= layers.size()) {
+            finishGateClosing(snapshot);
+        }
+    }
+
+    private void finishGateClosing(Map<String, String> snapshot) {
+        layoutState = withGateState(Map.of(), "RESTORED");
+        if (!saveStateSync()) {
+            abortGateClosing("durable RESTORED state failed", snapshot);
+            return;
+        }
+        cancelGateOpeningTask();
+        getLogger().info("END_EVENT_GATE_CLOSED event=" + eventId + " generation=" + generation
+                + " progress=" + gateProgressText());
+    }
+
+    private void abortGateClosing(String reason, Map<String, String> snapshot) {
+        cancelGateOpeningTask();
+        restoreGateSnapshot(layoutState.gatePos1(), snapshot);
+        layoutState = withGateState(snapshot, "OPENED");
+        saveStateSync();
+        getLogger().warning("END_EVENT_GATE_CLOSE_ABORTED event=" + eventId + " generation=" + generation
+                + " reason=" + reason);
+    }
+
     private void tickGateOpening(String openingEventId, long openingGeneration,
                                  List<GateOpeningPlan.Layer> layers, int[] layerIndex,
                                  Map<String, String> snapshot, boolean openingForVictory,
@@ -2535,6 +2773,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         // Keep the particle/sound budget proportional to one layer.
         Location center = gateEffectLocation(world, layer.y());
+        renderFinalDoorOpening(world, layer.y(), layerIndex[0], layers.size(), removed > 0);
         world.spawnParticle(Particle.PORTAL, center, 28, 0.65D, 0.15D, 0.65D, 0.03D);
         world.spawnParticle(Particle.END_ROD, center, 8, 0.35D, 0.08D, 0.35D, 0.01D);
         world.spawnParticle(Particle.DUST, center, 14, 0.6D, 0.18D, 0.6D, 0.0D,
@@ -2624,6 +2863,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && first.world().equalsIgnoreCase(second.world());
     }
 
+    /**
+     * The completed victory is a one-way world transition: the passage must
+     * remain open so a later admin command cannot silently seal the exit.
+     * During the official opening saga the same lock prevents a second task
+     * from racing the victory animation.
+     */
+    private boolean isVictoryGateLockedOpen() {
+        return (phase == EventPhase.UNLOCKED && VICTORY_COMPLETE.equals(victoryStep))
+                || victoryGatePending
+                || VICTORY_GATE_OPENING.equals(victoryStep)
+                || VICTORY_GATE_OPENED.equals(victoryStep);
+    }
+
     private List<Block> gateBlocks() {
         GateOpeningPlan plan = gateOpeningPlan(null);
         if (plan == null) {
@@ -2691,6 +2943,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return new Location(world, x, y + 0.5D, z);
     }
 
+    /** Renders the same saved door layers as a compact portal-opening animation. */
+    private void renderFinalDoorOpening(World world, int y, int layerIndex,
+                                        int totalLayers, boolean removed) {
+        if (world == null || !isGateConfigured()) {
+            return;
+        }
+        Location center = gateEffectLocation(world, y);
+        double progress = totalLayers < 1 ? 1.0D
+                : Math.max(0.0D, Math.min(1.0D, layerIndex / (double) totalLayers));
+        Particle rift = removed ? Particle.END_ROD : Particle.REVERSE_PORTAL;
+        Particle.DustOptions dust = new Particle.DustOptions(
+                removed ? Color.fromRGB(92, 255, 174) : Color.fromRGB(190, 76, 255),
+                1.05F);
+        Vector x = new Vector(1.0D, 0.0D, 0.0D);
+        Vector z = new Vector(0.0D, 0.0D, 1.0D);
+        double spin = System.currentTimeMillis() * 0.002D;
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) {
+                continue;
+            }
+            spawnPatternRing(viewer, center, x, z,
+                    1.10D + progress * 0.65D, 16, spin, rift);
+            spawnPatternRing(viewer, center.clone().add(0.0D, 0.55D, 0.0D), x, z,
+                    0.70D + progress * 0.45D, 12, -spin, Particle.END_ROD);
+            for (int ray = 0; ray < 4; ray++) {
+                double angle = spin + ray * Math.PI * 0.5D;
+                Location base = center.clone().add(Math.cos(angle) * 0.85D, -0.42D,
+                        Math.sin(angle) * 0.85D);
+                Location top = base.clone().add(0.0D, 0.95D + progress * 0.8D, 0.0D);
+                spawnPatternSegment(viewer, base, top, rift, dust);
+            }
+            viewer.spawnParticle(Particle.DUST, center, 5,
+                    0.25D, 0.38D, 0.25D, 0.0D, dust);
+        }
+    }
+
     private boolean sameBlockData(Block block, String expected) {
         return block != null && expected != null && expected.equalsIgnoreCase(block.getBlockData().getAsString());
     }
@@ -2707,6 +2995,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void restoreGate(CommandSender sender) {
+        if (isVictoryGateLockedOpen()) {
+            message(sender, "&cПосле победы дверь зафиксирована открытой; restore запрещён.");
+            return;
+        }
         cancelGateOpeningTask();
         cancelGateSelectionPreview();
         victoryGatePending = false;
@@ -2728,7 +3020,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void restorePersistedGateIfNeeded() {
         boolean preview = "PREVIEW".equalsIgnoreCase(layoutState.gateStatus());
         boolean opening = "OPENING".equalsIgnoreCase(layoutState.gateStatus());
-        if ((!preview && !opening) || layoutState.gateSnapshot().isEmpty()) {
+        boolean closing = "CLOSING".equalsIgnoreCase(layoutState.gateStatus());
+        if ((!preview && !opening && !closing) || layoutState.gateSnapshot().isEmpty()) {
             return;
         }
         restoreGateSnapshot(layoutState.gatePos1(), layoutState.gateSnapshot());
@@ -3840,6 +4133,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelSessionTasks();
         clearBossOnly();
         clearWaveEntities();
+        // GUI removal is allowed to cross a restart/generation boundary.  The
+        // physical Core and rune displays therefore get a coordinate-bound
+        // cleanup before eventId/pads are cleared, even if an old display has
+        // a stale or missing session tag.
+        int removedCoreVisuals = removeCoreVisualsAtConfiguredLayout();
         // Core removal is a hard session boundary.  Old combat entities can
         // carry a previous generation after a restart, so remove every entity
         // belonging to this event id, not only the current generation.
@@ -3871,6 +4169,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         layoutState = new EventLayoutState(null, null, null, null, Map.of(), "UNSET", previousLayout.portalRoom());
         releaseOverlayChunkTickets();
         saveStateSync();
+        getLogger().info("END_EVENT_CORE_VISUALS_REMOVED event=" + removedEventId
+                + " count=" + removedCoreVisuals + " scope=configured-core-and-runes");
         message(sender, "&aCore и event-owned руны восстановлены по сохранённым block data.");
     }
 
@@ -4018,6 +4318,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void openCoreRemovalConfirm(Player player) {
         if (player == null || (!isAdmin(player) && !player.isOp())) {
+            return;
+        }
+        if (player.getOpenInventory().getTopInventory().getHolder() instanceof CoreRemovalConfirmHolder) {
             return;
         }
         CoreRemovalConfirmHolder holder = new CoreRemovalConfirmHolder(
@@ -4227,13 +4530,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCoreOverlayDamage(EntityDamageByEntityEvent event) {
+        Entity entity = event.getEntity();
+        if (!(event.getDamager() instanceof Player player)
+                || !(entity instanceof ItemDisplay display)
+                || !isConfigured()) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        Block core = world == null ? null : world.getBlockAt(coreX, coreY, coreZ);
+        if (!sameCoreOverlayBlock(display, core)) {
+            return;
+        }
+        event.setCancelled(true);
+        if (player.isOp() || isAdmin(player)) {
+            openCoreRemovalConfirm(player);
+        } else {
+            player.sendActionBar(Component.text(
+                    "Ядро защищено: снять его может только администратор", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * Display entities are not attackable on every Paper build, even when
+     * their damage event is enabled.  A real left click still produces an arm
+     * swing, so use the player's server-side ray-traced block as a fallback.
+     * This keeps the Core clickable without making the overlay itself a
+     * breakable entity or trusting client-supplied coordinates.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCoreOverlayAnimation(PlayerAnimationEvent event) {
+        Player player = event.getPlayer();
+        if (player == null || !isConfigured()) {
+            return;
+        }
+        Block target = player.getTargetBlockExact(8);
+        // When the crosshair is on the display shell, Bukkit may report the
+        // air block immediately above the real Core instead of the Core
+        // block itself.  Accept only that exact Core column; never trust a
+        // client-supplied coordinate.
+        if (target == null || (!sameCore(target) && !isCoreBlockPosition(target.getLocation()))) {
+            return;
+        }
+        if (player.isOp() || isAdmin(player)) {
+            openCoreRemovalConfirm(player);
+        } else {
+            player.sendActionBar(Component.text(
+                    "Ядро защищено: снять его может только администратор", NamedTextColor.RED));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onOwnedDisplayDamage(EntityDamageEvent event) {
         Entity entity = event.getEntity();
         if (entity instanceof TextDisplay || entity instanceof ItemDisplay
                 || entity instanceof BlockDisplay) {
             String kind = readString(entity, keyKind);
             if (ownedEntities.containsKey(entity.getUniqueId())
-                    && (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind)
+                    && (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_MEMORIAL.equals(kind)
+                    || EVENT_KIND_CORE.equals(kind)
                     || EVENT_KIND_PAD.equals(kind))) {
                 event.setCancelled(true);
             }
@@ -4546,6 +4901,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cleanupOwnedEntities(eventId, generation);
     }
 
+    /**
+     * Victory restores only the vanilla block data and combat entities.  The
+     * Core itself remains as a non-destructive memorial, so the next rebuild
+     * can show the same custom shell and the frozen official roster.
+     */
+    private void restoreCoreAndPadsForVictory() {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return;
+        }
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        if (!coreBlockData.isBlank()) {
+            restoreBlock(core, coreBlockData);
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Block block = world.getBlockAt(pad.x(), pad.y(), pad.z());
+            if (!pad.originalBlockData().isBlank()) {
+                restoreBlock(block, pad.originalBlockData());
+            }
+        }
+        removeCoreVisualsAtConfiguredLayout();
+        cleanupOwnedEntitiesForEvent(eventId);
+    }
+
     private void restoreBlock(Block block, String blockData) {
         if (block == null || blockData == null || blockData.isBlank()) {
             return;
@@ -4575,6 +4954,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         restoreLegacyMaterializedBlocks(world);
         if (phase == EventPhase.UNLOCKED) {
             removeOwnedVisuals();
+            if (shouldShowVictoryMemorial()) {
+                spawnVictoryMemorialVisuals(world);
+            }
             return;
         }
         Block core = world.getBlockAt(coreX, coreY, coreZ);
@@ -4590,6 +4972,181 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spawnCoreText(world);
         getLogger().info("END_EVENT_PHYSICAL_VISUALS core=" + core.getType()
                 + " pads=VANILLA_FLOOR_BLOCKS displays=CORE_OVERLAY_AND_RUNE_OVERLAYS");
+    }
+
+    /**
+     * Removes the persistent Core/rune display shells by their configured
+     * block anchors.  This is intentionally narrower than the event-entity
+     * cleanup: it catches a visual left by an older plugin generation without
+     * scanning or touching unrelated displays elsewhere in the world.
+     */
+    private int removeCoreVisualsAtConfiguredLayout() {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            return 0;
+        }
+        int removed = removeLegacyCoreRemovalTextDisplays();
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        // Keep the exact Core/rune chunks loaded while the removal is being
+        // performed.  A nearby-entity query silently misses a persisted
+        // display in an unloaded chunk, which is how an old Core shell could
+        // survive an otherwise successful GUI removal.
+        ensureOverlayChunksLoaded(world);
+        Set<UUID> candidateIds = new LinkedHashSet<>();
+        // Iterate the loaded entity list instead of relying on an entity
+        // bounding-box lookup.  This catches displays whose transformed
+        // bounding box no longer intersects the old search box.
+        List<Entity> candidates = new ArrayList<>(world.getEntities());
+        for (Entity entity : candidates) {
+            if (entity == null || !candidateIds.add(entity.getUniqueId())) {
+                continue;
+            }
+            String kind = readString(entity, keyKind);
+            if (!isCoreVisualAtConfiguredLayout(entity, kind, core, world)) {
+                continue;
+            }
+            entity.remove();
+            ownedEntities.remove(entity.getUniqueId());
+            removed++;
+        }
+        return removed;
+    }
+
+    /** Removes only the obsolete floating confirmation label from older builds. */
+    private int removeLegacyCoreRemovalTextDisplays() {
+        int removed = 0;
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                if (!isLegacyCoreRemovalText(entity)) {
+                    continue;
+                }
+                entity.remove();
+                ownedEntities.remove(entity.getUniqueId());
+                removed++;
+            }
+        }
+        if (removed > 0) {
+            getLogger().info("END_EVENT_LEGACY_CORE_CONFIRMATION_TEXT_REMOVED count=" + removed);
+        }
+        return removed;
+    }
+
+    /**
+     * Blocks both old TextDisplay entities and old invisible ArmorStand
+     * holograms.  The phrase is unique to the removed Core-confirmation
+     * world label, so this guard does not touch normal event titles or player
+     * nameplates.
+     */
+    private boolean isLegacyCoreRemovalText(Entity entity) {
+        if (entity == null) {
+            return false;
+        }
+        if (entity instanceof TextDisplay display && containsLegacyCoreRemovalPhrase(display.getText())) {
+            return true;
+        }
+        return containsLegacyCoreRemovalPhrase(entity.getCustomName());
+    }
+
+    private boolean containsLegacyCoreRemovalPhrase(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+        String normalized = ChatColor.stripColor(text)
+                .replace('\n', ' ')
+                .replaceAll("\\s+", " ")
+                .trim()
+                .toLowerCase(Locale.ROOT);
+        return normalized.contains(LEGACY_CORE_REMOVAL_TEXT);
+    }
+
+    /** Prevents an obsolete confirmation hologram from being spawned again. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLegacyCoreRemovalEntitySpawn(EntitySpawnEvent event) {
+        if (event == null || !isLegacyCoreRemovalText(event.getEntity())) {
+            return;
+        }
+        event.setCancelled(true);
+        getLogger().info("END_EVENT_LEGACY_CORE_CONFIRMATION_TEXT_BLOCKED phase=spawn entity="
+                + event.getEntity().getType());
+    }
+
+    /** Removes an obsolete hologram as soon as its old chunk is loaded. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLegacyCoreRemovalEntitiesLoad(EntitiesLoadEvent event) {
+        if (event == null || event.getEntities() == null) {
+            return;
+        }
+        int removed = 0;
+        for (Entity entity : new ArrayList<>(event.getEntities())) {
+            if (!isLegacyCoreRemovalText(entity)) {
+                continue;
+            }
+            entity.remove();
+            ownedEntities.remove(entity.getUniqueId());
+            removed++;
+        }
+        if (removed > 0) {
+            getLogger().info("END_EVENT_LEGACY_CORE_CONFIRMATION_TEXT_REMOVED_ON_CHUNK_LOAD count=" + removed);
+        }
+    }
+
+    private boolean isCoreVisualAtConfiguredLayout(Entity entity, String kind, Block core, World world) {
+        if (entity == null || core == null || world == null || entity.getWorld() == null
+                || !entity.getWorld().equals(world)) {
+            return false;
+        }
+        // Do not require a PDC role here.  Displays created by a previous
+        // plugin generation may have a missing/renamed role tag, while their
+        // exact Core/rune anchor is still unambiguous.  The type and position
+        // checks below keep this cleanup limited to event visuals.
+        if (!(entity instanceof ItemDisplay)
+                && !(entity instanceof BlockDisplay)
+                && !(entity instanceof TextDisplay)) {
+            return false;
+        }
+        if (entity instanceof ItemDisplay display) {
+            if (sameCoreOverlayBlock(display, core)) {
+                return true;
+            }
+            for (EventSnapshot.PadSnapshot pad : pads) {
+                Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+                if (sameRuneOverlayBlock(display, floor)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (entity instanceof BlockDisplay) {
+            return sameCoreOrRuneDisplayBlock(entity, core, world);
+        }
+        return entity instanceof TextDisplay && sameCoreTextDisplay(entity, core);
+    }
+
+    private boolean sameCoreOrRuneDisplayBlock(Entity entity, Block core, World world) {
+        Location location = entity.getLocation();
+        if (location.getBlockX() == core.getX() && location.getBlockZ() == core.getZ()
+                && (location.getBlockY() == core.getY() || location.getBlockY() == core.getY() + 1)) {
+            return true;
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            if (location.getBlockX() == pad.x() && location.getBlockZ() == pad.z()
+                    && (location.getBlockY() == pad.y() - 1 || location.getBlockY() == pad.y())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean sameCoreTextDisplay(Entity entity, Block core) {
+        if (entity == null || core == null || entity.getWorld() == null
+                || !entity.getWorld().equals(core.getWorld())) {
+            return false;
+        }
+        Location location = entity.getLocation();
+        return location.getBlockX() == core.getX()
+                && location.getBlockZ() == core.getZ()
+                && location.getY() >= core.getY() + 1.0D
+                && location.getY() <= core.getY() + 8.0D;
     }
 
     /**
@@ -4662,7 +5219,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int removed = 0;
         for (Entity entity : new ArrayList<>(world.getEntities())) {
             String kind = readString(entity, keyKind);
-            boolean visual = EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_CORE.equals(kind)
+            boolean visual = EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_MEMORIAL.equals(kind)
+                    || EVENT_KIND_CORE.equals(kind)
                     || EVENT_KIND_PAD.equals(kind);
             boolean currentSession = ownedBySession(entity, eventId, generation);
             boolean legacyVisualInArena = visual && isArenaLocation(entity.getLocation());
@@ -4708,7 +5266,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setDisplayHeight(1.10F);
             entity.setPersistent(true);
             entity.setGravity(false);
-            entity.setInvulnerable(true);
+            // Do not use the entity-level invulnerable flag here: Paper then
+            // skips EntityDamageByEntityEvent for a real left click on the
+            // visual shell.  The event handlers below cancel the damage and
+            // route an operator click to the confirmation GUI, so the Core
+            // remains physically protected without becoming unclickable.
+            entity.setInvulnerable(false);
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
                     new Vector3f(), new AxisAngle4f(), new Vector3f(1.10F, 1.10F, 1.10F), new AxisAngle4f()));
@@ -5396,6 +5959,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         long now = System.currentTimeMillis();
+        renderWaveMobRoleVisuals(now);
         List<Player> candidates = activeLivingPlayers();
         List<UUID> candidateIds = candidates.stream()
                 .map(Player::getUniqueId)
@@ -5471,11 +6035,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                 } else {
                     UUID current = target == null ? null : target.getUniqueId();
+                    Deque<UUID> targetMemory = recentWaveTargets.get(entity.getUniqueId());
                     EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
-                            candidateIds, current, List.of(), waveTargetCursor++);
+                            candidateIds, current,
+                            targetMemory == null ? List.of() : new ArrayList<>(targetMemory),
+                            waveTargetCursor++);
                     target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
                 }
                 if (target != null && isCombatTarget(target)) {
+                    rememberWaveTarget(entity.getUniqueId(), target.getUniqueId());
                     if (!towerMob || playerAggro) {
                         mob.setTarget(target);
                     } else {
@@ -5507,6 +6075,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     } else {
                         maintainWaveMobPath(mob, null, kind, now);
                     }
+                    watchWaveMobProgress(mob, target, kind, now);
                     continue;
                 }
                 // Re-request navigation on every controller tick.  The request
@@ -5517,17 +6086,152 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 } else {
                     maintainWaveMobPath(mob, target, kind, now);
                 }
+                watchWaveMobProgress(mob, target, kind, now);
             } else if (towerMob && !playerAggro) {
                 // Tower mobs keep a Core objective even when there is no player
                 // target.  Passing null is intentional: the path controller
                 // resolves the role's safe attack ring without handing a fake
                 // player target to vanilla AI.
                 maintainWaveMobPath(mob, null, kind, now);
+                watchWaveMobProgress(mob, null, kind, now);
             }
         }
         if (rotateTargets && !candidateIds.isEmpty()) {
             nextWaveTargetMillis = now
                     + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
+        }
+    }
+
+    private void rememberWaveTarget(UUID entityId, UUID targetId) {
+        if (entityId == null || targetId == null) {
+            return;
+        }
+        int memoryLimit = Math.max(1, config == null ? 3 : config.bossRecentTargetMemory());
+        Deque<UUID> memory = recentWaveTargets.computeIfAbsent(entityId, ignored -> new ArrayDeque<>());
+        List<UUID> updated = EndRiftAiPolicy.rememberTarget(
+                new ArrayList<>(memory), targetId, memoryLimit);
+        memory.clear();
+        memory.addAll(updated);
+    }
+
+    /**
+     * If Paper accepts a path but collision/navigation leaves a mob in place,
+     * give it one safe steering retry. This is deliberately a velocity nudge,
+     * never a teleport, and it preserves the same Core radius and Y-level
+     * checks as normal movement.
+     */
+    private void watchWaveMobProgress(Mob mob, Player target, String kind, long now) {
+        if (mob == null || !isLiveOwnedEntity(mob.getUniqueId())
+                || (!isCombatTarget(target) && !(target == null && isTowerDefenseMob(mob)))) {
+            return;
+        }
+        UUID entityId = mob.getUniqueId();
+        Location current = mob.getLocation();
+        Location previous = waveLastProgressLocations.put(entityId, current.clone());
+        long progressAt = waveLastProgressAt.getOrDefault(entityId, 0L);
+        if (previous == null || previous.getWorld() == null
+                || !previous.getWorld().equals(current.getWorld())
+                || horizontalDistanceSquared(previous, current) >= WAVE_MOB_PROGRESS_DISTANCE_SQUARED) {
+            waveLastProgressAt.put(entityId, now);
+            return;
+        }
+
+        if (mob instanceof Skeleton skeleton && target != null) {
+            SkeletonCombatPolicy.WaveBehavior behavior = SkeletonCombatPolicy.behaviorForWave(
+                    readInt(skeleton, keyWave, 1), isSkeletonMiniBoss(skeleton));
+            double distance = Math.sqrt(horizontalDistanceSquared(skeleton.getLocation(), target.getLocation()));
+            if (distance >= behavior.minimumRange() - 1.0D
+                    && distance <= behavior.maximumRange() + 1.0D) {
+                waveLastProgressAt.put(entityId, now);
+                return;
+            }
+        }
+        if (target != null && horizontalDistanceSquared(mob.getLocation(), target.getLocation()) <= 10.24D) {
+            // Melee mobs may hold their ground while their attack cooldown is
+            // active. Do not treat a readable close-range engagement as a
+            // navigation failure.
+            waveLastProgressAt.put(entityId, now);
+            return;
+        }
+        if (progressAt <= 0L) {
+            waveLastProgressAt.put(entityId, now);
+            return;
+        }
+        if (now - progressAt < WAVE_MOB_STUCK_TIMEOUT_MILLIS
+                || now < nextWaveStuckRepositionMillis.getOrDefault(entityId, 0L)) {
+            return;
+        }
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null) {
+            return;
+        }
+        Location destination = waveTacticalDestination(mob, target, kind, now);
+        if (destination == null || isCoreBlockPosition(destination)) {
+            destination = findSafeCombatLocation(anchor, waveCoreFlankDestination(anchor, mob),
+                    boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS);
+        }
+        if (destination == null || outsideCombatVertical(destination, anchor)
+                || horizontalDistanceSquared(destination, anchor)
+                > boundedCombatRadius(config.containmentRadius()) * boundedCombatRadius(config.containmentRadius())) {
+            return;
+        }
+        mob.getPathfinder().stopPathfinding();
+        double speed = mob.getType() == EntityType.SPIDER ? 1.20D
+                : EVENT_KIND_ELITE.equals(kind) ? 1.15D : 1.05D;
+        boolean moved = mob.getPathfinder().moveTo(destination, speed);
+        if (!moved) {
+            moved = requestBoundedCombatMovement(mob, destination, speed, anchor,
+                    boundedCombatRadius(config.containmentRadius()), MIN_WAVE_CORE_DISTANCE_BLOCKS,
+                    "WAVE_AI_STUCK_REPOSITION");
+        }
+        nextWaveStuckRepositionMillis.put(entityId, now + WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS);
+        waveLastProgressAt.put(entityId, now);
+        getLogger().info("WAVE_AI_STUCK_REPOSITION entity=" + entityId
+                + " target=" + (target == null ? "core" : target.getUniqueId())
+                + " moved=" + moved + " destination=" + locationText(destination));
+    }
+
+    /**
+     * Give each event role a small, throttled particle signature. The actual
+     * entity textures remain client-bound; this aura only makes the role and
+     * elite status readable in a crowded five-player fight.
+     */
+    private void renderWaveMobRoleVisuals(long now) {
+        if (now < nextWaveRoleVisualMillis || eventAudience().isEmpty()) {
+            return;
+        }
+        nextWaveRoleVisualMillis = now + 900L;
+        int rendered = 0;
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            String kind = readString(entity, keyKind);
+            if (!(entity instanceof Mob mob) || !isWaveCombatKind(kind)
+                    || !isLiveOwnedEntity(entity.getUniqueId()) || rendered++ >= 16) {
+                continue;
+            }
+            Location point = mob.getLocation().add(0.0D, 1.0D, 0.0D);
+            if (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind)) {
+                spawnEventParticle(point, Particle.REVERSE_PORTAL, 2,
+                        0.22D, 0.45D, 0.22D, 0.01D);
+                spawnEventParticle(point, Particle.DUST, 1,
+                        0.08D, 0.18D, 0.08D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(195, 74, 255), 1.15F));
+            } else if (mob instanceof Skeleton) {
+                spawnEventParticle(point, Particle.SOUL_FIRE_FLAME, 2,
+                        0.18D, 0.35D, 0.18D, 0.005D);
+                spawnEventParticle(point, Particle.DUST, 1,
+                        0.08D, 0.16D, 0.08D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(89, 210, 255), 1.0F));
+            } else if (mob instanceof Spider) {
+                spawnEventParticle(point, Particle.CRIT, 2,
+                        0.22D, 0.28D, 0.22D, 0.01D);
+                spawnEventParticle(point, Particle.DUST, 1,
+                        0.08D, 0.16D, 0.08D, 0.0D,
+                        new Particle.DustOptions(Color.fromRGB(255, 76, 106), 1.0F));
+            } else {
+                spawnEventParticle(point, Particle.PORTAL, 2,
+                        0.18D, 0.35D, 0.18D, 0.01D);
+            }
         }
     }
 
@@ -6169,6 +6873,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextSkeletonArrowMillis.remove(entityId);
             nextWavePathRequestMillis.remove(entityId);
             lastWavePathLogMillis.remove(entityId);
+            recentWaveTargets.remove(entityId);
+            waveLastProgressLocations.remove(entityId);
+            waveLastProgressAt.remove(entityId);
+            nextWaveStuckRepositionMillis.remove(entityId);
             waveMobTactics.remove(entityId);
             combatTeleportPermits.remove(entityId);
             blockedTeleportLogAt.remove(entityId);
@@ -6180,6 +6888,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextSkeletonArrowMillis.clear();
         nextWavePathRequestMillis.clear();
         lastWavePathLogMillis.clear();
+        recentWaveTargets.clear();
+        waveLastProgressLocations.clear();
+        waveLastProgressAt.clear();
+        nextWaveStuckRepositionMillis.clear();
+        nextWaveRoleVisualMillis = 0L;
         waveMobTactics.clear();
         combatTeleportPermits.clear();
         blockedTeleportLogAt.clear();
@@ -6361,6 +7074,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isEventParticleViewer(viewer, center)) {
                 continue;
             }
+            spawnSpellImpactHalo(viewer, center, side, up, spellId);
             switch (spellId) {
                 case "void_blast" -> {
                     spawnPatternRing(viewer, center, side, horizontal, 0.85D, 24,
@@ -6481,6 +7195,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && !isEventParticleViewer(viewer, origin)) {
                 continue;
             }
+            spawnSpellTelegraphGlyph(viewer, destination, side, up, spellId, phaseAngle, progress);
             switch (spellId) {
                 case "void_blast" -> {
                     double radius = 0.65D + progress * 1.15D;
@@ -6665,6 +7380,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         recordParticleEmission(estimatedSpellFlightParticles(spellId));
+        spawnSpellSignature(player, point, direction, spellId, tick);
         Vector forward = direction.clone();
         if (forward.lengthSquared() < 0.0001D) {
             forward = new Vector(0.0D, 0.0D, 1.0D);
@@ -6799,6 +7515,249 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             default -> player.spawnParticle(Particle.END_ROD, point, 4,
                     0.06D, 0.06D, 0.06D, 0.0D);
         }
+    }
+
+    /**
+     * Adds a compact signature to the moving particle projectile.  The
+     * signature is deliberately different for every spell, but all shapes are
+     * viewer-scoped and bounded so five players do not turn a short cast into a
+     * particle storm.
+     */
+    private void spawnSpellSignature(Player player, Location point, Vector direction,
+                                     String spellId, int tick) {
+        if (player == null || point == null || direction == null || spellId == null
+                || !player.isOnline() || point.getWorld() == null
+                || !player.getWorld().equals(point.getWorld())
+                || player.getLocation().distanceSquared(point) > 64.0D * 64.0D) {
+            return;
+        }
+        Vector forward = direction.clone();
+        if (forward.lengthSquared() < 0.0001D) {
+            forward = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        forward.normalize();
+        Vector reference = Math.abs(forward.getY()) > 0.85D
+                ? new Vector(1.0D, 0.0D, 0.0D) : new Vector(0.0D, 1.0D, 0.0D);
+        Vector side = forward.clone().crossProduct(reference);
+        if (side.lengthSquared() < 0.0001D) {
+            side = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        side.normalize();
+        Vector vertical = side.clone().crossProduct(forward).normalize();
+        Color color = spellVisualColor(spellId);
+        Particle.DustOptions dust = new Particle.DustOptions(color, 1.15F);
+        double phase = tick * 0.78D;
+        switch (spellId) {
+            case "void_blast" -> {
+                spawnPatternRing(player, point, side, vertical, 0.22D, 14, phase, Particle.FLAME);
+                player.spawnParticle(Particle.DRAGON_BREATH, point, 6,
+                        0.03D, 0.03D, 0.03D, 0.01D);
+            }
+            case "rift_projectile" -> {
+                spawnPatternRing(player, point, side, vertical, 0.25D, 14, phase, Particle.REVERSE_PORTAL);
+                spawnPatternSegment(player, point.clone().subtract(forward.clone().multiply(0.35D)),
+                        point.clone().add(forward.clone().multiply(0.35D)), Particle.END_ROD, dust);
+            }
+            case "rift_arrows", "arrow_salvo" -> {
+                Particle arrowParticle = "arrow_salvo".equals(spellId) ? Particle.CRIT : Particle.SOUL_FIRE_FLAME;
+                for (int lane = -1; lane <= 1; lane++) {
+                    Location start = point.clone().add(side.clone().multiply(lane * 0.25D))
+                            .subtract(forward.clone().multiply(0.22D));
+                    Location end = point.clone().add(side.clone().multiply(lane * 0.25D))
+                            .add(forward.clone().multiply(0.30D));
+                    spawnPatternSegment(player, start, end, arrowParticle, dust);
+                }
+            }
+            case "void_mark" -> {
+                Location[] corners = new Location[4];
+                for (int i = 0; i < corners.length; i++) {
+                    double angle = Math.PI / 4.0D + i * Math.PI / 2.0D + phase * 0.25D;
+                    corners[i] = point.clone()
+                            .add(side.clone().multiply(Math.cos(angle) * 0.30D))
+                            .add(vertical.clone().multiply(Math.sin(angle) * 0.30D));
+                }
+                for (int i = 0; i < corners.length; i++) {
+                    player.spawnParticle(Particle.END_ROD, corners[i], 1,
+                            0.0D, 0.0D, 0.0D, 0.0D);
+                }
+                for (int i = 0; i < corners.length; i++) {
+                    spawnPatternSegment(player, corners[i], corners[(i + 1) % corners.length],
+                            Particle.END_ROD, dust);
+                }
+            }
+            case "summon", "summon_servants" -> {
+                spawnPatternRing(player, point, side, vertical, 0.26D, 12, phase, Particle.SOUL_FIRE_FLAME);
+                for (int index = 0; index < 4; index++) {
+                    Location spark = point.clone().add(vertical.clone().multiply((index - 1.5D) * 0.12D));
+                    player.spawnParticle(Particle.WITCH, spark, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D);
+                }
+            }
+            case "will_distortion" -> {
+                Location previous = point.clone().subtract(forward.clone().multiply(0.35D));
+                for (int index = 1; index <= 4; index++) {
+                    Location next = point.clone().subtract(forward.clone().multiply(0.35D - index * 0.18D))
+                            .add(side.clone().multiply(index % 2 == 0 ? 0.20D : -0.20D));
+                    spawnPatternSegment(player, previous, next, Particle.ELECTRIC_SPARK, dust);
+                    previous = next;
+                }
+            }
+            case "arena_inferno" -> {
+                spawnPatternRing(player, point, side, vertical, 0.38D, 16, phase, Particle.SOUL_FIRE_FLAME);
+                spawnPatternRing(player, point, side, vertical, 0.20D, 12, -phase, Particle.FLAME);
+            }
+            case "rift_step" -> {
+                spawnPatternRing(player, point, side, vertical, 0.30D, 10, phase, Particle.PORTAL);
+                spawnPatternRing(player, point, side, vertical, 0.14D, 10, -phase, Particle.END_ROD);
+            }
+            case "void_snare" -> {
+                spawnPatternRing(player, point, side, vertical, 0.32D, 14, phase, Particle.REVERSE_PORTAL);
+                for (int index = 0; index < 4; index++) {
+                    double angle = phase + index * Math.PI * 0.5D;
+                    Location spoke = point.clone().add(side.clone().multiply(Math.cos(angle) * 0.30D))
+                            .add(vertical.clone().multiply(Math.sin(angle) * 0.30D));
+                    spawnPatternSegment(player, point, spoke, Particle.SMOKE, dust);
+                }
+            }
+            case "echo_pulse" -> {
+                spawnPatternRing(player, point, side, vertical, 0.34D, 18, phase, Particle.SCULK_SOUL);
+                player.spawnParticle(Particle.SONIC_BOOM, point, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+            default -> spawnPatternRing(player, point, side, vertical, 0.22D, 12, phase, Particle.END_ROD);
+        }
+    }
+
+    /** A second, short halo makes the impact readable after the flight ends. */
+    private void spawnSpellImpactHalo(Player player, Location center, Vector side,
+                                      Vector up, String spellId) {
+        if (player == null || center == null || side == null || up == null || spellId == null) {
+            return;
+        }
+        Particle.DustOptions dust = new Particle.DustOptions(spellVisualColor(spellId), 1.25F);
+        switch (spellId) {
+            case "void_blast" -> {
+                spawnPatternRing(player, center, side, up, 1.05D, 18, 0.0D, Particle.DRAGON_BREATH);
+                spawnPatternRing(player, center, side, up, 1.55D, 12, 0.25D, Particle.FLAME);
+            }
+            case "rift_projectile", "rift_step" -> {
+                spawnPatternRing(player, center, side, up, 0.72D, 16, 0.0D, Particle.REVERSE_PORTAL);
+                spawnPatternSegment(player, center.clone().subtract(up.clone().multiply(0.45D)),
+                        center.clone().add(up.clone().multiply(0.75D)), Particle.END_ROD, dust);
+            }
+            case "rift_arrows", "arrow_salvo" -> {
+                for (int lane = -1; lane <= 1; lane++) {
+                    Vector offset = side.clone().multiply(lane * 0.42D);
+                    spawnPatternSegment(player, center.clone().add(offset).subtract(up.clone().multiply(0.45D)),
+                            center.clone().add(offset).add(up.clone().multiply(0.45D)),
+                            "arrow_salvo".equals(spellId) ? Particle.CRIT : Particle.SOUL_FIRE_FLAME, dust);
+                }
+            }
+            case "void_mark", "void_snare" -> {
+                Location[] corners = signatureSquare(center, side, up, 1.05D, 0.0D);
+                for (int index = 0; index < corners.length; index++) {
+                    spawnPatternSegment(player, corners[index], corners[(index + 1) % corners.length],
+                            Particle.REVERSE_PORTAL, dust);
+                }
+            }
+            case "summon", "summon_servants" -> {
+                spawnPatternRing(player, center, side, up, 0.90D, 16, 0.0D, Particle.SOUL_FIRE_FLAME);
+                player.spawnParticle(Particle.WITCH, center, 10,
+                        0.18D, 0.5D, 0.18D, 0.02D);
+            }
+            case "will_distortion" -> {
+                spawnPatternSegment(player, center.clone().subtract(side.clone().multiply(0.75D)),
+                        center.clone().add(side.clone().multiply(0.75D)), Particle.ELECTRIC_SPARK, dust);
+                spawnPatternSegment(player, center.clone().subtract(up.clone().multiply(0.75D)),
+                        center.clone().add(up.clone().multiply(0.75D)), Particle.ELECTRIC_SPARK, dust);
+            }
+            case "arena_inferno" -> {
+                spawnPatternRing(player, center, side, up, 2.1D, 24, 0.0D, Particle.SOUL_FIRE_FLAME);
+                spawnPatternRing(player, center, side, up, 1.25D, 16, 0.2D, Particle.FLAME);
+            }
+            case "echo_pulse" -> {
+                spawnPatternRing(player, center, side, up, 1.70D, 24, 0.0D, Particle.SCULK_SOUL);
+                player.spawnParticle(Particle.SONIC_BOOM, center, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+            default -> spawnPatternRing(player, center, side, up, 0.75D, 14, 0.0D, Particle.END_ROD);
+        }
+    }
+
+    /** Draws a compact rotating glyph during the telegraph wind-up. */
+    private void spawnSpellTelegraphGlyph(Player player, Location center, Vector side,
+                                          Vector up, String spellId, double phase, double progress) {
+        if (player == null || center == null || side == null || up == null || spellId == null) {
+            return;
+        }
+        double radius = 0.28D + progress * 0.32D;
+        Particle.DustOptions dust = new Particle.DustOptions(spellVisualColor(spellId), 1.05F);
+        switch (spellId) {
+            case "void_blast", "arena_inferno" ->
+                    spawnPatternRing(player, center, side, up, radius, 14, phase, Particle.FLAME);
+            case "rift_projectile", "rift_step" ->
+                    spawnPatternRing(player, center, side, up, radius, 12, -phase, Particle.REVERSE_PORTAL);
+            case "rift_arrows", "arrow_salvo" -> {
+                for (int lane = -1; lane <= 1; lane++) {
+                    Vector offset = side.clone().multiply(lane * radius * 0.65D);
+                    spawnPatternSegment(player, center.clone().add(offset).subtract(up.clone().multiply(radius)),
+                            center.clone().add(offset).add(up.clone().multiply(radius)),
+                            "arrow_salvo".equals(spellId) ? Particle.CRIT : Particle.SOUL_FIRE_FLAME, dust);
+                }
+            }
+            case "void_mark", "void_snare" -> {
+                Location[] corners = signatureSquare(center, side, up, radius, phase * 0.25D);
+                for (int index = 0; index < corners.length; index++) {
+                    spawnPatternSegment(player, corners[index], corners[(index + 1) % corners.length],
+                            Particle.END_ROD, dust);
+                }
+            }
+            case "summon_servants", "summon" -> {
+                spawnPatternRing(player, center, side, up, radius, 12, phase, Particle.SOUL_FIRE_FLAME);
+                spawnPatternSegment(player, center.clone().subtract(up.clone().multiply(radius)),
+                        center.clone().add(up.clone().multiply(radius)), Particle.WITCH, dust);
+            }
+            case "will_distortion" -> {
+                Location left = center.clone().add(side.clone().multiply(-radius));
+                Location right = center.clone().add(side.clone().multiply(radius));
+                spawnPatternSegment(player, left, right, Particle.ELECTRIC_SPARK, dust);
+                spawnPatternSegment(player, center.clone().subtract(up.clone().multiply(radius)),
+                        center.clone().add(up.clone().multiply(radius)), Particle.ELECTRIC_SPARK, dust);
+            }
+            case "echo_pulse" -> {
+                spawnPatternRing(player, center, side, up, radius, 16, phase, Particle.SCULK_SOUL);
+                player.spawnParticle(Particle.SONIC_BOOM, center, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+            default -> spawnPatternRing(player, center, side, up, radius, 10, phase, Particle.END_ROD);
+        }
+    }
+
+    private Location[] signatureSquare(Location center, Vector axisA, Vector axisB,
+                                       double radius, double phase) {
+        Location[] corners = new Location[4];
+        for (int index = 0; index < corners.length; index++) {
+            double angle = Math.PI / 4.0D + index * Math.PI / 2.0D + phase;
+            corners[index] = center.clone()
+                    .add(axisA.clone().multiply(Math.cos(angle) * radius))
+                    .add(axisB.clone().multiply(Math.sin(angle) * radius));
+        }
+        return corners;
+    }
+
+    private Color spellVisualColor(String spellId) {
+        return switch (spellId) {
+            case "void_blast" -> Color.fromRGB(244, 39, 125);
+            case "rift_projectile", "rift_step" -> Color.fromRGB(69, 218, 255);
+            case "rift_arrows" -> Color.fromRGB(255, 72, 72);
+            case "arrow_salvo" -> Color.fromRGB(244, 60, 255);
+            case "void_mark", "void_snare" -> Color.fromRGB(190, 76, 255);
+            case "summon", "summon_servants" -> Color.fromRGB(125, 47, 255);
+            case "will_distortion" -> Color.fromRGB(84, 236, 255);
+            case "arena_inferno" -> Color.fromRGB(255, 110, 32);
+            case "echo_pulse" -> Color.fromRGB(80, 220, 190);
+            default -> Color.fromRGB(220, 220, 255);
+        };
     }
 
     private void spawnRiftProjectileTrail(Player player, Location point, Vector direction, int tick) {
@@ -7834,6 +8793,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             tag(display, EVENT_KIND_DISPLAY, 3, false);
             waveObjectiveVisuals.add(display.getUniqueId());
             waveObjectiveVisualTexts.put(display.getUniqueId(), display.getText());
+            for (Player viewer : eventAudience()) {
+                renderPortalObjective(viewer, location, null, index, portals.size(), System.currentTimeMillis());
+            }
         }
     }
 
@@ -7863,7 +8825,41 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 display.setText(text);
                 waveObjectiveVisualTexts.put(visualId, text);
             }
+            Location portal = wavePortals.getOrDefault(3, List.of()).get(index);
+            for (Player viewer : eventAudience()) {
+                renderPortalObjective(viewer, portal, state, index, states.size(), System.currentTimeMillis());
+            }
         }
+    }
+
+    /** Renders a portal as a floor ring with a moving vertical rift, not a floating icon. */
+    private void renderPortalObjective(Player viewer, Location portal,
+                                       PortalCapturePolicy.PortalState state,
+                                       int index, int total, long now) {
+        if (viewer == null || portal == null || portal.getWorld() == null
+                || !isEventParticleViewer(viewer, portal)) {
+            return;
+        }
+        boolean complete = state != null && state.completed();
+        Color color = complete ? Color.fromRGB(92, 255, 174) : Color.fromRGB(190, 76, 255);
+        Particle rift = complete ? Particle.END_ROD : Particle.REVERSE_PORTAL;
+        Particle.DustOptions dust = new Particle.DustOptions(color, complete ? 1.2F : 1.05F);
+        Location floor = portal.clone().add(0.0D, 0.08D, 0.0D);
+        Vector x = new Vector(1.0D, 0.0D, 0.0D);
+        Vector z = new Vector(0.0D, 0.0D, 1.0D);
+        double spin = now * 0.002D + index * 0.9D;
+        spawnPatternRing(viewer, floor, x, z, 2.15D, PORTAL_VISUAL_POINTS, spin, rift);
+        spawnPatternRing(viewer, floor.clone().add(0.0D, 0.48D, 0.0D), x, z,
+                1.25D, 12, -spin * 1.25D, complete ? Particle.END_ROD : Particle.FLAME);
+        for (int arc = 0; arc < 5; arc++) {
+            double angle = spin + arc * Math.PI * 0.4D;
+            Location base = floor.clone().add(Math.cos(angle) * 1.45D, 0.0D,
+                    Math.sin(angle) * 1.45D);
+            Location top = base.clone().add(0.0D, complete ? 1.9D : 1.45D, 0.0D);
+            spawnPatternSegment(viewer, base, top, rift, dust);
+        }
+        viewer.spawnParticle(Particle.DUST, floor.clone().add(0.0D, 0.1D, 0.0D),
+                complete ? 8 : 5, 0.18D, 0.06D, 0.18D, 0.0D, dust);
     }
 
     private void planRiftStorm(World world) {
@@ -7872,6 +8868,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormOriginalBlocks.clear();
         riftStormOriginalWebBlocks.clear();
         riftStormLastDamageSecond.clear();
+        nextRiftStormVisualMillis = 0L;
         int minX = Math.max(arenaMinX, coreX - (int) Math.floor(config.arenaRadius()));
         int maxX = Math.min(arenaMaxX, coreX + (int) Math.floor(config.arenaRadius()));
         int minZ = Math.max(arenaMinZ, coreZ - (int) Math.floor(config.arenaRadius()));
@@ -8222,6 +9219,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             for (Player player : eventAudience()) {
                 if (player.getWorld().equals(portal.getWorld())) {
+                    renderPortalObjective(player, portal, state, index, portals.size(), now);
                     player.spawnParticle(state.completed() ? Particle.END_ROD : Particle.REVERSE_PORTAL,
                             portal.clone().add(0.0D, 0.2D, 0.0D), occupied ? 8 : 3,
                             0.45D, 0.15D, 0.45D, 0.02D);
@@ -8404,6 +9402,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isActiveArenaParticipant(player)) {
                 continue;
             }
+            if (now >= nextRiftStormVisualMillis) {
+                renderRiftStormField(player, core, elapsed);
+            }
             HazardPlanner.Point point = new HazardPlanner.Point(
                     player.getLocation().getBlockX(), player.getLocation().getBlockZ());
             boolean danger = riftStormHazards.contains(point);
@@ -8421,6 +9422,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 riftStormLastDamageSecond.put(player.getUniqueId(), elapsed);
             }
         }
+        if (now >= nextRiftStormVisualMillis) {
+            nextRiftStormVisualMillis = now + 250L;
+        }
         if (elapsed >= 30) {
             waveObjectiveComplete = true;
             restoreRiftStormBlocks();
@@ -8429,9 +9433,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             riftStormOriginalBlocks.clear();
             riftStormOriginalWebBlocks.clear();
             riftStormLastDamageSecond.clear();
+            nextRiftStormVisualMillis = 0L;
             announceEventTitle("§bШТОРМ РАССЕЯН", "§fДобейте оставшихся слуг Разлома", true);
             getLogger().info("WAVE_OBJECTIVE_COMPLETE event=" + eventId
                     + " wave=5 type=RIFT_STORM duration_seconds=" + elapsed);
+        }
+    }
+
+    /** Draws the moving floor pattern used by Wave 5's Rift Storm. */
+    private void renderRiftStormField(Player viewer, Location core, int elapsed) {
+        if (viewer == null || core == null || core.getWorld() == null
+                || !isEventParticleViewer(viewer, core)) {
+            return;
+        }
+        Set<HazardPlanner.Point> allCells = new LinkedHashSet<>();
+        allCells.addAll(riftStormHazards);
+        allCells.addAll(riftStormSafeCells);
+        if (allCells.isEmpty()) {
+            return;
+        }
+        List<HazardPlanner.Point> cells = new ArrayList<>(allCells);
+        int stride = Math.max(1, (int) Math.ceil(cells.size() / (double) STORM_VISUAL_MAX_CELLS));
+        int rendered = 0;
+        for (int index = 0; index < cells.size() && rendered < STORM_VISUAL_MAX_CELLS; index += stride) {
+            HazardPlanner.Point point = cells.get(index);
+            Location cell = new Location(core.getWorld(), point.x() + 0.5D,
+                    combatFloorY() + 0.06D, point.z() + 0.5D);
+            if (!isEventParticleViewer(viewer, cell)) {
+                continue;
+            }
+            boolean danger = riftStormHazards.contains(point);
+            Particle.DustOptions dust = new Particle.DustOptions(
+                    danger ? Color.fromRGB(255, 75, 54) : Color.fromRGB(69, 218, 255),
+                    danger ? 0.95F : 0.82F);
+            viewer.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
+                    cell, danger ? 2 : 1, 0.12D, 0.02D, 0.12D, 0.0D);
+            viewer.spawnParticle(Particle.DUST, cell, 1,
+                    0.04D, 0.01D, 0.04D, 0.0D, dust);
+            rendered++;
+        }
+        recordParticleEmission(rendered);
+        Particle patternParticle = lastStormPattern == StormPatternPolicy.Pattern.CROSS
+                ? Particle.ELECTRIC_SPARK
+                : lastStormPattern == StormPatternPolicy.Pattern.SECTORS
+                ? Particle.REVERSE_PORTAL : Particle.SOUL_FIRE_FLAME;
+        Vector x = new Vector(1.0D, 0.0D, 0.0D);
+        Vector z = new Vector(0.0D, 0.0D, 1.0D);
+        double spin = elapsed * 0.18D + stormPatternPhase * 0.4D;
+        spawnPatternRing(viewer, core.clone().add(0.0D, 0.10D, 0.0D), x, z,
+                2.7D, 18, spin, patternParticle);
+        if (lastStormPattern == StormPatternPolicy.Pattern.CROSS) {
+            spawnPatternSegment(viewer, core.clone().add(-3.0D, 0.10D, 0.0D),
+                    core.clone().add(3.0D, 0.10D, 0.0D), Particle.ELECTRIC_SPARK,
+                    new Particle.DustOptions(Color.fromRGB(244, 60, 255), 0.9F));
+            spawnPatternSegment(viewer, core.clone().add(0.0D, 0.10D, -3.0D),
+                    core.clone().add(0.0D, 0.10D, 3.0D), Particle.ELECTRIC_SPARK,
+                    new Particle.DustOptions(Color.fromRGB(244, 60, 255), 0.9F));
+        } else if (lastStormPattern == StormPatternPolicy.Pattern.MOVING_SAFE_ISLAND) {
+            spawnPatternRing(viewer, core.clone().add(0.0D, 0.24D, 0.0D), x, z,
+                    1.25D, 12, -spin, Particle.END_ROD);
         }
     }
 
@@ -8450,6 +9510,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormOriginalWebBlocks.clear();
         riftStormLastDamageSecond.clear();
         nextRiftStormPullMillis = 0L;
+        nextRiftStormVisualMillis = 0L;
         towerDefenseState = null;
         towerSpawnSchedule = List.of();
         towerSpawnGroupIndex = 0;
@@ -8583,6 +9644,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void announceWaveComplete(int wave) {
         announceEventTitle("§aВОЛНА " + wave + " ПОВЕРЖЕНА",
                 "§eНаграда появилась у ядра", true);
+        Location core = coreCombatAnchorLocation();
+        if (core != null) {
+            renderWaveTransition(core.getWorld(), core, wave, false, true);
+        }
     }
 
     private void announceEventTitle(String title, String subtitle, boolean chat) {
@@ -8648,11 +9713,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     case 3 -> Particle.FLAME;
                     case 4, 5 -> Particle.DRAGON_BREATH;
                     default -> Particle.PORTAL;
-                };
+        };
         Location center = core.clone().add(0.0D, 0.5D, 0.0D);
+        renderWaveTransition(world, center, wave, finalWave, false);
         spawnEventParticle(center, particle, finalWave ? 64 : 36, 1.2D, 0.6D, 1.2D, 0.03D);
         world.playSound(center, Sound.ENTITY_ENDERMAN_SCREAM, finalWave ? 1.0F : 0.65F,
                 finalWave ? 0.45F : 0.8F);
+    }
+
+    /** One bounded, viewer-scoped transition burst shared by every wave. */
+    private void renderWaveTransition(World world, Location core, int wave,
+                                      boolean finalWave, boolean completed) {
+        if (world == null || core == null || core.getWorld() == null
+                || !world.equals(core.getWorld())) {
+            return;
+        }
+        Color color = completed ? Color.fromRGB(92, 255, 174)
+                : finalWave ? Color.fromRGB(244, 39, 125)
+                : switch (Math.floorMod(wave, 4)) {
+                    case 1 -> Color.fromRGB(92, 224, 255);
+                    case 2 -> Color.fromRGB(177, 70, 255);
+                    case 3 -> Color.fromRGB(255, 126, 48);
+                    default -> Color.fromRGB(255, 226, 96);
+                };
+        Particle pulse = completed ? Particle.END_ROD
+                : finalWave ? Particle.DRAGON_BREATH
+                : switch (Math.floorMod(wave, 4)) {
+                    case 1 -> Particle.END_ROD;
+                    case 2 -> Particle.REVERSE_PORTAL;
+                    case 3 -> Particle.FLAME;
+                    default -> Particle.SOUL_FIRE_FLAME;
+                };
+        Particle.DustOptions dust = new Particle.DustOptions(color, 1.15F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, core)) {
+                continue;
+            }
+            Vector x = new Vector(1.0D, 0.0D, 0.0D);
+            Vector z = new Vector(0.0D, 0.0D, 1.0D);
+            double spin = (System.currentTimeMillis() % 8_000L) * 0.0012D;
+            spawnPatternRing(viewer, core, x, z, completed ? 2.1D : 1.5D,
+                    Math.min(24, 20 + Math.max(0, wave)), spin, pulse);
+            spawnPatternRing(viewer, core.clone().add(0.0D, 0.65D, 0.0D), x, z,
+                    completed ? 1.25D : 0.9D, 14, -spin, Particle.END_ROD);
+            for (int column = 0; column < 4; column++) {
+                double angle = spin + column * Math.PI * 0.5D;
+                Location base = core.clone().add(Math.cos(angle) * 1.15D, 0.05D,
+                        Math.sin(angle) * 1.15D);
+                Location top = base.clone().add(0.0D, completed ? 1.7D : 1.15D, 0.0D);
+                spawnPatternSegment(viewer, base, top, pulse, dust);
+            }
+            viewer.spawnParticle(Particle.DUST, core.clone().add(0.0D, 0.65D, 0.0D),
+                    Math.min(8, 4 + Math.max(0, wave)), 0.18D, 0.35D, 0.18D, 0.0D, dust);
+        }
     }
 
     private int scaled(int base, double scale) {
@@ -9109,6 +10222,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 finalWaveEntities.remove(entity.getUniqueId());
                 nextWavePathRequestMillis.remove(entity.getUniqueId());
                 lastWavePathLogMillis.remove(entity.getUniqueId());
+                recentWaveTargets.remove(entity.getUniqueId());
+                waveLastProgressLocations.remove(entity.getUniqueId());
+                waveLastProgressAt.remove(entity.getUniqueId());
+                nextWaveStuckRepositionMillis.remove(entity.getUniqueId());
                 waveMobTactics.remove(entity.getUniqueId());
                 combatTeleportPermits.remove(entity.getUniqueId());
                 blockedTeleportLogAt.remove(entity.getUniqueId());
@@ -9122,6 +10239,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveMobTactics.clear();
         combatTeleportPermits.clear();
         blockedTeleportLogAt.clear();
+        recentWaveTargets.clear();
+        waveLastProgressLocations.clear();
+        waveLastProgressAt.clear();
+        nextWaveStuckRepositionMillis.clear();
+        nextWaveRoleVisualMillis = 0L;
         nextSkeletonArrowMillis.clear();
         towerNextAttackAt.clear();
         towerAttackSequences.clear();
@@ -9720,6 +10842,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         absorptionAttackEmpowered = false;
         bossCastState = BossCastState.ABSORPTION_CHANNEL;
         bossCastDeadlineMillis = System.currentTimeMillis() + ABSORPTION_CHANNEL_TICKS * 50L;
+        sendBossAnimationVisualUpdate(boss, "ABSORPTION_CHANNEL");
         boss.setInvulnerable(true);
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         clearVoidMarkZones();
@@ -9780,6 +10903,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         judgmentTriggered = true;
         bossCastState = BossCastState.JUDGMENT_CAST;
         bossCastDeadlineMillis = System.currentTimeMillis() + 15_000L;
+        sendBossAnimationVisualUpdate(boss, "JUDGMENT_CAST");
         setBossVirtualHealth(boss, BossStagePolicy.judgmentThreshold());
         boss.setInvulnerable(true);
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
@@ -9960,6 +11084,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bossCastState == BossCastState.JUDGMENT_CAST) {
             judgmentCompleted = true;
             bossCastState = BossCastState.EXHAUSTED;
+            sendBossAnimationVisualUpdate(boss, "EXHAUSTED");
             bossCastDeadlineMillis = System.currentTimeMillis() + EXHAUSTED_WINDOW_TICKS * 50L;
             bossSpellPauseUntilMillis = bossCastDeadlineMillis;
             bossStage = BossStage.CATASTROPHE;
@@ -9970,6 +11095,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             absorptionAttackEmpowered = true;
             BossStagePolicy.CombatProfile profile = currentBossCombatProfile();
             bossCastState = BossCastState.NONE;
+            sendBossAnimationVisualUpdate(boss, "IDLE");
             bossSpellPauseUntilMillis = System.currentTimeMillis() + 1_500L;
             if (!isTestBoss(boss) && !saveStateSync()) {
                 // The physical flag is already cleared above.  If the durable
@@ -9989,6 +11115,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " damageable=true");
         } else {
             bossCastState = BossCastState.NONE;
+            sendBossAnimationVisualUpdate(boss, "IDLE");
             bossSpellPauseUntilMillis = System.currentTimeMillis() + 1_000L;
         }
         getLogger().info("BOSS_CAST_STATE event=" + eventId + " boss=" + boss.getUniqueId()
@@ -10750,6 +11877,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = target.getLocation().clone();
         getLogger().info("BOSS_SPELL_TELEGRAPH boss=" + bossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
+        sendBossAnimationVisualUpdate(boss, "SPELL_" + spell.name());
         target.sendActionBar(Component.text("Хранитель готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
@@ -10801,10 +11929,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             || (spell != EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                             && !isCombatTarget(target))) {
                         return;
-                    }
-                    getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
-                            + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
-                    renderSpellImpactVisual(boss,
+                     }
+                     getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
+                             + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
+                     sendBossAnimationVisualUpdate(boss, "SPELL_IMPACT");
+                     renderSpellImpactVisual(boss,
                             spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                                     ? boss.getLocation() : mark,
                             spell.id());
@@ -10817,9 +11946,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         case VOID_MARK -> voidMark(boss, target);
                         case SUMMON_SERVANTS -> summonServants(boss);
                         case WILL_DISTORTION -> sendControlStart(target);
-                        case ARENA_INFERNO -> arenaInferno(boss);
-                    }
-                });
+                         case ARENA_INFERNO -> arenaInferno(boss);
+                     }
+                 });
+        scheduleBossAnimationReset(boss, callbackGeneration, 20L);
     }
 
     private void voidBlast(LivingEntity boss, Player target) {
@@ -10922,6 +12052,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null) {
             return;
         }
+        renderArenaHazardField(boss);
         for (Player player : eventAudience()) {
             if (!player.getWorld().equals(boss.getWorld())) {
                 continue;
@@ -10936,6 +12067,53 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 player.damage(6.0D, boss);
                 player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
                         ARENA_INFERNO_DEBUFF_TICKS, configuredDebuffAmplifier(), false, true, true));
+            }
+        }
+    }
+
+    /** Paints the inferno's dangerous and safe sectors without changing blocks. */
+    private void renderArenaHazardField(LivingEntity boss) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        Set<HazardPlanner.Point> active = new HashSet<>();
+        for (Block block : arenaInfernoBlocks) {
+            active.add(new HazardPlanner.Point(block.getX(), block.getZ()));
+        }
+        List<HazardPlanner.Point> cells = new ArrayList<>(arenaInfernoOriginalBlocks.keySet());
+        if (cells.isEmpty()) {
+            return;
+        }
+        int stride = Math.max(1, (int) Math.ceil(cells.size() / (double) ARENA_VISUAL_MAX_CELLS));
+        for (Player viewer : eventAudience()) {
+            if (!viewer.isOnline() || !viewer.getWorld().equals(boss.getWorld())) {
+                continue;
+            }
+            int rendered = 0;
+            for (int index = 0; index < cells.size() && rendered < ARENA_VISUAL_MAX_CELLS; index += stride) {
+                HazardPlanner.Point point = cells.get(index);
+                Location cell = new Location(boss.getWorld(), point.x() + 0.5D,
+                        combatLevelY() + 0.05D, point.z() + 0.5D);
+                if (!isEventParticleViewer(viewer, cell)) {
+                    continue;
+                }
+                boolean danger = active.contains(point);
+                Particle.DustOptions dust = new Particle.DustOptions(
+                        danger ? Color.fromRGB(255, 74, 44) : Color.fromRGB(88, 224, 255),
+                        danger ? 1.0F : 0.85F);
+                viewer.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
+                        cell, danger ? 2 : 1, 0.12D, 0.02D, 0.12D, 0.0D);
+                viewer.spawnParticle(Particle.DUST, cell, 1,
+                        0.04D, 0.01D, 0.04D, 0.0D, dust);
+                rendered++;
+            }
+            recordParticleEmission(rendered);
+            Location center = coreCombatAnchorLocation();
+            if (center != null && viewer.getWorld().equals(center.getWorld())) {
+                spawnPatternRing(viewer, center.clone().add(0.0D, 0.12D, 0.0D),
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        3.0D, 20, System.currentTimeMillis() * 0.0015D,
+                        Particle.FLAME);
             }
         }
     }
@@ -11607,10 +12785,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         victoryStep = VICTORY_REWARDS_DELIVERED;
         saveStateSync();
         announceVictory();
-        restoreCoreAndPads();
+        restoreCoreAndPadsForVictory();
         endUnlocked = true;
         victoryStep = VICTORY_COMPLETE;
         forcePhase(EventPhase.UNLOCKED, "victory saga complete");
+        rebuildPersistedVisuals();
         saveStateSync();
     }
 
@@ -11642,6 +12821,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String offlineName(UUID uuid) {
         String name = Bukkit.getOfflinePlayer(uuid).getName();
         return name == null || name.isBlank() ? "Participant" : name;
+    }
+
+    private boolean shouldShowVictoryMemorial() {
+        return phase == EventPhase.UNLOCKED
+                && VICTORY_COMPLETE.equals(victoryStep)
+                && officialBossDeathCommitted
+                && !officialRewardRoster.isEmpty();
+    }
+
+    private String victoryMemorialNames() {
+        Set<UUID> namesSource = officialRewardRoster.isEmpty()
+                ? participantUuids : officialRewardRoster;
+        return namesSource.stream()
+                .map(this::offlineName)
+                .filter(name -> name != null && !name.isBlank())
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("участники");
+    }
+
+    private void spawnVictoryMemorialVisuals(World world) {
+        if (world == null || !shouldShowVictoryMemorial()) {
+            return;
+        }
+        Block core = world.getBlockAt(coreX, coreY, coreZ);
+        if (core.getType().isAir() || core.isPassable() || core.isLiquid()) {
+            getLogger().warning("Victory memorial refused: Core target is no longer a solid block.");
+            return;
+        }
+        spawnCoreOverlay(world, core);
+        Location location = new Location(world, coreX + 0.5D, coreY + 2.25D, coreZ + 0.5D);
+        TextDisplay display = world.spawn(location, TextDisplay.class);
+        tag(display, EVENT_KIND_MEMORIAL, 0, false);
+        display.setText("§5РАЗЛОМ ПОБЕЖДЁН\n§dХранитель повержен\n§7Победители: §f"
+                + victoryMemorialNames());
+        display.setBillboard(TextDisplay.Billboard.CENTER);
+        display.setLineWidth(240);
+        display.setTransformation(new Transformation(
+                new Vector3f(), new AxisAngle4f(), new Vector3f(0.45F, 0.45F, 0.45F), new AxisAngle4f()));
+        getLogger().info("END_EVENT_VICTORY_MEMORIAL event=" + eventId
+                + " core=" + coreLocationText() + " winners=" + victoryMemorialNames());
     }
 
     private void announceVictory() {
@@ -12023,7 +13243,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isEndEventOwnedRole(Entity entity) {
         String kind = readString(entity, keyKind);
         return EVENT_KIND_CORE.equals(kind) || EVENT_KIND_PAD.equals(kind)
-                || EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_WAVE_MOB.equals(kind)
+                || EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_MEMORIAL.equals(kind)
+                || EVENT_KIND_WAVE_MOB.equals(kind)
                 || EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_BOSS.equals(kind)
                 || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind)
                 || EVENT_KIND_WAVE_REWARD.equals(kind);
@@ -12071,6 +13292,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextSkeletonArrowMillis.remove(entity.getUniqueId());
             nextWavePathRequestMillis.remove(entity.getUniqueId());
             lastWavePathLogMillis.remove(entity.getUniqueId());
+            recentWaveTargets.remove(entity.getUniqueId());
+            waveLastProgressLocations.remove(entity.getUniqueId());
+            waveLastProgressAt.remove(entity.getUniqueId());
+            nextWaveStuckRepositionMillis.remove(entity.getUniqueId());
             judgmentVisuals.remove(entity.getUniqueId());
             waveMobTactics.remove(entity.getUniqueId());
             combatTeleportPermits.remove(entity.getUniqueId());
@@ -12233,7 +13458,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Optional packet: older client builds ignore the unknown event type;
         // the server-side fight remains fully authoritative without it.
         sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
-                0L, bossUuid.toString(), stage.name());
+                BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(), stage.name() + "|IDLE");
     }
 
     /** Send the richer HUD snapshot used by the optional custom client bar. */
@@ -12258,6 +13483,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Player player : eventAudience()) {
             sendBossPhaseVisualUpdate(player, boss, stage);
         }
+    }
+
+    /** Sends a short client-only animation cue; gameplay remains server-authoritative. */
+    private void sendBossAnimationVisualUpdate(Entity boss, String animationId) {
+        if (boss == null || bossUuid == null || bossBindingInstanceId.isBlank()
+                || !bossUuid.equals(boss.getUniqueId()) || bossStage == null) {
+            return;
+        }
+        String animation = animationId == null || animationId.isBlank()
+                ? "IDLE" : animationId.replace('|', '_').trim().toUpperCase(Locale.ROOT);
+        for (Player player : eventAudience()) {
+            if (!player.isOnline() || !player.getWorld().equals(boss.getWorld())) {
+                continue;
+            }
+            sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
+                    BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(),
+                    bossStage.name() + "|" + animation);
+        }
+    }
+
+    private void scheduleBossAnimationReset(LivingEntity boss, long callbackGeneration, long delayTicks) {
+        if (taskRegistry == null || boss == null || delayTicks < 1L) {
+            return;
+        }
+        BukkitTask reset = Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (taskRegistry.owns(callbackGeneration) && boss.isValid() && !boss.isDead()
+                    && bossUuid != null && bossUuid.equals(boss.getUniqueId())) {
+                sendBossAnimationVisualUpdate(boss, "IDLE");
+            }
+        }, delayTicks);
+        taskRegistry.register(reset);
     }
 
     private void sendControlStart(Player player) {
@@ -12375,7 +13631,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of();
         }
         if (args.length == 1) {
-            return List.of("status", "debug", "recovery", "core", "arena", "gate", "portalroom", "resources", "ritual", "wave", "boss", "client", "test", "cleanup", "reset", "unlock").stream()
+            return List.of("status", "debug", "recovery", "core", "arena", "gate", "door", "portalroom", "resources", "ritual", "wave", "boss", "client", "test", "cleanup", "reset", "unlock").stream()
                     .filter(value -> value.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2) {
@@ -12383,7 +13639,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "debug" -> List.of("packets", "objectives", "hazards", "perf", "ai");
                 case "core" -> List.of("set", "setat", "info", "rebuild", "remove");
                 case "arena" -> List.of("pos1", "pos2", "info", "clear", "border", "boundary");
-            case "gate" -> List.of("pos1", "pos2", "setat", "info", "preview", "open", "restore");
+                case "gate", "door" -> List.of("pos1", "pos2", "setat", "info", "preview", "open", "close", "restore", "delete");
                 case "portalroom" -> List.of("set", "info");
                 case "resources" -> List.of("status", "add", "reset");
                 case "ritual" -> List.of("start", "cancel", "cleanup", "reset", "unlock");

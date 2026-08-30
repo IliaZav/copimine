@@ -482,6 +482,43 @@ def test_mobile_wave_ai_revalidates_targets_and_repaths_after_each_containment_c
     assert compact.index("maintainWaveMobPath(mob, target, kind, now);") > compact.index("Player target = currentTarget;")
 
 
+def test_wave_ai_remembers_recent_targets_and_recovers_from_stalled_navigation() -> None:
+    tick_start = MAIN.index("private void tickWaveMobAi()")
+    tick_end = MAIN.index("private void enforceWaveMobContainment", tick_start)
+    tick = MAIN[tick_start:tick_end]
+    assert "recentWaveTargets" in tick
+    assert "EndRiftAiPolicy.rememberTarget" in MAIN
+    assert "rememberWaveTarget(entity.getUniqueId(), target.getUniqueId());" in tick
+    assert "watchWaveMobProgress(mob, target, kind, now);" in tick
+    assert "watchWaveMobProgress(mob, null, kind, now);" in tick
+    watchdog_start = MAIN.index("private void watchWaveMobProgress")
+    watchdog_end = MAIN.index("private void renderWaveMobRoleVisuals", watchdog_start)
+    watchdog = MAIN[watchdog_start:watchdog_end]
+    for marker in (
+        "WAVE_MOB_STUCK_TIMEOUT_MILLIS = 4_000L",
+        "WAVE_MOB_STUCK_REPOSITION_COOLDOWN_MILLIS = 4_000L",
+        "WAVE_MOB_PROGRESS_DISTANCE_SQUARED = 0.5625D",
+        "mob.getPathfinder().stopPathfinding();",
+        "mob.getPathfinder().moveTo(destination, speed)",
+        "WAVE_AI_STUCK_REPOSITION",
+        "outsideCombatVertical(destination, anchor)",
+    ):
+        assert marker in (MAIN if "=" in marker else watchdog)
+
+
+def test_wave_mob_visual_roles_are_throttled_and_distinct() -> None:
+    visual_start = MAIN.index("private void renderWaveMobRoleVisuals")
+    visual_end = MAIN.index("/**\n     * Ranged skeletons", visual_start)
+    visual = MAIN[visual_start:visual_end]
+    assert "nextWaveRoleVisualMillis" in visual
+    assert "EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_FINAL_WAVE.equals(kind)" in visual
+    assert "Particle.REVERSE_PORTAL" in visual
+    assert "Particle.SOUL_FIRE_FLAME" in visual
+    assert "Particle.CRIT" in visual
+    assert "new Particle.DustOptions" in visual
+    assert "rendered++ >= 16" in visual
+
+
 def test_wave_ai_spreads_core_standing_targets_across_safe_flanks() -> None:
     path_start = MAIN.index("private void maintainWaveMobPath")
     path_end = MAIN.index("private boolean isWaveCombatKind", path_start)

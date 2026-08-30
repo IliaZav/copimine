@@ -8,7 +8,12 @@ public final class RiftGuardianModelRenderer {
     private final RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis) {
+        return modelForPhase(phaseId, transitionDurationMillis, "IDLE");
+    }
+
+    public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis, String animationId) {
         model.setPhase(Phase.fromWireId(phaseId), transitionDurationMillis);
+        model.setAnimation(animationId);
         return model;
     }
 

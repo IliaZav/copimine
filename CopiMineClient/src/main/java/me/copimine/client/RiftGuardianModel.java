@@ -11,6 +11,8 @@ import net.minecraft.client.render.entity.model.EndermanEntityModel;
 import net.minecraft.entity.mob.EndermanEntity;
 import net.minecraft.util.math.MathHelper;
 
+import java.util.Locale;
+
 /**
  * The Enderman renderer also hands its model to Enderman-specific feature and
  * shadow renderers. Extending the vanilla Enderman model keeps that runtime
@@ -25,10 +27,16 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     private final ModelPart rightArm;
     private final ModelPart leftHorn;
     private final ModelPart rightHorn;
+    private final ModelPart leftHornTip;
+    private final ModelPart rightHornTip;
+    private final ModelPart leftCrest;
+    private final ModelPart rightCrest;
+    private final ModelPart backSpine;
     private final ModelPart leftShard;
     private final ModelPart rightShard;
     private final ModelPart chestRift;
     private Phase phase = Phase.AWAKENING;
+    private String animationId = "IDLE";
     private long transitionDurationMillis;
 
     public RiftGuardianModel(ModelPart root) {
@@ -42,6 +50,11 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         this.rightArm = root.getChild("right_arm");
         this.leftHorn = body.getChild("left_horn");
         this.rightHorn = body.getChild("right_horn");
+        this.leftHornTip = leftHorn.getChild("left_horn_tip");
+        this.rightHornTip = rightHorn.getChild("right_horn_tip");
+        this.leftCrest = body.getChild("left_crest");
+        this.rightCrest = body.getChild("right_crest");
+        this.backSpine = body.getChild("back_spine");
         this.leftShard = body.getChild("left_shard");
         this.rightShard = body.getChild("right_shard");
         this.chestRift = body.getChild("chest_rift");
@@ -76,12 +89,27 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         root.addChild("right_arm", ModelPartBuilder.create()
                         .uv(88, 30).cuboid(-3.0F, -1.0F, -2.5F, 5.0F, 25.0F, 5.0F),
                 ModelTransform.pivot(-16.0F, 1.5F, 0.0F));
-        body.addChild("left_horn", ModelPartBuilder.create()
+        ModelPartData leftHorn = body.addChild("left_horn", ModelPartBuilder.create()
                         .uv(42, 64).cuboid(0.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
                 ModelTransform.of(4.0F, 24.0F, 0.0F, 0.0F, 0.0F, 0.35F));
-        body.addChild("right_horn", ModelPartBuilder.create()
+        leftHorn.addChild("left_horn_tip", ModelPartBuilder.create()
+                        .uv(48, 64).cuboid(-1.5F, -9.0F, -1.5F, 3.0F, 9.0F, 3.0F),
+                ModelTransform.pivot(2.0F, -36.0F, 0.0F));
+        ModelPartData rightHorn = body.addChild("right_horn", ModelPartBuilder.create()
                         .uv(42, 77).cuboid(-4.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
                 ModelTransform.of(-4.0F, 24.0F, 0.0F, 0.0F, 0.0F, -0.35F));
+        rightHorn.addChild("right_horn_tip", ModelPartBuilder.create()
+                        .uv(52, 64).cuboid(-1.5F, -9.0F, -1.5F, 3.0F, 9.0F, 3.0F),
+                ModelTransform.pivot(-2.0F, -36.0F, 0.0F));
+        body.addChild("left_crest", ModelPartBuilder.create()
+                        .uv(56, 64).cuboid(0.0F, -32.0F, -3.0F, 5.0F, 5.0F, 6.0F),
+                ModelTransform.of(6.0F, 24.0F, 0.0F, 0.0F, 0.0F, 0.18F));
+        body.addChild("right_crest", ModelPartBuilder.create()
+                        .uv(56, 75).cuboid(-5.0F, -32.0F, -3.0F, 5.0F, 5.0F, 6.0F),
+                ModelTransform.of(-6.0F, 24.0F, 0.0F, 0.0F, 0.0F, -0.18F));
+        body.addChild("back_spine", ModelPartBuilder.create()
+                        .uv(72, 84).cuboid(-2.0F, -27.0F, 4.0F, 4.0F, 14.0F, 3.0F),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("left_shard", ModelPartBuilder.create()
                         .uv(0, 84).cuboid(-1.5F, -2.0F, -1.5F, 3.0F, 12.0F, 3.0F),
                 ModelTransform.of(14.0F, -3.0F, -1.0F, 0.25F, 0.0F, 0.65F));
@@ -103,6 +131,11 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     public void setPhase(Phase phase, long transitionDurationMillis) {
         this.phase = phase == null ? Phase.AWAKENING : phase;
         this.transitionDurationMillis = MathHelper.clamp(transitionDurationMillis, 0L, 600_000L);
+    }
+
+    public void setAnimation(String animationId) {
+        this.animationId = animationId == null || animationId.isBlank()
+                ? "IDLE" : animationId.trim().toUpperCase(Locale.ROOT);
     }
 
     public ModelPart getPart() {
@@ -132,6 +165,8 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
             leftArm.pitch -= 0.25F;
             rightArm.pitch -= 0.25F;
         }
+        applySpellCastTransform(animationProgress);
+        applyFinalSilhouette(animationProgress);
         root.yaw = MathHelper.clamp(headYaw * 0.017453292F, -0.5F, 0.5F);
         torso.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.35F, 0.35F);
     }
@@ -179,5 +214,135 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         rightShoulder.roll -= 0.3F;
         leftHorn.pitch -= 0.2F;
         rightHorn.pitch -= 0.2F;
+    }
+
+    /**
+     * The server sends a small animation id alongside the phase.  Keeping the
+     * motion here, in the model, means the boss remains a real 3D model and no
+     * gameplay entity is needed just to show a cast.
+     */
+    private void applySpellCastTransform(float animationProgress) {
+        String animation = animationId == null ? "IDLE" : animationId;
+        float pulse = MathHelper.sin(animationProgress * 0.32F);
+        switch (animation) {
+            case "ABSORPTION_CHANNEL" -> {
+                leftArm.pitch = -0.95F + pulse * 0.08F;
+                rightArm.pitch = -0.95F - pulse * 0.08F;
+                leftArm.roll -= 0.42F;
+                rightArm.roll += 0.42F;
+                leftShard.pitch += 0.75F;
+                rightShard.pitch += 0.75F;
+                chestRift.xScale = 1.28F;
+                chestRift.yScale = 1.18F;
+            }
+            case "JUDGMENT_CAST" -> {
+                leftArm.pitch = -1.22F + pulse * 0.10F;
+                rightArm.pitch = -1.22F - pulse * 0.10F;
+                leftArm.roll -= 0.24F;
+                rightArm.roll += 0.24F;
+                leftHorn.pitch -= 0.28F;
+                rightHorn.pitch -= 0.28F;
+                backSpine.yaw += pulse * 0.12F;
+            }
+            case "EXHAUSTED" -> {
+                torso.pitch += 0.16F;
+                leftArm.pitch += 0.22F;
+                rightArm.pitch += 0.22F;
+                leftHorn.roll -= 0.12F;
+                rightHorn.roll += 0.12F;
+            }
+            case "SPELL_VOID_BLAST" -> {
+                leftArm.pitch = -1.05F + pulse * 0.10F;
+                rightArm.pitch = -1.05F - pulse * 0.10F;
+                leftArm.roll -= 0.30F;
+                rightArm.roll += 0.30F;
+                chestRift.zScale = 1.30F + pulse * 0.08F;
+            }
+            case "SPELL_RIFT_PROJECTILE" -> {
+                rightArm.pitch = -1.42F + pulse * 0.15F;
+                rightArm.roll -= 0.16F;
+                leftArm.pitch += 0.28F;
+                rightShard.yaw += 0.42F;
+            }
+            case "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO" -> {
+                leftArm.pitch = -0.82F - pulse * 0.12F;
+                rightArm.pitch = -0.82F + pulse * 0.12F;
+                leftArm.roll -= 0.48F;
+                rightArm.roll += 0.48F;
+                leftShard.yaw -= 0.28F;
+                rightShard.yaw += 0.28F;
+            }
+            case "SPELL_VOID_MARK" -> {
+                leftArm.pitch = -0.62F;
+                rightArm.pitch = -1.02F;
+                leftArm.roll -= 0.34F;
+                rightArm.roll += 0.18F;
+                torso.roll += pulse * 0.08F;
+            }
+            case "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON" -> {
+                leftArm.pitch = -0.78F + pulse * 0.14F;
+                rightArm.pitch = -0.78F - pulse * 0.14F;
+                leftArm.roll -= 0.62F;
+                rightArm.roll += 0.62F;
+                leftShard.pitch -= 0.22F;
+                rightShard.pitch -= 0.22F;
+            }
+            case "SPELL_WILL_DISTORTION" -> {
+                leftArm.pitch = -0.55F;
+                rightArm.pitch = -1.25F;
+                torso.roll += pulse * 0.18F;
+                leftHorn.yaw += 0.20F;
+                rightHorn.yaw -= 0.20F;
+            }
+            case "SPELL_ARENA_INFERNO" -> {
+                leftArm.pitch = -1.30F;
+                rightArm.pitch = -1.30F;
+                leftArm.roll -= 0.20F;
+                rightArm.roll += 0.20F;
+                leftShard.pitch += 0.35F;
+                rightShard.pitch += 0.35F;
+            }
+            case "SPELL_IMPACT" -> {
+                torso.pitch += 0.20F + pulse * 0.08F;
+                leftArm.pitch -= 0.28F;
+                rightArm.pitch -= 0.28F;
+                leftHornTip.pitch += pulse * 0.10F;
+                rightHornTip.pitch -= pulse * 0.10F;
+            }
+            case "PHASE_SHIFT" -> {
+                root.roll += pulse * 0.16F;
+                leftCrest.yaw += pulse * 0.12F;
+                rightCrest.yaw -= pulse * 0.12F;
+                backSpine.pitch += pulse * 0.12F;
+            }
+            default -> {
+                // IDLE and unknown future ids use the phase/idle animation.
+            }
+        }
+    }
+
+    /** The last phase is intentionally larger and more threatening. */
+    private void applyFinalSilhouette(float animationProgress) {
+        if (phase != Phase.CATASTROPHE) {
+            return;
+        }
+        float pulse = MathHelper.sin(animationProgress * 0.16F) * 0.04F;
+        root.xScale = 1.18F + pulse;
+        root.yScale = 1.22F + pulse;
+        root.zScale = 1.18F + pulse;
+        leftHorn.xScale = 1.12F;
+        leftHorn.yScale = 1.62F + pulse;
+        leftHorn.zScale = 1.12F;
+        rightHorn.xScale = 1.12F;
+        rightHorn.yScale = 1.62F + pulse;
+        rightHorn.zScale = 1.12F;
+        leftHornTip.yScale = 1.35F;
+        rightHornTip.yScale = 1.35F;
+        leftCrest.xScale = 1.18F;
+        rightCrest.xScale = 1.18F;
+        backSpine.xScale = 1.16F;
+        backSpine.yScale = 1.30F;
+        chestRift.xScale = 1.24F;
+        chestRift.yScale = 1.24F;
     }
 }

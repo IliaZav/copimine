@@ -53,6 +53,9 @@ def test_custom_boss_bar_is_uuid_scoped_and_receives_authoritative_health_state(
     assert "Objects.equals(bossBindingInstance, packet.instanceId())" in client_state
     assert "health()" in hud and "maxHealth()" in hud and "progress()" in hud
     assert "drawTexture(FRAME" in hud
+    assert "SOURCE_WIDTH = 2172" in hud
+    assert "SOURCE_HEIGHT = 724" in hud
+    assert "WIDTH = 384" in hud and "HEIGHT = 128" in hud
     assert "renderBossBar(Lnet/minecraft/client/gui/DrawContext;IILnet/minecraft/entity/boss/BossBar;)V" in mixin
     assert "renderBossBar(Lnet/minecraft/client/gui/DrawContext;IILnet/minecraft/entity/boss/BossBar;I[Lnet/minecraft/util/Identifier;[Lnet/minecraft/util/Identifier;)V" in mixin
     assert 'method = "render(Lnet/minecraft/client/gui/DrawContext;)V"' in mixin

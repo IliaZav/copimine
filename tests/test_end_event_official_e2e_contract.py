@@ -120,8 +120,8 @@ def test_official_driver_sweeps_the_arena_during_tower_defense() -> None:
 
 def test_official_driver_observes_paced_tower_groups_before_waiting_180_seconds() -> None:
     source = DRIVER.read_text(encoding="utf-8")
-    assert "WAVE_TOWER_GROUP_SPAWN.*group=1/4.*spawned=[1-4]" in source
-    assert "WAVE_TOWER_GROUP_SPAWN.*group=2/4" in source
+    assert "WAVE_TOWER_GROUP_SPAWN.*group=1/\\d+.*spawned=\\d+" in source
+    assert "for ($group = 2; $group -le $towerGroupCount; $group++)" in source
 
 
 def test_official_driver_has_a_local_wave_four_failure_and_clean_retry_probe() -> None:

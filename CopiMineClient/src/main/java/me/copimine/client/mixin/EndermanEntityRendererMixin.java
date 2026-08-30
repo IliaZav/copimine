@@ -57,7 +57,8 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         copimine$vanillaModel = model;
         model = copimine$guardianRenderer.modelForPhase(
                 ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()),
-                ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(entity.getUuid().toString()));
+                ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(entity.getUuid().toString()),
+                ClientBridgeProtocol.bossAnimationForEntity(entity.getUuid().toString()));
     }
 
     @Inject(method = "render(Lnet/minecraft/entity/mob/EndermanEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))

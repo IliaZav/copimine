@@ -109,6 +109,32 @@ public final class EndRiftAiPolicy {
         return new TargetChoice(pool.get(safeCursor), safeCursor + 1);
     }
 
+    /**
+     * Keep a bounded, newest-first memory for a mob's recent player targets.
+     * The controller uses this to spread pressure across a five-player party
+     * without making target selection random or retaining disconnected UUIDs
+     * forever.
+     */
+    public static List<UUID> rememberTarget(List<UUID> recent, UUID target, int limit) {
+        int safeLimit = Math.max(0, limit);
+        if (target == null || safeLimit == 0) {
+            return List.of();
+        }
+        LinkedHashSet<UUID> ordered = new LinkedHashSet<>();
+        ordered.add(target);
+        if (recent != null) {
+            for (UUID uuid : recent) {
+                if (uuid != null) {
+                    ordered.add(uuid);
+                }
+                if (ordered.size() >= safeLimit) {
+                    break;
+                }
+            }
+        }
+        return List.copyOf(ordered).subList(0, Math.min(safeLimit, ordered.size()));
+    }
+
     public static BossSpell chooseBossSpell(List<BossSpell> available, BossSpell previous, int cursor) {
         List<BossSpell> unique = new ArrayList<>(new LinkedHashSet<>(available == null ? List.of() : available));
         unique.removeIf(spell -> spell == null);

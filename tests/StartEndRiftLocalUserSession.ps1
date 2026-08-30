@@ -29,7 +29,9 @@ $serverPropertiesBaseline = Join-Path $serverDir 'server.properties.pre-local-re
 $essentialsConfig = Join-Path $serverDir 'plugins\Essentials\config.yml'
 $eventConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
 $whitelistPath = Join-Path $serverDir 'whitelist.json'
+$opsPath = Join-Path $serverDir 'ops.json'
 $authmeDb = Join-Path $serverDir 'plugins\AuthMe\authme.db'
+$eventStatePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
 $adminWebDir = Join-Path $worktreeRoot 'admin-web'
 $websitePort = 8093
 $websitePidFile = Join-Path $localRuntimeRoot 'copimine-local-web.pid'
@@ -73,7 +75,9 @@ Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreS
 Assert-UnderRoot -Path $serverPropertiesBaseline -Root $localRuntimeRoot -Label 'Local server.properties baseline'
 Assert-UnderRoot -Path $essentialsConfig -Root $localRuntimeRoot -Label 'Local Essentials configuration'
 Assert-UnderRoot -Path $whitelistPath -Root $localRuntimeRoot -Label 'Local whitelist'
+Assert-UnderRoot -Path $opsPath -Root $localRuntimeRoot -Label 'Local operators'
 Assert-UnderRoot -Path $authmeDb -Root $localRuntimeRoot -Label 'Local AuthMe database'
+Assert-UnderRoot -Path $eventStatePath -Root $localRuntimeRoot -Label 'Local End Rift state'
 Assert-UnderRoot -Path $websiteEnvFile -Root $localRuntimeRoot -Label 'Local website environment'
 Assert-UnderRoot -Path $websiteDataDir -Root $localRuntimeRoot -Label 'Local website data'
 Assert-UnderRoot -Path $websiteBackupsDir -Root $localRuntimeRoot -Label 'Local website backups'
@@ -362,7 +366,8 @@ function Stop-ExistingLocalPaper {
 
   $processId = [int]$processes[0].ProcessId
   Write-Host "Stopping existing isolated Paper PID=$processId before synchronizing current plugins."
-  try { Invoke-LocalRcon -CommandText 'stop' | Out-Host } catch { Write-Warning $_.Exception.Message }
+  Save-LocalPaperStateBeforeStop
+  Invoke-LocalRcon -CommandText 'stop' | Out-Host
   $portClosed = Wait-TcpPort -HostName '127.0.0.1' -Port $serverPort -Expected $false -TimeoutSeconds 35
   $stillRunning = Get-Process -Id $processId -ErrorAction SilentlyContinue
   if ($stillRunning) {
@@ -375,6 +380,41 @@ function Stop-ExistingLocalPaper {
   if (-not $portClosed -and -not (Wait-TcpPort -HostName '127.0.0.1' -Port $serverPort -Expected $false -TimeoutSeconds 15)) {
     throw "Local Paper port $serverPort is still occupied after stopping PID $processId."
   }
+  Assert-LocalPaperStateAfterStop
+}
+
+function Save-LocalPaperStateBeforeStop {
+  # Paper normally flushes the world during /stop, but the launcher may be
+  # restarted from either a batch file or an agent while players are still
+  # online.  Flush explicitly first, then allow the normal plugin shutdown to
+  # persist event-state.yml, whitelist.json, ops.json and AuthMe's database.
+  try {
+    Invoke-LocalRcon -CommandText 'minecraft:save-all flush' | Out-Host
+  } catch {
+    throw "Refused to stop local Paper because minecraft:save-all flush failed: $($_.Exception.Message)"
+  }
+  Start-Sleep -Milliseconds 750
+  foreach ($path in @($whitelistPath, $opsPath, $authmeDb, $eventStatePath)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+      throw "Refused to stop local Paper because persistent file is missing: $path"
+    }
+  }
+  Write-Host 'Local persistence checkpoint before stop: save-all flush completed; whitelist.json, ops.json, authme.db and event-state.yml are present.'
+}
+
+function Assert-LocalPaperStateAfterStop {
+  foreach ($path in @($whitelistPath, $opsPath, $authmeDb, $eventStatePath)) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+      throw "Local Paper stopped without a persistent file: $path"
+    }
+  }
+  $checkpoint = @(
+    "whitelist=$(Get-FileSha256 -Path $whitelistPath)",
+    "ops=$(Get-FileSha256 -Path $opsPath)",
+    "authme=$(Get-FileSha256 -Path $authmeDb)",
+    "eventState=$(Get-FileSha256 -Path $eventStatePath)"
+  ) -join ' '
+  Write-Host "Local persistence checkpoint after stop: $checkpoint"
 }
 
 function Normalize-LocalServerProperties {
@@ -588,7 +628,7 @@ function Assert-LocalStartupPrerequisites {
       $serverPropertiesBaseline,
       (Join-Path $scriptRoot 'InvokeEndRiftLocalRcon.ps1'),
       (Join-Path $scriptRoot 'StartEndRiftLocal.ps1'),
-      (Join-Path $scriptRoot 'SetupEndRiftLocalScene.ps1')
+      (Join-Path $scriptRoot 'StartEndRiftLocalUserSession.ps1')
     )) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
       throw "Required local startup file is missing: $required"
@@ -939,10 +979,18 @@ function Start-LocalPaper {
   if ($LASTEXITCODE -ne 0) { throw "Local Paper startup failed with exit code $LASTEXITCODE." }
 }
 
-function Setup-LocalScene {
-  $setup = Join-Path $scriptRoot 'SetupEndRiftLocalScene.ps1'
-  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $setup -ServerDir $serverDir -RconPort $rconPort
-  if ($LASTEXITCODE -ne 0) { throw "Local scene setup failed with exit code $LASTEXITCODE." }
+function Ensure-LocalCurrentMap {
+  # The current local world is user-owned test data.  A normal restart must
+  # never run the one-shot scene builder, fill/clear blocks, place command
+  # blocks, or rebind the Gate.  The explicit SetupEndRiftLocalScene.ps1
+  # script remains available only when the operator deliberately requests a
+  # disposable scene rebuild.
+  $status = Invoke-LocalRcon -CommandText 'cmend status'
+  if ([string]::IsNullOrWhiteSpace(($status -join [Environment]::NewLine))) {
+    throw 'Local End Rift status was empty; refusing to claim the current map is ready.'
+  }
+  Write-Host 'Preserving current local map; no End Rift scene rebuild was requested.'
+  Write-Host (($status -join [Environment]::NewLine).Trim())
 }
 
 function Grant-LocalWhitelistOperators {
@@ -1057,7 +1105,7 @@ function Launch-MinecraftClientIfNeeded {
     throw 'Minecraft launcher was requested but no supported launcher was found.'
   }
   Start-Process -FilePath $launcher -WorkingDirectory (Split-Path -Parent $launcher) | Out-Null
-  Write-Host "TLauncher started from $launcher. Select the local 1.21.1 profile and connect to 127.0.0.1:$serverPort."
+Write-Host "TLauncher started from $launcher. Select the local 1.21.1 profile and connect to ${resourcePackUrlHost}:$serverPort."
 }
 
 $currentPluginSources = @(Get-CurrentPluginSources)
@@ -1089,7 +1137,7 @@ Set-LocalServerProperty -Key 'enable-rcon' -Value 'true'
 Set-LocalServerProperty -Key 'rcon.port' -Value ([string]$rconPort)
 Ensure-ResourcePackHttpServer
 Start-LocalPaper
-Setup-LocalScene
+Ensure-LocalCurrentMap
 Start-LocalWebsite
 
 $pluginResponse = Invoke-LocalRcon -CommandText 'plugins'
@@ -1102,8 +1150,8 @@ foreach ($plugin in $expectedPlugins) {
 Write-Host "Verified all expected plugins are loaded ($($expectedPlugins.Count)): $($expectedPlugins -join ', ')"
 
 $status = Invoke-LocalRcon -CommandText 'cmend status'
-if ($status -notmatch 'coreOverlay=true' -or $status -notmatch 'runes=2/2') {
-  throw "Local End Rift scene is not ready. Actual status: $status"
+if ([string]::IsNullOrWhiteSpace(($status -join [Environment]::NewLine))) {
+  throw "Local End Rift status is empty after preserving the current map."
 }
 Write-Host $status
 

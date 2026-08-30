@@ -6,6 +6,7 @@ public final class EndRiftAiPolicyTest {
     public static void main(String[] args) {
         testBossPhaseBoundaries();
         testFairTargetRotationAvoidsRecentTargets();
+        testWaveTargetMemoryIsBoundedAndNewestFirst();
         testBossSpellRotationAvoidsImmediateRepeat();
         testEveryBossSpellHasRussianDisplayName();
         testEveryEliteHasExactlyOneDeterministicSpell();
@@ -41,6 +42,23 @@ public final class EndRiftAiPolicyTest {
                 List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST, EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), first, 0);
         check(first == EndRiftAiPolicy.BossSpell.VOID_BLAST, "spell rotation must be deterministic for the first cast");
         check(second == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE, "boss must not immediately repeat a spell");
+    }
+
+    private static void testWaveTargetMemoryIsBoundedAndNewestFirst() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        UUID third = UUID.randomUUID();
+        UUID fourth = UUID.randomUUID();
+        List<UUID> remembered = EndRiftAiPolicy.rememberTarget(
+                List.of(third, second, first), fourth, 3);
+        check(remembered.size() == 3, "wave target memory must stay within its configured bound");
+        check(remembered.get(0).equals(fourth), "newest wave target must be stored first");
+        check(remembered.get(1).equals(third), "older wave targets must retain their order");
+        check(!remembered.contains(first), "oldest wave target must be evicted at the bound");
+        check(EndRiftAiPolicy.rememberTarget(remembered, fourth, 3).equals(remembered),
+                "reselecting a target must not create duplicate memory entries");
+        check(EndRiftAiPolicy.rememberTarget(remembered, fourth, 0).isEmpty(),
+                "zero target-memory bound must disable memory safely");
     }
 
     private static void testEveryBossSpellHasRussianDisplayName() {

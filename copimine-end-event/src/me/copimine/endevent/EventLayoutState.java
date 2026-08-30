@@ -23,7 +23,7 @@ public record EventLayoutState(
     private static String normalizeGateStatus(String status) {
         String normalized = status == null ? "" : status.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (normalized) {
-            case "UNSET", "PREVIEW", "OPENING", "OPENED", "RESTORED", "RESTORED_ON_BOOT" -> normalized;
+            case "UNSET", "PREVIEW", "OPENING", "OPENED", "CLOSING", "RESTORED", "RESTORED_ON_BOOT" -> normalized;
             default -> "UNSET";
         };
     }

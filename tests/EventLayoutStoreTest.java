@@ -29,6 +29,11 @@ public final class EventLayoutStoreTest {
         check(store.save(opening), "opening layout save must succeed");
         check(store.load().gateStatus().equals("OPENING"), "opening status must round-trip before mutation");
 
+        EventLayoutState closing = new EventLayoutState(first.arenaPos1(), first.arenaPos2(), first.gatePos1(), first.gatePos2(),
+                first.gateSnapshot(), "CLOSING", first.portalRoom());
+        check(store.save(closing), "closing layout save must succeed");
+        check(store.load().gateStatus().equals("CLOSING"), "closing status must round-trip before restoration");
+
         EventLayoutState second = new EventLayoutState(first.arenaPos1(), first.arenaPos2(), first.gatePos1(), first.gatePos2(),
                 Map.of(), "RESTORED", first.portalRoom());
         check(store.save(second), "second layout save must succeed");

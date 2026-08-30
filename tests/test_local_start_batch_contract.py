@@ -64,8 +64,6 @@ def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
         "--skip-server-properties",
         "Assert-LocalStartupPrerequisites",
         "Assert-TrackedProductionPropertiesClean",
-        "runes=2/2",
-        "coreOverlay=true",
         "ops.json",
     ):
         assert marker in text
@@ -127,6 +125,31 @@ def test_local_runner_restarts_verified_paper_when_the_local_server_is_already_o
     assert "Invoke-LocalRcon -CommandText 'stop'" in stop_function
     assert "Wait-TcpPort -HostName '127.0.0.1' -Port $serverPort -Expected $false" in stop_function
     assert "Stop-Process -Id $processId -Force" in stop_function
+
+
+def test_local_session_preserves_the_current_map_on_every_restart() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "function Ensure-LocalCurrentMap" in text
+    assert "Preserving current local map" in text
+    assert "Setup-LocalScene\n" not in text
+    assert "-File $setup" not in text
+    assert "cmend status" in text
+
+
+def test_local_restart_flushes_world_and_keeps_whitelist_ops_authme_and_event_state() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    stop_function = text[text.index("function Stop-ExistingLocalPaper"):text.index("function Normalize-LocalServerProperties")]
+
+    assert "function Save-LocalPaperStateBeforeStop" in text
+    assert "minecraft:save-all flush" in stop_function
+    for marker in ("whitelist.json", "ops.json", "authme.db", "event-state.yml"):
+        assert marker in text
+    assert "save-all flush" in stop_function
+    assert "function Assert-LocalPaperStateAfterStop" in text
+    assert "Assert-LocalPaperStateAfterStop" in stop_function
+    assert "Local persistence checkpoint after stop" in text
+    assert "Get-FileSha256 -Path $authmeDb" in text[text.index("function Assert-LocalPaperStateAfterStop"):text.index("function Normalize-LocalServerProperties")]
 
 
 def test_local_runner_allows_the_cold_paper_start_to_finish() -> None:

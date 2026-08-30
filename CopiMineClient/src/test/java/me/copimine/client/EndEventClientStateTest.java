@@ -43,6 +43,29 @@ class EndEventClientStateTest {
     }
 
     @Test
+    void keepsPhaseAndAnimationSeparateAndLetsAnExplicitIdleCueWin() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "CATASTROPHE|SPELL_VOID_BLAST", "control-id"), 110L));
+        assertEquals("CATASTROPHE", state.bossPhaseForEntity("boss-uuid"));
+        assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"));
+
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "CATASTROPHE|JUDGMENT_CAST", "control-id"),
+                0.5F, 1_250, 2_500, 120L));
+        assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"),
+                "a spell cue must not be replaced by a periodic bar snapshot");
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "CATASTROPHE|IDLE", "control-id"), 130L));
+        assertEquals("IDLE", state.bossAnimationForEntity("boss-uuid"));
+        assertEquals("JUDGMENT_CAST", state.bossCastStateForEntity("boss-uuid"));
+    }
+
+    @Test
     void staleBossBarCannotReplaceANewerGenerationSnapshot() {
         EndEventClientState state = new EndEventClientState();
         state.apply(packet("END_BOSS_BIND", "event-1", 2L,

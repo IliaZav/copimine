@@ -4,6 +4,8 @@ param(
   [string]$FirstBotName = 'EndRiftOfficialA',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'EndRiftOfficialB',
+  [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
+  [string[]]$AdditionalBotNames = @(),
   [int]$BotDurationSeconds = 1200,
   [int]$TimeoutSeconds = 1100,
   [switch]$TowerFailureProbe
@@ -23,6 +25,19 @@ $paperLog = Join-Path $serverDir 'logs\latest.log'
 $statePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
 $evidencePath = Join-Path $runtimeRoot 'official-two-player-live.log'
 $botLogDirectory = Join-Path $runtimeRoot 'official-two-player-bots'
+$PlayerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
+if ($PlayerNames.Count -lt 2 -or $PlayerNames.Count -gt 5) {
+  throw "Official End Rift driver supports two to five local players; received $($PlayerNames.Count)."
+}
+if (@($PlayerNames | Select-Object -Unique).Count -ne $PlayerNames.Count) {
+  throw 'Official End Rift driver requires unique local player names.'
+}
+$runLabel = if ($PlayerNames.Count -eq 5) { 'OFFICIAL_FIVE_PLAYER_START' } else { 'OFFICIAL_TWO_PLAYER_START' }
+$passLabel = if ($PlayerNames.Count -eq 5) { 'OFFICIAL_FIVE_PLAYER_PASS' } else { 'OFFICIAL_TWO_PLAYER_PASS' }
+if ($PlayerNames.Count -eq 5) {
+  $evidencePath = Join-Path $runtimeRoot 'official-five-player-live.log'
+  $botLogDirectory = Join-Path $runtimeRoot 'official-five-player-bots'
+}
 
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 if ((Get-Content -LiteralPath $configPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
@@ -78,19 +93,25 @@ function Get-EventId {
 }
 
 function Get-PadCoordinates {
+  $expectedRuneCount = $PlayerNames.Count
   for ($attempt = 0; $attempt -lt 20; $attempt++) {
     $yaml = Get-Content -LiteralPath $statePath -Raw
     $matches = [Regex]::Matches($yaml,
       '(?m)^-\s*x:\s*(-?\d+)\s*\r?\n\s*y:\s*(-?\d+)\s*\r?\n\s*z:\s*(-?\d+)')
-    if ($matches.Count -ge 2) {
-      return @(
-        @([int]$matches[0].Groups[1].Value, [int]$matches[0].Groups[2].Value, [int]$matches[0].Groups[3].Value),
-        @([int]$matches[1].Groups[1].Value, [int]$matches[1].Groups[2].Value, [int]$matches[1].Groups[3].Value)
-      )
+    if ($matches.Count -ge $expectedRuneCount) {
+      $coordinates = @()
+      for ($index = 0; $index -lt $expectedRuneCount; $index++) {
+        $coordinates += ,@(
+          [int]$matches[$index].Groups[1].Value,
+          [int]$matches[$index].Groups[2].Value,
+          [int]$matches[$index].Groups[3].Value
+        )
+      }
+      return ,$coordinates
     }
     Start-Sleep -Milliseconds 250
   }
-  throw 'The isolated event state did not persist two rune coordinates.'
+  throw "The isolated event state did not persist $expectedRuneCount rune coordinates."
 }
 
 function Format-Coordinate {
@@ -111,14 +132,28 @@ function Teleport-Player {
 
 function Keep-PlayersAtPads {
   param([Parameter(Mandatory = $true)][object[]]$Pads)
-  Teleport-Player -Name $FirstBotName -X ($Pads[0][0] + 0.5D) -Y $Pads[0][1] -Z ($Pads[0][2] + 0.5D)
-  Teleport-Player -Name $SecondBotName -X ($Pads[1][0] + 0.5D) -Y $Pads[1][1] -Z ($Pads[1][2] + 0.5D)
+  if ($Pads.Count -lt $PlayerNames.Count) {
+    throw "Expected one persisted rune per local player; pads=$($Pads.Count) players=$($PlayerNames.Count)."
+  }
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    Teleport-Player -Name $PlayerNames[$index] -X ($Pads[$index][0] + 0.5D) `
+      -Y $Pads[$index][1] -Z ($Pads[$index][2] + 0.5D)
+  }
 }
 
 function Keep-PlayersAtCoreRing {
   param([Parameter(Mandatory = $true)][int[]]$Core)
-  Teleport-Player -Name $FirstBotName -X ($Core[0] + 6.0D) -Y $Core[1] -Z ($Core[2] + 0.5D)
-  Teleport-Player -Name $SecondBotName -X ($Core[0] - 6.0D) -Y $Core[1] -Z ($Core[2] + 0.5D)
+  $positions = @(
+    [pscustomobject]@{ X = $Core[0] + 6.0D; Y = [double]$Core[1]; Z = $Core[2] + 0.5D },
+    [pscustomobject]@{ X = $Core[0] - 6.0D; Y = [double]$Core[1]; Z = $Core[2] + 0.5D },
+    [pscustomobject]@{ X = $Core[0] + 0.5D; Y = [double]$Core[1]; Z = $Core[2] + 6.0D },
+    [pscustomobject]@{ X = $Core[0] + 0.5D; Y = [double]$Core[1]; Z = $Core[2] - 6.0D },
+    [pscustomobject]@{ X = $Core[0] - 5.0D; Y = [double]$Core[1]; Z = $Core[2] + 5.0D }
+  )
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $position = $positions[$index % $positions.Count]
+    Teleport-Player -Name $PlayerNames[$index] -X $position.X -Y $position.Y -Z $position.Z
+  }
 }
 
 $script:CombatSweepIndex = 0
@@ -142,11 +177,11 @@ function Keep-PlayersAtCombatSweep {
     [pscustomobject]@{ X = $Core[0] + 1.5D; Y = [double]$Core[1]; Z = $Core[2] + 10.5D },
     [pscustomobject]@{ X = $Core[0] + 10.5D; Y = [double]$Core[1]; Z = $Core[2] + 1.5D }
   )
-  $first = $sweep[$script:CombatSweepIndex % $sweep.Count]
-  $second = $sweep[($script:CombatSweepIndex + 2) % $sweep.Count]
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $position = $sweep[($script:CombatSweepIndex + ($index * 2)) % $sweep.Count]
+    Teleport-Player -Name $PlayerNames[$index] -X $position.X -Y $position.Y -Z $position.Z
+  }
   $script:CombatSweepIndex++
-  Teleport-Player -Name $FirstBotName -X $first.X -Y $first.Y -Z $first.Z
-  Teleport-Player -Name $SecondBotName -X $second.X -Y $second.Y -Z $second.Z
 }
 
 function Get-CombatMobPositions {
@@ -172,16 +207,26 @@ function Keep-PlayersAtCombatMobs {
     Keep-PlayersAtCombatSweep -Core $Core
     return
   }
-  $first = $mobs[0]
-  $second = if ($mobs.Count -gt 1) { $mobs[1] } else { $first }
-  Teleport-Player -Name $FirstBotName -X ($first.X + 1.8D) -Y $first.Y -Z $first.Z
-  Teleport-Player -Name $SecondBotName -X ($second.X - 1.8D) -Y $second.Y -Z $second.Z
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $mob = $mobs[$index % $mobs.Count]
+    $side = if (($index % 2) -eq 0) { 1.8D } else { -1.8D }
+    Teleport-Player -Name $PlayerNames[$index] -X ($mob.X + $side) -Y $mob.Y -Z $mob.Z
+  }
 }
 
 function Keep-PlayersAtPoint {
   param([Parameter(Mandatory = $true)][pscustomobject]$Point)
-  Teleport-Player -Name $FirstBotName -X $Point.X -Y $Point.Y -Z $Point.Z
-  Teleport-Player -Name $SecondBotName -X ($Point.X + 1.0D) -Y $Point.Y -Z $Point.Z
+  $offsets = @(
+    [pscustomobject]@{ X = 0.0D; Z = 0.0D },
+    [pscustomobject]@{ X = 1.0D; Z = 0.0D },
+    [pscustomobject]@{ X = -1.0D; Z = 0.0D },
+    [pscustomobject]@{ X = 0.0D; Z = 1.0D },
+    [pscustomobject]@{ X = 0.0D; Z = -1.0D }
+  )
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $offset = $offsets[$index % $offsets.Count]
+    Teleport-Player -Name $PlayerNames[$index] -X ($Point.X + $offset.X) -Y $Point.Y -Z ($Point.Z + $offset.Z)
+  }
 }
 
 function Get-BossUuid {
@@ -211,20 +256,29 @@ function Get-BossPosition {
 function Keep-PlayersNearBoss {
   param([Parameter(Mandatory = $true)][string]$Uuid)
   $position = Get-BossPosition $Uuid
-  Teleport-Player -Name $FirstBotName -X ($position[0] + 1.8D) -Y $position[1] -Z $position[2]
-  Teleport-Player -Name $SecondBotName -X ($position[0] - 1.8D) -Y $position[1] -Z $position[2]
+  $offsets = @(
+    [pscustomobject]@{ X = 1.8D; Z = 0.0D },
+    [pscustomobject]@{ X = -1.8D; Z = 0.0D },
+    [pscustomobject]@{ X = 0.0D; Z = 1.8D },
+    [pscustomobject]@{ X = 0.0D; Z = -1.8D },
+    [pscustomobject]@{ X = 1.4D; Z = 1.4D }
+  )
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $offset = $offsets[$index % $offsets.Count]
+    Teleport-Player -Name $PlayerNames[$index] -X ($position[0] + $offset.X) `
+      -Y $position[1] -Z ($position[2] + $offset.Z)
+  }
 }
 
 function Wait-LocalPlayers {
   for ($attempt = 0; $attempt -lt 60; $attempt++) {
     $list = Invoke-LocalRcon -CommandText 'list'
-    if ($list -match [Regex]::Escape($FirstBotName) -and
-        $list -match [Regex]::Escape($SecondBotName)) {
+    if (@($PlayerNames | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) {
       return
     }
     Start-Sleep -Milliseconds 500
   }
-  throw "Official two-player bots did not join: $FirstBotName, $SecondBotName"
+  throw "Official local player bots did not join: $($PlayerNames -join ', ')"
 }
 
 $script:LogOffset = [long](Get-Item -LiteralPath $paperLog).Length
@@ -302,8 +356,18 @@ function Assert-BossStage {
     [Parameter(Mandatory = $true)][string]$BossUuid
   )
   $debug = Invoke-LocalRcon -CommandText 'cmend debug ai'
-  if ($debug -notmatch ('stage=.*' + [Regex]::Escape($Stage))) {
-    throw "Official boss stage $Stage was not exposed by AI diagnostics:`n$debug"
+  $debugPlain = $debug -replace '\u00A7.', ''
+  if ($debugPlain -notmatch ('stage=' + [Regex]::Escape($Stage))) {
+    # A five-player party can cross two health thresholds between the log
+    # poll and this RCON request.  The transition log is the authoritative
+    # event assertion; retain the live AI snapshot as evidence of the newer
+    # stage rather than failing a correct, fast transition.
+    $transitionPattern = 'BOSS_STAGE_TRANSITION.*to=' + [Regex]::Escape($Stage)
+    if ($script:LogEvidence.ToString() -notmatch $transitionPattern) {
+      throw "Official boss stage $Stage was not exposed by AI diagnostics or the transition log:`n$debug"
+    }
+    Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid current=$debug"
+    return
   }
   Write-Evidence "OFFICIAL_BOSS_STAGE stage=$Stage boss=$BossUuid $debug"
 }
@@ -312,9 +376,15 @@ $processes = @()
 $pads = $null
 $core = $null
 $bossUuid = $null
+$runeCount = $PlayerNames.Count
+$setupCommand = if ($runeCount -eq 5) {
+  'cmend core setat 8 68 -39 5'
+} else {
+  "cmend core setat 8 68 -39 $runeCount"
+}
 try {
   New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
-  [IO.File]::WriteAllText($evidencePath, "OFFICIAL_TWO_PLAYER_START $(Get-Date -Format o)", [Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText($evidencePath, "$runLabel $(Get-Date -Format o) players=$($PlayerNames.Count)", [Text.UTF8Encoding]::new($false))
 
   # This is a local event-session reset only.  It restores the saved vanilla
   # block data and event-owned entities; it never wipes the world, players or
@@ -328,7 +398,7 @@ try {
     # world, player data or PostgreSQL reset is involved.
     $null = Invoke-LocalRcon -CommandText ("kill @e[type=$mobType,x=-12,y=65,z=-59,dx=40,dy=6,dz=40]")
   }
-  $null = Invoke-LocalRcon -CommandText 'cmend core setat 8 68 -39 2'
+  $null = Invoke-LocalRcon -CommandText $setupCommand
   Start-Sleep -Milliseconds 500
   $null = Invoke-LocalRcon -CommandText 'cmend resources reset confirm'
   foreach ($resource in @(
@@ -346,10 +416,21 @@ try {
   $coreZ = [double]$core[2]
   $eventId = Get-EventId $status
   $pads = Get-PadCoordinates
+  # RCON returns one string per status line.  Normalize the complete response
+  # before matching.  Use Regex.IsMatch explicitly: PowerShell's -notmatch
+  # can still become an array operation when a provider returns multiple
+  # records, which would make unrelated lines look like a failed assertion.
+  $statusText = ($status -join [Environment]::NewLine) -replace '\u00A7.', ''
+  $hasEmptyPads = [Regex]::IsMatch($statusText, "pads=0/$runeCount")
+  $padStatusLine = (($statusText -split "`r?`n") | Where-Object { $_ -match 'pads=' } | Select-Object -First 1)
+  Write-Evidence "OFFICIAL_SETUP_STATUS_CHECK pads_type=$($pads.GetType().FullName) pads_count=$($pads.Count) rune_count=$runeCount has_empty_pads=$hasEmptyPads status_length=$($statusText.Length) pad_line=<$padStatusLine>"
+  if (($pads.Count -ne $runeCount) -or (-not $hasEmptyPads)) {
+    throw "Local Core did not expose one rune per player: expected=$runeCount pads=$($pads.Count)`n$status"
+  }
   Write-Evidence "OFFICIAL_LOCAL_SETUP_PASS event=$eventId core=$($core -join ',') pads=$($pads.Count)"
 
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  foreach ($name in @($FirstBotName, $SecondBotName)) {
+  foreach ($name in $PlayerNames) {
     $botLog = Join-Path $botLogDirectory ($name + '.log')
     $botErr = Join-Path $botLogDirectory ($name + '.err.log')
     $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
@@ -359,7 +440,7 @@ try {
       -RedirectStandardOutput $botLog -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
   }
   Wait-LocalPlayers
-  foreach ($name in @($FirstBotName, $SecondBotName)) {
+  foreach ($name in $PlayerNames) {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
     $null = Invoke-LocalRcon -CommandText ("clear $name")
     $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 1000")
@@ -385,13 +466,29 @@ try {
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3' -WaitSeconds 30
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=3.*portals=3' -WaitSeconds 20
+  # Portal count is roster-scaled by the event policy: a five-player run has
+  # four portals, while a two-player compatibility run has three.  Read the
+  # authoritative count from Paper instead of hardcoding the two-player case.
+  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=3.*portals=\d+' -WaitSeconds 20
+  $portalMatch = [Regex]::Match($script:LogEvidence.ToString(),
+    'WAVE_OBJECTIVE_STARTED.*wave=3.*portals=(\d+)')
+  if (-not $portalMatch.Success) {
+    throw 'Paper did not expose the authoritative wave 3 portal count.'
+  }
+  $portalCount = [int]$portalMatch.Groups[1].Value
+  if ($portalCount -lt 3 -or $portalCount -gt 6) {
+    throw "Wave 3 portal count is outside the bounded policy: $portalCount"
+  }
   $portalY = $coreY
-  $portals = @(
-    [pscustomobject]@{ X = $coreX + 8.5D; Y = $portalY; Z = $coreZ + 0.5D },
-    [pscustomobject]@{ X = $coreX - 3.5D; Y = $portalY; Z = $coreZ + 7.428D },
-    [pscustomobject]@{ X = $coreX - 3.5D; Y = $portalY; Z = $coreZ - 6.428D }
-  )
+  $portals = @()
+  for ($index = 0; $index -lt $portalCount; $index++) {
+    $angle = (2.0D * [Math]::PI * $index) / $portalCount
+    $portals += [pscustomobject]@{
+      X = $coreX + 0.5D + 8.0D * [Math]::Cos($angle)
+      Y = $portalY
+      Z = $coreZ + 0.5D + 8.0D * [Math]::Sin($angle)
+    }
+  }
   foreach ($portal in $portals) {
     Wait-SecondsWithAction -Seconds 7 -Action { Keep-PlayersAtPoint -Point $portal }
   }
@@ -400,7 +497,20 @@ try {
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4' -WaitSeconds 30
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=4.*TOWER_DEFENSE' -WaitSeconds 20
-  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=1/4.*spawned=[1-4]' -WaitSeconds 20
+  # Wave IV is scaled by the official roster and split into bounded groups.
+  # Read the total from the authoritative first spawn line so a five-player
+  # run validates all six groups rather than inheriting the two-player 1/4
+  # assumption.
+  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=1/\d+.*spawned=\d+' -WaitSeconds 20
+  $towerGroupMatch = [Regex]::Match($script:LogEvidence.ToString(),
+    'WAVE_TOWER_GROUP_SPAWN.*group=1/(\d+).*spawned=\d+')
+  if (-not $towerGroupMatch.Success) {
+    throw 'Paper did not expose the authoritative Wave 4 group count.'
+  }
+  $towerGroupCount = [int]$towerGroupMatch.Groups[1].Value
+  if ($towerGroupCount -lt 1 -or $towerGroupCount -gt 12) {
+    throw "Wave 4 group count is outside the bounded policy: $towerGroupCount"
+  }
   if ($TowerFailureProbe) {
     # This remains an official two-player session: only the bounded local
     # probe asks the plugin to apply a synthetic Core-destroying attack.  The
@@ -420,8 +530,15 @@ try {
       throw "Wave 4 retry did not start as attempt 2:`n$retryStatus"
     }
     Write-Evidence "OFFICIAL_W4_RETRY_PASS event=$eventId wave=4 attempt=2 old_mobs_cleared=true"
+    Wait-LogRegex -Pattern ("WAVE_TOWER_GROUP_SPAWN.*group=2/" + $towerGroupCount + ".*spawned=\d+") `
+      -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  } else {
+    for ($group = 2; $group -le $towerGroupCount; $group++) {
+      Wait-LogRegex -Pattern ("WAVE_TOWER_GROUP_SPAWN.*group=" + $group + "/" + $towerGroupCount + ".*spawned=\d+") `
+        -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    }
   }
-  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=2/4' -WaitSeconds 35 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Write-Evidence "OFFICIAL_W4_GROUPS_PASS event=$eventId count=$towerGroupCount"
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
   if ($TowerFailureProbe) {
@@ -462,7 +579,7 @@ try {
   if ($finalStatus -notmatch 'boss=.*none' -or $finalStatus -notmatch 'event-mobs=.*0') {
     throw "Official victory left event entities behind:`n$finalStatus"
   }
-  Write-Evidence "OFFICIAL_TWO_PLAYER_PASS event=$eventId boss=$bossUuid waves=1,2,3,4,5,final stages=AWAKENING,HUNTER,DISTORTION,ABSORPTION,CATASTROPHE,JUDGMENT victory=true"
+  Write-Evidence "$passLabel event=$eventId boss=$bossUuid players=$($PlayerNames.Count) waves=1,2,3,4,5,final stages=AWAKENING,HUNTER,DISTORTION,ABSORPTION,CATASTROPHE,JUDGMENT victory=true"
   Write-Evidence $finalStatus
 } finally {
   foreach ($process in $processes) {
@@ -480,7 +597,7 @@ try {
   # no world or player-data wipe is used.
   try { Invoke-LocalRcon -CommandText 'cmend core remove confirm' | Out-Null } catch { }
   try {
-    Invoke-LocalRcon -CommandText 'cmend core setat 8 68 -39 2' | Out-Null
+    Invoke-LocalRcon -CommandText $setupCommand | Out-Null
     Invoke-LocalRcon -CommandText 'cmend resources add DIAMOND 100' | Out-Null
     Invoke-LocalRcon -CommandText 'cmend resources add ENDER_EYE 64' | Out-Null
     Invoke-LocalRcon -CommandText 'cmend resources add AMETHYST_SHARD 128' | Out-Null

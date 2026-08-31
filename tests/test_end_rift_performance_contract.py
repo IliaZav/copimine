@@ -22,6 +22,7 @@ def test_bossbar_and_hot_loops_remain_bounded() -> None:
     assert "Bukkit.getWorlds()" not in tick
     assert "tickWaveMobAi();" in tick
     assert "tickMiniBosses();" in tick
+    assert "playBossVisualCue(" not in tick
 
 
 def test_arena_spell_flight_is_sent_only_to_nearby_event_players() -> None:
@@ -43,6 +44,17 @@ def test_boss_projectile_trail_is_sent_only_to_nearby_event_players() -> None:
     trail_end = MAIN.index("private void spawnPatternRing", trail_start)
     trail = MAIN[trail_start:trail_end]
     assert "world.spawnParticle" not in trail
+
+
+def test_boss_visual_cue_renderer_stays_viewer_scoped_and_out_of_one_tick_schedulers() -> None:
+    cue = MAIN[MAIN.index("private void playBossVisualCue"): MAIN.index("private void renderBossVisualCue")]
+    render = MAIN[MAIN.index("private void renderBossVisualCue"): MAIN.index("private void resetBossVisualCue")]
+    assert "for (Player viewer : eventAudience())" in cue
+    assert "viewer.playSound" in cue
+    assert "runTaskTimer(this, () -> {" not in cue
+    assert "viewer.spawnParticle" in render
+    assert "world.spawnParticle" not in render
+    assert "runTaskTimer(this, () -> {" not in render
 
 
 def test_local_performance_probe_is_bounded_and_does_not_mutate_game_state() -> None:

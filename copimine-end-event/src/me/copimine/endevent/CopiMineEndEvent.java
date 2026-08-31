@@ -41,6 +41,7 @@ import me.copimine.endevent.domain.BossStage;
 import me.copimine.endevent.domain.BossStagePolicy;
 import me.copimine.endevent.domain.BossStatsPolicy;
 import me.copimine.endevent.domain.BossTeleportPermitPolicy;
+import me.copimine.endevent.domain.BossVisualCuePolicy;
 import me.copimine.endevent.domain.CombatMovementPolicy;
 import me.copimine.endevent.domain.CombatTacticsPolicy;
 import me.copimine.endevent.domain.CoreDepositMath;
@@ -562,6 +563,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String bossBarLastTitle = "";
     private BarColor bossBarLastColor;
     private BossBar bossBar;
+    private UUID bossVisualCueOwner;
+    private long bossVisualCueGeneration = Long.MIN_VALUE;
+    private String lastBossVisualCueId = "";
+    private long lastBossVisualCueDeadlineTick;
 
     private NamespacedKey keyEventId;
     private NamespacedKey keyGeneration;
@@ -8154,6 +8159,155 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
     }
 
+    private String bossCueId(String cueBaseId, BossVisualCuePolicy.CueStage stage) {
+        if (cueBaseId == null || cueBaseId.isBlank() || stage == null) {
+            return "";
+        }
+        return cueBaseId.trim().toLowerCase(Locale.ROOT) + ":" + stage.name().toLowerCase(Locale.ROOT);
+    }
+
+    private String bossCueBaseId(String cueId) {
+        if (cueId == null || cueId.isBlank()) {
+            return "";
+        }
+        String normalized = cueId.trim().toLowerCase(Locale.ROOT);
+        int split = normalized.lastIndexOf(':');
+        return split < 0 ? normalized : normalized.substring(0, split);
+    }
+
+    private BossVisualCuePolicy.CueStage bossCueStage(String cueId) {
+        if (cueId == null || cueId.isBlank()) {
+            return null;
+        }
+        int split = cueId.lastIndexOf(':');
+        if (split < 0 || split >= cueId.length() - 1) {
+            return null;
+        }
+        try {
+            return BossVisualCuePolicy.CueStage.valueOf(
+                    cueId.substring(split + 1).trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private long currentBossVisualCueTick() {
+        return System.currentTimeMillis() / 50L;
+    }
+
+    private String bossCueAnimationId(String cueId) {
+        String spellId = bossCueBaseId(cueId);
+        BossVisualCuePolicy.CueStage stage = bossCueStage(cueId);
+        if (spellId.isBlank() || stage == null) {
+            return "IDLE";
+        }
+        return switch (spellId) {
+            case "phase_shift" -> switch (bossCastState) {
+                case ABSORPTION_CHANNEL -> "ABSORPTION_CHANNEL";
+                case JUDGMENT_CAST -> "JUDGMENT_CAST";
+                default -> "PHASE_SHIFT";
+            };
+            case "final_awaken" -> "FINAL_AWAKENING";
+            case "defeat_collapse" -> "DEFEAT_COLLAPSE";
+            default -> switch (stage) {
+                case TELEGRAPH -> legacyBossSpellAnimationId(spellId);
+                case RELEASE -> "CAST_RELEASE";
+                case IMPACT -> "CAST_IMPACT";
+            };
+        };
+    }
+
+    private String legacyBossSpellAnimationId(String spellId) {
+        String normalized = spellId == null ? "" : spellId.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "VOID_BLAST" -> "SPELL_VOID_BLAST";
+            case "RIFT_PROJECTILE" -> "SPELL_RIFT_PROJECTILE";
+            case "RIFT_ARROWS" -> "SPELL_RIFT_ARROWS";
+            case "VOID_MARK" -> "SPELL_VOID_MARK";
+            case "SUMMON_SERVANTS" -> "SPELL_SUMMON_SERVANTS";
+            case "WILL_DISTORTION" -> "SPELL_WILL_DISTORTION";
+            case "ARENA_INFERNO" -> "SPELL_ARENA_INFERNO";
+            default -> "SPELL_" + normalized.replace(':', '_');
+        };
+    }
+
+    private Sound bossCueSound(String soundId) {
+        if (soundId == null || soundId.isBlank()) {
+            return Sound.BLOCK_RESPAWN_ANCHOR_CHARGE;
+        }
+        String enumName = soundId.trim().toUpperCase(Locale.ROOT);
+        if (enumName.startsWith("MINECRAFT:")) {
+            enumName = enumName.substring("MINECRAFT:".length());
+        }
+        enumName = enumName.replace('.', '_');
+        try {
+            return Sound.valueOf(enumName);
+        } catch (IllegalArgumentException ignored) {
+            return Sound.BLOCK_RESPAWN_ANCHOR_CHARGE;
+        }
+    }
+
+    private Particle bossCueParticle(String particleId) {
+        if (particleId == null || particleId.isBlank()) {
+            return Particle.END_ROD;
+        }
+        return switch (particleId.trim().toUpperCase(Locale.ROOT)) {
+            case "DRAGON_BREATH" -> Particle.DRAGON_BREATH;
+            case "REVERSE_PORTAL" -> Particle.REVERSE_PORTAL;
+            case "SOUL_FIRE_FLAME" -> Particle.SOUL_FIRE_FLAME;
+            case "END_ROD" -> Particle.END_ROD;
+            case "ELECTRIC_SPARK" -> Particle.ELECTRIC_SPARK;
+            case "SCULK_SOUL" -> Particle.SCULK_SOUL;
+            case "CRIT" -> Particle.CRIT;
+            case "SMOKE" -> Particle.SMOKE;
+            case "WITCH" -> Particle.WITCH;
+            case "PORTAL" -> Particle.PORTAL;
+            case "FLASH" -> Particle.FLASH;
+            case "SOUL" -> Particle.SOUL;
+            case "SCULK_CHARGE" -> Particle.SCULK_CHARGE;
+            case "DUST_CYAN", "DUST_RED", "DUST_PURPLE", "DUST_GREEN", "DUST_WHITE", "DUST_MAGENTA" ->
+                    Particle.DUST;
+            default -> Particle.END_ROD;
+        };
+    }
+
+    private Particle.DustOptions bossCueDust(String particleId) {
+        if (particleId == null || particleId.isBlank()) {
+            return null;
+        }
+        return switch (particleId.trim().toUpperCase(Locale.ROOT)) {
+            case "DUST_CYAN" -> new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.15F);
+            case "DUST_RED" -> new Particle.DustOptions(Color.fromRGB(255, 72, 72), 1.15F);
+            case "DUST_PURPLE" -> new Particle.DustOptions(Color.fromRGB(190, 76, 255), 1.15F);
+            case "DUST_GREEN" -> new Particle.DustOptions(Color.fromRGB(122, 255, 72), 1.10F);
+            case "DUST_WHITE" -> new Particle.DustOptions(Color.WHITE, 1.0F);
+            case "DUST_MAGENTA" -> new Particle.DustOptions(Color.fromRGB(244, 60, 255), 1.10F);
+            default -> null;
+        };
+    }
+
+    private void spawnBossCueParticle(Player viewer, Location point, String particleId, int count,
+                                      double offsetX, double offsetY, double offsetZ, double extra) {
+        if (viewer == null || point == null || point.getWorld() == null
+                || !viewer.isOnline() || !viewer.getWorld().equals(point.getWorld())) {
+            return;
+        }
+        Particle particle = bossCueParticle(particleId);
+        Particle.DustOptions dust = bossCueDust(particleId);
+        recordParticleEmission(Math.max(0, count));
+        if (particle == Particle.DUST) {
+            viewer.spawnParticle(Particle.DUST, point, count,
+                    offsetX, offsetY, offsetZ, 0.0D,
+                    dust == null ? new Particle.DustOptions(Color.WHITE, 1.0F) : dust);
+            return;
+        }
+        viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ, extra);
+        if (dust != null) {
+            viewer.spawnParticle(Particle.DUST, point, Math.max(1, count / 2),
+                    offsetX * 0.75D, offsetY * 0.75D, offsetZ * 0.75D, 0.0D, dust);
+        }
+    }
+
     private void spawnRiftProjectileTrail(Player player, Location point, Vector direction, int tick) {
         if (player == null || point == null || point.getWorld() == null || direction == null
                 || !player.isOnline() || !player.getWorld().equals(point.getWorld())
@@ -11476,6 +11630,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextTargetMillis = 0L;
         nextSpellMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
+        bossVisualCueOwner = null;
+        bossVisualCueGeneration = Long.MIN_VALUE;
+        lastBossVisualCueId = "";
+        lastBossVisualCueDeadlineTick = 0L;
         lastBossTeleportMillis = 0L;
         lastBossFeintMillis = 0L;
         cancelBossCastTask();
@@ -11644,6 +11802,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             announceEventTitle(bossStage.bossBarTitle().toUpperCase(Locale.ROOT),
                     "§f" + Math.round(virtualHealth) + " / " + Math.round(config.bossHealth()) + " HP", true);
             sendBossPhaseVisualUpdate(boss, bossStage);
+            playBossVisualCue(boss,
+                    bossCueId("phase_shift", BossVisualCuePolicy.CueStage.IMPACT),
+                    boss.getLocation(), true);
         }
         boolean bossControllerActive = phase == EventPhase.BOSS_ACTIVE
                 || testCombatAiMode && isTestBoss(boss);
@@ -11730,7 +11891,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         absorptionAttackEmpowered = false;
         bossCastState = BossCastState.ABSORPTION_CHANNEL;
         bossCastDeadlineMillis = System.currentTimeMillis() + ABSORPTION_CHANNEL_TICKS * 50L;
-        sendBossAnimationVisualUpdate(boss, "ABSORPTION_CHANNEL");
+        playBossVisualCue(boss,
+                bossCueId("phase_shift", BossVisualCuePolicy.CueStage.TELEGRAPH),
+                boss.getLocation(), true);
         boss.setInvulnerable(true);
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
         clearVoidMarkZones();
@@ -11791,7 +11954,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         judgmentTriggered = true;
         bossCastState = BossCastState.JUDGMENT_CAST;
         bossCastDeadlineMillis = System.currentTimeMillis() + 15_000L;
-        sendBossAnimationVisualUpdate(boss, "JUDGMENT_CAST");
+        playBossVisualCue(boss,
+                bossCueId("phase_shift", BossVisualCuePolicy.CueStage.RELEASE),
+                boss.getLocation(), true);
         setBossVirtualHealth(boss, BossStagePolicy.judgmentThreshold());
         boss.setInvulnerable(true);
         bossSpellPauseUntilMillis = bossCastDeadlineMillis;
@@ -12368,6 +12533,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (source instanceof Player player) {
             bossKillerUuid = player.getUniqueId();
         }
+        // DEFEAT_COLLAPSE is the forced terminal cue before the official death commit.
+        playBossVisualCue(boss,
+                bossCueId("defeat_collapse", BossVisualCuePolicy.CueStage.IMPACT),
+                boss.getLocation(), true);
         if (phase == EventPhase.BOSS_ACTIVE) {
             if (!transition(EventPhase.BOSS_FINISH, "Judgment completed; boss defeated",
                     eventId + ":boss-defeat")) {
@@ -12422,6 +12591,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossCastDeadlineMillis = 0L;
             return;
         }
+        // FINAL_AWAKENING is the forced entry cue for the drain transition.
+        playBossVisualCue(boss,
+                bossCueId("final_awaken", BossVisualCuePolicy.CueStage.RELEASE),
+                boss.getLocation(), true);
         playEventMusic(musicForPhase());
         if (bossBar != null) {
             bossBar.setTitle("Хранитель Разлома — ПОГЛОЩЕНИЕ ЖИЗНИ");
@@ -12765,7 +12938,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = target.getLocation().clone();
         getLogger().info("BOSS_SPELL_TELEGRAPH boss=" + bossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
-        sendBossAnimationVisualUpdate(boss, "SPELL_" + spell.name());
+        playBossVisualCue(boss,
+                bossCueId(spell.id(), BossVisualCuePolicy.CueStage.TELEGRAPH),
+                mark, forced);
         target.sendActionBar(Component.text("Хранитель готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
@@ -12808,6 +12983,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY_PROCESSING)))) {
             return;
         }
+        playBossVisualCue(boss,
+                bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
+                boss.getEyeLocation(), forced);
         launchSpellFlight(boss, mark,
                 "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
                 callbackGeneration, () -> {
@@ -12820,11 +12998,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                      }
                      getLogger().info("BOSS_SPELL_CAST boss=" + boss.getUniqueId() + " spell=" + spell.id()
                              + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
-                     sendBossAnimationVisualUpdate(boss, "SPELL_IMPACT");
-                     renderSpellImpactVisual(boss,
-                            spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
-                                    ? boss.getLocation() : mark,
-                            spell.id());
+                     Location impactOrigin = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
+                             ? boss.getLocation() : mark;
+                     playBossVisualCue(boss,
+                             bossCueId(spell.id(), BossVisualCuePolicy.CueStage.IMPACT),
+                             impactOrigin, forced);
                     switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, target);
                         case RIFT_PROJECTILE -> riftProjectile(boss, target);
@@ -14424,12 +14602,120 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         BukkitTask reset = Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (taskRegistry.owns(callbackGeneration) && boss.isValid() && !boss.isDead()
-                    && bossUuid != null && bossUuid.equals(boss.getUniqueId())) {
-                sendBossAnimationVisualUpdate(boss, "IDLE");
-            }
+            resetBossVisualCue(boss, callbackGeneration);
         }, delayTicks);
         taskRegistry.register(reset);
+    }
+
+    private void playBossVisualCue(LivingEntity boss, String cueId, Location origin, boolean forced) {
+        if (taskRegistry == null || boss == null || cueId == null || cueId.isBlank()
+                || origin == null || origin.getWorld() == null || boss.getWorld() == null
+                || !origin.getWorld().equals(boss.getWorld())
+                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || !isLiveOwnedEntity(boss.getUniqueId())
+                || !ownedBySession(boss, eventId, generation)
+                || !boss.isValid() || boss.isDead()) {
+            return;
+        }
+        BossVisualCuePolicy.CueStage stage = bossCueStage(cueId);
+        BossVisualCuePolicy.Cue cue = BossVisualCuePolicy.cue(bossCueBaseId(cueId), stage);
+        if (cue == null) {
+            return;
+        }
+        long currentTick = currentBossVisualCueTick();
+        long cooldownTicks = cue.cooldownTicks();
+        if (!forced
+                && generation == bossVisualCueGeneration
+                && boss.getUniqueId().equals(bossVisualCueOwner)
+                && Objects.equals(lastBossVisualCueId, cue.id())
+                && currentTick < lastBossVisualCueDeadlineTick) {
+            return;
+        }
+        bossVisualCueOwner = boss.getUniqueId();
+        bossVisualCueGeneration = generation;
+        lastBossVisualCueId = cue.id();
+        lastBossVisualCueDeadlineTick = currentTick + cooldownTicks;
+        Location cueOrigin = origin.clone();
+        Sound sound = bossCueSound(cue.soundId());
+        float pitch = switch (stage) {
+            case TELEGRAPH -> 0.85F;
+            case RELEASE -> 1.0F;
+            case IMPACT -> 0.7F;
+        };
+        sendBossAnimationVisualUpdate(boss, bossCueAnimationId(cueId));
+        for (Player viewer : eventAudience()) {
+            if (viewer == null || !viewer.isOnline() || !viewer.getWorld().equals(cueOrigin.getWorld())
+                    || !isEventParticleViewer(viewer, cueOrigin)) {
+                continue;
+            }
+            viewer.playSound(cueOrigin, sound, SoundCategory.HOSTILE, 0.85F, pitch);
+            renderBossVisualCue(viewer, boss, cue, cueOrigin, 0);
+        }
+        getLogger().info("BOSS_VISUAL_CUE event=" + eventId
+                + " boss=" + boss.getUniqueId()
+                + " cue=" + cue.id()
+                + " forced=" + forced
+                + " generation=" + generation);
+    }
+
+    private void renderBossVisualCue(Player viewer, LivingEntity boss, BossVisualCuePolicy.Cue cue, Location origin, int elapsedTicks) {
+        if (viewer == null || boss == null || cue == null || origin == null || origin.getWorld() == null
+                || !viewer.isOnline() || !viewer.getWorld().equals(origin.getWorld())) {
+            return;
+        }
+        Location center = origin.clone().add(0.0D, 0.12D, 0.0D);
+        Location chest = boss.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+        Vector forward = center.toVector().subtract(chest.toVector());
+        if (forward.lengthSquared() < 0.0001D) {
+            forward = new Vector(0.0D, 0.0D, 1.0D);
+        }
+        forward.normalize();
+        Vector side = new Vector(-forward.getZ(), 0.0D, forward.getX());
+        if (side.lengthSquared() < 0.0001D) {
+            side = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        side.normalize();
+        Vector up = new Vector(0.0D, 1.0D, 0.0D);
+        int primaryCount = Math.max(6, cue.particleBudget() / 2);
+        int accentCount = Math.max(4, cue.particleBudget() - primaryCount);
+        String primaryParticleId = cue.primaryParticle();
+        String accentParticleId = cue.accentParticle();
+        viewer.spawnParticle(Particle.END_ROD, center, 1,
+                0.0D, 0.0D, 0.0D, 0.0D);
+        spawnBossCueParticle(viewer, center, cue.primaryParticle(), primaryCount,
+                0.32D, 0.18D, 0.32D, 0.01D);
+        spawnBossCueParticle(viewer, center.clone().add(0.0D, 0.35D, 0.0D), cue.accentParticle(), accentCount,
+                0.22D, 0.22D, 0.22D, 0.0D);
+        Particle accentParticle = bossCueParticle(accentParticleId);
+        Particle.DustOptions accentDust = bossCueDust(accentParticleId);
+        switch (bossCueStage(cue.id())) {
+            case TELEGRAPH -> spawnPatternSegment(viewer, chest, center, accentParticle, accentDust);
+            case RELEASE -> {
+                Location releaseTip = chest.clone().add(forward.clone().multiply(0.85D));
+                spawnPatternSegment(viewer, chest, releaseTip, accentParticle, accentDust);
+                spawnBossCueParticle(viewer, releaseTip, primaryParticleId, Math.max(4, primaryCount / 2),
+                        0.15D, 0.15D, 0.15D, 0.01D);
+            }
+            case IMPACT -> {
+                spawnPatternRing(viewer, center, side, up, 0.85D, Math.min(18, primaryCount),
+                        elapsedTicks * 0.12D, Particle.END_ROD);
+                spawnBossCueParticle(viewer, center, accentParticleId, Math.max(6, accentCount / 2),
+                        0.45D, 0.12D, 0.45D, 0.0D);
+            }
+        }
+    }
+
+    private void resetBossVisualCue(LivingEntity boss, long callbackGeneration) {
+        if (taskRegistry == null || boss == null
+                || callbackGeneration != generation
+                || callbackGeneration != bossVisualCueGeneration
+                || !taskRegistry.owns(callbackGeneration)
+                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || !boss.isValid() || boss.isDead()
+                || officialBossDeathCommitted) {
+            return;
+        }
+        sendBossAnimationVisualUpdate(boss, "IDLE");
     }
 
     private void sendControlStart(Player player) {

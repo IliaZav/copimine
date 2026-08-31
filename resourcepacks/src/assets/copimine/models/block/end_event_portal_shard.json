@@ -1,0 +1,62 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "copimine:item/end_event_portal",
+    "rift": "copimine:item/end_event_portal"
+  },
+  "elements": [
+    {
+      "from": [3.00, 2.75, 2.95],
+      "to": [6.25, 3.55, 3.30],
+      "rotation": {"origin": [4.60, 3.15, 3.10], "axis": "z", "angle": -28.0, "rescale": true},
+      "faces": {
+        "down": {"texture": "#rift"},
+        "up": {"texture": "#rift"},
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"},
+        "west": {"texture": "#rift"},
+        "east": {"texture": "#rift"}
+      }
+    },
+    {
+      "from": [9.75, 2.75, 2.95],
+      "to": [13.00, 3.55, 3.30],
+      "rotation": {"origin": [11.40, 3.15, 3.10], "axis": "z", "angle": 28.0, "rescale": true},
+      "faces": {
+        "down": {"texture": "#rift"},
+        "up": {"texture": "#rift"},
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"},
+        "west": {"texture": "#rift"},
+        "east": {"texture": "#rift"}
+      }
+    },
+    {
+      "from": [3.00, 10.45, 2.95],
+      "to": [6.25, 11.25, 3.30],
+      "rotation": {"origin": [4.60, 10.85, 3.10], "axis": "z", "angle": 28.0, "rescale": true},
+      "faces": {
+        "down": {"texture": "#rift"},
+        "up": {"texture": "#rift"},
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"},
+        "west": {"texture": "#rift"},
+        "east": {"texture": "#rift"}
+      }
+    },
+    {
+      "from": [9.75, 10.45, 2.95],
+      "to": [13.00, 11.25, 3.30],
+      "rotation": {"origin": [11.40, 10.85, 3.10], "axis": "z", "angle": -28.0, "rescale": true},
+      "faces": {
+        "down": {"texture": "#rift"},
+        "up": {"texture": "#rift"},
+        "north": {"texture": "#rift"},
+        "south": {"texture": "#rift"},
+        "west": {"texture": "#rift"},
+        "east": {"texture": "#rift"}
+      }
+    }
+  ]
+}

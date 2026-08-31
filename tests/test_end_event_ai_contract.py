@@ -141,10 +141,11 @@ def test_arena_inferno_is_a_five_second_owned_spell() -> None:
 def test_judgment_phase_has_visible_safe_zone_geometry_and_cleanup() -> None:
     judgment = MAIN[MAIN.index("private void applyJudgmentPulse"):MAIN.index("private void finishBossCast")]
     visual = MAIN[MAIN.index("private void spawnJudgmentSafeZoneVisual"):MAIN.index("private void clearJudgmentVisuals")]
-    assert "BlockDisplay" in visual
-    assert "TextDisplay" in visual
-    assert "БЕЗОПАСНАЯ ЗОНА" in visual
-    assert "judgmentVisuals" in visual
+    assert "renderZoneVisual" in visual
+    assert "ZoneVisualPolicy.ZoneState.SAFE" in visual
+    assert "display=floor-particles" in visual
+    assert "TextDisplay" not in visual
+    assert "zone.clone().add(0.0D, 2.0D, 0.0D)" not in visual
     assert "BOSS_JUDGMENT_SAFE_ZONE" in MAIN
     assert "spawnJudgmentSafeZoneVisual(zone, radius, pulse)" in judgment
     assert "clearJudgmentVisuals" in MAIN

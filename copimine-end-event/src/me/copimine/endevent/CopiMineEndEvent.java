@@ -67,6 +67,7 @@ import me.copimine.endevent.domain.WaveRewardPolicy;
 import me.copimine.endevent.domain.WaveScalingPolicy;
 import me.copimine.endevent.domain.WaveVisualPolicy;
 import me.copimine.endevent.domain.WaveCommanderPolicy;
+import me.copimine.endevent.domain.ZoneVisualPolicy;
 import me.copimine.worldcore.api.WorldAccessResult;
 import me.copimine.worldcore.api.WorldAccessService;
 import net.kyori.adventure.text.Component;
@@ -199,6 +200,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
     private static final int MODEL_WAVE_FRONT_OVERLAY = 830006;
     private static final int MODEL_PORTAL_OVERLAY = 830007;
+    private static final int MODEL_PORTAL_INNER_OVERLAY = 830008;
+    private static final int MODEL_PORTAL_SHARD_OVERLAY = 830009;
     private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
     private static final double MIN_BOSS_CORE_DISTANCE_BLOCKS = 3.5D;
     private static final double MIN_WAVE_CORE_DISTANCE_BLOCKS = 2.5D;
@@ -357,6 +360,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<HazardPlanner.Point, String> arenaInfernoOriginalBlocks = new LinkedHashMap<>();
     private final Map<Integer, List<Location>> wavePortals = new LinkedHashMap<>();
     private final Map<Integer, List<UUID>> wavePortalModelVisuals = new LinkedHashMap<>();
+    private final Map<UUID, PortalVisualLayer> wavePortalVisualLayers = new LinkedHashMap<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
     private final Set<HazardPlanner.Point> riftStormHazards = new LinkedHashSet<>();
     private final Set<HazardPlanner.Point> riftStormSafeCells = new LinkedHashSet<>();
@@ -449,6 +453,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask towerRetryTask;
     private BukkitTask towerSpawnTask;
     private BukkitTask waveFrontVisualTask;
+    private BukkitTask portalVisualTask;
     private BukkitTask diagnosticsWatchdogTask;
     private List<WaveMechanicsPolicy.WaveCounts> towerSpawnSchedule = List.of();
     private int towerSpawnGroupIndex;
@@ -467,6 +472,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean waveFrontFinal;
     private int waveFrontElapsedTicks;
     private UUID waveFrontTextureUuid;
+
+    private enum PortalVisualLayer {
+        FRAME,
+        INNER,
+        SHARD
+    }
 
     private String eventId = "";
     private long generation;
@@ -5584,6 +5595,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Keep the ritual pads readable even when the custom model is subtle or
+     * the viewer is using a low-contrast shader. Particles are sent only to
+     * event viewers and are anchored to the solid block top, so this never
+     * creates a second floating pad or mutates the arena.
+     */
+    private void renderRitualZoneVisuals(long now) {
+        if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS
+                && phase != EventPhase.COUNTDOWN)) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null || pads.isEmpty()) {
+            return;
+        }
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            Block floor = world.getBlockAt(pad.x(), pad.y() - 1, pad.z());
+            if (!floor.getType().isSolid() || floor.isLiquid()) {
+                continue;
+            }
+            ZoneVisualPolicy.ZoneState state = runeVisualOccupants.containsKey(padKey(pad))
+                    ? ZoneVisualPolicy.ZoneState.OCCUPIED
+                    : ZoneVisualPolicy.ZoneState.FREE;
+            Location top = runeOverlayLocation(floor);
+            for (Player viewer : eventAudience()) {
+                renderZoneVisual(viewer, top, state, 0.72D, now);
+            }
+        }
+    }
+
     private ItemStack overlayItem(int customModelData, String modelId) {
         ItemStack item = new ItemStack(EVENT_OVERLAY_ITEM);
         ItemMeta meta = item.getItemMeta();
@@ -5817,6 +5858,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sampleRuntimeDiagnostics();
         expireControlEffects();
         updatePadOccupancy();
+        renderRitualZoneVisuals(System.currentTimeMillis());
         updateCombatHelpers();
         tickWaveMobAi();
         tickWaveCommanderAura();
@@ -9679,22 +9721,45 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         for (Location location : portals) {
-            ItemDisplay display = spawnPortalModelVisual(world, location);
-            if (display != null) {
-                portalModelIds.add(display.getUniqueId());
-            }
+            portalModelIds.addAll(spawnPortalModelVisual(world, location));
         }
         wavePortalModelVisuals.put(3, portalModelIds);
-        animatePortalModelVisuals(System.currentTimeMillis());
+        startPortalVisualAnimation(world);
     }
 
-    private ItemDisplay spawnPortalModelVisual(World world, Location portal) {
+    /** Spawn the frame, recessed core and four shard accents as one tracked set. */
+    private List<UUID> spawnPortalModelVisual(World world, Location portal) {
         if (world == null || portal == null) {
+            return List.of();
+        }
+        List<UUID> ids = new ArrayList<>(3);
+        ItemDisplay frame = spawnPortalModelLayer(world, portal, MODEL_PORTAL_OVERLAY,
+                "end_event_portal", PortalVisualLayer.FRAME, 2.15F);
+        ItemDisplay inner = spawnPortalModelLayer(world, portal, MODEL_PORTAL_INNER_OVERLAY,
+                "end_event_portal_inner", PortalVisualLayer.INNER, 2.08F);
+        ItemDisplay shards = spawnPortalModelLayer(world, portal, MODEL_PORTAL_SHARD_OVERLAY,
+                "end_event_portal_shard", PortalVisualLayer.SHARD, 2.12F);
+        for (ItemDisplay display : new ItemDisplay[] {frame, inner, shards}) {
+            if (display != null) {
+                ids.add(display.getUniqueId());
+            }
+        }
+        return ids;
+    }
+
+    private ItemDisplay spawnPortalModelLayer(World world, Location portal, int modelData,
+                                              String modelId, PortalVisualLayer layer,
+                                              float scale) {
+        if (world == null || portal == null || layer == null
+                || portal.getWorld() == null || !world.equals(portal.getWorld())) {
             return null;
         }
-        Location origin = portal.clone().add(0.0D, 0.02D, 0.0D);
+        Location origin = portalDisplayOrigin(portal);
+        if (origin == null) {
+            return null;
+        }
         ItemDisplay display = world.spawn(origin, ItemDisplay.class, entity -> {
-            entity.setItemStack(overlayItem(MODEL_PORTAL_OVERLAY, "end_event_portal"));
+            entity.setItemStack(overlayItem(modelData, modelId));
             entity.setBrightness(new Display.Brightness(15, 15));
             entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             entity.setBillboard(Display.Billboard.FIXED);
@@ -9707,28 +9772,78 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
                     new Vector3f(), new AxisAngle4f(),
-                    new Vector3f(2.15F, 2.15F, 2.15F), new AxisAngle4f()));
+                    new Vector3f(scale, scale, scale), new AxisAngle4f()));
         });
         tag(display, EVENT_KIND_DISPLAY, 3, false);
+        wavePortalVisualLayers.put(display.getUniqueId(), layer);
         waveObjectiveVisuals.add(display.getUniqueId());
         return display;
     }
 
-    /** Gives the 3D portal a restrained pulse; the floor ring supplies the faster motion. */
+    private Location portalDisplayOrigin(Location portal) {
+        World world = portal == null ? null : portal.getWorld();
+        if (world == null) {
+            return null;
+        }
+        // Each display is centered on the portal's block.  The Y coordinate
+        // is the playable floor anchor, not the block above it.
+        return new Location(world, Math.floor(portal.getX()) + 0.5D, portal.getY(),
+                Math.floor(portal.getZ()) + 0.5D, portal.getYaw(), portal.getPitch());
+    }
+
+    private void startPortalVisualAnimation(World world) {
+        cancelPortalVisualAnimation();
+        if (world == null || taskRegistry == null || wavePortalModelVisuals
+                .getOrDefault(3, List.of()).isEmpty()) {
+            return;
+        }
+        long callbackGeneration = generation;
+        portalVisualTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || phase != EventPhase.WAVE_3 || activeWave != 3
+                    || wavePortalModelVisuals.getOrDefault(3, List.of()).isEmpty()) {
+                cancelPortalVisualAnimation();
+                return;
+            }
+            animatePortalModelVisuals(System.currentTimeMillis());
+        }, 0L, 5L);
+        taskRegistry.register(portalVisualTask);
+    }
+
+    private void cancelPortalVisualAnimation() {
+        if (portalVisualTask != null) {
+            portalVisualTask.cancel();
+            portalVisualTask = null;
+        }
+    }
+
+    /** Gives the layered 3D portal a restrained pulse; the floor ring supplies the faster motion. */
     private void animatePortalModelVisuals(long now) {
         List<UUID> modelIds = wavePortalModelVisuals.getOrDefault(3, List.of());
         if (modelIds.isEmpty()) {
             return;
         }
-        float pulse = 2.15F + (float) Math.sin(now * 0.004D) * 0.06F;
         for (UUID modelId : modelIds) {
             Entity entity = ownedEntities.get(modelId);
             if (!(entity instanceof ItemDisplay display) || !display.isValid()) {
                 continue;
             }
+            PortalVisualLayer layer = wavePortalVisualLayers.getOrDefault(modelId,
+                    PortalVisualLayer.FRAME);
+            float baseScale = switch (layer) {
+                case FRAME -> 2.15F;
+                case INNER -> 2.08F;
+                case SHARD -> 2.12F;
+            };
+            float pulse = 1.0F + (float) Math.sin(now * 0.004D + layer.ordinal() * 0.85D) * 0.03F;
+            float rotation = layer == PortalVisualLayer.FRAME
+                    ? 0.0F : (float) Math.sin(now * 0.0014D + layer.ordinal()) * 0.035F;
             display.setTransformation(new Transformation(
                     new Vector3f(), new AxisAngle4f(),
-                    new Vector3f(pulse, pulse, pulse), new AxisAngle4f()));
+                    new Vector3f(baseScale * pulse, baseScale * pulse, baseScale * pulse),
+                    layer == PortalVisualLayer.FRAME
+                            ? new AxisAngle4f()
+                            : new AxisAngle4f(rotation, 0.0F, 1.0F, 0.0F)));
         }
     }
 
@@ -9772,6 +9887,119 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private Particle zoneParticle(String policyParticle) {
+        String token = policyParticle == null ? "" : policyParticle.trim().toUpperCase(Locale.ROOT);
+        int namespaceSeparator = token.lastIndexOf(':');
+        if (namespaceSeparator >= 0 && namespaceSeparator + 1 < token.length()) {
+            token = token.substring(namespaceSeparator + 1);
+        }
+        // Bukkit requires a DustOptions payload for both dust particle
+        // variants. The shared renderer supplies that payload below, so the
+        // transition palette safely uses the plain dust carrier here.
+        if ("DUST_COLOR_TRANSITION".equals(token)) {
+            return Particle.DUST;
+        }
+        try {
+            return Particle.valueOf(token);
+        } catch (IllegalArgumentException invalidParticle) {
+            getLogger().warning("Unknown zone particle policy=" + policyParticle
+                    + "; using END_ROD fallback");
+            return Particle.END_ROD;
+        }
+    }
+
+    private void spawnZoneRing(Player viewer, Location center, double radius, int points,
+                               double phase, Particle particle, Particle.DustOptions dust) {
+        if (viewer == null || center == null || center.getWorld() == null || particle == null
+                || !viewer.isOnline() || !viewer.getWorld().equals(center.getWorld())
+                || viewer.getLocation().distanceSquared(center) > 64.0D * 64.0D) {
+            return;
+        }
+        int safePoints = Math.max(4, Math.min(48, points));
+        recordParticleEmission(safePoints);
+        for (int index = 0; index < safePoints; index++) {
+            double angle = phase + Math.PI * 2.0D * index / safePoints;
+            Location point = center.clone().add(Math.cos(angle) * radius,
+                    0.0D, Math.sin(angle) * radius);
+            if (particle == Particle.DUST) {
+                viewer.spawnParticle(Particle.DUST, point, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D,
+                        dust == null ? new Particle.DustOptions(Color.WHITE, 1.0F) : dust);
+            } else {
+                viewer.spawnParticle(particle, point, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+    }
+
+    private void spawnZonePoint(Player viewer, Particle particle, Location point, int count,
+                                Particle.DustOptions dust) {
+        if (viewer == null || point == null || point.getWorld() == null || particle == null
+                || !viewer.isOnline() || !viewer.getWorld().equals(point.getWorld())
+                || viewer.getLocation().distanceSquared(point) > 64.0D * 64.0D) {
+            return;
+        }
+        int safeCount = Math.max(1, Math.min(12, count));
+        recordParticleEmission(safeCount);
+        if (particle == Particle.DUST) {
+            viewer.spawnParticle(Particle.DUST, point, safeCount,
+                    0.08D, 0.02D, 0.08D, 0.0D,
+                    dust == null ? new Particle.DustOptions(Color.WHITE, 1.0F) : dust);
+        } else {
+            viewer.spawnParticle(particle, point, safeCount,
+                    0.08D, 0.02D, 0.08D, 0.0D);
+        }
+    }
+
+    /**
+     * Draw every transient zone from the same floor-anchored policy. The
+     * renderer intentionally emits only viewer-scoped particles: it cannot
+     * create an entity above the arena, alter a vanilla block, or flood
+     * clients that are outside the event view distance.
+     */
+    private void renderZoneVisual(Player viewer, Location floor, ZoneVisualPolicy.ZoneState state, double radius, long now) {
+        if (viewer == null || floor == null || floor.getWorld() == null
+                || !isEventParticleViewer(viewer, floor)) {
+            return;
+        }
+        ZoneVisualPolicy.Profile profile = ZoneVisualPolicy.profile(state);
+        if (profile == null) {
+            return;
+        }
+        double safeRadius = Math.max(0.45D, Math.min(4.5D, radius));
+        Location anchor = floor.clone();
+        anchor.setY(Math.floor(floor.getY()) + profile.floorY());
+        Particle primary = zoneParticle(profile.primaryParticle());
+        Particle accent = zoneParticle(profile.accentParticle());
+        Particle.DustOptions dust = new Particle.DustOptions(
+                Color.fromRGB(profile.colorRgb()),
+                state == ZoneVisualPolicy.ZoneState.DANGER ? 1.20F : 0.95F);
+        int outerPoints = Math.min(profile.ringPoints(),
+                Math.max(12, Math.min(48, profile.particleBudget())));
+        int innerPoints = Math.max(6, Math.min(24, outerPoints / 2));
+        double phase = now * 0.002D + state.ordinal() * 0.73D;
+        spawnZoneRing(viewer, anchor, safeRadius, outerPoints, phase, primary, dust);
+        spawnZoneRing(viewer, anchor.clone().add(0.0D, 0.025D, 0.0D),
+                safeRadius * 0.68D, innerPoints, -phase * 1.2D, accent, dust);
+        int cornerMarkers = Math.max(2, Math.min(4, profile.particleBudget() / 8));
+        for (int marker = 0; marker < cornerMarkers; marker++) {
+            double angle = phase + Math.PI * 2.0D * marker / cornerMarkers;
+            Location start = anchor.clone().add(Math.cos(angle) * safeRadius * 0.76D,
+                    0.02D, Math.sin(angle) * safeRadius * 0.76D);
+            Location end = start.clone().add(0.0D, 0.22D, 0.0D);
+            spawnPatternSegment(viewer, start, end, accent, dust);
+        }
+        spawnZonePoint(viewer, primary, anchor.clone().add(0.0D, 0.035D, 0.0D),
+                Math.min(8, Math.max(3, profile.particleBudget() / 5)), dust);
+        // Keep the vectors explicit: the ring is a horizontal floor marker,
+        // never a pillar that could be mistaken for a floating rune.
+        if (safeRadius >= 1.0D) {
+            spawnZoneRing(viewer, anchor.clone().add(0.0D, 0.045D, 0.0D),
+                    safeRadius * 0.36D, Math.min(16, innerPoints), phase * 0.7D,
+                    Particle.DUST, dust);
+        }
+    }
+
     /** Renders a portal as a floor ring with a moving vertical rift, not a floating icon. */
     private void renderPortalObjective(Player viewer, Location portal,
                                        PortalCapturePolicy.PortalState state,
@@ -9781,6 +10009,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         boolean complete = state != null && state.completed();
+        boolean occupied = state != null && state.lastOccupiedMillis() >= 0L
+                && now - state.lastOccupiedMillis() <= PortalCapturePolicy.GRACE_MILLIS;
+        ZoneVisualPolicy.ZoneState zoneState = complete
+                ? ZoneVisualPolicy.ZoneState.COMPLETED
+                : occupied ? ZoneVisualPolicy.ZoneState.OCCUPIED
+                : ZoneVisualPolicy.ZoneState.FREE;
+        renderZoneVisual(viewer, portal, zoneState, 2.15D, now);
         Color color = complete ? Color.fromRGB(92, 255, 174) : Color.fromRGB(190, 76, 255);
         Particle rift = complete ? Particle.END_ROD : Particle.REVERSE_PORTAL;
         Particle.DustOptions dust = new Particle.DustOptions(color, complete ? 1.2F : 1.05F);
@@ -10214,7 +10449,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveObjectiveComplete = false;
             return;
         }
-        animatePortalModelVisuals(now);
         List<PortalCapturePolicy.PortalState> updated = new ArrayList<>();
         int completed = 0;
         for (int index = 0; index < portals.size(); index++) {
@@ -10418,6 +10652,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             HazardPlanner.Point point = new HazardPlanner.Point(
                     player.getLocation().getBlockX(), player.getLocation().getBlockZ());
             boolean danger = riftStormHazards.contains(point);
+            Location standingCell = new Location(core.getWorld(), point.x() + 0.5D,
+                    combatFloorY() + 1.0D, point.z() + 0.5D);
+            renderZoneVisual(player, standingCell,
+                    danger ? ZoneVisualPolicy.ZoneState.DANGER : ZoneVisualPolicy.ZoneState.SAFE,
+                    0.58D, now);
             player.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
                     player.getLocation().add(0.0D, 0.15D, 0.0D), danger ? 12 : 5,
                     0.45D, 0.05D, 0.45D, 0.01D);
@@ -10507,6 +10746,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearWaveObjectiveState() {
         cancelWaveFrontAnimation();
+        cancelPortalVisualAnimation();
         cancelTowerSpawnTask();
         if (towerRetryTask != null) {
             towerRetryTask.cancel();
@@ -10515,6 +10755,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         restoreRiftStormBlocks();
         wavePortals.clear();
         wavePortalModelVisuals.clear();
+        wavePortalVisualLayers.clear();
         portalCaptureStates.clear();
         riftStormHazards.clear();
         riftStormSafeCells.clear();
@@ -12011,70 +12252,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /**
-     * Render safe areas as transient display geometry.  No arena block is
-     * replaced: the floor remains player-owned terrain while the client sees
-     * a full-size luminous plate, a label and a particle pillar for each safe
-     * zone.  The tracked UUID set makes every pulse/restart cleanup exact.
-     */
+    /** Render a safe area on the real arena floor without spawning a floating label. */
     private void spawnJudgmentSafeZoneVisual(Location zone, double radius, int pulse) {
         if (zone == null || zone.getWorld() == null) {
             return;
         }
         World world = zone.getWorld();
-        Location plateLocation = zone.clone().add(-radius, 0.02D, -radius);
-        BlockDisplay plate = world.spawn(plateLocation, BlockDisplay.class);
-        plate.setBlock((pulse % 2 == 0 ? Material.LIME_STAINED_GLASS : Material.SEA_LANTERN)
-                .createBlockData());
-        plate.setBrightness(new Display.Brightness(15, 15));
-        plate.setBillboard(Display.Billboard.FIXED);
-        plate.setViewRange(64.0F);
-        plate.setDisplayWidth((float) Math.max(1.0D, radius * 2.0D));
-        plate.setDisplayHeight(0.12F);
-        plate.setPersistent(false);
-        plate.setInvulnerable(true);
-        plate.setShadowRadius(0.0F);
-        plate.setTransformation(new Transformation(
-                new Vector3f(), new AxisAngle4f(),
-                new Vector3f((float) Math.max(1.0D, radius * 2.0D),
-                        JUDGMENT_SAFE_ZONE_BLOCK_HEIGHT * 0.04F,
-                        (float) Math.max(1.0D, radius * 2.0D)),
-                new AxisAngle4f()));
-        tag(plate, EVENT_KIND_DISPLAY, 0, false);
-        judgmentVisuals.add(plate.getUniqueId());
-
-        TextDisplay label = world.spawn(zone.clone().add(0.0D, 2.0D, 0.0D), TextDisplay.class);
-        label.setText("§aБЕЗОПАСНАЯ ЗОНА");
-        label.setBillboard(TextDisplay.Billboard.CENTER);
-        label.setBrightness(new Display.Brightness(15, 15));
-        label.setViewRange(64.0F);
-        label.setLineWidth(180);
-        label.setPersistent(false);
-        label.setInvulnerable(true);
-        label.setShadowed(true);
-        tag(label, EVENT_KIND_DISPLAY, 0, false);
-        judgmentVisuals.add(label.getUniqueId());
-
-        for (int index = 0; index < 32; index++) {
-            double angle = Math.PI * 2.0D * index / 32.0D;
-            Location edge = zone.clone().add(Math.cos(angle) * radius, 0.18D,
-                    Math.sin(angle) * radius);
-            spawnEventParticle(edge, Particle.END_ROD, 1,
-                    0.02D, 0.03D, 0.02D, 0.0D);
-            if (index % 4 == 0) {
-                spawnEventParticle(edge, Particle.REVERSE_PORTAL, 2,
-                        0.02D, 0.10D, 0.02D, 0.01D);
-            }
-        }
-        for (int level = 0; level <= JUDGMENT_SAFE_ZONE_BLOCK_HEIGHT; level++) {
-            spawnEventParticle(zone.clone().add(0.0D, level * 0.65D, 0.0D), Particle.END_ROD,
-                    8, radius * 0.35D, 0.08D, radius * 0.35D, 0.01D);
+        long now = System.currentTimeMillis();
+        for (Player viewer : eventAudience()) {
+            renderZoneVisual(viewer, zone, ZoneVisualPolicy.ZoneState.SAFE, radius, now);
         }
         world.playSound(zone, Sound.BLOCK_BEACON_POWER_SELECT, 0.8F, 1.2F + pulse * 0.08F);
         getLogger().info("BOSS_JUDGMENT_SAFE_ZONE event=" + eventId
                 + " boss=" + (bossUuid == null ? "none" : bossUuid)
                 + " pulse=" + (pulse + 1) + " center=" + locationText(zone)
-                + " radius=" + radius + " display=true");
+                + " radius=" + radius + " display=floor-particles");
     }
 
     private void clearJudgmentVisuals() {

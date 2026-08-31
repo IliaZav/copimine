@@ -4,6 +4,7 @@ export function createAdminLauncherPages(deps) {
     state,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -51,6 +52,7 @@ export function createAdminLauncherPages(deps) {
     const draftId = String(payload.draftRelease?.releaseId || "").trim();
 
     setView(`
+      ${apiNotice("Данные Launcher", [payload, stats])}
       <section id="launcher-overview" class="layout-grid launcher-admin-grid launcher-admin-metrics">
         ${metric("Последняя версия", releaseLabel(current), "Опубликованная версия", current ? "good" : "warn")}
         ${metric("Моды", mods.length, "В списке Launcher", mods.length ? "good" : "warn")}

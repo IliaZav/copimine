@@ -4,6 +4,7 @@ export function createAdminNewsPages(deps) {
     state,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -41,7 +42,7 @@ export function createAdminNewsPages(deps) {
     </div>`).join("");
   }
 
-  function renderNews(records) {
+  function renderNews(records, responses = []) {
     const list = asArray(records);
     const active = selectedRecord(list);
     const selectedSlug = String(active.slug || "");
@@ -51,6 +52,7 @@ export function createAdminNewsPages(deps) {
     const publishedCount = list.length - draftCount;
 
     setView(`
+      ${apiNotice("Новости", responses)}
       <section class="layout-grid launcher-admin-grid launcher-admin-metrics">
         ${metric("Записи", list.length, "Черновики и публикации", list.length ? "good" : "warn")}
         ${metric("Опубликованы", publishedCount, "Видны на странице новостей", publishedCount ? "good" : "neutral")}
@@ -91,7 +93,7 @@ export function createAdminNewsPages(deps) {
   async function loadNews() {
     setLoading("Загружаю обновления лаунчера");
     const payload = await safeApi("/api/admin/launcher/news", { news: [] });
-    renderNews(asArray(payload.news));
+    renderNews(asArray(payload.news), [payload]);
   }
 
   function adminNewsEdit(slug) {

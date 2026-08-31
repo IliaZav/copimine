@@ -1017,6 +1017,16 @@ async function safeApi(url, fallback = {}) {
   catch (err) { return { ...fallback, error: err.message }; }
 }
 
+function apiNotice(label, responses = []) {
+  const errors = [...new Set(
+    responses
+      .map((response) => cleanText(response?.error || ""))
+      .filter(Boolean),
+  )];
+  if (!errors.length) return "";
+  return `<div class="notice bad api-degraded" role="alert"><strong>${esc(label)} не обновились</strong><p>${esc(errors.join("; "))}. Показаны доступные данные; повтори обновление позже.</p></div>`;
+}
+
 function setLoading(title = "Загрузка данных") {
   const view = $("view");
   if (!view) return;
@@ -1285,9 +1295,9 @@ function dashboardCharts(status, perf, electionOverview, economy, perfReady, eve
     </section>`;
 }
 
-function panel(title, subtitle, body, actions = "") {
+function panel(title, subtitle, body, actions = "", id = "") {
   return `
-    <section class="panel">
+    <section class="panel"${id ? ` id="${esc(id)}"` : ""}>
       <div class="panel-header">
         <div>
           <h2 class="panel-title">${esc(title)}</h2>
@@ -2248,6 +2258,11 @@ function clearAdminSearchHighlight() {
 function findAdminSearchFocusNode() {
   const root = $("view");
   if (!root) return null;
+  const targetId = cleanText(state.adminSearchTarget || "");
+  if (targetId) {
+    const targeted = document.getElementById(targetId);
+    if (targeted instanceof HTMLElement) return targeted;
+  }
   const needle = cleanText(state.adminSearchNeedle || "").toLowerCase();
   if (!needle) return null;
   const candidates = Array.from(root.querySelectorAll(".panel, .metric-card, .notice, .table-shell, .inventory-panel, .inventory-card"));
@@ -4744,7 +4759,7 @@ async function loadArtifacts() {
         { key: "rarity", label: "Редкость" },
         { key: "price_ar", label: "AR" },
         { key: "enabled", label: "Вкл", render: v => v ? pill("да", "good") : pill("нет", "warn") }
-      ], { pageSize: 12 }))}
+      ], { pageSize: 12 }), "", "artifacts-shop")}
       ${panel("Лавки", "Активные точки автокассы в мире", table("artifact-shops", asArray(shops.shops), [
         { key: "shop_id", label: "Лавка" },
         { key: "world_name", label: "Мир" },
@@ -5496,7 +5511,7 @@ async function loadSettings() {
         ["Живая связь с сервером", config.rconConfigured],
         ["Публичный адрес", config.adminPublicBaseUrl],
         ["Сессии входа", config.features?.cookieAuth ? "включены" : "проверить"]
-      ]))}
+      ]), "", "settings-site")}
       ${panel("Функции", "Какие возможности сейчас включены в панели", table("features", Object.entries(config.features || {}).map(([name, value]) => ({ name, value })), [
         { key: "name", label: "Функция" },
         { key: "value", label: "Статус", render: v => v ? pill("работает", "good") : pill("нет", "warn") }
@@ -5950,6 +5965,7 @@ function getAdminCommercePages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -5984,6 +6000,7 @@ function getAdminCmsPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6009,6 +6026,7 @@ function getAdminLauncherPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6032,6 +6050,7 @@ function getAdminNewsPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6054,6 +6073,7 @@ function getAdminEventsPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6096,6 +6116,7 @@ function getPluginRegistryPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,

@@ -4,6 +4,7 @@ export function createAdminCmsPages(deps) {
     state,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -89,6 +90,7 @@ export function createAdminCmsPages(deps) {
     const disabledItems = items.filter((row) => row.enabled === false);
 
     setView(`
+      ${apiNotice("CMS", [payload])}
       <section class="layout-grid grid-4 cms-summary-row">
         ${metric("Записи", items.length, "Контент сайта", items.length ? "good" : "warn")}
         ${metric("Активные", enabledItems.length, "Видны посетителям", enabledItems.length ? "good" : "neutral")}
@@ -145,7 +147,7 @@ export function createAdminCmsPages(deps) {
             <button class="btn btn-secondary" data-click="adminCmsNew()">Новая запись</button>
             ${selectedKey ? `<button class="btn btn-danger" data-click="adminCmsDisable('${esc(selectedKey)}')">Скрыть</button>` : ""}
           </div>
-        `)}
+         `, "", "cms-content")}
 
         ${panel("Предпросмотр", "Так запись будет читаться в публичном API.", `
           <article class="cms-preview-card ${formEntry.enabled === false ? "is-disabled" : ""}">

@@ -4,6 +4,7 @@ export function createAdminEventsPages(deps) {
     state,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -30,7 +31,7 @@ export function createAdminEventsPages(deps) {
     </div>`).join("");
   }
 
-  function renderEvents(events) {
+  function renderEvents(events, responses = []) {
     const list = asArray(events);
     const active = selectedEvent(list);
     const selectedSlug = String(active.slug || "");
@@ -44,6 +45,7 @@ export function createAdminEventsPages(deps) {
     const rewards = asArray(active.rewards);
 
     setView(`
+      ${apiNotice("Ивенты", responses)}
       <section class="layout-grid grid-4 event-admin-metrics">
         ${metric("События", list.length, "Страницы в календаре", list.length ? "good" : "warn")}
         ${metric("Сейчас", currentCount, "Активные события", currentCount === 1 ? "good" : "warn")}
@@ -82,7 +84,7 @@ export function createAdminEventsPages(deps) {
           <label class="toggle-row"><input id="eventEnabled" type="checkbox"${active.enabled === false ? "" : " checked"} /><span>Показывать страницу</span></label>
         </div>
         <div class="action-strip wrap"><button class="btn btn-primary" data-click="adminEventSave()">Сохранить событие</button><button class="btn btn-secondary" data-click="adminEventNew()">Новое событие</button></div>
-      `)}
+      `, "", "events-editor")}
 
       ${panel("Содержание выбранной страницы", "Проверка перед публикацией: эти цифры помогают заметить пустой или случайно обрезанный сценарий.", `
         <div class="event-admin-content-check"><span>Ресурсы <strong>${requirements.length}</strong></span><span>Волны <strong>${waves.length}</strong></span><span>Фазы босса <strong>${phases.length}</strong></span><span>Награды <strong>${rewards.length}</strong></span><span>Обновлено <strong>${esc(dt(active.updatedAt))}</strong></span></div>
@@ -93,7 +95,7 @@ export function createAdminEventsPages(deps) {
   async function loadEvents() {
     setLoading("Загружаю ивенты");
     const payload = await safeApi("/api/admin/events", { events: [] });
-    renderEvents(asArray(payload.events));
+    renderEvents(asArray(payload.events), [payload]);
   }
 
   function adminEventSelect(slug) {

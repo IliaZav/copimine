@@ -396,6 +396,7 @@ function syncShopCartScope(auth = {}) {
 }
 
 export function createHomepageRenderer() {
+  const fallbackAvatar = "/assets/brand/copimine-logo.png";
   const budgetCounter = document.getElementById("presidentBudgetCounter");
   const budgetDetail = document.getElementById("presidentBudgetDetail");
   const budgetOwner = document.getElementById("presidentBudgetOwner");
@@ -870,7 +871,6 @@ export function createHomepageRenderer() {
     if (!presidentName || !presidentMeta) return;
     const name = String(president.current_president_name || president.ownerName || "").trim();
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
-    const fallbackAvatar = "/assets/brand/copimine-logo.png";
     if (presidentAvatar) {
       presidentAvatar.onerror = () => { presidentAvatar.src = fallbackAvatar; };
       presidentAvatar.src = /^[0-9a-f-]{32,36}$/i.test(uuid)

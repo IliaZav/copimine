@@ -3,6 +3,7 @@ export function createAdminCommercePages(deps) {
     $,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -295,6 +296,7 @@ export function createAdminCommercePages(deps) {
     };
 
     setView(`
+      ${apiNotice("Экономика", [overview, ledger, donation, donationCatalog, treasury, audit])}
       <section class="layout-grid grid-4">
         ${metric("AR на руках", formatAr(arSummary.totalBalance ?? overview.totalKnownInPlayerData ?? 0), "Общий баланс игроков", "good")}
         ${metric("Счетов AR", arSummary.holders ?? arPlayers.length, "Игроки с найденным балансом", "neutral")}
@@ -314,10 +316,10 @@ export function createAdminCommercePages(deps) {
             ["Счет казны", treasury.account?.account_id || treasury.account?.accountId || "—"],
             ["Владелец казны", treasury.ownerName || "—"],
             ["Баланс казны", formatAr(treasury.account?.balance || 0)],
-            ["PIN казны", treasury.pin?.set ? "Задан; хранится только как хэш" : "не задан"],
             ["Каталог donation", `${donationItems.length} предметов · версия ${donationCatalog.catalogVersion || 0}`],
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}
+          <p id="economy-treasury-pin" class="panel-hint">PIN казны: ${treasury.pin?.set ? "задан; хранится только как хэш" : "не задан"}.</p>
           <div class="spacer-12"></div>
           <div class="form-grid compact-grid">
             <label class="field-stack"><span>Новый баланс казны, AR</span><input id="treasuryBalanceValue" type="number" min="0" max="1000000000" step="1" value="${esc(String(Number(treasury.account?.balance || 0)))}" /></label>
@@ -326,7 +328,7 @@ export function createAdminCommercePages(deps) {
           </div>
           <p class="panel-hint">Удаление записи убирает её из журнала и публичной истории, но не меняет баланс. Для изменения денег используй поле выше.</p>
           ${treasuryLedgerMarkup(treasury.ledger)}
-        `)}
+        `, "", "economy-treasury")}
         ${panel("Баланс игрока", "Выберите игрока, посмотрите его текущие AR и donation, затем задайте точное значение и сохраните.", `
           <div class="field-stack">
             <label for="adminBalancePlayer">Игрок</label>
@@ -690,7 +692,7 @@ export function createAdminCommercePages(deps) {
           account_scope: "TREASURY",
         }),
       });
-      toast(`PIN казны обновлён: ${result.pin}`);
+      toast("PIN казны обновлён");
       if ($("treasuryNewPin")) $("treasuryNewPin").value = "";
       await loadEconomy();
     } catch (err) {

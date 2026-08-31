@@ -69,6 +69,16 @@ function text(value, fallback = "") {
   return result || fallback;
 }
 
+function safeEventCopy(value, fallback = "", maxLength = 180) {
+  const result = text(value).replace(/\s+/g, " ");
+  if (!result || result.length > maxLength || /[<>]/.test(result)) return fallback;
+  return result;
+}
+
+function safeEventAccent(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "").trim()) ? String(value).trim() : fallback;
+}
+
 function localAsset(value) {
   const path = text(value);
   return path.startsWith(LOCAL_ASSET_PREFIX) && !path.includes("..") && !/[<>"']/.test(path) ? path : "";
@@ -143,8 +153,29 @@ function getEventRecord(payload, slug) {
   const records = Array.isArray(payload?.events) ? payload.events : [];
   const record = records.find((event) => text(event?.slug) === slug) || {};
   const copy = EVENT_VIEW_COPY[slug] || EVENT_VIEW_COPY["future-1"];
-  const videos = Array.isArray(record.videos) ? record.videos : [];
-  return { ...copy, slug, videos };
+  // The two future cards are deliberate empty slots. Old CMS rows may still
+  // contain retired names, summaries or videos; never let those leak into the
+  // public calendar until an editorial slot is explicitly opened here.
+  const editorialRecord = copy.status === "upcoming" ? {} : record;
+  const videos = copy.status === "upcoming" ? [] : (Array.isArray(record.videos) ? record.videos : []);
+  const sceneImage = localAsset(editorialRecord.sceneImage) || localAsset(editorialRecord.heroImage) || copy.sceneImage;
+  const dragonImage = localAsset(editorialRecord.dragonImage) || localAsset(editorialRecord.heroImage) || copy.dragonImage;
+  return {
+    ...copy,
+    slug,
+    status: editorialRecord.status === "current" ? "current" : copy.status,
+    eyebrow: safeEventCopy(editorialRecord.eyebrow, copy.eyebrow, 36),
+    title: safeEventCopy(editorialRecord.title, copy.title, 72),
+    summary: safeEventCopy(editorialRecord.summary, copy.summary, 180),
+    body: safeEventCopy(editorialRecord.body, copy.body, 240),
+    accent: safeEventAccent(editorialRecord.accent, copy.accent),
+    sceneImage,
+    dragonImage,
+    portraitImage: localAsset(editorialRecord.portraitImage) || copy.portraitImage,
+    creditsHtml: safeEventCopy(editorialRecord.creditsHtml, copy.creditsHtml, 240),
+    credits: Array.isArray(editorialRecord.credits) ? editorialRecord.credits : copy.credits,
+    videos,
+  };
 }
 
 function eventStatus(event) {

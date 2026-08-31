@@ -122,13 +122,23 @@ function syncCartAuthNav() {
   register?.classList.toggle("hidden", authenticated);
   cabinet?.classList.toggle("hidden", !authenticated);
   logout?.classList.toggle("hidden", !authenticated);
-  if (cabinet instanceof HTMLAnchorElement) {
-    cabinet.href = appRouteHref(defaultAppRouteForRole(role));
+  if (cabinet) {
+    const routeTarget = authenticated ? appRouteHref(defaultAppRouteForRole(role)) : "";
+    cabinet.dataset.routeTarget = routeTarget;
+    if (cabinet instanceof HTMLAnchorElement && routeTarget) cabinet.href = routeTarget;
     cabinet.textContent = role === "player" ? "Личный кабинет" : "Панель управления";
   }
 }
 
 function bindCartAuthNav() {
+  const cabinet = document.getElementById("publicCabinetBtn");
+  if (cabinet && cabinet.dataset.bound !== "true") {
+    cabinet.dataset.bound = "true";
+    cabinet.addEventListener("click", () => {
+      const routeTarget = cabinet.dataset.routeTarget || "";
+      if (routeTarget) window.location.href = routeTarget;
+    });
+  }
   const logout = document.getElementById("publicLogoutBtn");
   if (!(logout instanceof HTMLButtonElement) || logout.dataset.bound === "true") return;
   logout.dataset.bound = "true";

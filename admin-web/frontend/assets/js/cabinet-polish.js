@@ -109,7 +109,6 @@ function bindCabinetNavPolish() {
 
 function bindCabinetHeaderActions() {
   const logout = document.getElementById("publicLogoutBtn");
-  const cabinet = document.getElementById("publicCabinetBtn");
 
   if (logout && logout.dataset.bound !== "true") {
     logout.dataset.bound = "true";
@@ -120,20 +119,6 @@ function bindCabinetHeaderActions() {
       }
     });
   }
-
-  if (cabinet && cabinet.dataset.bound !== "true") {
-    cabinet.dataset.bound = "true";
-    cabinet.addEventListener("click", () => {
-      const href = roleHomeHref();
-      if (href) window.location.href = href;
-    });
-  }
-}
-
-function roleHomeHref() {
-  const hash = String(window.location.hash || "").replace(/^#/, "").trim().toLowerCase();
-  if (!hash) return window.location.pathname;
-  return `${window.location.pathname}#${hash}`;
 }
 
 window.addEventListener("copimine:auth-state", (event) => {

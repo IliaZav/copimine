@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-31-launcher-1.0.11",
+  "slug": "copimine-launcher-1-0-11",
+  "version": "1.0.11",
+  "title": "CopiMine Launcher 1.0.11",
+  "publishedAt": "2026-08-31T20:46:41Z",
+  "summary": [
+    "Запуск показывает реальный ход подготовки игры, а не застывший процент.",
+    "Обновления сверяют управляемые файлы и сохраняют дополнительные моды игрока.",
+    "Сайт и Launcher получили одну тёмную визуальную систему с лёгкими состояниями."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "startup-progress",
+        "title": "Запуск",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "На старте видны отдельные этапы проверки, загрузки и распаковки файлов."
+          },
+          {
+            "kind": "tested",
+            "text": "Большой релизный пакет собирается и проходит staging-проверку целиком."
+          }
+        ]
+      },
+      {
+        "id": "managed-updates",
+        "title": "Обновления",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Серверные адреса feed публикуются вместе с совместимыми алиасами, чтобы старые установки не получали 404."
+          },
+          {
+            "kind": "fixed",
+            "text": "Управляемые моды сверяются по хэшу; дополнительные файлы игрока не входят в список замены."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "site-visual-system",
+        "title": "Сайт",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Единый тёмный стиль с лёгкими фоновыми движениями и отключением анимаций при системной настройке reduced motion."
+          }
+        ]
+      }
+    ],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-31T20:46:41Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-11.html"
+}

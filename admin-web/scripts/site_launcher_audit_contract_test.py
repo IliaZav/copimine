@@ -95,6 +95,10 @@ def check_launcher_release() -> None:
     for field in ("version", "filename", "downloadUrl", "sha256"):
         if not metadata.get(field):
             fail(f"launcher metadata field is empty: {field}")
+    release_notes_url = str(metadata.get("releaseNotesUrl", ""))
+    release_notes_path = release_notes_url.split("?", 1)[0].lstrip("/")
+    if not release_notes_path.startswith("news/") or not (published_root / release_notes_path).is_file():
+        fail(f"launcher release notes page is missing: {release_notes_url}")
 
     for filename_field, url_field, hash_field, size_field in (
         ("filename", "downloadUrl", "sha256", "sizeBytes"),
@@ -179,9 +183,44 @@ def check_launcher_release() -> None:
             fail("tracked instance manifest signature is stale compared with the published release")
 
 
+def check_launcher_visual_system() -> None:
+    style = read(FRONTEND / "assets" / "style.css")
+    if "site-launcher-theme.css" not in style:
+        fail("public site is missing the Launcher visual layer")
+
+    theme_bootstrap = read(FRONTEND / "assets" / "js" / "theme" / "theme-bootstrap.js")
+    if 'return publicRoute ? "dark" : "light";' not in theme_bootstrap:
+        fail("clean public visits do not use the Launcher dark theme")
+
+    cinematic = read(FRONTEND / "assets" / "css" / "site-launcher-theme.css")
+    for token in ("launcherSiteScan", "launcherSiteSignal", "launcherSiteRise", "prefers-reduced-motion"):
+        if token not in cinematic:
+            fail(f"Launcher visual layer is missing motion/accessibility contract: {token}")
+
+    public_pages = sorted(FRONTEND.glob("*.html")) + sorted((FRONTEND / "news").glob("*.html"))
+    for page in public_pages:
+        html = read(page)
+        if 'class="public-site' not in html and 'class="auth-screen' not in html:
+            continue
+        if 'href="/assets/style.css' not in html:
+            fail(f"shared site stylesheet is missing in {page.name}")
+        if html.count('class="public-nav') > 1:
+            fail(f"duplicate public header remains in {page.name}")
+        if page.name in {"shops.html", "cart.html"} and html.count('class="shop-cart-button"') > 1:
+            fail(f"duplicate cart button remains in {page.name}")
+
+    launcher = read(FRONTEND / "launcher.html")
+    if "Всё, что нужно для игры" in launcher or "Последняя версия</span>" in launcher:
+        fail("Launcher page still contains retired template copy")
+    for phrase in ("искусственный интеллект", "нейросеть", "ИИ-текст", "погрузитесь в мир"):
+        if phrase.lower() in launcher.lower():
+            fail(f"template/AI copy remains in launcher page: {phrase}")
+
+
 def main() -> int:
     check_navigation()
     check_launcher_release()
+    check_launcher_visual_system()
     print("Site/Launcher audit contracts OK")
     return 0
 

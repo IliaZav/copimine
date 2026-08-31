@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-08-31-launcher-1.0.11",
+      "slug": "copimine-launcher-1-0-11",
+      "version": "1.0.11",
+      "title": "CopiMine Launcher 1.0.11",
+      "publishedAt": "2026-08-31T20:46:41Z",
+      "summary": [
+        "Запуск показывает реальный ход подготовки игры, а не застывший процент.",
+        "Обновления сверяют управляемые файлы и сохраняют дополнительные моды игрока.",
+        "Сайт и Launcher получили одну тёмную визуальную систему с лёгкими состояниями."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-11.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-08-30-launcher-1.0.10",
       "slug": "copimine-launcher-1-0-10",
       "version": "1.0.10",

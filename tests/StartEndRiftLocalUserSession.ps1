@@ -2,7 +2,8 @@
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$AdminNickname = 'SudoKillDash9',
-  [switch]$LaunchClient
+  [switch]$LaunchClient,
+  [switch]$Porthole
 )
 
 $ErrorActionPreference = 'Stop'
@@ -450,11 +451,11 @@ function Normalize-LocalServerProperties {
   }
 }
 
-function Normalize-LocalRadminJoinNetworkProperties {
-  # Radmin adds a real WAN-sized RTT to the local test path.  Keep the event
-  # arena intact while reducing the join burst and preventing a delayed
-  # movement packet from becoming a false floating kick.  These keys are
-  # written only to the isolated runtime server.properties by design.
+function Normalize-LocalPeerTunnelNetworkProperties {
+  # Radmin and Porthole both add a peer/tunnel hop to the local test path.
+  # Keep the event arena intact while reducing the join burst and preventing a
+  # delayed movement packet from becoming a false floating kick.  These keys
+  # are written only to the isolated runtime server.properties by design.
   Set-LocalServerProperty -Key 'view-distance' -Value '6'
   Set-LocalServerProperty -Key 'simulation-distance' -Value '4'
   Set-LocalServerProperty -Key 'entity-broadcast-range-percentage' -Value '75'
@@ -476,10 +477,10 @@ function Normalize-LocalRadminJoinNetworkProperties {
   }
   foreach ($key in $expected.Keys) {
     if ($actual[$key] -ne $expected[$key]) {
-      throw "Local Radmin join property mismatch for ${key}: expected=$($expected[$key]) actual=$($actual[$key])"
+      throw "Local peer-tunnel join property mismatch for ${key}: expected=$($expected[$key]) actual=$($actual[$key])"
     }
   }
-  Write-Host 'Applied the local Radmin join profile: view=6 simulation=4 broadcast=75 compression=256 allow-flight=true.'
+  Write-Host 'Applied the local peer-tunnel join profile: view=6 simulation=4 broadcast=75 compression=256 allow-flight=true.'
 }
 
 function Set-LocalPurpurProperty {
@@ -518,7 +519,7 @@ function Normalize-LocalPurpurProperties {
   if ($configuredKeepalive -ne 'true') {
     throw "Local Purpur alternate keep-alive is not enabled: $configuredKeepalive"
   }
-  Write-Host 'Enabled Purpur alternate keep-alive for the local Radmin test server.'
+  Write-Host 'Enabled Purpur alternate keep-alive for the local peer-tunnel test server.'
 }
 
 function Set-LocalEssentialsProperty {
@@ -1049,7 +1050,7 @@ function Start-LocalPaper {
   $errLog = Join-Path $logsDir 'paper.err.log'
   $starter = Join-Path $scriptRoot 'StartEndRiftLocal.ps1'
   & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $starter `
-    -ServerDir $serverDir -LogPath $outLog -ErrPath $errLog -ReadyTimeoutSeconds 180
+    -ServerDir $serverDir -LogPath $outLog -ErrPath $errLog -ReadyTimeoutSeconds 360
   if ($LASTEXITCODE -ne 0) { throw "Local Paper startup failed with exit code $LASTEXITCODE." }
 }
 
@@ -1185,13 +1186,24 @@ Write-Host "TLauncher started from $launcher. Select the local 1.21.1 profile an
 $currentPluginSources = @(Get-CurrentPluginSources)
 Assert-LocalStartupPrerequisites -PluginSources $currentPluginSources
 $trackedProductionPropertiesSha256 = Assert-TrackedProductionPropertiesClean
-$radminVpnAddress = Get-RadminVpnAddress
-if (-not [string]::IsNullOrWhiteSpace($radminVpnAddress)) {
-  $resourcePackBindAddress = $radminVpnAddress
-  $resourcePackUrlHost = $radminVpnAddress
-  Write-Host "Radmin VPN resource-pack endpoint: http://${resourcePackUrlHost}:$packPort/CopiMineResourcePack.zip"
+$radminVpnAddress = ''
+if ($Porthole) {
+  # Porthole creates the guest-side listener on 127.0.0.1.  Keep both the
+  # Minecraft and resource-pack ports identical on host and guest so the same
+  # server-advertised pack URL works for the host and for the invited friend.
+  $resourcePackBindAddress = '127.0.0.1'
+  $resourcePackUrlHost = '127.0.0.1'
+  Write-Host 'Porthole mode: bind the local game TCP 25566 and resource-pack TCP 8092 ports; friend connects to 127.0.0.1:25566.'
+  Write-Host 'Porthole voice chat: share UDP 24454 -> 24454 if the friend should use Simple Voice Chat.'
 } else {
-  Write-Warning 'Radmin VPN IPv4 address was not found; resource pack will remain available only on 127.0.0.1.'
+  $radminVpnAddress = Get-RadminVpnAddress
+  if (-not [string]::IsNullOrWhiteSpace($radminVpnAddress)) {
+    $resourcePackBindAddress = $radminVpnAddress
+    $resourcePackUrlHost = $radminVpnAddress
+    Write-Host "Radmin VPN resource-pack endpoint: http://${resourcePackUrlHost}:$packPort/CopiMineResourcePack.zip"
+  } else {
+    Write-Warning 'Radmin VPN IPv4 address was not found; resource pack will remain available only on 127.0.0.1.'
+  }
 }
 Ensure-LocalPostgres
 Ensure-LocalWebsiteEnvironment
@@ -1201,7 +1213,7 @@ Stop-ExistingLocalPaper
 Normalize-LocalPurpurProperties
 Ensure-LocalVanillaBedRespawn
 Normalize-LocalServerProperties
-Normalize-LocalRadminJoinNetworkProperties
+Normalize-LocalPeerTunnelNetworkProperties
 Build-And-Sync-ResourcePack
 if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.properties')) -ne $trackedProductionPropertiesSha256) {
   throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'
@@ -1241,4 +1253,4 @@ if ((Get-Content -LiteralPath $opsPath -Raw) -notmatch ('"name"\s*:\s*"' + [Rege
 Write-Host "Local OP persisted for $AdminNickname."
 
 Launch-MinecraftClientIfNeeded
-Write-Host "LOCAL_USER_SESSION_READY server=${resourcePackUrlHost}:$serverPort website=http://127.0.0.1:$websitePort resource-pack=http://${resourcePackUrlHost}:$packPort/CopiMineResourcePack.zip radmin=$radminVpnAddress branch=$branch head=$head"
+Write-Host "LOCAL_USER_SESSION_READY server=${resourcePackUrlHost}:$serverPort website=http://127.0.0.1:$websitePort resource-pack=http://${resourcePackUrlHost}:$packPort/CopiMineResourcePack.zip radmin=$radminVpnAddress porthole=$Porthole branch=$branch head=$head"

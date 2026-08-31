@@ -45,16 +45,40 @@ function Write-Evidence {
   Add-Content -LiteralPath $evidencePath -Value $Text -Encoding UTF8
 }
 
+function Get-LogByteLength {
+  return [int64](Get-Item -LiteralPath $paperLog).Length
+}
+
+function Get-LogTextSince {
+  param([Parameter(Mandatory = $true)][int64]$Offset)
+  $stream = [IO.File]::Open($paperLog, [IO.FileMode]::Open,
+    [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+  try {
+    if ($Offset -gt $stream.Length) { $Offset = 0L }
+    if ($stream.Length -le $Offset) { return '' }
+    $stream.Seek($Offset, [IO.SeekOrigin]::Begin) | Out-Null
+    $reader = [IO.StreamReader]::new($stream, [Text.UTF8Encoding]::new($false), $true)
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+  } finally {
+    $stream.Dispose()
+  }
+}
+
 function Wait-LogRegex {
   param(
     [Parameter(Mandatory = $true)][string]$Pattern,
-    [int]$WaitSeconds = $TimeoutSeconds
+    [int]$WaitSeconds = $TimeoutSeconds,
+    [int64]$AfterOffset = 0
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
-    $raw = Get-Content -LiteralPath $paperLog -Raw
+    $raw = if ($AfterOffset -gt 0) {
+      Get-LogTextSince -Offset $AfterOffset
+    } else {
+      Get-Content -LiteralPath $paperLog -Raw
+    }
     if ($raw -match $Pattern) {
-      Write-Evidence "VISUAL_LOG_PASS pattern=$Pattern"
+      Write-Evidence "VISUAL_LOG_PASS pattern=$Pattern after_offset=$AfterOffset"
       return
     }
     Start-Sleep -Milliseconds 500
@@ -96,6 +120,35 @@ function Assert-ViewerOnline {
   }
 }
 
+function Get-ViewerPosition {
+  $response = Invoke-LocalRcon "data get entity $ViewerName Pos"
+  $match = [Regex]::Match($response, '\[\s*(-?\d+(?:\.\d+)?)d?,\s*(-?\d+(?:\.\d+)?)d?,\s*(-?\d+(?:\.\d+)?)d?\s*\]')
+  if (-not $match.Success) {
+    return $null
+  }
+  return [pscustomobject]@{
+    X = [double]$match.Groups[1].Value
+    Y = [double]$match.Groups[2].Value
+    Z = [double]$match.Groups[3].Value
+  }
+}
+
+function Wait-ViewerInArena {
+  for ($attempt = 0; $attempt -lt 40; $attempt++) {
+    Assert-ViewerOnline
+    $position = Get-ViewerPosition
+    if ($position -and $position.X -ge -12.0 -and $position.X -le 28.0 `
+        -and $position.Y -ge 65.0 -and $position.Y -le 71.0 `
+        -and $position.Z -ge -59.0 -and $position.Z -le -19.0) {
+      Write-Evidence "VISUAL_VIEWER_POSITION_PASS name=$ViewerName x=$($position.X) y=$($position.Y) z=$($position.Z)"
+      return
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  $positionText = Get-ViewerPosition | Out-String
+  throw "Visual viewer did not settle inside the configured arena before the Creative test: $positionText"
+}
+
 Assert-LocalConfiguration
 $processes = @()
 try {
@@ -131,36 +184,59 @@ try {
     }
   }
   Write-Evidence "VISUAL_LOCAL_SETUP_PASS viewer=$ViewerName bots=$($botNames.Count) clients=6 phase=COLLECTING"
+  Wait-ViewerInArena
 
   foreach ($musicPhase in $musicPhases) {
+    $musicOffset = Get-LogByteLength
     $null = Invoke-LocalRcon "cmend test music $musicPhase $ViewerName"
-    Wait-LogRegex -Pattern ('END_EVENT_MUSIC_TEST.*track=') -WaitSeconds 15
+    Wait-LogRegex -Pattern ('END_EVENT_MUSIC_TEST.*track=') -WaitSeconds 15 -AfterOffset $musicOffset
     Write-Evidence "VISUAL_MUSIC_PASS phase=$musicPhase"
   }
   Write-Evidence "VISUAL_MUSIC_MATRIX_PASS phases=$($musicPhases.Count)"
 
+  $creativeStartOffset = Get-LogByteLength
   $null = Invoke-LocalRcon "sudo $ViewerName cmend test run creative"
-  Wait-LogRegex -Pattern 'CREATIVE_TEST_START' -WaitSeconds 20
-  Wait-LogRegex -Pattern 'CREATIVE_TEST_BOSS_ACTIVE' -WaitSeconds 60
+  Wait-LogRegex -Pattern 'CREATIVE_TEST_START' -WaitSeconds 20 -AfterOffset $creativeStartOffset
 
+  foreach ($stage in @(
+    'CREATIVE_TEST_CORE', 'CREATIVE_TEST_RESOURCES[\s\S]*CREATIVE_TEST_RUNES',
+    'CREATIVE_TEST_WAVE_1', 'CREATIVE_TEST_INTERMISSION_1',
+    'CREATIVE_TEST_WAVE_2', 'CREATIVE_TEST_INTERMISSION_2', 'CREATIVE_TEST_WAVE_3'
+  )) {
+    $stageOffset = Get-LogByteLength
+    Wait-LogRegex -Pattern $stage -WaitSeconds $TimeoutSeconds -AfterOffset $stageOffset
+  }
+
+  $bossActiveOffset = Get-LogByteLength
+  Wait-LogRegex -Pattern 'CREATIVE_TEST_BOSS_ACTIVE' -WaitSeconds 60 -AfterOffset $bossActiveOffset
+
+  # The automatic boss spell stages run on the same one-second cadence as the
+  # two injected spell checks below.  Keep one fresh post-boss window so a
+  # stage that fires while an injected spell is being observed is not missed.
+  $bossStageStartOffset = Get-LogByteLength
+  $riftArrowsOffset = Get-LogByteLength
   $null = Invoke-LocalRcon 'cmend boss spell rift_arrows'
-  Wait-LogRegex -Pattern 'BOSS_SPELL_CAST.*rift_arrows' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'BOSS_SPELL_CAST.*rift_arrows' -WaitSeconds 20 -AfterOffset $riftArrowsOffset
   Write-Evidence 'VISUAL_EXTRA_SPELL_PASS spell=rift_arrows'
+
+  $arenaInfernoOffset = Get-LogByteLength
   $null = Invoke-LocalRcon 'cmend boss spell arena_inferno'
-  Wait-LogRegex -Pattern 'BOSS_SPELL_CAST.*arena_inferno' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'BOSS_SPELL_CAST.*arena_inferno' -WaitSeconds 20 -AfterOffset $arenaInfernoOffset
   Write-Evidence 'VISUAL_EXTRA_SPELL_PASS spell=arena_inferno'
 
   foreach ($stage in @(
-    'CREATIVE_TEST_CORE', 'CREATIVE_TEST_RUNES', 'CREATIVE_TEST_WAVE_1',
-    'CREATIVE_TEST_INTERMISSION_1', 'CREATIVE_TEST_WAVE_2',
-    'CREATIVE_TEST_INTERMISSION_2', 'CREATIVE_TEST_WAVE_3',
-    'CREATIVE_TEST_BOSS_SPELL', 'CREATIVE_TEST_HALF', 'CREATIVE_TEST_CONTROL',
+    'CREATIVE_TEST_BOSS_SPELL.*spell=void_blast',
+    'CREATIVE_TEST_BOSS_SPELL.*spell=rift_projectile',
+    'CREATIVE_TEST_BOSS_SPELL.*spell=void_mark',
+    'CREATIVE_TEST_BOSS_SPELL.*spell=summon_servants',
+    'CREATIVE_TEST_HALF', 'CREATIVE_TEST_CONTROL',
     'CREATIVE_TEST_FINAL_DRAIN', 'CREATIVE_TEST_FINAL_WAVE',
     'CREATIVE_TEST_BOSS_FINISH'
   )) {
-    Wait-LogRegex -Pattern $stage -WaitSeconds $TimeoutSeconds
+    Wait-LogRegex -Pattern $stage -WaitSeconds $TimeoutSeconds -AfterOffset $bossStageStartOffset
   }
-  Wait-LogRegex -Pattern 'CREATIVE_TEST_COMPLETE.*success=true' -WaitSeconds 60
+  $completionOffset = Get-LogByteLength
+  Wait-LogRegex -Pattern 'CREATIVE_TEST_COMPLETE.*success=true' -WaitSeconds 60 -AfterOffset $completionOffset
   Write-Evidence "VISUAL_FIVE_PLAYER_PASS viewer=$ViewerName bots=$($botNames.Count) clients=6 music_phases=$($musicPhases.Count) extra_spells=rift_arrows,arena_inferno"
 } finally {
   foreach ($process in $processes) {

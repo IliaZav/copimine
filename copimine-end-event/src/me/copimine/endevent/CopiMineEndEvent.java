@@ -364,6 +364,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<Integer, List<UUID>> wavePortalModelVisuals = new LinkedHashMap<>();
     private final Map<UUID, PortalVisualLayer> wavePortalVisualLayers = new LinkedHashMap<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
+    /** Keeps the disposable Wave 3 visual probe animated without entering an official phase. */
+    private boolean testPortalVisualMode;
+    /** Keeps the disposable Wave 1 wave-front probe alive without combat state. */
+    private boolean testWaveFrontVisualMode;
     private final Set<HazardPlanner.Point> riftStormHazards = new LinkedHashSet<>();
     private final Set<HazardPlanner.Point> riftStormSafeCells = new LinkedHashSet<>();
     private final Map<HazardPlanner.Point, String> riftStormOriginalBlocks = new LinkedHashMap<>();
@@ -8440,6 +8444,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     dust == null ? new Particle.DustOptions(Color.WHITE, 1.0F) : dust);
             return;
         }
+        // SCULK_CHARGE has a Float payload in the 1.21 Bukkit API.  The
+        // generic overload otherwise reaches CraftParticle without data and
+        // aborts the scheduled boss-cue task mid-cast.
+        if (particle == Particle.SCULK_CHARGE) {
+            viewer.spawnParticle(Particle.SCULK_CHARGE, point, count,
+                    offsetX, offsetY, offsetZ, 0.0D,
+                    Float.valueOf((float) extra));
+            return;
+        }
         viewer.spawnParticle(particle, point, count, offsetX, offsetY, offsetZ, extra);
         if (dust != null) {
             viewer.spawnParticle(Particle.DUST, point, Math.max(1, count / 2),
@@ -9344,6 +9357,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnWaveArrivalEffect(world, core, wave, finalWave);
             startWaveObjective(wave, world, core);
             startWaveFrontAnimation(world, core, wave, finalWave);
+        } else if (test && wave == 1) {
+            // Keep the disposable wave probe useful for visual QA as well:
+            // Wave 1's floor sectors are viewer-scoped and do not mutate the
+            // arena, so they can be rendered without changing official state.
+            startWaveObjective(wave, world, core);
+            testWaveFrontVisualMode = true;
+            startWaveFrontAnimation(world, core, wave, finalWave);
+        } else if (test && wave == 3) {
+            // The disposable visual probe must render the same layered 3D
+            // portal as the official objective while leaving phase/roster
+            // untouched.  Keep its animation alive through the dedicated
+            // local-only flag below.
+            startWaveObjective(wave, world, core);
+            testPortalVisualMode = true;
+            startPortalVisualAnimation(world);
         }
         boolean pacedTowerWave = !test && wave == 4;
         if (pacedTowerWave) {
@@ -9431,7 +9459,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " floor_y=" + combatFloorY());
         waveFrontVisualTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
             if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                    || !isCombatPhase() && !testCombatAiMode) {
+                    || !isCombatPhase() && !testCombatAiMode && !testWaveFrontVisualMode) {
                 cancelWaveFrontAnimation();
                 return;
             }
@@ -9903,7 +9931,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long callbackGeneration = generation;
         portalVisualTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
             if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                    || phase != EventPhase.WAVE_3 || activeWave != 3
+                    || (!testPortalVisualMode
+                    && (phase != EventPhase.WAVE_3 || activeWave != 3))
                     || wavePortalModelVisuals.getOrDefault(3, List.of()).isEmpty()) {
                 cancelPortalVisualAnimation();
                 return;
@@ -10850,6 +10879,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearWaveObjectiveState() {
         cancelWaveFrontAnimation();
         cancelPortalVisualAnimation();
+        testPortalVisualMode = false;
+        testWaveFrontVisualMode = false;
         cancelTowerSpawnTask();
         if (towerRetryTask != null) {
             towerRetryTask.cancel();

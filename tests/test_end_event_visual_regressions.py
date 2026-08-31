@@ -240,3 +240,13 @@ def test_particle_segment_uses_required_data_for_colored_dust() -> None:
     assert "? dust : new Particle.DustOptions(Color.WHITE, 1.0F);" in helper
     assert "spawnParticle(Particle.DUST, linePoint, 1" in helper
     assert "player.spawnParticle(particle, linePoint, 1" in helper
+
+
+def test_boss_cue_supplies_float_payload_for_sculk_charge_particle() -> None:
+    source = MAIN.read_text(encoding="utf-8")
+    helper = source[source.index("private void spawnBossCueParticle"):
+                    source.index("private void spawnRiftProjectileTrail")]
+
+    assert "particle == Particle.SCULK_CHARGE" in helper
+    assert "Float.valueOf((float) extra)" in helper
+    assert "spawnParticle(Particle.SCULK_CHARGE, point" in helper

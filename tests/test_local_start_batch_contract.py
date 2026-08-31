@@ -22,12 +22,57 @@ def test_local_start_batch_points_only_to_the_end_rift_worktree() -> None:
     assert "-AdminNickname \"SudoKillDash9\"" in text
     assert "-AdminNickname \"ilia228008\"" not in text
     assert "-LaunchClient" in text
+    assert "COPIMINE_LAUNCH_CLIENT" in text
     assert "Get-CopiMineRadminAddress.ps1" in text
     assert "25566" in text
     assert "8093" in text
     assert "55433" in text
     assert "8092" in text
     assert "minecraft\\server" not in text.lower()
+
+
+def test_local_start_batch_supports_porthole_without_exposing_admin_services() -> None:
+    text = BATCH.read_text(encoding="utf-8")
+
+    for marker in (
+        "Porthole",
+        "COPIMINE_NETWORK_MODE",
+        "-Porthole",
+        "25566",
+        "8092",
+        "24454",
+        "25576",
+        "8093",
+        "55433",
+        "127.0.0.1:25566",
+        "127.0.0.1:8092",
+    ):
+        assert marker in text
+    assert "share" in text.lower()
+    assert "UDP" in text
+    assert "share TCP 25566, TCP 8092 and UDP 24454" in text
+    assert 'if /i "%COPIMINE_NETWORK_MODE%"=="porthole"' in text
+
+
+def test_local_session_has_an_explicit_porthole_loopback_resource_pack_mode() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "[switch]$Porthole" in text
+    assert "if ($Porthole)" in text
+    porthole_block = text[text.index("$radminVpnAddress = ''"):text.index("Ensure-LocalPostgres")]
+    assert "$resourcePackBindAddress = '127.0.0.1'" in porthole_block
+    assert "$resourcePackUrlHost = '127.0.0.1'" in porthole_block
+    assert "Porthole" in porthole_block
+    assert "Porthole voice chat: share UDP 24454 -> 24454" in text
+
+
+def test_local_session_uses_the_same_peer_tunnel_network_profile_for_radmin_and_porthole() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "function Normalize-LocalPeerTunnelNetworkProperties" in text
+    assert "Normalize-LocalPeerTunnelNetworkProperties\n" in text
+    assert "Local peer-tunnel join property mismatch" in text
+    assert "Enabled Purpur alternate keep-alive for the local peer-tunnel test server." in text
 
 
 def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
@@ -155,7 +200,7 @@ def test_local_restart_flushes_world_and_keeps_whitelist_ops_authme_and_event_st
 def test_local_runner_allows_the_cold_paper_start_to_finish() -> None:
     text = RUNNER.read_text(encoding="utf-8")
 
-    assert "-ReadyTimeoutSeconds 180" in text
+    assert "-ReadyTimeoutSeconds 360" in text
 
 
 def test_local_paper_startup_timeout_cleans_up_the_started_process() -> None:
@@ -164,7 +209,15 @@ def test_local_paper_startup_timeout_cleans_up_the_started_process() -> None:
 
     assert "$paper.Kill()" in timeout_block
     assert "$paper.WaitForExit(10000) | Out-Null" in timeout_block
-    assert "[int]$ReadyTimeoutSeconds = 120" in text
+    assert "[int]$ReadyTimeoutSeconds = 360" in text
+
+
+def test_local_runner_allows_a_slow_cold_boot_with_all_plugins() -> None:
+    runner_text = RUNNER.read_text(encoding="utf-8")
+    starter_text = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    assert "-ReadyTimeoutSeconds 360" in runner_text
+    assert "[int]$ReadyTimeoutSeconds = 360" in starter_text
 
 
 def test_local_paper_starter_hashes_without_optional_filehash_autoload() -> None:

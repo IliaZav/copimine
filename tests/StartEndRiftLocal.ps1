@@ -4,9 +4,10 @@ param(
   [string]$LogPath = '',
   [string]$ErrPath = '',
   # A cold local Paper boot with all pinned plugins can legitimately take
-  # longer than 45 seconds.  Keep the fail-closed cleanup, but do not kill a
-  # healthy server just before it reaches the Done marker.
-  [int]$ReadyTimeoutSeconds = 120
+  # several minutes while ImageFrame, TAB and the database-backed plugins
+  # initialize. Keep the fail-closed cleanup, but do not kill a healthy
+  # server just before it reaches the Done marker.
+  [int]$ReadyTimeoutSeconds = 360
 )
 
 $ErrorActionPreference = 'Stop'

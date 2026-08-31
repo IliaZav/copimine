@@ -97,6 +97,17 @@ def test_server_creates_centered_layered_portals_and_one_shared_animation_path()
     assert "perPortal" not in source
 
 
+def test_disposable_wave_three_probe_renders_the_real_portal_objective() -> None:
+    source = SERVER.read_text(encoding="utf-8")
+    spawn_wave = source[source.index("private void spawnWave("):]
+    test_branch = spawn_wave[:spawn_wave.index("boolean pacedTowerWave")]
+    assert "else if (test && wave == 1)" in test_branch
+    assert "startWaveFrontAnimation(world, core, wave, finalWave)" in test_branch
+    assert "else if (test && wave == 3)" in test_branch
+    assert "startWaveObjective(wave, world, core)" in test_branch
+    assert "spawnPortalObjectiveVisuals(world, portals)" in source
+
+
 def test_zone_renderer_is_floor_anchored_and_policy_driven() -> None:
     source = SERVER.read_text(encoding="utf-8")
     assert (

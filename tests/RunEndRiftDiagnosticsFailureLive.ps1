@@ -90,19 +90,56 @@ function Read-JsonLinesSince {
   return $entries
 }
 
-function Assert-CleanOfficialState {
+function Read-StatusField {
+  param(
+    [Parameter(Mandatory = $true)][string]$Text,
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][string]$Pattern
+  )
+  $match = [regex]::Match($Text, $Pattern)
+  if (-not $match.Success) {
+    throw "Diagnostics probe could not read status field '$Name'.`n$Text"
+  }
+  return $match.Groups[1].Value
+}
+
+function Get-OfficialState {
   $status = Invoke-LocalRcon 'cmend status'
   $plain = $status -replace '\u00A7.', ''
-  if ($plain -notmatch 'state=.*READY_FOR_PLAYERS' -or
-      $plain -notmatch 'event-mobs=0' -or
+  return [pscustomobject]@{
+    Plain = $plain
+    State = Read-StatusField $plain 'state' 'state=([A-Z_]+)'
+    Event = Read-StatusField $plain 'event' 'event=([0-9a-f-]+)'
+    Generation = Read-StatusField $plain 'generation' 'generation=(\d+)'
+    Wave = Read-StatusField $plain 'wave' 'wave=(\d+)'
+    Pads = Read-StatusField $plain 'pads' 'pads=([0-9]+/[0-9]+)'
+    Roster = Read-StatusField $plain 'roster' 'roster=(\d+)'
+    EndUnlocked = Read-StatusField $plain 'endUnlocked' 'endUnlocked=(true|false)'
+    Victory = Read-StatusField $plain 'victory' 'victory=([A-Z_]+)'
+  }
+}
+
+function Assert-CleanOfficialState {
+  param([Parameter(Mandatory = $true)]$Expected)
+  $current = Get-OfficialState
+  $plain = $current.Plain
+  if ($plain -notmatch 'event-mobs=0' -or
       $plain -notmatch 'boss=none' -or
-      $plain -notmatch 'pads=0/2') {
+      $plain -notmatch 'pads=0/2' -or
+      $current.State -ne $Expected.State -or
+      $current.Event -ne $Expected.Event -or
+      $current.Generation -ne $Expected.Generation -or
+      $current.Wave -ne $Expected.Wave -or
+      $current.Roster -ne $Expected.Roster -or
+      $current.EndUnlocked -ne $Expected.EndUnlocked -or
+      $current.Victory -ne $Expected.Victory) {
     throw "Diagnostics probe changed or interrupted official state.`n$plain"
   }
   return $plain
 }
 
 Assert-LocalScope
+$baselineState = Get-OfficialState
 $offset = Get-FileOffset
 $response = Invoke-LocalRcon ("cmend test diagnostics fail $Wave")
 if ($response -notmatch 'WAVE_DIAGNOSTICS_FAILURE_INJECTED') {
@@ -145,8 +182,8 @@ foreach ($property in @('eventId', 'generation', 'activeTasks', 'operationMillis
   }
 }
 
-$cleanStatus = Assert-CleanOfficialState
-Write-Output ("LIVE_DIAGNOSTICS_FAILURE_PASS event={0} generation={1} wave={2} activeTasks={3} operationMillis={4} stackTrace=true officialState=READY_FOR_PLAYERS eventMobs=0 boss=none pads=0/2" -f
+$cleanStatus = Assert-CleanOfficialState -Expected $baselineState
+Write-Output ("LIVE_DIAGNOSTICS_FAILURE_PASS event={0} generation={1} wave={2} activeTasks={3} operationMillis={4} stackTrace=true officialState={5} eventMobs=0 boss=none pads=0/2" -f
   $failed.eventId, $failed.generation, $Wave, $failed.activeTasks,
-  $failed.operationMillis)
+  $failed.operationMillis, $baselineState.State)
 Write-Output ($cleanStatus -replace '\r?\n', ' ')

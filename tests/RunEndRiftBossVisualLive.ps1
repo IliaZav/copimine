@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
-  [string]$ViewerName = 'EndRiftVisualViewer',
+  [string]$ViewerName = 'EndRiftViewBot',
   [ValidateRange(60, 900)]
   [int]$VisualBotDurationSeconds = 300,
   [ValidateRange(30, 300)]
@@ -28,6 +28,7 @@ $sourceConfig = Join-Path $root 'copimine-end-event\config.yml'
 $installedConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
 $propertiesPath = Join-Path $serverDir 'server.properties'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
+$opsPath = Join-Path $serverDir 'ops.json'
 $diagnosticsJournal = Join-Path $serverDir 'plugins\CopiMineEndEvent\diagnostics\wave-transitions.jsonl'
 $evidenceDirectory = Join-Path $runtimeRoot 'boss-visual-live'
 $viewerLog = Join-Path $evidenceDirectory ($ViewerName + '.out.log')
@@ -49,7 +50,7 @@ Assert-UnderRoot $serverDir $runtimeRoot 'Server directory'
 Assert-UnderRoot $evidenceDirectory $runtimeRoot 'Evidence directory'
 Assert-UnderRoot $EvidencePath $runtimeRoot 'Evidence file'
 foreach ($path in @($visualDriver, $performanceDriver, $diagnosticsDriver, $rconScript, $botScript,
-    $sourceConfig, $installedConfig, $propertiesPath, $paperLog)) {
+    $sourceConfig, $installedConfig, $propertiesPath, $opsPath, $paperLog)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     throw "Local visual probe input is missing: $path"
   }
@@ -160,6 +161,31 @@ function Wait-Online {
   throw "Local disposable viewer did not join: $Name"
 }
 
+function Wait-AuthMeLogin {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][int64]$AfterOffset
+  )
+  $pattern = '\[AuthMe\].*' + [Regex]::Escape($Name) + '\s+logged in'
+  for ($attempt = 0; $attempt -lt 90; $attempt++) {
+    $fresh = Get-LogTextSince -Offset $AfterOffset
+    if ($fresh -match $pattern) { return }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Local disposable viewer did not finish AuthMe login: $Name"
+}
+
+function Wait-OperatorPersisted {
+  param([Parameter(Mandatory = $true)][string]$Name)
+  $pattern = '"name"\s*:\s*"' + [Regex]::Escape($Name) + '"'
+  for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    $ops = Get-Content -LiteralPath $opsPath -Raw
+    if ($ops -match $pattern) { return }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Local operator grant was not persisted for disposable viewer: $Name"
+}
+
 function Start-ViewerBot {
   New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
   $node = (Get-Command node.exe -ErrorAction Stop).Source
@@ -200,15 +226,19 @@ try {
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
 
+  $viewerJoinOffset = Get-LogByteLength
   $viewerProcess = Start-ViewerBot
   Wait-Online $ViewerName
+  Wait-AuthMeLogin -Name $ViewerName -AfterOffset $viewerJoinOffset
   $null = Invoke-LocalRcon "op $ViewerName"
+  Wait-OperatorPersisted -Name $ViewerName
+  Start-Sleep -Milliseconds 500
   Record-Evidence "LOCAL_VIEWER_ONLINE_PASS name=$ViewerName clients=1"
 
   $visualOutput = Invoke-ChildProbe -Label 'visual-five-player' -ScriptPath $visualDriver `
     -Arguments @('-ViewerName', $ViewerName, '-BotDurationSeconds', ([string]$VisualBotDurationSeconds),
       '-TimeoutSeconds', ([string]$VisualTimeoutSeconds))
-  if ($visualOutput -notmatch 'VISUAL_FIVE_PLAYER_PASS') {
+  if (-not ($visualOutput -match 'VISUAL_FIVE_PLAYER_PASS')) {
     throw 'The disposable visual driver did not report VISUAL_FIVE_PLAYER_PASS.'
   }
   Record-Evidence 'VISUAL_FIVE_PLAYER_PASS_CONFIRMED'
@@ -233,7 +263,17 @@ try {
   Start-Sleep -Seconds 1
   $portalDebug = Invoke-LocalRcon 'cmend debug objectives'
   $portalDelta = Get-LogTextSince $portalStart
-  if ($portalDebug -notmatch 'wave=\s*3' -or $portalDebug -notmatch 'visuals=\s*[1-9]\d*') {
+  $portalVisualMatch = [regex]::Match($portalDebug, 'visuals=\s*(\d+)')
+  $portalVisualCount = if ($portalVisualMatch.Success) {
+    [int]$portalVisualMatch.Groups[1].Value
+  } else {
+    0
+  }
+  # The disposable probe deliberately keeps official activeWave=0.  Its
+  # objective diagnostics therefore identify the live layered portal by the
+  # six-or-more tracked objects (text + FRAME/INNER/SHARD for two portals),
+  # while the log marker below confirms the exact layer set.
+  if ($portalVisualCount -lt 6) {
     throw "Wave 3 did not expose live portal visuals:`n$portalDebug"
   }
   Assert-LogMarker $portalDelta 'PORTAL_VISUAL_LAYER.*tracked=true' 'PORTAL_VISUAL_LAYER_LIVE'
@@ -261,7 +301,7 @@ try {
 
   $diagnosticOutput = Invoke-ChildProbe -Label 'wave-failure-diagnostics' -ScriptPath $diagnosticsDriver `
     -Arguments @('-Wave', '2', '-TimeoutSeconds', '30')
-  if ($diagnosticOutput -notmatch 'LIVE_DIAGNOSTICS_FAILURE_PASS') {
+  if (-not ($diagnosticOutput -match 'LIVE_DIAGNOSTICS_FAILURE_PASS')) {
     throw 'The diagnostics failure probe did not report LIVE_DIAGNOSTICS_FAILURE_PASS.'
   }
   Record-Evidence 'RUNTIME_DIAGNOSTICS_FAILURE_JOURNAL_PASS stackTrace=true cleanup=true'
@@ -283,7 +323,7 @@ try {
   # PERF_FIVE_PASS; normalize that into the acceptance marker used here.
   $performanceOutput = Invoke-ChildProbe -Label 'performance-five-player' -ScriptPath $performanceDriver `
     -Arguments @('-DurationSeconds', ([string]$PerformanceDurationSeconds), '-SampleSeconds', '5')
-  if ($performanceOutput -notmatch 'PERF_FIVE_PASS') {
+  if (-not ($performanceOutput -match 'PERF_FIVE_PASS')) {
     throw 'Five-player performance probe did not report PERF_FIVE_PASS.'
   }
   $performanceLine = ($performanceOutput -split '\r?\n' |

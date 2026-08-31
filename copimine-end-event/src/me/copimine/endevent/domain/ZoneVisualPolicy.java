@@ -24,7 +24,7 @@ public final class ZoneVisualPolicy {
     private static Map<ZoneState, Profile> buildProfiles() {
         LinkedHashMap<ZoneState, Profile> profiles = new LinkedHashMap<>();
         profiles.put(ZoneState.FREE, new Profile("free", "minecraft:end_rod", "minecraft:portal", 0x63D5FF, 0.04D, 72, 22));
-        profiles.put(ZoneState.OCCUPIED, new Profile("occupied", "minecraft:golden_apple", "minecraft:note", 0xF6C45E, 0.05D, 64, 26));
+        profiles.put(ZoneState.OCCUPIED, new Profile("occupied", "minecraft:enchant", "minecraft:note", 0xF6C45E, 0.05D, 64, 26));
         profiles.put(ZoneState.DANGER, new Profile("danger", "minecraft:smoke", "minecraft:flame", 0xE85B3D, 0.07D, 60, 30));
         profiles.put(ZoneState.SAFE, new Profile("safe", "minecraft:happy_villager", "minecraft:dust_color_transition", 0x4ACCA7, 0.08D, 68, 18));
         profiles.put(ZoneState.COMPLETED, new Profile("completed", "minecraft:spore_blossom_air", "minecraft:effect", 0x7BEA67, 0.12D, 56, 16));

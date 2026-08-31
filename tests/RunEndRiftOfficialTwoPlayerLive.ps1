@@ -369,11 +369,22 @@ function Assert-BossStage {
     # poll and this RCON request.  The transition log is the authoritative
     # event assertion; retain the live AI snapshot as evidence of the newer
     # stage rather than failing a correct, fast transition.
+    $logEvidence = $script:LogEvidence.ToString()
     $transitionPattern = 'BOSS_STAGE_TRANSITION.*to=' + [Regex]::Escape($Stage)
-    if ($script:LogEvidence.ToString() -notmatch $transitionPattern) {
+    $absorptionFastTransition = $false
+    if ($Stage -eq 'ABSORPTION') {
+      $absorptionFastTransition = $logEvidence -match 'BOSS_STAGE_TRANSITION.*crossed=.*ABSORPTION' `
+          -and $logEvidence -match 'BOSS_ABSORPTION_BUFF.*damageable=true' `
+          -and ($debugPlain -match 'absorptionCompleted=true')
+    }
+    if ($logEvidence -notmatch $transitionPattern -and -not $absorptionFastTransition) {
       throw "Official boss stage $Stage was not exposed by AI diagnostics or the transition log:`n$debug"
     }
-    Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid current=$debug"
+    if ($absorptionFastTransition) {
+      Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid evidence=threshold-crossed-and-buff current=$debug"
+    } else {
+      Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid current=$debug"
+    }
     return
   }
   Write-Evidence "OFFICIAL_BOSS_STAGE stage=$Stage boss=$BossUuid $debug"

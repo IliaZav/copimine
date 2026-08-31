@@ -87,6 +87,13 @@ def test_official_log_cursor_reads_the_complete_file_tail() -> None:
     assert "$script:LogOffset = $stream.Position" in source
 
 
+def test_official_driver_accepts_a_fast_absorption_threshold_transition() -> None:
+    source = SHARED_DRIVER.read_text(encoding="utf-8")
+    assert "if ($Stage -eq 'ABSORPTION')" in source
+    assert "BOSS_ABSORPTION_BUFF" in source
+    assert "crossed=.*ABSORPTION" in source
+
+
 def test_five_player_positions_cover_runes_core_ring_portals_and_boss() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
     for marker in (

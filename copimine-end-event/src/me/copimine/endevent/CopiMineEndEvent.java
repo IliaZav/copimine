@@ -438,6 +438,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventLayoutStore layoutStore;
     private HazardMutationJournal hazardJournal;
     private EventLayoutState layoutState = EventLayoutState.empty();
+    private EventLayoutState persistedLayoutState = EventLayoutState.empty();
     private DepositJournal depositJournal;
     private EventSnapshot loadedSnapshot;
     private EndEventStateMachine stateMachine;
@@ -635,6 +636,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             layoutStore = new EventLayoutStore(getDataFolder().toPath());
             hazardJournal = new HazardMutationJournal(getDataFolder().toPath());
             layoutState = layoutStore.load();
+            persistedLayoutState = layoutState;
             depositJournal = new DepositJournal(getDataFolder().toPath());
             loadedSnapshot = stateStore.load().snapshot();
             applySnapshot(loadedSnapshot);
@@ -1112,8 +1114,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean saveStateSync() {
         updatedAt = Instant.now().getEpochSecond();
-        return stateStore != null && layoutStore != null
-                && stateStore.save(snapshot()) && layoutStore.save(layoutState);
+        if (stateStore == null || layoutStore == null || !stateStore.save(snapshot())) {
+            return false;
+        }
+        // Layout writes include a fsync and a backup copy.  Most state changes
+        // (resource progress, timers, combat flags) do not change the layout;
+        // avoid blocking the Paper tick on an identical event-layout file.
+        if (Objects.equals(persistedLayoutState, layoutState)) {
+            return true;
+        }
+        if (!layoutStore.save(layoutState)) {
+            return false;
+        }
+        persistedLayoutState = layoutState;
+        return true;
     }
 
     private void saveStateAsync() {
@@ -1583,7 +1597,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isAdmin(CommandSender sender) {
-        return sender != null && sender.hasPermission("copimine.endevent.admin");
+        // LuckPerms/AuthMe may attach a restricted permission view while an
+        // authenticated player is joining.  An actual server operator must
+        // still be able to run the event's admin commands (including the
+        // crosshair-bound Gate/Core setup commands).
+        return sender != null && (sender.isOp() || sender.hasPermission("copimine.endevent.admin"));
     }
 
     private void message(CommandSender sender, String text) {
@@ -3160,6 +3178,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             layoutState = previous;
             getLogger().warning("Gate was restored from durable preview snapshot, but layout status could not be saved.");
         } else {
+            persistedLayoutState = layoutState;
             getLogger().info("Restored bounded gate from durable " + layoutState.gateStatus()
                     + " snapshot during local bootstrap.");
         }
@@ -4651,6 +4670,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || isGateLocation(event.getBlock().getLocation()))) {
             event.setCancelled(true);
             event.getPlayer().sendActionBar(Component.text("Арена Разлома защищена до победы", NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * A left click on the real Core block is the most stable interaction path
+     * across Paper client versions.  Display entities do not consistently
+     * produce EntityDamageByEntityEvent or PlayerAnimationEvent, while the
+     * block interaction packet is always routed through this event.  Cancel
+     * the break before vanilla can mutate the block and reuse the same
+     * operator-only confirmation GUI.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onCoreLeftClick(PlayerInteractEvent event) {
+        if (event.getHand() != EquipmentSlot.HAND
+                || event.getAction() != Action.LEFT_CLICK_BLOCK
+                || !isConfigured()
+                || !sameCore(event.getClickedBlock())) {
+            return;
+        }
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        if (player.isOp() || isAdmin(player)) {
+            openCoreRemovalConfirm(player);
+        } else {
+            player.sendActionBar(Component.text(
+                    "Ядро защищено: снять его может только администратор", NamedTextColor.RED));
         }
     }
 
@@ -6365,7 +6410,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (markedTargetPriority) {
                     target = markedTarget;
                     if (entity instanceof Skeleton) {
-                        getLogger().fine("WAVE_SKELETON_MARKED_TARGET entity=" + entity.getUniqueId()
+                        getLogger().info("WAVE_SKELETON_MARKED_TARGET entity=" + entity.getUniqueId()
                                 + " target=" + target.getUniqueId() + " wave=" + entityWave
                                 + " priority=immediate");
                     }
@@ -8532,6 +8577,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         ? dust : new Particle.DustOptions(Color.WHITE, 1.0F);
                 player.spawnParticle(Particle.DUST, linePoint, 1,
                         0.0D, 0.0D, 0.0D, 0.0D, safeDust);
+            } else if (particle == Particle.SCULK_CHARGE) {
+                // SCULK_CHARGE also has required typed data in the 1.21
+                // Bukkit API.  The generic overload throws when the payload
+                // is omitted, which can abort the repeating boss-cue task.
+                player.spawnParticle(Particle.SCULK_CHARGE, linePoint, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D,
+                        Float.valueOf(0.0F));
             } else {
                 player.spawnParticle(particle, linePoint, 1,
                         0.0D, 0.0D, 0.0D, 0.0D);
@@ -13536,6 +13588,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                              + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
                      Location impactOrigin = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                              ? boss.getLocation() : mark;
+                     renderSpellImpactVisual(boss, impactOrigin, spell.id());
                      String impactCueId = bossCueId(spell.id(), BossVisualCuePolicy.CueStage.IMPACT);
                      playBossVisualCue(boss, impactCueId, impactOrigin, forced);
                      BossVisualCuePolicy.CueToken acceptedImpactCue = new BossVisualCuePolicy.CueToken(

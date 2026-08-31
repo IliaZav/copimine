@@ -125,7 +125,7 @@ function Assert-CleanOfficialState {
   $plain = $current.Plain
   if ($plain -notmatch 'event-mobs=0' -or
       $plain -notmatch 'boss=none' -or
-      $plain -notmatch 'pads=0/2' -or
+      $current.Pads -ne $Expected.Pads -or
       $current.State -ne $Expected.State -or
       $current.Event -ne $Expected.Event -or
       $current.Generation -ne $Expected.Generation -or
@@ -183,7 +183,7 @@ foreach ($property in @('eventId', 'generation', 'activeTasks', 'operationMillis
 }
 
 $cleanStatus = Assert-CleanOfficialState -Expected $baselineState
-Write-Output ("LIVE_DIAGNOSTICS_FAILURE_PASS event={0} generation={1} wave={2} activeTasks={3} operationMillis={4} stackTrace=true officialState={5} eventMobs=0 boss=none pads=0/2" -f
+Write-Output ("LIVE_DIAGNOSTICS_FAILURE_PASS event={0} generation={1} wave={2} activeTasks={3} operationMillis={4} stackTrace=true officialState={5} eventMobs=0 boss=none pads={6}" -f
   $failed.eventId, $failed.generation, $Wave, $failed.activeTasks,
-  $failed.operationMillis, $baselineState.State)
+  $failed.operationMillis, $baselineState.State, $baselineState.Pads)
 Write-Output ($cleanStatus -replace '\r?\n', ' ')

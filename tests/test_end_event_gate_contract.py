@@ -38,6 +38,16 @@ def test_gate_open_keeps_a_durable_snapshot_before_block_mutation() -> None:
     assert "setType(Material.AIR" in MAIN
 
 
+def test_state_saves_do_not_rewrite_an_unchanged_layout_on_every_tick() -> None:
+    for marker in (
+        "private EventLayoutState persistedLayoutState",
+        "layoutState = layoutStore.load()",
+        "persistedLayoutState = layoutState",
+        "Objects.equals(persistedLayoutState, layoutState)",
+    ):
+        assert marker in MAIN
+
+
 def test_gate_layout_uses_explicit_unset_status_and_rejects_cross_world_capture() -> None:
     layout_state = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventLayoutState.java").read_text(encoding="utf-8")
     layout_store = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventLayoutStore.java").read_text(encoding="utf-8")

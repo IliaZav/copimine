@@ -94,6 +94,14 @@ function Assert-Text {
   Write-Host "PASS $Label"
 }
 
+function Assert-LogPattern {
+  param([string]$Label, [string]$Pattern)
+  if (-not (Select-String -LiteralPath $LogPath -Pattern $Pattern -Quiet)) {
+    throw "$Label was not found in the isolated runtime log. Pattern: $Pattern"
+  }
+  Write-Host "PASS $Label"
+}
+
 function Assert-NoConfiguredCore {
   param([string]$Text)
   if ($Text -notmatch 'state=.*(?:UNCONFIGURED|UNLOCKED)' -or $Text -notmatch 'requiredPlayers=.*0') {
@@ -149,13 +157,12 @@ $clientStatus = Invoke-RconCommand 'cmend client status'
 Assert-Text 'client bridge status is available' $clientStatus 'channel='
 
 if (Test-Path -LiteralPath $LogPath) {
-  $log = (Get-Content -LiteralPath $LogPath -Tail 2500) -join [Environment]::NewLine
-  Assert-Text 'End Event services ready' $log 'CopiMineEndEvent services ready'
-  Assert-Text 'EconomyCore PostgreSQL ready' $log 'CopiMineEconomyCore PostgreSQL is ready.'
+  Assert-LogPattern 'End Event services ready' 'CopiMineEndEvent services ready; phase='
+  Assert-LogPattern 'EconomyCore PostgreSQL ready' 'CopiMineEconomyCore PostgreSQL is ready.'
   if ($status -match 'coreOverlay=true') {
-    Assert-Text 'physical core/rune visual path' $log 'END_EVENT_PHYSICAL_VISUALS'
+    Assert-LogPattern 'physical core/rune visual path' 'END_EVENT_PHYSICAL_VISUALS'
   }
-  if ($log -match 'NoClassDefFoundError|CopiMineEndEvent failed closed') {
+  if (Select-String -LiteralPath $LogPath -Pattern 'NoClassDefFoundError|CopiMineEndEvent failed closed' -Quiet) {
     throw 'End Rift typed dependency or bootstrap failure was found in the local runtime log.'
   }
 }

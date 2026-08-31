@@ -33,6 +33,7 @@ def test_boss_spell_lifecycle_routes_telegraph_release_and_impact_through_one_cu
     assert "playBossVisualCue(boss" in execute
     assert "BossVisualCuePolicy.CueStage.RELEASE" in execute
     assert "BossVisualCuePolicy.CueStage.IMPACT" in execute
+    assert "renderSpellImpactVisual(boss, impactOrigin, spell.id())" in execute
 
 
 def test_boss_spell_reset_token_is_captured_after_impact_cue() -> None:
@@ -100,6 +101,16 @@ def test_boss_visual_cue_audio_and_particles_are_viewer_scoped() -> None:
     assert "world.spawnParticle" not in render
     assert "cue.primaryParticle()" in render
     assert "cue.accentParticle()" in render
+
+
+def test_boss_visual_segment_supplies_sculk_charge_payload() -> None:
+    segment = _body(
+        "private void spawnPatternSegment",
+        "private boolean isSpellFlightAllowed",
+    )
+
+    assert "if (particle == Particle.SCULK_CHARGE)" in segment
+    assert "Float.valueOf(0.0F)" in segment
 
 
 def test_boss_visual_cue_keeps_reset_aliases_and_bounded_scheduler_path() -> None:

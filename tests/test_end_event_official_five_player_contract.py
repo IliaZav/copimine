@@ -69,6 +69,24 @@ def test_shared_driver_accepts_exactly_two_to_five_unique_players() -> None:
         assert marker in source
 
 
+def test_official_driver_allows_intermission_and_peer_tunnel_jitter_before_new_waves() -> None:
+    source = SHARED_DRIVER.read_text(encoding="utf-8")
+    for marker in (
+        "WAVE_STARTED.*wave=2' -WaitSeconds 60",
+        "WAVE_STARTED.*wave=3' -WaitSeconds 60",
+        "WAVE_STARTED.*wave=4' -WaitSeconds 60",
+        "WAVE_STARTED.*wave=5' -WaitSeconds 60",
+    ):
+        assert marker in source
+
+
+def test_official_log_cursor_reads_the_complete_file_tail() -> None:
+    source = SHARED_DRIVER.read_text(encoding="utf-8")
+    assert "$read = $stream.Read($buffer, $offset, $length - $offset)" in source
+    assert "while ($offset -lt $length)" in source
+    assert "$script:LogOffset = $stream.Position" in source
+
+
 def test_five_player_positions_cover_runes_core_ring_portals_and_boss() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
     for marker in (

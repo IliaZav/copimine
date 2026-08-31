@@ -152,6 +152,23 @@ function Get-LogCharacterLength {
   return [int64](Get-Item -LiteralPath $paperLog).Length
 }
 
+function Wait-LocalLogMarker {
+  param(
+    [Parameter(Mandatory = $true)][int64]$PreviousLength,
+    [Parameter(Mandatory = $true)][string]$Pattern,
+    [int]$TimeoutSeconds = 6
+  )
+  $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Max(1, $TimeoutSeconds))
+  do {
+    $delta = Get-AppendedLogText -PreviousLength $PreviousLength
+    if ($delta -match $Pattern) {
+      return $delta
+    }
+    Start-Sleep -Milliseconds 250
+  } while ([DateTime]::UtcNow -lt $deadline)
+  return Get-AppendedLogText -PreviousLength $PreviousLength
+}
+
 function Assert-SkeletonWaveEvidence {
   param(
     [Parameter(Mandatory = $true)][int]$Wave,
@@ -313,7 +330,7 @@ try {
   # Exercise the hard teleport boundary from the server command path.  These
   # are deliberately issued at the current event entities, then the same AI
   # snapshot proves the cancelled request did not leave an entity outside.
-  $logBeforeWaveTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $logBeforeWaveTeleportGuard = Get-LogCharacterLength
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
   $response = Invoke-LocalRcon -CommandText 'cmend test wave 1'
   if ($response -match '(?i)not created|refused|event world') {
@@ -330,16 +347,14 @@ try {
   }
   Hold-BotAtCombatPosition -Core $core
   Assert-AiSnapshot -Label 'wave-teleport-guard' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') | Out-Null
-  $logAfterWaveTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
-  $newWaveGuardLog = if ($logAfterWaveTeleportGuard.Length -gt $logBeforeWaveTeleportGuard.Length) {
-    $logAfterWaveTeleportGuard.Substring($logBeforeWaveTeleportGuard.Length)
-  } else { '' }
+  $newWaveGuardLog = Wait-LocalLogMarker -PreviousLength $logBeforeWaveTeleportGuard `
+    -Pattern 'WAVE_TELEPORT_BLOCKED'
   if ($newWaveGuardLog -notmatch 'WAVE_TELEPORT_BLOCKED') {
     throw "Wave teleport guard did not append a cancelled external teleport marker."
   }
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
 
-  $logBeforeBossTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
+  $logBeforeBossTeleportGuard = Get-LogCharacterLength
   $response = Invoke-LocalRcon -CommandText 'cmend boss spawn'
   if ($response -match '(?i)missing|refused|core') {
     throw "Teleport guard boss setup was refused:`n$response"
@@ -357,10 +372,8 @@ try {
   }
   Hold-BotAtCombatPosition -Core $core
   Assert-AiSnapshot -Label 'boss-teleport-guard' -Text (Invoke-LocalRcon -CommandText 'cmend debug ai') -ExpectedStage 'AWAKENING' | Out-Null
-  $logAfterBossTeleportGuard = Get-Content -LiteralPath $paperLog -Raw
-  $newBossGuardLog = if ($logAfterBossTeleportGuard.Length -gt $logBeforeBossTeleportGuard.Length) {
-    $logAfterBossTeleportGuard.Substring($logBeforeBossTeleportGuard.Length)
-  } else { '' }
+  $newBossGuardLog = Wait-LocalLogMarker -PreviousLength $logBeforeBossTeleportGuard `
+    -Pattern 'BOSS_TELEPORT_BLOCKED'
   if ($newBossGuardLog -notmatch 'BOSS_TELEPORT_BLOCKED') {
     throw "Boss teleport guard did not append a cancelled external teleport marker."
   }

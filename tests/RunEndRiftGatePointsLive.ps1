@@ -65,7 +65,8 @@ try {
   [IO.File]::WriteAllText($evidencePath, "GATE_POINTS_START $(Get-Date -Format o) bot=$BotName", [Text.UTF8Encoding]::new($false))
 
   # Set a disposable Core anchor so the player command is accepted. The
-  # current Core block is captured by the plugin and restored in finally.
+  # current local scene is restored explicitly in finally; this keeps the
+  # user's current map and the next smoke test deterministic.
   $null = Invoke-LocalRcon 'cmend gate delete confirm'
   $null = Invoke-LocalRcon 'cmend core remove confirm'
   $null = Invoke-LocalRcon 'cmend core setat 8 68 -39 2'
@@ -83,6 +84,11 @@ try {
     if ($attempt -eq 89) { throw "Gate points bot did not join: $BotName`n$list" }
     Start-Sleep -Milliseconds 500
   }
+  # In offline mode Paper cannot resolve a never-seen username before the
+  # first login. Re-apply OP after the bot is present so the player-side
+  # command reaches the End Event permission guard.
+  Start-Sleep -Seconds 5
+  $null = Invoke-LocalRcon "op $BotName"
   Start-Sleep -Seconds 2
   $teleport = Invoke-LocalRcon "minecraft:teleport $BotName 8.5 68 -41.5 0 24"
   Write-Evidence "GATE_POINTS_TELEPORT bot=$BotName response=$($teleport.Trim())"
@@ -108,4 +114,8 @@ try {
   try { $null = Invoke-LocalRcon "deop $BotName" } catch { }
   try { $null = Invoke-LocalRcon 'cmend gate delete confirm' } catch { }
   try { $null = Invoke-LocalRcon 'cmend core remove confirm' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend resources reset confirm' } catch { }
+  try { $null = Invoke-LocalRcon 'execute in minecraft:overworld run fill 29 68 -40 29 71 -38 minecraft:obsidian' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend core setat 8 68 -39 2' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend gate setat 29 68 -40 29 71 -38' } catch { }
 }

@@ -212,6 +212,11 @@ def test_wave_ai_logs_skeleton_behavior_per_wave_without_mob_aggro() -> None:
     assert "hasLiveTestWaveEntities()" in server
 
 
+def test_wave_two_marked_target_diagnostic_is_visible_at_default_log_level() -> None:
+    server = SERVER.read_text(encoding="utf-8")
+    assert re.search(r'getLogger\(\)\.info\("WAVE_SKELETON_MARKED_TARGET', server)
+
+
 def test_tower_skeleton_keeps_its_artillery_core_job_until_player_aggro() -> None:
     server = SERVER.read_text(encoding="utf-8")
     tick = server[server.index("private void tickWaveMobAi()"):server.index("private void enforceWaveMobContainment")]

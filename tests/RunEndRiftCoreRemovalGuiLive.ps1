@@ -96,6 +96,12 @@ try {
     if ($attempt -eq 89) { throw "GUI removal bot did not join: $BotName`n$list" }
     Start-Sleep -Milliseconds 500
   }
+  # AuthMe can remove OP granted before a disposable offline username has
+  # completed its first login.  Re-apply OP after the client is online so the
+  # real BlockBreakEvent permission path, including the confirmation GUI, is
+  # exercised instead of failing at the command guard.
+  Start-Sleep -Seconds 5
+  $null = Invoke-LocalRcon "op $BotName"
   Start-Sleep -Seconds 2
   # Keep the disposable client within vanilla block-interaction reach.  The
   # bot still sends the real block_dig packets, but the server rejects a
@@ -152,4 +158,8 @@ try {
   }
   try { $null = Invoke-LocalRcon "deop $BotName" } catch { }
   try { $null = Invoke-LocalRcon 'cmend core remove confirm' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend resources reset confirm' } catch { }
+  try { $null = Invoke-LocalRcon 'execute in minecraft:overworld run fill 29 68 -40 29 71 -38 minecraft:obsidian' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend core setat 8 68 -39 2' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend gate setat 29 68 -40 29 71 -38' } catch { }
 }

@@ -69,7 +69,9 @@ bot._client.on('packet', (data, meta) => {
 
 bot.on('messagestr', message => {
   const text = String(message).replace(/§./g, '')
-  if (text.includes('Gate') || text.includes('gate') || text.includes('сохранена') || text.includes('Сначала')) {
+  if (text.includes('Gate') || text.includes('gate') || text.includes('сохранена') || text.includes('Сначала')
+      || text.includes('Недостаточно') || text.includes('Наведи') || text.includes('реальный')
+      || text.includes('не сохран')) {
     console.log(`GATE_MESSAGE ${username} ${text}`)
   }
 })

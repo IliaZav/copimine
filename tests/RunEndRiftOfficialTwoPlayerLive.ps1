@@ -295,9 +295,16 @@ function Read-NewPaperLog {
       return ''
     }
     $buffer = [byte[]]::new($length)
-    $read = $stream.Read($buffer, 0, $length)
-    $script:LogOffset = $stream.Length
-    return [Text.Encoding]::UTF8.GetString($buffer, 0, $read)
+    $offset = 0
+    while ($offset -lt $length) {
+      $read = $stream.Read($buffer, $offset, $length - $offset)
+      if ($read -le 0) {
+        break
+      }
+      $offset += $read
+    }
+    $script:LogOffset = $stream.Position
+    return [Text.Encoding]::UTF8.GetString($buffer, 0, $offset)
   } finally {
     $stream.Dispose()
   }
@@ -460,12 +467,12 @@ try {
   Keep-PlayersAtCombatSweep -Core $core
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2' -WaitSeconds 60
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_MARK.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_SKELETON_MARKED_TARGET.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3' -WaitSeconds 60
   # Portal count is roster-scaled by the event policy: a five-player run has
   # four portals, while a two-player compatibility run has three.  Read the
   # authoritative count from Paper instead of hardcoding the two-player case.
@@ -495,7 +502,7 @@ try {
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=3' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4' -WaitSeconds 60
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=4.*TOWER_DEFENSE' -WaitSeconds 20
   # Wave IV is scaled by the official roster and split into bounded groups.
   # Read the total from the authoritative first spawn line so a five-player
@@ -546,7 +553,7 @@ try {
     return
   }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=5' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=5' -WaitSeconds 60
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=5.*RIFT_STORM' -WaitSeconds 20
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=5' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }

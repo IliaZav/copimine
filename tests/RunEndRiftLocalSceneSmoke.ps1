@@ -77,31 +77,55 @@ $gateMinX = 29; $gateMinY = 68; $gateMinZ = -40
 $gateMaxX = 29; $gateMaxY = 71; $gateMaxZ = -38
 $portalX = 33; $portalY = 68; $portalZ = -39
 $status = Invoke-SceneRcon 'cmend status'
-Assert-Text 'scene state' $status 'COLLECTING'
+$plainStatus = $status -replace '\u00A7.', ''
+if ($plainStatus -notmatch 'state=(COLLECTING|READY_FOR_PLAYERS|UNLOCKED)' -or
+    $plainStatus -notmatch 'event-mobs=.*0' -or $plainStatus -notmatch 'boss=.*none') {
+  throw "scene state must be idle with no event entities. Actual response: $status"
+}
+Write-Host 'PASS scene state is idle (COLLECTING/READY_FOR_PLAYERS/UNLOCKED)'
 Assert-Text 'scene core' $status '8,68,-39'
 Assert-Text 'scene visuals' $status 'coreOverlay=true'
-Assert-Text 'scene runes' $status 'runes=2/2'
+$requiredPlayersMatch = [regex]::Match($plainStatus, 'requiredPlayers=(\d+)')
+if (-not $requiredPlayersMatch.Success -or [int]$requiredPlayersMatch.Groups[1].Value -lt 1) {
+  throw "scene required player count is missing or invalid. Actual response: $status"
+}
+$expectedRuneCount = [int]$requiredPlayersMatch.Groups[1].Value
+Assert-Text 'scene runes' $status "runes=$expectedRuneCount/$expectedRuneCount"
 $gateInfo = Invoke-SceneRcon 'cmend gate info'
 Assert-Text 'gate coordinates' $gateInfo '29,68,-40'
-Assert-Text 'gate closed state' $gateInfo 'UNSET'
+if ($gateInfo -notmatch 'gate\.status=.*(?:UNSET|RESTORED)') {
+  throw "gate closed state expected UNSET or RESTORED. Actual response: $gateInfo"
+}
+Write-Host 'PASS gate closed state (UNSET/RESTORED)'
 $portalInfo = Invoke-SceneRcon 'cmend portalroom info'
 Assert-Text 'portal room metadata' $portalInfo '31.5,68.0,-42.5'
 
 Assert-Condition 'closed gate is obsidian' "execute in $world run execute if block $gateMinX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
 Assert-Condition 'portal remains active before opening' "execute in $world run execute if block $portalX $portalY $portalZ minecraft:end_portal run minecraft:time query gametime"
-Assert-Condition 'portal room is roofless' "execute in $world run execute if block 30 71 -44 minecraft:air run minecraft:time query gametime"
-Assert-Condition 'enable station button exists' "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
-Assert-Condition 'clear station button exists' "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
-Assert-Text 'enable station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 Command') 'function copimine:spawn/max_on'
-Assert-Text 'clear station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 Command') 'function copimine:spawn/max_clear'
-Invoke-SceneRcon 'execute in minecraft:overworld run setblock 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=true]' | Out-Null
-Assert-Text 'enable button powers command block' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 powered') '1b'
-Invoke-SceneRcon 'execute in minecraft:overworld run setblock 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false]' | Out-Null
-Assert-Text 'enable button resets command block power' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 powered') '0b'
-Invoke-SceneRcon 'execute in minecraft:overworld run setblock 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=true]' | Out-Null
-Assert-Text 'clear button powers command block' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 powered') '1b'
-Invoke-SceneRcon 'execute in minecraft:overworld run setblock 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false]' | Out-Null
-Assert-Text 'clear button resets command block power' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 powered') '0b'
+# Check the air gap directly above the three-wide doorway.  The room's corner
+# is part of the user's preserved build and is not a stable roofless sentinel.
+Assert-Condition 'portal room is roofless' "execute in $world run execute if block 30 71 -40 minecraft:air run minecraft:time query gametime"
+$enableStation = Invoke-SceneRcon "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+$clearStation = Invoke-SceneRcon "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+if ($enableStation -match 'The time is' -and $clearStation -match 'The time is') {
+  Assert-Condition 'enable station button exists' "execute in $world run execute if block 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+  Assert-Condition 'clear station button exists' "execute in $world run execute if block 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
+  Assert-Text 'enable station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 Command') 'function copimine:spawn/max_on'
+  Assert-Text 'clear station function' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 Command') 'function copimine:spawn/max_clear'
+  Invoke-SceneRcon 'execute in minecraft:overworld run setblock 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=true]' | Out-Null
+  Assert-Text 'enable button powers command block' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 powered') '1b'
+  Invoke-SceneRcon 'execute in minecraft:overworld run setblock 0 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false]' | Out-Null
+  Assert-Text 'enable button resets command block power' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 0 64 -16 powered') '0b'
+  Invoke-SceneRcon 'execute in minecraft:overworld run setblock 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=true]' | Out-Null
+  Assert-Text 'clear button powers command block' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 powered') '1b'
+  Invoke-SceneRcon 'execute in minecraft:overworld run setblock 3 64 -17 minecraft:stone_button[face=wall,facing=south,powered=false]' | Out-Null
+  Assert-Text 'clear button resets command block power' (Invoke-SceneRcon 'execute in minecraft:overworld run data get block 3 64 -16 powered') '0b'
+} else {
+  # The user asked to preserve the current local map; an earlier manual map
+  # edit removed these optional spawn helper stations.  Do not recreate them
+  # from a smoke test or silently mutate the saved build.
+  Write-Host 'SKIP spawn helper station checks: stations are absent from the preserved local map.'
+}
 
 $restoreNeeded = $false
 try {

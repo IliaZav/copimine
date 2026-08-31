@@ -42,6 +42,12 @@ def test_dangerous_paths_are_never_console_or_production_mutations() -> None:
     assert "WorldCore service" in MAIN
 
 
+def test_operator_status_is_a_first_class_admin_grant() -> None:
+    admin_helper = MAIN[MAIN.index("private boolean isAdmin"):
+                        MAIN.index("private void message", MAIN.index("private boolean isAdmin"))]
+    assert "sender.isOp()" in admin_helper
+
+
 def test_event_owned_loot_is_configured_and_cleanup_has_no_death_path() -> None:
     for section in ("wave-mob:", "elite:", "final-wave:", "test:"):
         assert section in CONFIG

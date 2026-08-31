@@ -134,10 +134,12 @@ function Prepare-AuthMeAccounts {
     # probes avoids AuthMe's concurrent /register executor race when two clients
     # connect in the same tick; the real player flow still uses /login.
     $unregisterOffset = Get-LogByteOffset
-    $null = Invoke-LocalRcon ("authme unregister $name")
-    Wait-LogPattern -Offset $unregisterOffset `
-      -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
-      -Label ("AuthMe unregister $name")
+    $unregisterResponse = Invoke-LocalRcon ("authme unregister $name")
+    if ($unregisterResponse -notmatch "(?i)This user isn't registered!") {
+      Wait-LogPattern -Offset $unregisterOffset `
+        -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
+        -Label ("AuthMe unregister $name")
+    }
     $registerOffset = Get-LogByteOffset
     $null = Invoke-LocalRcon ("authme register $name endrift-local")
     Wait-LogPattern -Offset $registerOffset `

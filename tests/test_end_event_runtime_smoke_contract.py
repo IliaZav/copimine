@@ -13,6 +13,9 @@ AI_PHASES = (ROOT / "tests/RunEndRiftAiPhasesLive.ps1").read_text(encoding="utf-
 PACKET_TRACE = (ROOT / "tests/PacketUseEntityTracePlugin.java").read_text(encoding="utf-8")
 START = (ROOT / "tests/StartEndRiftLocal.ps1").read_text(encoding="utf-8")
 RECOVERY = (ROOT / "tests/RunEndRiftRecoverySmoke.ps1").read_text(encoding="utf-8")
+PACK_VERIFY = (ROOT / "tests/VerifyEndRiftLocalResourcePack.ps1").read_text(encoding="utf-8")
+GATE_POINTS = (ROOT / "tests/RunEndRiftGatePointsLive.ps1").read_text(encoding="utf-8")
+CORE_GUI = (ROOT / "tests/RunEndRiftCoreRemovalGuiLive.ps1").read_text(encoding="utf-8")
 
 
 def test_runtime_smoke_is_local_only_and_does_not_manage_production_processes() -> None:
@@ -27,6 +30,18 @@ def test_runtime_smoke_is_local_only_and_does_not_manage_production_processes() 
     assert "Stop-Process" not in SMOKE
     assert "Remove-Item" not in SMOKE
     assert "cmend client status" in SMOKE
+
+
+def test_runtime_smoke_checks_boot_markers_without_truncating_the_evidence() -> None:
+    assert "Select-String -LiteralPath $LogPath -Pattern" in SMOKE
+    assert "-Quiet" in SMOKE
+    assert "Get-Content -LiteralPath $LogPath -Tail 2500" not in SMOKE
+
+
+def test_scene_smoke_accepts_a_persisted_closed_gate_after_a_previous_restore() -> None:
+    scene = (ROOT / "tests/RunEndRiftLocalSceneSmoke.ps1").read_text(encoding="utf-8")
+    assert "gate closed state" in scene
+    assert "UNSET|RESTORED" in scene
 
 
 def test_runtime_smoke_covers_refusal_paths_and_typed_dependencies() -> None:
@@ -157,6 +172,35 @@ def test_live_ai_phase_probe_covers_all_waves_and_boss_stage_boundaries_locally(
     assert "Stop-Process" not in AI_PHASES
 
 
+def test_live_ai_phase_probe_reads_teleport_markers_with_byte_safe_log_cursor() -> None:
+    assert "function Wait-LocalLogMarker" in AI_PHASES
+    assert "Get-LogCharacterLength" in AI_PHASES
+    assert "Get-AppendedLogText -PreviousLength" in AI_PHASES
+    assert "Wait-LocalLogMarker -PreviousLength $logBeforeWaveTeleportGuard" in AI_PHASES
+    assert "Wait-LocalLogMarker -PreviousLength $logBeforeBossTeleportGuard" in AI_PHASES
+
+
+def test_rune_wait_probe_accepts_a_disposable_authme_account_that_is_not_registered() -> None:
+    rune_wait = (ROOT / "tests/RunEndRiftRuneWaitMusicLive.ps1").read_text(encoding="utf-8")
+    assert "This user isn't registered!" in rune_wait
+    assert "unregisterResponse" in rune_wait
+
+
+def test_local_scene_smoke_accepts_preserved_idle_ready_state() -> None:
+    scene = (ROOT / "tests/RunEndRiftLocalSceneSmoke.ps1").read_text(encoding="utf-8")
+    assert "state=(COLLECTING|READY_FOR_PLAYERS|UNLOCKED)" in scene
+    assert "event-mobs=.*0" in scene
+    assert "boss=.*none" in scene
+    assert "$plainStatus = $status -replace '\\u00A7.'" in scene
+
+
+def test_local_scene_smoke_uses_the_preserved_required_player_count_for_runes() -> None:
+    scene = (ROOT / "tests/RunEndRiftLocalSceneSmoke.ps1").read_text(encoding="utf-8")
+    assert "requiredPlayers=(\\d+)" in scene
+    assert "$expectedRuneCount = [int]$requiredPlayersMatch.Groups[1].Value" in scene
+    assert '"runes=$expectedRuneCount/$expectedRuneCount"' in scene
+
+
 def test_long_ai_phase_probe_uses_the_physics_capable_local_client() -> None:
     assert "LocalEndRiftMobCombatBot.js" in AI_PHASES
     assert "LocalEndRiftBot.js" not in AI_PHASES
@@ -216,6 +260,26 @@ def test_recovery_smoke_requires_unlocked_durable_state_and_stays_local() -> Non
         assert expected in RECOVERY
     assert "Stop-Process" not in RECOVERY
     assert "Remove-Item" not in RECOVERY
+
+
+def test_recovery_smoke_accepts_a_safe_persisted_configured_phase_after_reindex() -> None:
+    assert "phase=(?:COLLECTING|READY_FOR_PLAYERS|UNLOCKED)" in RECOVERY
+
+
+def test_local_resource_pack_verifier_defaults_to_the_live_loopback_port() -> None:
+    assert "[int]$ResourcePackPort = 8092" in PACK_VERIFY
+    assert "127.0.0.1:$ResourcePackPort/CopiMineResourcePack.zip" in PACK_VERIFY
+
+
+def test_live_layout_probes_restore_the_current_local_scene_in_finally() -> None:
+    for source in (GATE_POINTS, CORE_GUI):
+        for marker in (
+            "cmend core setat 8 68 -39 2",
+            "cmend gate setat 29 68 -40 29 71 -38",
+            "minecraft:obsidian",
+            "cmend resources reset confirm",
+        ):
+            assert marker in source
 
 
 def test_active_event_rehydrates_wave_entities_objective_and_phase_deadline_after_restart() -> None:

@@ -28,6 +28,13 @@ def test_gate_preview_has_snapshot_before_particle_preview_and_boot_recovery() -
     assert "CLOSING" in MAIN
 
 
+def test_boot_gate_recovery_refreshes_the_layout_write_cache() -> None:
+    recovery = MAIN[MAIN.index("private void restorePersistedGateIfNeeded"):
+                    MAIN.index("private String gateKey", MAIN.index("private void restorePersistedGateIfNeeded"))]
+    assert "layoutStore.save(layoutState)" in recovery
+    assert "persistedLayoutState = layoutState" in recovery
+
+
 def test_portal_destination_uses_persisted_override_and_safe_validation() -> None:
     assert "layoutState.portalRoom()" in MAIN
     assert "portalRoom()" in MAIN
@@ -68,3 +75,14 @@ def test_gate_points_live_probe_uses_player_look_packets_and_restores_layout() -
         "finally",
     ):
         assert marker in runner
+    # Paper cannot resolve a never-seen offline username when the probe is
+    # opped before its first join.  Re-apply OP after the bot is online so the
+    # player-side command really reaches the End Event permission guard.
+    assert runner.count('Invoke-LocalRcon "op $BotName"') >= 2
+    assert "Start-Sleep -Seconds 5" in runner
+
+
+def test_core_removal_gui_probe_reapplies_op_after_authentication() -> None:
+    runner = (ROOT / "tests/RunEndRiftCoreRemovalGuiLive.ps1").read_text(encoding="utf-8")
+    assert runner.count('Invoke-LocalRcon "op $BotName"') >= 2
+    assert "Start-Sleep -Seconds 5" in runner

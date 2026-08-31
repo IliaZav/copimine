@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [string]$ServerDir = '',
-  [int]$ResourcePackPort = 18080
+  [int]$ResourcePackPort = 8092
 )
 
 $ErrorActionPreference = 'Stop'

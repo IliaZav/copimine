@@ -280,7 +280,7 @@ if ($status -notmatch 'core=.*CopiMine 8,68,-39' -or
 }
 Assert-SceneCondition 'closed gate is obsidian' "execute in $world run execute if block $gateX $gateMinY $gateMinZ minecraft:obsidian run minecraft:time query gametime"
 Assert-SceneCondition 'portal plane is active' "execute in $world run execute if block 33 68 -39 minecraft:end_portal run minecraft:time query gametime"
-Assert-SceneCondition 'portal room has no roof' "execute in $world run execute if block $roomMinX $roomClearTopY $roomMinZ minecraft:air run minecraft:time query gametime"
+Assert-SceneCondition 'portal room has no roof' "execute in $world run execute if block $roomMinX $roomClearTopY -40 minecraft:air run minecraft:time query gametime"
 Assert-SceneCondition 'enable station button is a wall button' "execute in $world run execute if block $spawnStationX1 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
 Assert-SceneCondition 'clear station button is a wall button' "execute in $world run execute if block $spawnStationX2 $spawnStationY $spawnButtonZ minecraft:stone_button[face=wall,facing=south,powered=false] run minecraft:time query gametime"
 Assert-SceneCommandText 'enable command block function' "execute in $world run data get block $spawnStationX1 $spawnStationY $spawnStationZ Command" 'function copimine:spawn/max_on'

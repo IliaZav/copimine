@@ -55,6 +55,17 @@ def test_core_overlay_has_a_left_swing_fallback_for_non_attackable_display_entit
     assert "openCoreRemovalConfirm(player)" in handler
 
 
+def test_core_block_left_click_opens_the_same_confirmation_gui() -> None:
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+    assert "public void onCoreLeftClick(PlayerInteractEvent event)" in source
+    handler = source[source.index("public void onCoreLeftClick"):
+                     source.index("public void onCoreInteract", source.index("public void onCoreLeftClick"))]
+    assert "Action.LEFT_CLICK_BLOCK" in handler
+    assert "sameCore(event.getClickedBlock())" in handler
+    assert "event.setCancelled(true)" in handler
+    assert "openCoreRemovalConfirm(player)" in handler
+
+
 def test_gui_removal_runner_is_local_only_and_asserts_post_confirm_state() -> None:
     source = RUNNER.read_text(encoding="utf-8")
     for marker in (

@@ -111,7 +111,8 @@ def test_live_diagnostics_probe_is_local_only_and_checks_full_failure_record() -
         "officialState={5}",
         "eventMobs=0",
         "boss=none",
-        "pads=0/2",
+        "current.Pads -ne $Expected.Pads",
+        "pads={6}",
     ):
         assert marker in script
 

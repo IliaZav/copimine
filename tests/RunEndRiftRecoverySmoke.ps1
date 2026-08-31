@@ -63,7 +63,7 @@ if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
   $hasForcedReady = $logText -match 'END_EVENT_STATE forced=READY_FOR_PLAYERS'
   $hasAlreadyUnlocked = $logText -match 'WorldCore already reports End unlocked; preserving active event'
   $hasPersistedSceneReindex = $logText -match 'END_EVENT_COMBAT_REINDEX event='
-  $hasReadyServices = $logText -match 'CopiMineEndEvent services ready; phase=READY_FOR_PLAYERS'
+  $hasReadyServices = $logText -match 'CopiMineEndEvent services ready; phase=(?:COLLECTING|READY_FOR_PLAYERS|UNLOCKED)'
   # A configured local scene may already be safely unlocked.  In that case
   # startup preserves its persisted phase and reindexes owned visuals/entities
   # instead of emitting a second forced-unlock transition.

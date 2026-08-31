@@ -12985,10 +12985,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY_PROCESSING)))) {
             return;
         }
-        String releaseCueId = bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE);
-        playBossVisualCue(boss, releaseCueId, boss.getEyeLocation(), forced);
-        long resetCueSequence = bossVisualCueSequence;
-        String resetCueId = lastBossVisualCueId;
+        playBossVisualCue(boss,
+                bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
+                boss.getEyeLocation(), forced);
         launchSpellFlight(boss, mark,
                 "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
                 callbackGeneration, () -> {
@@ -13003,10 +13002,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                              + " target=" + target.getUniqueId() + " generation=" + callbackGeneration);
                      Location impactOrigin = spell == EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS
                              ? boss.getLocation() : mark;
-                     playBossVisualCue(boss,
-                             bossCueId(spell.id(), BossVisualCuePolicy.CueStage.IMPACT),
-                             impactOrigin, forced);
-                    switch (spell) {
+                     String impactCueId = bossCueId(spell.id(), BossVisualCuePolicy.CueStage.IMPACT);
+                     playBossVisualCue(boss, impactCueId, impactOrigin, forced);
+                     BossVisualCuePolicy.CueToken acceptedImpactCue = new BossVisualCuePolicy.CueToken(
+                             bossVisualCueGeneration, bossVisualCueOwner, bossVisualCueSequence,
+                             lastBossVisualCueId, lastBossVisualCueDeadlineTick);
+                     BossVisualCuePolicy.CueToken resetCue =
+                             BossVisualCuePolicy.resetTokenForAcceptedCue(acceptedImpactCue, false);
+                     if (resetCue != null
+                             && Objects.equals(resetCue.cueId(), impactCueId)
+                             && resetCue.generation() == callbackGeneration
+                             && Objects.equals(resetCue.owner(), boss.getUniqueId())) {
+                         scheduleBossAnimationReset(boss, callbackGeneration,
+                                 resetCue.sequence(), resetCue.cueId(), 20L);
+                     }
+                     switch (spell) {
                         case VOID_BLAST -> voidBlast(boss, target);
                         case RIFT_PROJECTILE -> riftProjectile(boss, target);
                         case RIFT_ARROWS -> riftArrowVolley(boss, target,
@@ -13018,8 +13028,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                          case ARENA_INFERNO -> arenaInferno(boss);
                      }
                  });
-        scheduleBossAnimationReset(boss, callbackGeneration,
-                resetCueSequence, resetCueId, 20L);
     }
 
     private void voidBlast(LivingEntity boss, Player target) {

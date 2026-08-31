@@ -61,6 +61,12 @@ public final class BossVisualCuePolicy {
                 && Objects.equals(callback.cueId(), active.cueId());
     }
 
+    public static CueToken resetTokenForAcceptedCue(CueToken acceptedCue, boolean terminal) {
+        return terminal || acceptedCue == null || acceptedCue.sequence() < 1L
+                || acceptedCue.owner() == null || acceptedCue.cueId().isBlank()
+                ? null : acceptedCue;
+    }
+
     public static Map<String, Map<CueStage, Cue>> cues() {
         return CUES;
     }

@@ -74,6 +74,10 @@ public final class BossVisualCuePolicyTest {
                 7L, owner, 11L, "void_blast:release", 120L);
         BossVisualCuePolicy.CueToken newerCue = new BossVisualCuePolicy.CueToken(
                 7L, owner, 12L, "phase_shift:impact", 140L);
+        BossVisualCuePolicy.CueToken impactCue = new BossVisualCuePolicy.CueToken(
+                7L, owner, 12L, "void_blast:impact", 140L);
+        BossVisualCuePolicy.CueToken terminalCue = new BossVisualCuePolicy.CueToken(
+                7L, owner, 13L, "final_awaken:release", 160L);
 
         require(BossVisualCuePolicy.shouldSuppressDuplicate(first, sameCue, false, 119L),
                 "same cue before its deadline must be suppressed");
@@ -87,6 +91,21 @@ public final class BossVisualCuePolicyTest {
                 "a stale reset must not supersede a newer cue");
         require(!BossVisualCuePolicy.canReset(first, first, true, true, true),
                 "a defeated boss must not be reset");
+
+        BossVisualCuePolicy.CueToken resetCue =
+                BossVisualCuePolicy.resetTokenForAcceptedCue(impactCue, false);
+        require(resetCue.equals(impactCue),
+                "the accepted IMPACT cue must own the reset token");
+        require(!BossVisualCuePolicy.canReset(first, resetCue, true, true, false),
+                "the RELEASE reset must be rejected after IMPACT");
+        String animation = "CAST_IMPACT";
+        if (BossVisualCuePolicy.canReset(resetCue, resetCue, true, true, false)) {
+            animation = "IDLE";
+        }
+        require("IDLE".equals(animation),
+                "RELEASE to IMPACT must eventually reset the current animation to IDLE");
+        require(BossVisualCuePolicy.resetTokenForAcceptedCue(terminalCue, true) == null,
+                "terminal cues must not schedule an animation reset");
         System.out.println("BossVisualCuePolicyTest OK");
     }
 

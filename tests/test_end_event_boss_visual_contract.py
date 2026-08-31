@@ -35,6 +35,16 @@ def test_boss_spell_lifecycle_routes_telegraph_release_and_impact_through_one_cu
     assert "BossVisualCuePolicy.CueStage.IMPACT" in execute
 
 
+def test_boss_spell_reset_token_is_captured_after_impact_cue() -> None:
+    execute = _body("private void executeBossSpell", "private void voidBlast")
+    impact = execute.index("BossVisualCuePolicy.CueStage.IMPACT")
+    accepted_token = execute.index("resetTokenForAcceptedCue(acceptedImpactCue, false)")
+    reset = execute.index("scheduleBossAnimationReset(boss, callbackGeneration", impact)
+
+    assert impact < accepted_token < reset
+    assert "resetCueSequence" not in execute
+
+
 def test_phase_final_and_defeat_cues_are_wired_at_existing_lifecycle_hooks() -> None:
     synchronize = _body("private void synchronizeBossStage", "private void updateBossBar")
     absorption = _body("private void startAbsorptionChannel", "private void startJudgment")

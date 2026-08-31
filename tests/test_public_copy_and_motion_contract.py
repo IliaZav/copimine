@@ -31,10 +31,10 @@ def test_public_copy_uses_player_language_on_key_routes() -> None:
     shops = read("admin-web/frontend/shops.html")
     server = read("admin-web/frontend/server.html")
 
-    assert "Всё, что нужно для игры на CopiMine." in index
-    assert "Установи лаунчер. Играй на CopiMine." in launcher
-    assert "Что нового на CopiMine." in news
-    assert "Новые версии, исправления и заметки по серверу." in news
+    assert "Зайди на CopiMine." in index
+    assert "Установи один раз. Дальше — играй." in launcher
+    assert "Новости и изменения." in news
+    assert "Коротко о том, что поменялось в игре и Launcher." in news
     assert "Выбери предметы для игры." in shops
     assert "Что сейчас на сервере." in server
 

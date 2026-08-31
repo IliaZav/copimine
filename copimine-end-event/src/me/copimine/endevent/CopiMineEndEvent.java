@@ -68,6 +68,7 @@ import me.copimine.endevent.domain.WaveScalingPolicy;
 import me.copimine.endevent.domain.WaveVisualPolicy;
 import me.copimine.endevent.domain.WaveCommanderPolicy;
 import me.copimine.endevent.domain.ZoneVisualPolicy;
+import me.copimine.endevent.domain.BossArenaSetPiecePolicy;
 import me.copimine.worldcore.api.WorldAccessResult;
 import me.copimine.worldcore.api.WorldAccessService;
 import net.kyori.adventure.text.Component;
@@ -356,6 +357,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Long> blockedTeleportLogAt = new HashMap<>();
     private final Set<UUID> waveObjectiveVisuals = new LinkedHashSet<>();
     private final Set<UUID> waveFrontVisuals = new LinkedHashSet<>();
+    private final Set<UUID> finalArenaSceneVisuals = new LinkedHashSet<>();
     private final Map<UUID, String> waveObjectiveVisualTexts = new HashMap<>();
     private final Map<HazardPlanner.Point, String> arenaInfernoOriginalBlocks = new LinkedHashMap<>();
     private final Map<Integer, List<Location>> wavePortals = new LinkedHashMap<>();
@@ -472,6 +474,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean waveFrontFinal;
     private int waveFrontElapsedTicks;
     private UUID waveFrontTextureUuid;
+    private BossArenaSetPiecePolicy.Scene finalArenaScene;
+    private long finalArenaSceneGeneration = Long.MIN_VALUE;
+    private int finalArenaSceneElapsedTicks;
 
     private enum PortalVisualLayer {
         FRAME,
@@ -1136,6 +1141,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phase = next;
         getLogger().info("END_EVENT_STATE event=" + eventId + " generation=" + generation
                 + " from=" + current + " to=" + next + " reason=" + reason);
+        if (isFinalArenaScenePhase(next)) {
+            startFinalArenaScene(next);
+        } else if (isFinalArenaScenePhase(current)) {
+            clearFinalArenaScene("phase transition " + current + " -> " + next);
+        }
         if (!isEventMusicPhase() && !isVictoryMusicTail(current, next)) {
             stopEventMusic();
         } else if (isEventMusicPhase()) {
@@ -1151,6 +1161,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EventPhase previous = phase;
         phase = next;
         stateMachine = new EndEventStateMachine(next);
+        if (isFinalArenaScenePhase(next)) {
+            startFinalArenaScene(next);
+        } else if (isFinalArenaScenePhase(previous)) {
+            clearFinalArenaScene("forced phase " + previous + " -> " + next);
+        }
         if (next == EventPhase.UNLOCKED) {
             releaseOverlayChunkTickets();
         }
@@ -1215,6 +1230,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void cancelSessionTasks() {
         cancelCreativeTestTask();
         cancelBossSpawnTask();
+        clearFinalArenaScene("session cancellation");
         clearArenaInferno();
         clearWaveObjectiveState();
         if (taskRegistry != null) {
@@ -1501,6 +1517,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     @Override
     public void onDisable() {
         clearClientEffects();
+        clearFinalArenaScene("plugin disable");
         cancelSessionTasks();
         if (diagnosticsWatchdogTask != null) {
             diagnosticsWatchdogTask.cancel();
@@ -4276,6 +4293,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String removedEventId = eventId;
         cancelSessionTasks();
         clearBossOnly();
+        clearFinalArenaScene("core removal");
         clearWaveEntities();
         // GUI removal is allowed to cross a restart/generation boundary.  The
         // physical Core and rune displays therefore get a coordinate-bound
@@ -4323,6 +4341,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cUNLOCKED нельзя reset-нуть: End unlock permanent.");
             return;
         }
+        clearFinalArenaScene("safe admin reset");
         if (phase == EventPhase.WAVE_1 || phase == EventPhase.INTERMISSION_1 || phase == EventPhase.WAVE_2
                 || phase == EventPhase.INTERMISSION_2 || phase == EventPhase.WAVE_3
                 || phase == EventPhase.INTERMISSION_3 || phase == EventPhase.WAVE_4
@@ -6140,6 +6159,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void cancelRitual(String reason) {
+        clearFinalArenaScene("ritual cancellation: " + reason);
         if (phase == EventPhase.COUNTDOWN) {
             phaseDeadlineMillis = 0L;
             lastCountdownAnnouncement = -1;
@@ -11850,6 +11870,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearBossOnly() {
+        clearFinalArenaScene("boss cleanup");
         clearBossServants();
         LivingEntity boss = liveBoss();
         boolean disposableTest = testCombatAiMode || (boss != null && isTestBoss(boss));
@@ -12741,6 +12762,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int waveCombatRemoved = clearWaveCombatEntities("official-boss-defeat");
         activeWave = 0;
+        clearFinalArenaScene("official boss defeat");
         clearActiveRiftProjectiles();
         clearVoidMarkZones();
         clearJudgmentVisuals();
@@ -12867,11 +12889,212 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         scheduleFinalRitualVisual(boss);
     }
 
+    private boolean isFinalArenaScenePhase(EventPhase candidate) {
+        return candidate == EventPhase.FINAL_DRAIN || candidate == EventPhase.FINAL_RITUAL;
+    }
+
+    private BossArenaSetPiecePolicy.Scene finalArenaPolicyScene(EventPhase phase) {
+        return switch (phase) {
+            case FINAL_DRAIN -> BossArenaSetPiecePolicy.Scene.FINAL_DRAIN;
+            case FINAL_RITUAL -> BossArenaSetPiecePolicy.Scene.FINAL_RITUAL;
+            default -> null;
+        };
+    }
+
+    private void startFinalArenaScene(EventPhase scene) {
+        BossArenaSetPiecePolicy.Scene policyScene = finalArenaPolicyScene(scene);
+        if (policyScene == null) {
+            return;
+        }
+        if (finalArenaScene == policyScene && finalArenaSceneGeneration == generation
+                && !finalArenaSceneVisuals.isEmpty()) {
+            return;
+        }
+        clearFinalArenaScene("scene restart");
+        World world = Bukkit.getWorld(worldName);
+        Location core = coreCombatAnchorLocation();
+        if (world == null || core == null) {
+            getLogger().warning("FINAL_ARENA_SCENE_REFUSED event=" + eventId
+                    + " scene=" + policyScene + " reason=missing-world-or-core");
+            return;
+        }
+        BossArenaSetPiecePolicy.Bounds bounds = new BossArenaSetPiecePolicy.Bounds(
+                arenaMinX, arenaMaxX, arenaMinY, arenaMaxY, arenaMinZ, arenaMaxZ);
+        BossArenaSetPiecePolicy.Point corePoint = new BossArenaSetPiecePolicy.Point(
+                core.getBlockX(), core.getBlockY(), core.getBlockZ());
+        BossArenaSetPiecePolicy.Frame frame = BossArenaSetPiecePolicy.frame(
+                policyScene, bounds, corePoint, 0);
+        if (!frame.allPointsInside(bounds)) {
+            getLogger().severe("FINAL_ARENA_SCENE_REFUSED event=" + eventId
+                    + " scene=" + policyScene + " reason=policy-outside-bounds");
+            return;
+        }
+        finalArenaScene = policyScene;
+        finalArenaSceneGeneration = generation;
+        finalArenaSceneElapsedTicks = 0;
+        Material anchorMaterial = policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                ? Material.RESPAWN_ANCHOR : Material.AMETHYST_BLOCK;
+        for (BossArenaSetPiecePolicy.Pillar pillar : frame.pillars()) {
+            if (pillar.points().isEmpty()) {
+                continue;
+            }
+            BossArenaSetPiecePolicy.Point point = pillar.points().get(0);
+            Location origin = new Location(world, point.x() + 0.5D, point.y(), point.z() + 0.5D);
+            BlockDisplay display = world.spawn(origin, BlockDisplay.class, entity -> {
+                entity.setBlock(anchorMaterial.createBlockData());
+                entity.setBrightness(new Display.Brightness(15, 15));
+                entity.setViewRange(64.0F);
+                entity.setDisplayWidth(1.0F);
+                entity.setDisplayHeight(1.0F);
+                entity.setPersistent(false);
+                entity.setGravity(false);
+                entity.setInvulnerable(true);
+                entity.setShadowRadius(0.0F);
+                entity.setTransformation(new Transformation(
+                        new Vector3f(-0.18F, 0.0F, -0.18F), new AxisAngle4f(),
+                        new Vector3f(0.36F, 0.90F, 0.36F), new AxisAngle4f()));
+            });
+            tag(display, EVENT_KIND_DISPLAY, 0, false);
+            finalArenaSceneVisuals.add(display.getUniqueId());
+        }
+        world.playSound(core, policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                ? Sound.BLOCK_RESPAWN_ANCHOR_CHARGE : Sound.ENTITY_ENDER_DRAGON_GROWL,
+                0.75F, policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN ? 0.65F : 0.45F);
+        getLogger().info("FINAL_ARENA_SCENE_STARTED event=" + eventId
+                + " scene=" + policyScene + " anchors=" + finalArenaSceneVisuals.size()
+                + " generation=" + generation + " display_only=true");
+    }
+
+    private void renderFinalArenaScene(EventPhase scene, LivingEntity boss, int elapsedTicks) {
+        BossArenaSetPiecePolicy.Scene policyScene = finalArenaPolicyScene(scene);
+        if (policyScene == null || finalArenaScene != policyScene
+                || finalArenaSceneGeneration != generation) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        Location core = coreCombatAnchorLocation();
+        if (world == null || core == null) {
+            return;
+        }
+        BossArenaSetPiecePolicy.Bounds bounds = new BossArenaSetPiecePolicy.Bounds(
+                arenaMinX, arenaMaxX, arenaMinY, arenaMaxY, arenaMinZ, arenaMaxZ);
+        BossArenaSetPiecePolicy.Point corePoint = new BossArenaSetPiecePolicy.Point(
+                core.getBlockX(), core.getBlockY(), core.getBlockZ());
+        BossArenaSetPiecePolicy.Frame frame = BossArenaSetPiecePolicy.frame(
+                policyScene, bounds, corePoint, Math.max(0, elapsedTicks));
+        if (!frame.allPointsInside(bounds)) {
+            getLogger().severe("FINAL_ARENA_SCENE_ABORTED event=" + eventId
+                    + " scene=" + policyScene + " reason=policy-outside-bounds");
+            clearFinalArenaScene("policy bounds violation");
+            return;
+        }
+        finalArenaSceneElapsedTicks = Math.max(0, elapsedTicks);
+        Particle primary = policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                ? Particle.REVERSE_PORTAL : Particle.DRAGON_BREATH;
+        Particle accent = policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                ? Particle.END_ROD : Particle.SOUL_FIRE_FLAME;
+        Particle.DustOptions dust = new Particle.DustOptions(
+                policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                        ? Color.fromRGB(69, 218, 255) : Color.fromRGB(244, 39, 125),
+                1.05F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, core)) {
+                continue;
+            }
+            for (BossArenaSetPiecePolicy.Ring ring : frame.rings()) {
+                int points = Math.min(32, ring.points().size());
+                for (int index = 0; index < points; index++) {
+                    BossArenaSetPiecePolicy.Point point = ring.points().get(index);
+                    Location location = new Location(world, point.x() + 0.5D,
+                            point.y() + 0.08D, point.z() + 0.5D);
+                    viewer.spawnParticle(primary, location, 1,
+                            0.0D, 0.0D, 0.0D, 0.0D);
+                    viewer.spawnParticle(Particle.DUST, location, 1,
+                            0.01D, 0.01D, 0.01D, 0.0D, dust);
+                }
+            }
+            for (BossArenaSetPiecePolicy.Pillar pillar : frame.pillars()) {
+                List<BossArenaSetPiecePolicy.Point> points = pillar.points();
+                for (int index = 0; index < points.size(); index++) {
+                    BossArenaSetPiecePolicy.Point point = points.get(index);
+                    Location location = new Location(world, point.x() + 0.5D,
+                            point.y() + 0.12D, point.z() + 0.5D);
+                    viewer.spawnParticle(accent, location, 1,
+                            0.03D, 0.08D, 0.03D, 0.01D);
+                }
+                if (!points.isEmpty()) {
+                    BossArenaSetPiecePolicy.Point point = points.get(0);
+                    Location anchor = new Location(world, point.x() + 0.5D,
+                            point.y() + 0.30D, point.z() + 0.5D);
+                    spawnParticleLine(viewer, core.clone().add(0.0D, 0.18D, 0.0D),
+                            anchor, 5);
+                }
+            }
+            for (BossArenaSetPiecePolicy.Cell cell : frame.cells()) {
+                for (BossArenaSetPiecePolicy.Point point : cell.points()) {
+                    Location location = new Location(world, point.x() + 0.5D,
+                            point.y() + 0.10D, point.z() + 0.5D);
+                    viewer.spawnParticle(Particle.DUST, location, 2,
+                            0.14D, 0.02D, 0.14D, 0.0D, dust);
+                }
+            }
+            if (boss != null && boss.isValid()) {
+                spawnParticleLine(viewer, core.clone().add(0.0D, 0.20D, 0.0D),
+                        boss.getLocation().add(0.0D, 0.55D, 0.0D), 6);
+            }
+        }
+        int visualIndex = 0;
+        float pulse = 1.0F + (float) Math.sin(elapsedTicks * 0.12D) * 0.08F;
+        for (UUID visualId : new ArrayList<>(finalArenaSceneVisuals)) {
+            Entity entity = ownedEntities.get(visualId);
+            if (!(entity instanceof BlockDisplay display) || !display.isValid()) {
+                continue;
+            }
+            float offset = 1.0F + (float) Math.sin(elapsedTicks * 0.12D + visualIndex * 0.8D) * 0.08F;
+            display.setTransformation(new Transformation(
+                    new Vector3f(-0.18F, 0.0F, -0.18F), new AxisAngle4f(),
+                    new Vector3f(0.36F * pulse, 0.90F * offset, 0.36F * pulse),
+                    new AxisAngle4f()));
+            visualIndex++;
+        }
+        getLogger().fine("FINAL_ARENA_SCENE_FRAME event=" + eventId
+                + " scene=" + policyScene + " elapsed_ticks=" + elapsedTicks
+                + " anchors=" + finalArenaSceneVisuals.size());
+    }
+
+    private void clearFinalArenaScene(String reason) {
+        if (finalRitualVisualTask != null) {
+            finalRitualVisualTask.cancel();
+            finalRitualVisualTask = null;
+        }
+        int removed = 0;
+        for (UUID visualId : new HashSet<>(finalArenaSceneVisuals)) {
+            Entity visual = ownedEntities.remove(visualId);
+            if (visual == null) {
+                visual = Bukkit.getEntity(visualId);
+            }
+            if (visual != null && visual.isValid()) {
+                visual.remove();
+                removed++;
+            }
+        }
+        BossArenaSetPiecePolicy.Scene previous = finalArenaScene;
+        finalArenaSceneVisuals.clear();
+        finalArenaScene = null;
+        finalArenaSceneGeneration = Long.MIN_VALUE;
+        finalArenaSceneElapsedTicks = 0;
+        if (previous != null || removed > 0) {
+            getLogger().info("FINAL_ARENA_SCENE_CLEANUP event=" + eventId
+                    + " scene=" + previous + " removed=" + removed + " reason=" + reason);
+        }
+    }
+
     private void scheduleFinalRitualVisual(LivingEntity boss) {
         if (taskRegistry == null || boss == null
                 || (finalRitualVisualTask != null && !finalRitualVisualTask.isCancelled())) {
             return;
         }
+        startFinalArenaScene(phase);
         long callbackGeneration = generation;
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
@@ -12886,6 +13109,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             ticks[0] += 5;
+            renderFinalArenaScene(phase, boss, ticks[0]);
             Location target = boss.getLocation().add(0.0D, 0.8D, 0.0D);
             Location core = coreLocation();
             for (Player player : activeLivingPlayers()) {
@@ -13787,6 +14011,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void beginVictory() {
+        clearFinalArenaScene("victory");
         clearClientEffects();
         clearActiveRiftProjectiles();
         if (bossBar != null) {

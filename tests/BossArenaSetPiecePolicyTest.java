@@ -22,6 +22,12 @@ public final class BossArenaSetPiecePolicyTest {
             requireThrows(UnsupportedOperationException.class,
                     () -> frame.rings().add(frame.rings().get(0)),
                     scene + " rings must be immutable");
+            for (int elapsed : new int[] {5, 30, 120, 600, 10_000}) {
+                BossArenaSetPiecePolicy.Frame animated =
+                        BossArenaSetPiecePolicy.frame(scene, bounds, core, elapsed);
+                require(animated.allPointsInside(bounds),
+                        scene + " animated geometry must stay inside the bounds at " + elapsed);
+            }
         }
 
         BossArenaSetPiecePolicy.Frame escaped = new BossArenaSetPiecePolicy.Frame(

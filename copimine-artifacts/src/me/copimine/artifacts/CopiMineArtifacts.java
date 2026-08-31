@@ -4801,10 +4801,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             LivingEntity attacker = this.resolveDamageAttacker(var14);
             if (attacker != null && attacker != var2) {
                if (random.nextDouble() < SHIELD_NAUSEA_PROC_CHANCE) {
-                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.NAUSEA, SHIELD_EFFECT_DURATION_TICKS, 2, false, false, true));
+                  this.applyCombatEffect(attacker, PotionEffectType.NAUSEA, SHIELD_EFFECT_DURATION_TICKS, 2);
                }
                if (random.nextDouble() < SHIELD_WEAKNESS_PROC_CHANCE) {
-                  attacker.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, SHIELD_EFFECT_DURATION_TICKS, 2, false, false, true));
+                  this.applyCombatEffect(attacker, PotionEffectType.WEAKNESS, SHIELD_EFFECT_DURATION_TICKS, 2);
                }
                long lightningReadyAt = this.shieldLightningCooldowns.getOrDefault(var2.getUniqueId(), 0L);
                if (lightningReadyAt <= current) {
@@ -15796,6 +15796,18 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       }
    }
 
+   /**
+    * Refreshes a combat debuff even when the victim already has the same effect.
+    * Bukkit's overload without the force flag may keep the existing, shorter
+    * effect, which made later shield/scythe procs look as if they did nothing.
+    */
+   private void applyCombatEffect(LivingEntity target, PotionEffectType type, int durationTicks, int amplifier) {
+      if (target == null || type == null || durationTicks <= 0 || amplifier < 0) {
+         return;
+      }
+      target.addPotionEffect(new PotionEffect(type, durationTicks, amplifier, false, false, true), true);
+   }
+
    private void tryRareArTheft(Player attacker, LivingEntity target) {
       if (!(target instanceof Player victim) || attacker == null || this.bridge == null || random.nextDouble() >= AR_THEFT_PROC_CHANCE) return;
       int stolenAmount = 1 + random.nextInt(3);
@@ -15835,13 +15847,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          this.healPlayerCapped(attacker, 3.0);
       }
       if (random.nextDouble() < KOSA_HUNGER_PROC_CHANCE) {
-         target.addPotionEffect(new PotionEffect(PotionEffectType.HUNGER, 40, 0, false, false, true));
+         this.applyCombatEffect(target, PotionEffectType.HUNGER, 40, 0);
       }
       if (random.nextDouble() < KOSA_WITHER_PROC_CHANCE) {
-         target.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 40, 0, false, false, true));
+         this.applyCombatEffect(target, PotionEffectType.WITHER, 40, 0);
       }
       if (random.nextDouble() < KOSA_BLINDNESS_PROC_CHANCE) {
-         target.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 140, 2, false, false, true));
+         this.applyCombatEffect(target, PotionEffectType.BLINDNESS, 140, 2);
       }
    }
 

@@ -18,6 +18,15 @@ SOURCE = (
     / "artifacts"
     / "CopiMineArtifacts.java"
 )
+ECONOMY_SOURCE = (
+    ROOT
+    / "copimine-economy-core"
+    / "src"
+    / "me"
+    / "copimine"
+    / "economycore"
+    / "CopiMineEconomyCore.java"
+)
 
 
 def donation_item_block(item_id: str) -> str:
@@ -35,6 +44,7 @@ class KosaShieldFollowupContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.source = SOURCE.read_text(encoding="utf-8")
+        cls.economy_source = ECONOMY_SOURCE.read_text(encoding="utf-8")
 
     def test_kosa_has_the_requested_independent_proc_chances(self) -> None:
         self.assertIn("AR_THEFT_PROC_CHANCE = 0.025D", self.source)
@@ -117,6 +127,45 @@ class KosaShieldFollowupContractTest(unittest.TestCase):
     def test_shield_catalog_exposes_the_twenty_second_cooldown(self) -> None:
         block = donation_item_block("ne_segodnya_suka_shield")
         self.assertIn("cooldown-seconds: 20", block)
+
+    def test_target_debuffs_force_refresh_when_the_same_effect_is_already_active(self) -> None:
+        """A second proc must refresh the debuff instead of being silently ignored."""
+        helper_start = self.source.index("private void applyCombatEffect")
+        helper_end = self.source.index("private void sendArTheftMessages")
+        combat_effect_helper = self.source[helper_start:helper_end]
+        self.assertIn(
+            "target.addPotionEffect(new PotionEffect(type, durationTicks, amplifier, false, false, true), true)",
+            combat_effect_helper,
+        )
+
+        kosa = self.source[self.source.index("private void applyKosaCombatEffects") : helper_end]
+        for effect in ("HUNGER", "WITHER", "BLINDNESS"):
+            self.assertIn(f"this.applyCombatEffect(target, PotionEffectType.{effect}", kosa)
+
+        shield_start = self.source.index('if (var5 != null && "NOT_TODAY_SHIELD"')
+        shield_end = self.source.index("\n         }\n      }\n   }", shield_start)
+        shield = self.source[shield_start:shield_end]
+        for effect in ("NAUSEA", "WEAKNESS"):
+            self.assertIn(f"this.applyCombatEffect(attacker, PotionEffectType.{effect}", shield)
+
+    def test_kosa_theft_destination_must_be_the_attackers_player_account(self) -> None:
+        theft_start = self.economy_source.index("private TxnResult stealFromPlayerAccount")
+        theft_end = self.economy_source.index(
+            "private CompletableFuture<TxnResult> chargeTreasuryWithPinAsync", theft_start
+        )
+        theft = self.economy_source[theft_start:theft_end]
+
+        self.assertIn("String toId = bankAccountId(toUuid.toString());", theft)
+        self.assertIn("String resolvedToId = string(toAccount.get(\"account_id\"));", theft)
+        self.assertIn("!toId.equalsIgnoreCase(resolvedToId)", theft)
+        self.assertIn("!\"PLAYER\".equalsIgnoreCase(resolvedToType)", theft)
+        self.assertIn("TREASURY_ACCOUNT_ID.equalsIgnoreCase(resolvedToId)", theft)
+        self.assertIn(
+            "UPDATE cmv4_bank_accounts SET balance=?,version=version+1,updated_at=? WHERE account_id=?",
+            theft,
+        )
+        self.assertIn("toAfter, when, resolvedToId", theft)
+        self.assertNotIn("treasuryAccountId()", theft)
 
 
 if __name__ == "__main__":

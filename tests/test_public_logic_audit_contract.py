@@ -36,9 +36,9 @@ def test_server_copy_status_is_a_live_region() -> None:
 def test_events_renderer_accepts_safe_editorial_cms_fields_and_local_art() -> None:
     renderer = read("admin-web/frontend/assets/js/public/events-page.js")
     assert "safeEventCopy" in renderer
-    assert "editorialRecord.title" in renderer
-    assert "editorialRecord.summary" in renderer
-    assert "editorialRecord.body" in renderer
+    assert "publicCopy.title" in renderer
+    assert "publicCopy.summary" in renderer
+    assert "publicCopy.body" in renderer
     assert "editorialRecord.heroImage" in renderer
     assert "editorialRecord.dragonImage" in renderer
     # Gameplay internals stay private; they must not become public copy by

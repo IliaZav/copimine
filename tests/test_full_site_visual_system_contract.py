@@ -23,7 +23,7 @@ def test_public_shell_loads_one_final_atmosphere_layer() -> None:
     style = read("admin-web/frontend/assets/style.css")
     atmosphere = read("admin-web/frontend/assets/css/site-atmosphere.css")
 
-    assert '@import url("./css/site-atmosphere.css?v=20260831siteui25");' in style
+    assert '@import url("./css/site-atmosphere.css?v=20260831siteui26");' in style
     assert style.count("site-atmosphere.css") == 1
     for selector in (
         "body[data-page-kind^=\"public\"]::before",
@@ -58,7 +58,7 @@ def test_cabinet_shell_loads_a_matching_final_layer() -> None:
     cabinet = read("admin-web/frontend/assets/cabinet.css")
     atmosphere = read("admin-web/frontend/assets/css/cabinet-atmosphere.css")
 
-    assert '@import url("./css/cabinet-atmosphere.css?v=20260831cabinetui25");' in cabinet
+    assert '@import url("./css/cabinet-atmosphere.css?v=20260831cabinetui26");' in cabinet
     assert "body.player-mode" in atmosphere
     assert "body.panel-admin-mode" in atmosphere
     assert ".sidebar" in atmosphere
@@ -85,7 +85,7 @@ def test_every_public_html_route_keeps_the_shared_style_entrypoint() -> None:
     for path in pages:
         source = path.read_text(encoding="utf-8")
         if "data-page-kind=\"public" in source or "class=\"public-site" in source:
-            assert "/assets/style.css?v=20260831siteui25" in source, path.name
+            assert "/assets/style.css?v=20260831siteui26" in source, path.name
 
 
 def test_new_visual_layer_has_small_screen_and_keyboard_guards() -> None:
@@ -112,3 +112,15 @@ def test_public_copy_audit_does_not_add_generic_ai_marketing_phrases() -> None:
     )
     for phrase in forbidden:
         assert phrase not in source.lower(), phrase
+
+
+def test_brand_palette_and_font_pairing_are_applied_to_the_shared_layer() -> None:
+    atmosphere = read("admin-web/frontend/assets/css/site-atmosphere.css")
+    assert '--site-display: "Space Grotesk"' in atmosphere
+    assert '--site-body: "Manrope"' in atmosphere
+    assert '--site-data: "DM Mono"' in atmosphere
+    assert "font-family: var(--site-body)" in atmosphere
+    assert "font-family: var(--site-display)" in atmosphere
+    assert "font-family: var(--site-data)" in atmosphere
+    for color in ("#7650c7", "#53cdb8", "#c79246"):
+        assert color in atmosphere

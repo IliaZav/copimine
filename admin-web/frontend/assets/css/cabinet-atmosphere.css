@@ -4,6 +4,10 @@
 body.player-mode,
 body.panel-admin-mode,
 body.junior-admin-mode {
+  --site-display: "Space Grotesk", "Bahnschrift", "Segoe UI Variable Display", sans-serif;
+  --site-body: "Manrope", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --site-data: "DM Mono", "Cascadia Mono", "JetBrains Mono", monospace;
+  font-family: var(--site-body);
   --cabinet-violet: #7650c7;
   --cabinet-violet-soft: rgba(118, 80, 199, .13);
   --cabinet-aqua: #53cdb8;
@@ -98,7 +102,20 @@ body.junior-admin-mode .topbar {
 body.player-mode .page-heading h1,
 body.panel-admin-mode .page-heading h1,
 body.junior-admin-mode .page-heading h1 {
+  font-family: var(--site-display);
   letter-spacing: -.055em;
+}
+
+body.player-mode :where(h2, h3, .brand-title, .topbar-title),
+body.panel-admin-mode :where(h2, h3, .brand-title, .topbar-title),
+body.junior-admin-mode :where(h2, h3, .brand-title, .topbar-title) {
+  font-family: var(--site-display);
+}
+
+body.player-mode :where(.metric-label, .eyebrow, .pill, th),
+body.panel-admin-mode :where(.metric-label, .eyebrow, .pill, th),
+body.junior-admin-mode :where(.metric-label, .eyebrow, .pill, th) {
+  font-family: var(--site-data);
 }
 
 body.player-mode .panel,

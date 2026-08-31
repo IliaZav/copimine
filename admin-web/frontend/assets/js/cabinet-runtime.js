@@ -4942,7 +4942,7 @@ async function loadStats() {
         [" jar", plugins.totalJars ?? 0],
         ["CopiMine jar", plugins.copimineJars ?? 0],
         ["Живая связь", rcon.ok ? "подключена" : (rcon.error || "не подключена")],
-        ["First-run готовность", `${perfReady.readyPercent || 0}%`],
+        ["Готовность первого запуска", `${perfReady.readyPercent || 0}%`],
         ["Последнее обновление", dt(stats.time)]
       ]))}
     </section>

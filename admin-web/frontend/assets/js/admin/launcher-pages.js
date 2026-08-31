@@ -61,7 +61,7 @@ export function createAdminLauncherPages(deps) {
       </section>
 
       <section class="layout-grid grid-2 launcher-admin-grid">
-        ${panel("Версия Launcher", "Подготовка публикации не меняет игровой сервер и данные игроков.", `
+        ${panel("Версия лаунчера", "Подготовка публикации не меняет игровой сервер и данные игроков.", `
           <div class="kv-grid launcher-release-summary">
             <div><span>Текущий</span><strong>${esc(releaseLabel(current))}</strong></div>
             <div><span>Следующая последовательность</span><strong>${esc(nextSequence)}</strong></div>
@@ -96,7 +96,7 @@ export function createAdminLauncherPages(deps) {
       ${panel("Моды Launcher", "Загрузка нового файла сама проверяет его целостность. Публикация остаётся отдельным действием.", `
         <div class="launcher-upload-box">
           <div class="form-grid">
-            <div class="field-stack"><label for="launcherModComponent">Component ID</label><input id="launcherModComponent" placeholder="map-helper" /></div>
+            <div class="field-stack"><label for="launcherModComponent">Идентификатор компонента</label><input id="launcherModComponent" placeholder="map-helper" /></div>
             <div class="field-stack"><label for="launcherModVersion">Версия</label><input id="launcherModVersion" placeholder="1.0.0" /></div>
             <div class="field-stack"><label for="launcherModFilename">Имя .jar</label><input id="launcherModFilename" placeholder="MapHelper.jar" /></div>
             <div class="field-stack"><label for="launcherModFile">Файл</label><input id="launcherModFile" type="file" accept=".jar,application/java-archive" /></div>

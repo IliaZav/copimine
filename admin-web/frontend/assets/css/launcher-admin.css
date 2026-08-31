@@ -74,7 +74,9 @@
 }
 
 .launcher-mod-table {
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 
 .launcher-mod-table table {
@@ -87,6 +89,17 @@
 
 .launcher-mod-table input:not([type="checkbox"]) {
   min-width: 120px;
+}
+
+@media (max-width: 900px) {
+  .launcher-mod-table table {
+    min-width: 680px;
+  }
+
+  .launcher-mod-table th,
+  .launcher-mod-table td {
+    white-space: normal;
+  }
 }
 
 .toggle-row.compact {

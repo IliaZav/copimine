@@ -346,7 +346,7 @@ export function createAdminCommercePages(deps) {
               <button class="btn btn-secondary full" data-click="adminArAddBalance()">Зачислить AR</button>
             </div>
             <div class="form-grid compact-grid">
-              <label class="field-stack"><span>Добавить donation</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество donation" /></label>
+              <label class="field-stack"><span>Добавить донаты</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество донатов" /></label>
               <label class="field-stack"><span>Причина</span><input id="adminDonationAddReason" value="admin-topup" /></label>
               <button class="btn btn-secondary full" data-click="adminDonationAddBalance()">Зачислить donation</button>
               <button class="btn btn-primary full" data-click="adminApplyBalanceTopups()">Зачислить заполненные AR и donation</button>

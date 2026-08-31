@@ -8,6 +8,12 @@
 
 body[data-page-kind^="public"],
 body.auth-screen {
+  /* Font Pairing selection: display, readable body, and compact data roles.
+   * The fallbacks keep the site self-contained when the optional system fonts
+   * are not installed on a player's machine. */
+  --site-display: "Space Grotesk", "Bahnschrift", "Segoe UI Variable Display", sans-serif;
+  --site-body: "Manrope", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --site-data: "DM Mono", "Cascadia Mono", "JetBrains Mono", monospace;
   --site-violet: #7650c7;
   --site-violet-bright: #9b75ef;
   --site-aqua: #53cdb8;
@@ -28,6 +34,7 @@ body.auth-screen {
   isolation: isolate;
   min-height: 100%;
   background: linear-gradient(180deg, #f8fbf8 0%, var(--site-paper) 45%, #e7f0eb 100%);
+  font-family: var(--site-body);
 }
 
 body[data-page-kind^="public"]::before,
@@ -260,8 +267,17 @@ body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-sit
 .public-site .page-hero h1,
 .public-site .launcher-hero-copy h1,
 .public-site .news-hero h1 {
+  font-family: var(--site-display);
   letter-spacing: -.06em;
   text-shadow: 0 1px 0 rgba(255, 255, 255, .24);
+}
+
+.public-site :where(h2, h3, .public-brand-copy strong, .public-nav nav > a, .public-nav nav > .btn) {
+  font-family: var(--site-display);
+}
+
+.public-site :where(.hero-kicker, .section-head > span, .page-kicker-row .hero-kicker, .route-chip, .news-hero-stat, .visual-label) {
+  font-family: var(--site-data);
 }
 
 :root[data-theme="dark"] .public-site .section-head h2,

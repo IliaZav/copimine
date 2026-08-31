@@ -2158,7 +2158,7 @@ function syncAuthUiLegacyUnused() {
       : "Войдите логином сайта. После входа будут доступны онлайн-банк, удалённые покупки и история операций.";
     if (usernameLabel) usernameLabel.textContent = "Логин сайта";
     if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-    $("username").placeholder = "Придумай логин";
+    $("username").placeholder = "Придумайте логин";
     $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введите пароль";
     if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
     if (note) note.textContent = isRegister
@@ -2182,7 +2182,7 @@ function syncAuthUiLegacyUnused() {
     : "Введите логин и пароль, чтобы открыть свой кабинет.";
   if (usernameLabel) usernameLabel.textContent = "Логин сайта";
   if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-  if ($("username")) $("username").placeholder = isRegister ? "Придумай логин" : "Введи логин";
+  if ($("username")) $("username").placeholder = isRegister ? "Придумайте логин" : "Введите логин";
   if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
   if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
   if (note) note.textContent = isRegister

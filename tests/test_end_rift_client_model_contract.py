@@ -102,9 +102,35 @@ def test_guardian_model_uses_modelpart_geometry_and_bounded_phase_animation() ->
         assert part in model
     for shard in ("left_horn", "right_horn", "left_shard", "right_shard"):
         assert shard in model
+    for part in ("jaw", "core_eye", "crown_left", "crown_right", "left_talon", "right_talon", "catastrophe_spine"):
+        assert part in model
+    for helper in (
+        "applyBreathTransform",
+        "applyDamagedFlinch",
+        "applyTeleportRip",
+        "applyCastTransform",
+        "applyPhaseShiftTransform",
+        "applyDefeatCollapse",
+    ):
+        assert helper in model
+    for animation_id in (
+        "IDLE_BREATH",
+        "DAMAGED_FLINCH",
+        "TELEPORT_RIP",
+        "CAST_CHARGE",
+        "CAST_RELEASE",
+        "CAST_IMPACT",
+        "PHASE_SHIFT",
+        "FINAL_AWAKENING",
+        "DEFEAT_COLLAPSE",
+    ):
+        assert f'"{animation_id}"' in model
     assert "TexturedModelData.of(modelData, 128, 128)" in model
     assert "ModelPart" in model
     assert "MathHelper.clamp" in model
+    assert "EntityDimensions" not in model
+    assert "refreshPositionAndAngles" not in model
+    assert "requestTeleport" not in model
     for phase in ("AWAKENING", "HUNTER", "DISTORTION", "ABSORPTION", "CATASTROPHE"):
         assert phase in renderer
     for texture in BOSS_PHASE_TEXTURES:
@@ -124,3 +150,10 @@ def test_enderman_renderer_scopes_custom_model_to_bound_boss_uuid_with_fallback(
     assert "model = copimine$guardianRenderer.modelForPhase" in mixin
     assert "model = copimine$vanillaModel" in mixin
     assert "assets/minecraft" not in mixin
+    assert "setBoundingBox" not in mixin
+    assert "refreshPositionAndAngles" not in mixin
+
+
+def test_client_resources_do_not_override_vanilla_textures() -> None:
+    vanilla_texture_root = CLIENT / "src/main/resources/assets/minecraft/textures"
+    assert not vanilla_texture_root.exists(), f"Vanilla texture overrides are forbidden: {vanilla_texture_root}"

@@ -45,20 +45,23 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
     private void copimine$useGuardianModelForBoundBoss(EndermanEntity entity, float yaw, float tickDelta,
                                                        MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                                        int light, CallbackInfo ci) {
-        if (entity == null || !ClientBridgeProtocol.isBoundEndBoss(entity.getUuid().toString())) {
+        if (entity == null) {
             return;
         }
-        Identifier texture = copimine$guardianRenderer.textureForPhase(
-                ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()));
+        String bossUuid = entity.getUuid().toString();
+        if (!ClientBridgeProtocol.isBoundEndBoss(bossUuid)) {
+            return;
+        }
+        String phaseId = ClientBridgeProtocol.bossPhaseForEntity(bossUuid);
+        long transitionMillis = ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(bossUuid);
+        String animationId = ClientBridgeProtocol.bossAnimationForEntity(bossUuid);
+        Identifier texture = copimine$guardianRenderer.textureForPhase(phaseId);
         EndEventTextureCatalog.logLookup("boss-model", texture);
         if (!EndEventTextureCatalog.isAvailable(texture)) {
             return;
         }
         copimine$vanillaModel = model;
-        model = copimine$guardianRenderer.modelForPhase(
-                ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()),
-                ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(entity.getUuid().toString()),
-                ClientBridgeProtocol.bossAnimationForEntity(entity.getUuid().toString()));
+        model = copimine$guardianRenderer.modelForPhase(phaseId, transitionMillis, animationId);
     }
 
     @Inject(method = "render(Lnet/minecraft/entity/mob/EndermanEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))

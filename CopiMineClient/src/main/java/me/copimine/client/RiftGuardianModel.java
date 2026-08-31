@@ -35,6 +35,13 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     private final ModelPart leftShard;
     private final ModelPart rightShard;
     private final ModelPart chestRift;
+    private final ModelPart jaw;
+    private final ModelPart coreEye;
+    private final ModelPart crownLeft;
+    private final ModelPart crownRight;
+    private final ModelPart leftTalon;
+    private final ModelPart rightTalon;
+    private final ModelPart catastropheSpine;
     private Phase phase = Phase.AWAKENING;
     private String animationId = "IDLE";
     private long transitionDurationMillis;
@@ -58,6 +65,13 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         this.leftShard = body.getChild("left_shard");
         this.rightShard = body.getChild("right_shard");
         this.chestRift = body.getChild("chest_rift");
+        this.jaw = body.getChild("jaw");
+        this.coreEye = body.getChild("core_eye");
+        this.crownLeft = body.getChild("crown_left");
+        this.crownRight = body.getChild("crown_right");
+        this.leftTalon = leftArm.getChild("left_talon");
+        this.rightTalon = rightArm.getChild("right_talon");
+        this.catastropheSpine = body.getChild("catastrophe_spine");
     }
 
     public static TexturedModelData getTexturedModelData() {
@@ -119,12 +133,33 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         body.addChild("chest_rift", ModelPartBuilder.create()
                         .uv(28, 84).cuboid(-3.0F, -20.5F, -5.6F, 6.0F, 10.0F, 1.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        body.addChild("jaw", ModelPartBuilder.create()
+                        .uv(96, 64).cuboid(-4.0F, -28.5F, -6.8F, 8.0F, 3.0F, 3.0F),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        body.addChild("core_eye", ModelPartBuilder.create()
+                        .uv(96, 72).cuboid(-2.0F, -18.0F, -6.0F, 4.0F, 4.0F, 1.0F),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
+        body.addChild("crown_left", ModelPartBuilder.create()
+                        .uv(112, 64).cuboid(0.0F, -37.0F, -1.5F, 3.0F, 7.0F, 3.0F),
+                ModelTransform.of(7.0F, 24.0F, 0.0F, -0.10F, 0.0F, 0.32F));
+        body.addChild("crown_right", ModelPartBuilder.create()
+                        .uv(112, 74).cuboid(-3.0F, -37.0F, -1.5F, 3.0F, 7.0F, 3.0F),
+                ModelTransform.of(-7.0F, 24.0F, 0.0F, -0.10F, 0.0F, -0.32F));
+        body.addChild("catastrophe_spine", ModelPartBuilder.create()
+                        .uv(96, 80).cuboid(-2.0F, -33.0F, 5.6F, 4.0F, 12.0F, 2.0F),
+                ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         root.addChild("right_leg", ModelPartBuilder.create()
                         .uv(56, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
                 ModelTransform.pivot(-5.0F, 1.5F, 0.0F));
         root.addChild("left_leg", ModelPartBuilder.create()
                         .uv(80, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
                 ModelTransform.pivot(5.0F, 1.5F, 0.0F));
+        root.getChild("left_arm").addChild("left_talon", ModelPartBuilder.create()
+                        .uv(112, 84).cuboid(-1.0F, -1.0F, -1.0F, 3.0F, 6.0F, 2.0F),
+                ModelTransform.of(1.2F, 22.5F, -0.2F, 0.22F, 0.0F, 0.08F));
+        root.getChild("right_arm").addChild("right_talon", ModelPartBuilder.create()
+                        .uv(112, 92).cuboid(-2.0F, -1.0F, -1.0F, 3.0F, 6.0F, 2.0F),
+                ModelTransform.of(-1.2F, 22.5F, -0.2F, 0.22F, 0.0F, -0.08F));
         return TexturedModelData.of(modelData, 128, 128);
     }
 
@@ -148,6 +183,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         root.traverse().forEach(ModelPart::resetTransform);
         float walk = MathHelper.clamp(limbDistance, 0.0F, 1.0F);
         float transition = MathHelper.clamp(transitionDurationMillis / 600_000.0F, 0.0F, 1.0F);
+        String animation = animationId == null ? "IDLE" : animationId;
         applyIdleTransform(animationProgress, transition);
         applyWalkTransform(limbAngle, walk);
         if (entity != null && entity.isAngry()) {
@@ -165,18 +201,36 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
             leftArm.pitch -= 0.25F;
             rightArm.pitch -= 0.25F;
         }
-        applySpellCastTransform(animationProgress);
+        applyBreathTransform(animationProgress, animation);
+        applyDamagedFlinch(animationProgress, animation);
+        applyTeleportRip(animationProgress, animation);
+        applyCastTransform(animationProgress, animation);
+        applyPhaseShiftTransform(animationProgress, animation);
+        applyDefeatCollapse(animationProgress, animation);
         applyFinalSilhouette(animationProgress);
         root.yaw = MathHelper.clamp(headYaw * 0.017453292F, -0.5F, 0.5F);
         torso.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.35F, 0.35F);
+        clampPose();
     }
 
     private void applyIdleTransform(float animationProgress, float transition) {
         float idle = MathHelper.sin(animationProgress * 0.08F);
         torso.pivotY += idle * 0.45F;
         chestRift.zScale = 1.0F + MathHelper.clamp(idle * 0.08F + transition * 0.12F, -0.08F, 0.18F);
+        coreEye.zScale = 1.0F + MathHelper.clamp(idle * 0.10F + transition * 0.14F, -0.06F, 0.20F);
+        coreEye.yScale = 1.0F + MathHelper.clamp(idle * 0.08F, -0.05F, 0.14F);
+        jaw.pitch += MathHelper.clamp(0.06F + idle * 0.05F, -0.08F, 0.16F);
+        jaw.pivotY += MathHelper.clamp(idle * 0.45F, -0.45F, 0.45F);
         leftHorn.roll += idle * 0.04F;
         rightHorn.roll -= idle * 0.04F;
+        crownLeft.pitch -= 0.08F + transition * 0.06F;
+        crownRight.pitch -= 0.08F + transition * 0.06F;
+        crownLeft.yScale = 0.88F + transition * 0.12F;
+        crownRight.yScale = 0.88F + transition * 0.12F;
+        leftTalon.pitch += 0.14F + transition * 0.08F;
+        rightTalon.pitch += 0.14F + transition * 0.08F;
+        catastropheSpine.pitch += 0.08F + transition * 0.04F;
+        catastropheSpine.yScale = 0.92F + transition * 0.12F;
         leftShard.pivotY += MathHelper.sin(animationProgress * 0.11F) * 0.9F;
         rightShard.pivotY += MathHelper.cos(animationProgress * 0.11F) * 0.9F;
     }
@@ -204,6 +258,9 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         rightShard.pitch += 0.5F;
         chestRift.xScale = 1.18F;
         chestRift.yScale = 1.12F;
+        coreEye.zScale = 1.18F;
+        leftTalon.pitch += 0.22F;
+        rightTalon.pitch += 0.22F;
     }
 
     private void applyJudgmentTransform(float animationProgress) {
@@ -214,111 +271,149 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         rightShoulder.roll -= 0.3F;
         leftHorn.pitch -= 0.2F;
         rightHorn.pitch -= 0.2F;
+        crownLeft.pitch -= 0.18F;
+        crownRight.pitch -= 0.18F;
+        catastropheSpine.pitch -= 0.16F;
+    }
+
+    private void applyBreathTransform(float animationProgress, String animation) {
+        if (!"IDLE_BREATH".equals(animation) && !"FINAL_AWAKENING".equals(animation)) {
+            return;
+        }
+        float intensity = "FINAL_AWAKENING".equals(animation) ? 1.35F : 1.0F;
+        float pulse = MathHelper.sin(animationProgress * 0.20F) * intensity;
+        jaw.pitch += MathHelper.clamp(0.16F + pulse * 0.14F, -0.04F, 0.34F);
+        jaw.pivotY += MathHelper.clamp(pulse * 0.55F, -0.55F, 0.75F);
+        torso.pitch += MathHelper.clamp(-0.04F + pulse * 0.05F, -0.12F, 0.08F);
+        chestRift.zScale = 1.08F + MathHelper.clamp(pulse * 0.10F, -0.04F, 0.18F);
+        coreEye.zScale = 1.08F + MathHelper.clamp(pulse * 0.14F, -0.06F, 0.24F);
+        coreEye.yScale = 1.04F + MathHelper.clamp(pulse * 0.08F, -0.04F, 0.16F);
+    }
+
+    private void applyDamagedFlinch(float animationProgress, String animation) {
+        if (!"DAMAGED_FLINCH".equals(animation)) {
+            return;
+        }
+        float recoil = MathHelper.cos(animationProgress * 0.55F) * 0.12F;
+        root.roll += MathHelper.clamp(-0.18F + recoil, -0.26F, 0.10F);
+        torso.pitch += MathHelper.clamp(0.20F + recoil, 0.04F, 0.28F);
+        jaw.pitch += 0.28F;
+        leftArm.pitch += 0.34F;
+        rightArm.pitch += 0.34F;
+        leftArm.roll += 0.18F;
+        rightArm.roll -= 0.18F;
+        leftTalon.pitch -= 0.24F;
+        rightTalon.pitch -= 0.24F;
+        coreEye.zScale = 1.18F;
+    }
+
+    private void applyTeleportRip(float animationProgress, String animation) {
+        if (!"TELEPORT_RIP".equals(animation)) {
+            return;
+        }
+        float pulse = MathHelper.sin(animationProgress * 0.70F);
+        root.roll += MathHelper.clamp(pulse * 0.28F, -0.28F, 0.28F);
+        torso.yaw += MathHelper.clamp(pulse * 0.22F, -0.22F, 0.22F);
+        leftShard.yaw -= 0.44F;
+        rightShard.yaw += 0.44F;
+        leftShard.pitch += 0.38F;
+        rightShard.pitch += 0.38F;
+        leftTalon.pitch += 0.38F;
+        rightTalon.pitch += 0.38F;
+        coreEye.zScale = 1.22F;
     }
 
     /**
-     * The server sends a small animation id alongside the phase.  Keeping the
-     * motion here, in the model, means the boss remains a real 3D model and no
-     * gameplay entity is needed just to show a cast.
+     * The server sends a compact animation id alongside the phase. Keeping the
+     * pose logic here preserves the UUID-scoped renderer swap while the boss
+     * remains a normal Enderman entity for gameplay and hitbox purposes.
      */
-    private void applySpellCastTransform(float animationProgress) {
-        String animation = animationId == null ? "IDLE" : animationId;
+    private void applyCastTransform(float animationProgress, String animation) {
         float pulse = MathHelper.sin(animationProgress * 0.32F);
         switch (animation) {
-            case "ABSORPTION_CHANNEL" -> {
-                leftArm.pitch = -0.95F + pulse * 0.08F;
-                rightArm.pitch = -0.95F - pulse * 0.08F;
+            case "CAST_CHARGE", "ABSORPTION_CHANNEL", "JUDGMENT_CAST" -> {
+                leftArm.pitch = -1.02F + pulse * 0.10F;
+                rightArm.pitch = -1.02F - pulse * 0.10F;
                 leftArm.roll -= 0.42F;
                 rightArm.roll += 0.42F;
-                leftShard.pitch += 0.75F;
-                rightShard.pitch += 0.75F;
-                chestRift.xScale = 1.28F;
-                chestRift.yScale = 1.18F;
+                leftTalon.pitch += 0.42F;
+                rightTalon.pitch += 0.42F;
+                jaw.pitch += 0.18F;
+                chestRift.xScale = 1.24F;
+                chestRift.yScale = 1.16F;
+                coreEye.zScale = 1.24F + pulse * 0.10F;
+                coreEye.yScale = 1.12F;
             }
-            case "JUDGMENT_CAST" -> {
-                leftArm.pitch = -1.22F + pulse * 0.10F;
-                rightArm.pitch = -1.22F - pulse * 0.10F;
-                leftArm.roll -= 0.24F;
-                rightArm.roll += 0.24F;
-                leftHorn.pitch -= 0.28F;
-                rightHorn.pitch -= 0.28F;
-                backSpine.yaw += pulse * 0.12F;
-            }
-            case "EXHAUSTED" -> {
-                torso.pitch += 0.16F;
-                leftArm.pitch += 0.22F;
-                rightArm.pitch += 0.22F;
-                leftHorn.roll -= 0.12F;
-                rightHorn.roll += 0.12F;
-            }
-            case "SPELL_VOID_BLAST" -> {
-                leftArm.pitch = -1.05F + pulse * 0.10F;
-                rightArm.pitch = -1.05F - pulse * 0.10F;
-                leftArm.roll -= 0.30F;
-                rightArm.roll += 0.30F;
-                chestRift.zScale = 1.30F + pulse * 0.08F;
-            }
-            case "SPELL_RIFT_PROJECTILE" -> {
-                rightArm.pitch = -1.42F + pulse * 0.15F;
-                rightArm.roll -= 0.16F;
-                leftArm.pitch += 0.28F;
-                rightShard.yaw += 0.42F;
-            }
-            case "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO" -> {
-                leftArm.pitch = -0.82F - pulse * 0.12F;
-                rightArm.pitch = -0.82F + pulse * 0.12F;
-                leftArm.roll -= 0.48F;
-                rightArm.roll += 0.48F;
-                leftShard.yaw -= 0.28F;
-                rightShard.yaw += 0.28F;
-            }
-            case "SPELL_VOID_MARK" -> {
-                leftArm.pitch = -0.62F;
-                rightArm.pitch = -1.02F;
+            case "CAST_RELEASE", "SPELL_VOID_BLAST", "SPELL_RIFT_PROJECTILE",
+                    "SPELL_RIFT_ARROWS", "SPELL_ARROW_SALVO", "SPELL_VOID_MARK",
+                    "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON", "SPELL_WILL_DISTORTION",
+                    "SPELL_ARENA_INFERNO" -> {
+                leftArm.pitch = -0.92F - pulse * 0.14F;
+                rightArm.pitch = -1.18F + pulse * 0.10F;
                 leftArm.roll -= 0.34F;
-                rightArm.roll += 0.18F;
-                torso.roll += pulse * 0.08F;
+                rightArm.roll += 0.26F;
+                torso.pitch += 0.14F;
+                torso.roll += pulse * 0.10F;
+                jaw.pitch += 0.24F;
+                crownLeft.yaw += 0.18F;
+                crownRight.yaw -= 0.18F;
+                leftShard.pitch += 0.22F;
+                rightShard.pitch += 0.22F;
+                coreEye.zScale = 1.18F + pulse * 0.08F;
             }
-            case "SPELL_SUMMON_SERVANTS", "SPELL_SUMMON" -> {
-                leftArm.pitch = -0.78F + pulse * 0.14F;
-                rightArm.pitch = -0.78F - pulse * 0.14F;
-                leftArm.roll -= 0.62F;
-                rightArm.roll += 0.62F;
-                leftShard.pitch -= 0.22F;
-                rightShard.pitch -= 0.22F;
-            }
-            case "SPELL_WILL_DISTORTION" -> {
-                leftArm.pitch = -0.55F;
-                rightArm.pitch = -1.25F;
-                torso.roll += pulse * 0.18F;
-                leftHorn.yaw += 0.20F;
-                rightHorn.yaw -= 0.20F;
-            }
-            case "SPELL_ARENA_INFERNO" -> {
-                leftArm.pitch = -1.30F;
-                rightArm.pitch = -1.30F;
-                leftArm.roll -= 0.20F;
-                rightArm.roll += 0.20F;
-                leftShard.pitch += 0.35F;
-                rightShard.pitch += 0.35F;
-            }
-            case "SPELL_IMPACT" -> {
-                torso.pitch += 0.20F + pulse * 0.08F;
-                leftArm.pitch -= 0.28F;
-                rightArm.pitch -= 0.28F;
-                leftHornTip.pitch += pulse * 0.10F;
-                rightHornTip.pitch -= pulse * 0.10F;
-            }
-            case "PHASE_SHIFT" -> {
-                root.roll += pulse * 0.16F;
-                leftCrest.yaw += pulse * 0.12F;
-                rightCrest.yaw -= pulse * 0.12F;
-                backSpine.pitch += pulse * 0.12F;
+            case "CAST_IMPACT", "SPELL_IMPACT" -> {
+                torso.pitch += 0.24F + pulse * 0.08F;
+                root.roll += pulse * 0.10F;
+                leftArm.pitch -= 0.24F;
+                rightArm.pitch -= 0.24F;
+                jaw.pitch += 0.34F;
+                leftHornTip.pitch += pulse * 0.12F;
+                rightHornTip.pitch -= pulse * 0.12F;
+                leftTalon.pitch += 0.28F;
+                rightTalon.pitch += 0.28F;
+                coreEye.zScale = 1.28F;
+                coreEye.yScale = 1.16F;
             }
             default -> {
-                // IDLE and unknown future ids use the phase/idle animation.
+                // IDLE and unrelated animations use the phase transforms only.
             }
         }
+    }
+
+    private void applyPhaseShiftTransform(float animationProgress, String animation) {
+        if (!"PHASE_SHIFT".equals(animation) && !"FINAL_AWAKENING".equals(animation)) {
+            return;
+        }
+        float pulse = MathHelper.sin(animationProgress * 0.40F);
+        float intensity = "FINAL_AWAKENING".equals(animation) ? 1.35F : 1.0F;
+        root.roll += MathHelper.clamp(pulse * 0.16F * intensity, -0.26F, 0.26F);
+        leftCrest.yaw += pulse * 0.12F * intensity;
+        rightCrest.yaw -= pulse * 0.12F * intensity;
+        backSpine.pitch += pulse * 0.12F * intensity;
+        crownLeft.pitch -= 0.16F * intensity;
+        crownRight.pitch -= 0.16F * intensity;
+        catastropheSpine.pitch -= 0.12F * intensity;
+        catastropheSpine.yScale = 1.08F + MathHelper.clamp(pulse * 0.08F * intensity, -0.04F, 0.18F);
+    }
+
+    private void applyDefeatCollapse(float animationProgress, String animation) {
+        if (!"DEFEAT_COLLAPSE".equals(animation) && !"EXHAUSTED".equals(animation)) {
+            return;
+        }
+        float intensity = "EXHAUSTED".equals(animation) ? 0.55F : 1.0F;
+        float sag = MathHelper.sin(animationProgress * 0.18F) * 0.08F * intensity;
+        torso.pitch += 0.26F * intensity + sag;
+        torso.pivotY += 1.2F * intensity;
+        jaw.pitch += 0.18F * intensity;
+        leftArm.pitch += 0.42F * intensity;
+        rightArm.pitch += 0.42F * intensity;
+        leftArm.roll += 0.18F * intensity;
+        rightArm.roll -= 0.18F * intensity;
+        leftHorn.roll -= 0.12F * intensity;
+        rightHorn.roll += 0.12F * intensity;
+        leftTalon.pitch -= 0.30F * intensity;
+        rightTalon.pitch -= 0.30F * intensity;
+        coreEye.zScale = 0.90F;
     }
 
     /** The last phase is intentionally larger and more threatening. */
@@ -342,7 +437,90 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         rightCrest.xScale = 1.18F;
         backSpine.xScale = 1.16F;
         backSpine.yScale = 1.30F;
+        crownLeft.xScale = 1.14F;
+        crownLeft.yScale = 1.32F + pulse;
+        crownRight.xScale = 1.14F;
+        crownRight.yScale = 1.32F + pulse;
+        leftTalon.yScale = 1.24F + pulse * 0.5F;
+        rightTalon.yScale = 1.24F + pulse * 0.5F;
+        catastropheSpine.xScale = 1.16F;
+        catastropheSpine.yScale = 1.38F + pulse;
+        catastropheSpine.zScale = 1.12F;
         chestRift.xScale = 1.24F;
         chestRift.yScale = 1.24F;
+        coreEye.zScale = MathHelper.clamp(coreEye.zScale + 0.12F, 0.9F, 1.42F);
+        jaw.pitch += 0.12F;
+    }
+
+    private void clampPose() {
+        root.yaw = clamp(root.yaw, -0.5F, 0.5F);
+        root.roll = clamp(root.roll, -0.75F, 0.75F);
+        root.xScale = clamp(root.xScale, 0.85F, 1.30F);
+        root.yScale = clamp(root.yScale, 0.85F, 1.30F);
+        root.zScale = clamp(root.zScale, 0.85F, 1.30F);
+
+        torso.pitch = clamp(torso.pitch, -1.5F, 1.5F);
+        torso.yaw = clamp(torso.yaw, -0.75F, 0.75F);
+        torso.roll = clamp(torso.roll, -0.75F, 0.75F);
+        torso.pivotY = clamp(torso.pivotY, 22.0F, 26.0F);
+
+        leftShoulder.roll = clamp(leftShoulder.roll, -0.8F, 0.8F);
+        rightShoulder.roll = clamp(rightShoulder.roll, -0.8F, 0.8F);
+        leftArm.pitch = clamp(leftArm.pitch, -1.8F, 1.8F);
+        rightArm.pitch = clamp(rightArm.pitch, -1.8F, 1.8F);
+        leftArm.roll = clamp(leftArm.roll, -1.2F, 1.2F);
+        rightArm.roll = clamp(rightArm.roll, -1.2F, 1.2F);
+        leftTalon.pitch = clamp(leftTalon.pitch, -1.6F, 1.6F);
+        rightTalon.pitch = clamp(rightTalon.pitch, -1.6F, 1.6F);
+        leftTalon.yScale = clamp(leftTalon.yScale, 0.8F, 1.6F);
+        rightTalon.yScale = clamp(rightTalon.yScale, 0.8F, 1.6F);
+
+        leftHorn.pitch = clamp(leftHorn.pitch, -1.2F, 1.2F);
+        rightHorn.pitch = clamp(rightHorn.pitch, -1.2F, 1.2F);
+        leftHorn.yaw = clamp(leftHorn.yaw, -0.8F, 0.8F);
+        rightHorn.yaw = clamp(rightHorn.yaw, -0.8F, 0.8F);
+        leftHorn.roll = clamp(leftHorn.roll, -1.2F, 1.2F);
+        rightHorn.roll = clamp(rightHorn.roll, -1.2F, 1.2F);
+        leftHorn.yScale = clamp(leftHorn.yScale, 0.8F, 1.8F);
+        rightHorn.yScale = clamp(rightHorn.yScale, 0.8F, 1.8F);
+        leftHornTip.pitch = clamp(leftHornTip.pitch, -1.2F, 1.2F);
+        rightHornTip.pitch = clamp(rightHornTip.pitch, -1.2F, 1.2F);
+        leftHornTip.yScale = clamp(leftHornTip.yScale, 0.8F, 1.6F);
+        rightHornTip.yScale = clamp(rightHornTip.yScale, 0.8F, 1.6F);
+
+        leftCrest.yaw = clamp(leftCrest.yaw, -0.7F, 0.7F);
+        rightCrest.yaw = clamp(rightCrest.yaw, -0.7F, 0.7F);
+        crownLeft.pitch = clamp(crownLeft.pitch, -1.4F, 1.4F);
+        crownRight.pitch = clamp(crownRight.pitch, -1.4F, 1.4F);
+        crownLeft.yaw = clamp(crownLeft.yaw, -1.4F, 1.4F);
+        crownRight.yaw = clamp(crownRight.yaw, -1.4F, 1.4F);
+        crownLeft.yScale = clamp(crownLeft.yScale, 0.8F, 1.8F);
+        crownRight.yScale = clamp(crownRight.yScale, 0.8F, 1.8F);
+
+        jaw.pitch = clamp(jaw.pitch, -1.3F, 1.3F);
+        jaw.pivotY = clamp(jaw.pivotY, 23.0F, 25.5F);
+        coreEye.zScale = clamp(coreEye.zScale, 0.75F, 1.8F);
+        coreEye.yScale = clamp(coreEye.yScale, 0.75F, 1.8F);
+
+        backSpine.pitch = clamp(backSpine.pitch, -1.2F, 1.2F);
+        backSpine.yaw = clamp(backSpine.yaw, -0.6F, 0.6F);
+        backSpine.yScale = clamp(backSpine.yScale, 0.8F, 1.6F);
+        catastropheSpine.pitch = clamp(catastropheSpine.pitch, -1.4F, 1.4F);
+        catastropheSpine.yScale = clamp(catastropheSpine.yScale, 0.8F, 1.8F);
+
+        leftShard.pitch = clamp(leftShard.pitch, -1.2F, 1.2F);
+        rightShard.pitch = clamp(rightShard.pitch, -1.2F, 1.2F);
+        leftShard.yaw = clamp(leftShard.yaw, -1.0F, 1.0F);
+        rightShard.yaw = clamp(rightShard.yaw, -1.0F, 1.0F);
+        leftShard.pivotY = clamp(leftShard.pivotY, -4.0F, -1.0F);
+        rightShard.pivotY = clamp(rightShard.pivotY, -4.0F, -1.0F);
+
+        chestRift.xScale = clamp(chestRift.xScale, 0.85F, 1.5F);
+        chestRift.yScale = clamp(chestRift.yScale, 0.85F, 1.5F);
+        chestRift.zScale = clamp(chestRift.zScale, 0.85F, 1.5F);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return MathHelper.clamp(value, min, max);
     }
 }

@@ -13,7 +13,7 @@ public final class RiftGuardianModelRenderer {
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis, String animationId) {
         model.setPhase(Phase.fromWireId(phaseId), transitionDurationMillis);
-        model.setAnimation(animationId);
+        model.setAnimation(normalizeAnimationId(animationId));
         return model;
     }
 
@@ -23,6 +23,39 @@ public final class RiftGuardianModelRenderer {
 
     private static Identifier texture(String name) {
         return Identifier.of("copimineclient", "textures/entity/" + name);
+    }
+
+    private static String normalizeAnimationId(String animationId) {
+        if (animationId == null || animationId.isBlank()) {
+            return "IDLE";
+        }
+        String normalized = animationId.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "IDLE",
+                    "IDLE_BREATH",
+                    "DAMAGED_FLINCH",
+                    "TELEPORT_RIP",
+                    "CAST_CHARGE",
+                    "CAST_RELEASE",
+                    "CAST_IMPACT",
+                    "PHASE_SHIFT",
+                    "FINAL_AWAKENING",
+                    "DEFEAT_COLLAPSE",
+                    "ABSORPTION_CHANNEL",
+                    "JUDGMENT_CAST",
+                    "EXHAUSTED",
+                    "SPELL_VOID_BLAST",
+                    "SPELL_RIFT_PROJECTILE",
+                    "SPELL_RIFT_ARROWS",
+                    "SPELL_ARROW_SALVO",
+                    "SPELL_VOID_MARK",
+                    "SPELL_SUMMON_SERVANTS",
+                    "SPELL_SUMMON",
+                    "SPELL_WILL_DISTORTION",
+                    "SPELL_ARENA_INFERNO",
+                    "SPELL_IMPACT" -> normalized;
+            default -> "IDLE";
+        };
     }
 
     public enum Phase {

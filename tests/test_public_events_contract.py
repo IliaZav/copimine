@@ -117,6 +117,17 @@ def test_current_event_uses_real_end_capture_as_dragon_motion_source() -> None:
     assert "eventDragonFlight" in read("admin-web/frontend/assets/css/public-events.css")
 
 
+def test_current_event_uses_curated_public_copy_and_keeps_dragon_fallback() -> None:
+    runtime = read("admin-web/frontend/assets/js/public/events-page.js")
+
+    assert 'const publicCopy = copy.status === "current" ? copy : editorialRecord;' in runtime
+    assert 'const dragonImage = localAsset(editorialRecord.dragonImage) || copy.dragonImage;' in runtime
+    assert "publicCopy.title" in runtime
+    assert "publicCopy.summary" in runtime
+    assert "publicCopy.body" in runtime
+    assert "editorialRecord.title" not in runtime
+
+
 def test_event_payload_does_not_publish_the_old_spoiler_copy() -> None:
     payload = json.loads(
         (FRONTEND / "assets" / "public-data" / "events.json").read_text(encoding="utf-8")

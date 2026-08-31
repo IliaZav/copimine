@@ -157,18 +157,22 @@ function getEventRecord(payload, slug) {
   // contain retired names, summaries or videos; never let those leak into the
   // public calendar until an editorial slot is explicitly opened here.
   const editorialRecord = copy.status === "upcoming" ? {} : record;
+  // The live API can lag behind the public event brief. Keep the current
+  // event's short, spoiler-safe copy in the client while still accepting
+  // media and credits from the backend.
+  const publicCopy = copy.status === "current" ? copy : editorialRecord;
   const videos = copy.status === "upcoming" ? [] : (Array.isArray(record.videos) ? record.videos : []);
   const sceneImage = localAsset(editorialRecord.sceneImage) || localAsset(editorialRecord.heroImage) || copy.sceneImage;
-  const dragonImage = localAsset(editorialRecord.dragonImage) || localAsset(editorialRecord.heroImage) || copy.dragonImage;
+  const dragonImage = localAsset(editorialRecord.dragonImage) || copy.dragonImage;
   return {
     ...copy,
     slug,
-    status: editorialRecord.status === "current" ? "current" : copy.status,
-    eyebrow: safeEventCopy(editorialRecord.eyebrow, copy.eyebrow, 36),
-    title: safeEventCopy(editorialRecord.title, copy.title, 72),
-    summary: safeEventCopy(editorialRecord.summary, copy.summary, 180),
-    body: safeEventCopy(editorialRecord.body, copy.body, 240),
-    accent: safeEventAccent(editorialRecord.accent, copy.accent),
+    status: copy.status,
+    eyebrow: safeEventCopy(publicCopy.eyebrow, copy.eyebrow, 36),
+    title: safeEventCopy(publicCopy.title, copy.title, 72),
+    summary: safeEventCopy(publicCopy.summary, copy.summary, 180),
+    body: safeEventCopy(publicCopy.body, copy.body, 240),
+    accent: safeEventAccent(publicCopy.accent, copy.accent),
     sceneImage,
     dragonImage,
     portraitImage: localAsset(editorialRecord.portraitImage) || copy.portraitImage,

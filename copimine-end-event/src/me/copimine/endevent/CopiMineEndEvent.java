@@ -456,6 +456,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask towerSpawnTask;
     private BukkitTask waveFrontVisualTask;
     private BukkitTask portalVisualTask;
+    private BukkitTask finalArenaSceneTestTask;
     private BukkitTask diagnosticsWatchdogTask;
     private List<WaveMechanicsPolicy.WaveCounts> towerSpawnSchedule = List.of();
     private int towerSpawnGroupIndex;
@@ -3299,7 +3300,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+            message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | scene <drain|ritual|clear> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -3320,6 +3321,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("visuals".equalsIgnoreCase(args[1])) {
             handleTestVisuals(sender, args);
+            return;
+        }
+        if ("scene".equalsIgnoreCase(args[1])) {
+            handleTestScene(sender, args);
             return;
         }
         if ("teleport".equalsIgnoreCase(args[1])) {
@@ -3369,7 +3374,78 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnTestBoss(sender);
             return;
         }
-        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+        message(sender, "&e/cmend test run creative | wave <1|2|3|4|5|final> | scene <drain|ritual|clear> | tower fail | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+    }
+
+    /**
+     * Local-only display harness for the final arena set pieces.  It does not
+     * enter an official phase: the same bounded scene renderer is sampled for
+     * a short period and then cleans up its temporary displays automatically.
+     */
+    private void handleTestScene(CommandSender sender, String[] args) {
+        if (config == null || !"local".equalsIgnoreCase(config.environment())) {
+            message(sender, "&cТест финальной сцены разрешён только при environment=local.");
+            return;
+        }
+        if (args.length < 3) {
+            message(sender, "&e/cmend test scene <drain|ritual|clear>");
+            return;
+        }
+        String requested = args[2].toLowerCase(Locale.ROOT);
+        if ("clear".equals(requested)) {
+            clearFinalArenaScene("local scene test clear");
+            message(sender, "&aЛокальная финальная сцена очищена; постоянное ядро не изменено.");
+            return;
+        }
+        EventPhase scene = switch (requested) {
+            case "drain", "final_drain" -> EventPhase.FINAL_DRAIN;
+            case "ritual", "final_ritual" -> EventPhase.FINAL_RITUAL;
+            default -> null;
+        };
+        if (scene == null) {
+            message(sender, "&e/cmend test scene <drain|ritual|clear>");
+            return;
+        }
+        if (!hasSpawnAnchor()) {
+            message(sender, "&cНужен настроенный Core и границы арены.");
+            return;
+        }
+        clearFinalArenaScene("local scene test replace");
+        startFinalArenaScene(scene);
+        if (finalArenaScene != finalArenaPolicyScene(scene)) {
+            message(sender, "&cФинальная сцена не запустилась: не удалось построить bounded-геометрию.");
+            return;
+        }
+        long callbackGeneration = generation;
+        final int[] elapsedTicks = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || finalArenaScene != finalArenaPolicyScene(scene)
+                    || generation != callbackGeneration) {
+                if (holder[0] != null) {
+                    holder[0].cancel();
+                }
+                if (finalArenaSceneTestTask == holder[0]) {
+                    finalArenaSceneTestTask = null;
+                }
+                return;
+            }
+            renderFinalArenaScene(scene, liveBoss(), elapsedTicks[0]);
+            elapsedTicks[0] += 5;
+            if (elapsedTicks[0] > 200) {
+                clearFinalArenaScene("local scene test completed");
+            }
+        }, 0L, 5L);
+        finalArenaSceneTestTask = holder[0];
+        if (taskRegistry != null) {
+            taskRegistry.register(holder[0]);
+        }
+        getLogger().info("FINAL_ARENA_SCENE_TEST event=" + eventId
+                + " scene=" + scene + " generation=" + generation
+                + " duration_ticks=200 display_only=true");
+        message(sender, "&aЛокальная финальная сцена запущена: &f" + requested
+                + "&a. Для немедленной очистки: &f/cmend test scene clear");
     }
 
     /**
@@ -9644,6 +9720,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " wave=1 type=CORE_PULSE interval_seconds=18-22 telegraph_ticks="
                     + WAVE_ONE_PULSE_TELEGRAPH_TICKS + " zone_radius="
                     + WAVE_ONE_ZONE_RADIUS_BLOCKS + " zone_marker=" + WAVE_ONE_ZONES);
+            getLogger().info("ZONE_VISUAL_STATE event=" + eventId
+                    + " wave=1 states=FREE,OCCUPIED anchor=floor particles=viewer-scoped");
             return;
         }
         if (wave == 2) {
@@ -9684,6 +9762,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " floor_y=" + portalAnchor.getBlockY()
                     + " capture_ms=" + PortalCapturePolicy.CAPTURE_MILLIS
                     + " grace_ms=" + PortalCapturePolicy.GRACE_MILLIS);
+            getLogger().info("PORTAL_VISUAL_LAYER event=" + eventId
+                    + " wave=3 portals=" + portalCount
+                    + " layers=FRAME,INNER,SHARD origin=floor-centered tracked=true");
         } else if (wave == 4) {
             long now = System.currentTimeMillis();
             TowerDefensePolicy.CoreState retry = pendingTowerDefenseRetry;
@@ -9712,6 +9793,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("WAVE_OBJECTIVE_STARTED event=" + eventId
                     + " wave=5 type=RIFT_STORM hazards=" + riftStormHazards.size()
                     + " safe=" + riftStormSafeCells.size());
+            getLogger().info("ZONE_VISUAL_STATE event=" + eventId
+                    + " wave=5 states=DANGER,SAFE anchor=floor particles=viewer-scoped");
         }
     }
 
@@ -13067,6 +13150,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             finalRitualVisualTask.cancel();
             finalRitualVisualTask = null;
         }
+        if (finalArenaSceneTestTask != null) {
+            finalArenaSceneTestTask.cancel();
+            finalArenaSceneTestTask = null;
+        }
         int removed = 0;
         for (UUID visualId : new HashSet<>(finalArenaSceneVisuals)) {
             Entity visual = ownedEntities.remove(visualId);
@@ -13084,7 +13171,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         finalArenaSceneGeneration = Long.MIN_VALUE;
         finalArenaSceneElapsedTicks = 0;
         if (previous != null || removed > 0) {
-            getLogger().info("FINAL_ARENA_SCENE_CLEANUP event=" + eventId
+            getLogger().info("FINAL_ARENA_CLEANUP FINAL_ARENA_SCENE_CLEANUP event=" + eventId
                     + " scene=" + previous + " removed=" + removed + " reason=" + reason);
         }
     }
@@ -15299,7 +15386,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 case "wave" -> List.of("spawn", "clear");
                 case "boss" -> List.of("spawn", "official", "info", "damage", "phase", "kill", "spell");
                 case "client" -> List.of("status", "bindboss", "clear");
-                 case "test" -> List.of("run", "wave", "boss", "teleport", "visuals", "music", "diagnostics");
+                 case "test" -> List.of("run", "wave", "scene", "boss", "teleport", "visuals", "music", "diagnostics");
                  default -> List.of();
             };
         }
@@ -15308,6 +15395,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "wave".equalsIgnoreCase(args[1])) {
             return List.of("1", "2", "3", "4", "5", "final");
+        }
+        if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "scene".equalsIgnoreCase(args[1])) {
+            return List.of("drain", "ritual", "clear");
         }
         if (args.length == 3 && "test".equalsIgnoreCase(args[0]) && "teleport".equalsIgnoreCase(args[1])) {
             return List.of("wave", "boss");

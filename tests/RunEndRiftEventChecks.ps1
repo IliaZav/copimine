@@ -61,6 +61,7 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py `
       tests\test_end_event_boss_regressions_contract.py tests\test_end_event_wave_objective_contract.py `
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
+      tests\test_end_event_portal_visual_contract.py tests\test_end_event_arena_scene_contract.py `
       tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `

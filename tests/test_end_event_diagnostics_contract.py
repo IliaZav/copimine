@@ -185,3 +185,51 @@ def test_local_visual_test_command_reports_uuid_role_binding_and_asset_path() ->
         "official phase/roster/victory не изменены",
     ):
         assert marker in visuals
+
+
+def test_full_local_boss_visual_probe_is_bounded_and_runs_all_required_checks() -> None:
+    script_path = ROOT / "tests/RunEndRiftBossVisualLive.ps1"
+    assert script_path.is_file()
+    script = script_path.read_text(encoding="utf-8")
+    for marker in (
+        "environment:\\s*local",
+        "server-port=25566",
+        "rcon\\.port=25576",
+        "codex/end-rift-event",
+        "local-runtime",
+        "RunEndRiftVisualFivePlayerLive.ps1",
+        "RunEndRiftPerformanceFivePlayerLive.ps1",
+        "RunEndRiftDiagnosticsFailureLive.ps1",
+        "BOSS_VISUAL_CUE",
+        "PORTAL_VISUAL_LAYER",
+        "ZONE_VISUAL_STATE",
+        "FINAL_ARENA_SCENE",
+        "FINAL_ARENA_CLEANUP",
+        "RUNTIME_DIAGNOSTICS",
+        "PERF_PASS",
+        "Get-FileHash",
+        "finally",
+        "cmend wave clear",
+        "cmend boss kill cleanup",
+    ):
+        assert marker in script
+    assert "25565" not in script
+    assert "localhost" not in script.lower()
+    assert "production" not in script.lower()
+
+
+def test_local_final_scene_probe_is_display_only_and_has_an_explicit_clear_path() -> None:
+    start = MAIN.index("private void handleTestScene")
+    end = MAIN.index("private void handleTestDiagnosticsFailure", start)
+    scene = MAIN[start:end]
+    for marker in (
+        '"local".equalsIgnoreCase(config.environment())',
+        "startFinalArenaScene(scene)",
+        "renderFinalArenaScene(scene, liveBoss(), elapsedTicks[0])",
+        "finalArenaSceneTestTask",
+        '"clear".equals(requested)',
+        'clearFinalArenaScene("local scene test clear")',
+        "display_only=true",
+    ):
+        assert marker in scene
+    assert "setType(" not in scene

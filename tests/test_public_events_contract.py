@@ -67,3 +67,56 @@ def test_events_assets_and_motion_contract_exist() -> None:
     assert "@keyframes" in styles
     assert "prefers-reduced-motion" in styles
     assert re.search(r"\.event-hero", styles)
+
+
+def test_events_page_is_calendar_first_and_keeps_event_copy_compact() -> None:
+    page = read("admin-web/frontend/events.html")
+    runtime = read("admin-web/frontend/assets/js/public/events-page.js")
+    styles = read("admin-web/frontend/assets/css/public-events.css")
+    payload = json.loads(
+        (FRONTEND / "assets" / "public-data" / "events.json").read_text(encoding="utf-8")
+    )
+
+    assert "event-calendar" in runtime
+    assert "buildCalendar" in runtime
+    assert "event-mystery" in runtime
+    assert "event-gallery" in runtime
+    assert "event-dragon-flight" in runtime
+    assert "end-landscape.png" in runtime
+    assert "IntersectionObserver" in runtime
+    assert "event-clock" in styles
+    assert "event-clock-hand" in styles
+    assert "event-reveal" in styles
+    assert "event-vines" in runtime
+    assert "event-vine" in styles
+    assert "/assets/mc-icons/item/vine.png" in styles
+    assert "Собери ресурсы" not in page
+    assert "Собери ресурсы" not in runtime
+    assert "buildRequirements" not in runtime
+    assert [event["title"] for event in payload["events"] if event["status"] == "upcoming"] == ["Скоро", "Скоро"]
+
+
+def test_current_event_uses_real_end_capture_as_dragon_motion_source() -> None:
+    runtime = read("admin-web/frontend/assets/js/public/events-page.js")
+    payload = json.loads(
+        (FRONTEND / "assets" / "public-data" / "events.json").read_text(encoding="utf-8")
+    )
+    current = next(event for event in payload["events"] if event["slug"] == "end-rift")
+    asset = FRONTEND / "assets" / "events" / "end-rift" / "end-landscape.png"
+
+    assert asset.is_file() and asset.stat().st_size > 1000
+    assert current["heroImage"].endswith("end-landscape.png")
+    assert "Screenshot_from_the_Minecraft_End.png" in current["creditsHtml"]
+    assert "event-dragon-flight" in runtime
+    assert "eventDragonFlight" in read("admin-web/frontend/assets/css/public-events.css")
+
+
+def test_event_payload_does_not_publish_the_old_spoiler_copy() -> None:
+    payload = json.loads(
+        (FRONTEND / "assets" / "public-data" / "events.json").read_text(encoding="utf-8")
+    )
+    serialized = json.dumps(payload, ensure_ascii=False).lower()
+
+    assert "собери команду" not in serialized
+    assert "собери ресурсы" not in serialized
+    assert "финальный бой начинается только" not in serialized

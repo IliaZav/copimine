@@ -1,13 +1,66 @@
-import { loadPublicEventsPageData } from "./site-data.js?v=20260830events1";
+import { loadPublicEventsPageData } from "./site-data.js?v=20260831events2";
 
 const LOCAL_ASSET_PREFIX = "/assets/events/";
+const EVENT_ORDER = ["end-rift", "future-1", "future-2"];
 const CURRENT_EVENT_LABEL = "Сейчас";
 const UPCOMING_EVENT_LABEL = "Скоро";
 
-function node(tag, className = "", text = "") {
+const EVENT_VIEW_COPY = {
+  "end-rift": {
+    status: "current",
+    eyebrow: "Событие сейчас",
+    title: "Разлом Энда",
+    summary: "В Энде снова не тихо.",
+    body: "Большой проработанный данж. Волны врагов. Сильный проработанный босс.",
+    accent: "#c09aff",
+    sceneImage: "/assets/events/end-rift/end-city.jpg",
+    dragonImage: "/assets/events/end-rift/end-landscape.png",
+    portraitImage: "/assets/events/end-rift/enderman.png",
+    creditsHtml: "Реальный игровой кадр с Эндер-драконом: Wikimedia Commons, CC BY 3.0",
+    credits: [
+      { label: "Кадр с драконом", url: "https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png" },
+      { label: "Кадр города Края", url: "https://commons.wikimedia.org/wiki/File:Minecraft_-_End_city.jpg" },
+      { label: "Кадр эндермена", url: "https://commons.wikimedia.org/wiki/File:Minecraft_Enderman.png" },
+    ],
+  },
+  "future-1": {
+    status: "upcoming",
+    eyebrow: "Следом",
+    title: "Скоро",
+    summary: "Здесь появится следующее событие.",
+    body: "Пока без названия и без дат.",
+    accent: "#8e89ff",
+    sceneImage: "/assets/events/end-rift/end-city.jpg",
+    dragonImage: "/assets/events/end-rift/end-landscape.png",
+    portraitImage: "",
+    creditsHtml: "",
+    credits: [],
+  },
+  "future-2": {
+    status: "upcoming",
+    eyebrow: "Позже",
+    title: "Скоро",
+    summary: "Ещё одно событие появится здесь.",
+    body: "Пока без названия и без дат.",
+    accent: "#a987e8",
+    sceneImage: "/assets/events/end-rift/end-landscape.png",
+    dragonImage: "/assets/events/end-rift/end-landscape.png",
+    portraitImage: "",
+    creditsHtml: "",
+    credits: [],
+  },
+};
+
+const MYSTERY_NOTES = [
+  ["01", "Большой проработанный данж"],
+  ["02", "Волны врагов"],
+  ["03", "Сильный проработанный босс"],
+];
+
+function node(tag, className = "", value = "") {
   const element = document.createElement(tag);
   if (className) element.className = className;
-  if (text !== "") element.textContent = String(text);
+  if (value !== "") element.textContent = String(value);
   return element;
 }
 
@@ -31,11 +84,12 @@ function externalCredit(value) {
   }
 }
 
-function setImage(image, source, alt) {
+function setImage(image, source, alt = "") {
   const safe = localAsset(source);
   if (!safe) return false;
   image.src = safe;
   image.alt = text(alt);
+  image.decoding = "async";
   image.loading = "lazy";
   return true;
 }
@@ -47,112 +101,196 @@ function sectionHeading(kicker, title, copy = "") {
   return head;
 }
 
-function statusLabel(event) {
-  return text(event?.status).toLowerCase() === "current" ? CURRENT_EVENT_LABEL : UPCOMING_EVENT_LABEL;
+function createClock(size = "") {
+  const clock = node("span", `event-clock ${size}`.trim());
+  clock.setAttribute("aria-hidden", "true");
+  for (let index = 0; index < 12; index += 1) {
+    const mark = node("span", "event-clock-mark");
+    mark.style.setProperty("--clock-step", String(index));
+    clock.append(mark);
+  }
+  clock.append(
+    node("span", "event-clock-hand event-clock-hand-hour"),
+    node("span", "event-clock-hand event-clock-hand-minute"),
+    node("span", "event-clock-hand event-clock-hand-second"),
+    node("span", "event-clock-pin"),
+  );
+  return clock;
 }
 
-function eventSwitcher(events, selectedSlug, onSelect) {
-  const section = node("section", "event-switcher");
-  section.append(sectionHeading("Календарь", "Выбери событие", "Текущая страница остаётся одной — меняется только содержание."));
-  const list = node("div", "event-switcher-list");
-  events.forEach((event) => {
-    const button = node("button", `event-switcher-card${event.slug === selectedSlug ? " is-active" : ""}`);
-    button.type = "button";
-    button.dataset.eventSlug = text(event.slug);
-    button.setAttribute("aria-pressed", event.slug === selectedSlug ? "true" : "false");
-    button.style.setProperty("--event-accent", text(event.accent, "#b887ff"));
-    const badge = node("span", "event-switcher-status", statusLabel(event));
-    const title = node("strong", "", text(event.title, "Событие"));
-    const summary = node("small", "", text(event.summary, "Подробности появятся позже."));
-    button.append(badge, title, summary);
-    button.addEventListener("click", () => onSelect(text(event.slug)));
-    list.append(button);
+function buildVines(zone = "") {
+  const vines = node("div", `event-vines ${zone}`.trim());
+  vines.setAttribute("aria-hidden", "true");
+  [
+    ["7%", "138px", "-8deg", "0s"],
+    ["19%", "86px", "5deg", "-2.4s"],
+    ["39%", "172px", "-4deg", "-5.5s"],
+    ["63%", "112px", "7deg", "-1.2s"],
+    ["82%", "152px", "-6deg", "-4s"],
+    ["94%", "74px", "4deg", "-7s"],
+  ].forEach(([left, height, rotation, delay]) => {
+    const vine = node("span", "event-vine");
+    vine.style.setProperty("--vine-left", left);
+    vine.style.setProperty("--vine-height", height);
+    vine.style.setProperty("--vine-rotation", rotation);
+    vine.style.setProperty("--vine-delay", delay);
+    vines.append(vine);
   });
-  section.append(list);
+  return vines;
+}
+
+function getEventRecord(payload, slug) {
+  const records = Array.isArray(payload?.events) ? payload.events : [];
+  const record = records.find((event) => text(event?.slug) === slug) || {};
+  const copy = EVENT_VIEW_COPY[slug] || EVENT_VIEW_COPY["future-1"];
+  const videos = Array.isArray(record.videos) ? record.videos : [];
+  return { ...copy, slug, videos };
+}
+
+function eventStatus(event) {
+  return event.status === "current" ? CURRENT_EVENT_LABEL : UPCOMING_EVENT_LABEL;
+}
+
+function buildCalendar(payloadEvents, selectedSlug, onSelect) {
+  const section = node("section", "event-calendar-stage event-reveal");
+  section.dataset.reveal = "calendar";
+  const calendar = node("div", "event-calendar");
+  const dial = node("div", "event-calendar-dial");
+  dial.append(
+    node("span", "event-calendar-dial-ring"),
+    node("span", "event-calendar-dial-label", "без дат"),
+    createClock("event-clock-large"),
+    node("span", "event-calendar-dial-caption", "время идёт"),
+  );
+
+  const content = node("div", "event-calendar-content");
+  content.append(
+    node("span", "event-kicker", "Расписание"),
+    node("h1", "", "Ивенты"),
+    node("p", "event-calendar-lead", "Одно событие уже открыто. Ещё два ждут своей очереди."),
+  );
+
+  const slots = node("div", "event-calendar-slots");
+  EVENT_ORDER.forEach((slug, index) => {
+    const event = getEventRecord({ events: payloadEvents }, slug);
+    const card = node("button", `event-calendar-card${selectedSlug === slug ? " is-selected" : ""}`);
+    card.type = "button";
+    card.dataset.eventSlug = slug;
+    card.style.setProperty("--event-accent", event.accent);
+    card.setAttribute("aria-label", `${eventStatus(event)}: ${event.title}`);
+    const label = node("span", "event-calendar-card-label", eventStatus(event));
+    const miniClock = createClock("event-clock-mini");
+    const title = node("strong", "event-calendar-card-title", event.title);
+    const summary = node("span", "event-calendar-card-copy", event.summary);
+    const arrow = node("span", "event-calendar-card-arrow", "↗");
+    card.append(label, miniClock, title, summary, arrow);
+    card.addEventListener("click", () => onSelect(slug));
+    slots.append(card);
+    if (index === 0) card.dataset.current = "true";
+  });
+
+  const note = node("p", "event-calendar-note", "Точные даты появятся здесь, когда событие будет готово.");
+  content.append(slots, note);
+  calendar.append(dial, content);
+  section.append(buildVines("event-vines-calendar"), calendar);
   return section;
+}
+
+function buildBackButton(onBack) {
+  const wrap = node("div", "event-detail-toolbar event-reveal");
+  wrap.dataset.reveal = "back";
+  const button = node("button", "event-back", "← Все события");
+  button.type = "button";
+  button.addEventListener("click", onBack);
+  wrap.append(button);
+  return wrap;
 }
 
 function buildHero(event) {
-  const hero = node("section", "event-hero");
-  hero.style.setProperty("--event-accent", text(event.accent, "#b887ff"));
-  hero.style.setProperty("--event-hero-image", `url("${localAsset(event.heroImage)}")`);
-  const backdrop = node("div", "event-hero-backdrop");
-  const grid = node("div", "event-hero-grid");
-  const copy = node("div", "event-hero-copy");
-  const status = node("div", "event-hero-meta");
-  status.append(node("span", "event-live-dot"), node("span", "", statusLabel(event)));
-  copy.append(status, node("p", "event-kicker", text(event.eyebrow, "Событие")), node("h1", "", text(event.title, "Событие")));
-  copy.append(node("p", "event-hero-summary", text(event.summary, "Подробности появятся позже.")));
-  if (text(event.body)) copy.append(node("p", "event-hero-body", text(event.body)));
-  const visual = node("figure", "event-hero-visual");
-  const landscape = node("img", "event-hero-landscape");
-  if (!setImage(landscape, event.heroImage, `Кадр события «${text(event.title, "Ивенты")}»`)) landscape.remove();
-  visual.append(landscape);
-  const portrait = node("img", "event-hero-portrait");
-  if (setImage(portrait, event.portraitImage, "Эндермен")) visual.append(portrait);
-  visual.append(node("figcaption", "event-hero-caption", "Кадры Энда · атмосфера события"));
-  grid.append(copy, visual);
-  hero.append(backdrop, grid);
+  const hero = node("section", "event-hero event-reveal");
+  hero.dataset.reveal = "hero";
+  hero.style.setProperty("--event-accent", event.accent);
+
+  const scene = node("img", "event-hero-scene");
+  scene.setAttribute("aria-hidden", "true");
+  if (!setImage(scene, event.sceneImage)) scene.remove();
+
+  const dragon = node("img", "event-dragon-flight");
+  dragon.setAttribute("aria-hidden", "true");
+  if (!setImage(dragon, event.dragonImage)) dragon.remove();
+
+  const veil = node("span", "event-hero-veil");
+  const glow = node("span", "event-hero-glow");
+  const content = node("div", "event-hero-content");
+  const meta = node("div", "event-hero-meta");
+  meta.append(node("span", "event-live-dot"), node("span", "", eventStatus(event)));
+  content.append(meta, node("p", "event-kicker", event.eyebrow), node("h1", "", event.title));
+  content.append(node("p", "event-hero-summary", event.summary), node("p", "event-hero-body", event.body));
+
+  const stamp = node("div", "event-hero-stamp");
+  stamp.append(createClock("event-clock-small"), node("span", "", "без точной даты"));
+  content.append(stamp);
+  hero.append(scene, dragon, buildVines("event-vines-hero"), veil, glow, content);
   return hero;
 }
 
-function buildRequirements(event) {
-  const section = node("section", "event-section event-requirements");
-  section.append(sectionHeading("Перед входом", "Собери ресурсы", "Это список для подготовки команды к запуску Разлома."));
-  const grid = node("div", "event-requirement-grid");
-  (Array.isArray(event.requirements) ? event.requirements : []).forEach((item) => {
-    const card = node("article", "event-requirement-card");
-    card.append(node("strong", "", text(item.value, "—")), node("span", "", text(item.name, "Ресурс")));
+function buildMystery() {
+  const section = node("section", "event-section event-mystery event-reveal");
+  section.dataset.reveal = "mystery";
+  section.append(sectionHeading("Только намёки", "Дальше — тишина.", "Детали останутся за дверью до самого события."));
+  const grid = node("div", "event-mystery-grid");
+  MYSTERY_NOTES.forEach(([index, title], position) => {
+    const card = node("article", "event-mystery-card event-reveal");
+    card.dataset.reveal = `mystery-${position}`;
+    card.style.setProperty("--event-delay", `${position * 90}ms`);
+    card.append(node("span", "event-mystery-index", index), node("strong", "", title), node("span", "event-mystery-line", "Подробности не раскрываем."));
     grid.append(card);
   });
   section.append(grid);
   return section;
 }
 
-function buildWaves(event) {
-  const section = node("section", "event-section");
-  section.append(sectionHeading("Шесть волн", "Как идёт рейд", "Темп нарастает постепенно. Финальный бой начинается только после последней волны."));
-  const grid = node("div", "event-wave-grid");
-  (Array.isArray(event.waves) ? event.waves : []).forEach((wave) => {
-    const card = node("article", "event-wave-card");
-    card.append(node("span", "event-wave-number", String(wave.number || "")), node("h3", "", text(wave.name, "Волна")), node("p", "", text(wave.description)));
-    grid.append(card);
+function buildGallery(event) {
+  const section = node("section", "event-section event-gallery event-reveal");
+  section.dataset.reveal = "gallery";
+  section.append(sectionHeading("Кадры", "Энд с разных сторон", "Настоящие игровые кадры — без постановочных рендеров."));
+  const grid = node("div", "event-gallery-grid");
+  const images = [
+    [event.dragonImage, "Эндер-дракон над островами Энда", "event-gallery-item event-gallery-item-wide"],
+    [event.sceneImage, "Город Края в темноте", "event-gallery-item"],
+    [event.portraitImage, "Эндермен", "event-gallery-item"],
+  ];
+  images.forEach(([source, alt, className], index) => {
+    const figure = node("figure", `${className} event-reveal`);
+    figure.dataset.reveal = `image-${index}`;
+    figure.style.setProperty("--event-delay", `${index * 100}ms`);
+    const image = node("img");
+    if (!setImage(image, source, alt)) {
+      figure.remove();
+      return;
+    }
+    figure.append(image, node("figcaption", "", alt));
+    grid.append(figure);
   });
   section.append(grid);
   return section;
 }
 
-function buildBoss(event) {
-  const section = node("section", "event-section event-boss-section");
-  section.append(sectionHeading("Финальный бой", "Пять фаз босса", "Смотри на здоровье и держи команду рядом — у каждой фазы свой ритм."));
-  const grid = node("div", "event-boss-grid");
-  (Array.isArray(event.bossPhases) ? event.bossPhases : []).forEach((phase, index) => {
-    const card = node("article", "event-boss-card");
-    card.append(node("span", "event-boss-index", `0${index + 1}`.slice(-2)), node("h3", "", text(phase.name, "Фаза")), node("strong", "", text(phase.range)), node("p", "", text(phase.description)));
-    grid.append(card);
-  });
-  section.append(grid);
-  return section;
-}
-
-function buildRewards(event) {
-  const section = node("section", "event-section event-rewards-section");
-  const grid = node("div", "event-rewards-layout");
-  const copy = node("div", "event-rewards-copy");
-  copy.append(sectionHeading("После победы", "Награды достанутся участникам", "После настоящего финала награды выдаются команде, а проход в Энд остаётся открытым."));
-  const list = node("ul", "event-reward-list");
-  (Array.isArray(event.rewards) ? event.rewards : []).forEach((reward) => list.append(node("li", "", text(reward))));
-  copy.append(list);
-  const note = node("aside", "event-reward-note");
-  note.append(node("span", "event-reward-note-mark", "END"), node("strong", "", "Разлом закрывается после финала"), node("p", "", "Сначала система завершает выдачу. Затем путь остаётся доступным для игроков."));
-  grid.append(copy, note);
-  section.append(grid);
+function buildClockStrip() {
+  const section = node("section", "event-clock-strip event-reveal");
+  section.dataset.reveal = "clock";
+  const clocks = node("div", "event-clock-cluster");
+  clocks.append(createClock("event-clock-medium"), createClock("event-clock-small"), createClock("event-clock-mini"));
+  const copy = node("div", "event-clock-copy");
+  copy.append(node("span", "event-kicker", "Часы идут"), node("h2", "", "Дата пока скрыта."), node("p", "", "Когда время придёт, календарь сам покажет путь."));
+  section.append(clocks, copy);
   return section;
 }
 
 function buildVideos(event) {
-  const section = node("section", "event-section event-video-section");
-  section.append(sectionHeading("Материалы", "Видео события", "Здесь появятся записи рейда и короткие фрагменты с поля."));
+  const section = node("section", "event-section event-video-section event-reveal");
+  section.dataset.reveal = "videos";
+  section.append(sectionHeading("Материалы", "Видео появится здесь", "Окно для записи события."));
   const videos = Array.isArray(event.videos) ? event.videos : [];
   const grid = node("div", "event-video-grid");
   videos.forEach((item) => {
@@ -168,12 +306,12 @@ function buildVideos(event) {
     source.src = url;
     source.type = text(item.mimeType, "video/mp4");
     video.append(source);
-    card.append(video, node("h3", "", text(item.title, "Видео")));
+    card.append(video, node("h3", "", text(item.title, "Видео события")));
     grid.append(card);
   });
   if (!grid.children.length) {
     const empty = node("div", "event-video-empty");
-    empty.append(node("span", "event-video-empty-icon", "▶"), node("strong", "", "Видео появится здесь"), node("p", "", "Администратор сможет добавить запись в CMS, когда материал будет готов."));
+    empty.append(createClock("event-clock-small"), node("strong", "", "Запись ещё не добавили"), node("p", "", "Здесь будет видео с события."));
     grid.append(empty);
   }
   section.append(grid);
@@ -181,9 +319,9 @@ function buildVideos(event) {
 }
 
 function buildCredits(event) {
-  const credits = node("footer", "event-credits");
-  const label = node("span", "", text(event.creditsHtml, "Материалы события"));
-  credits.append(label);
+  const credits = node("footer", "event-credits event-reveal");
+  credits.dataset.reveal = "credits";
+  credits.append(node("span", "", text(event.creditsHtml, "Материалы события")));
   const links = node("span", "event-credit-links");
   (Array.isArray(event.credits) ? event.credits : []).forEach((credit) => {
     const url = externalCredit(credit.url);
@@ -199,35 +337,61 @@ function buildCredits(event) {
 }
 
 function buildUpcoming(event) {
-  const section = node("section", "event-section event-upcoming");
-  section.append(node("span", "event-upcoming-symbol", "✦"), node("p", "event-kicker", "Скоро"), node("h2", "", text(event.title, "Новое событие")), node("p", "event-upcoming-copy", text(event.body, "Событие ещё готовится.")), node("p", "event-upcoming-note", "Когда появятся дата и правила, они будут здесь — коротко и без лишнего шума."));
+  const section = node("section", "event-upcoming event-reveal");
+  section.dataset.reveal = "upcoming";
+  section.style.setProperty("--event-accent", event.accent);
+  section.append(createClock("event-clock-medium"), node("p", "event-kicker", event.eyebrow), node("h1", "", "Скоро"), node("p", "event-upcoming-copy", event.summary), node("p", "event-upcoming-note", "Название и дата появятся позже."));
   return section;
 }
 
-function render(payload, selectedSlug) {
-  const mount = document.getElementById("eventsPage");
-  if (!mount) return;
-  const events = Array.isArray(payload?.events) ? payload.events : [];
-  const active = events.find((event) => event.slug === selectedSlug) || events.find((event) => event.status === "current") || events[0];
-  if (!active) {
-    mount.replaceChildren(node("p", "event-empty", "События пока недоступны."));
+let revealObserver = null;
+
+function initReveal(mount) {
+  revealObserver?.disconnect();
+  const items = [...mount.querySelectorAll("[data-reveal]")];
+  mount.dataset.motion = "ready";
+  const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  if (reduced || !("IntersectionObserver" in window)) {
+    items.forEach((item) => item.classList.add("is-visible"));
     return;
   }
-  const safeSlug = text(active.slug);
+  revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add("is-visible");
+      revealObserver?.unobserve(entry.target);
+    });
+  }, { threshold: 0.12, rootMargin: "0px 0px -8%" });
+  items.forEach((item) => revealObserver.observe(item));
+}
+
+function mergeEvents(payload) {
+  return EVENT_ORDER.map((slug) => getEventRecord(payload, slug));
+}
+
+function render(payload, selectedSlug, navigate) {
+  const mount = document.getElementById("eventsPage");
+  if (!mount) return;
+  const events = mergeEvents(payload);
+  const validSlug = EVENT_ORDER.includes(selectedSlug) ? selectedSlug : "";
+  mount.className = `events-page${validSlug ? ` events-page-detail events-page-${validSlug}` : " events-page-calendar"}`;
   mount.replaceChildren();
-  mount.className = `events-page events-page-${safeSlug}`;
-  mount.append(buildHero(active), eventSwitcher(events, safeSlug, (slug) => {
-    const next = new URL(window.location.href);
-    next.searchParams.set("event", slug);
-    window.history.pushState({}, "", next);
-    render(payload, slug);
-  }));
-  if (active.status === "current") {
-    mount.append(buildRequirements(active), buildWaves(active), buildBoss(active), buildRewards(active));
-  } else {
-    mount.append(buildUpcoming(active));
+  if (!validSlug) {
+    document.title = "Ивенты · CopiMine";
+    mount.append(buildCalendar(events, "", navigate));
+    initReveal(mount);
+    return;
   }
-  mount.append(buildVideos(active), buildCredits(active));
+
+  const active = events.find((event) => event.slug === validSlug) || events[0];
+  document.title = `${active.title} · CopiMine`;
+  mount.append(buildBackButton(() => navigate("")));
+  if (active.status === "current") {
+    mount.append(buildHero(active), buildMystery(), buildGallery(active), buildClockStrip(), buildVideos(active), buildCredits(active));
+  } else {
+    mount.append(buildUpcoming(active), buildClockStrip());
+  }
+  initReveal(mount);
 }
 
 export async function initEventsPage() {
@@ -235,7 +399,13 @@ export async function initEventsPage() {
   if (!mount) return;
   mount.append(node("div", "event-loading", "Загружаем события…"));
   const payload = await loadPublicEventsPageData();
-  const requested = new URLSearchParams(window.location.search).get("event") || "";
-  render(payload, requested);
-  window.addEventListener("popstate", () => render(payload, new URLSearchParams(window.location.search).get("event") || ""));
+  const navigate = (slug) => {
+    const next = new URL(window.location.href);
+    if (slug) next.searchParams.set("event", slug);
+    else next.searchParams.delete("event");
+    window.history.pushState({}, "", next);
+    render(payload, slug, navigate);
+  };
+  render(payload, new URLSearchParams(window.location.search).get("event") || "", navigate);
+  window.addEventListener("popstate", () => render(payload, new URLSearchParams(window.location.search).get("event") || "", navigate));
 }

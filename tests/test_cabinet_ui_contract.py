@@ -89,7 +89,7 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
-    cache_key = "20260831cabinetui26"
+    cache_key = "20260901cabinetui28"
     runtime_cache_key = "20260829launcherlink6"
     app_cache_key = "20260829launcherlink6"
     for path in cabinet_templates():
@@ -124,5 +124,5 @@ def test_cabinet_public_header_uses_the_same_forest_shell_as_public_pages() -> N
 
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")
-        assert "/assets/cabinet.css?v=20260831cabinetui26" in source, path.name
-        assert "/assets/js/cabinet-polish.js?v=20260831cabinetui26" in source, path.name
+        assert "/assets/cabinet.css?v=20260901cabinetui28" in source, path.name
+        assert "/assets/js/cabinet-polish.js?v=20260901cabinetui28" in source, path.name

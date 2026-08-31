@@ -408,8 +408,12 @@ export async function initEventsPage() {
     if (slug) next.searchParams.set("event", slug);
     else next.searchParams.delete("event");
     window.history.pushState({}, "", next);
+    window.scrollTo(0, 0);
     render(payload, slug, navigate);
   };
   render(payload, new URLSearchParams(window.location.search).get("event") || "", navigate);
-  window.addEventListener("popstate", () => render(payload, new URLSearchParams(window.location.search).get("event") || "", navigate));
+  window.addEventListener("popstate", () => {
+    window.scrollTo(0, 0);
+    render(payload, new URLSearchParams(window.location.search).get("event") || "", navigate);
+  });
 }

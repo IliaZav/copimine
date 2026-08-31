@@ -126,3 +126,9 @@ def test_event_payload_does_not_publish_the_old_spoiler_copy() -> None:
     assert "собери команду" not in serialized
     assert "собери ресурсы" not in serialized
     assert "финальный бой начинается только" not in serialized
+
+
+def test_event_route_change_restores_scroll_to_the_start_of_the_new_view() -> None:
+    runtime = read("admin-web/frontend/assets/js/public/events-page.js")
+
+    assert "window.scrollTo(0, 0)" in runtime

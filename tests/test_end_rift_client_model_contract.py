@@ -139,19 +139,27 @@ def test_guardian_model_uses_modelpart_geometry_and_bounded_phase_animation() ->
 
 def test_enderman_renderer_scopes_custom_model_to_bound_boss_uuid_with_fallback() -> None:
     mixin = (SOURCE_ROOT / "mixin/EndermanEntityRendererMixin.java").read_text(encoding="utf-8")
+    selection = (SOURCE_ROOT / "EndermanRendererSelection.java").read_text(encoding="utf-8")
 
     assert "RiftGuardianModelRenderer" in mixin
+    assert "EndermanRendererSelection" in mixin
+    assert "EndermanRendererSelection.select" in mixin
+    assert "EndermanRendererSelection.begin" in mixin
+    assert "copimine$modelSwap = null" in mixin
     assert "isBoundEndBoss(entity.getUuid().toString())" in mixin
-    assert "bossPhaseForEntity(entity.getUuid().toString())" in mixin
+    assert "bossPhaseForEntity(entityUuid)" in mixin
     assert 'case "END_RIFT_ELITE_V1"' in mixin
     assert 'case "END_RIFT_ENDERMAN_V1"' in mixin
     assert "default -> null" in mixin
-    assert "copimine$vanillaModel = model" in mixin
-    assert "model = copimine$guardianRenderer.modelForPhase" in mixin
-    assert "model = copimine$vanillaModel" in mixin
+    assert "copimine$modelSwap = EndermanRendererSelection.begin" in mixin
+    assert "model = copimine$modelSwap.currentModel()" in mixin
+    assert "model = copimine$modelSwap.restore()" in mixin
     assert "assets/minecraft" not in mixin
     assert "setBoundingBox" not in mixin
     assert "refreshPositionAndAngles" not in mixin
+    assert "record Decision" in selection
+    assert "class ModelSwap" in selection
+    assert "Objects.equals(entityUuid, boundBossUuid)" in selection
 
 
 def test_client_resources_do_not_override_vanilla_textures() -> None:

@@ -19,6 +19,7 @@ import java.util.Locale;
  * contract intact while the body parts below provide the custom silhouette.
  */
 public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity> {
+    private static final float HIDDEN_FINAL_PART_SCALE = 0.001F;
     private final ModelPart root;
     private final ModelPart torso;
     private final ModelPart leftShoulder;
@@ -184,7 +185,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         float walk = MathHelper.clamp(limbDistance, 0.0F, 1.0F);
         float transition = MathHelper.clamp(transitionDurationMillis / 600_000.0F, 0.0F, 1.0F);
         String animation = animationId == null ? "IDLE" : animationId;
-        applyIdleTransform(animationProgress, transition);
+        applyIdleTransform(animationProgress, transition, animation);
         applyWalkTransform(limbAngle, walk);
         if (entity != null && entity.isAngry()) {
             applyAttackTransform(animationProgress);
@@ -208,12 +209,13 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         applyPhaseShiftTransform(animationProgress, animation);
         applyDefeatCollapse(animationProgress, animation);
         applyFinalSilhouette(animationProgress);
+        hideFinalAdornmentOutsideFinalState(animation);
         root.yaw = MathHelper.clamp(headYaw * 0.017453292F, -0.5F, 0.5F);
         torso.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.35F, 0.35F);
         clampPose();
     }
 
-    private void applyIdleTransform(float animationProgress, float transition) {
+    private void applyIdleTransform(float animationProgress, float transition, String animation) {
         float idle = MathHelper.sin(animationProgress * 0.08F);
         torso.pivotY += idle * 0.45F;
         chestRift.zScale = 1.0F + MathHelper.clamp(idle * 0.08F + transition * 0.12F, -0.08F, 0.18F);
@@ -223,16 +225,44 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         jaw.pivotY += MathHelper.clamp(idle * 0.45F, -0.45F, 0.45F);
         leftHorn.roll += idle * 0.04F;
         rightHorn.roll -= idle * 0.04F;
-        crownLeft.pitch -= 0.08F + transition * 0.06F;
-        crownRight.pitch -= 0.08F + transition * 0.06F;
-        crownLeft.yScale = 0.88F + transition * 0.12F;
-        crownRight.yScale = 0.88F + transition * 0.12F;
-        leftTalon.pitch += 0.14F + transition * 0.08F;
-        rightTalon.pitch += 0.14F + transition * 0.08F;
-        catastropheSpine.pitch += 0.08F + transition * 0.04F;
-        catastropheSpine.yScale = 0.92F + transition * 0.12F;
+        if (finalAdornmentIsRevealed(animation)) {
+            crownLeft.pitch -= 0.08F + transition * 0.06F;
+            crownRight.pitch -= 0.08F + transition * 0.06F;
+            crownLeft.yScale = 0.88F + transition * 0.12F;
+            crownRight.yScale = 0.88F + transition * 0.12F;
+            leftTalon.pitch += 0.14F + transition * 0.08F;
+            rightTalon.pitch += 0.14F + transition * 0.08F;
+            catastropheSpine.pitch += 0.08F + transition * 0.04F;
+            catastropheSpine.yScale = 0.92F + transition * 0.12F;
+        } else {
+            hideFinalAdornment();
+        }
         leftShard.pivotY += MathHelper.sin(animationProgress * 0.11F) * 0.9F;
         rightShard.pivotY += MathHelper.cos(animationProgress * 0.11F) * 0.9F;
+    }
+
+    private boolean finalAdornmentIsRevealed(String animation) {
+        return phase == Phase.CATASTROPHE || "FINAL_AWAKENING".equals(animation);
+    }
+
+    private void hideFinalAdornmentOutsideFinalState(String animation) {
+        if (!finalAdornmentIsRevealed(animation)) {
+            hideFinalAdornment();
+        }
+    }
+
+    private void hideFinalAdornment() {
+        hideFinalPart(crownLeft);
+        hideFinalPart(crownRight);
+        hideFinalPart(leftTalon);
+        hideFinalPart(rightTalon);
+        hideFinalPart(catastropheSpine);
+    }
+
+    private static void hideFinalPart(ModelPart part) {
+        part.xScale = HIDDEN_FINAL_PART_SCALE;
+        part.yScale = HIDDEN_FINAL_PART_SCALE;
+        part.zScale = HIDDEN_FINAL_PART_SCALE;
     }
 
     private void applyWalkTransform(float limbAngle, float walk) {
@@ -472,8 +502,12 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         rightArm.roll = clamp(rightArm.roll, -1.2F, 1.2F);
         leftTalon.pitch = clamp(leftTalon.pitch, -1.6F, 1.6F);
         rightTalon.pitch = clamp(rightTalon.pitch, -1.6F, 1.6F);
-        leftTalon.yScale = clamp(leftTalon.yScale, 0.8F, 1.6F);
-        rightTalon.yScale = clamp(rightTalon.yScale, 0.8F, 1.6F);
+        leftTalon.xScale = clamp(leftTalon.xScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
+        leftTalon.yScale = clamp(leftTalon.yScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
+        leftTalon.zScale = clamp(leftTalon.zScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
+        rightTalon.xScale = clamp(rightTalon.xScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
+        rightTalon.yScale = clamp(rightTalon.yScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
+        rightTalon.zScale = clamp(rightTalon.zScale, HIDDEN_FINAL_PART_SCALE, 1.6F);
 
         leftHorn.pitch = clamp(leftHorn.pitch, -1.2F, 1.2F);
         rightHorn.pitch = clamp(rightHorn.pitch, -1.2F, 1.2F);
@@ -494,8 +528,12 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         crownRight.pitch = clamp(crownRight.pitch, -1.4F, 1.4F);
         crownLeft.yaw = clamp(crownLeft.yaw, -1.4F, 1.4F);
         crownRight.yaw = clamp(crownRight.yaw, -1.4F, 1.4F);
-        crownLeft.yScale = clamp(crownLeft.yScale, 0.8F, 1.8F);
-        crownRight.yScale = clamp(crownRight.yScale, 0.8F, 1.8F);
+        crownLeft.xScale = clamp(crownLeft.xScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        crownLeft.yScale = clamp(crownLeft.yScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        crownLeft.zScale = clamp(crownLeft.zScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        crownRight.xScale = clamp(crownRight.xScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        crownRight.yScale = clamp(crownRight.yScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        crownRight.zScale = clamp(crownRight.zScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
 
         jaw.pitch = clamp(jaw.pitch, -1.3F, 1.3F);
         jaw.pivotY = clamp(jaw.pivotY, 23.0F, 25.5F);
@@ -505,8 +543,10 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         backSpine.pitch = clamp(backSpine.pitch, -1.2F, 1.2F);
         backSpine.yaw = clamp(backSpine.yaw, -0.6F, 0.6F);
         backSpine.yScale = clamp(backSpine.yScale, 0.8F, 1.6F);
+        catastropheSpine.xScale = clamp(catastropheSpine.xScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
         catastropheSpine.pitch = clamp(catastropheSpine.pitch, -1.4F, 1.4F);
-        catastropheSpine.yScale = clamp(catastropheSpine.yScale, 0.8F, 1.8F);
+        catastropheSpine.yScale = clamp(catastropheSpine.yScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
+        catastropheSpine.zScale = clamp(catastropheSpine.zScale, HIDDEN_FINAL_PART_SCALE, 1.8F);
 
         leftShard.pitch = clamp(leftShard.pitch, -1.2F, 1.2F);
         rightShard.pitch = clamp(rightShard.pitch, -1.2F, 1.2F);

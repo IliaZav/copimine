@@ -3,6 +3,7 @@ package me.copimine.client.mixin;
 import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.CopiMineClientLogger;
 import me.copimine.client.EndEventTextureCatalog;
+import me.copimine.client.EndermanRendererSelection;
 import me.copimine.client.RiftGuardianModelRenderer;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -31,7 +32,7 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
     @Unique
     private final RiftGuardianModelRenderer copimine$guardianRenderer = new RiftGuardianModelRenderer();
     @Unique
-    private EntityModel<EndermanEntity> copimine$vanillaModel;
+    private EndermanRendererSelection.ModelSwap<EntityModel<EndermanEntity>> copimine$modelSwap;
 
     protected EndermanEntityRendererMixin(EntityRendererFactory.Context context, EntityModel<EndermanEntity> model, float shadowRadius) {
         super(context, model, shadowRadius);
@@ -49,28 +50,26 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
             return;
         }
         String bossUuid = entity.getUuid().toString();
-        if (!ClientBridgeProtocol.isBoundEndBoss(bossUuid)) {
+        EndermanRendererSelection.Decision selection = copimine$guardianSelection(bossUuid);
+        if (!selection.usesGuardianModel()) {
             return;
         }
         String phaseId = ClientBridgeProtocol.bossPhaseForEntity(bossUuid);
         long transitionMillis = ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(bossUuid);
         String animationId = ClientBridgeProtocol.bossAnimationForEntity(bossUuid);
-        Identifier texture = copimine$guardianRenderer.textureForPhase(phaseId);
-        EndEventTextureCatalog.logLookup("boss-model", texture);
-        if (!EndEventTextureCatalog.isAvailable(texture)) {
-            return;
-        }
-        copimine$vanillaModel = model;
-        model = copimine$guardianRenderer.modelForPhase(phaseId, transitionMillis, animationId);
+        EntityModel<EndermanEntity> guardianModel = copimine$guardianRenderer.modelForPhase(
+                phaseId, transitionMillis, animationId);
+        copimine$modelSwap = EndermanRendererSelection.begin(model, guardianModel, selection);
+        model = copimine$modelSwap.currentModel();
     }
 
     @Inject(method = "render(Lnet/minecraft/entity/mob/EndermanEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))
     private void copimine$restoreVanillaModelAfterBoundBoss(EndermanEntity entity, float yaw, float tickDelta,
                                                             MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                                             int light, CallbackInfo ci) {
-        if (copimine$vanillaModel != null) {
-            model = copimine$vanillaModel;
-            copimine$vanillaModel = null;
+        if (copimine$modelSwap != null) {
+            model = copimine$modelSwap.restore();
+            copimine$modelSwap = null;
         }
     }
 
@@ -79,16 +78,15 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         if (entity == null) {
             return;
         }
+        String entityUuid = entity.getUuid().toString();
+        EndermanRendererSelection.Decision guardianSelection = copimine$guardianSelection(entityUuid);
         if (ClientBridgeProtocol.isBoundEndBoss(entity.getUuid().toString())) {
-            Identifier bossTexture = copimine$guardianRenderer.textureForPhase(
-                    ClientBridgeProtocol.bossPhaseForEntity(entity.getUuid().toString()));
-            EndEventTextureCatalog.logLookup("boss", bossTexture);
-            if (EndEventTextureCatalog.isAvailable(bossTexture)) {
-                cir.setReturnValue(bossTexture);
+            if (guardianSelection.usesGuardianModel()) {
+                cir.setReturnValue(guardianSelection.texture());
             }
             return;
         }
-        String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
+        String visual = ClientBridgeProtocol.endEventVisualForEntity(entityUuid);
         Identifier texture = switch (visual) {
             case "END_RIFT_GUARDIAN_V1" -> texture("end_rift_guardian");
             case "END_RIFT_ELITE_V1" -> texture("end_rift_elite");
@@ -106,5 +104,20 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         if (texture != null && EndEventTextureCatalog.isAvailable(texture)) {
             cir.setReturnValue(texture);
         }
+    }
+
+    @Unique
+    private EndermanRendererSelection.Decision copimine$guardianSelection(String entityUuid) {
+        if (!ClientBridgeProtocol.isBoundEndBoss(entityUuid)) {
+            return EndermanRendererSelection.select(entityUuid, null, null, false);
+        }
+        Identifier guardianTexture = copimine$guardianRenderer.textureForPhase(
+                ClientBridgeProtocol.bossPhaseForEntity(entityUuid));
+        EndEventTextureCatalog.logLookup("boss", guardianTexture);
+        return EndermanRendererSelection.select(
+                entityUuid,
+                entityUuid,
+                guardianTexture,
+                EndEventTextureCatalog.isAvailable(guardianTexture));
     }
 }

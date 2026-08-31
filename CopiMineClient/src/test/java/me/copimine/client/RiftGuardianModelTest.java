@@ -71,6 +71,20 @@ class RiftGuardianModelTest {
         }
     }
 
+    @Test
+    void finalAdornmentPartsStayFoldedUntilFinalAwakening() {
+        RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
+
+        poseParts(model, Phase.HUNTER, "IDLE_BREATH");
+        assertFinalPartsFolded(model);
+
+        poseParts(model, Phase.AWAKENING, "FINAL_AWAKENING");
+        assertFinalPartsRevealed(model);
+
+        poseParts(model, Phase.CATASTROPHE, "IDLE");
+        assertFinalPartsRevealed(model);
+    }
+
     private static PoseSnapshot pose(RiftGuardianModel model, Phase phase, String animationId, float animationProgress) {
         model.setPhase(phase, 15_000L);
         model.setAnimation(animationId);
@@ -98,6 +112,46 @@ class RiftGuardianModelTest {
                 leftTalon.pitch, rightTalon.pitch,
                 catastropheSpine.pitch, catastropheSpine.yScale
         );
+    }
+
+    private static void poseParts(RiftGuardianModel model, Phase phase, String animationId) {
+        model.setPhase(phase, 0L);
+        model.setAnimation(animationId);
+        model.setAngles((EndermanEntity) null, 0.0F, 0.0F, 18.0F, 0.0F, 0.0F);
+    }
+
+    private static void assertFinalPartsFolded(RiftGuardianModel model) {
+        ModelPart body = model.getPart().getChild("body");
+        ModelPart leftArm = model.getPart().getChild("left_arm");
+        ModelPart rightArm = model.getPart().getChild("right_arm");
+
+        assertFolded(body.getChild("crown_left"));
+        assertFolded(body.getChild("crown_right"));
+        assertFolded(leftArm.getChild("left_talon"));
+        assertFolded(rightArm.getChild("right_talon"));
+        assertFolded(body.getChild("catastrophe_spine"));
+    }
+
+    private static void assertFinalPartsRevealed(RiftGuardianModel model) {
+        ModelPart body = model.getPart().getChild("body");
+        ModelPart leftArm = model.getPart().getChild("left_arm");
+        ModelPart rightArm = model.getPart().getChild("right_arm");
+
+        assertRevealed(body.getChild("crown_left"));
+        assertRevealed(body.getChild("crown_right"));
+        assertRevealed(leftArm.getChild("left_talon"));
+        assertRevealed(rightArm.getChild("right_talon"));
+        assertRevealed(body.getChild("catastrophe_spine"));
+    }
+
+    private static void assertFolded(ModelPart part) {
+        assertTrue(part.xScale <= 0.01F && part.yScale <= 0.01F && part.zScale <= 0.01F,
+                "part should be folded into the base silhouette");
+    }
+
+    private static void assertRevealed(ModelPart part) {
+        assertTrue(part.xScale >= 0.5F && part.yScale >= 0.5F && part.zScale >= 0.5F,
+                "part should be revealed in the final state");
     }
 
     private record PoseSnapshot(

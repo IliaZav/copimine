@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
 
 /**
  * Immutable cue table for End Rift boss visuals.
@@ -29,7 +31,34 @@ public final class BossVisualCuePolicy {
         if (spellId == null || stage == null) {
             return null;
         }
-        return CUES.get(normalize(spellId)).get(stage);
+        Map<CueStage, Cue> stages = CUES.get(normalize(spellId));
+        return stages == null ? null : stages.get(stage);
+    }
+
+    public static boolean shouldSuppressDuplicate(CueToken active, CueToken requested,
+                                                   boolean forced, long currentTick) {
+        return !forced
+                && active != null
+                && requested != null
+                && active.generation() == requested.generation()
+                && Objects.equals(active.owner(), requested.owner())
+                && Objects.equals(active.cueId(), requested.cueId())
+                && currentTick < active.deadlineTick();
+    }
+
+    public static boolean canReset(CueToken callback, CueToken active,
+                                   boolean taskOwned, boolean bossLive,
+                                   boolean defeatCommitted) {
+        return !defeatCommitted
+                && taskOwned
+                && bossLive
+                && callback != null
+                && active != null
+                && callback.sequence() > 0L
+                && callback.generation() == active.generation()
+                && Objects.equals(callback.owner(), active.owner())
+                && callback.sequence() == active.sequence()
+                && Objects.equals(callback.cueId(), active.cueId());
     }
 
     public static Map<String, Map<CueStage, Cue>> cues() {
@@ -127,6 +156,13 @@ public final class BossVisualCuePolicy {
         TELEGRAPH,
         RELEASE,
         IMPACT
+    }
+
+    public record CueToken(long generation, UUID owner, long sequence,
+                           String cueId, long deadlineTick) {
+        public CueToken {
+            cueId = cueId == null ? "" : cueId.trim().toLowerCase(Locale.ROOT);
+        }
     }
 
     public record Cue(String id, String animationId, String soundId, String primaryParticle,

@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public final class BossVisualCuePolicyTest {
     private static final List<String> CURRENT_SPELLS = List.of(
@@ -58,6 +59,34 @@ public final class BossVisualCuePolicyTest {
         requireThrows(UnsupportedOperationException.class,
                 () -> catalog.get("void_blast").put(BossVisualCuePolicy.CueStage.TELEGRAPH, catalog.get("void_blast").get(BossVisualCuePolicy.CueStage.TELEGRAPH)),
                 "stage catalog must be immutable");
+
+        require(BossVisualCuePolicy.cue("unknown_spell", BossVisualCuePolicy.CueStage.TELEGRAPH) == null,
+                "unknown spell ids must fail closed");
+        require(BossVisualCuePolicy.cue("   ", BossVisualCuePolicy.CueStage.RELEASE) == null,
+                "blank spell ids must fail closed");
+        require(BossVisualCuePolicy.cue("void_blast", null) == null,
+                "invalid cue stages must fail closed");
+
+        UUID owner = UUID.randomUUID();
+        BossVisualCuePolicy.CueToken first = new BossVisualCuePolicy.CueToken(
+                7L, owner, 11L, "void_blast:release", 120L);
+        BossVisualCuePolicy.CueToken sameCue = new BossVisualCuePolicy.CueToken(
+                7L, owner, 11L, "void_blast:release", 120L);
+        BossVisualCuePolicy.CueToken newerCue = new BossVisualCuePolicy.CueToken(
+                7L, owner, 12L, "phase_shift:impact", 140L);
+
+        require(BossVisualCuePolicy.shouldSuppressDuplicate(first, sameCue, false, 119L),
+                "same cue before its deadline must be suppressed");
+        require(!BossVisualCuePolicy.shouldSuppressDuplicate(first, sameCue, false, 120L),
+                "same cue at its deadline must be allowed");
+        require(!BossVisualCuePolicy.shouldSuppressDuplicate(first, sameCue, true, 119L),
+                "forced cues must bypass duplicate suppression");
+        require(BossVisualCuePolicy.canReset(first, first, true, true, false),
+                "current owned live cue may reset");
+        require(!BossVisualCuePolicy.canReset(first, newerCue, true, true, false),
+                "a stale reset must not supersede a newer cue");
+        require(!BossVisualCuePolicy.canReset(first, first, true, true, true),
+                "a defeated boss must not be reset");
         System.out.println("BossVisualCuePolicyTest OK");
     }
 

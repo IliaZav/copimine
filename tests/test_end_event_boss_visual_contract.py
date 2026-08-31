@@ -64,9 +64,10 @@ def test_boss_visual_cue_path_guards_generation_owner_and_duplicate_deadline() -
         "ownedBySession(boss, eventId, generation)",
         "isLiveOwnedEntity(boss.getUniqueId())",
         "bossVisualCueGeneration",
+        "bossVisualCueSequence",
         "lastBossVisualCueId",
         "lastBossVisualCueDeadlineTick",
-        "!forced",
+        "BossVisualCuePolicy.shouldSuppressDuplicate",
         "cooldownTicks",
     ):
         assert marker in cue
@@ -103,4 +104,7 @@ def test_boss_visual_cue_keeps_reset_aliases_and_bounded_scheduler_path() -> Non
     ):
         assert marker in MAIN
     assert 'sendBossAnimationVisualUpdate(boss, "IDLE")' in reset
-    assert "resetBossVisualCue(boss, callbackGeneration)" in schedule
+    assert "callbackCueSequence" in schedule
+    assert "callbackCueId" in schedule
+    assert "resetBossVisualCue(boss, callbackGeneration, callbackCueSequence, callbackCueId)" in schedule
+    assert "BossVisualCuePolicy.canReset" in reset

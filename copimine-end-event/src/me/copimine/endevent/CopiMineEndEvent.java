@@ -565,6 +565,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BossBar bossBar;
     private UUID bossVisualCueOwner;
     private long bossVisualCueGeneration = Long.MIN_VALUE;
+    private long bossVisualCueSequence;
     private String lastBossVisualCueId = "";
     private long lastBossVisualCueDeadlineTick;
 
@@ -11632,6 +11633,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellPauseUntilMillis = 0L;
         bossVisualCueOwner = null;
         bossVisualCueGeneration = Long.MIN_VALUE;
+        bossVisualCueSequence = 0L;
         lastBossVisualCueId = "";
         lastBossVisualCueDeadlineTick = 0L;
         lastBossTeleportMillis = 0L;
@@ -12983,9 +12985,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !(isTestBoss(boss) && (testCombatAiMode || phase != EventPhase.VICTORY_PROCESSING)))) {
             return;
         }
-        playBossVisualCue(boss,
-                bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE),
-                boss.getEyeLocation(), forced);
+        String releaseCueId = bossCueId(spell.id(), BossVisualCuePolicy.CueStage.RELEASE);
+        playBossVisualCue(boss, releaseCueId, boss.getEyeLocation(), forced);
+        long resetCueSequence = bossVisualCueSequence;
+        String resetCueId = lastBossVisualCueId;
         launchSpellFlight(boss, mark,
                 "BOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), forced,
                 callbackGeneration, () -> {
@@ -13015,7 +13018,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                          case ARENA_INFERNO -> arenaInferno(boss);
                      }
                  });
-        scheduleBossAnimationReset(boss, callbackGeneration, 20L);
+        scheduleBossAnimationReset(boss, callbackGeneration,
+                resetCueSequence, resetCueId, 20L);
     }
 
     private void voidBlast(LivingEntity boss, Player target) {
@@ -14598,11 +14602,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void scheduleBossAnimationReset(LivingEntity boss, long callbackGeneration, long delayTicks) {
-        if (taskRegistry == null || boss == null || delayTicks < 1L) {
+        scheduleBossAnimationReset(boss, callbackGeneration,
+                bossVisualCueSequence, lastBossVisualCueId, delayTicks);
+    }
+
+    private void scheduleBossAnimationReset(LivingEntity boss, long callbackGeneration,
+                                            long callbackCueSequence, String callbackCueId,
+                                            long delayTicks) {
+        if (taskRegistry == null || boss == null || callbackCueSequence < 1L
+                || callbackCueId == null || callbackCueId.isBlank() || delayTicks < 1L) {
             return;
         }
         BukkitTask reset = Bukkit.getScheduler().runTaskLater(this, () -> {
-            resetBossVisualCue(boss, callbackGeneration);
+            resetBossVisualCue(boss, callbackGeneration, callbackCueSequence, callbackCueId);
         }, delayTicks);
         taskRegistry.register(reset);
     }
@@ -14624,13 +14636,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         long currentTick = currentBossVisualCueTick();
         long cooldownTicks = cue.cooldownTicks();
-        if (!forced
-                && generation == bossVisualCueGeneration
-                && boss.getUniqueId().equals(bossVisualCueOwner)
-                && Objects.equals(lastBossVisualCueId, cue.id())
-                && currentTick < lastBossVisualCueDeadlineTick) {
+        BossVisualCuePolicy.CueToken activeCue = new BossVisualCuePolicy.CueToken(
+                bossVisualCueGeneration, bossVisualCueOwner, bossVisualCueSequence,
+                lastBossVisualCueId, lastBossVisualCueDeadlineTick);
+        BossVisualCuePolicy.CueToken requestedCue = new BossVisualCuePolicy.CueToken(
+                generation, boss.getUniqueId(), bossVisualCueSequence + 1L,
+                cue.id(), currentTick + cooldownTicks);
+        if (BossVisualCuePolicy.shouldSuppressDuplicate(activeCue, requestedCue, forced, currentTick)) {
             return;
         }
+        bossVisualCueSequence = requestedCue.sequence();
         bossVisualCueOwner = boss.getUniqueId();
         bossVisualCueGeneration = generation;
         lastBossVisualCueId = cue.id();
@@ -14706,13 +14721,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void resetBossVisualCue(LivingEntity boss, long callbackGeneration) {
-        if (taskRegistry == null || boss == null
-                || callbackGeneration != generation
-                || callbackGeneration != bossVisualCueGeneration
-                || !taskRegistry.owns(callbackGeneration)
-                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
-                || !boss.isValid() || boss.isDead()
-                || officialBossDeathCommitted) {
+        // Keep the old private signature as a fail-closed compatibility wrapper.
+        resetBossVisualCue(boss, callbackGeneration, Long.MIN_VALUE, "");
+    }
+
+    private void resetBossVisualCue(LivingEntity boss, long callbackGeneration,
+                                    long callbackCueSequence, String callbackCueId) {
+        if (taskRegistry == null || boss == null || callbackGeneration != generation) {
+            return;
+        }
+        BossVisualCuePolicy.CueToken callbackCue = new BossVisualCuePolicy.CueToken(
+                callbackGeneration, boss.getUniqueId(), callbackCueSequence, callbackCueId, 0L);
+        BossVisualCuePolicy.CueToken activeCue = new BossVisualCuePolicy.CueToken(
+                bossVisualCueGeneration, bossVisualCueOwner, bossVisualCueSequence,
+                lastBossVisualCueId, lastBossVisualCueDeadlineTick);
+        boolean bossLive = bossUuid != null && bossUuid.equals(boss.getUniqueId())
+                && boss.isValid() && !boss.isDead();
+        if (!BossVisualCuePolicy.canReset(callbackCue, activeCue,
+                taskRegistry.owns(callbackGeneration), bossLive, officialBossDeathCommitted)) {
             return;
         }
         sendBossAnimationVisualUpdate(boss, "IDLE");

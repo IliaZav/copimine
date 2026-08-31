@@ -178,12 +178,16 @@ function buildCalendar(payloadEvents, selectedSlug, onSelect) {
     card.dataset.eventSlug = slug;
     card.style.setProperty("--event-accent", event.accent);
     card.setAttribute("aria-label", `${eventStatus(event)}: ${event.title}`);
+    const art = node("span", "event-card-art");
+    art.setAttribute("aria-hidden", "true");
+    const artImage = node("img");
+    if (setImage(artImage, event.sceneImage)) art.append(artImage);
     const label = node("span", "event-calendar-card-label", eventStatus(event));
     const miniClock = createClock("event-clock-mini");
     const title = node("strong", "event-calendar-card-title", event.title);
     const summary = node("span", "event-calendar-card-copy", event.summary);
     const arrow = node("span", "event-calendar-card-arrow", "↗");
-    card.append(label, miniClock, title, summary, arrow);
+    card.append(art, label, miniClock, title, summary, arrow);
     card.addEventListener("click", () => onSelect(slug));
     slots.append(card);
     if (index === 0) card.dataset.current = "true";

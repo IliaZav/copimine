@@ -79,6 +79,8 @@ def test_events_page_is_calendar_first_and_keeps_event_copy_compact() -> None:
 
     assert "event-calendar" in runtime
     assert "buildCalendar" in runtime
+    assert "event-card-art" in runtime
+    assert "event-card-art" in styles
     assert "event-mystery" in runtime
     assert "event-gallery" in runtime
     assert "event-dragon-flight" in runtime

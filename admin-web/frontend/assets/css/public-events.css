@@ -245,6 +245,49 @@ body[data-page-kind="public-events"] .public-nav {
   box-shadow: 0 0 0 3px rgba(192, 154, 255, .23);
 }
 
+.event-card-art {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: linear-gradient(150deg, rgba(22, 16, 38, .2), rgba(5, 4, 10, .96) 82%);
+  pointer-events: none;
+}
+
+.event-card-art::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(155deg, rgba(8, 6, 16, .04), rgba(8, 6, 16, .86) 72%);
+  content: "";
+}
+
+.event-card-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(.82) contrast(1.12) brightness(.58);
+  opacity: .66;
+  transform: scale(1.06);
+  transition: transform 500ms cubic-bezier(.2, .7, .2, 1), filter 300ms ease, opacity 300ms ease;
+}
+
+.event-calendar-card:hover .event-card-art img,
+.event-calendar-card:focus-visible .event-card-art img,
+.event-calendar-card.is-selected .event-card-art img {
+  filter: saturate(1) contrast(1.12) brightness(.72);
+  opacity: .8;
+  transform: scale(1.12);
+}
+
+.event-calendar-card > .event-calendar-card-label,
+.event-calendar-card > .event-clock,
+.event-calendar-card > .event-calendar-card-title,
+.event-calendar-card > .event-calendar-card-copy {
+  position: relative;
+  z-index: 1;
+}
+
 .event-calendar-card-title {
   position: relative;
   z-index: 1;

@@ -101,9 +101,12 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossCastPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossVisualCuePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
+      (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
@@ -125,9 +128,12 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild StormPatternPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossCastPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild CombatTacticsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossVisualCuePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveVisualPolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {

@@ -5,7 +5,7 @@ import { initPublicNav } from "./public-nav.js?v=20260829siteui23";
 import { initLauncherPage } from "./launcher-page.js?v=20260825siteui19";
 import { initNewsPage } from "./news-page.js?v=20260825siteui19";
 import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui19";
-import { initEventsPage } from "./events-page.js?v=20260831events3";
+import { initEventsPage } from "./events-page.js?v=20260831events4";
 import { initPublicMotion } from "./public-motion.js?v=20260825siteui19";
 
 initPublicNav();

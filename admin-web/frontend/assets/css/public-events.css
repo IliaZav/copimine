@@ -433,8 +433,8 @@ body[data-page-kind="public-events"] .public-nav {
   height: 106%;
   object-fit: cover;
   object-position: center;
-  filter: saturate(.82) contrast(1.08) brightness(.78);
-  opacity: .7;
+  filter: saturate(.94) contrast(1.08) brightness(.9);
+  opacity: .82;
   animation: eventSceneBreathe 22s ease-in-out infinite alternate;
 }
 
@@ -445,10 +445,10 @@ body[data-page-kind="public-events"] .public-nav {
   width: min(900px, 78vw);
   height: min(640px, 88%);
   object-fit: cover;
-  object-position: 78% 83%;
-  filter: contrast(1.12) brightness(1.08) saturate(.9);
+  object-position: 74% 78%;
+  filter: contrast(1.2) brightness(1.22) saturate(1.02);
   mix-blend-mode: screen;
-  opacity: .86;
+  opacity: .94;
   mask-image: radial-gradient(ellipse at 66% 70%, #000 0 38%, rgba(0, 0, 0, .82) 57%, transparent 83%);
   animation: eventDragonFlight 18s ease-in-out infinite;
 }
@@ -456,7 +456,7 @@ body[data-page-kind="public-events"] .public-nav {
 .event-hero-veil {
   inset: 0;
   z-index: 2;
-  background: linear-gradient(90deg, rgba(8, 7, 16, .97) 0%, rgba(8, 7, 16, .86) 35%, rgba(8, 7, 16, .34) 72%, rgba(8, 7, 16, .65) 100%), linear-gradient(180deg, rgba(10, 7, 20, .18), rgba(10, 7, 20, .94));
+  background: linear-gradient(90deg, rgba(8, 7, 16, .96) 0%, rgba(8, 7, 16, .78) 35%, rgba(8, 7, 16, .2) 72%, rgba(8, 7, 16, .42) 100%), linear-gradient(180deg, rgba(10, 7, 20, .08), rgba(10, 7, 20, .82));
 }
 
 .event-hero-glow {
@@ -820,7 +820,7 @@ body[data-page-kind="public-events"] .public-nav {
   .event-hero-content { min-height: 600px; padding: 30px 22px; justify-content: end; }
   .event-hero-content h1 { font-size: clamp(3.7rem, 18vw, 6rem); }
   .event-hero-scene { object-position: 64% center; }
-  .event-dragon-flight { right: -53%; bottom: 2%; width: 780px; height: 420px; opacity: .7; }
+  .event-dragon-flight { right: -48%; bottom: 2%; width: 780px; height: 420px; opacity: .86; }
   .event-vines-hero { opacity: .5; }
   .event-section { padding: 24px 18px; border-radius: 16px; }
   .event-section-head h2 { font-size: 2.8rem; }

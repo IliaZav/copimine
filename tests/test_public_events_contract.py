@@ -95,6 +95,10 @@ def test_events_page_is_calendar_first_and_keeps_event_copy_compact() -> None:
     assert "Собери ресурсы" not in page
     assert "Собери ресурсы" not in runtime
     assert "buildRequirements" not in runtime
+    assert "Одно событие уже открыто. Ещё два ждут своей очереди." not in runtime
+    assert "Детали останутся за дверью до самого события." not in runtime
+    assert "Настоящие игровые кадры — без постановочных рендеров." not in runtime
+    assert "Когда время придёт, календарь сам покажет путь." not in runtime
     assert [event["title"] for event in payload["events"] if event["status"] == "upcoming"] == ["Скоро", "Скоро"]
 
 

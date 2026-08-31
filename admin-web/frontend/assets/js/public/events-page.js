@@ -8,7 +8,7 @@ const UPCOMING_EVENT_LABEL = "Скоро";
 const EVENT_VIEW_COPY = {
   "end-rift": {
     status: "current",
-    eyebrow: "Событие сейчас",
+    eyebrow: "Энд",
     title: "Разлом Энда",
     summary: "В Энде снова не тихо.",
     body: "Большой проработанный данж. Волны врагов. Сильный проработанный босс.",
@@ -25,7 +25,7 @@ const EVENT_VIEW_COPY = {
   },
   "future-1": {
     status: "upcoming",
-    eyebrow: "Следом",
+    eyebrow: "Скоро",
     title: "Скоро",
     summary: "Здесь появится следующее событие.",
     body: "Пока без названия и без дат.",
@@ -38,7 +38,7 @@ const EVENT_VIEW_COPY = {
   },
   "future-2": {
     status: "upcoming",
-    eyebrow: "Позже",
+    eyebrow: "Скоро",
     title: "Скоро",
     summary: "Ещё одно событие появится здесь.",
     body: "Пока без названия и без дат.",
@@ -167,7 +167,7 @@ function buildCalendar(payloadEvents, selectedSlug, onSelect) {
   content.append(
     node("span", "event-kicker", "Расписание"),
     node("h1", "", "Ивенты"),
-    node("p", "event-calendar-lead", "Одно событие уже открыто. Ещё два ждут своей очереди."),
+    node("p", "event-calendar-lead", "Сейчас открыто одно событие."),
   );
 
   const slots = node("div", "event-calendar-slots");
@@ -193,7 +193,7 @@ function buildCalendar(payloadEvents, selectedSlug, onSelect) {
     if (index === 0) card.dataset.current = "true";
   });
 
-  const note = node("p", "event-calendar-note", "Точные даты появятся здесь, когда событие будет готово.");
+  const note = node("p", "event-calendar-note", "Даты появятся позже.");
   content.append(slots, note);
   calendar.append(dial, content);
   section.append(buildVines("event-vines-calendar"), calendar);
@@ -241,13 +241,13 @@ function buildHero(event) {
 function buildMystery() {
   const section = node("section", "event-section event-mystery event-reveal");
   section.dataset.reveal = "mystery";
-  section.append(sectionHeading("Только намёки", "Дальше — тишина.", "Детали останутся за дверью до самого события."));
+  section.append(sectionHeading("Намёки", "Дальше — тишина.", "Три вещи уже известны."));
   const grid = node("div", "event-mystery-grid");
   MYSTERY_NOTES.forEach(([index, title], position) => {
     const card = node("article", "event-mystery-card event-reveal");
     card.dataset.reveal = `mystery-${position}`;
     card.style.setProperty("--event-delay", `${position * 90}ms`);
-    card.append(node("span", "event-mystery-index", index), node("strong", "", title), node("span", "event-mystery-line", "Подробности не раскрываем."));
+    card.append(node("span", "event-mystery-index", index), node("strong", "", title), node("span", "event-mystery-line", "Детали скрыты."));
     grid.append(card);
   });
   section.append(grid);
@@ -257,7 +257,7 @@ function buildMystery() {
 function buildGallery(event) {
   const section = node("section", "event-section event-gallery event-reveal");
   section.dataset.reveal = "gallery";
-  section.append(sectionHeading("Кадры", "Энд с разных сторон", "Настоящие игровые кадры — без постановочных рендеров."));
+  section.append(sectionHeading("Кадры", "Кадры Энда", "Из игры."));
   const grid = node("div", "event-gallery-grid");
   const images = [
     [event.dragonImage, "Эндер-дракон над островами Энда", "event-gallery-item event-gallery-item-wide"],
@@ -286,7 +286,7 @@ function buildClockStrip() {
   const clocks = node("div", "event-clock-cluster");
   clocks.append(createClock("event-clock-medium"), createClock("event-clock-small"), createClock("event-clock-mini"));
   const copy = node("div", "event-clock-copy");
-  copy.append(node("span", "event-kicker", "Часы идут"), node("h2", "", "Дата пока скрыта."), node("p", "", "Когда время придёт, календарь сам покажет путь."));
+  copy.append(node("span", "event-kicker", "Часы идут"), node("h2", "", "Дата скрыта."));
   section.append(clocks, copy);
   return section;
 }
@@ -294,7 +294,7 @@ function buildClockStrip() {
 function buildVideos(event) {
   const section = node("section", "event-section event-video-section event-reveal");
   section.dataset.reveal = "videos";
-  section.append(sectionHeading("Материалы", "Видео появится здесь", "Окно для записи события."));
+  section.append(sectionHeading("Видео", "Запись события"));
   const videos = Array.isArray(event.videos) ? event.videos : [];
   const grid = node("div", "event-video-grid");
   videos.forEach((item) => {
@@ -315,7 +315,7 @@ function buildVideos(event) {
   });
   if (!grid.children.length) {
     const empty = node("div", "event-video-empty");
-    empty.append(createClock("event-clock-small"), node("strong", "", "Запись ещё не добавили"), node("p", "", "Здесь будет видео с события."));
+    empty.append(createClock("event-clock-small"), node("strong", "", "Записи пока нет."));
     grid.append(empty);
   }
   section.append(grid);
@@ -344,7 +344,7 @@ function buildUpcoming(event) {
   const section = node("section", "event-upcoming event-reveal");
   section.dataset.reveal = "upcoming";
   section.style.setProperty("--event-accent", event.accent);
-  section.append(createClock("event-clock-medium"), node("p", "event-kicker", event.eyebrow), node("h1", "", "Скоро"), node("p", "event-upcoming-copy", event.summary), node("p", "event-upcoming-note", "Название и дата появятся позже."));
+  section.append(createClock("event-clock-medium"), node("p", "event-kicker", event.eyebrow), node("h1", "", "Скоро"), node("p", "event-upcoming-copy", event.summary), node("p", "event-upcoming-note", "Название и дата — позже."));
   return section;
 }
 

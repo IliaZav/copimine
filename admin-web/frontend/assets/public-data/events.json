@@ -5,7 +5,7 @@
     {
       "slug": "end-rift",
       "status": "current",
-      "eyebrow": "Событие сейчас",
+      "eyebrow": "Энд",
       "title": "Разлом Энда",
       "summary": "В Энде снова не тихо.",
       "body": "Большой проработанный данж. Волны врагов. Сильный проработанный босс.",
@@ -45,12 +45,12 @@
         { "label": "Кадр города Края", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_-_End_city.jpg" },
         { "label": "Кадр эндермена", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_Enderman.png" }
       ],
-      "creditsHtml": "Реальный игровой кадр с Эндер-драконом: Screenshot_from_the_Minecraft_End.png / Wikimedia Commons, CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png"
+      "creditsHtml": "Источник кадра: Screenshot_from_the_Minecraft_End.png / Wikimedia Commons, CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png"
     },
     {
       "slug": "future-1",
       "status": "upcoming",
-      "eyebrow": "Следом",
+      "eyebrow": "Скоро",
       "title": "Скоро",
       "summary": "Здесь появится следующее событие.",
       "body": "Пока без названия и без дат.",
@@ -70,7 +70,7 @@
     {
       "slug": "future-2",
       "status": "upcoming",
-      "eyebrow": "Позже",
+      "eyebrow": "Скоро",
       "title": "Скоро",
       "summary": "Ещё одно событие появится здесь.",
       "body": "Пока без названия и без дат.",

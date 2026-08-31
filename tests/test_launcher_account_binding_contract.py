@@ -43,7 +43,11 @@ def test_launcher_binding_is_required_before_play():
     assert "PlayCommand = new AsyncRelayCommand(PlayAsync, CanStartOperation)" in VIEW_MODEL
     assert "private bool CanStartOperation() => !IsBusy;" in VIEW_MODEL
     assert "LAUNCHER_LINK_REQUIRED" in VIEW_MODEL
-    assert "Привязка аккаунта обязательна перед запуском" in MAIN_WINDOW
+    # The redesigned shell keeps this warning compact in the left rail. The
+    # behavior contract is the visible blocked state and the binding action,
+    # not the wording from the old layout.
+    assert "Аккаунт не привязан" in MAIN_WINDOW
+    assert "Привязать на сайте" in MAIN_WINDOW
 
 
 def test_website_authorizes_launcher_without_a_manual_code_and_returns_to_the_app():

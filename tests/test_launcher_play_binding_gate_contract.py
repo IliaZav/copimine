@@ -21,7 +21,9 @@ def test_binding_required_warning_offers_the_browser_flow():
     assert "OpenAccountLinkCommand" in VIEW_MODEL
     assert "launcher-link.html" in VIEW_MODEL
     assert "LauncherLinkRequired" in VIEW_MODEL
-    assert "Привязка аккаунта обязательна перед запуском" in (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml").read_text(encoding="utf-8")
+    launcher_shell = (ROOT / "CopiMineLauncher/src/CopiMineLauncher.App/MainWindow.xaml").read_text(encoding="utf-8")
+    assert "Аккаунт не привязан" in launcher_shell
+    assert "Привязать на сайте" in launcher_shell
 
 
 def test_binding_browser_allows_only_real_copimine_or_loopback_staging_urls():

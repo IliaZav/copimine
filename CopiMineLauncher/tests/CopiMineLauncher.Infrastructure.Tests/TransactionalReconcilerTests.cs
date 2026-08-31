@@ -252,6 +252,30 @@ public sealed class TransactionalReconcilerTests
     }
 
     [Fact]
+    public async Task Download_manager_reports_bytes_and_finishes_at_one_hundred_percent()
+    {
+        using var temp = new TemporaryDirectory();
+        var destination = Path.Combine(temp.Path, "staging", "file.bin");
+        var expected = Encoding.UTF8.GetBytes("hello world");
+        using var http = new HttpClient(new FreshFileHandler("hello world"));
+        var manager = new ResumableDownloadManager(http);
+        var progress = new RecordingDownloadProgress();
+
+        await manager.DownloadAsync(
+            new Uri("https://copimine.ru/file.bin"),
+            destination,
+            expected.Length,
+            Hash(expected),
+            progress,
+            CancellationToken.None);
+
+        progress.Values.Should().NotBeEmpty();
+        progress.Values.Should().Contain(value => value.BytesDownloaded > 0);
+        progress.Values[^1].BytesDownloaded.Should().Be(expected.Length);
+        progress.Values[^1].Percent.Should().Be(100);
+    }
+
+    [Fact]
     public async Task Durable_prepared_journal_exists_before_the_first_download()
     {
         using var temp = new TemporaryDirectory();
@@ -439,6 +463,13 @@ public sealed class TransactionalReconcilerTests
             response.Content.Headers.ContentRange = new ContentRangeHeaderValue(6, 10, 11);
             return Task.FromResult(response);
         }
+    }
+
+    private sealed class RecordingDownloadProgress : IProgress<DownloadProgress>
+    {
+        public List<DownloadProgress> Values { get; } = new();
+
+        public void Report(DownloadProgress value) => Values.Add(value);
     }
 
     private sealed class CorruptHandler : HttpMessageHandler

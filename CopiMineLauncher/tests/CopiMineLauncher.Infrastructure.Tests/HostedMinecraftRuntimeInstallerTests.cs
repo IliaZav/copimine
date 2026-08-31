@@ -26,13 +26,15 @@ public sealed class HostedMinecraftRuntimeInstallerTests
         var installer = new HostedMinecraftRuntimeInstaller(
             new OfflineMinecraftBaseline(bootstrap),
             downloads);
+        var progress = new RecordingDownloadProgress();
 
         var result = await installer.EnsureAsync(
             Path.Combine(temp.Path, "instance"),
             "1.21.1",
             "0.19.3",
             runtime,
-            CancellationToken.None);
+            CancellationToken.None,
+            progress);
 
         result.Applied.Should().BeTrue();
         downloads.Source.Should().Be(new Uri(runtime.Url));
@@ -40,6 +42,8 @@ public sealed class HostedMinecraftRuntimeInstallerTests
         downloads.ExpectedSha256.Should().Be(digest);
         File.Exists(Path.Combine(temp.Path, "instance", "assets", "indexes", "1.21.1.json")).Should().BeTrue();
         File.Exists(Path.Combine(temp.Path, "instance", "versions", "fabric-loader-0.19.3-1.21.1", "fabric-loader-0.19.3-1.21.1.json")).Should().BeTrue();
+        progress.Values[^1].Percent.Should().Be(100);
+        progress.Values.Should().Contain(value => value.Phase == "extract");
     }
 
     private static async Task<string> CreateBaselineArchiveAsync(string root)
@@ -58,7 +62,7 @@ public sealed class HostedMinecraftRuntimeInstallerTests
         return archive;
     }
 
-    private sealed class CopyingDownloadManager(string sourcePath) : IResumableDownloadManager
+    private sealed class CopyingDownloadManager(string sourcePath) : IResumableDownloadManager, IProgressiveDownloadManager
     {
         public Uri? Source { get; private set; }
         public long ExpectedSize { get; private set; }
@@ -78,6 +82,27 @@ public sealed class HostedMinecraftRuntimeInstallerTests
             File.Copy(sourcePath, destination, overwrite: true);
             return Task.FromResult(destination);
         }
+
+        public Task<string> DownloadAsync(
+            Uri source,
+            string destination,
+            long expectedSize,
+            string expectedSha256,
+            IProgress<DownloadProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            progress?.Report(new DownloadProgress(0, expectedSize));
+            var result = DownloadAsync(source, destination, expectedSize, expectedSha256, cancellationToken);
+            progress?.Report(new DownloadProgress(expectedSize, expectedSize));
+            return result;
+        }
+    }
+
+    private sealed class RecordingDownloadProgress : IProgress<DownloadProgress>
+    {
+        public List<DownloadProgress> Values { get; } = new();
+
+        public void Report(DownloadProgress value) => Values.Add(value);
     }
 
     private sealed class TempDirectory : IDisposable

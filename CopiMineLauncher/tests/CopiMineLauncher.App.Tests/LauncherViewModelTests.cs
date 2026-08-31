@@ -390,6 +390,39 @@ public sealed class LauncherViewModelTests
     }
 
     [Fact]
+    public async Task Runtime_download_progress_replaces_the_manifest_percentage()
+    {
+        using var temp = new TemporaryDirectory();
+        var runtime = new FakeRuntimeCoordinator
+        {
+            ProgressSequence =
+            [
+                new("manifest", "Проверяем подписанный manifest…"),
+                new("minecraft-runtime", "Скачиваем Minecraft/Fabric… 14.5%", 14.5),
+            ],
+            HoldAfterProgress = true
+        };
+        var viewModel = new LauncherViewModel(new FakePatchFeedClient(), runtime)
+        {
+            InstancePath = temp.Path
+        };
+
+        var initialize = viewModel.InitializeAsync();
+        await runtime.ProgressReported.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(200);
+        viewModel.ProgressPercent.Should().Be(14.5, $"stage={viewModel.LoadingStage}; label={viewModel.ProgressLabel}; status={viewModel.Status}");
+
+        viewModel.ProgressLabel.Should().Be("15%");
+        viewModel.IsProgressIndeterminate.Should().BeFalse();
+        viewModel.LoadingStage.Should().Contain("14.5%");
+
+        runtime.ReleaseProgress.TrySetResult(true);
+        await initialize;
+        await runtime.RepairCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitUntilAsync(() => !viewModel.IsBusy, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
     public async Task Failed_operation_exposes_the_error_code_and_opens_diagnostics()
     {
         using var temp = new TemporaryDirectory();
@@ -464,6 +497,43 @@ public sealed class LauncherViewModelTests
 
         viewModel.IsLatestVersionVerified.Should().BeTrue();
         viewModel.SelfUpdateStatus.Should().Be("Последняя версия установлена");
+    }
+
+    [Fact]
+    public async Task Startup_applies_a_verified_launcher_update_before_preparing_the_game()
+    {
+        using var temp = new TemporaryDirectory();
+        var update = new VerifiedSelfUpdate(
+            "CopiMineLauncher",
+            "stable",
+            "1.0.7",
+            new Uri("https://copimine.ru/downloads/launcher/"),
+            new Uri("https://copimine.ru/downloads/launcher/CopiMineLauncher-1.0.7-full.nupkg"),
+            "CopiMineLauncher-1.0.7-full.nupkg",
+            1,
+            new string('a', 64));
+        var selfUpdate = new FakeSelfUpdateService
+        {
+            Result = new(SelfUpdateStatusKind.UpdateAvailable, "1.0.6", update),
+            ApplyResult = new(SelfUpdateStatusKind.PendingRestart, "1.0.6", update)
+        };
+        var runtime = new FakeRuntimeCoordinator();
+        var viewModel = new LauncherViewModel(
+            new FakePatchFeedClient(),
+            runtime,
+            selfUpdateService: selfUpdate,
+            defaultInstancePath: temp.Path)
+        {
+            InstancePath = temp.Path
+        };
+
+        await viewModel.InitializeAsync();
+
+        selfUpdate.ApplyCalls.Should().Be(1);
+        selfUpdate.AppliedUpdate.Should().Be(update);
+        runtime.RepairCalls.Should().Be(0);
+        viewModel.Status.Should().Be("Перезапускаем Launcher…");
+        viewModel.SelfUpdateStatus.Should().Be("Обновление установлено. Перезапускаем Launcher…");
     }
 
     [Fact]
@@ -639,6 +709,7 @@ public sealed class LauncherViewModelTests
         public LauncherOperationResult? RepairResult { get; init; }
         public LauncherOperationResult? PlayResult { get; init; }
         public bool ReportProgress { get; init; }
+        public IReadOnlyList<LauncherProgress>? ProgressSequence { get; init; }
         public bool HoldAfterProgress { get; init; }
         public bool HoldPlayAfterStart { get; init; }
         public TaskCompletionSource<bool> ProgressReported { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -656,9 +727,19 @@ public sealed class LauncherViewModelTests
             {
                 progress?.Report(new("minecraft", "Проверяем Minecraft 1.21.1…"));
             }
+            if (ProgressSequence is not null)
+            {
+                foreach (var value in ProgressSequence)
+                {
+                    progress?.Report(value);
+                }
+            }
             if (HoldAfterProgress)
             {
-                progress?.Report(new("reconcile", "Проверяем managed-файлы…"));
+                if (ProgressSequence is null)
+                {
+                    progress?.Report(new("reconcile", "Проверяем managed-файлы…"));
+                }
                 ProgressReported.TrySetResult(true);
                 return WaitForReleaseAsync();
             }
@@ -737,10 +818,18 @@ public sealed class LauncherViewModelTests
     private sealed class FakeSelfUpdateService : ISelfUpdateService
     {
         public SelfUpdateStatus Result { get; init; } = new(SelfUpdateStatusKind.NoUpdate, "1.0.6");
+        public SelfUpdateStatus? ApplyResult { get; init; }
+        public int ApplyCalls { get; private set; }
+        public VerifiedSelfUpdate? AppliedUpdate { get; private set; }
 
         public Task<SelfUpdateStatus> CheckAsync(CancellationToken cancellationToken) => Task.FromResult(Result);
 
-        public Task<SelfUpdateStatus> ApplyAsync(VerifiedSelfUpdate update, CancellationToken cancellationToken) => Task.FromResult(Result);
+        public Task<SelfUpdateStatus> ApplyAsync(VerifiedSelfUpdate update, CancellationToken cancellationToken)
+        {
+            ApplyCalls++;
+            AppliedUpdate = update;
+            return Task.FromResult(ApplyResult ?? Result);
+        }
 
         public Task<SelfUpdateStatus> RecoverAsync(CancellationToken cancellationToken) =>
             Task.FromResult(new SelfUpdateStatus(SelfUpdateStatusKind.NoUpdate, Result.CurrentVersion));

@@ -19,7 +19,7 @@ public sealed record LauncherOperationRequest(
     int ResolutionHeight = 720,
     bool Fullscreen = false);
 
-public sealed record LauncherProgress(string Stage, string Message);
+public sealed record LauncherProgress(string Stage, string Message, double? Percent = null);
 
 public sealed record LauncherOperationResult(
     bool Succeeded,
@@ -153,13 +153,38 @@ public sealed class LauncherRuntimeCoordinator : ILauncherRuntimeCoordinator
                         "Подписанный manifest не содержит серверный Minecraft/Fabric runtime.");
                 }
 
-                progress?.Report(new("minecraft-runtime", "Скачиваем проверенный Minecraft/Fabric runtime с сервера CopiMine…"));
+                progress?.Report(new("minecraft-runtime", "Подключаемся к хранилищу Minecraft/Fabric…"));
+                var runtimeDownloadProgress = progress is null
+                    ? null
+                    : new Progress<DownloadProgress>(download =>
+                    {
+                        if (string.Equals(download.Phase, "extract", StringComparison.Ordinal))
+                        {
+                            var extractMappedPercent = download.Percent is double extractPercent
+                                ? 26d + extractPercent * 2d / 100d
+                                : 26d;
+                            var extractMessage = download.Percent is double visibleExtractPercent
+                                ? $"Распаковываем Minecraft/Fabric runtime… {visibleExtractPercent:0.0}%"
+                                : "Распаковываем Minecraft/Fabric runtime…";
+                            progress.Report(new LauncherProgress("minecraft-runtime-extract", extractMessage, extractMappedPercent));
+                            return;
+                        }
+
+                        var mappedPercent = download.Percent is double percent
+                            ? 8d + percent * 18d / 100d
+                            : 8d;
+                        var message = download.Percent is double visiblePercent
+                            ? $"Скачиваем Minecraft/Fabric runtime… {visiblePercent:0.0}%"
+                            : "Скачиваем Minecraft/Fabric runtime…";
+                        progress.Report(new LauncherProgress("minecraft-runtime", message, mappedPercent));
+                    });
                 await hostedMinecraftRuntime.EnsureAsync(
                     instanceRoot,
                     manifest.Document.Minecraft.Version,
                     manifest.Document.Minecraft.FabricLoader,
                     manifest.ReconcilerManifest.MinecraftRuntime,
-                    cancellationToken);
+                    cancellationToken,
+                    runtimeDownloadProgress);
             }
             else if (offlineMinecraftBaseline is not null)
             {

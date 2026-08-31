@@ -14,7 +14,25 @@ public interface IResumableDownloadManager
         CancellationToken cancellationToken);
 }
 
-public sealed class ResumableDownloadManager : IResumableDownloadManager
+public sealed record DownloadProgress(long BytesDownloaded, long TotalBytes, string Phase = "download")
+{
+    public double? Percent => TotalBytes > 0
+        ? Math.Clamp(BytesDownloaded * 100d / TotalBytes, 0d, 100d)
+        : null;
+}
+
+public interface IProgressiveDownloadManager
+{
+    Task<string> DownloadAsync(
+        Uri source,
+        string destination,
+        long expectedSize,
+        string expectedSha256,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken cancellationToken);
+}
+
+public sealed class ResumableDownloadManager : IResumableDownloadManager, IProgressiveDownloadManager
 {
     private const int MaximumAttempts = 3;
     private readonly HttpClient httpClient;
@@ -24,11 +42,20 @@ public sealed class ResumableDownloadManager : IResumableDownloadManager
         this.httpClient = httpClient;
     }
 
+    public Task<string> DownloadAsync(
+        Uri source,
+        string destination,
+        long expectedSize,
+        string expectedSha256,
+        CancellationToken cancellationToken) =>
+        DownloadAsync(source, destination, expectedSize, expectedSha256, progress: null, cancellationToken);
+
     public async Task<string> DownloadAsync(
         Uri source,
         string destination,
         long expectedSize,
         string expectedSha256,
+        IProgress<DownloadProgress>? progress,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -68,7 +95,7 @@ public sealed class ResumableDownloadManager : IResumableDownloadManager
         {
             try
             {
-                await DownloadAttemptAsync(source, partPath, expectedSize, cancellationToken);
+                await DownloadAttemptAsync(source, partPath, expectedSize, progress, cancellationToken);
                 Verify(partPath, expectedSize, expectedSha256);
                 File.Move(partPath, finalPath, overwrite: true);
                 return finalPath;
@@ -109,9 +136,15 @@ public sealed class ResumableDownloadManager : IResumableDownloadManager
         throw new InvalidDataException($"Download failed verification after {MaximumAttempts} attempts: {source}", lastFailure);
     }
 
-    private async Task DownloadAttemptAsync(Uri source, string partPath, long expectedSize, CancellationToken cancellationToken)
+    private async Task DownloadAttemptAsync(
+        Uri source,
+        string partPath,
+        long expectedSize,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var existingLength = File.Exists(partPath) ? new FileInfo(partPath).Length : 0;
+        progress?.Report(new DownloadProgress(existingLength, expectedSize));
         using var request = new HttpRequestMessage(HttpMethod.Get, source);
         if (existingLength > 0)
         {
@@ -132,7 +165,17 @@ public sealed class ResumableDownloadManager : IResumableDownloadManager
 
         await using var output = new FileStream(partPath, append ? FileMode.Append : FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true);
         await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await input.CopyToAsync(output, cancellationToken);
+        var downloaded = append ? existingLength : 0;
+        progress?.Report(new DownloadProgress(downloaded, expectedSize));
+        var buffer = new byte[1024 * 1024];
+        int read;
+        while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+        {
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            downloaded += read;
+            progress?.Report(new DownloadProgress(downloaded, expectedSize));
+        }
+
         await output.FlushAsync(cancellationToken);
 
         if (new FileInfo(partPath).Length > expectedSize)

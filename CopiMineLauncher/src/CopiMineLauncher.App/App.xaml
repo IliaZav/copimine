@@ -6,55 +6,99 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
 
-        <SolidColorBrush x:Key="LauncherColors" Color="#0B1718" />
-        <SolidColorBrush x:Key="LauncherWindowBackground" Color="#07120F" />
-        <SolidColorBrush x:Key="LauncherPrimaryText" Color="#F1FAF5" />
-        <SolidColorBrush x:Key="LauncherSecondaryText" Color="#A9C1BA" />
-        <SolidColorBrush x:Key="LauncherMutedText" Color="#78958B" />
-        <SolidColorBrush x:Key="LauncherAccent" Color="#62E39B" />
-        <SolidColorBrush x:Key="LauncherAccentBright" Color="#8AF3B3" />
-        <SolidColorBrush x:Key="LauncherSurface" Color="#E6132D2A" />
-        <SolidColorBrush x:Key="LauncherSurfaceStrong" Color="#F0162C28" />
-        <SolidColorBrush x:Key="LauncherSurfaceRaised" Color="#F01B3832" />
-        <SolidColorBrush x:Key="LauncherBorder" Color="#B8285448" />
-        <SolidColorBrush x:Key="LauncherButtonSurface" Color="#E61C3A35" />
-        <SolidColorBrush x:Key="LauncherButtonHover" Color="#F02A5549" />
-        <SolidColorBrush x:Key="LauncherInputSurface" Color="#D90B1B18" />
+        <FontFamily x:Key="LauncherDisplayFont">Bahnschrift SemiBold</FontFamily>
+        <FontFamily x:Key="LauncherBodyFont">Segoe UI</FontFamily>
+        <FontFamily x:Key="LauncherDataFont">Consolas</FontFamily>
+
+        <SolidColorBrush x:Key="LauncherColors" Color="#071B16" />
+        <SolidColorBrush x:Key="LauncherWindowBackground" Color="#071B16" />
+        <SolidColorBrush x:Key="LauncherPrimaryText" Color="#F2EEF9" />
+        <SolidColorBrush x:Key="LauncherSecondaryText" Color="#C2C6D7" />
+        <SolidColorBrush x:Key="LauncherMutedText" Color="#8D93A9" />
+        <SolidColorBrush x:Key="LauncherAccent" Color="#59D6D0" />
+        <SolidColorBrush x:Key="LauncherAccentBright" Color="#D8FFB2" />
+        <SolidColorBrush x:Key="LauncherAccentPurple" Color="#B887FF" />
+        <SolidColorBrush x:Key="LauncherSurface" Color="#E6152830" />
+        <SolidColorBrush x:Key="LauncherSurfaceStrong" Color="#F01A243B" />
+        <SolidColorBrush x:Key="LauncherSurfaceRaised" Color="#F01B3540" />
+        <SolidColorBrush x:Key="LauncherBorder" Color="#B83B7180" />
+        <SolidColorBrush x:Key="LauncherButtonSurface" Color="#E61A3340" />
+        <SolidColorBrush x:Key="LauncherButtonHover" Color="#F02A5060" />
+        <SolidColorBrush x:Key="LauncherButtonSheen" Color="#59D6D0" />
+        <SolidColorBrush x:Key="LauncherInputSurface" Color="#D90A1A23" />
+        <SolidColorBrush x:Key="LauncherRailSurface" Color="#EC071B20" />
+        <SolidColorBrush x:Key="LauncherSuccessSurface" Color="#C91A3F38" />
+
+        <Style TargetType="{x:Type TextBlock}">
+            <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+        </Style>
 
         <Style x:Key="LauncherButton" TargetType="{x:Type Button}">
             <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
             <Setter Property="Background" Value="{StaticResource LauncherButtonSurface}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Padding" Value="14,10" />
             <Setter Property="Margin" Value="0" />
+            <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />
             <Setter Property="FontSize" Value="14" />
-            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="MinHeight" Value="42" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="{StaticResource LauncherButtonHover}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
-                </Trigger>
-                <Trigger Property="IsPressed" Value="True">
-                    <Setter Property="Opacity" Value="0.82" />
-                </Trigger>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Opacity" Value="0.48" />
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonChrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <Border x:Name="ButtonSheen"
+                                        Background="{StaticResource LauncherButtonSheen}"
+                                        CornerRadius="12"
+                                        Opacity="0" />
+                                <ContentPresenter Content="{TemplateBinding Content}"
+                                                  ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                  ContentStringFormat="{TemplateBinding ContentStringFormat}"
+                                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
+                                <Setter TargetName="ButtonSheen" Property="Opacity" Value="0.15" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.86" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonChrome" Property="Opacity" Value="0.42" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="LauncherPrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
             <Setter Property="Background" Value="{StaticResource LauncherAccent}" />
-            <Setter Property="Foreground" Value="#06150D" />
+            <Setter Property="Foreground" Value="#071B16" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
+            <Setter Property="FontFamily" Value="{StaticResource LauncherDisplayFont}" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="FontSize" Value="18" />
             <Setter Property="Padding" Value="16,13" />
-            <Setter Property="MinHeight" Value="54" />
+            <Setter Property="MinHeight" Value="56" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{StaticResource LauncherAccentBright}" />
@@ -62,22 +106,36 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="LauncherRailButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="13,11" />
+            <Setter Property="MinHeight" Value="46" />
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource LauncherButtonHover}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
         <Style x:Key="LauncherStackButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
-            <Setter Property="Margin" Value="0,0,0,10" />
-            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="Margin" Value="0,0,0,9" />
+            <Setter Property="MinHeight" Value="42" />
         </Style>
 
         <Style x:Key="LauncherCompactButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
-            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="Padding" Value="12,8" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinHeight" Value="36" />
         </Style>
 
         <Style x:Key="LauncherIconButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
-            <Setter Property="Width" Value="44" />
-            <Setter Property="Height" Value="40" />
-            <Setter Property="Padding" Value="8" />
-            <Setter Property="Margin" Value="6,0,0,0" />
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="9" />
+            <Setter Property="Margin" Value="8,0,0,0" />
         </Style>
 
         <Style x:Key="LauncherCard" TargetType="{x:Type Border}">
@@ -88,14 +146,21 @@
             <Setter Property="Padding" Value="20" />
         </Style>
 
+        <Style x:Key="LauncherHeroCard" TargetType="{x:Type Border}" BasedOn="{StaticResource LauncherCard}">
+            <Setter Property="Background" Value="{StaticResource LauncherSurfaceStrong}" />
+            <Setter Property="BorderBrush" Value="#B86B8AFF" />
+            <Setter Property="CornerRadius" Value="22" />
+        </Style>
+
         <Style x:Key="LauncherTextBox" TargetType="{x:Type TextBox}">
             <Setter Property="Background" Value="{StaticResource LauncherInputSurface}" />
             <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,8" />
-            <Setter Property="Margin" Value="0,5,0,13" />
-            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />
+            <Setter Property="Padding" Value="11,9" />
+            <Setter Property="Margin" Value="0,6,0,12" />
+            <Setter Property="MinHeight" Value="40" />
         </Style>
 
         <Style x:Key="LauncherComboBox" TargetType="{x:Type ComboBox}">
@@ -103,14 +168,15 @@
             <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,7" />
-            <Setter Property="Margin" Value="0,5,0,10" />
-            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="Margin" Value="0,6,0,11" />
+            <Setter Property="MinHeight" Value="40" />
         </Style>
 
         <Style x:Key="LauncherProgressBar" TargetType="{x:Type ProgressBar}">
-            <Setter Property="Height" Value="9" />
-            <Setter Property="Background" Value="#B8071511" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="Background" Value="#B807111B" />
             <Setter Property="Foreground" Value="{StaticResource LauncherAccent}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -119,7 +185,7 @@
         <Style x:Key="LauncherLoadingSpinner" TargetType="{x:Type Ellipse}">
             <Setter Property="Width" Value="20" />
             <Setter Property="Height" Value="20" />
-            <Setter Property="Stroke" Value="#06150D" />
+            <Setter Property="Stroke" Value="#071B16" />
             <Setter Property="StrokeThickness" Value="3" />
             <Setter Property="StrokeDashArray" Value="2 5" />
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />

@@ -10,7 +10,8 @@ public interface IHostedMinecraftRuntimeInstaller
         string minecraftVersion,
         string fabricLoaderVersion,
         MinecraftRuntimeMetadata runtime,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress = null);
 }
 
 public sealed class HostedMinecraftRuntimeInstaller(
@@ -22,7 +23,8 @@ public sealed class HostedMinecraftRuntimeInstaller(
         string minecraftVersion,
         string fabricLoaderVersion,
         MinecraftRuntimeMetadata runtime,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(baseline);
         ArgumentNullException.ThrowIfNull(downloads);
@@ -32,6 +34,7 @@ public sealed class HostedMinecraftRuntimeInstaller(
             fabricLoaderVersion,
             runtime,
             downloads,
-            cancellationToken);
+            cancellationToken,
+            progress);
     }
 }

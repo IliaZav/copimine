@@ -46,7 +46,7 @@
                               IsHitTestVisible="False" />
       <Border Background="#D007120F" IsHitTestVisible="False" />
       <Border Style="{StaticResource MotionCard}"
-              Background="#ED102522"
+              Background="#ED10213A"
               BorderBrush="{StaticResource LauncherBorder}"
               BorderThickness="1"
               CornerRadius="18"
@@ -71,11 +71,13 @@
                  Margin="0,0,0,18" />
           <TextBlock Text="Запускаем CopiMine Launcher"
                      Foreground="{StaticResource LauncherPrimaryText}"
+                     FontFamily="{StaticResource LauncherDisplayFont}"
                      FontSize="18"
                      FontWeight="SemiBold"
                      HorizontalAlignment="Center" />
-          <TextBlock Text="Подготавливаем игру и проверяем файлы"
+          <TextBlock Text="Проверяем профиль и обновления"
                      Foreground="{StaticResource LauncherSecondaryText}"
+                     FontFamily="{StaticResource LauncherBodyFont}"
                      FontSize="12"
                      HorizontalAlignment="Center"
                      Margin="0,7,0,18" />
@@ -94,7 +96,7 @@
              IsHitTestVisible="False" />
       <Border Background="#D407120F" IsHitTestVisible="False" />
       <Border Style="{StaticResource MotionCard}"
-              Background="#F0132D2A"
+              Background="#F01A243B"
               BorderBrush="{StaticResource LauncherBorder}"
               BorderThickness="1"
               CornerRadius="18"
@@ -106,8 +108,8 @@
           <DockPanel Margin="0,0,0,18">
             <Image Source="Assets/LauncherVisuals/loading-emblem.png" Width="62" Height="62" Stretch="Uniform" />
             <StackPanel Margin="14,0,0,0" VerticalAlignment="Center">
-              <TextBlock Text="CopiMine Launcher" Foreground="{StaticResource LauncherAccentBright}" FontSize="11" FontWeight="Bold" />
-              <TextBlock Text="Подготовка игры" Foreground="{StaticResource LauncherPrimaryText}" FontSize="21" FontWeight="SemiBold" Margin="0,3,0,0" />
+              <TextBlock Text="CopiMine Launcher" Foreground="{StaticResource LauncherAccentBright}" FontFamily="{StaticResource LauncherDataFont}" FontSize="11" FontWeight="Bold" />
+              <TextBlock Text="Подготовка игры" Foreground="{StaticResource LauncherPrimaryText}" FontFamily="{StaticResource LauncherDisplayFont}" FontSize="21" FontWeight="SemiBold" Margin="0,3,0,0" />
             </StackPanel>
             <TextBlock Text="{Binding ProgressLabel, ElementName=Root}" Foreground="{StaticResource LauncherAccentBright}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Right" DockPanel.Dock="Right" />
           </DockPanel>
@@ -116,29 +118,11 @@
                      FontSize="13"
                      TextWrapping="Wrap"
                      Margin="0,0,0,10" />
-          <Grid Height="10" ClipToBounds="True">
+          <Grid x:Name="OperationProgress" Height="10" ClipToBounds="True">
             <ProgressBar Style="{StaticResource LauncherProgressBar}"
                          Value="{Binding Progress, ElementName=Root}"
                          IsIndeterminate="{Binding IsIndeterminate, ElementName=Root}"
                          Height="10" />
-            <Border Width="120"
-                    Height="10"
-                    Background="#9C8AF3B3"
-                    HorizontalAlignment="Left"
-                    Visibility="{Binding IsIndeterminate, ElementName=Root, Converter={StaticResource BooleanToVisibilityConverter}}">
-              <Border.RenderTransform>
-                <TranslateTransform X="-140" />
-              </Border.RenderTransform>
-              <Border.Triggers>
-                <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                  <BeginStoryboard>
-                    <Storyboard>
-                      <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)" From="-140" To="560" Duration="0:0:1.4" RepeatBehavior="Forever" />
-                    </Storyboard>
-                  </BeginStoryboard>
-                </EventTrigger>
-              </Border.Triggers>
-            </Border>
           </Grid>
           <TextBlock Text="Файлы и настройки остаются на месте при обновлении."
                      Foreground="{StaticResource LauncherMutedText}"

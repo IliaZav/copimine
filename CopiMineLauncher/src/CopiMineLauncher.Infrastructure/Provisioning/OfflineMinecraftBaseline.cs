@@ -108,7 +108,8 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         string fabricLoaderVersion,
         MinecraftRuntimeMetadata runtime,
         IResumableDownloadManager downloads,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(instanceRoot);
         ArgumentException.ThrowIfNullOrWhiteSpace(minecraftVersion);
@@ -142,12 +143,21 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         string archivePath;
         try
         {
-            archivePath = await downloads.DownloadAsync(
-                new Uri(runtime.Url, UriKind.Absolute),
-                cachePath,
-                runtime.SizeBytes,
-                runtime.Sha256,
-                cancellationToken);
+            var source = new Uri(runtime.Url, UriKind.Absolute);
+            archivePath = downloads is IProgressiveDownloadManager progressive
+                ? await progressive.DownloadAsync(
+                    source,
+                    cachePath,
+                    runtime.SizeBytes,
+                    runtime.Sha256,
+                    progress,
+                    cancellationToken)
+                : await downloads.DownloadAsync(
+                    source,
+                    cachePath,
+                    runtime.SizeBytes,
+                    runtime.Sha256,
+                    cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -161,14 +171,15 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
                 exception);
         }
 
-        return await EnsureArchiveAsync(root, metadata, archivePath, cancellationToken);
+        return await EnsureArchiveAsync(root, metadata, archivePath, cancellationToken, progress);
     }
 
     private static async Task<OfflineMinecraftBaselineResult> EnsureArchiveAsync(
         string root,
         OfflineMinecraftBaselineMetadata metadata,
         string archivePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<DownloadProgress>? progress = null)
     {
         await VerifyArchiveAsync(archivePath, metadata, cancellationToken);
         var transactionId = Guid.NewGuid().ToString("N");
@@ -180,7 +191,12 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         try
         {
             Directory.CreateDirectory(extractedRoot);
-            ExtractZipSafely(archivePath, extractedRoot);
+            // ZIP extraction is CPU/IO heavy for the bundled Minecraft runtime.
+            // Keep it off the WPF dispatcher and report a separate phase so a
+            // cached archive does not look frozen at the download percentage.
+            await Task.Run(
+                () => ExtractZipSafely(archivePath, extractedRoot, progress, cancellationToken),
+                cancellationToken);
             ValidateExtractedBaseline(extractedRoot, metadata);
             Directory.CreateDirectory(backupRoot);
 
@@ -362,14 +378,28 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
         }
     }
 
-    private static void ExtractZipSafely(string archivePath, string destinationRoot)
+    private static void ExtractZipSafely(
+        string archivePath,
+        string destinationRoot,
+        IProgress<DownloadProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var fullRoot = Path.GetFullPath(destinationRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         try
         {
             using var archive = ZipFile.OpenRead(archivePath);
-            foreach (var entry in archive.Entries)
+            var fileEntries = archive.Entries
+                .Where(entry => !string.IsNullOrEmpty(entry.FullName)
+                    && !entry.FullName.EndsWith("/", StringComparison.Ordinal)
+                    && !entry.FullName.EndsWith("\\", StringComparison.Ordinal))
+                .ToArray();
+            var totalBytes = fileEntries.Sum(entry => entry.Length);
+            var extractedBytes = 0L;
+            progress?.Report(new DownloadProgress(0, totalBytes, "extract"));
+
+            foreach (var entry in fileEntries)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var normalizedEntryName = entry.FullName.Replace('\\', '/');
                 if (string.IsNullOrEmpty(normalizedEntryName)
                     || normalizedEntryName.EndsWith("/", StringComparison.Ordinal))
@@ -408,6 +438,8 @@ public sealed class OfflineMinecraftBaseline : IOfflineMinecraftBaseline
 
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 entry.ExtractToFile(target, overwrite: true);
+                extractedBytes = checked(extractedBytes + entry.Length);
+                progress?.Report(new DownloadProgress(extractedBytes, totalBytes, "extract"));
             }
         }
         catch (OfflineMinecraftBaselineException)

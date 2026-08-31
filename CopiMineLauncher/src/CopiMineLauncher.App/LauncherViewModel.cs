@@ -228,8 +228,12 @@ public partial class LauncherViewModel : ObservableObject
             {
                 TraceStartup("self-update:check");
                 await RecoverSelfUpdateAsync();
-                await CheckSelfUpdateAsync();
+                var restartForUpdate = await EnsureLauncherIsCurrentAsync();
                 TraceStartup("self-update:done");
+                if (restartForUpdate)
+                {
+                    return;
+                }
             }
             else
             {
@@ -244,6 +248,42 @@ public partial class LauncherViewModel : ObservableObject
         {
             IsInitializing = false;
         }
+    }
+
+    private async Task<bool> EnsureLauncherIsCurrentAsync()
+    {
+        await CheckSelfUpdateAsync();
+        if (selfUpdateService is null || availableSelfUpdate is null)
+        {
+            return false;
+        }
+
+        var update = availableSelfUpdate;
+        Status = $"Обновляем Launcher до v{update.Version}…";
+        LoadingStage = "Скачиваем и проверяем обновление";
+        Diagnostic = "Найдена новая версия Launcher. Привязка, настройки и пользовательские моды хранятся отдельно и не заменяются.";
+        IsLatestVersionVerified = false;
+        var result = await selfUpdateService.ApplyAsync(update, CancellationToken.None);
+        if (result.Kind == SelfUpdateStatusKind.PendingRestart)
+        {
+            availableSelfUpdate = null;
+            OnPropertyChanged(nameof(SelfUpdateActionText));
+            SelfUpdateStatus = "Обновление установлено. Перезапускаем Launcher…";
+            Status = "Перезапускаем Launcher…";
+            LoadingStage = "Обновление завершено";
+            Diagnostic = "Новая версия установлена. Launcher сейчас перезапустится; игровые файлы и привязка останутся на месте.";
+            return true;
+        }
+
+        if (result.Kind == SelfUpdateStatusKind.Failed)
+        {
+            SelfUpdateStatus = "Обновление не установлено";
+            Diagnostic = FormatSelfUpdateDiagnostic(result);
+            Status = "Текущая версия сохранена";
+            LoadingStage = "Обновление не завершено";
+        }
+
+        return false;
     }
 
     private async Task RefreshNewsAsync()
@@ -635,10 +675,15 @@ public partial class LauncherViewModel : ObservableObject
 
                     Status = value.Message;
                     LoadingStage = value.Message;
-                    IsProgressIndeterminate = value.Stage is "manifest" or "reconcile" or "integrity" or "preflight" or "java" or "minecraft";
-                    ProgressPercent = value.Stage switch
+                    IsProgressIndeterminate = value.Percent is null
+                        && (value.Stage is "manifest" or "minecraft-runtime" or "minecraft-runtime-extract" or "offline-baseline" or "reconcile" or "integrity" or "preflight" or "java" or "minecraft");
+                    ProgressPercent = value.Percent is double reportedPercent
+                        ? Math.Clamp(reportedPercent, 0d, 100d)
+                        : value.Stage switch
                     {
                         "manifest" => 2,
+                        "minecraft-runtime" or "offline-baseline" => 8,
+                        "minecraft-runtime-extract" => 26,
                         "reconcile" => 28,
                         "integrity" => 36,
                         "preflight" => 36,
@@ -648,7 +693,9 @@ public partial class LauncherViewModel : ObservableObject
                         "launch" => 96,
                         _ => ProgressPercent
                     };
-                    ProgressLabel = IsProgressIndeterminate ? "…" : $"{ProgressPercent:0}%";
+                    ProgressLabel = value.Percent is not null
+                        ? $"{ProgressPercent:0}%"
+                        : IsProgressIndeterminate ? "…" : $"{ProgressPercent:0}%";
                     Diagnostic = $"Этап: {value.Stage}{Environment.NewLine}Экземпляр: {InstancePath}{Environment.NewLine}Игрок: {PlayerName}";
                 }
             });

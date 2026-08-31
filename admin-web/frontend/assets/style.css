@@ -4,6 +4,7 @@
 @import url("./css/ui-audit.css");
 @import url("./css/website-polish.css?v=20260829siteui23");
 @import url("./css/public-motion.css");
+@import url("./css/site-atmosphere.css?v=20260831siteui25");
 
 .anticheat-signal { display: inline-flex; align-items: center; min-height: 2rem; }
 .release-readiness-card { margin-top: 14px; padding: 16px 18px; border: 1px solid var(--line); background: var(--surface); }

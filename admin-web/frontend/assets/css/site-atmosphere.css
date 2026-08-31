@@ -1,0 +1,416 @@
+/*
+ * CopiMine visual system: one identity for every public route.
+ *
+ * The page modules still own their markup and behavior. This layer owns the
+ * atmosphere, the shared surfaces, and the motion policy so a route cannot
+ * quietly turn into a second product with another header or card language.
+ */
+
+body[data-page-kind^="public"],
+body.auth-screen {
+  --site-violet: #7650c7;
+  --site-violet-bright: #9b75ef;
+  --site-aqua: #53cdb8;
+  --site-gold: #c79246;
+  --site-night: #102a20;
+  --site-night-2: #193d2e;
+  --site-paper: #f1f7f2;
+  --site-paper-2: #e7f0eb;
+  --site-panel: rgba(255, 255, 253, .93);
+  --site-panel-soft: rgba(242, 248, 244, .94);
+  --site-edge: rgba(31, 76, 55, .18);
+  --site-edge-strong: rgba(118, 80, 199, .36);
+  --site-shadow-deep: 0 24px 70px rgba(25, 54, 39, .14);
+  --site-shadow-lift: 0 18px 38px rgba(25, 54, 39, .13);
+  --site-radius: 18px;
+  --site-radius-small: 13px;
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  background: linear-gradient(180deg, #f8fbf8 0%, var(--site-paper) 45%, #e7f0eb 100%);
+}
+
+body[data-page-kind^="public"]::before,
+body.auth-screen::before {
+  content: "";
+  position: fixed;
+  z-index: -2;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .18), transparent 26rem),
+    radial-gradient(circle at 91% 18%, rgba(118, 80, 199, .13), transparent 24rem),
+    radial-gradient(circle at 72% 88%, rgba(199, 146, 70, .09), transparent 22rem);
+  animation: siteAurora 24s ease-in-out infinite alternate;
+}
+
+body[data-page-kind^="public"]::after,
+body.auth-screen::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: .23;
+  background-image:
+    linear-gradient(rgba(40, 89, 67, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(40, 89, 67, .06) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: linear-gradient(180deg, #000, transparent 84%);
+}
+
+/* Local screenshots provide a quiet sense of place without making news into
+ * a photo feed. The route-specific selectors keep the art intentional. */
+body[data-page-kind="public-home"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(248, 251, 248, .96) 0 38%, rgba(248, 251, 248, .76) 70%, rgba(248, 251, 248, .9)),
+    url("/assets/showcase/home-light-v2.png"),
+    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .18), transparent 26rem);
+  background-position: center, right bottom, center;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto, auto;
+}
+
+body[data-page-kind="public-server"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(248, 251, 248, .98) 0 42%, rgba(248, 251, 248, .77) 72%, rgba(248, 251, 248, .92)),
+    url("/assets/showcase/server-light-v2.png");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto;
+}
+
+body[data-page-kind="public-shops"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(248, 251, 248, .98) 0 44%, rgba(248, 251, 248, .82) 75%, rgba(248, 251, 248, .94)),
+    url("/assets/showcase/shops-light-v2.png");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto;
+}
+
+body[data-page-kind="public-launcher"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(248, 251, 248, .98) 0 42%, rgba(248, 251, 248, .75) 72%, rgba(248, 251, 248, .9)),
+    url("/assets/launcher-screenshots/launcher-home.jpg");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(720px, 65vw) auto;
+}
+
+:root[data-theme="dark"] body[data-page-kind^="public"],
+:root[data-theme="dark"] body.auth-screen {
+  --site-paper: #08150e;
+  --site-paper-2: #0b2015;
+  --site-panel: rgba(13, 34, 22, .9);
+  --site-panel-soft: rgba(18, 48, 31, .9);
+  --site-edge: rgba(132, 238, 168, .18);
+  --site-edge-strong: rgba(169, 117, 220, .5);
+  --site-shadow-deep: 0 28px 80px rgba(0, 0, 0, .35);
+  --site-shadow-lift: 0 20px 44px rgba(0, 0, 0, .3);
+  background: linear-gradient(180deg, #07130d 0%, var(--site-paper) 48%, #06110b 100%);
+}
+
+:root[data-theme="dark"] body[data-page-kind^="public"]::before,
+:root[data-theme="dark"] body.auth-screen::before {
+  background:
+    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .16), transparent 26rem),
+    radial-gradient(circle at 91% 18%, rgba(155, 117, 239, .18), transparent 24rem),
+    radial-gradient(circle at 72% 88%, rgba(199, 146, 70, .08), transparent 22rem);
+}
+
+:root[data-theme="dark"] body[data-page-kind="public-home"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 38%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    url("/assets/showcase/home-dark-v2.png");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto;
+}
+
+:root[data-theme="dark"] body[data-page-kind="public-server"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 42%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    url("/assets/showcase/server-dark-v2.png");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto;
+}
+
+:root[data-theme="dark"] body[data-page-kind="public-shops"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 44%, rgba(7, 19, 13, .74) 75%, rgba(7, 19, 13, .9)),
+    url("/assets/showcase/shops-dark-v2.png");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(760px, 70vw) auto;
+}
+
+:root[data-theme="dark"] body[data-page-kind="public-launcher"]::before {
+  background-image:
+    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 42%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    url("/assets/launcher-screenshots/launcher-home.jpg");
+  background-position: center, right bottom;
+  background-repeat: no-repeat;
+  background-size: cover, min(720px, 65vw) auto;
+}
+
+body[data-page-kind^="public"] .public-site,
+body.auth-screen .public-site {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-page-kind^="public"] ::selection,
+body.auth-screen ::selection {
+  background: var(--site-violet);
+  color: #fff;
+}
+
+/* Header */
+.public-nav {
+  min-height: 72px;
+  border-color: rgba(112, 225, 158, .34) !important;
+  border-radius: var(--site-radius) !important;
+  background:
+    linear-gradient(120deg, rgba(8, 31, 21, .98), rgba(17, 54, 37, .98) 58%, rgba(39, 28, 57, .96)) !important;
+  box-shadow: 0 18px 44px rgba(8, 30, 19, .21), inset 0 1px 0 rgba(255, 255, 255, .08) !important;
+}
+
+.public-nav::after {
+  content: "";
+  position: absolute;
+  right: 15%;
+  bottom: -1px;
+  width: 22%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--site-violet-bright), transparent);
+  opacity: .82;
+}
+
+.public-nav .public-brand-logo {
+  border-radius: 12px;
+  box-shadow: 0 0 0 4px rgba(83, 205, 184, .08), 0 8px 18px rgba(0, 0, 0, .18);
+}
+
+.public-nav nav > a,
+.public-nav nav > .btn {
+  min-height: 40px;
+  border-radius: 10px !important;
+  font-weight: 700;
+  transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.public-nav nav > a:hover,
+.public-nav nav > a[aria-current="page"] {
+  transform: translateY(-1px);
+  border-color: rgba(112, 227, 155, .42) !important;
+  background: linear-gradient(135deg, rgba(112, 227, 155, .18), rgba(155, 117, 239, .16)) !important;
+}
+
+.public-nav .shop-cart-button {
+  border-color: rgba(83, 205, 184, .46) !important;
+  border-radius: 10px !important;
+  background: linear-gradient(135deg, rgba(83, 205, 184, .15), rgba(118, 80, 199, .16)) !important;
+}
+
+/* Shared public surfaces. Events retain their dedicated End art direction. */
+body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-site :where(.public-hero, .hero, .page-hero, .public-panel, .hero-side-card, .hero-media-card, .auth-card, .card, .panel, .news-card, .launcher-feature-card, .launcher-step, .launcher-faq-card, .launcher-system-card, .launcher-release-card) {
+  border-radius: var(--site-radius) !important;
+  border-color: var(--site-edge) !important;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, .21), transparent 38%),
+    var(--site-panel) !important;
+  box-shadow: var(--site-shadow-deep) !important;
+}
+
+:root[data-theme="dark"] body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-site :where(.public-hero, .hero, .page-hero, .public-panel, .hero-side-card, .hero-media-card, .auth-card, .card, .panel, .news-card, .launcher-feature-card, .launcher-step, .launcher-faq-card, .launcher-system-card, .launcher-release-card) {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, .045), transparent 40%),
+    var(--site-panel) !important;
+}
+
+body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-site :where(.public-hero, .public-panel, .hero-side-card, .hero-media-card, .news-card, .launcher-feature-card, .launcher-step, .launcher-faq-card, .launcher-system-card, .launcher-release-card) {
+  position: relative;
+  overflow: hidden;
+}
+
+body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-site :where(.public-hero, .public-panel, .hero-side-card, .hero-media-card, .news-card, .launcher-feature-card, .launcher-step, .launcher-faq-card, .launcher-system-card, .launcher-release-card)::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 34%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--site-aqua), var(--site-violet), transparent);
+  opacity: .82;
+  pointer-events: none;
+}
+
+body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-site :where(.public-hero, .public-panel, .hero-side-card, .hero-media-card, .news-card, .launcher-feature-card, .launcher-step, .launcher-faq-card, .launcher-system-card, .launcher-release-card) > * {
+  position: relative;
+  z-index: 1;
+}
+
+.public-site .section-head h2,
+.public-site .public-hero-copy h1,
+.public-site .hero h1,
+.public-site .page-hero h1,
+.public-site .launcher-hero-copy h1,
+.public-site .news-hero h1 {
+  letter-spacing: -.06em;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .24);
+}
+
+:root[data-theme="dark"] .public-site .section-head h2,
+:root[data-theme="dark"] .public-site .public-hero-copy h1,
+:root[data-theme="dark"] .public-site .hero h1,
+:root[data-theme="dark"] .public-site .page-hero h1,
+:root[data-theme="dark"] .public-site .launcher-hero-copy h1,
+:root[data-theme="dark"] .public-site .news-hero h1 {
+  text-shadow: 0 2px 16px rgba(118, 80, 199, .22);
+}
+
+.public-site .hero-kicker,
+.public-site .section-head > span,
+.public-site .page-kicker-row .hero-kicker {
+  color: var(--site-violet) !important;
+  font-weight: 850;
+  letter-spacing: .12em;
+}
+
+:root[data-theme="dark"] .public-site .hero-kicker,
+:root[data-theme="dark"] .public-site .section-head > span,
+:root[data-theme="dark"] .public-site .page-kicker-row .hero-kicker {
+  color: #c7a9ff !important;
+}
+
+.public-site .route-chip,
+.public-site .hero-inline-card,
+.public-site .news-hero-stat,
+.public-site .hero-sprite-chip {
+  border-color: color-mix(in srgb, var(--site-violet) 26%, var(--site-edge)) !important;
+  background: color-mix(in srgb, var(--site-panel-soft) 86%, var(--site-violet) 14%) !important;
+}
+
+.public-site .hero-inline-card:hover,
+.public-site .hero-sprite-chip:hover,
+.public-site .news-card:hover,
+.public-site .launcher-feature-card:hover,
+.public-site .launcher-step:hover,
+.public-site .launcher-faq-card:hover {
+  border-color: color-mix(in srgb, var(--site-violet) 58%, var(--site-edge)) !important;
+  box-shadow: var(--site-shadow-lift) !important;
+}
+
+.public-site :where(.btn-primary, .button-primary) {
+  border-color: transparent !important;
+  background: linear-gradient(120deg, #2f9e6b 0%, #3dbca0 55%, #7650c7 140%) !important;
+  box-shadow: 0 12px 28px rgba(47, 158, 107, .23), 0 4px 16px rgba(118, 80, 199, .13) !important;
+}
+
+.public-site :where(.btn-primary, .button-primary):hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08) brightness(1.04);
+}
+
+.public-site .btn-secondary {
+  border-color: color-mix(in srgb, var(--site-violet) 34%, var(--site-edge-strong)) !important;
+  background: color-mix(in srgb, var(--site-panel) 84%, var(--site-violet) 16%) !important;
+  color: var(--site-night-2) !important;
+}
+
+:root[data-theme="dark"] .public-site .btn-secondary {
+  color: #edf8ef !important;
+}
+
+.public-site :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--site-violet-bright) !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(118, 80, 199, .2) !important;
+}
+
+.public-site :where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--site-violet-bright) !important;
+  outline-offset: 4px;
+}
+
+body[data-page-kind^="public"] .public-page-shell {
+  padding-bottom: 72px;
+}
+
+body[data-page-kind^="public"] .public-section {
+  scroll-margin-top: 22px;
+}
+
+/* Keep text-first news text-first. The surrounding page can have atmosphere,
+ * but this route never gets a media card or a photo hero. */
+.public-site .news-hero-text-only {
+  background:
+    radial-gradient(circle at 94% 0, rgba(118, 80, 199, .17), transparent 20rem),
+    linear-gradient(135deg, var(--site-panel), var(--site-panel-soft)) !important;
+}
+
+.public-site .launcher-hero-visual,
+.public-site .scene-card {
+  border-radius: var(--site-radius-small) !important;
+  border-color: rgba(83, 205, 184, .38) !important;
+  box-shadow: 0 22px 50px rgba(11, 38, 24, .2) !important;
+}
+
+.public-site .launcher-hero-visual img,
+.public-site .scene-card-image {
+  filter: saturate(1.05) contrast(1.03);
+}
+
+@keyframes siteAurora {
+  from { transform: translate3d(-1.2%, 0, 0) scale(1); opacity: .82; }
+  to { transform: translate3d(1.2%, -1%, 0) scale(1.035); opacity: 1; }
+}
+
+@keyframes siteFloat {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -5px, 0); }
+}
+
+@media (max-width: 980px) {
+  .public-nav { min-height: 68px; }
+  .public-site .public-hero,
+  .public-site .hero,
+  .public-site .page-hero { gap: 18px; }
+  .public-site .public-hero-copy h1,
+  .public-site .hero h1,
+  .public-site .page-hero h1 { max-width: 18ch; }
+}
+
+@media (max-width: 640px) {
+  body[data-page-kind^="public"] .public-site,
+  body.auth-screen .public-site { width: min(calc(100% - 20px), 1240px); }
+  .public-nav { border-radius: 15px !important; }
+  .public-site .public-hero,
+  .public-site .hero,
+  .public-site .page-hero { padding-block: 16px; }
+  .public-site .public-hero-copy h1,
+  .public-site .hero h1,
+  .public-site .page-hero h1 { font-size: clamp(2.2rem, 11vw, 3.2rem); }
+  body[data-page-kind="public-home"]::before,
+  body[data-page-kind="public-server"]::before,
+  body[data-page-kind="public-shops"]::before,
+  body[data-page-kind="public-launcher"]::before {
+    background-size: cover, 620px auto;
+    background-position: center, 120% bottom;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page-kind^="public"]::before,
+  body.auth-screen::before,
+  body[data-page-kind^="public"] *,
+  body.auth-screen * {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}

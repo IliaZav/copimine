@@ -323,7 +323,7 @@ try {
     --icon (Join-Path $repoRoot 'CopiMineLauncher/src/CopiMineLauncher.App/Assets/copimine.ico') `
     --exclude $packageExclude `
     --splashImage $installerLogo `
-    --splashProgressColor '#63dfa0' `
+    --splashProgressColor '#59D6D0' `
     --msi `
     --instLocation Either `
     --msiBanner $installerBanner `

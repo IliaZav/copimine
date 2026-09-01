@@ -17,6 +17,8 @@ def test_launcher_packaging_produces_a_folder_selecting_msi() -> None:
     assert "--instLocation" in build
     assert "--splashImage" in build
     assert "--splashProgressColor" in build
+    assert "--splashProgressColor '#59D6D0'" in build
+    assert "--splashProgressColor '#63dfa0'" not in build
     assert "--msiBanner" in build
     assert "--msiLogo" in build
     assert "--instWelcome" in build

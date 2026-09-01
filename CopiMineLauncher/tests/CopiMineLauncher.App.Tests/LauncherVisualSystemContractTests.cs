@@ -66,6 +66,30 @@ public sealed class LauncherVisualSystemContractTests
     }
 
     [Fact]
+    public void Launcher_screens_do_not_keep_the_retired_green_inline_palette()
+    {
+        var screenFiles = new[]
+        {
+            "App.xaml",
+            "MainWindow.xaml",
+            "MinecraftDefaultsWindow.xaml",
+            "LauncherSettingsWindow.xaml",
+            "SkinManagerWindow.xaml",
+            "LauncherLoadingOverlay.xaml",
+        };
+        var retiredColors = new[] { "#63dfa0", "#7af0aa", "#70e39b", "#06150d", "#d8ffb2" };
+
+        foreach (var file in screenFiles)
+        {
+            var source = ReadSource("src", "CopiMineLauncher.App", file);
+            foreach (var color in retiredColors)
+            {
+                source.Should().NotContain(color, $"{file} should use shared launcher resources");
+            }
+        }
+    }
+
+    [Fact]
     public void Main_window_content_rows_scale_without_fixed_pixel_bands()
     {
         var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");

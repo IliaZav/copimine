@@ -6,9 +6,9 @@
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:InverseBooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" />
 
-        <FontFamily x:Key="LauncherDisplayFont">Bahnschrift SemiBold</FontFamily>
-        <FontFamily x:Key="LauncherBodyFont">Segoe UI</FontFamily>
-        <FontFamily x:Key="LauncherDataFont">Consolas</FontFamily>
+        <FontFamily x:Key="LauncherDisplayFont">Segoe UI Variable Display, Bahnschrift SemiBold</FontFamily>
+        <FontFamily x:Key="LauncherBodyFont">Segoe UI Variable Text, Segoe UI</FontFamily>
+        <FontFamily x:Key="LauncherDataFont">Cascadia Mono, Consolas</FontFamily>
 
         <SolidColorBrush x:Key="LauncherColors" Color="#07111F" />
         <SolidColorBrush x:Key="LauncherWindowBackground" Color="#07111F" />
@@ -16,7 +16,7 @@
         <SolidColorBrush x:Key="LauncherSecondaryText" Color="#B4C0D5" />
         <SolidColorBrush x:Key="LauncherMutedText" Color="#7888A2" />
         <SolidColorBrush x:Key="LauncherAccent" Color="#59D6D0" />
-        <SolidColorBrush x:Key="LauncherAccentBright" Color="#D9FFB4" />
+        <SolidColorBrush x:Key="LauncherAccentBright" Color="#9BE7FF" />
         <SolidColorBrush x:Key="LauncherAccentPurple" Color="#A797FF" />
         <SolidColorBrush x:Key="LauncherAccentAmber" Color="#F5C977" />
         <SolidColorBrush x:Key="LauncherSurface" Color="#A6112033" />
@@ -29,7 +29,7 @@
         <SolidColorBrush x:Key="LauncherButtonSheen" Color="#59D6D0" />
         <SolidColorBrush x:Key="LauncherInputSurface" Color="#D9081525" />
         <SolidColorBrush x:Key="LauncherRailSurface" Color="#D9071423" />
-        <SolidColorBrush x:Key="LauncherSuccessSurface" Color="#B51A3D3C" />
+        <SolidColorBrush x:Key="LauncherSuccessSurface" Color="#B51B3150" />
 
         <Style TargetType="{x:Type TextBlock}">
             <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />

@@ -460,7 +460,7 @@
                               </DataTrigger.ExitActions>
                             </DataTrigger>
                             <DataTrigger Binding="{Binding LauncherLinkRequired}" Value="True">
-                              <Setter Property="Fill" Value="#FFF0B0" />
+                              <Setter Property="Fill" Value="{StaticResource LauncherAccentAmber}" />
                             </DataTrigger>
                           </Style.Triggers>
                         </Style>

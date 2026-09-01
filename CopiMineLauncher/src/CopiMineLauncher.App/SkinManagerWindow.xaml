@@ -39,7 +39,7 @@
                 <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource LauncherButtonHover}" />
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="ItemBorder" Property="Background" Value="#E63B715F" />
+                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource LauncherButtonHover}" />
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -308,7 +308,7 @@
       <Border Grid.Column="1" Background="{StaticResource LauncherInputSurface}" BorderBrush="{StaticResource LauncherLine}" BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,0,12,0">
         <Grid>
           <wv2:WebView2 x:Name="PreviewView" />
-          <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#E507111F" Opacity="0.92" CornerRadius="4" Padding="9,6" Margin="10">
+          <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="{StaticResource LauncherSurfaceStrong}" Opacity="0.92" CornerRadius="4" Padding="9,6" Margin="10">
             <TextBlock x:Name="PreviewStatus" Text="Предпросмотр готов" Foreground="{StaticResource LauncherSecondaryText}" FontSize="11" />
           </Border>
         </Grid>

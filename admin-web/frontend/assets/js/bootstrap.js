@@ -77,7 +77,7 @@ function normalizeAuthHashRoute() {
 
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260829launcherlink6")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260901motion1")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";

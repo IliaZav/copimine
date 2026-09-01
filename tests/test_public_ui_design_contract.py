@@ -137,9 +137,9 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    style_cache_key = "20260831siteui27"
+    style_cache_key = "20260901motion1"
     launcher_news_cache_key = "20260825siteui19"
-    public_script_key = "20260829siteui23"
+    public_script_key = "20260901motion1"
     public_module_key = "20260825siteui19"
     pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
     for path in pages:
@@ -147,8 +147,7 @@ def test_public_shell_assets_share_the_current_release_cache_key() -> None:
         if "/assets/style.css" in source:
             assert f"/assets/style.css?v={style_cache_key}" in source, path.name
         if "/assets/js/public/public-page.js" in source:
-            expected_key = "20260901events5" if path.name == "events.html" else public_script_key
-            assert f"/assets/js/public/public-page.js?v={expected_key}" in source, path.name
+            assert f"/assets/js/public/public-page.js?v={public_script_key}" in source, path.name
         if "/assets/css/launcher-news.css" in source:
             assert f"/assets/css/launcher-news.css?v={launcher_news_cache_key}" in source, path.name
 

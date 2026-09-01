@@ -6,7 +6,7 @@ import { initLauncherPage } from "./launcher-page.js?v=20260825siteui19";
 import { initNewsPage } from "./news-page.js?v=20260825siteui19";
 import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui19";
 import { initEventsPage } from "./events-page.js?v=20260901events5";
-import { initPublicMotion } from "./public-motion.js?v=20260825siteui19";
+import { initPublicMotion } from "./public-motion.js?v=20260901motion1";
 
 initPublicNav();
 initThemeToggle();

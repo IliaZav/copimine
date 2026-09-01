@@ -11,7 +11,7 @@ const EVENT_VIEW_COPY = {
     eyebrow: "Энд",
     title: "Разлом Энда",
     summary: "В Энде снова не тихо.",
-    body: "Большой проработанный данж. Волны врагов. Сильный проработанный босс.",
+    body: "Глубина, которой нет на карте. Волны из темноты. Босс без имени.",
     accent: "#c09aff",
     sceneImage: "/assets/events/end-rift/end-city.jpg",
     dragonImage: "/assets/events/end-rift/end-landscape.png",
@@ -27,8 +27,8 @@ const EVENT_VIEW_COPY = {
     status: "upcoming",
     eyebrow: "Скоро",
     title: "Скоро",
-    summary: "Здесь появится следующее событие.",
-    body: "Пока без названия и без дат.",
+    summary: "Следующий след — позже.",
+    body: "Имя и дата пока скрыты.",
     accent: "#8e89ff",
     sceneImage: "/assets/events/end-rift/end-city.jpg",
     dragonImage: "/assets/events/end-rift/end-landscape.png",
@@ -40,8 +40,8 @@ const EVENT_VIEW_COPY = {
     status: "upcoming",
     eyebrow: "Скоро",
     title: "Скоро",
-    summary: "Ещё одно событие появится здесь.",
-    body: "Пока без названия и без дат.",
+    summary: "Ещё один сигнал — позже.",
+    body: "Имя и дата пока скрыты.",
     accent: "#a987e8",
     sceneImage: "/assets/events/end-rift/end-landscape.png",
     dragonImage: "/assets/events/end-rift/end-landscape.png",
@@ -52,9 +52,9 @@ const EVENT_VIEW_COPY = {
 };
 
 const MYSTERY_NOTES = [
-  ["01", "Большой проработанный данж"],
-  ["02", "Волны врагов"],
-  ["03", "Сильный проработанный босс"],
+  ["01", "Глубина, которой нет на карте"],
+  ["02", "Волны из темноты"],
+  ["03", "Босс без имени"],
 ];
 
 function node(tag, className = "", value = "") {
@@ -282,7 +282,7 @@ function buildMystery() {
     const card = node("article", "event-mystery-card event-reveal");
     card.dataset.reveal = `mystery-${position}`;
     card.style.setProperty("--event-delay", `${position * 90}ms`);
-    card.append(node("span", "event-mystery-index", index), node("strong", "", title), node("span", "event-mystery-line", "Детали скрыты."));
+    card.append(node("span", "event-mystery-index", index), node("strong", "", title), node("span", "event-mystery-line", "Остальное — внутри."));
     grid.append(card);
   });
   section.append(grid);

@@ -143,3 +143,27 @@ def test_event_route_change_restores_scroll_to_the_start_of_the_new_view() -> No
     runtime = read("admin-web/frontend/assets/js/public/events-page.js")
 
     assert "window.scrollTo(0, 0)" in runtime
+
+
+def test_event_detail_copy_stays_short_and_the_calendar_has_one_flat_composition() -> None:
+    runtime = read("admin-web/frontend/assets/js/public/events-page.js")
+    atmosphere = read("admin-web/frontend/assets/css/aurora-redesign.css")
+
+    for phrase in (
+        "Большой проработанный данж",
+        "Сильный проработанный босс",
+        "Детали скрыты.",
+    ):
+        assert phrase not in runtime
+    for phrase in (
+        "Глубина, которой нет на карте",
+        "Волны из темноты",
+        "Босс без имени",
+        "Остальное — внутри.",
+    ):
+        assert phrase in runtime
+
+    assert "/* Final event composition: flat calendar and quiet editorial rows. */" in atmosphere
+    assert "grid-template-columns: minmax(230px, .62fr) minmax(0, 1.38fr) !important;" in atmosphere
+    assert "grid-template-columns: 1fr !important;" in atmosphere
+    assert "min-height: 112px !important;" in atmosphere

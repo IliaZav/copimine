@@ -69,3 +69,34 @@ def test_cabinet_html_uses_current_visual_cache_key():
         source = page.read_text(encoding="utf-8")
         if "assets/cabinet.css" in source:
             assert "cabinet.css?v=20260902flat2" in source
+
+
+def test_cabinet_and_admin_share_the_final_flat_workspace_composition():
+    source = (ROOT / "admin-web" / "frontend" / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
+
+    assert "/* Final cabinet composition: one workspace, two role accents. */" in source
+    assert 'body[data-page-kind="cabinet"] .sidebar' in source
+    assert 'body[data-page-kind="cabinet"] .topbar' in source
+    assert 'body[data-page-kind="cabinet"] .view > *' in source
+    assert 'body.panel-admin-mode .nav-item.active' in source
+    assert 'body.player-mode .nav-item.active' in source
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr)) !important;" in source
+    assert "border-top: 1px solid var(--aurora-flat-rule) !important;" in source
+    assert "background: transparent !important;" in source
+    assert "box-shadow: none !important;" in source
+    assert 'body[data-page-kind="cabinet"] .top-actions > *' in source
+    assert "width: auto !important;" in source
+
+
+def test_cabinet_mobile_navigation_stays_a_drawer_until_requested():
+    source = (ROOT / "admin-web" / "frontend" / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
+
+    assert "/* Final cabinet mobile navigation: content first, menu on demand. */" in source
+    assert 'body[data-page-kind="cabinet"] .sidebar' in source
+    assert "inset: 0 auto 0 0 !important;" in source
+    assert "height: 100dvh !important;" in source
+    assert "transform: translateX(-104%) !important;" in source
+    assert 'body[data-page-kind="cabinet"] #app.nav-open .sidebar' in source
+    assert "transform: translateX(0) !important;" in source
+    assert 'body[data-page-kind="cabinet"] .layout-grid.grid-2' in source
+    assert 'body[data-page-kind="cabinet"] .layout-grid.grid-3' in source

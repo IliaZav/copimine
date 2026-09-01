@@ -2,6 +2,22 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-09-01-launcher-1.0.13",
+      "slug": "copimine-launcher-1-0-13",
+      "version": "1.0.13",
+      "title": "CopiMine Launcher 1.0.13",
+      "publishedAt": "2026-09-01T13:57:01Z",
+      "summary": [
+        "В установщик добавлен полный запасной пакет Minecraft/Fabric для первого запуска без загрузки игры из сети.",
+        "Синхронизация по-прежнему меняет только файлы сборки, которыми управляет CopiMine.",
+        "Проверены чистая установка MSI, подготовка профиля и запуск Minecraft на локальной машине."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-13.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-09-01-launcher-1.0.12",
       "slug": "copimine-launcher-1-0-12",
       "version": "1.0.12",

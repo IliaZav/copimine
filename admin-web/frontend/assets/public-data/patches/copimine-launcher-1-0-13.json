@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-09-01-launcher-1.0.13",
+  "slug": "copimine-launcher-1-0-13",
+  "version": "1.0.13",
+  "title": "CopiMine Launcher 1.0.13",
+  "publishedAt": "2026-09-01T13:57:01Z",
+  "summary": [
+    "В установщик добавлен полный запасной пакет Minecraft/Fabric для первого запуска без загрузки игры из сети.",
+    "Синхронизация по-прежнему меняет только файлы сборки, которыми управляет CopiMine.",
+    "Проверены чистая установка MSI, подготовка профиля и запуск Minecraft на локальной машине."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "offline-first-run",
+        "title": "Первый запуск",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Установщик содержит Minecraft 1.21.1 и Fabric Loader 0.19.3 для восстановления без внешней загрузки игры."
+          },
+          {
+            "kind": "tested",
+            "text": "Java 21, обязательные моды и сервер CopiMine восстанавливаются из локальных файлов установщика."
+          }
+        ]
+      },
+      {
+        "id": "managed-files",
+        "title": "Синхронизация",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Дополнительные моды и пользовательские настройки не входят в заменяемый список и остаются на месте."
+          },
+          {
+            "kind": "tested",
+            "text": "Архив baseline проверен по размеру и SHA-256 до распаковки."
+          }
+        ]
+      }
+    ],
+    "technical": [],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-09-01T13:57:01Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-13.html"
+}

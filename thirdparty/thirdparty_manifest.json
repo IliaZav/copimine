@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
+                          "sha1":  "24bd5e6d8c5f4fb8529518341825e57f88aeef82",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69"
+                          "sha256":  "ea8978fd701ca2529c24a1f72e93ba11db94cbeb6255a598bcdf15e4a5e64788"
                       },
     "requiredExternal":  [
 
@@ -14,11 +14,11 @@
                       "clientMods":  [
                                          {
                                              "name":  "CopiMineClient",
-                                             "version":  "0.1.0",
-                                             "path":  "thirdparty/client-mods/CopiMineClient-0.1.0.jar",
-                                             "sha1":  "395f0c9350f912ba13a9f6a6513fcfb7eeb6e2ea",
+                                             "version":  "0.1.1",
+                                             "path":  "thirdparty/client-mods/CopiMineClient-0.1.1.jar",
+                                             "sha1":  "0ff4e618d269bff7c3a058c2fd37104751b0f55f",
                                              "license":  "Proprietary",
-                                             "sha256":  "b8621fe61f0dc0da6f3b58fce5f62c41b1abea8e1eef02e2ac80b218d62e5e59"
+                                             "sha256":  "07a6f5d6577b4701b08618737ee79ffa8a0f7a3952a93ac0c92a25bd6b4947d7"
                                          },
                                          {
                                              "name":  "CustomSkinLoader",
@@ -40,12 +40,12 @@
                                          },
                                          {
                                              "name":  "Fabric API",
-                                             "version":  "0.116.11+1.21.1",
-                                             "path":  "thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar",
-                                             "sha1":  "65f4e8b9dcbad6697b2fb32fa0bb937ec5efcd84",
+                                             "version":  "0.116.12+1.21.1",
+                                             "path":  "thirdparty/client-mods/fabric-api-0.116.12+1.21.1.jar",
+                                             "sha1":  "90cd4212da24365fae24c0090234b053094b218b",
                                              "license":  "Apache-2.0",
                                              "source":  "https://modrinth.com/project/P7dR8mSH",
-                                             "sha256":  "b791de6f6dce9c58d4ea2af6c713bbcc6dc64d0a5995a8bad6f225ee58cf17d2"
+                                             "sha256":  "b872f8c6de3a49cb2f01482830552b4e9fa246ca2274e99f393caefa4a121ff2"
                                          },
                                          {
                                              "name":  "Simple Voice Chat",

@@ -62,6 +62,7 @@ import me.copimine.endevent.domain.PortalCapturePolicy;
 import me.copimine.endevent.domain.RewardRoster;
 import me.copimine.endevent.domain.ResourceProgressFormatter;
 import me.copimine.endevent.domain.RiftFireballPolicy;
+import me.copimine.endevent.domain.RiftObeliskCastPolicy;
 import me.copimine.endevent.domain.RiftObeliskDamagePolicy;
 import me.copimine.endevent.domain.RiftObeliskPlacementPolicy;
 import me.copimine.endevent.domain.RiftObeliskScalingPolicy;
@@ -598,6 +599,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean judgmentTriggered;
     private boolean judgmentCompleted;
     private boolean bossFinalStrikeUsed;
+    /** The obelisk spell is a single bounded mechanic per boss fight. */
+    private boolean riftObelisksSpawnedThisFight;
     private boolean bossDefeatCinematicStarted;
     private UUID bossDefeatCinematicBossUuid;
     private int bossDefeatCinematicElapsedTicks;
@@ -646,6 +649,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyBossVirtualHealth;
     private NamespacedKey keyBossVirtualMaxHealth;
     private NamespacedKey keyBossFinalStrikeUsed;
+    private NamespacedKey keyRiftObelisksSpawned;
     private NamespacedKey keyMiniBossSpell;
     private NamespacedKey keyRewardOwner;
     private NamespacedKey keyRewardExpiresAt;
@@ -707,6 +711,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyBossVirtualHealth = new NamespacedKey(this, "end_event_boss_virtual_health");
             keyBossVirtualMaxHealth = new NamespacedKey(this, "end_event_boss_virtual_max_health");
             keyBossFinalStrikeUsed = new NamespacedKey(this, "end_event_boss_final_strike_used");
+            keyRiftObelisksSpawned = new NamespacedKey(this, "end_event_rift_obelisks_spawned");
             keyMiniBossSpell = new NamespacedKey(this, "end_event_miniboss_spell");
             keyRewardOwner = new NamespacedKey(this, "end_event_reward_owner");
             keyRewardExpiresAt = new NamespacedKey(this, "end_event_reward_expires_at");
@@ -920,9 +925,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (EVENT_KIND_OBELISK.equals(kind) || EVENT_KIND_OBELISK_PULSE.equals(kind)
                     || EVENT_KIND_RIFT_FIREBALL.equals(kind)) {
                 // Obelisk animation/projection tasks are intentionally not
-                // reconstructed after a process stop.  Remove the persisted
-                // shell and let the current DISTORTION controller create a
-                // fresh bounded set on the next eligible cast.
+                // reconstructed after a process stop. Remove the persisted
+                // shell; the boss PDC one-shot marker below prevents a fresh
+                // set from being created in the same fight.
                 entity.remove();
                 staleProjectiles++;
                 continue;
@@ -949,6 +954,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (keyBossFinalStrikeUsed != null) {
                     bossFinalStrikeUsed = entity.getPersistentDataContainer().getOrDefault(
                             keyBossFinalStrikeUsed, PersistentDataType.BYTE, (byte) 0) != 0;
+                }
+                if (keyRiftObelisksSpawned != null) {
+                    riftObelisksSpawnedThisFight = entity.getPersistentDataContainer().getOrDefault(
+                            keyRiftObelisksSpawned, PersistentDataType.BYTE, (byte) 0) != 0;
                 }
                 if (bossUuid == null) {
                     bossUuid = entity.getUniqueId();
@@ -2118,6 +2127,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " &7boss=&f" + bossStatus);
         message(sender, "&7rift-obelisks=&f" + activeRiftObeliskCount()
                 + "/" + (config == null ? 0 : config.riftObeliskTuning().maxActive())
+                + " &7cast=&f" + (riftObelisksSpawnedThisFight ? "USED" : "READY")
                 + " &7rift-fireballs=&f" + activeRiftFireballs.size());
         message(sender, "&7half=&f" + halfHealthTriggered + " &7final=&f" + finalDrainTriggered
                 + " &7endUnlocked=&f" + endUnlocked + " &7victory=&f" + victoryStep);
@@ -12224,6 +12234,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         judgmentTriggered = false;
         judgmentCompleted = false;
         bossFinalStrikeUsed = false;
+        riftObelisksSpawnedThisFight = false;
         bossDefeatCinematicStarted = false;
         bossDefeatCinematicBossUuid = null;
         bossDefeatCinematicElapsedTicks = 0;
@@ -12232,6 +12243,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tag(boss, EVENT_KIND_BOSS, 0, !test);
         if (keyBossFinalStrikeUsed != null) {
             boss.getPersistentDataContainer().set(keyBossFinalStrikeUsed,
+                    PersistentDataType.BYTE, (byte) 0);
+        }
+        if (keyRiftObelisksSpawned != null) {
+            boss.getPersistentDataContainer().set(keyRiftObelisksSpawned,
                     PersistentDataType.BYTE, (byte) 0);
         }
         if (keyCombatTactic != null) {
@@ -12452,6 +12467,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         judgmentTriggered = false;
         judgmentCompleted = false;
         bossFinalStrikeUsed = false;
+        riftObelisksSpawnedThisFight = false;
         bossDefeatCinematicStarted = false;
         bossDefeatCinematicBossUuid = null;
         bossDefeatCinematicElapsedTicks = 0;
@@ -14169,8 +14185,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!servantSummonWindow(boss)) {
             available.remove(EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
         }
-        if (config == null || !config.riftObeliskTuning().enabledFor(bossStage)
-                || !activeRiftObelisks.isEmpty() || eventTickCounter < nextRiftObeliskCastTick) {
+        if (config == null
+                || !RiftObeliskCastPolicy.canStart(bossStage,
+                config.riftObeliskTuning().enabledFor(bossStage),
+                riftObelisksSpawnedThisFight, !activeRiftObelisks.isEmpty())
+                || eventTickCounter < nextRiftObeliskCastTick) {
             available.remove(EndRiftAiPolicy.BossSpell.RIFT_OBELISKS);
         }
         EndRiftAiPolicy.BossSpell spell = EndRiftAiPolicy.chooseBossSpell(
@@ -14848,12 +14867,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * world object created for an obelisk; the floor is never replaced.
      */
     private void startRiftObelisks(LivingEntity boss, boolean forced) {
-        if (boss == null || config == null || !config.riftObeliskTuning().enabledFor(bossStage)
-                || bossStage != BossStage.DISTORTION
+        if (boss == null || config == null) {
+            return;
+        }
+        boolean enabledForStage = config.riftObeliskTuning().enabledFor(bossStage);
+        boolean activeSetPresent = !activeRiftObelisks.isEmpty();
+        if (!RiftObeliskCastPolicy.canStart(bossStage, enabledForStage,
+                riftObelisksSpawnedThisFight, activeSetPresent)
                 || bossCastState == BossCastState.ABSORPTION_CHANNEL
                 || bossCastState == BossCastState.JUDGMENT_CAST
-                || !activeRiftObelisks.isEmpty()
                 || !forced && eventTickCounter < nextRiftObeliskCastTick) {
+            String reason = riftObelisksSpawnedThisFight ? "already-used-this-fight"
+                    : activeSetPresent ? "active-set-present"
+                    : bossStage != BossStage.DISTORTION || !enabledForStage
+                    ? "distortion-only"
+                    : bossCastState == BossCastState.ABSORPTION_CHANNEL
+                    || bossCastState == BossCastState.JUDGMENT_CAST
+                    ? "scripted-boss-state"
+                    : "cooldown";
+            getLogger().info("RIFT_OBELISKS_SKIPPED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=" + reason
+                    + " stage=" + bossStage + " used=" + riftObelisksSpawnedThisFight
+                    + " active=" + activeRiftObelisks.size());
             return;
         }
         List<Player> participants = activeBossParticipants();
@@ -14917,6 +14952,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " location=" + locationText(location));
         }
         if (spawned > 0) {
+            riftObelisksSpawnedThisFight = true;
+            if (keyRiftObelisksSpawned != null) {
+                boss.getPersistentDataContainer().set(keyRiftObelisksSpawned,
+                        PersistentDataType.BYTE, (byte) 1);
+            }
             nextRiftObeliskCastTick = eventTickCounter
                     + randomSeconds(tuning.cooldownMinSeconds(), tuning.cooldownMaxSeconds()) * 20L;
             renderRiftObeliskSpawnBurst(anchor, spawned);

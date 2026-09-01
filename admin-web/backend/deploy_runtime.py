@@ -101,7 +101,7 @@ def managed_artifacts(project_root: Path) -> dict[str, ManagedArtifact]:
     release = release_manifest(project_root)
     resource_url = str(release.get("resourcePack", {}).get("downloadUrl") or "/resourcepacks/CopiMineResourcePack.zip").strip() or "/resourcepacks/CopiMineResourcePack.zip"
     modpack_url = str(release.get("modpack", {}).get("downloadUrl") or "/downloads/CopiMineMods.zip").strip() or "/downloads/CopiMineMods.zip"
-    client_url = str(release.get("clientMod", {}).get("downloadUrl") or "/downloads/CopiMineClient-0.1.0.jar").strip() or "/downloads/CopiMineClient-0.1.0.jar"
+    client_url = str(release.get("clientMod", {}).get("downloadUrl") or "/downloads/CopiMineClient-0.1.1.jar").strip() or "/downloads/CopiMineClient-0.1.1.jar"
     thirdparty = project_root / "thirdparty"
     resourcepacks = project_root / "resourcepacks" / "build"
     return {
@@ -128,8 +128,8 @@ def managed_artifacts(project_root: Path) -> dict[str, ManagedArtifact]:
         "client_mod": ManagedArtifact(
             key="client_mod",
             bucket="downloads",
-            filename="CopiMineClient-0.1.0.jar",
-            path=thirdparty / "client-mods" / "CopiMineClient-0.1.0.jar",
+            filename="CopiMineClient-0.1.1.jar",
+            path=thirdparty / "client-mods" / "CopiMineClient-0.1.1.jar",
             url=client_url,
             media_type="application/java-archive",
             manifest_path=project_root / "thirdparty" / "thirdparty_manifest.json",

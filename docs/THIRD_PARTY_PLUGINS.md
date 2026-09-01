@@ -54,7 +54,7 @@
 
 - Публичный архив: `thirdparty/CopiMineMods.zip`
 - Внутри:
-  - `mods/CopiMineClient-0.1.0.jar`
+  - `mods/CopiMineClient-0.1.1.jar`
   - `mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar`
   - `mods/fabric-api-0.116.12+1.21.1.jar`
   - `README_RU.txt`

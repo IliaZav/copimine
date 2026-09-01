@@ -372,6 +372,21 @@ try {
   Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0 destroyed=true' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_CLEANUP .*reason=destroyed' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
+  $oneShotOffset = Get-LogLength
+  $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
+  $oneShotLog = Wait-LogCount -Pattern 'RIFT_OBELISKS_SKIPPED .*reason=already-used-this-fight' `
+    -Minimum 1 -AfterOffset $oneShotOffset
+  if (([Regex]::Matches($oneShotLog, 'RIFT_OBELISKS_SPAWNED ')).Count -ne 0) {
+    throw "Rift Obelisks spawned again after destruction in the same boss fight:`n$oneShotLog"
+  }
+  $oneShotStatus = Invoke-LocalRcon -CommandText 'cmend status'
+  # RCON preserves Minecraft colour codes, so normalize the display before
+  # asserting the one-shot marker instead of making the test depend on §f.
+  $oneShotStatusPlain = [Regex]::Replace($oneShotStatus, '[§&][0-9A-FK-ORa-fk-or]', '')
+  if ($oneShotStatusPlain -notmatch 'cast=USED') {
+    throw "Rift Obelisk one-shot state was not retained after destruction:`n$oneShotStatus"
+  }
+  Write-Output 'LIVE_RIFT_OBELISK_ONESHOT_PASS first_spawn=1 repeat_spawn=0 reason=already-used-this-fight'
   $hazardAfter = Get-BossSnapshot
   if ([Math]::Abs($hazardAfter.Health - $preHazard.Health) -gt 0.0001D) {
     throw "Rift Fireball changed boss virtual HP: before=$($preHazard.Health) after=$($hazardAfter.Health)"

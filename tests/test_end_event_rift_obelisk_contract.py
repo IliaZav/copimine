@@ -102,6 +102,26 @@ def test_first_fire_ticks_are_staggered_and_preserved_after_telegraph() -> None:
     assert "nextFireTick = Math.max(nextFireTick" in state
 
 
+def test_obelisk_cast_is_one_shot_per_boss_fight_and_persisted_on_boss() -> None:
+    policy = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RiftObeliskCastPolicy.java").read_text(encoding="utf-8")
+    configure = _body("private void configureBoss", "private void ensureBossBar")
+    reindex = _body("private void reindexPersistedCombatEntities", "private boolean ownedBySession")
+    spawn = _body("private void startRiftObelisks", "private Location resolveRiftObeliskLocation")
+    cleanup = _body("private void clearRiftObelisks", "private int activeRiftObeliskCount")
+    assert "stage == BossStage.DISTORTION" in policy
+    assert "alreadyUsedThisFight" in policy
+    assert "!activeSetPresent" in policy
+    assert "RiftObeliskCastPolicy.canStart" in spawn
+    assert "riftObelisksSpawnedThisFight" in spawn
+    assert "already-used-this-fight" in spawn
+    assert "keyRiftObelisksSpawned" in configure
+    assert "keyRiftObelisksSpawned" in reindex
+    assert "riftObelisksSpawnedThisFight = false" not in cleanup
+    assert "LIVE_RIFT_OBELISK_ONESHOT_PASS" in LIVE
+    assert "RIFT_OBELISKS_SKIPPED .*reason=already-used-this-fight" in LIVE
+    assert "cast=USED" in LIVE
+
+
 def test_exact_pulse_and_hit_effects_are_policy_driven() -> None:
     policy = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RiftFireballPolicy.java").read_text(encoding="utf-8")
     assert "PULSE_RADIUS = 5.0D" in policy

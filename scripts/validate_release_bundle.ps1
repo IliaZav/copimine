@@ -99,7 +99,7 @@ try {
     $resourcePackZip = Join-Path $payloadRoot "resourcepacks\build\CopiMineResourcePack.zip"
     $resourcePackSha1Path = Join-Path $payloadRoot "resourcepacks\build\CopiMineResourcePack.sha1"
     $resourcePackSha256Path = Join-Path $payloadRoot "resourcepacks\build\CopiMineResourcePack.sha256"
-    $clientJar = Join-Path $payloadRoot "thirdparty\client-mods\CopiMineClient-0.1.0.jar"
+    $clientJar = Join-Path $payloadRoot "thirdparty\client-mods\CopiMineClient-0.1.1.jar"
     $snapshotPath = Join-Path $payloadRoot "admin-web\frontend\assets\public-data\modpack_snapshot.json"
     $serverPropertiesPath = Join-Path $payloadRoot "minecraft\server\server.properties"
     $backendMainPath = Join-Path $payloadRoot "admin-web\backend\main.py"

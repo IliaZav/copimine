@@ -23,10 +23,10 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/mods"
 
 for file in \
-  "thirdparty/client-mods/CopiMineClient-0.1.0.jar" \
+  "thirdparty/client-mods/CopiMineClient-0.1.1.jar" \
   "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar" \
   "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar" \
-  "thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar" \
+  "thirdparty/client-mods/fabric-api-0.116.12+1.21.1.jar" \
   "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar" \
   "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar" \
   "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar"

@@ -3,13 +3,15 @@ $errors = New-ErrorList
 $index = Read-Utf8 $Paths.FrontendIndex
 $server = Read-Utf8 $Paths.FrontendServer
 $mods = Read-Utf8 $Paths.FrontendMods
+$legacyRedirect = Read-Utf8 (Join-Path $root 'admin-web\frontend\assets\js\public\legacy-mods-redirect.js')
 $dashboard = Read-Utf8 $Paths.FrontendCabinetDashboard
 $bundle = Read-FrontendBundle
 $mainPy = Read-Utf8 $Paths.MainPy
 
 Require-Contains $server 'id="presidentBudgetCounter"' 'Frontend removed the public treasury counter mount from server.html'
 Require-Contains $server 'id="publicTreasuryHistory"' 'Frontend removed the public treasury history mount from server.html'
-Require-Contains $mods "window.location.replace('/launcher.html')" 'Frontend removed the legacy mods-to-Launcher compatibility redirect'
+Require-Contains $mods 'legacy-mods-redirect.js' 'Frontend removed the CSP-safe legacy mods-to-Launcher compatibility redirect'
+Require-Contains $legacyRedirect "window.location.replace('/launcher.html')" 'Legacy redirect script no longer targets Launcher'
 Require-Contains $index 'id="publicCabinetBtn"' 'Frontend removed the guest cabinet shortcut from index.html'
 Require-Contains $index 'id="mobileNavToggle"' 'Frontend removed the mobile nav toggle contract from index.html'
 Require-Contains $dashboard 'id="logout"' 'Frontend removed the authenticated logout control from cabinet/dashboard.html'

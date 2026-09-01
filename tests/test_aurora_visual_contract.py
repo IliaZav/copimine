@@ -58,6 +58,13 @@ def test_flat_surface_override_matches_legacy_dark_theme_specificity() -> None:
     assert ':root[data-theme] body.preview-shell .preview-bank-balance' in source
 
 
+def test_account_status_page_does_not_fall_back_to_a_legacy_card() -> None:
+    source = (FRONTEND / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
+
+    assert "body.auth-screen .demoted-card" in source
+    assert "body.auth-screen .demoted-card" in source[source.index("/* Auth and error routes"):]
+
+
 def test_selected_font_trio_and_public_nav_override_are_canonical() -> None:
     source = (FRONTEND / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
 
@@ -84,9 +91,9 @@ def test_all_rendered_pages_bust_the_shared_theme_cache_after_a_visual_revision(
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "/assets/style.css" in source:
-            assert "/assets/style.css?v=20260902flat5" in source, page.name
+            assert "/assets/style.css?v=20260902flat6" in source, page.name
     style = (FRONTEND / "assets" / "style.css").read_text(encoding="utf-8")
-    assert "aurora-redesign.css?v=20260902flat5" in style
+    assert "aurora-redesign.css?v=20260902flat6" in style
 
 
 def test_shared_visual_layers_do_not_reintroduce_the_retired_forest_palette() -> None:

@@ -2978,3 +2978,42 @@ body[data-page-kind="cabinet"] .visual-card:hover {
   border-left: 1px solid var(--aurora-flat-rule) !important;
   color: var(--aurora-flat-ink) !important;
 }
+
+/* Account status is a page state, not a floating dialog. */
+
+:root[data-theme] body.auth-screen .demoted-page {
+  display: block !important;
+  width: min(100%, 1200px) !important;
+  min-height: calc(100vh - 112px) !important;
+  margin-inline: auto !important;
+  padding: 48px clamp(16px, 4vw, 64px) 80px !important;
+}
+
+:root[data-theme] body.auth-screen .demoted-card {
+  width: 100% !important;
+  max-width: 840px !important;
+  margin: 0 auto !important;
+  padding: 48px 0 40px !important;
+  border: 0 !important;
+  border-top: 1px solid var(--aurora-flat-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: left !important;
+}
+
+:root[data-theme] body.auth-screen .demoted-card h1 {
+  max-width: 18ch !important;
+  margin: 14px 0 18px !important;
+  color: var(--aurora-flat-ink) !important;
+  font-family: var(--aurora-flat-display) !important;
+}
+
+:root[data-theme] body.auth-screen .demoted-card p {
+  margin-inline: 0 !important;
+  color: var(--aurora-flat-muted) !important;
+}
+
+:root[data-theme] body.auth-screen .demoted-actions {
+  justify-content: flex-start !important;
+}

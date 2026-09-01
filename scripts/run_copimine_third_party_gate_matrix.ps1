@@ -123,16 +123,38 @@ if (-not (Test-Path -LiteralPath $recordedWorkingDirectory -PathType Container))
     throw "The recorded Minecraft working directory is missing: $recordedWorkingDirectory"
 }
 
-$quickPlayIndex = [Array]::IndexOf($directArguments, '--quickPlayMultiplayer')
-if ($quickPlayIndex -lt 0 -or $quickPlayIndex + 1 -ge $directArguments.Count) {
-    throw 'The recorded Minecraft command has no quick-play server target.'
-}
 $directArgumentLine = [string]$Matches['args']
 $directTarget = "$ServerHost`:$ServerPort"
-$directArgumentLine = [regex]::Replace(
-    $directArgumentLine,
-    '(--quickPlayMultiplayer\s+)(?:"[^"]*"|\S+)',
-    { param($match) $match.Groups[1].Value + $directTarget })
+$quickPlayIndex = [Array]::IndexOf($directArguments, '--quickPlayMultiplayer')
+if ($quickPlayIndex -ge 0 -and $quickPlayIndex + 1 -lt $directArguments.Count) {
+    $directArgumentLine = [regex]::Replace(
+        $directArgumentLine,
+        '(--quickPlayMultiplayer\s+)(?:"[^"]*"|\S+)',
+        { param($match) $match.Groups[1].Value + $directTarget })
+} else {
+    # CmlLib's normal launch path uses the standard --server/--port pair,
+    # while some third-party launchers use --quickPlayMultiplayer. Accept both
+    # forms so the direct-client gate exercises the command that was actually
+    # recorded instead of requiring a launcher-specific flag.
+    $serverIndex = [Array]::IndexOf($directArguments, '--server')
+    $portIndex = [Array]::IndexOf($directArguments, '--port')
+    if ($serverIndex -ge 0 -and $serverIndex + 1 -lt $directArguments.Count) {
+        $directArgumentLine = [regex]::Replace(
+            $directArgumentLine,
+            '(--server\s+)(?:"[^"]*"|\S+)',
+            { param($match) $match.Groups[1].Value + $ServerHost })
+        if ($portIndex -ge 0 -and $portIndex + 1 -lt $directArguments.Count) {
+            $directArgumentLine = [regex]::Replace(
+                $directArgumentLine,
+                '(--port\s+)(?:"[^"]*"|\S+)',
+                { param($match) $match.Groups[1].Value + $ServerPort })
+        } else {
+            $directArgumentLine = "$directArgumentLine --port $ServerPort"
+        }
+    } else {
+        $directArgumentLine = "$directArgumentLine --server $ServerHost --port $ServerPort"
+    }
+}
 
 $initialFiles = @(Get-ChildItem -LiteralPath $modsDirectory -File | Sort-Object Name)
 if (-not ($initialFiles.Name -contains $copimineClientName)) {

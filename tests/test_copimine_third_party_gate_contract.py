@@ -15,4 +15,7 @@ def test_disposable_third_party_gate_matrix_is_path_guarded_and_exercises_direct
     assert "CLIENT_GATE_ACCEPT" in source
     assert "CLIENT_GATE_REJECT" in source
     assert "validation-quarantine" in source
+    assert "--server" in source
+    assert "--port" in source
+    assert "quickPlayMultiplayer" in source
     assert "CLIENT_GATE_MATRIX_DIRECT=PASS" in source

@@ -22,8 +22,8 @@ def test_events_route_and_navigation_are_first_class_public_surfaces() -> None:
     assert 'public-page.js' in page
 
     nav_runtime = read("admin-web/frontend/assets/js/public/public-nav.js")
-    assert "ensureEventsLink" in nav_runtime
-    assert 'href = "/events.html"' in nav_runtime
+    assert "syncEventsLink" in nav_runtime
+    assert "querySelector('a[href=\"/events.html\"]')" in nav_runtime
 
 
 def test_events_data_has_one_current_event_and_two_future_placeholders() -> None:

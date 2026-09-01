@@ -88,6 +88,22 @@ def test_static_headers_do_not_ship_duplicate_cart_controls() -> None:
         assert header.count('class="shop-cart-button"') <= 1, page
 
 
+def test_static_headers_ship_the_events_link_and_never_ship_a_mobile_cart_clone() -> None:
+    for page in PUBLIC_PAGES:
+        header = header_markup(read(page), page)
+        assert header.count('href="/events.html"') == 1, page
+        assert "shop-cart-mobile-shortcut" not in header, page
+
+
+def test_events_runtime_only_syncs_the_generated_static_link() -> None:
+    nav = read(FRONTEND / "assets" / "js" / "public" / "public-nav.js")
+    assert "function syncEventsLink" in nav
+    assert "querySelector('a[href=\"/events.html\"]')" in nav
+    event_runtime = nav[nav.index("function syncEventsLink") : nav.index("function ensureCartButton")]
+    assert "insertAdjacentElement" not in event_runtime
+    assert "document.createElement" not in event_runtime
+
+
 def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:
     source = read(FRONTEND / "cabinet" / "demoted.html")
     assert '/assets/app.js?v=20260901motion1' in source

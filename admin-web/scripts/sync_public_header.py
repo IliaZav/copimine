@@ -52,6 +52,7 @@ def public_header(path: Path) -> str:
         nav_link("/shops.html", "Лавки", current),
         nav_link("/launcher.html", "Лаунчер", current),
         nav_link("/news.html", "Новости", current),
+        nav_link("/events.html", "Ивенты", current),
         nav_link("/signin.html", "Войти", current, "publicSigninLink"),
         nav_link("/register.html", "Регистрация", current, "publicRegisterLink"),
     )
@@ -78,13 +79,6 @@ def public_header(path: Path) -> str:
         'data-theme-toggle-compact="true" type="button">Тема</button>'
         + cart
         + "</nav>"
-        + (
-            '<a class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" '
-            'aria-label="Корзина пуста"><span>Корзина</span>'
-            '<span class="shop-cart-count" aria-live="polite">0</span></a>'
-            if cart
-            else ""
-        )
         + "</header>"
     )
 

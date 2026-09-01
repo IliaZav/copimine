@@ -33,16 +33,9 @@ function syncCartButtons(shell, count = getShopCartCount()) {
   });
 }
 
-function ensureEventsLink(shell, nav) {
-  let link = nav.querySelector('a[href="/events.html"]');
-  if (!(link instanceof HTMLAnchorElement)) {
-    link = document.createElement("a");
-    link.href = "/events.html";
-    link.textContent = "Ивенты";
-    const news = nav.querySelector('a[href="/news.html"]');
-    if (news instanceof HTMLAnchorElement) news.insertAdjacentElement("afterend", link);
-    else nav.append(link);
-  }
+function syncEventsLink(nav) {
+  const link = nav.querySelector('a[href="/events.html"]');
+  if (!(link instanceof HTMLAnchorElement)) return;
   const current = window.location.pathname.endsWith("/events.html") || window.location.pathname === "/events";
   if (current) link.setAttribute("aria-current", "page");
   else link.removeAttribute("aria-current");
@@ -119,7 +112,7 @@ export function initPublicNav() {
   }
 
   ensureCartButton(shell, nav);
-  ensureEventsLink(shell, nav);
+  syncEventsLink(nav);
 
   // Several public pages predate this module and already contain
   // #mobileNavToggle. Reuse that element so the enhancer never adds a second

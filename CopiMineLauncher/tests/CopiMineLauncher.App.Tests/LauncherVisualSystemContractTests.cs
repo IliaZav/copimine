@@ -52,6 +52,20 @@ public sealed class LauncherVisualSystemContractTests
     }
 
     [Fact]
+    public void Launch_failure_dialog_reuses_the_shared_aurora_palette()
+    {
+        var dialog = ReadSource("src", "CopiMineLauncher.App", "LaunchFailureDialog.xaml");
+
+        dialog.Should().Contain("StaticResource LauncherWindowBackground");
+        dialog.Should().Contain("StaticResource LauncherPrimaryText");
+        dialog.Should().Contain("StaticResource LauncherAccent");
+        dialog.Should().Contain("StaticResource LauncherDataFont");
+        dialog.Should().NotContain("#217b59");
+        dialog.Should().NotContain("#63dfa0");
+        dialog.Should().NotContain("#7af0aa");
+    }
+
+    [Fact]
     public void Main_window_content_rows_scale_without_fixed_pixel_bands()
     {
         var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");

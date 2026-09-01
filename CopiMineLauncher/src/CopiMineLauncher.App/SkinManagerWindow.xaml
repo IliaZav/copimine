@@ -67,14 +67,14 @@
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
                   <ContentPresenter VerticalAlignment="Center" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
-                  <Path Grid.Column="1" Data="M 0 0 L 8 0 L 4 5 Z" Fill="#7af0aa" Width="8" Height="5" Stretch="Fill" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,2,0" />
+              <Path Grid.Column="1" Data="M 0 0 L 8 0 L 4 5 Z" Fill="{StaticResource LauncherAccentPurple}" Width="8" Height="5" Stretch="Fill" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="10,0,2,0" />
                 </Grid>
               </Border>
             </ControlTemplate>
           </ToggleButton.Template>
         </ToggleButton>
         <Popup x:Name="Popup" Placement="Bottom" VerticalOffset="2" AllowsTransparency="True" Focusable="False" IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade">
-            <Border Background="{StaticResource LauncherSurfaceStrong}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="3" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+              <Border Background="{StaticResource LauncherSurfaceStrong}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="3" MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
             <ScrollViewer MaxHeight="280" SnapsToDevicePixels="True">
               <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
             </ScrollViewer>
@@ -109,7 +109,7 @@
                     Background="{TemplateBinding Background}"
                     BorderBrush="{TemplateBinding BorderBrush}"
                     BorderThickness="{TemplateBinding BorderThickness}"
-                    CornerRadius="6,6,0,0"
+                    CornerRadius="4,4,0,0"
                     Padding="{TemplateBinding Padding}">
               <ContentPresenter ContentSource="Header"
                                 HorizontalAlignment="Center"
@@ -156,7 +156,7 @@
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      CornerRadius="0,8,8,8"
+                      CornerRadius="0,4,4,4"
                       Padding="8">
                 <ContentPresenter ContentSource="SelectedContent" />
               </Border>
@@ -169,13 +169,13 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
       <Setter Property="Padding" Value="10" />
       <Setter Property="Margin" Value="0,0,0,6" />
-      <Setter Property="Background" Value="{StaticResource LauncherSurfaceRaised}" />
-      <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
-      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{StaticResource LauncherLine}" />
+      <Setter Property="BorderThickness" Value="0,1,0,0" />
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ListBoxItem">
-            <Border x:Name="Card" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+            <Border x:Name="Card" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="0" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
             </Border>
             <ControlTemplate.Triggers>
@@ -184,7 +184,7 @@
                 <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
               </Trigger>
               <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="Card" Property="Background" Value="#E63B715F" />
+                <Setter TargetName="Card" Property="Background" Value="#541A2C43" />
                 <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
               </Trigger>
             </ControlTemplate.Triggers>
@@ -234,7 +234,7 @@
             </ComboBox>
           </Grid>
           <StackPanel Grid.Row="2">
-            <CheckBox x:Name="SensitiveCheckBox" Content="Показывать чувствительный контент" Foreground="#b1c7ce" Margin="0,0,0,8" />
+            <CheckBox x:Name="SensitiveCheckBox" Content="Показывать чувствительный контент" Foreground="{StaticResource LauncherSecondaryText}" Margin="0,0,0,8" />
             <Button Style="{StaticResource ActionButton}" Content="Загрузить каталог" Click="LoadCatalog_Click" />
           </StackPanel>
           <TabControl Grid.Row="3"
@@ -305,10 +305,10 @@
         </Grid>
       </Border>
 
-      <Border Grid.Column="1" Background="{StaticResource LauncherInputSurface}" BorderBrush="{StaticResource LauncherBorder}" BorderThickness="1" CornerRadius="16" Padding="8" Margin="0,0,12,0">
+      <Border Grid.Column="1" Background="{StaticResource LauncherInputSurface}" BorderBrush="{StaticResource LauncherLine}" BorderThickness="1" CornerRadius="8" Padding="8" Margin="0,0,12,0">
         <Grid>
           <wv2:WebView2 x:Name="PreviewView" />
-          <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#E807120F" Opacity="0.92" CornerRadius="7" Padding="9,6" Margin="10">
+          <Border VerticalAlignment="Bottom" HorizontalAlignment="Left" Background="#E507111F" Opacity="0.92" CornerRadius="4" Padding="9,6" Margin="10">
             <TextBlock x:Name="PreviewStatus" Text="Предпросмотр готов" Foreground="{StaticResource LauncherSecondaryText}" FontSize="11" />
           </Border>
         </Grid>
@@ -318,29 +318,29 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
           <StackPanel>
             <TextBlock Text="Мой образ" FontSize="18" FontWeight="Bold" />
-            <TextBlock Text="Ваш ник" Foreground="#718b96" FontSize="11" Margin="0,4,0,6" TextWrapping="Wrap" />
+            <TextBlock Text="Ваш ник" Foreground="{StaticResource LauncherMutedText}" FontSize="11" Margin="0,4,0,6" TextWrapping="Wrap" />
             <TextBox x:Name="PlayerNameTextBox" />
             <Button Style="{StaticResource ActionButton}" Content="Найти по нику" Click="ResolveByNickname_Click" />
             <Button Style="{StaticResource ActionButton}" Content="Загрузить плащи" Click="LoadCapes_Click" />
-            <TextBlock x:Name="SourceLabel" Text="Ничего не выбрано" Foreground="#9eb8c3" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
+            <TextBlock x:Name="SourceLabel" Text="Ничего не выбрано" Foreground="{StaticResource LauncherSecondaryText}" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,12" />
 
-            <Separator Background="#284657" Margin="0,0,0,12" />
-            <TextBlock Text="Файлы" Foreground="#9eb8c3" FontWeight="SemiBold" />
+            <Separator Background="{StaticResource LauncherLine}" Margin="0,0,0,12" />
+            <TextBlock Text="Файлы" Foreground="{StaticResource LauncherSecondaryText}" FontWeight="SemiBold" />
             <Button Style="{StaticResource ActionButton}" Content="Загрузить скин из файла" Click="ImportSkin_Click" />
             <Button Style="{StaticResource ActionButton}" Content="Загрузить плащ из файла" Click="ImportCape_Click" />
             <Button Style="{StaticResource PrimaryButton}" Content="Применить скин" Margin="0,0,0,10" MinHeight="36" Click="ApplySkin_Click" />
             <Button Style="{StaticResource ActionButton}" Content="Применить плащ" Click="ApplyCape_Click" />
-            <TextBlock Text="Файлы лежат в папке игры. После смены перезапустите Minecraft." Foreground="#718b96" FontSize="11" TextWrapping="Wrap" Margin="0,1,0,12" />
+            <TextBlock Text="Файлы лежат в папке игры. После смены перезапустите Minecraft." Foreground="{StaticResource LauncherMutedText}" FontSize="11" TextWrapping="Wrap" Margin="0,1,0,12" />
 
-            <Separator Background="#284657" Margin="0,0,0,12" />
-            <TextBlock Text="Предпросмотр" Foreground="#9eb8c3" FontWeight="SemiBold" />
-            <TextBlock Text="Модель" Foreground="#718b96" FontSize="11" />
+            <Separator Background="{StaticResource LauncherLine}" Margin="0,0,0,12" />
+            <TextBlock Text="Предпросмотр" Foreground="{StaticResource LauncherSecondaryText}" FontWeight="SemiBold" />
+            <TextBlock Text="Модель" Foreground="{StaticResource LauncherMutedText}" FontSize="11" />
             <ComboBox x:Name="ModelComboBox" SelectionChanged="PreviewSettingChanged">
               <ComboBoxItem Content="Авто" Tag="auto-detect" />
               <ComboBoxItem Content="Steve · обычные руки" Tag="default" />
               <ComboBoxItem Content="Alex · тонкие руки" Tag="slim" />
             </ComboBox>
-            <TextBlock Text="Анимация" Foreground="#718b96" FontSize="11" />
+            <TextBlock Text="Анимация" Foreground="{StaticResource LauncherMutedText}" FontSize="11" />
             <ComboBox x:Name="AnimationComboBox" SelectionChanged="PreviewSettingChanged">
               <ComboBoxItem Content="Ходьба" Tag="walking" />
               <ComboBoxItem Content="Покой" Tag="idle" />
@@ -351,7 +351,7 @@
               <ComboBoxItem Content="Плавание" Tag="swim" />
               <ComboBoxItem Content="Получение урона" Tag="damage" />
             </ComboBox>
-            <TextBlock Text="Фон" Foreground="#718b96" FontSize="11" />
+            <TextBlock Text="Фон" Foreground="{StaticResource LauncherMutedText}" FontSize="11" />
             <ComboBox x:Name="BackgroundComboBox" SelectionChanged="PreviewSettingChanged">
               <ComboBoxItem Content="Ледяная долина" Tag="ice" />
               <ComboBoxItem Content="Ночное небо" Tag="night" />
@@ -359,16 +359,16 @@
               <ComboBoxItem Content="Закат" Tag="sunset" />
               <ComboBoxItem Content="Тёмный фон" Tag="clean" />
             </ComboBox>
-            <CheckBox x:Name="AutoRotateCheckBox" Content="Автоповорот" IsChecked="True" Click="PreviewSettingChanged" Foreground="#eef7f5" Margin="0,0,0,8" />
-            <TextBlock Text="Скорость анимации" Foreground="#718b96" FontSize="11" />
-            <Slider x:Name="AnimationSpeedSlider" Minimum="0.25" Maximum="2.5" Value="1" TickFrequency="0.25" IsSnapToTickEnabled="True" ValueChanged="PreviewSettingChanged" />
+            <CheckBox x:Name="AutoRotateCheckBox" Content="Автоповорот" IsChecked="True" Click="PreviewSettingChanged" Foreground="{StaticResource LauncherPrimaryText}" Margin="0,0,0,8" />
+            <TextBlock Text="Скорость анимации" Foreground="{StaticResource LauncherMutedText}" FontSize="11" />
+            <Slider x:Name="AnimationSpeedSlider" Style="{StaticResource LauncherSlider}" Minimum="0.25" Maximum="2.5" Value="1" TickFrequency="0.25" IsSnapToTickEnabled="True" ValueChanged="PreviewSettingChanged" />
           </StackPanel>
         </ScrollViewer>
       </Border>
     </Grid>
 
     <DockPanel Grid.Row="1" Margin="0,12,0,0">
-      <TextBlock x:Name="StatusText" Text="Готово" Foreground="#9eb8c3" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+      <TextBlock x:Name="StatusText" Text="Готово" Foreground="{StaticResource LauncherSecondaryText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
       <Button Style="{StaticResource CompactButton}" Content="Назад" Click="Back_Click" Padding="16,8" Margin="8,0,0,0" DockPanel.Dock="Right" />
     </DockPanel>
   </Grid>

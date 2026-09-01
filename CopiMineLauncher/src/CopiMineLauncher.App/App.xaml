@@ -10,24 +10,26 @@
         <FontFamily x:Key="LauncherBodyFont">Segoe UI</FontFamily>
         <FontFamily x:Key="LauncherDataFont">Consolas</FontFamily>
 
-        <SolidColorBrush x:Key="LauncherColors" Color="#071B16" />
-        <SolidColorBrush x:Key="LauncherWindowBackground" Color="#071B16" />
-        <SolidColorBrush x:Key="LauncherPrimaryText" Color="#F2EEF9" />
-        <SolidColorBrush x:Key="LauncherSecondaryText" Color="#C2C6D7" />
-        <SolidColorBrush x:Key="LauncherMutedText" Color="#8D93A9" />
+        <SolidColorBrush x:Key="LauncherColors" Color="#07111F" />
+        <SolidColorBrush x:Key="LauncherWindowBackground" Color="#07111F" />
+        <SolidColorBrush x:Key="LauncherPrimaryText" Color="#F4F7FF" />
+        <SolidColorBrush x:Key="LauncherSecondaryText" Color="#B4C0D5" />
+        <SolidColorBrush x:Key="LauncherMutedText" Color="#7888A2" />
         <SolidColorBrush x:Key="LauncherAccent" Color="#59D6D0" />
-        <SolidColorBrush x:Key="LauncherAccentBright" Color="#D8FFB2" />
-        <SolidColorBrush x:Key="LauncherAccentPurple" Color="#B887FF" />
-        <SolidColorBrush x:Key="LauncherSurface" Color="#E6152830" />
-        <SolidColorBrush x:Key="LauncherSurfaceStrong" Color="#F01A243B" />
-        <SolidColorBrush x:Key="LauncherSurfaceRaised" Color="#F01B3540" />
-        <SolidColorBrush x:Key="LauncherBorder" Color="#B83B7180" />
-        <SolidColorBrush x:Key="LauncherButtonSurface" Color="#E61A3340" />
-        <SolidColorBrush x:Key="LauncherButtonHover" Color="#F02A5060" />
+        <SolidColorBrush x:Key="LauncherAccentBright" Color="#D9FFB4" />
+        <SolidColorBrush x:Key="LauncherAccentPurple" Color="#A797FF" />
+        <SolidColorBrush x:Key="LauncherAccentAmber" Color="#F5C977" />
+        <SolidColorBrush x:Key="LauncherSurface" Color="#A6112033" />
+        <SolidColorBrush x:Key="LauncherSurfaceStrong" Color="#D90C182B" />
+        <SolidColorBrush x:Key="LauncherSurfaceRaised" Color="#D91A2C43" />
+        <SolidColorBrush x:Key="LauncherBorder" Color="#8059D6D0" />
+        <SolidColorBrush x:Key="LauncherLine" Color="#5A59D6D0" />
+        <SolidColorBrush x:Key="LauncherButtonSurface" Color="#C0122740" />
+        <SolidColorBrush x:Key="LauncherButtonHover" Color="#D52A4B62" />
         <SolidColorBrush x:Key="LauncherButtonSheen" Color="#59D6D0" />
-        <SolidColorBrush x:Key="LauncherInputSurface" Color="#D90A1A23" />
-        <SolidColorBrush x:Key="LauncherRailSurface" Color="#EC071B20" />
-        <SolidColorBrush x:Key="LauncherSuccessSurface" Color="#C91A3F38" />
+        <SolidColorBrush x:Key="LauncherInputSurface" Color="#D9081525" />
+        <SolidColorBrush x:Key="LauncherRailSurface" Color="#D9071423" />
+        <SolidColorBrush x:Key="LauncherSuccessSurface" Color="#B51A3D3C" />
 
         <Style TargetType="{x:Type TextBlock}">
             <Setter Property="FontFamily" Value="{StaticResource LauncherBodyFont}" />
@@ -54,12 +56,12 @@
                                 Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="12"
+                                CornerRadius="8"
                                 SnapsToDevicePixels="True">
                             <Grid>
                                 <Border x:Name="ButtonSheen"
                                         Background="{StaticResource LauncherButtonSheen}"
-                                        CornerRadius="12"
+                                        CornerRadius="8"
                                         Opacity="0" />
                                 <ContentPresenter Content="{TemplateBinding Content}"
                                                   ContentTemplate="{TemplateBinding ContentTemplate}"
@@ -92,7 +94,7 @@
 
         <Style x:Key="LauncherPrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource LauncherButton}">
             <Setter Property="Background" Value="{StaticResource LauncherAccent}" />
-            <Setter Property="Foreground" Value="#071B16" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherWindowBackground}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
             <Setter Property="FontFamily" Value="{StaticResource LauncherDisplayFont}" />
             <Setter Property="FontWeight" Value="Bold" />
@@ -138,18 +140,143 @@
             <Setter Property="Margin" Value="8,0,0,0" />
         </Style>
 
+        <Style x:Key="LauncherSliderThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="Width" Value="18" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Background" Value="{StaticResource LauncherAccent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="9" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LauncherSliderRepeatButton" TargetType="{x:Type RepeatButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="2" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LauncherSlider" TargetType="{x:Type Slider}">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Foreground" Value="{StaticResource LauncherAccent}" />
+            <Setter Property="Background" Value="{StaticResource LauncherInputSurface}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Slider}">
+                        <Grid>
+                            <Border Height="4"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource LauncherInputSurface}"
+                                    CornerRadius="2" />
+                            <Track x:Name="PART_Track"
+                                   Focusable="False"
+                                   IsDirectionReversed="{TemplateBinding IsDirectionReversed}"
+                                   Maximum="{TemplateBinding Maximum}"
+                                   Minimum="{TemplateBinding Minimum}"
+                                   Orientation="{TemplateBinding Orientation}"
+                                   Value="{TemplateBinding Value}">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}"
+                                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Background="{StaticResource LauncherAccent}"
+                                                  Style="{StaticResource LauncherSliderRepeatButton}" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}"
+                                                  CommandTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
+                                                  Background="{StaticResource LauncherInputSurface}"
+                                                  Style="{StaticResource LauncherSliderRepeatButton}" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource LauncherSliderThumb}" />
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LauncherCheckBox" TargetType="{x:Type CheckBox}">
+            <Setter Property="Foreground" Value="{StaticResource LauncherPrimaryText}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type CheckBox}">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="CheckBoxBorder"
+                                    Width="18"
+                                    Height="18"
+                                    CornerRadius="4"
+                                    Background="{StaticResource LauncherInputSurface}"
+                                    BorderBrush="{StaticResource LauncherBorder}"
+                                    BorderThickness="1"
+                                    Margin="0,0,10,0">
+                                <Path x:Name="CheckMark"
+                                      Data="M4,9 L8,13 L15,5"
+                                      Stroke="{StaticResource LauncherWindowBackground}"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckBoxBorder" Property="Background" Value="{StaticResource LauncherAccent}" />
+                                <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource LauncherAccentBright}" />
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource LauncherAccent}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource LauncherAccentPurple}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CheckBoxBorder" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type CheckBox}" BasedOn="{StaticResource LauncherCheckBox}" />
+
         <Style x:Key="LauncherCard" TargetType="{x:Type Border}">
-            <Setter Property="Background" Value="{StaticResource LauncherSurface}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="Padding" Value="20" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherLine}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="20,16,20,20" />
         </Style>
 
         <Style x:Key="LauncherHeroCard" TargetType="{x:Type Border}" BasedOn="{StaticResource LauncherCard}">
             <Setter Property="Background" Value="{StaticResource LauncherSurfaceStrong}" />
-            <Setter Property="BorderBrush" Value="#B86B8AFF" />
-            <Setter Property="CornerRadius" Value="22" />
+            <Setter Property="BorderBrush" Value="#996B8AFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+
+        <Style x:Key="LauncherRule" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource LauncherLine}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+            <Setter Property="CornerRadius" Value="0" />
         </Style>
 
         <Style x:Key="LauncherTextBox" TargetType="{x:Type TextBox}">
@@ -176,7 +303,7 @@
 
         <Style x:Key="LauncherProgressBar" TargetType="{x:Type ProgressBar}">
             <Setter Property="Height" Value="10" />
-            <Setter Property="Background" Value="#B807111B" />
+            <Setter Property="Background" Value="#B8071324" />
             <Setter Property="Foreground" Value="{StaticResource LauncherAccent}" />
             <Setter Property="BorderBrush" Value="{StaticResource LauncherBorder}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -185,7 +312,7 @@
         <Style x:Key="LauncherLoadingSpinner" TargetType="{x:Type Ellipse}">
             <Setter Property="Width" Value="20" />
             <Setter Property="Height" Value="20" />
-            <Setter Property="Stroke" Value="#071B16" />
+            <Setter Property="Stroke" Value="{StaticResource LauncherWindowBackground}" />
             <Setter Property="StrokeThickness" Value="3" />
             <Setter Property="StrokeDashArray" Value="2 5" />
             <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />

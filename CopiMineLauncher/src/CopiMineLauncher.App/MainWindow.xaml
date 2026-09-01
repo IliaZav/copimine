@@ -23,9 +23,9 @@
     <Border IsHitTestVisible="False">
       <Border.Background>
         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-          <GradientStop Color="#80061210" Offset="0" />
+          <GradientStop Color="#B507111F" Offset="0" />
           <GradientStop Color="#98121A34" Offset="0.48" />
-          <GradientStop Color="#D007101B" Offset="1" />
+          <GradientStop Color="#E5070E1A" Offset="1" />
         </LinearGradientBrush>
       </Border.Background>
     </Border>
@@ -42,8 +42,8 @@
               Background="{StaticResource LauncherRailSurface}"
               BorderBrush="{StaticResource LauncherBorder}"
               BorderThickness="1"
-              CornerRadius="20"
-              Padding="14">
+              CornerRadius="0"
+              Padding="18,14,18,0">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -85,10 +85,10 @@
 
           <Border Grid.Row="1"
                   Background="{StaticResource LauncherSuccessSurface}"
-                  BorderBrush="#8C59D6D0"
-                  BorderThickness="1"
-                  CornerRadius="12"
-                  Padding="11"
+                  BorderBrush="{StaticResource LauncherLine}"
+                  BorderThickness="0,1,0,1"
+                  CornerRadius="0"
+                  Padding="0,13"
                   Margin="0,0,0,14">
             <StackPanel>
               <StackPanel Orientation="Horizontal">
@@ -103,7 +103,7 @@
                          FontFamily="{StaticResource LauncherDataFont}"
                          FontSize="12"
                          Margin="0,8,0,0" />
-              <TextBlock Text="Сборка синхронизируется перед запуском."
+              <TextBlock Text="Проверяем файлы перед входом."
                          Foreground="{StaticResource LauncherSecondaryText}"
                          TextWrapping="Wrap"
                          FontSize="10"
@@ -180,7 +180,7 @@
               <Border Background="{StaticResource LauncherSurfaceRaised}"
                       BorderBrush="{StaticResource LauncherBorder}"
                       BorderThickness="1"
-                      CornerRadius="12"
+                      CornerRadius="0"
                       Padding="10"
                       Visibility="{Binding LauncherLinkRequired, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel>
@@ -202,7 +202,7 @@
               <Border Background="{StaticResource LauncherSuccessSurface}"
                       BorderBrush="{StaticResource LauncherAccent}"
                       BorderThickness="1"
-                      CornerRadius="12"
+                      CornerRadius="0"
                       Padding="10"
                       Visibility="{Binding IsLauncherLinked, Converter={StaticResource BooleanToVisibilityConverter}}">
                 <StackPanel Orientation="Horizontal">
@@ -232,9 +232,9 @@
       <Grid Grid.Column="2">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
-          <RowDefinition Height="300" />
-          <RowDefinition Height="170" />
-          <RowDefinition Height="*" />
+          <RowDefinition Height="2.25*" MinHeight="225" />
+          <RowDefinition Height="1.15*" MinHeight="120" />
+          <RowDefinition Height="1.75*" MinHeight="175" />
           <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
@@ -266,13 +266,13 @@
                     Background="#B3112432"
                     BorderBrush="#9962D6D0"
                     BorderThickness="1"
-                    CornerRadius="15"
+                    CornerRadius="8"
                     ClipToBounds="True"
                     ToolTip="Живая анимация CopiMine">
               <Grid>
                 <Border x:Name="HeaderAnimationGlow"
                         Background="#2859D6D0"
-                        CornerRadius="15"
+                        CornerRadius="8"
                         Opacity="0.36"
                         IsHitTestVisible="False">
                   <Border.Triggers>
@@ -363,16 +363,16 @@
             <Border IsHitTestVisible="False">
               <Border.Background>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                  <GradientStop Color="#E507111B" Offset="0" />
+                    <GradientStop Color="#E507111F" Offset="0" />
                   <GradientStop Color="#A2172340" Offset="0.48" />
-                  <GradientStop Color="#B607101B" Offset="1" />
+                    <GradientStop Color="#C5070E1A" Offset="1" />
                 </LinearGradientBrush>
               </Border.Background>
             </Border>
             <Border x:Name="HeroSceneGlow"
-                    BorderBrush="#9959D6D0"
+                    BorderBrush="#996B8AFF"
                     BorderThickness="1"
-                    CornerRadius="22"
+                    CornerRadius="12"
                     Opacity="0.28"
                     IsHitTestVisible="False">
               <Border.Triggers>
@@ -401,20 +401,20 @@
                            FontSize="40"
                            FontWeight="Bold"
                            Margin="0,7,0,0" />
-                <TextBlock Text="Нужные файлы будут проверены перед входом. Твои дополнительные моды и настройки останутся на месте."
+                <TextBlock Text="Основные файлы проверяются перед входом. Твои настройки и дополнительные моды остаются на месте."
                            Foreground="{StaticResource LauncherSecondaryText}"
                            TextWrapping="Wrap"
                            FontSize="14"
                            LineHeight="21"
                            Margin="0,10,0,17" />
                 <WrapPanel>
-                  <Border Background="#C41A3744" BorderBrush="#8C59D6D0" BorderThickness="1" CornerRadius="9" Padding="10,6" Margin="0,0,8,0">
+                  <Border Background="#A61A2D43" BorderBrush="{StaticResource LauncherLine}" BorderThickness="1" CornerRadius="5" Padding="10,6" Margin="0,0,8,0">
                     <TextBlock Text="1.21.1" FontFamily="{StaticResource LauncherDataFont}" FontSize="11" />
                   </Border>
-                  <Border Background="#C41A3744" BorderBrush="#8C59D6D0" BorderThickness="1" CornerRadius="9" Padding="10,6" Margin="0,0,8,0">
+                  <Border Background="#A61A2D43" BorderBrush="{StaticResource LauncherLine}" BorderThickness="1" CornerRadius="5" Padding="10,6" Margin="0,0,8,0">
                     <TextBlock Text="FABRIC 0.19.3" FontFamily="{StaticResource LauncherDataFont}" FontSize="11" />
                   </Border>
-                  <Border Background="#C4382D55" BorderBrush="#996B8AFF" BorderThickness="1" CornerRadius="9" Padding="10,6">
+                  <Border Background="#A52A2550" BorderBrush="#996B8AFF" BorderThickness="1" CornerRadius="5" Padding="10,6">
                     <TextBlock Text="ПРОФИЛЬ ГОТОВ" Foreground="{StaticResource LauncherAccentBright}" FontFamily="{StaticResource LauncherDataFont}" FontSize="11" />
                   </Border>
                 </WrapPanel>
@@ -423,9 +423,9 @@
               <Border x:Name="LaunchDock"
                       Grid.Column="1"
                       Background="#E90A1827"
-                      BorderBrush="#C359D6D0"
+                      BorderBrush="{StaticResource LauncherAccent}"
                       BorderThickness="1"
-                      CornerRadius="18"
+                      CornerRadius="8"
                       Padding="18"
                       VerticalAlignment="Center">
                 <StackPanel>
@@ -494,7 +494,7 @@
                                Margin="0,0,9,0"
                                VerticalAlignment="Center" />
                       <TextBlock Text="{Binding PlayButtonText}"
-                                 Foreground="{StaticResource LauncherPrimaryText}"
+                                 Foreground="{StaticResource LauncherWindowBackground}"
                                  FontFamily="{StaticResource LauncherDisplayFont}"
                                  VerticalAlignment="Center" />
                     </StackPanel>
@@ -594,7 +594,7 @@
                            FontWeight="Bold" />
                 <TextBlock Text="Minecraft 1.21.1" FontFamily="{StaticResource LauncherDisplayFont}" FontSize="17" FontWeight="Bold" Margin="0,5,0,0" />
                 <TextBlock Text="Fabric 0.19.3  ·  Java 21" Foreground="{StaticResource LauncherSecondaryText}" FontFamily="{StaticResource LauncherDataFont}" FontSize="10" Margin="0,4,0,0" />
-                <TextBlock Text="Дополнительные моды не удаляются."
+                <TextBlock Text="Дополнительные моды остаются на месте."
                            Foreground="{StaticResource LauncherMutedText}"
                            FontSize="10"
                            Margin="0,8,0,0" />
@@ -655,18 +655,18 @@
                                 Visibility="{Binding HasPatchCards, Converter={StaticResource BooleanToVisibilityConverter}}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate>
-                        <Border Background="#A4152936"
-                                BorderBrush="#6C3B7180"
-                                BorderThickness="1"
-                                CornerRadius="11"
+                        <Border Background="Transparent"
+                                BorderBrush="{StaticResource LauncherLine}"
+                                BorderThickness="0,1,0,0"
+                                CornerRadius="0"
                                 Padding="12"
                                 Margin="0,0,0,9">
                           <StackPanel>
                             <Border Height="75"
                                     Background="{StaticResource LauncherInputSurface}"
-                                    BorderBrush="{StaticResource LauncherBorder}"
+                                    BorderBrush="{StaticResource LauncherLine}"
                                     BorderThickness="1"
-                                    CornerRadius="9"
+                                    CornerRadius="4"
                                     Margin="0,0,0,9">
                               <Grid>
                                 <Image Source="{Binding ArtworkPath}" Stretch="UniformToFill" Opacity="0.88" />
@@ -698,20 +698,20 @@
                       <ColumnDefinition Width="*" />
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Border Grid.Column="0" CornerRadius="11" ClipToBounds="True" Margin="0,0,5,0">
+                    <Border Grid.Column="0" CornerRadius="4" ClipToBounds="True" Margin="0,0,5,0">
                       <Image Source="Assets/LauncherVisuals/news-01.png" Stretch="UniformToFill" />
                     </Border>
-                    <Border Grid.Column="1" CornerRadius="11" ClipToBounds="True" Margin="3,0,3,0">
+                    <Border Grid.Column="1" CornerRadius="4" ClipToBounds="True" Margin="3,0,3,0">
                       <Image Source="Assets/LauncherVisuals/news-02.png" Stretch="UniformToFill" />
                     </Border>
-                    <Border Grid.Column="2" CornerRadius="11" ClipToBounds="True" Margin="5,0,0,0">
+                    <Border Grid.Column="2" CornerRadius="4" ClipToBounds="True" Margin="5,0,0,0">
                       <Image Source="Assets/LauncherVisuals/news-03.png" Stretch="UniformToFill" />
                     </Border>
                     <Border Grid.ColumnSpan="3"
                             VerticalAlignment="Bottom"
                             Background="#D20A1520"
                             Padding="12,9"
-                            CornerRadius="0,0,11,11">
+                            CornerRadius="0,0,4,4">
                       <StackPanel>
                         <TextBlock Text="Новости пока недоступны" FontWeight="SemiBold" FontSize="13" />
                         <TextBlock Text="Показываем сохранённые материалы."
@@ -770,11 +770,9 @@
           </Expander>
         </Grid>
 
-        <Border Grid.Row="4"
-                Background="#D00A1824"
-                BorderBrush="#663B7180"
-                BorderThickness="1"
-                CornerRadius="11"
+        <Border x:Name="LauncherFooter"
+                Grid.Row="4"
+                Style="{StaticResource LauncherRule}"
                 Padding="10"
                 Margin="0,15,0,0">
           <DockPanel>

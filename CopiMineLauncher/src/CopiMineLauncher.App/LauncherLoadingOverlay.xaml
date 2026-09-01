@@ -44,12 +44,12 @@
                               Stretch="UniformToFill"
                               Opacity="0.50"
                               IsHitTestVisible="False" />
-      <Border Background="#D007120F" IsHitTestVisible="False" />
+      <Border Background="#D507111F" IsHitTestVisible="False" />
       <Border Style="{StaticResource MotionCard}"
               Background="#ED10213A"
               BorderBrush="{StaticResource LauncherBorder}"
               BorderThickness="1"
-              CornerRadius="18"
+              CornerRadius="8"
               Padding="34"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"
@@ -94,12 +94,12 @@
              Stretch="UniformToFill"
              Opacity="0.54"
              IsHitTestVisible="False" />
-      <Border Background="#D407120F" IsHitTestVisible="False" />
+      <Border Background="#D507111F" IsHitTestVisible="False" />
       <Border Style="{StaticResource MotionCard}"
               Background="#F01A243B"
               BorderBrush="{StaticResource LauncherBorder}"
               BorderThickness="1"
-              CornerRadius="18"
+              CornerRadius="8"
               Padding="30"
               HorizontalAlignment="Center"
               VerticalAlignment="Center"

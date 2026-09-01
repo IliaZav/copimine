@@ -35,7 +35,7 @@ public sealed class LauncherRadicalRedesignContractTests
         xaml.Should().Contain("x:Key=\"LauncherDataFont\"");
         xaml.Should().Contain("x:Key=\"LauncherRailButton\"");
         xaml.Should().Contain("x:Key=\"LauncherHeroCard\"");
-        xaml.Should().Contain("#B887FF");
+        xaml.Should().Contain("#A797FF");
         xaml.Should().Contain("#59D6D0");
     }
 

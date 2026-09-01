@@ -54,8 +54,8 @@ public sealed class LauncherThemeContractTests
         var xaml = ReadSource("src", "CopiMineLauncher.App", "MainWindow.xaml");
 
         xaml.Should().Contain("Width=\"1480\" Height=\"920\" MinWidth=\"1240\" MinHeight=\"760\"");
-        xaml.Should().Contain("Opacity=\"0.86\"");
-        xaml.Should().Contain("#80061210");
+        xaml.Should().Contain("Opacity=\"0.78\"");
+        xaml.Should().Contain("#E507111F");
     }
 
     [Fact]

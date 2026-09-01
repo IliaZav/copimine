@@ -15,6 +15,8 @@ PUBLIC_PAGES = (
     FRONTEND / "shops.html",
     FRONTEND / "launcher.html",
     FRONTEND / "news.html",
+    FRONTEND / "mods.html",
+    FRONTEND / "events.html",
     FRONTEND / "signin.html",
     FRONTEND / "register.html",
     FRONTEND / "cart.html",
@@ -31,11 +33,25 @@ EXPECTED_PUBLIC_LINKS = (
     "/shops.html",
     "/launcher.html",
     "/news.html",
+    "/events.html",
 )
+
+SPECIAL_SHELLS = {
+    FRONTEND / "launcher-feed-index.html",
+    FRONTEND / "launcher-link.html",
+    FRONTEND / "preview-admin.html",
+    FRONTEND / "preview-player.html",
+}
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def test_html_route_inventory_has_an_explicit_shell_owner() -> None:
+    all_html = set(FRONTEND.rglob("*.html"))
+    public_pages = set(PUBLIC_PAGES)
+    assert all_html == public_pages | SPECIAL_SHELLS
 
 
 def header_markup(html: str, page: Path) -> str:

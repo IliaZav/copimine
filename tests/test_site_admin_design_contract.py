@@ -36,6 +36,7 @@ CANONICAL_NAV = (
     "/shops.html",
     "/launcher.html",
     "/news.html",
+    "/events.html",
     "/signin.html",
     "/register.html",
 )

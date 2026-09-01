@@ -400,6 +400,34 @@
       "base_material": "paper",
       "model": "copimine:item/end_event_portal_shard",
       "texture": "copimine:item/end_event_portal"
+    },
+    {
+      "id": "end_event_rift_obelisk_full",
+      "custom_model_data": 830010,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_obelisk_full",
+      "texture": "copimine:item/end_event_rift_obelisk_full"
+    },
+    {
+      "id": "end_event_rift_obelisk_damaged",
+      "custom_model_data": 830011,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_obelisk_damaged",
+      "texture": "copimine:item/end_event_rift_obelisk_damaged"
+    },
+    {
+      "id": "end_event_rift_obelisk_critical",
+      "custom_model_data": 830012,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_obelisk_critical",
+      "texture": "copimine:item/end_event_rift_obelisk_critical"
+    },
+    {
+      "id": "end_event_rift_fireball",
+      "custom_model_data": 830013,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_fireball",
+      "texture": "copimine:item/end_event_rift_fireball"
     }
   ]
 }

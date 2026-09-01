@@ -54,7 +54,7 @@ def test_health_thresholds_enter_bounded_absorption_and_judgment_casts() -> None
     damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
     assert "startAbsorptionChannel(boss)" in synchronize
     assert "!absorptionTriggered" in synchronize
-    assert "BossStagePolicy.judgmentThreshold()" in damage
+    assert "BossStagePolicy.judgmentThreshold(maxHealth)" in damage
     assert "!judgmentTriggered" in damage
 
 
@@ -69,7 +69,8 @@ def test_boss_stage_controller_blocks_health_projection_regressions_and_logs_the
 
 def test_absorption_threshold_pins_health_before_the_channel_can_be_skipped() -> None:
     damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
-    assert "setBossVirtualHealth(boss, BossStage.ABSORPTION.upperInclusive());" in damage
+    assert "setBossVirtualHealth(boss, absorptionThreshold);" in damage
+    assert "BossStagePolicy.upperThreshold(BossStage.ABSORPTION, maxHealth)" in damage
     assert "setBossVirtualHealth(boss, projectedHealth);" not in damage[:damage.index(
         "// Judgment begins at exactly 500 HP")
     ]
@@ -132,7 +133,7 @@ def test_official_boss_defeat_clears_all_wave_combat_entities_before_death() -> 
         "EVENT_KIND_ELITE",
         "EVENT_KIND_FINAL_WAVE",
         "entity.remove();",
-        "ownedEntities.remove(entity.getUniqueId());",
+        "ownedEntities.remove(entityId);",
         "finalWaveEntities.clear();",
     ):
         assert marker in cleanup

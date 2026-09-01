@@ -1,0 +1,19 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/crying_obsidian",
+    "rift": "copimine:item/end_event_rift_fireball"
+  },
+  "elements": [
+    {
+      "from": [1, 1, 1],
+      "to": [15, 15, 15],
+      "faces": {
+        "down": {"texture": "#rift"}, "up": {"texture": "#rift"},
+        "north": {"texture": "#rift"}, "south": {"texture": "#rift"},
+        "west": {"texture": "#rift"}, "east": {"texture": "#rift"}
+      }
+    }
+  ]
+}

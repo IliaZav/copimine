@@ -14,6 +14,13 @@ const arenaX = Number(process.argv[4])
 const arenaY = Number(process.argv[5])
 const arenaZ = Number(process.argv[6])
 const arenaRadius = Number(process.argv[7])
+const configuredAttackIntervalMs = Number(
+  process.argv[8] || process.env.END_RIFT_ATTACK_INTERVAL_MS || 400,
+)
+const configuredBossUuid = process.env.END_RIFT_BOSS_UUID || ''
+const attackIntervalMs = Number.isFinite(configuredAttackIntervalMs)
+  ? Math.max(200, Math.min(5000, Math.floor(configuredAttackIntervalMs)))
+  : 400
 const bot = mineflayer.createBot({ host, port, username, version: '1.21.1', auth: 'offline' })
 
 let joined = false
@@ -24,6 +31,15 @@ let previousHealth = null
 let sampleCount = 0
 let movedEntities = new Map()
 let attackCount = 0
+
+function enterPassiveMode () {
+  if (attackTimer !== null) {
+    clearInterval(attackTimer)
+    attackTimer = null
+  }
+  if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
+  console.log(`BOT_PASSIVE ${username}`)
+}
 
 function distance(a, b) {
   if (!a || !b) return Number.POSITIVE_INFINITY
@@ -43,6 +59,10 @@ function isConfiguredArenaMob(entity) {
 }
 
 function eventMobs() {
+  const visible = Object.values(bot.entities)
+    .filter(entity => entity && entity.uuid === configuredBossUuid)
+    .filter(isConfiguredArenaMob)
+  if (configuredBossUuid && visible.length > 0) return visible
   return Object.values(bot.entities)
     .filter(entity => entity && ['spider', 'enderman', 'skeleton'].includes(entity.name))
     .filter(isConfiguredArenaMob)
@@ -112,7 +132,7 @@ bot.once('spawn', () => {
   sampleTimer = setInterval(sampleMobs, 250)
   // Keep a survival-like attack cadence while still reacting quickly enough
   // to the tower-defense wave's moving attackers.
-  attackTimer = setInterval(attackNearest, 400)
+  attackTimer = setInterval(attackNearest, attackIntervalMs)
   healthTimer = setInterval(() => {
     if (previousHealth !== null && bot.health < previousHealth - 0.01) {
       console.log(`PLAYER_HURT ${username} before=${previousHealth.toFixed(2)} after=${bot.health.toFixed(2)}`)
@@ -125,6 +145,10 @@ bot.on('entitySpawn', entity => {
   if (entity && ['spider', 'enderman', 'skeleton'].includes(entity.name)) {
     console.log(`ENTITY_SPAWN ${username} id=${entity.id} type=${entity.name}`)
   }
+})
+bot.on('message', message => {
+  const text = message?.toString?.() || ''
+  if (text.includes('END_RIFT_PASSIVE')) enterPassiveMode()
 })
 bot.on('health', () => {
   if (previousHealth !== null && bot.health < previousHealth - 0.01) {

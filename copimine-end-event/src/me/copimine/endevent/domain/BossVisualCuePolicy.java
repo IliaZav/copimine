@@ -18,6 +18,7 @@ public final class BossVisualCuePolicy {
             "void_mark",
             "summon_servants",
             "will_distortion",
+            "rift_obelisks",
             "arena_inferno",
             "phase_shift",
             "final_awaken",
@@ -117,7 +118,10 @@ public final class BossVisualCuePolicy {
                 "minecraft:block.glass.break",
                 "minecraft:entity.shulker_bullet.hit",
                 "minecraft:block.amethyst_block.resonate",
-                "minecraft:block.portal.travel"
+                "minecraft:block.portal.travel",
+                "minecraft:entity.ender_dragon.growl",
+                "minecraft:block.beacon.activate",
+                "minecraft:entity.wither.shoot"
         };
         String[] primaryParticles = {
                 "DRAGON_BREATH",

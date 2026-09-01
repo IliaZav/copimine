@@ -9,6 +9,8 @@ import java.util.SplittableRandom;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
+import me.copimine.endevent.domain.BossHealthScalingPolicy;
+import me.copimine.endevent.domain.BossStage;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
 public record EventConfig(
@@ -91,7 +93,8 @@ public record EventConfig(
         float portalPitch,
         String clientBossId,
         String clientControlId,
-        String bridgeChannel) {
+        String bridgeChannel,
+        RiftObeliskTuning riftObeliskTuning) {
 
     public EventConfig {
         resourceRequirements = Map.copyOf(resourceRequirements);
@@ -109,6 +112,9 @@ public record EventConfig(
         if (miniBossTuning == null) {
             throw new IllegalArgumentException("mini boss tuning is required");
         }
+        if (riftObeliskTuning == null) {
+            throw new IllegalArgumentException("Rift Obelisk tuning is required");
+        }
         if (debuffAmplifier < 0 || debuffAmplifier > 3) {
             throw new IllegalArgumentException("debuff amplifier must be between 0 and 3");
         }
@@ -123,6 +129,7 @@ public record EventConfig(
         ConfigurationSection waves = requiredSection(plugin, "waves");
         ConfigurationSection miniBosses = requiredSection(plugin, "mini-bosses");
         ConfigurationSection boss = requiredSection(plugin, "boss");
+        RiftObeliskTuning riftObeliskTuning = riftObeliskTuning(requiredSection(boss, "rift-obelisks"));
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
         ConfigurationSection eventLootRolls = plugin.getConfig().getConfigurationSection("event-loot-rolls");
@@ -142,6 +149,9 @@ public record EventConfig(
         }
         int waveCap = positiveInt(waves, "hard-cap");
         double health = positiveDouble(boss, "health");
+        if (Math.abs(health - BossHealthScalingPolicy.BASE_HEALTH) > 0.000001D) {
+            throw new IllegalStateException("boss.health must remain 5000 for the roster scaling policy");
+        }
         double spiderHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "health-bonus");
         double spiderAttackDamageBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "attack-damage-bonus");
         ConfigurationSection skeleton = mobs.getConfigurationSection("skeleton");
@@ -263,7 +273,8 @@ public record EventConfig(
                 (float) portal.getDouble("yaw", 0.0D), (float) portal.getDouble("pitch", 0.0D),
                 text(client.getString("boss-id", "END_RIFT_GUARDIAN_V1"), "END_RIFT_GUARDIAN_V1"),
                 text(client.getString("control-id", "END_RIFT_CONTROL_REVERSAL_V1"), "END_RIFT_CONTROL_REVERSAL_V1"),
-                text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"));
+                text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"),
+                riftObeliskTuning);
     }
 
     private static WaveDefinition wave(ConfigurationSection parent, String key) {
@@ -331,6 +342,50 @@ public record EventConfig(
                 positiveDouble(requiredSection(section, "rift-step"), "damage"),
                 positiveDouble(requiredSection(section, "void-snare"), "damage"),
                 positiveDouble(requiredSection(section, "echo-pulse"), "damage"));
+    }
+
+    private static RiftObeliskTuning riftObeliskTuning(ConfigurationSection section) {
+        List<String> stages = section.getStringList("stages").stream()
+                .map(value -> value == null ? "" : value.trim().toUpperCase(Locale.ROOT))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
+        if (!stages.equals(List.of("DISTORTION"))) {
+            throw new IllegalStateException(
+                    "boss.rift-obelisks.stages must contain only DISTORTION");
+        }
+        int[] cooldown = secondsRange(section, "cooldown-seconds");
+        int health = section.getInt("health", -1);
+        int maxActive = section.getInt("max-active", -1);
+        double pulseRadius = section.getDouble("pulse-radius", -1.0D);
+        int pulseInterval = section.getInt("pulse-interval-ticks", -1);
+        int fireInterval = section.getInt("fire-interval-ticks", -1);
+        int maxFireballs = section.getInt("max-active-fireballs", -1);
+        double fireballDamage = section.getDouble("fireball-damage", -1.0D);
+        int blindnessTicks = section.getInt("blindness-ticks", -1);
+        int debuffTicks = section.getInt("debuff-ticks", -1);
+        int spawnTelegraphTicks = section.getInt("spawn-telegraph-ticks", -1);
+        int destructionDelayTicks = section.getInt("destruction-delay-ticks", -1);
+        double minDistance = section.getDouble("min-distance", -1.0D);
+        if (health != 3 || maxActive < 1 || maxActive > 4
+                || !(pulseRadius > 0.0D) || pulseRadius > 5.0D
+                || pulseInterval < 10 || pulseInterval > 200
+                || fireInterval < 20 || fireInterval > 400
+                || maxFireballs < 1 || maxFireballs > 8
+                || !(fireballDamage > 0.0D) || fireballDamage > 40.0D
+                || blindnessTicks < 1 || blindnessTicks > 200
+                || debuffTicks < 1 || debuffTicks > 200
+                || spawnTelegraphTicks < 5 || spawnTelegraphTicks > 100
+                || destructionDelayTicks < 1 || destructionDelayTicks > 40
+                || !(minDistance >= 2.0D) || minDistance > 12.0D) {
+            throw new IllegalStateException("boss.rift-obelisks contains unsafe bounds");
+        }
+        return new RiftObeliskTuning(
+                section.getBoolean("enabled", true), stages,
+                cooldown[0], cooldown[1], health, maxActive, pulseRadius,
+                pulseInterval, fireInterval, maxFireballs, fireballDamage,
+                blindnessTicks, debuffTicks, spawnTelegraphTicks,
+                destructionDelayTicks, minDistance);
     }
 
     private static LinkedHashMap<String, Integer> readMaterials(ConfigurationSection section, String path) {
@@ -575,6 +630,43 @@ public record EventConfig(
                     || !(riftStepDamage > 0.0D) || !(voidSnareDamage > 0.0D) || !(echoPulseDamage > 0.0D)) {
                 throw new IllegalArgumentException("invalid mini boss tuning");
             }
+        }
+    }
+
+    public record RiftObeliskTuning(
+            boolean enabled,
+            List<String> stages,
+            int cooldownMinSeconds,
+            int cooldownMaxSeconds,
+            int health,
+            int maxActive,
+            double pulseRadius,
+            int pulseIntervalTicks,
+            int fireIntervalTicks,
+            int maxActiveFireballs,
+            double fireballDamage,
+            int blindnessTicks,
+            int debuffTicks,
+            int spawnTelegraphTicks,
+            int destructionDelayTicks,
+            double minDistance) {
+        public RiftObeliskTuning {
+            stages = List.copyOf(stages == null ? List.of() : stages);
+            if (health != 3 || maxActive < 1 || maxActive > 4
+                    || cooldownMinSeconds < 1 || cooldownMaxSeconds < cooldownMinSeconds
+                    || pulseRadius <= 0.0D || pulseRadius > 5.0D
+                    || pulseIntervalTicks < 10 || fireIntervalTicks < 20
+                    || maxActiveFireballs < 1 || maxActiveFireballs > 8
+                    || fireballDamage <= 0.0D || blindnessTicks < 1 || debuffTicks < 1
+                    || spawnTelegraphTicks < 5 || destructionDelayTicks < 1
+                    || minDistance < 2.0D || minDistance > 12.0D
+                    || !stages.equals(List.of("DISTORTION"))) {
+                throw new IllegalArgumentException("invalid Rift Obelisk tuning");
+            }
+        }
+
+        public boolean enabledFor(BossStage stage) {
+            return enabled && stage != null && stages.contains(stage.name());
         }
     }
 }

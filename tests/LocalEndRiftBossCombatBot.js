@@ -14,6 +14,7 @@ const durationMs = Number(process.argv[3] || 45000)
 const attackEveryMs = Number(process.env.END_RIFT_BOSS_ATTACK_EVERY_MS || 1100)
 const attackDelayMs = Number(process.env.END_RIFT_BOSS_ATTACK_DELAY_MS || 9000)
 const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
+const rawAttackPackets = process.env.END_RIFT_RAW_ATTACK !== '0'
 
 const bot = mineflayer.createBot({
   host,
@@ -108,9 +109,21 @@ function tryAttack () {
         console.log(`BOSS_OUT_OF_REACH ${username} distance=${finalDistance.toFixed(2)}`)
         return
       }
-      bot.attack(attackTarget)
+      if (rawAttackPackets) {
+        // Mineflayer's high-level helper is useful for ordinary probes, but
+        // the multi-player contract must make the exact serverbound attack
+        // packet explicit so a helper-side cooldown cannot hide a hit.
+        bot._client.write('use_entity', {
+          target: attackTarget.id,
+          mouse: 1,
+          sneaking: false
+        })
+        bot._client.write('arm_animation', { hand: 0 })
+      } else {
+        bot.attack(attackTarget)
+      }
       attackCount += 1
-      console.log(`PLAYER_ATTACK ${username} count=${attackCount} bossId=${attackTarget.id} distance=${finalDistance.toFixed(2)}`)
+      console.log(`PLAYER_ATTACK ${username} count=${attackCount} bossId=${attackTarget.id} distance=${finalDistance.toFixed(2)} raw=${rawAttackPackets}`)
     })
   }).catch(error => {
     console.error(`ATTACK_ERROR ${username} ${error.stack || error}`)

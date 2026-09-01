@@ -14,6 +14,7 @@ public final class BossVisualCuePolicyTest {
             "void_mark",
             "summon_servants",
             "will_distortion",
+            "rift_obelisks",
             "arena_inferno",
             "phase_shift",
             "final_awaken",

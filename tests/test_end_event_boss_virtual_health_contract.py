@@ -13,26 +13,28 @@ def _body(start_marker: str, end_marker: str) -> str:
     return MAIN[start:end]
 
 
-def test_boss_configures_5000_virtual_hp_without_exceeding_papers_physical_limit() -> None:
+def test_boss_configures_scaled_virtual_hp_without_exceeding_papers_physical_limit() -> None:
     configure = _body("private void configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
     assert "BOSS_PHYSICAL_HEALTH_LIMIT = 2048.0D" in MAIN
     assert "keyBossVirtualHealth" in MAIN
-    assert "maxHealth.setBaseValue(Math.min(config.bossHealth(), BOSS_PHYSICAL_HEALTH_LIMIT));" in configure
-    assert "setBossVirtualHealth(boss, config.bossHealth());" in configure
+    assert "keyBossVirtualMaxHealth" in configure
+    assert "maxHealth.setBaseValue(Math.min(configuredMaxHealth, BOSS_PHYSICAL_HEALTH_LIMIT));" in configure
+    assert "setBossVirtualHealth(boss, configuredMaxHealth);" in configure
     assert "boss.setHealth(config.bossHealth());" not in configure
 
 
-def test_boss_thresholds_and_bossbar_use_the_virtual_5000_hp_pool() -> None:
+def test_boss_thresholds_and_bossbar_use_the_active_virtual_hp_pool() -> None:
     synchronize = _body("private void synchronizeBossStage", "private void updateBossBar")
     bar = _body("private void updateBossBar", "private int randomSeconds")
     damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
     servants = _body("private boolean servantSummonWindow", "private void summonServants")
     summon = _body("private void summonServants", "public void onOwnedEntityDeath")
     assert "bossVirtualHealth(boss)" in synchronize
-    assert "config.bossHealth()" in bar
+    assert "bossMaxHealth(boss)" in bar
     assert "virtualHealth / max" in bar
     assert "bossVirtualHealth(boss)" in damage
-    assert "config.bossHealth()" in damage
+    assert "double maxHealth = bossMaxHealth(boss)" in damage
+    assert "scaledBossThreshold(config.bossHalfHealth(), boss)" in damage
     assert "bossVirtualHealth(boss)" in servants
     assert "bossVirtualHealth(boss)" in summon
 

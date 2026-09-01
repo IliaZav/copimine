@@ -153,11 +153,34 @@ def test_official_driver_reaches_the_outer_spawn_ring_without_shortcuts() -> Non
 
 def test_official_survival_players_have_a_real_melee_fixture_for_all_wave_mobs() -> None:
     source = DRIVER.read_text(encoding="utf-8")
-    assert "give $name minecraft:netherite_sword" in source
+    assert "give $name minecraft:netherite_sword 1" in source
     assert "enchant $name minecraft:sharpness 5" in source
     assert "effect give $name minecraft:strength 1000 20 true" in source
     bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
-    assert "attackTimer = setInterval(attackNearest, 400)" in bot
+    assert "attackIntervalMs" in bot
+    assert "process.argv[8]" in bot
+    assert "attackTimer = setInterval(attackNearest, attackIntervalMs)" in bot
+
+
+def test_reward_probe_can_freeze_survival_bots_before_measuring_pickup() -> None:
+    """The pickup assertion must not be invalidated by post-wave knockback."""
+    source = DRIVER.read_text(encoding="utf-8")
+    bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    assert "END_RIFT_PASSIVE" in source
+    assert "END_RIFT_PASSIVE" in bot
+    assert "knockback_resistance" in source
+    assert "clearInterval(attackTimer)" in bot
+
+
+def test_official_boss_phase_probe_uses_a_bounded_slow_attack_cadence() -> None:
+    source = (ROOT / "tests/RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    assert "+ ' 900'" in source
+
+
+def test_boss_damage_probe_targets_the_authoritative_boss_uuid() -> None:
+    bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    assert "END_RIFT_BOSS_UUID" in bot
+    assert "entity.uuid === configuredBossUuid" in bot
 
 
 def test_official_driver_can_close_on_live_mob_positions_after_objective_deadline() -> None:

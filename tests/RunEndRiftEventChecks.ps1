@@ -63,6 +63,9 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
       tests\test_end_event_portal_visual_contract.py tests\test_end_event_arena_scene_contract.py `
       tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
+      tests\test_end_event_boss_health_scaling_contract.py `
+      tests\test_end_event_boss_multi_player_damage_contract.py `
+      tests\test_end_event_rift_obelisk_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
@@ -105,6 +108,11 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\BossVisualCuePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossHealthScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossVirtualHealthPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftObeliskScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftObeliskDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftObeliskPlacementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
       (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
@@ -132,6 +140,11 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild BossVisualCuePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossHealthScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossVirtualHealthPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskPlacementPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
   Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest

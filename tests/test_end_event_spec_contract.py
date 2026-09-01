@@ -83,7 +83,7 @@ def test_final_ritual_is_direct_health_control_and_stops_normal_boss_loop() -> N
     assert "player.setHealth(Math.max" in drain
     assert "finalDrainTargets" in drain
     assert "boss.setInvulnerable(true)" in MAIN
-    assert "setBossVirtualHealth(boss, config.bossFinalHealth())" in MAIN
+    assert "setBossVirtualHealth(boss, scaledBossThreshold(config.bossFinalHealth(), boss))" in MAIN
     assert "if (!forced && phase != EventPhase.BOSS_ACTIVE)" in MAIN
     assert "PlayerDeathEvent" not in MAIN[MAIN.index("applyFinalDrain"):MAIN.index("scheduleFinalRitualVisual")]
 

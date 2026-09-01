@@ -1,0 +1,16 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "minecraft:block/obsidian",
+    "frame": "minecraft:block/crying_obsidian",
+    "rift": "copimine:item/end_event_rift_obelisk_damaged"
+  },
+  "elements": [
+    {"from": [1, 0, 1], "to": [15, 2, 15], "faces": {"down": {"texture": "#frame"}, "up": {"texture": "#rift"}, "north": {"texture": "#frame"}, "south": {"texture": "#frame"}, "west": {"texture": "#frame"}, "east": {"texture": "#frame"}}},
+    {"from": [3, 2, 3], "to": [13, 14, 13], "faces": {"down": {"texture": "#frame"}, "up": {"texture": "#rift"}, "north": {"texture": "#rift"}, "south": {"texture": "#rift"}, "west": {"texture": "#rift"}, "east": {"texture": "#rift"}}},
+    {"from": [1, 14, 1], "to": [15, 16, 15], "faces": {"down": {"texture": "#rift"}, "up": {"texture": "#frame"}, "north": {"texture": "#frame"}, "south": {"texture": "#frame"}, "west": {"texture": "#frame"}, "east": {"texture": "#frame"}}},
+    {"from": [1, 5, 2], "to": [3, 11, 4], "faces": {"down": {"texture": "#frame"}, "up": {"texture": "#rift"}, "north": {"texture": "#rift"}, "south": {"texture": "#rift"}, "west": {"texture": "#frame"}, "east": {"texture": "#rift"}}},
+    {"from": [13, 5, 12], "to": [15, 11, 14], "faces": {"down": {"texture": "#frame"}, "up": {"texture": "#rift"}, "north": {"texture": "#rift"}, "south": {"texture": "#rift"}, "west": {"texture": "#rift"}, "east": {"texture": "#frame"}}}
+  ]
+}

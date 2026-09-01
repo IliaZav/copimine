@@ -27,6 +27,7 @@ public final class EndRiftAiPolicy {
         RIFT_ARROWS("rift_arrows", "Шквал Стрел Разлома"),
         SUMMON_SERVANTS("summon_servants", "Призыв слуг Разлома"),
         WILL_DISTORTION("will_distortion", "Искажение воли"),
+        RIFT_OBELISKS("rift_obelisks", "Обелиски Разлома"),
         ARENA_INFERNO("arena_inferno", "Пламя Разлома");
 
         private final String id;

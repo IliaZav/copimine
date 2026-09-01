@@ -5,18 +5,42 @@ import java.util.List;
 
 /** Pure transitions for health stages, spell availability and one-shot Judgment. */
 public final class BossStagePolicy {
-    private static final double JUDGMENT_THRESHOLD = 500.0D;
-
     private BossStagePolicy() {
     }
 
     public static BossStage stageFor(double health, boolean judgmentTriggered) {
-        return BossStage.forHealth(health);
+        return stageFor(health, BossHealthScalingPolicy.BASE_HEALTH, judgmentTriggered);
+    }
+
+    /** Resolve a stage from a percentage of the active virtual HP pool. */
+    public static BossStage stageFor(double health, double maxHealth, boolean judgmentTriggered) {
+        double safeMax = positive(maxHealth, BossHealthScalingPolicy.BASE_HEALTH);
+        double safeHealth = finite(health) ? Math.max(0.0D, health) : 0.0D;
+        double fraction = safeHealth / safeMax;
+        if (fraction > 0.80D) {
+            return BossStage.AWAKENING;
+        }
+        if (fraction > 0.60D) {
+            return BossStage.HUNTER;
+        }
+        if (fraction > 0.40D) {
+            return BossStage.DISTORTION;
+        }
+        if (fraction > 0.20D) {
+            return BossStage.ABSORPTION;
+        }
+        return BossStage.CATASTROPHE;
     }
 
     public static StageTransition transition(BossStage previous, double health, boolean judgmentTriggered) {
-        BossStage requested = stageFor(health, judgmentTriggered);
-        boolean judgment = !judgmentTriggered && finite(health) && health <= JUDGMENT_THRESHOLD;
+        return transition(previous, health, BossHealthScalingPolicy.BASE_HEALTH, judgmentTriggered);
+    }
+
+    public static StageTransition transition(BossStage previous, double health, double maxHealth,
+                                              boolean judgmentTriggered) {
+        BossStage requested = stageFor(health, maxHealth, judgmentTriggered);
+        boolean judgment = !judgmentTriggered && finite(health)
+                && health <= judgmentThreshold(maxHealth);
         // Physical Bukkit health is a projection of the authoritative virtual
         // value and can briefly recover while a cast, reconnect, or another
         // plugin is being reconciled.  Named combat phases are one-way: a
@@ -56,6 +80,7 @@ public final class BossStagePolicy {
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.WILL_DISTORTION,
+                    EndRiftAiPolicy.BossSpell.RIFT_OBELISKS,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
             case ABSORPTION -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
@@ -114,7 +139,26 @@ public final class BossStagePolicy {
     }
 
     public static double judgmentThreshold() {
-        return JUDGMENT_THRESHOLD;
+        return judgmentThreshold(BossHealthScalingPolicy.BASE_HEALTH);
+    }
+
+    public static double judgmentThreshold(double maxHealth) {
+        return BossHealthScalingPolicy.judgmentThreshold(maxHealth);
+    }
+
+    /** Upper boundary for a stage, expressed in the active pool's HP units. */
+    public static double upperThreshold(BossStage stage, double maxHealth) {
+        double safeMax = positive(maxHealth, BossHealthScalingPolicy.BASE_HEALTH);
+        if (stage == null) {
+            return safeMax;
+        }
+        return switch (stage) {
+            case AWAKENING -> safeMax;
+            case HUNTER -> safeMax * 0.80D;
+            case DISTORTION -> safeMax * 0.60D;
+            case ABSORPTION -> safeMax * 0.40D;
+            case CATASTROPHE -> safeMax * 0.20D;
+        };
     }
 
     public record CombatProfile(double movementSpeed,
@@ -148,5 +192,9 @@ public final class BossStagePolicy {
 
     private static boolean finite(double value) {
         return !Double.isNaN(value) && !Double.isInfinite(value);
+    }
+
+    private static double positive(double value, double fallback) {
+        return finite(value) && value > 0.0D ? value : fallback;
     }
 }

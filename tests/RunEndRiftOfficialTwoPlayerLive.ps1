@@ -8,7 +8,9 @@ param(
   [string[]]$AdditionalBotNames = @(),
   [int]$BotDurationSeconds = 1200,
   [int]$TimeoutSeconds = 1100,
-  [switch]$TowerFailureProbe
+  [switch]$TowerFailureProbe,
+  [switch]$RewardPickupProbe,
+  [switch]$StopAfterRewardProbe
 )
 
 # Local-only official two-player run.  This driver prepares the isolated event
@@ -227,6 +229,57 @@ function Keep-PlayersAtPoint {
     $offset = $offsets[$index % $offsets.Count]
     Teleport-Player -Name $PlayerNames[$index] -X ($Point.X + $offset.X) -Y $Point.Y -Z ($Point.Z + $offset.Z)
   }
+}
+
+function Assert-WaveRewardPickup {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][int[]]$Core,
+    [int]$Wave = 1
+  )
+  # Wave rewards are physical Item entities at the Core.  Visit one player at
+  # a time so the ownership guard is exercised: the first player cannot take
+  # the second player's bundle, and both players must still receive the
+  # guaranteed wave-1 COOKED_BEEF stack.
+  $probeTag = 'endrift_reward_probe_present'
+  $null = Invoke-LocalRcon ("tag $Name remove $probeTag")
+  # Rewards are spawned on the Core's top face.  Stand on that same face so
+  # the player is within the vanilla pickup radius of every personal stack;
+  # the core block is solid below the player and does not push the client out.
+  $pickupX = $Core[0] + 0.5D
+  $pickupY = $Core[1] + 1.0D
+  $pickupZ = $Core[2] + 0.5D
+  for ($attempt = 0; $attempt -lt 12; $attempt++) {
+    # The protocol combat bot keeps sending its previous physics position
+    # after an administrative teleport.  Re-assert the pickup position for
+    # each bounded poll so the probe measures the item pickup path rather than
+    # that client-side movement race.
+    Teleport-Player -Name $Name -X $pickupX -Y $pickupY -Z $pickupZ
+    Start-Sleep -Milliseconds 500
+    # RCON truncates large Inventory NBT responses.  The item predicate is a
+    # bounded server-side query and is therefore the authoritative check that
+    # the guaranteed material actually entered this player's inventory.
+    $null = Invoke-LocalRcon ("execute if items entity $Name container.* minecraft:cooked_beef run tag $Name add $probeTag")
+    $tags = Invoke-LocalRcon ("data get entity $Name Tags")
+    if ([Regex]::IsMatch($tags, [Regex]::Escape($probeTag))) {
+      $null = Invoke-LocalRcon ("tag $Name remove $probeTag")
+      Write-Evidence "OFFICIAL_WAVE_REWARD_PICKUP_PASS event=$eventId wave=$Wave player=$Name material=minecraft:cooked_beef inventory_verified=true"
+      return
+    }
+  }
+  $null = Invoke-LocalRcon ("tag $Name remove $probeTag")
+  $position = Invoke-LocalRcon ("data get entity $Name Pos")
+  $inventory = Invoke-LocalRcon ("data get entity $Name Inventory")
+  $itemProbe = Invoke-LocalRcon 'execute as @e[type=item,x=7,y=68,z=-40,dx=3,dy=3,dz=3] run data get entity @s Item'
+  $itemPositions = Invoke-LocalRcon 'execute as @e[type=item,x=7,y=68,z=-40,dx=3,dy=3,dz=3] run data get entity @s Pos'
+  $itemDelays = Invoke-LocalRcon 'execute as @e[type=item,x=7,y=68,z=-40,dx=3,dy=3,dz=1] run data get entity @s PickupDelay'
+  $position = ($position -replace '\r?\n', ' ').Trim()
+  $inventory = ($inventory -replace '\r?\n', ' ').Trim()
+  $itemProbe = ($itemProbe -replace '\r?\n', ' ').Trim()
+  $itemPositions = ($itemPositions -replace '\r?\n', ' ').Trim()
+  $itemDelays = ($itemDelays -replace '\r?\n', ' ').Trim()
+  Write-Evidence "OFFICIAL_WAVE_REWARD_PICKUP_DIAGNOSTICS event=$eventId wave=$Wave player=$Name position=<$position> inventory=<$inventory> nearby_items=<$itemProbe> nearby_positions=<$itemPositions> nearby_pickup_delays=<$itemDelays>"
+  throw "Player $Name did not pick up the guaranteed wave-$Wave reward at the Core."
 }
 
 function Get-BossUuid {
@@ -453,7 +506,7 @@ try {
     $botErr = Join-Path $botLogDirectory ($name + '.err.log')
     $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
       (Format-Coordinate ($coreX + 0.5D)) + ' ' + (Format-Coordinate $coreY) + ' ' +
-      (Format-Coordinate ($coreZ + 0.5D)) + ' ' + (Format-Coordinate 20.0D)
+      (Format-Coordinate ($coreZ + 0.5D)) + ' ' + (Format-Coordinate 20.0D) + ' 900'
     $processes += Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
       -RedirectStandardOutput $botLog -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
   }
@@ -462,7 +515,10 @@ try {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
     $null = Invoke-LocalRcon -CommandText ("clear $name")
     $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 1000")
-    $null = Invoke-LocalRcon -CommandText ("give $name minecraft:netherite_sword")
+    # Essentials/custom command handling defaults an omitted give amount to a
+    # full stack.  A sword stack fills every inventory slot and makes the
+    # later reward pickup probe report a false gameplay failure.
+    $null = Invoke-LocalRcon -CommandText ("give $name minecraft:netherite_sword 1")
     $null = Invoke-LocalRcon -CommandText ("enchant $name minecraft:sharpness 5")
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:resistance 1000 4 true")
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:regeneration 1000 4 true")
@@ -477,6 +533,25 @@ try {
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=1' -WaitSeconds 20
   Keep-PlayersAtCombatSweep -Core $core
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  if ($RewardPickupProbe) {
+    Wait-LogRegex -Pattern 'WAVE_REWARD_SPAWNED.*wave=1' -WaitSeconds 20
+    Write-Evidence "WAVE_REWARD_PICKUP_PROBE event=$eventId wave=1 recipients=$($PlayerNames.Count) mode=one-player-at-a-time"
+    # Stop the survival clients' attack loop before measuring pickup.  The
+    # reward is a physical Item entity; leaving wave combat active would let
+    # mobs knock the probe away while the ownership check is being exercised.
+    foreach ($name in $PlayerNames) {
+      $null = Invoke-LocalRcon -CommandText ("tellraw $name " + '{"text":"END_RIFT_PASSIVE"}')
+      $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.knockback_resistance base set 1")
+    }
+    foreach ($name in $PlayerNames) {
+      Assert-WaveRewardPickup -Name $name -Core $core -Wave 1
+    }
+    if ($StopAfterRewardProbe) {
+      Write-Evidence "WAVE_REWARD_PICKUP_PROBE_PASS event=$eventId wave=1 recipients=$($PlayerNames.Count) stop_after_probe=true"
+      return
+    }
+    Keep-PlayersAtCoreRing -Core $core
+  }
 
   Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2' -WaitSeconds 60
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_MARK.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
@@ -608,6 +683,11 @@ try {
   foreach ($process in $processes) {
     if ($process) {
       try { $process.WaitForExit(5000) | Out-Null } catch { }
+    }
+  }
+  if ($RewardPickupProbe) {
+    foreach ($name in $PlayerNames) {
+      try { Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.knockback_resistance base set 0") | Out-Null } catch { }
     }
   }
   # Restore a clean, configured local scene for the next run.  The same

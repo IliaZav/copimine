@@ -13864,10 +13864,20 @@ async def player_create_report(request: Request, data: PlayerSupportReportIn, ac
 
 @app.get("/api/status")
 async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
-    online, latency = await bg(tcp_online, MC_HOST, MC_PORT)
-    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 443)
-    backend_online, backend_latency = await bg(tcp_online, "127.0.0.1", 8090)
-    voice = await bg(udp_probe, MC_HOST, 24454)
+    # These probes are independent.  Fan them out so an offline Minecraft,
+    # HTTPS, or voice port contributes one timeout at most instead of adding
+    # its timeout to every other check before the cabinet can render.
+    (
+        (online, latency),
+        (web_online, web_latency),
+        (backend_online, backend_latency),
+        voice,
+    ) = await asyncio.gather(
+        bg(tcp_online, MC_HOST, MC_PORT),
+        bg(tcp_online, "127.0.0.1", 443),
+        bg(tcp_online, "127.0.0.1", 8090),
+        bg(udp_probe, MC_HOST, 24454),
+    )
     rcon_ok = False
     list_text = ""
     tps_text = ""

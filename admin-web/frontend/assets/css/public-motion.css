@@ -212,3 +212,54 @@ body[data-page-kind^="public"] .hero-sprite-chip:nth-child(3)::after { animation
     transition: none !important;
   }
 }
+
+/* Scroll state is the single page-level signal.  It gives long pages a
+ * quiet sense of progress while the reveal layer keeps each section readable. */
+body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+  content: "";
+  position: fixed;
+  z-index: 30;
+  top: 112px;
+  right: 16px;
+  width: 2px;
+  height: clamp(88px, 16vh, 180px);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--site-aqua), var(--site-violet), transparent);
+  box-shadow: 0 0 16px rgba(83, 205, 184, .34);
+  pointer-events: none;
+  transform: scaleY(clamp(.08, var(--scroll-progress, 0), 1));
+  transform-origin: top center;
+}
+
+body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  animation: none;
+  transition: opacity 520ms cubic-bezier(.2, .75, .2, 1), transform 520ms cubic-bezier(.2, .75, .2, 1);
+  transition-delay: var(--motion-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (max-width: 680px) {
+  body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+    display: none;
+  }
+
+  body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -2,6 +2,7 @@ import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./share
 import { buildCsvContent } from "./shared/csv.js?v=20260829launcherlink6";
 import { resolveDonationBalance } from "./shared/player-detail-values.js?v=20260829launcherlink6";
 import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js?v=20260829launcherlink6";
+import { initCabinetMotion } from "./cabinet-motion.js?v=20260901motion1";
 import { createAdminCmsPages } from "./admin/cms-pages.js?v=20260829launcherlink6";
 import { createAdminLauncherPages } from "./admin/launcher-pages.js?v=20260829launcherlink6";
 import { createAdminNewsPages } from "./admin/news-pages.js?v=20260829launcherlink6";
@@ -6652,6 +6653,7 @@ function wire() {
 
 async function boot() {
   wire();
+  initCabinetMotion();
   setBootState("loading");
   // CSRF is warmed for the first mutation, but it must not delay the auth
   // decision. Guests should reach sign-in immediately when the backend is

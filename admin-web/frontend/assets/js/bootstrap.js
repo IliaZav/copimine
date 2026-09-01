@@ -1,7 +1,7 @@
 import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui16";
-import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260829launcherlink6";
+import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260902route1";
 import { initPublicNav } from "./public/public-nav.js?v=20260829siteui23";
-import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260829launcherlink6";
+import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260902route1";
 
 const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["start", "index.html"],
@@ -77,7 +77,7 @@ function normalizeAuthHashRoute() {
 
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260901motion1")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260902route1")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";

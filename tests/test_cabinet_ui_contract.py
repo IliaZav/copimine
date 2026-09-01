@@ -90,8 +90,8 @@ def test_cabinet_loading_subtitle_is_not_the_same_internal_copy_on_every_route()
 
 def test_cabinet_shell_assets_share_the_current_release_cache_key() -> None:
     cache_key = "20260902flat6"
-    runtime_cache_key = "20260901motion1"
-    app_cache_key = "20260901motion1"
+    runtime_cache_key = "20260902route1"
+    app_cache_key = "20260902route1"
     polish_cache_key = "20260902cabinetui30"
     for path in cabinet_templates():
         source = path.read_text(encoding="utf-8")

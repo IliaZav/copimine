@@ -11,3 +11,11 @@ def test_admin_content_sections_have_stable_spa_routes() -> None:
     assert 'news: "/cabinet/settings.html?route=news"' in source
     assert 'events: "/cabinet/settings.html?route=events"' in source
     assert 'cms: "/cabinet/settings.html?route=cms"' in source
+
+
+def test_admin_route_map_change_busts_the_import_cache() -> None:
+    runtime = (ROOT / "admin-web" / "frontend" / "assets" / "js" / "cabinet-runtime.js").read_text(encoding="utf-8")
+    bootstrap = (ROOT / "admin-web" / "frontend" / "assets" / "js" / "bootstrap.js").read_text(encoding="utf-8")
+
+    assert 'shared/app-routes.js?v=20260902route1' in runtime
+    assert 'shared/app-routes.js?v=20260902route1' in bootstrap

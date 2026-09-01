@@ -60,7 +60,7 @@ def test_motion_release_busts_public_and_cabinet_entrypoint_caches() -> None:
     public_style_key = "20260902flat6"
     public_module_key = "20260902motion2"
     cabinet_style_key = "20260902flat6"
-    cabinet_app_key = "20260901motion1"
+    cabinet_app_key = "20260902route1"
     pages = list((ROOT / "admin-web/frontend").glob("*.html"))
     pages += list((ROOT / "admin-web/frontend/news").glob("*.html"))
     for page in pages:

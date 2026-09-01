@@ -1,4 +1,4 @@
-import { launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260829launcherlink6";
+import { launcherBindingHrefFromSearch } from "./shared/app-routes.js?v=20260902route1";
 
 // Older backend workers may still return /cabinet/link.html while they are
 // being replaced. Keep those one-time requests on the same standalone page

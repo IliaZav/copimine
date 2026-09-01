@@ -10,7 +10,8 @@ RUNTIME = ROOT / "admin-web/frontend/assets/js/cabinet-runtime.js"
 BOOTSTRAP = ROOT / "admin-web/frontend/assets/js/bootstrap.js"
 STAGE_SITE = ROOT / "scripts/stage_copimine_launcher_site.ps1"
 CABINET_CACHE_KEY = "20260829launcherlink6"
-ENTRYPOINT_CACHE_KEY = "20260901motion1"
+ENTRYPOINT_CACHE_KEY = "20260902route1"
+ROUTE_CACHE_KEY = "20260902route1"
 
 
 def _relative_imports(source: str) -> set[str]:
@@ -41,7 +42,7 @@ def test_dynamic_runtime_failure_leaves_a_recoverable_boot_screen() -> None:
     assert "Повторить" in app
     assert "cabinetRuntimePromise = null" in app
     assert "loadCabinetRuntime" in app
-    assert "cabinet-runtime.js?v=20260901motion1" in app
+    assert "cabinet-runtime.js?v=20260902route1" in app
     assert "error?.stack" in app
 
 
@@ -53,8 +54,8 @@ def test_cabinet_boot_chain_busts_stale_runtime_cache_after_a_live_syntax_failur
 
     assert f'./js/bootstrap.js?v={ENTRYPOINT_CACHE_KEY}' in app
     assert f'./cabinet-runtime.js?v={ENTRYPOINT_CACHE_KEY}' in bootstrap
-    assert f'./shared/app-routes.js?v={CABINET_CACHE_KEY}' in bootstrap
-    assert f'./shared/app-routes.js?v={CABINET_CACHE_KEY}' in runtime
+    assert f'./shared/app-routes.js?v={ROUTE_CACHE_KEY}' in bootstrap
+    assert f'./shared/app-routes.js?v={ROUTE_CACHE_KEY}' in runtime
     for dependency in (
         "./shared/browser-state.js",
         "./shared/csv.js",

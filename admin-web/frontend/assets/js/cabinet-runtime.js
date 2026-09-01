@@ -14,7 +14,7 @@ import { createPlayerAccountPages } from "./player/account-pages.js?v=20260829la
 import { createPlayerArtifactPages } from "./player/artifact-pages.js?v=20260829launcherlink6";
 import { createPlayerDonationPages } from "./player/donation-pages.js?v=20260829launcherlink6";
 import { createPlayerTreasuryPages } from "./player/treasury-pages.js?v=20260829launcherlink6";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260829launcherlink6";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260902route1";
 
 const $ = (id) => document.getElementById(id);
 

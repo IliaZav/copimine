@@ -106,7 +106,7 @@ def test_events_runtime_only_syncs_the_generated_static_link() -> None:
 
 def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:
     source = read(FRONTEND / "cabinet" / "demoted.html")
-    assert '/assets/app.js?v=20260901motion1' in source
+    assert '/assets/app.js?v=20260902route1' in source
 
 
 def test_legacy_modpack_route_redirects_with_a_branded_legacy_fallback() -> None:

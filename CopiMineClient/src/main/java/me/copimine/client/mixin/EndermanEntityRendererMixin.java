@@ -111,8 +111,9 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         if (!ClientBridgeProtocol.isBoundEndBoss(entityUuid)) {
             return EndermanRendererSelection.select(entityUuid, null, null, false);
         }
-        Identifier guardianTexture = copimine$guardianRenderer.textureForPhase(
-                ClientBridgeProtocol.bossPhaseForEntity(entityUuid));
+        Identifier guardianTexture = copimine$guardianRenderer.textureForState(
+                ClientBridgeProtocol.bossPhaseForEntity(entityUuid),
+                ClientBridgeProtocol.bossAnimationForEntity(entityUuid));
         EndEventTextureCatalog.logLookup("boss", guardianTexture);
         return EndermanRendererSelection.select(
                 entityUuid,

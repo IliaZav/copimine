@@ -406,28 +406,35 @@
       "custom_model_data": 830010,
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_obelisk_full",
-      "texture": "copimine:item/end_event_rift_obelisk_full"
+      "texture": "copimine:item/end_event_rift_obelisk_full_hd"
     },
     {
       "id": "end_event_rift_obelisk_damaged",
       "custom_model_data": 830011,
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_obelisk_damaged",
-      "texture": "copimine:item/end_event_rift_obelisk_damaged"
+      "texture": "copimine:item/end_event_rift_obelisk_damaged_hd"
     },
     {
       "id": "end_event_rift_obelisk_critical",
       "custom_model_data": 830012,
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_obelisk_critical",
-      "texture": "copimine:item/end_event_rift_obelisk_critical"
+      "texture": "copimine:item/end_event_rift_obelisk_critical_hd"
     },
     {
       "id": "end_event_rift_fireball",
       "custom_model_data": 830013,
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_fireball",
-      "texture": "copimine:item/end_event_rift_fireball"
+      "texture": "copimine:item/end_event_rift_fireball_hd"
+    },
+    {
+      "id": "end_event_rift_obelisk_pulse",
+      "custom_model_data": 830014,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_obelisk_pulse",
+      "texture": "copimine:item/end_event_rift_obelisk_pulse_hd"
     }
   ]
 }

@@ -71,7 +71,8 @@ public final class EndRiftAiPolicyTest {
             "Призыв слуг Разлома",
             "Искажение воли",
             "Обелиски Разлома",
-            "Пламя Разлома"
+            "Пламя Разлома",
+            "Приговор Разлома"
         };
         EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();
         check(spells.length == expected.length, "boss spell list changed without updating display names");

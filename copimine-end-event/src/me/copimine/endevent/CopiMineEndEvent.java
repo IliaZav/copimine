@@ -37,6 +37,8 @@ import me.copimine.endevent.domain.BossThresholdPolicy;
 import me.copimine.endevent.domain.BossCastState;
 import me.copimine.endevent.domain.BossCastPolicy;
 import me.copimine.endevent.domain.BossDamagePolicy;
+import me.copimine.endevent.domain.BossDefeatCinematicPolicy;
+import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.BossHealthScalingPolicy;
 import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossStage;
@@ -199,6 +201,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_FINAL_WAVE = "FINAL_WAVE";
     private static final String EVENT_KIND_PROJECTILE = "RIFT_PROJECTILE";
     private static final String EVENT_KIND_OBELISK = "RIFT_OBELISK";
+    private static final String EVENT_KIND_OBELISK_PULSE = "RIFT_OBELISK_PULSE";
     private static final String EVENT_KIND_RIFT_FIREBALL = "RIFT_FIREBALL";
     private static final String EVENT_KIND_WAVE_REWARD = "WAVE_REWARD";
     private static final String EVENT_KIND_TOWER_PROXY = "TOWER_PROXY";
@@ -220,6 +223,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RIFT_OBELISK_DAMAGED = 830011;
     private static final int MODEL_RIFT_OBELISK_CRITICAL = 830012;
     private static final int MODEL_RIFT_FIREBALL = 830013;
+    private static final int MODEL_RIFT_OBELISK_PULSE = 830014;
     private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
     private static final double MIN_BOSS_CORE_DISTANCE_BLOCKS = 3.5D;
     private static final double MIN_WAVE_CORE_DISTANCE_BLOCKS = 2.5D;
@@ -436,6 +440,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
     private final Map<UUID, RiftObeliskRuntimeState> activeRiftObelisks = new LinkedHashMap<>();
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
+    private final Set<UUID> activeRiftObeliskPulseDisplays = new HashSet<>();
+    private final Map<UUID, BukkitTask> riftObeliskPulseTasks = new HashMap<>();
     /** Player UUIDs whose damage event is being issued by our impact transaction. */
     private final Set<UUID> riftFireballManualDamagePlayers = new HashSet<>();
     private long nextRiftObeliskCastTick;
@@ -484,6 +490,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bossSpawnTask;
     private BukkitTask arenaInfernoTask;
     private BukkitTask bossCastTask;
+    private BukkitTask bossFinalStrikeTask;
+    private BukkitTask bossDefeatCinematicTask;
     private BukkitTask towerRetryTask;
     private BukkitTask towerSpawnTask;
     private BukkitTask waveFrontVisualTask;
@@ -589,6 +597,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean absorptionAttackEmpowered;
     private boolean judgmentTriggered;
     private boolean judgmentCompleted;
+    private boolean bossFinalStrikeUsed;
+    private boolean bossDefeatCinematicStarted;
+    private UUID bossDefeatCinematicBossUuid;
+    private int bossDefeatCinematicElapsedTicks;
     private boolean servantsSummonedAt70;
     private boolean servantsSummonedAt35;
     /**
@@ -633,6 +645,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyBossTest;
     private NamespacedKey keyBossVirtualHealth;
     private NamespacedKey keyBossVirtualMaxHealth;
+    private NamespacedKey keyBossFinalStrikeUsed;
     private NamespacedKey keyMiniBossSpell;
     private NamespacedKey keyRewardOwner;
     private NamespacedKey keyRewardExpiresAt;
@@ -693,6 +706,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyBossTest = new NamespacedKey(this, "end_event_test_boss");
             keyBossVirtualHealth = new NamespacedKey(this, "end_event_boss_virtual_health");
             keyBossVirtualMaxHealth = new NamespacedKey(this, "end_event_boss_virtual_max_health");
+            keyBossFinalStrikeUsed = new NamespacedKey(this, "end_event_boss_final_strike_used");
             keyMiniBossSpell = new NamespacedKey(this, "end_event_miniboss_spell");
             keyRewardOwner = new NamespacedKey(this, "end_event_reward_owner");
             keyRewardExpiresAt = new NamespacedKey(this, "end_event_reward_expires_at");
@@ -863,7 +877,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " phase=" + phase + " reason=official-boss-not-found");
             return;
         }
-        bossVirtualHealth(boss);
+        double restoredVirtualHealth = bossVirtualHealth(boss);
+        if (phase == EventPhase.BOSS_FINISH) {
+            // A scheduler task cannot survive a process restart.  BOSS_FINISH
+            // is still a damageable phase when the pool is positive, but an
+            // interrupted player finisher has already crossed the authoritative
+            // zero-HP boundary and must not leave an immortal one-heart shell.
+            boss.setInvulnerable(false);
+            if (BossDefeatCinematicPolicy.shouldFinalizeAfterRestart(
+                    true, officialBossDeathCommitted, boss.isValid() && !boss.isDead(),
+                    restoredVirtualHealth)) {
+                getLogger().warning("BOSS_DEFEAT_CINEMATIC_RECOVERED event=" + eventId
+                        + " boss=" + boss.getUniqueId()
+                        + " reason=restart-after-zero-virtual-health");
+                boss.setHealth(0.0D);
+                return;
+            }
+        }
         ensureBossBar();
         bindBossClientForOnlinePlayers();
         getLogger().info("BOSS_REHYDRATED event=" + eventId + " boss=" + boss.getUniqueId()
@@ -887,7 +917,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             String kind = readString(entity, keyKind);
-            if (EVENT_KIND_OBELISK.equals(kind) || EVENT_KIND_RIFT_FIREBALL.equals(kind)) {
+            if (EVENT_KIND_OBELISK.equals(kind) || EVENT_KIND_OBELISK_PULSE.equals(kind)
+                    || EVENT_KIND_RIFT_FIREBALL.equals(kind)) {
                 // Obelisk animation/projection tasks are intentionally not
                 // reconstructed after a process stop.  Remove the persisted
                 // shell and let the current DISTORTION controller create a
@@ -915,6 +946,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             restored++;
             if (EVENT_KIND_BOSS.equals(kind) && entity instanceof LivingEntity living
                     && isOfficialEntity(entity) && !living.isDead() && living.isValid()) {
+                if (keyBossFinalStrikeUsed != null) {
+                    bossFinalStrikeUsed = entity.getPersistentDataContainer().getOrDefault(
+                            keyBossFinalStrikeUsed, PersistentDataType.BYTE, (byte) 0) != 0;
+                }
                 if (bossUuid == null) {
                     bossUuid = entity.getUniqueId();
                 } else if (!bossUuid.equals(entity.getUniqueId())) {
@@ -1303,6 +1338,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void cancelSessionTasks() {
         cancelCreativeTestTask();
         cancelBossSpawnTask();
+        cancelBossFinalStrike();
+        cancelBossDefeatCinematic();
         clearFinalArenaScene("session cancellation");
         clearArenaInferno();
         clearWaveObjectiveState();
@@ -8612,6 +8649,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 default -> "PHASE_SHIFT";
             };
             case "final_awaken" -> "FINAL_AWAKENING";
+            case "final_strike" -> "FINAL_STRIKE";
             case "defeat_collapse" -> "DEFEAT_COLLAPSE";
             default -> switch (stage) {
                 case TELEGRAPH -> legacyBossSpellAnimationId(spellId);
@@ -12185,7 +12223,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         absorptionAttackEmpowered = false;
         judgmentTriggered = false;
         judgmentCompleted = false;
+        bossFinalStrikeUsed = false;
+        bossDefeatCinematicStarted = false;
+        bossDefeatCinematicBossUuid = null;
+        bossDefeatCinematicElapsedTicks = 0;
+        cancelBossFinalStrike();
+        cancelBossDefeatCinematic();
         tag(boss, EVENT_KIND_BOSS, 0, !test);
+        if (keyBossFinalStrikeUsed != null) {
+            boss.getPersistentDataContainer().set(keyBossFinalStrikeUsed,
+                    PersistentDataType.BYTE, (byte) 0);
+        }
         if (keyCombatTactic != null) {
             boss.getPersistentDataContainer().set(keyCombatTactic,
                     PersistentDataType.STRING, CombatTacticsPolicy.BossTactic.RING_ORBIT.name());
@@ -12362,6 +12410,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearBossOnly() {
         clearFinalArenaScene("boss cleanup");
+        cancelBossFinalStrike();
+        cancelBossDefeatCinematic();
         clearBossServants();
         LivingEntity boss = liveBoss();
         boolean disposableTest = testCombatAiMode || (boss != null && isTestBoss(boss));
@@ -12401,6 +12451,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         absorptionAttackEmpowered = false;
         judgmentTriggered = false;
         judgmentCompleted = false;
+        bossFinalStrikeUsed = false;
+        bossDefeatCinematicStarted = false;
+        bossDefeatCinematicBossUuid = null;
+        bossDefeatCinematicElapsedTicks = 0;
         servantsSummonedAt70 = false;
         servantsSummonedAt35 = false;
         if (disposableTest) {
@@ -12865,6 +12919,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossStage = BossStage.CATASTROPHE;
             announceEventTitle("§4СТРАЖ ИСТОЩЁН", "§fСейчас он уязвим", true);
             clearJudgmentVisuals();
+            if (config != null && config.finalStrikeTuning().enabled()) {
+                Player target = selectBossSpellTarget(boss);
+                if (target != null && BossFinalStrikePolicy.canStart(
+                        bossStage, bossFinalStrikeUsed, boss.isValid() && !boss.isDead(), true)) {
+                    startBossFinalStrike(boss, target, true);
+                }
+            }
         } else if (bossCastState == BossCastState.ABSORPTION_CHANNEL) {
             absorptionCompleted = true;
             absorptionAttackEmpowered = true;
@@ -12936,6 +12997,185 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             bossCastTask.cancel();
             bossCastTask = null;
         }
+    }
+
+    private void cancelBossFinalStrike() {
+        if (bossFinalStrikeTask != null) {
+            bossFinalStrikeTask.cancel();
+            bossFinalStrikeTask = null;
+        }
+    }
+
+    private void startBossFinalStrike(LivingEntity boss, Player target, boolean forced) {
+        if (taskRegistry == null || boss == null || target == null || config == null
+                || !config.finalStrikeTuning().enabled()
+                || !BossFinalStrikePolicy.canStart(bossStage, bossFinalStrikeUsed,
+                boss.isValid() && !boss.isDead(), isActiveBossParticipant(target))) {
+            return;
+        }
+        cancelBossFinalStrike();
+        bossFinalStrikeUsed = true;
+        if (keyBossFinalStrikeUsed != null) {
+            boss.getPersistentDataContainer().set(keyBossFinalStrikeUsed,
+                    PersistentDataType.BYTE, (byte) 1);
+        }
+        long callbackGeneration = generation;
+        UUID bossId = boss.getUniqueId();
+        UUID targetId = target.getUniqueId();
+        Location mark = target.getLocation().clone();
+        getLogger().info("BOSS_FINAL_STRIKE_START event=" + eventId
+                + " boss=" + bossId + " target=" + targetId
+                + " stage=" + bossStage + " generation=" + generation
+                + " impact_tick=" + BossFinalStrikePolicy.IMPACT_TICK);
+        playBossVisualCue(boss,
+                bossCueId("final_strike", BossVisualCuePolicy.CueStage.TELEGRAPH),
+                mark, forced);
+        target.sendActionBar(Component.text("Приговор Разлома: отойдите от метки",
+                NamedTextColor.DARK_PURPLE));
+        for (Player viewer : eventAudience()) {
+            if (viewer.getWorld().equals(mark.getWorld())) {
+                viewer.playSound(mark, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
+                        SoundCategory.HOSTILE, 0.75F, 0.55F);
+            }
+        }
+        final int[] elapsed = {0};
+        final boolean[] impacted = {false};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean allowed = taskRegistry != null && taskRegistry.owns(callbackGeneration)
+                    && bossUuid != null && bossUuid.equals(bossId)
+                    && boss.isValid() && !boss.isDead()
+                    && (phase == EventPhase.BOSS_ACTIVE || phase == EventPhase.BOSS_FINISH
+                    || testCombatAiMode && isTestBoss(boss));
+            if (!allowed) {
+                if (bossFinalStrikeTask == holder[0]) {
+                    bossFinalStrikeTask = null;
+                }
+                holder[0].cancel();
+                getLogger().warning("BOSS_FINAL_STRIKE_CANCELLED event=" + eventId
+                        + " boss=" + bossId + " elapsed=" + elapsed[0]
+                        + " reason=stale-generation-or-boss");
+                return;
+            }
+            renderBossFinalStrike(boss, mark, elapsed[0]);
+            if (!impacted[0] && BossFinalStrikePolicy.isImpactTick(elapsed[0])) {
+                impacted[0] = true;
+                executeBossFinalStrikeImpact(boss, mark, targetId);
+            }
+            if (elapsed[0] >= BossFinalStrikePolicy.TOTAL_TICKS) {
+                holder[0].cancel();
+                if (bossFinalStrikeTask == holder[0]) {
+                    bossFinalStrikeTask = null;
+                }
+                sendBossAnimationVisualUpdate(boss, "IDLE");
+                getLogger().info("BOSS_FINAL_STRIKE_COMPLETE event=" + eventId
+                        + " boss=" + bossId + " impacted=" + impacted[0]);
+                return;
+            }
+            elapsed[0]++;
+        }, 0L, 1L);
+        bossFinalStrikeTask = holder[0];
+        taskRegistry.register(holder[0]);
+    }
+
+    private void renderBossFinalStrike(LivingEntity boss, Location mark, int elapsedTicks) {
+        if (boss == null || mark == null || mark.getWorld() == null) {
+            return;
+        }
+        BossFinalStrikePolicy.Phase strikePhase = BossFinalStrikePolicy.phaseAt(elapsedTicks);
+        double progress = Math.max(0.0D, Math.min(1.0D,
+                elapsedTicks / (double) BossFinalStrikePolicy.IMPACT_TICK));
+        double radius = strikePhase == BossFinalStrikePolicy.Phase.TELEGRAPH
+                ? 1.2D + progress * 1.8D
+                : 3.0D + Math.min(1.0D, (elapsedTicks - BossFinalStrikePolicy.TELEGRAPH_TICKS)
+                / (double) Math.max(1, BossFinalStrikePolicy.CHARGE_TICKS)) * 1.0D;
+        Location center = mark.clone().add(0.0D, 0.08D, 0.0D);
+        Particle.DustOptions magenta = new Particle.DustOptions(Color.fromRGB(244, 60, 255), 1.25F);
+        Particle.DustOptions cyan = new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.10F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) {
+                continue;
+            }
+            if (elapsedTicks % 2 == 0) {
+                spawnPatternRing(viewer, center, new Vector(1.0D, 0.0D, 0.0D),
+                        new Vector(0.0D, 0.0D, 1.0D), radius, 24,
+                        elapsedTicks * 0.16D, Particle.REVERSE_PORTAL);
+                viewer.spawnParticle(Particle.DUST, center, 10,
+                        radius * 0.22D, 0.02D, radius * 0.22D, 0.0D,
+                        strikePhase == BossFinalStrikePolicy.Phase.IMPACT ? cyan : magenta);
+                viewer.spawnParticle(Particle.END_ROD, mark.clone().add(0.0D, 0.2D, 0.0D),
+                        strikePhase == BossFinalStrikePolicy.Phase.CHARGE ? 5 : 2,
+                        0.16D, 0.5D, 0.16D, 0.01D);
+            }
+            if (strikePhase == BossFinalStrikePolicy.Phase.CHARGE) {
+                spawnParticleLine(viewer, boss.getLocation().add(0.0D, 1.0D, 0.0D),
+                        mark.clone().add(0.0D, 0.45D, 0.0D), 8);
+            }
+        }
+        if (elapsedTicks % 10 == 0) {
+            boss.getWorld().playSound(mark, Sound.ENTITY_WITHER_SHOOT,
+                    0.45F, 0.65F + (float) Math.min(0.7D, progress));
+        }
+    }
+
+    private void executeBossFinalStrikeImpact(LivingEntity boss, Location mark, UUID targetId) {
+        if (boss == null || mark == null || config == null || boss.getWorld() == null) {
+            return;
+        }
+        EventConfig.BossFinalStrikeTuning tuning = config.finalStrikeTuning();
+        double radiusSquared = tuning.radius() * tuning.radius();
+        int affected = 0;
+        for (Player player : activeBossParticipants()) {
+            if (!player.getWorld().equals(mark.getWorld())
+                    || player.getLocation().distanceSquared(mark) > radiusSquared) {
+                continue;
+            }
+            player.damage(tuning.damage(), boss);
+            player.addPotionEffect(new PotionEffect(PotionEffectType.WITHER,
+                    tuning.witherTicks(), 0, false, true, true), true);
+            affected++;
+            player.sendActionBar(Component.text("Приговор Разлома обрушился на арену",
+                    NamedTextColor.DARK_RED));
+        }
+        renderBossFinalStrikeImpact(mark, tuning.radius());
+        boss.getWorld().playSound(mark, Sound.ENTITY_GENERIC_EXPLODE, 0.95F, 0.55F);
+        boss.getWorld().playSound(mark, Sound.ENTITY_WITHER_HURT, 0.8F, 0.65F);
+        getLogger().info("BOSS_FINAL_STRIKE_IMPACT event=" + eventId
+                + " boss=" + boss.getUniqueId() + " target=" + targetId
+                + " affected=" + affected + " damage=" + tuning.damage()
+                + " radius=" + tuning.radius() + " wither_ticks=" + tuning.witherTicks()
+                + " blocks=false");
+    }
+
+    private void renderBossFinalStrikeImpact(Location mark, double radius) {
+        if (mark == null) {
+            return;
+        }
+        double safeRadius = Math.max(1.0D, Math.min(6.0D, radius));
+        spawnEventParticle(mark.clone().add(0.0D, 0.6D, 0.0D), Particle.EXPLOSION,
+                4, 0.18D, 0.35D, 0.18D, 0.0D);
+        spawnEventParticle(mark.clone().add(0.0D, 0.3D, 0.0D), Particle.REVERSE_PORTAL,
+                42, safeRadius * 0.35D, 0.25D, safeRadius * 0.35D, 0.04D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, mark)) {
+                continue;
+            }
+            spawnPatternRing(viewer, mark.clone().add(0.0D, 0.1D, 0.0D),
+                    new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                    safeRadius, 32, 0.0D, Particle.DRAGON_BREATH);
+            viewer.spawnParticle(Particle.END_ROD, mark.clone().add(0.0D, 1.0D, 0.0D),
+                    28, 0.5D, 0.9D, 0.5D, 0.03D);
+        }
+    }
+
+    private void cancelBossDefeatCinematic() {
+        if (bossDefeatCinematicTask != null) {
+            bossDefeatCinematicTask.cancel();
+            bossDefeatCinematicTask = null;
+        }
+        bossDefeatCinematicStarted = false;
+        bossDefeatCinematicBossUuid = null;
+        bossDefeatCinematicElapsedTicks = 0;
     }
 
     private int randomSeconds(int minimum, int maximum) {
@@ -13080,6 +13320,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EntityDamageByEntityEvent damageSourceEvent = event instanceof EntityDamageByEntityEvent damageByEntity
                 ? damageByEntity : null;
         Entity source = damageSourceEvent == null ? null : damageSourceEvent.getDamager();
+        if (bossDefeatCinematicStarted && bossDefeatCinematicBossUuid != null
+                && bossDefeatCinematicBossUuid.equals(boss.getUniqueId())) {
+            event.setCancelled(true);
+            getLogger().info("BOSS_DAMAGE_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=defeat-cinematic");
+            return;
+        }
         getLogger().info("BOSS_DAMAGE_EVENT event=" + eventId + " boss=" + boss.getUniqueId()
                 + " source=" + (source == null ? "environment" : source.getType() + ":" + source.getUniqueId())
                 + " cause=" + event.getCause() + " raw=" + event.getDamage()
@@ -13166,6 +13413,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void applyBossDamage(LivingEntity boss, double damage, Entity source) {
         if (boss == null || !boss.isValid() || boss.isDead()
                 || isTestBoss(boss) && !testCombatAiMode) {
+            return;
+        }
+        if (bossDefeatCinematicStarted && bossDefeatCinematicBossUuid != null
+                && bossDefeatCinematicBossUuid.equals(boss.getUniqueId())) {
+            getLogger().info("BOSS_DAMAGE_DROPPED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=defeat-cinematic");
             return;
         }
         double safeDamage = Math.max(0.0D, damage);
@@ -13305,13 +13558,49 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void commitOfficialBossDefeat(LivingEntity boss, Entity source) {
-        if (boss == null || boss.isDead() || isTestBoss(boss)) {
+        if (boss == null || boss.isDead() || isTestBoss(boss)
+                || bossDefeatCinematicStarted) {
             return;
         }
-        if (source instanceof Player player) {
-            bossKillerUuid = player.getUniqueId();
+        Player owner = playerDamageOwner(source);
+        if (owner != null) {
+            bossKillerUuid = owner.getUniqueId();
         }
-        // DEFEAT_COLLAPSE is the forced terminal cue before the official death commit.
+        boolean playerOwnedHit = owner != null && isActiveBossParticipant(owner);
+        if (BossDefeatCinematicPolicy.canStart(true, bossDefeatCinematicStarted,
+                boss.isValid() && !boss.isDead(), playerOwnedHit)) {
+            if (prepareOfficialBossDefeat(boss)) {
+                startBossDefeatCinematic(boss, owner);
+            }
+            return;
+        }
+        if (!prepareOfficialBossDefeat(boss)) {
+            return;
+        }
+        boss.setInvulnerable(false);
+        getLogger().info("BOSS_DEFEAT_COMMITTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " judgment_completed=" + judgmentCompleted
+                + " mode=immediate");
+        boss.setHealth(0.0D);
+    }
+
+    private Player playerDamageOwner(Entity source) {
+        if (source instanceof Player player) {
+            return player;
+        }
+        if (source instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Player player) {
+            return player;
+        }
+        return null;
+    }
+
+    private boolean prepareOfficialBossDefeat(LivingEntity boss) {
+        if (boss == null || boss.isDead() || !boss.isValid()) {
+            return false;
+        }
+        // DEFEAT_COLLAPSE is the forced terminal cue before the actual death
+        // commit.  The player finisher adds its own animation after this cue.
         playBossVisualCue(boss,
                 bossCueId("defeat_collapse", BossVisualCuePolicy.CueStage.IMPACT),
                 boss.getLocation(), true);
@@ -13320,20 +13609,151 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     eventId + ":boss-defeat")) {
                 getLogger().severe("BOSS_DEFEAT_PHASE_COMMIT_FAILED event=" + eventId
                         + " boss=" + boss.getUniqueId());
-                return;
+                return false;
             }
         }
         int waveCombatRemoved = clearWaveCombatEntities("official-boss-defeat");
         activeWave = 0;
         clearFinalArenaScene("official boss defeat");
+        cancelBossFinalStrike();
+        bossCastState = BossCastState.NONE;
+        bossCastDeadlineMillis = 0L;
+        bossSpellPauseUntilMillis = 0L;
         clearActiveRiftProjectiles();
         clearRiftObelisks("official boss defeat");
         clearVoidMarkZones();
         clearJudgmentVisuals();
-        boss.setInvulnerable(false);
-        getLogger().info("BOSS_DEFEAT_COMMITTED event=" + eventId
+        if (boss instanceof Mob mob) {
+            mob.setTarget(null);
+            mob.getPathfinder().stopPathfinding();
+        }
+        getLogger().info("BOSS_DEFEAT_PREPARED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " judgment_completed=" + judgmentCompleted
                 + " wave_combat_removed=" + waveCombatRemoved);
+        return true;
+    }
+
+    private void startBossDefeatCinematic(LivingEntity boss, Player finisher) {
+        if (taskRegistry == null || boss == null || finisher == null
+                || bossUuid == null || !bossUuid.equals(boss.getUniqueId())) {
+            return;
+        }
+        cancelBossDefeatCinematic();
+        bossDefeatCinematicStarted = true;
+        bossDefeatCinematicBossUuid = boss.getUniqueId();
+        bossDefeatCinematicElapsedTicks = 0;
+        boss.setInvulnerable(true);
+        sendBossAnimationVisualUpdate(boss, "FINISHING_BLOW");
+        announceEventTitle("§5РАЗЛОМ СХОДИТСЯ", "§fПоследний удар запечатал судьбу Стража", true);
+        finisher.sendActionBar(Component.text("Финальный удар: Разлом рушится",
+                NamedTextColor.LIGHT_PURPLE));
+        boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_WITHER_AMBIENT,
+                1.0F, 0.55F);
+        long callbackGeneration = generation;
+        UUID bossId = boss.getUniqueId();
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            boolean allowed = taskRegistry != null && taskRegistry.owns(callbackGeneration)
+                    && bossDefeatCinematicStarted
+                    && bossDefeatCinematicBossUuid != null
+                    && bossDefeatCinematicBossUuid.equals(bossId)
+                    && bossUuid != null && bossUuid.equals(bossId)
+                    && boss.isValid() && !boss.isDead();
+            if (!allowed) {
+                if (bossDefeatCinematicTask == holder[0]) {
+                    bossDefeatCinematicTask = null;
+                }
+                holder[0].cancel();
+                return;
+            }
+            renderBossDefeatCinematic(boss, bossDefeatCinematicElapsedTicks);
+            if (BossDefeatCinematicPolicy.shouldCommit(bossDefeatCinematicElapsedTicks)) {
+                completeBossDefeatCinematic(boss, finisher);
+                holder[0].cancel();
+                if (bossDefeatCinematicTask == holder[0]) {
+                    bossDefeatCinematicTask = null;
+                }
+                return;
+            }
+            if (bossDefeatCinematicElapsedTicks >= BossDefeatCinematicPolicy.TOTAL_TICKS) {
+                completeBossDefeatCinematic(boss, finisher);
+                holder[0].cancel();
+                if (bossDefeatCinematicTask == holder[0]) {
+                    bossDefeatCinematicTask = null;
+                }
+                return;
+            }
+            bossDefeatCinematicElapsedTicks++;
+        }, 0L, 1L);
+        bossDefeatCinematicTask = holder[0];
+        taskRegistry.register(holder[0]);
+        getLogger().info("BOSS_DEFEAT_CINEMATIC_START event=" + eventId
+                + " boss=" + boss.getUniqueId() + " finisher=" + finisher.getUniqueId()
+                + " commit_tick=" + BossDefeatCinematicPolicy.COMMIT_TICK
+                + " generation=" + generation);
+    }
+
+    private void renderBossDefeatCinematic(LivingEntity boss, int elapsedTicks) {
+        if (boss == null || boss.getWorld() == null) {
+            return;
+        }
+        BossDefeatCinematicPolicy.Phase cinematicPhase =
+                BossDefeatCinematicPolicy.phaseAt(elapsedTicks);
+        Location center = boss.getLocation().clone().add(0.0D, 0.12D, 0.0D);
+        double progress = Math.max(0.0D, Math.min(1.0D,
+                elapsedTicks / (double) BossDefeatCinematicPolicy.COMMIT_TICK));
+        double radius = cinematicPhase == BossDefeatCinematicPolicy.Phase.TELEGRAPH
+                ? 1.0D + progress * 2.0D
+                : 3.0D + progress * 2.0D;
+        Particle.DustOptions magenta = new Particle.DustOptions(Color.fromRGB(244, 60, 255), 1.25F);
+        Particle.DustOptions cyan = new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.10F);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, center)) {
+                continue;
+            }
+            if (elapsedTicks % 2 == 0) {
+                Particle ringParticle = cinematicPhase == BossDefeatCinematicPolicy.Phase.COLLAPSE
+                        ? Particle.DRAGON_BREATH : Particle.REVERSE_PORTAL;
+                spawnPatternRing(viewer, center,
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        radius, 28, elapsedTicks * 0.14D, ringParticle);
+                viewer.spawnParticle(Particle.DUST, center, 10,
+                        Math.min(1.0D, radius * 0.18D), 0.2D,
+                        Math.min(1.0D, radius * 0.18D), 0.0D,
+                        cinematicPhase == BossDefeatCinematicPolicy.Phase.COLLAPSE
+                                ? cyan : magenta);
+                viewer.spawnParticle(Particle.END_ROD,
+                        center.clone().add(0.0D, 1.1D + progress, 0.0D),
+                        cinematicPhase == BossDefeatCinematicPolicy.Phase.FINAL_FLASH ? 24 : 6,
+                        0.35D, 0.75D, 0.35D, 0.02D);
+            }
+            if (cinematicPhase == BossDefeatCinematicPolicy.Phase.COLLAPSE) {
+                spawnParticleLine(viewer, boss.getLocation().add(0.0D, 2.4D, 0.0D),
+                        center.clone().add(0.0D, 0.4D, 0.0D), 7);
+            }
+        }
+        if (elapsedTicks % 8 == 0) {
+            Sound sound = cinematicPhase == BossDefeatCinematicPolicy.Phase.FINAL_FLASH
+                    ? Sound.ENTITY_ENDER_DRAGON_GROWL : Sound.ENTITY_WITHER_AMBIENT;
+            boss.getWorld().playSound(center, sound, 0.7F,
+                    cinematicPhase == BossDefeatCinematicPolicy.Phase.FINAL_FLASH ? 0.6F : 0.8F);
+        }
+    }
+
+    private void completeBossDefeatCinematic(LivingEntity boss, Player finisher) {
+        if (boss == null || boss.isDead() || !boss.isValid()
+                || !bossDefeatCinematicStarted
+                || bossDefeatCinematicBossUuid == null
+                || !bossDefeatCinematicBossUuid.equals(boss.getUniqueId())) {
+            return;
+        }
+        boss.setInvulnerable(false);
+        sendBossAnimationVisualUpdate(boss, "DEFEAT_COLLAPSE");
+        renderBossDefeatCinematic(boss, BossDefeatCinematicPolicy.COMMIT_TICK);
+        getLogger().info("BOSS_DEFEAT_COMMITTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " judgment_completed=" + judgmentCompleted
+                + " mode=player-finisher finisher="
+                + (finisher == null ? "unknown" : finisher.getUniqueId()));
         boss.setHealth(0.0D);
     }
 
@@ -13775,6 +14195,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("BOSS_SPELL_BLOCKED boss=" + boss.getUniqueId()
                     + " spell=rift_obelisks stage=" + bossStage
                     + " reason=distortion-only-or-cooldown");
+            return;
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.FINAL_STRIKE) {
+            if (config == null || !config.finalStrikeTuning().enabled()
+                    || !BossFinalStrikePolicy.canStart(bossStage, bossFinalStrikeUsed,
+                    boss.isValid() && !boss.isDead(), !activeBossParticipants().isEmpty())) {
+                getLogger().info("BOSS_SPELL_BLOCKED boss=" + boss.getUniqueId()
+                        + " spell=final_strike stage=" + bossStage
+                        + " reason=catastrophe-only-or-already-used");
+                return;
+            }
+            Player finalTarget = selectBossSpellTarget(boss);
+            if (finalTarget != null) {
+                previousBossSpell = spell;
+                startBossFinalStrike(boss, finalTarget, forced);
+            }
             return;
         }
         Player target = selectBossSpellTarget(boss);
@@ -14797,10 +15233,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " fireball=" + fireball.getUniqueId() + " reflected=" + state.reflected()
                     + " boss=" + boss.getUniqueId());
         }
-        EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
-        RiftFireballPolicy.EffectProfile effects = RiftFireballPolicy.fireballEffects(
-                tuning.fireballDamage(), tuning.blindnessTicks(), tuning.debuffTicks());
         List<Player> participants = activeBossParticipants();
+        EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
+        RiftFireballPolicy.EffectProfile effects = RiftFireballPolicy.scaledFireballEffects(
+                tuning.fireballDamage(), tuning.blindnessTicks(), tuning.debuffTicks(),
+                participants.size());
         Set<UUID> participantIds = participants.stream()
                 .map(Player::getUniqueId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -14847,7 +15284,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " nausea_ticks=" + effects.nauseaTicks()
                     + " nausea_amplifier=" + effects.nauseaAmplifier()
                     + " slowness_ticks=" + effects.slownessTicks()
-                    + " slowness_amplifier=" + effects.slownessAmplifier());
+                    + " slowness_amplifier=" + effects.slownessAmplifier()
+                    + " participants=" + participants.size());
         }
         renderRiftFireballImpact(impact);
         if (fireball.getWorld() != null) {
@@ -14858,7 +15296,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " players=" + appliedPlayers.size() + " affected=" + appliedPlayers
                 + " damage=" + effects.damage()
                 + " blindness_ticks=" + effects.blindnessTicks()
-                + " debuff_ticks=" + effects.weaknessTicks() + " blocks=false fire=false");
+                + " debuff_ticks=" + effects.weaknessTicks()
+                + " participants=" + participants.size() + " blocks=false fire=false");
         cleanupRiftFireball(fireball.getUniqueId(), "impact");
     }
 
@@ -14990,6 +15429,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (center == null) {
             return;
         }
+        spawnRiftObeliskPulseOverlay(center, radius);
         Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(69, 218, 255), 1.1F);
         for (Player viewer : eventAudience()) {
             if (!isEventParticleViewer(viewer, center)) {
@@ -15002,6 +15442,100 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             viewer.spawnParticle(Particle.DUST, center.clone().add(0.0D, 0.08D, 0.0D),
                     18, radius * 0.35D, 0.02D, radius * 0.35D, 0.0D, dust);
         }
+    }
+
+    /**
+     * The particle ring remains the fail-safe effect, while this short-lived
+     * display supplies the crisp high-resolution floor mark from the event
+     * pack.  It is never a world block and is always owned by the current
+     * event generation.
+     */
+    private void spawnRiftObeliskPulseOverlay(Location center, double radius) {
+        if (center == null || center.getWorld() == null || taskRegistry == null
+                || config == null || radius <= 0.0D) {
+            return;
+        }
+        double safeRadius = Math.min(5.0D, Math.max(0.5D, radius));
+        Location origin = center.clone().add(-safeRadius, 0.07D, -safeRadius);
+        ItemDisplay display = center.getWorld().spawn(origin, ItemDisplay.class, entity -> {
+            entity.setItemStack(overlayItem(MODEL_RIFT_OBELISK_PULSE,
+                    "end_event_rift_obelisk_pulse"));
+            entity.setBrightness(new Display.Brightness(15, 15));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(48.0F);
+            entity.setDisplayWidth((float) (safeRadius * 2.0D));
+            entity.setDisplayHeight(0.12F);
+            entity.setPersistent(false);
+            entity.setGravity(false);
+            entity.setInvulnerable(true);
+            entity.setShadowRadius(0.0F);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(),
+                    new Vector3f(0.10F, 0.035F, 0.10F), new AxisAngle4f()));
+        });
+        tag(display, EVENT_KIND_OBELISK_PULSE, 0, isOfficialEntity(liveBoss()));
+        UUID displayId = display.getUniqueId();
+        activeRiftObeliskPulseDisplays.add(displayId);
+        long callbackGeneration = generation;
+        final int[] age = {0};
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || !activeRiftObeliskPulseDisplays.contains(displayId)
+                    || !display.isValid() || display.isDead() || age[0] >= 12) {
+                cleanupRiftObeliskPulseDisplay(displayId, "pulse-finished");
+                return;
+            }
+            double progress = Math.min(1.0D, (age[0] + 1) / 12.0D);
+            double currentRadius = safeRadius * (0.30D + progress * 0.70D);
+            // Display entities are also covered by the event's anti-escape
+            // teleport guard. Use the same short-lived permit as combat
+            // entities so the expanding floor overlay is not cancelled by
+            // its own animation tick.
+            teleportCombatEntity(display, center.clone().add(-currentRadius, 0.07D, -currentRadius));
+            float diameter = (float) Math.max(0.5D, currentRadius * 2.0D);
+            display.setDisplayWidth(diameter);
+            display.setTransformation(new Transformation(
+                    new Vector3f(), new AxisAngle4f(),
+                    new Vector3f(diameter, 0.035F, diameter), new AxisAngle4f()));
+            age[0]++;
+        }, 1L, 1L);
+        riftObeliskPulseTasks.put(displayId, holder[0]);
+        taskRegistry.register(holder[0]);
+    }
+
+    private void cleanupRiftObeliskPulseDisplay(UUID displayId, String reason) {
+        if (displayId == null) {
+            return;
+        }
+        BukkitTask task = riftObeliskPulseTasks.remove(displayId);
+        if (task != null) {
+            task.cancel();
+        }
+        activeRiftObeliskPulseDisplays.remove(displayId);
+        Entity entity = ownedEntities.remove(displayId);
+        if (entity == null) {
+            entity = Bukkit.getEntity(displayId);
+        }
+        if (entity != null && entity.isValid() && !entity.isDead()) {
+            entity.remove();
+        }
+        getLogger().fine("RIFT_OBELISK_PULSE_CLEANUP event=" + eventId
+                + " display=" + displayId + " reason=" + reason);
+    }
+
+    private void clearRiftObeliskPulseDisplays(String reason) {
+        for (UUID displayId : new HashSet<>(activeRiftObeliskPulseDisplays)) {
+            cleanupRiftObeliskPulseDisplay(displayId, reason);
+        }
+        for (BukkitTask task : new ArrayList<>(riftObeliskPulseTasks.values())) {
+            if (task != null) {
+                task.cancel();
+            }
+        }
+        riftObeliskPulseTasks.clear();
+        activeRiftObeliskPulseDisplays.clear();
     }
 
     private void renderRiftObeliskHit(Location center, int remainingHealth) {
@@ -15109,6 +15643,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void clearRiftObelisks(String reason) {
         int obelisks = activeRiftObelisks.size();
         int fireballs = activeRiftFireballs.size();
+        int pulseDisplays = activeRiftObeliskPulseDisplays.size();
+        clearRiftObeliskPulseDisplays(reason);
         for (UUID entityId : new HashSet<>(activeRiftFireballs.keySet())) {
             cleanupRiftFireball(entityId, reason);
         }
@@ -15120,10 +15656,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftFireballManualDamagePlayers.clear();
         nextRiftObeliskCastTick = 0L;
         riftObeliskTargetCursor = 0;
-        if (obelisks > 0 || fireballs > 0) {
+        if (obelisks > 0 || fireballs > 0 || pulseDisplays > 0) {
             getLogger().info("RIFT_OBELISKS_CLEANUP event=" + eventId
                     + " obelisks=" + obelisks + " fireballs=" + fireballs
-                    + " reason=" + reason);
+                    + " pulse_displays=" + pulseDisplays + " reason=" + reason);
         }
     }
 
@@ -16221,6 +16757,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_BOSS.equals(kind)
                 || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind)
                 || EVENT_KIND_WAVE_REWARD.equals(kind) || EVENT_KIND_OBELISK.equals(kind)
+                || EVENT_KIND_OBELISK_PULSE.equals(kind)
                 || EVENT_KIND_RIFT_FIREBALL.equals(kind);
     }
 
@@ -16264,6 +16801,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entity != null) {
             activeRiftFireballs.remove(entity.getUniqueId());
             activeRiftObelisks.remove(entity.getUniqueId());
+            activeRiftObeliskPulseDisplays.remove(entity.getUniqueId());
+            riftObeliskPulseTasks.remove(entity.getUniqueId());
         }
         if (entity != null && ownedEntities.containsKey(entity.getUniqueId())) {
             unbindEventEntityClient(entity.getUniqueId());

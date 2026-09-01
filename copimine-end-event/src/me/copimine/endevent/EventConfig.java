@@ -10,6 +10,7 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 import me.copimine.endevent.domain.BossHealthScalingPolicy;
+import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.BossStage;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
@@ -94,6 +95,7 @@ public record EventConfig(
         String clientBossId,
         String clientControlId,
         String bridgeChannel,
+        BossFinalStrikeTuning finalStrikeTuning,
         RiftObeliskTuning riftObeliskTuning) {
 
     public EventConfig {
@@ -115,6 +117,9 @@ public record EventConfig(
         if (riftObeliskTuning == null) {
             throw new IllegalArgumentException("Rift Obelisk tuning is required");
         }
+        if (finalStrikeTuning == null) {
+            throw new IllegalArgumentException("Boss final strike tuning is required");
+        }
         if (debuffAmplifier < 0 || debuffAmplifier > 3) {
             throw new IllegalArgumentException("debuff amplifier must be between 0 and 3");
         }
@@ -129,6 +134,8 @@ public record EventConfig(
         ConfigurationSection waves = requiredSection(plugin, "waves");
         ConfigurationSection miniBosses = requiredSection(plugin, "mini-bosses");
         ConfigurationSection boss = requiredSection(plugin, "boss");
+        BossFinalStrikeTuning finalStrikeTuning = bossFinalStrikeTuning(
+                requiredSection(boss, "final-strike"));
         RiftObeliskTuning riftObeliskTuning = riftObeliskTuning(requiredSection(boss, "rift-obelisks"));
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
@@ -274,6 +281,7 @@ public record EventConfig(
                 text(client.getString("boss-id", "END_RIFT_GUARDIAN_V1"), "END_RIFT_GUARDIAN_V1"),
                 text(client.getString("control-id", "END_RIFT_CONTROL_REVERSAL_V1"), "END_RIFT_CONTROL_REVERSAL_V1"),
                 text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"),
+                finalStrikeTuning,
                 riftObeliskTuning);
     }
 
@@ -386,6 +394,19 @@ public record EventConfig(
                 pulseInterval, fireInterval, maxFireballs, fireballDamage,
                 blindnessTicks, debuffTicks, spawnTelegraphTicks,
                 destructionDelayTicks, minDistance);
+    }
+
+    private static BossFinalStrikeTuning bossFinalStrikeTuning(ConfigurationSection section) {
+        double damage = section.getDouble("damage", BossFinalStrikePolicy.DEFAULT_DAMAGE);
+        double radius = section.getDouble("radius", 4.0D);
+        int witherTicks = section.getInt("wither-ticks", 60);
+        if (damage <= 0.0D || damage > BossFinalStrikePolicy.MAX_DAMAGE
+                || !Double.isFinite(damage)
+                || radius <= 0.0D || radius > 6.0D
+                || witherTicks < 0 || witherTicks > 200) {
+            throw new IllegalStateException("boss.final-strike contains unsafe bounds");
+        }
+        return new BossFinalStrikeTuning(section.getBoolean("enabled", true), damage, radius, witherTicks);
     }
 
     private static LinkedHashMap<String, Integer> readMaterials(ConfigurationSection section, String path) {
@@ -629,6 +650,20 @@ public record EventConfig(
             if (spellMinSeconds < 1 || spellMaxSeconds < spellMinSeconds || spellTelegraphTicks < 1
                     || !(riftStepDamage > 0.0D) || !(voidSnareDamage > 0.0D) || !(echoPulseDamage > 0.0D)) {
                 throw new IllegalArgumentException("invalid mini boss tuning");
+            }
+        }
+    }
+
+    public record BossFinalStrikeTuning(
+            boolean enabled,
+            double damage,
+            double radius,
+            int witherTicks) {
+        public BossFinalStrikeTuning {
+            damage = BossFinalStrikePolicy.validatedDamage(damage);
+            if (damage <= 0.0D || radius <= 0.0D || radius > 6.0D
+                    || witherTicks < 0 || witherTicks > 200) {
+                throw new IllegalArgumentException("invalid boss final strike tuning");
             }
         }
     }

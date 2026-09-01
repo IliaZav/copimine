@@ -18,6 +18,14 @@ public final class RiftGuardianModelRenderer {
     }
 
     public Identifier textureForPhase(String phaseId) {
+        return textureForState(phaseId, "IDLE");
+    }
+
+    public Identifier textureForState(String phaseId, String animationId) {
+        String animation = normalizeAnimationId(animationId);
+        if ("FINAL_STRIKE".equals(animation) || "FINISHING_BLOW".equals(animation)) {
+            return texture("rift_guardian_final_strike");
+        }
         return Phase.fromWireId(phaseId).texture();
     }
 
@@ -41,6 +49,8 @@ public final class RiftGuardianModelRenderer {
                     "PHASE_SHIFT",
                     "FINAL_AWAKENING",
                     "DEFEAT_COLLAPSE",
+                    "FINAL_STRIKE",
+                    "FINISHING_BLOW",
                     "ABSORPTION_CHANNEL",
                     "JUDGMENT_CAST",
                     "EXHAUSTED",

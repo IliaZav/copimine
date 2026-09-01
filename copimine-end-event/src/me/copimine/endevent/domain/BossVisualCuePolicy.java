@@ -22,7 +22,8 @@ public final class BossVisualCuePolicy {
             "arena_inferno",
             "phase_shift",
             "final_awaken",
-            "defeat_collapse");
+            "defeat_collapse",
+            "final_strike");
     private static final Map<String, Map<CueStage, Cue>> CUES = buildCues();
 
     private BossVisualCuePolicy() {
@@ -121,7 +122,10 @@ public final class BossVisualCuePolicy {
                 "minecraft:block.portal.travel",
                 "minecraft:entity.ender_dragon.growl",
                 "minecraft:block.beacon.activate",
-                "minecraft:entity.wither.shoot"
+                "minecraft:entity.wither.shoot",
+                "minecraft:block.respawn_anchor.deplete",
+                "minecraft:entity.wither.ambient",
+                "minecraft:entity.ender_dragon.flap"
         };
         String[] primaryParticles = {
                 "DRAGON_BREATH",

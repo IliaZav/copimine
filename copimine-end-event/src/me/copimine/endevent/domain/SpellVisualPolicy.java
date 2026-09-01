@@ -38,6 +38,7 @@ public final class SpellVisualPolicy {
         add(profiles, "will_distortion", "ломаная нить воли", "ELECTRIC_SPARK", "WITCH", 3, 24);
         add(profiles, "rift_obelisks", "Обелиски Разлома", "REVERSE_PORTAL", "ELECTRIC_SPARK", 4, 44);
         add(profiles, "arena_inferno", "венец пламени", "SOUL_FIRE_FLAME", "END_ROD", 3, 40);
+        add(profiles, "final_strike", "Приговор Разлома", "SCULK_CHARGE", "DUST_RED", 4, 52);
         add(profiles, "rift_step", "двойной след", "PORTAL", "END_ROD", 3, 24);
         add(profiles, "void_snare", "схлопывающиеся цепи", "REVERSE_PORTAL", "SMOKE", 3, 18);
         add(profiles, "echo_pulse", "удар эхом", "SCULK_SOUL", "SONIC_BOOM", 3, 22);

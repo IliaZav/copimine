@@ -70,7 +70,8 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
       tests\test_end_event_spell_matrix_contract.py `
-      tests\test_end_event_wavefront_contract.py
+      tests\test_end_event_wavefront_contract.py `
+      tests\test_end_event_boss_final_strike_contract.py
   } finally {
     Pop-Location
   }
@@ -117,7 +118,10 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
       (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java')
+      (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossFinalStrikePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossDefeatCinematicPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftFireballScalingPolicyTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossThresholdPolicyTest
@@ -151,6 +155,9 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveVisualPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossFinalStrikePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossDefeatCinematicPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFireballScalingPolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `

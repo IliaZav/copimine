@@ -207,6 +207,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         applyTeleportRip(animationProgress, animation);
         applyCastTransform(animationProgress, animation);
         applyPhaseShiftTransform(animationProgress, animation);
+        applyFinalStrikeTransform(animationProgress, animation);
         applyDefeatCollapse(animationProgress, animation);
         applyFinalSilhouette(animationProgress);
         hideFinalAdornmentOutsideFinalState(animation);
@@ -444,6 +445,45 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         leftTalon.pitch -= 0.30F * intensity;
         rightTalon.pitch -= 0.30F * intensity;
         coreEye.zScale = 0.90F;
+    }
+
+    private void applyFinalStrikeTransform(float animationProgress, String animation) {
+        if (!"FINAL_STRIKE".equals(animation) && !"FINISHING_BLOW".equals(animation)) {
+            return;
+        }
+        if ("FINAL_STRIKE".equals(animation)) {
+            float pulse = MathHelper.sin(animationProgress * 0.42F);
+            leftArm.pitch = -1.25F + pulse * 0.12F;
+            rightArm.pitch = -1.25F - pulse * 0.12F;
+            leftArm.roll += 0.34F;
+            rightArm.roll -= 0.34F;
+            torso.pitch -= 0.16F;
+            jaw.pitch += 0.38F + pulse * 0.06F;
+            leftHorn.pitch -= 0.24F;
+            rightHorn.pitch -= 0.24F;
+            leftHorn.roll += 0.10F;
+            rightHorn.roll -= 0.10F;
+            coreEye.zScale = 1.30F + pulse * 0.10F;
+            coreEye.yScale = 1.18F + pulse * 0.08F;
+            chestRift.zScale = 1.16F + pulse * 0.08F;
+            catastropheSpine.pitch -= 0.22F;
+            return;
+        }
+        float collapse = MathHelper.clamp(animationProgress * 0.02F, 0.0F, 1.0F);
+        float tremor = MathHelper.sin(animationProgress * 0.75F) * 0.14F;
+        torso.pitch += 0.32F + collapse * 0.28F;
+        torso.pivotY += 1.0F + collapse * 1.2F;
+        root.roll += tremor;
+        jaw.pitch += 0.46F;
+        leftArm.pitch += 0.58F;
+        rightArm.pitch += 0.58F;
+        leftArm.roll += 0.24F;
+        rightArm.roll -= 0.24F;
+        leftHorn.roll -= 0.18F;
+        rightHorn.roll += 0.18F;
+        coreEye.zScale = 1.42F - collapse * 0.26F;
+        coreEye.yScale = 1.24F - collapse * 0.16F;
+        chestRift.zScale = 1.26F - collapse * 0.18F;
     }
 
     /** The last phase is intentionally larger and more threatening. */

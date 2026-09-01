@@ -3,7 +3,7 @@
   "ambientocclusion": false,
   "textures": {
     "particle": "minecraft:block/crying_obsidian",
-    "rift": "copimine:item/end_event_rift_fireball"
+    "rift": "copimine:item/end_event_rift_fireball_hd"
   },
   "elements": [
     {

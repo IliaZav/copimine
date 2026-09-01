@@ -283,6 +283,12 @@ boss:
     telegraph-ticks: 50
     duration-ticks: 100
     minimum-safe-ratio: 0.35
+  # One bounded, once-per-boss catastrophe strike. It never changes blocks.
+  final-strike:
+    enabled: true
+    damage: 8.0
+    radius: 4.0
+    wither-ticks: 60
   # The mechanic is deliberately restricted to DISTORTION. It uses tagged
   # displays and projectile hitboxes; vanilla block/fireball assets stay intact.
   rift-obelisks:

@@ -351,7 +351,7 @@ try {
   Wait-LogCount -Pattern 'RIFT_OBELISKS_SPAWNED .*count=1' -Minimum 1 -AfterOffset $spellOffset | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 1 -AfterOffset $spellOffset | Out-Null
   Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*reflected=false' -Minimum 1 -AfterOffset $spellOffset | Out-Null
-  $impactLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*reflected=false .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 .*blocks=false fire=false' `
+  $impactLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*reflected=false .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 .*participants=2 .*blocks=false fire=false' `
     -Minimum 1 -AfterOffset $spellOffset
   $effectPlayer = Wait-PlayerEffects -ImpactLog $impactLog -AfterOffset $spellOffset
   Start-Sleep -Milliseconds 250

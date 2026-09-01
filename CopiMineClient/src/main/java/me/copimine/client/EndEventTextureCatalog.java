@@ -71,10 +71,10 @@ public final class EndEventTextureCatalog {
         textures.put("END_RIFT_SHULKER_V1", entityTexture("end_rift_shulker.png"));
         textures.put("END_RIFT_SKELETON_V1", entityTexture("end_rift_skeleton.png"));
         textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));
-        textures.put("END_RIFT_OBELISK_FULL_V1", entityTexture("end_event_rift_obelisk_full.png"));
-        textures.put("END_RIFT_OBELISK_DAMAGED_V1", entityTexture("end_event_rift_obelisk_damaged.png"));
-        textures.put("END_RIFT_OBELISK_CRITICAL_V1", entityTexture("end_event_rift_obelisk_critical.png"));
-        textures.put("END_RIFT_FIREBALL_V1", entityTexture("end_event_rift_fireball.png"));
+        textures.put("END_RIFT_OBELISK_FULL_V1", entityTexture("end_event_rift_obelisk_full_hd.png"));
+        textures.put("END_RIFT_OBELISK_DAMAGED_V1", entityTexture("end_event_rift_obelisk_damaged_hd.png"));
+        textures.put("END_RIFT_OBELISK_CRITICAL_V1", entityTexture("end_event_rift_obelisk_critical_hd.png"));
+        textures.put("END_RIFT_FIREBALL_V1", entityTexture("end_event_rift_fireball_hd.png"));
         return Map.copyOf(textures);
     }
 

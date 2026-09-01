@@ -183,9 +183,24 @@ function Wait-LogCount {
 
 function Wait-Players {
   $deadline = (Get-Date).AddSeconds(90)
+  $forceLoggedIn = @{}
   do {
     $list = Invoke-LocalRcon -CommandText 'list'
     $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
+    # AuthMe's login timeout starts when the protocol client joins, while a
+    # batch force-login issued only after all 20 clients are present can leave
+    # the first client waiting behind the database lookup queue. Force-login
+    # each client at the first observed join instead, keeping the load probe
+    # concurrent without making authentication its bottleneck.
+    foreach ($name in @($playerNames | Where-Object { $list -match [Regex]::Escape($_) })) {
+      if (-not $forceLoggedIn.ContainsKey($name)) {
+        $forceLogin = Invoke-LocalRcon -CommandText ("authme forcelogin $name")
+        if ($forceLogin -notmatch 'Force login for') {
+          throw "Local AuthMe force-login failed for $name`n$forceLogin"
+        }
+        $forceLoggedIn[$name] = $true
+      }
+    }
     if ($missing.Count -eq 0) { return }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
@@ -287,16 +302,6 @@ try {
     Start-Sleep -Milliseconds 750
   }
   Wait-Players
-  foreach ($name in $playerNames) {
-    # This is an event load probe, not an AuthMe benchmark.  Force-login is a
-    # local console-only operation on the disposable test accounts, ensuring
-    # every real protocol client can remain a gameplay participant while the
-    # event is exercised.
-    $forceLogin = Invoke-LocalRcon -CommandText ("authme forcelogin $name")
-    if ($forceLogin -notmatch 'Force login for') {
-      throw "Local AuthMe force-login failed for $name`n$forceLogin"
-    }
-  }
   Start-Sleep -Seconds 3
   Start-Sleep -Seconds 4
   $destinations = @{}
@@ -371,6 +376,10 @@ try {
   Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_PULSE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*max_active=8' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_EFFECTS_APPLIED .*damage=9\.0 blindness_ticks=200 blindness_amplifier=0 weakness_ticks=200 weakness_amplifier=2 nausea_ticks=200 nausea_amplifier=2 slowness_ticks=200 slowness_amplifier=1 participants=20' `
+    -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*damage=9\.0 .*blindness_ticks=200 .*debuff_ticks=200 participants=20 .*blocks=false fire=false' `
+    -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
 
   Start-Sleep -Seconds 3
   $status = Invoke-LocalRcon -CommandText 'cmend status'
@@ -397,7 +406,7 @@ try {
   $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
   if ($missing.Count -gt 0) { throw "20-player load disconnected clients: $($missing -join ', ')`n$list" }
   $success = $true
-  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} max_boss_virtual_hp={1} obelisks={2}/4 fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40" -f
+  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} max_boss_virtual_hp={1} obelisks={2}/4 fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 scaled_damage=9.0 scaled_effect_ticks=200" -f
     $PlayerCount, $maxHealth, $liveObelisks, $liveFireballs)
 } finally {
   foreach ($entry in $processes) {

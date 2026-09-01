@@ -110,7 +110,12 @@ def test_exact_pulse_and_hit_effects_are_policy_driven() -> None:
     assert "MAX_ACTIVE_FIREBALLS = 8" in policy
     assert "new EffectProfile(0.0D, 0, 60, 0, 60, 1, 60, 0)" in policy
     assert "new EffectProfile(damage, blindnessTicks, debuffTicks" in policy
+    assert "scaledFireballEffects" in policy
+    assert "MAX_EFFECT_TICKS = 200" in policy
+    assert "MAX_SCALED_DAMAGE" in policy
     assert "effects.blindnessTicks()" in MAIN
+    assert "RiftFireballPolicy.scaledFireballEffects" in MAIN
+    assert "activeBossParticipants()" in MAIN
     assert "effects.nauseaAmplifier()" in MAIN
     assert "effects.slownessAmplifier()" in MAIN
 
@@ -153,12 +158,13 @@ def test_manual_wave_reset_reconciles_world_entities_after_reload() -> None:
     assert "END_EVENT_WAVE_RESET_CLEANUP" in reset
 
 
-def test_resource_pack_models_and_textures_are_real_32px_assets_without_vanilla_override() -> None:
+def test_resource_pack_models_and_textures_are_high_resolution_event_assets_without_vanilla_override() -> None:
     expected = {
         "end_event_rift_obelisk_full": 830010,
         "end_event_rift_obelisk_damaged": 830011,
         "end_event_rift_obelisk_critical": 830012,
         "end_event_rift_fireball": 830013,
+        "end_event_rift_obelisk_pulse": 830014,
     }
     entries = {entry["id"]: entry for entry in MANIFEST["items"]}
     for name, custom_model_data in expected.items():
@@ -175,7 +181,7 @@ def test_resource_pack_models_and_textures_are_real_32px_assets_without_vanilla_
         texture = texture.with_suffix(".png")
         assert texture.is_file(), texture
         with Image.open(texture) as image:
-            assert image.size == (32, 32)
+            assert image.width >= 128 and image.height >= 128
         assert str(texture.relative_to(ROOT / "resourcepacks/src")).replace("\\", "/") in PACK_BUILDER
         assert str(model.relative_to(ROOT / "resourcepacks/src")).replace("\\", "/") in PACK_BUILDER
     assert "assets/minecraft/textures/entity/fireball" not in PACK_BUILDER
@@ -184,20 +190,20 @@ def test_resource_pack_models_and_textures_are_real_32px_assets_without_vanilla_
 
 def test_client_catalog_has_fallback_assets_for_each_event_visual() -> None:
     for visual_id, filename in (
-        ("END_RIFT_OBELISK_FULL_V1", "end_event_rift_obelisk_full.png"),
-        ("END_RIFT_OBELISK_DAMAGED_V1", "end_event_rift_obelisk_damaged.png"),
-        ("END_RIFT_OBELISK_CRITICAL_V1", "end_event_rift_obelisk_critical.png"),
-        ("END_RIFT_FIREBALL_V1", "end_event_rift_fireball.png"),
+        ("END_RIFT_OBELISK_FULL_V1", "end_event_rift_obelisk_full_hd.png"),
+        ("END_RIFT_OBELISK_DAMAGED_V1", "end_event_rift_obelisk_damaged_hd.png"),
+        ("END_RIFT_OBELISK_CRITICAL_V1", "end_event_rift_obelisk_critical_hd.png"),
+        ("END_RIFT_FIREBALL_V1", "end_event_rift_fireball_hd.png"),
     ):
         assert visual_id in CLIENT_CATALOG
         assert filename in CLIENT_CATALOG
         path = ROOT / "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity" / filename
         assert path.is_file(), path
         with Image.open(path) as image:
-            assert image.size == (32, 32)
+            assert image.width >= 128 and image.height >= 128
 
 
-def test_obelisk_tiles_are_symmetric_and_states_are_visibly_distinct() -> None:
+def test_obelisk_legacy_fallbacks_stay_symmetric_and_hd_states_are_distinct() -> None:
     images = {}
     for variant in ("full", "damaged", "critical"):
         path = ROOT / "resourcepacks/src/assets/copimine/textures/item" / f"end_event_rift_obelisk_{variant}.png"
@@ -211,6 +217,16 @@ def test_obelisk_tiles_are_symmetric_and_states_are_visibly_distinct() -> None:
         assert len(image.getcolors(maxcolors=4096) or []) >= 8
     assert images["full"].tobytes() != images["damaged"].tobytes()
     assert images["damaged"].tobytes() != images["critical"].tobytes()
+    hd_images = {}
+    for variant in ("full", "damaged", "critical"):
+        path = ROOT / "resourcepacks/src/assets/copimine/textures/item" / f"end_event_rift_obelisk_{variant}_hd.png"
+        with Image.open(path) as source:
+            hd_images[variant] = source.convert("RGBA").copy()
+        assert hd_images[variant].width >= 128
+        assert hd_images[variant].height >= 128
+        assert len(hd_images[variant].getcolors(maxcolors=1_000_000) or []) >= 32
+    assert hd_images["full"].tobytes() != hd_images["damaged"].tobytes()
+    assert hd_images["damaged"].tobytes() != hd_images["critical"].tobytes()
 
 
 def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() -> None:
@@ -233,6 +249,19 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
     assert "bot._client.write('use_entity'" in BOT
     assert "bot._client.write('look'" in BOT
     assert "Math.fround((Math.PI - yaw) * 180 / Math.PI)" in BOT
+    assert "participants=2" in LIVE
+
+
+def test_twenty_player_live_probe_checks_scaled_fireball_damage_and_effects() -> None:
+    for marker in (
+        "damage=9\\.0 blindness_ticks=200",
+        "weakness_amplifier=2",
+        "nausea_amplifier=2",
+        "slowness_amplifier=1",
+        "participants=20",
+        "scaled_damage=9.0 scaled_effect_ticks=200",
+    ):
+        assert marker in LOAD
     assert "bot.lookAt(" not in BOT
 
 

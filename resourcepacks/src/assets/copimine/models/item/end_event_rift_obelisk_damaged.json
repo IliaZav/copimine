@@ -4,7 +4,7 @@
   "textures": {
     "particle": "minecraft:block/obsidian",
     "frame": "minecraft:block/crying_obsidian",
-    "rift": "copimine:item/end_event_rift_obelisk_damaged"
+    "rift": "copimine:item/end_event_rift_obelisk_damaged_hd"
   },
   "elements": [
     {"from": [1, 0, 1], "to": [15, 2, 15], "faces": {"down": {"texture": "#frame"}, "up": {"texture": "#rift"}, "north": {"texture": "#frame"}, "south": {"texture": "#frame"}, "west": {"texture": "#frame"}, "east": {"texture": "#frame"}}},

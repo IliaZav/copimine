@@ -18,7 +18,8 @@ public final class BossVisualCuePolicyTest {
             "arena_inferno",
             "phase_shift",
             "final_awaken",
-            "defeat_collapse");
+            "defeat_collapse",
+            "final_strike");
 
     public static void main(String[] args) {
         Map<String, Map<BossVisualCuePolicy.CueStage, BossVisualCuePolicy.Cue>> catalog = BossVisualCuePolicy.cues();

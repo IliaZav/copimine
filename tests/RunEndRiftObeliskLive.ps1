@@ -141,6 +141,16 @@ function Get-BossPosition {
   )
 }
 
+function Get-EntityHealth {
+  param([Parameter(Mandatory = $true)][string]$EntitySelector)
+  $data = Invoke-LocalRcon -CommandText ("data get entity $EntitySelector Health")
+  $match = [Regex]::Match($data, '(?:Health:\s*)?([-0-9.]+)f?\s*$')
+  if (-not $match.Success) {
+    throw "Health is missing for ${EntitySelector}:`n$data"
+  }
+  return [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+}
+
 function Assert-ArenaFloorStone {
   param(
     [Parameter(Mandatory = $true)][int]$X,
@@ -243,7 +253,11 @@ try {
   if ($boss.MaxHealth -ne 5000.0D) {
     throw "The disposable obelisk harness must start at 5000 virtual HP; got $($boss.MaxHealth)."
   }
-  $null = Invoke-LocalRcon -CommandText ("data merge entity $($boss.Uuid) {NoAI:1b}")
+  # Freeze the disposable test boss through the plugin's local-only harness,
+  # not with a raw NBT write that the five-tick AI watchdog would immediately
+  # undo. This keeps the exact player-damage assertion independent of boss
+  # melee while leaving the production boss controller unchanged.
+  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
   $status = $boss.Status
   $coreMatch = [Regex]::Match($status, 'core=.*?(-?\d+),(-?\d+),(-?\d+)')
   if (-not $coreMatch.Success) { throw "Local Core coordinates are missing:`n$status" }
@@ -294,10 +308,10 @@ try {
     # Keep the disposable probe alive and stationary while still recording
     # the fireball's configured damage/effects in the server log.  This
     # removes unrelated boss/wave knockback from the reflection assertion.
-    $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:resistance 255 60 true")
-    # Keep the effect NBT list limited to the four fireball effects.  The
+    # Keep the effect NBT list limited to the four fireball effects. The
     # large health pool makes the probe safe without adding unrelated effects
-    # that would make Paper abbreviate active_effects with an ellipsis.
+    # that would make Paper abbreviate active_effects with an ellipsis. The
+    # exact-damage assertion below deliberately does not use Resistance.
     $null = Invoke-LocalRcon -CommandText ("data merge entity $name {Health:1000f}")
   }
   # Keep the reflector between the obelisk and the second participant.  This
@@ -325,6 +339,13 @@ try {
   if ($preHazard.Status -notmatch 'half=.*true' -or $preHazard.Status -notmatch 'boss=.*hp=2500/5000') {
     throw "Local boss did not reach the DISTORTION checkpoint:`n$($preHazard.Status)"
   }
+  # triggerHalfPhase may heal active players when the checkpoint is crossed;
+  # capture the baseline only after the boss is settled in DISTORTION.
+  Start-Sleep -Milliseconds 250
+  $directHealthBefore = @{}
+  foreach ($name in $playerNames) {
+    $directHealthBefore[$name] = Get-EntityHealth -EntitySelector $name
+  }
   $spellOffset = Get-LogLength
   $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
   Wait-LogCount -Pattern 'RIFT_OBELISKS_SPAWNED .*count=1' -Minimum 1 -AfterOffset $spellOffset | Out-Null
@@ -333,6 +354,19 @@ try {
   $impactLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*reflected=false .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 .*blocks=false fire=false' `
     -Minimum 1 -AfterOffset $spellOffset
   $effectPlayer = Wait-PlayerEffects -ImpactLog $impactLog -AfterOffset $spellOffset
+  Start-Sleep -Milliseconds 250
+  $directHealthAfter = @{}
+  $directDeltas = @{}
+  foreach ($name in $playerNames) {
+    $directHealthAfter[$name] = Get-EntityHealth -EntitySelector $name
+    $directDeltas[$name] = $directHealthBefore[$name] - $directHealthAfter[$name]
+    if ($directDeltas[$name] -lt -0.01D -or $directDeltas[$name] -gt 6.01D) {
+      throw "Rift Fireball applied vanilla damage in addition to the configured impact: player=$name before=$($directHealthBefore[$name]) after=$($directHealthAfter[$name]) delta=$($directDeltas[$name])"
+    }
+  }
+  if (@($directDeltas.Values | Where-Object { $_ -ge 5.99D }).Count -lt 1) {
+    throw "The direct Rift Fireball impact did not apply exactly 6.0 damage to a player: $($directDeltas | Out-String)"
+  }
   Wait-LogCount -Pattern 'RIFT_FIREBALL_REFLECTED ' -Minimum 3 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
@@ -348,7 +382,8 @@ try {
     throw "Rift Fireball changed boss physical HP: before=$($preHazard.Physical) after=$($hazardAfter.Physical)"
   }
   Assert-ArenaFloorStone -X $floorX -Y $floorY -Z $floorZ -Marker 'RIFT_OBELISK_BLOCK_STONE_AFTER'
-  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer boss_virtual_before=$($preHazard.Health) boss_virtual_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
+  $directDeltasJson = $directDeltas | ConvertTo-Json -Compress
+  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer player_damage_exact=true direct_deltas=$directDeltasJson boss_virtual_before=$($preHazard.Health) boss_virtual_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
 
   # After the reflected-only mechanic is gone, use a separate real survival
   # client to prove ordinary player damage still reaches the boss path.

@@ -113,6 +113,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\RiftObeliskScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskPlacementPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftObeliskTimingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
       (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
@@ -145,6 +146,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskDamagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskPlacementPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskTimingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
   Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest

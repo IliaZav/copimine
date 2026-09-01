@@ -21,6 +21,15 @@ public final class RiftFireballPolicy {
         return eventOwned;
     }
 
+    /**
+     * The impact controller applies the configured player damage exactly once.
+     * Cancel the LargeFireball's vanilla player damage event, while leaving
+     * ordinary fireballs and ordinary player attacks untouched.
+     */
+    public static boolean blocksVanillaPlayerDamage(boolean eventOwned) {
+        return eventOwned;
+    }
+
     public static EffectProfile pulseEffects() {
         return new EffectProfile(0.0D, 0, 60, 0, 60, 1, 60, 0);
     }

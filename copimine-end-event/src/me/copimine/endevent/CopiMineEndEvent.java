@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.logging.Level;
 import me.copimine.artifacts.api.EventArtifactRewardRequest;
 import me.copimine.artifacts.api.EventArtifactRewardService;
@@ -62,6 +63,7 @@ import me.copimine.endevent.domain.RiftFireballPolicy;
 import me.copimine.endevent.domain.RiftObeliskDamagePolicy;
 import me.copimine.endevent.domain.RiftObeliskPlacementPolicy;
 import me.copimine.endevent.domain.RiftObeliskScalingPolicy;
+import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
 import me.copimine.endevent.domain.StormPatternPolicy;
 import me.copimine.endevent.domain.SkeletonCombatPolicy;
 import me.copimine.endevent.domain.SkeletonArrowPolicy;
@@ -434,6 +436,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, BukkitTask> riftProjectileTasks = new HashMap<>();
     private final Map<UUID, RiftObeliskRuntimeState> activeRiftObelisks = new LinkedHashMap<>();
     private final Map<UUID, RiftFireballRuntimeState> activeRiftFireballs = new LinkedHashMap<>();
+    /** Player UUIDs whose damage event is being issued by our impact transaction. */
+    private final Set<UUID> riftFireballManualDamagePlayers = new HashSet<>();
     private long nextRiftObeliskCastTick;
     private int riftObeliskTargetCursor;
     private long eventTickCounter;
@@ -13277,6 +13281,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .toList();
     }
 
+    /**
+     * Return only players who are eligible for the current boss fight.  During
+     * an official run the roster is frozen at ritual completion, so an
+     * operator, spectator, helper, or late joiner standing inside the arena
+     * cannot change obelisk scaling, become a target, or receive its hazards.
+     * The disposable local boss harness intentionally has no frozen roster and
+     * therefore uses the same bounded arena/online checks as the live probe.
+     */
+    private List<Player> activeBossParticipants() {
+        return Bukkit.getOnlinePlayers().stream()
+                .filter(this::isActiveBossParticipant)
+                .map(player -> (Player) player)
+                .toList();
+    }
+
+    private boolean isActiveBossParticipant(Player player) {
+        if (!isCombatTarget(player)) {
+            return false;
+        }
+        return officialRewardRoster.isEmpty()
+                || officialRewardRoster.contains(player.getUniqueId());
+    }
+
     private void commitOfficialBossDefeat(LivingEntity boss, Entity source) {
         if (boss == null || boss.isDead() || isTestBoss(boss)) {
             return;
@@ -14393,9 +14420,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !forced && eventTickCounter < nextRiftObeliskCastTick) {
             return;
         }
-        List<Player> participants = activeLivingPlayers().stream()
-                .filter(this::isActiveArenaParticipant)
-                .toList();
+        List<Player> participants = activeBossParticipants();
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
         int requested = Math.min(tuning.maxActive(),
                 RiftObeliskScalingPolicy.countForPlayers(participants.size()));
@@ -14442,11 +14467,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             display.getPersistentDataContainer().set(keyObeliskId,
                     PersistentDataType.STRING, display.getUniqueId().toString());
             long activationTick = eventTickCounter + tuning.spawnTelegraphTicks();
-            long stagger = Math.max(5L, tuning.fireIntervalTicks() / Math.max(1, requested + 1));
             RiftObeliskRuntimeState state = new RiftObeliskRuntimeState(
                     display.getUniqueId(), location.clone(), tuning.health(),
                     activationTick, activationTick + tuning.pulseIntervalTicks(),
-                    activationTick + tuning.fireIntervalTicks() + spawned * stagger);
+                    RiftObeliskTimingPolicy.firstFireTick(
+                            activationTick, tuning.fireIntervalTicks(), spawned, requested));
             activeRiftObelisks.put(display.getUniqueId(), state);
             spawned++;
             getLogger().info("RIFT_OBELISK_SPAWN event=" + eventId
@@ -14599,8 +14624,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || activeRiftFireballs.size() >= config.riftObeliskTuning().maxActiveFireballs()) {
             return;
         }
-        List<Player> targets = activeLivingPlayers().stream()
-                .filter(this::isActiveArenaParticipant)
+        List<Player> targets = activeBossParticipants().stream()
                 .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
                 .toList();
         if (targets.isEmpty()) {
@@ -14610,7 +14634,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 targets.stream().map(Player::getUniqueId).toList(), null,
                 List.of(), riftObeliskTargetCursor++);
         Player target = choice.target() == null ? targets.get(0) : Bukkit.getPlayer(choice.target());
-        if (target == null || !isActiveArenaParticipant(target)) {
+        if (target == null || !isActiveBossParticipant(target)) {
             return;
         }
         Location start = obelisk.location().clone().add(0.0D, 1.45D, 0.0D);
@@ -14656,7 +14680,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         RiftFireballRuntimeState state = activeRiftFireballs.get(fireball.getUniqueId());
         event.setCancelled(true);
-        if (state == null || state.generation() != generation || !isCombatTarget(player)) {
+        if (state == null || state.generation() != generation || !isActiveBossParticipant(player)) {
             getLogger().warning("RIFT_FIREBALL_REFLECT_REJECTED event=" + eventId
                     + " fireball=" + fireball.getUniqueId() + " player=" + player.getUniqueId()
                     + " reason=stale-or-invalid");
@@ -14694,6 +14718,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " direction=" + String.format(Locale.ROOT, "%.3f,%.3f,%.3f",
                     direction.getX(), direction.getY(), direction.getZ())
                     + " location=" + locationText(fireball.getLocation()));
+    }
+
+    /**
+     * LargeFireball normally emits its own player damage event before the
+     * projectile hit callback.  Rift Fireballs use the callback below as the
+     * single authoritative impact transaction so the configured damage and
+     * debuffs are applied once, not once by vanilla and once by the event.
+     * The short-lived UUID guard allows that intentional player.damage(...) to
+     * pass through this listener without reopening the vanilla path.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onRiftFireballPlayerDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || !(event.getDamager() instanceof LargeFireball fireball)
+                || !isRiftFireball(fireball)) {
+            return;
+        }
+        if (riftFireballManualDamagePlayers.contains(player.getUniqueId())) {
+            return;
+        }
+        if (RiftFireballPolicy.blocksVanillaPlayerDamage(true)) {
+            event.setCancelled(true);
+            getLogger().info("RIFT_FIREBALL_VANILLA_PLAYER_DAMAGE_BLOCKED event=" + eventId
+                    + " fireball=" + fireball.getUniqueId() + " player=" + player.getUniqueId()
+                    + " damage=" + event.getFinalDamage());
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
@@ -14750,11 +14800,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
         RiftFireballPolicy.EffectProfile effects = RiftFireballPolicy.fireballEffects(
                 tuning.fireballDamage(), tuning.blindnessTicks(), tuning.debuffTicks());
+        List<Player> participants = activeBossParticipants();
+        Set<UUID> participantIds = participants.stream()
+                .map(Player::getUniqueId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<UUID> affected = new LinkedHashSet<>();
-        if (hitEntity instanceof Player player) {
+        if (hitEntity instanceof Player player && participantIds.contains(player.getUniqueId())) {
             affected.add(player.getUniqueId());
         }
-        for (Player player : activeLivingPlayers()) {
+        for (Player player : participants) {
             if (player.getLocation().distanceSquared(impact) <= 2.75D * 2.75D) {
                 affected.add(player.getUniqueId());
             }
@@ -14762,12 +14816,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<UUID> appliedPlayers = new ArrayList<>();
         for (UUID playerId : affected) {
             Player player = Bukkit.getPlayer(playerId);
-            if (player == null || !isActiveArenaParticipant(player)) {
+            if (player == null || !participantIds.contains(player.getUniqueId())
+                    || !isActiveBossParticipant(player)) {
                 continue;
             }
             // The fireball, not the boss, is the damage source. This prevents
             // the boss melee bonus listener from changing the configured 6.0.
-            player.damage(effects.damage(), fireball);
+            riftFireballManualDamagePlayers.add(player.getUniqueId());
+            try {
+                player.damage(effects.damage(), fireball);
+            } finally {
+                riftFireballManualDamagePlayers.remove(player.getUniqueId());
+            }
             player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,
                     effects.blindnessTicks(), 0, false, true, true), true);
             player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
@@ -14859,7 +14919,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void applyRiftObeliskPulse(Location center, double radius) {
         RiftFireballPolicy.EffectProfile effects = RiftFireballPolicy.pulseEffects();
         double squared = radius * radius;
-        for (Player player : activeLivingPlayers()) {
+        for (Player player : activeBossParticipants()) {
             if (player.getLocation().distanceSquared(center) > squared) {
                 continue;
             }
@@ -14957,7 +15017,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long remaining = Math.max(0L, state.destroyAtTick() - eventTickCounter);
-        float scale = (float) Math.max(0.05D, Math.min(1.30D, remaining / 8.0D * 1.30D));
+        long collapseTicks = config == null ? 8L
+                : Math.max(1L, config.riftObeliskTuning().destructionDelayTicks());
+        float scale = (float) Math.max(0.05D,
+                Math.min(1.30D, remaining / (double) collapseTicks * 1.30D));
         display.setTransformation(new Transformation(
                 new Vector3f(-0.15F, 0.7F - scale * 0.5F, -0.15F), new AxisAngle4f(),
                 new Vector3f(scale, scale, scale), new AxisAngle4f()));
@@ -15054,6 +15117,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         activeRiftFireballs.clear();
         activeRiftObelisks.clear();
+        riftFireballManualDamagePlayers.clear();
         nextRiftObeliskCastTick = 0L;
         riftObeliskTargetCursor = 0;
         if (obelisks > 0 || fireballs > 0) {
@@ -15145,7 +15209,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private void activate(int pulseIntervalTicks, int fireIntervalTicks) {
             active = true;
             nextPulseTick = activationTick + Math.max(1, pulseIntervalTicks);
-            nextFireTick = activationTick + Math.max(1, fireIntervalTicks);
+            // The constructor already includes this obelisk's deterministic
+            // stagger. Preserve it when the telegraph becomes active; a reset
+            // to the common base tick would make every obelisk fire together.
+            nextFireTick = Math.max(nextFireTick,
+                    activationTick + Math.max(1, fireIntervalTicks));
         }
 
         private void scheduleNextPulse(int intervalTicks) {

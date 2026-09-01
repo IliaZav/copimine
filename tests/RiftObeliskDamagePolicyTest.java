@@ -8,6 +8,7 @@ public final class RiftObeliskDamagePolicyTest {
         testPulseEffectsAreExact();
         testFireballEffectsAreExact();
         testBossIsImmuneOnlyToRiftFireballSource();
+        testVanillaPlayerDamageIsOwnedByTheImpactTransaction();
         System.out.println("RiftObeliskDamagePolicyTest OK");
     }
 
@@ -64,6 +65,13 @@ public final class RiftObeliskDamagePolicyTest {
                 "reflected Rift Fireball damage to boss must be blocked");
         check(!RiftFireballPolicy.blocksBossDamage(false, false),
                 "ordinary player attack must remain damageable");
+    }
+
+    private static void testVanillaPlayerDamageIsOwnedByTheImpactTransaction() {
+        check(RiftFireballPolicy.blocksVanillaPlayerDamage(true),
+                "event Rift Fireball vanilla player damage must be cancelled");
+        check(!RiftFireballPolicy.blocksVanillaPlayerDamage(false),
+                "ordinary fireball player damage must remain untouched");
     }
 
     private static void check(boolean condition, String message) {

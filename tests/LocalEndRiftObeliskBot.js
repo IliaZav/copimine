@@ -148,7 +148,12 @@ bot.once('spawn', () => {
   startedAt = Date.now()
   console.log(`PLAYER_JOIN ${username}`)
   bot.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat('/login endrift-local'), delay)
+  // AuthMe may queue a database lookup when many real clients start at once.
+  // Retry login during the normal server login window so a slow local DB does
+  // not turn the obelisk load probe into a false network failure.
+  for (const delay of [1000, 3000, 6000, 10000, 16000, 24000, 32000, 44000]) {
+    setTimeout(() => bot.chat('/login endrift-local'), delay)
+  }
   sampleTimer = setInterval(sample, 100)
 })
 

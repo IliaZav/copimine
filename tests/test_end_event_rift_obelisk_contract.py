@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MAIN_PATH = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
 MAIN = MAIN_PATH.read_text(encoding="utf-8")
 LIVE = (ROOT / "tests/RunEndRiftObeliskLive.ps1").read_text(encoding="utf-8")
+LOAD = (ROOT / "tests/RunEndRiftObeliskLoadLive.ps1").read_text(encoding="utf-8")
 BOT = (ROOT / "tests/LocalEndRiftObeliskBot.js").read_text(encoding="utf-8")
 CONFIG = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
 EVENT_CONFIG = (ROOT / "copimine-end-event/src/me/copimine/endevent/EventConfig.java").read_text(encoding="utf-8")
@@ -60,6 +61,8 @@ def test_spawn_placement_and_scaling_are_bounded_and_display_only() -> None:
     spawn = _body("private void startRiftObelisks", "private Location resolveRiftObeliskLocation")
     placement = _body("private Location resolveRiftObeliskLocation", "private void tickRiftObelisks")
     assert "RiftObeliskScalingPolicy.countForPlayers(participants.size())" in spawn
+    assert "activeBossParticipants()" in spawn
+    assert "officialRewardRoster.isEmpty()" in MAIN
     assert "tuning.maxActive()" in spawn
     assert "RiftObeliskPlacementPolicy.candidates(requested)" in spawn
     assert "isArenaLocation(candidate)" in placement
@@ -85,6 +88,18 @@ def test_fireball_is_event_owned_reflectable_non_incendiary_and_capped() -> None
     assert "player.damage(effects.damage(), fireball)" in impact
     assert "RIFT_FIREBALL_EFFECTS_APPLIED" in impact
     assert "blocks=false fire=false" in impact
+    assert "onRiftFireballPlayerDamage" in MAIN
+    assert "RiftFireballPolicy.blocksVanillaPlayerDamage" in MAIN
+    assert "riftFireballManualDamagePlayers" in MAIN
+    assert "!isActiveBossParticipant(player)" in reflect
+
+
+def test_first_fire_ticks_are_staggered_and_preserved_after_telegraph() -> None:
+    timing = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RiftObeliskTimingPolicy.java").read_text(encoding="utf-8")
+    assert "firstFireTick" in timing
+    assert "RiftObeliskTimingPolicy.firstFireTick" in MAIN
+    state = _body("private void activate(int pulseIntervalTicks", "private void scheduleNextPulse")
+    assert "nextFireTick = Math.max(nextFireTick" in state
 
 
 def test_exact_pulse_and_hit_effects_are_policy_driven() -> None:
@@ -203,6 +218,7 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
         "LocalEndRiftObeliskBot.js",
         "cmend boss spell rift_obelisks",
         "RIFT_FIREBALL_EFFECTS_APPLIED",
+        "player_damage_exact=true",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0",
@@ -218,3 +234,23 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
     assert "bot._client.write('look'" in BOT
     assert "Math.fround((Math.PI - yaw) * 180 / Math.PI)" in BOT
     assert "bot.lookAt(" not in BOT
+
+
+def test_twenty_player_obelisk_load_probe_is_real_and_bounded() -> None:
+    for marker in (
+        "PlayerCount = 20",
+        "LocalEndRiftObeliskBot.js",
+        "END_RIFT_REFLECT_ENABLED",
+        "cmend boss spawn",
+        "cmend boss spell rift_obelisks",
+        "count=4",
+        "participants=' + $PlayerCount",
+        "rift-obelisks=(\\d+)/4",
+        "obelisks={2}/4",
+        "LIVE_RIFT_OBELISK_LOAD_PASS",
+        "LIVE_RIFT_OBELISK_LOAD_CLEANUP_PASS",
+    ):
+        assert marker in LOAD
+    assert "127.0.0.1" in LOAD
+    assert "SetupEndRiftLocalScene.ps1" not in LOAD
+    assert "Start-Job" not in LOAD

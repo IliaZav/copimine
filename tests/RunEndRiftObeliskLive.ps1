@@ -4,7 +4,10 @@ param(
   [string]$FirstBotName = 'ObeliskProbeA',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'ObeliskProbeB',
-  [int]$BotDurationSeconds = 80,
+  # Reflections are driven by real client packets and can miss while Paper is
+  # flushing AuthMe/session work.  Keep enough runway for three separate
+  # 80-tick launches instead of making the regression depend on one timing.
+  [int]$BotDurationSeconds = 150,
   [int]$TimeoutSeconds = 95
 )
 
@@ -350,6 +353,8 @@ try {
   # After the reflected-only mechanic is gone, use a separate real survival
   # client to prove ordinary player damage still reaches the boss path.
   $normalBefore = Get-BossSnapshot
+  $normalDamagePattern = 'BOSS_DAMAGE_EVENT .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:'
+  $normalDamageOffset = Get-LogLength
   $normalEnvironment = @{
     END_RIFT_BOT_HOST = '127.0.0.1'
     END_RIFT_BOT_PORT = '25566'
@@ -384,16 +389,16 @@ try {
   if ($normalBot.Process.ExitCode -ne 0 -or $normalOutput.Output -notmatch 'PLAYER_END .*attacks=[1-9]') {
     throw "The ordinary post-obelisk survival client failed.`n$($normalOutput.Output)`n$($normalOutput.Error)"
   }
+  # Paper's async log appender can flush the final combat lines a few hundred
+  # milliseconds after the bot socket closes.  Wait for the actual event line
+  # before deciding that the authoritative boss path was not reached.
+  $normalDamageLog = Wait-LogCount -Pattern $normalDamagePattern -Minimum 1 `
+    -AfterOffset $normalDamageOffset -WaitSeconds 10
   $normalAfter = Get-BossSnapshot
   if ($normalAfter.Health -ge $normalBefore.Health) {
     throw "Ordinary player damage stopped working after Rift Fireball: before=$($normalBefore.Health) after=$($normalAfter.Health)"
   }
-  $normalLog = Read-SharedText -Path $paperLog
-  $normalDamageCount = ([Regex]::Matches($normalLog,
-    'BOSS_DAMAGE_EVENT .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:')).Count
-  if ($normalDamageCount -lt 1) {
-    throw "No ordinary player boss damage event was recorded after the obelisk test. See $paperLog"
-  }
+  $normalDamageCount = ([Regex]::Matches($normalDamageLog, $normalDamagePattern)).Count
   Write-Output "LIVE_RIFT_OBELISK_NORMAL_DAMAGE_PASS before=$($normalBefore.Health) after=$($normalAfter.Health) player_damage_events=$normalDamageCount"
 } finally {
   foreach ($probe in $obeliskBots + @($normalBot)) {

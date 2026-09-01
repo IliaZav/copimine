@@ -6,8 +6,10 @@ param(
   [string]$SecondBotName = 'RiftDamageB',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string[]]$AdditionalBotNames = @(),
-  [int]$BotDurationSeconds = 60,
-  [int]$TimeoutSeconds = 75,
+  # The probe needs enough packets to observe same-tick coalescing, but must
+  # stop before five disposable clients can drain the 5000-HP test boss.
+  [int]$BotDurationSeconds = 35,
+  [int]$TimeoutSeconds = 55,
   [switch]$RequireSameTick
 )
 
@@ -122,8 +124,11 @@ function Start-CombatBot {
     $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000))
   }
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_UUID'] = $BossUuid
-  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_DELAY_MS'] = '8500'
-  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_EVERY_MS'] = '650'
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_DELAY_MS'] = '5000'
+  # 410 ms is intentionally not an integral number of server ticks.  Separate
+  # real clients therefore drift through tick boundaries and reliably produce
+  # an observable same-tick group without a plugin-only synthetic hit.
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_EVERY_MS'] = '410'
   $startInfo.EnvironmentVariables['END_RIFT_RAW_ATTACK'] = '1'
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo

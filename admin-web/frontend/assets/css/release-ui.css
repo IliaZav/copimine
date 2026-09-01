@@ -871,6 +871,7 @@ tbody tr:hover { background: var(--status-gradient); }
 .week-bars { width: 100%; height: 68px; display: flex; justify-content: center; align-items: end; gap: 3px; }
 .week-bar { display: block; width: min(13px, 42%); height: var(--height); min-height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); animation: barGrow .65s ease-out both; }
 .week-bar.secondary { background: var(--teal); opacity: .78; animation-delay: 80ms; }
+.is-broken-image { display: none !important; }
 .week-column strong { font-size: 12px; line-height: 1; }
 .week-column span { color: var(--muted); font-size: 10px; }
 .chart-legend { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 10px; }

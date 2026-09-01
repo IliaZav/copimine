@@ -15090,8 +15090,17 @@ async def investigations_block_logs(
     limit: int = 250,
     _: str = Depends(require_panel_admin),
 ) -> dict[str, Any]:
-    rows = await bg(coreprotect_search, player, x, y, z, radius, action, source, limit)
-    return {"rows": rows, "source": safe_location(Path(COREPROTECT_DB))}
+    source_info = safe_location(Path(COREPROTECT_DB))
+    try:
+        rows = await bg(coreprotect_search, player, x, y, z, radius, action, source, limit)
+        return {"rows": rows, "source": source_info}
+    except HTTPException as exc:
+        # CoreProtect is an optional read-only source.  A missing or temporarily
+        # unavailable database must stay visible in the panel as a diagnostic,
+        # not become a noisy 404 that looks like a broken cabinet route.
+        return {"rows": [], "source": source_info, "error": public_error_message(exc.detail)}
+    except Exception as exc:
+        return {"rows": [], "source": source_info, "error": public_error_message(exc)}
 
 
 @app.get("/api/investigations/export.csv")

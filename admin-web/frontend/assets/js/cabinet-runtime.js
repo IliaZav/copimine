@@ -183,11 +183,23 @@ const BOOTSTRAP_TIMEOUT_MS = 20000;
 document.addEventListener("error", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLImageElement)) return;
+  const fallback = String(target.dataset.fallbackIcon || "").trim();
+  let fallbackUrl = "";
+  try {
+    fallbackUrl = fallback ? new URL(fallback, document.baseURI).href : "";
+  } catch {
+    fallbackUrl = "";
+  }
+  if (fallbackUrl && target.dataset.fallbackTried !== "true" && target.src !== fallbackUrl) {
+    target.dataset.fallbackTried = "true";
+    target.src = fallback;
+    return;
+  }
   if (target.closest(".avatar-badge")) {
     target.remove();
     return;
   }
-  target.style.display = "none";
+  target.classList.add("is-broken-image");
 }, true);
 
 const publicFeatures = {
@@ -1065,6 +1077,10 @@ window.retryCabinetBoot = () => window.location.reload();
 
 function applyDynamicViewStyles(root = $("view")) {
   if (!root) return;
+  root.querySelectorAll(".week-bar[data-height]").forEach((el) => {
+    const height = Math.max(4, Math.min(100, number(el.dataset.height, 4)));
+    el.style.setProperty("--height", `${height}%`);
+  });
   root.querySelectorAll(".readiness-ring[data-ring-offset][data-ring-value]").forEach((el) => {
     const offset = number(el.dataset.ringOffset, 0);
     const value = number(el.dataset.ringValue, 0);
@@ -1255,7 +1271,7 @@ function dashboardWeekColumns(rows, kind = "purchases") {
   return `<div class="dashboard-week-chart" role="img" aria-label="${kind === "purchases" ? "Покупки за последнюю неделю" : "Заходы и выходы за последнюю неделю"}">
     ${values.map((row) => `
       <div class="week-column" title="${esc(row.date)}: ${row.primary} / ${row.secondary}">
-        <div class="week-bars"><i class="week-bar primary" style="--height:${Math.max(4, Math.round(row.primary / max * 100))}%"></i><i class="week-bar secondary" style="--height:${Math.max(4, Math.round(row.secondary / max * 100))}%"></i></div>
+        <div class="week-bars"><i class="week-bar primary" data-height="${Math.max(4, Math.round(row.primary / max * 100))}" aria-hidden="true"></i><i class="week-bar secondary" data-height="${Math.max(4, Math.round(row.secondary / max * 100))}" aria-hidden="true"></i></div>
         <strong>${esc(row.primary)}</strong><span>${esc(row.label)}</span>
       </div>`).join("")}
   </div>`;

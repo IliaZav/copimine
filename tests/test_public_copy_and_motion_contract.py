@@ -101,7 +101,7 @@ def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() ->
     motion_css = read("admin-web/frontend/assets/css/public-motion.css")
 
     assert '@import url("./css/public-motion.css")' in style
-    assert 'from "./public-motion.js?v=20260901motion1"' in public_page
+    assert 'from "./public-motion.js?v=20260902motion2"' in public_page
     assert "prefers-reduced-motion" in motion
     assert "copimineSceneDrift" in motion_css
     assert "copimineSignalSweep" in motion_css
@@ -109,6 +109,8 @@ def test_public_motion_layer_is_loaded_once_and_has_reduced_motion_fallback() ->
     assert "@media (prefers-reduced-motion: reduce)" in motion_css
     assert "--scene-x" in motion_css
     assert "--scene-y" in motion_css
+    assert "revealFallback" in motion
+    assert "1800" in motion
 
 
 def test_public_motion_script_does_not_add_a_second_navigation_or_dom_handlers() -> None:

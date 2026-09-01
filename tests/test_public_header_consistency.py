@@ -95,8 +95,10 @@ def test_demoted_public_shell_loads_the_common_navigation_runtime() -> None:
 
 def test_legacy_modpack_route_redirects_with_a_branded_legacy_fallback() -> None:
     mods = read(FRONTEND / "mods.html")
+    redirect_script = read(FRONTEND / "assets" / "js" / "public" / "legacy-mods-redirect.js")
     assert 'http-equiv="refresh"' not in mods.lower()
-    assert re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", mods)
+    assert 'legacy-mods-redirect.js?v=20260902flat1' in mods
+    assert re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", redirect_script)
     assert 'href="/launcher.html"' in mods
     assert 'data-page-kind="public-legacy"' in mods
     assert 'class="legacy-redirect-card"' in mods

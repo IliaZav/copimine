@@ -35,7 +35,8 @@ def test_legacy_mods_route_has_a_branded_fallback_before_redirect() -> None:
     assert 'class="legacy-redirect-card"' in legacy
     assert 'href="/launcher.html"' in legacy
     assert 'href="/assets/style.css?v=' in legacy
-    assert "location.replace('/launcher.html')" in legacy
+    assert "legacy-mods-redirect.js" in legacy
+    assert "location.replace('/launcher.html')" in read("admin-web/frontend/assets/js/public/legacy-mods-redirect.js")
     assert 'display: none' not in legacy
 
 

@@ -11,7 +11,8 @@ foreach ($pageName in @('index.html', 'shops.html', 'server.html', 'cart.html'))
   if ($html -notmatch 'public-page\.js\?v=[0-9A-Za-z_-]+') { throw "Public module cache-buster missing: $pageName" }
 }
 $legacyMods = Get-Content -LiteralPath (Join-Path $root 'admin-web\frontend\mods.html') -Raw -Encoding UTF8
-if ($legacyMods -notmatch "window\.location\.replace\('/launcher\.html'\)") {
+$legacyRedirect = Get-Content -LiteralPath (Join-Path $root 'admin-web\frontend\assets\js\public\legacy-mods-redirect.js') -Raw -Encoding UTF8
+if ($legacyMods -notmatch 'legacy-mods-redirect\.js' -or $legacyRedirect -notmatch "window\.location\.replace\('/launcher\.html'\)") {
   throw 'Legacy mods page must keep its Launcher compatibility redirect.'
 }
 Write-Host 'CopiMine public mobile menu contract OK'

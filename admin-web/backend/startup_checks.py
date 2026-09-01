@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .deploy_runtime import app_root_from_backend, artifact_snapshot, managed_artifacts, project_root_from_backend, release_manifest
+from .db_config import resolve_postgres_settings
 from .envfile import parse_env_file, resolve_env_file
 
 try:
@@ -69,6 +70,7 @@ def _merge_effective_env(file_values: dict[str, str]) -> dict[str, str]:
 
 
 def _auth_storage_backend(values: dict[str, str]) -> str:
+    values = resolve_postgres_settings(values)
     raw = str(values.get("COPIMINE_AUTH_STORAGE", "")).strip().lower()
     if raw in {"sqlite", "postgresql"}:
         return raw
@@ -82,7 +84,7 @@ def _auth_storage_backend(values: dict[str, str]) -> str:
 def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:
     env_path = resolve_env_file(app_root / ".env")
     file_values = parse_env_file(env_path) if env_path.exists() else {}
-    values = _merge_effective_env(file_values)
+    values = resolve_postgres_settings(_merge_effective_env(file_values))
     auth_backend = _auth_storage_backend(values)
     required_keys = ["SECRET_KEY", "ADMIN_PUBLIC_BASE_URL"]
     if auth_backend == "postgresql":
@@ -92,7 +94,6 @@ def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:
             "POSTGRES_DB",
             "POSTGRES_USER",
             "POSTGRES_PASSWORD",
-            "DATABASE_URL",
             *required_keys,
         ]
     missing = [key for key in required_keys if not str(values.get(key, "")).strip() or values.get(key) == "CHANGE_ME"]
@@ -134,6 +135,7 @@ def _env_check(app_root: Path) -> tuple[CheckResult, dict[str, str], Path]:
 
 
 def _postgres_check(values: dict[str, str]) -> CheckResult:
+    values = resolve_postgres_settings(values)
     if _auth_storage_backend(values) == "sqlite":
         return _warn("postgres", "postgres auth storage disabled by sqlite mode", required=False, backend="sqlite")
     if psycopg is None:

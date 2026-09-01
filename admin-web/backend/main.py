@@ -78,6 +78,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, donation_catalog_snapshot, load_commerce_catalog
+from .db_config import resolve_postgres_settings
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
@@ -284,12 +285,23 @@ SESSIONS_FILE = DATA_DIR / "sessions.json"
 ADMIN_USERS_FILE = DATA_DIR / "admin_users.json"
 AUTH_DB_FILE = Path(os.getenv("COPIMINE_AUTH_DB", DATA_DIR / "admin_auth.db"))
 AUTH_STORAGE_MODE_RAW = os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower()
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "127.0.0.1"))
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "5432")))
-POSTGRES_DB = os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "copimine"))
-POSTGRES_USER = os.getenv("POSTGRES_USER", os.getenv("PGUSER", "copimine"))
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", os.getenv("PGPASSWORD", ""))
-POSTGRES_SCHEMA = os.getenv("POSTGRES_SCHEMA", os.getenv("PGSCHEMA", "copimine"))
+_POSTGRES_SETTINGS = resolve_postgres_settings(
+    {
+        **os.environ,
+        "POSTGRES_HOST": os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "")),
+        "POSTGRES_PORT": os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "")),
+        "POSTGRES_DB": os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "")),
+        "POSTGRES_USER": os.getenv("POSTGRES_USER", os.getenv("PGUSER", "")),
+        "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("PGPASSWORD", "")),
+        "POSTGRES_SCHEMA": os.getenv("POSTGRES_SCHEMA", os.getenv("PGSCHEMA", "")),
+    }
+)
+POSTGRES_HOST = _POSTGRES_SETTINGS["POSTGRES_HOST"]
+POSTGRES_PORT = int(_POSTGRES_SETTINGS["POSTGRES_PORT"])
+POSTGRES_DB = _POSTGRES_SETTINGS["POSTGRES_DB"]
+POSTGRES_USER = _POSTGRES_SETTINGS["POSTGRES_USER"]
+POSTGRES_PASSWORD = _POSTGRES_SETTINGS.get("POSTGRES_PASSWORD", "")
+POSTGRES_SCHEMA = _POSTGRES_SETTINGS["POSTGRES_SCHEMA"]
 POSTGRES_CONNECT_TIMEOUT = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "5"))
 POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))

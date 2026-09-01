@@ -45,6 +45,7 @@ function initScrollState(page) {
 function initScrollReveal(page, reducedMotion) {
   let sequence = 0;
   let observer;
+  let revealFallback = null;
 
   const show = (node) => node.classList.add("is-visible");
   const mark = () => {
@@ -63,6 +64,16 @@ function initScrollReveal(page, reducedMotion) {
         observer.observe(node);
       }
     });
+
+    if (!reducedMotion && observer && revealFallback === null) {
+      // Do not leave content hidden when a visitor does not scroll, uses
+      // keyboard navigation, or a full-page screenshot is taken.
+      revealFallback = window.setTimeout(() => {
+        page.querySelectorAll("[data-motion-reveal]").forEach(show);
+        observer?.disconnect();
+        revealFallback = null;
+      }, 1800);
+    }
   };
 
   if (!reducedMotion && "IntersectionObserver" in window) {

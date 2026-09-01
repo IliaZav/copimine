@@ -35,7 +35,7 @@ def test_public_elections_refreshes_live_data_and_has_live_summary():
         'id="publicElectionHeroCandidates"',
         'id="publicElectionHeroVotes"',
         'id="publicElectionRefresh"',
-        "public-page.js?v=20260901motion1",
+        "public-page.js?v=20260902motion2",
     ):
         assert marker in html, marker
     assert 'const freshPath' in data

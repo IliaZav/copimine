@@ -85,7 +85,7 @@ def test_every_public_html_route_keeps_the_shared_style_entrypoint() -> None:
     for path in pages:
         source = path.read_text(encoding="utf-8")
         if "data-page-kind=\"public" in source or "class=\"public-site" in source:
-            assert "/assets/style.css?v=20260901motion1" in source, path.name
+            assert "/assets/style.css?v=20260902flat2" in source, path.name
 
 
 def test_new_visual_layer_has_small_screen_and_keyboard_guards() -> None:

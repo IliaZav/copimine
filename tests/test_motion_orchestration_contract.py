@@ -57,24 +57,27 @@ def test_motion_layers_do_not_hide_content_before_javascript_marks_readiness() -
 
 
 def test_motion_release_busts_public_and_cabinet_entrypoint_caches() -> None:
-    public_key = "20260901motion1"
+    public_style_key = "20260902flat2"
+    public_module_key = "20260902motion2"
+    cabinet_style_key = "20260902flat2"
+    cabinet_app_key = "20260901motion1"
     pages = list((ROOT / "admin-web/frontend").glob("*.html"))
     pages += list((ROOT / "admin-web/frontend/news").glob("*.html"))
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "/assets/style.css" in source:
-            assert f"/assets/style.css?v={public_key}" in source, page.name
+            assert f"/assets/style.css?v={public_style_key}" in source, page.name
         if "/assets/js/public/public-page.js" in source:
-            assert f"/assets/js/public/public-page.js?v={public_key}" in source, page.name
+            assert f"/assets/js/public/public-page.js?v={public_module_key}" in source, page.name
 
     cabinet_pages = list((ROOT / "admin-web/frontend/cabinet").glob("*.html"))
     for page in cabinet_pages:
         source = page.read_text(encoding="utf-8")
         if "/assets/cabinet.css" in source:
-            assert f"/assets/cabinet.css?v={public_key}" in source, page.name
+            assert f"/assets/cabinet.css?v={cabinet_style_key}" in source, page.name
         if "/assets/app.js" in source:
-            assert f"/assets/app.js?v={public_key}" in source, page.name
+            assert f"/assets/app.js?v={cabinet_app_key}" in source, page.name
 
-    assert f'./public-motion.js?v={public_key}' in read("admin-web/frontend/assets/js/public/public-page.js")
-    assert f'./js/bootstrap.js?v={public_key}' in read("admin-web/frontend/assets/app.js")
-    assert f'./cabinet-runtime.js?v={public_key}' in read("admin-web/frontend/assets/js/bootstrap.js")
+    assert f'./public-motion.js?v={public_module_key}' in read("admin-web/frontend/assets/js/public/public-page.js")
+    assert f'./js/bootstrap.js?v={cabinet_app_key}' in read("admin-web/frontend/assets/app.js")
+    assert f'./cabinet-runtime.js?v={cabinet_app_key}' in read("admin-web/frontend/assets/js/bootstrap.js")

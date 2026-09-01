@@ -17,8 +17,10 @@ foreach ($path in @($backend, $indexHtml, $modsHtml, $renderer, $zipPath, $manif
 $backendText = Get-Content $backend -Raw -Encoding UTF8
 $indexText = Get-Content $indexHtml -Raw -Encoding UTF8
 $modsText = Get-Content $modsHtml -Raw -Encoding UTF8
+$legacyRedirectPath = Join-Path $projectRoot "admin-web\frontend\assets\js\public\legacy-mods-redirect.js"
 $rendererText = Get-Content $renderer -Raw -Encoding UTF8
 $manifestText = Get-Content $manifestPath -Raw -Encoding UTF8
+$legacyRedirectText = Get-Content $legacyRedirectPath -Raw -Encoding UTF8
 
 if ($backendText -notmatch '/downloads/CopiMineMods\.zip') {
     throw "Backend no longer exposes /downloads/CopiMineMods.zip"
@@ -28,7 +30,7 @@ if ($backendText -notmatch '@app\.get\("/api/public/modpack"\)') {
     throw "Backend missing /api/public/modpack endpoint"
 }
 
-if ($modsText -notmatch '/launcher\.html' -or $modsText -notmatch "location\.replace\('/launcher\.html'\)") {
+if ($modsText -notmatch '/launcher\.html' -or $modsText -notmatch 'legacy-mods-redirect\.js' -or $legacyRedirectText -notmatch "location\.replace\('/launcher\.html'\)") {
     throw "Legacy mods page must redirect to the canonical Launcher page"
 }
 

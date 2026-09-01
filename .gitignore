@@ -132,3 +132,4 @@ minecraft/server/**
 !minecraft/server/plugins/AuthEffects/src/main/resources/plugin.yml
 !minecraft/server/plugins/AuthEffects/pom.xml
 !minecraft/server/plugins/AuthEffects/build-plugin.ps1
+.superdesign

@@ -384,9 +384,14 @@ function buildUpcoming(event) {
 }
 
 let revealObserver = null;
+let revealFallback = null;
 
 function initReveal(mount) {
   revealObserver?.disconnect();
+  if (revealFallback !== null) {
+    window.clearTimeout(revealFallback);
+    revealFallback = null;
+  }
   const items = [...mount.querySelectorAll("[data-reveal]")];
   mount.dataset.motion = "ready";
   const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
@@ -402,6 +407,16 @@ function initReveal(mount) {
     });
   }, { threshold: 0.12, rootMargin: "0px 0px -8%" });
   items.forEach((item) => revealObserver.observe(item));
+
+  // A full-page capture, keyboard navigation or a short idle visit may never
+  // cross the observer threshold. Do not leave real content at opacity: 0.
+  revealFallback = window.setTimeout(() => {
+    items.forEach((item) => {
+      item.classList.add("is-visible");
+      revealObserver?.unobserve(item);
+    });
+    revealFallback = null;
+  }, 1800);
 }
 
 function mergeEvents(payload) {

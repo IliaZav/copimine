@@ -68,4 +68,4 @@ def test_cabinet_html_uses_current_visual_cache_key():
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "assets/cabinet.css" in source:
-            assert "cabinet.css?v=20260901motion1" in source
+            assert "cabinet.css?v=20260902flat2" in source

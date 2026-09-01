@@ -64,8 +64,11 @@ def check_navigation() -> None:
     mods = read(FRONTEND / "mods.html")
     if 'http-equiv="refresh"' in mods.lower():
         fail("mods compatibility page must not paint a legacy page before redirect")
-    if not re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", mods):
-        fail("mods compatibility page must redirect to /launcher.html before rendering")
+    if 'assets/js/public/legacy-mods-redirect.js' not in mods:
+        fail("mods compatibility page must use the CSP-safe external redirect")
+    redirect_script = read(FRONTEND / "assets" / "js" / "public" / "legacy-mods-redirect.js")
+    if not re.search(r"location\.replace\(['\"]/launcher\.html['\"]\)", redirect_script):
+        fail("mods compatibility redirect script must target /launcher.html")
 
     runtime = read(FRONTEND / "assets" / "js" / "cabinet-runtime.js")
     if "adminSearchSectionItems.unshift" in runtime:

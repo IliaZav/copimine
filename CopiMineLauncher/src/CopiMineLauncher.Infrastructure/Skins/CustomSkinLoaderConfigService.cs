@@ -14,6 +14,7 @@ public static class CustomSkinLoaderConfigService
 {
     private const string LocalSkinName = "LocalSkin";
     private const string ConfigFileName = "CustomSkinLoader.json";
+    private const int AtomicReplaceAttempts = 6;
 
     private static readonly JsonSerializerOptions WriteOptions = new()
     {
@@ -147,11 +148,30 @@ public static class CustomSkinLoaderConfigService
 
     private static void WriteAtomically(string path, string content)
     {
-        var temporary = path + ".part";
+        // A fixed sidecar name makes two launcher operations (or two launcher
+        // processes sharing an instance) overwrite each other's temp file.
+        // Keep each transaction isolated, then replace the destination on the
+        // same volume so the final config is never a half-written document.
+        var temporary = $"{path}.{Guid.NewGuid():N}.part";
         try
         {
             File.WriteAllText(temporary, content + Environment.NewLine, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            File.Move(temporary, path, overwrite: true);
+            for (var attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    File.Move(temporary, path, overwrite: true);
+                    break;
+                }
+                catch (IOException) when (attempt < AtomicReplaceAttempts)
+                {
+                    Thread.Sleep(TimeSpan.FromMilliseconds(20 * attempt));
+                }
+                catch (UnauthorizedAccessException) when (attempt < AtomicReplaceAttempts)
+                {
+                    Thread.Sleep(TimeSpan.FromMilliseconds(20 * attempt));
+                }
+            }
         }
         finally
         {

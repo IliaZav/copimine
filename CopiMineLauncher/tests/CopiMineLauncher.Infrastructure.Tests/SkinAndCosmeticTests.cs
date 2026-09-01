@@ -172,6 +172,24 @@ public sealed class SkinAndCosmeticTests
     }
 
     [Fact]
+    public async Task Concurrent_custom_skin_loader_repairs_do_not_collide_on_shared_instance()
+    {
+        using var temp = new TemporaryDirectory();
+        var instanceRoot = Path.Combine(temp.Path, "Minecraft");
+
+        var repairs = Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(() => CustomSkinLoaderConfigService.EnsureLocalSkinPriority(instanceRoot)))
+            .ToArray();
+
+        var act = () => Task.WhenAll(repairs);
+        await act.Should().NotThrowAsync();
+
+        var configPath = Path.Combine(instanceRoot, "CustomSkinLoader", "CustomSkinLoader.json");
+        using var config = JsonDocument.Parse(File.ReadAllText(configPath));
+        config.RootElement.GetProperty("loadlist")[0].GetProperty("name").GetString().Should().Be("LocalSkin");
+    }
+
+    [Fact]
     public void Local_store_persists_separate_skin_and_cape_libraries_across_store_instances()
     {
         using var temp = new TemporaryDirectory();

@@ -17,6 +17,7 @@ $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftObeliskBot.js'
+$localRconPort = 25576
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 $propertiesPath = Join-Path $serverDir 'server.properties'
@@ -42,14 +43,101 @@ function Assert-LocalOnly {
   }
 }
 
+$script:localRconSession = $null
+$script:localRconRequestId = 64000
+
+function Read-RconExact {
+  param(
+    [Parameter(Mandatory = $true)][Net.Sockets.NetworkStream]$Stream,
+    [Parameter(Mandatory = $true)][int]$Length
+  )
+  $buffer = [byte[]]::new($Length)
+  $offset = 0
+  while ($offset -lt $Length) {
+    $read = $Stream.Read($buffer, $offset, $Length - $offset)
+    if ($read -le 0) { throw 'Local RCON connection closed while reading a response.' }
+    $offset += $read
+  }
+  return $buffer
+}
+
+function Write-RconPacket {
+  param(
+    [Parameter(Mandatory = $true)][Net.Sockets.NetworkStream]$Stream,
+    [Parameter(Mandatory = $true)][int]$Id,
+    [Parameter(Mandatory = $true)][int]$Type,
+    [Parameter(Mandatory = $true)][string]$Body
+  )
+  $bodyBytes = [Text.Encoding]::UTF8.GetBytes($Body)
+  $payloadLength = 4 + 4 + $bodyBytes.Length + 2
+  $packet = [byte[]]::new(4 + $payloadLength)
+  [BitConverter]::GetBytes($payloadLength).CopyTo($packet, 0)
+  [BitConverter]::GetBytes($Id).CopyTo($packet, 4)
+  [BitConverter]::GetBytes($Type).CopyTo($packet, 8)
+  $bodyBytes.CopyTo($packet, 12)
+  $Stream.Write($packet, 0, $packet.Length)
+  $Stream.Flush()
+}
+
+function Read-RconPacket {
+  param([Parameter(Mandatory = $true)][Net.Sockets.NetworkStream]$Stream)
+  $size = [BitConverter]::ToInt32((Read-RconExact -Stream $Stream -Length 4), 0)
+  if ($size -lt 10 -or $size -gt 8192) {
+    throw "Invalid local RCON packet size: $size"
+  }
+  $payload = Read-RconExact -Stream $Stream -Length $size
+  return [pscustomobject]@{
+    Id = [BitConverter]::ToInt32($payload, 0)
+    Body = [Text.Encoding]::UTF8.GetString($payload, 8, $size - 10)
+  }
+}
+
+function Open-LocalRconSession {
+  $rconPassword = ''
+  foreach ($line in [IO.File]::ReadLines($propertiesPath)) {
+    if ($line -match '^rcon\.password=(.*)$') {
+      $rconPassword = [string]$matches[1].Trim()
+      break
+    }
+  }
+  if ([string]::IsNullOrWhiteSpace($rconPassword)) {
+    throw 'Local RCON password is missing.'
+  }
+  $client = [Net.Sockets.TcpClient]::new()
+  try {
+    $client.NoDelay = $true
+    $client.Connect('127.0.0.1', $localRconPort)
+    $stream = $client.GetStream()
+    $stream.ReadTimeout = 30000
+    Write-RconPacket -Stream $stream -Id 64001 -Type 3 -Body $rconPassword
+    $auth = Read-RconPacket -Stream $stream
+    if ($auth.Id -eq -1) { throw 'Local RCON authentication failed.' }
+    return [pscustomobject]@{ Client = $client; Stream = $stream }
+  } catch {
+    $client.Dispose()
+    throw
+  }
+}
+
+function Close-LocalRconSession {
+  if ($null -eq $script:localRconSession) { return }
+  try { $script:localRconSession.Stream.Dispose() } catch { }
+  try { $script:localRconSession.Client.Dispose() } catch { }
+  $script:localRconSession = $null
+}
+
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
-  $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript `
-    -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
-  if ($LASTEXITCODE -ne 0) {
-    throw "Local obelisk load RCON failed: $CommandText`n$result"
+  if ($null -eq $script:localRconSession) {
+    $script:localRconSession = Open-LocalRconSession
   }
-  return $result.Trim()
+  $script:localRconRequestId++
+  $requestId = $script:localRconRequestId
+  Write-RconPacket -Stream $script:localRconSession.Stream -Id $requestId -Type 2 -Body $CommandText
+  do {
+    $response = Read-RconPacket -Stream $script:localRconSession.Stream
+  } while ($response.Id -ne $requestId)
+  return $response.Body.Trim()
 }
 
 function Read-SharedText {
@@ -149,6 +237,11 @@ function Start-LoadBot {
   $startInfo.EnvironmentVariables['END_RIFT_BOT_HOST'] = '127.0.0.1'
   $startInfo.EnvironmentVariables['END_RIFT_BOT_PORT'] = '25566'
   $startInfo.EnvironmentVariables['END_RIFT_REFLECT_ENABLED'] = '0'
+  # AuthMe is exercised through the local console force-login below.  Sending
+  # twenty concurrent register/login command streams makes AuthMe's own
+  # authentication timeout the bottleneck and can eject a real protocol client
+  # before the event load has even started.
+  $startInfo.EnvironmentVariables['END_RIFT_SKIP_AUTH_CHAT'] = '1'
   $startInfo.EnvironmentVariables['END_RIFT_OBELISK_X'] = '15.5'
   $startInfo.EnvironmentVariables['END_RIFT_OBELISK_Y'] = '68'
   $startInfo.EnvironmentVariables['END_RIFT_OBELISK_Z'] = '-39.5'
@@ -331,5 +424,7 @@ try {
   } catch {
     Write-Warning "Local obelisk load cleanup failed: $($_.Exception.Message)"
     if ($success) { throw }
+  } finally {
+    Close-LocalRconSession
   }
 }

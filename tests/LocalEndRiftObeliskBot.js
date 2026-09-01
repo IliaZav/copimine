@@ -14,6 +14,7 @@ const durationMs = Number(process.argv[3] || 35000)
 const reflectStartMs = Number(process.env.END_RIFT_REFLECT_START_MS || 9000)
 const reflectAfterFireballs = Math.max(0, Number(process.env.END_RIFT_REFLECT_AFTER_FIREBALLS || 0))
 const reflectEnabled = process.env.END_RIFT_REFLECT_ENABLED !== '0'
+const skipAuthChat = process.env.END_RIFT_SKIP_AUTH_CHAT === '1'
 const targetPosition = {
   x: Number(process.env.END_RIFT_OBELISK_X),
   y: Number(process.env.END_RIFT_OBELISK_Y),
@@ -147,12 +148,16 @@ bot.once('spawn', () => {
   joined = true
   startedAt = Date.now()
   console.log(`PLAYER_JOIN ${username}`)
-  bot.chat('/register endrift-local endrift-local')
-  // AuthMe may queue a database lookup when many real clients start at once.
-  // Retry login during the normal server login window so a slow local DB does
-  // not turn the obelisk load probe into a false network failure.
-  for (const delay of [1000, 3000, 6000, 10000, 16000, 24000, 32000, 44000]) {
-    setTimeout(() => bot.chat('/login endrift-local'), delay)
+  if (skipAuthChat) {
+    console.log(`AUTH_CHAT_SKIPPED ${username}`)
+  } else {
+    bot.chat('/register endrift-local endrift-local')
+    // AuthMe may queue a database lookup when many real clients start at once.
+    // Retry login during the normal server login window so a slow local DB does
+    // not turn the obelisk load probe into a false network failure.
+    for (const delay of [1000, 3000, 6000, 10000, 16000, 24000, 32000, 44000]) {
+      setTimeout(() => bot.chat('/login endrift-local'), delay)
+    }
   }
   sampleTimer = setInterval(sample, 100)
 })

@@ -241,6 +241,10 @@ def test_twenty_player_obelisk_load_probe_is_real_and_bounded() -> None:
         "PlayerCount = 20",
         "LocalEndRiftObeliskBot.js",
         "END_RIFT_REFLECT_ENABLED",
+        "END_RIFT_SKIP_AUTH_CHAT",
+        "localRconSession",
+        "Open-LocalRconSession",
+        "Read-RconPacket",
         "cmend boss spawn",
         "cmend boss spell rift_obelisks",
         "count=4",
@@ -254,3 +258,4 @@ def test_twenty_player_obelisk_load_probe_is_real_and_bounded() -> None:
     assert "127.0.0.1" in LOAD
     assert "SetupEndRiftLocalScene.ps1" not in LOAD
     assert "Start-Job" not in LOAD
+    assert "AUTH_CHAT_SKIPPED" in BOT

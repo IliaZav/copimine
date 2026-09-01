@@ -163,6 +163,11 @@ GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
 PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
 PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+# Navigation can legitimately touch the public status endpoint once per page
+# while a user moves through the cabinet.  Keep a dedicated, still finite
+# budget so that this read-only cached endpoint cannot starve normal API
+# requests or make a multi-page session look like an attack.
+PUBLIC_STATUS_RATE_LIMIT = max(60, int(os.getenv("PUBLIC_STATUS_RATE_LIMIT", "120")))
 PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
 PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
 PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
@@ -13326,7 +13331,7 @@ async def launcher_telemetry(data: LauncherTelemetryIn, request: Request) -> dic
 
 @app.get("/api/public/status")
 async def public_status(request: Request) -> dict[str, Any]:
-    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
+    check_rate_limit(request, "public-status", limit=PUBLIC_STATUS_RATE_LIMIT)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 

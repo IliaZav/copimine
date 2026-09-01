@@ -79,16 +79,16 @@ export function createAdminCommercePages(deps) {
   function playerLabel(row) {
     const name = cleanText(row?.name || row?.player_name || row?.username || row?.minecraft_name || row?.uuid || "");
     const uuid = cleanText(row?.uuid || row?.player_uuid || "");
-    return { name, uuid };
+    return { name, uuid, hasPlayerData: row?.hasPlayerData !== false };
   }
 
   function playerOptions(rows, selectedName = "") {
     return asArray(rows)
       .map((row) => {
-        const { name, uuid } = playerLabel(row);
+        const { name, uuid, hasPlayerData } = playerLabel(row);
         if (!name) return "";
         const selected = name === selectedName ? " selected" : "";
-        return `<option value="${esc(name)}"${selected} data-uuid="${esc(uuid)}">${esc(name)}</option>`;
+        return `<option value="${esc(name)}"${selected} data-uuid="${esc(uuid)}" data-has-player-data="${hasPlayerData ? "true" : "false"}">${esc(name)}</option>`;
       })
       .filter(Boolean)
       .join("");
@@ -114,6 +114,7 @@ export function createAdminCommercePages(deps) {
       .map((row) => ({
         name: cleanText(row.name || row.player || row.username || ""),
         uuid: cleanText(row.uuid || ""),
+        hasPlayerData: row.hasPlayerData !== false,
       }))
       .filter((row) => row.name)
       .sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
@@ -127,6 +128,7 @@ export function createAdminCommercePages(deps) {
     return {
       name: cleanText(select.value || ""),
       uuid: cleanText(option?.dataset?.uuid || ""),
+      hasPlayerData: option?.dataset?.hasPlayerData !== "false",
     };
   }
 
@@ -165,7 +167,10 @@ export function createAdminCommercePages(deps) {
       const fallbackAr = Number(arRow.balance || arRow.amount || 0);
       const fallbackDonation = Number(donationRow.balance || 0);
       applyValues(player, fallbackAr, fallbackDonation);
-      if (!player.name) return;
+      // The roster also contains whitelist/link entries that have not entered
+      // the world yet.  Their playerdata does not exist, so probing the full
+      // profile would create a harmless but noisy 404 on every economy load.
+      if (!player.name || player.hasPlayerData === false) return;
       const detail = await safeApi(`/api/players/${encodeURIComponent(player.name)}/full?limit=20`, null);
       if (!detail?.profile) return;
       const currentPlayer = selectedPlayerBySelect("adminBalancePlayer");

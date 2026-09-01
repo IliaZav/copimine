@@ -27,6 +27,7 @@ body[data-page-kind="cabinet"] {
 body[data-page-kind="cabinet"] > .public-nav {
   position: relative;
   isolation: isolate;
+  overflow-x: clip;
   border-color: var(--site-launcher-line) !important;
   background:
     linear-gradient(90deg, rgba(7, 16, 28, 0.97), rgba(12, 25, 42, 0.87)),

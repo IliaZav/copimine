@@ -196,7 +196,7 @@ body.player-mode .panel-title,
 body.panel-admin-mode .panel-title,
 body.junior-admin-mode .panel-title {
   color: var(--site-launcher-ink);
-  font-family: "Space Grotesk", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-family: "Sora", "Segoe UI Variable Display", "Segoe UI", sans-serif;
 }
 
 body.player-mode .side-brand-copy span,

@@ -5,15 +5,15 @@
  */
 
 body[data-page-kind="cabinet"] {
-  --cabinet-site-forest: #0d2a1e;
-  --cabinet-site-forest-2: #153b2a;
-  --cabinet-site-moss: #70e39b;
+  --cabinet-site-forest: #07111f;
+  --cabinet-site-forest-2: #0c1b31;
+  --cabinet-site-moss: #59d6d0;
 }
 
 :root[data-theme="dark"] body[data-page-kind="cabinet"] {
-  --cabinet-site-forest: #0a2016;
-  --cabinet-site-forest-2: #123a26;
-  --cabinet-site-moss: #70e39b;
+  --cabinet-site-forest: #050b16;
+  --cabinet-site-forest-2: #0c1b31;
+  --cabinet-site-moss: #59d6d0;
 }
 
 body[data-page-kind="cabinet"] > .public-nav {
@@ -21,7 +21,7 @@ body[data-page-kind="cabinet"] > .public-nav {
   min-height: 68px;
   margin: 14px auto 0;
   padding: 8px 12px !important;
-  border: 1px solid rgba(104, 205, 143, .28) !important;
+  border: 1px solid rgba(89, 214, 208, .28) !important;
   border-radius: 6px !important;
   background: linear-gradient(135deg, var(--cabinet-site-forest), var(--cabinet-site-forest-2)) !important;
   box-shadow: 0 12px 28px rgba(9, 31, 19, .16) !important;
@@ -30,7 +30,7 @@ body[data-page-kind="cabinet"] > .public-nav {
 body[data-page-kind="cabinet"] > .public-nav .public-brand {
   min-width: 176px;
   gap: 10px;
-  color: #f1fff4 !important;
+  color: #f2f6ff !important;
 }
 
 body[data-page-kind="cabinet"] > .public-nav .public-brand-logo {
@@ -45,7 +45,7 @@ body[data-page-kind="cabinet"] > .public-nav .public-brand-logo {
 
 body[data-page-kind="cabinet"] > .public-nav .public-brand-copy strong,
 body[data-page-kind="cabinet"] > .public-nav .public-brand-copy small {
-  color: #f1fff4 !important;
+  color: #f2f6ff !important;
 }
 
 body[data-page-kind="cabinet"] > .public-nav .public-brand-copy small { opacity: .72; }
@@ -64,8 +64,8 @@ body[data-page-kind="cabinet"] > .public-nav nav > .btn {
 
 body[data-page-kind="cabinet"] > .public-nav nav > a:hover,
 body[data-page-kind="cabinet"] > .public-nav nav > a[aria-current="page"] {
-  border-color: rgba(112, 227, 155, .34) !important;
-  background: rgba(112, 227, 155, .14) !important;
+  border-color: rgba(89, 214, 208, .34) !important;
+  background: rgba(89, 214, 208, .14) !important;
   color: #fff !important;
 }
 
@@ -89,18 +89,18 @@ body[data-page-kind="cabinet"] > .public-nav .shop-cart-button {
   gap: 7px;
   min-height: 38px;
   padding: 7px 9px;
-  border: 1px solid rgba(112, 227, 155, .3) !important;
+  border: 1px solid rgba(89, 214, 208, .3) !important;
   border-radius: 4px !important;
-  background: rgba(112, 227, 155, .1) !important;
-  color: #f1fff4 !important;
+  background: rgba(89, 214, 208, .1) !important;
+  color: #f2f6ff !important;
   font-size: .84rem;
   font-weight: 700;
   text-decoration: none;
 }
 
 body[data-page-kind="cabinet"] > .public-nav .shop-cart-button:hover {
-  border-color: rgba(112, 227, 155, .55) !important;
-  background: rgba(112, 227, 155, .18) !important;
+  border-color: rgba(89, 214, 208, .55) !important;
+  background: rgba(89, 214, 208, .18) !important;
   color: #fff !important;
 }
 
@@ -119,9 +119,9 @@ body[data-page-kind="cabinet"] > .public-nav .shop-cart-count {
 
 body[data-page-kind="cabinet"] > .public-nav .public-mobile-toggle,
 body[data-page-kind="cabinet"] > .public-nav > .mobile-only {
-  color: #f1fff4 !important;
-  border-color: rgba(112, 227, 155, .34) !important;
-  background: rgba(112, 227, 155, .12) !important;
+  color: #f2f6ff !important;
+  border-color: rgba(89, 214, 208, .34) !important;
+  background: rgba(89, 214, 208, .12) !important;
 }
 
 body[data-page-kind="cabinet"] > .public-nav .public-mobile-toggle:hover,
@@ -129,8 +129,8 @@ body[data-page-kind="cabinet"] > .public-nav .public-mobile-toggle:focus-visible
 body[data-page-kind="cabinet"] > .public-nav > .mobile-only:hover,
 body[data-page-kind="cabinet"] > .public-nav > .mobile-only:focus-visible {
   color: #fff !important;
-  border-color: rgba(112, 227, 155, .62) !important;
-  background: rgba(112, 227, 155, .2) !important;
+  border-color: rgba(89, 214, 208, .62) !important;
+  background: rgba(89, 214, 208, .2) !important;
 }
 
 @media (max-width: 620px) {

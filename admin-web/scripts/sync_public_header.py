@@ -58,8 +58,9 @@ def public_header(path: Path) -> str:
     )
     cart = ""
     if path.name in {"shops.html", "cart.html"}:
+        cart_current = ' aria-current="page"' if current == "/cart.html" else ""
         cart = (
-            '<a id="shopCartButton" class="shop-cart-button" href="/cart.html" '
+            f'<a id="shopCartButton" class="shop-cart-button" href="/cart.html"{cart_current} '
             'aria-label="Корзина пуста"><span>Корзина</span>'
             '<span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span></a>'
         )

@@ -56,3 +56,50 @@ def test_flat_surface_override_matches_legacy_dark_theme_specificity() -> None:
     assert ':root[data-theme] body.launcher-link-page .launcher-link-card' in source
     assert ':root[data-theme] body.error-screen .error-card' in source
     assert ':root[data-theme] body.preview-shell .preview-bank-balance' in source
+
+
+def test_selected_font_trio_and_public_nav_override_are_canonical() -> None:
+    source = (FRONTEND / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
+
+    assert '--aurora-display: "Sora"' in source
+    assert '--aurora-accent-font: "Manrope"' in source
+    assert '--aurora-body: "Inter"' in source
+    assert '--aurora-flat-display: "Sora"' in source
+    assert '--aurora-flat-body: "Inter"' in source
+    assert '--aurora-flat-data: "Inter"' in source
+    assert ':root[data-theme] body[data-page-kind^="public"] .public-nav nav > a' in source
+    assert ':root[data-theme] body.auth-screen .public-nav' in source
+    assert 'border-radius: 0 !important;' in source
+
+
+def test_flat_theme_has_one_motion_policy_for_reduced_motion() -> None:
+    source = (FRONTEND / "assets" / "css" / "aurora-redesign.css").read_text(encoding="utf-8")
+    assert "@media (prefers-reduced-motion: reduce)" in source
+    assert "animation: none !important;" in source
+    assert "transition-duration: 0.01ms !important;" in source
+
+
+def test_all_rendered_pages_bust_the_shared_theme_cache_after_a_visual_revision() -> None:
+    pages = list(FRONTEND.glob("*.html")) + list((FRONTEND / "news").glob("*.html"))
+    for page in pages:
+        source = page.read_text(encoding="utf-8")
+        if "/assets/style.css" in source:
+            assert "/assets/style.css?v=20260902flat5" in source, page.name
+    style = (FRONTEND / "assets" / "style.css").read_text(encoding="utf-8")
+    assert "aurora-redesign.css?v=20260902flat5" in style
+
+
+def test_shared_visual_layers_do_not_reintroduce_the_retired_forest_palette() -> None:
+    paths = (
+        "admin-web/frontend/assets/css/site-atmosphere.css",
+        "admin-web/frontend/assets/css/site-launcher-theme.css",
+        "admin-web/frontend/assets/css/cabinet-atmosphere.css",
+        "admin-web/frontend/assets/css/cabinet-shell-polish.css",
+        "admin-web/frontend/assets/css/cabinet-launcher-theme.css",
+        "admin-web/frontend/assets/css/preview-atmosphere.css",
+    )
+    retired = ("#0d2a1e", "#0a2016", "#70e39b", "#7650c7", "#53cdb8", "rgba(112, 227, 155")
+    for relative in paths:
+        source = (ROOT / relative).read_text(encoding="utf-8").lower()
+        for token in retired:
+            assert token not in source, f"{token} remains in {relative}"

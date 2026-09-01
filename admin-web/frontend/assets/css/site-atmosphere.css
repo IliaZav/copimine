@@ -11,23 +11,23 @@ body.auth-screen {
   /* Font Pairing selection: display, readable body, and compact data roles.
    * The fallbacks keep the site self-contained when the optional system fonts
    * are not installed on a player's machine. */
-  --site-display: "Space Grotesk", "Bahnschrift", "Segoe UI Variable Display", sans-serif;
-  --site-body: "Manrope", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --site-data: "DM Mono", "Cascadia Mono", "JetBrains Mono", monospace;
-  --site-violet: #7650c7;
-  --site-violet-bright: #9b75ef;
-  --site-aqua: #53cdb8;
-  --site-gold: #c79246;
-  --site-night: #102a20;
-  --site-night-2: #193d2e;
-  --site-paper: #f1f7f2;
-  --site-paper-2: #e7f0eb;
-  --site-panel: rgba(255, 255, 253, .93);
-  --site-panel-soft: rgba(242, 248, 244, .94);
-  --site-edge: rgba(31, 76, 55, .18);
-  --site-edge-strong: rgba(118, 80, 199, .36);
-  --site-shadow-deep: 0 24px 70px rgba(25, 54, 39, .14);
-  --site-shadow-lift: 0 18px 38px rgba(25, 54, 39, .13);
+  --site-display: "Sora", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
+  --site-body: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --site-data: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --site-violet: #9d8cff;
+  --site-violet-bright: #b8abff;
+  --site-aqua: #59d6d0;
+  --site-gold: #ffc46b;
+  --site-night: #07111f;
+  --site-night-2: #0c1b31;
+  --site-paper: #f2f6ff;
+  --site-paper-2: #dbe6f6;
+  --site-panel: rgba(13, 28, 49, .93);
+  --site-panel-soft: rgba(17, 36, 62, .94);
+  --site-edge: rgba(118, 177, 255, .23);
+  --site-edge-strong: rgba(157, 140, 255, .52);
+  --site-shadow-deep: 0 24px 70px rgba(0, 0, 0, .34);
+  --site-shadow-lift: 0 18px 38px rgba(0, 0, 0, .24);
   --site-radius: 18px;
   --site-radius-small: 13px;
   position: relative;
@@ -45,9 +45,9 @@ body.auth-screen::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .18), transparent 26rem),
-    radial-gradient(circle at 91% 18%, rgba(118, 80, 199, .13), transparent 24rem),
-    radial-gradient(circle at 72% 88%, rgba(199, 146, 70, .09), transparent 22rem);
+    radial-gradient(circle at 9% 4%, rgba(89, 214, 208, .18), transparent 26rem),
+    radial-gradient(circle at 91% 18%, rgba(157, 140, 255, .13), transparent 24rem),
+    radial-gradient(circle at 72% 88%, rgba(255, 196, 107, .09), transparent 22rem);
   animation: siteAurora 24s ease-in-out infinite alternate;
 }
 
@@ -60,8 +60,8 @@ body.auth-screen::after {
   pointer-events: none;
   opacity: .23;
   background-image:
-    linear-gradient(rgba(40, 89, 67, .06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(40, 89, 67, .06) 1px, transparent 1px);
+    linear-gradient(rgba(116, 165, 232, .06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(116, 165, 232, .06) 1px, transparent 1px);
   background-size: 32px 32px;
   mask-image: linear-gradient(180deg, #000, transparent 84%);
 }
@@ -72,7 +72,7 @@ body[data-page-kind="public-home"]::before {
   background-image:
     linear-gradient(90deg, rgba(248, 251, 248, .96) 0 38%, rgba(248, 251, 248, .76) 70%, rgba(248, 251, 248, .9)),
     url("/assets/showcase/home-light-v2.png"),
-    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .18), transparent 26rem);
+    radial-gradient(circle at 9% 4%, rgba(89, 214, 208, .18), transparent 26rem);
   background-position: center, right bottom, center;
   background-repeat: no-repeat;
   background-size: cover, min(760px, 70vw) auto, auto;
@@ -107,28 +107,28 @@ body[data-page-kind="public-launcher"]::before {
 
 :root[data-theme="dark"] body[data-page-kind^="public"],
 :root[data-theme="dark"] body.auth-screen {
-  --site-paper: #08150e;
-  --site-paper-2: #0b2015;
+  --site-paper: #07111f;
+  --site-paper-2: #0c1b31;
   --site-panel: rgba(13, 34, 22, .9);
   --site-panel-soft: rgba(18, 48, 31, .9);
   --site-edge: rgba(132, 238, 168, .18);
   --site-edge-strong: rgba(169, 117, 220, .5);
   --site-shadow-deep: 0 28px 80px rgba(0, 0, 0, .35);
   --site-shadow-lift: 0 20px 44px rgba(0, 0, 0, .3);
-  background: linear-gradient(180deg, #07130d 0%, var(--site-paper) 48%, #06110b 100%);
+  background: linear-gradient(180deg, #050b16 0%, var(--site-paper) 48%, #07111f 100%);
 }
 
 :root[data-theme="dark"] body[data-page-kind^="public"]::before,
 :root[data-theme="dark"] body.auth-screen::before {
   background:
-    radial-gradient(circle at 9% 4%, rgba(83, 205, 184, .16), transparent 26rem),
-    radial-gradient(circle at 91% 18%, rgba(155, 117, 239, .18), transparent 24rem),
-    radial-gradient(circle at 72% 88%, rgba(199, 146, 70, .08), transparent 22rem);
+    radial-gradient(circle at 9% 4%, rgba(89, 214, 208, .16), transparent 26rem),
+    radial-gradient(circle at 91% 18%, rgba(157, 140, 255, .18), transparent 24rem),
+    radial-gradient(circle at 72% 88%, rgba(255, 196, 107, .08), transparent 22rem);
 }
 
 :root[data-theme="dark"] body[data-page-kind="public-home"]::before {
   background-image:
-    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 38%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    linear-gradient(90deg, rgba(5, 11, 22, .98) 0 38%, rgba(5, 11, 22, .72) 72%, rgba(5, 11, 22, .9)),
     url("/assets/showcase/home-dark-v2.png");
   background-position: center, right bottom;
   background-repeat: no-repeat;
@@ -137,7 +137,7 @@ body[data-page-kind="public-launcher"]::before {
 
 :root[data-theme="dark"] body[data-page-kind="public-server"]::before {
   background-image:
-    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 42%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    linear-gradient(90deg, rgba(5, 11, 22, .98) 0 42%, rgba(5, 11, 22, .72) 72%, rgba(5, 11, 22, .9)),
     url("/assets/showcase/server-dark-v2.png");
   background-position: center, right bottom;
   background-repeat: no-repeat;
@@ -146,7 +146,7 @@ body[data-page-kind="public-launcher"]::before {
 
 :root[data-theme="dark"] body[data-page-kind="public-shops"]::before {
   background-image:
-    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 44%, rgba(7, 19, 13, .74) 75%, rgba(7, 19, 13, .9)),
+    linear-gradient(90deg, rgba(5, 11, 22, .98) 0 44%, rgba(5, 11, 22, .74) 75%, rgba(5, 11, 22, .9)),
     url("/assets/showcase/shops-dark-v2.png");
   background-position: center, right bottom;
   background-repeat: no-repeat;
@@ -155,7 +155,7 @@ body[data-page-kind="public-launcher"]::before {
 
 :root[data-theme="dark"] body[data-page-kind="public-launcher"]::before {
   background-image:
-    linear-gradient(90deg, rgba(7, 19, 13, .98) 0 42%, rgba(7, 19, 13, .72) 72%, rgba(7, 19, 13, .9)),
+    linear-gradient(90deg, rgba(5, 11, 22, .98) 0 42%, rgba(5, 11, 22, .72) 72%, rgba(5, 11, 22, .9)),
     url("/assets/launcher-screenshots/launcher-home.jpg");
   background-position: center, right bottom;
   background-repeat: no-repeat;
@@ -198,7 +198,7 @@ body.auth-screen ::selection {
 
 .public-nav .public-brand-logo {
   border-radius: 12px;
-  box-shadow: 0 0 0 4px rgba(83, 205, 184, .08), 0 8px 18px rgba(0, 0, 0, .18);
+  box-shadow: 0 0 0 4px rgba(89, 214, 208, .08), 0 8px 18px rgba(0, 0, 0, .18);
 }
 
 .public-nav nav > a,
@@ -212,14 +212,14 @@ body.auth-screen ::selection {
 .public-nav nav > a:hover,
 .public-nav nav > a[aria-current="page"] {
   transform: translateY(-1px);
-  border-color: rgba(112, 227, 155, .42) !important;
-  background: linear-gradient(135deg, rgba(112, 227, 155, .18), rgba(155, 117, 239, .16)) !important;
+  border-color: rgba(89, 214, 208, .42) !important;
+  background: linear-gradient(135deg, rgba(89, 214, 208, .18), rgba(157, 140, 255, .16)) !important;
 }
 
 .public-nav .shop-cart-button {
-  border-color: rgba(83, 205, 184, .46) !important;
+  border-color: rgba(89, 214, 208, .46) !important;
   border-radius: 10px !important;
-  background: linear-gradient(135deg, rgba(83, 205, 184, .15), rgba(118, 80, 199, .16)) !important;
+  background: linear-gradient(135deg, rgba(89, 214, 208, .15), rgba(157, 140, 255, .16)) !important;
 }
 
 /* Shared public surfaces. Events retain their dedicated End art direction. */
@@ -286,7 +286,7 @@ body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-sit
 :root[data-theme="dark"] .public-site .page-hero h1,
 :root[data-theme="dark"] .public-site .launcher-hero-copy h1,
 :root[data-theme="dark"] .public-site .news-hero h1 {
-  text-shadow: 0 2px 16px rgba(118, 80, 199, .22);
+  text-shadow: 0 2px 16px rgba(157, 140, 255, .22);
 }
 
 .public-site .hero-kicker,
@@ -323,8 +323,8 @@ body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-sit
 
 .public-site :where(.btn-primary, .button-primary) {
   border-color: transparent !important;
-  background: linear-gradient(120deg, #2f9e6b 0%, #3dbca0 55%, #7650c7 140%) !important;
-  box-shadow: 0 12px 28px rgba(47, 158, 107, .23), 0 4px 16px rgba(118, 80, 199, .13) !important;
+  background: linear-gradient(120deg, #427ad4 0%, #59d6d0 55%, #9d8cff 140%) !important;
+  box-shadow: 0 12px 28px rgba(66, 122, 212, .23), 0 4px 16px rgba(157, 140, 255, .13) !important;
 }
 
 .public-site :where(.btn-primary, .button-primary):hover {
@@ -345,7 +345,7 @@ body[data-page-kind^="public"]:not([data-page-kind="public-events"]) .public-sit
 .public-site :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 3px solid var(--site-violet-bright) !important;
   outline-offset: 4px;
-  box-shadow: 0 0 0 6px rgba(118, 80, 199, .2) !important;
+  box-shadow: 0 0 0 6px rgba(157, 140, 255, .2) !important;
 }
 
 .public-site :where(a, button, input, select, textarea):focus-visible {
@@ -365,14 +365,14 @@ body[data-page-kind^="public"] .public-section {
  * but this route never gets a media card or a photo hero. */
 .public-site .news-hero-text-only {
   background:
-    radial-gradient(circle at 94% 0, rgba(118, 80, 199, .17), transparent 20rem),
+    radial-gradient(circle at 94% 0, rgba(157, 140, 255, .17), transparent 20rem),
     linear-gradient(135deg, var(--site-panel), var(--site-panel-soft)) !important;
 }
 
 .public-site .launcher-hero-visual,
 .public-site .scene-card {
   border-radius: var(--site-radius-small) !important;
-  border-color: rgba(83, 205, 184, .38) !important;
+  border-color: rgba(89, 214, 208, .38) !important;
   box-shadow: 0 22px 50px rgba(11, 38, 24, .2) !important;
 }
 

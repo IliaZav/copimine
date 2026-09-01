@@ -26,18 +26,18 @@ def test_service_and_preview_pages_have_the_shared_favicon() -> None:
 def test_preview_pages_have_a_theme_bootstrap_fallback() -> None:
     for page in ("preview-admin.html", "preview-player.html"):
         source = read(f"admin-web/frontend/{page}")
-        assert 'theme-autostart.js?v=20260831siteui26' in source, page
+        assert 'theme-autostart.js?v=20260902siteui28' in source, page
 
     source = read("admin-web/frontend/assets/js/theme/theme-autostart.js")
-    assert 'theme-toggle.js?v=20260831siteui26' in source
+    assert 'theme-toggle.js?v=20260902siteui28' in source
     assert "initThemeToggle()" in source
 
 
 def test_preview_surfaces_use_the_shared_type_roles() -> None:
     css = read("admin-web/frontend/assets/css/preview-atmosphere.css")
-    assert '--site-display: "Space Grotesk"' in css
-    assert '--site-body: "Manrope"' in css
-    assert '--site-data: "DM Mono"' in css
+    assert '--site-display: "Sora"' in css
+    assert '--site-body: "Inter"' in css
+    assert '--site-data: "Inter"' in css
     assert "font-family: var(--site-body)" in css
     assert "font-family: var(--site-display)" in css
     assert "font-family: var(--site-data)" in css

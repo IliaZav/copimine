@@ -29,9 +29,9 @@
   --aurora-shadow: 0 28px 72px rgba(0, 0, 0, .34);
   --aurora-shadow-soft: 0 14px 36px rgba(0, 0, 0, .24);
   --aurora-body: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --aurora-display: "Bricolage Grotesque", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
+  --aurora-display: "Sora", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
   --aurora-accent-font: "Manrope", "Segoe UI", sans-serif;
-  --aurora-data: "Cascadia Mono", Consolas, monospace;
+  --aurora-data: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
   --aurora-flat-canvas: transparent;
   --aurora-full-bleed-image: url("/assets/showcase/home-dark-v2.png");
 
@@ -1116,9 +1116,9 @@ body[data-page-kind="cabinet"] .status-chip::before {
   --aurora-flat-rule-strong: rgba(89, 214, 208, .62);
   --aurora-flat-ink: #f5f7ff;
   --aurora-flat-muted: #a8b7d0;
-  --aurora-flat-display: "Bricolage Grotesque", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
-  --aurora-flat-body: "Manrope", "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --aurora-flat-data: "Inter", "Cascadia Mono", Consolas, sans-serif;
+  --aurora-flat-display: "Sora", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
+  --aurora-flat-body: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --aurora-flat-data: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
 }
 
 :root[data-theme="light"] {
@@ -2790,4 +2790,191 @@ body[data-page-kind="cabinet"] .visual-card:hover {
   body[data-page-kind="cabinet"] .dashboard-check-grid {
     grid-template-columns: 1fr !important;
   }
+}
+
+/* Final cascade guard: the old dark-theme selectors are intentionally kept
+ * for compatibility, but cannot turn the shared navigation back into pills. */
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--aurora-flat-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav .public-brand {
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end !important;
+  gap: 0 !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > a,
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > .btn {
+  min-width: 0 !important;
+  min-height: 38px !important;
+  flex: 0 1 auto !important;
+  padding-inline: 7px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--aurora-flat-muted) !important;
+  font-family: var(--aurora-accent-font) !important;
+  font-size: .76rem !important;
+  white-space: nowrap !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > a:hover,
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > a:focus-visible,
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > a[aria-current="page"],
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > .btn:hover,
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > .btn:focus-visible {
+  border-bottom: 2px solid var(--aurora-cyan) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--aurora-flat-ink) !important;
+  transform: none !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > .theme-toggle {
+  margin-left: 7px !important;
+  padding-inline: 9px !important;
+  border-left: 1px solid var(--aurora-flat-rule) !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-nav nav > .shop-cart-button {
+  margin-left: 5px !important;
+  border-left: 1px solid var(--aurora-flat-rule) !important;
+  color: var(--aurora-flat-ink) !important;
+}
+
+@media (max-width: 1180px) and (min-width: 1081px) {
+  :root[data-theme] body[data-page-kind^="public"] .public-nav {
+    gap: 8px !important;
+  }
+
+  :root[data-theme] body[data-page-kind^="public"] .public-nav nav > a,
+  :root[data-theme] body[data-page-kind^="public"] .public-nav nav > .btn {
+    padding-inline: 5px !important;
+    font-size: .71rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page-kind^="public"] *,
+  body[data-page-kind="error-404"] *,
+  body.error-screen *,
+  body.auth-screen *,
+  body[data-page-kind="cabinet"] *,
+  body.preview-shell *,
+  body.launcher-link-page * {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Auth and error routes use the same header geometry as public pages. */
+
+:root[data-theme] body.auth-screen .public-nav,
+:root[data-theme] body.error-screen .public-nav,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: center !important;
+  gap: 16px !important;
+  min-width: 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--aurora-flat-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav .public-brand,
+:root[data-theme] body.error-screen .public-nav .public-brand,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav .public-brand {
+  min-width: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav nav,
+:root[data-theme] body.error-screen .public-nav nav,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end !important;
+  gap: 0 !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav nav > a,
+:root[data-theme] body.auth-screen .public-nav nav > .btn,
+:root[data-theme] body.error-screen .public-nav nav > a,
+:root[data-theme] body.error-screen .public-nav nav > .btn,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > a,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > .btn {
+  min-width: 0 !important;
+  min-height: 38px !important;
+  flex: 0 1 auto !important;
+  padding-inline: 7px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--aurora-flat-muted) !important;
+  font-family: var(--aurora-accent-font) !important;
+  font-size: .76rem !important;
+  white-space: nowrap !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav nav > a:hover,
+:root[data-theme] body.auth-screen .public-nav nav > a:focus-visible,
+:root[data-theme] body.auth-screen .public-nav nav > a[aria-current="page"],
+:root[data-theme] body.auth-screen .public-nav nav > .btn:hover,
+:root[data-theme] body.auth-screen .public-nav nav > .btn:focus-visible,
+:root[data-theme] body.error-screen .public-nav nav > a:hover,
+:root[data-theme] body.error-screen .public-nav nav > a:focus-visible,
+:root[data-theme] body.error-screen .public-nav nav > a[aria-current="page"],
+:root[data-theme] body.error-screen .public-nav nav > .btn:hover,
+:root[data-theme] body.error-screen .public-nav nav > .btn:focus-visible,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > a:hover,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > a:focus-visible,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > a[aria-current="page"],
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > .btn:hover,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > .btn:focus-visible {
+  border-bottom: 2px solid var(--aurora-cyan) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--aurora-flat-ink) !important;
+  transform: none !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav nav > .theme-toggle,
+:root[data-theme] body.error-screen .public-nav nav > .theme-toggle,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > .theme-toggle {
+  margin-left: 7px !important;
+  padding-inline: 9px !important;
+  border-left: 1px solid var(--aurora-flat-rule) !important;
+}
+
+:root[data-theme] body.auth-screen .public-nav nav > .shop-cart-button,
+:root[data-theme] body.error-screen .public-nav nav > .shop-cart-button,
+:root[data-theme] body[data-page-kind="error-404"] .public-nav nav > .shop-cart-button {
+  margin-left: 5px !important;
+  border-left: 1px solid var(--aurora-flat-rule) !important;
+  color: var(--aurora-flat-ink) !important;
 }

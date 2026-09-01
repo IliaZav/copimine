@@ -9,7 +9,7 @@ THEME_CSS = FRONTEND / "assets" / "css" / "cabinet-launcher-theme.css"
 
 def test_cabinet_loads_the_shared_launcher_visual_layer_last():
     source = CABINET_CSS.read_text(encoding="utf-8")
-    assert '@import url("./css/cabinet-launcher-theme.css?v=20260901cabinetui28");' in source
+    assert '@import url("./css/cabinet-launcher-theme.css?v=20260902cabinetui30");' in source
     assert source.index("cabinet-atmosphere.css") < source.index("cabinet-launcher-theme.css")
 
 
@@ -68,7 +68,7 @@ def test_cabinet_html_uses_current_visual_cache_key():
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "assets/cabinet.css" in source:
-            assert "cabinet.css?v=20260902flat2" in source
+            assert "cabinet.css?v=20260902flat5" in source
 
 
 def test_cabinet_and_admin_share_the_final_flat_workspace_composition():

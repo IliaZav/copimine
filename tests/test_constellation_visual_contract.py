@@ -12,7 +12,7 @@ def read(relative: str) -> str:
 def test_constellation_layer_is_the_last_shared_visual_contract() -> None:
     style = read("admin-web/frontend/assets/style.css")
     cabinet = read("admin-web/frontend/assets/cabinet.css")
-    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation4");'
+    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation7");'
 
     assert import_line in style
     assert import_line in cabinet
@@ -105,3 +105,31 @@ def test_constellation_replaces_legacy_lime_accents_with_the_cyan_signal() -> No
     assert "--cabinet-site-moss: var(--constellation-cyan) !important;" in source
     assert ':root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-kicker' in source
     assert "#d8ffb2" not in source.lower()
+
+
+def test_constellation_specificity_bridge_flattens_legacy_controls_and_workbenches() -> None:
+    source = read("admin-web/frontend/assets/css/copimine-constellation.css")
+
+    for selector in (
+        ':root[data-theme] body[data-page-kind^="public"] .public-site :where(.btn',
+        ':root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-media-art',
+        ':root[data-theme] body[data-page-kind="cabinet"] #view :where(',
+        'body[data-page-kind="public-launcher-feed"] .btn',
+    ):
+        assert selector in source
+
+    for token in (".launcher-upload-box", ".cms-preview-card", ".toggle-row"):
+        assert token in source
+
+    assert source.count("border-radius: 2px !important") >= 9
+    assert "background: transparent !important" in source
+    assert "box-shadow: none !important" in source
+
+
+def test_launcher_feed_fallback_has_the_shared_site_shell() -> None:
+    feed = read("admin-web/frontend/launcher-feed-index.html")
+
+    assert '<body data-page-kind="public-launcher-feed" class="launcher-feed-page">' in feed
+    assert '/assets/style.css?v=20260903constellation7' in feed
+    assert 'class="launcher-feed-shell"' in feed
+    assert "Этот адрес используется Launcher для проверки обновлений." not in feed

@@ -137,7 +137,7 @@ def test_dynamic_server_skin_stage_has_a_real_fallback_asset() -> None:
 
 
 def test_public_shell_assets_share_the_current_release_cache_key() -> None:
-    style_cache_key = "20260903constellation4"
+    style_cache_key = "20260903constellation7"
     launcher_news_cache_key = "20260825siteui19"
     public_script_key = "20260902motion2"
     public_module_key = "20260825siteui19"

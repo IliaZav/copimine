@@ -874,3 +874,149 @@ body[data-page-kind="cabinet"] .view > * {
     padding-left: 0 !important;
   }
 }
+
+/* Specificity bridge for the older feature sheets.  Their controls carry
+ * their own important radius/shadow rules, so the shared visual contract must
+ * match that specificity or the old surfaces leak back into the final UI. */
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.btn, button, .btn-primary, .btn-secondary, .btn-ghost) {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.btn-primary, .public-actions .btn-primary) {
+  border-color: transparent !important;
+  background: linear-gradient(110deg, var(--constellation-cyan), var(--constellation-violet)) !important;
+  color: #06101b !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-media-art, .hero-side-card, .scene-card, .launcher-hero-visual, .launcher-shot button, .event-gallery-item) {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-media-art img, .scene-card-image, .launcher-hero-visual img, .launcher-shot img, .event-gallery-item img) {
+  border-radius: 0 !important;
+}
+
+/* A few legacy selectors include the media class outside :where(), which
+ * gives them one extra specificity point. Keep the public media language
+ * flat even when those feature sheets are loaded after the shared theme. */
+
+:root[data-theme] body[data-page-kind^="public"] .public-site .hero-media-art,
+:root[data-theme] body[data-page-kind^="public"] .public-site .hero-scene-stage,
+:root[data-theme] body[data-page-kind^="public"] .public-site .hero-side-card,
+:root[data-theme] body[data-page-kind^="public"] .public-site .scene-card,
+:root[data-theme] body[data-page-kind^="public"] .public-site .launcher-hero-visual,
+:root[data-theme] body[data-page-kind^="public"] .public-site .launcher-shot button,
+:root[data-theme] body[data-page-kind^="public"] .public-site .event-gallery-item {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site .hero-media-art img,
+:root[data-theme] body[data-page-kind^="public"] .public-site .scene-card-image,
+:root[data-theme] body[data-page-kind^="public"] .public-site .launcher-hero-visual img,
+:root[data-theme] body[data-page-kind^="public"] .public-site .launcher-shot img,
+:root[data-theme] body[data-page-kind^="public"] .public-site .event-gallery-item img {
+  border-radius: 0 !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(.btn, button) {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(input:not([type="checkbox"]), select, textarea) {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(
+  .launcher-upload-box,
+  .launcher-release-summary > div,
+  .launcher-stat-list > div,
+  .launcher-diagnostic-list > div,
+  .launcher-news-preview-list article,
+  .launcher-news-status,
+  .launcher-news-item-card,
+  .launcher-news-list-row,
+  .cms-preview-card,
+  .shop-purchase-card
+) {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(.launcher-release-summary > div, .launcher-stat-list > div, .launcher-diagnostic-list > div, .launcher-news-preview-list article, .launcher-news-status, .launcher-news-item-card, .launcher-news-list-row, .cms-preview-card, .shop-purchase-card) {
+  border: 0 !important;
+  border-top: 1px solid var(--constellation-rule) !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view .launcher-upload-box {
+  border: 0 !important;
+  border-top: 1px dashed var(--constellation-violet) !important;
+  border-bottom: 1px solid var(--constellation-rule) !important;
+  border-left: 2px solid var(--constellation-violet) !important;
+  padding: 18px 0 18px 16px !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(.toggle-row) {
+  min-height: 44px !important;
+  padding: 10px 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 86%) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(.cms-preview-card img, .shop-purchase-card img) {
+  border-radius: 0 !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"] #view :where(.launcher-news-list-row:hover, .launcher-news-list-row.is-active) {
+  border-top-color: var(--constellation-cyan) !important;
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 86%) !important;
+}
+
+body[data-page-kind="public-launcher-feed"] .launcher-feed-shell {
+  width: min(100% - 32px, 1180px);
+  min-height: calc(100vh - 75px);
+  margin-inline: auto;
+  display: grid;
+  align-items: center;
+  padding: clamp(56px, 10vw, 132px) 0;
+}
+
+body[data-page-kind="public-launcher-feed"] .btn,
+body[data-page-kind="public-launcher-feed"] button {
+  border-radius: 2px !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="public-launcher-feed"] .launcher-feed-copy {
+  max-width: 720px;
+  padding: 28px 0 34px;
+  border-top: 1px solid var(--constellation-rule);
+  border-bottom: 1px solid var(--constellation-rule);
+}
+
+body[data-page-kind="public-launcher-feed"] .launcher-feed-copy h1 {
+  max-width: 10ch;
+  margin: 12px 0 18px;
+  color: var(--constellation-ink);
+  font-family: var(--constellation-heading-font);
+  font-size: clamp(3rem, 8vw, 7rem);
+  line-height: .9;
+  letter-spacing: -.08em;
+}
+
+body[data-page-kind="public-launcher-feed"] .launcher-feed-copy p {
+  max-width: 52ch;
+  margin: 0 0 28px;
+  color: var(--constellation-muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}

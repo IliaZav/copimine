@@ -100,7 +100,9 @@ forbidden_static_path() {
 safe_static_path() {
   local candidate=$1
   [[ "$candidate" = /* && "$candidate" != "/" ]] || die "unsafe static path: $candidate"
-  forbidden_static_path "$candidate" && die "refusing a game or persistent-data path: $candidate"
+  if forbidden_static_path "$candidate"; then
+    die "refusing a game or persistent-data path: $candidate"
+  fi
 }
 
 safe_static_path "$WEB_ROOT"
@@ -110,11 +112,15 @@ safe_static_path "$CURRENT_LINK"
 if [[ -n "$PACKAGE_ROOT" ]]; then
   PACKAGE_ROOT=$(absolute_path "$PACKAGE_ROOT")
   [[ -d "$PACKAGE_ROOT" ]] || die "package directory does not exist: $PACKAGE_ROOT"
-  forbidden_static_path "$PACKAGE_ROOT" && die "package path is not static: $PACKAGE_ROOT"
+  if forbidden_static_path "$PACKAGE_ROOT"; then
+    die "package path is not static: $PACKAGE_ROOT"
+  fi
 else
   ARCHIVE=$(absolute_path "$ARCHIVE")
   [[ -f "$ARCHIVE" ]] || die "archive does not exist: $ARCHIVE"
-  forbidden_static_path "$ARCHIVE" && die "archive path is not static: $ARCHIVE"
+  if forbidden_static_path "$ARCHIVE"; then
+    die "archive path is not static: $ARCHIVE"
+  fi
 fi
 
 validate_tree() {
@@ -125,13 +131,19 @@ validate_tree() {
   [[ -f "$root/mods.html" ]] || die 'release is missing compatibility mods.html'
   [[ -f "$root/assets/public-data/launcher/latest.json" ]] || die 'release is missing launcher metadata'
   [[ -d "$root/downloads/launcher" ]] || die 'release is missing launcher downloads'
-  forbidden_static_path "$root" && die "release root is not static: $root"
+  if forbidden_static_path "$root"; then
+    die "release root is not static: $root"
+  fi
 
   local item relative
   while IFS= read -r -d '' item; do
     relative=${item#"$root/"}
-    forbidden_static_path "/$relative" && die "release contains protected data: $relative"
-    [[ -L "$item" ]] && die "release contains a symlink: $relative"
+    if forbidden_static_path "/$relative"; then
+      die "release contains protected data: $relative"
+    fi
+    if [[ -L "$item" ]]; then
+      die "release contains a symlink: $relative"
+    fi
   done < <(find "$root" -mindepth 1 -print0)
 }
 
@@ -148,9 +160,13 @@ else
   archive_entry_list=$(tar -tzf "$ARCHIVE") || die 'cannot inspect release archive'
   while IFS= read -r entry; do
     entry=${entry#./}
-    [[ -z "$entry" ]] && continue
+    if [[ -z "$entry" ]]; then
+      continue
+    fi
     [[ "$entry" != /* && "$entry" != ../* && "$entry" != */../* ]] || die "archive contains traversal path: $entry"
-    forbidden_static_path "/$entry" && die "archive contains protected data: $entry"
+    if forbidden_static_path "/$entry"; then
+      die "archive contains protected data: $entry"
+    fi
   done <<< "$archive_entry_list"
   SOURCE_ROOT="$TMP_ROOT/extracted"
   mkdir -p "$SOURCE_ROOT"

@@ -38,6 +38,26 @@ def test_static_release_script_is_scoped_to_web_assets():
     assert 'rm -rf -- "$TMP_ROOT"' in text
     assert 'rm -rf -- "$WEB_ROOT"' not in text
 
+    # `forbidden_static_path` returns 1 for an allowed path. Keep every safety
+    # check inside an explicit conditional so `set -e` cannot abort a valid
+    # static deployment before the first release is copied.
+    assert 'if forbidden_static_path "$candidate"; then' in text
+    assert 'if forbidden_static_path "$PACKAGE_ROOT"; then' in text
+    assert 'if forbidden_static_path "$ARCHIVE"; then' in text
+    assert 'if forbidden_static_path "$root"; then' in text
+    assert 'if forbidden_static_path "/$relative"; then' in text
+    assert 'if forbidden_static_path "/$entry"; then' in text
+    assert 'if [[ -L "$item" ]]; then' in text
+    assert 'if [[ -z "$entry" ]]; then' in text
+    assert 'forbidden_static_path "$candidate" && die' not in text
+    assert 'forbidden_static_path "$PACKAGE_ROOT" && die' not in text
+    assert 'forbidden_static_path "$ARCHIVE" && die' not in text
+    assert 'forbidden_static_path "$root" && die' not in text
+    assert 'forbidden_static_path "/$relative" && die' not in text
+    assert 'forbidden_static_path "/$entry" && die' not in text
+    assert '[[ -L "$item" ]] && die' not in text
+    assert '[[ -z "$entry" ]] && continue' not in text
+
 
 def test_static_release_script_has_shell_runtime_check_when_bash_is_available(tmp_path):
     bash = shutil.which("bash")

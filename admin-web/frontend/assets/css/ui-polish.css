@@ -4,10 +4,13 @@
   escaping their cards.
 */
 
-body.player-mode #guestPagesBtn,
 body.panel-admin-mode #guestPagesBtn,
 body.junior-admin-mode #guestPagesBtn {
   display: inline-flex !important;
+}
+
+body.player-mode #guestPagesBtn {
+  display: none !important;
 }
 
 body.player-mode .topbar,
@@ -25,10 +28,21 @@ body.junior-admin-mode .top-actions {
 body.player-mode .top-actions .last-update,
 body.panel-admin-mode .top-actions .last-update,
 body.junior-admin-mode .top-actions .last-update {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 178px;
+  max-width: 240px;
+  overflow: visible;
+  color: #dcebe4 !important;
+  line-height: 1.25;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+:root[data-theme="light"] body.player-mode .top-actions .last-update,
+:root[data-theme="light"] body.panel-admin-mode .top-actions .last-update,
+:root[data-theme="light"] body.junior-admin-mode .top-actions .last-update {
+  color: #203429 !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(53, 104, 71, 0.24) !important;
 }
 
 body.player-mode img,

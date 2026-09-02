@@ -20,3 +20,9 @@ def test_narcotics_partial_start_is_safe_and_refunds_are_crash_idempotent():
     assert "hasPendingRefundMarker" in NARCOTICS
     assert "removePendingRefundMarkers" in NARCOTICS
     assert "database.completePendingRefund(row.id())" in NARCOTICS
+
+
+def test_narcotics_visual_bridge_does_not_send_after_plugin_disable():
+    bridge = (ROOT / "copimine-narcotics" / "src" / "me" / "copimine" / "clientbridge" / "ClientVisualEffectService.java").read_text(encoding="utf-8")
+    clear_method = bridge[bridge.index("public void clearVisuals(Player player, String reason)"):bridge.index("public void shutdown()")]
+    assert "player.isOnline() && plugin.isEnabled()" in clear_method

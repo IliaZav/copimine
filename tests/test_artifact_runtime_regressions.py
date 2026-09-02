@@ -73,7 +73,10 @@ class ArtifactRuntimeRegressionContractTest(unittest.TestCase):
         self.assertIn("finishAngelWingsFlight", source)
         self.assertIn("onQuit", source)
         self.assertIn("keyAngelWingsCooldownUntil", source)
-        for retired in ("AngelSeal", "ANGEL_SEAL", "PlayerDeathEvent event"):
+        # Angel wings no longer use the retired AngelSeal death workflow.
+        # PlayerDeathEvent remains valid for the independent gravedigger
+        # contract, so it must not be treated as an obsolete marker.
+        for retired in ("AngelSeal", "ANGEL_SEAL"):
             self.assertNotIn(retired, source)
 
     def test_adminplus_does_not_queue_artifacts_again_on_the_same_death(self) -> None:

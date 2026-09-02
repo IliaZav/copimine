@@ -60,7 +60,6 @@ def test_requested_catalog_prices_cover_all_20_ids_and_preserve_admin_only_item(
         "vechniy_razgon_firework": 9999,
     }
     expected_donation = {
-        "gde_moy_lut_blyat_compass": 100,
         "vremya_platit_nalogi_clock": 300,
         "pohuy_na_debaffy_amulet": 150,
         "ne_segodnya_suka_shield": 50,
@@ -99,13 +98,12 @@ def test_requested_catalog_descriptions_are_player_facing_and_not_stale():
         "vechniy_razgon_firework": "Бесконечный фейерверк с маленьким кд после каждого использования",
     }
     expected_donation_lore = {
-        "gde_moy_lut_blyat_compass": "Телепортация по направлению взгляда",
         "vremya_platit_nalogi_clock": "Освобождает от налогов на 3 месяца",
         "pohuy_na_debaffy_amulet": "При нажатии ПКМ заменяет дебафф на бафф",
         "ne_segodnya_suka_shield": "На него всем похуй",
         "kaska_prorab_huev": "С маленьким шансом уменьшает урон от падения и даёт эффект спешки и скорости",
         "mne_pohuy_ya_v_tanke_vest": "Уменьшает любой входящий урон на 20% и с небольшим шансом даёт бафф",
-        "kosa_nalogovoy_inspekcii": "Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели",
+        "kosa_nalogovoy_inspekcii": "Вампиризм; шанс 2.5% украсть 1–3 AR со счёта цели",
         "nu_ty_i_nakopal_blyat_pickaxe": "При ударе по врагу закапывает его в трапку",
         "batin_remen_sudnogo_dnya": "Большой урон, бьёт противника молнией, даёт владельцу эффект скорости и накладывает дебафф на цель",
     }

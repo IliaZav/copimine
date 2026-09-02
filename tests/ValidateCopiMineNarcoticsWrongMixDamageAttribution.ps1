@@ -2,12 +2,14 @@ $ErrorActionPreference = 'Stop'
 
 $sourcePath = Join-Path $PSScriptRoot '..\copimine-narcotics\src\me\copimine\narcotics\cauldron\CauldronBrewingService.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$explosion = [regex]::Match($source, '(?s)private void simulateWrongMixExplosion\(Block block\) \{.*?(?=\r?\n\s*private boolean queueIngredients)')
+$explosion = [regex]::Match($source, '(?s)private void simulateWrongMixExplosion\(Block block, org\.bukkit\.entity\.Player initiator\) \{.*?(?=\r?\n\s*private boolean queueIngredients)')
 
 $validDamageContract = $explosion.Success `
-    -and $explosion.Value -match 'getNearbyEntities' `
+    -and $explosion.Value -match 'world\.getPlayers\(\)' `
     -and $explosion.Value -match 'distanceSquared' `
-    -and $explosion.Value -match '\.damage\(' `
+    -and $explosion.Value -match 'nearby\.damage\(' `
+    -and $explosion.Value -match 'initiator' `
+    -and $explosion.Value -match 'Math\.nextUp\(WRONG_MIX_MAX_DAMAGE\)' `
     -and $source -match 'WRONG_MIX_MIN_DAMAGE = 14\.0D' `
     -and $source -match 'WRONG_MIX_MAX_DAMAGE = 20\.0D' `
     -and $source -match 'WRONG_MIX_DAMAGE_RADIUS = 6\.0D'

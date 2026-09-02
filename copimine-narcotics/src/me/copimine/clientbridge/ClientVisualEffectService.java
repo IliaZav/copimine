@@ -192,7 +192,7 @@ public final class ClientVisualEffectService {
         ClientCapabilityState state = capabilities.state(player);
         String sessionId = state == null ? "" : state.sessionId();
         long seq = nextSeq.getAndIncrement();
-        if (player.isOnline()) {
+        if (player.isOnline() && plugin.isEnabled()) {
             player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL, ClientBridgePayloads.encodeClearAll(seq, sessionId, reason));
         }
         removePlayerCommands(playerUuid);

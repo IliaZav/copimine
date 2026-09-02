@@ -42,7 +42,7 @@ foreach ($marker in @(
     'keyReturnStoneCooldownUntil',
     'returnStoneChannels',
     'getRespawnLocation()',
-    'isSafeCompassLocation',
+    'isSafeTeleportLocation',
     'restoreInfiniteTorchAfterSuccessfulPlacement',
     'event.canBuild()',
     'onInfiniteTorchMerge',

@@ -7,49 +7,18 @@
   <title>CopiMine - Корзина</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260809publiccopy1" />
-  <link rel="stylesheet" href="/assets/css/tokens.css" />
-  <link rel="stylesheet" href="/assets/css/themes.css" />
-  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260903constellation10" />
 </head>
 <body data-page-kind="public-cart">
   <main class="public-site public-site-compact">
-    <header class="public-nav">
-      <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <span class="public-brand-copy">
-          <strong>CopiMine</strong>
-          <small>Корзина лавки</small>
-        </span>
-      </a>
-      <nav aria-label="Разделы сайта">
-        <a href="/index.html">Главная</a>
-        <a href="/server.html">Сервер</a>
-        <a href="/elections.html">Выборы</a>
-        <a href="/shops.html">Лавки</a>
-        <a id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-current="page" aria-label="Корзина пуста">
-          <span>Корзина</span>
-          <span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span>
-        </a>
-        <a href="/mods.html">Модпак</a>
-        <a id="publicSigninLink" href="/signin.html">Войти</a>
-        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
-        <a id="publicCabinetBtn" class="btn btn-secondary hidden" href="/cabinet/balance.html">Личный кабинет</a>
-        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
-        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
-      </nav>
-      <a class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" aria-current="page" aria-label="Корзина пуста">
-        <span>Корзина</span>
-        <span class="shop-cart-count" aria-live="polite">0</span>
-      </a>
-    </header>
+    <header class="public-nav public-nav-auth"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span></a><button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/server.html">Сервер</a><a href="/elections.html">Выборы</a><a href="/shops.html">Лавки</a><a href="/launcher.html">Лаунчер</a><a href="/news.html">Новости</a><a href="/events.html">Ивенты</a><a id="publicSigninLink" href="/signin.html">Войти</a><a id="publicRegisterLink" href="/register.html">Регистрация</a><button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button><button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button><a id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-current="page" aria-label="Корзина пуста"><span>Корзина</span><span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span></a></nav></header>
 
     <div class="public-page-shell cart-page-shell">
       <section class="cart-page-intro" aria-labelledby="cartPageTitle">
         <div>
           <span class="hero-kicker">Корзина</span>
           <h1 id="cartPageTitle">Оплата предметов</h1>
-        <p>AR и donation оплачиваются отдельно. Выдача — в игре.</p>
+        <p>AR и донат оплачиваются отдельно. Выдача — в игре.</p>
         </div>
         <a class="btn btn-secondary" href="/shops.html">Вернуться к лавке</a>
       </section>
@@ -79,17 +48,17 @@
         <section id="donationCartSection" class="cart-checkout-section cart-checkout-section-donation" aria-labelledby="donationCartTitle">
           <header class="cart-checkout-head">
             <div>
-              <span class="shop-catalog-eyebrow">Donation-корзина</span>
+            <span class="shop-catalog-eyebrow">Донат-корзина</span>
               <h2 id="donationCartTitle">Именные предметы</h2>
             </div>
             <strong id="donationCartTotal" class="cart-total">0 DC</strong>
           </header>
           <div id="donationCartItems" class="cart-item-list"></div>
           <form id="donationCartCheckoutForm" class="cart-checkout-form" novalidate>
-            <label for="donationCartPin">PIN donation-баланса</label>
+            <label for="donationCartPin">PIN донат-баланса</label>
             <div class="cart-checkout-controls">
               <input id="donationCartPin" name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" minlength="4" maxlength="8" placeholder="4-8 цифр" />
-              <button id="donationCartCheckoutButton" class="btn btn-primary" type="submit">Оплатить donation-корзину</button>
+              <button id="donationCartCheckoutButton" class="btn btn-primary" type="submit">Оплатить донат-корзину</button>
             </div>
           </form>
           <p id="donationCartStatus" class="cart-section-status" role="status" aria-live="polite"></p>
@@ -98,6 +67,6 @@
     </div>
   </main>
 
-  <script type="module" src="/assets/js/public/public-page.js?v=20260809publiccopy1"></script>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260902motion2"></script>
 </body>
 </html>

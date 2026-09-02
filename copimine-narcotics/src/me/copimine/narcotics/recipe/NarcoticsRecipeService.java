@@ -5,6 +5,8 @@ import me.copimine.narcotics.item.NarcoticItemFactory;
 import me.copimine.narcotics.model.NarcoticDefinition;
 import org.bukkit.Material;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.potion.PotionType;
@@ -74,6 +76,9 @@ public final class NarcoticsRecipeService {
         if (stack == null || stack.getType() == Material.AIR) {
             return null;
         }
+        if (!isRoundTripSafeIngredient(stack)) {
+            return null;
+        }
         if (itemFactory != null && itemFactory.isOfficialFinishedItem(stack)) {
             return null;
         }
@@ -88,6 +93,49 @@ public final class NarcoticsRecipeService {
             return createPotionEntry(stack, genericPotionKey(stack));
         }
         return new IngredientEntry("MATERIAL:" + stack.getType().name(), stack.getType().name(), "", "", 1);
+    }
+
+    /**
+     * Cauldron state stores only the canonical material/potion fields.  Do not
+     * consume an item whose metadata or block state would be lost on a failed
+     * brew and subsequent refund.
+     */
+    private boolean isRoundTripSafeIngredient(ItemStack stack) {
+        if (stack == null || stack.getType() == Material.AIR) {
+            return false;
+        }
+        ItemMeta meta = stack.getItemMeta();
+        if (meta instanceof BlockStateMeta || isContainerMaterial(stack.getType())) {
+            return false;
+        }
+        if (!stack.hasItemMeta()) {
+            return true;
+        }
+        if (!(meta instanceof PotionMeta potionMeta) || !isPotion(stack)) {
+            return false;
+        }
+        return potionMeta.getBasePotionType() != null
+                && !potionMeta.hasCustomEffects()
+                && !potionMeta.hasDisplayName()
+                && !potionMeta.hasLore()
+                && !potionMeta.hasEnchants()
+                && !potionMeta.hasAttributeModifiers()
+                && !potionMeta.hasCustomModelData()
+                && potionMeta.getPersistentDataContainer().getKeys().isEmpty();
+    }
+
+    private boolean isContainerMaterial(Material material) {
+        return switch (material) {
+            case CHEST, TRAPPED_CHEST, BARREL, HOPPER, DISPENSER, DROPPER,
+                    FURNACE, BLAST_FURNACE, SMOKER, BREWING_STAND, CRAFTER,
+                    SHULKER_BOX, WHITE_SHULKER_BOX, ORANGE_SHULKER_BOX,
+                    MAGENTA_SHULKER_BOX, LIGHT_BLUE_SHULKER_BOX, YELLOW_SHULKER_BOX,
+                    LIME_SHULKER_BOX, PINK_SHULKER_BOX, GRAY_SHULKER_BOX,
+                    LIGHT_GRAY_SHULKER_BOX, CYAN_SHULKER_BOX, PURPLE_SHULKER_BOX,
+                    BLUE_SHULKER_BOX, BROWN_SHULKER_BOX, GREEN_SHULKER_BOX,
+                    RED_SHULKER_BOX, BLACK_SHULKER_BOX -> true;
+            default -> false;
+        };
     }
 
     public NarcoticDefinition matchExact(List<IngredientEntry> ingredientEntries) {

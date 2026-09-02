@@ -1,0 +1,70 @@
+<Application x:Class="CopiMineLauncher.Installer.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+  <Application.Resources>
+    <SolidColorBrush x:Key="WindowBackground" Color="#071817" />
+    <SolidColorBrush x:Key="CardBackground" Color="#10312C" />
+    <SolidColorBrush x:Key="CardBorder" Color="#245E52" />
+    <SolidColorBrush x:Key="Accent" Color="#63DFA0" />
+    <SolidColorBrush x:Key="TextPrimary" Color="#F2FFF9" />
+    <SolidColorBrush x:Key="TextMuted" Color="#99C3B4" />
+    <SolidColorBrush x:Key="ButtonSurface" Color="#173A34" />
+    <SolidColorBrush x:Key="ButtonBorder" Color="#2B6658" />
+    <SolidColorBrush x:Key="DisabledText" Color="#5B756E" />
+    <Style TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="FontFamily" Value="Segoe UI" />
+    </Style>
+    <Style TargetType="TextBox">
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="#09221F" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="BorderBrush" Value="#2B7665" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+    </Style>
+    <Style TargetType="Button">
+      <Setter Property="FontFamily" Value="Segoe UI" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Padding" Value="16,10" />
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="MinHeight" Value="42" />
+      <Setter Property="Background" Value="{StaticResource ButtonSurface}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="BorderBrush" Value="{StaticResource ButtonBorder}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="{StaticResource DisabledText}" />
+          <Setter Property="Background" Value="#102A25" />
+          <Setter Property="BorderBrush" Value="#24423C" />
+          <Setter Property="Opacity" Value="0.78" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="{StaticResource Accent}" />
+      <Setter Property="Foreground" Value="#062019" />
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Style.Triggers>
+        <Trigger Property="IsEnabled" Value="False">
+          <Setter Property="Foreground" Value="{StaticResource DisabledText}" />
+          <Setter Property="Background" Value="#2D5948" />
+          <Setter Property="BorderBrush" Value="#2D5948" />
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+      <Setter Property="Background" Value="{StaticResource ButtonSurface}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="BorderBrush" Value="{StaticResource ButtonBorder}" />
+    </Style>
+  </Application.Resources>
+</Application>

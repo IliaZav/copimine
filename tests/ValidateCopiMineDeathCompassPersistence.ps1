@@ -1,20 +1,16 @@
 $ErrorActionPreference = 'Stop'
+$root = Resolve-Path (Join-Path $PSScriptRoot '..')
+$source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java')
+$items = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-artifacts\items.yml')
 
-$sourcePath = Join-Path $PSScriptRoot '..\copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
-$source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
-$death = [regex]::Match($source, '(?s)public void onPlayerDeath\(PlayerDeathEvent var1\) \{.*?(?=\r?\n\s*@EventHandler)')
-$compass = [regex]::Match($source, '(?s)private boolean activateLootCompass\(Player player, ItemStack ignored\) \{.*?(?=\r?\n\s*private Location persistedLastDeathLocation)')
-
-if ($source -notmatch 'keyLastDeathWorld' -or $source -notmatch 'keyLastDeathX' -or $source -notmatch 'keyLastDeathY' -or $source -notmatch 'keyLastDeathZ') {
-    throw 'Death compass persistence keys are required.'
+if ($source -match 'LOOT_COMPASS|activateLootCompass|keyCompassCooldownUntil|legacyPointCompassToLastDeath') {
+  throw 'Retired donation compass runtime code is still present.'
+}
+if ($items -match 'gde_moy_lut_blyat_compass') {
+  throw 'Retired donation compass remains in the catalog.'
+}
+if ($source -notmatch 'Material\.RECOVERY_COMPASS') {
+  throw 'Vanilla recovery compass normalization must remain available.'
 }
 
-if (-not $death.Success -or $death.Value -notmatch 'keyLastDeathWorld' -or $death.Value -notmatch 'PersistentDataType\.INTEGER') {
-    throw 'A player death must persist the world and block coordinates for the compass.'
-}
-
-if (-not $compass.Success -or $compass.Value -notmatch 'rayTraceBlocks' -or $compass.Value -notmatch 'teleport') {
-    throw 'The donation compass must teleport along the look direction.'
-}
-
-Write-Host 'Death compass persistence contract OK'
+Write-Host 'Retired donation compass removal validation passed.'

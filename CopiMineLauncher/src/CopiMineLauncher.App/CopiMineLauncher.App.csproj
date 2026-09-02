@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <OutputType>WinExe</OutputType>
+    <ApplicationIcon>Assets\copimine.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
+    <PackageReference Include="Serilog" Version="4.4.0" />
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\copimine-logo.png" />
+    <Resource Include="Assets\copimine.ico" />
+    <Resource Include="Assets\LauncherVisuals\launcher-home-background.png" />
+    <Resource Include="Assets\LauncherVisuals\update-background.png" />
+    <Resource Include="Assets\LauncherVisuals\splash.gif" />
+    <Resource Include="Assets\LauncherVisuals\loading-emblem.png" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo.png" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo-animated.gif" />
+    <Resource Include="Assets\LauncherVisuals\copimine-logo-header.gif" />
+    <Resource Include="Assets\LauncherVisuals\copimine-icon.png" />
+    <Resource Include="Assets\LauncherVisuals\installer-banner.png" />
+    <Resource Include="Assets\LauncherVisuals\news-01.png" />
+    <Resource Include="Assets\LauncherVisuals\news-02.png" />
+    <Resource Include="Assets\LauncherVisuals\news-03.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\LauncherVisuals\launcher-home-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\update-background-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-01-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-02-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\LauncherVisuals\news-03-source.webp" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\skin-preview.html" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\skinview3d.bundle.js" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-forest.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-river.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SkinPreview\shader-mountain.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\SkinPreview\skinview3d.LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\SkinPreview\ASSET-CREDITS.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\WebView2\MicrosoftEdgeWebView2Setup.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CopiMineLauncher.Core\CopiMineLauncher.Core.csproj" />
+    <ProjectReference Include="..\CopiMineLauncher.Infrastructure\CopiMineLauncher.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

@@ -21,7 +21,10 @@ function Require-NotContains([string]$text, [string]$needle, [string]$message) {
 }
 
 $common = Read-Utf8 'deploy/shared/common.sh'
-$properties = Read-Utf8 'minecraft/server/server.properties'
+# The working tree is also used by the local Paper harness and therefore may
+# contain an install-time RCON secret.  The release contract is the tracked
+# template; never inspect or print the runtime copy here.
+$properties = ((git -C $root show 'HEAD:minecraft/server/server.properties') -join "`n") -replace "`r", ''
 $spigot = Read-Utf8 'minecraft/server/spigot.yml'
 $fullReplace = Read-Utf8 'deploy/ubuntu/copimine_full_replace.sh'
 $unpack = Read-Utf8 'deploy/ubuntu/copimine_unpack_and_verify.sh'

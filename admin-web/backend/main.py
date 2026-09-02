@@ -70,14 +70,15 @@ try:
 except Exception:  # pragma: no cover
     yaml = None
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from .commerce_catalog import admin_gift_catalog_snapshot, ar_catalog_snapshot, donation_catalog_snapshot, load_commerce_catalog
+from .db_config import resolve_postgres_settings
 from .download_manager import artifact_file_response, artifact_metadata
 from .deploy_runtime import runtime_snapshot as managed_runtime_snapshot
 from .envfile import load_env_file_to_os, resolve_env_file
@@ -94,6 +95,7 @@ from .plugin_registry import (
     require_registry_plugin,
     validate_registry_values,
 )
+from .launcher_control import ControlPlaneError, MAX_MOD_SIZE, default_control_plane
 from .president_law_workflow import (
     review_president_law_transition,
     PresidentLawReviewError,
@@ -101,8 +103,8 @@ from .president_law_workflow import (
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
-FRONTEND_DIR = APP_ROOT / "frontend"
 load_env_file_to_os(resolve_env_file(APP_ROOT / ".env"))
+FRONTEND_DIR = Path(os.getenv("COPIMINE_FRONTEND_ROOT", APP_ROOT / "frontend")).expanduser().resolve()
 DATA_DIR = Path(os.getenv("COPIMINE_ADMIN_DATA", APP_ROOT / "data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THIRDPARTY_DIR = PROJECT_ROOT / "thirdparty"
@@ -135,6 +137,11 @@ YOOKASSA_SETTINGS = YooKassaSettings.from_env()
 DONATION_PROVIDER = "YOOKASSA" if YOOKASSA_SETTINGS.enabled else "MOCK_SBP"
 DONATION_SESSION_TTL_SECONDS = int(os.getenv("DONATION_SESSION_TTL_SECONDS", str(15 * 60)))
 DONATION_SESSION_TTL_MS = DONATION_SESSION_TTL_SECONDS * 1000
+LAUNCHER_LINK_CHALLENGE_TTL_SECONDS = max(
+    5 * 60,
+    int(os.getenv("LAUNCHER_LINK_CHALLENGE_TTL_SECONDS", str(30 * 60))),
+)
+LAUNCHER_LINK_CHALLENGE_TTL_MS = LAUNCHER_LINK_CHALLENGE_TTL_SECONDS * 1000
 DONATION_EPOCH_MS_THRESHOLD = 100_000_000_000
 MANAGED_RESOURCEPACK_URL = os.getenv(
     "COPIMINE_RESOURCEPACK_URL",
@@ -157,6 +164,11 @@ GENERAL_RATE_BUCKETS: dict[str, list[int]] = {}
 PUBLIC_STATUS_CACHE_LOCK = threading.RLock()
 PUBLIC_STATUS_CACHE: tuple[float, dict[str, Any]] = (0.0, {})
 PUBLIC_STATUS_CACHE_TTL_SECONDS = max(2, int(os.getenv("PUBLIC_STATUS_CACHE_TTL_SECONDS", "10")))
+# Navigation can legitimately touch the public status endpoint once per page
+# while a user moves through the cabinet.  Keep a dedicated, still finite
+# budget so that this read-only cached endpoint cannot starve normal API
+# requests or make a multi-page session look like an attack.
+PUBLIC_STATUS_RATE_LIMIT = max(60, int(os.getenv("PUBLIC_STATUS_RATE_LIMIT", "120")))
 PUBLIC_SKIN_CACHE_LOCK = threading.RLock()
 PUBLIC_SKIN_CACHE: dict[str, tuple[float, bytes, str]] = {}
 PUBLIC_SKIN_CACHE_TTL_SECONDS = max(60, int(os.getenv("PUBLIC_SKIN_CACHE_TTL_SECONDS", "600")))
@@ -273,12 +285,23 @@ SESSIONS_FILE = DATA_DIR / "sessions.json"
 ADMIN_USERS_FILE = DATA_DIR / "admin_users.json"
 AUTH_DB_FILE = Path(os.getenv("COPIMINE_AUTH_DB", DATA_DIR / "admin_auth.db"))
 AUTH_STORAGE_MODE_RAW = os.getenv("COPIMINE_AUTH_STORAGE", "").strip().lower()
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "127.0.0.1"))
-POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "5432")))
-POSTGRES_DB = os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "copimine"))
-POSTGRES_USER = os.getenv("POSTGRES_USER", os.getenv("PGUSER", "copimine"))
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", os.getenv("PGPASSWORD", ""))
-POSTGRES_SCHEMA = os.getenv("POSTGRES_SCHEMA", os.getenv("PGSCHEMA", "copimine"))
+_POSTGRES_SETTINGS = resolve_postgres_settings(
+    {
+        **os.environ,
+        "POSTGRES_HOST": os.getenv("POSTGRES_HOST", os.getenv("PGHOST", "")),
+        "POSTGRES_PORT": os.getenv("POSTGRES_PORT", os.getenv("PGPORT", "")),
+        "POSTGRES_DB": os.getenv("POSTGRES_DB", os.getenv("PGDATABASE", "")),
+        "POSTGRES_USER": os.getenv("POSTGRES_USER", os.getenv("PGUSER", "")),
+        "POSTGRES_PASSWORD": os.getenv("POSTGRES_PASSWORD", os.getenv("PGPASSWORD", "")),
+        "POSTGRES_SCHEMA": os.getenv("POSTGRES_SCHEMA", os.getenv("PGSCHEMA", "")),
+    }
+)
+POSTGRES_HOST = _POSTGRES_SETTINGS["POSTGRES_HOST"]
+POSTGRES_PORT = int(_POSTGRES_SETTINGS["POSTGRES_PORT"])
+POSTGRES_DB = _POSTGRES_SETTINGS["POSTGRES_DB"]
+POSTGRES_USER = _POSTGRES_SETTINGS["POSTGRES_USER"]
+POSTGRES_PASSWORD = _POSTGRES_SETTINGS.get("POSTGRES_PASSWORD", "")
+POSTGRES_SCHEMA = _POSTGRES_SETTINGS["POSTGRES_SCHEMA"]
 POSTGRES_CONNECT_TIMEOUT = int(os.getenv("POSTGRES_CONNECT_TIMEOUT", "5"))
 POSTGRES_POOL_MIN_SIZE = max(1, int(os.getenv("POSTGRES_POOL_MIN_SIZE", "1")))
 POSTGRES_POOL_MAX_SIZE = max(POSTGRES_POOL_MIN_SIZE, int(os.getenv("POSTGRES_POOL_MAX_SIZE", "8")))
@@ -599,12 +622,31 @@ class PlayerLinkConfirmIn(BaseModel):
     code: str = Field(min_length=6, max_length=16)
 
 
+class LauncherLinkChallengeIn(BaseModel):
+    device_id: str = Field(min_length=16, max_length=128)
+    minecraft_name: str = Field(min_length=3, max_length=16)
+    launcher_version: str = Field(default="", max_length=32)
+
+
+class LauncherLinkAuthorizeIn(BaseModel):
+    challenge_id: str = Field(min_length=16, max_length=96)
+    code: str = Field(min_length=6, max_length=16)
+
+
+class LauncherNicknameChangeIn(BaseModel):
+    device_id: str = Field(min_length=16, max_length=128)
+    access_token: str = Field(min_length=32, max_length=128)
+    old_minecraft_name: str = Field(min_length=3, max_length=16)
+    new_minecraft_name: str = Field(min_length=3, max_length=16)
+
+
 class PlayerRecoveryStartIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
 
 
 class PlayerRecoveryConfirmIn(BaseModel):
     minecraft_name: str = Field(min_length=3, max_length=16)
+    username: str = Field(min_length=3, max_length=32)
     code: str = Field(min_length=6, max_length=16)
     new_password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
@@ -815,6 +857,59 @@ class SiteCmsEntryIn(BaseModel):
     link_url: str = Field(default="", max_length=240)
     sort_order: int = Field(default=100, ge=0, le=100000)
     enabled: bool = True
+
+
+class EventPageIn(BaseModel):
+    slug: str = Field(min_length=2, max_length=64)
+    eyebrow: str = Field(default="Событие", max_length=80)
+    title: str = Field(min_length=1, max_length=160)
+    status: str = Field(default="upcoming", max_length=20)
+    summary: str = Field(default="", max_length=600)
+    body: str = Field(default="", max_length=3000)
+    hero_image: str = Field(default="", max_length=240)
+    portrait_image: str = Field(default="", max_length=240)
+    accent: str = Field(default="#b887ff", max_length=20)
+    requirements: list[dict[str, Any]] = Field(default_factory=list)
+    waves: list[dict[str, Any]] = Field(default_factory=list)
+    boss_phases: list[dict[str, Any]] = Field(default_factory=list)
+    rewards: list[str] = Field(default_factory=list)
+    sort_order: int = Field(default=100, ge=0, le=100000)
+    enabled: bool = True
+
+
+class LauncherModEditIn(BaseModel):
+    version: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    filename: Optional[str] = Field(default=None, min_length=5, max_length=128)
+    required: Optional[bool] = None
+    display_name: Optional[str] = Field(default=None, alias="displayName", max_length=160)
+
+
+class LauncherReleasePublishIn(BaseModel):
+    public_key_id: str = Field(alias="publicKeyId", min_length=1, max_length=64)
+    release_id: str = Field(alias="releaseId", min_length=1, max_length=64)
+    release_sequence: int = Field(alias="releaseSequence", ge=1, le=2_147_483_647)
+    published_at: Optional[str] = Field(default=None, alias="publishedAt", max_length=64)
+
+
+class LauncherRollbackIn(BaseModel):
+    release_id: str = Field(alias="releaseId", min_length=1, max_length=64)
+
+
+class LauncherNewsIn(BaseModel):
+    slug: str = Field(min_length=3, max_length=80)
+    title: str = Field(min_length=1, max_length=200)
+    version: str = Field(default="", max_length=64)
+    published_at: str = Field(default="", alias="publishedAt", max_length=64)
+    summary: list[str] = Field(default_factory=list, max_length=3)
+    sections: dict[str, Any] = Field(default_factory=dict)
+    items: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class LauncherTelemetryIn(BaseModel):
+    event: str = Field(min_length=1, max_length=40)
+    launcher_version: str = Field(alias="launcherVersion", min_length=1, max_length=64)
+    manifest_sequence: int = Field(alias="manifestSequence", ge=0, le=2_147_483_647)
+    diagnostic_code: Optional[str] = Field(default=None, alias="diagnosticCode", max_length=80)
 
 
 class PluginRegistryConfigIn(BaseModel):
@@ -1716,6 +1811,15 @@ def csrf_exempt_paths() -> set[str]:
         "/api/player/login",
         "/api/player/refresh",
         "/api/player/register",
+        # These requests are made by the native Launcher, not by a browser
+        # session. Their own device/token checks are the authentication
+        # boundary; requiring a browser CSRF cookie would make the native
+        # client unable to create a challenge or synchronize a nickname.
+        "/api/launcher/link/challenge",
+        "/api/launcher/profile/nickname",
+        # Native Launcher telemetry is a bounded, anonymous diagnostic feed;
+        # it is not a browser session mutation and therefore has no CSRF cookie.
+        "/api/launcher/telemetry",
     }
 
 
@@ -2185,6 +2289,35 @@ def _ensure_v4_schema(conn: Any) -> None:
     )
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS launcher_link_challenges(
+            challenge_id TEXT PRIMARY KEY,
+            device_id_hash TEXT NOT NULL,
+            minecraft_name TEXT NOT NULL DEFAULT '',
+            launcher_version TEXT NOT NULL DEFAULT '',
+            code_hash TEXT NOT NULL,
+            poll_token_hash TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'PENDING',
+            site_account_id TEXT NOT NULL DEFAULT '',
+            created_at BIGINT NOT NULL DEFAULT 0,
+            expires_at BIGINT NOT NULL DEFAULT 0,
+            authorized_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS launcher_account_links(
+            device_id_hash TEXT PRIMARY KEY,
+            site_account_id TEXT NOT NULL,
+            minecraft_name TEXT NOT NULL DEFAULT '',
+            launcher_version TEXT NOT NULL DEFAULT '',
+            linked_at BIGINT NOT NULL DEFAULT 0,
+            updated_at BIGINT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS player_profile_cache(
             minecraft_uuid TEXT PRIMARY KEY,
             minecraft_name TEXT NOT NULL DEFAULT '',
@@ -2301,6 +2434,52 @@ def _ensure_v4_schema(conn: Any) -> None:
             enabled INTEGER NOT NULL DEFAULT 1,
             updated_at BIGINT NOT NULL DEFAULT 0,
             updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS site_event_pages(
+            slug TEXT PRIMARY KEY,
+            eyebrow TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'upcoming',
+            summary TEXT NOT NULL DEFAULT '',
+            body TEXT NOT NULL DEFAULT '',
+            hero_image_path TEXT NOT NULL DEFAULT '',
+            portrait_image_path TEXT NOT NULL DEFAULT '',
+            accent TEXT NOT NULL DEFAULT '#b887ff',
+            requirements_json TEXT NOT NULL DEFAULT '[]',
+            waves_json TEXT NOT NULL DEFAULT '[]',
+            boss_phases_json TEXT NOT NULL DEFAULT '[]',
+            rewards_json TEXT NOT NULL DEFAULT '[]',
+            credits_json TEXT NOT NULL DEFAULT '[]',
+            credits_html TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at BIGINT NOT NULL DEFAULT 0,
+            updated_by TEXT NOT NULL DEFAULT ''
+        )
+        """
+    )
+    conn.execute("ALTER TABLE site_event_pages ADD COLUMN IF NOT EXISTS portrait_image_path TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS site_event_media(
+            id BIGSERIAL PRIMARY KEY,
+            event_slug TEXT NOT NULL REFERENCES site_event_pages(slug) ON DELETE CASCADE,
+            media_type TEXT NOT NULL DEFAULT 'video',
+            title TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            poster_url TEXT NOT NULL DEFAULT '',
+            filename TEXT NOT NULL DEFAULT '',
+            mime_type TEXT NOT NULL DEFAULT 'video/mp4',
+            size_bytes BIGINT NOT NULL DEFAULT 0,
+            sha256 TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER NOT NULL DEFAULT 100,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            uploaded_at BIGINT NOT NULL DEFAULT 0,
+            uploaded_by TEXT NOT NULL DEFAULT ''
         )
         """
     )
@@ -3215,6 +3394,8 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts(locked_until DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_security_events_time ON security_events(time DESC,action)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_site_cms_section_order ON site_cms_entries(section,enabled,sort_order,entry_key)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_site_event_pages_status_order ON site_event_pages(enabled,status,sort_order,slug)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_site_event_media_slug_order ON site_event_media(event_slug,enabled,sort_order,id)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv4_bank_owner_type_active ON cmv4_bank_accounts(owner_uuid,account_type,currency) WHERE status='ACTIVE'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_accounts_owner ON cmv4_bank_accounts(owner_uuid,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_cmv4_bank_ledger_account_time ON cmv4_bank_ledger(account_id,created_at DESC)")
@@ -3307,6 +3488,9 @@ def _ensure_v4_schema(conn: Any) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_whitelist_sync_time ON auth_whitelist_sync(synced_at DESC,status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_login_checks_time ON auth_login_checks(checked_at DESC,ok)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_auth_effects_disable_audit_time ON auth_effects_disable_audit(created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_expiry ON launcher_link_challenges(status,expires_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_device ON launcher_link_challenges(device_id_hash,status,created_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_account_links_site ON launcher_account_links(site_account_id,updated_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_shops_block ON artifact_shops(world_name,block_x,block_y,block_z)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_artifact_purchases_player_time ON artifact_purchases(player_uuid,created_at DESC)")
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_artifact_purchases_idempotency ON artifact_purchases(idempotency_key) WHERE idempotency_key<>''")
@@ -3640,8 +3824,8 @@ def current_admin_users() -> dict[str, dict[str, Any]]:
 ADMIN_USERS = DEFAULT_ADMIN_USERS  # legacy snapshot; runtime checks use current_admin_users()
 
 
-def is_reserved_admin_username(username: str) -> bool:
-    """Prevent player accounts from colliding with enabled panel accounts."""
+def is_reserved_admin_username(username: str, *, include_disabled: bool = False) -> bool:
+    """Prevent player accounts from colliding with panel account names."""
     normalized = str(username or "").strip().casefold()
     if not normalized:
         return False
@@ -3651,7 +3835,8 @@ def is_reserved_admin_username(username: str) -> bool:
         # Fail closed if the admin directory cannot be read.
         return True
     return any(
-        str(name).strip().casefold() == normalized and bool(meta.get("enabled", True))
+        str(name).strip().casefold() == normalized
+        and (include_disabled or bool(meta.get("enabled", True)))
         for name, meta in admins.items()
     )
 def now_ts() -> int:
@@ -6415,6 +6600,10 @@ def sanitize_public_plain_text(value: Any, max_len: int = 160) -> str:
 
 
 CMS_SECTIONS = {"home", "news", "faq", "rules", "shops", "banners"}
+EVENT_STATUSES = {"current", "upcoming", "archived"}
+EVENT_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,63}$")
+UPLOAD_VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogv", ".m4v", ".mov"}
+EVENTS_STATIC_FILE = FRONTEND_DIR / "assets" / "public-data" / "events.json"
 DEFAULT_CMS_ENTRIES: list[dict[str, Any]] = [
     {
         "entry_key": "home_status",
@@ -6585,6 +6774,326 @@ def delete_site_cms_entry_sync(entry_key: str, actor: str) -> dict[str, Any]:
         conn.commit()
     audit_event(actor, "cms.entry.disable", target=key, details={})
     return {"ok": True, "key": key, "enabled": False}
+
+
+def read_static_events_payload() -> dict[str, Any]:
+    try:
+        payload = json.loads(EVENTS_STATIC_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"schemaVersion": 1, "events": []}
+    if not isinstance(payload, dict) or not isinstance(payload.get("events"), list):
+        return {"schemaVersion": 1, "events": []}
+    return payload
+
+
+def normalize_event_slug(value: Any) -> str:
+    slug = str(value or "").strip().lower()
+    if not EVENT_SLUG_RE.fullmatch(slug):
+        raise HTTPException(status_code=400, detail="Некорректный ключ события")
+    return slug
+
+
+def sanitize_event_accent(value: Any) -> str:
+    accent = str(value or "").strip().lower()
+    if not re.fullmatch(r"#[0-9a-f]{6}", accent):
+        return "#b887ff"
+    return accent
+
+
+def normalize_event_objects(value: Any, fields: tuple[str, ...], max_items: int = 40) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for raw in value if isinstance(value, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        item: dict[str, Any] = {}
+        for field in fields:
+            if field == "number":
+                try:
+                    item[field] = max(0, min(99, int(raw.get(field) or 0)))
+                except (TypeError, ValueError):
+                    item[field] = 0
+            else:
+                item[field] = sanitize_cms_text(raw.get(field), 400)
+        result.append(item)
+        if len(result) >= max_items:
+            break
+    return result
+
+
+def normalize_event_rewards(value: Any) -> list[str]:
+    result: list[str] = []
+    for item in value if isinstance(value, list) else []:
+        clean = sanitize_cms_text(item, 400)
+        if clean:
+            result.append(clean)
+        if len(result) >= 40:
+            break
+    return result
+
+
+def static_event_defaults() -> list[dict[str, Any]]:
+    payload = read_static_events_payload()
+    defaults: list[dict[str, Any]] = []
+    for raw in payload.get("events", []):
+        if not isinstance(raw, dict):
+            continue
+        try:
+            slug = normalize_event_slug(raw.get("slug"))
+        except HTTPException:
+            continue
+        try:
+            sort_order = max(0, min(100000, int(raw.get("sortOrder") or 100)))
+        except (TypeError, ValueError):
+            sort_order = 100
+        raw_status = str(raw.get("status") or "upcoming").strip().lower()
+        defaults.append({
+            "slug": slug,
+            "eyebrow": sanitize_cms_text(raw.get("eyebrow"), 80),
+            "title": sanitize_cms_text(raw.get("title"), 160),
+            "status": raw_status if raw_status in EVENT_STATUSES else "upcoming",
+            "summary": sanitize_cms_text(raw.get("summary"), 600),
+            "body": sanitize_cms_text(raw.get("body"), 3000),
+            "hero_image_path": sanitize_cms_asset_path(raw.get("heroImage")),
+            "portrait_image_path": sanitize_cms_asset_path(raw.get("portraitImage")),
+            "accent": sanitize_event_accent(raw.get("accent")),
+            "requirements_json": pg_json_dumps(normalize_event_objects(raw.get("requirements"), ("name", "value"))),
+            "waves_json": pg_json_dumps(normalize_event_objects(raw.get("waves"), ("number", "name", "description"))),
+            "boss_phases_json": pg_json_dumps(normalize_event_objects(raw.get("bossPhases"), ("name", "range", "description"))),
+            "rewards_json": pg_json_dumps(normalize_event_rewards(raw.get("rewards"))),
+            "credits_json": pg_json_dumps(normalize_event_objects(raw.get("credits"), ("label", "url"))),
+            "credits_html": sanitize_cms_text(raw.get("creditsHtml"), 300),
+            "sort_order": sort_order,
+        })
+    return defaults
+
+
+def seed_event_defaults(conn: Any) -> None:
+    now = donation_now_ms()
+    for event in static_event_defaults():
+        conn.execute(
+            """
+            INSERT INTO site_event_pages(
+                slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                requirements_json,waves_json,boss_phases_json,rewards_json,
+                credits_json,credits_html,sort_order,enabled,updated_at,updated_by
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,'system')
+            ON CONFLICT(slug) DO NOTHING
+            """,
+            (
+                event["slug"], event["eyebrow"], event["title"], event["status"], event["summary"], event["body"],
+                event["hero_image_path"], event["portrait_image_path"], event["accent"], event["requirements_json"], event["waves_json"],
+                event["boss_phases_json"], event["rewards_json"], event["credits_json"], event["credits_html"],
+                int(event["sort_order"]), now,
+            ),
+        )
+
+
+def public_event_media(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": int(row.get("id") or 0),
+        "type": str(row.get("media_type") or "video"),
+        "title": sanitize_cms_text(row.get("title"), 160),
+        "url": sanitize_cms_asset_path(row.get("url")),
+        "posterUrl": sanitize_cms_asset_path(row.get("poster_url")),
+        "filename": Path(str(row.get("filename") or "")).name,
+        "mimeType": str(row.get("mime_type") or "video/mp4")[:80],
+        "sizeBytes": int(row.get("size_bytes") or 0),
+        "sha256": str(row.get("sha256") or "")[:128],
+        "uploadedAt": int(row.get("uploaded_at") or 0),
+    }
+
+
+def public_event_page(row: dict[str, Any], videos: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+    return {
+        "slug": str(row.get("slug") or ""),
+        "status": str(row.get("status") or "upcoming"),
+        "eyebrow": sanitize_cms_text(row.get("eyebrow"), 80),
+        "title": sanitize_cms_text(row.get("title"), 160),
+        "summary": sanitize_cms_text(row.get("summary"), 600),
+        "body": sanitize_cms_text(row.get("body"), 3000),
+        "heroImage": sanitize_cms_asset_path(row.get("hero_image_path")),
+        "portraitImage": sanitize_cms_asset_path(row.get("portrait_image_path")),
+        "accent": sanitize_event_accent(row.get("accent")),
+        "requirements": pg_json_loads(row.get("requirements_json"), []),
+        "waves": pg_json_loads(row.get("waves_json"), []),
+        "bossPhases": pg_json_loads(row.get("boss_phases_json"), []),
+        "rewards": pg_json_loads(row.get("rewards_json"), []),
+        "videos": videos or [],
+        "credits": pg_json_loads(row.get("credits_json"), []),
+        "creditsHtml": sanitize_cms_text(row.get("credits_html"), 300),
+        "sortOrder": int(row.get("sort_order") or 0),
+        "enabled": bool(int(row.get("enabled") or 0)),
+        "updatedAt": int(row.get("updated_at") or 0),
+        "updatedBy": str(row.get("updated_by") or ""),
+    }
+
+
+def read_events_sync(include_disabled: bool = False) -> dict[str, Any]:
+    if not pg_ready():
+        payload = copy.deepcopy(read_static_events_payload())
+        for event in payload.get("events", []):
+            if isinstance(event, dict):
+                event.setdefault("videos", [])
+        return payload
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        seed_event_defaults(conn)
+        where = "" if include_disabled else "WHERE enabled=1"
+        rows = conn.execute(
+            f"""
+            SELECT slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                   requirements_json,waves_json,boss_phases_json,rewards_json,
+                   credits_json,credits_html,sort_order,enabled,updated_at,updated_by
+            FROM site_event_pages {where}
+            ORDER BY sort_order ASC,slug ASC
+            """
+        ).fetchall()
+        media_where = "" if include_disabled else "WHERE enabled=1"
+        media_rows = conn.execute(
+            f"""
+            SELECT id,event_slug,media_type,title,url,poster_url,filename,mime_type,
+                   size_bytes,sha256,sort_order,enabled,uploaded_at,uploaded_by
+            FROM site_event_media {media_where}
+            ORDER BY event_slug ASC,sort_order ASC,id ASC
+            """
+        ).fetchall()
+        conn.commit()
+    media_by_event: dict[str, list[dict[str, Any]]] = {}
+    for raw in media_rows:
+        row = dict(raw)
+        media_by_event.setdefault(str(row.get("event_slug") or ""), []).append(public_event_media(row))
+    return {
+        "schemaVersion": 1,
+        "events": [public_event_page(dict(row), media_by_event.get(str(row.get("slug") or ""), [])) for row in rows],
+        "source": "postgresql",
+    }
+
+
+def upsert_event_sync(data: EventPageIn, actor: str) -> dict[str, Any]:
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    slug = normalize_event_slug(data.slug)
+    status = str(data.status or "upcoming").strip().lower()
+    if status not in EVENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Неизвестный статус события")
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        conn.execute(
+            """
+            INSERT INTO site_event_pages(
+                slug,eyebrow,title,status,summary,body,hero_image_path,portrait_image_path,accent,
+                requirements_json,waves_json,boss_phases_json,rewards_json,
+                sort_order,enabled,updated_at,updated_by
+            ) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(slug) DO UPDATE SET
+                eyebrow=EXCLUDED.eyebrow,title=EXCLUDED.title,status=EXCLUDED.status,
+                summary=EXCLUDED.summary,body=EXCLUDED.body,hero_image_path=EXCLUDED.hero_image_path,
+                portrait_image_path=EXCLUDED.portrait_image_path,
+                accent=EXCLUDED.accent,requirements_json=EXCLUDED.requirements_json,
+                waves_json=EXCLUDED.waves_json,boss_phases_json=EXCLUDED.boss_phases_json,
+                rewards_json=EXCLUDED.rewards_json,sort_order=EXCLUDED.sort_order,
+                enabled=EXCLUDED.enabled,updated_at=EXCLUDED.updated_at,updated_by=EXCLUDED.updated_by
+            """,
+            (
+                slug, sanitize_cms_text(data.eyebrow, 80), sanitize_cms_text(data.title, 160), status,
+                sanitize_cms_text(data.summary, 600), sanitize_cms_text(data.body, 3000),
+                sanitize_cms_asset_path(data.hero_image), sanitize_cms_asset_path(data.portrait_image), sanitize_event_accent(data.accent),
+                pg_json_dumps(normalize_event_objects(data.requirements, ("name", "value"))),
+                pg_json_dumps(normalize_event_objects(data.waves, ("number", "name", "description"))),
+                pg_json_dumps(normalize_event_objects(data.boss_phases, ("name", "range", "description"))),
+                pg_json_dumps(normalize_event_rewards(data.rewards)), int(data.sort_order), int(bool(data.enabled)), now, actor,
+            ),
+        )
+        row = conn.execute("SELECT * FROM site_event_pages WHERE slug=%s", (slug,)).fetchone()
+        conn.commit()
+    audit_event(actor, "events.page.save", target=slug, details={"status": status})
+    return public_event_page(dict(row), [])
+
+
+async def save_event_video(file: UploadFile, slug: str, title: str, poster_url: str, actor: str) -> dict[str, Any]:
+    safe_slug = normalize_event_slug(slug)
+    filename = Path(file.filename).name if file.filename else ""
+    extension = Path(filename).suffix.lower()
+    if not filename or extension not in UPLOAD_VIDEO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Поддерживаются видео MP4, WebM, OGV, M4V и MOV")
+    content_type = str(file.content_type or "application/octet-stream").lower()
+    if not content_type.startswith("video/") and content_type != "application/octet-stream":
+        raise HTTPException(status_code=400, detail="Файл не похож на видео")
+    event_media_root = (FRONTEND_DIR / "assets/events" / safe_slug).resolve()
+    event_media_root.mkdir(parents=True, exist_ok=True)
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "-", filename).strip(".-") or f"event-{uuid.uuid4().hex}{extension}"
+    target_path = (event_media_root / f"{uuid.uuid4().hex[:12]}-{safe_name}").resolve()
+    if not target_path.is_relative_to(event_media_root):
+        raise HTTPException(status_code=400, detail="Путь видео недопустим")
+    part_path = target_path.with_name(target_path.name + ".part")
+    digest = hashlib.sha256()
+    size = 0
+    try:
+        with part_path.open("wb") as handle:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                handle.write(chunk)
+                digest.update(chunk)
+                size += len(chunk)
+        os.replace(part_path, target_path)
+        if not pg_ready():
+            raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            event = conn.execute("SELECT 1 FROM site_event_pages WHERE slug=%s AND enabled=1", (safe_slug,)).fetchone()
+            if not event:
+                raise HTTPException(status_code=404, detail="Событие не найдено")
+            now = donation_now_ms()
+            conn.execute(
+                """
+                INSERT INTO site_event_media(event_slug,media_type,title,url,poster_url,filename,mime_type,size_bytes,sha256,sort_order,enabled,uploaded_at,uploaded_by)
+                VALUES(%s,'video',%s,%s,%s,%s,%s,%s,%s,100,1,%s,%s)
+                """,
+                (
+                    safe_slug, sanitize_cms_text(title, 160) or safe_name,
+                    f"/assets/events/{safe_slug}/{target_path.name}", sanitize_cms_asset_path(poster_url),
+                    target_path.name, content_type, size, digest.hexdigest(), now, actor,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM site_event_media WHERE event_slug=%s AND filename=%s ORDER BY id DESC LIMIT 1",
+                (safe_slug, target_path.name),
+            ).fetchone()
+            conn.commit()
+        result = public_event_media(dict(row))
+        audit_event(actor, "events.media.upload", target=safe_slug, details={"filename": target_path.name, "size": size, "sha256": digest.hexdigest()})
+        return result
+    except Exception:
+        part_path.unlink(missing_ok=True)
+        target_path.unlink(missing_ok=True)
+        raise
+
+
+def delete_event_media_sync(slug: str, media_id: int, actor: str) -> dict[str, Any]:
+    safe_slug = normalize_event_slug(slug)
+    try:
+        safe_id = int(media_id)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор видео") from exc
+    if not pg_ready():
+        raise HTTPException(status_code=503, detail="PostgreSQL недоступен")
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        row = conn.execute("SELECT filename FROM site_event_media WHERE id=%s AND event_slug=%s", (safe_id, safe_slug)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Видео не найдено")
+        root = (FRONTEND_DIR / "assets/events" / safe_slug).resolve()
+        target = (root / Path(str(row.get("filename") or "")).name).resolve()
+        if not target.is_relative_to(root):
+            raise HTTPException(status_code=400, detail="Путь видео недопустим")
+        target.unlink(missing_ok=True)
+        conn.execute("DELETE FROM site_event_media WHERE id=%s AND event_slug=%s", (safe_id, safe_slug))
+        conn.commit()
+    audit_event(actor, "events.media.delete", target=safe_slug, details={"mediaId": safe_id})
+    return {"ok": True, "id": safe_id, "slug": safe_slug}
 
 
 def public_president_budget_payload_sync() -> dict[str, Any]:
@@ -7018,6 +7527,436 @@ def pay_player_election_tax_sync(account: dict[str, Any], data: PlayerElectionTa
     }
 
 
+def normalize_launcher_device_id(device_id: str) -> str:
+    value = str(device_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{16,128}", value):
+        raise HTTPException(status_code=400, detail="Идентификатор Launcher недействителен")
+    return value
+
+
+def launcher_secret_hash(kind: str, value: str) -> str:
+    return sha256_hex(f"copimine-launcher:{kind}:{value}")
+
+
+def ensure_launcher_binding_schema(conn: Any) -> None:
+    """Check the small Launcher-binding schema without running the global migration.
+
+    The full v4 schema is intentionally a deployment concern.  A binding
+    request must not opportunistically alter unrelated player/game tables, and
+    a missing production migration must be reported as an actionable service
+    error rather than as an invalid one-time code.
+    """
+    tables = {"launcher_link_challenges", "launcher_account_links"}
+    if auth_storage_backend() == "sqlite":
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS launcher_link_challenges(
+                challenge_id TEXT PRIMARY KEY,
+                device_id_hash TEXT NOT NULL,
+                minecraft_name TEXT NOT NULL DEFAULT '',
+                launcher_version TEXT NOT NULL DEFAULT '',
+                code_hash TEXT NOT NULL,
+                poll_token_hash TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'PENDING',
+                site_account_id TEXT NOT NULL DEFAULT '',
+                created_at BIGINT NOT NULL DEFAULT 0,
+                expires_at BIGINT NOT NULL DEFAULT 0,
+                authorized_at BIGINT NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS launcher_account_links(
+                device_id_hash TEXT PRIMARY KEY,
+                site_account_id TEXT NOT NULL,
+                minecraft_name TEXT NOT NULL DEFAULT '',
+                launcher_version TEXT NOT NULL DEFAULT '',
+                linked_at BIGINT NOT NULL DEFAULT 0,
+                updated_at BIGINT NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_expiry ON launcher_link_challenges(status,expires_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_link_challenges_device ON launcher_link_challenges(device_id_hash,status,created_at DESC)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_launcher_account_links_site ON launcher_account_links(site_account_id,updated_at DESC)")
+        return
+
+    rows = conn.execute(
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema=current_schema() AND table_name IN (%s,%s)",
+        tuple(sorted(tables)),
+    ).fetchall()
+    present = {str(row_get(row, "table_name", "") or "") for row in rows}
+    missing = sorted(tables - present)
+    if missing:
+        detail = "LAUNCHER_LINK_SCHEMA_UNAVAILABLE: отсутствуют таблицы " + ", ".join(missing)
+        LOGGER.error(detail)
+        raise HTTPException(status_code=503, detail=detail)
+
+
+def create_launcher_link_challenge_sync(data: LauncherLinkChallengeIn) -> dict[str, Any]:
+    device_id = normalize_launcher_device_id(data.device_id)
+    minecraft_name = data.minecraft_name.strip()
+    if not valid_minecraft_name(minecraft_name):
+        raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    challenge_id = secrets.token_urlsafe(24)
+    code = "".join(secrets.choice("23456789ABCDEFGHJKLMNPQRSTUVWXYZ") for _ in range(8))
+    poll_token = secrets.token_urlsafe(32)
+    now = donation_now_ms()
+    expires = now + LAUNCHER_LINK_CHALLENGE_TTL_MS
+    device_hash = launcher_secret_hash("device", device_id)
+    with auth_conn() as conn:
+        ensure_launcher_binding_schema(conn)
+        conn.execute(
+            "UPDATE launcher_link_challenges SET status='EXPIRED' WHERE device_id_hash=%s AND status='PENDING'",
+            (device_hash,),
+        )
+        conn.execute(
+            """
+            INSERT INTO launcher_link_challenges(
+                challenge_id,device_id_hash,minecraft_name,launcher_version,code_hash,poll_token_hash,status,created_at,expires_at
+            ) VALUES(%s,%s,%s,%s,%s,%s,'PENDING',%s,%s)
+            """,
+            (
+                challenge_id,
+                device_hash,
+                minecraft_name,
+                data.launcher_version.strip(),
+                launcher_secret_hash("code", code.upper()),
+                launcher_secret_hash("poll", poll_token),
+                now,
+                expires,
+            ),
+        )
+        conn.commit()
+    authorization_url = (
+        f"{ADMIN_PUBLIC_BASE_URL}/launcher-link.html?launcher_challenge={quote(challenge_id)}"
+        f"&launcher_code={quote(code)}&launcher_nick={quote(minecraft_name)}"
+    )
+    return {
+        "ok": True,
+        "challengeId": challenge_id,
+        "pollToken": poll_token,
+        "authorizationUrl": authorization_url,
+        "expiresAt": expires,
+        "minecraftName": minecraft_name,
+    }
+
+
+def authorize_launcher_link_sync(account: dict[str, Any], data: LauncherLinkAuthorizeIn) -> dict[str, Any]:
+    challenge_id = data.challenge_id.strip()
+    code_hash = launcher_secret_hash("code", data.code.strip().upper())
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_launcher_binding_schema(conn)
+        row = conn.execute(
+            "SELECT * FROM launcher_link_challenges WHERE challenge_id=%s AND status='PENDING' AND expires_at>%s FOR UPDATE",
+            (challenge_id, now),
+        ).fetchone()
+        if not row or not hmac.compare_digest(str(row_get(row, "code_hash", "") or ""), code_hash):
+            raise HTTPException(status_code=403, detail="Код привязки Launcher неверный или истёк")
+        device_hash = str(row_get(row, "device_id_hash", "") or "")
+        existing = conn.execute(
+            "SELECT site_account_id FROM launcher_account_links WHERE device_id_hash=%s LIMIT 1",
+            (device_hash,),
+        ).fetchone()
+        account_id = str(account.get("id") or "")
+        if existing and str(row_get(existing, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Этот Launcher уже привязан к другому аккаунту сайта")
+        conn.execute(
+            "UPDATE launcher_link_challenges SET status='AUTHORIZED',site_account_id=%s,authorized_at=%s WHERE challenge_id=%s AND status='PENDING'",
+            (account_id, now, challenge_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO launcher_account_links(device_id_hash,site_account_id,minecraft_name,launcher_version,linked_at,updated_at)
+            VALUES(%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(device_id_hash) DO UPDATE SET
+                site_account_id=EXCLUDED.site_account_id,
+                minecraft_name=EXCLUDED.minecraft_name,
+                launcher_version=EXCLUDED.launcher_version,
+                updated_at=EXCLUDED.updated_at
+            """,
+            (
+                device_hash,
+                account_id,
+                str(row_get(row, "minecraft_name", "") or ""),
+                str(row_get(row, "launcher_version", "") or ""),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        minecraft_linked = bool(str(account.get("minecraft_uuid") or "").strip())
+    return {"ok": True, "linked": True, "minecraftLinkRequired": not minecraft_linked}
+
+
+def launcher_link_status_sync(challenge_id: str, device_id: str, poll_token: str) -> dict[str, Any]:
+    challenge = str(challenge_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,96}", challenge):
+        raise HTTPException(status_code=400, detail="Идентификатор привязки недействителен")
+    device_hash = launcher_secret_hash("device", normalize_launcher_device_id(device_id))
+    poll_hash = launcher_secret_hash("poll", str(poll_token or ""))
+    now = donation_now_ms()
+    with auth_conn() as conn:
+        ensure_launcher_binding_schema(conn)
+        row = conn.execute(
+            """
+            SELECT c.status,c.expires_at,c.site_account_id,c.minecraft_name,
+                   a.username,a.minecraft_uuid,a.minecraft_name AS account_minecraft_name
+            FROM launcher_link_challenges c
+            LEFT JOIN site_accounts a ON a.id=c.site_account_id
+            WHERE c.challenge_id=%s AND c.device_id_hash=%s AND c.poll_token_hash=%s
+            LIMIT 1
+            """,
+            (challenge, device_hash, poll_hash),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=403, detail="Проверка привязки Launcher не прошла")
+        status = str(row_get(row, "status", "") or "")
+        expires = int(row_get(row, "expires_at", 0) or 0)
+        if status == "PENDING" and expires <= now:
+            conn.execute("UPDATE launcher_link_challenges SET status='EXPIRED' WHERE challenge_id=%s AND status='PENDING'", (challenge,))
+            conn.commit()
+            return {"ok": True, "linked": False, "status": "EXPIRED"}
+        if status not in {"AUTHORIZED", "CONSUMED"}:
+            return {"ok": True, "linked": False, "status": status or "PENDING"}
+        account_id = str(row_get(row, "site_account_id", "") or "")
+        if not account_id or not str(row_get(row, "username", "") or ""):
+            return {"ok": True, "linked": False, "status": "PENDING"}
+        return {
+            "ok": True,
+            "linked": True,
+            "status": "LINKED",
+            "siteAccountId": account_id,
+            "siteUsername": str(row_get(row, "username", "") or ""),
+            "minecraftName": str(row_get(row, "account_minecraft_name", "") or row_get(row, "minecraft_name", "") or ""),
+            "launcherAccessToken": str(poll_token or ""),
+        }
+
+
+def launcher_account_for_access_token_sync(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    device_hash = launcher_secret_hash("device", normalize_launcher_device_id(data.device_id))
+    access_hash = launcher_secret_hash("poll", str(data.access_token or "").strip())
+    with auth_conn() as conn:
+        ensure_launcher_binding_schema(conn)
+        row = conn.execute(
+            """
+            SELECT l.site_account_id,l.minecraft_name AS launcher_minecraft_name,
+                   a.id,a.username,a.minecraft_uuid,a.minecraft_name,a.enabled,
+                   c.authorized_at
+            FROM launcher_account_links l
+            JOIN launcher_link_challenges c
+              ON c.device_id_hash=l.device_id_hash
+             AND c.poll_token_hash=%s
+             AND c.status IN ('AUTHORIZED','CONSUMED')
+            JOIN site_accounts a ON a.id=l.site_account_id
+            WHERE l.device_id_hash=%s
+            ORDER BY c.authorized_at DESC,l.updated_at DESC
+            LIMIT 1
+            """,
+            (access_hash, device_hash),
+        ).fetchone()
+        conn.commit()
+    if not row:
+        raise HTTPException(status_code=403, detail="Привязка Launcher не подтверждена или устарела")
+    account = dict(row)
+    if not bool(account.get("enabled", True)):
+        raise HTTPException(status_code=403, detail="Аккаунт сайта отключён")
+    return account
+
+
+def require_identity_rcon_ack(command: str) -> str:
+    if not RCON_PASSWORD:
+        raise HTTPException(status_code=503, detail="IDENTITY_REBIND_UNAVAILABLE: RCON_PASSWORD не настроен")
+    try:
+        response = rcon_sync(command)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"IDENTITY_REBIND_RCON_FAILED: {public_error_message(error)}") from error
+    if "IDENTITY_REBIND_OK" not in str(response or "").upper():
+        raise HTTPException(status_code=502, detail="IDENTITY_REBIND_NOT_CONFIRMED: WorldCore не подтвердил перенос identity")
+    return str(response or "")
+
+
+def rollback_identity_rebind(
+    old_uuid: str,
+    new_uuid: str,
+    old_name: str,
+    new_name: str,
+) -> None:
+    """Best-effort reverse operation for a failed post-RCON database step."""
+    try:
+        remove_player_from_whitelist_sync(new_uuid, new_name)
+        add_player_to_whitelist_sync(old_uuid, old_name)
+        require_identity_rcon_ack(
+            f"cmworld identity rebind {new_uuid} {old_uuid} {new_name} {old_name} confirm"
+        )
+    except Exception as error:
+        audit_event(
+            "system",
+            "launcher.nickname.rollback_failed",
+            target=new_name,
+            status="error",
+            details={"oldUuid": old_uuid, "newUuid": new_uuid, "error": public_error_message(error)},
+        )
+
+
+def launcher_nickname_change_sync(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    account = launcher_account_for_access_token_sync(data)
+    old_name = data.old_minecraft_name.strip()
+    new_name = data.new_minecraft_name.strip()
+    if not valid_minecraft_name(old_name) or not valid_minecraft_name(new_name):
+        raise HTTPException(status_code=400, detail="Укажи корректные Minecraft-ники")
+    current_name = str(account.get("minecraft_name") or account.get("launcher_minecraft_name") or "").strip()
+    if current_name and current_name.casefold() != old_name.casefold():
+        raise HTTPException(status_code=409, detail="Старый ник не совпадает с активной привязкой сайта")
+    old_uuid = str(account.get("minecraft_uuid") or offline_uuid_for_name(old_name)).strip()
+    new_uuid = offline_uuid_for_name(new_name)
+    if old_uuid.casefold() == new_uuid.casefold() and old_name.casefold() == new_name.casefold():
+        return {
+            "ok": True,
+            "changed": False,
+            "minecraftName": old_name,
+            "minecraftUuid": old_uuid,
+            "preserve_player_state": True,
+            "authmePasswordPreserved": True,
+            "whitelisted": True,
+        }
+
+    account_id = str(account.get("id") or "").strip()
+    with auth_conn() as conn:
+        ensure_v4_schema(conn)
+        collision = conn.execute(
+            """
+            SELECT id FROM site_accounts
+            WHERE id<>%s AND (minecraft_uuid=%s OR LOWER(minecraft_name)=LOWER(%s))
+            LIMIT 1
+            """,
+            (account_id, new_uuid, new_name),
+        ).fetchone()
+        if collision:
+            raise HTTPException(status_code=409, detail="Новый ник уже привязан к другому аккаунту")
+        link_collision = conn.execute(
+            "SELECT site_account_id FROM minecraft_account_links WHERE minecraft_uuid=%s LIMIT 1",
+            (new_uuid,),
+        ).fetchone()
+        if link_collision and str(row_get(link_collision, "site_account_id", "") or "") != account_id:
+            raise HTTPException(status_code=409, detail="Новый Minecraft-идентификатор уже занят")
+        conn.commit()
+
+    # The plugin performs the durable playerdata/stats/advancements move and
+    # AuthMe DataSource rename as one guarded server operation.  No password or
+    # password hash crosses this HTTP boundary.
+    require_identity_rcon_ack(
+        f"cmworld identity rebind {old_uuid} {new_uuid} {old_name} {new_name} confirm"
+    )
+    try:
+        old_whitelist = remove_player_from_whitelist_sync(old_uuid, old_name)
+        if RCON_PASSWORD and old_whitelist.get("rconState") != "RCON_AND_FILE":
+            raise HTTPException(status_code=502, detail="IDENTITY_REBIND_OLD_WHITELIST_NOT_CONFIRMED")
+        new_whitelist = add_player_to_whitelist_sync(new_uuid, new_name)
+        if RCON_PASSWORD and new_whitelist.get("rconState") != "RCON_AND_FILE":
+            raise HTTPException(status_code=502, detail="IDENTITY_REBIND_NEW_WHITELIST_NOT_CONFIRMED")
+    except Exception:
+        rollback_identity_rebind(old_uuid, new_uuid, old_name, new_name)
+        raise
+
+    now = donation_now_ms()
+    try:
+        with auth_conn() as conn:
+            ensure_v4_schema(conn)
+            current = conn.execute(
+                "SELECT minecraft_uuid,minecraft_name FROM site_accounts WHERE id=%s FOR UPDATE",
+                (account_id,),
+            ).fetchone()
+            if not current:
+                raise HTTPException(status_code=404, detail="Аккаунт сайта не найден")
+            current_uuid = str(row_get(current, "minecraft_uuid", "") or old_uuid)
+            current_name = str(row_get(current, "minecraft_name", "") or old_name)
+            if current_uuid.casefold() != old_uuid.casefold() or current_name.casefold() != old_name.casefold():
+                raise HTTPException(status_code=409, detail="Привязка изменилась во время операции; выполнен откат")
+            conn.execute(
+                "UPDATE minecraft_account_links SET status='REVOKED',updated_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (now, old_uuid, account_id),
+            )
+            conn.execute(
+                "UPDATE whitelist_account_links SET whitelisted=0,synced_at=%s WHERE minecraft_uuid=%s AND site_account_id=%s",
+                (now, old_uuid, account_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO minecraft_account_links(minecraft_uuid,minecraft_name,site_account_id,status,linked_at,updated_at)
+                VALUES(%s,%s,%s,'ACTIVE',%s,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    status='ACTIVE',
+                    updated_at=EXCLUDED.updated_at
+                """,
+                (new_uuid, new_name, account_id, now, now),
+            )
+            conn.execute(
+                "UPDATE site_accounts SET minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+                (new_uuid, new_name, now, account_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO whitelist_account_links(minecraft_uuid,minecraft_name,site_account_id,whitelisted,synced_at)
+                VALUES(%s,%s,%s,1,%s)
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    site_account_id=EXCLUDED.site_account_id,
+                    whitelisted=1,
+                    synced_at=EXCLUDED.synced_at
+                """,
+                (new_uuid, new_name, account_id, now),
+            )
+            conn.execute(
+                """
+                INSERT INTO auth_users_imported(minecraft_uuid,minecraft_name,imported_at,source)
+                VALUES(%s,%s,%s,'launcher-nickname')
+                ON CONFLICT(minecraft_uuid) DO UPDATE SET
+                    minecraft_name=EXCLUDED.minecraft_name,
+                    imported_at=EXCLUDED.imported_at,
+                    source=EXCLUDED.source
+                """,
+                (new_uuid, new_name, now),
+            )
+            conn.execute(
+                "UPDATE launcher_account_links SET minecraft_name=%s,updated_at=%s WHERE device_id_hash=%s",
+                (new_name, now, launcher_secret_hash("device", normalize_launcher_device_id(data.device_id))),
+            )
+            conn.execute(
+                "INSERT INTO security_events(time,actor,action,details,source) VALUES(%s,%s,'LAUNCHER_MINECRAFT_IDENTITY_REBIND',%s,'launcher')",
+                (now, str(account.get("username") or "launcher"), f"old_uuid={old_uuid} new_uuid={new_uuid} old_name={old_name} new_name={new_name}"),
+            )
+            conn.commit()
+    except Exception:
+        rollback_identity_rebind(old_uuid, new_uuid, old_name, new_name)
+        raise
+
+    audit_event(
+        str(account.get("username") or "launcher"),
+        "launcher.nickname.changed",
+        target=new_name,
+        details={"oldName": old_name, "newName": new_name, "preserve_player_state": True, "authmePasswordPreserved": True},
+    )
+    return {
+        "ok": True,
+        "changed": True,
+        "oldMinecraftName": old_name,
+        "oldMinecraftUuid": old_uuid,
+        "minecraftName": new_name,
+        "minecraftUuid": new_uuid,
+        "preserve_player_state": True,
+        "authmePasswordPreserved": True,
+        "whitelisted": True,
+    }
+
+
 def create_link_code_sync(account: dict[str, Any], minecraft_name: str) -> dict[str, Any]:
     if not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
@@ -7120,9 +8059,19 @@ def create_player_recovery_code_sync(minecraft_name: str) -> dict[str, Any]:
     return {"ok": True, "deliveredInGame": delivered, "expiresAt": expires, "minecraftName": minecraft_name}
 
 
-def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_password: str) -> dict[str, Any]:
+def confirm_player_recovery_code_sync(
+    minecraft_name: str,
+    requested_username: str,
+    code: str,
+    new_password: str,
+) -> dict[str, Any]:
     if not valid_minecraft_name(minecraft_name):
         raise HTTPException(status_code=400, detail="Укажи корректный Minecraft-ник")
+    requested_username = str(requested_username or "").strip()
+    if not valid_site_username(requested_username):
+        raise HTTPException(status_code=400, detail="Логин должен быть 3-32 символа: A-Z, 0-9 и _")
+    if is_reserved_admin_username(requested_username, include_disabled=True):
+        raise HTTPException(status_code=409, detail="Этот логин уже зарегистрирован в панели администрации")
     ok, reason = password_policy_ok(new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
@@ -7133,6 +8082,14 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         account = player_account_by_minecraft_name(conn, minecraft_name)
         if not account:
             raise HTTPException(status_code=404, detail="Аккаунт для этого Minecraft-ника не найден")
+        if str(account.get("role") or "player").strip().lower() != "player":
+            raise HTTPException(status_code=403, detail="Учётную запись панели нельзя восстанавливать через форму игрока")
+        collision = conn.execute(
+            "SELECT id FROM site_accounts WHERE username_norm=%s AND id<>%s LIMIT 1",
+            (requested_username.lower(), account["id"]),
+        ).fetchone()
+        if collision:
+            raise HTTPException(status_code=409, detail="Такой логин уже занят")
         row = conn.execute(
             """
             SELECT * FROM one_time_link_codes
@@ -7158,8 +8115,16 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
             conn.rollback()
             raise HTTPException(status_code=403, detail="Код восстановления уже использован или истёк")
         conn.execute(
-            "UPDATE site_accounts SET password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
-            (make_password_hash(new_password), minecraft_uuid, minecraft_name, updated_at, account["id"]),
+            "UPDATE site_accounts SET username=%s,username_norm=%s,password_hash=%s,minecraft_uuid=%s,minecraft_name=%s,updated_at=%s WHERE id=%s",
+            (
+                requested_username,
+                requested_username.lower(),
+                make_password_hash(new_password),
+                minecraft_uuid,
+                minecraft_name,
+                updated_at,
+                account["id"],
+            ),
         )
         conn.execute(
             """
@@ -7175,7 +8140,7 @@ def confirm_player_recovery_code_sync(minecraft_name: str, code: str, new_passwo
         )
         conn.commit()
     account = dict(account)
-    account.update({"minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
+    account.update({"username": requested_username, "username_norm": requested_username.lower(), "minecraft_uuid": minecraft_uuid, "minecraft_name": minecraft_name})
     return {"ok": True, "account": public_player_account(account)}
 
 
@@ -11164,22 +12129,43 @@ def elections_plugin_web_sync() -> dict[str, Any]:
     }
 
 
+def startup_check_status(key: str) -> str:
+    report = _STARTUP_REPORT if isinstance(_STARTUP_REPORT, dict) else {}
+    checks = report.get("checks", []) if isinstance(report.get("checks", []), list) else []
+    for item in checks:
+        if isinstance(item, dict) and str(item.get("key") or "") == key:
+            return str(item.get("status") or "").lower()
+    return ""
+
+
 def source_registry_sync() -> dict[str, Any]:
     rows = []
-    if pg_ready():
-        rows.append({
-            "name": "PostgreSQL",
-            "type": "database",
-            "connected": True,
-            "capabilities": [
-                "site_accounts", "player_bank", "audit", "plugin_events", "discord_sync",
-                "auth_migration", "elections_v4", "economy_snapshots",
-            ],
-            "status": "primary",
-            "lastReadAt": now_ts(),
-            "message": "Primary CopiMine V4 storage",
-            "detail": {"host": POSTGRES_HOST, "port": POSTGRES_PORT, "database": POSTGRES_DB, "schema": POSTGRES_SCHEMA},
-        })
+    postgres_configured = pg_ready()
+    postgres_verified = startup_check_status("postgres") == "ok"
+    if postgres_verified:
+        postgres_status = "connected"
+        postgres_message = "Соединение PostgreSQL подтверждено проверкой запуска"
+    elif postgres_configured:
+        postgres_status = "unavailable"
+        postgres_message = "Настройки PostgreSQL найдены, но соединение не подтверждено; откройте диагностику запуска"
+    else:
+        postgres_status = "not_configured"
+        postgres_message = "PostgreSQL не настроен; локальная авторизация использует SQLite"
+    rows.append({
+        "name": "PostgreSQL",
+        "type": "database",
+        "connected": postgres_verified,
+        "configured": postgres_configured,
+        "capabilities": [
+            "site_accounts", "player_bank", "audit", "plugin_events", "discord_sync",
+            "auth_migration", "elections_v4", "economy_snapshots",
+        ] if postgres_configured else [],
+        "status": postgres_status,
+        "role": "primary",
+        "lastReadAt": now_ts() if postgres_verified else None,
+        "message": postgres_message,
+        "detail": {"host": POSTGRES_HOST, "port": POSTGRES_PORT, "database": POSTGRES_DB, "schema": POSTGRES_SCHEMA},
+    })
     plugins = {
         "LuckPerms": ["players", "permissions"],
         "Essentials": ["players", "punishments", "teleports"],
@@ -12314,9 +13300,50 @@ async def public_cms() -> dict[str, Any]:
     return {"ok": True, "data": await bg(read_site_cms_sync, False)}
 
 
+@app.get("/api/public/events")
+async def public_events() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(read_events_sync, False)}
+
+
+@app.get("/api/public/launcher")
+async def public_launcher() -> dict[str, Any]:
+    return {"ok": True, "data": await bg(default_control_plane().public_launcher)}
+
+
+@app.get("/api/public/news")
+async def public_launcher_news() -> dict[str, Any]:
+    news = await bg(default_control_plane().public_news)
+    return {"ok": True, "schemaVersion": 1, "news": news, "patches": news}
+
+
+@app.get("/api/public/news/{slug}")
+async def public_launcher_news_detail(slug: str) -> dict[str, Any]:
+    try:
+        news = await bg(default_control_plane().public_news_detail, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc, status_code=404)
+    return {"ok": True, "news": news, "patch": news}
+
+
+@app.post("/api/launcher/telemetry")
+async def launcher_telemetry(data: LauncherTelemetryIn, request: Request) -> dict[str, Any]:
+    check_rate_limit(request, "launcher-telemetry", limit=120, window_seconds=60)
+    try:
+        await bg(
+            default_control_plane().record_telemetry,
+            data.event,
+            data.launcher_version,
+            data.manifest_sequence,
+            data.diagnostic_code,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True}
+
+
 @app.get("/api/public/status")
 async def public_status(request: Request) -> dict[str, Any]:
-    check_rate_limit(request, "public-status", limit=30, window_seconds=60)
+    check_rate_limit(request, "public-status", limit=PUBLIC_STATUS_RATE_LIMIT)
     return {"ok": True, "data": await bg(public_site_status_sync)}
 
 
@@ -12565,7 +13592,13 @@ async def player_recovery_start(data: PlayerRecoveryStartIn, request: Request) -
 async def player_recovery_confirm(data: PlayerRecoveryConfirmIn, request: Request, response: Response) -> dict[str, Any]:
     require_secure_auth_transport(request)
     check_rate_limit(request, "player-recovery-confirm", limit=8, window_seconds=300)
-    result = await bg(confirm_player_recovery_code_sync, data.minecraft_name.strip(), data.code.strip().upper(), data.new_password)
+    result = await bg(
+        confirm_player_recovery_code_sync,
+        data.minecraft_name.strip(),
+        data.username.strip(),
+        data.code.strip().upper(),
+        data.new_password,
+    )
     account = dict(result.get("account") or {})
     access_token, refresh_token = issue_player_auth_pair(
         {
@@ -12676,6 +13709,43 @@ async def player_change_password(
 async def player_whitelist_request(request: Request, account: dict[str, Any] = Depends(require_player)) -> dict[str, Any]:
     row = await bg(create_whitelist_request_sync, account, get_client_ip(request))
     return {"ok": True, "request": row}
+
+
+@app.post("/api/launcher/link/challenge")
+async def launcher_link_challenge(data: LauncherLinkChallengeIn) -> dict[str, Any]:
+    """Create a short-lived browser authorization challenge for the Launcher.
+
+    This endpoint never receives a site password, AuthMe password, or bearer
+    session.  The returned poll token is held only by the local Launcher.
+    """
+    return await bg(create_launcher_link_challenge_sync, data)
+
+
+@app.get("/api/launcher/link/status")
+async def launcher_link_status(
+    challenge_id: str = Query(min_length=16, max_length=96),
+    device_id: str = Query(min_length=16, max_length=128),
+    poll_token: str = Query(min_length=32, max_length=128),
+) -> dict[str, Any]:
+    return await bg(launcher_link_status_sync, challenge_id, device_id, poll_token)
+
+
+@app.post("/api/player/launcher/link/authorize")
+async def player_launcher_link_authorize(
+    data: LauncherLinkAuthorizeIn,
+    account: dict[str, Any] = Depends(require_player),
+) -> dict[str, Any]:
+    return await bg(authorize_launcher_link_sync, account, data)
+
+
+@app.post("/api/launcher/profile/nickname")
+async def launcher_profile_nickname(data: LauncherNicknameChangeIn) -> dict[str, Any]:
+    """Synchronize a linked Launcher's name with the server identity.
+
+    Authentication uses only the device-bound Launcher access token.  The
+    endpoint never accepts a site password, AuthMe password, or hash.
+    """
+    return await bg(launcher_nickname_change_sync, data)
 
 
 @app.post("/api/player/link/request")
@@ -12794,10 +13864,20 @@ async def player_create_report(request: Request, data: PlayerSupportReportIn, ac
 
 @app.get("/api/status")
 async def status(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
-    online, latency = await bg(tcp_online, MC_HOST, MC_PORT)
-    web_online, web_latency = await bg(tcp_online, "127.0.0.1", 443)
-    backend_online, backend_latency = await bg(tcp_online, "127.0.0.1", 8090)
-    voice = await bg(udp_probe, MC_HOST, 24454)
+    # These probes are independent.  Fan them out so an offline Minecraft,
+    # HTTPS, or voice port contributes one timeout at most instead of adding
+    # its timeout to every other check before the cabinet can render.
+    (
+        (online, latency),
+        (web_online, web_latency),
+        (backend_online, backend_latency),
+        voice,
+    ) = await asyncio.gather(
+        bg(tcp_online, MC_HOST, MC_PORT),
+        bg(tcp_online, "127.0.0.1", 443),
+        bg(tcp_online, "127.0.0.1", 8090),
+        bg(udp_probe, MC_HOST, 24454),
+    )
     rcon_ok = False
     list_text = ""
     tps_text = ""
@@ -14037,8 +15117,17 @@ async def investigations_block_logs(
     limit: int = 250,
     _: str = Depends(require_panel_admin),
 ) -> dict[str, Any]:
-    rows = await bg(coreprotect_search, player, x, y, z, radius, action, source, limit)
-    return {"rows": rows, "source": safe_location(Path(COREPROTECT_DB))}
+    source_info = safe_location(Path(COREPROTECT_DB))
+    try:
+        rows = await bg(coreprotect_search, player, x, y, z, radius, action, source, limit)
+        return {"rows": rows, "source": source_info}
+    except HTTPException as exc:
+        # CoreProtect is an optional read-only source.  A missing or temporarily
+        # unavailable database must stay visible in the panel as a diagnostic,
+        # not become a noisy 404 that looks like a broken cabinet route.
+        return {"rows": [], "source": source_info, "error": public_error_message(exc.detail)}
+    except Exception as exc:
+        return {"rows": [], "source": source_info, "error": public_error_message(exc)}
 
 
 @app.get("/api/investigations/export.csv")
@@ -15219,6 +16308,116 @@ async def modpack_download() -> FileResponse:
         return artifact_file_response("downloads", "CopiMineMods.zip")
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Архив модов пока не подготовлен") from exc
+
+
+@app.get("/launcher/files/{sha256}")
+@app.head("/launcher/files/{sha256}")
+async def launcher_file_download(sha256: str) -> FileResponse:
+    try:
+        path = await bg(default_control_plane().resolve_public_file, sha256)
+        await bg(default_control_plane().record_download, "managed-file")
+        return FileResponse(path, media_type="application/java-archive", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc, status_code=404)
+
+
+@app.get("/launcher/stable/{filename}")
+@app.head("/launcher/stable/{filename}")
+async def launcher_stable_download(filename: str) -> FileResponse:
+    if filename not in {"instance-manifest.json", "instance-manifest.sig"}:
+        raise HTTPException(status_code=404, detail="Launcher release contract not found")
+    public_root = default_control_plane().public_root
+    path = public_root / "launcher" / "stable" / filename if public_root else None
+    if path is None or not path.is_file():
+        raise HTTPException(status_code=404, detail="Launcher release contract not found")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=60"})
+
+
+def launcher_distribution_file(filename: str) -> Path:
+    """Resolve an allow-listed public Launcher package from the staged site.
+
+    The static site and the binding API may share one origin in local/staging
+    deployments.  Keep this route limited to files declared by the current
+    installer metadata or Velopack feed so it cannot become an arbitrary file
+    reader.
+    """
+    normalized = str(filename or "").strip()
+    if normalized != Path(normalized).name or not re.fullmatch(r"[A-Za-z0-9._-]+", normalized):
+        raise HTTPException(status_code=404, detail="Launcher package not found")
+
+    public_root = default_control_plane().public_root
+    if public_root is None:
+        raise HTTPException(status_code=404, detail="Launcher public root is not configured")
+    download_root = public_root / "downloads" / "launcher"
+    if not download_root.is_dir():
+        raise HTTPException(status_code=404, detail="Launcher package directory is not configured")
+
+    # Velopack has used a few feed filenames across client generations. Keep
+    # the compatibility aliases explicit and resolve them only to the
+    # published Windows feed below; never turn this route into a directory
+    # reader.
+    allowed = {
+        "RELEASES",
+        "releases.win.json",
+        "releases.stable.json",
+        "latest.json",
+        "releases.json",
+        "release.win.json",
+        "releases.windows.json",
+        "assets.win.json",
+    }
+    metadata_path = public_root / "assets" / "public-data" / "launcher" / "latest.json"
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        metadata = {}
+    if isinstance(metadata, dict):
+        for field in ("filename", "customInstallerFilename", "msiFilename"):
+            value = metadata.get(field)
+            if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value):
+                allowed.add(value)
+
+    try:
+        feed = json.loads((download_root / "assets.win.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        feed = []
+    if isinstance(feed, list):
+        for item in feed:
+            if isinstance(item, dict):
+                value = item.get("RelativeFileName")
+                if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9._-]+", value):
+                    allowed.add(value)
+
+    path = download_root / normalized
+    if normalized in {"releases.json", "release.win.json", "releases.windows.json"} and not path.is_file():
+        canonical = download_root / "releases.win.json"
+        if canonical.is_file():
+            path = canonical
+
+    if normalized not in allowed:
+        raise HTTPException(status_code=404, detail="Launcher package is not in the published feed")
+    if normalized == "latest.json" and not path.is_file():
+        # Compatibility for clients that looked for release metadata under
+        # the feed directory. The canonical copy remains under assets/; do
+        # not make this route a general file reader.
+        if metadata_path.is_file():
+            path = metadata_path
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Launcher package not found")
+    return path
+
+
+@app.get("/downloads/launcher", include_in_schema=False)
+@app.head("/downloads/launcher", include_in_schema=False)
+async def launcher_distribution_root_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/downloads/launcher/", status_code=308)
+
+
+@app.get("/downloads/launcher/{filename}")
+@app.head("/downloads/launcher/{filename}")
+async def launcher_package_download(filename: str) -> FileResponse:
+    path = launcher_distribution_file(filename)
+    return FileResponse(path, filename=path.name, headers={"Cache-Control": "public, max-age=3600, immutable"})
 
 
 @app.get("/downloads/{filename}")
@@ -18290,6 +19489,204 @@ async def admin_cms(_: str = Depends(require_admin)) -> dict[str, Any]:
     return await bg(read_site_cms_sync, True)
 
 
+def launcher_control_http_error(error: ControlPlaneError, *, status_code: int = 400) -> None:
+    detail: dict[str, Any] = {"code": error.code, "message": error.message}
+    if error.field:
+        detail["field"] = error.field
+    raise HTTPException(status_code=status_code, detail=detail)
+
+
+@app.get("/api/admin/launcher")
+async def admin_launcher(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().dashboard)
+
+
+@app.get("/api/admin/launcher/mods")
+async def admin_launcher_mods(_: str = Depends(require_admin)) -> dict[str, Any]:
+    mods = await bg(default_control_plane().list_mods)
+    return {"mods": mods, "count": len(mods)}
+
+
+@app.post("/api/admin/launcher/mods/upload")
+async def admin_launcher_mod_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    component_id: str = Form(...),
+    version: str = Form(...),
+    filename: str = Form(...),
+    required: bool = Form(True),
+    display_name: str = Form(""),
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-upload", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_UPLOAD")
+    data = await file.read(MAX_MOD_SIZE + 1)
+    plane = default_control_plane()
+    try:
+        existing = next((item for item in await bg(plane.list_mods) if item.get("componentId") == component_id.strip().lower()), None)
+        if existing:
+            mod = await bg(
+                plane.replace_mod,
+                component_id,
+                version=version,
+                filename=filename,
+                data=data,
+                required=required,
+                display_name=display_name or None,
+            )
+        else:
+            mod = await bg(
+                plane.add_mod,
+                component_id,
+                version,
+                filename,
+                data,
+                required=required,
+                display_name=display_name or None,
+            )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "mod": mod}
+
+
+@app.patch("/api/admin/launcher/mods/{component_id}")
+async def admin_launcher_mod_edit(
+    component_id: str,
+    data: LauncherModEditIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-edit", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_EDIT")
+    try:
+        mod = await bg(
+            default_control_plane().replace_mod,
+            component_id,
+            version=data.version,
+            filename=data.filename,
+            required=data.required,
+            display_name=data.display_name,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "mod": mod}
+
+
+@app.delete("/api/admin/launcher/mods/{component_id}")
+async def admin_launcher_mod_delete(
+    component_id: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-mod-delete", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_MOD_DELETE")
+    try:
+        await bg(default_control_plane().remove_mod, component_id)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "componentId": component_id}
+
+
+@app.post("/api/admin/launcher/release/validate")
+async def admin_launcher_release_validate(public_key_id: str = Query(..., alias="publicKeyId"), _: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().validate_release, public_key_id=public_key_id)
+
+
+@app.post("/api/admin/launcher/release/publish")
+async def admin_launcher_release_publish(
+    data: LauncherReleasePublishIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-release-publish", limit=6, window_seconds=300)
+    require_sensitive_confirm(request, "LAUNCHER_RELEASE_PUBLISH")
+    try:
+        release = await bg(
+            default_control_plane().publish_release,
+            public_key_id=data.public_key_id,
+            release_id=data.release_id,
+            release_sequence=data.release_sequence,
+            published_at=data.published_at or None,
+        )
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "release": release}
+
+
+@app.post("/api/admin/launcher/release/rollback")
+async def admin_launcher_release_rollback(
+    data: LauncherRollbackIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-release-rollback", limit=4, window_seconds=300)
+    require_sensitive_confirm(request, "LAUNCHER_RELEASE_ROLLBACK")
+    try:
+        release = await bg(default_control_plane().rollback_release, data.release_id)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "release": release}
+
+
+@app.get("/api/admin/launcher/news")
+async def admin_launcher_news(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return {"news": await bg(default_control_plane().list_news, include_drafts=True)}
+
+
+@app.put("/api/admin/launcher/news/{slug}")
+async def admin_launcher_news_save(
+    slug: str,
+    data: LauncherNewsIn,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-save", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_SAVE")
+    payload = data.model_dump(by_alias=False)
+    payload["slug"] = slug
+    payload["publishedAt"] = payload.pop("published_at", "")
+    try:
+        news = await bg(default_control_plane().save_news, payload)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "news": news}
+
+
+@app.delete("/api/admin/launcher/news/{slug}")
+async def admin_launcher_news_delete(
+    slug: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-delete", limit=30, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_DELETE")
+    try:
+        await bg(default_control_plane().delete_news, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "slug": slug}
+
+
+@app.post("/api/admin/launcher/news/{slug}/publish")
+async def admin_launcher_news_publish(
+    slug: str,
+    request: Request,
+    _: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-launcher-news-publish", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "LAUNCHER_NEWS_PUBLISH")
+    try:
+        news = await bg(default_control_plane().publish_news, slug)
+    except ControlPlaneError as exc:
+        launcher_control_http_error(exc)
+    return {"ok": True, "news": news}
+
+
+@app.get("/api/admin/launcher/stats")
+async def admin_launcher_stats(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(default_control_plane().stats)
+
+
 NARCOTICS_RECIPE_BLOCKED_TOKENS = {"MATERIAL:DIAMOND_ORE", "MATERIAL:DEEPSLATE_DIAMOND_ORE"}
 NARCOTICS_RECIPE_TOKEN_RE = re.compile(r"^(material|potion):[A-Z0-9_]+$", re.IGNORECASE)
 NARCOTICS_RECIPE_APPLY_MODES = {"save", "apply"}
@@ -18621,6 +20018,42 @@ async def admin_cms_disable_entry(entry_key: str, request: Request, username: st
     return await bg(delete_site_cms_entry_sync, entry_key, username)
 
 
+@app.get("/api/admin/events")
+async def admin_events(_: str = Depends(require_admin)) -> dict[str, Any]:
+    return await bg(read_events_sync, True)
+
+
+@app.put("/api/admin/events/{slug}")
+async def admin_event_save(slug: str, data: EventPageIn, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-save", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "EVENTS_SAVE")
+    if data.slug != slug:
+        raise HTTPException(status_code=400, detail="Ключ события в пути и форме не совпадает")
+    return {"ok": True, "event": await bg(upsert_event_sync, data, username)}
+
+
+@app.post("/api/admin/events/{slug}/videos")
+async def admin_event_video_upload(
+    slug: str,
+    request: Request,
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    poster_url: str = Form(""),
+    username: str = Depends(require_admin),
+) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-video-upload", limit=10, window_seconds=300)
+    require_sensitive_confirm(request, "EVENTS_MEDIA_UPLOAD")
+    media = await save_event_video(file, slug, title, poster_url, username)
+    return {"ok": True, "media": media}
+
+
+@app.delete("/api/admin/events/{slug}/videos/{media_id}")
+async def admin_event_video_delete(slug: str, media_id: int, request: Request, username: str = Depends(require_admin)) -> dict[str, Any]:
+    check_rate_limit(request, "admin-events-video-delete", limit=20, window_seconds=60)
+    require_sensitive_confirm(request, "EVENTS_MEDIA_DELETE")
+    return await bg(delete_event_media_sync, slug, media_id, username)
+
+
 @app.get("/api/admin/security/ip-alerts")
 async def admin_security_ip_alerts(limit: int = 100, _: str = Depends(require_admin)) -> dict[str, Any]:
     rows = await bg(read_ip_alerts_sync, limit)
@@ -18636,7 +20069,7 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
         "logFile": safe_location(LOG_FILE),
         "coreprotectDb": safe_location(Path(COREPROTECT_DB)),
         "adminPluginDb": safe_location(resolved_admin_db),
-        "authDb": admin_plugin_db_location(resolved_admin_db),
+        "authDb": auth_storage_location(),
         "arItemIds": AR_ITEM_IDS,
         "rconConfigured": bool(RCON_PASSWORD),
         "minecraftService": MINECRAFT_SERVICE,
@@ -18663,8 +20096,10 @@ async def config(_: str = Depends(require_panel_admin)) -> dict[str, Any]:
             "psutil": bool(psutil),
             "coreprotectDbExists": Path(COREPROTECT_DB).exists(),
             "adminPluginDbExists": resolved_admin_db.exists(),
-            "authDbExists": auth_storage_ready(),
+            "authDbExists": AUTH_DB_FILE.exists() if auth_storage_backend() == "sqlite" else startup_check_status("postgres") == "ok",
             "postgresPool": pg_ready(),
+            "postgresConfigured": pg_ready(),
+            "postgresConnected": startup_check_status("postgres") == "ok",
             "authBackend": auth_storage_backend(),
             "cookieAuth": True,
             "eventIngestion": bool(PLUGIN_API_KEY),

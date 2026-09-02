@@ -163,12 +163,39 @@
       "animation": {"frame_count": 64, "frametime": 1, "interpolate": false}
     },
     {
-      "id": "gde_moy_lut_blyat_compass",
-      "custom_model_data": 20010,
-      "base_material": "compass",
-      "model": "minecraft:item/gde_moy_lut_blyt_compass",
-      "texture": "copimine:item/artifacts/gde_moy_lut_blyat_compass",
-      "animation": {"frame_count": 32, "frametime": 1, "interpolate": false}
+      "id": "gravedigger_contract",
+      "custom_model_data": 10029,
+      "base_material": "paper",
+      "model": "copimine:item/artifacts/gravedigger_contract",
+      "texture": "copimine:item/artifacts/gravedigger_contract"
+    },
+    {
+      "id": "signal_bell",
+      "custom_model_data": 10030,
+      "base_material": "bell",
+      "model": "copimine:item/artifacts/signal_bell",
+      "texture": "copimine:item/artifacts/signal_bell"
+    },
+    {
+      "id": "zhilorez_pickaxe",
+      "custom_model_data": 20011,
+      "base_material": "netherite_pickaxe",
+      "model": "copimine:item/artifacts/zhilorez_pickaxe",
+      "texture": "copimine:item/artifacts/zhilorez_pickaxe"
+    },
+    {
+      "id": "night_cloak",
+      "custom_model_data": 20012,
+      "base_material": "phantom_membrane",
+      "model": "copimine:item/artifacts/night_cloak",
+      "texture": "copimine:item/artifacts/night_cloak"
+    },
+    {
+      "id": "berserker_heart",
+      "custom_model_data": 20013,
+      "base_material": "nether_star",
+      "model": "copimine:item/artifacts/berserker_heart",
+      "texture": "copimine:item/artifacts/berserker_heart"
     },
     {
       "id": "feta",
@@ -264,7 +291,7 @@
     {
       "id": "combat_crossbow",
       "custom_model_data": 10014,
-      "base_material": "bow",
+      "base_material": "crossbow",
       "model": "copimine:item/artifacts/teleport_bow",
       "texture": "copimine:item/artifacts/teleport_bow"
     },

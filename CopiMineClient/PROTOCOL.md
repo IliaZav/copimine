@@ -1,4 +1,12 @@
-# CopiMineClient Protocol v2
+# CopiMineClient Protocol v2 + compatibility admission v3
+
+Compatibility admission uses a separate registered payload pair on the same
+bridge owner:
+
+- `copimine:client_ready` carries only `protocolVersion` and diagnostic `clientVersion`.
+- `copimine:client_ready_ack` carries `accepted`, `requiredProtocol`, `receivedProtocol`, and a bounded reason code.
+- `protocolVersion=3` is the compatibility contract; the existing visual envelope remains protocol v2.
+- READY retries are finite and stop immediately after an accepted ACK or a rejected decision. There is no admission heartbeat, mod list, launcher identity, or device identity.
 
 Channel:
 - `copimine:client_bridge`
@@ -7,7 +15,8 @@ Protocol version:
 - `2`
 
 Transport model:
-- optional client mod bridge over plugin messaging;
+- required compatibility admission over `copimine:client_ready` / `copimine:client_ready_ack`;
+- optional visual capability bridge over `copimine:client_bridge` after admission;
 - server never requires Iris or OptiFine;
 - if the client mod is missing or stops responding, the server falls back to server overlay or particle visuals;
 - primary route is built-in ZIP shaderpack switching through Iris when Iris runtime is available;
@@ -63,4 +72,6 @@ Runtime rules:
 - if the player already had an Iris shaderpack active, the previous state is restored after the CopiMine effect unless local config blocks override;
 - if Iris is absent, unsupported, or a ZIP is not Iris-compatible, CopiMineClient uses fallback post-processing;
 - non-Iris shaderpack ZIPs are not embedded in the active runtime set; unsupported visuals use fallback post-processing instead of pretending a ZIP was enabled;
-- the server still applies gameplay effects even when no client mod is present.
+- visual heartbeat/capability freshness never kicks a player after successful admission;
+- a missing client does not complete admission and is rejected only after the bounded
+  READY grace timeout with `CLIENT_READY_TIMEOUT`.

@@ -1,16 +1,20 @@
-import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./shared/browser-state.js";
-import { buildCsvContent } from "./shared/csv.js";
-import { resolveDonationBalance } from "./shared/player-detail-values.js";
-import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js";
-import { createAdminCmsPages } from "./admin/cms-pages.js";
-import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260720r12";
-import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js";
-import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js";
-import { createPlayerAccountPages } from "./player/account-pages.js";
-import { createPlayerArtifactPages } from "./player/artifact-pages.js";
-import { createPlayerDonationPages } from "./player/donation-pages.js";
-import { createPlayerTreasuryPages } from "./player/treasury-pages.js";
-import { appRouteHref, authLandingHref, defaultAppRouteForRole, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js";
+import { getStoredUiState, removeStoredUiState, setStoredUiState } from "./shared/browser-state.js?v=20260829launcherlink6";
+import { buildCsvContent } from "./shared/csv.js?v=20260829launcherlink6";
+import { resolveDonationBalance } from "./shared/player-detail-values.js?v=20260829launcherlink6";
+import { fragmentFromHtml, makeElement, replaceChildrenSafe } from "./shared/dom.js?v=20260829launcherlink6";
+import { initCabinetMotion } from "./cabinet-motion.js?v=20260901motion1";
+import { createAdminCmsPages } from "./admin/cms-pages.js?v=20260829launcherlink6";
+import { createAdminLauncherPages } from "./admin/launcher-pages.js?v=20260829launcherlink6";
+import { createAdminNewsPages } from "./admin/news-pages.js?v=20260829launcherlink6";
+import { createAdminEventsPages } from "./admin/events-pages.js?v=20260830events1";
+import { createAdminCommercePages } from "./admin/commerce-pages.js?v=20260829launcherlink6";
+import { createAdminNarcoticsRecipePages } from "./admin/narcotics-recipe-pages.js?v=20260829launcherlink6";
+import { createPluginRegistryPages } from "./admin/plugin-registry-pages.js?v=20260829launcherlink6";
+import { createPlayerAccountPages } from "./player/account-pages.js?v=20260829launcherlink6";
+import { createPlayerArtifactPages } from "./player/artifact-pages.js?v=20260829launcherlink6";
+import { createPlayerDonationPages } from "./player/donation-pages.js?v=20260829launcherlink6";
+import { createPlayerTreasuryPages } from "./player/treasury-pages.js?v=20260829launcherlink6";
+import { appRouteHref, authLandingHref, defaultAppRouteForRole, launcherBindingHrefFromSearch, launcherReturnHrefFromAuthSearch, normalizeAppRoute, routeFromHref } from "./shared/app-routes.js?v=20260902route1";
 
 const $ = (id) => document.getElementById(id);
 
@@ -174,15 +178,28 @@ const fromWindow = (name) => (...args) => window[name]?.(...args);
 const CONFIRM_HEADER = "X-Copimine-Confirm";
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
+const BOOTSTRAP_TIMEOUT_MS = 20000;
 
 document.addEventListener("error", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLImageElement)) return;
+  const fallback = String(target.dataset.fallbackIcon || "").trim();
+  let fallbackUrl = "";
+  try {
+    fallbackUrl = fallback ? new URL(fallback, document.baseURI).href : "";
+  } catch {
+    fallbackUrl = "";
+  }
+  if (fallbackUrl && target.dataset.fallbackTried !== "true" && target.src !== fallbackUrl) {
+    target.dataset.fallbackTried = "true";
+    target.src = fallback;
+    return;
+  }
   if (target.closest(".avatar-badge")) {
     target.remove();
     return;
   }
-  target.style.display = "none";
+  target.classList.add("is-broken-image");
 }, true);
 
 const publicFeatures = {
@@ -226,7 +243,7 @@ const navGroups = [
       ["players", "Игроки", "Профили и действия", "И"],
       ["stats", "Статистика", "TPS, MSPT и ресурсы", "С"],
       ["economy", "Банк и AR", "Счета, переводы и покупки", "Б"],
-      ["artifacts", "Лавки", "Каталог, точки в мире, покупки и выдача", "Л"],
+      ["artifacts", "Артефакты", "Каталог, точки в мире, покупки и выдача", "А"],
       ["elections", "Выборы", "Заявки, дебаты и голосование", "В"]
     ]
   },
@@ -249,7 +266,10 @@ const navGroups = [
       ["security", "Безопасность", "Права, сессии и доступ", "Б"],
       ["sources", "Источники", "Плагины, файлы и реестр", "И"],
       ["narcotics-recipes", "Рецепты", "Котёл и ингредиенты", "Р"],
-      ["cms", "CMS", "Тексты, баннеры и страницы", "C"],
+      ["launcher", "Лаунчер", "Версии, моды и загрузки", "L"],
+      ["news", "Новости", "Изменения и картинки предметов", "N"],
+      ["events", "Ивенты", "События, материалы и видео", "E"],
+      ["cms", "Страницы", "Тексты, баннеры и страницы", "C"],
       ["settings", "Настройки", "Конфигурация панели", "Н"]
     ]
   }
@@ -261,12 +281,12 @@ const pageMeta = Object.fromEntries(
 
 navGroups[0].items.splice(4, 0, [
   "shops",
-  "\u041b\u0430\u0432\u043a\u0438",
+  "Каталоги",
   "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c",
   "L"
 ]);
 pageMeta.shops = {
-  title: "\u041b\u0430\u0432\u043a\u0438",
+  title: "Каталоги",
   subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438, \u0446\u0435\u043d\u044b \u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c"
 };
 
@@ -332,6 +352,9 @@ const adminSearchAliases = {
   elections: "выборы заявки кандидаты дебаты голосование блоки президент срок результаты",
   requests: "заявки обращения жалобы книга рассмотреть одобрить отклонить discord дискорд",
   "narcotics-recipes": "рецепты наркотики нарко котел котёл ингредиенты варка фета кола гирион сбп жужево смесь",
+  launcher: "launcher лаунчер релиз моды manifest манифест обновления публикация откат статистика загрузки",
+  news: "новости patch notes патчноуты релиз изменения предметы item textures текстуры",
+  events: "ивенты события end rift энд эндермены волны босс видео календарь",
   cms: "cms контент новости баннеры правила faq картинки страницы",
   admins: "админы команда доступ регистрация роли младший owner",
   security: "безопасность csrf сессии whitelist вайтлист доступ ip",
@@ -352,20 +375,14 @@ const adminSearchSectionItems = [
   { id: "players", target: "players-profile", title: "Профиль игрока", subtitle: "Профиль, инвентарь и действия", group: "Игроки", haystack: "игрок профиль инвентарь действия эффекты timeline", focusNeedle: "Игроки" },
   { id: "security", target: "security-access", title: "Доступ и сессии", subtitle: "Доступ, сессии и защита", group: "Безопасность", haystack: "доступ сессии csrf ip security auth", focusNeedle: "Доступ" },
   { id: "narcotics-recipes", target: "recipes-editor", title: "Редактор рецептов", subtitle: "Котёл, ингредиенты и результат", group: "Наркотики", haystack: "рецепты котёл варка ингредиенты жужево editor", focusNeedle: "Рецепты" },
-  { id: "cms", target: "cms-content", title: "CMS и баннеры", subtitle: "Тексты, баннеры и страницы", group: "CMS", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "CMS" },
+  { id: "launcher", target: "launcher-overview", title: "Лаунчер", subtitle: "Версии, моды и загрузки", group: "Система", haystack: "launcher лаунчер релиз моды manifest обновления публикация откат", focusNeedle: "Лаунчер" },
+  { id: "news", target: "launcher-news-editor", title: "Новости лаунчера", subtitle: "Изменения и картинки предметов", group: "Контент", haystack: "новости patch notes патчноуты item текстуры релиз", focusNeedle: "Новости лаунчера" },
+  { id: "events", target: "events-editor", title: "Ивенты", subtitle: "События, материалы и видео", group: "Контент", haystack: "ивенты события end rift энд календарь видео", focusNeedle: "Ивенты" },
+  { id: "cms", target: "cms-content", title: "Страницы и баннеры", subtitle: "Тексты, баннеры и страницы", group: "Страницы", haystack: "cms баннеры тексты страницы новости faq", focusNeedle: "Страницы" },
   { id: "settings", target: "settings-site", title: "Настройки сайта", subtitle: "Публичные параметры и конфиги", group: "Система", haystack: "настройки сайт конфиг resourcepack modpack", focusNeedle: "Настройки" },
 ];
 
 adminSearchAliases.shops = "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d \u0430\u0440\u0442\u0435\u0444\u0430\u043a\u0442\u044b donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433 \u0446\u0435\u043d\u044b \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0441\u0442\u044c";
-adminSearchSectionItems.unshift({
-  id: "shops",
-  target: "shops-overview",
-  title: "\u041b\u0430\u0432\u043a\u0438",
-  subtitle: "AR- \u0438 donation-\u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0438 \u0432 \u043e\u0434\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435",
-  group: "\u041b\u0430\u0432\u043a\u0438",
-  haystack: "shops \u043b\u0430\u0432\u043a\u0438 \u043c\u0430\u0433\u0430\u0437\u0438\u043d donation \u0434\u043e\u043d\u0430\u0442 ar \u043a\u0430\u0442\u0430\u043b\u043e\u0433",
-  focusNeedle: "\u041b\u0430\u0432\u043a\u0438"
-});
 
 function fuzzyContains(text, query) {
   const normalized = cleanText(text).toLowerCase().replace(/ё/g, "е");
@@ -783,7 +800,7 @@ function wireDataClickDelegation() {
 // legacy public page without attaching duplicate handlers at startup.
 window.addEventListener("copimine:legacy-runtime-request", () => {
   if (state.legacyRuntimePromise) return state.legacyRuntimePromise;
-  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260721r1")
+  state.legacyRuntimePromise = import("./legacy/app-legacy.js?v=20260825siteui16")
     .catch((error) => {
       toast(error?.message || "Совместимый режим недоступен", true);
       state.legacyRuntimePromise = null;
@@ -962,7 +979,9 @@ async function api(url, opts = {}) {
       if (refreshed) return api(url, { ...opts, skipAuthReset: true, retryOn401: false });
       logout(false);
     }
-    throw new Error(describeError(data.detail ?? data.error ?? `HTTP ${res.status}`));
+    const error = new Error(describeError(data.detail ?? data.error ?? `HTTP ${res.status}`));
+    error.status = res.status;
+    throw error;
   }
   return data;
 }
@@ -1011,6 +1030,16 @@ async function safeApi(url, fallback = {}) {
   catch (err) { return { ...fallback, error: err.message }; }
 }
 
+function apiNotice(label, responses = []) {
+  const errors = [...new Set(
+    responses
+      .map((response) => cleanText(response?.error || ""))
+      .filter(Boolean),
+  )];
+  if (!errors.length) return "";
+  return `<div class="notice bad api-degraded" role="alert"><strong>${esc(label)} не обновились</strong><p>${esc(errors.join("; "))}. Показаны доступные данные; повтори обновление позже.</p></div>`;
+}
+
 function setLoading(title = "Загрузка данных") {
   const view = $("view");
   if (!view) return;
@@ -1023,15 +1052,35 @@ function setBootState(mode = "loading") {
   const boot = $("bootStage");
   const app = $("app");
   const ready = mode === "ready";
+  const loading = mode === "loading";
   if (boot) boot.classList.toggle("hidden", ready);
+  if (boot) boot.setAttribute("aria-busy", loading ? "true" : "false");
   if (app) {
     app.hidden = !ready;
     app.classList.toggle("hidden", !ready);
   }
 }
 
+function renderBootError(error) {
+  const boot = $("bootStage");
+  if (!boot) return;
+  const message = describeError(error);
+  const shell = makeElement("div", "loading-error");
+  shell.append(makeElement("strong", "loading-error-title", "Сайт не ответил вовремя"));
+  shell.append(makeElement("p", "loading-error-copy", message || "Проверь соединение и повтори попытку."));
+  shell.append(makeButton("Повторить", "btn btn-primary", "retryCabinetBoot()"));
+  replaceChildrenSafe(boot, [shell]);
+  setBootState("error");
+}
+
+window.retryCabinetBoot = () => window.location.reload();
+
 function applyDynamicViewStyles(root = $("view")) {
   if (!root) return;
+  root.querySelectorAll(".week-bar[data-height]").forEach((el) => {
+    const height = Math.max(4, Math.min(100, number(el.dataset.height, 4)));
+    el.style.setProperty("--height", `${height}%`);
+  });
   root.querySelectorAll(".readiness-ring[data-ring-offset][data-ring-value]").forEach((el) => {
     const offset = number(el.dataset.ringOffset, 0);
     const value = number(el.dataset.ringValue, 0);
@@ -1222,7 +1271,7 @@ function dashboardWeekColumns(rows, kind = "purchases") {
   return `<div class="dashboard-week-chart" role="img" aria-label="${kind === "purchases" ? "Покупки за последнюю неделю" : "Заходы и выходы за последнюю неделю"}">
     ${values.map((row) => `
       <div class="week-column" title="${esc(row.date)}: ${row.primary} / ${row.secondary}">
-        <div class="week-bars"><i class="week-bar primary" style="--height:${Math.max(4, Math.round(row.primary / max * 100))}%"></i><i class="week-bar secondary" style="--height:${Math.max(4, Math.round(row.secondary / max * 100))}%"></i></div>
+        <div class="week-bars"><i class="week-bar primary" data-height="${Math.max(4, Math.round(row.primary / max * 100))}" aria-hidden="true"></i><i class="week-bar secondary" data-height="${Math.max(4, Math.round(row.secondary / max * 100))}" aria-hidden="true"></i></div>
         <strong>${esc(row.primary)}</strong><span>${esc(row.label)}</span>
       </div>`).join("")}
   </div>`;
@@ -1263,9 +1312,9 @@ function dashboardCharts(status, perf, electionOverview, economy, perfReady, eve
     </section>`;
 }
 
-function panel(title, subtitle, body, actions = "") {
+function panel(title, subtitle, body, actions = "", id = "") {
   return `
-    <section class="panel">
+    <section class="panel"${id ? ` id="${esc(id)}"` : ""}>
       <div class="panel-header">
         <div>
           <h2 class="panel-title">${esc(title)}</h2>
@@ -1317,7 +1366,7 @@ function firstRunReadinessHtml(data = {}) {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Первый запуск</h2>
-          <p class="panel-subtitle">Проверка после обновления сервера: плагины, конфиги, база и ресурспак.</p>
+          <p class="panel-subtitle">Проверка после обновления сервера: настройки, данные и пакет ресурсов.</p>
         </div>
         ${pill(`${ready}%`, ready >= 90 ? "good" : ready >= 70 ? "warn" : "bad")}
       </div>
@@ -1328,7 +1377,7 @@ function firstRunReadinessHtml(data = {}) {
             <strong>${row.ok ? "OK" : "Проверить"}</strong>
             <em>${esc(row.detail || row.value || "")}</em>
           </div>
-        `).join("") || empty("Данных first-run пока нет", "Открой админку в игре или перезапусти сервер, чтобы плагин записал startup self-check.")}
+        `).join("") || empty("Проверок пока нет", "Открой админку в игре или перезапусти сервер, чтобы сервер показал текущее состояние.")}
       </div>
       ${blockers.length ? `<div class="notice">Что мешает идеальному запуску: ${blockers.map(x => esc(x.name)).join(", ")}</div>` : ""}
     </section>
@@ -2022,8 +2071,10 @@ function renderStoredTable(id) {
   const start = (t.page - 1) * t.pageSize;
   const pageRows = rows.slice(start, start + t.pageSize);
   const head = t.columns.map(col => `
-    <th data-click="sortTable('${id}','${esc(col.key)}')">
-      ${esc(col.label || col.key)}${t.sortKey === col.key ? (t.sortDir === "asc" ? " ↑" : " ↓") : ""}
+    <th scope="col" aria-sort="${t.sortKey === col.key ? (t.sortDir === "asc" ? "ascending" : "descending") : "none"}">
+      <button type="button" class="table-sort" data-click="sortTable('${id}','${esc(col.key)}')" aria-label="Сортировать по ${esc(col.label || col.key)}">
+        ${esc(col.label || col.key)}${t.sortKey === col.key ? (t.sortDir === "asc" ? " ↑" : " ↓") : ""}
+      </button>
     </th>
   `).join("");
   const body = pageRows.map((row, idx) => {
@@ -2036,7 +2087,7 @@ function renderStoredTable(id) {
   }).join("");
   return `
     <div class="toolbar">
-      <input class="grow" value="${esc(t.filter)}" data-input="filterTable" data-input-id="${esc(id)}" placeholder="Поиск по таблице" />
+      <input class="grow" value="${esc(t.filter)}" data-input="filterTable" data-input-id="${esc(id)}" placeholder="Поиск по таблице" aria-label="Поиск по таблице" />
       <button class="btn btn-secondary btn-small" data-click="exportTable('${id}','csv')">Скачать CSV</button>
       <span class="last-update">${rows.length} записей</span>
     </div>
@@ -2130,7 +2181,7 @@ function defaultTab() {
 
 function setMobileNav(open) {
   const app = $("app");
-  const toggle = $("mobileNavToggle");
+  const toggle = $("cabinetNavToggle");
   app.classList.toggle("nav-open", Boolean(open));
   if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
 }
@@ -2169,6 +2220,7 @@ function buildNavButton([id, label, hint, icon]) {
   const button = makeElement("button", `nav-item ${state.tab === id ? "active" : ""}`);
   button.type = "button";
   button.dataset.tab = id;
+  if (state.tab === id) button.setAttribute("aria-current", "page");
   const iconNode = makeElement("span", "nav-icon", icon);
   const copy = makeElement("span");
   copy.append(
@@ -2223,6 +2275,11 @@ function clearAdminSearchHighlight() {
 function findAdminSearchFocusNode() {
   const root = $("view");
   if (!root) return null;
+  const targetId = cleanText(state.adminSearchTarget || "");
+  if (targetId) {
+    const targeted = document.getElementById(targetId);
+    if (targeted instanceof HTMLElement) return targeted;
+  }
   const needle = cleanText(state.adminSearchNeedle || "").toLowerCase();
   if (!needle) return null;
   const candidates = Array.from(root.querySelectorAll(".panel, .metric-card, .notice, .table-shell, .inventory-panel, .inventory-card"));
@@ -2363,6 +2420,7 @@ async function setTab(tab) {
   const meta = metaMap[state.tab];
   $("pageTitle").textContent = meta.title;
   $("pageSubtitle").textContent = meta.subtitle;
+  document.title = `CopiMine - ${meta.title}`;
   syncWorkspaceMode();
   renderNav();
   renderAdminSearchDock();
@@ -2642,8 +2700,8 @@ function redirectToRoleHome(replace = true) {
   }
 
 function showGuestPages() {
-    window.location.href = "index.html";
-  }
+    window.location.href = "/index.html";
+}
 
 function syncTopbarActions() {
   const guestButton = $("guestPagesBtn");
@@ -2681,61 +2739,6 @@ function wirePublicSite() {
   loadPublicStatus();
 }
 
-function syncAuthUiLegacyUnused() {
-  const isRegister = isRegisterPage();
-  const loginCard = $("loginForm");
-  if (!loginCard) return;
-
-  $("minecraftNameGroup")?.classList.toggle("hidden", !isRegister);
-
-  const brandText = loginCard.querySelector(".login-brand p");
-  const lead = loginCard.querySelector(".login-copy strong");
-  const support = loginCard.querySelector(".login-copy span");
-  const usernameLabel = loginCard.querySelector('label[for="username"]');
-  const passwordLabel = loginCard.querySelector('label[for="password"]');
-  const submit = loginCard.querySelector('button[type="submit"]');
-  const note = loginCard.querySelector(".login-note");
-
-  if (true) {
-    if (brandText) brandText.textContent = "Личный кабинет CopiMine";
-    if (lead) lead.textContent = isRegister ? "Создать аккаунт" : "Вход";
-    if (support) support.textContent = isRegister
-      ? "Зарегистрируй отдельный логин сайта. Minecraft-ник подтверждается позже одноразовым кодом на сервере."
-      : "Войдите логином сайта. После входа будут доступны онлайн-банк, удалённые покупки и история операций.";
-    if (usernameLabel) usernameLabel.textContent = "Логин сайта";
-    if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-    $("username").placeholder = "Придумай логин";
-    $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введите пароль";
-    if (submit) submit.textContent = isRegister ? "Создать аккаунт" : "Открыть кабинет";
-    if (note) note.textContent = isRegister
-      ? "Пароль от Minecraft здесь никогда не нужен. Укажи свой игровой ник и подтверди его кодом в игре."
-      : "После входа можно привязать игровой аккаунт, настроить PIN и пользоваться переводами.";
-  } else {
-    if (brandText) brandText.textContent = "Рабочий кабинет сервера";
-    if (lead) lead.textContent = "Вход";
-    if (support) support.textContent = "Доступ к админке получают только сотрудники сервера с действующим логином.";
-    if (usernameLabel) usernameLabel.textContent = "Minecraft-ник";
-    if (passwordLabel) passwordLabel.textContent = "Пароль";
-    $("username").placeholder = "Например, Cells";
-    $("password").placeholder = "Введите пароль";
-    if (submit) submit.textContent = "Войти";
-    if (note) note.textContent = "Если доступ не открывается, проверь логин и обратись к старшей команде сервера.";
-  }
-  if (brandText) brandText.textContent = isRegister ? "Новый кабинет" : "Вход в CopiMine";
-  if (lead) lead.textContent = isRegister ? "Регистрация" : "Вход";
-  if (support) support.textContent = isRegister
-    ? "Создайте аккаунт сайта."
-    : "Введите логин и пароль, чтобы открыть свой кабинет.";
-  if (usernameLabel) usernameLabel.textContent = "Логин сайта";
-  if (passwordLabel) passwordLabel.textContent = isRegister ? "Новый пароль" : "Пароль";
-  if ($("username")) $("username").placeholder = isRegister ? "Придумай логин" : "Введи логин";
-  if ($("password")) $("password").placeholder = isRegister ? "Минимум 8 символов" : "Введи пароль";
-  if (submit) submit.textContent = isRegister ? "Создать кабинет" : "Войти";
-  if (note) note.textContent = isRegister
-    ? "Создайте аккаунт сайта."
-    : "После входа откроется кабинет этого аккаунта.";
-}
-
 function syncAuthUi() {
   const isRegister = isRegisterPage();
   const form = $("loginForm");
@@ -2771,6 +2774,7 @@ async function login(event) {
   event.preventDefault();
   if ($("loginError")) $("loginError").textContent = "";
   try {
+    const launcherReturn = launcherReturnHrefFromAuthSearch();
     const isRegister = isRegisterPage();
     const payload = { username: $("username").value.trim(), password: $("password").value };
     if (isRegister) payload.minecraft_name = $("playerMinecraftName").value.trim();
@@ -2784,6 +2788,10 @@ async function login(event) {
     state.role = data.role || "player";
     state.authRole = state.role;
     state.user = data.account || { username: data.username, role: state.role };
+    if (launcherReturn) {
+      window.location.replace(launcherReturn);
+      return;
+    }
     redirectToRoleHome(true);
   } catch (err) {
     if ($("loginError")) $("loginError").textContent = err.message;
@@ -2859,7 +2867,12 @@ async function bootAuthed(options = {}) {
     state.authRole = state.role;
     if (isAuthLandingPage()) {
       renderPublicAuthState();
-      redirectToRoleHome(true);
+      const launcherReturn = launcherReturnHrefFromAuthSearch();
+      if (launcherReturn) {
+        window.location.replace(launcherReturn);
+      } else {
+        redirectToRoleHome(true);
+      }
       return;
     }
     const username = isPlayerRole() ? (state.user.username || "player") : (state.user.username || "admin");
@@ -2869,7 +2882,15 @@ async function bootAuthed(options = {}) {
   } catch (err) {
     if (!options.quiet) toast(err.message, true);
     if (isCabinetPage()) {
-      window.location.replace(authLandingHref("signin"));
+      const message = describeError(err);
+      const transient = err?.name === "AbortError"
+        || /failed to fetch|networkerror|network error|http 5\d\d|сеть|тайм-аут|timeout/i.test(message);
+      if (transient) {
+        renderBootError("Сервис не ответил. Проверь локальный сервер и повтори попытку.");
+        return;
+      }
+      const launcherReturn = launcherBindingHrefFromSearch(window.location.search);
+      window.location.replace(authLandingHref("signin", launcherReturn));
       return;
     }
     logout(false);
@@ -2881,7 +2902,7 @@ async function bootAuthed(options = {}) {
   renderNav();
   // Reveal the shell as soon as authentication and navigation are ready.  A
   // slow status/RCON query must show a useful in-page loader, not keep the
-  // whole cabinet hidden behind "Подготавливаем кабинет".
+  // Keep the whole cabinet hidden behind the initial wait screen.
   setBootState("ready");
   await setTab(state.tab);
   clearInterval(state.refreshTimer);
@@ -4145,141 +4166,10 @@ function rpVotingBlockCards(blocks = []) {
   }).join("")}</div>`;
 }
 
-async function loadElectionsLegacy() {
-  setLoading("Загружаю выборы");
-  const [data, detail] = await Promise.all([
-    safeApi("/api/elections/overview", {}),
-    safeApi("/api/elections/detail?limit=500", {})
-  ]);
-  const web = data.pluginWeb || {};
-  const overview = web.overview || detail.summary || {};
-  const election = detail.election || {};
-  const summary = detail.summary || {};
-  const candidateRows = firstArray(detail.candidates, web.candidates, getPath(data, "groups.candidates.0.rows", []));
-  const fraudRows = [...asArray(detail.antiFraud), ...asArray(web.antiFraud), ...asArray(data.antiFraud)];
-  const applicationRows = asArray(detail.applications);
-  const votingBlocks = asArray(detail.votingBlocks);
-  const auditRows = asArray(detail.audit).filter((row) => !/(cik|chair|ballot|law|petition|decree|station|seal|book)/i.test(String(row.action || row.type || "")));
-  const treasuryBudget = Number(detail.treasury?.balance || detail.presidentBudget?.balance_ar || 0);
-  const electionLoadErrors = [data.error, detail.error].filter(Boolean).map((value) => cleanText(value));
-  state.electionApplications = Object.fromEntries(applicationRows.map((row) => [row.id, row]));
-  setView(`
-    ${electionLoadErrors.length ? `<div class="notice bad">Не удалось обновить часть данных выборов: ${esc(electionLoadErrors.join("; "))}. Повтори обновление позже.</div>` : ""}
-    ${renderRpElectionAdminPanel(applicationRows, votingBlocks)}
-    <section class="dashboard-hero election-hero">
-      <div class="hero-copy">
-        <span class="hero-kicker">Выборы CopiMine</span>
-        <h2>${esc(electionStageLabel(election.current_stage || election.status || web.stageTitle, "Пауза"))}</h2>
-        <p>Заявки, кандидаты, дебаты, голосование и срок президента.</p>
-        <div class="hero-actions">
-          ${pill(`Тур ${esc(election.current_round || summary.round || web.raw?.round || 1)}`, "neutral")}
-          ${pill(`${esc(summary.candidateCount ?? candidateRows.length)} `, candidateRows.length ? "good" : "warn")}
-          ${pill(detail.president?.president_name || detail.president?.minecraft_name || overview.president ? `Президент: ${esc(detail.president?.president_name || detail.president?.minecraft_name || overview.president)}` : "Президент ещё не выбран", detail.president?.president_name || detail.president?.minecraft_name || overview.president ? "good" : "warn")}
-        </div>
-      </div>
-      <div class="hero-board">
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/writable_book.png" alt="" />
-          <strong>${esc(summary.applications ?? applicationRows.length)}</strong>
-          <span>заявок</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/paper.png" alt="" />
-          <strong>${esc(summary.totalVotes ?? 0)}</strong>
-          <span>голосов</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/lectern.png" alt="" />
-          <strong>${esc(votingBlocks.filter((row) => number(row.active) > 0).length)}</strong>
-          <span>активных блоков</span>
-        </div>
-        <div class="hero-tile">
-          <img src="/assets/mc-icons/item/diamond.png" alt="" />
-          <strong>${formatAr(treasuryBudget)}</strong>
-          <span>открытая казна</span>
-        </div>
-      </div>
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Состояние кампании", "Этап, кандидаты и президентский срок.", kv([
-        ["Этап", electionStageLabel(election.current_stage || election.status || web.stageTitle, "—")],
-        ["Тур", election.current_round || summary.round || web.raw?.round || "1"],
-        ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        ["Лимит кандидатов", election.candidate_limit ?? web.raw?.candidateLimit ?? "4"],
-        ["Срок президента", election.president_term_days ? `${election.president_term_days} дн.` : "—"],
-        ["Режим сайта", data.readOnly ? "Только просмотр" : "Управление разрешено"]
-      ]), siteBulletList([
-        "Сводка по выборам.",
-        "Кандидаты и результаты голосования.",
-        "Смена этапов только в игре."
-      ]))}
-      ${panel("Пульт кампании", "Кнопки управления доступны в игровом AdminHub.", `
-        <div class="book-status-strip">
-          ${pill("Только просмотр", "warn")}
-          ${pill("Игровой GUI", "neutral")}
-          ${pill("Аудит включён", "good")}
-        </div>
-        <div class="spacer-12"></div>
-        ${siteBulletList([
-          "Заявки принимаются на сайте.",
-          "Кандидаты и этапы подтверждаются в игровом GUI.",
-          "Голосование идёт только на сервере."
-        ])}
-      `)}
-      ${panel("Заявки кандидатов", "Заявки с сайта и решение администратора.", `
-        ${electionApplicationCards(applicationRows)}
-      `)}
-      ${panel("Кандидаты и результаты", "До четырёх кандидатов и открытый счёт голосов.", `
-        ${candidateCards(candidateRows)}
-        <div class="spacer-12"></div>
-        ${resultBars(candidateRows, ["player_name", "display_name", "name"], ["last_result", "total", "votes", "raw_votes"])}
-      `)}
-      ${panel("Блоки голосования", "Защищённые блоки, через которые игроки голосуют в игре.", `
-        ${rpVotingBlockCards(votingBlocks)}
-        <div class="spacer-12"></div>
-        ${kv([
-          ["Активных блоков", votingBlocks.filter((row) => number(row.active) > 0).length],
-          ["Всего голосов", summary.totalVotes ?? 0],
-          ["Ошибок проверки", fraudRows.length || "не найдено"]
-        ])}
-      `)}
-    </section>
-    <section class="layout-grid grid-2">
-      ${panel("Президентский срок", "Победитель получает полномочия ровно на 7 дней.", kv([
-        ["Президент", detail.president?.president_name || detail.president?.minecraft_name || election.president_name || overview.president || "—"],
-        ["Срок", election.president_term_days ? `${election.president_term_days} дн.` : "7 дн."],
-        ["Смена президента", "Только после отставки или решения администрации"]
-      ]))}
-      ${panel("Казна", "Баланс, владелец и история.", kv([
-        ["Баланс", formatAr(treasuryBudget)],
-        ["Владелец", detail.treasury?.ownerName || overview.president || "не указан"],
-        ["Источник", "игровая экономика и витрины"],
-        ["Публичность", "только открытые записи"]
-      ]))}
-    </section>
-    ${panel("Журнал кампании", "Записи о заявках, этапах, голосах и президенте.", `
-      <div class="ledger election-ledger">
-        ${auditRows.length ? auditRows.slice(0, 40).map((row) => `
-          <article class="ledger-row">
-            <div>
-              <strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong>
-              <span>${esc(row.actor || row.actor_name || row.player_name || "Система")}</span>
-            </div>
-            <div>
-              <span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span>
-            </div>
-            <p>${esc(short(row.details || row.notes || row.message || row.target_name || "", 220) || "Без дополнительных заметок")}</p>
-          </article>
-        `).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}
-      </div>
-    `)}
-  `);
-}
 
 /*
- * RP election admin surface.  The former mixed election dashboard is kept
- * above only as a migration reference and is never routed to.  This function
- * is the sole renderer for the AdminHub elections tab.
+ * RP election admin surface. This function is the sole renderer for the
+ * AdminHub elections tab.
  */
 async function loadElections() {
   setLoading("Загружаю RP-выборы");
@@ -4346,7 +4236,7 @@ async function loadElections() {
         <div class="hero-board">
           <div class="hero-tile"><img src="/assets/mc-icons/item/writable_book.png" alt="" /><strong>${applications.length}</strong><span>заявок</span></div>
           <div class="hero-tile"><img src="/assets/mc-icons/item/paper.png" alt="" /><strong>${pending.length}</strong><span>на проверке</span></div>
-          <div class="hero-tile"><img src="/assets/mc-icons/item/lectern.png" alt="" /><strong>${activeBlocks.length}</strong><span>активных блоков</span></div>
+          <div class="hero-tile"><img src="/assets/mc-icons/item/lectern_front.png" alt="" /><strong>${activeBlocks.length}</strong><span>активных блоков</span></div>
         </div>
       </section>
       ${renderRpElectionAdminPanel(applications, votingBlocks, election)}
@@ -4355,7 +4245,7 @@ async function loadElections() {
       ${panel("Интерактивные блоки", "Игрок нажимает на защищённый блок, выбирает голову кандидата и подтверждает свой голос.", `${rpVotingBlockCards(votingBlocks)}<div class="spacer-12"></div>${kv([["Активных блоков", activeBlocks.length], ["Всего голосов", totalVotes], ["Голосование до", deadline ? dt(deadline) : "не открыто"]])}`)}
       ${panel("Президентский срок", "Победитель получает полномочия ровно на семь дней. Новая кампания не запускается автоматически.", kv([["Президент", president.president_name || president.minecraft_name || election.president_name || "—"], ["Срок", election.president_term_days ? `${election.president_term_days} дней` : "7 дней"], ["Состояние", stage === "PRESIDENT_TERM" ? "исполняет полномочия" : "ожидает победителя"]]))}
       ${panel("Законы президента", "Ожидающие законы можно прочитать в книге и одобрить или отклонить. Одобренные попадают в livebar, сайт и игровой GUI.", `<div class="book-status-strip"><span class="pill warn">На рассмотрении: ${pendingLaws.length}</span><span class="pill good">Опубликовано: ${publishedLaws.length}</span></div><div class="spacer-12"></div>${presidentLawCards(pendingLaws, publishedLaws)}`)}
-      ${panel("История кампании", "События нового RP-сценария без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
+      ${panel("История кампании", "События новой RP-кампании без бумажных бюллетеней и операций ЦИК.", `<div class="ledger election-ledger">${auditRows.length ? auditRows.slice(0, 40).map((row) => `<article class="ledger-row"><div><strong>${esc(humanizeAuditAction(row.action || row.type || row.status))}</strong><span>${esc(row.actor || row.actor_name || "Система")}</span></div><div><span>${dt(row.created_at || row.time || row.updated_at || row.submitted_at)}</span></div><p>${esc(short(row.details || row.notes || row.message || "", 220) || "Без дополнительных заметок")}</p></article>`).join("") : empty("Событий пока нет", "Избирательных событий ещё не было.")}</div>`)}
     </section>
   `);
 }
@@ -4886,7 +4776,7 @@ async function loadArtifacts() {
         { key: "rarity", label: "Редкость" },
         { key: "price_ar", label: "AR" },
         { key: "enabled", label: "Вкл", render: v => v ? pill("да", "good") : pill("нет", "warn") }
-      ], { pageSize: 12 }))}
+      ], { pageSize: 12 }), "", "artifacts-shop")}
       ${panel("Лавки", "Активные точки автокассы в мире", table("artifact-shops", asArray(shops.shops), [
         { key: "shop_id", label: "Лавка" },
         { key: "world_name", label: "Мир" },
@@ -5069,7 +4959,7 @@ async function loadStats() {
         [" jar", plugins.totalJars ?? 0],
         ["CopiMine jar", plugins.copimineJars ?? 0],
         ["Живая связь", rcon.ok ? "подключена" : (rcon.error || "не подключена")],
-        ["First-run готовность", `${perfReady.readyPercent || 0}%`],
+        ["Готовность первого запуска", `${perfReady.readyPercent || 0}%`],
         ["Последнее обновление", dt(stats.time)]
       ]))}
     </section>
@@ -5638,7 +5528,7 @@ async function loadSettings() {
         ["Живая связь с сервером", config.rconConfigured],
         ["Публичный адрес", config.adminPublicBaseUrl],
         ["Сессии входа", config.features?.cookieAuth ? "включены" : "проверить"]
-      ]))}
+      ]), "", "settings-site")}
       ${panel("Функции", "Какие возможности сейчас включены в панели", table("features", Object.entries(config.features || {}).map(([name, value]) => ({ name, value })), [
         { key: "name", label: "Функция" },
         { key: "value", label: "Статус", render: v => v ? pill("работает", "good") : pill("нет", "warn") }
@@ -5838,71 +5728,184 @@ async function loadPlayerLink() {
   const me = await api("/api/player/me");
   state.user = me.account || {};
   const linked = Boolean(state.user.linked);
+  const search = new URLSearchParams(window.location.search || "");
+  const launcherChallenge = search.get("launcher_challenge")?.trim() || "";
+  const launcherCode = search.get("launcher_code")?.trim() || "";
+  const launcherNick = search.get("launcher_nick")?.trim() || "";
+  const hasLauncherRequest = Boolean(launcherChallenge && launcherCode);
+  const requestedNick = /^[A-Za-z0-9_]{3,16}$/.test(launcherNick)
+    ? launcherNick
+    : (state.user.minecraftName || "");
+  const launcherPanel = hasLauncherRequest
+    ? panel(
+      "Подтвердите привязку Launcher",
+      "Проверьте, что это ваш Launcher, и подтвердите связь с аккаунтом.",
+      `<div class="notice" id="launcherLinkRequest">${requestedNick
+        ? `Launcher запрашивает привязку для ника <strong>${esc(requestedNick)}</strong>.`
+        : "Launcher запрашивает привязку к этому аккаунту."}
+      </div>
+      <div id="launcherLinkError" class="notice error hidden" role="alert"></div>
+      <div class="action-strip">
+        <button id="launcherLinkConfirm" class="btn btn-primary" type="button" data-click="confirmLauncherLink()">Привязать Launcher к этому аккаунту</button>
+        <button class="btn btn-secondary" type="button" data-click="cancelLauncherLink()">Отмена</button>
+      </div>`
+    )
+    : panel("Привязка Launcher", "Запусти привязку из Launcher и войди на сайте.", safetyRail([
+      ["1. Нажми кнопку в Launcher", "Откроется эта страница сайта.", "good"],
+      ["2. Войди в аккаунт", "После входа появится кнопка подтверждения.", "neutral"],
+      ["3. Вернись в Launcher", "Окно сайта можно закрыть; Launcher дождётся подтверждения сам.", "good"]
+    ]));
+  const automaticLinkPanel = hasLauncherRequest ? "" : panel(
+    "Связь с Launcher",
+    "После входа подтверди привязку на этой странице.",
+    `${launcherNick
+      ? `<div class="notice">Ник ${esc(requestedNick)} получен от Launcher. Войди в аккаунт — код вводить не нужно.</div>`
+      : "<div class=\"notice\">Откройте Launcher и нажмите «Привязать аккаунт». После входа на этой странице появится кнопка подтверждения.</div>"}
+     <a class="btn btn-secondary" href="/launcher.html">Открыть страницу Launcher</a>`
+  );
   setView(`
     <section class="layout-grid grid-2">
-      ${panel("Статус привязки", "Minecraft-ник подтверждается кодом из игры.", kv([
+      ${panel("Статус привязки", hasLauncherRequest
+        ? "Проверьте аккаунт на этой странице и подтвердите привязку. Код вводить не нужно."
+        : "Minecraft-ник подтверждается кодом из игры.", kv([
         ["Логин сайта", state.user.username || "—"],
         ["Minecraft-ник", state.user.minecraftName || "—"],
         ["Привязан", linked],
         ["Создан", dt(state.user.createdAt)]
       ]))}
-      ${panel("Привязка", "Запроси код в игре и подтверди его здесь.", safetyRail([
-        ["1. Запроси код", "Укажи свой игровой ник, пока ты онлайн на сервере.", "good"],
-        ["2. Прочитай в игре", "Код приходит в Minecraft-чат через сервер.", "neutral"],
-        ["3. Подтверди на сайте", "Введи код здесь, чтобы открыть банк и личный кабинет игрока.", "good"]
-      ]))}
+      ${launcherPanel}
     </section>
-    <section class="layout-grid grid-2">
-      ${panel("Запросить одноразовый код", "Код выдаётся только в игре.", `
-        <div class="form-grid">
-          <input id="linkMinecraftName" value="${esc(state.user.minecraftName || "")}" placeholder="Minecraft-ник на сервере" />
-          <button class="btn btn-primary full" data-click="playerRequestLinkCode()">Получить код в Minecraft</button>
-        </div>
-        <div class="spacer-12"></div>
-        ${playerLinkSummary(state.playerLinkRequest)}
-      `)}
-      ${panel("Подтвердить код", "Введи одноразовый код из Minecraft-чата.", `
-        <div class="form-grid">
-          <input id="linkCodeInput" placeholder="Например: 7H2K9M4Q" />
-          <button class="btn btn-primary full" data-click="playerConfirmLinkCode()">Подтвердить привязку</button>
-        </div>
-        ${linked ? '<div class="notice">Аккаунт уже привязан. Повторное подтверждение обновит активную привязку к тому же Minecraft-нику.</div>' : ""}
-      `)}
-    </section>
+    ${automaticLinkPanel}
   `);
 }
+
+async function confirmLauncherLink() {
+  const search = new URLSearchParams(window.location.search || "");
+  const challengeId = search.get("launcher_challenge")?.trim() || "";
+  const code = search.get("launcher_code")?.trim() || "";
+  const button = $("launcherLinkConfirm");
+  const errorNode = $("launcherLinkError");
+  if (!challengeId || !code) {
+    operationAlert("Запрос привязки Launcher отсутствует или уже устарел.", true);
+    return;
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Подтверждаем…";
+  }
+  if (errorNode) {
+    errorNode.textContent = "";
+    errorNode.classList.add("hidden");
+  }
+
+  try {
+    // boot() warms the CSRF cookie in the background.  The player can click
+    // the confirmation button before that request finishes, so make the
+    // mutation self-sufficient instead of turning a fast click into a 403.
+    await refreshCsrfCookie();
+    await api("/api/player/launcher/link/authorize", {
+      method: "POST",
+      body: JSON.stringify({ challenge_id: challengeId, code })
+    });
+
+    const username = String(state.user?.username || "вашему аккаунту").trim();
+    const message = `Привязка подтверждена к аккаунту ${username}. Эту страницу можно закрыть.`;
+    operationAlert(message);
+    try {
+      window.alert(message);
+    } catch (_) {
+      // Some embedded browsers disable native dialogs; the in-page status remains visible.
+    }
+    try {
+      window.history.replaceState({}, document.title, "/cabinet/link.html");
+    } catch (_) {
+      // History APIs can be unavailable in an embedded or restricted view.
+    }
+
+    const requestNode = $("launcherLinkRequest");
+    if (requestNode) {
+      requestNode.className = "notice success";
+      requestNode.textContent = message;
+    }
+    if (button) {
+      button.textContent = "Привязка подтверждена";
+      button.disabled = true;
+    }
+
+    // The Launcher is already polling. The protocol callback is a best-effort
+    // fast path; the visible success state is the fallback when the browser
+    // blocks custom protocols or refuses to close a regular tab.
+    window.setTimeout(() => {
+      try {
+        window.location.href = `copimine://launcher/link?challenge=${encodeURIComponent(challengeId)}`;
+      } catch (_) {
+        // The Launcher polling path still completes the link.
+      }
+      window.setTimeout(() => {
+        try {
+          window.close();
+        } catch (_) {
+          // A normal browser tab may refuse to close itself.
+        }
+      }, 180);
+    }, 80);
+  } catch (err) {
+    const message = err?.message || "Не удалось подтвердить привязку Launcher.";
+    if (err?.status === 403 && /ист[её]к|неверен/i.test(String(message))) {
+      renderExpiredLauncherLink();
+      return;
+    }
+    if (errorNode) {
+      errorNode.textContent = message;
+      errorNode.classList.remove("hidden");
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Привязать Launcher к этому аккаунту";
+    }
+    operationAlert(message, true);
+  }
+}
+
+function renderExpiredLauncherLink() {
+  const requestNode = $("launcherLinkRequest");
+  if (requestNode) {
+    requestNode.className = "notice error";
+    requestNode.textContent = "Срок действия привязки истёк. Откройте Launcher и создайте новую привязку.";
+  }
+  const button = $("launcherLinkConfirm");
+  if (button) {
+    button.disabled = false;
+    button.textContent = "Открыть Launcher";
+    button.dataset.click = "cancelLauncherLink()";
+  }
+  const errorNode = $("launcherLinkError");
+  if (errorNode) {
+    errorNode.textContent = "Старый одноразовый запрос больше нельзя подтвердить.";
+    errorNode.classList.remove("hidden");
+  }
+  operationAlert("Срок действия привязки истёк. Создайте новый запрос в Launcher.", true);
+}
+
+function cancelLauncherLink() {
+  const returnTarget = "/launcher.html";
+  try {
+    window.history.replaceState({}, document.title, "/cabinet/link.html");
+  } catch (_) {
+    // History APIs can be unavailable in an embedded or restricted view.
+  }
+  window.location.href = returnTarget;
+}
+
+// The cabinet uses delegated data-click actions. Module-scoped functions are
+// not window properties, so expose only these two page actions explicitly.
+window.confirmLauncherLink = confirmLauncherLink;
+window.cancelLauncherLink = cancelLauncherLink;
 
 async function loadPlayerBank() {
   return getPlayerTreasuryPages().loadPlayerBank();
 }
-
-window.playerRequestLinkCode = async () => {
-  try {
-    const minecraftName = $("linkMinecraftName")?.value?.trim() || "";
-    state.playerLinkRequest = await api("/api/player/link/request", {
-      method: "POST",
-      body: JSON.stringify({ minecraft_name: minecraftName })
-    });
-    toast(state.playerLinkRequest.deliveredInGame ? "Код привязки отправлен в Minecraft-чат." : "Код создан, но доставка в Minecraft не удалась. Зайди на сервер и запроси код снова.");
-    if (state.tab === "link") loadPlayerLink();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
-
-window.playerConfirmLinkCode = async () => {
-  try {
-    const result = await api("/api/player/link/confirm", {
-      method: "POST",
-      body: JSON.stringify({ code: $("linkCodeInput")?.value?.trim() || "" })
-    });
-    state.user = result.account || state.user;
-    toast("Minecraft-аккаунт привязан.");
-    getPlayerTreasuryPages().loadPlayerBank();
-  } catch (err) {
-    toast(err.message, true);
-  }
-};
 
 window.legacyPlayerSetPinDeprecated = async () => {
   return getPlayerTreasuryPages().playerSetPin();
@@ -5963,6 +5966,9 @@ window.legacySelectPlayerBankScopeDeprecated = async (scope = "PERSONAL") => {
 let playerDonationPages;
 let adminCommercePages;
 let adminCmsPages;
+let adminLauncherPages;
+let adminNewsPages;
+let adminEventsPages;
 let adminNarcoticsRecipePages;
 let pluginRegistryPages;
 let playerAccountPages;
@@ -5976,6 +5982,7 @@ function getAdminCommercePages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6010,6 +6017,7 @@ function getAdminCmsPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6026,6 +6034,76 @@ function getAdminCmsPages() {
     });
   }
   return adminCmsPages;
+}
+
+function getAdminLauncherPages() {
+  if (!adminLauncherPages) {
+    adminLauncherPages = createAdminLauncherPages({
+      $,
+      state,
+      api,
+      safeApi,
+      apiNotice,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      pill,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminLauncherPages;
+}
+
+function getAdminNewsPages() {
+  if (!adminNewsPages) {
+    adminNewsPages = createAdminNewsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      apiNotice,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminNewsPages;
+}
+
+function getAdminEventsPages() {
+  if (!adminEventsPages) {
+    adminEventsPages = createAdminEventsPages({
+      $,
+      state,
+      api,
+      safeApi,
+      apiNotice,
+      setLoading,
+      setView,
+      panel,
+      metric,
+      esc,
+      cleanText,
+      dt,
+      asArray,
+      dangerConfirm,
+      toast,
+    });
+  }
+  return adminEventsPages;
 }
 
 function getAdminNarcoticsRecipePages() {
@@ -6055,6 +6133,7 @@ function getPluginRegistryPages() {
       state,
       api,
       safeApi,
+      apiNotice,
       setLoading,
       setView,
       panel,
@@ -6446,7 +6525,7 @@ async function loadPlayerElections() {
         <label>X<input id="rpBlockX" type="number" value="0"></label><label>Y<input id="rpBlockY" type="number" value="64"></label><label>Z<input id="rpBlockZ" type="number" value="0"></label>
         <button class="btn btn-secondary" data-click="rpCreateVotingBlock()">Добавить голосовательный блок</button>
       </div>
-      <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для нового workflow не нужны.</p>
+      <p class="panel-hint">Одобрь заявки ниже, отметь от 2 до 4 человек и нажми «Утвердить выбранных». Председатель ЦИК и бюллетени для этого сценария не нужны.</p>
       <div class="check-list">${applicationRows.filter((row) => String(row.admin_status || "").toUpperCase() === "APPROVED" && String(row.status || "").toUpperCase() === "APPROVED").map((row) => `<label class="check-row"><input type="checkbox" data-rp-application="${esc(row.id || "")}"><span><strong>${esc(row.player_name || "Игрок")}</strong><small>${esc(short(row.answers?.short_program || row.admin_note || "Одобрена заявка", 120))}</small></span></label>`).join("") || empty("Одобренных заявок пока нет", "Сначала открой приём заявок и проверь анкеты.")}</div>
       <div class="book-status-strip"><span class="pill neutral">Блоков: ${esc(votingBlocks.length)}</span>${votingBlocks.slice(0, 8).map((row) => `<span class="pill good">${esc(row.world)} ${esc(row.x)},${esc(row.y)},${esc(row.z)}</span>`).join("")}</div>
     `)}
@@ -6502,6 +6581,9 @@ async function loadCurrent(silent = false) {
     investigations: loadInvestigations,
     sources: loadSources,
     "narcotics-recipes": () => getAdminNarcoticsRecipePages().loadRecipes(),
+    launcher: () => getAdminLauncherPages().loadLauncher(),
+    news: () => getAdminNewsPages().loadNews(),
+    events: () => getAdminEventsPages().loadEvents(),
     cms: () => getAdminCmsPages().loadCms(),
     settings: loadSettings,
     admins: loadAdmins,
@@ -6545,16 +6627,18 @@ function wire() {
   syncTopbarActions();
   $("guestPagesBtn")?.addEventListener("click", showGuestPages);
   $("refreshBtn")?.addEventListener("click", () => loadCurrent());
-  if ($("mobileNavToggle")) {
-    $("mobileNavToggle").setAttribute("aria-expanded", "false");
-    $("mobileNavToggle").addEventListener("click", (event) => {
+  if ($("cabinetNavToggle")) {
+    $("cabinetNavToggle").setAttribute("aria-expanded", "false");
+    $("cabinetNavToggle").addEventListener("click", (event) => {
       event.stopPropagation();
-      setMobileNav(!$("app")?.classList.contains("nav-open"));
+      const toggle = $("cabinetNavToggle");
+      const isOpen = toggle?.getAttribute("aria-expanded") === "true";
+      setMobileNav(!isOpen);
     });
   }
   document.addEventListener("click", (event) => {
     if (!$("app")?.classList.contains("nav-open")) return;
-    if (event.target.closest(".sidebar") || event.target.closest("#mobileNavToggle")) return;
+    if (event.target.closest(".sidebar") || event.target.closest("#cabinetNavToggle")) return;
     setMobileNav(false);
   });
   window.addEventListener("keydown", (event) => {
@@ -6585,9 +6669,29 @@ function wire() {
 
 async function boot() {
   wire();
+  initCabinetMotion();
   setBootState("loading");
-  await refreshCsrfCookie();
-  await bootAuthed({ quiet: true });
+  // CSRF is warmed for the first mutation, but it must not delay the auth
+  // decision. Guests should reach sign-in immediately when the backend is
+  // slow or unavailable.
+  void refreshCsrfCookie();
+  let timer;
+  try {
+    await Promise.race([
+      bootAuthed({ quiet: true }),
+      new Promise((_, reject) => {
+        timer = window.setTimeout(() => {
+          const timeout = new Error("Превышено время ожидания ответа сайта.");
+          timeout.name = "AbortError";
+          reject(timeout);
+        }, BOOTSTRAP_TIMEOUT_MS);
+      })
+    ]);
+  } catch (err) {
+    renderBootError(err);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 Object.assign(dataClickHandlers, {
@@ -6600,6 +6704,24 @@ Object.assign(dataClickHandlers, {
   adminDonationCancelSession: fromWindow("adminDonationCancelSession"),
   adminDonationMarkPaid: fromWindow("adminDonationMarkPaid"),
   adminDonationTestPurchase: fromWindow("adminDonationTestPurchase"),
+  adminLauncherUpload: () => getAdminLauncherPages().adminLauncherUpload(),
+  adminLauncherSaveMod: (...args) => getAdminLauncherPages().adminLauncherSaveMod(...args),
+  adminLauncherDeleteMod: (...args) => getAdminLauncherPages().adminLauncherDeleteMod(...args),
+  adminLauncherValidate: () => getAdminLauncherPages().adminLauncherValidate(),
+  adminLauncherPublish: () => getAdminLauncherPages().adminLauncherPublish(),
+  adminLauncherRollback: (...args) => getAdminLauncherPages().adminLauncherRollback(...args),
+  adminNewsEdit: (...args) => getAdminNewsPages().adminNewsEdit(...args),
+  adminNewsNew: () => getAdminNewsPages().adminNewsNew(),
+  adminNewsAddItem: () => getAdminNewsPages().adminNewsAddItem(),
+  adminNewsRemoveItem: (...args) => getAdminNewsPages().adminNewsRemoveItem(...args),
+  adminNewsSave: () => getAdminNewsPages().adminNewsSave(),
+  adminNewsPublish: (...args) => getAdminNewsPages().adminNewsPublish(...args),
+  adminNewsDelete: (...args) => getAdminNewsPages().adminNewsDelete(...args),
+  adminEventSelect: (...args) => getAdminEventsPages().adminEventSelect(...args),
+  adminEventNew: () => getAdminEventsPages().adminEventNew(),
+  adminEventSave: () => getAdminEventsPages().adminEventSave(),
+  adminEventUploadVideo: (...args) => getAdminEventsPages().adminEventUploadVideo(...args),
+  adminEventDeleteVideo: (...args) => getAdminEventsPages().adminEventDeleteVideo(...args),
   adminCmsDisable: (...args) => getAdminCmsPages().adminCmsDisable(...args),
   adminCmsEdit: (...args) => getAdminCmsPages().adminCmsEdit(...args),
   adminCmsNew: () => getAdminCmsPages().adminCmsNew(),
@@ -6638,7 +6760,6 @@ Object.assign(dataClickHandlers, {
   playerBuyArItem: fromWindow("playerBuyArItem"),
   playerBuyDonationItem: fromWindow("playerBuyDonationItem"),
   playerSelectDonationItem: fromWindow("playerSelectDonationItem"),
-  playerConfirmLinkCode: fromWindow("playerConfirmLinkCode"),
   playerCopyDonationPaymentUrl: fromWindow("playerCopyDonationPaymentUrl"),
   playerCopyDonationSessionCode: fromWindow("playerCopyDonationSessionCode"),
   playerCreateDonationSession: fromWindow("playerCreateDonationSession"),
@@ -6646,7 +6767,6 @@ Object.assign(dataClickHandlers, {
   playerPayElectionTax: fromWindow("playerPayElectionTax"),
   playerRandomizeBankPin: fromWindow("playerRandomizeBankPin"),
   playerRefreshDonationSession: fromWindow("playerRefreshDonationSession"),
-  playerRequestLinkCode: fromWindow("playerRequestLinkCode"),
   playerRequestWhitelist: fromWindow("playerRequestWhitelist"),
   playerSelectArItem: fromWindow("playerSelectArItem"),
   playerResetBankPin: fromWindow("playerResetBankPin"),

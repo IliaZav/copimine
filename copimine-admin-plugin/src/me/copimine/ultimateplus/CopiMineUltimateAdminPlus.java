@@ -67,6 +67,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private PgConnectionPool pgPool;
     private volatile boolean dbReady = false;
     private ExecutorService dbExecutor;
+    private BukkitTask databaseDependencyRetryTask;
+    private final AtomicBoolean databaseBootstrapStarted = new AtomicBoolean(false);
     private final AtomicBoolean dbNotReadyWarned = new AtomicBoolean(false);
     private final Set<UUID> frozen = ConcurrentHashMap.newKeySet();
     private final Map<UUID, UUID> checkMode = new ConcurrentHashMap<>();
@@ -272,6 +274,40 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        // EconomyCore and ElectionCore own overlapping PostgreSQL tables and
+        // bootstrap asynchronously.  Waiting for their explicit readiness
+        // signals avoids a cold-start DDL race (duplicate pg_type/index
+        // failures) before AdminPlus creates its shared/legacy compatibility
+        // tables.
+        databaseDependencyRetryTask = Bukkit.getScheduler().runTaskTimer(
+                this, this::waitForDatabaseDependencies, 1L, 10L);
+    }
+
+    private void waitForDatabaseDependencies() {
+        if (!isEnabled() || databaseBootstrapStarted.get()) {
+            return;
+        }
+        Plugin economyPlugin = getServer().getPluginManager().getPlugin("CopiMineEconomyCore");
+        if (!(economyPlugin instanceof CopiMineEconomyCore economy) || !economyPlugin.isEnabled()) {
+            getLogger().warning("CopiMineEconomyCore is unavailable; AdminPlus database bootstrap is waiting.");
+            return;
+        }
+        if (!economy.isDatabaseReady()) {
+            return;
+        }
+
+        Plugin electionPlugin = getServer().getPluginManager().getPlugin("CopiMineElectionCore");
+        if (electionPlugin != null && electionPlugin.isEnabled()
+                && !dependencyDatabaseReady(electionPlugin)) {
+            return;
+        }
+        if (!databaseBootstrapStarted.compareAndSet(false, true)) {
+            return;
+        }
+        if (databaseDependencyRetryTask != null) {
+            databaseDependencyRetryTask.cancel();
+            databaseDependencyRetryTask = null;
+        }
         try {
             dbExecutor.execute(() -> {
                 try {
@@ -291,6 +327,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL initialization worker rejected", error);
             closePostgres();
             getServer().getPluginManager().disablePlugin(this);
+        }
+    }
+
+    private boolean dependencyDatabaseReady(Plugin plugin) {
+        try {
+            Object ready = plugin.getClass().getMethod("isDatabaseReady").invoke(plugin);
+            return ready instanceof Boolean && (Boolean) ready;
+        } catch (NoSuchMethodException error) {
+            getLogger().warning(plugin.getName() + " does not expose isDatabaseReady(); AdminPlus will keep waiting.");
+            return false;
+        } catch (ReflectiveOperationException error) {
+            getLogger().warning(plugin.getName() + " readiness check failed: " + error.getMessage());
+            return false;
         }
     }
 
@@ -332,6 +381,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     @Override public void onDisable() {
+        if (databaseDependencyRetryTask != null) {
+            databaseDependencyRetryTask.cancel();
+            databaseDependencyRetryTask = null;
+        }
         if (sidebarTask != null) sidebarTask.cancel();
         if (inventorySnapshotTask != null) inventorySnapshotTask.cancel();
         if (nameplateTask != null) nameplateTask.cancel();
@@ -872,6 +925,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Iterator<ItemStack> iter=e.getDrops().iterator();
         while(iter.hasNext()){
             ItemStack drop=iter.next();
+            // CopiMineArtifacts consumes this item at death. It must never
+            // enter AdminPlus' generic respawn-return queue.
+            if(isGravediggerContract(drop)){ iter.remove(); continue; }
             if(isPresidentMandate(drop)) continue;
             if(electionCoreOwns(drop)) continue;
             if(artifactsCoreOwns(drop)) continue;
@@ -3226,7 +3282,10 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private void ensureTables() throws SQLException {
         exec("CREATE TABLE IF NOT EXISTS cmv4_schema_migrations(version TEXT PRIMARY KEY,applied_at BIGINT NOT NULL,component TEXT NOT NULL DEFAULT 'plugin')");
         exec("CREATE TABLE IF NOT EXISTS cmv4_audit_events(id BIGSERIAL PRIMARY KEY,time BIGINT NOT NULL,actor TEXT NOT NULL DEFAULT '',action TEXT NOT NULL,details TEXT NOT NULL DEFAULT '',admin_only INTEGER NOT NULL DEFAULT 0,source TEXT NOT NULL DEFAULT 'plugin')");
-        exec("CREATE TABLE IF NOT EXISTS plugin_events(id BIGSERIAL PRIMARY KEY,source TEXT NOT NULL DEFAULT '',event_type TEXT NOT NULL,actor TEXT NOT NULL DEFAULT '',target TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,details TEXT NOT NULL DEFAULT '')");
+        exec("CREATE TABLE IF NOT EXISTS plugin_events(id BIGINT PRIMARY KEY,source TEXT NOT NULL DEFAULT '',event_type TEXT NOT NULL,actor TEXT NOT NULL DEFAULT '',target TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL,details TEXT NOT NULL DEFAULT '')");
+        exec("CREATE SEQUENCE IF NOT EXISTS plugin_events_id_seq");
+        exec("ALTER SEQUENCE plugin_events_id_seq OWNED BY plugin_events.id");
+        exec("ALTER TABLE plugin_events ALTER COLUMN id SET DEFAULT nextval('plugin_events_id_seq')");
         exec("CREATE TABLE IF NOT EXISTS cmv4_players(uuid TEXT PRIMARY KEY,name TEXT NOT NULL DEFAULT '',display_name TEXT NOT NULL DEFAULT '',first_seen BIGINT NOT NULL DEFAULT 0,last_seen BIGINT NOT NULL DEFAULT 0,last_quit BIGINT NOT NULL DEFAULT 0,online INTEGER NOT NULL DEFAULT 0,last_world TEXT NOT NULL DEFAULT '',last_x INTEGER DEFAULT 0,last_y INTEGER DEFAULT 0,last_z INTEGER DEFAULT 0,client_brand TEXT NOT NULL DEFAULT '',updated_at BIGINT NOT NULL DEFAULT 0)");
         exec("CREATE TABLE IF NOT EXISTS cmv4_account_links(id BIGSERIAL PRIMARY KEY,minecraft_uuid TEXT NOT NULL,discord_id TEXT NOT NULL DEFAULT '',site_user_id TEXT NOT NULL DEFAULT '',status TEXT NOT NULL DEFAULT 'ACTIVE',linked_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0,details TEXT NOT NULL DEFAULT '')");
         exec("CREATE TABLE IF NOT EXISTS cmv4_bank_accounts(account_id TEXT PRIMARY KEY,owner_uuid TEXT NOT NULL,owner_name TEXT NOT NULL DEFAULT '',account_type TEXT NOT NULL DEFAULT 'PLAYER',currency TEXT NOT NULL DEFAULT 'AR',balance BIGINT NOT NULL DEFAULT 0 CHECK(balance>=0),status TEXT NOT NULL DEFAULT 'ACTIVE',version BIGINT NOT NULL DEFAULT 0,created_at BIGINT NOT NULL DEFAULT 0,updated_at BIGINT NOT NULL DEFAULT 0)");
@@ -3247,7 +3306,20 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE TABLE IF NOT EXISTS elections(id TEXT PRIMARY KEY,status TEXT,started_at INTEGER,ended_at INTEGER,scheduled_end_at INTEGER,started_by TEXT,ended_by TEXT,winner_uuid TEXT,winner_name TEXT,notes TEXT)");
         exec("CREATE TABLE IF NOT EXISTS candidates(election_id TEXT,uuid TEXT,name TEXT,display_name TEXT,raw_votes INTEGER DEFAULT 0,admin_adjustment INTEGER DEFAULT 0,removed INTEGER DEFAULT 0)");
         ensureColumn("elections","scheduled_end_at","scheduled_end_at INTEGER DEFAULT 0"); ensureColumn("elections","winner_uuid","winner_uuid TEXT DEFAULT ''"); ensureColumn("elections","winner_name","winner_name TEXT DEFAULT ''"); ensureColumn("elections","notes","notes TEXT DEFAULT ''");
+        ensureColumn("candidates","uuid","uuid TEXT"); ensureColumn("candidates","name","name TEXT");
         ensureColumn("candidates","display_name","display_name TEXT"); ensureColumn("candidates","raw_votes","raw_votes INTEGER DEFAULT 0"); ensureColumn("candidates","admin_adjustment","admin_adjustment INTEGER DEFAULT 0"); ensureColumn("candidates","removed","removed INTEGER DEFAULT 0");
+        try {
+            List<String> candidateColumns = cols("candidates");
+            if (candidateColumns.contains("player_uuid")) {
+                exec("UPDATE candidates SET uuid=COALESCE(NULLIF(uuid,''),player_uuid) WHERE COALESCE(uuid,'')=''");
+            }
+            if (candidateColumns.contains("player_name")) {
+                exec("UPDATE candidates SET name=COALESCE(NULLIF(name,''),player_name) WHERE COALESCE(name,'')=''");
+            }
+        } catch (Exception ignored) {
+            // The compatibility columns are best-effort; the validated
+            // schema/index creation below remains the release gate.
+        }
         exec("CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,election_id TEXT,applicant_uuid TEXT,applicant_name TEXT,statement TEXT,submitted_at INTEGER,status TEXT DEFAULT 'PENDING',reviewed_by TEXT DEFAULT '',reviewed_at INTEGER DEFAULT 0,verdict_reason TEXT DEFAULT '',visible_in_game INTEGER DEFAULT 1,deleted_by TEXT DEFAULT '',deleted_at INTEGER DEFAULT 0)");
         for(String[] c:new String[][]{{"election_id","election_id TEXT"},{"applicant_uuid","applicant_uuid TEXT"},{"applicant_name","applicant_name TEXT"},{"statement","statement TEXT"},{"submitted_at","submitted_at INTEGER DEFAULT 0"},{"status","status TEXT DEFAULT 'PENDING'"},{"reviewed_by","reviewed_by TEXT DEFAULT ''"},{"reviewed_at","reviewed_at INTEGER DEFAULT 0"},{"verdict_reason","verdict_reason TEXT DEFAULT ''"},{"visible_in_game","visible_in_game INTEGER DEFAULT 1"},{"deleted_by","deleted_by TEXT DEFAULT ''"},{"deleted_at","deleted_at INTEGER DEFAULT 0"}}) ensureColumn("applications",c[0],c[1]);
         exec("CREATE TABLE IF NOT EXISTS cmv7_ballot_issues(id TEXT PRIMARY KEY,election_id TEXT,voter_uuid TEXT,voter_name TEXT,issued_at INTEGER,issued_by TEXT,used INTEGER DEFAULT 0,notes TEXT DEFAULT '')");
@@ -5173,6 +5245,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         int discardedNonRecoverable=0;
         for(ItemStack item:pending){
             if(item==null||item.getType()==Material.AIR)continue;
+            if(isGravediggerContract(item)){ discardedNonRecoverable++; continue; }
             // AR is a ledger currency, not a recoverable custom item.  Older
             // AdminPlus builds could leave a certified/legacy AR stack in
             // this compatibility queue after a death; discard that stale
@@ -5204,6 +5277,16 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             audit(p.getName(),"ULTRA7_OFFICIAL_ITEM_RESTORE_PENDING","reason="+reason+" restored="+restored+" left="+rest.size(),true);
         }
         if(!rest.isEmpty())warn(p,"Освободи слот: часть официальных предметов ждет безопасного возврата.");
+    }
+
+    private boolean isGravediggerContract(ItemStack item){
+        if(item==null||item.getType()==Material.AIR||!item.hasItemMeta()) return false;
+        ItemMeta meta=item.getItemMeta();
+        if(meta==null) return false;
+        String itemId=meta.getPersistentDataContainer().get(
+                new NamespacedKey("copimineartifacts","artifact_item_id"),
+                PersistentDataType.STRING);
+        return "gravedigger_contract".equalsIgnoreCase(itemId);
     }
 
     private boolean isProtectedOfficialItem(ItemStack it){

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "patches": [
+    {
+      "id": "2026-09-01-launcher-1.0.14",
+      "slug": "copimine-launcher-1-0-14",
+      "version": "1.0.14",
+      "title": "CopiMine Launcher 1.0.14",
+      "publishedAt": "2026-09-01T21:25:04Z",
+      "summary": [
+        "Публичные ссылки Launcher теперь совпадают с последним проверенным пакетом установщика.",
+        "Страница выпуска и контрольные данные установщиков обновлены вместе, без старых адресов в fallback-копии сайта."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-14.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-09-01-launcher-1.0.13",
+      "slug": "copimine-launcher-1-0-13",
+      "version": "1.0.13",
+      "title": "CopiMine Launcher 1.0.13",
+      "publishedAt": "2026-09-01T13:57:01Z",
+      "summary": [
+        "В установщик добавлен полный запасной пакет Minecraft/Fabric для первого запуска без загрузки игры из сети.",
+        "Синхронизация по-прежнему меняет только файлы сборки, которыми управляет CopiMine.",
+        "Проверены чистая установка MSI, подготовка профиля и запуск Minecraft на локальной машине."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-13.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-09-01-launcher-1.0.12",
+      "slug": "copimine-launcher-1-0-12",
+      "version": "1.0.12",
+      "title": "CopiMine Launcher 1.0.12",
+      "publishedAt": "2026-09-01T05:33:51Z",
+      "summary": [
+        "Исправлена редкая ошибка при одновременной подготовке игрового профиля.",
+        "Повторная проверка профиля больше не сталкивает временные файлы.",
+        "Пакет Launcher пересобран и проверен на локальном запуске."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-12.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-31-launcher-1.0.11",
+      "slug": "copimine-launcher-1-0-11",
+      "version": "1.0.11",
+      "title": "CopiMine Launcher 1.0.11",
+      "publishedAt": "2026-08-31T20:46:41Z",
+      "summary": [
+        "Запуск показывает реальный ход подготовки игры, а не застывший процент.",
+        "Обновления сверяют управляемые файлы и сохраняют дополнительные моды игрока.",
+        "Сайт и Launcher получили одну тёмную визуальную систему с лёгкими состояниями."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-11.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-30-launcher-1.0.10",
+      "slug": "copimine-launcher-1-0-10",
+      "version": "1.0.10",
+      "title": "CopiMine Launcher 1.0.10",
+      "publishedAt": "2026-08-30T09:21:20Z",
+      "summary": [
+        "Привязка Launcher теперь проходит на отдельной странице сайта и возвращает результат без ручного ввода кода.",
+        "Старые адреса проверки обновлений снова ведут на тот же Windows-feed, поэтому установленный Launcher не получает 404.",
+        "При синхронизации меняются только управляемые файлы; дополнительные моды игрока остаются на месте."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-10.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-29-launcher-1.0.9",
+      "slug": "copimine-launcher-1-0-9",
+      "version": "1.0.9",
+      "title": "CopiMine Launcher 1.0.9",
+      "publishedAt": "2026-08-29T16:00:00Z",
+      "summary": [
+        "Анимированные заставки лаунчера теперь проигрываются плавно и без лишней нагрузки на память.",
+        "Загрузка кадров GIF стала отложенной: при старте открывается только нужный кадр.",
+        "Обновлён пакет Windows и его проверяемая раздача."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-9.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-29-launcher-1.0.8",
+      "slug": "copimine-launcher-1-0-8",
+      "version": "1.0.8",
+      "title": "CopiMine Launcher 1.0.8",
+      "publishedAt": "2026-08-29T12:00:00Z",
+      "summary": [
+        "Исправлена проверка MSI перед запуском установщика.",
+        "Старый кэш новостей больше не выдаётся за свежие данные.",
+        "Обновлена web-оболочка: одна корзина, стабильная мобильная навигация и понятная причина ошибки кабинета."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-8.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-29-launcher-1.0.7",
+      "slug": "copimine-launcher-1-0-7",
+      "version": "1.0.7",
+      "title": "CopiMine Launcher 1.0.7",
+      "publishedAt": "2026-08-29T06:59:58Z",
+      "summary": [
+        "Исправлена проверка обновлений и старых адресов Windows-feed.",
+        "Перед запуском перепроверяются обязательные файлы игры и моды.",
+        "Повреждённый или неполный файл теперь останавливает запуск с понятной причиной."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-7.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-29-launcher-1.0.6",
+      "slug": "copimine-launcher-1-0-6",
+      "version": "1.0.6",
+      "title": "CopiMine Launcher 1.0.6",
+      "publishedAt": "2026-08-29T00:29:25Z",
+      "summary": [
+        "Исправлена подготовка Java на первом запуске из опубликованного архива.",
+        "Восстановление игры теперь корректно обрабатывает каталоги внутри Windows ZIP.",
+        "Повторная проверка не скачивает заново исправные файлы и сохраняет дополнительные моды игрока."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-6.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-28-launcher-1.0.5",
+      "slug": "copimine-launcher-1-0-5",
+      "version": "1.0.5",
+      "title": "CopiMine Launcher 1.0.5",
+      "publishedAt": "2026-08-28T21:18:41Z",
+      "summary": [
+        "Исправлена проверка обновлений Launcher: используется общий каталог стабильных релизов.",
+        "Версия внутри Launcher теперь совпадает с версией установщика.",
+        "Добавлена отдельная страница подтверждения привязки аккаунта."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-5.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-23-launcher-1.0.3",
+      "slug": "copimine-launcher-1-0-3",
+      "version": "1.0.3",
+      "title": "CopiMine Launcher 1.0.3",
+      "publishedAt": "2026-08-23T18:20:00Z",
+      "summary": [
+        "Установщик ставит лаунчер, Java, Minecraft, Fabric и моды в выбранную папку.",
+        "Сервер CopiMine сохраняется в списке Minecraft.",
+        "Локальные скины и плащи сохраняются между запусками."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-3.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-17-launcher-1.0.2",
+      "slug": "copimine-launcher-1-0-2",
+      "version": "1.0.2",
+      "title": "CopiMine Launcher 1.0.2",
+      "publishedAt": "2026-08-17T19:30:32Z",
+      "summary": [
+        "Привязка аккаунта больше не ждёт первый ответ перед началом проверки.",
+        "Первый запуск готовит игру в фоне, поэтому окно лаунчера открывается сразу.",
+        "Обновлена статическая раздача сайта и установщика с проверяемыми хэшами."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-2.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-17-launcher-1.0.1",
+      "slug": "copimine-launcher-1-0-1",
+      "version": "1.0.1",
+      "title": "CopiMine Launcher 1.0.1",
+      "publishedAt": "2026-08-17T05:00:00Z",
+      "summary": [
+        "Minecraft, Java и обязательные моды теперь загружаются из хранилища CopiMine.",
+        "Добавлена проверка и восстановление локальной копии Minecraft 1.21.1.",
+        "Обновлён установщик с выбором папки и встроенным резервным способом восстановления."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-1.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-15-launcher-1.0.0",
+      "slug": "copimine-launcher-1-0-0",
+      "version": "1.0.0",
+      "title": "CopiMine Launcher 1.0.0",
+      "publishedAt": "2026-08-15T12:00:00Z",
+      "summary": [
+        "Добавлена установка отдельного Minecraft 1.21.1 с Fabric Loader 0.19.3.",
+        "Файлы клиента проверяются и восстанавливаются после сбоя.",
+        "Сервер mc.copimine.ru добавляется автоматически без удаления других серверов."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-0.html",
+      "thumbnailUrl": "/assets/patch-items/eternal_totem.webp",
+      "badges": [
+        "Launcher"
+      ]
+    }
+  ]
+}

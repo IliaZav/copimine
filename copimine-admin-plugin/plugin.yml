@@ -8,11 +8,11 @@ libraries:
   - org.postgresql:postgresql:42.7.5
 depend:
   - CopiMineEconomyCore
+  - voicechat
 softdepend:
   - PlaceholderAPI
   - LuckPerms
   - Essentials
-  - voicechat
   - CopiMineWorldCore
   - CopiMineElectionCore
 commands:

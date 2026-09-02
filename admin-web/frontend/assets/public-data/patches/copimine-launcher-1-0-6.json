@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-29-launcher-1.0.6",
+  "slug": "copimine-launcher-1-0-6",
+  "version": "1.0.6",
+  "title": "CopiMine Launcher 1.0.6",
+  "publishedAt": "2026-08-29T00:29:25Z",
+  "summary": [
+    "Исправлена подготовка Java на первом запуске из опубликованного архива.",
+    "Восстановление игры теперь корректно обрабатывает каталоги внутри Windows ZIP.",
+    "Повторная проверка не скачивает заново исправные файлы и сохраняет дополнительные моды игрока."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "java-runtime",
+        "title": "Первый запуск",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Исправлена распаковка Java 21: каталоги из Windows-архива больше не принимаются за файлы."
+          },
+          {
+            "kind": "fixed",
+            "text": "Убрана причина сбоя подготовки игры на раннем этапе восстановления."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "managed-files",
+        "title": "Файлы игры",
+        "changes": [
+          {
+            "kind": "tested",
+            "text": "Проверены Java, Minecraft, Fabric, управляемые моды и повторный repair на staged-релизе."
+          },
+          {
+            "kind": "fixed",
+            "text": "Дополнительные моды игрока сохраняются при повторной проверке."
+          }
+        ]
+      }
+    ],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-29T00:29:25Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-6.html"
+}

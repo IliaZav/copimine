@@ -8,7 +8,7 @@ items:
     rarity: LEGENDARY
     price_ar: 150
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 12
     effect: ZMEI_GORYNYCH_POOP
     effect_chance_percent: 100
@@ -26,7 +26,7 @@ items:
     rarity: EPIC
     price_ar: 10
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: REPAIR_KIT
     effect_chance_percent: 100
@@ -44,13 +44,52 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 300
     effect: RETURN_STONE
     effect_chance_percent: 100
     visual_effect_id: ""
     lore:
       - "&7Возвращает к точке возрождения"
+
+  - id: gravedigger_contract
+    category: TOOL
+    material: PAPER
+    source: AR_SHOP
+    custom_model_data: 10029
+    custom-texture-mode-allowed: true
+    name: "&dКонтракт могильщика"
+    rarity: EPIC
+    price_ar: 300
+    supply_limit: 0
+    per_player_limit: 9999
+    cooldown_seconds: 0
+    effect: GRAVEDIGGER_CONTRACT
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    max_stack_size: 1
+    lore:
+      - "&7После смерти возвращает к месту гибели."
+      - "&7После смерти: &f/cmartifacts grave"
+
+  - id: signal_bell
+    category: TOOL
+    material: BELL
+    source: AR_SHOP
+    custom_model_data: 10030
+    custom-texture-mode-allowed: true
+    name: "&dСигнальный колокол"
+    rarity: EPIC
+    price_ar: 150
+    supply_limit: 0
+    per_player_limit: 9999
+    cooldown_seconds: 0
+    effect: SIGNAL_BELL
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    max_stack_size: 1
+    lore:
+      - "&7Сообщает держателю, кто открыл привязанный сундук."
 
   - id: angel_wings
     category: TOOL
@@ -62,7 +101,7 @@ items:
     rarity: EPIC
     price_ar: 750
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 300
     effect: ANGEL_WINGS
     effect_chance_percent: 100
@@ -81,7 +120,7 @@ items:
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: INFINITE_TORCH
     effect_chance_percent: 100
@@ -91,15 +130,15 @@ items:
 
   - id: combat_crossbow
     category: WEAPON
-    material: BOW
+    material: CROSSBOW
     source: AR_SHOP
     custom_model_data: 10014
     custom-texture-mode-allowed: true
-    name: "&dЛук телепортации"
+    name: "&6Арбалет телепортации"
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 200
     effect: AR_CROSSBOW_TELEPORT
     effect_chance_percent: 100
@@ -117,7 +156,7 @@ items:
     rarity: EPIC
     price_ar: 64
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 15
     effect: AR_COBBLESTONE_TRAIL
     effect_chance_percent: 100
@@ -135,7 +174,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 30
     effect: AR_EXPLOSIVE_CROSSBOW
     effect_chance_percent: 100
@@ -154,7 +193,7 @@ items:
     rarity: EPIC
     price_ar: 0
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 9999
     cooldown_seconds: 15
     effect: STREAMER_STICK_ARC
     effect_chance_percent: 100
@@ -172,7 +211,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -190,7 +229,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -208,7 +247,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -226,7 +265,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -244,7 +283,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -262,7 +301,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -280,7 +319,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -298,7 +337,7 @@ items:
     rarity: EPIC
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: NARCOTIC_RECIPE_BOOK
     effect_chance_percent: 100
@@ -315,7 +354,7 @@ items:
     rarity: EPIC
     price_ar: 100
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 420
     effect: HASTE_BURST_LONG
     effect_chance_percent: 100
@@ -331,7 +370,7 @@ items:
     rarity: EPIC
     price_ar: 90
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 45
     effect: FORESTER_CHAIN
     effect_chance_percent: 18
@@ -347,7 +386,7 @@ items:
     rarity: RARE
     price_ar: 30
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: TRENCH_BONUS
     effect_chance_percent: 1
@@ -363,7 +402,7 @@ items:
     rarity: EPIC
     price_ar: 50
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 20
     effect: FARMER_SWEEP
     effect_chance_percent: 100
@@ -379,7 +418,7 @@ items:
     rarity: LEGENDARY
     price_ar: 200
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 30
     effect: DUTY_ARGUMENT
     effect_chance_percent: 20
@@ -395,7 +434,7 @@ items:
     rarity: LEGENDARY
     price_ar: 9999
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 3
     effect: ETERNAL_BOOST
     effect_chance_percent: 100
@@ -412,7 +451,7 @@ items:
     rarity: LEGENDARY
     price_ar: 9999
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: INFINITE_TOTEM
     effect_chance_percent: 100
@@ -429,7 +468,7 @@ items:
     rarity: EPIC
     price_ar: 120
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 28
     effect: TANK_VEST
     effect_chance_percent: 100
@@ -446,7 +485,7 @@ items:
     rarity: EPIC
     price_ar: 500
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 0
     effect: MINER_3X3
     effect_chance_percent: 100
@@ -463,7 +502,7 @@ items:
     rarity: RARE
     price_ar: 300
     supply_limit: 0
-    per_player_limit: 3
+    per_player_limit: 9999
     cooldown_seconds: 300
     effect: WIND_HAMMER
     effect_chance_percent: 100
@@ -480,7 +519,7 @@ items:
     rarity: ADMIN
     price_ar: 5000
     supply_limit: 0
-    per_player_limit: 0
+    per_player_limit: 9999
     cooldown_seconds: 30
     effect: POZDNYAKOV_ACE
     effect_chance_percent: 100
@@ -545,16 +584,16 @@ donation-catalog:
       reclaim-policy: LOSS_ONLY
       consume-policy: BREAKABLE
       effect-profile-id: NALOGOVAYA_KOSA
-      effect-description: "Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели"
-      cooldown-seconds: 18
-      proc-chance: 0.30
+      effect-description: "Вампиризм; шанс 30% украсть 3 HP, шанс 20% наложить голод или иссушение, шанс 10% наложить слепоту III на 7 секунд; шанс 2.5% украсть 1–3 AR"
+      cooldown-seconds: 0
+      proc-chance: 0.20
       max-stack: 1
       repairable: true
       custom-texture-mode-allowed: true
       custom-model-data: 20003
       visual-effect-id: STATIC_NOISE
       lore:
-        - "&7Вампиризм + шанс с каждым ударом украсть 1 АР со счёта цели"
+        - "&7Вампиризм; шанс 2.5% украсть 1–3 AR со счёта цели"
 
     - item-id: kaska_prorab_huev
       display-name: "&6Каска \"Прораб хуев\""
@@ -609,7 +648,7 @@ donation-catalog:
       consume-policy: BREAKABLE
       effect-profile-id: NOT_TODAY_SHIELD
       effect-description: "На него всем похуй"
-      cooldown-seconds: 22
+      cooldown-seconds: 20
       proc-chance: 1.0
       max-stack: 1
       repairable: true
@@ -661,23 +700,65 @@ donation-catalog:
       lore:
         - "&7Освобождает от налогов на 3 месяца"
 
-    - item-id: gde_moy_lut_blyat_compass
-      display-name: "&6Компас телепортации"
-      base-material: COMPASS
-      price-donation: 100
+    - item-id: berserker_heart
+      display-name: "&dСердце берсерка"
+      base-material: NETHER_STAR
+      price-donation: 200
       enabled: true
       source: DONATION_SHOP
       owner-bound: true
       reclaim-policy: LOSS_ONLY
       consume-policy: PERSISTENT
-      effect-profile-id: LOOT_COMPASS
-      effect-description: "Телепортация по направлению взгляда"
-      cooldown-seconds: 200
+      effect-profile-id: BERSERKER_HEART
+      effect-description: "При критически низком здоровье даёт боевые эффекты"
+      cooldown-seconds: 420
       proc-chance: 1.0
       max-stack: 1
       repairable: false
       custom-texture-mode-allowed: true
-      custom-model-data: 20010
+      custom-model-data: 20013
       visual-effect-id: ""
       lore:
-        - "&7Телепортация по направлению взгляда"
+        - "&7Срабатывает при здоровье ниже 10%."
+
+    - item-id: zhilorez_pickaxe
+      display-name: "&6Кирка «Жилорез»"
+      base-material: NETHERITE_PICKAXE
+      price-donation: 250
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: true
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: VEIN_MINER
+      effect-description: "Ограниченно добывает жилу одинаковой руды"
+      cooldown-seconds: 0
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: true
+      custom-texture-mode-allowed: true
+      custom-model-data: 20011
+      visual-effect-id: ""
+      lore:
+        - "&7Добывает до 32 блоков одной жилы."
+
+    - item-id: night_cloak
+      display-name: "&6Плащ ночи"
+      base-material: PHANTOM_MEMBRANE
+      price-donation: 150
+      enabled: true
+      source: DONATION_SHOP
+      owner-bound: false
+      reclaim-policy: LOSS_ONLY
+      consume-policy: PERSISTENT
+      effect-profile-id: NIGHT_CLOAK
+      effect-description: "Ночью даёт скорость, ночное зрение и невидимость"
+      cooldown-seconds: 0
+      proc-chance: 1.0
+      max-stack: 1
+      repairable: false
+      custom-texture-mode-allowed: true
+      custom-model-data: 20012
+      visual-effect-id: ""
+      lore:
+        - "&7Ночью даёт скорость I, ночное зрение I и невидимость I."

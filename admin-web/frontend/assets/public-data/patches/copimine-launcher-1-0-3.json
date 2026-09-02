@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-23-launcher-1.0.3",
+  "slug": "copimine-launcher-1-0-3",
+  "version": "1.0.3",
+  "title": "CopiMine Launcher 1.0.3",
+  "publishedAt": "2026-08-23T18:20:00Z",
+  "summary": [
+    "Установщик ставит лаунчер, Java, Minecraft, Fabric и моды в выбранную папку.",
+    "Сервер CopiMine сохраняется в списке Minecraft.",
+    "Локальные скины и плащи сохраняются между запусками."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "installer-folder",
+        "title": "Установка",
+        "changes": [
+          {
+            "kind": "changed",
+            "text": "На странице загрузки оставлен установщик с выбором диска и папки. Он включает нужные файлы игры и Java."
+          },
+          {
+            "kind": "fixed",
+            "text": "Исправлен внешний вид окна установки: надписи остаются читаемыми."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "server-list",
+        "title": "Подключение к CopiMine",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Сервер CopiMine добавляется в Minecraft, а другие сохранённые серверы не исчезают."
+          },
+          {
+            "kind": "changed",
+            "text": "Дополнительные моды игрока не мешают входу. Важно, чтобы основные CopiMine-моды были на месте."
+          }
+        ]
+      },
+      {
+        "id": "local-cosmetics",
+        "title": "Скины и плащи",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Выбранные скины и плащи сохраняются в папке лаунчера и подхватываются при запуске."
+          }
+        ]
+      },
+      {
+        "id": "staging-matrix",
+        "title": "Проверка перед выпуском",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Проверяется запуск с полным набором, без модов и с базовыми CopiMineClient + Fabric API."
+          }
+        ]
+      }
+    ],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-23T18:20:00Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-3.html"
+}

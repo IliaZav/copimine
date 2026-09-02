@@ -46,9 +46,9 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         block = item_block("combat_crossbow")
         require_all(
             block,
-            "material: BOW",
+            "material: CROSSBOW",
             "source: AR_SHOP",
-            'name: "&dЛук телепортации"',
+            'name: "&6Арбалет телепортации"',
             "rarity: EPIC",
             "price_ar: 100",
             "cooldown_seconds: 200",
@@ -224,14 +224,12 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "this.expireSpawnedCobblestone()",
         )
 
-    def test_teleport_bow_and_compass_cooldowns_survive_relog(self) -> None:
+    def test_teleport_bow_cooldown_survives_relog(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
             "keyTeleportBowCooldownUntil",
-            "keyCompassCooldownUntil",
             'new NamespacedKey(this, "teleport_bow_cooldown_until")',
-            'new NamespacedKey(this, "compass_cooldown_until")',
             "actionCooldownUntil(var2, var3)",
             "storeActionCooldown(var2, var3",
             "PersistentDataType.LONG",
@@ -239,7 +237,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
         shot_handler = source[source.index("public void onCrossbowArtifactShot"):source.index("private void markCombatProjectile")]
         require_all(shot_handler, "actionCooldownUntil(var2, weapon)", "this.storeActionCooldown(")
 
-    def test_ar_shop_items_are_transferable_but_donation_items_remain_owner_bound(self) -> None:
+    def test_donation_items_are_transferable_but_the_purchase_binding_remains_durable(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
         require_all(
             source,
@@ -247,9 +245,15 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "isDonationCatalogItem(itemId)",
             "isAdminOnlyCatalogItem(itemId)",
             "boolean ownerBound = this.isOwnerBoundGameplayItem(var6, var16, var17)",
-            "&& ownerBound && (",
-            "ownerBound && !var13.ownerUuid().equalsIgnoreCase(var12)",
+            "return false;",
+            'new NamespacedKey(this, "artifact_owner_uuid")',
         )
+
+        owner_logic = source[source.index("private boolean isOwnerBoundGameplayItem"):source.index("private boolean isAdminOnlyCatalogItem")]
+        assert owner_logic.index("if (this.isDonationCatalogItem(itemId))") < owner_logic.index("return false;")
+        auth = source[source.index("private CopiMineArtifacts.CatalogItem authenticCatalogItem"):source.index("private void ensureOfficialBindingAvailable")]
+        assert "var13.itemId()" in auth
+        assert "var13.ownerUuid().equalsIgnoreCase(var12)" in auth
 
     def test_shot_cannot_consume_cooldown_without_a_projectile(self) -> None:
         source = SOURCE.read_text(encoding="utf-8")
@@ -270,7 +274,7 @@ class CombatArtifactCatalogContractTest(unittest.TestCase):
             "for (int dy = -2; dy <= 3; dy++)",
             "for (int dx = -radius; dx <= radius; dx++)",
             "for (int dz = -radius; dz <= radius; dz++)",
-            "this.isSafeCompassLocation(candidate)",
+            "this.isSafeTeleportLocation(candidate)",
         )
 
     def test_explosive_tnt_cannot_damage_its_owner(self) -> None:

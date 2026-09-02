@@ -1,0 +1,192 @@
+/* The authenticated workspace follows the public site's forest / violet
+ * palette while keeping dense admin data calm and scannable. */
+
+body.player-mode,
+body.panel-admin-mode,
+body.junior-admin-mode {
+  --site-display: "Sora", "Segoe UI Variable Display", "Bahnschrift", sans-serif;
+  --site-body: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --site-data: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-family: var(--site-body);
+  --cabinet-violet: #9d8cff;
+  --cabinet-violet-soft: rgba(157, 140, 255, .13);
+  --cabinet-aqua: #59d6d0;
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 78% 10%, rgba(157, 140, 255, .1), transparent 24rem),
+    radial-gradient(circle at 6% 88%, rgba(89, 214, 208, .1), transparent 24rem),
+    var(--body-gradient);
+}
+
+body.player-mode::before,
+body.panel-admin-mode::before,
+body.junior-admin-mode::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: .055;
+  background: url("/assets/showcase/server-light-v2.png") right bottom / min(760px, 68vw) auto no-repeat;
+  mix-blend-mode: multiply;
+}
+
+:root[data-theme="dark"] body.player-mode::before,
+:root[data-theme="dark"] body.panel-admin-mode::before,
+:root[data-theme="dark"] body.junior-admin-mode::before {
+  opacity: .08;
+  background-image: url("/assets/showcase/server-dark-v2.png");
+  mix-blend-mode: screen;
+}
+
+body.player-mode #app,
+body.panel-admin-mode #app,
+body.junior-admin-mode #app {
+  position: relative;
+  z-index: 1;
+}
+
+body.player-mode .sidebar,
+body.panel-admin-mode .sidebar,
+body.junior-admin-mode .sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sidebar) 91%, var(--cabinet-violet) 9%), var(--sidebar));
+  box-shadow: 14px 0 34px rgba(0, 0, 0, .07);
+}
+
+body.player-mode .side-brand,
+body.panel-admin-mode .side-brand,
+body.junior-admin-mode .side-brand {
+  border-color: color-mix(in srgb, var(--line) 72%, var(--cabinet-violet) 28%);
+  background: linear-gradient(135deg, var(--surface), color-mix(in srgb, var(--surface) 88%, var(--cabinet-violet) 12%));
+}
+
+body.player-mode .nav-item,
+body.panel-admin-mode .nav-item,
+body.junior-admin-mode .nav-item {
+  transition: transform 170ms ease, border-color 170ms ease, background-color 170ms ease, box-shadow 170ms ease;
+}
+
+body.player-mode .nav-item:hover,
+body.panel-admin-mode .nav-item:hover,
+body.junior-admin-mode .nav-item:hover {
+  transform: translateX(2px);
+  border-color: color-mix(in srgb, var(--line-strong) 65%, var(--cabinet-violet) 35%);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .07);
+}
+
+body.player-mode .nav-item.active,
+body.panel-admin-mode .nav-item.active,
+body.junior-admin-mode .nav-item.active {
+  border-color: color-mix(in srgb, var(--cabinet-violet) 58%, var(--line-strong));
+  background: linear-gradient(90deg, var(--cabinet-violet-soft), var(--surface));
+  box-shadow: inset 4px 0 0 var(--cabinet-violet), 0 8px 18px rgba(157, 140, 255, .08);
+}
+
+body.player-mode .workspace,
+body.panel-admin-mode .workspace,
+body.junior-admin-mode .workspace {
+  position: relative;
+}
+
+body.player-mode .topbar,
+body.panel-admin-mode .topbar,
+body.junior-admin-mode .topbar {
+  border-color: color-mix(in srgb, var(--line) 76%, var(--cabinet-violet) 24%);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 92%, var(--cabinet-violet) 8%), var(--surface));
+  box-shadow: 0 18px 36px rgba(0, 0, 0, .1);
+}
+
+body.player-mode .page-heading h1,
+body.panel-admin-mode .page-heading h1,
+body.junior-admin-mode .page-heading h1 {
+  font-family: var(--site-display);
+  letter-spacing: -.055em;
+}
+
+body.player-mode :where(h2, h3, .brand-title, .topbar-title),
+body.panel-admin-mode :where(h2, h3, .brand-title, .topbar-title),
+body.junior-admin-mode :where(h2, h3, .brand-title, .topbar-title) {
+  font-family: var(--site-display);
+}
+
+body.player-mode :where(.metric-label, .eyebrow, .pill, th),
+body.panel-admin-mode :where(.metric-label, .eyebrow, .pill, th),
+body.junior-admin-mode :where(.metric-label, .eyebrow, .pill, th) {
+  font-family: var(--site-data);
+}
+
+body.player-mode .panel,
+body.panel-admin-mode .panel,
+body.junior-admin-mode .panel,
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric,
+body.player-mode .table-wrap,
+body.panel-admin-mode .table-wrap,
+body.junior-admin-mode .table-wrap {
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--line) 80%, var(--cabinet-violet) 20%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--surface) 96%, var(--cabinet-violet) 4%), var(--surface));
+  box-shadow: 0 12px 26px rgba(0, 0, 0, .07);
+}
+
+body.player-mode .metric,
+body.panel-admin-mode .metric,
+body.junior-admin-mode .metric {
+  transition: transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease;
+}
+
+body.player-mode .metric:hover,
+body.panel-admin-mode .metric:hover,
+body.junior-admin-mode .metric:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--cabinet-aqua) 42%, var(--line));
+  box-shadow: 0 18px 32px rgba(0, 0, 0, .11);
+}
+
+body.player-mode :where(button, a, input, select, textarea):focus-visible,
+body.panel-admin-mode :where(button, a, input, select, textarea):focus-visible,
+body.junior-admin-mode :where(button, a, input, select, textarea):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--cabinet-violet) 75%, var(--cabinet-aqua));
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(157, 140, 255, .16);
+}
+
+body.player-mode .notice,
+body.panel-admin-mode .notice,
+body.junior-admin-mode .notice,
+body.player-mode .empty-state,
+body.panel-admin-mode .empty-state,
+body.junior-admin-mode .empty-state {
+  border-radius: 14px;
+}
+
+@media (max-width: 980px) {
+  body.player-mode #app,
+  body.panel-admin-mode #app,
+  body.junior-admin-mode #app { grid-template-columns: 1fr; }
+  body.player-mode .workspace,
+  body.panel-admin-mode .workspace,
+  body.junior-admin-mode .workspace { padding: 16px; }
+}
+
+@media (max-width: 640px) {
+  body.player-mode .workspace,
+  body.panel-admin-mode .workspace,
+  body.junior-admin-mode .workspace { padding: 12px; }
+  body.player-mode .topbar,
+  body.panel-admin-mode .topbar,
+  body.junior-admin-mode .topbar { padding: 13px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.player-mode *,
+  body.panel-admin-mode *,
+  body.junior-admin-mode * {
+    animation: none !important;
+    transition-duration: .01ms !important;
+  }
+}

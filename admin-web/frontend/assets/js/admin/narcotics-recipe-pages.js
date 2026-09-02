@@ -1,4 +1,4 @@
-import { readRecipeDragIndex, writeRecipeDragIndex } from "../shared/recipe-drag.js";
+import { readRecipeDragIndex, writeRecipeDragIndex } from "../shared/recipe-drag.js?v=20260829launcherlink6";
 
 const RECIPE_ITEM_TABS = [
   {
@@ -142,7 +142,7 @@ export function createAdminNarcoticsRecipePages(deps) {
         <button class="recipe-slot recipe-slot-removable" draggable="true" title="${esc(displayName(token))}" aria-label="Удалить ${esc(displayName(token))}"
           data-drag-token="${esc(token)}" data-index="${index}"
           data-click="adminRecipeRemove(${index})">
-          <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(displayName(token))}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
+          <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(displayName(token))}" loading="lazy" />
           <b class="recipe-remove-cross" aria-hidden="true">×</b>
           <span>${esc(displayName(token))}</span>
         </button>`;
@@ -175,7 +175,7 @@ export function createAdminNarcoticsRecipePages(deps) {
           const primaryIcon = item.iconUrl || fallbackIcon;
           const label = localizedItemName(token, item);
           return `<button class="creative-item" title="${esc(label)}" data-click="adminRecipeAdd('${esc(token)}')">
-            <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(label)}" loading="lazy" onerror="if(this.dataset.fallbackIcon && this.src !== this.dataset.fallbackIcon){this.src=this.dataset.fallbackIcon;}else{this.style.visibility='hidden';}" />
+            <img src="${esc(primaryIcon)}" data-fallback-icon="${esc(fallbackIcon)}" alt="${esc(label)}" loading="lazy" />
             <span>${esc(label)}</span>
           </button>`;
         }).join("") || `<div class="recipe-empty">Ничего не найдено.</div>`}

@@ -27,6 +27,7 @@ for file in \
   "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar" \
   "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar" \
   "thirdparty/client-mods/fabric-api-0.116.11+1.21.1.jar" \
+  "thirdparty/client-mods/modmenu-11.0.4.jar" \
   "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar" \
   "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar" \
   "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar"
@@ -34,16 +35,6 @@ do
   [[ -f "$PROJECT_ROOT/$file" ]] || { echo "Missing file for modpack: $file" >&2; exit 1; }
   verify_release_artifact "$file"
   cp "$PROJECT_ROOT/$file" "$STAGE/mods/"
-done
-
-for file in \
-  "thirdparty/README_RU.txt" \
-  "thirdparty/VOICE_CHAT_OFFICIAL_DOWNLOAD.txt" \
-  "thirdparty/checksums.txt" \
-  "thirdparty/modpack_manifest.json"
-do
-  [[ -f "$PROJECT_ROOT/$file" ]] || { echo "Missing file for modpack: $file" >&2; exit 1; }
-  cp "$PROJECT_ROOT/$file" "$STAGE/"
 done
 
 rm -f "$ZIP"

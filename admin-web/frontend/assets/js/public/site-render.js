@@ -73,7 +73,7 @@ function formatDate(value) {
 
 function formatLatency(value) {
   const ms = Number(value);
-  if (!Number.isFinite(ms) || ms <= 0) return "нет ответа";
+  if (!Number.isFinite(ms) || ms <= 0) return "нет связи";
   return `${ms.toFixed(1)} мс`;
 }
 
@@ -188,7 +188,9 @@ function cardStrong(title, value, note = "", iconPath = "") {
   const card = makeElement("article", "showcase-card");
   if (iconPath) {
     const icon = makeElement("div", "showcase-card-icon");
-    icon.append(createSprite(iconPath));
+    const sprite = createSprite(iconPath);
+    sprite.loading = "eager";
+    icon.append(sprite);
     card.append(icon);
   }
   card.append(
@@ -198,6 +200,27 @@ function cardStrong(title, value, note = "", iconPath = "") {
   if (note) {
     card.append(makeElement("span", "treasury-history-date", note));
   }
+  return card;
+}
+
+function buildShopEmptyState(title, detail, iconPath) {
+  const card = makeElement("article", "shop-empty-state");
+  card.setAttribute("role", "status");
+  const icon = makeElement("div", "shop-empty-icon");
+  icon.append(createSprite(iconPath));
+  const copy = makeElement("div", "shop-empty-copy");
+  copy.append(
+    makeElement("span", "shop-empty-kicker", "Каталог сейчас"),
+    makeElement("strong", "", title),
+    makeElement("p", "", detail),
+  );
+  const actions = makeElement("div", "public-actions public-actions-compact");
+  const retry = makeElement("a", "btn btn-secondary", "Повторить загрузку");
+  retry.href = window.location.href || "/shops.html";
+  retry.setAttribute("data-shop-retry", "true");
+  actions.append(retry);
+  copy.append(actions);
+  card.append(icon, copy);
   return card;
 }
 
@@ -216,7 +239,7 @@ function buildExternalModCard(row = {}) {
   icon.append(createSprite(mcIcon("knowledge_book.png")));
   card.append(
     icon,
-    makeElement("span", "modpack-file-badge", "external"),
+    makeElement("span", "modpack-file-badge", "доп. мод"),
     makeElement("strong", "", String(row.component || "Внешний мод")),
     makeElement("p", "", String(row.feature || row.reason || "Загружается отдельно с официальной страницы.")),
   );
@@ -293,10 +316,11 @@ function buildShopProductItem(row, mode = "ar", purchaseReady = false, needsLink
   visual.append(image);
 
   const body = makeElement("div", "shop-product-body");
+  const description = makeElement("p", "shop-product-description", customerFacingItemDescription(row));
   body.append(
     makeElement("span", "shop-product-category", shopCategoryLabel(row.category, mode)),
     makeElement("h3", "", String(row.display_name || itemId || "Товар")),
-    makeElement("p", "", customerFacingItemDescription(row)),
+    description,
   );
 
   const footer = makeElement("div", "shop-product-footer");
@@ -372,6 +396,7 @@ function syncShopCartScope(auth = {}) {
 }
 
 export function createHomepageRenderer() {
+  const fallbackAvatar = "/assets/brand/copimine-logo.png";
   const budgetCounter = document.getElementById("presidentBudgetCounter");
   const budgetDetail = document.getElementById("presidentBudgetDetail");
   const budgetOwner = document.getElementById("presidentBudgetOwner");
@@ -388,14 +413,13 @@ export function createHomepageRenderer() {
   const serverIpText = document.getElementById("serverIpText");
   const serverPulseText = document.getElementById("serverPulseText");
   const downloadModsBtn = document.getElementById("downloadModsBtn");
+  const downloadLauncherBtn = document.getElementById("downloadLauncherBtn");
   const statusGrid = document.getElementById("publicStatusGrid");
   const onlineBoard = document.getElementById("publicOnlineBoard");
   const publicSigninLink = document.getElementById("publicSigninLink");
   const publicRegisterLink = document.getElementById("publicRegisterLink");
   const cabinetButton = document.getElementById("publicCabinetBtn");
   const logoutButton = document.getElementById("publicLogoutBtn");
-  const heroMiniTitle = document.getElementById("heroMiniTitle");
-  const heroMiniText = document.getElementById("heroMiniText");
   const modpackSummaryLead = document.getElementById("modpackSummaryLead");
   const modpackMetaGrid = document.getElementById("modpackMetaGrid");
   const modpackFileGrid = document.getElementById("modpackFileGrid");
@@ -509,13 +533,25 @@ export function createHomepageRenderer() {
     if (arShopMount) {
       const cards = Array.isArray(arCatalog.items) && arCatalog.items.length
         ? arCatalog.items.map((row) => buildShopProductItem(row, "ar", purchaseReady, needsLink, shopItemAvailability(row, "ar", ownership)))
-        : [cardStrong("AR-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("diamond_ore.png"))];
+        : [buildShopEmptyState(
+          arCatalog?._unavailable ? "AR-каталог временно недоступен" : "В AR-каталоге пока пусто",
+          arCatalog?._unavailable
+            ? "Сервис каталога не ответил. Обновите страницу — текущие товары и остатки загрузятся заново."
+            : "Новые предметы появятся здесь после публикации.",
+          mcIcon("diamond_ore.png"),
+        )];
       replaceChildrenSafe(arShopMount, cards);
     }
     if (donationShopMount) {
       const cards = Array.isArray(donationCatalog.items) && donationCatalog.items.length
         ? donationCatalog.items.map((row) => buildShopProductItem(row, "donation", purchaseReady, needsLink, shopItemAvailability(row, "donation", ownership)))
-        : [cardStrong("Донат-магазин недоступен", "Каталог временно не загружен.", "", mcIcon("totem_of_undying.png"))];
+        : [buildShopEmptyState(
+          donationCatalog?._unavailable ? "Донат-каталог временно недоступен" : "В донат-каталоге пока пусто",
+          donationCatalog?._unavailable
+            ? "Сервис каталога не ответил. Обновите страницу — доступные наборы загрузятся заново."
+            : "Новые наборы появятся здесь после публикации.",
+          mcIcon("totem_of_undying.png"),
+        )];
       replaceChildrenSafe(donationShopMount, cards);
     }
     syncShopCartButton();
@@ -531,7 +567,7 @@ export function createHomepageRenderer() {
         if (image) image.src = String(home.imagePath || home.image_path);
       }
       if (home.linkUrl || home.link_url) {
-        setCmsText("#downloadModsBtn", home.linkUrl || home.link_url, "href");
+        setCmsText("#downloadLauncherBtn", home.linkUrl || home.link_url, "href");
       }
     }
     const shops = cmsEntry(payload, "shops_note");
@@ -555,21 +591,6 @@ export function createHomepageRenderer() {
     const available = Boolean(modpack.available);
     const downloadUrl = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
 
-    if (heroMiniTitle) {
-      heroMiniTitle.textContent = available
-        ? "Сборка для входа"
-        : "Сборка недоступна";
-    }
-    if (heroMiniText) {
-      if (available) {
-        const versionText = `${manifest.loader || "Fabric"} ${manifest.minecraftVersion || config.serverVersion || ""}`.trim();
-        const fileText = `${files.length || 0} модов`;
-        const externalText = requiredExternal.length ? `, отдельно ещё ${requiredExternal.length}` : "";
-        heroMiniText.textContent = `${versionText} · ${fileText}${externalText}`;
-      } else {
-        heroMiniText.textContent = "Сборка сейчас недоступна.";
-      }
-    }
     if (modpackSummaryLead) {
       modpackSummaryLead.textContent = available
         ? "Сборка готова к загрузке."
@@ -578,7 +599,7 @@ export function createHomepageRenderer() {
     if (modpackMetaGrid) {
       const metaCards = [
         buildModpackMeta("Minecraft", manifest.minecraftVersion || config.serverVersion || "1.21.1"),
-        buildModpackMeta("Loader", manifest.loader || "Fabric"),
+        buildModpackMeta("Загрузчик", manifest.loader || "Fabric"),
         buildModpackMeta("Модов", String(files.length || 0)),
       ];
       if (requiredExternal.length) metaCards.push(buildModpackMeta("Отдельно", String(requiredExternal.length)));
@@ -587,7 +608,7 @@ export function createHomepageRenderer() {
     if (modpackFileGrid) {
       if (!available || !files.length) {
         replaceChildrenSafe(modpackFileGrid, [
-          cardStrong("Список модов недоступен", "Повторите попытку позже.", "", mcIcon("bundle.png")),
+          cardStrong("Не удалось загрузить список модов", "Попробуйте ещё раз позже.", "", mcIcon("bundle.png")),
         ]);
       } else {
         replaceChildrenSafe(
@@ -598,7 +619,7 @@ export function createHomepageRenderer() {
             icon.append(createSprite(mcIcon("bundle.png")));
             card.append(
               icon,
-              makeElement("span", "modpack-file-badge", "mods"),
+              makeElement("span", "modpack-file-badge", "доп. мод"),
               makeElement("strong", "", String(file.component || "Мод")),
               makeElement("p", "", String(file.version || "без версии")),
             );
@@ -636,16 +657,9 @@ export function createHomepageRenderer() {
     if (serverPulseText) {
       serverPulseText.textContent = onlineText;
     }
-    if (downloadModsBtn) {
-      if (modpack.available) {
-        downloadModsBtn.href = modpack.downloadUrl || config.modpackDownloadPath || "/downloads/CopiMineMods.zip";
-        downloadModsBtn.textContent = "Скачать модпак";
-        downloadModsBtn.classList.remove("btn-disabled");
-        downloadModsBtn.removeAttribute("aria-disabled");
-      } else if (document.body?.dataset.pageKind === "public-home") {
-        downloadModsBtn.href = publicPageRoute("mods.html");
-        downloadModsBtn.textContent = "Открыть раздел модпака";
-      }
+    if (downloadLauncherBtn) {
+      downloadLauncherBtn.href = "/launcher.html";
+      downloadLauncherBtn.textContent = "Скачать лаунчер";
     }
     renderModpack(modpack, config);
   }
@@ -662,10 +676,10 @@ export function createHomepageRenderer() {
         ].filter(Boolean).join(" · ")
       : "Голосование сейчас не запущено";
     replaceChildrenSafe(statusGrid, [
-      cardStrong("Сервер", server.online ? "Онлайн" : "Нет ответа", formatLatency(server.latencyMs), mcIcon("beacon.png")),
+      cardStrong("Сервер", server.online ? "Онлайн" : "Нет связи", formatLatency(server.latencyMs), mcIcon("beacon.png")),
       cardStrong("Игроки", formatPlayers(server), server.playerListAvailable ? "Список игроков открыт" : "Список игроков скрыт", mcIcon("totem_of_undying.png")),
       cardStrong("Выборы", elections.active ? "Идут" : "Пауза", electionDetail, mcIcon("written_book.png")),
-      cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Ресурспак обязателен" : "Ресурспак опционален", mcIcon("compass_00.png")),
+      cardStrong("Версия", config.serverVersion || "1.21.1", config.resourcePackRequired ? "Пакет ресурсов обязателен" : "Пакет ресурсов по желанию", mcIcon("compass_00.png")),
     ]);
   }
 
@@ -752,15 +766,15 @@ export function createHomepageRenderer() {
     const votingBlocks = Math.max(0, Number(summary.votingBlocks ?? 0) || 0);
     const hasElection = !unavailable && Boolean(String(election.id || election.stage || election.status || "").trim());
     const maxVotes = Math.max(1, ...candidates.map((row) => Math.max(0, Number(row.votes || 0) || 0)));
-    const stage = unavailable ? "Данные недоступны" : electionStageLabel(election.stage || election.status);
+    const stage = unavailable ? "Нет данных" : electionStageLabel(election.stage || election.status);
     const round = Math.max(1, Number(election.round || 1) || 1);
 
     if (electionStage) electionStage.textContent = stage;
     if (electionMeta) electionMeta.textContent = unavailable
-      ? "Не удалось получить данные. Нажмите «Обновить»."
+      ? "Не удалось загрузить данные. Нажмите «Обновить»."
       : hasElection
         ? `Тур ${round} · одобренных кандидатов: ${candidateCount}`
-        : "Активная кампания не запущена.";
+        : "Выборы пока не начались.";
     if (electionHeroStatus) electionHeroStatus.textContent = stage;
     if (electionHeroMeta) {
       electionHeroMeta.textContent = unavailable
@@ -781,18 +795,18 @@ export function createHomepageRenderer() {
         return card;
       };
       replaceChildrenSafe(electionStats, [
-        stat("Этап", stage, "текущий статус процесса"),
+        stat("Этап", stage, "что происходит сейчас"),
         stat("Кандидаты", String(candidateCount), "заявки одобрены"),
-        stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "агрегированный результат"),
-        stat("Блоки голосования", String(votingBlocks), "защищённые блоки в игре"),
+        stat("Учтено голосов", totalVotes.toLocaleString("ru-RU"), "всего голосов"),
+        stat("Блоки голосования", String(votingBlocks), "голоса из игры"),
       ]);
     }
 
     if (electionCandidates) {
       if (!candidates.length) {
         replaceChildrenSafe(electionCandidates, [cardStrong(
-          unavailable ? "Не удалось получить список кандидатов" : candidateCount ? "Список обновится позже" : "Одобренных кандидатов пока нет",
-          unavailable ? "Повторите позже." : candidateCount ? "Список обновится позже." : "Список появится после проверки заявок.",
+          unavailable ? "Не удалось загрузить список кандидатов" : candidateCount ? "Список обновится позже" : "Одобренных кандидатов пока нет",
+          unavailable ? "Попробуйте позже." : candidateCount ? "Список обновится позже." : "Список появится после проверки заявок.",
           "",
           mcIcon("written_book.png"),
         )]);
@@ -857,7 +871,6 @@ export function createHomepageRenderer() {
     if (!presidentName || !presidentMeta) return;
     const name = String(president.current_president_name || president.ownerName || "").trim();
     const uuid = String(president.current_president_uuid || president.ownerUuid || "").trim();
-    const fallbackAvatar = "/assets/brand/copimine-logo.png";
     if (presidentAvatar) {
       presidentAvatar.onerror = () => { presidentAvatar.src = fallbackAvatar; };
       presidentAvatar.src = /^[0-9a-f-]{32,36}$/i.test(uuid)
@@ -869,7 +882,10 @@ export function createHomepageRenderer() {
       presidentName.textContent = "Президент пока не выбран";
       presidentMeta.textContent = "Должность свободна.";
       skinShell?.classList.add("hidden");
-      if (skinImage) skinImage.removeAttribute("src");
+      if (skinImage) {
+        skinImage.src = fallbackAvatar;
+        skinImage.alt = "Скин президента не выбран";
+      }
       return;
     }
     presidentName.textContent = name;
@@ -970,7 +986,8 @@ export function createHomepageRenderer() {
       skinImage.dataset.bound = "true";
       skinImage.addEventListener("error", () => {
         skinShell?.classList.add("hidden");
-        skinImage.removeAttribute("src");
+        skinImage.src = fallbackAvatar;
+        skinImage.alt = "Предпросмотр скина временно недоступен";
       });
     }
   }

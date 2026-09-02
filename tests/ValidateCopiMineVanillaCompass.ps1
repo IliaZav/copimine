@@ -4,7 +4,10 @@ $source = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'copimine-artifacts/s
 if ($source -match 'setCompassTarget\(') {
   throw 'Artifact compass must not change the player-wide vanilla compass target.'
 }
-if ($source -notmatch 'rayTraceBlocks' -or $source -notmatch 'teleport\(') {
-  throw 'Donation compass must trace and teleport along the look direction.'
+if ($source -match 'LOOT_COMPASS|activateLootCompass|keyCompassCooldownUntil') {
+  throw 'Retired donation compass runtime code must not be present.'
 }
-Write-Host 'Vanilla compass isolation validation passed.'
+if ($source -notmatch 'Material\.RECOVERY_COMPASS') {
+  throw 'Vanilla recovery compass support must remain available.'
+}
+Write-Host 'Vanilla compass isolation and donation compass retirement validation passed.'

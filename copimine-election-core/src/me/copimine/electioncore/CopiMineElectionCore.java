@@ -327,6 +327,15 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         }
     }
 
+    /**
+     * Exposes the asynchronous schema bootstrap state to dependent plugins.
+     * AdminPlus uses this gate before touching the legacy/shared election
+     * tables, preventing concurrent PostgreSQL DDL during a cold start.
+     */
+    public boolean isDatabaseReady() {
+        return databaseReady.get();
+    }
+
     public void openAdminElectionHub(Player player) {
         // AdminHub must always open the simplified RP workflow.  Keep the
         // legacy CIK menus compiled for historical compatibility only; they

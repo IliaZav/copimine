@@ -18,8 +18,7 @@ $requiredEffectIds = @(
   "TANK_VEST",
   "NOT_TODAY_SHIELD",
   "DEBUFF_AMULET",
-  "TAX_CLOCK",
-  "LOOT_COMPASS"
+  "TAX_CLOCK"
 )
 
 foreach ($id in $requiredEffectIds) {
@@ -31,7 +30,7 @@ foreach ($id in $requiredEffectIds) {
 if ($content -notmatch "tryFarmerSweep") { throw "Missing farmer sweep helper." }
 if ($content -notmatch "tryForesterChain") { throw "Missing forester chain helper." }
 if ($content -notmatch "grantTrenchBonus") { throw "Missing trench bonus helper." }
-if ($content -notmatch "activateLootCompass") { throw "Missing loot compass helper." }
+if ($content -match 'LOOT_COMPASS|activateLootCompass|keyCompassCooldownUntil') { throw "Retired donation compass runtime code is still present." }
 # The donation totem is retired, but the AR infinite totem remains a supported
 # catalog item and must restore its official stack after resurrection.
 if ($content -notmatch "EntityResurrectEvent|INFINITE_TOTEM|restoreInfiniteTotem") { throw "Missing AR infinite totem runtime hook." }

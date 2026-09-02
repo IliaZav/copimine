@@ -1,15 +1,31 @@
-import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260809publiccopy1";
-import { initCartPage } from "./cart-page.js?v=20260809publiccopy1";
-import { initThemeToggle } from "../theme/theme-toggle.js?v=20260719r7";
-import { initPublicNav } from "./public-nav.js?v=20260719r7";
+import { bindHomepageEvents, loadPublicPage } from "./homepage.js?v=20260825siteui19";
+import { initCartPage } from "./cart-page.js?v=20260825siteui19";
+import { initThemeToggle } from "../theme/theme-toggle.js?v=20260825siteui19";
+import { initPublicNav } from "./public-nav.js?v=20260829siteui23";
+import { initLauncherPage } from "./launcher-page.js?v=20260825siteui19";
+import { initNewsPage } from "./news-page.js?v=20260825siteui19";
+import { initPatchDetailPage } from "./patch-detail-page.js?v=20260825siteui19";
+import { initEventsPage } from "./events-page.js?v=20260902events6";
+import { initPublicMotion } from "./public-motion.js?v=20260902motion2";
 
 initPublicNav();
 initThemeToggle();
+initPublicMotion();
 
 const pageKind = String(document.body?.dataset.pageKind || "").trim().toLowerCase();
 
 if (pageKind === "public-cart") {
   void initCartPage();
+} else if (pageKind === "public-launcher") {
+  void initLauncherPage();
+} else if (pageKind === "public-news") {
+  void initNewsPage();
+} else if (pageKind === "public-events") {
+  void initEventsPage();
+} else if (pageKind === "public-patch") {
+  void initPatchDetailPage();
+} else if (pageKind === "public-legacy") {
+  // The legacy hand-off has its own static fallback and must not fetch homepage data.
 } else if (document.querySelector(".public-site")) {
   bindHomepageEvents();
   window.setTimeout(() => {

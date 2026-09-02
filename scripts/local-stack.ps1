@@ -15,12 +15,16 @@ $PostgresRoot = Join-Path $Runtime 'postgresql'
 $PostgresData = Join-Path $Runtime 'postgres-data'
 $LocalEnvFile = Join-Path $Runtime 'local.env'
 $PropertiesBackup = Join-Path $Runtime 'server.properties.before-local-stack'
+$VoiceChatPort = 24455
+$VoiceChatPropertiesBackup = Join-Path $Runtime 'voicechat-server.properties.before-local-stack'
 $ServerDir = Join-Path $Root 'minecraft\server'
 $AdminWebDir = Join-Path $Root 'admin-web'
 $WebsitePort = 8090
 $MinecraftPort = 25565
 $RconPort = 25575
 $PostgresPort = 55432
+$MinecraftJvmXms = if ($env:MC_JVM_XMS) { $env:MC_JVM_XMS.Trim() } else { '512M' }
+$MinecraftJvmXmx = if ($env:MC_JVM_XMX) { $env:MC_JVM_XMX.Trim() } else { '1536M' }
 $PostgresDownloadUrl = 'https://get.enterprisedb.com/postgresql/postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresZip = Join-Path $Downloads 'postgresql-16.8-1-windows-x64-binaries.zip'
 $PostgresLog = Join-Path $Logs 'postgresql.log'
@@ -32,6 +36,18 @@ $StackLog = Join-Path $Logs 'stack.log'
 
 foreach ($directory in @($Runtime, $Logs, $Pids, $Downloads)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
+}
+
+function Get-Sha1Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $sha1 = [System.Security.Cryptography.SHA1]::Create()
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+        return ([BitConverter]::ToString($sha1.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $sha1.Dispose()
+    }
 }
 
 function Write-StackLog {
@@ -208,6 +224,26 @@ function Set-ServerProperty {
     [System.IO.File]::WriteAllText($path, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $utf8)
 }
 
+function Set-VoiceChatProperty {
+    param([string]$Key, [string]$Value)
+    $path = Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties'
+    if (-not (Test-Path -LiteralPath $path)) { throw "Simple Voice Chat properties are missing: $path" }
+    $pattern = '^\s*' + [regex]::Escape($Key) + '='
+    $found = $false
+    $lines = @()
+    foreach ($line in Get-Content -LiteralPath $path) {
+        if ($line -match $pattern) {
+            $lines += "$Key=$Value"
+            $found = $true
+        } else {
+            $lines += $line
+        }
+    }
+    if (-not $found) { $lines += "$Key=$Value" }
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($path, (($lines -join [Environment]::NewLine) + [Environment]::NewLine), $utf8)
+}
+
 function Backup-AndPatchServerProperties {
     $path = Join-Path $ServerDir 'server.properties'
     if (-not (Test-Path -LiteralPath $path)) { throw "Minecraft server.properties is missing: $path" }
@@ -222,6 +258,17 @@ function Backup-AndPatchServerProperties {
     Set-ServerProperty -Key 'require-resource-pack' -Value 'false'
     Set-ServerProperty -Key 'resource-pack' -Value ''
     Set-ServerProperty -Key 'resource-pack-sha1' -Value ''
+}
+
+function Backup-AndPatchVoiceChatProperties {
+    $path = Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties'
+    if (-not (Test-Path -LiteralPath $path)) { throw "Simple Voice Chat properties are missing: $path" }
+    if (Test-Path -LiteralPath $VoiceChatPropertiesBackup) {
+        Copy-Item -LiteralPath $VoiceChatPropertiesBackup -Destination $path -Force
+        Remove-Item -LiteralPath $VoiceChatPropertiesBackup -Force
+    }
+    Copy-Item -LiteralPath $path -Destination $VoiceChatPropertiesBackup -Force
+    Set-VoiceChatProperty -Key 'port' -Value ([string]$VoiceChatPort)
 }
 
 function Restore-ServerProperties {
@@ -286,6 +333,31 @@ function Invoke-Psql {
     }
 }
 
+function Wait-PostgresQuery {
+    param(
+        [Parameter(Mandatory = $true)][string]$BinDir,
+        [string]$Database = 'postgres',
+        [string]$User = 'postgres',
+        [int]$TimeoutSeconds = 120
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        try {
+            $probe = Invoke-Psql -BinDir $BinDir -Database $Database -User $User -Sql 'SELECT 1;'
+            if ($probe.ExitCode -eq 0 -and $probe.Output -match '(?m)^\s*1\s*$') {
+                return $true
+            }
+        } catch {
+            # PostgreSQL can accept TCP connections before it is ready to run a
+            # query. Keep polling until the bounded timeout, then fail clearly.
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    throw "PostgreSQL accepted TCP connections but did not answer a query within $TimeoutSeconds seconds. See local-runtime/logs/postgresql.log."
+}
+
 function Ensure-Postgres {
     $bin = Resolve-PostgresBinaries
     $initdb = Join-Path $bin 'initdb.exe'
@@ -337,6 +409,7 @@ function Ensure-Postgres {
         }
     }
 
+    Wait-PostgresQuery -BinDir $bin | Out-Null
     $roleSql = @'
 DO $$
 BEGIN
@@ -452,13 +525,68 @@ function Resolve-WebsitePython {
     $sibling = Join-Path (Split-Path $Root -Parent) 'opt\copimine\admin-web\.codex-venv\Scripts\python.exe'
     if (Test-Path -LiteralPath $sibling) { return $sibling }
     $local = Join-Path $Runtime 'venv\Scripts\python.exe'
-    if (Test-Path -LiteralPath $local) { return $local }
+    $localVenvRoot = Join-Path $Runtime 'venv'
+    $requirementsPath = Join-Path $AdminWebDir 'requirements.txt'
+
+    if (Test-Path -LiteralPath $local -PathType Leaf) {
+        $localVersion = (& $local -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null | Select-Object -Last 1)
+        if ($localVersion -and $localVersion.Trim() -eq '3.13') {
+            & $local -m pip install --disable-pip-version-check -r $requirementsPath 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'admin-web dependencies are not compatible with the local Python 3.13 environment. See local-runtime/logs/stack.log.' }
+            return $local
+        }
+        Write-StackLog "Replacing an incompatible local Python environment ($($localVersion.Trim())). Python 3.13 is required by the pinned admin-web dependencies."
+        Remove-Item -LiteralPath $localVenvRoot -Recurse -Force
+    } elseif (Test-Path -LiteralPath $localVenvRoot -PathType Container) {
+        Write-StackLog 'Removing an incomplete local Python environment before recreation.'
+        Remove-Item -LiteralPath $localVenvRoot -Recurse -Force
+    }
+
+    $pythonCandidates = [System.Collections.Generic.List[string]]::new()
+    $pyLauncher = Get-Command py.exe -ErrorAction SilentlyContinue
+    if ($pyLauncher) {
+        $resolved313 = @(& $pyLauncher.Source '-3.13' '-c' 'import sys; print(sys.executable)' 2>$null) | Select-Object -Last 1
+        if ($LASTEXITCODE -eq 0 -and $resolved313) {
+            $pythonCandidates.Add($resolved313.ToString().Trim())
+        }
+    }
+    foreach ($candidate in @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe'),
+        (Join-Path $env:ProgramFiles 'Python313\python.exe'),
+        (Join-Path ${env:ProgramFiles(x86)} 'Python313\python.exe')
+    )) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            $pythonCandidates.Add($candidate)
+        }
+    }
     $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
-    if (-not $pythonCommand) { throw 'Python 3 is required to start admin-web.' }
+    if ($pythonCommand) { $pythonCandidates.Add($pythonCommand.Source) }
+
+    $basePython = $null
+    foreach ($candidate in $pythonCandidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $candidateVersion = (& $candidate -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null | Select-Object -Last 1)
+        if ($candidateVersion -and $candidateVersion.Trim() -eq '3.13') {
+            $basePython = $candidate
+            break
+        }
+    }
+    if (-not $basePython) {
+        throw 'Python 3.13 is required to start admin-web because the pinned psycopg[binary]==3.2.3 dependency has no Python 3.14 wheel.'
+    }
     Write-StackLog 'Creating the local admin-web Python environment.'
-    & $pythonCommand.Source -m venv (Split-Path $local -Parent) 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+    & $basePython -m venv $localVenvRoot 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'Python virtual environment creation failed.' }
-    & $local -m pip install --disable-pip-version-check -r (Join-Path $AdminWebDir 'requirements.txt') 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
+    $venvDeadline = (Get-Date).AddSeconds(30)
+    while (-not (Test-Path -LiteralPath $local -PathType Leaf) -and (Get-Date) -lt $venvDeadline) {
+        # Python/Defender can finish copying the interpreter just after the
+        # venv process exits. Do not race the first pip invocation.
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not (Test-Path -LiteralPath $local -PathType Leaf)) {
+        throw "Python venv did not produce the interpreter: $local"
+    }
+    & $local -m pip install --disable-pip-version-check -r $requirementsPath 2>&1 | Tee-Object -FilePath $StackLog -Append | Out-Host
     if ($LASTEXITCODE -ne 0) { throw 'admin-web dependency installation failed. See local-runtime/logs/stack.log.' }
     return $local
 }
@@ -466,20 +594,48 @@ function Resolve-WebsitePython {
 function Ensure-ServerRuntimeFiles {
     $jar = Join-Path $ServerDir 'purpur.jar'
     if (-not (Test-Path -LiteralPath $jar)) {
-        $source = Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\purpur.jar'
-        if (-not (Test-Path -LiteralPath $source)) { throw "purpur.jar is missing: $jar" }
+        $source = @(
+            (Join-Path $Root 'artifacts\local-validation\paper\purpur.jar'),
+            (Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\purpur.jar')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $source) { throw "purpur.jar is missing from the disposable fixture and fallback: $jar" }
         Copy-Item -LiteralPath $source -Destination $jar -Force
-        Write-StackLog 'Copied Purpur from the local release runtime.'
+        Write-StackLog "Copied Purpur from the local disposable fixture: $source"
     }
     $eula = Join-Path $ServerDir 'eula.txt'
     if (-not (Test-Path -LiteralPath $eula)) { Set-Content -LiteralPath $eula -Value 'eula=true' -Encoding ASCII }
-    $voicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.11.jar'
+    $voicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.16.jar'
+    $legacyVoicechat = Join-Path $ServerDir 'plugins\voicechat-bukkit-2.6.11.jar'
+    $legacyRemappedVoicechat = Join-Path $ServerDir 'plugins\.paper-remapped\voicechat-bukkit-2.6.11.jar'
+    if (Test-Path -LiteralPath $legacyVoicechat -PathType Leaf) {
+        Remove-Item -LiteralPath $legacyVoicechat -Force
+        Write-StackLog 'Removed the stale local Simple Voice Chat 2.6.11 plugin before staging 2.6.16.'
+    }
+    if (Test-Path -LiteralPath $legacyRemappedVoicechat -PathType Leaf) {
+        Remove-Item -LiteralPath $legacyRemappedVoicechat -Force
+        Write-StackLog 'Removed the stale local remapped Simple Voice Chat 2.6.11 plugin.'
+    }
     if (-not (Test-Path -LiteralPath $voicechat)) {
-        $sourceVoicechat = Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\plugins\voicechat-bukkit-2.6.11.jar'
-        if (Test-Path -LiteralPath $sourceVoicechat) {
-            Copy-Item -LiteralPath $sourceVoicechat -Destination $voicechat -Force
-            Write-StackLog 'Copied the local Simple Voice Chat API dependency.'
+        $sourceVoicechat = @(
+            (Join-Path $Root 'artifacts\local-validation\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'artifacts\local-validation\full-plugin-source-20260824\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'artifacts\local-validation\paper-full-plugins-clean-20260824\plugins\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path $Root 'minecraft\server\plugins\voicechat-bukkit-2.6.16.jar'),
+            (Join-Path (Split-Path $Root -Parent) 'opt\copimine\minecraft\server\plugins\voicechat-bukkit-2.6.16.jar')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+        if (-not $sourceVoicechat) {
+            throw 'Simple Voice Chat 2.6.16 is required for the local plugin stack; stage the official JAR in artifacts/local-validation/voicechat-bukkit-2.6.16.jar.'
         }
+        Copy-Item -LiteralPath $sourceVoicechat -Destination $voicechat -Force
+        Write-StackLog "Copied the local Simple Voice Chat 2.6.16 API dependency: $sourceVoicechat"
+    }
+}
+
+function Restore-VoiceChatProperties {
+    if (Test-Path -LiteralPath $VoiceChatPropertiesBackup) {
+        Copy-Item -LiteralPath $VoiceChatPropertiesBackup -Destination (Join-Path $ServerDir 'plugins\voicechat\voicechat-server.properties') -Force
+        Remove-Item -LiteralPath $VoiceChatPropertiesBackup -Force
+        Write-StackLog 'Restored minecraft/server/plugins/voicechat/voicechat-server.properties.'
     }
 }
 
@@ -531,8 +687,73 @@ function Send-RconCommand {
 }
 
 function Find-MinecraftProcess {
-    $needle = [regex]::Escape($ServerDir)
-    return @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'purpur\.jar' -and $_.CommandLine -match $needle })
+    $trackedId = Read-PidFile -Name 'minecraft'
+    if ($trackedId -gt 0) {
+        $tracked = Get-CimInstance Win32_Process -Filter "ProcessId=$trackedId" -ErrorAction SilentlyContinue
+        if ($tracked -and $tracked.CommandLine -match '(?i)-jar\s+purpur\.jar(?:\s|$)') {
+            return @($tracked)
+        }
+    }
+
+    # Start-Process records the exact Java PID above. The fallback is only for
+    # recovery after a stale pid file and is narrowed to this runner's heap
+    # profile so it cannot select the other local/event server.
+    return @(Get-CimInstance Win32_Process -Filter "Name='java.exe'" -ErrorAction SilentlyContinue | Where-Object {
+        $_.CommandLine -match '(?i)-Xms1G\s+-Xmx2G\s+-jar\s+purpur\.jar(?:\s|$)'
+    })
+}
+
+function Assert-MinecraftStartupHealthy {
+    param([int]$TimeoutSeconds = 30)
+    $logPath = Join-Path $ServerDir 'logs\latest.log'
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $content = ''
+    do {
+        if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+            $content = Get-Content -LiteralPath $logPath -Raw -ErrorAction SilentlyContinue
+            if ($content -match 'Done \(') { break }
+        }
+        if (@(Find-MinecraftProcess).Count -eq 0) {
+            throw "Minecraft exited before startup completed. Inspect $logPath."
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    if ($content -notmatch 'Done \(') {
+        throw "Minecraft did not report a completed startup within $TimeoutSeconds seconds. Inspect $logPath."
+    }
+
+    foreach ($pattern in @(
+        '(?im)Could not load plugin',
+        '(?im)InvalidPluginException:',
+        '(?im)NoClassDefFoundError:',
+        '(?im)ClassNotFoundException:'
+    )) {
+        $failure = [regex]::Match($content, $pattern)
+        if ($failure.Success) {
+            throw "Minecraft plugin startup failed ($pattern). Inspect $logPath."
+        }
+    }
+
+    foreach ($pluginName in @(
+        'AuthEffects',
+        'AuthMe',
+        'ClearLag',
+        'CopiMineArtifacts',
+        'CopiMineEconomyCore',
+        'CopiMineElectionCore',
+        'CopiMineNarcotics',
+        'CopiMineUltimateAdminPlus',
+        'CopiMineWorldCore',
+        'GrimAC',
+        'voicechat'
+    )) {
+        $marker = '\[' + [regex]::Escape($pluginName) + '\] Enabling '
+        if ($content -notmatch $marker) {
+            throw "Minecraft plugin '$pluginName' did not reach its enabling phase. Inspect $logPath."
+        }
+    }
+    Write-StackLog 'Minecraft startup gate passed: completed startup with all required local plugins enabled.'
 }
 
 function Start-Website {
@@ -554,6 +775,15 @@ function Start-Minecraft {
     Ensure-ServerRuntimeFiles
     if (Test-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort) { throw "Port $MinecraftPort is already in use." }
     Backup-AndPatchServerProperties
+    Backup-AndPatchVoiceChatProperties
+    $resourcePackBuild = Join-Path $Root 'resourcepacks\build'
+    $resourcePackZip = Join-Path $resourcePackBuild 'CopiMineResourcePack.zip'
+    if (-not (Test-Path -LiteralPath $resourcePackZip -PathType Leaf)) {
+        throw "Built resource pack is missing: $resourcePackZip. Run resourcepacks/build-resourcepack.py first."
+    }
+    $resourcePackSha1 = Get-Sha1Hex -Path $resourcePackZip
+    Set-ServerProperty -Key 'resource-pack' -Value "http://127.0.0.1:$WebsitePort/resourcepacks/CopiMineResourcePack.zip"
+    Set-ServerProperty -Key 'resource-pack-sha1' -Value $resourcePackSha1
     $java = (Get-Command java.exe -ErrorAction SilentlyContinue).Source
     if (-not $java) { throw 'Java 21 is required to start Purpur.' }
     $env:COPIMINE_ENV_FILE = $LocalEnvFile
@@ -564,13 +794,14 @@ function Start-Minecraft {
     $env:POSTGRES_PASSWORD = $script:LocalValues['POSTGRES_PASSWORD']
     $env:POSTGRES_SCHEMA = 'copimine'
     $env:RCON_PASSWORD = $script:LocalValues['RCON_PASSWORD']
-    $proc = Start-Process -FilePath $java -ArgumentList @('-Xms1G', '-Xmx2G', '-jar', 'purpur.jar', 'nogui') -WorkingDirectory $ServerDir -RedirectStandardOutput $MinecraftOutLog -RedirectStandardError $MinecraftErrLog -WindowStyle Hidden -PassThru
+    $proc = Start-Process -FilePath $java -ArgumentList @("-Xms$MinecraftJvmXms", "-Xmx$MinecraftJvmXmx", '-jar', 'purpur.jar', 'nogui') -WorkingDirectory $ServerDir -RedirectStandardOutput $MinecraftOutLog -RedirectStandardError $MinecraftErrLog -WindowStyle Hidden -PassThru
     Write-PidFile -Name 'minecraft' -ProcessId $proc.Id
     if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort -Expected $true -TimeoutSeconds 120)) {
         if (-not (Get-ProcessIfAlive -ProcessId $proc.Id)) { throw 'Minecraft exited during startup. See local-runtime/logs/minecraft.stderr.log and minecraft/server/logs/latest.log.' }
         throw 'Minecraft did not open port 25565. See local-runtime/logs/minecraft.stdout.log and minecraft/server/logs/latest.log.'
     }
-    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 30)) { throw 'Minecraft RCON did not become ready.' }
+    if (-not (Wait-TcpPort -TargetHost '127.0.0.1' -Port $RconPort -Expected $true -TimeoutSeconds 180)) { throw 'Minecraft RCON did not become ready.' }
+    Assert-MinecraftStartupHealthy
     [void](Send-RconCommand -Command 'save-all')
     $adminFile = Join-Path $Runtime 'local-admin.txt'
     if (Test-Path -LiteralPath $adminFile) {
@@ -607,6 +838,7 @@ function Stop-Minecraft {
     Remove-PidFile -Name 'minecraft'
     if (Wait-TcpPort -TargetHost '127.0.0.1' -Port $MinecraftPort -Expected $false -TimeoutSeconds 20) { Write-StackLog 'Minecraft stopped.' } else { Write-StackLog 'Minecraft port is still occupied; inspect the process and logs.' }
     Restore-ServerProperties
+    Restore-VoiceChatProperties
 }
 
 function Stop-Postgres {

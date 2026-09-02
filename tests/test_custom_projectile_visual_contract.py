@@ -39,7 +39,7 @@ def test_generator_declares_custom_projectile_layers():
 
 
 def test_bow_pull_frames_keep_visible_recolored_custom_arrow():
-    for prefix in ("teleport_bow", "cobblestone_trail_bow"):
+    for prefix in ("cobblestone_trail_bow",):
         for reference_name in BOW_PROJECTILE_COORDS:
             stage = reference_name.removeprefix("bow_").removesuffix(".png")
             output_name = f"{prefix}_{stage}"

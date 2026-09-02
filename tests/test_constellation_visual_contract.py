@@ -12,7 +12,7 @@ def read(relative: str) -> str:
 def test_constellation_layer_is_the_last_shared_visual_contract() -> None:
     style = read("admin-web/frontend/assets/style.css")
     cabinet = read("admin-web/frontend/assets/cabinet.css")
-    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation3");'
+    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation4");'
 
     assert import_line in style
     assert import_line in cabinet
@@ -95,3 +95,13 @@ def test_constellation_flattens_the_remaining_cabinet_chrome() -> None:
 
     assert source.count("border-radius: 0 !important") >= 12
     assert source.count("background: transparent !important") >= 8
+
+
+def test_constellation_replaces_legacy_lime_accents_with_the_cyan_signal() -> None:
+    source = read("admin-web/frontend/assets/css/copimine-constellation.css")
+
+    assert "--site-launcher-lime: var(--constellation-cyan) !important;" in source
+    assert "--site-moss: var(--constellation-cyan) !important;" in source
+    assert "--cabinet-site-moss: var(--constellation-cyan) !important;" in source
+    assert ':root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-kicker' in source
+    assert "#d8ffb2" not in source.lower()

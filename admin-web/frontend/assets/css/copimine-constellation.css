@@ -111,6 +111,33 @@
   color-scheme: light;
 }
 
+/* The old launcher layers used a lime signal. Keep their variables alive for
+   legacy components, but route every visible signal through the new cyan. */
+
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {
+  --site-launcher-lime: var(--constellation-cyan) !important;
+  --site-moss: var(--constellation-cyan) !important;
+  --cabinet-site-moss: var(--constellation-cyan) !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.hero-kicker, .section-head > span, .page-kicker-row > span:first-child, .event-kicker) {
+  color: var(--constellation-cyan) !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site .hero-kicker,
+:root[data-theme] body[data-page-kind^="public"] .public-site .page-kicker-row .hero-kicker,
+:root[data-theme] body[data-page-kind^="public"] .public-site .section-head > span,
+:root[data-theme] body[data-page-kind^="public"] .public-site .event-kicker {
+  color: var(--constellation-cyan) !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"] .public-site :where(.event-clock-hand-second, .event-clock-pin, .event-live-dot) {
+  background: var(--constellation-cyan) !important;
+  color: var(--constellation-cyan) !important;
+}
+
 html {
   min-width: 320px;
   background: var(--constellation-bg) !important;

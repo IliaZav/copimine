@@ -7,6 +7,7 @@
 @import url("./css/site-atmosphere.css?v=20260902siteui28");
 @import url("./css/site-launcher-theme.css?v=20260902siteui29");
 @import url("./css/aurora-redesign.css?v=20260902flat6");
+@import url("./css/copimine-constellation.css?v=20260903constellation3");
 
 .anticheat-signal { display: inline-flex; align-items: center; min-height: 2rem; }
 .release-readiness-card { margin-top: 14px; padding: 16px 18px; border: 1px solid var(--line); background: var(--surface); }

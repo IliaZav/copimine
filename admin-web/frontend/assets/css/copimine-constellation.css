@@ -1,0 +1,849 @@
+/*
+ * CopiMine Constellation
+ *
+ * The last visual layer is deliberately small and opinionated.  Older
+ * feature styles can keep their class names and layout contracts, while this
+ * layer gives every route one visual language: a full-bleed night scene,
+ * cyan-violet signals, editorial rules, and almost no floating surfaces.
+ */
+
+:root,
+:root[data-theme="dark"] {
+  --constellation-bg: #060914;
+  --constellation-bg-deep: #03050c;
+  --constellation-ink: #f5f7ff;
+  --constellation-muted: #a8b4ca;
+  --constellation-faint: #6f7e99;
+  --constellation-cyan: #63e3ff;
+  --constellation-violet: #ae94ff;
+  --constellation-blue: #7da8ff;
+  --constellation-amber: #ffc779;
+  --constellation-coral: #ff899c;
+  --constellation-rule: rgba(137, 175, 235, .25);
+  --constellation-rule-strong: rgba(174, 148, 255, .66);
+  --constellation-cyan-soft: rgba(99, 227, 255, .12);
+  --constellation-violet-soft: rgba(174, 148, 255, .13);
+  --constellation-bg-image: url("/assets/showcase/home-dark-v2.png");
+  --constellation-heading-font: "Space Grotesk", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  --constellation-accent-font: "Plus Jakarta Sans", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --constellation-body-font: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  --constellation-data-font: "Inter", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+
+  /* Bridge the legacy feature sheets to the new palette. */
+  --aurora-cyan: var(--constellation-cyan) !important;
+  --aurora-violet: var(--constellation-violet) !important;
+  --aurora-blue: var(--constellation-blue) !important;
+  --aurora-amber: var(--constellation-amber) !important;
+  --aurora-coral: var(--constellation-coral) !important;
+  --aurora-ink: var(--constellation-ink) !important;
+  --aurora-muted: var(--constellation-muted) !important;
+  --aurora-faint: var(--constellation-faint) !important;
+  --aurora-line: var(--constellation-rule) !important;
+  --aurora-line-strong: var(--constellation-rule-strong) !important;
+  --aurora-display: var(--constellation-heading-font) !important;
+  --aurora-accent-font: var(--constellation-accent-font) !important;
+  --aurora-body: var(--constellation-body-font) !important;
+  --aurora-data: var(--constellation-data-font) !important;
+  --aurora-flat-display: var(--constellation-heading-font) !important;
+  --aurora-flat-body: var(--constellation-body-font) !important;
+  --aurora-flat-data: var(--constellation-data-font) !important;
+  --aurora-flat-ink: var(--constellation-ink) !important;
+  --aurora-flat-muted: var(--constellation-muted) !important;
+  --aurora-flat-rule: var(--constellation-rule) !important;
+  --accent: var(--constellation-cyan) !important;
+  --accent-strong: #a8f3ff !important;
+  --accent-soft: var(--constellation-cyan-soft) !important;
+  --accent-2: var(--constellation-cyan-soft) !important;
+  --accent-gradient: linear-gradient(110deg, var(--constellation-cyan), var(--constellation-violet)) !important;
+  --blue: var(--constellation-blue) !important;
+  --teal: var(--constellation-violet) !important;
+  --green: var(--constellation-cyan) !important;
+  --success: var(--constellation-cyan) !important;
+  --red: var(--constellation-coral) !important;
+  --red-2: rgba(255, 137, 156, .14) !important;
+  --site-aqua: var(--constellation-cyan) !important;
+  --site-violet: var(--constellation-violet) !important;
+  --site-moss: var(--constellation-amber) !important;
+  --cabinet-signal: var(--constellation-cyan) !important;
+  --cabinet-signal-soft: var(--constellation-cyan-soft) !important;
+  --bg: var(--constellation-bg) !important;
+  --page-bg: var(--constellation-bg) !important;
+  --ink: var(--constellation-ink) !important;
+  --muted: var(--constellation-muted) !important;
+  --faint: var(--constellation-faint) !important;
+  --line: var(--constellation-rule) !important;
+  --line-strong: var(--constellation-rule-strong) !important;
+  --surface: transparent !important;
+  --surface-soft: rgba(8, 16, 31, .26) !important;
+  --surface-strong: rgba(10, 19, 37, .46) !important;
+  --panel: transparent !important;
+  --panel-strong: rgba(10, 19, 37, .46) !important;
+  --sidebar: rgba(4, 9, 19, .48) !important;
+  --sidebar-2: rgba(10, 18, 35, .52) !important;
+  --shadow: none !important;
+  --shadow-soft: none !important;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --constellation-bg: #eaf0fb;
+  --constellation-bg-deep: #dfe8f7;
+  --constellation-ink: #101a2d;
+  --constellation-muted: #53627a;
+  --constellation-faint: #7888a1;
+  --constellation-cyan: #087eaa;
+  --constellation-violet: #6551c4;
+  --constellation-blue: #346bc2;
+  --constellation-amber: #a66712;
+  --constellation-coral: #b8445d;
+  --constellation-rule: rgba(46, 75, 124, .24);
+  --constellation-rule-strong: rgba(91, 72, 181, .5);
+  --constellation-cyan-soft: rgba(8, 126, 170, .11);
+  --constellation-violet-soft: rgba(101, 81, 196, .11);
+  --constellation-bg-image: url("/assets/showcase/home-dark-v2.png");
+  --accent-strong: #075f7e !important;
+  --green: var(--constellation-cyan) !important;
+  --success: var(--constellation-cyan) !important;
+  --surface-soft: rgba(255, 255, 255, .18) !important;
+  --surface-strong: rgba(255, 255, 255, .34) !important;
+  --sidebar: rgba(245, 249, 255, .7) !important;
+  --sidebar-2: rgba(231, 239, 252, .72) !important;
+  color-scheme: light;
+}
+
+html {
+  min-width: 320px;
+  background: var(--constellation-bg) !important;
+}
+
+body {
+  position: relative;
+  isolation: isolate;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--constellation-bg) !important;
+  color: var(--constellation-ink) !important;
+  font-family: var(--constellation-body-font) !important;
+}
+
+body[data-page-kind^="public"]::before,
+body[data-page-kind]::before,
+body.auth-screen::before,
+body.error-screen::before,
+body.launcher-link-page::before,
+body.preview-shell::before {
+  content: "";
+  position: fixed;
+  z-index: -2;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(3, 6, 16, .72), rgba(3, 7, 17, .89)),
+    var(--constellation-bg-image) center / cover no-repeat;
+  opacity: .94;
+  transform: scale(1.04);
+  animation: constellationBackdrop 26s ease-in-out infinite alternate;
+}
+
+body[data-page-kind^="public"]::after,
+body[data-page-kind]::after,
+body.auth-screen::after,
+body.error-screen::after,
+body.launcher-link-page::after,
+body.preview-shell::after {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  opacity: .2;
+  background:
+    linear-gradient(90deg, transparent 0 49.9%, rgba(99, 227, 255, .13) 50%, transparent 50.1%) 0 0 / 96px 96px,
+    linear-gradient(0deg, transparent 0 49.9%, rgba(174, 148, 255, .11) 50%, transparent 50.1%) 0 0 / 96px 96px;
+  mask-image: linear-gradient(180deg, #000, transparent 86%);
+}
+
+:root[data-theme="light"] body[data-page-kind^="public"]::before,
+:root[data-theme="light"] body[data-page-kind]::before,
+:root[data-theme="light"] body.auth-screen::before,
+:root[data-theme="light"] body.error-screen::before,
+:root[data-theme="light"] body.launcher-link-page::before,
+:root[data-theme="light"] body.preview-shell::before {
+  background:
+    linear-gradient(180deg, rgba(234, 240, 251, .8), rgba(234, 240, 251, .94)),
+    var(--constellation-bg-image) center / cover no-repeat;
+  opacity: .62;
+}
+
+/* Route-specific atmosphere rules in the legacy sheets are more specific
+ * than a plain body pseudo-element.  Match that specificity so the final
+ * full-bleed image cannot silently disappear on a named public route. */
+
+:root[data-theme] body[data-page-kind^="public"]::before,
+:root[data-theme] body[data-page-kind="cabinet"]::before,
+:root[data-theme] body.auth-screen::before,
+:root[data-theme] body.error-screen::before,
+:root[data-theme] body.launcher-link-page::before,
+:root[data-theme] body.preview-shell::before {
+  background:
+    linear-gradient(180deg, rgba(3, 6, 16, .72), rgba(3, 7, 17, .89)),
+    var(--constellation-bg-image) center / cover no-repeat !important;
+  background-position: center !important;
+  background-size: cover !important;
+  opacity: .94 !important;
+}
+
+:root[data-theme="light"] body[data-page-kind^="public"]::before,
+:root[data-theme="light"] body[data-page-kind="cabinet"]::before,
+:root[data-theme="light"] body.auth-screen::before,
+:root[data-theme="light"] body.error-screen::before,
+:root[data-theme="light"] body.launcher-link-page::before,
+:root[data-theme="light"] body.preview-shell::before {
+  background:
+    linear-gradient(180deg, rgba(234, 240, 251, .8), rgba(234, 240, 251, .94)),
+    var(--constellation-bg-image) center / cover no-repeat !important;
+  opacity: .62 !important;
+}
+
+:root[data-theme] body[data-page-kind^="public"]::after,
+:root[data-theme] body[data-page-kind="cabinet"]::after,
+:root[data-theme] body.auth-screen::after,
+:root[data-theme] body.error-screen::after,
+:root[data-theme] body.launcher-link-page::after,
+:root[data-theme] body.preview-shell::after {
+  background-image:
+    linear-gradient(90deg, transparent 0 49.9%, rgba(99, 227, 255, .13) 50%, transparent 50.1%),
+    linear-gradient(0deg, transparent 0 49.9%, rgba(174, 148, 255, .11) 50%, transparent 50.1%) !important;
+  background-size: 96px 96px !important;
+  opacity: .2 !important;
+  mask-image: linear-gradient(180deg, #000, transparent 86%) !important;
+}
+
+body[data-page-kind="public-events"]::before {
+  background:
+    linear-gradient(180deg, rgba(5, 2, 16, .74), rgba(3, 7, 17, .92)),
+    url("/assets/events/end-rift/end-landscape.png") center / cover no-repeat;
+}
+
+:root[data-theme] body[data-page-kind="public-events"]::before {
+  background:
+    linear-gradient(180deg, rgba(5, 2, 16, .74), rgba(3, 7, 17, .92)),
+    url("/assets/events/end-rift/end-landscape.png") center / cover no-repeat !important;
+  background-position: center !important;
+  background-size: cover !important;
+  opacity: .94 !important;
+}
+
+body > *,
+body main,
+body header,
+body section,
+body aside,
+body footer {
+  position: relative;
+  z-index: 0;
+}
+
+body :where(h1, h2, h3, h4, strong, .panel-title, .metric-value) {
+  font-family: var(--constellation-heading-font) !important;
+  font-weight: 680;
+  letter-spacing: -.045em;
+}
+
+body :where(p, li, td, th, label, small, .btn, input, select, textarea) {
+  font-family: var(--constellation-body-font) !important;
+}
+
+body :where(a, button, .hero-kicker, .section-head > span, .event-kicker, .metric-label, .eyebrow, .status-chip) {
+  font-family: var(--constellation-accent-font) !important;
+}
+
+body :where(a) {
+  color: var(--constellation-cyan) !important;
+}
+
+body :where(a:hover, a:focus-visible) {
+  color: var(--constellation-ink) !important;
+}
+
+body :where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--constellation-cyan) !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 5px rgba(99, 227, 255, .14) !important;
+}
+
+/* Shared shell: one rule line, one navigation, no floating green header. */
+
+body[data-page-kind^="public"] .public-site,
+body[data-page-kind="error-404"] .error-page,
+body.launcher-link-page .launcher-link-shell,
+body.preview-shell .preview-layout,
+body[data-page-kind="cabinet"] #app {
+  width: min(100%, 1480px) !important;
+  margin-inline: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind^="public"] .public-nav,
+body[data-page-kind="error-404"] .public-nav,
+body.auth-screen .public-nav,
+body[data-page-kind="cabinet"] .public-nav {
+  min-height: 74px !important;
+  padding: 11px clamp(12px, 3vw, 28px) 12px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: rgba(3, 8, 18, .24) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+:root[data-theme="light"] body[data-page-kind^="public"] .public-nav,
+:root[data-theme="light"] body[data-page-kind="error-404"] .public-nav,
+:root[data-theme="light"] body.auth-screen .public-nav,
+:root[data-theme="light"] body[data-page-kind="cabinet"] .public-nav {
+  background: rgba(245, 249, 255, .34) !important;
+}
+
+body[data-page-kind^="public"] .public-nav::after,
+body[data-page-kind="error-404"] .public-nav::after,
+body.auth-screen .public-nav::after,
+body[data-page-kind="cabinet"] .public-nav::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--constellation-cyan), var(--constellation-violet) 48%, transparent 86%);
+  transform-origin: left center;
+  animation: constellationSweep 12s ease-in-out infinite;
+}
+
+body :where(.public-brand-logo, .side-brand-logo) {
+  border-radius: 2px !important;
+  box-shadow: 0 0 0 1px var(--constellation-rule), 0 0 26px rgba(99, 227, 255, .1) !important;
+}
+
+body :where(.public-brand-copy strong, .side-brand-copy strong) {
+  color: var(--constellation-ink) !important;
+}
+
+body :where(.public-brand-copy small, .side-brand-copy span) {
+  color: var(--constellation-muted) !important;
+}
+
+body[data-page-kind^="public"] .public-nav nav,
+body[data-page-kind="error-404"] .public-nav nav,
+body.auth-screen .public-nav nav,
+body[data-page-kind="cabinet"] .public-nav nav {
+  gap: 2px !important;
+}
+
+body[data-page-kind^="public"] .public-nav nav > a,
+body[data-page-kind^="public"] .public-nav nav > .btn,
+body[data-page-kind="error-404"] .public-nav nav > a,
+body[data-page-kind="error-404"] .public-nav nav > .btn,
+body.auth-screen .public-nav nav > a,
+body.auth-screen .public-nav nav > .btn,
+body[data-page-kind="cabinet"] .public-nav nav > a,
+body[data-page-kind="cabinet"] .public-nav nav > .btn {
+  min-height: 40px !important;
+  padding: 7px 9px !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+  color: var(--constellation-muted) !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind^="public"] .public-nav nav > a:hover,
+body[data-page-kind^="public"] .public-nav nav > a:focus-visible,
+body[data-page-kind^="public"] .public-nav nav > a[aria-current="page"],
+body[data-page-kind^="public"] .public-nav nav > .btn:hover,
+body[data-page-kind^="public"] .public-nav nav > .btn:focus-visible,
+body[data-page-kind="error-404"] .public-nav nav > a[aria-current="page"],
+body.auth-screen .public-nav nav > a[aria-current="page"],
+body[data-page-kind="cabinet"] .public-nav nav > a:hover,
+body[data-page-kind="cabinet"] .public-nav nav > a:focus-visible {
+  border-bottom-color: var(--constellation-cyan) !important;
+  color: var(--constellation-ink) !important;
+}
+
+body :where(.theme-toggle, .shop-cart-button, .shop-cart-compact) {
+  border-left: 1px solid var(--constellation-rule) !important;
+  border-radius: 2px !important;
+  background: transparent !important;
+}
+
+/* Public content reads as an editorial canvas.  Images keep a quiet frame. */
+
+body[data-page-kind^="public"] :where(
+  .public-hero,
+  .launcher-hero,
+  .news-hero,
+  .public-section,
+  .public-panel,
+  .hero-side-card,
+  .hero-media-card,
+  .legacy-redirect-card,
+  .public-route-card,
+  .public-shop-card,
+  .public-brief-card,
+  .commerce-panel,
+  .modpack-summary-card,
+  .modpack-file-card,
+  .modpack-note-card,
+  .news-card,
+  .showcase-card,
+  .launcher-feature-card,
+  .launcher-step,
+  .launcher-faq-card,
+  .launcher-system-card,
+  .scene-card,
+  .event-calendar-stage,
+  .event-calendar,
+  .event-mystery-card,
+  .event-video-card,
+  .event-upcoming,
+  .event-clock-strip
+) {
+  border: 0 !important;
+  border-top: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body[data-page-kind^="public"] :where(.public-page-shell, .public-site-compact) {
+  background: transparent !important;
+}
+
+body[data-page-kind^="public"] :where(.public-hero, .launcher-hero, .news-hero) {
+  min-height: clamp(430px, 62vh, 760px) !important;
+  padding: clamp(52px, 9vw, 120px) 0 clamp(44px, 7vw, 88px) !important;
+  align-items: end !important;
+}
+
+body[data-page-kind^="public"] :where(.public-hero-copy, .launcher-hero-copy, .news-hero-copy) h1 {
+  max-width: 10ch;
+  color: var(--constellation-ink) !important;
+  font-family: var(--constellation-heading-font) !important;
+  font-size: clamp(3.2rem, 8vw, 8.8rem) !important;
+  line-height: .88 !important;
+  letter-spacing: -.085em !important;
+}
+
+body[data-page-kind^="public"] :where(.public-hero-copy, .launcher-hero-copy, .news-hero-copy) > p {
+  max-width: 52ch;
+  color: var(--constellation-muted) !important;
+  font-size: clamp(1rem, 1.3vw, 1.16rem) !important;
+}
+
+body[data-page-kind^="public"] :where(.hero-kicker, .section-head > span, .page-kicker-row > span:first-child, .event-kicker) {
+  color: var(--constellation-cyan) !important;
+  letter-spacing: .14em !important;
+  text-transform: uppercase;
+}
+
+body[data-page-kind^="public"] :where(.hero-media-art, .scene-card, .launcher-hero-visual, .launcher-shot button, .event-gallery-item) {
+  border: 1px solid var(--constellation-rule) !important;
+  border-radius: 2px !important;
+  background: rgba(2, 5, 13, .28) !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind^="public"] :where(.hero-media-art img, .scene-card-image, .launcher-hero-visual img, .launcher-shot img, .event-gallery-item img) {
+  border-radius: 0 !important;
+}
+
+body[data-page-kind^="public"] :where(.public-section, .event-section, .event-calendar-stage) {
+  padding: clamp(48px, 7vw, 96px) 0 !important;
+}
+
+body[data-page-kind^="public"] :where(.section-head h2, .public-panel-head h3, .event-section-head h2) {
+  color: var(--constellation-ink) !important;
+  font-size: clamp(2rem, 4.5vw, 4.4rem) !important;
+  letter-spacing: -.07em !important;
+}
+
+body[data-page-kind^="public"] :where(.section-head p, .public-panel p, .launcher-feature-card p, .launcher-step p, .launcher-faq-card p, .event-calendar-lead, .event-mystery-line) {
+  color: var(--constellation-muted) !important;
+}
+
+body[data-page-kind^="public"] :where(.launcher-feature-card, .launcher-step, .launcher-faq-card, .news-card, .public-shop-card, .public-route-card, .event-mystery-card) {
+  min-height: 0 !important;
+  padding: 22px 20px 24px 0 !important;
+  border-top: 1px solid var(--constellation-rule) !important;
+  transition: color 180ms ease, border-color 180ms ease, transform 180ms ease !important;
+}
+
+body[data-page-kind^="public"] :where(.launcher-feature-card, .launcher-step, .launcher-faq-card, .news-card, .public-shop-card, .public-route-card, .event-mystery-card):hover {
+  border-top-color: var(--constellation-cyan) !important;
+  transform: translateY(-3px) !important;
+}
+
+/* Controls are instruments, not glossy tiles. */
+
+body :where(.btn, button, .btn-primary, .btn-secondary, .btn-ghost) {
+  border-radius: 2px !important;
+  border: 1px solid var(--constellation-rule) !important;
+  background: rgba(9, 19, 37, .48) !important;
+  color: var(--constellation-ink) !important;
+  box-shadow: none !important;
+  transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, color 180ms ease !important;
+}
+
+:root[data-theme="light"] body :where(.btn, button, .btn-primary, .btn-secondary, .btn-ghost) {
+  background: rgba(255, 255, 255, .28) !important;
+  color: var(--constellation-ink) !important;
+}
+
+body :where(.btn, button, .btn-primary, .btn-secondary, .btn-ghost):hover {
+  border-color: var(--constellation-cyan) !important;
+  background: var(--constellation-cyan-soft) !important;
+  transform: translateY(-2px);
+}
+
+body :where(.btn-primary, .public-actions .btn-primary) {
+  border-color: transparent !important;
+  background: linear-gradient(110deg, var(--constellation-cyan), var(--constellation-violet)) !important;
+  color: #06101b !important;
+  font-weight: 800 !important;
+}
+
+body :where(input, select, textarea) {
+  min-height: 44px !important;
+  border: 1px solid var(--constellation-rule) !important;
+  border-radius: 2px !important;
+  background: rgba(2, 7, 16, .5) !important;
+  color: var(--constellation-ink) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme="light"] body :where(input, select, textarea) {
+  background: rgba(255, 255, 255, .48) !important;
+}
+
+body :where(input, select, textarea):focus {
+  border-color: var(--constellation-cyan) !important;
+  box-shadow: 0 0 0 4px rgba(99, 227, 255, .13) !important;
+}
+
+body :where(.status-chip, .route-chip, .hero-inline-card, .hero-sprite-chip, .launcher-download-state) {
+  border-radius: 2px !important;
+  border-color: var(--constellation-rule) !important;
+  background: transparent !important;
+  color: var(--constellation-cyan) !important;
+}
+
+body :where(.status-good, .status-ok, .status-success, [data-tone="success"], [data-state="ready"]) {
+  color: var(--constellation-cyan) !important;
+}
+
+body :where(.status-bad, .status-error, [data-tone="error"], [data-state="error"]) {
+  color: var(--constellation-coral) !important;
+}
+
+/* Cabinet: a working instrument panel with a rail, not a dashboard of cards. */
+
+body[data-page-kind="cabinet"] {
+  background: var(--constellation-bg) !important;
+}
+
+body[data-page-kind="cabinet"] #app {
+  display: grid !important;
+  grid-template-columns: minmax(205px, 248px) minmax(0, 1fr) !important;
+  gap: clamp(22px, 3vw, 48px) !important;
+  min-height: calc(100vh - 75px) !important;
+  padding: 0 clamp(14px, 3vw, 48px) 64px !important;
+}
+
+body[data-page-kind="cabinet"] .sidebar {
+  position: sticky !important;
+  top: 0 !important;
+  align-self: start !important;
+  min-height: calc(100vh - 75px) !important;
+  padding: 30px 18px 24px 0 !important;
+  border: 0 !important;
+  border-right: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="cabinet"] .side-nav {
+  gap: 2px !important;
+  padding-top: 26px !important;
+}
+
+body[data-page-kind="cabinet"] .side-nav :where(a, button) {
+  min-height: 42px !important;
+  padding: 9px 10px !important;
+  border: 0 !important;
+  border-left: 2px solid transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--constellation-muted) !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="cabinet"] .side-nav :where(a:hover, a:focus-visible, a.active, a[aria-current="page"], button:hover) {
+  border-left-color: var(--constellation-cyan) !important;
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 84%) !important;
+  color: var(--constellation-ink) !important;
+}
+
+body[data-page-kind="cabinet"] .nav-item,
+body[data-page-kind="cabinet"] .hero-board,
+body[data-page-kind="cabinet"] .last-update {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="cabinet"] .admin-search-panel {
+  border: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: rgba(6, 9, 20, .96) !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"].panel-admin-mode .nav-item,
+:root[data-theme] body[data-page-kind="cabinet"].player-mode .nav-item,
+:root[data-theme] body[data-page-kind="cabinet"].junior-admin-mode .nav-item {
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:root[data-theme] body[data-page-kind="cabinet"].panel-admin-mode .nav-item.active,
+:root[data-theme] body[data-page-kind="cabinet"].player-mode .nav-item.active,
+:root[data-theme] body[data-page-kind="cabinet"].junior-admin-mode .nav-item.active {
+  border-left-color: var(--constellation-cyan) !important;
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 84%) !important;
+}
+
+body[data-page-kind="cabinet"] .workspace {
+  min-width: 0 !important;
+  padding: 30px 0 0 !important;
+}
+
+body[data-page-kind="cabinet"] .topbar {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20 !important;
+  display: flex !important;
+  align-items: end !important;
+  gap: 24px !important;
+  min-height: 92px !important;
+  padding: 0 0 22px !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, rgba(6, 9, 20, .96), rgba(6, 9, 20, .68) 74%, transparent) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+:root[data-theme="light"] body[data-page-kind="cabinet"] .topbar {
+  background: linear-gradient(180deg, rgba(234, 240, 251, .96), rgba(234, 240, 251, .7) 74%, transparent) !important;
+}
+
+body[data-page-kind="cabinet"] .topbar::after {
+  background: linear-gradient(90deg, var(--constellation-cyan), var(--constellation-violet), transparent 78%) !important;
+}
+
+body[data-page-kind="cabinet"] .page-heading h1 {
+  color: var(--constellation-ink) !important;
+  font-family: var(--constellation-heading-font) !important;
+  font-size: clamp(2rem, 4vw, 4.5rem) !important;
+  letter-spacing: -.08em !important;
+}
+
+body[data-page-kind="cabinet"] .page-heading p,
+body[data-page-kind="cabinet"] .panel-subtitle,
+body[data-page-kind="cabinet"] .metric-detail,
+body[data-page-kind="cabinet"] .last-update {
+  color: var(--constellation-muted) !important;
+}
+
+body[data-page-kind="cabinet"] .view,
+body[data-page-kind="cabinet"] .view > *,
+body[data-page-kind="cabinet"] :where(.panel, .metric, .metric-card, .card, .data-card, .table-wrap, .form-panel, .admin-card, .launcher-admin-card, .stat-card, .visual-card, .dashboard-hero, .hero-tile, .dashboard-check) {
+  min-width: 0 !important;
+  border: 0 !important;
+  border-top: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body[data-page-kind="cabinet"] .view > * {
+  padding: 28px 0 !important;
+}
+
+body[data-page-kind="cabinet"] :where(.panel, .table-wrap, .form-panel) {
+  padding: 24px 0 !important;
+}
+
+body[data-page-kind="cabinet"] :where(.metric, .metric-card) {
+  min-height: 112px !important;
+  padding: 18px 18px 18px 0 !important;
+}
+
+body[data-page-kind="cabinet"] :where(.metric, .metric-card) + :where(.metric, .metric-card) {
+  border-left: 1px solid var(--constellation-rule) !important;
+  padding-left: 22px !important;
+}
+
+body[data-page-kind="cabinet"] :where(.metric-label, .visual-label, .eyebrow) {
+  color: var(--constellation-faint) !important;
+  font-family: var(--constellation-data-font) !important;
+  font-size: 10px !important;
+  letter-spacing: .12em !important;
+  text-transform: uppercase;
+}
+
+body[data-page-kind="cabinet"] :where(.metric-value, .metric strong) {
+  color: var(--constellation-ink) !important;
+  font-family: var(--constellation-heading-font) !important;
+}
+
+body[data-page-kind="cabinet"] :where(table, .table-shell) {
+  width: 100% !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="cabinet"] :where(th, td) {
+  border-color: var(--constellation-rule) !important;
+  background: transparent !important;
+}
+
+body[data-page-kind="cabinet"] tbody tr:hover {
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 86%) !important;
+}
+
+body[data-page-kind="cabinet"] :where(.tabs, .tab-list, .filter-bar, .toolbar, .table-toolbar) {
+  padding: 12px 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--constellation-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+
+body[data-page-kind="cabinet"] :where(.notice, .empty-state, .loading, .loading-error) {
+  border: 0 !important;
+  border-left: 2px solid var(--constellation-cyan) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(90deg, var(--constellation-cyan-soft), transparent 84%) !important;
+  box-shadow: none !important;
+}
+
+/* Event colour is a controlled violet exception, not a second site theme. */
+
+body[data-page-kind="public-events"] :where(.event-kicker, .event-calendar-card-label, .event-mystery-index, .event-hero-stamp, .event-calendar-dial-label, .event-calendar-dial-caption) {
+  color: var(--constellation-violet) !important;
+}
+
+body[data-page-kind="public-events"] :where(.event-calendar-card, .event-calendar-card[data-current="true"], .event-calendar-card:hover, .event-calendar-card:focus-visible, .event-calendar-card.is-selected) {
+  border: 0 !important;
+  border-top: 1px solid color-mix(in srgb, var(--constellation-violet) 62%, var(--constellation-rule)) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[data-page-kind="public-events"] .event-calendar-card:hover,
+body[data-page-kind="public-events"] .event-calendar-card:focus-visible,
+body[data-page-kind="public-events"] .event-calendar-card.is-selected {
+  border-top-color: var(--constellation-violet) !important;
+  transform: translateX(6px) !important;
+}
+
+/* Motion has a clear rhythm and always yields to the OS preference. */
+
+@keyframes constellationBackdrop {
+  from { transform: scale(1.04) translate3d(-.5%, 0, 0); }
+  to { transform: scale(1.08) translate3d(.5%, -1%, 0); }
+}
+
+@keyframes constellationSweep {
+  0%, 100% { opacity: .35; transform: scaleX(.28); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
+@keyframes constellationReveal {
+  from { opacity: 0; transform: translate3d(0, 18px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+body[data-page-kind^="public"] :where(.public-section, .public-hero, .launcher-hero, .news-hero, .event-reveal),
+body[data-page-kind="cabinet"] .view > * {
+  animation: constellationReveal 620ms cubic-bezier(.2, .75, .2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after,
+  body::before,
+  body::after {
+    animation: none !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 980px) {
+  body[data-page-kind="cabinet"] #app {
+    display: block !important;
+    padding-inline: 14px !important;
+  }
+
+  body[data-page-kind="cabinet"] .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 40 !important;
+    width: min(320px, 88vw) !important;
+    min-height: 100dvh !important;
+    padding: 26px 22px !important;
+    border-right: 1px solid var(--constellation-cyan) !important;
+    background: rgba(5, 9, 19, .98) !important;
+    transform: translateX(-104%) !important;
+    transition: transform 220ms cubic-bezier(.2, .75, .2, 1) !important;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .sidebar {
+    transform: translateX(0) !important;
+  }
+
+  body[data-page-kind="cabinet"] .workspace {
+    padding-top: 22px !important;
+  }
+}
+
+@media (max-width: 680px) {
+  body[data-page-kind^="public"] :where(.public-hero, .launcher-hero, .news-hero) {
+    min-height: 520px !important;
+  }
+
+  body[data-page-kind^="public"] :where(.public-hero-copy, .launcher-hero-copy, .news-hero-copy) h1 {
+    font-size: clamp(2.9rem, 15vw, 5.5rem) !important;
+  }
+
+  body[data-page-kind="cabinet"] :where(.metric, .metric-card) + :where(.metric, .metric-card) {
+    border-left: 0 !important;
+    padding-left: 0 !important;
+  }
+}

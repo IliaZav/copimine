@@ -68,7 +68,7 @@ def test_cabinet_html_uses_current_visual_cache_key():
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "assets/cabinet.css" in source:
-            assert "cabinet.css?v=20260902flat6" in source
+            assert "cabinet.css?v=20260903constellation3" in source
 
 
 def test_cabinet_and_admin_share_the_final_flat_workspace_composition():

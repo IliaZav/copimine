@@ -91,7 +91,7 @@ def test_all_rendered_pages_bust_the_shared_theme_cache_after_a_visual_revision(
     for page in pages:
         source = page.read_text(encoding="utf-8")
         if "/assets/style.css" in source:
-            assert "/assets/style.css?v=20260903constellation7" in source, page.name
+            assert "/assets/style.css?v=20260903constellation10" in source, page.name
     style = (FRONTEND / "assets" / "style.css").read_text(encoding="utf-8")
     assert "aurora-redesign.css?v=20260902flat6" in style
 

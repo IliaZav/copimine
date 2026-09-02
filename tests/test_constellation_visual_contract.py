@@ -12,7 +12,7 @@ def read(relative: str) -> str:
 def test_constellation_layer_is_the_last_shared_visual_contract() -> None:
     style = read("admin-web/frontend/assets/style.css")
     cabinet = read("admin-web/frontend/assets/cabinet.css")
-    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation7");'
+    import_line = '@import url("./css/copimine-constellation.css?v=20260903constellation10");'
 
     assert import_line in style
     assert import_line in cabinet
@@ -124,12 +124,15 @@ def test_constellation_specificity_bridge_flattens_legacy_controls_and_workbench
     assert source.count("border-radius: 2px !important") >= 9
     assert "background: transparent !important" in source
     assert "box-shadow: none !important" in source
+    assert 'body[data-page-kind="cabinet"] #app.nav-open' in source
+    assert 'body[data-page-kind="cabinet"] #app.nav-open .workspace' in source
+    assert "z-index: 41 !important" in source
 
 
 def test_launcher_feed_fallback_has_the_shared_site_shell() -> None:
     feed = read("admin-web/frontend/launcher-feed-index.html")
 
     assert '<body data-page-kind="public-launcher-feed" class="launcher-feed-page">' in feed
-    assert '/assets/style.css?v=20260903constellation7' in feed
+    assert '/assets/style.css?v=20260903constellation10' in feed
     assert 'class="launcher-feed-shell"' in feed
     assert "Этот адрес используется Launcher для проверки обновлений." not in feed

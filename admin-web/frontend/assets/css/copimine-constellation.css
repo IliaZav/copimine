@@ -1020,3 +1020,29 @@ body[data-page-kind="public-launcher-feed"] .launcher-feed-copy p {
   font-size: 1.05rem;
   line-height: 1.6;
 }
+
+/* The drawer backdrop is a sibling of #app.  Lift the open app above that
+ * sibling so the close control remains clickable; ui-audit.css already puts
+ * the dimming layer and drawer inside the app stacking context. */
+
+@media (max-width: 980px) {
+  body[data-page-kind="cabinet"] #app.nav-open {
+    z-index: 41 !important;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace {
+    position: relative !important;
+    z-index: 60 !important;
+    pointer-events: none !important;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar {
+    z-index: 60 !important;
+    pointer-events: none !important;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar .cabinet-nav-toggle {
+    z-index: 61 !important;
+    pointer-events: auto !important;
+  }
+}

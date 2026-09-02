@@ -2,6 +2,21 @@
   "schemaVersion": 1,
   "patches": [
     {
+      "id": "2026-09-01-launcher-1.0.14",
+      "slug": "copimine-launcher-1-0-14",
+      "version": "1.0.14",
+      "title": "CopiMine Launcher 1.0.14",
+      "publishedAt": "2026-09-01T21:25:04Z",
+      "summary": [
+        "Публичные ссылки Launcher теперь совпадают с последним проверенным пакетом установщика.",
+        "Страница выпуска и контрольные данные установщиков обновлены вместе, без старых адресов в fallback-копии сайта."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-14.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
       "id": "2026-09-01-launcher-1.0.13",
       "slug": "copimine-launcher-1-0-13",
       "version": "1.0.13",
@@ -125,6 +140,22 @@
         "Повторная проверка не скачивает заново исправные файлы и сохраняет дополнительные моды игрока."
       ],
       "detailUrl": "/news/copimine-launcher-1-0-6.html",
+      "badges": [
+        "Launcher"
+      ]
+    },
+    {
+      "id": "2026-08-28-launcher-1.0.5",
+      "slug": "copimine-launcher-1-0-5",
+      "version": "1.0.5",
+      "title": "CopiMine Launcher 1.0.5",
+      "publishedAt": "2026-08-28T21:18:41Z",
+      "summary": [
+        "Исправлена проверка обновлений Launcher: используется общий каталог стабильных релизов.",
+        "Версия внутри Launcher теперь совпадает с версией установщика.",
+        "Добавлена отдельная страница подтверждения привязки аккаунта."
+      ],
+      "detailUrl": "/news/copimine-launcher-1-0-5.html",
       "badges": [
         "Launcher"
       ]

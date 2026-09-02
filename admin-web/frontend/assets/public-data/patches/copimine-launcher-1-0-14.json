@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-09-01-launcher-1.0.14",
+  "slug": "copimine-launcher-1-0-14",
+  "version": "1.0.14",
+  "title": "CopiMine Launcher 1.0.14",
+  "publishedAt": "2026-09-01T21:25:04Z",
+  "summary": [
+    "Публичные ссылки Launcher теперь совпадают с последним проверенным пакетом установщика.",
+    "Страница выпуска и контрольные данные установщиков обновлены вместе, без старых адресов в fallback-копии сайта."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "release-parity",
+        "title": "Страница загрузки",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Fallback-копия сайта теперь указывает на Launcher 1.0.14 и его реальные имена файлов."
+          },
+          {
+            "kind": "tested",
+            "text": "Размеры и контрольные данные установщиков сверены с локальным release-пакетом."
+          }
+        ]
+      },
+      {
+        "id": "navigation",
+        "title": "Навигация",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Ссылка на заметки выпуска ведёт на страницу 1.0.14, а список обновлений начинается с той же версии."
+          }
+        ]
+      }
+    ],
+    "technical": [],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-09-02T00:00:00Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-14.html"
+}

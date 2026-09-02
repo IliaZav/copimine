@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,6 +69,15 @@ def test_generated_patch_feed_points_to_existing_safe_assets() -> None:
             assert (ROOT / "admin-web/frontend/assets" / item["iconUrl"].removeprefix("/assets/")).is_file()
 
 
+def test_every_launcher_patch_page_has_generated_detail_data() -> None:
+    pages = (ROOT / "admin-web/frontend/news").glob("copimine-launcher-*.html")
+
+    for page in pages:
+        slug = page.stem
+        detail = ROOT / "admin-web/frontend/assets/public-data/patches" / f"{slug}.json"
+        assert detail.is_file(), slug
+
+
 def test_launcher_metadata_is_publishable_and_points_to_a_versioned_installer() -> None:
     metadata = json.loads(
         (ROOT / "admin-web/frontend/assets/public-data/launcher/latest.json").read_text(encoding="utf-8")
@@ -98,6 +109,33 @@ def test_next_launcher_release_notes_page_exists() -> None:
 
     assert notes.is_file()
     assert 'data-page-kind="public-patch"' in notes.read_text(encoding="utf-8")
+
+
+def test_public_launcher_fallback_matches_the_packaged_release_when_present() -> None:
+    release_metadata_path = ROOT / "artifacts/launcher/Release/metadata/latest.json"
+    if not release_metadata_path.is_file():
+        pytest.skip("local packaged release is not available")
+
+    public_metadata = json.loads(
+        (ROOT / "admin-web/frontend/assets/public-data/launcher/latest.json").read_text(encoding="utf-8")
+    )
+    release_metadata = json.loads(release_metadata_path.read_text(encoding="utf-8"))
+
+    assert public_metadata == release_metadata
+
+
+def test_patch_feed_starts_with_the_public_launcher_release() -> None:
+    metadata = json.loads(
+        (ROOT / "admin-web/frontend/assets/public-data/launcher/latest.json").read_text(encoding="utf-8")
+    )
+    index = json.loads(
+        (ROOT / "admin-web/frontend/assets/public-data/patches/index.json").read_text(encoding="utf-8")
+    )
+
+    latest_patch = index["patches"][0]
+    assert latest_patch["version"] == metadata["version"]
+    assert latest_patch["detailUrl"] == metadata["releaseNotesUrl"]
+    assert (ROOT / "admin-web/frontend/news" / f"{latest_patch['slug']}.html").is_file()
 
 
 def test_launcher_gallery_references_real_capture_assets() -> None:

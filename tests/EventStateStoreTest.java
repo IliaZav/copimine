@@ -40,6 +40,10 @@ public final class EventStateStoreTest {
                 "unfinished absorption channel must remain unfinished after a state round trip");
         check(store.load().snapshot().absorptionAttackEmpowered(),
                 "one-shot post-absorption attack marker must survive a state round trip");
+        check("WON".equals(store.load().snapshot().nightCloakRolls().get(helper)),
+                "night cloak roll outcome must survive a state round trip");
+        check(store.load().snapshot().abyssAnchorCooldowns().get(helper) == 987654L,
+                "Abyss Anchor cooldown must survive a state round trip");
 
         EventSnapshot second = snapshot("second-event", EventPhase.READY_FOR_PLAYERS.name(), 4L);
         check(store.save(second), "second durable state save must succeed");
@@ -89,15 +93,17 @@ public final class EventStateStoreTest {
 
     private static EventSnapshot snapshot(String eventId, String phase, long generation) {
         UUID player = UUID.nameUUIDFromBytes(eventId.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        UUID helper = UUID.nameUUIDFromBytes("helper".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return new EventSnapshot(
                 1, eventId, generation, phase, "CopiMine", 10, 70, 20, "minecraft:crying_obsidian", 1,
                 0, 54, 0, 20, 86, 40,
                 Map.of("DIAMOND", 100), Map.of("DIAMOND", 25),
                 List.of(new EventSnapshot.PadSnapshot(10, 70, 25, 5.0D, 0.0D, "minecraft:purpur_block")),
-                Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(),
+                Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(), Map.of(helper, 987654L),
                 false, false, false, false, false, false, false, false, "PENDING", player, "PENDING", "NONE", 123L, 456L, "", Set.of(player),
                 Map.of(player, 8.0D), Set.of(player), Set.of(1, 2),
-                "ABSORPTION", "ABSORPTION_CHANNEL", 123456L, true, false, true, false, false);
+                "ABSORPTION", "ABSORPTION_CHANNEL", 123456L, true, false, true, false, false,
+                Map.of(helper, "WON"));
     }
 
     private static void check(boolean condition, String message) {

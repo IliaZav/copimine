@@ -71,7 +71,7 @@ def test_rune_visual_occupancy_is_separate_from_the_official_survival_roster() -
     assert "runeVisualOccupants" in source
     assert "detectRuneOccupants(world, false)" in occupancy
     assert "detectRuneOccupants(world, true)" in occupancy
-    assert "runeVisualOccupants.containsKey(padKey(pad))" in rune_item
+    assert "runeVisualOccupants.containsKey(key)" in rune_item
     assert "GameMode.SPECTATOR" in occupancy
     assert "GameMode.CREATIVE" in occupancy
     assert "padOccupants.size() == requiredPlayers" in occupancy

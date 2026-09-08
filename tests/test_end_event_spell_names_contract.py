@@ -28,9 +28,10 @@ def test_boss_spells_have_player_facing_russian_names() -> None:
         assert display_name in POLICY
 
 
-def test_boss_telegraph_uses_display_name_instead_of_internal_spell_id() -> None:
+def test_boss_telegraph_uses_visual_cues_without_combat_actionbar_text() -> None:
     telegraph = MAIN[MAIN.index("private void telegraphBossSpell"):]
     telegraph = telegraph[:telegraph.index("private void executeBossSpell")]
 
-    assert '"Хранитель готовит: " + spell.displayName()' in telegraph
-    assert '"Хранитель готовит: " + spell.id()' not in telegraph
+    assert "playBossVisualCue" in telegraph
+    assert '"Хранитель готовит: "' not in telegraph
+    assert "sendActionBar" not in telegraph

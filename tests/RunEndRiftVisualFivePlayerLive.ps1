@@ -46,22 +46,21 @@ function Write-Evidence {
 }
 
 function Get-LogByteLength {
-  return [int64](Get-Item -LiteralPath $paperLog).Length
+  # Get-LogTextSince uses String.Substring(), so the cursor must be measured
+  # in .NET characters.  FileInfo.Length is UTF-8 bytes and skips fresh
+  # markers as soon as the log contains Cyrillic text.
+  return [int64](Get-Content -LiteralPath $paperLog -Raw).Length
 }
 
 function Get-LogTextSince {
   param([Parameter(Mandatory = $true)][int64]$Offset)
-  $stream = [IO.File]::Open($paperLog, [IO.FileMode]::Open,
-    [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-  try {
-    if ($Offset -gt $stream.Length) { $Offset = 0L }
-    if ($stream.Length -le $Offset) { return '' }
-    $stream.Seek($Offset, [IO.SeekOrigin]::Begin) | Out-Null
-    $reader = [IO.StreamReader]::new($stream, [Text.UTF8Encoding]::new($false), $true)
-    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
-  } finally {
-    $stream.Dispose()
-  }
+  # Read the same character-indexed snapshot used by Get-LogByteLength.  A
+  # byte seek into UTF-8 is unsafe here: a Cyrillic line can put the stream in
+  # the middle of a multibyte sequence and make a fresh marker disappear.
+  $text = Get-Content -LiteralPath $paperLog -Raw
+  if ($Offset -gt $text.Length) { $Offset = 0L }
+  if ($text.Length -le $Offset) { return '' }
+  return $text.Substring([int]$Offset)
 }
 
 function Wait-LogRegex {
@@ -194,6 +193,14 @@ try {
   }
   Write-Evidence "VISUAL_MUSIC_MATRIX_PASS phases=$($musicPhases.Count)"
 
+  # Music probes do not need a camera position, while the Creative harness
+  # requires the invoking player to be in Creative and inside the arena.
+  # Re-assert both immediately before the protected command so Mineflayer's
+  # physics/teleport acknowledgement race cannot make the product guard
+  # reject an otherwise valid visual run.
+  $null = Invoke-LocalRcon "gamemode creative $ViewerName"
+  $null = Invoke-LocalRcon "tp $ViewerName 8.5 70 -57.5 0 18"
+  Wait-ViewerInArena
   $creativeStartOffset = Get-LogByteLength
   $null = Invoke-LocalRcon "sudo $ViewerName cmend test run creative"
   Wait-LogRegex -Pattern 'CREATIVE_TEST_START' -WaitSeconds 20 -AfterOffset $creativeStartOffset

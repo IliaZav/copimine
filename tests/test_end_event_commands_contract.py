@@ -57,7 +57,7 @@ def test_event_owned_loot_is_configured_and_cleanup_has_no_death_path() -> None:
                           "lootProfile(\"common-enderman\")", "lootProfile(\"spider\")"):
         assert loot_accessor.replace("lootProfile(", "").rstrip(")\"") in MAIN + config_source
     assert "addConfiguredDrops(event, config.lootProfile(profile), profile)" in MAIN
-    spawn = MAIN[MAIN.index("private void spawnEnderman"):
+    spawn = MAIN[MAIN.index("private Enderman spawnEnderman"):
                  MAIN.index("private Entity spawnOwnedMob")]
     assert "elite ? \"elite-enderman\"" in spawn
     assert "lootIssuedEntityUuids.add" in MAIN

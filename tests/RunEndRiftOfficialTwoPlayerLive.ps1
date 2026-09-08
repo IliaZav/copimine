@@ -10,7 +10,8 @@ param(
   [int]$TimeoutSeconds = 1100,
   [switch]$TowerFailureProbe,
   [switch]$RewardPickupProbe,
-  [switch]$StopAfterRewardProbe
+  [switch]$StopAfterRewardProbe,
+  [switch]$StopAfterWave3
 )
 
 # Local-only official two-player run.  This driver prepares the isolated event
@@ -28,17 +29,28 @@ $statePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
 $evidencePath = Join-Path $runtimeRoot 'official-two-player-live.log'
 $botLogDirectory = Join-Path $runtimeRoot 'official-two-player-bots'
 $PlayerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
-if ($PlayerNames.Count -lt 2 -or $PlayerNames.Count -gt 5) {
-  throw "Official End Rift driver supports two to five local players; received $($PlayerNames.Count)."
+if ($PlayerNames.Count -lt 2 -or $PlayerNames.Count -gt 20) {
+  throw "Official End Rift driver supports two to twenty local players; received $($PlayerNames.Count)."
 }
 if (@($PlayerNames | Select-Object -Unique).Count -ne $PlayerNames.Count) {
   throw 'Official End Rift driver requires unique local player names.'
 }
-$runLabel = if ($PlayerNames.Count -eq 5) { 'OFFICIAL_FIVE_PLAYER_START' } else { 'OFFICIAL_TWO_PLAYER_START' }
-$passLabel = if ($PlayerNames.Count -eq 5) { 'OFFICIAL_FIVE_PLAYER_PASS' } else { 'OFFICIAL_TWO_PLAYER_PASS' }
+$runLabel = switch ($PlayerNames.Count) {
+  5 { 'OFFICIAL_FIVE_PLAYER_START'; break }
+  10 { 'OFFICIAL_TEN_PLAYER_START'; break }
+  default { 'OFFICIAL_TWO_PLAYER_START' }
+}
+$passLabel = switch ($PlayerNames.Count) {
+  5 { 'OFFICIAL_FIVE_PLAYER_PASS'; break }
+  10 { 'OFFICIAL_TEN_PLAYER_PASS'; break }
+  default { 'OFFICIAL_TWO_PLAYER_PASS' }
+}
 if ($PlayerNames.Count -eq 5) {
   $evidencePath = Join-Path $runtimeRoot 'official-five-player-live.log'
   $botLogDirectory = Join-Path $runtimeRoot 'official-five-player-bots'
+} elseif ($PlayerNames.Count -eq 10) {
+  $evidencePath = Join-Path $runtimeRoot 'official-ten-player-live.log'
+  $botLogDirectory = Join-Path $runtimeRoot 'official-ten-player-bots'
 }
 
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
@@ -199,7 +211,11 @@ function Get-CombatMobPositions {
       Z = [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
     }
   }
-  return ,$positions
+  # Return the individual position records.  Wrapping the collection in a
+  # unary comma makes the caller receive one Object[] whose X/Z properties
+  # are arrays; the subsequent teleport then fails after the objective has
+  # already completed.  The live driver needs scalar coordinates per mob.
+  return $positions
 }
 
 function Keep-PlayersAtCombatMobs {
@@ -213,6 +229,103 @@ function Keep-PlayersAtCombatMobs {
     $mob = $mobs[$index % $mobs.Count]
     $side = if (($index % 2) -eq 0) { 1.8D } else { -1.8D }
     Teleport-Player -Name $PlayerNames[$index] -X ($mob.X + $side) -Y $mob.Y -Z $mob.Z
+  }
+}
+
+function Get-OfflineUuidText {
+  param([Parameter(Mandatory = $true)][string]$Name)
+  $md5 = [Security.Cryptography.MD5]::Create()
+  try {
+    $digest = $md5.ComputeHash([Text.Encoding]::UTF8.GetBytes("OfflinePlayer:$Name"))
+  } finally {
+    $md5.Dispose()
+  }
+  $digest[6] = [byte](($digest[6] -band 0x0f) -bor 0x30)
+  $digest[8] = [byte](($digest[8] -band 0x3f) -bor 0x80)
+  $hex = -join ($digest | ForEach-Object { $_.ToString('x2') })
+  return $hex.Substring(0, 8) + '-' + $hex.Substring(8, 4) + '-' +
+    $hex.Substring(12, 4) + '-' + $hex.Substring(16, 4) + '-' + $hex.Substring(20, 12)
+}
+
+function Get-WaveSixChamberCount {
+  if ($PlayerNames.Count -le 3) {
+    return $PlayerNames.Count
+  }
+  return 4
+}
+
+function Get-WaveSixPlayerChamber {
+  param([Parameter(Mandatory = $true)][string]$Name)
+  $chamberCount = Get-WaveSixChamberCount
+  $rankedPlayers = @(
+    foreach ($playerName in $PlayerNames) {
+      [pscustomobject]@{
+        Name = $playerName
+        OfflineUuid = Get-OfflineUuidText -Name $playerName
+      }
+    }
+  ) | Sort-Object OfflineUuid
+  for ($rank = 0; $rank -lt $rankedPlayers.Count; $rank++) {
+    if ($rankedPlayers[$rank].Name -eq $Name) {
+      return $rank % $chamberCount
+    }
+  }
+  throw "Wave 6 probe could not assign local player to a chamber: $Name"
+}
+
+function Get-WaveSixChamberMob {
+  param(
+    [Parameter(Mandatory = $true)][int[]]$Core,
+    [Parameter(Mandatory = $true)][int]$Chamber,
+    [Parameter(Mandatory = $true)][int]$ChamberCount,
+    [object[]]$Mobs = @()
+  )
+  $best = $null
+  $centerAngle = -[Math]::PI / 2.0D + (2.0D * [Math]::PI * $Chamber / $ChamberCount)
+  $halfSector = [Math]::PI / $ChamberCount - (8.0D * [Math]::PI / 180.0D)
+  foreach ($mob in $Mobs) {
+    $dx = [double]$mob.X - [double]$Core[0]
+    $dz = [double]$mob.Z - [double]$Core[2]
+    $radius = [Math]::Sqrt($dx * $dx + $dz * $dz)
+    if ($radius -lt 3.5D -or $radius -gt 18.0D) {
+      continue
+    }
+    $angle = [Math]::Atan2($dz, $dx)
+    $delta = [Math]::Atan2([Math]::Sin($angle - $centerAngle), [Math]::Cos($angle - $centerAngle))
+    $distanceFromCenter = [Math]::Abs($delta)
+    if ($distanceFromCenter -gt [Math]::Max(0.05D, $halfSector)) {
+      continue
+    }
+    if ($null -eq $best -or $distanceFromCenter -lt $best.AngularDistance) {
+      $best = [pscustomobject]@{
+        Mob = $mob
+        AngularDistance = $distanceFromCenter
+      }
+    }
+  }
+  if ($null -ne $best) {
+    return $best.Mob
+  }
+  return [pscustomobject]@{
+    X = [double]$Core[0] + [Math]::Cos($centerAngle) * 10.0D
+    Y = [double]$Core[1]
+    Z = [double]$Core[2] + [Math]::Sin($centerAngle) * 10.0D
+  }
+}
+
+function Keep-PlayersAtWaveSixMobs {
+  param([Parameter(Mandatory = $true)][int[]]$Core)
+  $mobs = @(Get-CombatMobPositions)
+  $chamberCount = Get-WaveSixChamberCount
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $name = $PlayerNames[$index]
+    $chamber = Get-WaveSixPlayerChamber -Name $name
+    $mob = Get-WaveSixChamberMob -Core $Core -Chamber $chamber `
+      -ChamberCount $chamberCount -Mobs $mobs
+    # Keep the probe on the mob's exact chamber ray.  A generic nearest-mob
+    # sweep can put player A in B's room, which would correctly be rejected by
+    # the server's closed-chamber target policy and make this live test hang.
+    Teleport-Player -Name $name -X ([double]$mob.X) -Y ([double]$mob.Y) -Z ([double]$mob.Z)
   }
 }
 
@@ -334,6 +447,27 @@ function Wait-LocalPlayers {
   throw "Official local player bots did not join: $($PlayerNames -join ', ')"
 }
 
+function Wait-V2TransitionToWave {
+  param(
+    [Parameter(Mandatory = $true)][int]$CompletedWave,
+    [Parameter(Mandatory = $true)][int]$NextWave
+  )
+  Wait-LogRegex -Pattern ("V2_TRANSITION_RUNES_READY.*completed_wave=" + $CompletedWave) `
+    -WaitSeconds 45
+  # Get-PadCoordinates returns the coordinate arrays as its pipeline output.
+  # Do not wrap that already-shaped result in @(...): PowerShell would treat
+  # the whole nested array as one pad and report a false one-player layout.
+  $nextPads = Get-PadCoordinates
+  if ($nextPads.Count -ne $PlayerNames.Count) {
+    throw "V2 transition did not persist one rune per official player: completed=$CompletedWave pads=$($nextPads.Count) players=$($PlayerNames.Count)"
+  }
+  Keep-PlayersAtPads -Pads $nextPads
+  Wait-LogRegex -Pattern ("WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120 `
+    -DuringWait { Keep-PlayersAtPads -Pads $nextPads }
+  Write-Evidence "OFFICIAL_V2_TRANSITION_PASS event=$eventId completed_wave=$CompletedWave next_wave=$NextWave pads=$($nextPads.Count) hold_ms=5000"
+  return ,$nextPads
+}
+
 $script:LogOffset = [long](Get-Item -LiteralPath $paperLog).Length
 $script:LogEvidence = [Text.StringBuilder]::new()
 function Read-NewPaperLog {
@@ -390,6 +524,22 @@ function Wait-LogRegex {
   throw "Timed out waiting for local Paper log pattern '$Pattern'."
 }
 
+function Prepare-OfficialAuthMeAccounts {
+  foreach ($name in $PlayerNames) {
+    # Register the disposable local accounts from the console before the
+    # protocol clients connect.  AuthMe's async /register executor is not
+    # safe when several fresh offline clients send that command in the same
+    # tick; one of them can remain in the login screen and be kicked even
+    # though the server-side player list already contains its name.
+    $unregisterResponse = Invoke-LocalRcon -CommandText ("authme unregister $name")
+    if ($unregisterResponse -notmatch "(?i)This user isn't registered!") {
+      Wait-LogRegex -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") -WaitSeconds 20
+    }
+    $null = Invoke-LocalRcon -CommandText ("authme register $name endrift-local")
+    Wait-LogRegex -Pattern ("AuthMe\].*Rcon registered " + [Regex]::Escape($name)) -WaitSeconds 20
+  }
+}
+
 function Wait-SecondsWithAction {
   param(
     [Parameter(Mandatory = $true)][int]$Seconds,
@@ -419,25 +569,15 @@ function Assert-BossStage {
   $debugPlain = $debug -replace '\u00A7.', ''
   if ($debugPlain -notmatch ('stage=' + [Regex]::Escape($Stage))) {
     # A five-player party can cross two health thresholds between the log
-    # poll and this RCON request.  The transition log is the authoritative
-    # event assertion; retain the live AI snapshot as evidence of the newer
-    # stage rather than failing a correct, fast transition.
+    # poll and this RCON request. The V2 transition log is authoritative;
+    # retain the live AI snapshot as evidence of the newer stage rather than
+    # failing a correct, fast transition.
     $logEvidence = $script:LogEvidence.ToString()
-    $transitionPattern = 'BOSS_STAGE_TRANSITION.*to=' + [Regex]::Escape($Stage)
-    $absorptionFastTransition = $false
-    if ($Stage -eq 'ABSORPTION') {
-      $absorptionFastTransition = $logEvidence -match 'BOSS_STAGE_TRANSITION.*crossed=.*ABSORPTION' `
-          -and $logEvidence -match 'BOSS_ABSORPTION_BUFF.*damageable=true' `
-          -and ($debugPlain -match 'absorptionCompleted=true')
-    }
-    if ($logEvidence -notmatch $transitionPattern -and -not $absorptionFastTransition) {
+    $transitionPattern = 'BOSS_V2_STAGE_TRANSITION.*to=' + [Regex]::Escape($Stage)
+    if ($logEvidence -notmatch $transitionPattern) {
       throw "Official boss stage $Stage was not exposed by AI diagnostics or the transition log:`n$debug"
     }
-    if ($absorptionFastTransition) {
-      Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid evidence=threshold-crossed-and-buff current=$debug"
-    } else {
-      Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid current=$debug"
-    }
+    Write-Evidence "OFFICIAL_BOSS_STAGE_FAST_TRANSITION stage=$Stage boss=$BossUuid current=$debug"
     return
   }
   Write-Evidence "OFFICIAL_BOSS_STAGE stage=$Stage boss=$BossUuid $debug"
@@ -500,6 +640,7 @@ try {
   }
   Write-Evidence "OFFICIAL_LOCAL_SETUP_PASS event=$eventId core=$($core -join ',') pads=$($pads.Count)"
 
+  Prepare-OfficialAuthMeAccounts
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   foreach ($name in $PlayerNames) {
     $botLog = Join-Path $botLogDirectory ($name + '.log')
@@ -553,12 +694,12 @@ try {
     Keep-PlayersAtCoreRing -Core $core
   }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2' -WaitSeconds 60
+  $pads = Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_MARK.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_SKELETON_MARKED_TARGET.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3' -WaitSeconds 60
+  $pads = Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3
   # Portal count is roster-scaled by the event policy: a five-player run has
   # four portals, while a two-player compatibility run has three.  Read the
   # authoritative count from Paper instead of hardcoding the two-player case.
@@ -583,12 +724,29 @@ try {
     }
   }
   foreach ($portal in $portals) {
-    Wait-SecondsWithAction -Seconds 7 -Action { Keep-PlayersAtPoint -Point $portal }
+    # Capture a scalar record for the scriptblock instead of relying on the
+    # foreach variable's late-bound value while the wait loop runs.
+    $targetPortal = [pscustomobject]@{
+      X = [double]$portal.X
+      Y = [double]$portal.Y
+      Z = [double]$portal.Z
+    }
+    Wait-SecondsWithAction -Seconds 7 -Action {
+      Keep-PlayersAtPoint -Point $targetPortal
+    }
   }
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=3' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  # After the portal objective completes, one defender can still be outside
+  # the inner ring.  Keep the bots on the authoritative mob positions while
+  # waiting for the real Wave 3 completion marker; this exercises the same
+  # portal-mob damage path without making the test depend on a lucky spawn.
+  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+  if ($StopAfterWave3) {
+    Write-Evidence "OFFICIAL_WAVE3_PASS event=$eventId portals=$portalCount stop_after_wave3=true"
+    return
+  }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4' -WaitSeconds 60
+  $pads = Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=4.*TOWER_DEFENSE' -WaitSeconds 20
   # Wave IV is scaled by the official roster and split into bounded groups.
   # Read the total from the authoritative first spawn line so a five-player
@@ -639,30 +797,49 @@ try {
     return
   }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=5' -WaitSeconds 60
+  $pads = Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=5.*RIFT_STORM' -WaitSeconds 20
   Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=5' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
   Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
+  $pads = Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6
+  # Wave 6 is chamber-isolated.  Keep each client near the authoritative mob
+  # positions so its own chamber can clear without ever opening a cross-room
+  # target path.  The controller itself remains responsible for assigning and
+  # validating the chamber; the probe only supplies player movement.
+  Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 360 `
+    -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
+  Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 30
+  $waveSixStatus = Invoke-LocalRcon -CommandText 'cmend debug ai'
+  if ($waveSixStatus -notmatch 'phase=.*PRE_BOSS_COOLDOWN|phase=.*WAVE_6') {
+    throw "Wave 6 did not leave the isolated chamber flow in a V2 phase:`n$waveSixStatus"
+  }
+  Write-Evidence "OFFICIAL_WAVE6_CHAMBER_PASS event=$eventId isolated=true passage_open=true"
+
   Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED' -WaitSeconds 30
-  Wait-LogRegex -Pattern 'FINAL_WAVE_STARTED' -WaitSeconds 30
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=FINAL' -WaitSeconds 300 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'BOSS_SPAWNED' -WaitSeconds 120
   $bossUuid = Get-BossUuid (Invoke-LocalRcon -CommandText 'cmend status')
   Assert-BossStage -Stage 'AWAKENING' -BossUuid $bossUuid
 
-  Wait-LogRegex -Pattern 'BOSS_STAGE_TRANSITION.*to=HUNTER' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Assert-BossStage -Stage 'HUNTER' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_STAGE_TRANSITION.*to=DISTORTION' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Assert-BossStage -Stage 'DISTORTION' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_CAST_STATE.*ABSORPTION_CHANNEL' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Wait-LogRegex -Pattern 'BOSS_ABSORPTION_BUFF' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Assert-BossStage -Stage 'ABSORPTION' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_STAGE_TRANSITION.*to=CATASTROPHE' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Assert-BossStage -Stage 'CATASTROPHE' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_CAST_STATE.*JUDGMENT_CAST' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Wait-LogRegex -Pattern 'BOSS_JUDGMENT_SAFE_ZONE' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  Assert-BossStage -Stage 'CATASTROPHE' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=HUNT' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Assert-BossStage -Stage 'HUNT' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern '(?s)RIFT_TENTACLE_SPAWN.*temporary=false.*RIFT_TENTACLE_SPAWN.*temporary=false' `
+    -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  $tentacleCount = [Regex]::Matches($script:LogEvidence.ToString(), 'RIFT_TENTACLE_SPAWN .*temporary=false').Count
+  if ($tentacleCount -lt 2) {
+    throw "Official HUNT stage did not materialize the two-player permanent tentacle set: count=$tentacleCount"
+  }
+  Write-Evidence "OFFICIAL_TENTACLE_HUNT_PASS event=$eventId permanent_tentacles=$tentacleCount temporary_cap=6"
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=RIFT' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Assert-BossStage -Stage 'RIFT' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern 'RIFT_OBELISKS_SPAWNED.*stage=RIFT' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=OVERLOAD' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Assert-BossStage -Stage 'OVERLOAD' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=RAGE' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Assert-BossStage -Stage 'RAGE' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=LAST_SEAL' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  Assert-BossStage -Stage 'LAST_SEAL' -BossUuid $bossUuid
+  Wait-LogRegex -Pattern 'BOSS_V2_LAST_SEAL_VISUALS_STARTED' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
 
   Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED' -WaitSeconds 240 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
   Wait-LogRegex -Pattern 'BOSS_DEFEATED' -WaitSeconds 30
@@ -672,7 +849,7 @@ try {
   if ($finalStatus -notmatch 'boss=.*none' -or $finalStatus -notmatch 'event-mobs=.*0') {
     throw "Official victory left event entities behind:`n$finalStatus"
   }
-  Write-Evidence "$passLabel event=$eventId boss=$bossUuid players=$($PlayerNames.Count) waves=1,2,3,4,5,final stages=AWAKENING,HUNTER,DISTORTION,ABSORPTION,CATASTROPHE,JUDGMENT victory=true"
+  Write-Evidence "$passLabel event=$eventId boss=$bossUuid players=$($PlayerNames.Count) waves=1,2,3,4,5,6 stages=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL victory=true"
   Write-Evidence $finalStatus
 } finally {
   foreach ($process in $processes) {

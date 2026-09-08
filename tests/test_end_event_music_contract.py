@@ -157,8 +157,11 @@ def test_music_configuration_and_phase_hooks_are_present() -> None:
         assert key in CONFIG
     for key in (
         "ritual-wait:",
-        "wave-1:", "wave-2:", "wave-3:", "wave-4:", "wave-5:",
-        "intermission-1:", "intermission-2:", "intermission-3:", "intermission-4:",
+        "wave-1:", "wave-2:", "wave-3:", "wave-4:", "wave-5:", "wave-6:",
+        "intermission-1:", "intermission-2:", "intermission-3:", "intermission-4:", "intermission-5:",
+        "pre-boss-cooldown:",
+        "boss-awakening:", "boss-hunt:", "boss-rift:", "boss-overload:",
+        "boss-rage:", "boss-last-seal:",
         "boss-cinematic:", "final-drain:", "final-ritual:",
         "final-wave:", "boss-finish:",
     ):
@@ -182,7 +185,11 @@ def test_music_configuration_and_phase_hooks_are_present() -> None:
         'case INTERMISSION_4 -> phaseMusicOrLegacy("intermission-4"',
         'case FINAL_RITUAL -> phaseMusicOrLegacy("final-ritual"',
         'case READY_FOR_PLAYERS -> config.ritualWaitMusic()',
-        'case COUNTDOWN -> config.ritualWaitMusic()',
+        'case START_RITUAL, COUNTDOWN -> config.ritualWaitMusic()',
+        'case WAVE_6 -> phaseMusicOrLegacy("wave-6"',
+        'case INTERMISSION_5 -> phaseMusicOrLegacy("intermission-5"',
+        'case PRE_BOSS_COOLDOWN -> phaseMusicOrLegacy("pre-boss-cooldown"',
+        'case BOSS_ACTIVE -> v2BossMusic()',
         "isRitualMusicPhase",
     ):
         assert hook in MAIN
@@ -206,7 +213,7 @@ def test_live_rune_wait_probe_uses_real_pad_occupancy_and_automatic_music() -> N
         "READY_FOR_PLAYERS",
         "Get-PadCoordinates",
         "Teleport-ToPad",
-        "state=COUNTDOWN",
+        "state=START_RITUAL",
         "pads=2/2",
         "SOUND_PACKET .*sound_effect.*ritual_wait",
         "LIVE_RUNE_WAIT_MUSIC_PASS",

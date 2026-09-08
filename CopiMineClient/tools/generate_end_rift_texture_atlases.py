@@ -9,7 +9,6 @@ elite, guardian, spider, or shulker.
 
 from __future__ import annotations
 
-import random
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -21,31 +20,45 @@ OUT = ROOT / "src" / "main" / "resources" / "assets" / "copimineclient" / "textu
 
 def atlas(size: tuple[int, int], palette: list[tuple[int, int, int]], seed: int) -> Image.Image:
     width, height = size
-    rng = random.Random(seed)
     image = Image.new("RGBA", size, (*palette[0], 255))
-    pixels = image.load()
-    for y in range(height):
-        for x in range(width):
-            # Broad pixel clusters read as cloth/scale texture in-game while
-            # keeping the sheet intentionally pixel-art rather than smooth.
-            cluster = ((x // 2) * 31 + (y // 2) * 17 + seed) % len(palette)
-            jitter = rng.randrange(0, 3)
-            base = palette[(cluster + jitter) % len(palette)]
-            if (x + y + seed) % 11 == 0:
-                base = palette[-1]
-            variation = rng.randrange(-5, 6)
-            shaded = tuple(max(0, min(255, channel + variation)) for channel in base)
-            pixels[x, y] = (*shaded, 255)
+    draw = ImageDraw.Draw(image)
+
+    # Use large, aligned armour/cloth panels instead of per-pixel noise. The
+    # midpoint shades are material layers, not random grain: they keep the
+    # atlas readable at the model's mip level while retaining the twelve-colour
+    # quality gate used for event entities.
+    def mix(left: tuple[int, int, int], right: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
+        return tuple(round(a + (b - a) * amount) for a, b in zip(left, right))
+
+    layered = list(palette)
+    for index in range(len(palette)):
+        layered.append(mix(palette[index], palette[(index + 1) % len(palette)], 0.42))
+
+    # The old random checkerboard made every model look dirty once Minecraft
+    # sampled the 64x32 sheet at distance. Each of these twelve plates is
+    # deliberately broad and flat; the one-pixel seams and sparse accents
+    # below provide enough depth without a dirty checkerboard.
+    columns = 4
+    rows = 3
+    for row in range(rows):
+        top = row * height // rows
+        bottom = (row + 1) * height // rows - 1
+        for column in range(columns):
+            left = column * width // columns
+            right = (column + 1) * width // columns - 1
+            fill = layered[(row * columns + column + seed) % len(layered)]
+            draw.rectangle((left, top, right, bottom), fill=(*fill, 255))
+    draw.rectangle((0, 0, width - 1, height - 1), outline=(*palette[1], 255), width=1)
+    draw.line((width // 2, 1, width // 2, height - 2), fill=(*palette[2], 210), width=1)
     return image
 
 
 def panel_lines(draw: ImageDraw.ImageDraw, width: int, height: int, color: tuple[int, int, int]) -> None:
-    # UV sheet guides are part of the authored texture and give each mapped
-    # cube face a deliberate edge instead of an unbroken flat tint.
-    for x in range(0, width, max(8, width // 8)):
-        draw.line((x, 0, x, height - 1), fill=(*color, 190), width=1)
-    for y in range(0, height, max(8, height // 4)):
-        draw.line((0, y, width - 1, y), fill=(*color, 190), width=1)
+    # Only mark the large UV islands.  A dense grid reads as pixel dirt on a
+    # moving mob, while these four seams still separate the mapped faces.
+    for x in (width // 4, width // 2, (width * 3) // 4):
+        draw.line((x, 1, x, height - 2), fill=(*color, 150), width=1)
+    draw.line((1, height // 2, width - 2, height // 2), fill=(*color, 140), width=1)
 
 
 def sigil(draw: ImageDraw.ImageDraw, origin: tuple[int, int], radius: int,
@@ -81,8 +94,8 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     # game renderer's mip level but small enough to remain pixel art.
     draw.rectangle((8, 5, 11, 6), fill=(*eye, 255))
     draw.rectangle((17, 5, 20, 6), fill=(*eye, 255))
-    for x in range(2, 62, 7):
-        draw.point((x, (x * 5 + seed) % 31), fill=(*accent, 255))
+    for x in (4, 29, 54):
+        draw.rectangle((x, 27, x + 1, 28), fill=(*accent, 255))
     image.save(OUT / name, format="PNG", optimize=False)
 
 
@@ -102,13 +115,6 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
     def panel(box: tuple[int, int, int, int], fill: tuple[int, int, int], edge: tuple[int, int, int], width: int = 1) -> None:
         draw.rectangle(box, fill=rgba(fill), outline=rgba(edge), width=width)
 
-    # A very low-frequency 4px material grain keeps the armour from looking
-    # flat without introducing noisy diagonals over every mapped face.
-    for y in range(0, 128, 4):
-        for x in range(0, 128, 4):
-            if ((x // 4) * 3 + (y // 4) * 5 + seed) % 5 == 0:
-                draw.rectangle((x, y, x + 3, y + 3), fill=rgba(palette[1], 150))
-
     # Deliberate UV islands used by the custom torso, shoulders, arms, shards,
     # legs, and head.  Alternating dark plates provide silhouette highlights
     # while leaving the bright lines sparse enough to read in motion.
@@ -125,16 +131,16 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
     for index, (box, fill, edge) in enumerate(uv_panels):
         panel(box, fill, edge, 1 if index < 6 else 2)
 
-    # The primary 18x21 torso face: a mirrored collar and central crack make
+    # The primary 14x25 torso face: a mirrored collar and central crack make
     # the boss read as a guardian rather than a recoloured Enderman.
     torso_dark = palette[0]
-    draw.rectangle((1, 1, 17, 20), fill=rgba(torso_dark), outline=rgba(accent))
-    draw.line((2, 3, 5, 7, 3, 11, 6, 15, 5, 19), fill=rgba(accent), width=1, joint="curve")
-    draw.line((15, 3, 12, 7, 14, 11, 11, 15, 12, 19), fill=rgba(accent), width=1, joint="curve")
-    draw.line((8, 2, 8, 6, 9, 9, 8, 13, 8, 19), fill=rgba(core), width=1)
-    draw.line((9, 2, 9, 6, 8, 9), fill=rgba(palette[-1]), width=1)
-    draw.rectangle((6, 7, 10, 11), outline=rgba(core), width=1)
-    draw.point((8, 9), fill=rgba(palette[-1]))
+    draw.rectangle((1, 1, 13, 25), fill=rgba(torso_dark), outline=rgba(accent))
+    draw.line((2, 3, 4, 7, 3, 12, 5, 17, 4, 24), fill=rgba(accent), width=1, joint="curve")
+    draw.line((12, 3, 10, 7, 11, 12, 9, 17, 10, 24), fill=rgba(accent), width=1, joint="curve")
+    draw.line((6, 2, 6, 7, 7, 12, 6, 17, 6, 24), fill=rgba(core), width=1)
+    draw.line((7, 2, 7, 7, 6, 12), fill=rgba(palette[-1]), width=1)
+    draw.rectangle((4, 8, 8, 12), outline=rgba(core), width=1)
+    draw.point((6, 10), fill=rgba(palette[-1]))
 
     # Symmetric armour seams on the larger UV islands.
     for left, right, top, bottom in ((57, 90, 6, 29), (5, 36, 66, 94), (1, 26, 86, 109)):
@@ -152,11 +158,11 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
     draw.line((31, 85, 30, 88, 32, 91, 31, 94), fill=rgba(palette[0]), width=1)
     draw.point((32, 87), fill=rgba(palette[-1]))
 
-    # Head island (0..13, 96..109): two eyes and a compact forehead mark.
-    draw.rectangle((1, 97, 13, 109), fill=rgba(palette[0]), outline=rgba(accent))
+    # Head island (0..11, 96..109): two eyes and a compact forehead mark.
+    draw.rectangle((1, 97, 11, 109), fill=rgba(palette[0]), outline=rgba(accent))
     draw.rectangle((3, 101, 5, 102), fill=rgba(core))
-    draw.rectangle((9, 101, 11, 102), fill=rgba(core))
-    draw.line((7, 98, 6, 101, 7, 104, 7, 108), fill=rgba(accent), width=1)
+    draw.rectangle((7, 101, 9, 102), fill=rgba(core))
+    draw.line((6, 98, 5, 101, 6, 104, 6, 108), fill=rgba(accent), width=1)
 
     # A central shard sigil is kept sparse so it remains a crisp accent when
     # the texture is sampled at distance.
@@ -208,7 +214,7 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     panel_lines(draw, 64, 32, palette[1])
     # Rib and joint bands keep the vanilla skeleton silhouette readable while
     # the angular rift marks make the two server-bound variants distinct.
-    for y in (3, 8, 13, 18, 23, 28):
+    for y in (4, 10, 17, 24):
         draw.line((2, y, 19, y + 1), fill=(*accent, 255), width=1)
         draw.line((44, y + 1, 61, y), fill=(*accent, 255), width=1)
     draw.rectangle((24, 3, 39, 15), outline=(*accent, 255), width=2)
@@ -217,8 +223,8 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     draw.line((30, 12, 33, 12), fill=(*palette[-1], 255), width=1)
     sigil(draw, (12, 23), 4, [accent, palette[-1], eye], seed % 7)
     sigil(draw, (51, 22), 4, [palette[-1], accent, eye], (seed + 3) % 9)
-    for x in range(3, 62, 9):
-        draw.point((x, (x * 7 + seed) % 31), fill=(*accent, 255))
+    for x in (5, 30, 55):
+        draw.rectangle((x, 27, x + 1, 28), fill=(*accent, 255))
     image.save(OUT / name, format="PNG", optimize=False)
 
 
@@ -342,6 +348,13 @@ def main() -> None:
         211,
         (242, 89, 54),
         (255, 245, 157),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_final_strike.png",
+        [(12, 5, 24), (36, 9, 48), (83, 12, 76), (142, 18, 117), (230, 52, 177), (255, 196, 235)],
+        223,
+        (230, 52, 177),
+        (255, 196, 235),
     )
     spider_sheet()
     shulker_sheet()

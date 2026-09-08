@@ -16,7 +16,7 @@ public final class EndEventDomainTest {
         testLegalStateTransitions();
         testIllegalStateTransitionsDoNotAdvance();
         testCanonicalFinalDrainAndVictoryTransitions();
-        testFiveInitialWavesLeadToBoss();
+        testV2WavesLeadToBoss();
         testTransientRecoveryAndTerminalUnlock();
         testPadGeometryHasExactlyNUniquePoints();
         testDepositCapLeavesRemainder();
@@ -33,10 +33,11 @@ public final class EndEventDomainTest {
         check(machine.transition(EventPhase.COLLECTING, EventPhase.READY_FOR_PLAYERS,
                 "resources-complete", "transition-1").success(),
                 "collecting must transition to ready");
-        check(machine.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.COUNTDOWN,
+        check(machine.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.START_RITUAL,
                 "pads-occupied", "transition-2").success(),
-                "ready must transition to countdown");
-        check(machine.phase() == EventPhase.COUNTDOWN, "phase must advance after a legal transition");
+                "ready must transition to the V2 start ritual");
+        check(machine.phase() == EventPhase.START_RITUAL,
+                "phase must advance after a legal V2 transition");
     }
 
     private static void testIllegalStateTransitionsDoNotAdvance() {
@@ -62,24 +63,14 @@ public final class EndEventDomainTest {
 
     private static void testCanonicalFinalDrainAndVictoryTransitions() {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.BOSS_ACTIVE);
-        check(machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.FINAL_DRAIN,
-                        "threshold", "final-drain-1").success(),
-                "boss must enter the canonical final drain phase");
-        check(machine.transition(EventPhase.FINAL_DRAIN, EventPhase.FINAL_WAVE,
-                        "telegraph-complete", "final-wave-1").success(),
-                "final drain must transition to the final wave");
-        check(machine.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_FINISH,
-                        "wave-dead", "boss-finish-1").success(),
-                "final wave must release the boss");
-        EndEventStateMachine officialSequence = new EndEventStateMachine(EventPhase.BOSS_CINEMATIC);
-        check(machine.phase() == EventPhase.BOSS_FINISH,
-                "legacy final-wave route must remain independently complete");
-        check(officialSequence.transition(EventPhase.BOSS_CINEMATIC, EventPhase.FINAL_WAVE,
-                        "cinematic-complete", "official-final-wave-1").success(),
-                "official cinematic must start the final wave");
-        check(officialSequence.transition(EventPhase.FINAL_WAVE, EventPhase.BOSS_ACTIVE,
-                        "final-wave-dead", "official-boss-1").success(),
-                "official final wave must awaken the boss after it is defeated");
+        check(!machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.FINAL_DRAIN,
+                        "legacy threshold", "final-drain-1").success(),
+                "V2 boss must not enter the legacy final drain phase");
+        check(machine.phase() == EventPhase.BOSS_ACTIVE,
+                "rejected legacy transition must not mutate the V2 phase");
+        check(machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.BOSS_FINISH,
+                        "boss defeated", "boss-finish-1").success(),
+                "V2 boss must enter the canonical finish phase");
         check(machine.transition(EventPhase.BOSS_FINISH, EventPhase.VICTORY_PROCESSING,
                         "boss-dead", "victory-1").success(),
                 "boss death must enter the canonical victory saga");
@@ -88,16 +79,18 @@ public final class EndEventDomainTest {
                 "victory saga must be able to commit the terminal unlock");
     }
 
-    private static void testFiveInitialWavesLeadToBoss() {
-        EndEventStateMachine machine = new EndEventStateMachine(EventPhase.COUNTDOWN);
+    private static void testV2WavesLeadToBoss() {
+        EndEventStateMachine machine = new EndEventStateMachine(EventPhase.START_RITUAL);
         EventPhase[] expected = {
                 EventPhase.WAVE_1, EventPhase.INTERMISSION_1,
                 EventPhase.WAVE_2, EventPhase.INTERMISSION_2,
                 EventPhase.WAVE_3, EventPhase.INTERMISSION_3,
                 EventPhase.WAVE_4, EventPhase.INTERMISSION_4,
-                EventPhase.WAVE_5, EventPhase.BOSS_ACTIVE
+                EventPhase.WAVE_5, EventPhase.INTERMISSION_5,
+                EventPhase.WAVE_6, EventPhase.PRE_BOSS_COOLDOWN,
+                EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE
         };
-        EventPhase current = EventPhase.COUNTDOWN;
+        EventPhase current = EventPhase.START_RITUAL;
         for (int index = 0; index < expected.length; index++) {
             EventPhase next = expected[index];
             check(machine.transition(current, next, "test-five-waves", "five-waves-" + index).success(),

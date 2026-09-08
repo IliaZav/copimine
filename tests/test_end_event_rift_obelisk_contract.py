@@ -39,7 +39,7 @@ def test_spell_is_registered_only_in_distortion() -> None:
 def test_config_has_exact_safe_defaults_and_parser_rejects_other_stages() -> None:
     for line in (
         "enabled: true",
-        "stages: [DISTORTION]",
+        "stages: [RIFT]",
         "cooldown-seconds: [18, 24]",
         "health: 3",
         "max-active: 4",
@@ -52,7 +52,7 @@ def test_config_has_exact_safe_defaults_and_parser_rejects_other_stages() -> Non
         "debuff-ticks: 60",
     ):
         assert line in CONFIG
-    assert "stages must contain only DISTORTION" in EVENT_CONFIG
+    assert "stages must contain only DISTORTION or RIFT" in EVENT_CONFIG
     assert "maxActive > 4" in EVENT_CONFIG
     assert "maxActiveFireballs > 8" in EVENT_CONFIG
 
@@ -104,11 +104,12 @@ def test_first_fire_ticks_are_staggered_and_preserved_after_telegraph() -> None:
 
 def test_obelisk_cast_is_one_shot_per_boss_fight_and_persisted_on_boss() -> None:
     policy = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RiftObeliskCastPolicy.java").read_text(encoding="utf-8")
-    configure = _body("private void configureBoss", "private void ensureBossBar")
+    configure = _body("private boolean configureBoss", "private void ensureBossBar")
     reindex = _body("private void reindexPersistedCombatEntities", "private boolean ownedBySession")
     spawn = _body("private void startRiftObelisks", "private Location resolveRiftObeliskLocation")
     cleanup = _body("private void clearRiftObelisks", "private int activeRiftObeliskCount")
     assert "stage == BossStage.DISTORTION" in policy
+    assert "stage == V2BossStage.RIFT" in policy
     assert "alreadyUsedThisFight" in policy
     assert "!activeSetPresent" in policy
     assert "RiftObeliskCastPolicy.canStart" in spawn

@@ -6,7 +6,7 @@ environment: local
 persistence:
   file: event-state.yml
   backup-file: event-state.yml.bak
-  schema-version: 1
+  schema-version: 2
 
 resources:
   DIAMOND: 100
@@ -21,6 +21,9 @@ ritual:
   max-players: 20
   pad-radii: [5.0, 6.0, 7.0, 8.0]
   pad-occupancy-radius: 1.35
+  # Progress stays through a short boundary grace window, then drains at this
+  # fraction of real time instead of snapping to zero when a player steps out.
+  portal-capture-decay-rate: 0.5
 
 arena:
   world: CopiMine
@@ -89,6 +92,9 @@ music:
     wave-5:
       sound: copimine:end_rift/wave_5
       loop-seconds: 54
+    wave-6:
+      sound: copimine:end_rift/wave_6
+      loop-seconds: 54
     intermission-1:
       sound: copimine:end_rift/intermission_1
       loop-seconds: 14
@@ -101,9 +107,33 @@ music:
     intermission-4:
       sound: copimine:end_rift/intermission_4
       loop-seconds: 16
+    intermission-5:
+      sound: copimine:end_rift/intermission_5
+      loop-seconds: 18
+    pre-boss-cooldown:
+      sound: copimine:end_rift/pre_boss_cooldown
+      loop-seconds: 20
     boss-cinematic:
       sound: copimine:end_rift/boss_cinematic
       loop-seconds: 22
+    boss-awakening:
+      sound: copimine:end_rift/boss_awakening
+      loop-seconds: 45
+    boss-hunt:
+      sound: copimine:end_rift/boss_hunt
+      loop-seconds: 45
+    boss-rift:
+      sound: copimine:end_rift/boss_rift
+      loop-seconds: 45
+    boss-overload:
+      sound: copimine:end_rift/boss_overload
+      loop-seconds: 45
+    boss-rage:
+      sound: copimine:end_rift/boss_rage
+      loop-seconds: 45
+    boss-last-seal:
+      sound: copimine:end_rift/boss_last_seal
+      loop-seconds: 45
     final-drain:
       sound: copimine:end_rift/final_drain
       loop-seconds: 24
@@ -213,6 +243,13 @@ wave-rewards:
     GOLDEN_APPLE: 4
     ECHO_SHARD: 6
     AMETHYST_SHARD: 24
+  wave-6:
+    ENDER_PEARL: 48
+    EXPERIENCE_BOTTLE: 64
+    DIAMOND: 12
+    GOLDEN_APPLE: 6
+    ECHO_SHARD: 8
+    AMETHYST_SHARD: 32
 
 wave-reward-shared-rare:
   wave-1: 0.0
@@ -256,8 +293,11 @@ event-loot-rolls:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
-  # Base pool for a two-player event. The live roster policy ramps this from
-  # 5000 at 2 players to 10000 at 8, then to 20000 at 20 players.
+  # Base value for the two-player event. Official V2 freezes the real entity
+  # max health from V2BossHealthScalingPolicy before the boss is spawned:
+  # 2=5000, 3=6000, 4=7000, 5=8500, 6=9500, 7=10500, 8=11500,
+  # 9=12500, 10=13500, 11=14500, 12=15000, 13=15500, 14=16000,
+  # 15=17500, 16=18000, 17=18500, 18=19000, 19=19500, 20=20000.
   health: 5000.0
   # These thresholds are base-pool anchors and keep their percentages when
   # the frozen official roster increases the boss max HP.
@@ -266,6 +306,7 @@ boss:
   attack-damage-bonus: 11.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
+  target-lock-seconds: 6
   teleport-cooldown-seconds: 12
   spell-cooldown-seconds: [5, 8]
   spell-telegraph-ticks: 30
@@ -275,7 +316,7 @@ boss:
   final-health: 650.0
   final-drain-fraction: 0.60
   final-drain-min-health: 1.0
-  control-duration-seconds: 20
+  control-duration-seconds: 10
   control-cooldown-seconds: 24
   max-summoned-servants: 4
   debuff-amplifier: 3
@@ -289,11 +330,11 @@ boss:
     damage: 8.0
     radius: 4.0
     wither-ticks: 60
-  # The mechanic is deliberately restricted to DISTORTION. It uses tagged
+  # The mechanic is deliberately restricted to the V2 RIFT band. It uses tagged
   # displays and projectile hitboxes; vanilla block/fireball assets stay intact.
   rift-obelisks:
     enabled: true
-    stages: [DISTORTION]
+    stages: [RIFT]
     cooldown-seconds: [18, 24]
     health: 3
     max-active: 4
@@ -313,7 +354,9 @@ rewards:
   max-xp-orbs: 20
   shard-item-id: rift_core_shard
   shard-channel-seconds: 3
-  shard-cooldown-seconds: 3600
+  shard-cooldown-seconds: 600
+  abyss-anchor-cooldown-seconds: 1800
+  night-cloak-chance: 0.30
   return-stone-item-id: return_stone
   resource-bundle:
     ENDER_PEARL: 16

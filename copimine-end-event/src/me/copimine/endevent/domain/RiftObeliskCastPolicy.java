@@ -12,4 +12,17 @@ public final class RiftObeliskCastPolicy {
                 && !alreadyUsedThisFight
                 && !activeSetPresent;
     }
+
+    /**
+     * V2 keeps the same one-shot invariant but names the corresponding boss
+     * band RIFT.  Keeping this overload separate prevents a string alias from
+     * accidentally allowing the set in a scripted or late phase.
+     */
+    public static boolean canStart(V2BossStage stage, boolean enabledForStage,
+                                   boolean alreadyUsedThisFight, boolean activeSetPresent) {
+        return enabledForStage
+                && stage == V2BossStage.RIFT
+                && !alreadyUsedThisFight
+                && !activeSetPresent;
+    }
 }

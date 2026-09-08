@@ -19,8 +19,8 @@ public final class SkeletonCombatPolicy {
 
     public static ArrowProfile arrowProfile(boolean miniBoss) {
         return miniBoss
-                ? new ArrowProfile(3, 8.0D, 70, "rift_salvo")
-                : new ArrowProfile(1, 5.0D, 50, "bone_tracer");
+                ? new ArrowProfile(3, WaveDamagePolicy.minimumCombatDamage(8.0D, 4.0D), 70, "rift_salvo")
+                : new ArrowProfile(1, WaveDamagePolicy.minimumCombatDamage(5.0D, 4.0D), 50, "bone_tracer");
     }
 
     public static boolean hasArrowSpell(boolean miniBoss, int wave) {

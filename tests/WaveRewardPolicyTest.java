@@ -24,13 +24,15 @@ public final class WaveRewardPolicyTest {
         check(rareA == rareB, "shared rare decision must be deterministic per event and wave");
         check(!WaveRewardPolicy.sharedRareRoll("", 5), "blank event id must fail closed");
 
+        WaveRewardPolicy.RewardBundle waveSix = WaveRewardPolicy.bundle(6, 0, 2, configured);
+        check(waveSix.stacks().equals(first.stacks()), "Wave 6 must use the same bounded bundle rules");
         boolean rejected = false;
         try {
-            WaveRewardPolicy.bundle(6, 0, 2, configured);
+            WaveRewardPolicy.bundle(7, 0, 2, configured);
         } catch (IllegalArgumentException expected) {
             rejected = true;
         }
-        check(rejected, "unknown waves must be rejected");
+        check(rejected, "waves after the V2 flow must be rejected");
         System.out.println("WaveRewardPolicyTest OK");
     }
 

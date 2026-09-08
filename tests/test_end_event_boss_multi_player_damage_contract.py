@@ -45,7 +45,7 @@ def test_exhausted_multiplier_is_kept_once_per_hit_and_blocked_casts_still_fail_
 
 
 def test_virtual_health_never_delegates_authority_to_paper_health() -> None:
-    configure = _body("private void configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
+    configure = _body("private boolean configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
     assert "setBossVirtualHealth(boss, configuredMaxHealth);" in configure
     assert "boss.setHealth(config.bossHealth());" not in configure
     assert "keyBossVirtualHealth" in MAIN

@@ -87,7 +87,8 @@ function sampleMobs() {
     movedEntities.set(mob.id, now)
   }
   if (sampleCount % 8 === 0) {
-    console.log(`MOB_SAMPLE ${username} count=${mobs.length}`)
+    const position = bot.entity.position
+    console.log(`MOB_SAMPLE ${username} count=${mobs.length} player_pos=${position.x.toFixed(2)},${position.y.toFixed(2)},${position.z.toFixed(2)}`)
   }
 }
 

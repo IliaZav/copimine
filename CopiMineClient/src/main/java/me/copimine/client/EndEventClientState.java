@@ -16,6 +16,7 @@ public final class EndEventClientState {
     private BossBarState bossBar;
     private final Map<String, BossPhaseBinding> bossPhase = new HashMap<>();
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
+    private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
     private String controlInstance = "";
     private long controlExpiresAt;
 
@@ -36,6 +37,7 @@ public final class EndEventClientState {
             case "END_BOSS_BAR" -> false;
             case "END_ENTITY_BIND" -> bindEntity(packet);
             case "END_ENTITY_UNBIND" -> unbindEntity(packet);
+            case "END_ENTITY_PHASE" -> applyEntityPhase(packet);
             case "END_CONTROL_START" -> startControl(packet, nowMillis);
             case "END_CONTROL_STOP" -> stopControl(packet);
             default -> false;
@@ -112,6 +114,25 @@ public final class EndEventClientState {
         }
         EntityVisualBinding binding = entityVisuals.get(uuid);
         return binding == null ? "" : binding.visualId();
+    }
+
+    /** Server-selected animation state for a bound event display. */
+    public synchronized String entityAnimationForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "";
+        }
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        return binding == null ? "" : binding.animationId();
+    }
+
+    /**
+     * Resolve a smooth client pose from the server state. The elapsed time is
+     * visual-only; server marker timing remains authoritative for gameplay.
+     */
+    public synchronized EndRiftTentacleModel.Pose tentaclePoseForEntity(
+            String uuid, long elapsedTicks) {
+        return EndRiftTentacleRenderer.poseFor(
+                visualForEntity(uuid), entityAnimationForEntity(uuid), elapsedTicks);
     }
 
     public synchronized String bossUuid() {
@@ -244,6 +265,7 @@ public final class EndEventClientState {
             return false;
         }
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
+        entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(packet.instanceId(), "IDLE"));
         return true;
     }
 
@@ -253,6 +275,29 @@ public final class EndEventClientState {
             return false;
         }
         entityVisuals.remove(packet.subjectId());
+        entityAnimations.remove(packet.subjectId());
+        return true;
+    }
+
+    private boolean applyEntityPhase(EndEventPacket packet) {
+        if (packet.subjectId().isBlank() || packet.instanceId().isBlank()
+                || packet.phaseId().isBlank()) {
+            return false;
+        }
+        EntityVisualBinding visual = entityVisuals.get(packet.subjectId());
+        EntityAnimationBinding binding = entityAnimations.get(packet.subjectId());
+        if (visual == null || binding == null
+                || !Objects.equals(visual.instanceId(), packet.instanceId())
+                || !Objects.equals(binding.instanceId(), packet.instanceId())) {
+            return false;
+        }
+        String animation = normalizeAnimation(packet.phaseId());
+        if (EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId())
+                && !EndRiftTentacleModel.supportsAnimation(animation)) {
+            return false;
+        }
+        entityAnimations.put(packet.subjectId(),
+                new EntityAnimationBinding(packet.instanceId(), animation));
         return true;
     }
 
@@ -308,6 +353,7 @@ public final class EndEventClientState {
         bossBar = null;
         bossPhase.clear();
         entityVisuals.clear();
+        entityAnimations.clear();
         controlInstance = "";
         controlExpiresAt = 0L;
     }
@@ -329,7 +375,8 @@ public final class EndEventClientState {
     }
 
     private static final Set<String> BOSS_PHASES = Set.of(
-            "AWAKENING", "HUNTER", "DISTORTION", "ABSORPTION", "CATASTROPHE");
+            "AWAKENING", "HUNTER", "HUNT", "DISTORTION", "ABSORPTION",
+            "OVERLOAD", "RAGE", "LAST_SEAL", "CATASTROPHE");
     private static final Set<String> BOSS_CAST_STATES = Set.of(
             "NONE", "ABSORPTION_CHANNEL", "JUDGMENT_CAST", "EXHAUSTED");
 
@@ -346,6 +393,9 @@ public final class EndEventClientState {
     }
 
     private record EntityVisualBinding(String instanceId, String visualId) {
+    }
+
+    private record EntityAnimationBinding(String instanceId, String animationId) {
     }
 
     private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis) {

@@ -13,14 +13,14 @@ public final class SkeletonCombatPolicyTest {
                 "skeleton AI must never target another skeleton");
 
         SkeletonCombatPolicy.ArrowProfile common = SkeletonCombatPolicy.arrowProfile(false);
-        require(common.arrowCount() == 1 && common.damage() == 5.0D,
-                "common skeleton profile must fire one readable arrow");
+        require(common.arrowCount() == 1 && common.damage() == 1.0D,
+                "common skeleton profile must fire one readable arrow after the wave damage reduction");
         require(common.particlePattern().equals("bone_tracer"),
                 "common skeletons need a distinct arrow trail");
 
         SkeletonCombatPolicy.ArrowProfile elite = SkeletonCombatPolicy.arrowProfile(true);
-        require(elite.arrowCount() == 3 && elite.damage() == 8.0D,
-                "elite skeleton profile must fire a bounded three-arrow salvo");
+        require(elite.arrowCount() == 3 && elite.damage() == 4.0D,
+                "elite skeleton profile must fire a bounded three-arrow salvo after the wave damage reduction");
         require(elite.cooldownTicks() >= 50 && elite.cooldownTicks() <= 100,
                 "elite salvo cooldown must be bounded");
         require(elite.particlePattern().equals("rift_salvo"),

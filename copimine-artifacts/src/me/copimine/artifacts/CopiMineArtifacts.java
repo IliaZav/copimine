@@ -14857,9 +14857,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          if (!"return_stone".equalsIgnoreCase(item.itemId())) {
             return RewardIssueResult.rejected(key, "Only the official Return Stone may be a world drop.");
          }
-      } else if (!"rift_core_shard".equalsIgnoreCase(item.itemId())
+      } else if (!("rift_core_shard".equalsIgnoreCase(item.itemId())
+            || "night_cloak".equalsIgnoreCase(item.itemId()))
             || !this.isAdminOnlyCatalogItem(item.itemId())) {
-         return RewardIssueResult.rejected(key, "Only the official Rift Shard may be issued to a player.");
+         return RewardIssueResult.rejected(key, "Only official End Rift artifacts may be issued to a player.");
       }
 
       UUID ownerUuid = worldDrop

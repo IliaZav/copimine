@@ -14,7 +14,7 @@ def _method_body(source: str, signature: str, next_signature: str) -> str:
 
 
 def test_official_boss_creates_a_visible_health_bar_for_active_players() -> None:
-    configure = _method_body(MAIN, "private void configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
+    configure = _method_body(MAIN, "private boolean configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
     ensure = _method_body(MAIN, "private void ensureBossBar()", "private LivingEntity liveBoss()")
     tick = _method_body(MAIN, "private void tickBoss()", "private int randomSeconds")
     assert "ensureBossBar();" in configure

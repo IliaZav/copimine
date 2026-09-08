@@ -509,17 +509,24 @@ function Set-LocalPurpurProperty {
 
 function Normalize-LocalPurpurProperties {
   Set-LocalPurpurProperty -Key 'use-alternate-keepalive' -Value 'true'
+  Set-LocalPurpurProperty -Key 'clamp-attributes' -Value 'false'
   $configuredKeepalive = ''
+  $configuredClampAttributes = ''
   foreach ($line in Get-Content -LiteralPath $purpurConfig -Encoding UTF8) {
     if ($line -match '^\s*use-alternate-keepalive\s*:\s*(true|false)\s*$') {
       $configuredKeepalive = $matches[1].ToLowerInvariant()
-      break
+    }
+    if ($line -match '^\s*clamp-attributes\s*:\s*(true|false)\s*$') {
+      $configuredClampAttributes = $matches[1].ToLowerInvariant()
     }
   }
   if ($configuredKeepalive -ne 'true') {
     throw "Local Purpur alternate keep-alive is not enabled: $configuredKeepalive"
   }
-  Write-Host 'Enabled Purpur alternate keep-alive for the local peer-tunnel test server.'
+  if ($configuredClampAttributes -ne 'false') {
+    throw "Local Purpur attribute clamping is enabled; V2 boss real health requires clamp-attributes=false."
+  }
+  Write-Host 'Enabled Purpur alternate keep-alive and unclamped attributes for the local V2 test server.'
 }
 
 function Set-LocalEssentialsProperty {

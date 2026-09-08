@@ -49,10 +49,9 @@ def test_official_driver_does_not_skip_waves_or_boss_phases_with_test_commands()
         "WAVE_OBJECTIVE_COMPLETE",
         "WAVE_COMPLETED",
         "BOSS_CINEMATIC_STARTED",
-        "BOSS_STAGE_TRANSITION",
-        "BOSS_CAST_STATE.*ABSORPTION_CHANNEL",
-        "BOSS_ABSORPTION_BUFF",
-        "BOSS_CAST_STATE.*JUDGMENT_CAST",
+        "BOSS_V2_STAGE_TRANSITION",
+        "RIFT_OBELISKS_SPAWNED.*stage=RIFT",
+        "BOSS_V2_LAST_SEAL_VISUALS_STARTED",
         "END_EVENT_WAVE_COMBAT_CLEANUP",
         "BOSS_DEFEAT_COMMITTED",
         "BOSS_DEFEATED",
@@ -60,33 +59,46 @@ def test_official_driver_does_not_skip_waves_or_boss_phases_with_test_commands()
         assert marker in source
 
 
-def test_official_driver_waits_for_all_five_waves_and_every_boss_stage_in_order() -> None:
+def test_official_driver_waits_for_all_six_v2_waves_and_every_boss_stage_in_order() -> None:
     source = DRIVER.read_text(encoding="utf-8")
     ordered_markers = (
         "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=1'",
         "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1'",
-        "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2'",
+        "Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2",
         "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2'",
-        "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=3'",
+        "Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3",
         "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=3'",
         "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3'",
-        "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=4'",
+        "Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4",
         "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=4'",
         "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4'",
-        "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=5'",
+        "Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5",
         "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=5'",
         "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=5'",
+        "Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6",
+        "Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true'",
+        "Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true'",
         "Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED'",
         "Assert-BossStage -Stage 'AWAKENING'",
-        "Assert-BossStage -Stage 'HUNTER'",
-        "Assert-BossStage -Stage 'DISTORTION'",
-        "Assert-BossStage -Stage 'ABSORPTION'",
-        "Assert-BossStage -Stage 'CATASTROPHE'",
-        "Wait-LogRegex -Pattern 'BOSS_CAST_STATE.*JUDGMENT_CAST'",
+        "Assert-BossStage -Stage 'HUNT'",
+        "RIFT_TENTACLE_SPAWN",
+        "Assert-BossStage -Stage 'RIFT'",
+        "Assert-BossStage -Stage 'OVERLOAD'",
+        "Assert-BossStage -Stage 'RAGE'",
+        "Assert-BossStage -Stage 'LAST_SEAL'",
+        "BOSS_V2_LAST_SEAL_VISUALS_STARTED",
         "Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED'",
     )
     positions = [source.index(marker) for marker in ordered_markers]
     assert positions == sorted(positions)
+    assert "FINAL_WAVE_STARTED" not in source
+    assert "WAVE_COMPLETED.*wave=FINAL" not in source
+
+
+def test_official_transition_driver_preserves_the_persisted_pad_array_shape() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "$nextPads = Get-PadCoordinates" in source
+    assert "$nextPads = @(Get-PadCoordinates)" not in source
 
 
 def test_official_driver_observes_wave_two_mark_and_skeleton_retarget() -> None:
@@ -191,3 +203,16 @@ def test_official_driver_can_close_on_live_mob_positions_after_objective_deadlin
     assert "function Keep-PlayersAtCombatMobs" in source
     assert "Keep-PlayersAtCombatMobs" in source
     assert "WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs" in source
+
+
+def test_official_wave_six_probe_keeps_players_inside_their_assigned_chamber() -> None:
+    """The survival probe must respect the same closed-room boundary as the server."""
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "function Keep-PlayersAtWaveSixMobs" in source
+    assert "ChamberIsolationPolicy" not in source
+    assert "centerAngle" in source
+    assert "halfSector" in source
+    assert "Keep-PlayersAtWaveSixMobs -Core $core" in source
+    assert "WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 360 `" in source
+    helper = source[source.index("function Get-WaveSixChamberMob"):source.index("function Keep-PlayersAtWaveSixMobs")]
+    assert "[Parameter(Mandatory = $true)][object[]]$Mobs" not in helper

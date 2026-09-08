@@ -11,7 +11,10 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 import me.copimine.endevent.domain.BossHealthScalingPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
+import me.copimine.endevent.domain.AbyssAnchorPolicy;
 import me.copimine.endevent.domain.BossStage;
+import me.copimine.endevent.domain.V2BossStage;
+import me.copimine.endevent.domain.PortalCapturePolicy;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
 public record EventConfig(
@@ -26,6 +29,7 @@ public record EventConfig(
         int maxPlayers,
         List<Double> padRadii,
         double padOccupancyRadius,
+        double portalCaptureDecayRate,
         String arenaWorld,
         double arenaRadius,
         double arenaVerticalRadius,
@@ -68,6 +72,7 @@ public record EventConfig(
         int bossSpellMaxSeconds,
         int bossSpellTelegraphTicks,
         int bossRecentTargetMemory,
+        int bossTargetLockSeconds,
         int bossTeleportCooldownSeconds,
         MiniBossTuning miniBossTuning,
         int finalRitualTelegraphTicks,
@@ -84,6 +89,8 @@ public record EventConfig(
         String shardItemId,
         int shardChannelSeconds,
         int shardCooldownSeconds,
+        int abyssAnchorCooldownSeconds,
+        double nightCloakChance,
         String returnStoneItemId,
         Map<String, Integer> resourceBundle,
         String portalWorld,
@@ -123,6 +130,13 @@ public record EventConfig(
         if (debuffAmplifier < 0 || debuffAmplifier > 3) {
             throw new IllegalArgumentException("debuff amplifier must be between 0 and 3");
         }
+        if (!Double.isFinite(nightCloakChance) || nightCloakChance < 0.0D || nightCloakChance > 1.0D) {
+            throw new IllegalArgumentException("night cloak chance must be between 0 and 1");
+        }
+        if (abyssAnchorCooldownSeconds < AbyssAnchorPolicy.MIN_COOLDOWN_SECONDS
+                || abyssAnchorCooldownSeconds > AbyssAnchorPolicy.MAX_COOLDOWN_SECONDS) {
+            throw new IllegalArgumentException("abyss anchor cooldown is outside the safe bounds");
+        }
     }
 
     public static EventConfig load(JavaPlugin plugin) {
@@ -154,6 +168,8 @@ public record EventConfig(
         if (radii.size() < 4 || radii.stream().anyMatch(value -> value == null || value <= 0.0D)) {
             throw new IllegalStateException("ritual.pad-radii must contain positive fallback radii");
         }
+        double portalCaptureDecayRate = boundedPortalCaptureDecayRate(
+                ritual.getDouble("portal-capture-decay-rate", PortalCapturePolicy.DEFAULT_DECAY_RATE));
         int waveCap = positiveInt(waves, "hard-cap");
         double health = positiveDouble(boss, "health");
         if (Math.abs(health - BossHealthScalingPolicy.BASE_HEALTH) > 0.000001D) {
@@ -187,6 +203,7 @@ public record EventConfig(
         int[] target = secondsRange(boss, "target-rotation-seconds");
         int[] spells = secondsRange(boss, "spell-cooldown-seconds");
         int bossRecentTargetMemory = positiveInt(boss, "recent-target-memory");
+        int bossTargetLockSeconds = positiveInt(boss, "target-lock-seconds");
         int bossTeleportCooldownSeconds = positiveInt(boss, "teleport-cooldown-seconds");
         if (boss.getInt("spell-telegraph-ticks", 30) < 1) {
             throw new IllegalStateException("boss.spell-telegraph-ticks must be positive");
@@ -223,6 +240,7 @@ public record EventConfig(
                 maxPlayers,
                 radii,
                 positiveDouble(ritual, "pad-occupancy-radius"),
+                portalCaptureDecayRate,
                 text(arena.getString("world", "CopiMine"), "CopiMine"),
                 positiveDouble(arena, "radius"),
                 positiveDouble(arena, "vertical-radius"),
@@ -259,9 +277,10 @@ public record EventConfig(
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
                 boundedAmplifier(boss.getInt("debuff-amplifier", 3)),
-                target[0], target[1], spells[0], spells[1],
-                positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
-                bossTeleportCooldownSeconds, miniBossTuning, finalRitualTelegraphTicks,
+                 target[0], target[1], spells[0], spells[1],
+                 positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
+                 bossTargetLockSeconds,
+                 bossTeleportCooldownSeconds, miniBossTuning, finalRitualTelegraphTicks,
                 half, finalThreshold, finalHealth,
                 drainFraction,
                 Math.max(1.0D, boss.getDouble("final-drain-min-health", 1.0D)),
@@ -273,6 +292,10 @@ public record EventConfig(
                 text(rewards.getString("shard-item-id", "rift_core_shard"), "rift_core_shard"),
                 positiveInt(rewards, "shard-channel-seconds"),
                 positiveInt(rewards, "shard-cooldown-seconds"),
+                boundedSeconds(rewards, "abyss-anchor-cooldown-seconds",
+                        AbyssAnchorPolicy.DEFAULT_COOLDOWN_SECONDS, AbyssAnchorPolicy.MAX_COOLDOWN_SECONDS),
+                boundedChance(rewards.getDouble("night-cloak-chance", 0.30D),
+                        "rewards.night-cloak-chance"),
                 text(rewards.getString("return-stone-item-id", "return_stone"), "return_stone"),
                 readMaterials(rewards.getConfigurationSection("resource-bundle"), "rewards.resource-bundle"),
                 text(portal.getString("world", "CopiMine_the_end"), "CopiMine_the_end"),
@@ -300,7 +323,7 @@ public record EventConfig(
             throw new IllegalStateException("Missing configuration section: wave-rewards");
         }
         LinkedHashMap<Integer, Map<String, Integer>> rewards = new LinkedHashMap<>();
-        for (int wave = 1; wave <= 5; wave++) {
+        for (int wave = 1; wave <= 6; wave++) {
             rewards.put(wave, readMaterials(requiredSection(parent, "wave-" + wave),
                     "wave-rewards.wave-" + wave));
         }
@@ -342,6 +365,13 @@ public record EventConfig(
         return new int[] {values.get(0), values.get(1)};
     }
 
+    private static double boundedChance(double value, String key) {
+        if (!Double.isFinite(value) || value < 0.0D || value > 1.0D) {
+            throw new IllegalStateException(key + " must be between 0 and 1");
+        }
+        return value;
+    }
+
     private static MiniBossTuning miniBossTuning(ConfigurationSection section) {
         int[] cooldown = secondsRange(section, "spell-cooldown-seconds");
         int telegraphTicks = positiveInt(section, "spell-telegraph-ticks");
@@ -358,9 +388,9 @@ public record EventConfig(
                 .filter(value -> !value.isBlank())
                 .distinct()
                 .toList();
-        if (!stages.equals(List.of("DISTORTION"))) {
+        if (!stages.equals(List.of("DISTORTION")) && !stages.equals(List.of("RIFT"))) {
             throw new IllegalStateException(
-                    "boss.rift-obelisks.stages must contain only DISTORTION");
+                    "boss.rift-obelisks.stages must contain only DISTORTION or RIFT");
         }
         int[] cooldown = secondsRange(section, "cooldown-seconds");
         int health = section.getInt("health", -1);
@@ -513,6 +543,14 @@ public record EventConfig(
         return value;
     }
 
+    private static int boundedSeconds(ConfigurationSection section, String key, int fallback, int maximum) {
+        int value = section.getInt(key, fallback);
+        if (value < 1 || value > maximum) {
+            throw new IllegalStateException(key + " must be between 1 and " + maximum + " seconds");
+        }
+        return value;
+    }
+
     private static int nonNegative(ConfigurationSection section, String key) {
         int value = section.getInt(key, -1);
         if (value < 0) {
@@ -547,6 +585,14 @@ public record EventConfig(
         return value;
     }
 
+    private static double boundedPortalCaptureDecayRate(double value) {
+        if (!Double.isFinite(value) || value <= 0.0D || value > 1.0D) {
+            throw new IllegalStateException(
+                    "ritual.portal-capture-decay-rate must be finite and between 0 and 1");
+        }
+        return value;
+    }
+
     private static int boundedAmplifier(int value) {
         if (value < 0 || value > 3) {
             throw new IllegalStateException("boss.debuff-amplifier must be between 0 and 3");
@@ -569,9 +615,13 @@ public record EventConfig(
 
     private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent) {
         List<String> requiredKeys = List.of(
-                "wave-1", "wave-2", "wave-3", "wave-4", "wave-5",
-                "intermission-1", "intermission-2", "intermission-3", "intermission-4",
-                "boss-cinematic", "final-drain", "final-ritual", "final-wave", "boss-finish");
+                "wave-1", "wave-2", "wave-3", "wave-4", "wave-5", "wave-6",
+                "intermission-1", "intermission-2", "intermission-3", "intermission-4", "intermission-5",
+                "pre-boss-cooldown", "boss-cinematic", "boss-awakening", "boss-hunt",
+                "boss-rift", "boss-overload", "boss-rage", "boss-last-seal", "boss-finish",
+                // These names remain readable for snapshots and local admin
+                // commands, but are not selected by the official V2 flow.
+                "final-drain", "final-ritual", "final-wave");
         LinkedHashMap<String, MusicTrack> tracks = new LinkedHashMap<>();
         for (String key : requiredKeys) {
             tracks.put(key, musicTrack(parent, key));
@@ -695,13 +745,21 @@ public record EventConfig(
                     || fireballDamage <= 0.0D || blindnessTicks < 1 || debuffTicks < 1
                     || spawnTelegraphTicks < 5 || destructionDelayTicks < 1
                     || minDistance < 2.0D || minDistance > 12.0D
-                    || !stages.equals(List.of("DISTORTION"))) {
+                    || !stages.equals(List.of("DISTORTION")) && !stages.equals(List.of("RIFT"))) {
                 throw new IllegalArgumentException("invalid Rift Obelisk tuning");
             }
         }
 
         public boolean enabledFor(BossStage stage) {
-            return enabled && stage != null && stages.contains(stage.name());
+            return enabled && stage != null
+                    && (stages.contains(stage.name())
+                    || stage == BossStage.DISTORTION && stages.contains("RIFT"));
+        }
+
+        public boolean enabledFor(V2BossStage stage) {
+            return enabled && stage != null
+                    && (stages.contains(stage.name())
+                    || stage == V2BossStage.RIFT && stages.contains("DISTORTION"));
         }
     }
 }

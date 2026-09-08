@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "tests/RunEndRiftOfficialFivePlayerLive.ps1"
 SHARED_DRIVER = ROOT / "tests/RunEndRiftOfficialTwoPlayerLive.ps1"
+TEN_DRIVER = ROOT / "tests/RunEndRiftOfficialTenPlayerLive.ps1"
 
 
 def test_five_player_driver_is_local_only_and_uses_the_shared_official_flow() -> None:
@@ -28,9 +29,8 @@ def test_five_player_driver_is_local_only_and_uses_the_shared_official_flow() ->
         "RITUAL_COMPLETED",
         "WAVE_STARTED.*wave=1",
         "WAVE_COMPLETED.*wave=5",
-        "FINAL_WAVE_STARTED",
-        "BOSS_STAGE_TRANSITION",
-        "BOSS_CAST_STATE.*JUDGMENT_CAST",
+        "BOSS_V2_STAGE_TRANSITION",
+        "BOSS_V2_LAST_SEAL_VISUALS_STARTED",
         "BOSS_DEFEAT_COMMITTED",
         "OFFICIAL_FIVE_PLAYER_PASS",
         "OFFICIAL_BOSS_STAGE_FAST_TRANSITION",
@@ -60,7 +60,7 @@ def test_shared_driver_accepts_exactly_two_to_five_unique_players() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
     for marker in (
         "$PlayerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)",
-        "supports two to five local players",
+        "supports two to twenty local players",
         "requires unique local player names",
         "if ($PlayerNames.Count -eq 5)",
         "foreach ($name in $PlayerNames)",
@@ -69,15 +69,43 @@ def test_shared_driver_accepts_exactly_two_to_five_unique_players() -> None:
         assert marker in source
 
 
-def test_official_driver_allows_intermission_and_peer_tunnel_jitter_before_new_waves() -> None:
-    source = SHARED_DRIVER.read_text(encoding="utf-8")
+def test_ten_player_driver_reuses_the_official_local_flow() -> None:
+    source = TEN_DRIVER.read_text(encoding="utf-8")
+    shared = SHARED_DRIVER.read_text(encoding="utf-8")
     for marker in (
-        "WAVE_STARTED.*wave=2' -WaitSeconds 60",
-        "WAVE_STARTED.*wave=3' -WaitSeconds 60",
-        "WAVE_STARTED.*wave=4' -WaitSeconds 60",
-        "WAVE_STARTED.*wave=5' -WaitSeconds 60",
+        "environment:\\s*local",
+        "RunEndRiftOfficialTwoPlayerLive.ps1",
+        "EndRiftTenA",
+        "EndRiftTenJ",
+        "AdditionalBotNames",
+        "codex/end-rift-event",
     ):
         assert marker in source
+    for marker in (
+        "supports two to twenty local players",
+        "if ($PlayerNames.Count -eq 10)",
+        "official-ten-player-live.log",
+        "official-ten-player-bots",
+    ):
+        assert marker in shared
+
+
+def test_shared_driver_prepares_disposable_authme_accounts_before_clients_start() -> None:
+    source = SHARED_DRIVER.read_text(encoding="utf-8")
+    for marker in (
+        "function Prepare-OfficialAuthMeAccounts",
+        "authme unregister $name",
+        "authme register $name endrift-local",
+        "Prepare-OfficialAuthMeAccounts",
+    ):
+        assert marker in source
+    assert source.count("Prepare-OfficialAuthMeAccounts") >= 2
+    assert source.index("Prepare-OfficialAuthMeAccounts\n  $node") < source.index("Start-Process -FilePath $node")
+
+
+def test_official_driver_allows_intermission_and_peer_tunnel_jitter_before_new_waves() -> None:
+    source = SHARED_DRIVER.read_text(encoding="utf-8")
+    assert 'Wait-LogRegex -Pattern ("WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120' in source
 
 
 def test_official_log_cursor_reads_the_complete_file_tail() -> None:
@@ -89,9 +117,9 @@ def test_official_log_cursor_reads_the_complete_file_tail() -> None:
 
 def test_official_driver_accepts_a_fast_absorption_threshold_transition() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
-    assert "if ($Stage -eq 'ABSORPTION')" in source
-    assert "BOSS_ABSORPTION_BUFF" in source
-    assert "crossed=.*ABSORPTION" in source
+    assert "Assert-BossStage -Stage 'OVERLOAD'" in source
+    assert "Assert-BossStage -Stage 'LAST_SEAL'" in source
+    assert "BOSS_V2_LAST_SEAL_VISUALS_STARTED" in source
 
 
 def test_five_player_positions_cover_runes_core_ring_portals_and_boss() -> None:

@@ -374,6 +374,13 @@
       "texture": "copimine:item/rift_core_shard"
     },
     {
+      "id": "night_cloak",
+      "custom_model_data": 830005,
+      "base_material": "leather_chestplate",
+      "model": "copimine:item/night_cloak",
+      "texture": "copimine:item/night_cloak"
+    },
+    {
       "id": "end_event_wave_ring",
       "custom_model_data": 830006,
       "base_material": "paper",
@@ -435,6 +442,13 @@
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_obelisk_pulse",
       "texture": "copimine:item/end_event_rift_obelisk_pulse_hd"
+    },
+    {
+      "id": "end_event_rift_tentacle",
+      "custom_model_data": 830017,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_tentacle",
+      "texture": "copimine:item/end_event_rift_tentacle_hd"
     }
   ]
 }

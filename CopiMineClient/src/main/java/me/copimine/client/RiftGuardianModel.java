@@ -20,6 +20,13 @@ import java.util.Locale;
  */
 public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity> {
     private static final float HIDDEN_FINAL_PART_SCALE = 0.001F;
+    /** Geometry contract for the readable, elongated guardian silhouette. */
+    static final float TORSO_WIDTH = 14.0F;
+    static final float TORSO_HEIGHT = 25.0F;
+    static final float TORSO_DEPTH = 8.0F;
+    static final float ARM_HEIGHT = 29.0F;
+    static final float LEG_HEIGHT = 29.0F;
+    static final float ARM_PIVOT_X = 12.5F;
     private final ModelPart root;
     private final ModelPart torso;
     private final ModelPart leftShoulder;
@@ -82,85 +89,90 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         // an empty carrier so all custom geometry is rendered by Biped's
         // normal body pass and remains compatible with Iris shadows/features.
         root.addChild("head", ModelPartBuilder.create()
-                        .uv(0, 96).cuboid(-7.0F, -39.0F, -7.0F, 14.0F, 14.0F, 14.0F),
+                        .uv(0, 96).cuboid(-6.0F, -40.0F, -6.0F, 12.0F, 14.0F, 12.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         root.addChild("hat", ModelPartBuilder.create(),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         ModelPartData body = root.addChild("body", ModelPartBuilder.create(),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
         body.addChild("torso", ModelPartBuilder.create()
-                        .uv(0, 0).cuboid(-9.0F, -25.0F, -5.0F, 18.0F, 21.0F, 10.0F)
-                        .uv(0, 64).cuboid(-6.0F, -31.0F, -4.0F, 12.0F, 7.0F, 8.0F),
+                        .uv(0, 0).cuboid(-7.0F, -28.0F, -4.0F,
+                                TORSO_WIDTH, TORSO_HEIGHT, TORSO_DEPTH)
+                        .uv(0, 64).cuboid(-5.0F, -34.0F, -3.0F, 10.0F, 6.0F, 6.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("left_shoulder", ModelPartBuilder.create()
-                        .uv(56, 0).cuboid(0.0F, -23.0F, -4.0F, 9.0F, 7.0F, 8.0F),
-                ModelTransform.pivot(8.5F, 24.0F, 0.0F));
+                        .uv(56, 0).cuboid(0.0F, -25.0F, -3.5F, 7.0F, 6.0F, 7.0F),
+                ModelTransform.pivot(6.8F, 24.0F, 0.0F));
         body.addChild("right_shoulder", ModelPartBuilder.create()
-                        .uv(56, 15).cuboid(-9.0F, -23.0F, -4.0F, 9.0F, 7.0F, 8.0F),
-                ModelTransform.pivot(-8.5F, 24.0F, 0.0F));
+                        .uv(56, 15).cuboid(-7.0F, -25.0F, -3.5F, 7.0F, 6.0F, 7.0F),
+                ModelTransform.pivot(-6.8F, 24.0F, 0.0F));
         root.addChild("left_arm", ModelPartBuilder.create()
-                        .uv(88, 0).cuboid(-2.0F, -1.0F, -2.5F, 5.0F, 25.0F, 5.0F),
-                ModelTransform.pivot(16.0F, 1.5F, 0.0F));
+                        .uv(80, 0).cuboid(-2.0F, -1.0F, -2.0F,
+                                4.0F, ARM_HEIGHT, 4.0F),
+                ModelTransform.pivot(ARM_PIVOT_X, 0.5F, 0.0F));
         root.addChild("right_arm", ModelPartBuilder.create()
-                        .uv(88, 30).cuboid(-3.0F, -1.0F, -2.5F, 5.0F, 25.0F, 5.0F),
-                ModelTransform.pivot(-16.0F, 1.5F, 0.0F));
+                        .uv(80, 32).cuboid(-2.0F, -1.0F, -2.0F,
+                                4.0F, ARM_HEIGHT, 4.0F),
+                ModelTransform.pivot(-ARM_PIVOT_X, 0.5F, 0.0F));
         ModelPartData leftHorn = body.addChild("left_horn", ModelPartBuilder.create()
-                        .uv(42, 64).cuboid(0.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
-                ModelTransform.of(4.0F, 24.0F, 0.0F, 0.0F, 0.0F, 0.35F));
+                        .uv(42, 64).cuboid(0.0F, -39.0F, -1.5F, 3.0F, 11.0F, 3.0F),
+                ModelTransform.of(3.2F, 24.0F, 0.0F, 0.0F, 0.0F, 0.28F));
         leftHorn.addChild("left_horn_tip", ModelPartBuilder.create()
-                        .uv(48, 64).cuboid(-1.5F, -9.0F, -1.5F, 3.0F, 9.0F, 3.0F),
-                ModelTransform.pivot(2.0F, -36.0F, 0.0F));
+                        .uv(48, 64).cuboid(-1.0F, -9.0F, -1.0F, 2.0F, 9.0F, 2.0F),
+                ModelTransform.pivot(1.5F, -39.0F, 0.0F));
         ModelPartData rightHorn = body.addChild("right_horn", ModelPartBuilder.create()
-                        .uv(42, 77).cuboid(-4.0F, -36.0F, -2.0F, 4.0F, 9.0F, 4.0F),
-                ModelTransform.of(-4.0F, 24.0F, 0.0F, 0.0F, 0.0F, -0.35F));
+                        .uv(42, 77).cuboid(-3.0F, -39.0F, -1.5F, 3.0F, 11.0F, 3.0F),
+                ModelTransform.of(-3.2F, 24.0F, 0.0F, 0.0F, 0.0F, -0.28F));
         rightHorn.addChild("right_horn_tip", ModelPartBuilder.create()
-                        .uv(52, 64).cuboid(-1.5F, -9.0F, -1.5F, 3.0F, 9.0F, 3.0F),
-                ModelTransform.pivot(-2.0F, -36.0F, 0.0F));
+                        .uv(52, 64).cuboid(-1.0F, -9.0F, -1.0F, 2.0F, 9.0F, 2.0F),
+                ModelTransform.pivot(-1.5F, -39.0F, 0.0F));
         body.addChild("left_crest", ModelPartBuilder.create()
-                        .uv(56, 64).cuboid(0.0F, -32.0F, -3.0F, 5.0F, 5.0F, 6.0F),
-                ModelTransform.of(6.0F, 24.0F, 0.0F, 0.0F, 0.0F, 0.18F));
+                        .uv(56, 64).cuboid(0.0F, -34.0F, -2.5F, 4.0F, 6.0F, 5.0F),
+                ModelTransform.of(4.5F, 24.0F, 0.0F, 0.0F, 0.0F, 0.16F));
         body.addChild("right_crest", ModelPartBuilder.create()
-                        .uv(56, 75).cuboid(-5.0F, -32.0F, -3.0F, 5.0F, 5.0F, 6.0F),
-                ModelTransform.of(-6.0F, 24.0F, 0.0F, 0.0F, 0.0F, -0.18F));
+                        .uv(56, 75).cuboid(-4.0F, -34.0F, -2.5F, 4.0F, 6.0F, 5.0F),
+                ModelTransform.of(-4.5F, 24.0F, 0.0F, 0.0F, 0.0F, -0.16F));
         body.addChild("back_spine", ModelPartBuilder.create()
-                        .uv(72, 84).cuboid(-2.0F, -27.0F, 4.0F, 4.0F, 14.0F, 3.0F),
+                        .uv(72, 84).cuboid(-1.5F, -30.0F, 3.5F, 3.0F, 17.0F, 2.5F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("left_shard", ModelPartBuilder.create()
-                        .uv(0, 84).cuboid(-1.5F, -2.0F, -1.5F, 3.0F, 12.0F, 3.0F),
-                ModelTransform.of(14.0F, -3.0F, -1.0F, 0.25F, 0.0F, 0.65F));
+                        .uv(0, 84).cuboid(-1.5F, -2.0F, -1.25F, 3.0F, 13.0F, 2.5F),
+                ModelTransform.of(10.5F, -4.0F, -0.8F, 0.25F, 0.0F, 0.58F));
         body.addChild("right_shard", ModelPartBuilder.create()
-                        .uv(14, 84).cuboid(-1.5F, -2.0F, -1.5F, 3.0F, 12.0F, 3.0F),
-                ModelTransform.of(-14.0F, -3.0F, -1.0F, 0.25F, 0.0F, -0.65F));
+                        .uv(14, 84).cuboid(-1.5F, -2.0F, -1.25F, 3.0F, 13.0F, 2.5F),
+                ModelTransform.of(-10.5F, -4.0F, -0.8F, 0.25F, 0.0F, -0.58F));
         body.addChild("chest_rift", ModelPartBuilder.create()
-                        .uv(28, 84).cuboid(-3.0F, -20.5F, -5.6F, 6.0F, 10.0F, 1.0F),
+                        .uv(28, 84).cuboid(-2.5F, -22.0F, -4.6F, 5.0F, 12.0F, 1.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("jaw", ModelPartBuilder.create()
-                        .uv(96, 64).cuboid(-4.0F, -28.5F, -6.8F, 8.0F, 3.0F, 3.0F),
+                        .uv(96, 64).cuboid(-3.5F, -31.0F, -5.2F, 7.0F, 3.0F, 2.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("core_eye", ModelPartBuilder.create()
-                        .uv(96, 72).cuboid(-2.0F, -18.0F, -6.0F, 4.0F, 4.0F, 1.0F),
+                        .uv(96, 72).cuboid(-2.0F, -19.0F, -5.0F, 4.0F, 4.0F, 1.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         body.addChild("crown_left", ModelPartBuilder.create()
-                        .uv(112, 64).cuboid(0.0F, -37.0F, -1.5F, 3.0F, 7.0F, 3.0F),
-                ModelTransform.of(7.0F, 24.0F, 0.0F, -0.10F, 0.0F, 0.32F));
+                        .uv(112, 64).cuboid(0.0F, -40.0F, -1.25F, 2.5F, 8.0F, 2.5F),
+                ModelTransform.of(5.5F, 24.0F, 0.0F, -0.10F, 0.0F, 0.28F));
         body.addChild("crown_right", ModelPartBuilder.create()
-                        .uv(112, 74).cuboid(-3.0F, -37.0F, -1.5F, 3.0F, 7.0F, 3.0F),
-                ModelTransform.of(-7.0F, 24.0F, 0.0F, -0.10F, 0.0F, -0.32F));
+                        .uv(112, 74).cuboid(-2.5F, -40.0F, -1.25F, 2.5F, 8.0F, 2.5F),
+                ModelTransform.of(-5.5F, 24.0F, 0.0F, -0.10F, 0.0F, -0.28F));
         body.addChild("catastrophe_spine", ModelPartBuilder.create()
-                        .uv(96, 80).cuboid(-2.0F, -33.0F, 5.6F, 4.0F, 12.0F, 2.0F),
+                        .uv(96, 80).cuboid(-1.5F, -37.0F, 4.8F, 3.0F, 14.0F, 2.0F),
                 ModelTransform.pivot(0.0F, 24.0F, 0.0F));
         root.addChild("right_leg", ModelPartBuilder.create()
-                        .uv(56, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
-                ModelTransform.pivot(-5.0F, 1.5F, 0.0F));
+                        .uv(56, 50).cuboid(-2.5F, -1.0F, -2.5F,
+                                5.0F, LEG_HEIGHT, 5.0F),
+                ModelTransform.pivot(-3.8F, 0.5F, 0.0F));
         root.addChild("left_leg", ModelPartBuilder.create()
-                        .uv(80, 50).cuboid(-3.0F, -1.0F, -3.0F, 6.0F, 25.0F, 6.0F),
-                ModelTransform.pivot(5.0F, 1.5F, 0.0F));
+                        .uv(80, 50).cuboid(-2.5F, -1.0F, -2.5F,
+                                5.0F, LEG_HEIGHT, 5.0F),
+                ModelTransform.pivot(3.8F, 0.5F, 0.0F));
         root.getChild("left_arm").addChild("left_talon", ModelPartBuilder.create()
-                        .uv(112, 84).cuboid(-1.0F, -1.0F, -1.0F, 3.0F, 6.0F, 2.0F),
-                ModelTransform.of(1.2F, 22.5F, -0.2F, 0.22F, 0.0F, 0.08F));
+                        .uv(112, 84).cuboid(-1.0F, -1.0F, -1.0F, 2.5F, 6.0F, 2.0F),
+                ModelTransform.of(1.0F, 26.0F, -0.2F, 0.22F, 0.0F, 0.08F));
         root.getChild("right_arm").addChild("right_talon", ModelPartBuilder.create()
-                        .uv(112, 92).cuboid(-2.0F, -1.0F, -1.0F, 3.0F, 6.0F, 2.0F),
-                ModelTransform.of(-1.2F, 22.5F, -0.2F, 0.22F, 0.0F, -0.08F));
+                        .uv(112, 92).cuboid(-1.5F, -1.0F, -1.0F, 2.5F, 6.0F, 2.0F),
+                ModelTransform.of(-1.0F, 26.0F, -0.2F, 0.22F, 0.0F, -0.08F));
         return TexturedModelData.of(modelData, 128, 128);
     }
 
@@ -190,9 +202,9 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         if (entity != null && entity.isAngry()) {
             applyAttackTransform(animationProgress);
         }
-        if (phase == Phase.ABSORPTION) {
+        if (phase == Phase.ABSORPTION || phase == Phase.OVERLOAD) {
             applyAbsorptionTransform(animationProgress);
-        } else if (phase == Phase.CATASTROPHE) {
+        } else if (phase == Phase.CATASTROPHE || phase == Phase.RAGE || phase == Phase.LAST_SEAL) {
             applyJudgmentTransform(animationProgress);
         } else if (phase == Phase.DISTORTION) {
             root.roll += MathHelper.sin(animationProgress * 0.12F) * 0.08F;
@@ -243,7 +255,8 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     }
 
     private boolean finalAdornmentIsRevealed(String animation) {
-        return phase == Phase.CATASTROPHE || "FINAL_AWAKENING".equals(animation);
+        return phase == Phase.CATASTROPHE || phase == Phase.RAGE || phase == Phase.LAST_SEAL
+                || "FINAL_AWAKENING".equals(animation);
     }
 
     private void hideFinalAdornmentOutsideFinalState(String animation) {
@@ -488,7 +501,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
 
     /** The last phase is intentionally larger and more threatening. */
     private void applyFinalSilhouette(float animationProgress) {
-        if (phase != Phase.CATASTROPHE) {
+        if (phase != Phase.CATASTROPHE && phase != Phase.RAGE && phase != Phase.LAST_SEAL) {
             return;
         }
         float pulse = MathHelper.sin(animationProgress * 0.16F) * 0.04F;

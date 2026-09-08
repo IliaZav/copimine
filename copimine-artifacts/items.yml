@@ -60,18 +60,36 @@ items:
     source: ADMIN_ONLY
     custom_model_data: 830004
     custom-texture-mode-allowed: true
-    name: "&5Осколок Разлома"
+    name: "&eОсколок Ядра Разлома"
     rarity: LEGENDARY
     price_ar: 0
     supply_limit: 0
     per_player_limit: 0
-    cooldown_seconds: 3600
+    cooldown_seconds: 600
     effect: RIFT_CORE_SHARD
     effect_chance_percent: 100
     visual_effect_id: ""
     lore:
-      - "&8Из него всё ещё доносится отголосок мира, которого больше нет"
-      - "&7Он откликается лишь тем, кто стоял у Разлома до конца"
+      - "&eИз него всё ещё доносятся отголоски хаоса Разлома."
+
+  # Issued only by the first-party End Rift reward service.  Gameplay powers
+  # are intentionally not assigned here until a separate item design exists.
+  - id: night_cloak
+    category: TOOL
+    material: LEATHER_CHESTPLATE
+    source: ADMIN_ONLY
+    custom_model_data: 830005
+    custom-texture-mode-allowed: true
+    name: "&eПлащ Ночи"
+    rarity: LEGENDARY
+    price_ar: 0
+    supply_limit: 0
+    per_player_limit: 0
+    cooldown_seconds: 0
+    effect: NIGHT_CLOAK
+    effect_chance_percent: 100
+    visual_effect_id: ""
+    lore: []
 
   - id: angel_wings
     category: TOOL

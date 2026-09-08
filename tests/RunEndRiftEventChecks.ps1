@@ -63,9 +63,14 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
       tests\test_end_event_portal_visual_contract.py tests\test_end_event_arena_scene_contract.py `
       tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
+      tests\test_end_event_damage_cancellation_contract.py `
+      tests\test_end_event_combat_trace_contract.py `
+      tests\test_end_event_real_health_damage_contract.py `
       tests\test_end_event_boss_health_scaling_contract.py `
+      tests\test_end_event_shard_passives_contract.py `
       tests\test_end_event_boss_multi_player_damage_contract.py `
       tests\test_end_event_rift_obelisk_contract.py `
+      tests\test_end_event_tentacle_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
@@ -87,12 +92,24 @@ $endRiftDomainSources = (Get-ChildItem (Join-Path $endRiftRoot 'copimine-end-eve
 
 Invoke-EndRiftStep 'Pure domain tests' {
   & javac -encoding UTF-8 -d $endRiftTestBuild $endRiftDomainSources `
+      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java') `
+      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\TransitionRuneController.java') `
+      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\WaveSixChamberController.java') `
+      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java') `
+      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java') `
       (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
       (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java') `
       (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java') `
       (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\CombatTraceRecordTest.java') `
+      (Join-Path $endRiftRoot 'tests\EventRealHealthDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TransitionRunePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TransitionRuneControllerTest.java') `
+      (Join-Path $endRiftRoot 'tests\EventCombatScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\EventMobDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TargetPressurePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SkeletonCombatPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\SkeletonArrowPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveCommanderPolicyTest.java') `
@@ -110,7 +127,17 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossHealthScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V2BossHealthScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V2BossStagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossRealHealthDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\ChamberScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\ChamberIsolationPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveSixChamberControllerTest.java') `
+      (Join-Path $endRiftRoot 'tests\AttemptLifecycleControllerTest.java') `
       (Join-Path $endRiftRoot 'tests\BossVirtualHealthPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\PortalCapturePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\BossTargetPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\WaveDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskPlacementPolicyTest.java') `
@@ -122,7 +149,12 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossFinalStrikePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossDefeatCinematicPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftFireballScalingPolicyTest.java')
+      (Join-Path $endRiftRoot 'tests\RiftFireballScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TentacleAnimationPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TentacleScalingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\TentacleControllerTest.java') `
+      (Join-Path $endRiftRoot 'tests\AbyssAnchorPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\ShardPassivePolicyTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossThresholdPolicyTest
@@ -130,6 +162,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild ResourceProgressFormatterTest
   Invoke-EndRiftJavaMain $endRiftTestBuild GateOpeningPlanTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTraceRecordTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild EventRealHealthDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TransitionRunePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TransitionRuneControllerTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild EventCombatScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild EventMobDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TargetPressurePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonCombatPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonArrowPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveCommanderPolicyTest
@@ -147,7 +186,17 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossHealthScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V2BossHealthScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V2BossStagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossRealHealthDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild ChamberScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild ChamberIsolationPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveSixChamberControllerTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild AttemptLifecycleControllerTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossVirtualHealthPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild PortalCapturePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild BossTargetPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild WaveDamagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskDamagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskPlacementPolicyTest
@@ -160,10 +209,16 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild BossFinalStrikePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossDefeatCinematicPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftFireballScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleAnimationPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleScalingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleControllerTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild AbyssAnchorPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild ShardPassivePolicyTest
 }
 Invoke-EndRiftStep 'Durable persistence and layout tests' {
   & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
     (Join-Path $endRiftRoot 'tests\EventStateStoreTest.java') `
+    (Join-Path $endRiftRoot 'tests\V2SnapshotMigrationPolicyTest.java') `
     (Join-Path $endRiftRoot 'tests\DepositJournalTest.java') `
     (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java') `
     (Join-Path $endRiftRoot 'tests\HazardMutationJournalTest.java')
@@ -171,6 +226,7 @@ Invoke-EndRiftStep 'Durable persistence and layout tests' {
   $endRiftRunClasspath = @($endRiftTestBuild, (Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path) + $endRiftTestClasspathEntries
   $endRiftRunClasspathText = $endRiftRunClasspath -join [IO.Path]::PathSeparator
   Invoke-EndRiftJavaMain $endRiftRunClasspathText EventStateStoreTest
+  Invoke-EndRiftJavaMain $endRiftRunClasspathText V2SnapshotMigrationPolicyTest
   Invoke-EndRiftJavaMain $endRiftRunClasspathText DepositJournalTest
   Invoke-EndRiftJavaMain $endRiftRunClasspathText EventLayoutStoreTest
   Invoke-EndRiftJavaMain $endRiftRunClasspathText HazardMutationJournalTest

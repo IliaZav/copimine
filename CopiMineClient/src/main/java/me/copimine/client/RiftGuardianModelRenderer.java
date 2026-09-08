@@ -63,6 +63,7 @@ public final class RiftGuardianModelRenderer {
                     "SPELL_SUMMON",
                     "SPELL_WILL_DISTORTION",
                     "SPELL_ARENA_INFERNO",
+                    "FINAL_PHASE",
                     "SPELL_IMPACT" -> normalized;
             default -> "IDLE";
         };
@@ -71,8 +72,12 @@ public final class RiftGuardianModelRenderer {
     public enum Phase {
         AWAKENING("rift_guardian_awakening.png"),
         HUNTER("rift_guardian_hunter.png"),
+        HUNT("rift_guardian_hunter.png"),
         DISTORTION("rift_guardian_distortion.png"),
         ABSORPTION("rift_guardian_absorption.png"),
+        OVERLOAD("rift_guardian_absorption.png"),
+        RAGE("rift_guardian_catastrophe.png"),
+        LAST_SEAL("rift_guardian_catastrophe.png"),
         CATASTROPHE("rift_guardian_catastrophe.png");
 
         private final Identifier texture;

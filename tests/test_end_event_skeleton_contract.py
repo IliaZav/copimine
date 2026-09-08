@@ -60,7 +60,7 @@ def test_skeleton_ai_accepts_only_eligible_players_and_filters_arrows() -> None:
         "SkeletonArrowPolicy",
         "POISON_NAUSEA",
         "EXPLOSIVE",
-        "createExplosion",
+        "EXPLOSIVE_DAMAGE_RADIUS_BLOCKS",
         "breakBlocks=false",
         "PotionEffectType.POISON",
         "PotionEffectType.NAUSEA",
@@ -90,9 +90,12 @@ def test_skeleton_arrow_payloads_are_bounded_and_non_destructive() -> None:
         "breaksBlocks()",
     ):
         assert marker in policy
-    assert "world.createExplosion" in server
+    assert "SkeletonArrowPolicy.EXPLOSIVE_DAMAGE" in server
+    assert "player.damage" in server
+    assert "breakBlocks=false" in server
     explosive = server[server.index("private void detonateExplosiveArrow"):server.index("private void clearActiveEventArrows")]
-    assert "false, false" in explosive
+    assert "affected_players" in explosive
+    assert "activeLivingPlayers()" in explosive
     assert "PotionEffectType.POISON" in server
     assert "PotionEffectType.NAUSEA" in server
     assert "SkeletonArrowPolicy.STATUS_DURATION_TICKS" in server

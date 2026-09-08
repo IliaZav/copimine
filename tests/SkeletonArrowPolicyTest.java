@@ -18,6 +18,9 @@ public final class SkeletonArrowPolicyTest {
                 "explosive arrows must never break blocks");
         check(SkeletonArrowPolicy.EXPLOSIVE_POWER > 0.0F,
                 "explosive arrows need a visible damage pulse");
+        check(SkeletonArrowPolicy.EXPLOSIVE_DAMAGE > 0.0D
+                        && SkeletonArrowPolicy.EXPLOSIVE_DAMAGE < 10.0D,
+                "explosive arrows need bounded player-only impact damage");
         System.out.println("SkeletonArrowPolicyTest OK");
     }
 

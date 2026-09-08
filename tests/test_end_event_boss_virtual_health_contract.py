@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+PURPUR = (ROOT / "minecraft/server/purpur.yml").read_text(encoding="utf-8")
+LOCAL_START = (ROOT / "tests/StartEndRiftLocalUserSession.ps1").read_text(encoding="utf-8")
 
 
 def _body(start_marker: str, end_marker: str) -> str:
@@ -14,7 +16,7 @@ def _body(start_marker: str, end_marker: str) -> str:
 
 
 def test_boss_configures_scaled_virtual_hp_without_exceeding_papers_physical_limit() -> None:
-    configure = _body("private void configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
+    configure = _body("private boolean configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
     assert "BOSS_PHYSICAL_HEALTH_LIMIT = 2048.0D" in MAIN
     assert "keyBossVirtualHealth" in MAIN
     assert "keyBossVirtualMaxHealth" in configure
@@ -58,3 +60,28 @@ def test_local_test_boss_damage_uses_the_same_virtual_health_path() -> None:
     damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
     assert "isTestBoss(boss) && !testCombatAiMode" in damage
     assert "applyBossDamage(boss, damage, null)" in MAIN
+
+
+def test_v2_official_boss_uses_unclamped_real_entity_health() -> None:
+    configure = _body("private boolean configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
+    official = configure[
+        configure.index("            // V2 is authoritative") : configure.index("        AttributeInstance attack")
+    ]
+    assert "clamp-attributes: false" in PURPUR
+    assert "Set-LocalPurpurProperty -Key 'clamp-attributes' -Value 'false'" in LOCAL_START
+    assert "maxHealth.setBaseValue(configuredMaxHealth);" in official
+    assert "boss.setHealth(configuredMaxHealth);" in official
+    assert "BOSS_PHYSICAL_HEALTH_LIMIT" not in official
+    assert "setBossVirtualHealth(boss, configuredMaxHealth);" not in official
+    assert "BOSS_V2_HEALTH_UNSUPPORTED" in official
+    assert "forcePhase(EventPhase.RECOVERY_REQUIRED" in official
+
+
+def test_restart_reconciles_combat_entities_when_persisted_phase_is_not_combat() -> None:
+    assert "cleanupUnexpectedCombatEntitiesAfterRestart" in MAIN
+    recovery = _body("private void restorePersistedCombatRuntime()", "private void reindexPersistedCombatEntities()")
+    cleanup = _body("private void cleanupUnexpectedCombatEntitiesAfterRestart()", "private EndRiftAiPolicy.MiniBossSpell")
+    assert "cleanupUnexpectedCombatEntitiesAfterRestart();" in recovery
+    assert "clearWaveEntities();" in cleanup
+    assert "clearBossOnly();" in cleanup
+    assert "clearCombatAiState();" in cleanup

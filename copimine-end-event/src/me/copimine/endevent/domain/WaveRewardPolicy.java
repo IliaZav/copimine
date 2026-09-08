@@ -15,7 +15,7 @@ public final class WaveRewardPolicy {
 
     public static RewardBundle bundle(int wave, int playerIndex, int participantCount,
                                       Map<String, Integer> configured) {
-        if (wave < 1 || wave > 5 || playerIndex < 0 || participantCount < 1
+        if (wave < 1 || wave > 6 || playerIndex < 0 || participantCount < 1
                 || playerIndex >= participantCount || configured == null || configured.isEmpty()) {
             throw new IllegalArgumentException("invalid wave reward request");
         }

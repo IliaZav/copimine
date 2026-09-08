@@ -84,6 +84,13 @@ def test_boss_damage_path_releases_expired_absorption_before_evaluating_hit() ->
     assert "boss.setInvulnerable(false)" in damage
 
 
+def test_v2_damage_does_not_treat_a_stale_entity_flag_as_a_new_immunity_state() -> None:
+    damage = _body("private void handleV2BossDamage", "private void applyBossDamage")
+    gate = damage[damage.index("boolean boundedCast"):damage.index("double finalDamage")]
+    assert "|| boss.isInvulnerable()" not in gate
+    assert "boss.setInvulnerable(false)" in gate
+
+
 def test_boss_damage_path_audits_real_player_damage_events_before_policy_gates() -> None:
     damage = _body("public void onBossDamage", "private void applyBossDamage")
     assert "BOSS_DAMAGE_EVENT" in damage
@@ -93,7 +100,7 @@ def test_boss_damage_path_audits_real_player_damage_events_before_policy_gates()
 
 
 def test_unlocked_local_official_boss_harness_enters_active_phase_before_spawn() -> None:
-    spawn = _body("private void spawnOfficialBoss", "private void configureBoss")
+    spawn = _body("private void spawnOfficialBoss", "private boolean configureBoss")
     assert "endUnlocked" in spawn
     assert "forcePhase(EventPhase.BOSS_ACTIVE" in spawn
     assert "official boss local harness" in spawn
@@ -111,7 +118,8 @@ def test_boss_balance_contract_is_5000_hp_with_eleven_point_configured_bonus_and
     assert "health: 5000.0" in CONFIG
     assert "attack-damage-bonus: 11.0" in CONFIG
     assert "debuff-amplifier: 3" in CONFIG
-    assert "control-duration-seconds: 20" in CONFIG
+    assert "control-duration-seconds: 10" in CONFIG
+    assert "config.controlDurationSeconds() * 1000L" in MAIN
 
 
 def test_boss_cleanup_removes_spell_servants_and_their_ai_state() -> None:

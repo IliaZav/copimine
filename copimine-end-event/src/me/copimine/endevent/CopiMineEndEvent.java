@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -44,15 +45,19 @@ import me.copimine.endevent.domain.BossMovementPolicy;
 import me.copimine.endevent.domain.BossStage;
 import me.copimine.endevent.domain.BossStagePolicy;
 import me.copimine.endevent.domain.BossStatsPolicy;
+import me.copimine.endevent.domain.BossTargetPolicy;
 import me.copimine.endevent.domain.BossTeleportPermitPolicy;
 import me.copimine.endevent.domain.BossVisualCuePolicy;
 import me.copimine.endevent.domain.BossVirtualHealthPolicy;
+import me.copimine.endevent.domain.BossRealHealthDamagePolicy;
 import me.copimine.endevent.domain.CombatMovementPolicy;
+import me.copimine.endevent.domain.CombatTraceRecord;
 import me.copimine.endevent.domain.CombatTacticsPolicy;
 import me.copimine.endevent.domain.CoreDepositMath;
 import me.copimine.endevent.domain.CoreInteractionGuard;
 import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
+import me.copimine.endevent.domain.EventRealHealthDamagePolicy;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.FinalDrainMath;
 import me.copimine.endevent.domain.GateOpeningPlan;
@@ -67,19 +72,35 @@ import me.copimine.endevent.domain.RiftObeliskDamagePolicy;
 import me.copimine.endevent.domain.RiftObeliskPlacementPolicy;
 import me.copimine.endevent.domain.RiftObeliskScalingPolicy;
 import me.copimine.endevent.domain.RiftObeliskTimingPolicy;
+import me.copimine.endevent.domain.NightCloakRollPolicy;
+import me.copimine.endevent.domain.AbyssAnchorPolicy;
+import me.copimine.endevent.domain.ShardPassivePolicy;
 import me.copimine.endevent.domain.StormPatternPolicy;
 import me.copimine.endevent.domain.SkeletonCombatPolicy;
 import me.copimine.endevent.domain.SkeletonArrowPolicy;
 import me.copimine.endevent.domain.SpellVisualPolicy;
 import me.copimine.endevent.domain.TowerDefensePolicy;
+import me.copimine.endevent.domain.TentacleAnimationPolicy;
+import me.copimine.endevent.domain.TentacleScalingPolicy;
 import me.copimine.endevent.domain.WaveMechanicsPolicy;
 import me.copimine.endevent.domain.WaveObjectivePolicy;
 import me.copimine.endevent.domain.WaveRewardPolicy;
 import me.copimine.endevent.domain.WaveScalingPolicy;
 import me.copimine.endevent.domain.WaveVisualPolicy;
 import me.copimine.endevent.domain.WaveCommanderPolicy;
+import me.copimine.endevent.domain.WaveDamagePolicy;
 import me.copimine.endevent.domain.ZoneVisualPolicy;
 import me.copimine.endevent.domain.BossArenaSetPiecePolicy;
+import me.copimine.endevent.domain.TransitionRunePolicy;
+import me.copimine.endevent.domain.V2BossHealthScalingPolicy;
+import me.copimine.endevent.domain.V2BossStage;
+import me.copimine.endevent.domain.V2BossStagePolicy;
+import me.copimine.endevent.domain.ChamberIsolationPolicy;
+import me.copimine.endevent.runtime.CombatTraceService;
+import me.copimine.endevent.runtime.AttemptLifecycleController;
+import me.copimine.endevent.runtime.TransitionRuneController;
+import me.copimine.endevent.runtime.TentacleController;
+import me.copimine.endevent.runtime.WaveSixChamberController;
 import me.copimine.worldcore.api.WorldAccessResult;
 import me.copimine.worldcore.api.WorldAccessService;
 import net.kyori.adventure.text.Component;
@@ -111,6 +132,7 @@ import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Enderman;
+import org.bukkit.entity.EnderPearl;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.AbstractArrow;
@@ -145,6 +167,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.entity.EntityKnockbackEvent;
 import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.EntityShootBowEvent;
 import org.bukkit.event.entity.EntitySpawnEvent;
@@ -199,11 +222,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_WAVE_MOB = "WAVE_MOB";
     private static final String EVENT_KIND_ELITE = "ELITE";
     private static final String EVENT_KIND_BOSS = "BOSS";
+    private static final String NIGHT_CLOAK_WON = NightCloakRollPolicy.WON;
+    private static final String NIGHT_CLOAK_NOT_WON = NightCloakRollPolicy.NOT_WON;
     private static final String EVENT_KIND_FINAL_WAVE = "FINAL_WAVE";
     private static final String EVENT_KIND_PROJECTILE = "RIFT_PROJECTILE";
     private static final String EVENT_KIND_OBELISK = "RIFT_OBELISK";
     private static final String EVENT_KIND_OBELISK_PULSE = "RIFT_OBELISK_PULSE";
     private static final String EVENT_KIND_RIFT_FIREBALL = "RIFT_FIREBALL";
+    private static final String EVENT_KIND_TENTACLE = "RIFT_TENTACLE";
     private static final String EVENT_KIND_WAVE_REWARD = "WAVE_REWARD";
     private static final String EVENT_KIND_TOWER_PROXY = "TOWER_PROXY";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
@@ -211,11 +237,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
     private static final String CLIENT_VISUAL_SKELETON = "END_RIFT_SKELETON_V1";
     private static final String CLIENT_VISUAL_ELITE_SKELETON = "END_RIFT_ELITE_SKELETON_V1";
+    private static final String CLIENT_VISUAL_TENTACLE = "END_RIFT_TENTACLE_V1";
     private static final Material EVENT_OVERLAY_ITEM = Material.PAPER;
     private static final int MODEL_CORE_OVERLAY = 830001;
     private static final int MODEL_CORE_CHARGED_OVERLAY = 830002;
     private static final int MODEL_RUNE_OVERLAY = 830003;
     private static final int MODEL_RUNE_OVERLAY_OCCUPIED = 830005;
+    private static final int MODEL_RUNE_OVERLAY_CHARGING = 830015;
+    private static final int MODEL_RUNE_OVERLAY_COMPLETE = 830016;
     private static final int MODEL_WAVE_FRONT_OVERLAY = 830006;
     private static final int MODEL_PORTAL_OVERLAY = 830007;
     private static final int MODEL_PORTAL_INNER_OVERLAY = 830008;
@@ -225,6 +254,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RIFT_OBELISK_CRITICAL = 830012;
     private static final int MODEL_RIFT_FIREBALL = 830013;
     private static final int MODEL_RIFT_OBELISK_PULSE = 830014;
+    private static final int MODEL_RIFT_TENTACLE = 830017;
+    private static final long TENTACLE_TEMPORARY_INTERVAL_TICKS = 160L;
+    private static final double TENTACLE_PERMANENT_RADIUS = 6.5D;
+    private static final double TENTACLE_MAX_GRAB_RANGE = 10.0D;
+    private static final float TENTACLE_DISPLAY_WIDTH = 2.0F;
+    private static final float TENTACLE_DISPLAY_HEIGHT = 5.0F;
     private static final double MAX_COMBAT_RADIUS_BLOCKS = 20.0D;
     private static final double MIN_BOSS_CORE_DISTANCE_BLOCKS = 3.5D;
     private static final double MIN_WAVE_CORE_DISTANCE_BLOCKS = 2.5D;
@@ -242,9 +277,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int DEFAULT_GATE_SELECTION_PREVIEW_SECONDS = 10;
     private static final int VOID_MARK_RADIUS_BLOCKS = 3;
     private static final int VOID_MARK_DURATION_SECONDS = 10;
-    // Bukkit/Paper rejects a LivingEntity health value above 2048.  The event
-    // exposes the requested 5000 HP as an authoritative virtual pool; the
-    // physical value is only a safe projection used by the server entity.
+    // V2 uses the entity's real health as the authoritative value.  The old
+    // virtual projection remains available only to disposable legacy test
+    // bosses and is never used by the official V2 entity.
     private static final double BOSS_PHYSICAL_HEALTH_LIMIT = 2048.0D;
     private static final int DEBUFF_DURATION_MULTIPLIER = 3;
     private static final int BASE_BOSS_DEBUFF_TICKS = 80;
@@ -284,8 +319,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int BOSS_SPAWN_DELAY_TICKS = 200;
     private static final int BOSS_CINEMATIC_DURATION_TICKS = BOSS_SPAWN_DELAY_TICKS;
     private static final int ARENA_INFERNO_DURATION_TICKS = 100;
+    private static final int RIFT_STORM_DURATION_SECONDS = 60;
     private static final int WAVE_ONE_PULSE_TELEGRAPH_TICKS = 50;
     private static final double WAVE_ONE_PULSE_DAMAGE = 6.0D;
+    private static final double WAVE_MOB_DAMAGE_REDUCTION = 4.0D;
     private static final int SLOWNESS_DEBUFF_TICKS = 60;
     private static final int WAVE_ONE_ZONE_RENDER_INTERVAL_TICKS = 5;
     private static final double WAVE_ONE_ZONE_RADIUS_BLOCKS = 18.0D;
@@ -316,6 +353,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int PORTAL_VISUAL_POINTS = 18;
     private static final int WAVE_FRONT_PARTICLE_MAX_POINTS = 64;
     private static final int STORM_VISUAL_MAX_CELLS = 72;
+    private static final int MAX_STORM_SAFE_ZONE_DISPLAYS = 24;
     private static final int RIFT_PROJECTILE_MAX_TICKS = 80;
     private static final double RIFT_PROJECTILE_SPEED = 0.65D;
     private static final double RIFT_FIREBALL_SPEED = 0.48D;
@@ -339,6 +377,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     // creating another repeating task per mob.
     private static final long SKELETON_MANEUVER_CYCLE_MILLIS = 4_000L;
     private static final long BOSS_FEINT_COOLDOWN_MILLIS = 8_000L;
+    private static final int COMBAT_TRACE_CAPACITY = 512;
     private static final int CREATIVE_TEST_MAX_STAGE_TICKS = 100;
     private static final String VICTORY_BOSS_DEATH = "BOSS_DEATH_CONFIRMED";
     private static final String VICTORY_UNLOCK_PENDING = "END_UNLOCK_PENDING";
@@ -356,10 +395,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String BOSS_REWARDS_REVIEW = "BOSS_REWARDS_REVIEW_REQUIRED";
 
     private final Random random = new Random();
+    private final CombatTraceService combatTrace = new CombatTraceService(COMBAT_TRACE_CAPACITY);
+    /**
+     * Event instances are unique per dispatch. LOWEST stores the unmodified
+     * view and MONITOR removes it after every protection/plugin listener has
+     * made its decision. This is diagnostic state, never combat authority.
+     */
+    private final Map<EntityDamageEvent, CombatTraceRecord> pendingCombatTraces = new IdentityHashMap<>();
+    /**
+     * A player hit can be accepted by Bukkit and then be partly discarded by
+     * vanilla hurt resistance.  Keeping the already-authorized real-health
+     * transaction by event identity lets MONITOR diagnostics report that
+     * distinction without treating a deliberately-cancelled event as lost.
+     */
+    private final Map<EntityDamageEvent, EventRealHealthDamagePolicy.Result> authoritativeEventMobDamage =
+            new IdentityHashMap<>();
     private final Map<UUID, Entity> ownedEntities = new HashMap<>();
     private final Map<UUID, Long> controlCooldowns = new HashMap<>();
     private final Map<UUID, Long> controlEnds = new HashMap<>();
     private final Map<UUID, String> controlInstances = new HashMap<>();
+    private final Map<UUID, Long> portalWaveKnockbackUntilMillis = new HashMap<>();
     private final Map<UUID, Location> shardChannelStarts = new HashMap<>();
     private final Map<UUID, BukkitTask> shardChannelTasks = new HashMap<>();
     private final Map<String, UUID> padOccupants = new LinkedHashMap<>();
@@ -397,6 +452,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<HazardPlanner.Point> riftStormSafeCells = new LinkedHashSet<>();
     private final Map<HazardPlanner.Point, String> riftStormOriginalBlocks = new LinkedHashMap<>();
     private final Map<HazardPlanner.Point, String> riftStormOriginalWebBlocks = new LinkedHashMap<>();
+    private final Map<HazardPlanner.Point, UUID> riftStormSafeZoneDisplays = new LinkedHashMap<>();
     private final Map<UUID, Integer> riftStormLastDamageSecond = new HashMap<>();
     private final Map<UUID, Long> towerNextAttackAt = new HashMap<>();
     private final Map<UUID, Integer> towerAttackSequences = new HashMap<>();
@@ -408,6 +464,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean waveObjectiveComplete;
     private int waveObjectiveLastSecond = -1;
     private int waveObjectiveMobCount;
+    private long portalCaptureTraceAtMillis;
     private final Map<UUID, Long> objectiveActionBarAt = new HashMap<>();
     private long waveOneNextPulseMillis;
     private long waveOnePulseDeadlineMillis;
@@ -447,6 +504,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> riftFireballManualDamagePlayers = new HashSet<>();
     private long nextRiftObeliskCastTick;
     private int riftObeliskTargetCursor;
+    private final TentacleController tentacleController = new TentacleController();
+    private long nextTentacleTemporaryTick;
+    private int tentacleTargetCursor;
     private long eventTickCounter;
     private final Map<UUID, Integer> activeEventArrowAges = new LinkedHashMap<>();
     private final Set<UUID> statusArrowEffectsApplied = new HashSet<>();
@@ -466,6 +526,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** PlayerJoinEvent can run before AuthMe finishes; bindings are retried after eligibility changes. */
     private final Set<UUID> clientBindingReadyPlayers = new HashSet<>();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
+    private final AttemptLifecycleController attemptLifecycle = new AttemptLifecycleController();
+    private final TransitionRuneController transitionRuneController = new TransitionRuneController(5_000L);
+    private final WaveSixChamberController waveSixChamberController = new WaveSixChamberController();
+    private final Map<UUID, Long> offlineRosterGraceUntilMillis = new LinkedHashMap<>();
+    private final Map<String, TransitionRuneController.RenderState> transitionRuneRenderStates = new LinkedHashMap<>();
 
     private EventConfig config;
     private EventStateStore stateStore;
@@ -493,6 +558,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask bossCastTask;
     private BukkitTask bossFinalStrikeTask;
     private BukkitTask bossDefeatCinematicTask;
+    private BukkitTask v2LastSealVisualTask;
     private BukkitTask towerRetryTask;
     private BukkitTask towerSpawnTask;
     private BukkitTask waveFrontVisualTask;
@@ -549,7 +615,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> officialRewardRoster = new LinkedHashSet<>();
     private final Map<UUID, String> rewardStatuses = new LinkedHashMap<>();
     private final Set<UUID> rewardRequestsInFlight = new HashSet<>();
+    /** Durable outcome/status for the independent per-player cloak roll. */
+    private final Map<UUID, String> nightCloakRolls = new LinkedHashMap<>();
+    private final Set<UUID> nightCloakRequestsInFlight = new HashSet<>();
     private final Map<UUID, Long> shardCooldowns = new LinkedHashMap<>();
+    /** Durable per-player void-rescue cooldown; intentionally not reset with an event attempt. */
+    private final Map<UUID, Long> abyssAnchorCooldowns = new LinkedHashMap<>();
+    /** Players whose Strength/Speed were applied by this plugin and may be removed safely. */
+    private final Set<UUID> shardPassiveEffectOwners = new HashSet<>();
     private boolean coreCharged;
     private boolean halfHealthTriggered;
     private boolean controlSpellUnlocked;
@@ -577,7 +650,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private int lastCountdownAnnouncement = -1;
     private int lastCountdownTitleSecond = -1;
     private long nextRitualVisualRepairMillis;
+    private int transitionRuneWave;
+    private long transitionRuneDeadlineMillis;
     private int bossTargetCursor;
+    private long bossTargetLockUntilMillis;
     private int bossSpellCursor;
     private int waveTargetCursor;
     private UUID bossProgressEntity;
@@ -591,6 +667,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long nextClientBindingRefreshMillis;
     private EndRiftAiPolicy.BossSpell previousBossSpell;
     private BossStage bossStage = BossStage.AWAKENING;
+    private V2BossStage v2BossStage = V2BossStage.AWAKENING;
     private BossCastState bossCastState = BossCastState.NONE;
     private long bossCastDeadlineMillis;
     private boolean absorptionTriggered;
@@ -648,6 +725,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyBossTest;
     private NamespacedKey keyBossVirtualHealth;
     private NamespacedKey keyBossVirtualMaxHealth;
+    private NamespacedKey keyV2BossMaxHealth;
+    private NamespacedKey keyV2BossStage;
+    private NamespacedKey keyV2BossDefeatPending;
+    private NamespacedKey keyChamberId;
     private NamespacedKey keyBossFinalStrikeUsed;
     private NamespacedKey keyRiftObelisksSpawned;
     private NamespacedKey keyMiniBossSpell;
@@ -662,6 +743,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyRiftFireballReflected;
     private NamespacedKey keyRiftFireballReflector;
     private NamespacedKey keyRiftFireballOrigin;
+    private NamespacedKey keyTentacleState;
+    private NamespacedKey keyTentacleTarget;
+    private NamespacedKey keyTentacleTemporary;
+    private NamespacedKey keyTentacleSlot;
     private NamespacedKey keyArtifactItemId;
     private NamespacedKey keyArtifactUniqueId;
     private NamespacedKey keyTowerRole;
@@ -671,6 +756,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyArrowSpell;
     private NamespacedKey keyWaveCommander;
     private NamespacedKey keyCommanderAura;
+    private NamespacedKey keyShardPassiveActive;
 
     @Override
     public void onEnable() {
@@ -710,6 +796,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyBossTest = new NamespacedKey(this, "end_event_test_boss");
             keyBossVirtualHealth = new NamespacedKey(this, "end_event_boss_virtual_health");
             keyBossVirtualMaxHealth = new NamespacedKey(this, "end_event_boss_virtual_max_health");
+            keyV2BossMaxHealth = new NamespacedKey(this, "end_event_boss_v2_max_health");
+            keyV2BossStage = new NamespacedKey(this, "end_event_boss_v2_stage");
+            keyV2BossDefeatPending = new NamespacedKey(this, "end_event_boss_v2_defeat_pending");
+            keyChamberId = new NamespacedKey(this, "end_event_chamber_id");
             keyBossFinalStrikeUsed = new NamespacedKey(this, "end_event_boss_final_strike_used");
             keyRiftObelisksSpawned = new NamespacedKey(this, "end_event_rift_obelisks_spawned");
             keyMiniBossSpell = new NamespacedKey(this, "end_event_miniboss_spell");
@@ -724,6 +814,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyRiftFireballReflected = new NamespacedKey(this, "end_event_rift_fireball_reflected");
             keyRiftFireballReflector = new NamespacedKey(this, "end_event_rift_fireball_reflector");
             keyRiftFireballOrigin = new NamespacedKey(this, "end_event_rift_fireball_origin");
+            keyTentacleState = new NamespacedKey(this, "end_event_tentacle_state");
+            keyTentacleTarget = new NamespacedKey(this, "end_event_tentacle_target");
+            keyTentacleTemporary = new NamespacedKey(this, "end_event_tentacle_temporary");
+            keyTentacleSlot = new NamespacedKey(this, "end_event_tentacle_slot");
             keyTowerRole = new NamespacedKey(this, "end_event_tower_role");
             keyTowerAttackAt = new NamespacedKey(this, "end_event_tower_attack_at");
             keyTowerAttackSequence = new NamespacedKey(this, "end_event_tower_attack_sequence");
@@ -731,6 +825,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyArrowSpell = new NamespacedKey(this, "end_event_arrow_spell");
             keyWaveCommander = new NamespacedKey(this, "end_event_wave_commander");
             keyCommanderAura = new NamespacedKey(this, "end_event_commander_aura");
+            keyShardPassiveActive = new NamespacedKey(this, "end_event_shard_passive_active");
             keyArtifactItemId = new NamespacedKey("copimineartifacts", "artifact_item_id");
             keyArtifactUniqueId = new NamespacedKey("copimineartifacts", "artifact_unique_item_id");
             diagnostics = new WaveTransitionDiagnostics(getDataFolder().toPath(), getLogger());
@@ -831,7 +926,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!bootstrapped || !isConfigured()) {
             return;
         }
+        if (phase == EventPhase.WAVE_6 && !waveSixChamberController.owns(generation)) {
+            waveSixChamberController.begin(generation, new ArrayList<>(officialRewardRoster));
+        }
         reindexPersistedCombatEntities();
+        cleanupUnexpectedCombatEntitiesAfterRestart();
         long now = System.currentTimeMillis();
         if (phase == EventPhase.COUNTDOWN && phaseDeadlineMillis <= 0L) {
             phaseDeadlineMillis = now + config.countdownSeconds() * 1000L;
@@ -882,6 +981,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " phase=" + phase + " reason=official-boss-not-found");
             return;
         }
+        // V2 uses Bukkit/Paper entity health as the sole authority.  A
+        // cinematic defeat is a two-step transaction: the phase/cleanup is
+        // durable first, then the entity is allowed to die.  Persist the
+        // pending marker on the boss so a restart cannot strand a one-heart
+        // invulnerable shell in BOSS_FINISH.
+        if (isV2OfficialBoss(boss)) {
+            // Display entities are intentionally treated as transient after a
+            // restart. Recreate the generation-scoped controller and let the
+            // boss tick rebuild a fresh, bounded set for the current fight.
+            tentacleController.begin(generation);
+            nextTentacleTemporaryTick = eventTickCounter + TENTACLE_TEMPORARY_INTERVAL_TICKS;
+            boolean defeatPending = keyV2BossDefeatPending != null
+                    && boss.getPersistentDataContainer().getOrDefault(
+                    keyV2BossDefeatPending, PersistentDataType.BYTE, (byte) 0) != 0;
+            if (phase == EventPhase.BOSS_FINISH && defeatPending) {
+                boss.setInvulnerable(false);
+                getLogger().warning("BOSS_V2_DEFEAT_RECOVERED event=" + eventId
+                        + " boss=" + boss.getUniqueId()
+                        + " reason=restart-after-durable-defeat-pending");
+                boss.setHealth(0.0D);
+                return;
+            }
+            // Invulnerability is derived from a bounded cast.  Repair a stale
+            // flag before exposing the entity to normal V2 combat again.
+            if (bossCastState != BossCastState.ABSORPTION_CHANNEL
+                    && bossCastState != BossCastState.JUDGMENT_CAST) {
+                boss.setInvulnerable(false);
+            }
+            ensureBossBar();
+            bindBossClientForOnlinePlayers();
+            getLogger().info("BOSS_V2_REHYDRATED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " phase=" + phase
+                    + " stage=" + v2BossStage + " health=" + boss.getHealth()
+                    + " max=" + boss.getMaxHealth() + " authority=entity-health");
+            return;
+        }
         double restoredVirtualHealth = bossVirtualHealth(boss);
         if (phase == EventPhase.BOSS_FINISH) {
             // A scheduler task cannot survive a process restart.  BOSS_FINISH
@@ -923,7 +1058,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             String kind = readString(entity, keyKind);
             if (EVENT_KIND_OBELISK.equals(kind) || EVENT_KIND_OBELISK_PULSE.equals(kind)
-                    || EVENT_KIND_RIFT_FIREBALL.equals(kind)) {
+                    || EVENT_KIND_RIFT_FIREBALL.equals(kind) || EVENT_KIND_TENTACLE.equals(kind)) {
                 // Obelisk animation/projection tasks are intentionally not
                 // reconstructed after a process stop. Remove the persisted
                 // shell; the boss PDC one-shot marker below prevents a fresh
@@ -959,6 +1094,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     riftObelisksSpawnedThisFight = entity.getPersistentDataContainer().getOrDefault(
                             keyRiftObelisksSpawned, PersistentDataType.BYTE, (byte) 0) != 0;
                 }
+                if (keyV2BossStage != null && isV2OfficialBoss(living)) {
+                    v2BossStage = parseV2BossStage(living.getPersistentDataContainer().getOrDefault(
+                            keyV2BossStage, PersistentDataType.STRING, V2BossStage.AWAKENING.name()));
+                }
                 if (bossUuid == null) {
                     bossUuid = entity.getUniqueId();
                 } else if (!bossUuid.equals(entity.getUniqueId())) {
@@ -969,6 +1108,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             int wave = readInt(entity, keyWave, 0);
+            if (wave == 6 && isWaveCombatKind(kind) && keyChamberId != null) {
+                int chamber = readInt(entity, keyChamberId, -1);
+                if (chamber >= 0 && !waveSixChamberController.assignEntity(
+                        generation, entity.getUniqueId(), chamber)) {
+                    getLogger().warning("WAVE_6_CHAMBER_REINDEX_REFUSED event=" + eventId
+                            + " entity=" + entity.getUniqueId() + " chamber=" + chamber);
+                }
+            }
             if (EVENT_KIND_FINAL_WAVE.equals(kind) && isOfficialEntity(entity)) {
                 finalWaveEntities.add(entity.getUniqueId());
             }
@@ -1003,6 +1150,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * A stopped server can persist an entity after the durable event snapshot
+     * has already advanced to an intermission or an idle phase. Such an entity
+     * must not be allowed to resume combat without its controller, timers, or
+     * participant roster. Remove only event-owned combat state; the Core,
+     * arena and player data remain untouched.
+     */
+    private void cleanupUnexpectedCombatEntitiesAfterRestart() {
+        boolean waveExpected = waveForPhase(phase) > 0;
+        boolean bossExpected = phase == EventPhase.BOSS_CINEMATIC
+                || isPersistedBossPhase(phase);
+        if (waveExpected || bossExpected) {
+            return;
+        }
+        int before = countLiveOwnedMobs();
+        clearWaveEntities();
+        clearBossOnly();
+        clearCombatAiState();
+        if (before > 0) {
+            getLogger().warning("END_EVENT_STALE_COMBAT_CLEANUP event=" + eventId
+                    + " phase=" + phase + " removed_owned_living=" + before
+                    + " reason=phase-does-not-own-combat");
+        }
+    }
+
     private EndRiftAiPolicy.MiniBossSpell parseMiniBossSpell(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -1015,6 +1187,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return null;
     }
 
+    private V2BossStage parseV2BossStage(String value) {
+        if (value != null) {
+            for (V2BossStage stage : V2BossStage.values()) {
+                if (stage.name().equalsIgnoreCase(value.trim())) {
+                    return stage;
+                }
+            }
+        }
+        return V2BossStage.AWAKENING;
+    }
+
     private int waveForPhase(EventPhase current) {
         return switch (current) {
             case WAVE_1 -> 1;
@@ -1022,6 +1205,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case WAVE_3 -> 3;
             case WAVE_4 -> 4;
             case WAVE_5 -> 5;
+            case WAVE_6 -> 6;
             default -> 0;
         };
     }
@@ -1032,6 +1216,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case INTERMISSION_2 -> 2;
             case INTERMISSION_3 -> 3;
             case INTERMISSION_4 -> 4;
+            case INTERMISSION_5 -> 5;
             default -> 0;
         };
     }
@@ -1135,7 +1320,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         officialRewardRoster.addAll(snapshot.officialRewardRoster());
         participantUuids.addAll(snapshot.officialRewardRoster());
         rewardStatuses.putAll(snapshot.rewardStatuses());
+        nightCloakRolls.putAll(snapshot.nightCloakRolls());
         shardCooldowns.putAll(snapshot.shardCooldowns());
+        abyssAnchorCooldowns.putAll(snapshot.abyssAnchorCooldowns());
         finalDrainTargets.clear();
         finalDrainTargets.putAll(snapshot.finalDrainTargets());
         finalDrainAppliedPlayers.clear();
@@ -1200,14 +1387,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 coreX, coreY, coreZ, coreBlockData, requiredPlayers,
                 arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
                 resourceRequirements, depositedResources, pads, resourceContributors,
-                officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
+                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns, coreCharged,
                 halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted, bossRewardStatus,
                 bossRewardRecipientUuid, returnStoneStatus, victoryStep, updatedAt, phaseDeadlineMillis, recoveryReason,
                 participantUuids, finalDrainTargets,
                 finalDrainAppliedPlayers, waveRewardsIssued, bossStage.name(), bossCastState.name(),
                 bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
-                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted);
+                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted, nightCloakRolls);
     }
 
     private boolean saveStateSync() {
@@ -1303,6 +1490,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearClientEffects();
         generation = Math.max(1L, staleGeneration + 1L);
         taskRegistry = new EventTaskRegistry(generation);
+        attemptLifecycle.clear();
+        waveSixChamberController.clear();
+        offlineRosterGraceUntilMillis.clear();
         activeWave = 0;
         bossUuid = null;
         bossKillerUuid = null;
@@ -1312,17 +1502,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         controlSpellUnlocked = false;
         finalDrainTriggered = false;
         finalDrainApplied = false;
-        boolean rosterWasCommitted = !officialRewardRoster.isEmpty();
         boolean victoryWasCommitted = officialBossDeathCommitted
                 || VICTORY_BOSS_DEATH.equals(victoryStep)
                 || VICTORY_UNLOCK_PENDING.equals(victoryStep)
                 || VICTORY_UNLOCKED.equals(victoryStep)
                 || VICTORY_REWARDS_PENDING.equals(victoryStep)
                 || VICTORY_REWARDS_DELIVERED.equals(victoryStep);
-        if (!rosterWasCommitted) {
-            discardUncommittedRoster();
-        }
         if (!victoryWasCommitted) {
+            // A restart during any active V2 attempt is a clean retry boundary.
+            // The charged Core/resources remain durable, but the transient
+            // roster must not poison the next five-second ritual with a stale
+            // UUID set from the interrupted process.
+            discardUncommittedRoster();
             discardUncommittedRewardStatuses();
         }
         padOccupants.clear();
@@ -1362,9 +1553,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             finalRitualVisualTask.cancel();
             finalRitualVisualTask = null;
         }
+        if (v2LastSealVisualTask != null) {
+            v2LastSealVisualTask.cancel();
+            v2LastSealVisualTask = null;
+        }
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
         clearRiftObelisks("session cancellation");
+        clearTentacles("session cancellation");
         clearActiveEventArrows();
         for (BukkitTask task : shardChannelTasks.values()) {
             if (task != null) {
@@ -1376,6 +1572,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phaseDeadlineMillis = 0L;
         nextWaveTargetMillis = 0L;
         bossSpellPauseUntilMillis = 0L;
+        transitionRuneWave = 0;
+        transitionRuneDeadlineMillis = 0L;
     }
 
     private void cancelCreativeTestTask() {
@@ -1395,12 +1593,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void discardUncommittedRewardStatuses() {
         rewardStatuses.clear();
+        nightCloakRolls.clear();
     }
 
     private void clearCombatAiState() {
         clearVoidMarkZones();
         clearActiveRiftProjectiles();
         clearRiftObelisks("combat AI reset");
+        clearTentacles("combat AI reset");
         clearActiveEventArrows();
         clearCommanderAura();
         waveCommanders.clear();
@@ -1424,6 +1624,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         recentBossTargets.clear();
         previousBossSpell = null;
         bossTargetCursor = 0;
+        bossTargetLockUntilMillis = 0L;
         bossSpellCursor = 0;
         bossProgressEntity = null;
         bossLastProgressLocation = null;
@@ -1486,18 +1687,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventConfig.MusicTrack musicForPhase() {
         return switch (phase) {
             case READY_FOR_PLAYERS -> config.ritualWaitMusic();
-            case COUNTDOWN -> config.ritualWaitMusic();
+            case START_RITUAL, COUNTDOWN -> config.ritualWaitMusic();
             case WAVE_1 -> phaseMusicOrLegacy("wave-1", config.wavesMusic());
             case WAVE_2 -> phaseMusicOrLegacy("wave-2", config.wavesMusic());
             case WAVE_3 -> phaseMusicOrLegacy("wave-3", config.wavesMusic());
             case WAVE_4 -> phaseMusicOrLegacy("wave-4", config.wavesMusic());
             case WAVE_5 -> phaseMusicOrLegacy("wave-5", config.wavesMusic());
+            case WAVE_6 -> phaseMusicOrLegacy("wave-6", config.wavesMusic());
             case INTERMISSION_1 -> phaseMusicOrLegacy("intermission-1", config.wavesMusic());
             case INTERMISSION_2 -> phaseMusicOrLegacy("intermission-2", config.wavesMusic());
             case INTERMISSION_3 -> phaseMusicOrLegacy("intermission-3", config.wavesMusic());
             case INTERMISSION_4 -> phaseMusicOrLegacy("intermission-4", config.wavesMusic());
+            case INTERMISSION_5 -> phaseMusicOrLegacy("intermission-5", config.wavesMusic());
+            case PRE_BOSS_COOLDOWN -> phaseMusicOrLegacy("pre-boss-cooldown", config.wavesMusic());
             case BOSS_CINEMATIC -> phaseMusicOrLegacy("boss-cinematic", config.bossMusic());
-            case BOSS_ACTIVE -> halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
+            case BOSS_ACTIVE -> v2BossMusic();
             case FINAL_DRAIN -> phaseMusicOrLegacy("final-drain", config.bossFinalMusic());
             case FINAL_RITUAL -> phaseMusicOrLegacy("final-ritual", config.bossFinalMusic());
             case FINAL_WAVE -> phaseMusicOrLegacy("final-wave", config.bossFinalMusic());
@@ -1505,6 +1709,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case VICTORY_PROCESSING, VICTORY -> config.victoryMusic();
             default -> null;
         };
+    }
+
+    private EventConfig.MusicTrack v2BossMusic() {
+        if (config == null) {
+            return null;
+        }
+        if (isV2OfficialBoss(liveBoss())) {
+            return phaseMusicOrLegacy("boss-" + v2BossStage.name().toLowerCase(Locale.ROOT),
+                    config.bossMusic());
+        }
+        return halfHealthTriggered ? config.bossHalfMusic() : config.bossMusic();
     }
 
     private EventConfig.MusicTrack phaseMusicOrLegacy(String key, EventConfig.MusicTrack fallback) {
@@ -1515,8 +1730,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isEventMusicPhase() {
         return isRitualMusicPhase() || switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
-                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
-                    BOSS_CINEMATIC,
+                    INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5, INTERMISSION_5,
+                    WAVE_6, PRE_BOSS_COOLDOWN, BOSS_CINEMATIC,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
                     VICTORY_PROCESSING, VICTORY -> true;
             default -> false;
@@ -1525,7 +1740,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** The pre-fight bed is audible only while the rune ritual is waiting. */
     private boolean isRitualMusicPhase() {
-        return phase == EventPhase.READY_FOR_PLAYERS || phase == EventPhase.COUNTDOWN;
+        return phase == EventPhase.READY_FOR_PLAYERS || phase == EventPhase.START_RITUAL
+                || phase == EventPhase.COUNTDOWN;
     }
 
     private boolean isVictoryMusicTail(EventPhase previous, EventPhase next) {
@@ -1638,6 +1854,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @Override
     public void onDisable() {
+        clearShardPassiveEffects();
         clearClientEffects();
         clearFinalArenaScene("plugin disable");
         cancelSessionTasks();
@@ -1870,6 +2087,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if ("all".equals(section) || "ai".equals(section)) {
             Location anchor = coreCombatAnchorLocation();
+            LivingEntity diagnosticBoss = liveBoss();
+            String diagnosticStage = isV2OfficialBoss(diagnosticBoss)
+                    ? v2BossStage.name() : bossStage.name();
             int mobile = 0;
             int aiEnabled = 0;
             int targeted = 0;
@@ -1924,13 +2144,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             + ",target=" + (mob.getTarget() == null ? "none" : mob.getTarget().getType()));
                 }
             }
-            message(sender, "&7AI_DIAGNOSTICS phase=" + phase + " stage=" + bossStage
+            message(sender, "&7AI_DIAGNOSTICS phase=" + phase + " stage=" + diagnosticStage
                     + " mobile=" + mobile + " aiEnabled=" + aiEnabled + " targeted=" + targeted
                     + " coreObjective=" + coreObjective
                     + " outside=" + outside + " onCore=" + onCore
                     + " bossCast=" + bossCastState + " stepCap=" + MAX_COMBAT_STEP_BLOCKS);
             BossStagePolicy.CombatProfile profile = currentBossCombatProfile();
-            message(sender, "&7AI_PROFILE stage=" + bossStage
+            message(sender, "&7AI_PROFILE stage=" + diagnosticStage
                     + " absorptionCompleted=" + absorptionCompleted
                     + " movementSpeed=" + String.format(Locale.ROOT, "%.3f", profile.movementSpeed())
                     + " spellCooldownMultiplier=" + String.format(Locale.ROOT, "%.3f", profile.spellCooldownMultiplier())
@@ -4377,6 +4597,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         officialRewardRoster.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
+        nightCloakRolls.clear();
+        nightCloakRequestsInFlight.clear();
         coreCharged = false;
         halfHealthTriggered = false;
         controlSpellUnlocked = false;
@@ -4546,6 +4768,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         officialRewardRoster.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
+        nightCloakRolls.clear();
+        nightCloakRequestsInFlight.clear();
         finalDrainTargets.clear();
         finalDrainAppliedPlayers.clear();
         waveRewardsIssued.clear();
@@ -4589,6 +4813,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         participantUuids.clear();
         officialRewardRoster.clear();
         rewardStatuses.clear();
+        nightCloakRolls.clear();
+        nightCloakRequestsInFlight.clear();
         finalDrainTargets.clear();
         finalDrainAppliedPlayers.clear();
         waveRewardsIssued.clear();
@@ -4654,9 +4880,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private int combatLevelY() {
         if (pads.isEmpty()) {
-            // Before pad layout is persisted, the only safe default for an
-            // arbitrary targeted block is its top face.  Normal event ticks
-            // always run after pads have been calculated or loaded.
+            // Transition pads are intentionally removed before Wave 1.  Do
+            // not infer the playable level from the Core's top face here:
+            // the operator may have targeted a block one level above the
+            // arena floor (the saved local map does exactly that).  Re-read
+            // the bounded 3x3 neighbourhood and choose the best solid floor
+            // with passable headroom.  This keeps spawns, zones and teleports
+            // on the map's real floor after the rune snapshots are gone.
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) {
+                int verticalSearch = Math.max(1, (int) Math.ceil(config.arenaVerticalRadius()));
+                int fallbackFloorY = coreY;
+                int bestFloorY = fallbackFloorY;
+                int bestScore = Integer.MIN_VALUE;
+                for (int floorY = coreY - verticalSearch; floorY <= coreY + verticalSearch; floorY++) {
+                    int solidNeighbors = solidNeighborCount(world, floorY);
+                    int passableNeighbors = passableNeighborCount(world, floorY + 1);
+                    if (solidNeighbors < 2 || passableNeighbors < 2) {
+                        continue;
+                    }
+                    int score = solidNeighbors * 4 + passableNeighbors * 2
+                            - Math.abs(floorY - (coreY - 1));
+                    if (score > bestScore) {
+                        bestFloorY = floorY;
+                        bestScore = score;
+                    }
+                }
+                return bestFloorY + 1;
+            }
             return coreY + 1;
         }
         Map<Integer, Integer> counts = new HashMap<>();
@@ -4675,6 +4926,42 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return selected;
+    }
+
+    private int solidNeighborCount(World world, int y) {
+        if (world == null) {
+            return 0;
+        }
+        int count = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                if (world.getBlockAt(coreX + dx, y, coreZ + dz).getType().isSolid()) {
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    private int passableNeighborCount(World world, int y) {
+        if (world == null) {
+            return 0;
+        }
+        int count = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                if (world.getBlockAt(coreX + dx, y, coreZ + dz).isPassable()) {
+                    count++;
+                }
+            }
+        }
+        return count;
     }
 
     /** The solid block immediately below the feet-level used by runes/mobs. */
@@ -5074,6 +5361,70 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    private boolean shouldTraceCombat(EntityDamageEvent event) {
+        if (event == null) {
+            return false;
+        }
+        Entity victim = event.getEntity();
+        if (victim instanceof LivingEntity living
+                && (EVENT_KIND_BOSS.equals(readString(living, keyKind))
+                || isWaveCombatKind(readString(living, keyKind)))) {
+            return true;
+        }
+        if (!(victim instanceof Player)) {
+            return false;
+        }
+        if (!(event instanceof EntityDamageByEntityEvent byEntity)) {
+            return false;
+        }
+        Entity damager = byEntity.getDamager();
+        if (damager instanceof LivingEntity living) {
+            return EVENT_KIND_BOSS.equals(readString(living, keyKind))
+                    || isWaveCombatKind(readString(living, keyKind));
+        }
+        return isEventArrow(damager) || isRiftFireball(damager);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
+    public void onCombatTraceOpen(EntityDamageEvent event) {
+        if (!shouldTraceCombat(event) || !(event.getEntity() instanceof LivingEntity victim)) {
+            return;
+        }
+        Entity source = event instanceof EntityDamageByEntityEvent byEntity ? byEntity.getDamager() : null;
+        UUID attackerId = source instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Entity shooter ? shooter.getUniqueId()
+                : source == null ? null : source.getUniqueId();
+        String attackerKind = source instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Entity shooter
+                ? projectile.getType() + ":" + shooter.getType()
+                : source == null ? "ENVIRONMENT" : source.getType().name();
+        boolean shielded = EVENT_KIND_BOSS.equals(readString(victim, keyKind))
+                && !BossDamagePolicy.damageAllowed(bossStage, bossCastState,
+                System.currentTimeMillis(), bossCastDeadlineMillis);
+        CombatTraceRecord trace = CombatTraceRecord.open(
+                Bukkit.getCurrentTick(), System.currentTimeMillis(), attackerId, victim.getUniqueId(),
+                attackerKind, event.getCause().name(), event.getDamage(), event.getFinalDamage(),
+                event.isCancelled(), victim.getNoDamageTicks(), victim.getMaximumNoDamageTicks(),
+                victim.getLastDamage(), victim.getHealth(), phase, bossCastState, shielded,
+                Bukkit.getServer().getAverageTickTime());
+        pendingCombatTraces.put(event, trace);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onCombatTraceClose(EntityDamageEvent event) {
+        CombatTraceRecord opened = pendingCombatTraces.remove(event);
+        if (opened == null || !(event.getEntity() instanceof LivingEntity victim)) {
+            return;
+        }
+        boolean cancelledAfter = event.isCancelled();
+        Bukkit.getScheduler().runTask(this, () -> {
+            double nextTickHealth = victim.isValid() && !victim.isDead() ? victim.getHealth() : 0.0D;
+            CombatTraceRecord closed = opened.close(cancelledAfter, nextTickHealth);
+            combatTrace.record(closed);
+            getLogger().info(closed.toLogLine());
+        });
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCoreOverlayDamage(EntityDamageByEntityEvent event) {
         Entity entity = event.getEntity();
@@ -5134,7 +5485,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (ownedEntities.containsKey(entity.getUniqueId())
                     && (EVENT_KIND_DISPLAY.equals(kind) || EVENT_KIND_MEMORIAL.equals(kind)
                     || EVENT_KIND_CORE.equals(kind)
-                    || EVENT_KIND_PAD.equals(kind))) {
+                    || EVENT_KIND_PAD.equals(kind)
+                    || EVENT_KIND_TENTACLE.equals(kind)
+                    || EVENT_KIND_OBELISK.equals(kind)
+                    || EVENT_KIND_OBELISK_PULSE.equals(kind))) {
                 event.setCancelled(true);
             }
         }
@@ -5168,7 +5522,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!(target instanceof Player player)
-                || !SkeletonCombatPolicy.canTargetPlayersOnly("PLAYER", isCombatTarget(player))) {
+                || !SkeletonCombatPolicy.canTargetPlayersOnly("PLAYER", isCombatTarget(player))
+                || !waveSixTargetAllowed(skeleton, player)) {
             event.setCancelled(true);
             skeleton.setTarget(null);
             getLogger().info("SKELETON_TARGET_BLOCKED entity=" + skeleton.getUniqueId()
@@ -5238,11 +5593,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         String spell = readString(arrow, keyArrowSpell);
         if (ARROW_SPELL_EXPLOSIVE.equals(spell)) {
             event.setCancelled(true);
+            if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
+                    || !waveSixTargetAllowed(skeleton, player)) {
+                cleanupEventArrow(arrow.getUniqueId());
+                getLogger().info("SKELETON_EXPLOSIVE_ARROW_BLOCKED event=" + eventId
+                        + " arrow=" + arrow.getUniqueId() + " target="
+                        + event.getEntity().getType() + " reason=player-only-or-room");
+                return;
+            }
             detonateExplosiveArrow(arrow, event.getEntity().getLocation());
             return;
         }
         if (ARROW_SPELL_POISON_NAUSEA.equals(spell)) {
-            if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)) {
+            if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
+                    || !waveSixTargetAllowed(skeleton, player)) {
                 event.setCancelled(true);
                 getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                         + " spell=" + spell + " target=" + event.getEntity().getType());
@@ -5267,7 +5631,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             onCustomEventArrowDamage(event, arrow, spell);
             return;
         }
-        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)) {
+        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
+                || !waveSixTargetAllowed(skeleton, player)) {
             event.setCancelled(true);
             getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                     + " target=" + event.getEntity().getType());
@@ -5315,6 +5680,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         LivingEntity shooter = arrow.getShooter() instanceof LivingEntity living ? living : null;
+        if (shooter != null && readInt(shooter, keyWave, 0) == 6
+                && !waveSixTargetAllowed(shooter, player)) {
+            cleanupEventArrow(arrow.getUniqueId());
+            getLogger().info("WAVE_6_ARROW_CROSS_ROOM_BLOCKED event=" + eventId
+                    + " arrow=" + arrow.getUniqueId() + " shooter=" + shooter.getUniqueId()
+                    + " target=" + player.getUniqueId());
+            return;
+        }
         boolean miniBoss = EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell);
         double damage = miniBoss ? SkeletonCombatPolicy.arrowProfile(true).damage()
                 : BOSS_PROJECTILE_DAMAGE;
@@ -5361,30 +5734,196 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " duration_ms=" + TOWER_PLAYER_AGGRO_MILLIS);
     }
 
+    /**
+     * Wave 6 room isolation must cover the final damage event as well as AI
+     * target selection.  A stale vanilla target, a collision edge case, or a
+     * third-party melee hook must not let a mob damage a player through a
+     * closed chamber boundary.
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
+    public void onWaveSixCrossRoomMobDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || !(event.getDamager() instanceof LivingEntity attacker)
+                || !isWaveCombatKind(readString(attacker, keyKind))
+                || readInt(attacker, keyWave, 0) != 6
+                || !ownedEntities.containsKey(attacker.getUniqueId())) {
+            return;
+        }
+        if (waveSixTargetAllowed(attacker, player)) {
+            return;
+        }
+        event.setCancelled(true);
+        getLogger().info("WAVE_6_MELEE_CROSS_ROOM_BLOCKED event=" + eventId
+                + " attacker=" + attacker.getUniqueId()
+                + " target=" + player.getUniqueId()
+                + " chamber=" + waveSixChamberId(attacker)
+                + " passage_open=" + waveSixChamberController.passageOpen());
+    }
+
+    private Player playerDamageAttacker(Entity source) {
+        if (source instanceof Player player) {
+            return player;
+        }
+        if (source instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Player player) {
+            return player;
+        }
+        return null;
+    }
+
+    /**
+     * Wave mobs retain real Bukkit entity health, but normal living-entity
+     * hurt resistance keeps only the difference from a previous attack while
+     * its 20-tick window is active.  Combat Trace reproduced that as a
+     * non-cancelled 2.440 hit becoming a 0.358 health change.  Once every
+     * earlier protection listener has allowed a player hit, apply the already
+     * computed final damage once to the real health value and cancel only the
+     * duplicate native application.  This does not reset noDamageTicks or
+     * bypass an earlier cancellation.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onWaveMobPlayerDamageAuthoritative(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof LivingEntity victim)
+                || !isWaveCombatKind(readString(victim, keyKind))
+                || !ownedEntities.containsKey(victim.getUniqueId())) {
+            return;
+        }
+        Player attacker = playerDamageAttacker(event.getDamager());
+        if (attacker == null || !isCombatTarget(attacker)) {
+            return;
+        }
+        if (readInt(victim, keyWave, 0) == 6
+                && !waveSixTargetAllowed(victim, attacker)) {
+            event.setCancelled(true);
+            getLogger().info("WAVE_6_ATTACK_CROSS_ROOM_BLOCKED event=" + eventId
+                    + " attacker=" + attacker.getUniqueId()
+                    + " target=" + victim.getUniqueId()
+                    + " chamber=" + waveSixChamberId(victim));
+            return;
+        }
+        EventRealHealthDamagePolicy.Result result = EventRealHealthDamagePolicy.apply(
+                victim.getHealth(), victim.getMaxHealth(), event.getFinalDamage());
+        if (!result.applied()) {
+            return;
+        }
+        authoritativeEventMobDamage.put(event, result);
+        event.setCancelled(true);
+        victim.setHealth(result.remainingHealth());
+        getLogger().fine("WAVE_MOB_REAL_HEALTH_DAMAGE event=" + eventId
+                + " mob=" + victim.getType() + ":" + victim.getUniqueId()
+                + " attacker=" + attacker.getUniqueId()
+                + " cause=" + event.getCause() + " final=" + event.getFinalDamage()
+                + " health_before=" + result.healthBefore()
+                + " health_after=" + result.remainingHealth());
+    }
+
+    /**
+     * Record both sides of a player-to-event-mob hit.  The Bukkit callback is
+     * raised before Paper applies the damage, so the next tick is the only
+     * reliable place to distinguish an accepted event from a real health
+     * mutation.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
+    public void onWaveMobDamagedByPlayer(EntityDamageByEntityEvent event) {
+        Player attacker = playerDamageAttacker(event.getDamager());
+        if (!(event.getEntity() instanceof LivingEntity victim)
+                || !isWaveCombatKind(readString(victim, keyKind))
+                || !ownedEntities.containsKey(victim.getUniqueId())
+                || attacker == null || !isCombatTarget(attacker)) {
+            return;
+        }
+        EventRealHealthDamagePolicy.Result authoritative = authoritativeEventMobDamage.remove(event);
+        double before = authoritative == null ? victim.getHealth() : authoritative.healthBefore();
+        double finalDamage = event.getFinalDamage();
+        getLogger().info("WAVE_MOB_PLAYER_DAMAGE event=" + eventId
+                + " mob=" + victim.getType() + ":" + victim.getUniqueId()
+                + " attacker=" + attacker.getUniqueId()
+                + " wave=" + readInt(victim, keyWave, 0)
+                + " cause=" + event.getCause()
+                + " final=" + finalDamage
+                + " cancelled=" + event.isCancelled()
+                + " authoritative_real_health=" + (authoritative != null)
+                + " health_before=" + before
+                + " no_damage_ticks=" + victim.getNoDamageTicks());
+        Bukkit.getScheduler().runTask(this, () -> {
+            double after = victim.isValid() && !victim.isDead() ? victim.getHealth() : 0.0D;
+            double delta = Math.max(0.0D, before - after);
+            getLogger().info("WAVE_MOB_PLAYER_DAMAGE_APPLIED event=" + eventId
+                    + " mob=" + victim.getType() + ":" + victim.getUniqueId()
+                    + " attacker=" + attacker.getUniqueId()
+                    + " accepted_before=" + (authoritative != null || !event.isCancelled())
+                    + " authoritative_real_health=" + (authoritative != null)
+                    + " delta=" + delta
+                    + " health_before=" + before
+                    + " health_after=" + after
+                    + " no_damage_ticks_after=" + victim.getNoDamageTicks());
+        });
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPortalWaveMobAttack(EntityDamageByEntityEvent event) {
-        if (!(event.getEntity() instanceof Player victim)
-                || !(event.getDamager() instanceof LivingEntity attacker)
-                || !isWaveCombatKind(readString(attacker, keyKind))) {
+        if (event.getEntity() instanceof Player victim
+                && event.getDamager() instanceof LivingEntity attacker
+                && isWaveCombatKind(readString(attacker, keyKind))) {
+            getLogger().info("WAVE_MOB_DAMAGE event=" + eventId
+                    + " attacker=" + attacker.getType() + ":" + attacker.getUniqueId()
+                    + " wave=" + readInt(attacker, keyWave, 0)
+                    + " victim=" + victim.getUniqueId()
+                    + " cause=" + event.getCause()
+                    + " final=" + event.getFinalDamage()
+                    + " cancelled=" + event.isCancelled());
+        }
+
+        Player playerDamager = event.getDamager() instanceof Player player
+                ? player
+                : event.getDamager() instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Player player ? player : null;
+        if (!(event.getEntity() instanceof Mob mob)
+                || playerDamager == null
+                || !isWaveCombatKind(readString(mob, keyKind))
+                || !ownedEntities.containsKey(mob.getUniqueId())
+                || readInt(mob, keyWave, 0) != 3
+                || !isCombatTarget(playerDamager)) {
             return;
         }
-        getLogger().info("WAVE_MOB_DAMAGE event=" + eventId
-                + " attacker=" + attacker.getType() + ":" + attacker.getUniqueId()
-                + " wave=" + readInt(attacker, keyWave, 0)
-                + " victim=" + victim.getUniqueId()
-                + " cause=" + event.getCause()
-                + " final=" + event.getFinalDamage()
-                + " cancelled=" + event.isCancelled());
-        if (readInt(attacker, keyWave, 0) != 3) {
+
+        portalWaveKnockbackUntilMillis.put(mob.getUniqueId(), System.currentTimeMillis() + 250L);
+        // Portal-wave mobs must hold their combat lane. Keep the player's
+        // damage event and hit animation, but cancel only the knockback event
+        // that Paper emits for this just-accepted player hit.
+        getLogger().fine("WAVE_PORTAL_MOB_KNOCKBACK_DISABLED event=" + eventId
+                + " attacker=" + playerDamager.getUniqueId()
+                + " mob=" + mob.getUniqueId());
+    }
+
+    /**
+     * Paper emits knockback after the damage event. Cancel only the short
+     * window recorded for a portal-wave hit; the damage event remains intact
+     * and all other waves keep vanilla combat physics.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onPortalWaveMobKnockback(EntityKnockbackEvent event) {
+        if (!(event.getEntity() instanceof Mob mob)
+                || !isWaveCombatKind(readString(mob, keyKind))
+                || readInt(mob, keyWave, 0) != 3
+                || event.getCause() != EntityKnockbackEvent.KnockbackCause.ENTITY_ATTACK) {
             return;
         }
-        Vector push = victim.getLocation().toVector().subtract(attacker.getLocation().toVector());
-        if (push.lengthSquared() < 0.01D) {
-            push = new Vector(0.0D, 0.0D, 1.0D);
+        Long until = portalWaveKnockbackUntilMillis.get(mob.getUniqueId());
+        if (until == null) {
+            return;
         }
-        // Knockback II-equivalent, capped so a lag spike cannot launch a
-        // player through the arena boundary or into the Core.
-        victim.setVelocity(push.normalize().multiply(0.55D).setY(0.24D));
+        long now = System.currentTimeMillis();
+        if (until < now) {
+            portalWaveKnockbackUntilMillis.remove(mob.getUniqueId());
+            return;
+        }
+        // Keep the short window alive for all hits in a burst. Removing the
+        // marker after the first event allowed a second player hit in the same
+        // tick to push a portal mob out of its lane.
+        event.setCancelled(true);
+        getLogger().info("WAVE_PORTAL_MOB_KNOCKBACK_CANCELLED event=" + eventId
+                + " mob=" + mob.getUniqueId());
     }
 
     /** Apply the stage profile to the boss's outgoing melee, not only its path. */
@@ -5830,6 +6369,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /** Remove only transition-pad displays; the Core shell and its text stay. */
+    private void removeTransitionRuneVisuals() {
+        int removed = 0;
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            if (!EVENT_KIND_PAD.equals(readString(entity, keyKind))) {
+                continue;
+            }
+            if (entity.isValid()) {
+                entity.remove();
+                removed++;
+            }
+            ownedEntities.remove(entity.getUniqueId());
+        }
+        transitionRuneRenderStates.clear();
+        if (removed > 0) {
+            getLogger().info("END_EVENT_TRANSITION_RUNES_REMOVED event=" + eventId
+                    + " count=" + removed + " reason=ritual-complete");
+        }
+    }
+
     private void spawnCoreOverlay(World world, Block core) {
         // The target block remains the real block selected by the admin.  Keep
         // the display at the block centre and let the tiny shell expansion
@@ -5977,9 +6536,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private ItemStack runeOverlayItem(EventSnapshot.PadSnapshot pad) {
-        boolean occupied = runeVisualOccupants.containsKey(padKey(pad));
-        return overlayItem(occupied ? MODEL_RUNE_OVERLAY_OCCUPIED : MODEL_RUNE_OVERLAY,
-                occupied ? "end_event_pad_occupied" : "end_event_pad");
+        String key = padKey(pad);
+        boolean occupied = runeVisualOccupants.containsKey(key);
+        TransitionRuneController.RenderState state = transitionRuneRenderStates.getOrDefault(
+                key, occupied ? TransitionRuneController.RenderState.OCCUPIED
+                        : TransitionRuneController.RenderState.EMPTY);
+        return switch (state) {
+            case CHARGING -> overlayItem(MODEL_RUNE_OVERLAY_CHARGING, "end_event_pad_charging");
+            case COMPLETE -> overlayItem(MODEL_RUNE_OVERLAY_COMPLETE, "end_event_pad_complete");
+            case OCCUPIED -> overlayItem(MODEL_RUNE_OVERLAY_OCCUPIED, "end_event_pad_occupied");
+            case EMPTY -> overlayItem(MODEL_RUNE_OVERLAY, "end_event_pad");
+        };
     }
 
     private void refreshRuneOverlayVisuals() {
@@ -6004,7 +6571,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void renderRitualZoneVisuals(long now) {
         if (!coreCharged || (phase != EventPhase.READY_FOR_PLAYERS
-                && phase != EventPhase.COUNTDOWN)) {
+                && phase != EventPhase.START_RITUAL && phase != EventPhase.COUNTDOWN
+                && !isTransitionRunePhase(phase))) {
             return;
         }
         World world = Bukkit.getWorld(worldName);
@@ -6016,9 +6584,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!floor.getType().isSolid() || floor.isLiquid()) {
                 continue;
             }
-            ZoneVisualPolicy.ZoneState state = runeVisualOccupants.containsKey(padKey(pad))
-                    ? ZoneVisualPolicy.ZoneState.OCCUPIED
-                    : ZoneVisualPolicy.ZoneState.FREE;
+            TransitionRuneController.RenderState runeState = transitionRuneRenderStates.getOrDefault(
+                    padKey(pad), runeVisualOccupants.containsKey(padKey(pad))
+                            ? TransitionRuneController.RenderState.OCCUPIED
+                            : TransitionRuneController.RenderState.EMPTY);
+            ZoneVisualPolicy.ZoneState state = switch (runeState) {
+                case CHARGING -> ZoneVisualPolicy.ZoneState.CHARGING;
+                case COMPLETE -> ZoneVisualPolicy.ZoneState.COMPLETED;
+                case OCCUPIED -> ZoneVisualPolicy.ZoneState.OCCUPIED;
+                case EMPTY -> ZoneVisualPolicy.ZoneState.FREE;
+            };
             Location top = runeOverlayLocation(floor);
             for (Player viewer : eventAudience()) {
                 renderZoneVisual(viewer, top, state, 0.72D, now);
@@ -6276,9 +6851,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             tickBoss();
         }
         switch (phase) {
-            case COUNTDOWN -> tickCountdown();
-            case INTERMISSION_1, INTERMISSION_2, INTERMISSION_3, INTERMISSION_4 -> tickIntermission();
-            case WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_5, FINAL_WAVE -> tickWaveCompletion();
+            case START_RITUAL -> tickStartRitual();
+            case COUNTDOWN -> tickCountdown(); // migration-only compatibility path
+            case INTERMISSION_1, INTERMISSION_2, INTERMISSION_3, INTERMISSION_4,
+                    INTERMISSION_5 -> tickIntermission();
+            case WAVE_1, WAVE_2, WAVE_3, WAVE_4, WAVE_5, WAVE_6, FINAL_WAVE -> tickWaveCompletion();
+            case PRE_BOSS_COOLDOWN -> tickPreBossCooldown();
             case BOSS_CINEMATIC -> tickBossCinematic();
             case BOSS_ACTIVE, BOSS_FINISH -> tickBoss();
             case FINAL_DRAIN, FINAL_RITUAL -> tickFinalRitual();
@@ -6292,6 +6870,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             issueVictoryRewards();
         }
         tickShardChannels();
+        tickShardPassives();
     }
 
     private void updatePadOccupancy() {
@@ -6321,14 +6900,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (visualChanged) {
             refreshRuneOverlayVisuals();
         }
-        if (phase != EventPhase.READY_FOR_PLAYERS && phase != EventPhase.COUNTDOWN) {
+        boolean startRitualPhase = phase == EventPhase.READY_FOR_PLAYERS
+                || phase == EventPhase.START_RITUAL || phase == EventPhase.COUNTDOWN;
+        boolean transitionPhase = isTransitionRunePhase(phase);
+        if (!startRitualPhase && !transitionPhase) {
             if (visualChanged) {
                 getLogger().info("RUNE_OCCUPANCY_CHANGED event=" + eventId
                         + " visual=" + runeVisualOccupants.size() + " official=0");
             }
             return;
         }
-        padOccupants.putAll(detectRuneOccupants(world, true));
+        padOccupants.putAll(startRitualPhase
+                ? detectRuneOccupants(world, true)
+                : detectTransitionRuneOccupants(world));
         boolean officialChanged = !previousOccupants.equals(padOccupants);
         if (officialChanged) {
             refreshRuneOverlayVisuals();
@@ -6338,11 +6922,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " visual=" + runeVisualOccupants.size()
                     + " official=" + padOccupants.size());
         }
-        if (padOccupants.size() == requiredPlayers) {
+        if (padOccupants.size() == requiredPlayers && phase == EventPhase.READY_FOR_PLAYERS) {
             beginCountdownIfReady();
-        } else if (phase == EventPhase.COUNTDOWN) {
+        } else if ((phase == EventPhase.START_RITUAL || phase == EventPhase.COUNTDOWN)
+                && padOccupants.size() != requiredPlayers) {
             cancelRitual("pad occupancy changed");
         }
+    }
+
+    private Map<String, UUID> detectTransitionRuneOccupants(World world) {
+        Map<String, UUID> detected = detectRuneOccupants(world, true);
+        if (officialRewardRoster.isEmpty()) {
+            return Map.of();
+        }
+        detected.entrySet().removeIf(entry -> !officialRewardRoster.contains(entry.getValue()));
+        return detected;
     }
 
     private Map<String, UUID> detectRuneOccupants(World world, boolean officialRoster) {
@@ -6436,13 +7030,118 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         phaseDeadlineMillis = System.currentTimeMillis() + config.countdownSeconds() * 1000L;
-        if (transition(EventPhase.COUNTDOWN, "all unique pads occupied", eventId + ":countdown")) {
+        transitionRuneController.reset();
+        transitionRuneRenderStates.clear();
+        if (transition(EventPhase.START_RITUAL, "all unique pads occupied", eventId + ":start-ritual")) {
             lastCountdownAnnouncement = config.countdownSeconds();
             lastCountdownTitleSecond = -1;
-            announceEventTitle("§5РИТУАЛ НАЧАТ", "§dСоберите игроков на рунах — "
-                    + config.countdownSeconds() + " сек.", true);
-            getLogger().info("RITUAL_STARTED event=" + eventId + " generation=" + generation);
+            announceEventTitle("§5РИТУАЛ НАЧАТ", "§dУдерживайте руны ещё пять секунд", true);
+            getLogger().info("RITUAL_STARTED event=" + eventId + " generation=" + generation
+                    + " hold_ms=5000 timeout_seconds=" + config.countdownSeconds());
         }
+    }
+
+    /**
+     * V2 uses a real five-second continuous hold on every unique start rune.
+     * The old wall-clock countdown remains below only for migration fixtures;
+     * no official state transition enters it anymore.
+     */
+    private void tickStartRitual() {
+        if (phase != EventPhase.START_RITUAL) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (phaseDeadlineMillis <= 0L || now >= phaseDeadlineMillis) {
+            cancelRitual("start ritual timeout");
+            return;
+        }
+        Set<UUID> candidateRoster = new LinkedHashSet<>(padOccupants.values());
+        List<TransitionRunePolicy.RuneOccupancy> occupancies = new ArrayList<>();
+        for (Map.Entry<String, UUID> entry : padOccupants.entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getValue());
+            boolean eligible = player != null && player.isOnline() && !player.isDead()
+                    && player.getHealth() > 0.0D && player.getGameMode() != GameMode.SPECTATOR
+                    && player.getGameMode() != GameMode.CREATIVE && isArenaLocation(player.getLocation());
+            occupancies.add(new TransitionRunePolicy.RuneOccupancy(
+                    entry.getValue(), entry.getKey(), player != null && player.isOnline(),
+                    player != null && !player.isDead() && player.getHealth() > 0.0D,
+                    eligible));
+        }
+        TransitionRuneController.Observation observation = transitionRuneController.observe(
+                candidateRoster, occupancies, now);
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            String key = padKey(pad);
+            transitionRuneRenderStates.put(key, padOccupants.containsKey(key)
+                    ? observation.renderState() : TransitionRuneController.RenderState.EMPTY);
+        }
+        refreshRuneOverlayVisuals();
+        if (observation.justCompleted()) {
+            completeStartRitual(candidateRoster);
+        }
+    }
+
+    private void completeStartRitual(Set<UUID> candidateRoster) {
+        if (candidateRoster == null || candidateRoster.size() != requiredPlayers
+                || phase != EventPhase.START_RITUAL) {
+            cancelRitual("start ritual roster changed");
+            return;
+        }
+        try {
+            RewardRoster roster = RewardRoster.commitExactly(candidateRoster, requiredPlayers);
+            if (!officialRewardRoster.isEmpty() && !officialRewardRoster.equals(roster.players())) {
+                cancelRitual("committed roster mismatch after recovery");
+                getLogger().warning("RITUAL_ROSTER_MISMATCH event=" + eventId
+                        + " committed=" + officialRewardRoster + " occupied=" + roster.players());
+                return;
+            }
+            if (officialRewardRoster.isEmpty()) {
+                officialRewardRoster.addAll(roster.players());
+            }
+            participantUuids.addAll(roster.players());
+        } catch (IllegalArgumentException invalid) {
+            cancelRitual("roster uniqueness failed");
+            return;
+        }
+        generation = Math.max(1L, generation + 1L);
+        cancelSessionTasks();
+        taskRegistry = new EventTaskRegistry(generation);
+        attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
+        waveSixChamberController.clear();
+        halfHealthTriggered = false;
+        controlSpellUnlocked = false;
+        finalDrainTriggered = false;
+        finalDrainApplied = false;
+        finalDrainTargets.clear();
+        finalDrainAppliedPlayers.clear();
+        clearCombatAiState();
+        lootIssuedEntityUuids.clear();
+        activeWave = 1;
+        removeTransitionRuneVisuals();
+        pads.clear();
+        padOccupants.clear();
+        runeVisualOccupants.clear();
+        transitionRuneRenderStates.clear();
+        if (!transition(EventPhase.WAVE_1, "start ritual hold complete; official roster frozen",
+                eventId + ":roster:" + generation, false)) {
+            officialRewardRoster.clear();
+            attemptLifecycle.clear();
+            activeWave = 0;
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "roster transition rejected");
+            return;
+        }
+        if (!saveStateSync()) {
+            officialRewardRoster.clear();
+            rewardStatuses.clear();
+            nightCloakRolls.clear();
+            attemptLifecycle.clear();
+            activeWave = 0;
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "official roster commit could not be persisted");
+            getLogger().severe("RITUAL_COMMIT_FAILED event=" + eventId + " generation=" + generation);
+            return;
+        }
+        getLogger().info("RITUAL_COMPLETED event=" + eventId + " roster=" + officialRewardRoster
+                + " hold_ms=5000");
+        spawnWave(1, false);
     }
 
     private void tickCountdown() {
@@ -6453,12 +7152,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long remaining = Math.max(0L, phaseDeadlineMillis - System.currentTimeMillis());
         int seconds = (int) Math.ceil(remaining / 1000.0D);
         if (seconds > 0 && seconds <= config.countdownSeconds()) {
-            for (UUID playerUuid : padOccupants.values()) {
-                Player player = Bukkit.getPlayer(playerUuid);
-                if (player != null && player.isOnline()) {
-                    player.sendActionBar(Component.text("Ритуал: " + seconds, NamedTextColor.LIGHT_PURPLE));
-                }
-            }
             // A title is a full-screen milestone, not a high-frequency status
             // channel.  Sending it every five ticks caused flicker and an
             // unnecessary packet stream for both players in the ritual.
@@ -6529,6 +7222,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // have crossed the durable boundary together.
             officialRewardRoster.clear();
             rewardStatuses.clear();
+            nightCloakRolls.clear();
             activeWave = 0;
             padOccupants.clear();
             runeVisualOccupants.clear();
@@ -6543,10 +7237,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void cancelRitual(String reason) {
         clearFinalArenaScene("ritual cancellation: " + reason);
-        if (phase == EventPhase.COUNTDOWN) {
+        if (phase == EventPhase.START_RITUAL || phase == EventPhase.COUNTDOWN) {
             phaseDeadlineMillis = 0L;
             lastCountdownAnnouncement = -1;
             lastCountdownTitleSecond = -1;
+            transitionRuneController.reset();
+            transitionRuneRenderStates.clear();
             boolean hadPadOccupants = !padOccupants.isEmpty();
             boolean hadRuneVisualOccupants = !runeVisualOccupants.isEmpty();
             padOccupants.clear();
@@ -6611,9 +7307,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     || !isWaveAiCombatEntity(entity)) {
                 continue;
             }
+            // Wave 6 is a closed-room phase. Build the target list per mob so
+            // a target rotation cannot accidentally hand a chamber-0 mob a
+            // player from chamber 1 while the passage is still closed.
+            List<Player> entityCandidates = candidates.stream()
+                    .filter(player -> waveSixTargetAllowed(entity, player))
+                    .toList();
+            List<UUID> entityCandidateIds = entityCandidates.stream()
+                    .map(Player::getUniqueId)
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
             boolean towerMob = isTowerDefenseMob(entity);
             boolean playerAggro = towerMob && hasTowerPlayerAggro(entity, now);
             Player currentTarget = mob.getTarget() instanceof Player player && isCombatTarget(player)
+                    && waveSixTargetAllowed(entity, player)
                     ? player : null;
             if (towerMob && !playerAggro) {
                 Player alertTarget = findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS);
@@ -6658,13 +7365,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int entityWave = readInt(entity, keyWave, activeWave);
             Player markedTarget = entityWave == 2 && waveTwoMarkedPlayerUuid != null
                     ? Bukkit.getPlayer(waveTwoMarkedPlayerUuid) : null;
-            boolean markedTargetEligible = markedTarget != null && isCombatTarget(markedTarget);
+            boolean markedTargetEligible = markedTarget != null && isCombatTarget(markedTarget)
+                    && waveSixTargetAllowed(entity, markedTarget);
             boolean markedTargetPriority = SkeletonCombatPolicy.shouldPrioritizeMarkedTarget(
                     entityWave, entityWave == 2, markedTargetEligible);
             boolean markedTargetNeedsRefresh = markedTargetPriority
                     && (target == null || !target.getUniqueId().equals(markedTarget.getUniqueId()));
             if (!keepTowerAggro && (rotateTargets || target == null || markedTargetNeedsRefresh)
-                    && !candidateIds.isEmpty()) {
+                    && !entityCandidateIds.isEmpty()) {
                 if (markedTargetPriority) {
                     target = markedTarget;
                     if (entity instanceof Skeleton) {
@@ -6676,12 +7384,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     UUID current = target == null ? null : target.getUniqueId();
                     Deque<UUID> targetMemory = recentWaveTargets.get(entity.getUniqueId());
                     EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
-                            candidateIds, current,
+                            entityCandidateIds, current,
                             targetMemory == null ? List.of() : new ArrayList<>(targetMemory),
                             waveTargetCursor++);
                     target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
                 }
-                if (target != null && isCombatTarget(target)) {
+                if (target != null && waveSixTargetAllowed(entity, target)) {
                     rememberWaveTarget(entity.getUniqueId(), target.getUniqueId());
                     if (!towerMob || playerAggro) {
                         mob.setTarget(target);
@@ -6710,7 +7418,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     target = null;
                 }
             }
-            if (target != null && isCombatTarget(target)) {
+            if (target != null && waveSixTargetAllowed(entity, target)) {
                 boolean towerCoreJob = towerMob && !playerAggro;
                 if (towerCoreJob) {
                     // The deterministic player choice above is only a
@@ -6743,6 +7451,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 watchWaveMobProgress(mob, null, kind, now);
             }
         }
+        // Pathfinding and vanilla collision can move a mob onto the exact
+        // Core column after the initial leash pass. Re-run the bounded leash
+        // after navigation so a diagnostic snapshot (and, more importantly,
+        // the next combat tick) can never observe a wave mob standing on Core.
+        enforceWaveMobContainment();
         if (rotateTargets && !candidateIds.isEmpty()) {
             nextWaveTargetMillis = now
                     + randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()) * 1000L;
@@ -6816,7 +7529,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (destination == null || isCoreBlockPosition(destination)) {
             destination = findSafeCombatLocation(anchor, waveCoreFlankDestination(anchor, mob),
                     boundedCombatRadius(config.containmentRadius()) - 1.0D,
-                    MIN_WAVE_CORE_DISTANCE_BLOCKS);
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS, waveSixChamberId(mob));
         }
         if (destination == null || outsideCombatVertical(destination, anchor)
                 || horizontalDistanceSquared(destination, anchor)
@@ -7039,7 +7752,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         return findSafeCombatLocation(anchor, preferred,
                 boundedCombatRadius(config.containmentRadius()) - 1.0D,
-                MIN_WAVE_CORE_DISTANCE_BLOCKS);
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, waveSixChamberId(skeleton));
     }
 
     private Location nearestOpenPortal(Location from) {
@@ -7133,9 +7846,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         CombatTacticsPolicy.MobManeuver maneuver = CombatTacticsPolicy.waveManeuver(
                 maneuverWave, maneuverRole, maneuverCycle, maneuverSlot);
         preferred = applyMobManeuver(preferred, anchor, mob, target, maneuver);
+        preferred = constrainWaveSixPreferred(anchor, preferred, mob);
         Location destination = findSafeCombatLocation(anchor, preferred,
                 boundedCombatRadius(config.containmentRadius()) - 1.0D,
-                MIN_WAVE_CORE_DISTANCE_BLOCKS);
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, waveSixChamberId(mob));
         if (destination != null) {
             getLogger().fine("WAVE_AI_TACTIC_DESTINATION entity=" + mob.getUniqueId()
                     + " role=" + kind + " tactic=" + tactic
@@ -7513,14 +8227,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location point = impact.clone();
         World world = point.getWorld();
         if (world != null) {
-            // Explosive arrows damage players and mobs, but can never alter
-            // the arena. Keep both safety flags literal at the call site so
-            // a future refactor cannot accidentally enable fire or block drops.
-            world.createExplosion(point, SkeletonArrowPolicy.EXPLOSIVE_POWER, false, false);
+            LivingEntity shooter = arrow.getShooter() instanceof LivingEntity living ? living : null;
+            int affected = 0;
+            double radius = SkeletonArrowPolicy.EXPLOSIVE_DAMAGE_RADIUS_BLOCKS;
+            for (Player player : activeLivingPlayers()) {
+                if (!player.getWorld().equals(world)
+                        || player.getLocation().distanceSquared(point) > radius * radius
+                        || shooter != null && !waveSixTargetAllowed(shooter, player)) {
+                    continue;
+                }
+                if (shooter != null && shooter.isValid() && !shooter.isDead()) {
+                    player.damage(SkeletonArrowPolicy.EXPLOSIVE_DAMAGE, shooter);
+                } else {
+                    player.damage(SkeletonArrowPolicy.EXPLOSIVE_DAMAGE);
+                }
+                affected++;
+            }
+            // This is intentionally a player-only impact transaction rather
+            // than World#createExplosion: even a future Paper implementation
+            // cannot yield blocks, fire, or cross-room entity damage here.
             spawnEventParticle(point, Particle.EXPLOSION, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             world.playSound(point, Sound.ENTITY_GENERIC_EXPLODE, 0.65F, 1.35F);
             getLogger().info("SKELETON_EXPLOSIVE_ARROW_DETONATED arrow=" + arrow.getUniqueId()
-                    + " power=" + SkeletonArrowPolicy.EXPLOSIVE_POWER
+                    + " damage=" + SkeletonArrowPolicy.EXPLOSIVE_DAMAGE
+                    + " radius=" + radius + " affected_players=" + affected
                     + " breakBlocks=false fire=false");
         }
         cleanupEventArrow(arrow.getUniqueId());
@@ -7778,20 +8508,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (nextMiniBossSpellMillis.getOrDefault(entity.getUniqueId(), 0L) > now) {
                 continue;
             }
-            List<Player> candidates = activeLivingPlayers();
+            List<Player> candidates = activeLivingPlayers().stream()
+                    .filter(player -> waveSixTargetAllowed(entity, player))
+                    .toList();
             if (candidates.isEmpty()) {
                 nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
                 continue;
             }
             Player current = miniBoss instanceof Mob mob && mob.getTarget() instanceof Player player
-                    && isCombatTarget(player)
+                    && waveSixTargetAllowed(entity, player)
                     ? player : null;
             List<UUID> candidateIds = candidates.stream().map(Player::getUniqueId)
                     .sorted(Comparator.comparing(UUID::toString)).toList();
             EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
                     candidateIds, current == null ? null : current.getUniqueId(), List.of(), waveTargetCursor++);
             Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
-            if (target == null || !isCombatTarget(target)) {
+            if (target == null || !waveSixTargetAllowed(entity, target)) {
                 nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 1000L);
                 continue;
             }
@@ -7805,7 +8537,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void telegraphMiniBossSpell(LivingEntity miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell) {
-        if (taskRegistry == null || miniBoss == null || target == null || !isCombatTarget(target)) {
+        if (taskRegistry == null || miniBoss == null || target == null
+                || !waveSixTargetAllowed(miniBoss, target)) {
             return;
         }
         long callbackGeneration = generation;
@@ -7813,7 +8546,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location mark = target.getLocation().clone();
         getLogger().info("MINIBOSS_SPELL_TELEGRAPH entity=" + miniBossId + " spell=" + spell.id()
                 + " target=" + target.getUniqueId() + " generation=" + generation);
-        target.sendActionBar(Component.text("Мини-босс готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
@@ -7849,14 +8581,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void executeMiniBossSpell(LivingEntity miniBoss, Player target, Location mark,
                                       EndRiftAiPolicy.MiniBossSpell spell, long callbackGeneration) {
         if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                || !isMiniBossCombatPhase() || !isCombatTarget(target)) {
+                || !isMiniBossCombatPhase() || !waveSixTargetAllowed(miniBoss, target)) {
             return;
         }
         launchSpellFlight(miniBoss, mark,
                 "MINIBOSS_SPELL_FLIGHT", spell.id(), target.getUniqueId(), false,
                 callbackGeneration, () -> {
                     if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
-                            || !isMiniBossCombatPhase() || !isCombatTarget(target)
+                            || !isMiniBossCombatPhase() || !waveSixTargetAllowed(miniBoss, target)
                             || !miniBoss.isValid() || miniBoss.isDead()
                             || miniBossSpells.get(miniBoss.getUniqueId()) != spell) {
                         return;
@@ -8805,6 +9537,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void spawnPatternRing(Player player, Location center, Vector axisA, Vector axisB,
                                   double radius, int points, double phase, Particle particle) {
+        spawnPatternRing(player, center, axisA, axisB, radius, points, phase, particle, null);
+    }
+
+    private void spawnPatternRing(Player player, Location center, Vector axisA, Vector axisB,
+                                  double radius, int points, double phase, Particle particle,
+                                  Particle.DustOptions dust) {
         if (player == null || center == null || center.getWorld() == null || !player.isOnline()
                 || !player.getWorld().equals(center.getWorld())
                 || player.getLocation().distanceSquared(center) > 64.0D * 64.0D) {
@@ -8816,8 +9554,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Location ringPoint = center.clone()
                     .add(axisA.clone().multiply(Math.cos(angle) * radius))
                     .add(axisB.clone().multiply(Math.sin(angle) * radius));
-            player.spawnParticle(particle, ringPoint, 1,
-                    0.0D, 0.0D, 0.0D, 0.0D);
+            if (particle == Particle.DUST && dust != null) {
+                player.spawnParticle(particle, ringPoint, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D, dust);
+            } else {
+                player.spawnParticle(particle, ringPoint, 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+            }
         }
     }
 
@@ -8885,7 +9628,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (destination != null) {
             teleportCombatEntity(miniBoss, destination);
         }
-        target.damage(config.miniBossTuning().riftStepDamage(), miniBoss);
+        target.damage(WaveDamagePolicy.minimumCombatDamage(
+                config.miniBossTuning().riftStepDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, configuredDebuffAmplifier(), false, true, true));
         spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D), Particle.PORTAL,
@@ -8893,7 +9637,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void miniBossVoidSnare(LivingEntity miniBoss, Player target, Location mark) {
-        target.damage(config.miniBossTuning().voidSnareDamage(), miniBoss);
+        target.damage(WaveDamagePolicy.minimumCombatDamage(
+                config.miniBossTuning().voidSnareDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, configuredDebuffAmplifier(), false, true, true));
         target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
@@ -8904,10 +9649,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void miniBossEchoPulse(LivingEntity miniBoss) {
         Location center = miniBoss.getLocation();
         for (Player player : activeLivingPlayers()) {
+            if (!waveSixTargetAllowed(miniBoss, player)) {
+                continue;
+            }
             if (player.getLocation().distanceSquared(center) > 25.0D) {
                 continue;
             }
-            player.damage(config.miniBossTuning().echoPulseDamage(), miniBoss);
+            player.damage(WaveDamagePolicy.minimumCombatDamage(
+                    config.miniBossTuning().echoPulseDamage(), WAVE_MOB_DAMAGE_REDUCTION), miniBoss);
             Vector push = player.getLocation().toVector().subtract(center.toVector());
             if (push.lengthSquared() < 0.01D) {
                 push = new Vector(0.0D, 0.25D, 0.0D);
@@ -8948,8 +9697,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 MINIBOSS_NARCOTIC_DURATION_TICKS, 0, false, true, true), true);
         target.addPotionEffect(new PotionEffect(PotionEffectType.WITHER,
                 MINIBOSS_WITHER_DURATION_TICKS, 0, false, true, true), true);
-        target.sendActionBar(Component.text("Эйфория Пустоты: " + effect.displayName(),
-                NamedTextColor.DARK_PURPLE));
         target.playSound(target.getLocation(), Sound.ENTITY_WARDEN_HEARTBEAT, 0.7F, 0.65F);
         spawnEventParticle(target.getLocation().add(0.0D, 1.0D, 0.0D),
                 Particle.WITCH, 28, 0.5D, 0.8D, 0.5D, 0.02D);
@@ -8969,7 +9716,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean standingOnCore = isCoreBlockPosition(current);
         boolean outsideHorizontalRadius = horizontalDistanceSquared(current, anchor) > radius * radius;
         boolean outsideVerticalRadius = outsideCombatVertical(current, anchor);
-        if (!standingOnCore && !outsideHorizontalRadius && !outsideVerticalRadius) {
+        int chamber = waveSixChamberId(entity);
+        boolean outsideClosedChamber = chamber >= 0
+                && !waveSixChamberController.passageOpen()
+                && !ChamberIsolationPolicy.containsPoint(chamber,
+                current.getX() - anchor.getX(), current.getZ() - anchor.getZ(),
+                waveSixChamberController.assignment().chamberCount());
+        if (!standingOnCore && !outsideHorizontalRadius && !outsideVerticalRadius
+                && !outsideClosedChamber) {
             return;
         }
         // The anchor is the solid Core block.  Never prefer it as an entity
@@ -8977,7 +9731,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double minCoreDistance = EVENT_KIND_BOSS.equals(readString(entity, keyKind))
                 ? MIN_BOSS_CORE_DISTANCE_BLOCKS : MIN_WAVE_CORE_DISTANCE_BLOCKS;
         Location from = current.clone();
-        Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minCoreDistance);
+        Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minCoreDistance,
+                outsideClosedChamber ? chamber : -1);
         if (safe != null && teleportCombatEntity(entity, safe)) {
             if (EVENT_KIND_BOSS.equals(readString(entity, keyKind))) {
                 getLogger().info("BOSS_MOVE_TELEPORT boss=" + entity.getUniqueId()
@@ -8986,7 +9741,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         ? mob.getTarget().getUniqueId() : "none") + " phase=" + phase);
             } else {
                 getLogger().info(logMarker + " entity=" + entity.getUniqueId()
-                        + " location=" + locationText(safe));
+                        + " location=" + locationText(safe)
+                        + (outsideClosedChamber ? " chamber=" + chamber : ""));
             }
         }
     }
@@ -9047,6 +9803,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return BossHealthScalingPolicy.maxHealthForPlayers(eventScalePlayers());
     }
 
+    private boolean isV2OfficialBoss(LivingEntity boss) {
+        return boss != null && isOfficialEntity(boss) && keyV2BossMaxHealth != null
+                && boss.getPersistentDataContainer().has(keyV2BossMaxHealth, PersistentDataType.DOUBLE);
+    }
+
+    private boolean isV2OfficialBoss(Entity entity) {
+        return entity instanceof LivingEntity living && isV2OfficialBoss(living);
+    }
+
     /**
      * Read the frozen max pool from the boss entity.  The PDC value makes a
      * restart/reload idempotent even if a player disconnects after the roster
@@ -9054,6 +9819,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * current frozen roster exactly once.
      */
     private double bossMaxHealth(LivingEntity boss) {
+        if (isV2OfficialBoss(boss)) {
+            Double persisted = boss.getPersistentDataContainer().get(
+                    keyV2BossMaxHealth, PersistentDataType.DOUBLE);
+            if (persisted != null && Double.isFinite(persisted) && persisted > 0.0D) {
+                return V2BossHealthScalingPolicy.clampCurrent(persisted, V2BossHealthScalingPolicy.MAX_HEALTH);
+            }
+            return V2BossHealthScalingPolicy.maxHealthFor(eventScalePlayers());
+        }
         double computed = computedBossMaxHealth();
         if (boss == null || keyBossVirtualMaxHealth == null) {
             return computed;
@@ -9104,11 +9877,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private Location findSafeCombatLocation(Location anchor, Location preferred, double radius,
                                             double minCoreDistance) {
+        return findSafeCombatLocation(anchor, preferred, radius, minCoreDistance, -1);
+    }
+
+    /**
+     * Chamber-aware variant used only by Wave 6.  Filtering candidates before
+     * the pure movement policy is important: choosing a safe point first and
+     * clamping it afterwards could still make Paper path through a neighbouring
+     * room on the way to that point.
+     */
+    private Location findSafeCombatLocation(Location anchor, Location preferred, double radius,
+                                            double minCoreDistance, int chamberId) {
         if (anchor == null || anchor.getWorld() == null) {
             return null;
         }
         double safeRadius = Math.max(1.0D, radius);
         double safeMinDistance = Math.max(0.0D, Math.min(minCoreDistance, safeRadius - 0.25D));
+        int chamberCount = waveSixChamberController.assignment().chamberCount();
         Location center = anchor.clone();
         List<BossMovementPolicy.Candidate> candidates = new ArrayList<>();
         Map<String, Location> candidateLocations = new LinkedHashMap<>();
@@ -9119,6 +9904,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ? preferred.clone().add(Math.cos(angle) * (attempt * 0.25D), 0.0D,
                     Math.sin(angle) * (attempt * 0.25D))
                     : center.clone().add(Math.cos(angle) * distance, 0.0D, Math.sin(angle) * distance);
+            if (chamberId >= 0 && !ChamberIsolationPolicy.containsPoint(
+                    chamberId, candidate.getX() - center.getX(), candidate.getZ() - center.getZ(),
+                    chamberCount)) {
+                continue;
+            }
             Block feet = candidate.getBlock();
             Block head = feet.getRelative(BlockFace.UP);
             Block floor = feet.getRelative(BlockFace.DOWN);
@@ -9181,6 +9971,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return switch (phase) {
             case WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2, WAVE_3,
                     INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
+                    INTERMISSION_5, WAVE_6, PRE_BOSS_COOLDOWN,
                     BOSS_CINEMATIC,
                     BOSS_ACTIVE, FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH -> true;
             default -> false;
@@ -9204,7 +9995,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case 3 -> phase == EventPhase.WAVE_3;
             case 4 -> phase == EventPhase.WAVE_4;
             case 5 -> phase == EventPhase.WAVE_5;
-            case FINAL_WAVE_NUMBER -> phase == EventPhase.FINAL_WAVE;
+            case FINAL_WAVE_NUMBER -> phase == EventPhase.WAVE_6 || phase == EventPhase.FINAL_WAVE;
             default -> false;
         };
     }
@@ -9237,7 +10028,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isMiniBossCombatPhase() {
         return testCombatAiMode || phase == EventPhase.WAVE_1 || phase == EventPhase.WAVE_2
                 || phase == EventPhase.WAVE_3 || phase == EventPhase.WAVE_4
-                || phase == EventPhase.WAVE_5 || phase == EventPhase.FINAL_WAVE
+                || phase == EventPhase.WAVE_5 || phase == EventPhase.WAVE_6
+                || phase == EventPhase.FINAL_WAVE
                 || hasLiveTestWaveEntities();
     }
 
@@ -9275,6 +10067,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return isActiveArenaParticipant(player) || isCreativeTestTarget(player);
     }
 
+    private boolean isTransitionRunePhase(EventPhase candidate) {
+        return candidate == EventPhase.INTERMISSION_1
+                || candidate == EventPhase.INTERMISSION_2
+                || candidate == EventPhase.INTERMISSION_3
+                || candidate == EventPhase.INTERMISSION_4
+                || candidate == EventPhase.INTERMISSION_5;
+    }
+
+    private boolean isOfficialV2Attempt() {
+        return !testCombatAiMode && generation > 0L && !officialRewardRoster.isEmpty();
+    }
+
     /**
      * A visual spectator does not need to be in the official reward roster.
      * Anyone physically inside the configured arena must receive the same
@@ -9301,6 +10105,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickIntermission() {
+        if (isOfficialV2Attempt()) {
+            tickV2Intermission();
+            return;
+        }
         if (phaseDeadlineMillis <= 0L || System.currentTimeMillis() < phaseDeadlineMillis) {
             return;
         }
@@ -9325,6 +10133,213 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         phaseDeadlineMillis = 0L;
+    }
+
+    /**
+     * V2 intermissions are an actual transition-rune hold, not an unattended
+     * timer. A generous watchdog prevents a disconnected roster from leaving
+     * the event in an unbounded half-state; the normal path completes only
+     * after every frozen player has held a unique rune for five seconds.
+     */
+    private void tickV2Intermission() {
+        if (!isTransitionRunePhase(phase)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (phaseDeadlineMillis <= 0L) {
+            phaseDeadlineMillis = now + 10 * 60_000L;
+            transitionRuneDeadlineMillis = phaseDeadlineMillis;
+        }
+        if (now >= phaseDeadlineMillis) {
+            getLogger().warning("V2_INTERMISSION_TIMEOUT event=" + eventId
+                    + " phase=" + phase + " roster=" + officialRewardRoster);
+            removeTransitionRuneVisuals();
+            pads.clear();
+            padOccupants.clear();
+            runeVisualOccupants.clear();
+            transitionRuneController.reset();
+            transitionRuneRenderStates.clear();
+            transitionRuneWave = 0;
+            phaseDeadlineMillis = 0L;
+            forcePhase(EventPhase.READY_FOR_PLAYERS, "transition rune watchdog timeout");
+            return;
+        }
+        int completedWave = transitionRuneWave > 0
+                ? transitionRuneWave : completedWaveForIntermission(phase);
+        if (completedWave < 1 || completedWave > 5) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "invalid transition rune wave");
+            return;
+        }
+        if (pads.size() != officialRewardRoster.size()
+                && !prepareTransitionRunes(completedWave)) {
+            getLogger().severe("V2_INTERMISSION_RUNE_SETUP_FAILED event=" + eventId
+                    + " completed_wave=" + completedWave);
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "transition rune setup failed");
+            return;
+        }
+        Set<UUID> roster = new LinkedHashSet<>(officialRewardRoster);
+        List<TransitionRunePolicy.RuneOccupancy> occupancies = new ArrayList<>();
+        for (Map.Entry<String, UUID> entry : padOccupants.entrySet()) {
+            Player player = Bukkit.getPlayer(entry.getValue());
+            boolean connected = player != null && player.isOnline();
+            boolean alive = connected && !player.isDead() && player.getHealth() > 0.0D;
+            boolean eligible = alive && player.getGameMode() != GameMode.SPECTATOR
+                    && player.getGameMode() != GameMode.CREATIVE
+                    && isArenaLocation(player.getLocation());
+            occupancies.add(new TransitionRunePolicy.RuneOccupancy(
+                    entry.getValue(), entry.getKey(), connected, alive, eligible));
+        }
+        TransitionRuneController.Observation observation = transitionRuneController.observe(
+                roster, occupancies, now);
+        transitionRuneRenderStates.clear();
+        for (EventSnapshot.PadSnapshot pad : pads) {
+            String key = padKey(pad);
+            transitionRuneRenderStates.put(key, padOccupants.containsKey(key)
+                    ? observation.renderState() : TransitionRuneController.RenderState.EMPTY);
+        }
+        refreshRuneOverlayVisuals();
+        if (!observation.justCompleted()) {
+            return;
+        }
+        int nextWave = completedWave + 1;
+        removeTransitionRuneVisuals();
+        pads.clear();
+        padOccupants.clear();
+        runeVisualOccupants.clear();
+        transitionRuneController.reset();
+        transitionRuneRenderStates.clear();
+        transitionRuneWave = 0;
+        transitionRuneDeadlineMillis = 0L;
+        phaseDeadlineMillis = 0L;
+        activeWave = nextWave;
+        EventPhase nextPhase = wavePhase(nextWave);
+        if (nextPhase == null || !transition(nextPhase,
+                "transition runes held after wave " + completedWave,
+                eventId + ":wave:" + nextWave)) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "transition rune handoff failed");
+            return;
+        }
+        if (nextWave == 6) {
+            waveSixChamberController.begin(generation, new ArrayList<>(officialRewardRoster));
+        }
+        saveStateAsync();
+        announceEventTitle("§dВОЛНА " + nextWave,
+                "§fРазлом снова открывает проход", true);
+        spawnWave(nextWave, false);
+    }
+
+    private EventPhase wavePhase(int wave) {
+        return switch (wave) {
+            case 1 -> EventPhase.WAVE_1;
+            case 2 -> EventPhase.WAVE_2;
+            case 3 -> EventPhase.WAVE_3;
+            case 4 -> EventPhase.WAVE_4;
+            case 5 -> EventPhase.WAVE_5;
+            case 6 -> EventPhase.WAVE_6;
+            default -> null;
+        };
+    }
+
+    private boolean prepareTransitionRunes(int completedWave) {
+        if (completedWave < 1 || completedWave > 5 || !isOfficialV2Attempt()) {
+            return false;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null || officialRewardRoster.isEmpty()) {
+            return false;
+        }
+        removeTransitionRuneVisuals();
+        pads.clear();
+        padOccupants.clear();
+        runeVisualOccupants.clear();
+        transitionRuneRenderStates.clear();
+        List<Double> radii = completedWave >= 4
+                ? List.of(9.0D, 11.0D, 13.0D, 15.0D, 17.0D)
+                : transitionPadRadii();
+        PadLayout.Result layout = PadLayout.compute(officialRewardRoster.size(),
+                completedWave * 37.0D, radii);
+        if (!layout.valid() || layout.points().size() != officialRewardRoster.size()) {
+            return false;
+        }
+        Set<String> coordinates = new HashSet<>();
+        List<EventSnapshot.PadSnapshot> planned = new ArrayList<>();
+        for (PadLayout.Point point : layout.points()) {
+            Block padBlock = findSafePadBlock(world, point, coordinates);
+            if (padBlock == null) {
+                return false;
+            }
+            coordinates.add(padBlock.getX() + ":" + padBlock.getY() + ":" + padBlock.getZ());
+            double dx = padBlock.getX() + 0.5D - (coreX + 0.5D);
+            double dz = padBlock.getZ() + 0.5D - (coreZ + 0.5D);
+            planned.add(new EventSnapshot.PadSnapshot(
+                    padBlock.getX(), padBlock.getY(), padBlock.getZ(),
+                    Math.sqrt(dx * dx + dz * dz), Math.atan2(dz, dx),
+                    padBlock.getBlockData().getAsString()));
+        }
+        pads.addAll(planned);
+        transitionRuneWave = completedWave;
+        transitionRuneDeadlineMillis = System.currentTimeMillis() + 10 * 60_000L;
+        phaseDeadlineMillis = transitionRuneDeadlineMillis;
+        transitionRuneController.reset();
+        rebuildPersistedVisuals();
+        getLogger().info("V2_TRANSITION_RUNES_READY event=" + eventId
+                + " completed_wave=" + completedWave + " count=" + pads.size()
+                + " hold_ms=5000 timeout_ms=600000");
+        return true;
+    }
+
+    private List<Double> transitionPadRadii() {
+        if (config == null || config.padRadii().isEmpty()) {
+            return List.of(5.0D, 7.0D, 9.0D, 11.0D, 13.0D);
+        }
+        List<Double> radii = new ArrayList<>(config.padRadii());
+        radii.addAll(List.of(9.0D, 11.0D, 13.0D, 15.0D, 17.0D));
+        return radii.stream().filter(value -> Double.isFinite(value) && value > 0.0D)
+                .distinct().toList();
+    }
+
+    private void tickPreBossCooldown() {
+        if (phase != EventPhase.PRE_BOSS_COOLDOWN || !isOfficialV2Attempt()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (phaseDeadlineMillis <= 0L) {
+            phaseDeadlineMillis = now + 20_000L;
+            announceEventTitle("§5ТИШИНА ПЕРЕД РАЗЛОМОМ",
+                    "§fДвадцать секунд до пробуждения Хранителя", true);
+            saveStateAsync();
+            return;
+        }
+        if (now < phaseDeadlineMillis) {
+            renderPreBossCooldownVisual(now);
+            return;
+        }
+        phaseDeadlineMillis = 0L;
+        if (!transition(EventPhase.BOSS_CINEMATIC,
+                "Wave 6 complete; pre-boss cooldown complete", eventId + ":boss-cinematic")) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "pre-boss cooldown handoff failed");
+            return;
+        }
+        phaseDeadlineMillis = now + BOSS_CINEMATIC_DURATION_TICKS * 50L;
+        scheduleOfficialBossSpawn();
+    }
+
+    private void renderPreBossCooldownVisual(long now) {
+        Location core = coreCombatAnchorLocation();
+        if (core == null) {
+            return;
+        }
+        double rotation = now * 0.0012D;
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, core)) {
+                continue;
+            }
+            spawnPatternRing(viewer, core.clone().add(0.0D, 0.08D, 0.0D),
+                    new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                    6.0D, 24, rotation, Particle.REVERSE_PORTAL);
+            viewer.spawnParticle(Particle.END_ROD, core.clone().add(0.0D, 1.0D, 0.0D),
+                    3, 0.35D, 0.7D, 0.35D, 0.01D);
+        }
     }
 
     /**
@@ -9392,6 +10407,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        if (phase == EventPhase.WAVE_6 && isOfficialV2Attempt()) {
+            tickWaveSixCompletion();
+            return;
+        }
         if (activeWave < 1 || activeWave > 5) {
             return;
         }
@@ -9413,6 +10432,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         announceWaveComplete(completedWave);
         getLogger().info("WAVE_COMPLETED event=" + eventId + " wave=" + completedWave);
+        if (isOfficialV2Attempt()) {
+            EventPhase intermission = switch (completedWave) {
+                case 1 -> EventPhase.INTERMISSION_1;
+                case 2 -> EventPhase.INTERMISSION_2;
+                case 3 -> EventPhase.INTERMISSION_3;
+                case 4 -> EventPhase.INTERMISSION_4;
+                case 5 -> EventPhase.INTERMISSION_5;
+                default -> null;
+            };
+            if (intermission == null || !transition(intermission,
+                    "wave " + completedWave + " defeated; transition runes",
+                    eventId + ":intermission:" + completedWave)) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "V2 intermission transition failed");
+                return;
+            }
+            if (!prepareTransitionRunes(completedWave)) {
+                getLogger().severe("V2_INTERMISSION_RUNE_SETUP_FAILED event=" + eventId
+                        + " completed_wave=" + completedWave);
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "V2 transition rune setup failed");
+                return;
+            }
+            announceEventTitle("§5ПЕРЕХОД РАЗЛОМА",
+                    "§fЗаймите все руны и удерживайте их пять секунд", true);
+            saveStateAsync();
+            return;
+        }
         if (completedWave == 1) {
             phaseDeadlineMillis = System.currentTimeMillis() + config.intermissionSeconds() * 1000L;
             transition(EventPhase.INTERMISSION_1, "wave 1 defeated", eventId + ":intermission:1");
@@ -9432,6 +10477,34 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 scheduleOfficialBossSpawn();
             }
         }
+    }
+
+    private void tickWaveSixCompletion() {
+        boolean live = ownedEntities.values().stream().anyMatch(entity -> {
+            String kind = readString(entity, keyKind);
+            int wave = readInt(entity, keyWave, 0);
+            return (EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind))
+                    && wave == 6 && isLiveOwnedEntity(entity.getUniqueId());
+        });
+        if (live) {
+            return;
+        }
+        if (!spawnWaveCompletionLoot(6)) {
+            return;
+        }
+        waveSixChamberController.openPassage(generation);
+        announceWaveComplete(6);
+        if (!transition(EventPhase.PRE_BOSS_COOLDOWN,
+                "Wave 6 cleared; boss cooldown", eventId + ":pre-boss-cooldown")) {
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "Wave 6 handoff failed");
+            return;
+        }
+        phaseDeadlineMillis = System.currentTimeMillis() + 20_000L;
+        activeWave = 6;
+        saveStateAsync();
+        getLogger().info("WAVE_6_COMPLETED event=" + eventId
+                + " chambers=" + waveSixChamberController.assignment().chamberCount()
+                + " passage_open=" + waveSixChamberController.passageOpen());
     }
 
     /**
@@ -9667,7 +10740,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
-        boolean finalWave = wave == FINAL_WAVE_NUMBER;
+        // Wave 6 is a normal chamber wave in V2.  FINAL_WAVE is a migration
+        // alias and remains reachable only from the disposable legacy/test
+        // flow, never from the official cinematic hand-off.
+        boolean finalWave = wave == FINAL_WAVE_NUMBER
+                && phase == EventPhase.FINAL_WAVE;
         EventConfig.WaveDefinition definition = switch (wave) {
             case 1 -> config.wave1();
             case 2 -> config.wave2();
@@ -10173,7 +11250,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " wave=3 type=PORTALS portals=" + portalCount
                     + " floor_y=" + portalAnchor.getBlockY()
                     + " capture_ms=" + PortalCapturePolicy.CAPTURE_MILLIS
-                    + " grace_ms=" + PortalCapturePolicy.GRACE_MILLIS);
+                    + " grace_ms=" + PortalCapturePolicy.GRACE_MILLIS
+                    + " decay_rate=" + config.portalCaptureDecayRate());
             getLogger().info("PORTAL_VISUAL_LAYER event=" + eventId
                     + " wave=3 portals=" + portalCount
                     + " layers=FRAME,INNER,SHARD origin=floor-centered tracked=true");
@@ -10559,6 +11637,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormOriginalBlocks.clear();
         riftStormOriginalWebBlocks.clear();
         riftStormLastDamageSecond.clear();
+        clearRiftStormSafeZoneVisuals();
         nextRiftStormVisualMillis = 0L;
         int minX = Math.max(arenaMinX, coreX - (int) Math.floor(config.arenaRadius()));
         int maxX = Math.min(arenaMaxX, coreX + (int) Math.floor(config.arenaRadius()));
@@ -10607,6 +11686,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormSafeCells.addAll(plan.safeCells());
         riftStormOriginalBlocks.putAll(plan.originalBlocks());
         applyRiftStormPlan(world);
+        spawnRiftStormSafeZoneVisuals(world);
         getLogger().info("WAVE_STORM_PATTERN event=" + eventId + " wave=5 pattern=" + lastStormPattern
                 + " candidates=" + patternOriginals.size() + " hazards=" + riftStormHazards.size()
                 + " safe=" + riftStormSafeCells.size());
@@ -10676,6 +11756,111 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " floor_y=" + stormFloorY
                 + " safe_ratio=" + (riftStormSafeCells.size()
                 / (double) Math.max(1, riftStormHazards.size() + riftStormSafeCells.size())));
+    }
+
+    /**
+     * Mark a bounded sample of safe cells with temporary emerald floor tiles.
+     * These are BlockDisplay entities, not world mutations, so the player's
+     * arena is restored automatically even if the event is interrupted.
+     */
+    private void spawnRiftStormSafeZoneVisuals(World world) {
+        if (world == null || riftStormSafeCells.isEmpty()) {
+            return;
+        }
+        clearRiftStormSafeZoneVisuals();
+        Set<HazardPlanner.Point> protectedPoints = protectedStormPoints();
+        List<HazardPlanner.Point> candidates = riftStormSafeCells.stream()
+                .filter(point -> !protectedPoints.contains(point))
+                .sorted(Comparator.comparingInt(HazardPlanner.Point::x)
+                        .thenComparingInt(HazardPlanner.Point::z))
+                .toList();
+        int count = Math.min(MAX_STORM_SAFE_ZONE_DISPLAYS, candidates.size());
+        if (count == 0) {
+            return;
+        }
+        int stride = Math.max(1, (int) Math.ceil(candidates.size() / (double) count));
+        int stormFloorY = combatFloorY();
+        for (int index = 0; index < candidates.size()
+                && riftStormSafeZoneDisplays.size() < count; index += stride) {
+            HazardPlanner.Point point = candidates.get(index);
+            Location origin = new Location(world, point.x() + 0.5D,
+                    stormFloorY + 1.0D, point.z() + 0.5D);
+            BlockDisplay display = world.spawn(origin, BlockDisplay.class, entity -> {
+                entity.setBlock(Material.EMERALD_BLOCK.createBlockData());
+                entity.setBrightness(new Display.Brightness(15, 15));
+                entity.setViewRange(64.0F);
+                entity.setDisplayWidth(1.0F);
+                entity.setDisplayHeight(1.0F);
+                entity.setPersistent(false);
+                entity.setGravity(false);
+                entity.setInvulnerable(true);
+                entity.setShadowRadius(0.0F);
+                entity.setTransformation(new Transformation(
+                        new Vector3f(-0.46F, -0.96F, -0.46F), new AxisAngle4f(),
+                        new Vector3f(0.92F, 0.16F, 0.92F), new AxisAngle4f()));
+            });
+            tag(display, EVENT_KIND_DISPLAY, 5, false);
+            ownedEntities.put(display.getUniqueId(), display);
+            waveObjectiveVisuals.add(display.getUniqueId());
+            riftStormSafeZoneDisplays.put(point, display.getUniqueId());
+        }
+        getLogger().info("WAVE_STORM_SAFE_VISUALS event=" + eventId
+                + " emerald_displays=" + riftStormSafeZoneDisplays.size()
+                + " cap=" + MAX_STORM_SAFE_ZONE_DISPLAYS
+                + " beacon_particles=green display_only=true");
+    }
+
+    /** Render bounded green beacon columns above the temporary emerald tiles. */
+    private void renderRiftStormSafeZoneVisuals(World world, long now) {
+        if (world == null || riftStormSafeZoneDisplays.isEmpty()) {
+            return;
+        }
+        int visualIndex = 0;
+        Particle.DustOptions green = new Particle.DustOptions(
+                Color.fromRGB(84, 255, 105), 1.05F);
+        for (Map.Entry<HazardPlanner.Point, UUID> entry : riftStormSafeZoneDisplays.entrySet()) {
+            Entity entity = ownedEntities.get(entry.getValue());
+            if (!(entity instanceof BlockDisplay display) || !display.isValid()) {
+                continue;
+            }
+            float pulse = 1.0F + (float) Math.sin(now * 0.004D + visualIndex * 0.75D) * 0.035F;
+            display.setTransformation(new Transformation(
+                    new Vector3f(-0.46F, -0.96F, -0.46F), new AxisAngle4f(),
+                    new Vector3f(0.92F * pulse, 0.16F * pulse, 0.92F * pulse), new AxisAngle4f()));
+            Location base = new Location(world, entry.getKey().x() + 0.5D,
+                    combatFloorY() + 1.12D, entry.getKey().z() + 0.5D);
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, base)) {
+                    continue;
+                }
+                for (int level = 0; level < 6; level++) {
+                    Location beam = base.clone().add(0.0D, level * 0.48D, 0.0D);
+                    viewer.spawnParticle(Particle.DUST, beam, 1,
+                            0.035D, 0.05D, 0.035D, 0.0D, green);
+                }
+                viewer.spawnParticle(Particle.END_ROD, base.clone().add(0.0D, 2.85D, 0.0D),
+                        1, 0.08D, 0.08D, 0.08D, 0.0D);
+                spawnPatternRing(viewer, base, new Vector(1.0D, 0.0D, 0.0D),
+                        new Vector(0.0D, 0.0D, 1.0D), 0.48D, 8,
+                        now * 0.001D + visualIndex * 0.6D, Particle.DUST, green);
+            }
+            visualIndex++;
+        }
+        recordParticleEmission(Math.min(MAX_STORM_SAFE_ZONE_DISPLAYS, visualIndex) * 15);
+    }
+
+    private void clearRiftStormSafeZoneVisuals() {
+        for (UUID visualId : new HashSet<>(riftStormSafeZoneDisplays.values())) {
+            Entity visual = ownedEntities.remove(visualId);
+            if (visual == null) {
+                visual = Bukkit.getEntity(visualId);
+            }
+            if (visual != null && visual.isValid()) {
+                visual.remove();
+            }
+            waveObjectiveVisuals.remove(visualId);
+        }
+        riftStormSafeZoneDisplays.clear();
     }
 
     private Set<HazardPlanner.Point> protectedStormPoints() {
@@ -10819,9 +12004,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 player.spawnParticle(safe ? Particle.END_ROD : Particle.DRAGON_BREATH,
                         player.getLocation().add(0.0D, 0.15D, 0.0D), impact ? 16 : 6,
                         0.45D, 0.1D, 0.45D, 0.02D);
-                sendObjectiveActionBar(player, impact ? "Пульс ядра: УДАР" :
-                        "Пульс ядра: " + (safe ? "БЕЗОПАСНЫЙ СЕКТОР" : "БЕГИТЕ К СВЕТУ"),
-                        safe ? NamedTextColor.AQUA : NamedTextColor.RED, now);
                 if (impact && !safe) {
                     player.damage(WAVE_ONE_PULSE_DAMAGE);
                     player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
@@ -10867,8 +12049,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     marked.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE,
                             markRevealTicks, 0, false, true, true));
                     marked.playSound(marked.getLocation(), Sound.ENTITY_ENDERMAN_STARE, 0.8F, 1.35F);
-                    marked.sendActionBar(Component.text("Вас отметил Разлом — бегите и выживайте 11 секунд",
-                            NamedTextColor.LIGHT_PURPLE));
                     getLogger().info("WAVE_OBJECTIVE_MARK event=" + eventId + " wave=2 player="
                             + marked.getUniqueId() + " deadline=" + waveTwoMarkDeadlineMillis);
                 }
@@ -10881,19 +12061,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveTwoMarkedPlayerUuid = null;
             return;
         }
-        marked.sendActionBar(Component.text("Метка Разлома: "
-                + Math.max(0L, (waveTwoMarkDeadlineMillis - now + 999L) / 1000L) + " сек.",
-                NamedTextColor.LIGHT_PURPLE));
         if (now < waveTwoMarkRevealDeadlineMillis) {
             marked.spawnParticle(Particle.END_ROD, marked.getLocation().add(0.0D, 1.0D, 0.0D),
                     8, 0.35D, 0.6D, 0.35D, 0.02D);
-        }
-    }
-
-    private void sendObjectiveActionBar(Player player, String text, NamedTextColor color, long now) {
-        if (player != null && now - objectiveActionBarAt.getOrDefault(player.getUniqueId(), 0L) >= 200L) {
-            player.sendActionBar(Component.text(text, color));
-            objectiveActionBarAt.put(player.getUniqueId(), now);
         }
     }
 
@@ -10959,6 +12129,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void updatePortalObjective(long now) {
         boolean wasComplete = waveObjectiveComplete;
+        boolean traceProgress = now >= portalCaptureTraceAtMillis;
         List<Location> portals = wavePortals.getOrDefault(3, List.of());
         List<PortalCapturePolicy.PortalState> states = portalCaptureStates.getOrDefault(3, List.of());
         if (portals.size() != states.size() || portals.isEmpty()) {
@@ -10972,8 +12143,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boolean occupied = activeLivingPlayers().stream().anyMatch(player ->
                     horizontalDistanceSquared(player.getLocation(), portal) <= 2.5D * 2.5D
                             && Math.abs(player.getLocation().getY() - portal.getY()) <= 1.5D);
-            PortalCapturePolicy.PortalState state = PortalCapturePolicy.tick(states.get(index), occupied, now);
+            PortalCapturePolicy.PortalState state = PortalCapturePolicy.tick(
+                    states.get(index), occupied, now, config.portalCaptureDecayRate());
             updated.add(state);
+            if (traceProgress) {
+                int percent = (int) Math.min(100L,
+                        state.progressMillis() * 100L / Math.max(1L, PortalCapturePolicy.CAPTURE_MILLIS));
+                getLogger().info("PORTAL_CAPTURE_PROGRESS event=" + eventId
+                        + " wave=3 index=" + index
+                        + " occupied=" + occupied
+                        + " progress_ms=" + state.progressMillis()
+                        + " percent=" + percent
+                        + " completed=" + state.completed()
+                        + " decay_rate=" + config.portalCaptureDecayRate());
+            }
             if (state.completed()) {
                 completed++;
             }
@@ -10987,11 +12170,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         portalCaptureStates.put(3, updated);
-        refreshPortalObjectiveVisuals(updated);
-        for (Player player : eventAudience()) {
-            sendObjectiveActionBar(player, "Порталы Разлома: " + completed + "/" + portals.size()
-                    + " · удерживайте портал 5 сек.", NamedTextColor.LIGHT_PURPLE, now);
+        if (traceProgress) {
+            portalCaptureTraceAtMillis = now + 1_000L;
         }
+        refreshPortalObjectiveVisuals(updated);
         waveObjectiveComplete = completed == portals.size();
         if (waveObjectiveComplete && !wasComplete) {
             announceEventTitle("§aПОРТАЛЫ ЗАПЕЧАТАНЫ", "§fПобедите оставшихся слуг Разлома", true);
@@ -11080,11 +12262,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " observed_late=true");
             return;
         }
-        int remaining = (int) Math.max(0L, (state.deadlineMillis() - now + 999L) / 1000L);
         for (Player player : eventAudience()) {
-            sendObjectiveActionBar(player, "Защита ядра: "
-                    + Math.round(state.currentHealth()) + "/" + Math.round(state.maxHealth())
-                    + " · " + remaining + " сек.", NamedTextColor.YELLOW, now);
             if (player.getWorld().equals(core.getWorld())) {
                 player.spawnParticle(Particle.END_ROD, core.clone().add(0.0D, 0.8D, 0.0D),
                         attackers > 0 ? 10 : 3, 0.65D, 0.45D, 0.65D, 0.02D);
@@ -11135,6 +12313,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int elapsed = Math.max(0, (int) ((now - waveObjectiveStartedMillis) / 1000L));
         Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) {
+            getLogger().warning("WAVE_STORM_UPDATE_SKIPPED event=" + eventId
+                    + " reason=core-world-unavailable");
+            return;
+        }
+        if (now >= nextRiftStormVisualMillis) {
+            renderRiftStormSafeZoneVisuals(core.getWorld(), now);
+        }
         if (core != null && now >= nextRiftStormPullMillis) {
             int pulled = 0;
             for (Player player : activeLivingPlayers()) {
@@ -11176,10 +12362,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.spawnParticle(danger ? Particle.SOUL_FIRE_FLAME : Particle.END_ROD,
                     player.getLocation().add(0.0D, 0.15D, 0.0D), danger ? 12 : 5,
                     0.45D, 0.05D, 0.45D, 0.01D);
-            player.sendActionBar(Component.text(danger
-                    ? "Шторм Разлома: ОПАСНАЯ зона · ищите безопасный свет"
-                    : "Шторм Разлома: безопасная зона · " + Math.max(0, 30 - elapsed) + " сек.",
-                    danger ? NamedTextColor.RED : NamedTextColor.AQUA));
             if (danger && riftStormLastDamageSecond.getOrDefault(player.getUniqueId(), -1) != elapsed) {
                 player.damage(4.0D);
                 player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, SLOWNESS_DEBUFF_TICKS,
@@ -11190,9 +12372,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (now >= nextRiftStormVisualMillis) {
             nextRiftStormVisualMillis = now + 250L;
         }
-        if (elapsed >= 30) {
+        if (elapsed >= RIFT_STORM_DURATION_SECONDS) {
             waveObjectiveComplete = true;
             restoreRiftStormBlocks();
+            clearRiftStormSafeZoneVisuals();
             riftStormHazards.clear();
             riftStormSafeCells.clear();
             riftStormOriginalBlocks.clear();
@@ -11280,6 +12463,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         riftStormOriginalBlocks.clear();
         riftStormOriginalWebBlocks.clear();
         riftStormLastDamageSecond.clear();
+        clearRiftStormSafeZoneVisuals();
+        portalWaveKnockbackUntilMillis.clear();
         nextRiftStormPullMillis = 0L;
         nextRiftStormVisualMillis = 0L;
         towerDefenseState = null;
@@ -11291,6 +12476,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveObjectiveComplete = false;
         waveObjectiveLastSecond = -1;
         waveObjectiveMobCount = 0;
+        portalCaptureTraceAtMillis = 0L;
         objectiveActionBarAt.clear();
         for (UUID visualId : new HashSet<>(waveObjectiveVisuals)) {
             Entity visual = ownedEntities.remove(visualId);
@@ -11347,7 +12533,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (elapsedTicks[0] >= BOSS_CINEMATIC_DURATION_TICKS) {
                 bossSpawnTask.cancel();
                 bossSpawnTask = null;
-                if (!transition(EventPhase.FINAL_WAVE, "boss cinematic complete; final wave", eventId + ":final-wave")) {
+                if (!transition(EventPhase.BOSS_ACTIVE,
+                        "boss cinematic complete; V2 boss active", eventId + ":boss-active")) {
                     getLogger().severe("BOSS_CINEMATIC_HANDOFF_FAILED event=" + eventId
                             + " generation=" + callbackGeneration);
                     forcePhase(EventPhase.RECOVERY_REQUIRED, "boss cinematic handoff failed");
@@ -11355,9 +12542,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 phaseDeadlineMillis = 0L;
                 saveStateAsync();
-                announceEventTitle("§4ФИНАЛЬНАЯ ВОЛНА",
-                        "§fПоследняя стража прикрывает пробуждение Хранителя", true);
-                spawnWave(FINAL_WAVE_NUMBER, false);
+                announceEventTitle("§4ХРАНИТЕЛЬ РАЗЛОМА ПРОСНУЛСЯ",
+                        "§fТеперь бой решает только ваша стойкость", true);
+                spawnOfficialBoss(null);
                 return;
             }
             elapsedTicks[0] += 20;
@@ -11377,9 +12564,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!player.getWorld().equals(core.getWorld())) {
                 continue;
             }
-            player.sendActionBar(Component.text("Разлом раскрывается... "
-                    + Math.max(0, (BOSS_SPAWN_DELAY_TICKS - elapsedTicks) / 20) + " сек.",
-                    NamedTextColor.DARK_PURPLE));
             for (int point = 0; point < 16; point++) {
                 double angle = Math.PI * 2.0D * point / 16.0D + elapsedTicks * 0.015D;
                 Location ring = core.clone().add(Math.cos(angle) * radius,
@@ -11547,12 +12731,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return Math.max(1, (int) Math.round(base * scale));
     }
 
-    private void spawnEnderman(World world, Location core, int wave, boolean elite,
-                               boolean finalWave, boolean test, int index, int abilityIndex) {
-        Location location = safeSpawnLocation(core, index, elite ? 4.0D : 2.0D);
+    private Enderman spawnEnderman(World world, Location core, int wave, boolean elite,
+                                   boolean finalWave, boolean test, int index, int abilityIndex) {
+        Location location = safeSpawnLocationForWave(core, index, elite ? 4.0D : 2.0D, wave);
         if (location == null) {
             getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob.");
-            return;
+            return null;
         }
         Enderman enderman = (Enderman) world.spawnEntity(location, EntityType.ENDERMAN);
         String kind = finalWave ? EVENT_KIND_FINAL_WAVE : elite ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
@@ -11573,7 +12757,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             AttributeInstance attack = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
             if (attack != null) {
-                attack.setBaseValue(attack.getBaseValue() + 2.0D);
+                attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage(
+                        attack.getBaseValue() + 2.0D, WAVE_MOB_DAMAGE_REDUCTION));
             }
             tagMiniBossSpell(enderman, miniBossSpell);
             miniBossSpells.put(enderman.getUniqueId(), miniBossSpell);
@@ -11592,12 +12777,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 enderman.setHealth(health);
             }
             AttributeInstance attack = enderman.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
-            if (attack != null && strength > 1.0D) {
-                attack.setBaseValue(attack.getBaseValue() * strength);
+            if (attack != null) {
+                double scaledAttack = strength > 1.0D
+                        ? attack.getBaseValue() * strength : attack.getBaseValue();
+                attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage(
+                        scaledAttack, WAVE_MOB_DAMAGE_REDUCTION));
             }
         }
         applyWaveThreeModifiers(enderman, wave);
         ownedEntities.put(enderman.getUniqueId(), enderman);
+        assignWaveSixChamber(enderman, index);
         tagTowerRole(enderman, index);
         assignCombatTactic(enderman, index);
         boolean commander = elite && assignWaveCommander(enderman, wave, true);
@@ -11611,15 +12800,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (finalWave && !test) {
             finalWaveEntities.add(enderman.getUniqueId());
         }
+        return enderman;
     }
 
-    private void spawnSkeleton(World world, Location core, int wave, boolean miniBoss,
-                               boolean finalWave, boolean test, int index, int abilityIndex) {
+    private Skeleton spawnSkeleton(World world, Location core, int wave, boolean miniBoss,
+                                   boolean finalWave, boolean test, int index, int abilityIndex) {
         String kind = finalWave ? EVENT_KIND_FINAL_WAVE
                 : miniBoss ? EVENT_KIND_ELITE : EVENT_KIND_WAVE_MOB;
         Entity entity = spawnOwnedMob(world, core, EntityType.SKELETON, wave, kind, test, index);
         if (!(entity instanceof Skeleton skeleton)) {
-            return;
+            return null;
         }
         skeleton.setPersistent(true);
         skeleton.setRemoveWhenFarAway(false);
@@ -11675,11 +12865,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " hazard_aware=" + behavior.hazardAware()
                 + " tactic=" + behavior.tactic()
                 + " combat_role=" + combatTactic(skeleton, abilityIndex));
+        return skeleton;
     }
 
     private Entity spawnOwnedMob(World world, Location core, EntityType type, int wave,
                                  String kind, boolean test, int index) {
-        Location location = safeSpawnLocation(core, index, 3.0D);
+        Location location = safeSpawnLocationForWave(core, index, 3.0D, wave);
         if (location == null) {
             getLogger().warning("Cannot find a safe floor spawn for End Rift wave mob type=" + type);
             return null;
@@ -11702,10 +12893,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         ownedEntities.put(entity.getUniqueId(), entity);
+        assignWaveSixChamber(entity, index);
         tagTowerRole(entity, index);
         assignCombatTactic(entity, index);
         bindEventEntityClientForOnlinePlayers(entity);
-        if (wave == FINAL_WAVE_NUMBER && !test) {
+        if (wave == FINAL_WAVE_NUMBER && !test && EVENT_KIND_FINAL_WAVE.equals(kind)) {
             finalWaveEntities.add(entity.getUniqueId());
         }
         return entity;
@@ -11738,7 +12930,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             living.setHealth(maxHealth);
         }
         if (attack != null) {
-            attack.setBaseValue(attack.getBaseValue() + attackBonus);
+            attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage(
+                    attack.getBaseValue() + attackBonus, WAVE_MOB_DAMAGE_REDUCTION));
         }
         getLogger().fine((skeleton ? "SKELETON_STATS" : "SPIDER_STATS") + " entity=" + living.getUniqueId()
                 + " health=" + (health == null ? "unknown" : health.getBaseValue())
@@ -11871,6 +13064,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isCombatTarget(player) || !entity.getWorld().equals(player.getWorld())) {
                 continue;
             }
+            // Wave 6 proximity alerts are still target selection.  Apply the
+            // same closed-chamber guard used by melee, projectiles and AoE so
+            // a tower cannot acquire a player from a neighbouring room just
+            // because that player happens to be closer in world coordinates.
+            if (!waveSixTargetAllowed(entity, player)) {
+                continue;
+            }
             double distance = horizontalDistanceSquared(entity.getLocation(), player.getLocation());
             if (distance > radiusSquared) {
                 continue;
@@ -11914,6 +13114,135 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return null;
+    }
+
+    /** Resolve Wave 6 spawns inside the deterministic sector of one chamber. */
+    private Location safeSpawnLocationForWave(Location core, int index, double offset, int wave) {
+        if (wave != 6 || !waveSixChamberController.owns(generation)
+                || waveSixChamberController.assignment().chamberCount() <= 0) {
+            return safeSpawnLocation(core, index, offset);
+        }
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null || anchor.getWorld() == null) {
+            return null;
+        }
+        int chamberCount = waveSixChamberController.assignment().chamberCount();
+        int chamber = Math.floorMod(index, chamberCount);
+        double centerAngle = ChamberIsolationPolicy.chamberCenterAngle(chamber, chamberCount);
+        double baseRadius = ChamberIsolationPolicy.sectorRadius(chamberCount,
+                Math.min(10.0D, Math.max(6.0D, config.arenaRadius() * 0.48D)));
+        for (int attempt = 0; attempt < 20; attempt++) {
+            double angle = centerAngle + (Math.floorMod(index + attempt, 7) - 3) * 0.10D;
+            double radius = baseRadius + (Math.floorMod(index + attempt * 3, 5) - 2)
+                    * Math.max(0.35D, offset * 0.18D);
+            radius = Math.max(ChamberIsolationPolicy.INNER_RADIUS + 0.75D,
+                    Math.min(ChamberIsolationPolicy.OUTER_RADIUS - 0.75D, radius));
+            Location candidate = anchor.clone().add(Math.cos(angle) * radius, 0.0D,
+                    Math.sin(angle) * radius);
+            double xOffset = candidate.getX() - anchor.getX();
+            double zOffset = candidate.getZ() - anchor.getZ();
+            if (!ChamberIsolationPolicy.containsPoint(chamber, xOffset, zOffset, chamberCount)) {
+                continue;
+            }
+            Block feet = candidate.getBlock();
+            Block head = feet.getRelative(BlockFace.UP);
+            Block floor = feet.getRelative(BlockFace.DOWN);
+            if (feet.isPassable() && head.isPassable() && floor.getType().isSolid()
+                    && candidate.distanceSquared(anchor) <= config.arenaRadius() * config.arenaRadius()
+                    && isSafeCombatStep(anchor, candidate, boundedCombatRadius(config.arenaRadius()),
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS)) {
+                return candidate;
+            }
+        }
+        getLogger().warning("WAVE_6_CHAMBER_SPAWN_REFUSED event=" + eventId
+                + " chamber=" + chamber + " index=" + index + " reason=no-safe-floor");
+        return null;
+    }
+
+    private void assignWaveSixChamber(Entity entity, int index) {
+        if (entity == null || readInt(entity, keyWave, 0) != 6
+                || !isWaveCombatKind(readString(entity, keyKind))
+                || !waveSixChamberController.owns(generation)) {
+            return;
+        }
+        int chamberCount = waveSixChamberController.assignment().chamberCount();
+        if (chamberCount <= 0) {
+            return;
+        }
+        int chamber = Math.floorMod(index, chamberCount);
+        if (!waveSixChamberController.assignEntity(generation, entity.getUniqueId(), chamber)) {
+            getLogger().warning("WAVE_6_CHAMBER_ASSIGNMENT_REFUSED event=" + eventId
+                    + " entity=" + entity.getUniqueId() + " chamber=" + chamber);
+            return;
+        }
+        if (keyChamberId != null) {
+            entity.getPersistentDataContainer().set(keyChamberId,
+                    PersistentDataType.INTEGER, chamber);
+        }
+        getLogger().fine("WAVE_6_CHAMBER_ASSIGNED event=" + eventId
+                + " entity=" + entity.getUniqueId() + " chamber=" + chamber
+                + " chamber_count=" + chamberCount);
+    }
+
+    private int waveSixChamberId(Entity entity) {
+        if (entity == null || readInt(entity, keyWave, 0) != 6) {
+            return -1;
+        }
+        int persisted = readInt(entity, keyChamberId, -1);
+        int count = waveSixChamberController.assignment().chamberCount();
+        if (persisted >= 0 && persisted < count) {
+            return persisted;
+        }
+        return waveSixChamberController.chamberOfEntity(generation, entity.getUniqueId());
+    }
+
+    private boolean waveSixTargetAllowed(Entity entity, Player player) {
+        if (entity == null || player == null || readInt(entity, keyWave, 0) != 6) {
+            return isCombatTarget(player);
+        }
+        if (!isActiveBossParticipant(player)) {
+            return false;
+        }
+        int chamber = waveSixChamberId(entity);
+        if (chamber < 0 || !waveSixChamberController.owns(generation)) {
+            return false;
+        }
+        if (!waveSixChamberController.allowsMobTarget(
+                generation, entity.getUniqueId(), player.getUniqueId())) {
+            return false;
+        }
+        if (waveSixChamberController.passageOpen()) {
+            return true;
+        }
+        Location anchor = coreCombatAnchorLocation();
+        int chamberCount = waveSixChamberController.assignment().chamberCount();
+        if (anchor == null || player.getWorld() == null
+                || !player.getWorld().equals(anchor.getWorld())) {
+            return false;
+        }
+        double verticalDistance = Math.abs(player.getLocation().getY() - anchor.getY());
+        return verticalDistance <= configuredCombatVerticalRadius()
+                && ChamberIsolationPolicy.containsPoint(chamber,
+                player.getLocation().getX() - anchor.getX(),
+                player.getLocation().getZ() - anchor.getZ(), chamberCount);
+    }
+
+    private Location constrainWaveSixPreferred(Location anchor, Location preferred, Entity entity) {
+        int chamber = waveSixChamberId(entity);
+        int count = waveSixChamberController.assignment().chamberCount();
+        if (anchor == null || chamber < 0 || count <= 0) {
+            return preferred;
+        }
+        double dx = preferred == null ? 0.0D : preferred.getX() - anchor.getX();
+        double dz = preferred == null ? 0.0D : preferred.getZ() - anchor.getZ();
+        if (preferred != null && ChamberIsolationPolicy.containsPoint(chamber, dx, dz, count)) {
+            return preferred;
+        }
+        double desired = preferred == null ? 8.0D : Math.sqrt(dx * dx + dz * dz);
+        desired = ChamberIsolationPolicy.sectorRadius(count, desired);
+        double angle = ChamberIsolationPolicy.chamberCenterAngle(chamber, count);
+        return anchor.clone().add(Math.cos(angle) * desired, 0.0D,
+                Math.sin(angle) * desired);
     }
 
     private Location safeBossSpawnLocation() {
@@ -11981,13 +13310,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double radius = EVENT_KIND_BOSS.equals(kind)
                 ? boundedCombatRadius(config.bossRadius())
                 : boundedCombatRadius(config.containmentRadius());
+        int chamber = waveSixChamberId(entity);
+        int chamberCount = waveSixChamberController.assignment().chamberCount();
+        boolean closedChamber = chamber >= 0 && !waveSixChamberController.passageOpen();
+        boolean outsideChamber = closedChamber
+                && !ChamberIsolationPolicy.containsPoint(chamber,
+                target.getX() - anchor.getX(), target.getZ() - anchor.getZ(), chamberCount);
         if (isCoreBlockPosition(target)) {
             // A teleport request may name the solid Core block itself.  Never
             // put a combat entity inside/on top of the Core: resolve it to a
             // nearby floor position on the Core's combat level instead.
             double minimum = EVENT_KIND_BOSS.equals(kind)
                     ? MIN_BOSS_CORE_DISTANCE_BLOCKS : MIN_WAVE_CORE_DISTANCE_BLOCKS;
-            Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minimum);
+            Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minimum, chamber);
             if (safe == null) {
                 event.setCancelled(true);
             } else {
@@ -11997,10 +13332,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         boolean outsideHorizontalRadius = horizontalDistanceSquared(target, anchor) > radius * radius;
         boolean outsideVerticalRadius = outsideCombatVertical(target, anchor);
-        if (outsideHorizontalRadius || outsideVerticalRadius) {
+        if (outsideHorizontalRadius || outsideVerticalRadius || outsideChamber) {
             double minimum = EVENT_KIND_BOSS.equals(kind)
                     ? MIN_BOSS_CORE_DISTANCE_BLOCKS : MIN_WAVE_CORE_DISTANCE_BLOCKS;
-            Location safe = findSafeCombatLocation(anchor, target, radius - 0.75D, minimum);
+            Location preferred = chamber >= 0
+                    ? constrainWaveSixPreferred(anchor, target, entity) : target;
+            Location safe = findSafeCombatLocation(anchor, preferred, radius - 0.75D, minimum, chamber);
             if (safe == null) {
                 event.setCancelled(true);
             } else {
@@ -12167,9 +13504,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void spawnOfficialBoss(CommandSender sender) {
         if (!isConfigured() || (!endUnlocked && phase != EventPhase.BOSS_ACTIVE
-                && phase != EventPhase.BOSS_CINEMATIC && phase != EventPhase.WAVE_5)) {
+                && phase != EventPhase.BOSS_CINEMATIC && phase != EventPhase.WAVE_5
+                && phase != EventPhase.WAVE_6 && phase != EventPhase.PRE_BOSS_COOLDOWN)) {
             if (sender != null) {
-                message(sender, "&cОфициальный boss доступен только после Wave 5 или в BOSS_ACTIVE.");
+                message(sender, "&cОфициальный boss доступен только после Wave 6 или в BOSS_ACTIVE.");
             }
             return;
         }
@@ -12180,12 +13518,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (phase == EventPhase.WAVE_5) {
-            if (transition(EventPhase.BOSS_CINEMATIC, "admin confirmed boss cinematic", eventId + ":boss-cinematic-admin")) {
-                phaseDeadlineMillis = System.currentTimeMillis() + BOSS_CINEMATIC_DURATION_TICKS * 50L;
-                scheduleOfficialBossSpawn();
+            if (sender != null) {
+                message(sender, "&eСначала завершите Wave 6: V2 не пропускает chamber-испытание.");
+            }
+            return;
+        }
+        if (phase == EventPhase.WAVE_6) {
+            if (transition(EventPhase.PRE_BOSS_COOLDOWN,
+                    "admin confirmed V2 pre-boss cooldown", eventId + ":pre-boss-cooldown-admin")) {
+                phaseDeadlineMillis = System.currentTimeMillis() + 20_000L;
+                activeWave = 6;
+                saveStateAsync();
             }
             if (sender != null) {
-                message(sender, "&eЗапущена кинематографическая фаза босса; появление через 10 секунд.");
+                message(sender, "&eЗапущена двадцатисекундная пауза перед боссом.");
+            }
+            return;
+        }
+        if (phase == EventPhase.PRE_BOSS_COOLDOWN) {
+            if (sender != null) {
+                message(sender, "&eПауза перед боссом ещё идёт.");
             }
             return;
         }
@@ -12213,16 +13565,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Enderman boss = (Enderman) core.getWorld().spawnEntity(core, EntityType.ENDERMAN);
-        configureBoss(boss, false);
+        if (!configureBoss(boss, false)) {
+            if (sender != null) {
+                message(sender, "&cV2-босс не создан: сервер не разрешает реальное здоровье выше 2048.");
+            }
+            return;
+        }
         getLogger().info("BOSS_SPAWNED event=" + eventId + " boss=" + boss.getUniqueId()
                 + " scale_players=" + eventScalePlayers()
-                + " virtual_max_health=" + bossMaxHealth(boss));
+                + " real_max_health=" + bossMaxHealth(boss)
+                + " authority=" + (isV2OfficialBoss(boss) ? "entity-health-v2" : "legacy-test"));
         if (sender != null) {
             message(sender, "&aОфициальный Rift Guardian создан.");
         }
     }
 
-    private void configureBoss(Enderman boss, boolean test) {
+    private boolean configureBoss(Enderman boss, boolean test) {
         bossUuid = boss.getUniqueId();
         bossKillerUuid = null;
         bossStage = BossStage.AWAKENING;
@@ -12249,6 +13607,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boss.getPersistentDataContainer().set(keyRiftObelisksSpawned,
                     PersistentDataType.BYTE, (byte) 0);
         }
+        if (keyV2BossDefeatPending != null) {
+            boss.getPersistentDataContainer().set(keyV2BossDefeatPending,
+                    PersistentDataType.BYTE, (byte) 0);
+        }
         if (keyCombatTactic != null) {
             boss.getPersistentDataContainer().set(keyCombatTactic,
                     PersistentDataType.STRING, CombatTacticsPolicy.BossTactic.RING_ORBIT.name());
@@ -12266,16 +13628,59 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boss.setAware(true);
         boss.setCustomName("§5Хранитель Разлома");
         boss.setCustomNameVisible(true);
-        double configuredMaxHealth = computedBossMaxHealth();
-        if (keyBossVirtualMaxHealth != null) {
-            boss.getPersistentDataContainer().set(keyBossVirtualMaxHealth,
-                    PersistentDataType.DOUBLE, configuredMaxHealth);
-        }
+        double configuredMaxHealth = test
+                ? computedBossMaxHealth()
+                : V2BossHealthScalingPolicy.maxHealthFor(eventScalePlayers());
         AttributeInstance maxHealth = boss.getAttribute(Attribute.GENERIC_MAX_HEALTH);
-        if (maxHealth != null) {
-            maxHealth.setBaseValue(Math.min(configuredMaxHealth, BOSS_PHYSICAL_HEALTH_LIMIT));
+        if (test) {
+            // The disposable local harness keeps the legacy virtual-health
+            // projection so the older diagnostics remain useful. It is never
+            // used by the official V2 boss entity.
+            if (keyBossVirtualMaxHealth != null) {
+                boss.getPersistentDataContainer().set(keyBossVirtualMaxHealth,
+                        PersistentDataType.DOUBLE, configuredMaxHealth);
+            }
+            if (maxHealth != null) {
+                maxHealth.setBaseValue(Math.min(configuredMaxHealth, BOSS_PHYSICAL_HEALTH_LIMIT));
+            }
+            setBossVirtualHealth(boss, configuredMaxHealth);
+        } else {
+            // V2 is authoritative on the real Bukkit entity HP. Remove legacy
+            // markers so a pooled/recovered entity cannot silently fall back
+            // to virtual health or the physical 2048 cap.
+            if (keyBossVirtualHealth != null) {
+                boss.getPersistentDataContainer().remove(keyBossVirtualHealth);
+            }
+            if (keyBossVirtualMaxHealth != null) {
+                boss.getPersistentDataContainer().remove(keyBossVirtualMaxHealth);
+            }
+            if (keyV2BossMaxHealth != null) {
+                boss.getPersistentDataContainer().set(keyV2BossMaxHealth,
+                        PersistentDataType.DOUBLE, configuredMaxHealth);
+            }
+            if (keyV2BossStage != null) {
+                boss.getPersistentDataContainer().set(keyV2BossStage,
+                        PersistentDataType.STRING, V2BossStage.AWAKENING.name());
+            }
+            v2BossStage = V2BossStage.AWAKENING;
+            if (maxHealth != null) {
+                maxHealth.setBaseValue(configuredMaxHealth);
+            }
+            if (maxHealth == null || boss.getMaxHealth() + 0.0001D < configuredMaxHealth) {
+                getLogger().severe("BOSS_V2_HEALTH_UNSUPPORTED event=" + eventId
+                        + " boss=" + boss.getUniqueId()
+                        + " required=" + configuredMaxHealth
+                        + " actual_max=" + (maxHealth == null ? "missing" : boss.getMaxHealth())
+                        + " reason=enable-purpur-clamp-attributes-false");
+                boss.remove();
+                bossUuid = null;
+                forcePhase(EventPhase.RECOVERY_REQUIRED,
+                        "V2 real entity health exceeds the server attribute limit");
+                return false;
+            }
+            boss.setHealth(configuredMaxHealth);
+            bossVirtualHealthValue = 0.0D;
         }
-        setBossVirtualHealth(boss, configuredMaxHealth);
         AttributeInstance attack = boss.getAttribute(Attribute.GENERIC_ATTACK_DAMAGE);
         if (attack != null) {
             double totalAttack = BossStatsPolicy.attackDamage(attack.getBaseValue(),
@@ -12289,6 +13694,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boss.setInvulnerable(false);
         ownedEntities.put(boss.getUniqueId(), boss);
         if (!test) {
+            // A new official boss generation starts with a clean tentacle
+            // controller. Tentacles are rebuilt by the central boss tick and
+            // never inherit stale displays from a prior attempt.
+            clearTentacles("new official boss generation");
+            tentacleController.begin(generation);
+            nextTentacleTemporaryTick = eventTickCounter + TENTACLE_TEMPORARY_INTERVAL_TICKS;
+            tentacleTargetCursor = 0;
             ensureBossBar();
             bindBossClientForOnlinePlayers();
             playEventMusic(musicForPhase());
@@ -12297,12 +13709,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             recentBossTargets.clear();
             previousBossSpell = null;
             bossTargetCursor = 0;
+            bossTargetLockUntilMillis = 0L;
             bossSpellCursor = 0;
             bossSpellPauseUntilMillis = 0L;
             lastBossTeleportMillis = 0L;
             servantsSummonedAt70 = false;
             servantsSummonedAt35 = false;
         }
+        return true;
     }
 
     private void ensureBossBar() {
@@ -12340,6 +13754,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null) {
             return 0.0D;
         }
+        if (isV2OfficialBoss(boss)) {
+            // Compatibility accessor only: V2 authority is the real entity
+            // attribute. Never create/read the legacy virtual-health PDC key.
+            return V2BossHealthScalingPolicy.clampCurrent(boss.getHealth(), bossMaxHealth(boss));
+        }
         double configuredMax = bossMaxHealth(boss);
         double fallback = bossVirtualHealthValue > 0.0D && bossUuid != null
                 && bossUuid.equals(boss.getUniqueId())
@@ -12364,6 +13783,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void setBossVirtualHealth(LivingEntity boss, double health) {
         if (boss == null) {
+            return;
+        }
+        if (isV2OfficialBoss(boss)) {
+            double value = V2BossHealthScalingPolicy.clampCurrent(health, bossMaxHealth(boss));
+            if (!boss.isDead() && Math.abs(boss.getHealth() - value) > 0.0001D) {
+                boss.setHealth(value);
+            }
             return;
         }
         double configuredMax = bossMaxHealth(boss);
@@ -12425,6 +13851,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void clearBossOnly() {
         clearFinalArenaScene("boss cleanup");
+        clearTentacles("boss cleanup");
+        if (v2LastSealVisualTask != null) {
+            v2LastSealVisualTask.cancel();
+            v2LastSealVisualTask = null;
+        }
         cancelBossFinalStrike();
         cancelBossDefeatCinematic();
         clearBossServants();
@@ -12444,6 +13875,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         recentBossTargets.clear();
         previousBossSpell = null;
         bossTargetCursor = 0;
+        bossTargetLockUntilMillis = 0L;
         bossSpellCursor = 0;
         bossTacticCycle = 0;
         nextBossTacticMillis = 0L;
@@ -12500,6 +13932,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickBoss() {
         LivingEntity boss = liveBoss();
         if (boss == null) {
+            return;
+        }
+        if (isV2OfficialBoss(boss)) {
+            tickV2Boss(boss);
             return;
         }
         ensureEventCombatAi(boss);
@@ -12572,8 +14008,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Official V2 boss loop. The entity's own Bukkit health is the only
+     * authority; the legacy controller is used only for bounded movement
+     * profiles and the disposable local harness.
+     */
+    private void tickV2Boss(LivingEntity boss) {
+        ensureEventCombatAi(boss);
+        long now = System.currentTimeMillis();
+        synchronizeV2BossStage(boss);
+        reconcileBossCastProjection(boss, now);
+        tickRiftObelisks(boss);
+        tickV2Tentacles(boss);
+        Location core = coreCombatAnchorLocation();
+        enforceCombatLeash(boss, core, config.bossRadius(), "BOSS_V2_LEASH");
+        updateBossBar(boss);
+        if (phase != EventPhase.BOSS_ACTIVE || bossCastState != BossCastState.NONE) {
+            return;
+        }
+        if (nextTargetMillis <= now) {
+            if (boss instanceof Mob mob) {
+                rotateBossTarget(mob);
+            }
+            BossStagePolicy.CombatProfile profile = currentBossCombatProfile();
+            nextTargetMillis = now + scaledBossDelayMillis(
+                    randomSeconds(config.bossTargetMinSeconds(), config.bossTargetMaxSeconds()),
+                    profile.targetRotationMultiplier(), 1_000L);
+        }
+        maintainBossPath(boss, now);
+        maintainBossTeleport(boss, now);
+        detectBossStuck(boss, now);
+        if (now >= bossSpellPauseUntilMillis && nextSpellMillis <= now
+                && !activeBossParticipants().isEmpty()) {
+            castBossSpell(boss, false);
+            BossStagePolicy.CombatProfile profile = currentBossCombatProfile();
+            nextSpellMillis = now + scaledBossDelayMillis(
+                    randomSeconds(config.bossSpellMinSeconds(), config.bossSpellMaxSeconds()),
+                    profile.spellCooldownMultiplier(), 3_000L);
+        }
+    }
+
     private BossStagePolicy.CombatProfile currentBossCombatProfile() {
+        LivingEntity boss = liveBoss();
+        if (isV2OfficialBoss(boss)) {
+            return BossStagePolicy.combatProfile(legacyBossStageForV2(v2BossStage), false);
+        }
         return BossStagePolicy.combatProfile(bossStage, absorptionCompleted);
+    }
+
+    private BossStage legacyBossStageForV2(V2BossStage stage) {
+        if (stage == null) {
+            return BossStage.AWAKENING;
+        }
+        return switch (stage) {
+            case AWAKENING -> BossStage.AWAKENING;
+            case HUNT -> BossStage.HUNTER;
+            case RIFT -> BossStage.DISTORTION;
+            case OVERLOAD -> BossStage.ABSORPTION;
+            case RAGE, LAST_SEAL -> BossStage.CATASTROPHE;
+        };
     }
 
     private long scaledBossDelayMillis(int seconds, double multiplier, long minimumMillis) {
@@ -12658,8 +14151,100 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void synchronizeV2BossStage(LivingEntity boss) {
+        if (!isV2OfficialBoss(boss)) {
+            return;
+        }
+        double health = V2BossHealthScalingPolicy.clampCurrent(boss.getHealth(), boss.getMaxHealth());
+        double maxHealth = bossMaxHealth(boss);
+        V2BossStagePolicy.StageTransition transition = V2BossStagePolicy.transition(
+                v2BossStage, health, maxHealth);
+        if (transition.current() == v2BossStage) {
+            return;
+        }
+        V2BossStage previous = v2BossStage;
+        v2BossStage = transition.current();
+        boss.getPersistentDataContainer().set(keyV2BossStage,
+                PersistentDataType.STRING, v2BossStage.name());
+        getLogger().info("BOSS_V2_STAGE_TRANSITION event=" + eventId
+                + " boss=" + boss.getUniqueId() + " from=" + previous
+                + " to=" + v2BossStage + " crossed=" + transition.entered()
+                + " health=" + health + " max=" + maxHealth);
+        announceEventTitle("§5" + v2BossStage.title(),
+                "§fРазлом меняет правила боя", true);
+        sendV2BossPhaseVisualUpdate(boss, v2BossStage, "PHASE_SHIFT");
+        playBossVisualCue(boss,
+                bossCueId("phase_shift", BossVisualCuePolicy.CueStage.IMPACT),
+                boss.getLocation(), true);
+        playEventMusic(musicForPhase());
+        if (v2BossStage != V2BossStage.RIFT &&
+                (!activeRiftObelisks.isEmpty() || !activeRiftFireballs.isEmpty())) {
+            clearRiftObelisks("V2 stage exit from RIFT");
+        }
+        if (transition.entered().contains(V2BossStage.RIFT)) {
+            // This is the only official spawn point for the one-shot set.
+            // Forced means the stage transition itself is the cooldown bypass;
+            // the policy still enforces one set per boss generation.
+            startRiftObelisks(boss, true);
+        }
+        if (transition.entered().contains(V2BossStage.LAST_SEAL)) {
+            startV2LastSealVisuals(boss);
+        }
+    }
+
+    /** Final-seal arena loop: a bounded visual transformation, not a damage source. */
+    private void startV2LastSealVisuals(LivingEntity boss) {
+        if (boss == null || taskRegistry == null
+                || (v2LastSealVisualTask != null && !v2LastSealVisualTask.isCancelled())) {
+            return;
+        }
+        long callbackGeneration = generation;
+        UUID bossId = boss.getUniqueId();
+        BukkitTask[] holder = new BukkitTask[1];
+        holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (taskRegistry == null || !taskRegistry.owns(callbackGeneration)
+                    || phase != EventPhase.BOSS_ACTIVE || v2BossStage != V2BossStage.LAST_SEAL
+                    || bossUuid == null || !bossUuid.equals(bossId)
+                    || !boss.isValid() || boss.isDead()) {
+                holder[0].cancel();
+                if (v2LastSealVisualTask == holder[0]) {
+                    v2LastSealVisualTask = null;
+                }
+                return;
+            }
+            int tick = (int) Math.floorMod(eventTickCounter, 360L);
+            Location center = boss.getLocation().clone().add(0.0D, 1.0D, 0.0D);
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, center)) {
+                    continue;
+                }
+                spawnPatternRing(viewer, center, new Vector(1.0D, 0.0D, 0.0D),
+                        new Vector(0.0D, 1.0D, 0.0D), 1.0D + (tick % 30) * 0.015D,
+                        18, tick * 0.11D, Particle.REVERSE_PORTAL);
+                spawnPatternRing(viewer, center.clone().add(0.0D, -0.75D, 0.0D),
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        1.4D + Math.sin(tick * 0.08D) * 0.15D, 24,
+                        -tick * 0.09D, Particle.DRAGON_BREATH);
+                viewer.spawnParticle(Particle.END_ROD, center, 3,
+                        0.28D, 0.55D, 0.28D, 0.02D);
+            }
+            if (tick % 40 == 0) {
+                boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_WITHER_AMBIENT,
+                        0.55F, 0.55F);
+            }
+        }, 1L, 2L);
+        v2LastSealVisualTask = holder[0];
+        taskRegistry.register(holder[0]);
+        getLogger().info("BOSS_V2_LAST_SEAL_VISUALS_STARTED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " generation=" + generation);
+    }
+
     private void updateBossBar(LivingEntity boss) {
         if (bossBar == null || boss == null) {
+            return;
+        }
+        if (isV2OfficialBoss(boss)) {
+            updateV2BossBar(boss);
             return;
         }
         double max = bossMaxHealth(boss);
@@ -12718,6 +14303,50 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (desiredAudience.contains(player.getUniqueId())) {
                 sendBossBarVisualUpdate(player, boss, bossStage);
+            }
+        }
+    }
+
+    private void updateV2BossBar(LivingEntity boss) {
+        double max = Math.max(1.0D, bossMaxHealth(boss));
+        double health = Math.max(0.0D, Math.min(max, boss.getHealth()));
+        double progress = health / max;
+        String renderedTitle = v2BossStage.title();
+        BarColor color = switch (v2BossStage) {
+            case AWAKENING -> BarColor.PURPLE;
+            case HUNT -> BarColor.BLUE;
+            case RIFT -> BarColor.PINK;
+            case OVERLOAD -> BarColor.YELLOW;
+            case RAGE -> BarColor.RED;
+            case LAST_SEAL -> BarColor.WHITE;
+        };
+        Set<UUID> desiredAudience = activeBossParticipants().stream()
+                .map(Player::getUniqueId).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<UUID> currentAudience = bossBar.getPlayers().stream()
+                .map(Player::getUniqueId).collect(Collectors.toSet());
+        long now = System.currentTimeMillis();
+        if (currentAudience.equals(desiredAudience) && now - bossBarLastUpdateMillis < 200L
+                && Math.abs(progress - bossBarLastProgress) < 0.0001D
+                && renderedTitle.equals(bossBarLastTitle) && color == bossBarLastColor) {
+            return;
+        }
+        bossBar.setProgress(progress);
+        bossBar.setTitle(renderedTitle);
+        bossBar.setColor(color);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (desiredAudience.contains(player.getUniqueId()) && !bossBar.getPlayers().contains(player)) {
+                bossBar.addPlayer(player);
+            } else if (!desiredAudience.contains(player.getUniqueId()) && bossBar.getPlayers().contains(player)) {
+                bossBar.removePlayer(player);
+            }
+        }
+        bossBarLastUpdateMillis = now;
+        bossBarLastProgress = progress;
+        bossBarLastTitle = renderedTitle;
+        bossBarLastColor = color;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (desiredAudience.contains(player.getUniqueId())) {
+                sendV2BossBarVisualUpdate(player, boss, v2BossStage);
             }
         }
     }
@@ -13046,8 +14675,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         playBossVisualCue(boss,
                 bossCueId("final_strike", BossVisualCuePolicy.CueStage.TELEGRAPH),
                 mark, forced);
-        target.sendActionBar(Component.text("Приговор Разлома: отойдите от метки",
-                NamedTextColor.DARK_PURPLE));
         for (Player viewer : eventAudience()) {
             if (viewer.getWorld().equals(mark.getWorld())) {
                 viewer.playSound(mark, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
@@ -13150,8 +14777,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             player.addPotionEffect(new PotionEffect(PotionEffectType.WITHER,
                     tuning.witherTicks(), 0, false, true, true), true);
             affected++;
-            player.sendActionBar(Component.text("Приговор Разлома обрушился на арену",
-                    NamedTextColor.DARK_RED));
         }
         renderBossFinalStrikeImpact(mark, tuning.radius());
         boss.getWorld().playSound(mark, Sound.ENTITY_GENERIC_EXPLODE, 0.95F, 0.55F);
@@ -13206,28 +14831,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 .toList();
         if (candidates.isEmpty()) {
             boss.setTarget(null);
+            bossTargetLockUntilMillis = 0L;
             return;
         }
-        Player current = boss.getTarget() instanceof Player player ? player : null;
-        EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
+        long now = System.currentTimeMillis();
+        Player current = boss.getTarget() instanceof Player player && isCombatTarget(player)
+                ? player : null;
+        BossTargetPolicy.TargetDecision decision = BossTargetPolicy.chooseTarget(
                 candidates.stream().map(Player::getUniqueId).toList(),
                 current == null ? null : current.getUniqueId(),
-                new ArrayList<>(recentBossTargets), bossTargetCursor);
-        bossTargetCursor = choice.nextCursor();
-        Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
+                new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
+                bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
+        Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
         if (target == null || !isCombatTarget(target)) {
             boss.setTarget(null);
+            bossTargetLockUntilMillis = 0L;
             return;
         }
+        bossTargetLockUntilMillis = decision.newLockUntilMillis();
         boss.setTarget(target);
-        bossTacticCycle++;
-        nextBossTacticMillis = 0L;
-        recentBossTargets.addLast(target.getUniqueId());
-        while (recentBossTargets.size() > config.bossRecentTargetMemory()) {
-            recentBossTargets.removeFirst();
+        boolean changed = current == null || !current.getUniqueId().equals(target.getUniqueId());
+        if (changed) {
+            bossTacticCycle++;
+            nextBossTacticMillis = 0L;
+            recentBossTargets.addLast(target.getUniqueId());
+            while (recentBossTargets.size() > config.bossRecentTargetMemory()) {
+                recentBossTargets.removeFirst();
+            }
         }
         combatHelpers.add(target.getUniqueId());
         getLogger().info("BOSS_AI_TARGET boss=" + boss.getUniqueId() + " target=" + target.getUniqueId()
+                + " changed=" + changed + " lock_until=" + bossTargetLockUntilMillis
                 + " recent=" + recentBossTargets.size());
     }
 
@@ -13333,6 +14967,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !EVENT_KIND_BOSS.equals(readString(boss, keyKind))) {
             return;
         }
+        if (event.isCancelled()) {
+            // Another listener (AuthEffects, AdminPlus, anti-cheat, or an
+            // external protection plugin) already rejected this hit.  Never
+            // mutate the authoritative virtual pool for a physical event that
+            // Paper will not apply.
+            getLogger().fine("BOSS_DAMAGE_CANCELLED_BEFORE_VIRTUAL_HEALTH event=" + eventId
+                    + " boss=" + boss.getUniqueId()
+                    + " cause=" + event.getCause());
+            return;
+        }
         EntityDamageByEntityEvent damageSourceEvent = event instanceof EntityDamageByEntityEvent damageByEntity
                 ? damageByEntity : null;
         Entity source = damageSourceEvent == null ? null : damageSourceEvent.getDamager();
@@ -13376,6 +15020,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         releaseExpiredBossCastBeforeDamage(boss, System.currentTimeMillis());
+        if (isV2OfficialBoss(boss)) {
+            handleV2BossDamage(event, boss, source);
+            return;
+        }
         if (phase == EventPhase.BOSS_FINISH && finalDrainTriggered
                 && BossDamagePolicy.damageAllowed(bossStage, bossCastState,
                 System.currentTimeMillis(), bossCastDeadlineMillis)) {
@@ -13424,6 +15072,79 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         event.setCancelled(true);
         applyBossDamage(boss, effectiveDamage, event instanceof EntityDamageByEntityEvent byEntity
                 ? byEntity.getDamager() : null);
+    }
+
+    /**
+     * Authoritative V2 damage transaction. Paper's physical event is
+     * cancelled only after all protection listeners have approved the hit;
+     * the real entity health is then updated from its current value on the
+     * main thread. This removes the old virtual-health/lost-projection path
+     * from the official boss while preserving normal Bukkit damage semantics.
+     */
+    private void handleV2BossDamage(EntityDamageEvent event, LivingEntity boss, Entity source) {
+        if (event == null || boss == null) {
+            return;
+        }
+        if (phase != EventPhase.BOSS_ACTIVE) {
+            event.setCancelled(true);
+            getLogger().info("BOSS_V2_DAMAGE_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=phase phase=" + phase);
+            return;
+        }
+        boolean boundedCast = bossCastState == BossCastState.ABSORPTION_CHANNEL
+                || bossCastState == BossCastState.JUDGMENT_CAST;
+        if (!V2BossStagePolicy.damageAllowed(v2BossStage, boundedCast)
+                || boundedCast) {
+            event.setCancelled(true);
+            getLogger().info("BOSS_V2_DAMAGE_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=bounded-cast"
+                    + " stage=" + v2BossStage + " cast=" + bossCastState
+                    + " invulnerable=" + boss.isInvulnerable());
+            return;
+        }
+        // Invulnerability is only a projection of the bounded cast state. A
+        // delayed/reloaded entity can retain the flag after the state has
+        // already expired; it must not turn that stale projection into a
+        // second, permanent damage gate.
+        if (boss.isInvulnerable()) {
+            boss.setInvulnerable(false);
+            getLogger().warning("BOSS_V2_STALE_INVULNERABILITY_REPAIRED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " stage=" + v2BossStage);
+        }
+        double finalDamage = Math.max(0.0D, event.getFinalDamage());
+        BossRealHealthDamagePolicy.Result result = BossRealHealthDamagePolicy.apply(
+                boss.getHealth(), finalDamage, bossCastState, bossMaxHealth(boss));
+        event.setCancelled(true);
+        if (!result.applied()) {
+            getLogger().warning("BOSS_V2_DAMAGE_REJECTED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " final=" + finalDamage
+                    + " health=" + boss.getHealth());
+            return;
+        }
+        if (result.lethal()) {
+            commitOfficialBossDefeat(boss, source);
+            if (!bossDefeatCinematicStarted && boss.isValid() && !boss.isDead()) {
+                boss.setInvulnerable(false);
+                boss.setHealth(0.0D);
+            }
+        } else {
+            boss.setHealth(result.remainingHealth());
+            synchronizeV2BossStage(boss);
+        }
+        if (source instanceof Player player) {
+            bossKillerUuid = player.getUniqueId();
+            combatHelpers.add(player.getUniqueId());
+        } else if (source instanceof org.bukkit.entity.Projectile projectile
+                && projectile.getShooter() instanceof Player player) {
+            bossKillerUuid = player.getUniqueId();
+            combatHelpers.add(player.getUniqueId());
+        }
+        getLogger().info("BOSS_V2_DAMAGE_APPLIED event=" + eventId
+                + " boss=" + boss.getUniqueId() + " source="
+                + (source == null ? "environment" : source.getType() + ":" + source.getUniqueId())
+                + " final=" + finalDamage + " applied=" + result.appliedDamage()
+                + " health=" + result.remainingHealth() + " max=" + bossMaxHealth(boss)
+                + " stage=" + v2BossStage + " authority=entity-health");
     }
 
     private void applyBossDamage(LivingEntity boss, double damage, Entity source) {
@@ -13545,7 +15266,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private List<Player> activeLivingPlayers() {
         return Bukkit.getOnlinePlayers().stream()
-                .filter(this::isCombatTarget)
+                .filter(this::isActiveBossParticipant)
                 .map(player -> (Player) player)
                 .toList();
     }
@@ -13569,6 +15290,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isCombatTarget(player)) {
             return false;
         }
+        // A disposable local test boss must not inherit the persisted official
+        // reward roster from the previous completed event.  The local harness
+        // deliberately uses real online players inside the arena as its
+        // participant set, while official fights remain roster-locked below.
+        LivingEntity currentBoss = liveBoss();
+        if (testCombatAiMode && currentBoss != null && isTestBoss(currentBoss)) {
+            return true;
+        }
         return officialRewardRoster.isEmpty()
                 || officialRewardRoster.contains(player.getUniqueId());
     }
@@ -13581,6 +15310,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Player owner = playerDamageOwner(source);
         if (owner != null) {
             bossKillerUuid = owner.getUniqueId();
+        }
+        if (isV2OfficialBoss(boss) && keyV2BossDefeatPending != null) {
+            // This marker is written before the cinematic or direct death
+            // boundary.  It survives a process restart and makes recovery
+            // finish the already-authoritative defeat exactly once.
+            boss.getPersistentDataContainer().set(keyV2BossDefeatPending,
+                    PersistentDataType.BYTE, (byte) 1);
         }
         boolean playerOwnedHit = owner != null && isActiveBossParticipant(owner);
         if (BossDefeatCinematicPolicy.canStart(true, bossDefeatCinematicStarted,
@@ -13661,8 +15397,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boss.setInvulnerable(true);
         sendBossAnimationVisualUpdate(boss, "FINISHING_BLOW");
         announceEventTitle("§5РАЗЛОМ СХОДИТСЯ", "§fПоследний удар запечатал судьбу Стража", true);
-        finisher.sendActionBar(Component.text("Финальный удар: Разлом рушится",
-                NamedTextColor.LIGHT_PURPLE));
         boss.getWorld().playSound(boss.getLocation(), Sound.ENTITY_WITHER_AMBIENT,
                 1.0F, 0.55F);
         long callbackGeneration = generation;
@@ -14163,6 +15897,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void castBossSpell(LivingEntity boss, boolean forced) {
+        if (isV2OfficialBoss(boss)) {
+            castV2BossSpell(boss, forced);
+            return;
+        }
         boolean testBossAi = testCombatAiMode && isTestBoss(boss);
         if (boss == null || isTestBoss(boss) && !forced && !testBossAi
                 || phase != EventPhase.BOSS_ACTIVE && !forced && !testBossAi
@@ -14197,6 +15935,58 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (spell != null) {
             castBossSpell(boss, spell, forced);
         }
+    }
+
+    private void castV2BossSpell(LivingEntity boss, boolean forced) {
+        if (boss == null || phase != EventPhase.BOSS_ACTIVE && !forced
+                || bossCastState != BossCastState.NONE) {
+            return;
+        }
+        List<EndRiftAiPolicy.BossSpell> available = new ArrayList<>(
+                V2BossStagePolicy.spellPool(v2BossStage));
+        if (riftObelisksSpawnedThisFight || !activeRiftObelisks.isEmpty()) {
+            available.remove(EndRiftAiPolicy.BossSpell.RIFT_OBELISKS);
+        }
+        EndRiftAiPolicy.BossSpell spell = EndRiftAiPolicy.chooseBossSpell(
+                available, previousBossSpell, bossSpellCursor++);
+        if (spell != null) {
+            castV2BossSpell(boss, spell, forced);
+        }
+    }
+
+    private void castV2BossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell,
+                                 boolean forced) {
+        if (boss == null || spell == null
+                || phase != EventPhase.BOSS_ACTIVE && !forced
+                || !V2BossStagePolicy.spellPool(v2BossStage).contains(spell)) {
+            return;
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.RIFT_OBELISKS) {
+            startRiftObelisks(boss, true);
+            previousBossSpell = spell;
+            return;
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.FINAL_STRIKE
+                && v2BossStage != V2BossStage.LAST_SEAL) {
+            return;
+        }
+        if (spell == EndRiftAiPolicy.BossSpell.FINAL_STRIKE) {
+            Player target = selectBossSpellTarget(boss);
+            if (target != null) {
+                previousBossSpell = spell;
+                startBossFinalStrike(boss, target, forced);
+            }
+            return;
+        }
+        Player target = selectBossSpellTarget(boss);
+        if (target == null) {
+            return;
+        }
+        previousBossSpell = spell;
+        getLogger().info("BOSS_V2_SPELL_SELECTED boss=" + boss.getUniqueId()
+                + " spell=" + spell.id() + " target=" + target.getUniqueId()
+                + " stage=" + v2BossStage);
+        telegraphBossSpell(boss, target, spell, forced);
     }
 
     private void castBossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell, boolean forced) {
@@ -14247,13 +16037,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (candidates.isEmpty()) {
             return null;
         }
-        UUID current = boss instanceof Mob mob && mob.getTarget() != null
-                ? mob.getTarget().getUniqueId() : null;
-        EndRiftAiPolicy.TargetChoice choice = EndRiftAiPolicy.chooseFairTarget(
-                candidates.stream().map(Player::getUniqueId).sorted(Comparator.comparing(UUID::toString)).toList(),
-                current, new ArrayList<>(recentBossTargets), bossTargetCursor++);
-        Player target = choice.target() == null ? null : Bukkit.getPlayer(choice.target());
-        return target != null && isCombatTarget(target) ? target : candidates.get(0);
+        long now = System.currentTimeMillis();
+        Player currentPlayer = boss instanceof Mob mob && mob.getTarget() instanceof Player player
+                && isCombatTarget(player) ? player : null;
+        BossTargetPolicy.TargetDecision decision = BossTargetPolicy.chooseTarget(
+                candidates.stream().map(Player::getUniqueId)
+                        .sorted(Comparator.comparing(UUID::toString)).toList(),
+                currentPlayer == null ? null : currentPlayer.getUniqueId(),
+                new ArrayList<>(recentBossTargets), now, bossTargetLockUntilMillis,
+                bossTargetCursor++, config.bossTargetLockSeconds() * 1000L);
+        Player target = decision.target() == null ? null : Bukkit.getPlayer(decision.target());
+        if (target == null || !isCombatTarget(target)) {
+            return candidates.stream().filter(this::isCombatTarget).findFirst().orElse(null);
+        }
+        bossTargetLockUntilMillis = decision.newLockUntilMillis();
+        if (boss instanceof Mob mob && (currentPlayer == null
+                || !currentPlayer.getUniqueId().equals(target.getUniqueId()))) {
+            mob.setTarget(target);
+        }
+        return target;
     }
 
     /** Request role-aware pathing without ever steering the boss at Core. */
@@ -14398,7 +16200,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         playBossVisualCue(boss,
                 bossCueId(spell.id(), BossVisualCuePolicy.CueStage.TELEGRAPH),
                 mark, forced);
-        target.sendActionBar(Component.text("Хранитель готовит: " + spell.displayName(), NamedTextColor.LIGHT_PURPLE));
         final int[] ticks = {0};
         BukkitTask[] holder = new BukkitTask[1];
         holder[0] = Bukkit.getScheduler().runTaskTimer(this, () -> {
@@ -14863,6 +16664,461 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
+     * Central, bounded runtime for the V2 tentacle set.  The display is only
+     * a visual/model carrier; target selection, contact, hold and release are
+     * decided here on the server and never by a client bone position.
+     */
+    private void tickV2Tentacles(LivingEntity boss) {
+        if (boss == null || !isV2OfficialBoss(boss) || config == null
+                || phase != EventPhase.BOSS_ACTIVE || !boss.isValid() || boss.isDead()) {
+            if (tentacleController.count() > 0) {
+                clearTentacles("V2 boss boundary");
+            }
+            return;
+        }
+        if (!tentacleController.owns(generation)) {
+            tentacleController.begin(generation);
+            nextTentacleTemporaryTick = eventTickCounter + TENTACLE_TEMPORARY_INTERVAL_TICKS;
+        }
+        List<Player> participants = activeBossParticipants();
+        int permanentTarget = TentacleScalingPolicy.permanentFor(participants.size(), v2BossStage);
+        int temporaryTarget = TentacleScalingPolicy.temporaryFor(participants.size(), v2BossStage);
+        trimTentacles(permanentTarget, temporaryTarget);
+        ensurePermanentTentacles(boss, permanentTarget);
+        if (temporaryTarget > tentacleController.temporaryCount()
+                && eventTickCounter >= nextTentacleTemporaryTick) {
+            Player target = chooseTentacleTarget(participants);
+            if (target != null) {
+                int slot = tentacleController.temporaryCount();
+                spawnTentacle(boss, target.getLocation(), true, slot, target);
+            }
+            // Even a refused safe location consumes this bounded attempt; the
+            // next retry is deterministic and cannot flood the arena.
+            nextTentacleTemporaryTick = eventTickCounter + TENTACLE_TEMPORARY_INTERVAL_TICKS;
+        }
+        for (TentacleController.VisualState state
+                : new ArrayList<>(tentacleController.states().values())) {
+            Entity entity = ownedEntities.get(state.entityId());
+            if (!(entity instanceof ItemDisplay display)
+                    || !display.isValid() || display.isDead()
+                    || !ownedBySession(display, eventId, generation)) {
+                tentacleController.remove(state.entityId());
+                continue;
+            }
+            tickTentacle(display, state, participants);
+        }
+    }
+
+    private void ensurePermanentTentacles(LivingEntity boss, int desired) {
+        int safeDesired = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, desired));
+        Set<Integer> slots = tentacleController.states().values().stream()
+                .filter(state -> !state.temporary())
+                .map(TentacleController.VisualState::slot)
+                .collect(Collectors.toSet());
+        for (int slot = 0; slot < safeDesired; slot++) {
+            if (slots.contains(slot)) {
+                continue;
+            }
+            Location location = permanentTentacleLocation(slot, safeDesired);
+            if (location != null && spawnTentacle(boss, location, false, slot, null) != null) {
+                slots.add(slot);
+            }
+        }
+    }
+
+    private Location permanentTentacleLocation(int slot, int count) {
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null || anchor.getWorld() == null || count <= 0) {
+            return null;
+        }
+        double angle = -Math.PI / 2.0D + (Math.PI * 2.0D * slot / count);
+        Location requested = anchor.clone().add(
+                Math.cos(angle) * TENTACLE_PERMANENT_RADIUS,
+                0.0D,
+                Math.sin(angle) * TENTACLE_PERMANENT_RADIUS);
+        return resolveTentacleLocation(anchor, requested);
+    }
+
+    private Location resolveTentacleLocation(Location anchor, Location requested) {
+        if (anchor == null || requested == null || anchor.getWorld() == null
+                || requested.getWorld() == null || !anchor.getWorld().equals(requested.getWorld())) {
+            return null;
+        }
+        Location candidate = requested.clone();
+        candidate.setX(candidate.getBlockX() + 0.5D);
+        candidate.setZ(candidate.getBlockZ() + 0.5D);
+        candidate.setY(candidate.getBlockY());
+        double radius = boundedCombatRadius(config.bossRadius()) - 0.75D;
+        if (!isArenaLocation(candidate)
+                || isCoreBlockPosition(candidate)
+                || horizontalDistanceSquared(candidate, anchor) > radius * radius
+                || outsideCombatVertical(candidate, anchor)) {
+            return null;
+        }
+        Block floor = candidate.getBlock().getRelative(BlockFace.DOWN);
+        if (!floor.getType().isSolid() || floor.isLiquid()) {
+            return null;
+        }
+        return candidate;
+    }
+
+    private ItemDisplay spawnTentacle(LivingEntity boss, Location requested,
+                                      boolean temporary, int slot, Player target) {
+        Location anchor = coreCombatAnchorLocation();
+        Location location = resolveTentacleLocation(anchor, requested);
+        if (location == null || location.getWorld() == null || boss == null) {
+            getLogger().warning("RIFT_TENTACLE_SPAWN_REFUSED event=" + eventId
+                    + " temporary=" + temporary + " slot=" + slot + " reason=unsafe-location");
+            return null;
+        }
+        ItemDisplay display = location.getWorld().spawn(location, ItemDisplay.class, entity -> {
+            entity.setItemStack(overlayItem(MODEL_RIFT_TENTACLE, "end_event_rift_tentacle"));
+            entity.setBrightness(new Display.Brightness(15, 15));
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(64.0F);
+            entity.setDisplayWidth(TENTACLE_DISPLAY_WIDTH);
+            entity.setDisplayHeight(TENTACLE_DISPLAY_HEIGHT);
+            entity.setInterpolationDuration(5);
+            entity.setInterpolationDelay(0);
+            entity.setPersistent(false);
+            entity.setGravity(false);
+            entity.setInvulnerable(true);
+            entity.setShadowRadius(0.0F);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(-0.5F, 0.0F, -0.5F), new AxisAngle4f(),
+                    new Vector3f(1.20F, 0.08F, 1.20F), new AxisAngle4f()));
+        });
+        boolean official = isOfficialEntity(boss);
+        tag(display, EVENT_KIND_TENTACLE, 0, official);
+        display.getPersistentDataContainer().set(keyTentacleTemporary,
+                PersistentDataType.BYTE, temporary ? (byte) 1 : (byte) 0);
+        display.getPersistentDataContainer().set(keyTentacleSlot,
+                PersistentDataType.INTEGER, Math.max(0, slot));
+        display.getPersistentDataContainer().set(keyTentacleState,
+                PersistentDataType.STRING, temporary
+                        ? TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER.name()
+                        : TentacleAnimationPolicy.State.EMERGE.name());
+        display.getPersistentDataContainer().set(keyTentacleTarget,
+                PersistentDataType.STRING, target == null ? "" : target.getUniqueId().toString());
+        if (!tentacleController.register(generation, display.getUniqueId(), temporary,
+                Math.max(0, slot), eventTickCounter)) {
+            display.remove();
+            return null;
+        }
+        if (temporary && target != null) {
+            tentacleController.transition(display.getUniqueId(),
+                    TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER,
+                    eventTickCounter, target.getUniqueId());
+        }
+        bindEventEntityClientForOnlinePlayers(display);
+        sendTentacleAnimationVisualUpdate(display,
+                tentacleController.state(display.getUniqueId()).state());
+        renderTentacleTransition(display, temporary
+                ? TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER
+                : TentacleAnimationPolicy.State.EMERGE);
+        getLogger().info("RIFT_TENTACLE_SPAWN event=" + eventId
+                + " entity=" + display.getUniqueId() + " generation=" + generation
+                + " temporary=" + temporary + " slot=" + slot
+                + " target=" + (target == null ? "none" : target.getUniqueId())
+                + " location=" + locationText(location));
+        return display;
+    }
+
+    private void trimTentacles(int permanentTarget, int temporaryTarget) {
+        int safePermanent = Math.max(0, Math.min(TentacleScalingPolicy.MAX_PERMANENT, permanentTarget));
+        int safeTemporary = Math.max(0, Math.min(TentacleScalingPolicy.MAX_TEMPORARY, temporaryTarget));
+        for (TentacleController.VisualState state
+                : new ArrayList<>(tentacleController.states().values())) {
+            if (state.temporary() && tentacleController.temporaryCount() > safeTemporary
+                    || !state.temporary() && tentacleController.permanentCount() > safePermanent) {
+                removeTentacle(state.entityId(), "participant-scaling");
+            }
+        }
+    }
+
+    private Player chooseTentacleTarget(List<Player> participants) {
+        if (participants == null || participants.isEmpty()) {
+            return null;
+        }
+        List<Player> sorted = participants.stream()
+                .filter(this::isActiveBossParticipant)
+                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
+                .toList();
+        if (sorted.isEmpty()) {
+            return null;
+        }
+        Player target = sorted.get(Math.floorMod(tentacleTargetCursor++, sorted.size()));
+        return target;
+    }
+
+    private void tickTentacle(ItemDisplay display, TentacleController.VisualState snapshot,
+                              List<Player> participants) {
+        TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
+        if (state == null) {
+            return;
+        }
+        updateTentacleDisplay(display, state);
+        long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
+        TentacleAnimationPolicy.State animation = state.state();
+        if (!state.temporary()) {
+            if (animation == TentacleAnimationPolicy.State.EMERGE
+                    && elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                TentacleAnimationPolicy.State next = v2BossStage.ordinal()
+                        >= V2BossStage.OVERLOAD.ordinal()
+                        ? TentacleAnimationPolicy.State.SHIELD_CHANNEL
+                        : TentacleAnimationPolicy.State.IDLE;
+                setTentacleState(display, next, null);
+            }
+            if (animation == TentacleAnimationPolicy.State.SHIELD_CHANNEL
+                    && eventTickCounter % 20L == 0L) {
+                renderTentaclePulse(display.getLocation());
+            }
+            return;
+        }
+        switch (animation) {
+            case SPAWN_UNDER_PLAYER -> {
+                if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                    setTentacleState(display, TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
+                            state.target());
+                }
+            }
+            case TELEGRAPH_GRAB -> {
+                if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                    Player target = playerForTentacle(state.target(), participants);
+                    boolean success = target != null
+                            && horizontalDistanceSquared(display.getLocation(), target.getLocation())
+                            <= TENTACLE_MAX_GRAB_RANGE * TENTACLE_MAX_GRAB_RANGE;
+                    tentacleMarker(display, TentacleAnimationPolicy.Marker.CONTACT, target);
+                    setTentacleState(display, success
+                            ? TentacleAnimationPolicy.State.GRAB_SUCCESS
+                            : TentacleAnimationPolicy.State.GRAB_MISS,
+                            target == null ? null : target.getUniqueId());
+                }
+            }
+            case GRAB_SUCCESS -> {
+                Player target = playerForTentacle(state.target(), participants);
+                if (target == null) {
+                    setTentacleState(display, TentacleAnimationPolicy.State.GRAB_MISS, null);
+                } else if (elapsed >= TentacleAnimationPolicy.markerTick(
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK)) {
+                    tentacleMarker(display, TentacleAnimationPolicy.Marker.HOLD_LOCK, target);
+                    lockTentaclePlayer(display, target);
+                    setTentacleState(display, TentacleAnimationPolicy.State.HOLD,
+                            target.getUniqueId());
+                }
+            }
+            case HOLD -> {
+                Player target = playerForTentacle(state.target(), participants);
+                if (target == null) {
+                    setTentacleState(display, TentacleAnimationPolicy.State.THROW, null);
+                } else {
+                    lockTentaclePlayer(display, target);
+                    if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                        tentacleMarker(display, TentacleAnimationPolicy.Marker.THROW_RELEASE, target);
+                        releaseTentaclePlayer(display, target);
+                        setTentacleState(display, TentacleAnimationPolicy.State.THROW,
+                                target.getUniqueId());
+                    }
+                }
+            }
+            case THROW -> {
+                if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                    tentacleMarker(display, TentacleAnimationPolicy.Marker.RECOVERY_START, null);
+                    setTentacleState(display, TentacleAnimationPolicy.State.RETRACT, null);
+                }
+            }
+            case GRAB_MISS -> {
+                if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                    setTentacleState(display, TentacleAnimationPolicy.State.RETRACT, null);
+                }
+            }
+            case RETRACT -> {
+                if (elapsed >= TentacleAnimationPolicy.durationTicks(animation)) {
+                    tentacleMarker(display, TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR, null);
+                    removeTentacle(display.getUniqueId(), "retracted");
+                }
+            }
+            default -> {
+                // The remaining states are visual-only and are not used as a
+                // second server-side hitbox or damage source.
+            }
+        }
+    }
+
+    private Player playerForTentacle(UUID targetId, List<Player> participants) {
+        if (targetId == null || participants == null) {
+            return null;
+        }
+        Player target = Bukkit.getPlayer(targetId);
+        return target != null && participants.stream()
+                .anyMatch(player -> player.getUniqueId().equals(targetId))
+                && isActiveBossParticipant(target) ? target : null;
+    }
+
+    private void lockTentaclePlayer(ItemDisplay display, Player target) {
+        if (display == null || target == null || !target.isOnline()
+                || !isActiveBossParticipant(target)
+                || !display.getWorld().equals(target.getWorld())) {
+            return;
+        }
+        Location socket = display.getLocation().clone().add(0.0D, 2.25D, 0.0D);
+        target.teleport(socket);
+        target.setVelocity(new Vector());
+        target.setFallDistance(0.0F);
+    }
+
+    private void releaseTentaclePlayer(ItemDisplay display, Player target) {
+        if (display == null || target == null || !target.isOnline()
+                || !display.getWorld().equals(target.getWorld())) {
+            return;
+        }
+        Vector direction = target.getLocation().toVector()
+                .subtract(display.getLocation().toVector());
+        direction.setY(0.45D);
+        if (direction.lengthSquared() < 0.01D) {
+            direction = new Vector(0.0D, 0.45D, 1.0D);
+        }
+        target.setVelocity(direction.normalize().multiply(0.75D));
+        target.setFallDistance(0.0F);
+    }
+
+    private void setTentacleState(ItemDisplay display, TentacleAnimationPolicy.State next,
+                                  UUID target) {
+        if (display == null || next == null) {
+            return;
+        }
+        if (!tentacleController.transition(display.getUniqueId(), next,
+                eventTickCounter, target)) {
+            return;
+        }
+        display.getPersistentDataContainer().set(keyTentacleState,
+                PersistentDataType.STRING, next.name());
+        display.getPersistentDataContainer().set(keyTentacleTarget,
+                PersistentDataType.STRING, target == null ? "" : target.toString());
+        sendTentacleAnimationVisualUpdate(display, next);
+        renderTentacleTransition(display, next);
+        getLogger().info("RIFT_TENTACLE_STATE event=" + eventId
+                + " entity=" + display.getUniqueId() + " state=" + next
+                + " target=" + (target == null ? "none" : target));
+    }
+
+    private void updateTentacleDisplay(ItemDisplay display,
+                                       TentacleController.VisualState state) {
+        if (display == null || state == null) {
+            return;
+        }
+        long elapsed = Math.max(0L, eventTickCounter - state.startedTick());
+        double progress = TentacleAnimationPolicy.progress(state.state(), elapsed);
+        float eased = (float) (progress * progress * (3.0D - 2.0D * progress));
+        float height = 5.0F;
+        float yaw = (float) (Math.sin((eventTickCounter + state.slot() * 17L) * 0.045D) * 0.08D);
+        float lean = 0.0F;
+        if (state.state() == TentacleAnimationPolicy.State.EMERGE
+                || state.state() == TentacleAnimationPolicy.State.SPAWN_UNDER_PLAYER) {
+            height *= 0.08F + eased * 0.92F;
+        } else if (state.state() == TentacleAnimationPolicy.State.DEATH
+                || state.state() == TentacleAnimationPolicy.State.RETRACT) {
+            height *= 1.0F - eased * 0.92F;
+        } else if (state.state() == TentacleAnimationPolicy.State.TELEGRAPH_GRAB) {
+            lean = -0.18F * eased;
+            yaw -= 0.22F * eased;
+        } else if (state.state() == TentacleAnimationPolicy.State.GRAB_SUCCESS
+                || state.state() == TentacleAnimationPolicy.State.HOLD) {
+            lean = -0.25F;
+            yaw -= 0.35F;
+        } else if (state.state() == TentacleAnimationPolicy.State.THROW
+                || state.state() == TentacleAnimationPolicy.State.GRAB_MISS) {
+            lean = 0.24F * eased;
+            yaw += 0.55F * eased;
+        }
+        display.setTransformation(new Transformation(
+                new Vector3f(-0.5F, 0.0F, -0.5F),
+                new AxisAngle4f(yaw, 0.0F, 1.0F, 0.0F),
+                new Vector3f(1.20F, Math.max(0.08F, height), 1.20F),
+                new AxisAngle4f(lean, 0.0F, 0.0F, 1.0F)));
+        if (eventTickCounter % 20L == 0L
+                && (state.state() == TentacleAnimationPolicy.State.TELEGRAPH_GRAB
+                || state.state() == TentacleAnimationPolicy.State.HOLD)) {
+            renderTentaclePulse(display.getLocation());
+        }
+    }
+
+    private void tentacleMarker(ItemDisplay display, TentacleAnimationPolicy.Marker marker,
+                                Player target) {
+        getLogger().info("RIFT_TENTACLE_MARKER event=" + eventId
+                + " entity=" + (display == null ? "none" : display.getUniqueId())
+                + " marker=" + marker
+                + " target=" + (target == null ? "none" : target.getUniqueId()));
+    }
+
+    private void renderTentacleTransition(ItemDisplay display,
+                                          TentacleAnimationPolicy.State state) {
+        if (display == null || display.getWorld() == null) {
+            return;
+        }
+        Location center = display.getLocation().clone().add(0.0D, 0.15D, 0.0D);
+        int count = state == TentacleAnimationPolicy.State.DEATH ? 20
+                : state == TentacleAnimationPolicy.State.HOLD ? 10 : 8;
+        spawnEventParticle(center, Particle.REVERSE_PORTAL, count,
+                0.42D, 0.18D, 0.42D, 0.02D);
+        spawnEventParticle(center.clone().add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
+                Math.min(12, count / 2 + 2), 0.22D, 0.8D, 0.22D, 0.015D);
+        Sound sound = switch (state) {
+            case EMERGE, SPAWN_UNDER_PLAYER -> Sound.BLOCK_RESPAWN_ANCHOR_CHARGE;
+            case TELEGRAPH_GRAB -> Sound.ENTITY_ENDERMAN_STARE;
+            case GRAB_SUCCESS, HOLD -> Sound.BLOCK_AMETHYST_BLOCK_RESONATE;
+            case THROW, GRAB_MISS -> Sound.ENTITY_PLAYER_ATTACK_SWEEP;
+            case DEATH, RETRACT -> Sound.ENTITY_GENERIC_EXPLODE;
+            default -> Sound.BLOCK_AMETHYST_BLOCK_CHIME;
+        };
+        display.getWorld().playSound(display.getLocation(), sound, 0.65F,
+                state == TentacleAnimationPolicy.State.DEATH ? 0.55F : 0.9F);
+    }
+
+    private void renderTentaclePulse(Location center) {
+        if (center == null) {
+            return;
+        }
+        Particle.DustOptions dust = new Particle.DustOptions(Color.fromRGB(72, 226, 255), 0.9F);
+        spawnEventParticle(center.clone().add(0.0D, 0.06D, 0.0D), Particle.DUST,
+                10, 0.65D, 0.02D, 0.65D, 0.0D, dust);
+        spawnEventParticle(center.clone().add(0.0D, 1.5D, 0.0D), Particle.REVERSE_PORTAL,
+                6, 0.18D, 0.7D, 0.18D, 0.01D);
+    }
+
+    private void removeTentacle(UUID entityId, String reason) {
+        if (entityId == null) {
+            return;
+        }
+        tentacleController.remove(entityId);
+        Entity entity = ownedEntities.remove(entityId);
+        if (entity == null) {
+            entity = Bukkit.getEntity(entityId);
+        }
+        unbindEventEntityClient(entityId);
+        if (entity != null && entity.isValid() && !entity.isDead()) {
+            entity.remove();
+        }
+        getLogger().info("RIFT_TENTACLE_CLEANUP event=" + eventId
+                + " entity=" + entityId + " reason=" + reason);
+    }
+
+    private void clearTentacles(String reason) {
+        int count = tentacleController.count();
+        for (UUID entityId : new HashSet<>(tentacleController.states().keySet())) {
+            removeTentacle(entityId, reason);
+        }
+        tentacleController.clear();
+        nextTentacleTemporaryTick = 0L;
+        tentacleTargetCursor = 0;
+        if (count > 0) {
+            getLogger().info("RIFT_TENTACLES_CLEANUP event=" + eventId
+                    + " count=" + count + " reason=" + reason);
+        }
+    }
+
+    /**
      * Start the DISTORTION-only Obelisk mechanic.  The display is the only
      * world object created for an obelisk; the floor is never replaced.
      */
@@ -14870,24 +17126,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || config == null) {
             return;
         }
-        boolean enabledForStage = config.riftObeliskTuning().enabledFor(bossStage);
+        boolean v2 = isV2OfficialBoss(boss);
+        boolean enabledForStage = v2
+                ? config.riftObeliskTuning().enabledFor(v2BossStage)
+                : config.riftObeliskTuning().enabledFor(bossStage);
         boolean activeSetPresent = !activeRiftObelisks.isEmpty();
-        if (!RiftObeliskCastPolicy.canStart(bossStage, enabledForStage,
+        boolean canStart = v2
+                ? RiftObeliskCastPolicy.canStart(v2BossStage, enabledForStage,
                 riftObelisksSpawnedThisFight, activeSetPresent)
+                : RiftObeliskCastPolicy.canStart(bossStage, enabledForStage,
+                riftObelisksSpawnedThisFight, activeSetPresent);
+        boolean allowedStage = v2 ? v2BossStage == V2BossStage.RIFT
+                : bossStage == BossStage.DISTORTION;
+        if (!canStart
                 || bossCastState == BossCastState.ABSORPTION_CHANNEL
                 || bossCastState == BossCastState.JUDGMENT_CAST
                 || !forced && eventTickCounter < nextRiftObeliskCastTick) {
             String reason = riftObelisksSpawnedThisFight ? "already-used-this-fight"
                     : activeSetPresent ? "active-set-present"
-                    : bossStage != BossStage.DISTORTION || !enabledForStage
-                    ? "distortion-only"
+                    : !allowedStage || !enabledForStage
+                    ? (v2 ? "rift-only" : "distortion-only")
                     : bossCastState == BossCastState.ABSORPTION_CHANNEL
                     || bossCastState == BossCastState.JUDGMENT_CAST
                     ? "scripted-boss-state"
                     : "cooldown";
             getLogger().info("RIFT_OBELISKS_SKIPPED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " reason=" + reason
-                    + " stage=" + bossStage + " used=" + riftObelisksSpawnedThisFight
+                    + " stage=" + (v2 ? v2BossStage : bossStage) + " used=" + riftObelisksSpawnedThisFight
                     + " active=" + activeRiftObelisks.size());
             return;
         }
@@ -14962,9 +17227,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             renderRiftObeliskSpawnBurst(anchor, spawned);
             boss.getWorld().playSound(anchor, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, 1.0F, 0.65F);
             getLogger().info("RIFT_OBELISKS_SPAWNED event=" + eventId
-                    + " boss=" + boss.getUniqueId() + " count=" + spawned
-                    + " participants=" + participants.size() + " stage=" + bossStage
-                    + " cap=" + tuning.maxActive() + " generation=" + generation);
+                + " boss=" + boss.getUniqueId() + " count=" + spawned
+                + " participants=" + participants.size() + " stage=" + (v2 ? v2BossStage : bossStage)
+                + " cap=" + tuning.maxActive() + " generation=" + generation);
         }
     }
 
@@ -15001,9 +17266,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (activeRiftObelisks.isEmpty() && activeRiftFireballs.isEmpty()) {
             return;
         }
+        boolean v2 = isV2OfficialBoss(boss);
+        boolean allowedStage = v2 ? v2BossStage == V2BossStage.RIFT
+                : bossStage == BossStage.DISTORTION;
+        boolean enabledForStage = config != null && (v2
+                ? config.riftObeliskTuning().enabledFor(v2BossStage)
+                : config.riftObeliskTuning().enabledFor(bossStage));
         if (boss == null || !boss.isValid() || boss.isDead()
-                || config == null || !config.riftObeliskTuning().enabledFor(bossStage)
-                || bossStage != BossStage.DISTORTION
+                || config == null || !enabledForStage || !allowedStage
                 || bossCastState == BossCastState.ABSORPTION_CHANNEL
                 || bossCastState == BossCastState.JUDGMENT_CAST
                 || phase != EventPhase.BOSS_ACTIVE && !(testCombatAiMode && isTestBoss(boss))) {
@@ -15275,7 +17545,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         List<Player> participants = activeBossParticipants();
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
-        RiftFireballPolicy.EffectProfile effects = RiftFireballPolicy.scaledFireballEffects(
+        RiftFireballPolicy.EffectProfile effects = isV2OfficialBoss(boss)
+                ? RiftFireballPolicy.fireballEffects(tuning.fireballDamage(),
+                tuning.blindnessTicks(), tuning.debuffTicks())
+                : RiftFireballPolicy.scaledFireballEffects(
                 tuning.fireballDamage(), tuning.blindnessTicks(), tuning.debuffTicks(),
                 participants.size());
         Set<UUID> participantIds = participants.stream()
@@ -15995,7 +18268,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (!officialBossDeathCommitted && phase == EventPhase.BOSS_FINISH
                     && isOfficialEntity(entity)
-                    && (judgmentCompleted || finalDrainTriggered)) {
+                    && (isV2OfficialBoss(entity) || judgmentCompleted || finalDrainTriggered)) {
                 officialBossDeathCommitted = true;
                 victoryStep = VICTORY_BOSS_DEATH;
                 saveStateSync();
@@ -16069,7 +18342,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cEnd открывается только после смерти настоящего official Rift Guardian.");
             return;
         }
-        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()) {
+        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()
+                || !allNightCloakRewardsAccepted()) {
             message(sender, "&cСначала завершите durable-выдачу наград босса и Осколков Разлома.");
             return;
         }
@@ -16110,6 +18384,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             saveStateAsync();
         }
         for (UUID playerUuid : new LinkedHashSet<>(officialRewardRoster)) {
+            issueNightCloakReward(playerUuid);
             String status = rewardStatuses.getOrDefault(playerUuid, "PENDING");
             if ("DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
                     || "PENDING_DELIVERY".equals(status)) {
@@ -16158,6 +18433,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         applyBossLootOnce();
         checkVictoryRewardCompletion();
+    }
+
+    /**
+     * Resolve the Night Cloak chance before crossing the Artifacts boundary.
+     * The map stores the roll itself, so a failed delivery or restart can only
+     * retry the same outcome and idempotency key.
+     */
+    private void issueNightCloakReward(UUID playerUuid) {
+        if (playerUuid == null || rewardService == null || config == null) {
+            return;
+        }
+        String roll = nightCloakRolls.get(playerUuid);
+        if (roll == null || roll.isBlank()) {
+            roll = NightCloakRollPolicy.resolve("", config.nightCloakChance(),
+                    nightCloakRollSeed(playerUuid));
+            nightCloakRolls.put(playerUuid, roll);
+            if (!saveStateSync()) {
+                nightCloakRolls.remove(playerUuid);
+                getLogger().severe("NIGHT_CLOAK_ROLL_NOT_PERSISTED event=" + eventId
+                        + " player=" + playerUuid);
+                return;
+            }
+            getLogger().info("NIGHT_CLOAK_ROLL event=" + eventId + " player=" + playerUuid
+                    + " outcome=" + roll + " chance=" + config.nightCloakChance());
+        }
+        if (NIGHT_CLOAK_NOT_WON.equals(roll) || NightCloakRollPolicy.isFinal(roll)
+                || (!NIGHT_CLOAK_WON.equals(roll) && !NightCloakRollPolicy.isWon(roll))
+                || !nightCloakRequestsInFlight.add(playerUuid)) {
+            return;
+        }
+        String key = "end-rift:" + eventId + ":boss:player:" + playerUuid + ":night-cloak";
+        EventArtifactRewardRequest request = EventArtifactRewardRequest.toPlayer(
+                eventId, key, "night_cloak", playerUuid, offlineName(playerUuid));
+        rewardService.issueToPlayer(request).whenComplete((result, error) ->
+                Bukkit.getScheduler().runTask(this, () -> {
+                    nightCloakRequestsInFlight.remove(playerUuid);
+                    if (error != null || result == null || !result.accepted()) {
+                        // Keep WON durable.  The next retry will reuse the
+                        // same outcome and idempotency key.
+                        getLogger().log(Level.WARNING,
+                                "Night Cloak reward remains pending for " + playerUuid, error);
+                    } else {
+                        nightCloakRolls.put(playerUuid, result.status());
+                        getLogger().info("NIGHT_CLOAK_REWARD event=" + eventId
+                                + " player=" + playerUuid + " status=" + result.status());
+                    }
+                    saveStateAsync();
+                    checkVictoryRewardCompletion();
+                }));
+    }
+
+    private long nightCloakRollSeed(UUID playerUuid) {
+        long seed = eventId == null ? 0L : eventId.hashCode();
+        seed = 31L * seed + generation;
+        seed = 31L * seed + (playerUuid == null ? 0L : playerUuid.getMostSignificantBits());
+        seed = 31L * seed + (playerUuid == null ? 0L : playerUuid.getLeastSignificantBits());
+        return seed;
     }
 
     private void applyBossLootOnce() {
@@ -16295,7 +18627,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (VICTORY_COMPLETE.equals(victoryStep)) {
             return;
         }
-        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()) {
+        if (!bossLootCommitted || !returnStoneAccepted() || !allShardRewardsAccepted()
+                || !allNightCloakRewardsAccepted()) {
             return;
         }
         if (!endUnlocked) {
@@ -16350,6 +18683,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String status = rewardStatuses.get(playerUuid);
             return "DELIVERED".equals(status) || "ALREADY_ISSUED".equals(status)
                     || "PENDING_DELIVERY".equals(status);
+        });
+    }
+
+    private boolean allNightCloakRewardsAccepted() {
+        return officialRewardRoster.stream().allMatch(playerUuid -> {
+            String outcome = nightCloakRolls.get(playerUuid);
+            return outcome != null && NightCloakRollPolicy.isFinal(outcome);
         });
     }
 
@@ -16438,6 +18778,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clientBindingReadyPlayers.remove(uuid);
         stopControl(uuid);
         cancelShardChannel(uuid);
+        removeShardPassiveEffects(event.getPlayer());
         boolean padChanged = padOccupants.values().removeIf(uuid::equals);
         boolean visualChanged = runeVisualOccupants.values().removeIf(uuid::equals);
         if (padChanged || visualChanged) {
@@ -16451,6 +18792,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clientBindingReadyPlayers.remove(uuid);
         stopControl(uuid);
         cancelShardChannel(uuid);
+        removeShardPassiveEffects(event.getEntity());
         boolean padChanged = padOccupants.values().removeIf(uuid::equals);
         boolean visualChanged = runeVisualOccupants.values().removeIf(uuid::equals);
         if (padChanged || visualChanged) {
@@ -16479,12 +18821,110 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * The Anchor is a server-side, pre-death safety net. It runs only for
+     * VOID damage and only after the authentic owner-bound shard check; a
+     * renamed Echo Shard or a copied PDC cannot consume the cooldown. The
+     * cooldown is persisted before teleport so a crash cannot duplicate a
+     * rescue. A failed teleport rolls the mutation back and leaves vanilla
+     * void damage in charge.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiftShardVoidRescue(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || event.getCause() != EntityDamageEvent.DamageCause.VOID
+                || worldAccessService == null
+                || !worldAccessService.isEndWorld(player.getWorld())) {
+            return;
+        }
+        boolean authenticShard = isAuthenticRiftCoreShard(player);
+        long now = System.currentTimeMillis();
+        long previousCooldown = abyssAnchorCooldowns.getOrDefault(player.getUniqueId(), 0L);
+        boolean activeAttempt = isOfficialAttemptActive();
+        Location safePoint = activeAttempt ? null : findAbyssAnchorSafePoint();
+        AbyssAnchorPolicy.Decision decision = AbyssAnchorPolicy.evaluate(
+                authenticShard, activeAttempt, safePoint != null, now, previousCooldown,
+                config.abyssAnchorCooldownSeconds());
+        if (!decision.rescued()) {
+            if (authenticShard) {
+                getLogger().fine("RIFT_SHARD_ANCHOR_REJECTED event=" + eventId
+                        + " player=" + player.getUniqueId() + " reason=" + decision.reason()
+                        + " active_attempt=" + activeAttempt);
+            }
+            return;
+        }
+        abyssAnchorCooldowns.put(player.getUniqueId(), decision.cooldownUntilMillis());
+        if (!saveStateSync()) {
+            abyssAnchorCooldowns.remove(player.getUniqueId());
+            getLogger().warning("RIFT_SHARD_ANCHOR_REJECTED event=" + eventId
+                    + " player=" + player.getUniqueId() + " reason=cooldown-not-durable");
+            return;
+        }
+        event.setCancelled(true);
+        if (!player.teleport(safePoint)) {
+            if (previousCooldown > 0L) {
+                abyssAnchorCooldowns.put(player.getUniqueId(), previousCooldown);
+            } else {
+                abyssAnchorCooldowns.remove(player.getUniqueId());
+            }
+            saveStateSync();
+            event.setCancelled(false);
+            getLogger().warning("RIFT_SHARD_ANCHOR_REJECTED event=" + eventId
+                    + " player=" + player.getUniqueId() + " reason=teleport-failed");
+            return;
+        }
+        player.setFallDistance(0.0F);
+        player.setFireTicks(0);
+        player.setHealth(AbyssAnchorPolicy.RESCUE_HEALTH);
+        player.getWorld().spawnParticle(Particle.REVERSE_PORTAL,
+                player.getLocation().add(0.0D, 1.0D, 0.0D), 36, 0.45D, 0.8D, 0.45D, 0.03D);
+        player.playSound(player.getLocation(), Sound.ITEM_TOTEM_USE, 0.7F, 0.75F);
+        player.sendMessage(ChatColor.LIGHT_PURPLE + "Якорь Бездны удержал тебя у безопасной точки Core.");
+        getLogger().info("RIFT_SHARD_ANCHOR_RESCUED event=" + eventId
+                + " player=" + player.getUniqueId() + " cooldown_until="
+                + decision.cooldownUntilMillis() + " health=" + player.getHealth()
+                + " priority=before-totem");
+    }
+
+    /** The passive damage reduction must not affect copied or unbound items. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiftShardEndermanDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || !(event.getDamager() instanceof Enderman)
+                || !isAuthenticRiftCoreShard(player)) {
+            return;
+        }
+        double before = event.getDamage();
+        double after = ShardPassivePolicy.endermanDamage(before, true);
+        if (after < before) {
+            event.setDamage(after);
+            getLogger().fine("RIFT_SHARD_ENDERMAN_DAMAGE_REDUCED player="
+                    + player.getUniqueId() + " before=" + before + " after=" + after);
+        }
+    }
+
+    /** Ender Pearl self-damage is fully prevented for the authentic owner. */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onRiftShardEnderPearlDamage(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || !(event.getDamager() instanceof EnderPearl)
+                || !isAuthenticRiftCoreShard(player)
+                || !ShardPassivePolicy.cancelEnderPearlSelfDamage(true)) {
+            return;
+        }
+        event.setCancelled(true);
+        getLogger().fine("RIFT_SHARD_PEARL_DAMAGE_CANCELLED player=" + player.getUniqueId());
+    }
+
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         clientBindingReadyPlayers.remove(uuid);
         stopControl(uuid);
         cancelShardChannel(uuid);
+        if (worldAccessService == null || !worldAccessService.isEndWorld(event.getPlayer().getWorld())) {
+            removeShardPassiveEffects(event.getPlayer());
+        }
         boolean padChanged = padOccupants.values().removeIf(uuid::equals);
         boolean visualChanged = runeVisualOccupants.values().removeIf(uuid::equals);
         if (padChanged || visualChanged) {
@@ -16580,9 +19020,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             elapsed[0] += 5;
             int total = config.shardChannelSeconds() * 20;
-            player.sendActionBar(Component.text("Осколок: " + Math.min(100, elapsed[0] * 100 / total) + "%", NamedTextColor.LIGHT_PURPLE));
             player.spawnParticle(Particle.REVERSE_PORTAL,
                     player.getLocation().add(0.0D, 1.0D, 0.0D), 5, 0.25D, 0.4D, 0.25D, 0.02D);
+            if (elapsed[0] % 20 == 0) {
+                player.spawnParticle(Particle.END_ROD,
+                        player.getLocation().add(0.0D, 1.0D, 0.0D), 10,
+                        0.35D, 0.65D, 0.35D, 0.02D);
+                player.playSound(player.getLocation(), Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
+                        0.35F, 0.65F + Math.min(0.6F, elapsed[0] / 100.0F));
+            }
             if (elapsed[0] >= total) {
                 holder[0].cancel();
                 shardChannelTasks.remove(uuid);
@@ -16621,6 +19067,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         player.playSound(destination, Sound.ENTITY_ENDERMAN_TELEPORT, 1.0F, 0.8F);
         player.sendMessage(ChatColor.LIGHT_PURPLE + "Осколок перенёс тебя в комнату портала.");
+        getLogger().info("RIFT_SHARD_TELEPORT event=" + eventId + " player="
+                + player.getUniqueId() + " world=" + destination.getWorld().getName()
+                + " x=" + destination.getX() + " y=" + destination.getY()
+                + " z=" + destination.getZ());
     }
 
     private Location safePortalDestination() {
@@ -16650,6 +19100,156 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void tickShardChannels() {
         // Channel progress is owned by its individual task.  This method is a
         // bounded hook for diagnostics and deliberately performs no world scan.
+    }
+
+    /**
+     * Refresh the two shard-owned End passives at a bounded cadence. The scan
+     * is limited to online players and four inventory sections; no world or
+     * entity scan is involved. A short duration lets effects disappear soon
+     * after a world change while still tolerating a delayed Paper tick.
+     */
+    private void tickShardPassives() {
+        if (eventTickCounter % 10L != 0L) {
+            return;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            boolean authenticShard = isAuthenticRiftCoreShard(player);
+            boolean inEnd = worldAccessService != null
+                    && worldAccessService.isEndWorld(player.getWorld());
+            if (ShardPassivePolicy.endPassivesActive(authenticShard, inEnd)) {
+                applyShardPassiveEffects(player);
+            } else {
+                removeShardPassiveEffects(player);
+            }
+        }
+    }
+
+    private boolean isAuthenticRiftCoreShard(Player player) {
+        if (player == null || config == null || rewardService == null) {
+            return false;
+        }
+        List<ItemStack> candidates = new ArrayList<>();
+        for (ItemStack stack : player.getInventory().getStorageContents()) {
+            candidates.add(stack);
+        }
+        for (ItemStack stack : player.getInventory().getArmorContents()) {
+            candidates.add(stack);
+        }
+        candidates.add(player.getInventory().getItemInOffHand());
+        for (ItemStack stack : candidates) {
+            if (stack == null || !config.shardItemId().equalsIgnoreCase(readArtifactItemId(stack))) {
+                continue;
+            }
+            if (rewardService.isAuthenticArtifact(stack, player, "rift_shard_passive")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean isShardPassiveMarker(Player player) {
+        return player != null && keyShardPassiveActive != null
+                && player.getPersistentDataContainer().getOrDefault(
+                keyShardPassiveActive, PersistentDataType.BYTE, (byte) 0) != 0;
+    }
+
+    private void applyShardPassiveEffects(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        boolean marked = shardPassiveEffectOwners.contains(uuid) || isShardPassiveMarker(player);
+        boolean strengthOwned = refreshShardPassiveEffect(player, PotionEffectType.STRENGTH, marked);
+        boolean speedOwned = refreshShardPassiveEffect(player, PotionEffectType.SPEED, marked);
+        if (strengthOwned || speedOwned || marked) {
+            shardPassiveEffectOwners.add(uuid);
+            if (keyShardPassiveActive != null) {
+                player.getPersistentDataContainer().set(keyShardPassiveActive,
+                        PersistentDataType.BYTE, (byte) 1);
+            }
+        }
+    }
+
+    /**
+     * Do not replace a stronger external effect. A same-level external effect
+     * already satisfies the passive and is not marked as ours. Only an effect
+     * that this controller created or previously marked is refreshed.
+     */
+    private boolean refreshShardPassiveEffect(Player player, PotionEffectType type, boolean marked) {
+        PotionEffect current = player.getPotionEffect(type);
+        if (current != null && current.getAmplifier() > ShardPassivePolicy.END_EFFECT_AMPLIFIER) {
+            return false;
+        }
+        if (current != null && current.getAmplifier() == ShardPassivePolicy.END_EFFECT_AMPLIFIER
+                && current.getDuration() > 15 && !marked) {
+            return false;
+        }
+        if (current != null && current.getAmplifier() == ShardPassivePolicy.END_EFFECT_AMPLIFIER
+                && current.getDuration() > 15 && marked) {
+            return true;
+        }
+        boolean applied = player.addPotionEffect(new PotionEffect(type,
+                ShardPassivePolicy.END_EFFECT_REFRESH_TICKS,
+                ShardPassivePolicy.END_EFFECT_AMPLIFIER, false, false, false), true);
+        return applied || marked;
+    }
+
+    /** Remove only short, level-II effects previously owned by this plugin. */
+    private void removeShardPassiveEffects(Player player) {
+        if (player == null) {
+            return;
+        }
+        UUID uuid = player.getUniqueId();
+        boolean marked = shardPassiveEffectOwners.remove(uuid) || isShardPassiveMarker(player);
+        if (!marked) {
+            return;
+        }
+        removeOwnedShardEffect(player, PotionEffectType.STRENGTH);
+        removeOwnedShardEffect(player, PotionEffectType.SPEED);
+        if (keyShardPassiveActive != null) {
+            player.getPersistentDataContainer().remove(keyShardPassiveActive);
+        }
+    }
+
+    private void removeOwnedShardEffect(Player player, PotionEffectType type) {
+        PotionEffect current = player.getPotionEffect(type);
+        if (current != null && current.getAmplifier() == ShardPassivePolicy.END_EFFECT_AMPLIFIER
+                && current.getDuration() <= ShardPassivePolicy.END_EFFECT_REFRESH_TICKS + 5) {
+            player.removePotionEffect(type);
+        }
+    }
+
+    private void clearShardPassiveEffects() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (shardPassiveEffectOwners.contains(player.getUniqueId()) || isShardPassiveMarker(player)) {
+                removeShardPassiveEffects(player);
+            }
+        }
+        shardPassiveEffectOwners.clear();
+    }
+
+    private boolean isOfficialAttemptActive() {
+        return switch (phase) {
+            case START_RITUAL, COUNTDOWN,
+                    WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2,
+                    WAVE_3, INTERMISSION_3, WAVE_4, INTERMISSION_4,
+                    WAVE_5, INTERMISSION_5, WAVE_6, PRE_BOSS_COOLDOWN,
+                    BOSS_CINEMATIC, BOSS_ACTIVE, BOSS_FINISH,
+                    FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE -> true;
+            default -> false;
+        };
+    }
+
+    private Location findAbyssAnchorSafePoint() {
+        if (!isConfigured()) {
+            return null;
+        }
+        Location anchor = coreCombatAnchorLocation();
+        if (anchor == null) {
+            return null;
+        }
+        double radius = Math.max(3.5D, Math.min(6.0D, config.arenaRadius() - 1.0D));
+        return findSafeCombatLocation(anchor, null, radius, 2.0D);
     }
 
     private String formatDuration(long seconds) {
@@ -16770,6 +19370,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     towerAggroUntil.remove(entity.getUniqueId());
                     waveCommanders.remove(entity.getUniqueId());
                     commanderAuraEntities.remove(entity.getUniqueId());
+                    tentacleController.remove(entity.getUniqueId());
                     removed++;
                 }
             }
@@ -16785,6 +19386,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveCommanders.clear();
             commanderAuraEntities.clear();
             clearRiftObelisks("owned event cleanup");
+            clearTentacles("owned event cleanup");
         }
         getLogger().info("END_EVENT_OWNED_CLEANUP event=" + expectedEventId + " generations=all removed=" + removed);
     }
@@ -16798,7 +19400,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_PROJECTILE.equals(kind)
                 || EVENT_KIND_WAVE_REWARD.equals(kind) || EVENT_KIND_OBELISK.equals(kind)
                 || EVENT_KIND_OBELISK_PULSE.equals(kind)
-                || EVENT_KIND_RIFT_FIREBALL.equals(kind);
+                || EVENT_KIND_RIFT_FIREBALL.equals(kind)
+                || EVENT_KIND_TENTACLE.equals(kind);
     }
 
     private void cleanupOwnedEntities(String expectedEventId, long expectedGeneration) {
@@ -16817,6 +19420,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     blockedTeleportLogAt.remove(entity.getUniqueId());
                     towerAggroUntil.remove(entity.getUniqueId());
                     waveCommanders.remove(entity.getUniqueId());
+                    tentacleController.remove(entity.getUniqueId());
                     commanderAuraEntities.remove(entity.getUniqueId());
                 }
             }
@@ -16832,6 +19436,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveCommanders.clear();
             commanderAuraEntities.clear();
             clearRiftObelisks("owned generation cleanup");
+            clearTentacles("owned generation cleanup");
         }
     }
 
@@ -16843,6 +19448,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             activeRiftObelisks.remove(entity.getUniqueId());
             activeRiftObeliskPulseDisplays.remove(entity.getUniqueId());
             riftObeliskPulseTasks.remove(entity.getUniqueId());
+            tentacleController.remove(entity.getUniqueId());
         }
         if (entity != null && ownedEntities.containsKey(entity.getUniqueId())) {
             unbindEventEntityClient(entity.getUniqueId());
@@ -16942,6 +19548,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private TentacleAnimationPolicy.State tentacleAnimationState(Entity entity) {
+        if (entity == null || keyTentacleState == null) {
+            return TentacleAnimationPolicy.State.IDLE;
+        }
+        String raw = readString(entity, keyTentacleState);
+        try {
+            return raw.isBlank() ? TentacleAnimationPolicy.State.IDLE
+                    : TentacleAnimationPolicy.State.valueOf(raw.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return TentacleAnimationPolicy.State.IDLE;
+        }
+    }
+
+    private void sendTentacleAnimationVisualUpdate(Entity entity,
+                                                   TentacleAnimationPolicy.State state) {
+        if (entity == null || state == null || config == null) {
+            return;
+        }
+        String instance = entityBindingInstances.computeIfAbsent(entity.getUniqueId(), uuid ->
+                eventId + ":" + generation + ":" + uuid);
+        long durationMillis = Math.max(0L,
+                TentacleAnimationPolicy.durationTicks(state) * 50L);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (isEventVisualViewer(player)) {
+                sendClientPacket(player, "END_ENTITY_PHASE", instance, durationMillis,
+                        entity.getUniqueId().toString(), state.name());
+            }
+        }
+    }
+
     private void bindEventEntityClient(Player player, Entity entity) {
         if (!isEventVisualViewer(player) || entity == null
                 || !entity.getWorld().equals(player.getWorld())) {
@@ -16955,6 +19591,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 eventId + ":" + generation + ":" + uuid);
         sendClientPacket(player, "END_ENTITY_BIND", instance, 0L,
                 entity.getUniqueId().toString(), visualId);
+        if (EVENT_KIND_TENTACLE.equals(readString(entity, keyKind))) {
+            sendTentacleAnimationVisualUpdate(entity, tentacleAnimationState(entity));
+        }
         if (entity.getType() == EntityType.SKELETON) {
             getLogger().info("SKELETON_TEXTURE_BIND entity=" + entity.getUniqueId()
                     + " viewer=" + player.getUniqueId() + " visual=" + visualId
@@ -16980,6 +19619,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return "";
         }
         String kind = readString(entity, keyKind);
+        if (EVENT_KIND_TENTACLE.equals(kind)) {
+            return CLIENT_VISUAL_TENTACLE;
+        }
         if (entity.getType() == EntityType.SPIDER) {
             return CLIENT_VISUAL_SPIDER;
         }
@@ -17004,7 +19646,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         String kind = readString(entity, keyKind);
         return EVENT_KIND_WAVE_MOB.equals(kind) || EVENT_KIND_ELITE.equals(kind)
-                || EVENT_KIND_FINAL_WAVE.equals(kind);
+                || EVENT_KIND_FINAL_WAVE.equals(kind) || EVENT_KIND_TENTACLE.equals(kind);
     }
 
     private void bindBossClient(Player player) {
@@ -17016,8 +19658,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         sendClientPacket(player, "END_BOSS_BIND", bossBindingInstanceId, 0L,
                 bossUuid.toString(), config.clientBossId());
-        sendBossPhaseVisualUpdate(player, Bukkit.getEntity(bossUuid), bossStage);
-        sendBossBarVisualUpdate(player, Bukkit.getEntity(bossUuid), bossStage);
+        Entity bound = Bukkit.getEntity(bossUuid);
+        if (bound instanceof LivingEntity living && isV2OfficialBoss(living)) {
+            sendV2BossPhaseVisualUpdate(living, v2BossStage, "IDLE");
+            sendV2BossBarVisualUpdate(player, living, v2BossStage);
+        } else {
+            sendBossPhaseVisualUpdate(player, bound, bossStage);
+            sendBossBarVisualUpdate(player, bound, bossStage);
+        }
     }
 
     private void sendBossPhaseVisualUpdate(Player player, Entity boss, BossStage stage) {
@@ -17055,6 +19703,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    private void sendV2BossPhaseVisualUpdate(LivingEntity boss, V2BossStage stage,
+                                             String animationId) {
+        if (boss == null || stage == null || bossUuid == null
+                || !bossUuid.equals(boss.getUniqueId()) || bossBindingInstanceId.isBlank()) {
+            return;
+        }
+        String animation = animationId == null || animationId.isBlank()
+                ? "IDLE" : animationId.replace('|', '_').trim().toUpperCase(Locale.ROOT);
+        for (Player player : eventAudience()) {
+            if (!isActiveBossParticipant(player) || !player.getWorld().equals(boss.getWorld())) {
+                continue;
+            }
+            sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
+                    BOSS_PHASE_VISUAL_TRANSITION_MILLIS, boss.getUniqueId().toString(),
+                    stage.name() + "|" + animation);
+        }
+    }
+
+    private void sendV2BossBarVisualUpdate(Player player, LivingEntity boss, V2BossStage stage) {
+        if (player == null || boss == null || stage == null || bossUuid == null
+                || !bossUuid.equals(boss.getUniqueId()) || bossBindingInstanceId.isBlank()) {
+            return;
+        }
+        double max = Math.max(1.0D, bossMaxHealth(boss));
+        double health = Math.max(0.0D, Math.min(max, boss.getHealth()));
+        sendClientPacket(player, "END_BOSS_BAR", bossBindingInstanceId, 1_000L,
+                boss.getUniqueId().toString(), stage.name() + "|NONE",
+                (int) Math.round(health), (int) Math.round(max), (float) (health / max));
+    }
+
     /** Sends a short client-only animation cue; gameplay remains server-authoritative. */
     private void sendBossAnimationVisualUpdate(Entity boss, String animationId) {
         if (boss == null || bossUuid == null || bossBindingInstanceId.isBlank()
@@ -17069,7 +19747,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             sendClientPacket(player, "END_BOSS_PHASE", bossBindingInstanceId,
                     BOSS_PHASE_VISUAL_TRANSITION_MILLIS, bossUuid.toString(),
-                    bossStage.name() + "|" + animation);
+                    (isV2OfficialBoss(boss instanceof LivingEntity living ? living : null)
+                            ? v2BossStage.name() : bossStage.name()) + "|" + animation);
         }
     }
 

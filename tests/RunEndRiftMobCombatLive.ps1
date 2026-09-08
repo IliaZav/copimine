@@ -76,10 +76,15 @@ try {
   if ($attacks -lt 1) { throw "RED: player could not reach and attack a live wave mob; bot log=$botLog" }
   if ($hurt -lt 1) { throw "RED: no live wave mob attack reached the player; End Rift log=$paperLog" }
   $paper = Get-Content $paperLog -Raw
+  $playerDamageApplied = @([Regex]::Matches($paper, 'WAVE_MOB_PLAYER_DAMAGE_APPLIED .*authoritative_real_health=true .*delta=([0-9]+(?:\.[0-9]+)?)') |
+    Where-Object { [double]::Parse($_.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) -gt 0.0D }).Count
+  if ($playerDamageApplied -lt 1) {
+    throw "RED: no player hit produced measurable wave-mob health loss; End Rift log=$paperLog"
+  }
   $ai = ([Regex]::Matches($paper, 'WAVE_AI_TARGET')).Count
   $paths = ([Regex]::Matches($paper, 'WAVE_AI_PATH')).Count
   if ($ai -lt 1 -or $paths -lt 1) { throw "Live controller did not report target/path markers: target=$ai path=$paths" }
-  Write-Output "LIVE_MOB_COMBAT_PASS moved=$moved attacks=$attacks player_hurt=$hurt ai_targets=$ai ai_paths=$paths"
+  Write-Output "LIVE_MOB_COMBAT_PASS moved=$moved attacks=$attacks player_hurt=$hurt player_damage_applied=$playerDamageApplied ai_targets=$ai ai_paths=$paths"
 } finally {
   try { Rcon 'cmend wave clear' | Out-Null } catch { }
   try { Rcon 'cmend boss kill cleanup' | Out-Null } catch { }

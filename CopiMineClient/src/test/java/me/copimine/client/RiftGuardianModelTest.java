@@ -42,6 +42,16 @@ class RiftGuardianModelTest {
     }
 
     @Test
+    void baseSilhouetteIsTallAndSlenderInsteadOfAThickCube() {
+        assertTrue(RiftGuardianModel.TORSO_HEIGHT / RiftGuardianModel.TORSO_WIDTH >= 1.70F);
+        assertTrue(RiftGuardianModel.TORSO_WIDTH <= 16.0F);
+        assertTrue(RiftGuardianModel.TORSO_DEPTH <= 9.0F);
+        assertTrue(RiftGuardianModel.ARM_HEIGHT >= 28.0F);
+        assertTrue(RiftGuardianModel.LEG_HEIGHT >= 28.0F);
+        assertTrue(RiftGuardianModel.ARM_PIVOT_X <= 13.5F);
+    }
+
+    @Test
     void approvedAnimationsProduceDeterministicDistinctAndBoundedPoses() {
         RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
         PoseSnapshot idle = pose(model, Phase.CATASTROPHE, "IDLE", 18.0F);
@@ -58,14 +68,16 @@ class RiftGuardianModelTest {
     }
 
     @Test
-    void onlyCatastropheRaisesFinalSilhouetteScale() {
+    void finalV2PhasesRaiseTheSilhouetteScale() {
         RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
 
         for (Phase phase : Phase.values()) {
             pose(model, phase, "IDLE", 24.0F);
             ModelPart root = model.getPart();
             boolean raised = root.xScale > 1.01F || root.yScale > 1.01F || root.zScale > 1.01F;
-            assertEquals(phase == Phase.CATASTROPHE, raised, "unexpected silhouette scale for " + phase);
+            boolean finalPhase = phase == Phase.RAGE || phase == Phase.LAST_SEAL
+                    || phase == Phase.CATASTROPHE;
+            assertEquals(finalPhase, raised, "unexpected silhouette scale for " + phase);
             assertTrue(root.xScale <= 1.30F && root.yScale <= 1.30F && root.zScale <= 1.30F,
                     "silhouette scale escaped safe bounds for " + phase);
         }

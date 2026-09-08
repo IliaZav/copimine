@@ -31,6 +31,7 @@ public record EventSnapshot(
         Set<UUID> officialRewardRoster,
         Map<UUID, String> rewardStatuses,
         Map<UUID, Long> shardCooldowns,
+        Map<UUID, Long> abyssAnchorCooldowns,
         boolean coreCharged,
         boolean halfHealthTriggered,
         boolean controlSpellUnlocked,
@@ -57,7 +58,8 @@ public record EventSnapshot(
         boolean absorptionCompleted,
         boolean absorptionAttackEmpowered,
         boolean judgmentTriggered,
-        boolean judgmentCompleted) {
+        boolean judgmentCompleted,
+        Map<UUID, String> nightCloakRolls) {
 
     public EventSnapshot {
         eventId = eventId == null ? "" : eventId;
@@ -71,6 +73,8 @@ public record EventSnapshot(
         officialRewardRoster = Set.copyOf(officialRewardRoster == null ? Set.of() : officialRewardRoster);
         rewardStatuses = Map.copyOf(rewardStatuses == null ? Map.of() : rewardStatuses);
         shardCooldowns = Map.copyOf(shardCooldowns == null ? Map.of() : shardCooldowns);
+        abyssAnchorCooldowns = Map.copyOf(abyssAnchorCooldowns == null ? Map.of() : abyssAnchorCooldowns);
+        nightCloakRolls = Map.copyOf(nightCloakRolls == null ? Map.of() : nightCloakRolls);
         participants = Set.copyOf(participants == null ? Set.of() : participants);
         finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
         finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
@@ -88,10 +92,10 @@ public record EventSnapshot(
     public static EventSnapshot empty(int schemaVersion) {
         return new EventSnapshot(
                 schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
-                0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(),
+                0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(), Map.of(),
                 false, false, false, false, false, false, false, false, "PENDING", null,
                 "PENDING", "NONE", 0L, 0L, "", Set.of(), Map.of(), Set.of(), Set.of(),
-                "AWAKENING", "NONE", 0L, false, false, false, false, false);
+                "AWAKENING", "NONE", 0L, false, false, false, false, false, Map.of());
     }
 
     public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
@@ -100,7 +104,7 @@ public record EventSnapshot(
                 coreX, coreY, coreZ, coreBlockData, requiredPlayers,
                 arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
                 resourceRequirements, depositedResources, pads, resourceContributors,
-                officialRewardRoster, rewardStatuses, shardCooldowns, coreCharged,
+                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns, coreCharged,
                 halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
                 endUnlocked, officialBossDeathCommitted, bossLootCommitted,
                 bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, phaseDeadlineMillis,
@@ -108,7 +112,30 @@ public record EventSnapshot(
                 updatedParticipants, finalDrainTargets,
                 finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
                 bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
-                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted);
+                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted, nightCloakRolls);
+    }
+
+    /**
+     * Copy the full durable snapshot while changing only the schema and
+     * lifecycle phase.  V2 migration uses this rather than reconstructing a
+     * partial snapshot, so resources, reward state, contributors and the
+     * current generation cannot silently disappear during recovery.
+     */
+    public EventSnapshot withSchemaAndPhase(int updatedSchemaVersion, EventPhase updatedPhase) {
+        EventPhase safePhase = updatedPhase == null ? EventPhase.RECOVERY_REQUIRED : updatedPhase;
+        return new EventSnapshot(
+                Math.max(1, updatedSchemaVersion), eventId, generation, safePhase.name(), worldName,
+                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
+                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
+                resourceRequirements, depositedResources, pads, resourceContributors,
+                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns, coreCharged,
+                halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
+                endUnlocked, officialBossDeathCommitted, bossLootCommitted,
+                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt,
+                phaseDeadlineMillis, recoveryReason, participants, finalDrainTargets,
+                finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
+                bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
+                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted, nightCloakRolls);
     }
 
     public EventPhase eventPhase() {

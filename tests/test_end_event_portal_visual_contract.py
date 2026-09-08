@@ -4,11 +4,14 @@ import json
 from pathlib import Path
 from zipfile import ZipFile
 
+from PIL import Image
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PACK = ROOT / "resourcepacks"
 SRC = PACK / "src"
 SERVER = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
+CONFIG = ROOT / "copimine-end-event/config.yml"
 BUILDER = PACK / "build-resourcepack.py"
 
 
@@ -52,6 +55,21 @@ def test_inner_and_shard_models_exist_and_are_packed() -> None:
         names = set(zipped.namelist())
     for relative in expected:
         assert relative in names, relative
+
+
+def test_portal_asset_is_high_resolution_black_purple_rift_art() -> None:
+    texture = SRC / "assets/copimine/textures/item/end_event_portal.png"
+    with Image.open(texture) as image:
+        rgba = image.convert("RGBA")
+        assert rgba.width >= 512 and rgba.height >= 512
+        visible = [pixel for pixel in rgba.getdata() if pixel[3] > 32]
+    assert visible, "portal texture must contain visible pixels"
+    purple = sum(1 for red, green, blue, _ in visible
+                 if blue > green * 1.15 and red > green * 1.15)
+    cyan = sum(1 for red, green, blue, _ in visible
+               if green > red * 1.12 and blue > red * 1.12)
+    assert purple / len(visible) >= 0.55
+    assert cyan / len(visible) < 0.05
 
 
 def test_portal_models_use_existing_portal_texture_and_stay_in_item_bounds() -> None:
@@ -106,6 +124,58 @@ def test_disposable_wave_three_probe_renders_the_real_portal_objective() -> None
     assert "else if (test && wave == 3)" in test_branch
     assert "startWaveObjective(wave, world, core)" in test_branch
     assert "spawnPortalObjectiveVisuals(world, portals)" in source
+
+
+def test_portal_wave_does_not_apply_custom_knockback_and_uses_gradual_decay() -> None:
+    source = SERVER.read_text(encoding="utf-8")
+    handler_start = source.index("public void onPortalWaveMobAttack")
+    handler_end = source.index("\n    /**", handler_start)
+    handler = source[handler_start:handler_end]
+    assert "setVelocity" not in handler
+    assert "WAVE_PORTAL_MOB_KNOCKBACK_DISABLED" in source
+    config = CONFIG.read_text(encoding="utf-8")
+    assert "portal-capture-decay-rate: 0.5" in config
+    assert "portalCaptureDecayRate()" in source
+
+
+def test_portal_wave_cancels_only_vanilla_mob_knockback_without_cancelling_damage() -> None:
+    source = SERVER.read_text(encoding="utf-8")
+    assert "EntityKnockbackEvent" in source
+    start = source.index("public void onPortalWaveMobKnockback")
+    end = source.index("\n    /**", start)
+    body = source[start:end]
+    assert "event.getEntity() instanceof Mob mob" in body
+    assert "portalWaveKnockbackUntilMillis" in body
+    assert "event.setCancelled(true)" in body
+    assert "WAVE_PORTAL_MOB_KNOCKBACK_CANCELLED" in body
+    attack_start = source.index("public void onPortalWaveMobAttack")
+    attack_end = source.index("public void onPortalWaveMobKnockback", attack_start)
+    attack_body = source[attack_start:attack_end]
+    assert "event.getEntity() instanceof Mob mob" in attack_body
+    assert "event.getDamager() instanceof Player player" in attack_body
+    assert "readString(mob, keyKind)" in attack_body
+    assert "portalWaveKnockbackUntilMillis.put(mob.getUniqueId()" in attack_body
+    assert "isWaveCombatKind(readString(attacker, keyKind))" in attack_body
+    assert "readInt(mob, keyWave, 0) != 3" in attack_body
+    assert "event.getEntity() instanceof Player victim" in attack_body
+    assert "event.getDamager() instanceof org.bukkit.entity.Projectile projectile" in attack_body
+    assert "projectile.getShooter() instanceof Player player" in attack_body
+    knockback_body = body
+    assert "event.getEntity() instanceof Mob mob" in knockback_body
+    assert "readString(mob, keyKind)" in knockback_body
+    assert "readInt(mob, keyWave, 0) != 3" in knockback_body
+    cleanup = source[source.index("private void clearWaveObjectiveState"):]
+    assert "portalWaveKnockbackUntilMillis.clear()" in cleanup
+
+
+def test_portal_capture_logs_progress_so_gradual_decay_is_observable_live() -> None:
+    source = SERVER.read_text(encoding="utf-8")
+    body = source[source.index("private void updatePortalObjective"):
+                 source.index("private void updateTowerObjective")]
+    assert "PORTAL_CAPTURE_PROGRESS" in body
+    assert "progress_ms=" in body
+    assert "percent=" in body
+    assert "occupied=" in body
 
 
 def test_zone_renderer_is_floor_anchored_and_policy_driven() -> None:

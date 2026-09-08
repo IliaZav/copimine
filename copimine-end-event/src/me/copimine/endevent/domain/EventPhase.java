@@ -4,6 +4,10 @@ public enum EventPhase {
     UNCONFIGURED,
     COLLECTING,
     READY_FOR_PLAYERS,
+    /** V2 ritual hold after all unique player runes are occupied. */
+    START_RITUAL,
+    /** Legacy ritual hold name retained while the V2 controller is migrated. */
+    @Deprecated
     COUNTDOWN,
     WAVE_1,
     INTERMISSION_1,
@@ -14,6 +18,12 @@ public enum EventPhase {
     WAVE_4,
     INTERMISSION_4,
     WAVE_5,
+    /** V2 transition-rune hold between Wave 5 and chamber combat. */
+    INTERMISSION_5,
+    /** V2 chamber-combat wave. */
+    WAVE_6,
+    /** V2 safe cooldown after chamber combat and before the boss cinematic. */
+    PRE_BOSS_COOLDOWN,
     /** Durable hand-off after Wave V and before a combat entity exists. */
     BOSS_CINEMATIC,
     BOSS_ACTIVE,

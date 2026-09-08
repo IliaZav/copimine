@@ -11,8 +11,11 @@ param(
 )
 
 # Local-only behavior probe for the real rune ritual.  The two disposable
-# protocol clients stand on the persisted pads, which must start COUNTDOWN
-# and cause the automatic pre-fight music to be sent by the event controller.
+# protocol clients stand on the persisted pads, which must start the V2
+# START_RITUAL hold before the first wave.  COUNTDOWN is only a legacy
+# snapshot alias and is not the official V2 state.  The disposable clients
+# stand on the persisted pads and cause the automatic pre-fight music to be
+# sent by the event controller.
 # The test cancels only that local ritual in finally; it never resets the world
 # or touches the production server/database.
 $ErrorActionPreference = 'Stop'
@@ -164,6 +167,19 @@ function Wait-PlayersAuthenticated {
   throw "Rune wait music bots did not authenticate: $($playerNames -join ', ')"
 }
 
+function Force-LocalAuthMeLogin {
+  foreach ($name in $playerNames) {
+    # minecraft-protocol clients occasionally finish the play handshake but
+    # miss the AuthMe chat command on a busy local JVM. This fallback is
+    # deliberately limited to the isolated disposable test accounts; it does
+    # not change the player-facing /login flow or any production database.
+    $response = Invoke-LocalRcon ("authme forcelogin $name")
+    if ($response -match '(?i)not online|needs to be online|unknown command|error') {
+      throw "Local AuthMe could not force-login online probe '$name': $response"
+    }
+  }
+}
+
 function Teleport-ToPad {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -216,6 +232,7 @@ try {
   if ($null -eq $previousLogSound) { Remove-Item Env:END_RIFT_BOT_LOG_SOUND -ErrorAction SilentlyContinue }
   else { $env:END_RIFT_BOT_LOG_SOUND = $previousLogSound }
   Wait-PlayersOnline
+  Force-LocalAuthMeLogin
   Wait-PlayersAuthenticated -Offset $logOffset
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
     Teleport-ToPad -Name $playerNames[$index] -Pad $pads[$index]
@@ -232,7 +249,7 @@ try {
     }
     $status = Invoke-LocalRcon 'cmend status'
     $plainStatus = $status -replace '\u00A7.', ''
-    if ($plainStatus -match 'state=COUNTDOWN' -and $plainStatus -match 'pads=2/2') {
+    if ($plainStatus -match 'state=START_RITUAL' -and $plainStatus -match 'pads=2/2') {
       $countdownSeen = $true
     }
     $botSoundEvidence = ($playerNames | ForEach-Object {
@@ -243,14 +260,14 @@ try {
       $musicSeen = $true
     }
     if ($countdownSeen -and $musicSeen) {
-      Write-Evidence 'LIVE_RUNE_WAIT_MUSIC_PASS state=COUNTDOWN pads=2/2 track=copimine:end_rift/ritual_wait loop_seconds=22 client_sound_packet=true'
+      Write-Evidence 'LIVE_RUNE_WAIT_MUSIC_PASS state=START_RITUAL pads=2/2 track=copimine:end_rift/ritual_wait loop_seconds=22 client_sound_packet=true'
       Write-Evidence ($plainStatus -replace '\r?\n', ' ')
       break
     }
     Start-Sleep -Milliseconds 500
   }
   if (-not $countdownSeen) {
-    throw "Rune occupancy did not start COUNTDOWN within $TimeoutSeconds seconds.`n$(Invoke-LocalRcon 'cmend status')"
+    throw "Rune occupancy did not start START_RITUAL within $TimeoutSeconds seconds.`n$(Invoke-LocalRcon 'cmend status')"
   }
   if (-not $musicSeen) {
     throw "Automatic ritual wait music marker was not emitted within $TimeoutSeconds seconds.`n$($logEvidence.ToString())"
@@ -266,7 +283,7 @@ try {
       try { $process.WaitForExit(5000) | Out-Null } catch { }
     }
   }
-  try { $null = Invoke-LocalRcon 'cmend ritual cancel' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend ritual cancel confirm' } catch { }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
 }

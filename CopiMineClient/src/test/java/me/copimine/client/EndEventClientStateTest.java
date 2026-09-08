@@ -155,6 +155,23 @@ class EndEventClientStateTest {
         assertTrue(state.visualForEntity("mob-uuid").isBlank());
     }
 
+    @Test
+    void appliesServerTentacleAnimationOnlyToItsBoundGeneration() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 100L));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
+                "tentacle-uuid", "GRAB_SUCCESS", "control-id"), 110L));
+        assertEquals("GRAB_SUCCESS", state.entityAnimationForEntity("tentacle-uuid"));
+        assertTrue(state.tentaclePoseForEntity("tentacle-uuid", 7L).isFinite());
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
+                "tentacle-uuid", "HOLD", "control-id"), 120L));
+        assertEquals("HOLD", state.entityAnimationForEntity("tentacle-uuid"));
+        assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "", "control-id"), 130L));
+        assertTrue(state.entityAnimationForEntity("tentacle-uuid").isBlank());
+    }
+
     private static EndEventPacket packet(String type, String eventId, long generation, String instance,
                                          long duration, String subject, String bossId, String controlId) {
         return new EndEventPacket(type, eventId, generation, instance, duration, subject, bossId, controlId);

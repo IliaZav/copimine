@@ -91,6 +91,21 @@ def test_rift_storm_uses_bounded_journaled_floor_and_web_mutations() -> None:
     assert "world.getBlockAt(entry.getKey().x(), stormFloorY, entry.getKey().z())" in restore
 
 
+def test_rift_storm_safe_zones_use_bounded_emerald_displays_and_green_beacon_columns() -> None:
+    assert "RIFT_STORM_DURATION_SECONDS = 60" in SOURCE
+    assert "MAX_STORM_SAFE_ZONE_DISPLAYS" in SOURCE
+    assert "Map<HazardPlanner.Point, UUID> riftStormSafeZoneDisplays" in SOURCE
+    assert "spawnRiftStormSafeZoneVisuals" in SOURCE
+    assert "renderRiftStormSafeZoneVisuals" in SOURCE
+    assert "BlockDisplay" in SOURCE
+    assert "Material.EMERALD_BLOCK" in SOURCE
+    assert "Color.fromRGB(84, 255, 105)" in SOURCE
+    assert "clearRiftStormSafeZoneVisuals" in SOURCE
+    update = _method_body("updateRiftStormObjective")
+    assert "renderRiftStormSafeZoneVisuals" in update
+    assert "elapsed >= RIFT_STORM_DURATION_SECONDS" in update
+
+
 def test_wave_four_spawn_composition_is_capped_after_player_scaling() -> None:
     spawn = _method_body("spawnWave")
     assert "WaveMechanicsPolicy.capTowerCounts" in spawn
@@ -128,13 +143,20 @@ def test_tower_ai_alerts_on_a_nearby_player_before_committing_core_damage() -> N
     assert "findNearestCombatPlayer(entity, TOWER_PLAYER_ALERT_RADIUS) != null" in objective
 
 
-def test_portal_wave_has_floor_visuals_and_bounded_speed_knockback() -> None:
+def test_portal_wave_has_floor_visuals_and_cancels_only_mob_knockback() -> None:
     assert "spawnPortalObjectiveVisuals" in SOURCE
     assert "refreshPortalObjectiveVisuals" in SOURCE
     assert "WAVE_PORTAL_MOB_MODIFIERS" in SOURCE
     assert "PotionEffectType.SPEED" in SOURCE
-    assert "Knockback II-equivalent" in SOURCE
     assert "onPortalWaveMobAttack" in SOURCE
+    assert "onPortalWaveMobKnockback" in SOURCE
+    assert "portalWaveKnockbackUntilMillis" in SOURCE
+    start = SOURCE.index("public void onPortalWaveMobKnockback")
+    end = SOURCE.index("\n    }", start)
+    knockback = SOURCE[start:end]
+    assert "event.setCancelled(true)" in knockback
+    assert "event.getCause() != EntityKnockbackEvent.KnockbackCause.ENTITY_ATTACK" in knockback
+    assert "readInt(mob, keyWave, 0) != 3" in knockback
 
 
 def test_portal_capture_centers_use_the_playable_floor_anchor() -> None:
@@ -192,7 +214,7 @@ def test_wave_one_and_two_objectives_are_live_controllers_not_auto_completed() -
     assert "PotionEffectType.GLOWING" in SOURCE
     assert "PotionEffectType.SPEED" in SOURCE
     assert "PotionEffectType.RESISTANCE" in SOURCE
-    assert "sendActionBar" in SOURCE
+    assert "renderWaveOneArenaZones" in SOURCE
     assert "playSound" in SOURCE
 
 

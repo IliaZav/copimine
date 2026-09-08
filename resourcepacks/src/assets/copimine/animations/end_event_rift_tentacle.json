@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "asset": "END_RIFT_TENTACLE_V1",
+  "skeleton": {
+    "root": null,
+    "base": "root",
+    "seg_01": "base",
+    "seg_02": "seg_01",
+    "seg_03": "seg_02",
+    "seg_04": "seg_03",
+    "tip": "seg_04",
+    "tip_claw_1": "tip",
+    "tip_claw_2": "tip",
+    "tip_claw_3": "tip",
+    "grab_socket": "tip"
+  },
+  "forward_axis": "+Z",
+  "animations": {
+    "idle": {"duration_ticks": 60, "loop": true, "motion": "sway"},
+    "emerge": {"duration_ticks": 18, "loop": false, "motion": "rise"},
+    "telegraph_grab": {"duration_ticks": 20, "loop": false, "motion": "wind_up"},
+    "grab_success": {"duration_ticks": 14, "loop": false, "motion": "close"},
+    "hold": {"duration_ticks": 20, "loop": true, "motion": "restrain"},
+    "throw": {"duration_ticks": 12, "loop": false, "motion": "release"},
+    "grab_miss": {"duration_ticks": 14, "loop": false, "motion": "slam"},
+    "hurt": {"duration_ticks": 7, "loop": false, "motion": "recoil"},
+    "death": {"duration_ticks": 20, "loop": false, "motion": "collapse"},
+    "retract": {"duration_ticks": 16, "loop": false, "motion": "below_floor"},
+    "spawn_under_player": {"duration_ticks": 7, "loop": false, "motion": "eruption"},
+    "shield_channel": {"duration_ticks": 40, "loop": true, "motion": "channel"}
+  },
+  "markers": ["CONTACT", "HOLD_LOCK", "THROW_RELEASE", "RECOVERY_START", "HIDE_BELOW_FLOOR"]
+}

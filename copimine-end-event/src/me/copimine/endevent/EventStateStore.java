@@ -73,7 +73,7 @@ public final class EventStateStore {
                 recovery.arenaMinZ(), recovery.arenaMaxX(), recovery.arenaMaxY(), recovery.arenaMaxZ(),
                 recovery.resourceRequirements(), recovery.depositedResources(), recovery.pads(),
                 recovery.resourceContributors(), recovery.officialRewardRoster(), recovery.rewardStatuses(),
-                recovery.shardCooldowns(),
+                recovery.shardCooldowns(), recovery.abyssAnchorCooldowns(),
                 recovery.coreCharged(), recovery.halfHealthTriggered(), recovery.controlSpellUnlocked(),
                 recovery.finalDrainTriggered(), recovery.finalDrainApplied(), recovery.endUnlocked(),
                 recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.bossRewardStatus(),
@@ -84,7 +84,7 @@ public final class EventStateStore {
                 recovery.bossStage(), recovery.bossCastState(), recovery.bossCastDeadlineMillis(),
                 recovery.absorptionTriggered(), recovery.absorptionCompleted(),
                 recovery.absorptionAttackEmpowered(), recovery.judgmentTriggered(),
-                recovery.judgmentCompleted());
+                recovery.judgmentCompleted(), recovery.nightCloakRolls());
         return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
     }
 
@@ -164,6 +164,8 @@ public final class EventStateStore {
             yaml.set("boss.judgment-completed", snapshot.judgmentCompleted());
             yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
             yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
+            yaml.set("rewards.abyss-anchor-cooldowns", uuidLongMap(snapshot.abyssAnchorCooldowns()));
+            yaml.set("rewards.night-cloak-rolls", uuidStatusMap(snapshot.nightCloakRolls()));
             List<Map<String, Object>> pads = new ArrayList<>();
             for (EventSnapshot.PadSnapshot pad : snapshot.pads()) {
                 Map<String, Object> entry = new LinkedHashMap<>();
@@ -192,7 +194,7 @@ public final class EventStateStore {
             if (!yaml.contains("event.phase") || yaml.getInt("schema-version", -1) > schemaVersion) {
                 return LoadResult.invalid(EventSnapshot.empty(schemaVersion), label + " schema is unsupported");
             }
-            return LoadResult.valid(fromYaml(yaml), label);
+            return LoadResult.valid(V2SnapshotMigrationPolicy.migrate(fromYaml(yaml), schemaVersion), label);
         } catch (RuntimeException error) {
             return LoadResult.invalid(EventSnapshot.empty(schemaVersion), label + " parse failed: " + error.getMessage());
         }
@@ -216,6 +218,10 @@ public final class EventStateStore {
         Set<Integer> waveRewardsIssued = new LinkedHashSet<>(yaml.getIntegerList("rewards.wave-rewards-issued"));
         Map<UUID, String> statuses = uuidStatuses(yaml.getConfigurationSection("rewards.statuses"));
         Map<UUID, Long> cooldowns = uuidLongs(yaml.getConfigurationSection("rewards.shard-cooldowns"));
+        Map<UUID, Long> abyssAnchorCooldowns = uuidLongs(
+                yaml.getConfigurationSection("rewards.abyss-anchor-cooldowns"));
+        Map<UUID, String> nightCloakRolls = uuidStatuses(
+                yaml.getConfigurationSection("rewards.night-cloak-rolls"));
         return new EventSnapshot(
                 yaml.getInt("schema-version", schemaVersion),
                 yaml.getString("event.event-id", ""),
@@ -226,7 +232,7 @@ public final class EventStateStore {
                 yaml.getString("event.core.block-data", ""), yaml.getInt("event.required-players"),
                 yaml.getInt("event.arena.min-x"), yaml.getInt("event.arena.min-y"), yaml.getInt("event.arena.min-z"),
                 yaml.getInt("event.arena.max-x"), yaml.getInt("event.arena.max-y"), yaml.getInt("event.arena.max-z"),
-                requirements, deposited, pads, contributors, roster, statuses, cooldowns,
+                requirements, deposited, pads, contributors, roster, statuses, cooldowns, abyssAnchorCooldowns,
                 yaml.getBoolean("event.core-charged"), yaml.getBoolean("event.half-health-triggered"),
                 yaml.getBoolean("event.control-spell-unlocked"), yaml.getBoolean("event.final-drain-triggered"),
                 yaml.getBoolean("event.final-drain-applied"), yaml.getBoolean("event.end-unlocked"),
@@ -246,7 +252,7 @@ public final class EventStateStore {
                 yaml.getBoolean("boss.absorption-completed", false),
                 yaml.getBoolean("boss.absorption-attack-empowered", false),
                 yaml.getBoolean("boss.judgment-triggered", false),
-                yaml.getBoolean("boss.judgment-completed", false));
+                yaml.getBoolean("boss.judgment-completed", false), nightCloakRolls);
     }
 
     private void writeAtomic(String content) throws IOException {

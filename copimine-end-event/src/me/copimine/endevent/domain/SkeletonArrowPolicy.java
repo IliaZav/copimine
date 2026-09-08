@@ -10,6 +10,8 @@ public final class SkeletonArrowPolicy {
     public static final int STATUS_DURATION_TICKS = 7 * 20;
     public static final int STATUS_AMPLIFIER = 2; // Potion level III.
     public static final int EXPLOSIVE_DAMAGE_RADIUS_BLOCKS = 2;
+    /** Player-only impact damage; arena blocks are never part of this attack. */
+    public static final double EXPLOSIVE_DAMAGE = 4.0D;
     public static final float EXPLOSIVE_POWER = 1.8F;
 
     private SkeletonArrowPolicy() {

@@ -54,6 +54,29 @@ def test_boss_ai_has_one_controller_with_telegraph_and_generation_guards() -> No
     assert "VOID_MARK_DAMAGE = 4.0D" in MAIN
 
 
+def test_boss_targeting_uses_a_lock_window_instead_of_refresh_ping_pong() -> None:
+    assert "BossTargetPolicy" in MAIN
+    assert "bossTargetLockUntilMillis" in MAIN
+    assert "BossTargetPolicy.chooseTarget" in MAIN
+    assert "target-lock-seconds: 6" in CONFIG
+
+
+def test_local_test_boss_ignores_stale_official_roster_for_live_participants() -> None:
+    participant = MAIN[MAIN.index("private boolean isActiveBossParticipant"):
+                       MAIN.index("private void commitOfficialBossDefeat", MAIN.index("private boolean isActiveBossParticipant"))]
+    assert "testCombatAiMode && currentBoss != null && isTestBoss(currentBoss)" in participant
+    assert "return true;" in participant
+    assert "officialRewardRoster.contains(player.getUniqueId())" in participant
+
+
+def test_wave_and_miniboss_damage_uses_one_bounded_reduction_policy() -> None:
+    assert "WaveDamagePolicy" in MAIN
+    assert "WAVE_MOB_DAMAGE_REDUCTION = 4.0D" in MAIN
+    assert "WaveDamagePolicy.minimumCombatDamage" in MAIN
+    enderman = MAIN[MAIN.index("private Enderman spawnEnderman"):MAIN.index("private Skeleton spawnSkeleton")]
+    assert "attack.setBaseValue(WaveDamagePolicy.minimumCombatDamage" in enderman
+
+
 def test_boss_uses_the_floor_combat_anchor_and_can_take_damage_after_absorption() -> None:
     tick = MAIN[MAIN.index("private void tickBoss()"):MAIN.index("private int randomSeconds", MAIN.index("private void tickBoss()"))]
     teleport = MAIN[MAIN.index("private void maintainBossTeleport"):MAIN.index("@EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)", MAIN.index("private void maintainBossTeleport"))]
@@ -162,14 +185,13 @@ def test_wave_elites_have_one_bound_spell_and_are_ticked_by_the_same_controller(
         "EVENT_KIND_ELITE",
         "RIFT_EUPHORIA",
         "randomNarcoticEffect",
-        "Эйфория Пустоты",
     ):
         assert marker in MAIN
     assert "miniBossSpell = null" not in MAIN
 
 
 def test_rift_guardians_have_exactly_40_health() -> None:
-    start = MAIN.index("private void spawnEnderman")
+    start = MAIN.index("private Enderman spawnEnderman")
     end = MAIN.index("private Entity spawnOwnedMob", start)
     body = MAIN[start:end]
     assert "max.setBaseValue(40.0D);" in body
@@ -270,6 +292,17 @@ def test_combat_containment_allows_twenty_blocks_but_keeps_teleports_on_core_lev
     assert "The pad coordinate is the air block above this floor" in MAIN
 
 
+def test_combat_anchor_rederives_elevated_core_floor_after_transition_runes_are_removed() -> None:
+    """Wave spawns must keep using the saved map floor after pads are cleared."""
+    combat = MAIN[MAIN.index("private Location coreCombatAnchorLocation"):
+                  MAIN.index("private int combatFloorY", MAIN.index("private Location coreCombatAnchorLocation"))]
+    assert "pads.isEmpty()" in combat
+    assert "solidNeighborCount" in combat
+    assert "passableNeighborCount" in combat
+    assert "bestFloorY" in combat
+    assert "return bestFloorY + 1;" in combat
+
+
 def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> None:
     start = MAIN.index("private void tickWaveMobAi()")
     end = MAIN.index("private boolean isWaveCombatKind", start)
@@ -282,7 +315,7 @@ def test_wave_containment_watchdog_runs_for_test_waves_before_phase_gate() -> No
 
 
 def test_event_combat_mobs_and_boss_reenable_ai_after_a_stale_no_ai_flag() -> None:
-    wave_start = MAIN.index("private void spawnEnderman")
+    wave_start = MAIN.index("private Enderman spawnEnderman")
     wave_end = MAIN.index("private Entity spawnOwnedMob", wave_start)
     wave_body = MAIN[wave_start:wave_end]
     owned_start = MAIN.index("private Entity spawnOwnedMob")
@@ -415,29 +448,25 @@ def test_exhausted_boss_damage_uses_the_finalized_hit_once() -> None:
     assert "double incomingDamage = Math.max(0.0D, event.getFinalDamage())" in damage
 
 
-def test_official_cinematic_starts_final_wave_before_boss_spawn() -> None:
-    """The real event must not skip its final combat wave after the cinematic."""
+def test_official_cinematic_hands_off_directly_to_the_v2_boss() -> None:
+    """V2 completes Wave 6 before the cinematic and never re-enters legacy FINAL_WAVE."""
     machine = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EndEventStateMachine.java").read_text(
         encoding="utf-8"
     )
     assert re.search(
-        r"map\.put\(EventPhase\.BOSS_CINEMATIC, EnumSet\.of\(\s*"
-        r"EventPhase\.FINAL_WAVE, EventPhase\.BOSS_ACTIVE, EventPhase\.READY_FOR_PLAYERS\)\)",
+        r"map\.put\(EventPhase\.BOSS_CINEMATIC, EnumSet\.of\("
+        r"EventPhase\.BOSS_ACTIVE, EventPhase\.READY_FOR_PLAYERS\)\)",
         machine,
     )
-    assert re.search(
-        r"map\.put\(EventPhase\.FINAL_WAVE, EnumSet\.of\("
-        r"EventPhase\.BOSS_ACTIVE, EventPhase\.BOSS_FINISH\)\)",
-        machine,
-    )
+    assert re.search(r"map\.put\(EventPhase\.FINAL_WAVE, Set\.of\(\)\)", machine)
     cinematic = MAIN[MAIN.index("private void scheduleOfficialBossSpawn") : MAIN.index("private void renderBossCinematic")]
-    assert "transition(EventPhase.FINAL_WAVE" in cinematic
-    assert "spawnWave(FINAL_WAVE_NUMBER, false)" in cinematic
-    final_completion = MAIN[MAIN.index("private void tickWaveCompletion") : MAIN.index("/**\n     * Drops the guaranteed reward bundle", MAIN.index("private void tickWaveCompletion"))]
-    assert "WAVE_COMPLETED event=" in final_completion
-    assert "liveBoss()" in final_completion
-    assert "transition(EventPhase.BOSS_ACTIVE" in final_completion
-    assert "final wave defeated; boss awakens" in final_completion
+    assert "transition(EventPhase.BOSS_ACTIVE" in cinematic
+    assert "spawnOfficialBoss(null)" in cinematic
+    assert "transition(EventPhase.FINAL_WAVE" not in cinematic
+    assert "spawnWave(FINAL_WAVE_NUMBER, false)" not in cinematic
+    wave_completion = MAIN[MAIN.index("private void tickWaveCompletion") : MAIN.index("/**\n     * Drops the guaranteed reward bundle", MAIN.index("private void tickWaveCompletion"))]
+    assert "tickWaveSixCompletion" in wave_completion
+    assert "PRE_BOSS_COOLDOWN" in wave_completion
 
 
 def test_wave_mob_damage_is_observable_from_the_event_plugin_without_trace_plugin() -> None:
@@ -450,6 +479,18 @@ def test_wave_mob_damage_is_observable_from_the_event_plugin_without_trace_plugi
     assert "WAVE_MOB_DAMAGE" in attack_body
     assert "event.getFinalDamage()" in attack_body
     assert "event.isCancelled()" in attack_body
+
+
+def test_player_damage_to_wave_mobs_has_a_post_event_application_trace() -> None:
+    """A live hit must be diagnosable beyond the Bukkit event callback."""
+    assert "public void onWaveMobDamagedByPlayer" in MAIN
+    method_start = MAIN.index("public void onWaveMobDamagedByPlayer")
+    method_end = MAIN.index("\n    /**", method_start)
+    body = MAIN[method_start:method_end]
+    assert "WAVE_MOB_PLAYER_DAMAGE" in body
+    assert "victim.getNoDamageTicks()" in body
+    assert "Bukkit.getScheduler().runTask(this" in body
+    assert "WAVE_MOB_PLAYER_DAMAGE_APPLIED" in body
 
 
 def test_mobile_and_boss_ai_have_a_bounded_steering_fallback_when_pathfinder_rejects() -> None:
@@ -478,7 +519,7 @@ def test_mobile_wave_ai_revalidates_targets_and_repaths_after_each_containment_c
     tick_body = MAIN[tick_start:tick_end]
     compact = re.sub(r"\s+", " ", tick_body)
 
-    assert "Player currentTarget = mob.getTarget() instanceof Player player && isCombatTarget(player) ? player : null;" in compact
+    assert "Player currentTarget = mob.getTarget() instanceof Player player && isCombatTarget(player) && waveSixTargetAllowed(entity, player) ? player : null;" in compact
     assert "if (mob.getTarget() != null && currentTarget == null)" in compact
     assert "mob.setTarget(null);" in compact
     assert "mob.getPathfinder().stopPathfinding();" in compact
@@ -560,11 +601,27 @@ def test_end_rift_slowness_is_consistently_three_seconds() -> None:
         assert "PotionEffectType.SLOWNESS" not in body or "SLOWNESS_DEBUFF_TICKS" in body
 
 
+def test_wave_six_miniboss_aoe_cannot_cross_a_closed_chamber() -> None:
+    """Area spells must use the same physical-room guard as melee/projectiles."""
+    body = MAIN[MAIN.index("private void miniBossEchoPulse"):
+                MAIN.index("private void miniBossArrowSalvo")]
+    assert "waveSixTargetAllowed(miniBoss, player)" in body
+    assert "continue;" in body
+
+
+def test_wave_six_nearest_alert_target_is_room_scoped() -> None:
+    """A tower's proximity alert must not select a player from another chamber."""
+    start = MAIN.index("private Player findNearestCombatPlayer")
+    end = MAIN.index("private Location spawnLocation", start)
+    helper = MAIN[start:end]
+    assert "waveSixTargetAllowed(entity, player)" in helper
+
+
 def test_wave_teleports_normalize_to_the_core_block_top_instead_of_stacking_inside_it() -> None:
     assert "private boolean isCoreBlockPosition(Location location)" in MAIN
     assert "private Location coreBlockTopLocation()" in MAIN
     assert "if (isCoreBlockPosition(target))" in MAIN
-    assert "Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minimum);" in MAIN
+    assert "Location safe = findSafeCombatLocation(anchor, null, radius - 0.75D, minimum, chamber);" in MAIN
     assert "event.setTo(safe);" in MAIN
 
 

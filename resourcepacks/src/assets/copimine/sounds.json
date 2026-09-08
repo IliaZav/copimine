@@ -54,6 +54,11 @@
       {"name": "copimine:end_rift/wave_5", "stream": true}
     ]
   },
+  "end_rift/wave_6": {
+    "sounds": [
+      {"name": "copimine:end_rift/wave_6", "stream": true}
+    ]
+  },
   "end_rift/intermission_1": {
     "sounds": [
       {"name": "copimine:end_rift/intermission_1", "stream": true}
@@ -74,9 +79,49 @@
       {"name": "copimine:end_rift/intermission_4", "stream": true}
     ]
   },
+  "end_rift/intermission_5": {
+    "sounds": [
+      {"name": "copimine:end_rift/intermission_5", "stream": true}
+    ]
+  },
+  "end_rift/pre_boss_cooldown": {
+    "sounds": [
+      {"name": "copimine:end_rift/pre_boss_cooldown", "stream": true}
+    ]
+  },
   "end_rift/boss_cinematic": {
     "sounds": [
       {"name": "copimine:end_rift/boss_cinematic", "stream": true}
+    ]
+  },
+  "end_rift/boss_awakening": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_awakening", "stream": true}
+    ]
+  },
+  "end_rift/boss_hunt": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_hunt", "stream": true}
+    ]
+  },
+  "end_rift/boss_rift": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_rift", "stream": true}
+    ]
+  },
+  "end_rift/boss_overload": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_overload", "stream": true}
+    ]
+  },
+  "end_rift/boss_rage": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_rage", "stream": true}
+    ]
+  },
+  "end_rift/boss_last_seal": {
+    "sounds": [
+      {"name": "copimine:end_rift/boss_last_seal", "stream": true}
     ]
   },
   "end_rift/final_drain": {

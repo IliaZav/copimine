@@ -334,6 +334,15 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.visualForEntity(uuid);
     }
 
+    public static String endEventAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.entityAnimationForEntity(uuid);
+    }
+
+    public static EndRiftTentacleModel.Pose endEventTentaclePoseForEntity(
+            String uuid, long elapsedTicks) {
+        return END_EVENT_STATE.tentaclePoseForEntity(uuid, elapsedTicks);
+    }
+
     public static String bossPhaseForEntity(String uuid) {
         return END_EVENT_STATE.bossPhaseForEntity(uuid);
     }

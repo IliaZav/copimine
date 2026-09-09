@@ -39,17 +39,44 @@ def test_client_parses_and_renders_bounded_world_space_beams():
     assert "MAX_ACTIVE_BEAMS" in vfx
     assert "clearEvent" in vfx
     assert "durationMillis" in vfx
+    assert "startedAtMillis" in vfx
+    assert "drawFadedLine" in vfx
+    assert "flowPhase" in vfx
     assert "finite" in vfx.lower()
 
 
 def test_official_beams_do_not_use_particle_line_helper():
     body = _read(SERVER)
     carrier = body[body.index("private void tickV2CarrierObjective"):body.index("private void tickV2HuntObjective")]
-    cast = body[body.index("private void renderBossCastState"):body.index("private void spawnParticleLineForPlayer")]
+    cast = body[body.index("private void renderBossCastState"):body.index("private void cancelBossCastTask")]
     final_strike = body[body.index("private void renderBossFinalStrike"):body.index("private void executeBossFinalStrikeImpact")]
+    defeat = body[body.index("private void renderBossDefeatCinematic"):body.index("private void completeBossDefeatCinematic")]
+    final_scene = body[body.index("private void renderFinalArenaScene"):body.index("private void clearFinalArenaScene")]
+    final_ritual = body[body.index("private void scheduleFinalRitualVisual"):body.index("private void castBossSpell")]
+    wave5 = body[body.index("private void tickV2Wave5Encounter"):body.index("private void tickV2Wave5GuardTargets")]
+    safe_zones = body[body.index("private void renderV2WaveObjective"):body.index("private void startWaveObjective")]
+    obelisks = body[body.index("private void tickRiftObelisks"):body.index("private void tickRiftFireballs")]
+    boss_cue = body[body.index("private void renderBossVisualCue"):body.index("private void resetBossVisualCue")]
     assert "spawnPatternSegment" not in carrier
     assert "spawnParticleLine" not in cast
     assert "spawnParticleLine" not in final_strike
     assert "sendWorldBeamPacket" in carrier
     assert "sendWorldBeamPacket" in cast
     assert "sendWorldBeamPacket" in final_strike
+    assert "spawnParticleLine" not in defeat
+    assert "spawnParticleLine" not in final_scene
+    assert "spawnParticleLine" not in final_ritual
+    assert "sendWorldBeamPacket" in defeat
+    assert "sendWorldBeamPacket" in final_scene
+    assert "sendWorldBeamPacket" in final_ritual
+    assert "sendWorldBeamPacket" in wave5
+    assert "wave5-prisoner-core" in wave5
+    assert "wave5-guard-elite-" in wave5
+    assert "wave5-core-buff-" in wave5
+    assert "sendWorldBeamPacket" in safe_zones
+    assert "wave4-safe-zone-" in safe_zones
+    assert "sendWorldBeamPacket" in obelisks
+    assert "obelisk-link-" in obelisks
+    assert "sendWorldBeamPacket" in boss_cue
+    assert "spawnPatternSegment" not in boss_cue
+    assert "spawnParticleLine" not in body

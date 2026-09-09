@@ -38,14 +38,15 @@ def test_final_scene_is_display_only_and_tracks_every_temporary_entity() -> None
     assert "finalArenaSceneVisuals.add" in start
     assert "setType(" not in start
     assert "viewer.spawnParticle" in render
-    assert "spawnParticleLine" in render
+    assert "sendWorldBeamPacket" in render
+    assert "spawnParticleLine" not in render
     assert "ownedEntities.remove" in cleanup
     assert "visual.remove()" in cleanup
     assert "finalArenaSceneVisuals.clear()" in cleanup
 
 
 def test_final_scene_reuses_the_single_final_ritual_task_and_generation_guard() -> None:
-    visual = _slice("private void scheduleFinalRitualVisual", "private void spawnParticleLine(Player")
+    visual = _slice("private void scheduleFinalRitualVisual", "private void castBossSpell")
     assert "finalRitualVisualTask" in visual
     assert "runTaskTimer(this" in visual
     assert ", 5L" in visual

@@ -515,6 +515,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> v2SafeZoneVisuals = new LinkedHashSet<>();
     private final Map<HazardPlanner.Point, String> v2TemporaryBlockOriginals = new LinkedHashMap<>();
     private final Set<HazardPlanner.Point> v2SafeZoneCells = new LinkedHashSet<>();
+    private final Map<Integer, HazardPlanner.Point> v2SafeZoneCenters = new LinkedHashMap<>();
     private final Set<HazardPlanner.Point> v2BarrierCells = new LinkedHashSet<>();
     private final Map<UUID, Long> v2FogLastImpactAt = new HashMap<>();
     private Wave5EncounterPolicy.State v2Wave5EncounterState;
@@ -524,6 +525,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private UUID v2Wave5EliteUuid;
     private UUID v2Wave5PrisonerDisplayUuid;
     private long v2Wave5NextPrisonerDrainTick;
+    private long v2Wave5StrengthVisualUntilTick;
     private final Map<UUID, Long> v2Wave5GuardAggroUntil = new HashMap<>();
     private final Set<HazardPlanner.Point> v2Wave5IceCells = new LinkedHashSet<>();
     private final Map<HazardPlanner.Point, String> v2Wave5IceOriginals = new LinkedHashMap<>();
@@ -11662,6 +11664,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + V2FogTimingPolicy.combatSeconds(v2FogCycle) * 1_000L;
                 v2FogZoneCount = 0;
                 v2FogZoneSide = 0;
+                v2SafeZoneCenters.clear();
                 v2FogLastImpactAt.clear();
                 announceEventTitle("§dЧЁРНЫЙ ТУМАН",
                         "§fИщите зелёный свет, когда арена погаснет", true);
@@ -11676,6 +11679,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 v2Wave5EliteUuid = null;
                 v2Wave5PrisonerDisplayUuid = null;
                 v2Wave5NextPrisonerDrainTick = 0L;
+                v2Wave5StrengthVisualUntilTick = 0L;
                 v2Wave5GuardAggroUntil.clear();
                 v2Wave5IceCells.clear();
                 v2Wave5IceOriginals.clear();
@@ -12246,6 +12250,89 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             tickV2Wave5GuardTargets();
         }
+        renderV2Wave5Links(state);
+    }
+
+    /** Render the three server-authored Wave 5 energy connections. */
+    private void renderV2Wave5Links(Wave5EncounterPolicy.State state) {
+        Set<String> prisonerLinks = new LinkedHashSet<>();
+        Set<String> guardLinks = new LinkedHashSet<>();
+        Set<String> buffLinks = new LinkedHashSet<>();
+        if (activeWave != 5 || state == null || state.generation() != generation) {
+            clearWorldVfxBeamsByPrefix("wave5-prisoner-core");
+            clearWorldVfxBeamsByPrefix("wave5-guard-elite-");
+            clearWorldVfxBeamsByPrefix("wave5-core-buff-");
+            return;
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core == null || core.getWorld() == null) {
+            clearWorldVfxBeamsByPrefix("wave5-prisoner-core");
+            clearWorldVfxBeamsByPrefix("wave5-guard-elite-");
+            clearWorldVfxBeamsByPrefix("wave5-core-buff-");
+            return;
+        }
+        boolean prisonerVisible = state.prisonerLocked() && !state.prisonerReleased()
+                && (state.phase() == Wave5EncounterPolicy.Phase.RING_THREE_PRISONER
+                || state.phase() == Wave5EncounterPolicy.Phase.FINAL_GUARDS
+                || state.phase() == Wave5EncounterPolicy.Phase.ELITE_VULNERABLE);
+        Entity prisoner = v2Wave5PrisonerDisplayUuid == null ? null
+                : ownedEntities.get(v2Wave5PrisonerDisplayUuid);
+        if (prisonerVisible && prisoner != null && prisoner.isValid()
+                && prisoner.getWorld().equals(core.getWorld())) {
+            String key = "wave5-prisoner-core";
+            prisonerLinks.add(key);
+            for (Player viewer : eventAudience()) {
+                sendWorldBeamPacket(viewer, key,
+                        prisoner.getLocation().add(0.0D, 0.28D, 0.0D),
+                        core.clone().add(0.0D, 1.0D, 0.0D), 0x45DAFF, 0.08F);
+            }
+        }
+        boolean eliteLinkPhase = state.phase() == Wave5EncounterPolicy.Phase.FINAL_GUARDS
+                || state.phase() == Wave5EncounterPolicy.Phase.ELITE_VULNERABLE;
+        Entity eliteEntity = v2Wave5EliteUuid == null ? null : ownedEntities.get(v2Wave5EliteUuid);
+        if (eliteLinkPhase && eliteEntity instanceof LivingEntity elite
+                && isLiveOwnedEntity(elite.getUniqueId())
+                && elite.getWorld().equals(core.getWorld())) {
+            for (UUID guardUuid : v2Wave5GuardUuids) {
+                Entity guardEntity = ownedEntities.get(guardUuid);
+                if (!(guardEntity instanceof LivingEntity guard)
+                        || !isLiveOwnedEntity(guardUuid)
+                        || !guard.getWorld().equals(core.getWorld())) {
+                    continue;
+                }
+                String key = "wave5-guard-elite-" + guardUuid;
+                guardLinks.add(key);
+                for (Player viewer : eventAudience()) {
+                    sendWorldBeamPacket(viewer, key,
+                            guard.getLocation().add(0.0D, 1.0D, 0.0D),
+                            elite.getLocation().add(0.0D, 1.0D, 0.0D), 0xB84DFF, 0.07F);
+                }
+            }
+        }
+        if (state.prisonerStrengthStacks() > 0
+                && eventTickCounter <= v2Wave5StrengthVisualUntilTick) {
+            List<UUID> buffed = new ArrayList<>(v2Wave5GuardUuids);
+            if (v2Wave5EliteUuid != null) {
+                buffed.add(v2Wave5EliteUuid);
+            }
+            for (UUID uuid : buffed) {
+                Entity entity = ownedEntities.get(uuid);
+                if (!(entity instanceof LivingEntity living) || !isLiveOwnedEntity(uuid)
+                        || !living.getWorld().equals(core.getWorld())) {
+                    continue;
+                }
+                String key = "wave5-core-buff-" + uuid;
+                buffLinks.add(key);
+                for (Player viewer : eventAudience()) {
+                    sendWorldBeamPacket(viewer, key,
+                            core.clone().add(0.0D, 1.0D, 0.0D),
+                            living.getLocation().add(0.0D, 1.0D, 0.0D), 0xFFC857, 0.06F);
+                }
+            }
+        }
+        clearWorldVfxBeamsOutside("wave5-prisoner-core", prisonerLinks);
+        clearWorldVfxBeamsOutside("wave5-guard-elite-", guardLinks);
+        clearWorldVfxBeamsOutside("wave5-core-buff-", buffLinks);
     }
 
     private void tickV2Wave5GuardTargets() {
@@ -12420,6 +12507,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (bounded <= 0) {
             return;
         }
+        v2Wave5StrengthVisualUntilTick = Math.max(v2Wave5StrengthVisualUntilTick,
+                eventTickCounter + 140L);
         int amplifier = bounded - 1;
         for (UUID uuid : new LinkedHashSet<>(v2Wave5GuardUuids)) {
             Entity entity = ownedEntities.get(uuid);
@@ -12612,6 +12701,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearV2Wave5PrisonerVisuals() {
+        clearWorldVfxBeam("wave5-prisoner-core");
         restoreV2Wave5Ice();
         if (v2Wave5PrisonerDisplayUuid != null) {
             Entity display = ownedEntities.remove(v2Wave5PrisonerDisplayUuid);
@@ -12651,6 +12741,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null) {
             return;
         }
+        renderV2SafeZoneBeams(core);
         if (activeWave == 4 && v2FogPhase == V2FogPhase.FOG) {
             for (Player viewer : eventAudience()) {
                 if (!isEventParticleViewer(viewer, core)) {
@@ -12674,11 +12765,46 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Keep the actual Wave 4 safe-zone columns legible at the arena scale.
+     * The emerald floor is the gameplay marker; this short-lived client beam
+     * is only the vertical beacon and is removed as soon as the safe window
+     * ends.  No world block is changed by this method.
+     */
+    private void renderV2SafeZoneBeams(Location core) {
+        if (core == null || core.getWorld() == null
+                || activeWave != 4 || v2FogPhase != V2FogPhase.SAFE
+                || v2SafeZoneCenters.isEmpty()) {
+            clearWorldVfxBeamsByPrefix("wave4-safe-zone-");
+            return;
+        }
+        Location floor = core.clone();
+        floor.setY(combatFloorY() + 1.02D);
+        Set<String> desired = new LinkedHashSet<>();
+        for (Map.Entry<Integer, HazardPlanner.Point> entry : v2SafeZoneCenters.entrySet()) {
+            HazardPlanner.Point point = entry.getValue();
+            if (point == null || point.x() < arenaMinX || point.x() > arenaMaxX
+                    || point.z() < arenaMinZ || point.z() > arenaMaxZ) {
+                continue;
+            }
+            Location base = new Location(core.getWorld(), point.x() + 0.5D,
+                    floor.getY(), point.z() + 0.5D);
+            Location top = base.clone().add(0.0D, 3.0D, 0.0D);
+            String key = "wave4-safe-zone-" + entry.getKey();
+            desired.add(key);
+            for (Player viewer : eventAudience()) {
+                sendWorldBeamPacket(viewer, key, base, top, 0x54FF6A, 0.10F);
+            }
+        }
+        clearWorldVfxBeamsOutside("wave4-safe-zone-", desired);
+    }
+
     private void spawnV2SafeZoneVisuals(World world, Location core) {
         clearV2SafeZoneVisuals();
         if (world == null || core == null || v2FogZoneCount <= 0 || v2FogZoneSide <= 0) {
             return;
         }
+        v2SafeZoneCenters.clear();
         Map<HazardPlanner.Point, String> barrierOriginals = new LinkedHashMap<>();
         double radius = Math.min(12.0D, Math.max(7.0D, config.arenaRadius() * 0.55D));
         for (int zone = 0; zone < v2FogZoneCount; zone++) {
@@ -12687,6 +12813,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int centerX = (int) Math.floor(core.getX() + Math.cos(angle) * radius);
             int centerZ = (int) Math.floor(core.getZ() + Math.sin(angle) * radius);
             int half = v2FogZoneSide / 2;
+            int cellsBeforeZone = v2SafeZoneCells.size();
             for (int dx = -half; dx <= half; dx++) {
                 for (int dz = -half; dz <= half; dz++) {
                     HazardPlanner.Point point = new HazardPlanner.Point(centerX + dx, centerZ + dz);
@@ -12726,6 +12853,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     v2BarrierCells.add(point);
                     barrierOriginals.putIfAbsent(point, above.getBlockData().getAsString());
                 }
+            }
+            if (v2SafeZoneCells.size() > cellsBeforeZone) {
+                v2SafeZoneCenters.put(zone, new HazardPlanner.Point(centerX, centerZ));
             }
         }
         if (v2SafeZoneCells.isEmpty()) {
@@ -12818,6 +12948,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         v2SafeZoneVisuals.clear();
         v2SafeZoneCells.clear();
+        v2SafeZoneCenters.clear();
         v2BarrierCells.clear();
     }
 
@@ -14301,6 +14432,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         v2Wave5GuardSlots.clear();
         v2Wave5EliteUuid = null;
         v2Wave5NextPrisonerDrainTick = 0L;
+        v2Wave5StrengthVisualUntilTick = 0L;
         v2Wave5GuardAggroUntil.clear();
         cancelTowerSpawnTask();
         if (towerRetryTask != null) {
@@ -14366,6 +14498,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         v2PrisonerReleased = false;
         v2TemporaryBlockOriginals.clear();
         v2SafeZoneCells.clear();
+        v2SafeZoneCenters.clear();
         v2BarrierCells.clear();
         v2FogLastImpactAt.clear();
         v2RingNextCollapseAtMillis = 0L;
@@ -16548,21 +16681,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    private void spawnParticleLineForPlayer(Player player, Location from, Location to, int points) {
-        if (player == null || from == null || to == null || from.getWorld() == null
-                || !from.getWorld().equals(to.getWorld())) {
-            return;
-        }
-        recordParticleEmission(Math.max(0, points));
-        Vector delta = to.toVector().subtract(from.toVector()).multiply(1.0D / Math.max(1, points));
-        Location current = from.clone();
-        for (int index = 0; index < points; index++) {
-            current.add(delta);
-            player.spawnParticle(Particle.END_ROD, current, 1,
-                    0.0D, 0.0D, 0.0D, 0.0D);
-        }
-    }
-
     private void cancelBossCastTask() {
         if (bossCastTask != null) {
             bossCastTask.cancel();
@@ -17454,8 +17572,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         0.35D, 0.75D, 0.35D, 0.02D);
             }
             if (cinematicPhase == BossDefeatCinematicPolicy.Phase.COLLAPSE) {
-                spawnParticleLine(viewer, boss.getLocation().add(0.0D, 2.4D, 0.0D),
-                        center.clone().add(0.0D, 0.4D, 0.0D), 7);
+                sendWorldBeamPacket(viewer, "boss-defeat-collapse",
+                        boss.getLocation().add(0.0D, 2.4D, 0.0D),
+                        center.clone().add(0.0D, 0.4D, 0.0D),
+                        0xF43CFF, 0.18F);
             }
         }
         if (elapsedTicks % 8 == 0) {
@@ -17724,7 +17844,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             0.01D, 0.01D, 0.01D, 0.0D, dust);
                 }
             }
-            for (BossArenaSetPiecePolicy.Pillar pillar : frame.pillars()) {
+            for (int pillarIndex = 0; pillarIndex < frame.pillars().size(); pillarIndex++) {
+                BossArenaSetPiecePolicy.Pillar pillar = frame.pillars().get(pillarIndex);
                 List<BossArenaSetPiecePolicy.Point> points = pillar.points();
                 for (int index = 0; index < points.size(); index++) {
                     BossArenaSetPiecePolicy.Point point = points.get(index);
@@ -17737,8 +17858,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     BossArenaSetPiecePolicy.Point point = points.get(0);
                     Location anchor = new Location(world, point.x() + 0.5D,
                             point.y() + 0.30D, point.z() + 0.5D);
-                    spawnParticleLine(viewer, core.clone().add(0.0D, 0.18D, 0.0D),
-                            anchor, 5);
+                    sendWorldBeamPacket(viewer,
+                            "final-scene-pillar-" + policyScene.name().toLowerCase(Locale.ROOT)
+                                    + "-" + pillarIndex,
+                            core.clone().add(0.0D, 0.18D, 0.0D), anchor,
+                            policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                                    ? 0x45DAFF : 0xF4277D,
+                            0.10F);
                 }
             }
             for (BossArenaSetPiecePolicy.Cell cell : frame.cells()) {
@@ -17750,8 +17876,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             if (boss != null && boss.isValid()) {
-                spawnParticleLine(viewer, core.clone().add(0.0D, 0.20D, 0.0D),
-                        boss.getLocation().add(0.0D, 0.55D, 0.0D), 6);
+                sendWorldBeamPacket(viewer, "final-scene-core-boss",
+                        core.clone().add(0.0D, 0.20D, 0.0D),
+                        boss.getLocation().add(0.0D, 0.55D, 0.0D),
+                        policyScene == BossArenaSetPiecePolicy.Scene.FINAL_DRAIN
+                                ? 0x45DAFF : 0xF4277D,
+                        0.16F);
             }
         }
         int visualIndex = 0;
@@ -17774,6 +17904,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearFinalArenaScene(String reason) {
+        // Final-scene links are client-side geometry. Remove them explicitly
+        // together with the temporary set piece so a cancelled cinematic
+        // cannot leave a beam visible until its refresh TTL expires.
+        clearWorldVfx();
         if (finalRitualVisualTask != null) {
             finalRitualVisualTask.cancel();
             finalRitualVisualTask = null;
@@ -17831,12 +17965,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 player.spawnParticle(Particle.REVERSE_PORTAL,
                         player.getLocation().add(0.0D, 1.0D, 0.0D), 4, 0.15D, 0.25D, 0.15D, 0.01D);
                 if (core != null) {
-                    spawnParticleLine(player, player.getLocation().add(0.0D, 1.0D, 0.0D), core, 3);
+                    sendWorldBeamPacket(player,
+                            "final-ritual-player-" + player.getUniqueId(),
+                            player.getLocation().add(0.0D, 1.0D, 0.0D),
+                            core, 0x45DAFF, 0.08F);
                 }
             }
             if (core != null) {
                 for (Player player : activeLivingPlayers()) {
-                    spawnParticleLine(player, core.clone().add(0.0D, 1.0D, 0.0D), target, 6);
+                    sendWorldBeamPacket(player,
+                            "final-ritual-core-boss-" + player.getUniqueId(),
+                            core.clone().add(0.0D, 1.0D, 0.0D),
+                            target, 0xF4277D, 0.18F);
                 }
             }
             if (ticks[0] >= config.finalRitualTelegraphTicks()) {
@@ -17854,22 +17994,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }, 1L, 5L);
         finalRitualVisualTask = holder[0];
         taskRegistry.register(holder[0]);
-    }
-
-    private void spawnParticleLine(Player viewer, Location from, Location to, int points) {
-        if (viewer == null || !viewer.isOnline() || from == null || to == null
-                || from.getWorld() == null || !from.getWorld().equals(to.getWorld())
-                || !viewer.getWorld().equals(from.getWorld())
-                || viewer.getLocation().distanceSquared(from) > 64.0D * 64.0D) {
-            return;
-        }
-        recordParticleEmission(Math.max(0, points));
-        Vector delta = to.toVector().subtract(from.toVector()).multiply(1.0D / Math.max(1, points));
-        Location current = from.clone();
-        for (int index = 0; index < points; index++) {
-            current.add(delta);
-            viewer.spawnParticle(Particle.END_ROD, current, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        }
     }
 
     private void castBossSpell(LivingEntity boss, boolean forced) {
@@ -19242,6 +19366,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void tickRiftObelisks(LivingEntity boss) {
         if (activeRiftObelisks.isEmpty() && activeRiftFireballs.isEmpty()) {
+            clearWorldVfxBeamsByPrefix("obelisk-link-");
             return;
         }
         boolean v2 = isV2OfficialBoss(boss);
@@ -19259,6 +19384,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
+        Location core = coreCombatAnchorLocation();
+        Set<String> desiredObeliskLinks = new LinkedHashSet<>();
         for (RiftObeliskRuntimeState state : new ArrayList<>(activeRiftObelisks.values())) {
             ItemDisplay display = riftObeliskDisplay(state.entityId());
             if (display == null || !display.isValid() || display.isDead()) {
@@ -19304,8 +19431,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 launchRiftFireball(state, boss);
                 state.scheduleNextFire(tuning.fireIntervalTicks());
             }
+            if (core != null && core.getWorld() != null) {
+                renderRiftObeliskLink(state, core, desiredObeliskLinks);
+            }
         }
+        clearWorldVfxBeamsOutside("obelisk-link-", desiredObeliskLinks);
         tickRiftFireballs(boss);
+    }
+
+    /** Keep each active obelisk visibly bound to the Core without particles-as-lines. */
+    private void renderRiftObeliskLink(RiftObeliskRuntimeState state, Location core,
+                                       Set<String> desiredKeys) {
+        Location obelisk = state == null ? null : state.location();
+        if (state == null || core == null || core.getWorld() == null || desiredKeys == null
+                || !state.active() || state.destroyAtTick() >= 0L || obelisk == null
+                || obelisk.getWorld() == null || !obelisk.getWorld().equals(core.getWorld())) {
+            return;
+        }
+        String key = "obelisk-link-" + state.entityId();
+        desiredKeys.add(key);
+        for (Player viewer : eventAudience()) {
+            sendWorldBeamPacket(viewer, key,
+                    obelisk.clone().add(0.0D, 0.65D, 0.0D),
+                    core.clone().add(0.0D, 1.0D, 0.0D), 0xB84DFF, 0.07F);
+        }
     }
 
     private void tickRiftFireballs(LivingEntity boss) {
@@ -19951,6 +20100,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (entityId == null) {
             return;
         }
+        clearWorldVfxBeam("obelisk-link-" + entityId);
         activeRiftObelisks.remove(entityId);
         Entity entity = ownedEntities.remove(entityId);
         if (entity == null) {
@@ -19976,6 +20126,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         activeRiftFireballs.clear();
         activeRiftObelisks.clear();
+        clearWorldVfxBeamsByPrefix("obelisk-link-");
         pendingRiftFireballPlayerDamage.clear();
         nextRiftObeliskCastTick = 0L;
         riftObeliskTargetCursor = 0;
@@ -22169,14 +22320,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Particle accentParticle = bossCueParticle(accentParticleId);
         Particle.DustOptions accentDust = bossCueDust(accentParticleId);
         switch (bossCueStage(cue.id())) {
-            case TELEGRAPH -> spawnPatternSegment(viewer, chest, center, accentParticle, accentDust);
+            case TELEGRAPH -> {
+                sendWorldBeamPacket(viewer, "boss-cue", chest, center,
+                        0xF43CFF, 0.10F);
+            }
             case RELEASE -> {
                 Location releaseTip = chest.clone().add(forward.clone().multiply(0.85D));
-                spawnPatternSegment(viewer, chest, releaseTip, accentParticle, accentDust);
+                sendWorldBeamPacket(viewer, "boss-cue", chest, releaseTip,
+                        0x45DAFF, 0.14F);
                 spawnBossCueParticle(viewer, releaseTip, primaryParticleId, Math.max(4, primaryCount / 2),
                         0.15D, 0.15D, 0.15D, 0.01D);
             }
             case IMPACT -> {
+                clearWorldVfxBeam("boss-cue");
                 spawnPatternRing(viewer, center, side, up, 0.85D, Math.min(18, primaryCount),
                         elapsedTicks * 0.12D, Particle.END_ROD);
                 spawnBossCueParticle(viewer, center, accentParticleId, Math.max(6, accentCount / 2),
@@ -22206,6 +22362,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 taskRegistry.owns(callbackGeneration), bossLive, officialBossDeathCommitted)) {
             return;
         }
+        clearWorldVfxBeam("boss-cue");
         sendBossAnimationVisualUpdate(boss, "IDLE");
     }
 
@@ -22370,6 +22527,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (isEventVisualViewer(player)) {
                 sendClientPacket(player, "END_WORLD_VFX_CLEAR", instance, 0L,
                         "", "RIFT_BEAM");
+            }
+        }
+    }
+
+    private void clearWorldVfxBeamsByPrefix(String rawPrefix) {
+        String prefix = normalizeWorldVfxKey(rawPrefix);
+        if (prefix.isBlank()) {
+            return;
+        }
+        for (String key : new ArrayList<>(activeWorldVfxInstances.keySet())) {
+            if (key.startsWith(prefix)) {
+                clearWorldVfxBeam(key);
+            }
+        }
+    }
+
+    private void clearWorldVfxBeamsOutside(String rawPrefix, Set<String> desiredKeys) {
+        String prefix = normalizeWorldVfxKey(rawPrefix);
+        if (prefix.isBlank()) {
+            return;
+        }
+        Set<String> desired = desiredKeys == null ? Set.of() : desiredKeys;
+        for (String key : new ArrayList<>(activeWorldVfxInstances.keySet())) {
+            if (key.startsWith(prefix) && !desired.contains(key)) {
+                clearWorldVfxBeam(key);
             }
         }
     }

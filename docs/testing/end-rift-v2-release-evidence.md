@@ -40,6 +40,10 @@ portal room `CopiMine 31.5,68.0,-42.5`.
   волны, скелетные стрелы, изолированные Wave 6 chambers и очистка по generation.
 - Исправлены 3D Wave 3 portals, зоны, кольца, арена, boss stages и final
   strike VFX. Combat UI не подменяется техническим ActionBar-текстом.
+- Между сервером и клиентом добавлен bounded world-space beam transport для
+  Wave 4 safe-zone beacon, Wave 5 связей, связей обелисков, boss-cue и
+  финальной сцены. Клиент рисует непрерывное ribbon-ядро с halo, движущимся
+  потоком и плавным fade in/out; старые particle-lines удалены из этих путей.
 - Добавлен `RIFT_OBELISKS` только для `RIFT`: scaling 1/2/3/4 по живым игрокам,
   3 HP, reflected event-owned Rift Fireball, hard cap 8, pulse radius 5,
   stagger, bounded particles и полная очистка.
@@ -141,6 +145,33 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 - shard active live: physical ECHO_SHARD, owner-bound PostgreSQL delivery,
   normal player block interaction и real server-side teleport — `PASS`.
 
+Последний прогон после world-space VFX обновления и пересборки JAR:
+
+- полный gate: `436 passed, 17 warnings`, все Java domain/persistence/layout
+  тесты `OK`, итог `End Rift local checks passed.`;
+- Paper перезапущен через `StartEndRiftLocalUserSession.ps1`, карта и локальная
+  persistence сохранены, стартовый статус `READY_FOR_PLAYERS`, 30 plugins;
+- obelisk live: reflected hit `3 -> 2 -> 1 -> 0`, direct melee не снял HP,
+  explosion не изменил stone-арену, boss real HP `2500 -> 2500`, cleanup
+  `obelisks=0`, `fireballs=0` — `PASS`;
+- пять независимых атакующих: real boss HP `5000 -> 4614.216`, сумма final
+  damage `385.79070425033572`, ожидаемое HP `4614.20929574966428`,
+  расхождение `0.00670425033572`, `11` same-tick групп, cleanup `boss=none` —
+  `PASS`;
+- Combat Trace live: `wave_traces=216`, `player_wave=63`, `exact_wave=62`,
+  `boss_traces=2` — `PASS`;
+- mob combat live: `moved=1275`, `attacks=46`, `player_hurt=82`,
+  `player_damage_applied=109`, `ai_targets=77`, `ai_paths=51` — `PASS`;
+- 20-player obelisk load: `4/4`, boss real HP `20000`, fireballs `0/8`,
+  staggered, pulse `5/40`, effects `40/60`, cleanup — `PASS`;
+- полный официальный двухигровой проход на текущем JAR: event
+  `8cce8392-3538-4d50-af91-138c05008973`, Wave 1–6, `AWAKENING,HUNT,RIFT,
+  OVERLOAD,RAGE,LAST_SEAL`, `RIFT_OBELISKS_SPAWNED`, boss defeat и victory —
+  `PASS`;
+- после победы финальный статус восстановлен как `READY_FOR_PLAYERS` с
+  `endUnlocked=true`, Core `CopiMine 8,68,-39`, руны `2/2`, временные сущности
+  отсутствуют. End Rift error scan последнего Paper log — `clean`.
+
 При последнем локальном старте Paper также записал два внешних предупреждения,
 не относящихся к End Rift: voicechat не распознал строку версии Paper 1.21.1 и
 AuthMe не нашёл необязательную GeoLite2-Country.mmdb. Оба плагина продолжили
@@ -205,9 +236,9 @@ SHA-256 после последнего gate:
 - `copimine-artifacts/CopiMineArtifacts.jar` —
   `CC62AB1638C7C5C3CE975E45BFC61D880F637A6EAB1D9518B9CBEF722C34EA96`;
 - `copimine-end-event/CopiMineEndEvent.jar` —
-  `3218BAA8C4573764A4C4974684EEADD0FB4C1BEEFBA11E41D1E874975C2B66C`;
+  `5E5710094266E219B208588FE1760C87CAF5455F29DCD9FFCAF3AC126D323B8B`;
 - `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` —
-  `C8A8642B30A88775E6A5E60ACE25E0AC6D84EB943FECCC4A7A05EB70B977F2D6`;
+  `BDC7760968F7DACE8C2AC3D0294C8C554773CCE6DA487B8140AD3D145A5528DC`;
 - `resourcepacks/build/CopiMineResourcePack.zip` —
   `7AE745F16F7A1C78105B3BCBD49849A881A9C43036F7CE298EDEBF9975AFB31A`.
 

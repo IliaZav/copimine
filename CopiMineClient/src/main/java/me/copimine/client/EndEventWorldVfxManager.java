@@ -83,7 +83,7 @@ public final class EndEventWorldVfxManager {
         }
         beams.put(payload.clientVersion(), new Beam(
                 payload.clientVersion(), startParts[0], start, end, color, width,
-                nowMillis + lifetime));
+                nowMillis, nowMillis + lifetime));
         return true;
     }
 
@@ -151,7 +151,8 @@ public final class EndEventWorldVfxManager {
         if (context == null || context.world() == null || beams.isEmpty()) {
             return;
         }
-        tick(System.currentTimeMillis());
+        long nowMillis = System.currentTimeMillis();
+        tick(nowMillis);
         if (beams.isEmpty() || context.consumers() == null || context.matrixStack() == null) {
             return;
         }
@@ -174,7 +175,7 @@ public final class EndEventWorldVfxManager {
             if (!dimension.equals(beam.dimension())) {
                 continue;
             }
-            drawRibbon(buffer, entry, beam);
+            drawRibbon(buffer, entry, beam, nowMillis);
         }
         matrices.pop();
     }
@@ -261,7 +262,8 @@ public final class EndEventWorldVfxManager {
         return path == null ? "" : path.toLowerCase(Locale.ROOT);
     }
 
-    private static void drawRibbon(VertexConsumer buffer, MatrixStack.Entry entry, Beam beam) {
+    private static void drawRibbon(VertexConsumer buffer, MatrixStack.Entry entry,
+                                   Beam beam, long nowMillis) {
         Vec3d delta = beam.end().subtract(beam.start());
         double length = delta.length();
         if (!Double.isFinite(length) || length < 0.01D) {
@@ -276,20 +278,75 @@ public final class EndEventWorldVfxManager {
         int red = (beam.color() >> 16) & 0xFF;
         int green = (beam.color() >> 8) & 0xFF;
         int blue = beam.color() & 0xFF;
-        drawLine(buffer, entry, beam.start(), beam.end(), red, green, blue, 235);
-        drawLine(buffer, entry, beam.start().add(side), beam.end().add(side), red, green, blue, 150);
-        drawLine(buffer, entry, beam.start().subtract(side), beam.end().subtract(side), red, green, blue, 150);
-        drawLine(buffer, entry, beam.start().add(other), beam.end().add(other), red, green, blue, 120);
-        drawLine(buffer, entry, beam.start().subtract(other), beam.end().subtract(other), red, green, blue, 120);
+        long ageMillis = Math.max(0L, nowMillis - beam.startedAtMillis());
+        long remainingMillis = Math.max(0L, beam.expiresAtMillis() - nowMillis);
+        float fadeIn = Math.min(1.0F, ageMillis / 120.0F);
+        float fadeOut = Math.min(1.0F, remainingMillis / 180.0F);
+        float alphaScale = Math.max(0.08F, fadeIn * fadeOut);
+        drawFadedLine(buffer, entry, beam.start(), beam.end(), red, green, blue,
+                scaleAlpha(235, alphaScale));
+        drawFadedLine(buffer, entry, beam.start().add(side), beam.end().add(side),
+                red, green, blue, scaleAlpha(150, alphaScale * 0.9F));
+        drawFadedLine(buffer, entry, beam.start().subtract(side), beam.end().subtract(side),
+                red, green, blue, scaleAlpha(150, alphaScale * 0.9F));
+        drawFadedLine(buffer, entry, beam.start().add(other), beam.end().add(other),
+                red, green, blue, scaleAlpha(120, alphaScale * 0.8F));
+        drawFadedLine(buffer, entry, beam.start().subtract(other), beam.end().subtract(other),
+                red, green, blue, scaleAlpha(120, alphaScale * 0.8F));
+
+        // A narrow bright pulse travels along the continuous ribbon.  This is
+        // a procedural flow cue, not a chain of particle points, and remains
+        // bounded to one extra line per active beam.
+        double flowPhase = Math.floorMod(nowMillis - beam.startedAtMillis(), 900L) / 900.0D;
+        double flowCenter = flowPhase * length;
+        double flowHalf = Math.min(0.55D, Math.max(0.12D, length * 0.14D));
+        double flowStart = Math.max(0.0D, flowCenter - flowHalf);
+        double flowEnd = Math.min(length, flowCenter + flowHalf);
+        if (flowEnd - flowStart > 0.01D) {
+            Vec3d flowFrom = beam.start().add(direction.multiply(flowStart));
+            Vec3d flowTo = beam.start().add(direction.multiply(flowEnd));
+            drawLine(buffer, entry, flowFrom, flowTo, 225, 255, 255,
+                    scaleAlpha(245, alphaScale));
+        }
+    }
+
+    private static void drawFadedLine(VertexConsumer buffer, MatrixStack.Entry entry,
+                                      Vec3d start, Vec3d end, int red, int green,
+                                      int blue, int alpha) {
+        Vec3d delta = end.subtract(start);
+        double length = delta.length();
+        if (!Double.isFinite(length) || length < 0.01D) {
+            return;
+        }
+        if (length < 0.20D) {
+            drawLine(buffer, entry, start, end, red, green, blue, alpha);
+            return;
+        }
+        Vec3d direction = delta.multiply(1.0D / length);
+        double edge = Math.min(0.32D, length * 0.16D);
+        Vec3d innerStart = start.add(direction.multiply(edge));
+        Vec3d innerEnd = end.subtract(direction.multiply(edge));
+        drawLine(buffer, entry, start, innerStart, red, green, blue,
+                scaleAlpha(alpha, 0.12F));
+        drawLine(buffer, entry, innerStart, innerEnd, red, green, blue, alpha);
+        drawLine(buffer, entry, innerEnd, end, red, green, blue,
+                scaleAlpha(alpha, 0.12F));
+    }
+
+    private static int scaleAlpha(int alpha, float scale) {
+        if (!Float.isFinite(scale)) {
+            return 0;
+        }
+        return Math.max(0, Math.min(255, Math.round(alpha * Math.max(0.0F, Math.min(1.0F, scale)))));
     }
 
     private static void drawLine(VertexConsumer buffer, MatrixStack.Entry entry,
                                  Vec3d start, Vec3d end, int red, int green, int blue, int alpha) {
         buffer.vertex(entry, (float) start.x, (float) start.y, (float) start.z)
-                .color(red, green, blue, alpha)
+                .color(red, green, blue, Math.max(0, Math.min(255, alpha)))
                 .normal(entry, 0.0F, 1.0F, 0.0F);
         buffer.vertex(entry, (float) end.x, (float) end.y, (float) end.z)
-                .color(red, green, blue, alpha)
+                .color(red, green, blue, Math.max(0, Math.min(255, alpha)))
                 .normal(entry, 0.0F, 1.0F, 0.0F);
     }
 
@@ -298,6 +355,6 @@ public final class EndEventWorldVfxManager {
     }
 
     private record Beam(String instanceId, String dimension, Vec3d start, Vec3d end,
-                        int color, float width, long expiresAtMillis) {
+                        int color, float width, long startedAtMillis, long expiresAtMillis) {
     }
 }

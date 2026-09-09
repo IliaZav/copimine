@@ -30,6 +30,8 @@ $serverPropertiesBaseline = Join-Path $serverDir 'server.properties.pre-local-re
 $purpurConfig = Join-Path $serverDir 'purpur.yml'
 $essentialsConfig = Join-Path $serverDir 'plugins\Essentials\config.yml'
 $eventConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
+$sourceArtifactsItems = Join-Path $sourcePluginDir 'CopiMineArtifacts\items.yml'
+$targetArtifactsItems = Join-Path $targetPluginDir 'CopiMineArtifacts\items.yml'
 $whitelistPath = Join-Path $serverDir 'whitelist.json'
 $opsPath = Join-Path $serverDir 'ops.json'
 $authmeDb = Join-Path $serverDir 'plugins\AuthMe\authme.db'
@@ -72,6 +74,8 @@ Assert-UnderRoot -Path $serverDir -Root $localRuntimeRoot -Label 'Local server'
 Assert-UnderRoot -Path $sourcePluginDir -Root $worktreeRoot -Label 'Current worktree plugin source'
 Assert-UnderRoot -Path $sourceEventConfig -Root $worktreeRoot -Label 'Current worktree End Rift config source'
 Assert-UnderRoot -Path $targetPluginDir -Root $localRuntimeRoot -Label 'Local plugin directory'
+Assert-UnderRoot -Path $sourceArtifactsItems -Root $worktreeRoot -Label 'Current worktree Artifacts catalog source'
+Assert-UnderRoot -Path $targetArtifactsItems -Root $localRuntimeRoot -Label 'Local Artifacts catalog'
 Assert-UnderRoot -Path $targetPackDir -Root $localRuntimeRoot -Label 'Local resource-pack directory'
 Assert-UnderRoot -Path $pgDataDir -Root $localRuntimeRoot -Label 'Local PostgreSQL data directory'
 Assert-UnderRoot -Path $serverPropertiesBaseline -Root $localRuntimeRoot -Label 'Local server.properties baseline'
@@ -748,6 +752,30 @@ function Sync-CurrentPlugins {
   return $sourceEntries
 }
 
+function Sync-CurrentEventPluginConfigs {
+  # The End Rift reward service depends on the first-party event artifacts being
+  # present in the isolated runtime catalog.  Keep this small, explicit config
+  # sync separate from JAR synchronization so local player/world state remains
+  # untouched while a stale runtime cannot silently omit V2 rewards.
+  if (-not (Test-Path -LiteralPath $sourceArtifactsItems -PathType Leaf)) {
+    throw "Current worktree Artifacts catalog is missing: $sourceArtifactsItems"
+  }
+  New-Item -ItemType Directory -Path (Split-Path -Parent $targetArtifactsItems) -Force | Out-Null
+  $sourceItemsHash = Get-FileSha256 -Path $sourceArtifactsItems
+  $targetItemsHash = if (Test-Path -LiteralPath $targetArtifactsItems -PathType Leaf) {
+    Get-FileSha256 -Path $targetArtifactsItems
+  } else {
+    ''
+  }
+  if ($sourceItemsHash -ne $targetItemsHash) {
+    Copy-Item -LiteralPath $sourceArtifactsItems -Destination $targetArtifactsItems -Force
+    Write-Host 'Synchronized current CopiMineArtifacts/items.yml into isolated local Paper.'
+  }
+  if ((Get-FileSha256 -Path $targetArtifactsItems) -ne $sourceItemsHash) {
+    throw 'Local CopiMineArtifacts/items.yml hash mismatch after sync.'
+  }
+}
+
 function Sync-CurrentEventConfig {
   $sourceText = Get-Content -LiteralPath $sourceEventConfig -Raw -Encoding UTF8
   if ($sourceText -notmatch '(?m)^environment:\s*local\s*$') {
@@ -1226,6 +1254,7 @@ if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.prop
   throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'
 }
 $currentPluginSources = @(Sync-CurrentPlugins)
+Sync-CurrentEventPluginConfigs
 Sync-CurrentEventConfig
 Set-LocalServerProperty -Key 'server-port' -Value ([string]$serverPort)
 Set-LocalServerProperty -Key 'enable-rcon' -Value 'true'

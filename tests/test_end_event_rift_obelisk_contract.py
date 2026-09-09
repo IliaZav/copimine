@@ -85,7 +85,8 @@ def test_fireball_is_event_owned_reflectable_non_incendiary_and_capped() -> None
     assert "state.reflect(player.getUniqueId())" in reflect
     assert "setDirection(direction)" in reflect
     assert "teleportCombatEntity(fireball, reflectedOrigin)" in reflect
-    assert "player.damage(effects.damage())" in impact
+    assert "player.damage(effects.damage(), fireball)" in impact
+    assert "authorizeRiftFireballPlayerDamage(player, fireball)" in impact
     assert "RIFT_FIREBALL_EFFECTS_APPLIED" in impact
     assert "blocks=false fire=false" in impact
     assert "onRiftFireballPlayerDamage" in MAIN
@@ -98,11 +99,25 @@ def test_fireball_damage_releases_only_the_active_participant_hurt_window() -> N
     impact = _body("private void handleRiftFireballImpact", "private RiftObeliskRuntimeState findRiftObeliskAt")
     helper = _body("private void releaseEventHazardHurtWindow", "private void setLootProfile")
     assert "releaseEventHazardHurtWindow(player)" in impact
-    assert "player.damage(effects.damage())" in impact
-    assert "player.damage(effects.damage(), fireball)" not in impact
+    assert "player.damage(effects.damage(), fireball)" in impact
+    assert "authorizeRiftFireballPlayerDamage(player, fireball)" in impact
+    assert "revokeRiftFireballPlayerDamage(player, fireball)" in impact
     assert "isActiveBossParticipant(player)" in helper
     assert "player.setNoDamageTicks(0)" in helper
     assert "player.setLastDamage(0.0D)" in helper
+
+
+def test_fireball_player_damage_is_scoped_to_the_nested_event_and_traceable() -> None:
+    player_damage = _body("public void onRiftFireballPlayerDamage", "public void onRiftObeliskDamage")
+    assert "isAuthorizedRiftFireballPlayerDamage(player, fireball)" in player_damage
+    assert "event.setCancelled(true)" in player_damage
+    assert "pendingRiftFireballPlayerDamage" in MAIN
+    assert "RIFT_FIREBALL_DAMAGE_TRANSACTION" in MAIN
+    # The sourceful event is intentional: Combat Trace can observe the real
+    # Bukkit decision when Paper emits it; the transaction marker proves the
+    # real-health delta even on the generic nested-damage path.
+    assert "player.damage(effects.damage(), fireball)" in MAIN
+    assert "player.damage(effects.damage());" not in MAIN
 
 
 def test_first_fire_ticks_are_staggered_and_preserved_after_telegraph() -> None:
@@ -266,7 +281,9 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
         "LocalEndRiftObeliskBot.js",
         "cmend boss spell rift_obelisks",
         "RIFT_FIREBALL_EFFECTS_APPLIED",
+        "RIFT_FIREBALL_DAMAGE_TRANSACTION",
         "player_damage_exact=true",
+        "authoritative_damage=6.0",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0",

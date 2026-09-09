@@ -157,6 +157,7 @@ function Start-CombatBot {
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_UUID'] = $BossUuid
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_DELAY_MS'] = '750'
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_BARRIER'] = $attackBarrier
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_BARRIER_TIMEOUT_MS'] = '90000'
   # 410 ms is intentionally not an integral number of server ticks.  Separate
   # real clients therefore drift through tick boundaries and reliably produce
   # an observable same-tick group without a plugin-only synthetic hit.

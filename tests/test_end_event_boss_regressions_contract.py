@@ -106,6 +106,16 @@ def test_unlocked_local_official_boss_harness_enters_active_phase_before_spawn()
     assert "official boss local harness" in spawn
 
 
+def test_disposable_boss_cleanup_restores_a_durable_safe_phase() -> None:
+    command = _body("case \"kill\" ->", "case \"spell\" ->")
+    assert "isDisposableBossCleanupContext" in command
+    assert "restoreSafePhaseAfterDisposableBossCleanup" in command
+    cleanup = _body("private void restoreSafePhaseAfterDisposableBossCleanup", "private void clearBossOnly")
+    assert "EventPhase.READY_FOR_PLAYERS" in cleanup
+    assert "EventPhase.COLLECTING" in cleanup
+    assert "saveStateSync()" in cleanup
+
+
 def test_final_phase_failure_paths_clear_entity_invulnerability_before_recovery() -> None:
     body = _body("private void triggerFinalPhase", "private void applyFinalDrain")
     save_failure = body[body.index("if (!saveStateSync())"):body.index("clearClientEffects")]

@@ -133,3 +133,15 @@ def test_local_damage_probe_can_freeze_the_official_v2_boss_without_changing_pro
     assert "maintainBossPath(boss, now)" in tick
     assert tick.index("if (testBossMovementFrozen && isV2OfficialBoss(boss))") < tick.index("maintainBossPath(boss, now)")
     assert "isV2OfficialBoss(entity)" in MAIN
+
+
+def test_multiplayer_bot_does_not_consume_combat_window_during_setup() -> None:
+    bot = (ROOT / "tests/LocalEndRiftBossCombatBot.js").read_text(encoding="utf-8")
+    probe = (ROOT / "tests/RunEndRiftBossMultiPlayerDamageLive.ps1").read_text(encoding="utf-8")
+    start = bot.index("function startAttacking ()")
+    release = bot.index("function releaseAttacksAfterBarrier ()")
+    assert "function armDurationTimer ()" in bot
+    assert "armDurationTimer()" in bot[start:release]
+    assert "\nsetTimeout(() => bot.quit(), durationMs)" not in bot
+    assert "const attackBarrierTimeoutMs" in bot
+    assert "END_RIFT_BOSS_BARRIER_TIMEOUT_MS" in probe

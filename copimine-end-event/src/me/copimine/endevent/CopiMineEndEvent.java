@@ -564,6 +564,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> activeRiftObeliskPulseDisplays = new HashSet<>();
     private final Map<UUID, BukkitTask> riftObeliskPulseTasks = new HashMap<>();
     /** Player UUIDs whose damage event is being issued by our impact transaction. */
+    private final Map<UUID, UUID> pendingRiftFireballPlayerDamage = new HashMap<>();
     private long nextRiftObeliskCastTick;
     private int riftObeliskTargetCursor;
     private final TentacleController tentacleController = new TentacleController();
@@ -4512,21 +4513,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         : "&aTest boss снова может двигаться.");
             }
             case "kill" -> {
-                LivingEntity boss = liveBoss();
-                if (boss == null) {
-                    message(sender, "&cBoss отсутствует.");
-                } else if ("cleanup".equalsIgnoreCase(args.length > 2 ? args[2] : "")) {
+                String action = args.length > 2 ? args[2] : "";
+                if ("cleanup".equalsIgnoreCase(action)) {
+                    LivingEntity boss = liveBoss();
+                    boolean disposableCleanup = isDisposableBossCleanupContext(boss);
                     clearBossOnly();
-                    message(sender, "&aBoss удалён как test cleanup; victory не вызвана.");
-                } else if (args.length >= 4 && "simulate-victory".equalsIgnoreCase(args[2])
-                        && confirmed(args, 3) && isOfficialEntity(boss) && !isTestBoss(boss)) {
-                    if (phase == EventPhase.BOSS_ACTIVE) {
-                        forcePhase(EventPhase.BOSS_FINISH, "admin simulate-victory");
+                    if (disposableCleanup) {
+                        restoreSafePhaseAfterDisposableBossCleanup();
                     }
-                    setBossVirtualHealth(boss, 0.0D);
-                    message(sender, "&aOfficial boss victory simulation requested.");
+                    message(sender, "&aBoss удалён как test cleanup; victory не вызвана.");
                 } else {
-                    message(sender, "&e/cmend boss kill cleanup | boss kill simulate-victory confirm");
+                    LivingEntity boss = liveBoss();
+                    if (boss == null) {
+                        message(sender, "&cBoss отсутствует.");
+                    } else if (args.length >= 4 && "simulate-victory".equalsIgnoreCase(args[2])
+                        && confirmed(args, 3) && isOfficialEntity(boss) && !isTestBoss(boss)) {
+                        if (phase == EventPhase.BOSS_ACTIVE) {
+                            forcePhase(EventPhase.BOSS_FINISH, "admin simulate-victory");
+                        }
+                        setBossVirtualHealth(boss, 0.0D);
+                        message(sender, "&aOfficial boss victory simulation requested.");
+                    } else {
+                        message(sender, "&e/cmend boss kill cleanup | boss kill simulate-victory confirm");
+                    }
                 }
             }
             case "spell" -> {
@@ -15721,6 +15730,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         spellServants.clear();
     }
 
+    /**
+     * The local boss/obelisk probes may intentionally enter BOSS_ACTIVE without
+     * an official reward roster.  A cleanup command for that disposable
+     * harness must not leave a durable snapshot that claims a live boss exists.
+     */
+    private boolean isDisposableBossCleanupContext(LivingEntity boss) {
+        return isConfigured()
+                && officialRewardRoster.isEmpty()
+                && !officialBossDeathCommitted
+                && (testCombatAiMode || boss == null || isTestBoss(boss) || isV2OfficialBoss(boss));
+    }
+
+    private void restoreSafePhaseAfterDisposableBossCleanup() {
+        if (!isPersistedBossPhase(phase)) {
+            return;
+        }
+        cancelSessionTasks();
+        clearWaveObjectiveState();
+        activeWave = 0;
+        phaseDeadlineMillis = 0L;
+        padOccupants.clear();
+        runeVisualOccupants.clear();
+        EventPhase safePhase = coreCharged && allResourcesComplete()
+                ? EventPhase.READY_FOR_PLAYERS : EventPhase.COLLECTING;
+        forcePhase(safePhase, "disposable boss cleanup");
+        if (!saveStateSync()) {
+            getLogger().warning("DISPOSABLE_BOSS_CLEANUP_STATE_SAVE_FAILED event=" + eventId
+                    + " phase=" + safePhase);
+        }
+        getLogger().info("DISPOSABLE_BOSS_CLEANUP_STATE_RESTORED event=" + eventId
+                + " phase=" + safePhase + " coreCharged=" + coreCharged);
+    }
+
     private void clearBossOnly() {
         clearWorldVfx();
         clearFinalArenaScene("boss cleanup");
@@ -19404,18 +19446,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /**
      * LargeFireball normally emits its own player damage event before the
-     * projectile hit callback.  Rift Fireballs use the callback below as the
+     * projectile hit callback. Rift Fireballs use the callback below as the
      * single authoritative impact transaction so the configured damage and
      * debuffs are applied once, not once by vanilla and once by the event.
-     * The impact controller uses a CUSTOM damage event after cancelling the
-     * native LargeFireball player event. That keeps the event-owned hazard
-     * transaction separate from the projectile's re-entrant collision path.
+     * Paper can represent the nested sourceful damage call as either an
+     * EntityDamageByEntityEvent or a direct real-health transaction depending
+     * on which impact callback is currently running. The scoped permit covers
+     * the former; the transaction log below covers and verifies the latter.
      */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onRiftFireballPlayerDamage(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player player)
                 || !(event.getDamager() instanceof LargeFireball fireball)
                 || !isRiftFireball(fireball)) {
+            return;
+        }
+        if (isAuthorizedRiftFireballPlayerDamage(player, fireball)) {
+            // This is the one nested damage event issued by the impact
+            // controller after the native projectile event was cancelled.
+            // Keep it sourceful so Paper and Combat Trace can observe the
+            // actual accepted transaction, but never authorize a later or
+            // unrelated fireball merely because it carries the same tag.
+            getLogger().info("RIFT_FIREBALL_PLAYER_DAMAGE_AUTHORIZED event=" + eventId
+                    + " fireball=" + fireball.getUniqueId() + " player=" + player.getUniqueId()
+                    + " damage=" + event.getDamage() + " final=" + event.getFinalDamage()
+                    + " cancelled_before=" + event.isCancelled()
+                    + " no_damage_ticks=" + player.getNoDamageTicks());
             return;
         }
         if (RiftFireballPolicy.blocksVanillaPlayerDamage(true)) {
@@ -19511,12 +19567,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // window so this event-owned hazard cannot silently deal zero
             // damage; natural players and ordinary projectiles are untouched.
             releaseEventHazardHurtWindow(player);
-            // Do not re-enter LargeFireball's own damage pipeline here. The
-            // native projectile event has already been cancelled above; a
-            // source-less CUSTOM event gives the hazard one authoritative,
-            // scoped player-damage transaction without allowing the projectile
-            // listener or another fireball hook to cancel it a second time.
-            player.damage(effects.damage());
+            // The native projectile event has already been cancelled above.
+            // Re-issue one sourceful, scoped event so Paper applies real
+            // player health damage and Combat Trace records the final event
+            // decision.  The permit is valid only during this nested call;
+            // a later/unrelated Rift Fireball still follows the blocked
+            // vanilla path above.
+            double healthBefore = player.getHealth();
+            authorizeRiftFireballPlayerDamage(player, fireball);
+            try {
+                player.damage(effects.damage(), fireball);
+            } finally {
+                revokeRiftFireballPlayerDamage(player, fireball);
+            }
+            double healthAfter = player.getHealth();
+            double appliedDamage = Math.max(0.0D, healthBefore - healthAfter);
+            getLogger().info("RIFT_FIREBALL_DAMAGE_TRANSACTION event=" + eventId
+                    + " fireball=" + fireball.getUniqueId() + " player=" + player.getUniqueId()
+                    + " expected=" + effects.damage() + " actual=" + appliedDamage
+                    + " health_before=" + healthBefore + " health_after=" + healthAfter
+                    + " applied=" + (Math.abs(appliedDamage - effects.damage()) <= 0.0001D));
             player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS,
                     effects.blindnessTicks(), 0, false, true, true), true);
             player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
@@ -19865,6 +19935,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         activeRiftFireballs.remove(entityId);
+        pendingRiftFireballPlayerDamage.values().removeIf(entityId::equals);
         Entity entity = ownedEntities.remove(entityId);
         if (entity == null) {
             entity = Bukkit.getEntity(entityId);
@@ -19905,6 +19976,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         activeRiftFireballs.clear();
         activeRiftObelisks.clear();
+        pendingRiftFireballPlayerDamage.clear();
         nextRiftObeliskCastTick = 0L;
         riftObeliskTargetCursor = 0;
         if (obelisks > 0 || fireballs > 0 || pulseDisplays > 0) {
@@ -19922,6 +19994,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean isRiftFireball(Entity entity) {
         return entity != null && EVENT_KIND_RIFT_FIREBALL.equals(readString(entity, keyKind));
+    }
+
+    private void authorizeRiftFireballPlayerDamage(Player player, LargeFireball fireball) {
+        if (player == null || fireball == null || !isActiveBossParticipant(player)
+                || !isRiftFireball(fireball) || !ownedBySession(fireball, eventId, generation)) {
+            return;
+        }
+        RiftFireballRuntimeState state = activeRiftFireballs.get(fireball.getUniqueId());
+        if (state == null || state.generation() != generation) {
+            return;
+        }
+        pendingRiftFireballPlayerDamage.put(player.getUniqueId(), fireball.getUniqueId());
+    }
+
+    private boolean isAuthorizedRiftFireballPlayerDamage(Player player, LargeFireball fireball) {
+        if (player == null || fireball == null) {
+            return false;
+        }
+        UUID authorizedFireball = pendingRiftFireballPlayerDamage.get(player.getUniqueId());
+        if (!Objects.equals(authorizedFireball, fireball.getUniqueId())
+                || !isActiveBossParticipant(player)
+                || !isRiftFireball(fireball)
+                || !ownedBySession(fireball, eventId, generation)) {
+            return false;
+        }
+        RiftFireballRuntimeState state = activeRiftFireballs.get(fireball.getUniqueId());
+        return state != null && state.generation() == generation;
+    }
+
+    private void revokeRiftFireballPlayerDamage(Player player, LargeFireball fireball) {
+        if (player == null || fireball == null) {
+            return;
+        }
+        pendingRiftFireballPlayerDamage.remove(player.getUniqueId(), fireball.getUniqueId());
     }
 
     private boolean isNearActiveRiftFireballExplosion(Location bossLocation) {

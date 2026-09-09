@@ -10,6 +10,7 @@ CLIENT = ROOT / "CopiMineClient"
 JAR = CLIENT / "build/libs/CopiMineClient-0.1.1.jar"
 SOURCE_ROOT = CLIENT / "src/main/java/me/copimine/client"
 TEXTURE_ROOT = CLIENT / "src/main/resources/assets/copimineclient/textures/entity"
+MIXIN_ROOT = CLIENT / "src/main/java/me/copimine/client/mixin"
 
 BOSS_PHASE_TEXTURES = (
     "rift_guardian_awakening.png",
@@ -165,3 +166,16 @@ def test_enderman_renderer_scopes_custom_model_to_bound_boss_uuid_with_fallback(
 def test_client_resources_do_not_override_vanilla_textures() -> None:
     vanilla_texture_root = CLIENT / "src/main/resources/assets/minecraft/textures"
     assert not vanilla_texture_root.exists(), f"Vanilla texture overrides are forbidden: {vanilla_texture_root}"
+
+
+def test_tentacle_pose_is_connected_to_the_display_render_hook() -> None:
+    mixins = (CLIENT / "src/main/resources/copimineclient.mixins.json").read_text(encoding="utf-8")
+    renderer_mixin = (MIXIN_ROOT / "DisplayEntityRendererMixin.java").read_text(encoding="utf-8")
+
+    assert '"DisplayEntityRendererMixin"' in mixins
+    assert "@Mixin(DisplayEntityRenderer.class)" in renderer_mixin
+    assert "DisplayEntity.ItemDisplayEntity" in renderer_mixin
+    assert "endEventTentaclePoseForEntity" in renderer_mixin
+    assert "matrices.push()" in renderer_mixin
+    assert "matrices.pop()" in renderer_mixin
+    assert "EndRiftTentacleModel.VISUAL_ID" in renderer_mixin

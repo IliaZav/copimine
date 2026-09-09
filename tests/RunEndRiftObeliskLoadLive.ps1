@@ -431,7 +431,8 @@ try {
     $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
     $cleanupOk = ($cleanup -match 'boss=.*?none') -and
       ($cleanup -match 'rift-obelisks=.*?0/4') -and
-      ($cleanup -match 'rift-fireballs=.*?0')
+      ($cleanup -match 'rift-fireballs=.*?0') -and
+      ($cleanup -match 'state=.*(?:READY_FOR_PLAYERS|COLLECTING|UNCONFIGURED|UNLOCKED)')
     if (-not $cleanupOk) {
       throw "Obelisk load cleanup left runtime state:`n$cleanup"
     }

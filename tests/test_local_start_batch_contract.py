@@ -72,7 +72,7 @@ def test_local_session_uses_the_same_peer_tunnel_network_profile_for_radmin_and_
     assert "function Normalize-LocalPeerTunnelNetworkProperties" in text
     assert "Normalize-LocalPeerTunnelNetworkProperties\n" in text
     assert "Local peer-tunnel join property mismatch" in text
-    assert "Enabled Purpur alternate keep-alive for the local peer-tunnel test server." in text
+    assert "Enabled Purpur alternate keep-alive and unclamped attributes for the local V2 test server." in text
 
 
 def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
@@ -86,6 +86,10 @@ def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
         "$sourceEventConfig",
         "Join-Path $sourcePluginDir $fileName",
         "Sync-CurrentPlugins",
+        "Sync-CurrentEventPluginConfigs",
+        "CopiMineArtifacts\\items.yml",
+        "sourceItemsHash",
+        "targetItemsHash",
         "Sync-CurrentEventConfig",
         "copimine-end-event\\config.yml",
         "Expected 30 current server plugins",

@@ -77,7 +77,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 
 - Fabric client Gradle build: `BUILD SUCCESSFUL`;
 - resource pack собран;
-- Python contracts: `425 passed, 17 warnings`;
+- Python contracts: `436 passed, 17 warnings`;
 - pure Java domain/policy tests: все перечисленные в gate тесты `OK`;
 - durable persistence/layout tests: все `OK`;
 - итог: `End Rift local checks passed.`
@@ -88,7 +88,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 выключает его в cleanup. Повторный реальный прогон дал:
 
 ```text
-LIVE_COMBAT_TRACE_PASS wave_traces=194 player_wave=50 exact_wave=47 boss_traces=3 wave_bot=RiftTraceBot boss_bot=RiftTraceBotBoss
+LIVE_COMBAT_TRACE_PASS wave_traces=177 player_wave=30 exact_wave=30 boss_traces=2 wave_bot=RiftTraceFinal boss_bot=RiftTraceB
 ```
 
 Основные новые test classes: `BossRealHealthDamagePolicyTest`,
@@ -113,7 +113,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 Проверенные на актуальном V2 build сценарии:
 
 - 2 игрока: полный проход Wave 1–6, boss stages и victory — `PASS`, event
-  `26a2e8fe-ce7a-4835-bbf6-38d3c920daa4`;
+  `f0d3cda8-ea4d-49d7-8bd0-8ac6c062b1c0`;
 - 3 игрока: полный проход и victory — `PASS`, event
   `eb5f408e-756b-4f20-9a46-ecd1043808ba`;
 - 5 игроков: полный проход и victory — `PASS`, event
@@ -134,8 +134,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
   `PASS`;
 - boss multi-player live: два независимых атакующих, authoritative HP delta
   равна сумме final damage, cleanup — `PASS`;
+- boss multi-player live, 5 клиентов: `112` фактических атак от `5`
+  независимых игроков, HP `5000 -> 4536.704`, сумма final damage
+  `463.30362892150926`, две группы ударов в одном тике, cleanup `boss=none` —
+  `PASS`;
 - shard active live: physical ECHO_SHARD, owner-bound PostgreSQL delivery,
   normal player block interaction и real server-side teleport — `PASS`.
+
+При последнем локальном старте Paper также записал два внешних предупреждения,
+не относящихся к End Rift: voicechat не распознал строку версии Paper 1.21.1 и
+AuthMe не нашёл необязательную GeoLite2-Country.mmdb. Оба плагина продолжили
+загрузку; End Rift, resource pack, RCON, PostgreSQL и web runtime стартовали
+штатно. Эти сторонние предупреждения не маскируются как часть End Rift.
 
 Команды отдельных live-проверок:
 
@@ -195,9 +205,9 @@ SHA-256 после последнего gate:
 - `copimine-artifacts/CopiMineArtifacts.jar` —
   `CC62AB1638C7C5C3CE975E45BFC61D880F637A6EAB1D9518B9CBEF722C34EA96`;
 - `copimine-end-event/CopiMineEndEvent.jar` —
-  `7B40F7073C35303BFCC74B69F8F6A462CC281FB10C526B653B50A9223D1B3139`;
+  `3218BAA8C4573764A4C4974684EEADD0FB4C1BEEFBA11E41D1E874975C2B66C`;
 - `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` —
-  `2E647500B90132D8F8123040A9D076C06D8269F8625A637D38FC6E63D376DEB6`;
+  `C8A8642B30A88775E6A5E60ACE25E0AC6D84EB943FECCC4A7A05EB70B977F2D6`;
 - `resourcepacks/build/CopiMineResourcePack.zip` —
   `7AE745F16F7A1C78105B3BCBD49849A881A9C43036F7CE298EDEBF9975AFB31A`.
 

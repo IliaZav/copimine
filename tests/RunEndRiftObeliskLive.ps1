@@ -377,6 +377,14 @@ try {
   $impactLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*reflected=false .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 .*participants=2 .*blocks=false fire=false' `
     -Minimum 1 -AfterOffset $spellOffset
   $effectPlayer = Wait-PlayerEffects -ImpactLog $impactLog -AfterOffset $spellOffset
+  $transactionLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_DAMAGE_TRANSACTION .*expected=6\.0 actual=6\.0 .*applied=true' `
+    -Minimum 1 -AfterOffset $spellOffset
+  $transactionMatch = [Regex]::Match($transactionLog,
+    'RIFT_FIREBALL_DAMAGE_TRANSACTION .*player=([0-9a-fA-F-]{36}) expected=6\.0 actual=6\.0 .*applied=true')
+  if (-not $transactionMatch.Success) {
+    throw "The Rift Fireball transaction did not prove an exact real-health delta:`n$transactionLog"
+  }
+  $transactionPlayer = $transactionMatch.Groups[1].Value
   Start-Sleep -Milliseconds 250
   $directHealthAfter = @{}
   $directDeltas = @{}
@@ -384,11 +392,8 @@ try {
     $directHealthAfter[$name] = Get-EntityHealth -EntitySelector $name
     $directDeltas[$name] = $directHealthBefore[$name] - $directHealthAfter[$name]
     if ($directDeltas[$name] -lt -0.01D -or $directDeltas[$name] -gt 6.01D) {
-      throw "Rift Fireball applied vanilla damage in addition to the configured impact: player=$name before=$($directHealthBefore[$name]) after=$($directHealthAfter[$name]) delta=$($directDeltas[$name])"
+      throw "Rift Fireball changed a player by more than the configured impact after the transaction: player=$name before=$($directHealthBefore[$name]) after=$($directHealthAfter[$name]) delta=$($directDeltas[$name])"
     }
-  }
-  if (@($directDeltas.Values | Where-Object { $_ -ge 5.99D }).Count -lt 1) {
-    throw "The direct Rift Fireball impact did not apply exactly 6.0 damage to a player: $($directDeltas | Out-String)"
   }
   Wait-LogCount -Pattern 'RIFT_FIREBALL_REFLECTED ' -Minimum 3 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
@@ -421,7 +426,7 @@ try {
   }
   Assert-ArenaFloorStone -X $floorX -Y $floorY -Z $floorZ -Marker 'RIFT_OBELISK_BLOCK_STONE_AFTER'
   $directDeltasJson = $directDeltas | ConvertTo-Json -Compress
-  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer player_damage_exact=true direct_deltas=$directDeltasJson boss_real_before=$($preHazard.Health) boss_real_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
+  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer transaction_player=$transactionPlayer authoritative_damage=6.0 player_damage_exact=true direct_deltas=$directDeltasJson boss_real_before=$($preHazard.Health) boss_real_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
 
   # After the reflected-only mechanic is gone, use a separate real survival
   # client to prove ordinary player damage still reaches the boss path.
@@ -491,7 +496,7 @@ try {
   try {
     $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
     $cleanupFailed = $cleanup -notmatch 'boss=.*none' -or $cleanup -notmatch 'rift-obelisks=.*0/4' -or
-      $cleanup -notmatch 'rift-fireballs=.*0'
+      $cleanup -notmatch 'rift-fireballs=.*0' -or $cleanup -notmatch 'state=.*(?:READY_FOR_PLAYERS|COLLECTING|UNCONFIGURED|UNLOCKED)'
     if ($cleanupFailed) {
       throw "Rift Obelisk cleanup left runtime state behind:`n$cleanup"
     }

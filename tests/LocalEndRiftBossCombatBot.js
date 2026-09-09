@@ -17,6 +17,7 @@ const attackDelayMs = Number(process.env.END_RIFT_BOSS_ATTACK_DELAY_MS || 9000)
 const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
 const rawAttackPackets = process.env.END_RIFT_RAW_ATTACK !== '0'
 const attackBarrierPath = process.env.END_RIFT_BOSS_ATTACK_BARRIER || ''
+const attackBarrierTimeoutMs = Number(process.env.END_RIFT_BOSS_BARRIER_TIMEOUT_MS || 90000)
 const authRetryDelaysMs = [500, 2000, 5000, 9000, 13000]
 
 const bot = mineflayer.createBot({
@@ -41,8 +42,10 @@ let attackTimer = null
 let followTimer = null
 let attackCount = 0
 let bossSeen = false
+let targetMismatchLogged = false
 let attackReleaseTimer = null
 let attackReleaseTimeout = null
+let durationTimer = null
 
 bot._client.on('packet', (data, meta) => {
   if (meta?.name !== 'add_resource_pack') return
@@ -58,6 +61,16 @@ function bossEntity () {
     .filter(entity => bot.entity && entity.position.distanceTo(bot.entity.position) <= 40)
     .sort((first, second) => first.position.distanceTo(bot.entity.position)
       - second.position.distanceTo(bot.entity.position))[0]
+}
+
+function logTargetMismatch () {
+  if (targetMismatchLogged || !bot.entity || !targetUuid) return
+  const candidates = Object.values(bot.entities)
+    .filter(entity => entity && entity.name === 'enderman')
+    .filter(entity => entity.position && entity.position.distanceTo(bot.entity.position) <= 40)
+  if (candidates.length === 0) return
+  targetMismatchLogged = true
+  console.log(`BOSS_TARGET_MISMATCH ${username} expected=${targetUuid} candidates=${candidates.map(entity => `${entity.id}:${entity.uuid}`).join(',')}`)
 }
 
 function stopFollowing () {
@@ -102,7 +115,10 @@ function startFollowing () {
 function tryAttack () {
   if (!bot.entity) return
   const boss = bossEntity()
-  if (!boss) return
+  if (!boss) {
+    logTargetMismatch()
+    return
+  }
   if (!bossSeen) {
     bossSeen = true
     console.log(`BOSS_ENTITY ${username} id=${boss.id} pos=${boss.position.x},${boss.position.y},${boss.position.z}`)
@@ -153,10 +169,20 @@ function tryAttack () {
 
 function startAttacking () {
   if (attackTimer !== null) return
+  armDurationTimer()
   attackTimer = setInterval(tryAttack, attackEveryMs)
   startFollowing()
   tryAttack()
   console.log(`ATTACK_RELEASED ${username}`)
+}
+
+function armDurationTimer () {
+  if (durationTimer !== null) return
+  // The PowerShell runner opens the barrier only after every independent
+  // client has authenticated, received gear and been teleported.  Start the
+  // combat window then; otherwise a five-player setup can consume the whole
+  // duration before the first attack packet is intentionally released.
+  durationTimer = setTimeout(() => bot.quit(), durationMs)
 }
 
 function releaseAttacksAfterBarrier () {
@@ -168,7 +194,7 @@ function releaseAttacksAfterBarrier () {
   const startedAt = Date.now()
   attackReleaseTimer = setInterval(() => {
     if (!fs.existsSync(attackBarrierPath)) {
-      if (Date.now() - startedAt > 30000) {
+      if (Date.now() - startedAt > attackBarrierTimeoutMs) {
         console.error(`ATTACK_BARRIER_TIMEOUT ${username} path=${attackBarrierPath}`)
         clearInterval(attackReleaseTimer)
         attackReleaseTimer = null
@@ -202,7 +228,7 @@ bot.once('spawn', () => {
 
 bot.on('entitySpawn', entity => {
   if (entity?.name === 'enderman') {
-    console.log(`ENTITY_SPAWN ${username} id=${entity.id} pos=${entity.position.x},${entity.position.y},${entity.position.z}`)
+    console.log(`ENTITY_SPAWN ${username} id=${entity.id} uuid=${entity.uuid} pos=${entity.position.x},${entity.position.y},${entity.position.z}`)
   }
 })
 
@@ -216,10 +242,9 @@ bot.on('end', () => {
   if (followTimer !== null) clearInterval(followTimer)
   if (attackReleaseTimer !== null) clearInterval(attackReleaseTimer)
   if (attackReleaseTimeout !== null) clearTimeout(attackReleaseTimeout)
+  if (durationTimer !== null) clearTimeout(durationTimer)
   stopFollowing()
   if (!spawned || attackCount === 0) process.exitCode = 1
   console.log(`PLAYER_END ${username} attacks=${attackCount} bossSeen=${bossSeen}`)
   process.exit()
 })
-
-setTimeout(() => bot.quit(), durationMs)

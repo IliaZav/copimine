@@ -168,6 +168,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
   `8cce8392-3538-4d50-af91-138c05008973`, Wave 1–6, `AWAKENING,HUNT,RIFT,
   OVERLOAD,RAGE,LAST_SEAL`, `RIFT_OBELISKS_SPAWNED`, boss defeat и victory —
   `PASS`;
+- visual live probe на текущем JAR: boss cue, Wave 1 wave-front, Wave 3
+  layered portal (`12` tracked visuals), Wave 4 zone state, обе финальные
+  сцены и cleanup, diagnostics — `PASS`; отдельный 30-секундный sampler дал
+  `TPS avg=19.67`, `max MSPT=2.86`, `max ping=7 ms`;
 - после победы финальный статус восстановлен как `READY_FOR_PLAYERS` с
   `endUnlocked=true`, Core `CopiMine 8,68,-39`, руны `2/2`, временные сущности
   отсутствуют. End Rift error scan последнего Paper log — `clean`.
@@ -216,6 +220,18 @@ Minecraft capture в этой сессии. Поэтому source/asset/runtime 
 Manual visual verification in a native Minecraft window: `NOT VERIFIED` in this
 session. Автоматические проверки ассетов, клиентский build и Paper runtime
 проверены; скриншот не используется как доказательство внешнего вида.
+
+Команда live visual probe:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftBossVisualLive.ps1 -ViewerName EndRiftVisFinal -VisualBotDurationSeconds 60 -PerformanceDurationSeconds 30 -VisualTimeoutSeconds 120
+```
+
+Она подтвердила `END_RIFT_BOSS_VISUAL_LIVE_PASS`, а после неё runtime оставил
+`eventMobs=0`, `boss=none`, `transientDisplays=0`, `projectiles=0`. Это
+поведенческий Paper/client-bridge probe, а не screenshot. Нативная ручная
+проверка изображения по-прежнему `NOT VERIFIED`, потому что CUA-сессия не
+предоставила native Minecraft window.
 
 ## Cleanup, persistence и безопасность
 

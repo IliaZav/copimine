@@ -9,7 +9,7 @@ param(
 )
 
 # Local-only load/smoke probe.  It uses disposable real protocol clients and
-# the test boss harness; it never rebuilds a world, changes production data,
+# the official V2 boss; it never rebuilds a world, changes production data,
 # or connects to anything except the isolated local Paper/RCON ports.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -349,7 +349,7 @@ try {
   }
 
   $spawnOffset = Get-LogLength
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn'
+  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
   $spawnLog = Wait-LogCount -Pattern 'BOSS_STATS .*vanilla_base=' -AfterOffset $spawnOffset -WaitSeconds 30
   $status = Invoke-LocalRcon -CommandText 'cmend status'
   $statusPlain = Strip-MinecraftColors -Text $status
@@ -363,22 +363,28 @@ try {
   $bossUuid = $bossMatch.Groups[1].Value
   $maxHealth = [double]::Parse($bossMatch.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
   if ($maxHealth -lt 19999.0D) {
-    throw "20-player load boss did not receive the 20000 virtual HP cap: max=$maxHealth`n$status"
+    throw "20-player load boss did not receive the 20000 real HP cap: max=$maxHealth`n$status"
   }
-  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
+  $healthData = Invoke-LocalRcon -CommandText ("data get entity $bossUuid Health")
+  if ($healthData -notmatch '20000\.0f') {
+    throw "20-player load boss entity Health is not 20000.0f:`n$healthData"
+  }
+  $legacyVirtual = Invoke-LocalRcon -CommandText ("data get entity $bossUuid BukkitValues.`"copimineendevent:end_event_boss_virtual_health`"")
+  if ($legacyVirtual -notmatch 'No value|No element|Found no') {
+    throw "20-player official load boss retained a legacy virtual-health marker:`n$legacyVirtual"
+  }
   $halfDamage = ($maxHealth / 2.0D).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
   $spellOffset = Get-LogLength
   $null = Invoke-LocalRcon -CommandText ("cmend boss damage $halfDamage")
-  $null = Invoke-LocalRcon -CommandText 'cmend boss phase normal'
   $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
-  Wait-LogCount -Pattern ('RIFT_OBELISKS_SPAWNED .*count=4 .*participants=' + $PlayerCount + ' .*stage=DISTORTION') `
+  Wait-LogCount -Pattern ('RIFT_OBELISKS_SPAWNED .*count=4 .*participants=' + $PlayerCount + ' .*stage=RIFT') `
     -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_PULSE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
   Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*max_active=8' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_EFFECTS_APPLIED .*damage=9\.0 blindness_ticks=200 blindness_amplifier=0 weakness_ticks=200 weakness_amplifier=2 nausea_ticks=200 nausea_amplifier=2 slowness_ticks=200 slowness_amplifier=1 participants=20' `
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_EFFECTS_APPLIED .*damage=6\.0 blindness_ticks=40 blindness_amplifier=0 weakness_ticks=60 weakness_amplifier=0 nausea_ticks=60 nausea_amplifier=1 slowness_ticks=60 slowness_amplifier=0 participants=20' `
     -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*damage=9\.0 .*blindness_ticks=200 .*debuff_ticks=200 participants=20 .*blocks=false fire=false' `
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 participants=20 .*blocks=false fire=false' `
     -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
 
   Start-Sleep -Seconds 3
@@ -406,7 +412,7 @@ try {
   $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
   if ($missing.Count -gt 0) { throw "20-player load disconnected clients: $($missing -join ', ')`n$list" }
   $success = $true
-  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} max_boss_virtual_hp={1} obelisks={2}/4 fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 scaled_damage=9.0 scaled_effect_ticks=200" -f
+  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} max_boss_real_hp={1} entity_health=20000 obelisks={2}/4 fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 damage=6.0 effect_ticks=40/60" -f
     $PlayerCount, $maxHealth, $liveObelisks, $liveFireballs)
 } finally {
   foreach ($entry in $processes) {

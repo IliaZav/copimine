@@ -217,7 +217,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         applyBreathTransform(animationProgress, animation);
         applyDamagedFlinch(animationProgress, animation);
         applyTeleportRip(animationProgress, animation);
-        applyCastTransform(animationProgress, animation);
+        applySpellCastTransform(animationProgress, animation);
         applyPhaseShiftTransform(animationProgress, animation);
         applyFinalStrikeTransform(animationProgress, animation);
         applyDefeatCollapse(animationProgress, animation);
@@ -372,7 +372,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
      * pose logic here preserves the UUID-scoped renderer swap while the boss
      * remains a normal Enderman entity for gameplay and hitbox purposes.
      */
-    private void applyCastTransform(float animationProgress, String animation) {
+    private void applySpellCastTransform(float animationProgress, String animation) {
         float pulse = MathHelper.sin(animationProgress * 0.32F);
         switch (animation) {
             case "CAST_CHARGE", "ABSORPTION_CHANNEL", "JUDGMENT_CAST" -> {

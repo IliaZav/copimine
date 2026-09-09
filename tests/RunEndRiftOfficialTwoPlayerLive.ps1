@@ -36,11 +36,13 @@ if (@($PlayerNames | Select-Object -Unique).Count -ne $PlayerNames.Count) {
   throw 'Official End Rift driver requires unique local player names.'
 }
 $runLabel = switch ($PlayerNames.Count) {
+  3 { 'OFFICIAL_THREE_PLAYER_START'; break }
   5 { 'OFFICIAL_FIVE_PLAYER_START'; break }
   10 { 'OFFICIAL_TEN_PLAYER_START'; break }
   default { 'OFFICIAL_TWO_PLAYER_START' }
 }
 $passLabel = switch ($PlayerNames.Count) {
+  3 { 'OFFICIAL_THREE_PLAYER_PASS'; break }
   5 { 'OFFICIAL_FIVE_PLAYER_PASS'; break }
   10 { 'OFFICIAL_TEN_PLAYER_PASS'; break }
   default { 'OFFICIAL_TWO_PLAYER_PASS' }
@@ -51,6 +53,9 @@ if ($PlayerNames.Count -eq 5) {
 } elseif ($PlayerNames.Count -eq 10) {
   $evidencePath = Join-Path $runtimeRoot 'official-ten-player-live.log'
   $botLogDirectory = Join-Path $runtimeRoot 'official-ten-player-bots'
+} elseif ($PlayerNames.Count -eq 3) {
+  $evidencePath = Join-Path $runtimeRoot 'official-three-player-live.log'
+  $botLogDirectory = Join-Path $runtimeRoot 'official-three-player-bots'
 }
 
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
@@ -168,6 +173,65 @@ function Keep-PlayersAtCoreRing {
     $position = $positions[$index % $positions.Count]
     Teleport-Player -Name $PlayerNames[$index] -X $position.X -Y $position.Y -Z $position.Z
   }
+}
+
+function Keep-PlayersAtCore {
+  param([Parameter(Mandatory = $true)][int[]]$Core)
+  # The carrier charge is delivered only while the holder is within the
+  # server-authoritative 2.5 block radius of the Core.  Keep the disposable
+  # clients on the Core top face during W1 so the live probe exercises pickup
+  # and delivery instead of parking them outside the delivery radius.
+  $point = [pscustomobject]@{
+    X = [double]$Core[0] + 0.5D
+    Y = [double]$Core[1] + 1.0D
+    Z = [double]$Core[2] + 0.5D
+  }
+  Keep-PlayersAtPoint -Point $point
+}
+
+function Keep-PlayersAtWave1Carrier {
+  param([Parameter(Mandatory = $true)][int[]]$Core)
+  # W1 is a real objective, not just a mob-clear probe.  The charge is
+  # intentionally dropped at the defeated carrier's location, so the
+  # disposable clients must first visit that display and then return to the
+  # Core after pickup.  Read the authoritative display position through RCON;
+  # never move the server-side objective or widen its delivery radius for a
+  # test.
+  $evidence = $script:LogEvidence.ToString()
+  $created = [Regex]::Matches($evidence,
+    'V2_CARRIER_CHARGE_CREATED event=' + [Regex]::Escape($eventId) +
+    ' charge=([0-9a-fA-F-]{36})')
+  $picked = [Regex]::Matches($evidence,
+    'V2_CARRIER_PICKED_UP event=' + [Regex]::Escape($eventId) + '\b')
+  $delivered = [Regex]::Matches($evidence,
+    'V2_CARRIER_DELIVERED event=' + [Regex]::Escape($eventId) +
+    ' charge=(\d+)/3')
+  $createdIndex = if ($created.Count -eq 0) { -1 } else { $created[$created.Count - 1].Index }
+  $pickedIndex = if ($picked.Count -eq 0) { -1 } else { $picked[$picked.Count - 1].Index }
+  $deliveredIndex = if ($delivered.Count -eq 0) { -1 } else { $delivered[$delivered.Count - 1].Index }
+  if ($createdIndex -gt $pickedIndex) {
+    $chargeUuid = $created[$created.Count - 1].Groups[1].Value
+    # Query the bounded Pos path directly.  Full entity NBT is truncated by
+    # RCON before Pos on Paper builds with a large PDC payload, which made the
+    # previous parser silently fall back to the combat sweep and miss the
+    # dropped charge in larger rosters.
+    $probe = Invoke-LocalRcon -CommandText ("data get entity $chargeUuid Pos")
+    $positionMatch = [Regex]::Match($probe,
+      '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
+    if ($positionMatch.Success) {
+      Keep-PlayersAtPoint -Point ([pscustomobject]@{
+          X = [double]$positionMatch.Groups[1].Value
+          Y = [double]$positionMatch.Groups[2].Value
+          Z = [double]$positionMatch.Groups[3].Value
+        })
+      return
+    }
+  }
+  if ($pickedIndex -gt $deliveredIndex) {
+    Keep-PlayersAtCore -Core $Core
+    return
+  }
+  Keep-PlayersAtCombatSweep -Core $Core
 }
 
 $script:CombatSweepIndex = 0
@@ -462,7 +526,7 @@ function Wait-V2TransitionToWave {
     throw "V2 transition did not persist one rune per official player: completed=$CompletedWave pads=$($nextPads.Count) players=$($PlayerNames.Count)"
   }
   Keep-PlayersAtPads -Pads $nextPads
-  Wait-LogRegex -Pattern ("WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120 `
+  Wait-LogRegex -Pattern ("V2_WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120 `
     -DuringWait { Keep-PlayersAtPads -Pads $nextPads }
   Write-Evidence "OFFICIAL_V2_TRANSITION_PASS event=$eventId completed_wave=$CompletedWave next_wave=$NextWave pads=$($nextPads.Count) hold_ms=5000"
   return ,$nextPads
@@ -671,9 +735,10 @@ try {
   Wait-LogRegex -Pattern 'RITUAL_STARTED' -WaitSeconds 20 -DuringWait { Keep-PlayersAtPads -Pads $pads }
   Wait-LogRegex -Pattern 'RITUAL_COMPLETED' -WaitSeconds 80 -DuringWait { Keep-PlayersAtPads -Pads $pads }
 
-  Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=1' -WaitSeconds 20
-  Keep-PlayersAtCombatSweep -Core $core
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_STARTED.*wave=1' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'V2_WAVE_GROUP_SPAWN.*wave=1.*group=1/\d+.*spawned=\d+' -WaitSeconds 30
+  Keep-PlayersAtWave1Carrier -Core $core
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtWave1Carrier -Core $core }
   if ($RewardPickupProbe) {
     Wait-LogRegex -Pattern 'WAVE_REWARD_SPAWNED.*wave=1' -WaitSeconds 20
     Write-Evidence "WAVE_REWARD_PICKUP_PROBE event=$eventId wave=1 recipients=$($PlayerNames.Count) mode=one-player-at-a-time"
@@ -695,28 +760,20 @@ try {
   }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_MARK.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_SKELETON_MARKED_TARGET.*wave=2' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=2.*HUNT_MARK' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_HUNT_CYCLE.*cycle=1' -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3
-  # Portal count is roster-scaled by the event policy: a five-player run has
-  # four portals, while a two-player compatibility run has three.  Read the
-  # authoritative count from Paper instead of hardcoding the two-player case.
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=3.*portals=\d+' -WaitSeconds 20
-  $portalMatch = [Regex]::Match($script:LogEvidence.ToString(),
-    'WAVE_OBJECTIVE_STARTED.*wave=3.*portals=(\d+)')
-  if (-not $portalMatch.Success) {
-    throw 'Paper did not expose the authoritative wave 3 portal count.'
-  }
-  $portalCount = [int]$portalMatch.Groups[1].Value
-  if ($portalCount -lt 3 -or $portalCount -gt 6) {
-    throw "Wave 3 portal count is outside the bounded policy: $portalCount"
-  }
+  # V2 Wave 3 has exactly three sequential portals for every roster size.
+  Wait-LogRegex -Pattern 'V2_PORTALS_READY.*count=3.*sequential=true' -WaitSeconds 20
+  $portalCount = 3
   $portalY = $coreY
   $portals = @()
   for ($index = 0; $index -lt $portalCount; $index++) {
-    $angle = (2.0D * [Math]::PI * $index) / $portalCount
+    # Keep this probe in lockstep with v2PrepareSequentialPortals: the first
+    # portal is north of the Core (negative Z), not on the positive-X axis.
+    $angle = -[Math]::PI / 2.0D + (2.0D * [Math]::PI * $index) / $portalCount
     $portals += [pscustomobject]@{
       X = $coreX + 0.5D + 8.0D * [Math]::Cos($angle)
       Y = $portalY
@@ -740,81 +797,39 @@ try {
   # the inner ring.  Keep the bots on the authoritative mob positions while
   # waiting for the real Wave 3 completion marker; this exercises the same
   # portal-mob damage path without making the test depend on a lucky spawn.
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
   if ($StopAfterWave3) {
     Write-Evidence "OFFICIAL_WAVE3_PASS event=$eventId portals=$portalCount stop_after_wave3=true"
     return
   }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=4.*TOWER_DEFENSE' -WaitSeconds 20
-  # Wave IV is scaled by the official roster and split into bounded groups.
-  # Read the total from the authoritative first spawn line so a five-player
-  # run validates all six groups rather than inheriting the two-player 1/4
-  # assumption.
-  Wait-LogRegex -Pattern 'WAVE_TOWER_GROUP_SPAWN.*group=1/\d+.*spawned=\d+' -WaitSeconds 20
-  $towerGroupMatch = [Regex]::Match($script:LogEvidence.ToString(),
-    'WAVE_TOWER_GROUP_SPAWN.*group=1/(\d+).*spawned=\d+')
-  if (-not $towerGroupMatch.Success) {
-    throw 'Paper did not expose the authoritative Wave 4 group count.'
-  }
-  $towerGroupCount = [int]$towerGroupMatch.Groups[1].Value
-  if ($towerGroupCount -lt 1 -or $towerGroupCount -gt 12) {
-    throw "Wave 4 group count is outside the bounded policy: $towerGroupCount"
-  }
-  if ($TowerFailureProbe) {
-    # This remains an official two-player session: only the bounded local
-    # probe asks the plugin to apply a synthetic Core-destroying attack.  The
-    # plugin then runs its real failure cleanup and owned retry scheduler.
-    $null = Invoke-LocalRcon -CommandText 'cmend test tower fail'
-    Wait-LogRegex -Pattern 'WAVE_TEST_FAILURE_INJECTED.*wave=4' -WaitSeconds 20
-    Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_FAILED.*wave=4.*retry=true' -WaitSeconds 20
-    $failedStatus = Invoke-LocalRcon -CommandText 'cmend status'
-    if ($failedStatus -notmatch 'wave=.*4' -or $failedStatus -notmatch 'event-mobs=.*0') {
-      throw "Wave 4 failure did not synchronously remove the old event mobs:`n$failedStatus"
-    }
-    Write-Evidence "OFFICIAL_W4_FAILURE_CLEANUP_PASS event=$eventId wave=4 event-mobs=0"
-    Wait-LogRegex -Pattern 'WAVE_RETRY_OBJECTIVE_RESET.*wave=4' -WaitSeconds 30
-    Wait-LogRegex -Pattern 'WAVE_RETRY_STARTED.*wave=4' -WaitSeconds 30
-    $retryStatus = Invoke-LocalRcon -CommandText 'cmend debug objectives'
-    if ($retryStatus -notmatch 'wave=4' -or $retryStatus -notmatch 'towerAttempt=2') {
-      throw "Wave 4 retry did not start as attempt 2:`n$retryStatus"
-    }
-    Write-Evidence "OFFICIAL_W4_RETRY_PASS event=$eventId wave=4 attempt=2 old_mobs_cleared=true"
-    Wait-LogRegex -Pattern ("WAVE_TOWER_GROUP_SPAWN.*group=2/" + $towerGroupCount + ".*spawned=\d+") `
-      -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  } else {
-    for ($group = 2; $group -le $towerGroupCount; $group++) {
-      Wait-LogRegex -Pattern ("WAVE_TOWER_GROUP_SPAWN.*group=" + $group + "/" + $towerGroupCount + ".*spawned=\d+") `
-        -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-    }
-  }
-  Write-Evidence "OFFICIAL_W4_GROUPS_PASS event=$eventId count=$towerGroupCount"
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
-  if ($TowerFailureProbe) {
-    Write-Evidence "OFFICIAL_W4_RETRY_COMPLETED_PASS event=$eventId wave=4 attempt=2 objective=success"
-    return
-  }
+  Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=4.*BLACK_FOG' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'V2_FOG_SAFE_START.*cycle=1/3' -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_FOG_START.*cycle=1/3.*height=3' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_FOG_COMPLETE.*cycles=3' -WaitSeconds 180 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_STARTED.*wave=5.*RIFT_STORM' -WaitSeconds 20
-  Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=5' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=5.*COLLAPSE_RINGS' -WaitSeconds 20
+  Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=1/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
+  Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=3/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6
   # Wave 6 is chamber-isolated.  Keep each client near the authoritative mob
   # positions so its own chamber can clear without ever opening a cross-room
   # target path.  The controller itself remains responsible for assigning and
   # validating the chamber; the probe only supplies player movement.
-  Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 360 `
+  $expectedChambers = Get-WaveSixChamberCount
+  Wait-LogRegex -Pattern ("V2_CHAMBERS_COMPLETE.*chambers={0}" -f $expectedChambers) -WaitSeconds 360 `
     -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
-  Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 30
+  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=6.*CHAMBERS' -WaitSeconds 30
   $waveSixStatus = Invoke-LocalRcon -CommandText 'cmend debug ai'
   if ($waveSixStatus -notmatch 'phase=.*PRE_BOSS_COOLDOWN|phase=.*WAVE_6') {
     throw "Wave 6 did not leave the isolated chamber flow in a V2 phase:`n$waveSixStatus"
   }
-  Write-Evidence "OFFICIAL_WAVE6_CHAMBER_PASS event=$eventId isolated=true passage_open=true"
+  Write-Evidence "OFFICIAL_WAVE6_CHAMBER_PASS event=$eventId isolated=true chambers=$expectedChambers passage_open=true"
 
   Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED' -WaitSeconds 30
   Wait-LogRegex -Pattern 'BOSS_SPAWNED' -WaitSeconds 120

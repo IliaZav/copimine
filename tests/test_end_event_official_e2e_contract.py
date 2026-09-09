@@ -45,9 +45,10 @@ def test_official_driver_does_not_skip_waves_or_boss_phases_with_test_commands()
     for marker in (
         "RITUAL_STARTED",
         "RITUAL_COMPLETED",
-        "WAVE_STARTED",
+        "V2_WAVE_STARTED",
+        "V2_WAVE_OBJECTIVE_STARTED",
         "WAVE_OBJECTIVE_COMPLETE",
-        "WAVE_COMPLETED",
+        "V2_WAVE_COMPLETED",
         "BOSS_CINEMATIC_STARTED",
         "BOSS_V2_STAGE_TRANSITION",
         "RIFT_OBELISKS_SPAWNED.*stage=RIFT",
@@ -62,22 +63,22 @@ def test_official_driver_does_not_skip_waves_or_boss_phases_with_test_commands()
 def test_official_driver_waits_for_all_six_v2_waves_and_every_boss_stage_in_order() -> None:
     source = DRIVER.read_text(encoding="utf-8")
     ordered_markers = (
-        "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=1'",
-        "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=1'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_STARTED.*wave=1'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=1'",
         "Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2",
-        "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=2'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=2'",
         "Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3",
         "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=3'",
-        "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=3'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=3'",
         "Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4",
-        "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=4'",
-        "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=4'",
+        "Wait-LogRegex -Pattern 'V2_FOG_COMPLETE.*cycles=3'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=4'",
         "Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5",
-        "Wait-LogRegex -Pattern 'WAVE_OBJECTIVE_COMPLETE.*wave=5'",
-        "Wait-LogRegex -Pattern 'WAVE_COMPLETED.*wave=5'",
+        "Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=3/3'",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=5'",
         "Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6",
-        "Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true'",
-        "Wait-LogRegex -Pattern 'WAVE_6_COMPLETED.*passage_open=true'",
+        "Wait-LogRegex -Pattern (\"V2_CHAMBERS_COMPLETE.*chambers={0}\" -f $expectedChambers)",
+        "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=6.*CHAMBERS'",
         "Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED'",
         "Assert-BossStage -Stage 'AWAKENING'",
         "Assert-BossStage -Stage 'HUNT'",
@@ -103,8 +104,14 @@ def test_official_transition_driver_preserves_the_persisted_pad_array_shape() ->
 
 def test_official_driver_observes_wave_two_mark_and_skeleton_retarget() -> None:
     source = DRIVER.read_text(encoding="utf-8")
-    assert "WAVE_OBJECTIVE_MARK.*wave=2" in source
-    assert "WAVE_SKELETON_MARKED_TARGET.*wave=2" in source
+    assert "V2_WAVE_OBJECTIVE_STARTED.*wave=2.*HUNT_MARK" in source
+    assert "V2_HUNT_CYCLE.*cycle=1" in source
+
+
+def test_official_wave_one_probe_reads_the_authoritative_charge_position() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert 'data get entity $chargeUuid Pos' in source
+    assert "RCON before Pos" in source
 
 
 def test_official_driver_restricts_player_probe_targets_to_the_event_arena() -> None:
@@ -122,34 +129,26 @@ def test_official_driver_restricts_player_probe_targets_to_the_event_arena() -> 
         assert marker in source or marker in bot
 
 
-def test_official_driver_sweeps_the_arena_during_tower_defense() -> None:
+def test_official_driver_sweeps_the_arena_during_black_fog() -> None:
     source = DRIVER.read_text(encoding="utf-8")
     assert (
-        "WAVE_OBJECTIVE_COMPLETE.*wave=4' -WaitSeconds 240 "
+        "V2_FOG_COMPLETE.*cycles=3' -WaitSeconds 180 "
         "-DuringWait { Keep-PlayersAtCombatSweep -Core $core }"
     ) in source
 
 
-def test_official_driver_observes_paced_tower_groups_before_waiting_180_seconds() -> None:
+def test_official_driver_observes_paced_v2_wave_groups_before_waiting() -> None:
     source = DRIVER.read_text(encoding="utf-8")
-    assert "WAVE_TOWER_GROUP_SPAWN.*group=1/\\d+.*spawned=\\d+" in source
-    assert "for ($group = 2; $group -le $towerGroupCount; $group++)" in source
+    assert "V2_WAVE_GROUP_SPAWN" in source
+    assert "v2WaveSpawnTask" not in source
 
 
-def test_official_driver_has_a_local_wave_four_failure_and_clean_retry_probe() -> None:
+def test_official_driver_keeps_failure_probe_out_of_the_v2_success_path() -> None:
     source = DRIVER.read_text(encoding="utf-8")
-    for marker in (
-        "[switch]$TowerFailureProbe",
-        "cmend test tower fail",
-        "WAVE_TEST_FAILURE_INJECTED",
-        "WAVE_OBJECTIVE_FAILED.*wave=4",
-        "event-mobs=0",
-        "WAVE_RETRY_OBJECTIVE_RESET",
-        "WAVE_RETRY_STARTED",
-        "OFFICIAL_W4_FAILURE_CLEANUP_PASS",
-        "OFFICIAL_W4_RETRY_PASS",
-    ):
-        assert marker in source
+    assert "[switch]$TowerFailureProbe" in source
+    assert "V2_FOG_COMPLETE.*cycles=3" in source
+    assert "TOWER_DEFENSE" not in source
+    assert "RIFT_STORM" not in source
 
 
 def test_official_driver_reaches_the_outer_spawn_ring_without_shortcuts() -> None:
@@ -172,6 +171,27 @@ def test_official_survival_players_have_a_real_melee_fixture_for_all_wave_mobs()
     assert "attackIntervalMs" in bot
     assert "process.argv[8]" in bot
     assert "attackTimer = setInterval(attackNearest, attackIntervalMs)" in bot
+
+
+def test_official_enderman_roles_cannot_be_lost_to_daylight() -> None:
+    """Sunlight must not strand the carrier objective on an open local arena."""
+    source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("public void onOfficialEndermanSunDamage")
+    end = source.index("private Player playerDamageAttacker", start)
+    handler = source[start:end]
+    for marker in (
+        "instanceof Enderman",
+        "DamageCause.FIRE_TICK",
+        "ownedEntities.containsKey",
+        "isOfficialEntity",
+        "EVENT_KIND_BOSS.equals(kind)",
+        "isWaveCombatKind(kind)",
+        "event.setCancelled(true)",
+        "enderman.setFireTicks(0)",
+    ):
+        assert marker in handler
 
 
 def test_reward_probe_can_freeze_survival_bots_before_measuring_pickup() -> None:
@@ -213,6 +233,15 @@ def test_official_wave_six_probe_keeps_players_inside_their_assigned_chamber() -
     assert "centerAngle" in source
     assert "halfSector" in source
     assert "Keep-PlayersAtWaveSixMobs -Core $core" in source
-    assert "WAVE_6_COMPLETED.*passage_open=true' -WaitSeconds 360 `" in source
+    assert 'expectedChambers = Get-WaveSixChamberCount' in source
+    assert 'V2_CHAMBERS_COMPLETE.*chambers={0}' in source
+    assert 'chambers=$expectedChambers' in source
     helper = source[source.index("function Get-WaveSixChamberMob"):source.index("function Keep-PlayersAtWaveSixMobs")]
     assert "[Parameter(Mandatory = $true)][object[]]$Mobs" not in helper
+
+
+def test_official_driver_labels_and_records_the_three_player_matrix() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "3 { 'OFFICIAL_THREE_PLAYER_START'; break }" in source
+    assert "3 { 'OFFICIAL_THREE_PLAYER_PASS'; break }" in source
+    assert "official-three-player-live.log" in source

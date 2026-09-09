@@ -1,6 +1,6 @@
 # End Rift Event V2 — release evidence
 
-Дата проверки: 2026-09-08.
+Дата проверки: 2026-09-09.
 
 ## Область
 
@@ -27,8 +27,9 @@ portal room `CopiMine 31.5,68.0,-42.5`.
 - Новый lifecycle `WAVE_1`–`WAVE_6`, межволновые перерывы, `PRE_BOSS`,
   `BOSS_CINEMATIC`, `BOSS_ACTIVE`, victory/recovery и idempotent rewards.
 - Настоящее entity HP босса: стартовая проекция 5000 HP, scaling до 20000 для
-  20 игроков. Старый virtual-health код остался только в изолированном
-  disposable regression harness и не используется официальным flow.
+  20 игроков. В официальном V2 flow legacy virtual-health authority не
+  используется: V2 читает и меняет только HP живой сущности, а старый путь
+  оставлен лишь для disposable local test-boss harness.
 - Исправлена потеря ударов по мобам и боссу через Paper hurt-resistance:
   валидный рассчитанный final damage для owned wave mob применяется ровно один
   раз к реальному HP, затем исходное событие отменяется. Обычные правила
@@ -76,10 +77,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 
 - Fabric client Gradle build: `BUILD SUCCESSFUL`;
 - resource pack собран;
-- Python contracts: `397 passed, 17 warnings`;
+- Python contracts: `425 passed, 17 warnings`;
 - pure Java domain/policy tests: все перечисленные в gate тесты `OK`;
 - durable persistence/layout tests: все `OK`;
 - итог: `End Rift local checks passed.`
+
+Отдельный Combat Trace live-пробник сначала воспроизвёл отсутствие записей
+из-за выключенной opt-in диагностики в самом тестовом сценарии. После
+исправления сценарий включает `/cmend debug trace on` перед уроном и всегда
+выключает его в cleanup. Повторный реальный прогон дал:
+
+```text
+LIVE_COMBAT_TRACE_PASS wave_traces=194 player_wave=50 exact_wave=47 boss_traces=3 wave_bot=RiftTraceBot boss_bot=RiftTraceBotBoss
+```
 
 Основные новые test classes: `BossRealHealthDamagePolicyTest`,
 `EventRealHealthDamagePolicyTest`, `CombatTraceRecordTest`,
@@ -100,12 +110,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 Он сохраняет карту, whitelist, ops, AuthMe и локальные данные, пересобирает
 актуальный pack, синхронизирует plugin jars и поднимает изолированные сервисы.
 
-Проверенные ранее на актуальном V2 build сценарии:
+Проверенные на актуальном V2 build сценарии:
 
-- 2 игрока: полный проход Wave 1–6, boss stages и victory — `PASS`;
-- 3 игрока: полный проход и victory — `PASS`;
-- 5 игроков: полный проход и victory — `PASS`;
-- 10 игроков: полный проход и victory — `PASS`;
+- 2 игрока: полный проход Wave 1–6, boss stages и victory — `PASS`, event
+  `26a2e8fe-ce7a-4835-bbf6-38d3c920daa4`;
+- 3 игрока: полный проход и victory — `PASS`, event
+  `eb5f408e-756b-4f20-9a46-ecd1043808ba`;
+- 5 игроков: полный проход и victory — `PASS`, event
+  `d47ba29c-ec7b-4f98-8938-7bea3f76e461`;
+- 10 игроков: полный проход и victory — `PASS`, event
+  `cb6b2d7f-8b89-4e97-916e-8d351a1d2490`; boss max HP `13500` по V2 scaling;
 - 20 игроков: 4 obelisks, bounded fireballs и scaling — `PASS`;
 - 5-player performance: 30 s, средний TPS `19.59`, max MSPT `6.56`, max ping
   `4 ms`;
@@ -113,9 +127,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
   `0–12 ms`;
 - obelisk live: spawn/pulse/fireball/3 reflected hits/destruction/cleanup —
   `PASS`;
+- 20-player obelisk load: `4/4` obelisks, fireball cap `0/8`, staggered start,
+  pulse `40` ticks, radius `5`, damage `6.0`, cleanup — `PASS`;
 - mob combat live: movement, real attacks, player damage и cleanup — `PASS`;
-- boss multi-player live: два независимых атакующих и same-tick groups —
+- boss real-health live: physical entity `5000/5000`, no legacy virtual marker —
   `PASS`;
+- boss multi-player live: два независимых атакующих, authoritative HP delta
+  равна сумме final damage, cleanup — `PASS`;
 - shard active live: physical ECHO_SHARD, owner-bound PostgreSQL delivery,
   normal player block interaction и real server-side teleport — `PASS`.
 
@@ -154,6 +172,10 @@ manifest, zip-содержимого, fallback и отсутствие глоб�
 Minecraft capture в этой сессии. Поэтому source/asset/runtime evidence не
 выдаётся за GUI screenshot proof.
 
+Manual visual verification in a native Minecraft window: `NOT VERIFIED` in this
+session. Автоматические проверки ассетов, клиентский build и Paper runtime
+проверены; скриншот не используется как доказательство внешнего вида.
+
 ## Cleanup, persistence и безопасность
 
 Проверены reset, boss death/victory, Core removal, generation change, plugin
@@ -173,9 +195,9 @@ SHA-256 после последнего gate:
 - `copimine-artifacts/CopiMineArtifacts.jar` —
   `CC62AB1638C7C5C3CE975E45BFC61D880F637A6EAB1D9518B9CBEF722C34EA96`;
 - `copimine-end-event/CopiMineEndEvent.jar` —
-  `993C0A20BE1C8848BECFA5ACD171183C8B6CBBA43BE0DE437CCDA48FE664F75E`;
+  `7B40F7073C35303BFCC74B69F8F6A462CC281FB10C526B653B50A9223D1B3139`;
 - `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` —
-  `D2B6DFBE7E0D6B655282B8869E3F83395DD47BBE987A5A70456288D6688121EA`;
+  `2E647500B90132D8F8123040A9D076C06D8269F8625A637D38FC6E63D376DEB6`;
 - `resourcepacks/build/CopiMineResourcePack.zip` —
   `7AE745F16F7A1C78105B3BCBD49849A881A9C43036F7CE298EDEBF9975AFB31A`.
 

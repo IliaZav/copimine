@@ -7,8 +7,8 @@ public final class WaveScalingPolicyTest {
         WaveMechanicsPolicy.WaveCounts twoPlayers = WaveScalingPolicy.scale(base, 2, 56);
         WaveMechanicsPolicy.WaveCounts twentyPlayers = WaveScalingPolicy.scale(base, 20, 56);
 
-        check(twoPlayers.total() == base.total() + 6,
-                "two-player wave must add six mobs to the configured composition");
+        check(twoPlayers.total() == base.total(),
+                "two-player wave must keep the configured composition");
         check(twentyPlayers.total() == 56,
                 "twenty-player wave must reach, but never exceed, the global cap");
         int previous = twoPlayers.total();

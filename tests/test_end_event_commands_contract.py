@@ -36,7 +36,11 @@ def test_v5_admin_command_matrix_and_confirmation_guards() -> None:
 def test_dangerous_paths_are_never_console_or_production_mutations() -> None:
     assert "Bukkit.dispatchCommand" not in MAIN
     assert "clientgate" not in MAIN.lower()
-    assert "wipe" not in MAIN.lower()
+    # V2 must wipe a generation-scoped official attempt when its whole roster
+    # is dead.  The safety invariant is that this is the plugin's own guarded
+    # cleanup path, not a console-command escape hatch.
+    assert "wipeOfficialAttemptIfAllDead" in MAIN
+    assert "performAttemptWipe" in MAIN
     assert "environment: local" in CONFIG
     assert "environment=production" in MAIN
     assert "WorldCore service" in MAIN
@@ -63,3 +67,11 @@ def test_event_owned_loot_is_configured_and_cleanup_has_no_death_path() -> None:
     assert "lootIssuedEntityUuids.add" in MAIN
     assert "cleanupOwnedEntities(eventId, generation)" in MAIN
     assert "entity.remove()" in MAIN
+
+
+def test_official_boss_spell_command_uses_the_v2_dispatcher() -> None:
+    command = MAIN[MAIN.index('case "spell" -> {'):
+                    MAIN.index('default -> message', MAIN.index('case "spell" -> {'))]
+    assert "if (isV2OfficialBoss(boss))" in command
+    assert "castV2BossSpell(boss, requestedSpell, true)" in command
+    assert "castBossSpell(boss, requestedSpell, true)" in command

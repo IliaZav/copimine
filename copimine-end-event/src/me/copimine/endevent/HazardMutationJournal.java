@@ -165,7 +165,9 @@ public final class HazardMutationJournal {
             floorOriginal = floorOriginal;
             webOriginal = webOriginal == null ? "" : webOriginal;
             mutation = mutation == null || mutation.isBlank() ? "MAGMA" : mutation.toUpperCase(java.util.Locale.ROOT);
-            if (!mutation.equals("MAGMA") && !mutation.equals("FIRE")) {
+            if (!mutation.equals("MAGMA") && !mutation.equals("FIRE")
+                    && !mutation.equals("EMERALD_BARRIER") && !mutation.equals("BARRIER")
+                    && !mutation.equals("ICE")) {
                 throw new IllegalArgumentException("unsupported hazard mutation: " + mutation);
             }
         }
@@ -176,6 +178,21 @@ public final class HazardMutationJournal {
 
         public boolean isFireMutation() {
             return mutation.equals("FIRE");
+        }
+
+        /** A V2 Wave 4 safe-zone cell: emerald floor plus optional barrier. */
+        public boolean isEmeraldBarrierMutation() {
+            return mutation.equals("EMERALD_BARRIER");
+        }
+
+        /** A V2 safe-zone perimeter block above an untouched floor. */
+        public boolean isBarrierMutation() {
+            return mutation.equals("BARRIER");
+        }
+
+        /** A V2 Wave 5 prisoner cell temporarily covered with ice. */
+        public boolean isIceMutation() {
+            return mutation.equals("ICE");
         }
     }
 

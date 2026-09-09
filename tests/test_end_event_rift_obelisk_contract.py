@@ -85,13 +85,24 @@ def test_fireball_is_event_owned_reflectable_non_incendiary_and_capped() -> None
     assert "state.reflect(player.getUniqueId())" in reflect
     assert "setDirection(direction)" in reflect
     assert "teleportCombatEntity(fireball, reflectedOrigin)" in reflect
-    assert "player.damage(effects.damage(), fireball)" in impact
+    assert "player.damage(effects.damage())" in impact
     assert "RIFT_FIREBALL_EFFECTS_APPLIED" in impact
     assert "blocks=false fire=false" in impact
     assert "onRiftFireballPlayerDamage" in MAIN
     assert "RiftFireballPolicy.blocksVanillaPlayerDamage" in MAIN
-    assert "riftFireballManualDamagePlayers" in MAIN
+    assert "RiftFireballPolicy.blocksVanillaPlayerDamage" in MAIN
     assert "!isActiveBossParticipant(player)" in reflect
+
+
+def test_fireball_damage_releases_only_the_active_participant_hurt_window() -> None:
+    impact = _body("private void handleRiftFireballImpact", "private RiftObeliskRuntimeState findRiftObeliskAt")
+    helper = _body("private void releaseEventHazardHurtWindow", "private void setLootProfile")
+    assert "releaseEventHazardHurtWindow(player)" in impact
+    assert "player.damage(effects.damage())" in impact
+    assert "player.damage(effects.damage(), fireball)" not in impact
+    assert "isActiveBossParticipant(player)" in helper
+    assert "player.setNoDamageTicks(0)" in helper
+    assert "player.setLastDamage(0.0D)" in helper
 
 
 def test_first_fire_ticks_are_staggered_and_preserved_after_telegraph() -> None:
@@ -259,7 +270,8 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1",
         "RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0",
-        "BukkitValues.\"copimineendevent:end_event_boss_virtual_health\"",
+        "cmend boss spawn official confirm",
+        "Real entity Health is missing",
         "END_RIFT_REFLECT_ENABLED",
         "LIVE_RIFT_OBELISK_NORMAL_DAMAGE_PASS",
         "LIVE_RIFT_OBELISK_CLEANUP_PASS",
@@ -271,16 +283,23 @@ def test_live_probe_uses_real_local_clients_and_checks_authoritative_outcomes() 
     assert "bot._client.write('look'" in BOT
     assert "Math.fround((Math.PI - yaw) * 180 / Math.PI)" in BOT
     assert "participants=2" in LIVE
+    assert "end_event_boss_virtual_health" not in LIVE
+    # The probe freezes only the disposable boss during the exact fireball
+    # damage window so ordinary melee/servants cannot be mixed into the 6.0
+    # assertion. Freeze must happen before the checkpoint damage, otherwise
+    # the stage transition can schedule summon_servants in the same window.
+    assert "cmend boss freeze" in LIVE
+    assert LIVE.index("cmend boss freeze") < LIVE.index("cmend boss damage 2500")
 
 
 def test_twenty_player_live_probe_checks_scaled_fireball_damage_and_effects() -> None:
     for marker in (
-        "damage=9\\.0 blindness_ticks=200",
-        "weakness_amplifier=2",
-        "nausea_amplifier=2",
-        "slowness_amplifier=1",
+        "damage=6\\.0 blindness_ticks=40",
+        "weakness_amplifier=0",
+        "nausea_amplifier=1",
+        "slowness_amplifier=0",
         "participants=20",
-        "scaled_damage=9.0 scaled_effect_ticks=200",
+        "damage=6.0 effect_ticks=40/60",
     ):
         assert marker in LOAD
     assert "bot.lookAt(" not in BOT
@@ -295,7 +314,7 @@ def test_twenty_player_obelisk_load_probe_is_real_and_bounded() -> None:
         "localRconSession",
         "Open-LocalRconSession",
         "Read-RconPacket",
-        "cmend boss spawn",
+        "cmend boss spawn official confirm",
         "cmend boss spell rift_obelisks",
         "count=4",
         "participants=' + $PlayerCount",
@@ -309,3 +328,5 @@ def test_twenty_player_obelisk_load_probe_is_real_and_bounded() -> None:
     assert "SetupEndRiftLocalScene.ps1" not in LOAD
     assert "Start-Job" not in LOAD
     assert "AUTH_CHAT_SKIPPED" in BOT
+    assert "legacyVirtual" in LOAD
+    assert "end_event_boss_virtual_health" in LOAD

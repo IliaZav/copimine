@@ -27,7 +27,9 @@ public record EndEventPacket(
             "END_ENTITY_UNBIND",
             "END_ENTITY_PHASE",
             "END_CONTROL_START",
-            "END_CONTROL_STOP");
+            "END_CONTROL_STOP",
+            "END_WORLD_BEAM",
+            "END_WORLD_VFX_CLEAR");
 
     public EndEventPacket {
         type = bounded(type, "type");

@@ -171,20 +171,21 @@ waves:
     elite-endermen: 4
     elite-skeletons: 1
   wave-4:
-    type: tower_defense
+    type: black_fog
     endermen: 10
     spiders: 8
     skeletons: 5
     elite-endermen: 3
     elite-skeletons: 1
   wave-5:
-    type: rift_storm
+    type: collapse_rings
     endermen: 14
     spiders: 10
     skeletons: 6
     elite-endermen: 6
     elite-skeletons: 2
   final:
+    type: chambers
     endermen: 0
     spiders: 10
     skeletons: 3

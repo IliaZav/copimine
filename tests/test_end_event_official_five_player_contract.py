@@ -27,8 +27,8 @@ def test_five_player_driver_is_local_only_and_uses_the_shared_official_flow() ->
     for marker in (
         "RITUAL_STARTED",
         "RITUAL_COMPLETED",
-        "WAVE_STARTED.*wave=1",
-        "WAVE_COMPLETED.*wave=5",
+        "V2_WAVE_STARTED.*wave=1",
+        "V2_WAVE_COMPLETED.*wave=5",
         "BOSS_V2_STAGE_TRANSITION",
         "BOSS_V2_LAST_SEAL_VISUALS_STARTED",
         "BOSS_DEFEAT_COMMITTED",
@@ -36,24 +36,24 @@ def test_five_player_driver_is_local_only_and_uses_the_shared_official_flow() ->
         "OFFICIAL_BOSS_STAGE_FAST_TRANSITION",
     ):
         assert marker in shared
-    assert "WAVE_OBJECTIVE_STARTED.*wave=3.*portals=\\d+" in shared
-    assert "$portalCount = [int]$portalMatch.Groups[1].Value" in shared
+    assert "V2_PORTALS_READY.*count=3.*sequential=true" in shared
+    assert "$portalCount = 3" in shared
     assert "X = $coreX + 0.5D + 8.0D * [Math]::Cos($angle)" in shared
     assert "Z = $coreZ + 0.5D + 8.0D * [Math]::Sin($angle)" in shared
     assert "portals=3'" not in shared
 
 
-def test_wave_four_asserts_the_roster_scaled_group_count() -> None:
+def test_wave_four_asserts_the_bounded_black_fog_objective() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
     for marker in (
-        "WAVE_TOWER_GROUP_SPAWN.*group=1/\\d+.*spawned=\\d+",
-        "$towerGroupCount = [int]$towerGroupMatch.Groups[1].Value",
-        "for ($group = 2; $group -le $towerGroupCount; $group++)",
-        "OFFICIAL_W4_GROUPS_PASS",
+        "V2_WAVE_OBJECTIVE_STARTED.*wave=4.*BLACK_FOG",
+        "V2_FOG_SAFE_START.*cycle=1/3",
+        "V2_FOG_START.*cycle=1/3",
+        "V2_FOG_COMPLETE.*cycles=3",
     ):
         assert marker in source
-    assert "group=1/4" not in source
-    assert "group=2/4" not in source
+    assert "TOWER_DEFENSE" not in source
+    assert "RIFT_STORM" not in source
 
 
 def test_shared_driver_accepts_exactly_two_to_five_unique_players() -> None:
@@ -105,7 +105,7 @@ def test_shared_driver_prepares_disposable_authme_accounts_before_clients_start(
 
 def test_official_driver_allows_intermission_and_peer_tunnel_jitter_before_new_waves() -> None:
     source = SHARED_DRIVER.read_text(encoding="utf-8")
-    assert 'Wait-LogRegex -Pattern ("WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120' in source
+    assert 'Wait-LogRegex -Pattern ("V2_WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120' in source
 
 
 def test_official_log_cursor_reads_the_complete_file_tail() -> None:

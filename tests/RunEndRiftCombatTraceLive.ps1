@@ -118,6 +118,11 @@ try {
   }
   $null = Rcon 'cmend wave clear'
   $null = Rcon 'cmend boss kill cleanup'
+  # Combat Trace is deliberately opt-in in the plugin.  Enable it before any
+  # probe damage so the live test observes the complete Bukkit transaction,
+  # then disable it in finally to avoid leaking diagnostic logging into the
+  # next local scenario.
+  $null = Rcon 'cmend debug trace on'
   $core = Core (Rcon 'cmend status')
   $waveBot = New-BotProcess $BotName $BotDurationSeconds $waveBotScript
   Wait-Player $BotName
@@ -203,6 +208,7 @@ try {
 } finally {
   try { Rcon 'cmend wave clear' | Out-Null } catch { }
   try { Rcon 'cmend boss kill cleanup' | Out-Null } catch { }
+  try { Rcon 'cmend debug trace off' | Out-Null } catch { }
   foreach ($bot in @($waveBot, $bossBot)) {
     if ($bot -and -not $bot.Process.HasExited) { try { $bot.Process.Kill() } catch { } }
     if ($bot) { try { $bot.Process.WaitForExit(5000) | Out-Null } catch { } }

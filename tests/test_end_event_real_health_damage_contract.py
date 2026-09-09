@@ -16,7 +16,12 @@ def test_player_damage_uses_authoritative_real_entity_health_after_protection_ch
 
 
 def test_repair_does_not_clear_the_native_hurt_window_as_a_shortcut():
-    assert "setNoDamageTicks(0)" not in MAIN
+    assert "EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3" in MAIN
+    assert "configureEventCombatHurtWindow" in MAIN
+    assert "releaseEventCombatHurtWindow(boss)" in MAIN
+    assert "releaseEventCombatHurtWindow(victim)" in MAIN
+    assert "entity.setNoDamageTicks(0)" in MAIN
+    assert "entity.setLastDamage(0.0D)" in MAIN
     assert "setMaximumNoDamageTicks(0)" not in MAIN
     assert "applySeries" in POLICY
     assert "before - requested" in POLICY

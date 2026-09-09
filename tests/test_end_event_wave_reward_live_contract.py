@@ -25,5 +25,5 @@ def test_reward_probe_checks_each_frozen_participant_and_preserves_the_normal_ru
     source = DRIVER.read_text(encoding="utf-8")
     assert "foreach ($name in $PlayerNames)" in source
     assert "Assert-WaveRewardPickup -Name $name" in source
-    assert "Wait-LogRegex -Pattern 'WAVE_STARTED.*wave=2'" in source
+    assert 'Wait-LogRegex -Pattern ("V2_WAVE_STARTED.*wave=" + $NextWave)' in source
     assert "WAVE_REWARD_PICKUP_PROBE" in source

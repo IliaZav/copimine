@@ -51,7 +51,9 @@ def test_custom_boss_bar_is_uuid_scoped_and_receives_authoritative_health_state(
     assert "applyBossBar" in protocol
     assert "Objects.equals(bossUuid, packet.subjectId())" in client_state
     assert "Objects.equals(bossBindingInstance, packet.instanceId())" in client_state
-    assert "health()" in hud and "maxHealth()" in hud and "progress()" in hud
+    assert "progress()" in hud
+    assert "health()" not in hud and "maxHealth()" not in hud
+    assert "HP" not in hud
     assert "drawTexture(FRAME" in hud
     assert "SOURCE_WIDTH = 2172" in hud
     assert "SOURCE_HEIGHT = 724" in hud
@@ -81,7 +83,8 @@ def test_boss_bar_is_rebound_after_a_player_respawns_during_combat() -> None:
     assert "import org.bukkit.event.player.PlayerRespawnEvent;" in MAIN
     respawn = _method_body(MAIN, "public void onPlayerRespawn(PlayerRespawnEvent event)", "public void onShardChannelDamage")
     assert "clientBindingReadyPlayers.remove(player.getUniqueId())" in respawn
-    assert "Bukkit.getScheduler().runTaskLater(this, () -> refreshClientBindingsForPlayer(player), 2L)" in respawn
+    assert "Bukkit.getScheduler().runTaskLater(this, () -> {" in respawn
+    assert "refreshClientBindingsForPlayer(player);" in respawn
 
 
 def test_core_removal_cleans_event_owned_combat_roles_even_after_a_restart_generation() -> None:

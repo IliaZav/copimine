@@ -44,3 +44,20 @@ def test_trace_keeps_boss_and_wave_damage_in_one_common_pipeline() -> None:
     assert "EVENT_KIND_BOSS" in common
     assert "isWaveCombatKind" in common
     assert "victim instanceof Player" in common
+
+
+def test_combat_trace_is_opt_in_and_has_a_local_admin_toggle() -> None:
+    assert "private boolean combatTraceEnabled;" in MAIN
+    should_trace = _body("private boolean shouldTraceCombat", "@EventHandler(priority = EventPriority.LOWEST")
+    assert "!combatTraceEnabled || event == null" in should_trace
+    debug = _body("private void handleDebug", "private String formatTps")
+    assert '"trace".equals(section)' in debug
+    assert "combatTraceEnabled = true" in debug
+    assert "combatTraceEnabled = false" in debug
+    assert "debug trace <on|off|status>" in MAIN
+
+
+def test_combat_trace_live_probe_enables_the_opt_in_diagnostic() -> None:
+    live = (ROOT / "tests/RunEndRiftCombatTraceLive.ps1").read_text(encoding="utf-8")
+    assert "cmend debug trace on" in live
+    assert "cmend debug trace off" in live

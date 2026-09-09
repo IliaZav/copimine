@@ -74,28 +74,8 @@ public final class EndRiftBossBarHud {
                 SOURCE_WIDTH, SOURCE_HEIGHT);
 
         String title = "СТРАЖ РАЗЛОМА";
-        String phase = phaseLabel(state.phaseId(), state.castState());
-        String health = phase + "  •  " + state.health() + " / " + state.maxHealth() + " HP";
         context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(title),
                 context.getScaledWindowWidth() / 2, y + 42, 0xFFF6E8FF);
-        context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(health),
-                context.getScaledWindowWidth() / 2, y + 59, 0xFFFFFFFF);
-    }
-
-    private static String phaseLabel(String phaseId, String castState) {
-        return switch (castState) {
-            case "JUDGMENT_CAST" -> "СУД РАЗЛОМА";
-            case "ABSORPTION_CHANNEL" -> "ПОГЛОЩЕНИЕ";
-            case "EXHAUSTED" -> "ИСТОЩЕНИЕ";
-            default -> switch (phaseId) {
-                case "AWAKENING" -> "ПРОБУЖДЕНИЕ";
-                case "HUNTER" -> "ОХОТА";
-                case "DISTORTION" -> "ИСКАЖЕНИЕ";
-                case "ABSORPTION" -> "ПОГЛОЩЕНИЕ";
-                case "CATASTROPHE" -> "КАТАСТРОФА";
-                default -> "РАЗЛОМ";
-            };
-        };
     }
 
     private static int phaseColor(String phaseId, String castState) {

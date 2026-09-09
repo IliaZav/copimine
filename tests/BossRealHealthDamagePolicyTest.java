@@ -9,6 +9,8 @@ public final class BossRealHealthDamagePolicyTest {
         check(third.remainingHealth() == 4968, "three same-tick hits must sum on real HP");
         var exhausted = BossRealHealthDamagePolicy.apply(100, 10, BossCastState.EXHAUSTED, 5000);
         check(exhausted.appliedDamage() == 15, "EXHAUSTED multiplier must apply exactly once");
+        check(BossRealHealthDamagePolicy.scaleBaseDamage(10, 8, 12) == 15,
+                "base damage must preserve the requested finalized multiplier");
         var lethal = BossRealHealthDamagePolicy.apply(5, 10, BossCastState.NONE, 5000);
         check(lethal.lethal() && lethal.remainingHealth() == 0, "lethal real-health transaction must clamp to zero");
         System.out.println("BossRealHealthDamagePolicyTest OK");

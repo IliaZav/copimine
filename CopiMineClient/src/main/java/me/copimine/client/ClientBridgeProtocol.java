@@ -27,6 +27,8 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
     public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
+    public static final String TYPE_END_WORLD_BEAM = "END_WORLD_BEAM";
+    public static final String TYPE_END_WORLD_VFX_CLEAR = "END_WORLD_VFX_CLEAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -61,6 +63,7 @@ public final class ClientBridgeProtocol {
     private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
+    private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
 
     private ClientBridgeProtocol() {
     }
@@ -130,6 +133,17 @@ public final class ClientBridgeProtocol {
     private static void applyEndEventPayload(BridgePayload payload) {
         try {
             String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
+            long nowMillis = System.currentTimeMillis();
+            if (TYPE_END_WORLD_BEAM.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyBeam(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if (TYPE_END_WORLD_VFX_CLEAR.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyClear(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
             EndEventPacket packet = new EndEventPacket(
                     eventType,
                     payload.sessionId(),
@@ -139,7 +153,6 @@ public final class ClientBridgeProtocol {
                     payload.mode(),
                     payload.clearPolicy(),
                     payload.source());
-            long nowMillis = System.currentTimeMillis();
             boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
                     ? END_EVENT_STATE.applyBossBar(packet, payload.intensity(),
                     payload.fadeInMillis(), payload.fadeOutMillis(), nowMillis)
@@ -151,6 +164,16 @@ public final class ClientBridgeProtocol {
             }
         } catch (RuntimeException error) {
             CopiMineClientLogger.warn("End Rift client packet rejected", error);
+        }
+    }
+
+    private static void logWorldVfxResult(String eventType, BridgePayload payload, boolean applied) {
+        if (applied) {
+            CopiMineClientLogger.info("End Rift world VFX applied: type=" + eventType
+                    + ", event=" + payload.sessionId() + ", generation=" + payload.seq());
+        } else {
+            CopiMineClientLogger.warn("End Rift world VFX ignored packet: type=" + eventType
+                    + ", event=" + payload.sessionId());
         }
     }
 
@@ -229,7 +252,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onJoin() {
-        END_EVENT_STATE.clear();
+        clearEndEventState();
         connected = true;
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
@@ -247,7 +270,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
-        END_EVENT_STATE.clear();
+        clearEndEventState();
         connected = false;
         helloAttempts = 0;
         helloSent = false;
@@ -265,6 +288,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickNetwork(MinecraftClient client) {
+        END_EVENT_WORLD_VFX.tick(System.currentTimeMillis());
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
@@ -365,6 +389,15 @@ public final class ClientBridgeProtocol {
 
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
+        END_EVENT_WORLD_VFX.clear();
+    }
+
+    public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        END_EVENT_WORLD_VFX.render(context);
+    }
+
+    public static EndEventWorldVfxManager endEventWorldVfx() {
+        return END_EVENT_WORLD_VFX;
     }
 
     private static Set<String> supportedEffects() {

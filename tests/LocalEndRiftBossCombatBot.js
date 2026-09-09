@@ -5,6 +5,7 @@
  * player-side packets and records the observed boss entity.
  */
 const path = require('path')
+const fs = require('fs')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
 
 const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
@@ -15,6 +16,8 @@ const attackEveryMs = Number(process.env.END_RIFT_BOSS_ATTACK_EVERY_MS || 1100)
 const attackDelayMs = Number(process.env.END_RIFT_BOSS_ATTACK_DELAY_MS || 9000)
 const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
 const rawAttackPackets = process.env.END_RIFT_RAW_ATTACK !== '0'
+const attackBarrierPath = process.env.END_RIFT_BOSS_ATTACK_BARRIER || ''
+const authRetryDelaysMs = [500, 2000, 5000, 9000, 13000]
 
 const bot = mineflayer.createBot({
   host,
@@ -24,11 +27,22 @@ const bot = mineflayer.createBot({
   auth: 'offline'
 })
 
+const traceAttackPackets = process.env.END_RIFT_TRACE_ATTACK_PACKETS === '1'
+const originalClientWrite = bot._client.write.bind(bot._client)
+bot._client.write = (name, data) => {
+  if (traceAttackPackets && name === 'use_entity') {
+    console.log(`USE_ENTITY_PACKET ${username} target=${data.target} mouse=${data.mouse} hand=${data.hand ?? 'none'} sneaking=${data.sneaking}`)
+  }
+  return originalClientWrite(name, data)
+}
+
 let spawned = false
 let attackTimer = null
 let followTimer = null
 let attackCount = 0
 let bossSeen = false
+let attackReleaseTimer = null
+let attackReleaseTimeout = null
 
 bot._client.on('packet', (data, meta) => {
   if (meta?.name !== 'add_resource_pack') return
@@ -79,6 +93,12 @@ function followBoss () {
   })
 }
 
+function startFollowing () {
+  if (followTimer !== null || typeof bot.setControlState !== 'function') return
+  followTimer = setInterval(followBoss, 250)
+  followBoss()
+}
+
 function tryAttack () {
   if (!bot.entity) return
   const boss = bossEntity()
@@ -116,6 +136,7 @@ function tryAttack () {
         bot._client.write('use_entity', {
           target: attackTarget.id,
           mouse: 1,
+          hand: 0,
           sneaking: false
         })
         bot._client.write('arm_animation', { hand: 0 })
@@ -130,22 +151,53 @@ function tryAttack () {
   })
 }
 
+function startAttacking () {
+  if (attackTimer !== null) return
+  attackTimer = setInterval(tryAttack, attackEveryMs)
+  startFollowing()
+  tryAttack()
+  console.log(`ATTACK_RELEASED ${username}`)
+}
+
+function releaseAttacksAfterBarrier () {
+  if (!attackBarrierPath) {
+    attackReleaseTimeout = setTimeout(startAttacking, attackDelayMs)
+    return
+  }
+
+  const startedAt = Date.now()
+  attackReleaseTimer = setInterval(() => {
+    if (!fs.existsSync(attackBarrierPath)) {
+      if (Date.now() - startedAt > 30000) {
+        console.error(`ATTACK_BARRIER_TIMEOUT ${username} path=${attackBarrierPath}`)
+        clearInterval(attackReleaseTimer)
+        attackReleaseTimer = null
+        process.exitCode = 1
+        bot.quit()
+      }
+      return
+    }
+    clearInterval(attackReleaseTimer)
+    attackReleaseTimer = null
+    attackReleaseTimeout = setTimeout(startAttacking, attackDelayMs)
+  }, 20)
+}
+
 bot.once('spawn', () => {
   spawned = true
-  console.log(`PLAYER_JOIN ${username}`)
+  console.log(`PLAYER_JOIN ${username} entityId=${bot.entity?.id ?? 'unknown'}`)
   bot.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) {
+  for (const delay of authRetryDelaysMs) {
     setTimeout(() => bot.chat('/login endrift-local'), delay)
   }
-  // The real boss deliberately changes position between attacks.  Keep this
-  // survival client moving toward the current server entity instead of
-  // turning a mobile-boss damage check into a static-coordinate check.
-  followTimer = setInterval(followBoss, 250)
-  followBoss()
-  setTimeout(() => {
-    attackTimer = setInterval(tryAttack, attackEveryMs)
-    tryAttack()
-  }, attackDelayMs)
+  // AuthMe may process simultaneous local handshakes on different scheduler
+  // callbacks.  These sparse, bounded retries cover that race without
+  // tripping the server's chat-spam guard.
+  // A live runner may need to finish RCON login, inventory and teleport setup
+  // after all independent clients are connected.  Do not send a combat packet
+  // until the runner opens the shared barrier; this keeps the probe from
+  // measuring pre-teleport packets or AuthMe's unauthenticated join window.
+  releaseAttacksAfterBarrier()
 })
 
 bot.on('entitySpawn', entity => {
@@ -162,6 +214,8 @@ bot.on('error', error => {
 bot.on('end', () => {
   if (attackTimer !== null) clearInterval(attackTimer)
   if (followTimer !== null) clearInterval(followTimer)
+  if (attackReleaseTimer !== null) clearInterval(attackReleaseTimer)
+  if (attackReleaseTimeout !== null) clearTimeout(attackReleaseTimeout)
   stopFollowing()
   if (!spawned || attackCount === 0) process.exitCode = 1
   console.log(`PLAYER_END ${username} attacks=${attackCount} bossSeen=${bossSeen}`)

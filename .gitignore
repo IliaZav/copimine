@@ -87,6 +87,7 @@ resourcepacks/build/
 /tools/audio-work/
 /tools/ffmpeg-local/
 /CopiMineClient/run/
+CopiMineClient/net/
 thirdparty/_modpack_stage/
 
 # Minecraft server runtime

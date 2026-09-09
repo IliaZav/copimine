@@ -4,17 +4,18 @@ param(
   [string]$FirstBotName = 'RiftDamageA',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'RiftDamageB',
-  [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string[]]$AdditionalBotNames = @(),
   # The probe needs enough packets to observe same-tick coalescing, but must
-  # stop before five disposable clients can drain the 5000-HP test boss.
+  # stop before five real clients can drain the 5000-HP local V2 boss.
   [int]$BotDurationSeconds = 35,
   [int]$TimeoutSeconds = 55,
-  [switch]$RequireSameTick
+  [switch]$RequireSameTick,
+  [switch]$HighLevelAttack,
+  [switch]$TraceAttackPackets
 )
 
-# Local-only test.  It uses the disposable test-boss harness and real player
-# attack packets, but never changes the world layout or touches production.
+# Local-only test. It starts the official V2 boss and uses real independent
+# player attack packets. It never changes the world layout or touches production.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
@@ -22,7 +23,16 @@ $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftBossCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
-$playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
+$playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames | ForEach-Object {
+    [string]$_ -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  })
+foreach ($playerName in $playerNames) {
+  if ($playerName -notmatch '^[A-Za-z0-9_]{1,16}$') {
+    throw "The multiplayer damage probe received an invalid bot name: $playerName"
+  }
+}
+$logDirectory = Join-Path $runtimeRoot 'boss-multi-player-bots'
+$attackBarrier = Join-Path $logDirectory 'release-attacks.barrier'
 
 if ($playerNames.Count -lt 2 -or $playerNames.Count -gt 5) {
   throw "The multiplayer damage probe supports 2-5 local players; received $($playerNames.Count)."
@@ -47,25 +57,33 @@ function Invoke-LocalRcon {
   return $output.Trim()
 }
 
+function Plain([string]$Text) {
+  return ($Text -replace '\u00A7.', '')
+}
+
 function Get-BossSnapshot {
   $status = Invoke-LocalRcon -CommandText 'cmend status'
   $match = [Regex]::Match($status,
     'boss=.*?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+hp=([0-9.]+)/([0-9.]+)')
   if (-not $match.Success) {
-    throw "Local test boss snapshot is missing:`n$status"
+    throw "Local official boss snapshot is missing:`n$status"
   }
   $uuid = $match.Groups[1].Value
-  $virtualCommand = 'data get entity ' + $uuid + ' BukkitValues."copimineendevent:end_event_boss_virtual_health"'
-  $virtualData = Invoke-LocalRcon -CommandText $virtualCommand
-  $virtualMatch = [Regex]::Match($virtualData, '([-0-9]+(?:\.[0-9]+)?)d\s*$')
-  if (-not $virtualMatch.Success) {
-    throw "Authoritative virtual HP is missing from the local boss PDC:`n$virtualData"
+  $healthData = Plain (Invoke-LocalRcon -CommandText ("data get entity " + $uuid + " Health"))
+  $healthMatch = [Regex]::Match($healthData, '([-0-9]+(?:\.[0-9]+)?)f\s*$')
+  if (-not $healthMatch.Success) {
+    throw "Real entity Health is missing from the local boss:`n$healthData"
+  }
+  $maxData = Plain (Invoke-LocalRcon -CommandText ("attribute " + $uuid + " minecraft:generic.max_health get"))
+  $maxMatches = [Regex]::Matches($maxData, '[-0-9]+(?:\.[0-9]+)?')
+  if ($maxMatches.Count -eq 0) {
+    throw "Real entity max_health is missing from the local boss:`n$maxData"
   }
   return [pscustomobject]@{
     Status = $status
     Uuid = $uuid
-    Health = [double]::Parse($virtualMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-    MaxHealth = [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
+    Health = [double]::Parse($healthMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+    MaxHealth = [double]::Parse($maxMatches[$maxMatches.Count - 1].Value, [Globalization.CultureInfo]::InvariantCulture)
   }
 }
 
@@ -105,9 +123,22 @@ function Wait-LocalPlayers {
   throw "Multiplayer damage bots did not join: $($playerNames -join ', ')"
 }
 
+function Wait-LocalAuthentication {
+  for ($attempt = 0; $attempt -lt 60; $attempt++) {
+    $log = Read-SharedText -Path $paperLog
+    $missing = @($playerNames | Where-Object {
+        $log -notmatch ('\[AuthMe\].*' + [Regex]::Escape($_) + '\s+logged in')
+      })
+    if ($missing.Count -eq 0) {
+      return
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Multiplayer damage bots did not complete AuthMe login: $($missing -join ', ')"
+}
+
 function Start-CombatBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][string]$BossUuid)
-  $logDirectory = Join-Path $runtimeRoot 'boss-multi-player-bots'
   New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
@@ -124,12 +155,14 @@ function Start-CombatBot {
     $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000))
   }
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_UUID'] = $BossUuid
-  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_DELAY_MS'] = '5000'
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_DELAY_MS'] = '750'
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_BARRIER'] = $attackBarrier
   # 410 ms is intentionally not an integral number of server ticks.  Separate
   # real clients therefore drift through tick boundaries and reliably produce
   # an observable same-tick group without a plugin-only synthetic hit.
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_EVERY_MS'] = '410'
-  $startInfo.EnvironmentVariables['END_RIFT_RAW_ATTACK'] = '1'
+  $startInfo.EnvironmentVariables['END_RIFT_RAW_ATTACK'] = if ($HighLevelAttack) { '0' } else { '1' }
+  $startInfo.EnvironmentVariables['END_RIFT_TRACE_ATTACK_PACKETS'] = if ($TraceAttackPackets) { '1' } else { '0' }
   $process = [Diagnostics.Process]::new()
   $process.StartInfo = $startInfo
   $process.Start() | Out-Null
@@ -143,29 +176,31 @@ function Start-CombatBot {
 $processes = @()
 $boss = $null
 try {
+  if (Test-Path -LiteralPath $attackBarrier -PathType Leaf) {
+    Remove-Item -LiteralPath $attackBarrier -Force
+  }
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn'
+  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
+  # This probe measures the authoritative multi-source health transaction, not
+  # pathfinding or reach. Freeze the official V2 boss only in the local
+  # diagnostic environment so independent clients keep a deterministic target
+  # while their packets race.
+  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
   $boss = Get-BossSnapshot
   if ($boss.MaxHealth -ne 5000.0D) {
-    throw "The disposable damage harness must start at 5000 virtual HP; got $($boss.MaxHealth)."
+    throw "The two-player official local probe must start at 5000 real HP; got $($boss.MaxHealth)."
   }
   if (-not (Test-Path -LiteralPath $paperLog -PathType Leaf)) {
     throw "Local Paper log is missing: $paperLog"
   }
-  # Freeze only the disposable test entity.  The plugin-owned local harness
-  # command keeps its AI invariant from re-enabling NoAI on the next tick,
-  # while the server still receives real independent attack packets and runs
-  # the authoritative virtual-HP adapter.
-  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
   foreach ($name in $playerNames) {
     $processes += Start-CombatBot -Name $name -BossUuid $boss.Uuid
   }
   Wait-LocalPlayers
-  # AuthMe accepts the connection before its login callback finishes.  Give
-  # each disposable client a bounded grace period before issuing its combat
-  # setup, otherwise a perfectly valid attack packet can be discarded while
-  # the account is still in the unauthenticated join state.
-  Start-Sleep -Seconds 4
+  # A name in /list is not enough: AuthMe keeps pre-auth connections there.
+  # Wait for the server-side login record before any inventory, teleport or
+  # combat setup so every independent client is a valid participant.
+  Wait-LocalAuthentication
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
     $null = Invoke-LocalRcon -CommandText ("clear $name")
@@ -174,22 +209,41 @@ try {
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:resistance 1000 4 true")
     $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:regeneration 1000 4 true")
   }
-  # Place the clients in the configured arena around the fixed test boss.
-  # Their clients still send real use_entity attack packets; freezing is only
-  # a deterministic property of this disposable local damage harness.
+  # Place the clients in the configured arena around the official boss. Their
+  # clients send real use_entity attack packets while the local diagnostic
+  # freeze keeps the boss target and hitbox deterministic.
   $position = Get-BossPosition -BossUuid $boss.Uuid
   $offsets = @(@(2.4D, 0.0D), @(-2.4D, 0.0D), @(0.0D, 2.4D), @(0.0D, -2.4D), @(1.8D, 1.8D))
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
     $offset = $offsets[$index % $offsets.Count]
-    $null = Invoke-LocalRcon -CommandText ("tp $($playerNames[$index]) " +
+    # Use the vanilla dispatcher explicitly.  Essentials' /tp alias can
+    # race the Mineflayer position acknowledgement and produce a stale
+    # movement packet from the pre-teleport coordinates.
+    $null = Invoke-LocalRcon -CommandText ("minecraft:teleport $($playerNames[$index]) " +
       (($position[0] + $offset[0]).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)) + ' ' +
       $position[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
       (($position[2] + $offset[1]).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)) + ' 90 0')
   }
   Start-Sleep -Seconds 2
+  foreach ($name in $playerNames) {
+    $playerPosition = Plain (Invoke-LocalRcon -CommandText ("data get entity " + $name + " Pos"))
+    Write-Output ("LIVE_PLAYER_POSITION name=" + $name + " " + $playerPosition)
+  }
+  # Release every real client only after all RCON setup and teleports have
+  # completed.  This avoids measuring packets sent from the old spawn point
+  # and makes a same-tick group reproducible without synthetic server hits.
+  New-Item -ItemType File -Path $attackBarrier -Force | Out-Null
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $nextPositionProbe = (Get-Date).AddSeconds(4)
   while ((Get-Date) -lt $deadline -and @($processes | Where-Object { -not $_.Process.HasExited }).Count -gt 0) {
+    if ((Get-Date) -ge $nextPositionProbe) {
+      foreach ($name in $playerNames) {
+        $combatPosition = Plain (Invoke-LocalRcon -CommandText ("data get entity " + $name + " Pos"))
+        Write-Output ("LIVE_COMBAT_POSITION name=" + $name + " " + $combatPosition)
+      }
+      $nextPositionProbe = (Get-Date).AddSeconds(4)
+    }
     Start-Sleep -Milliseconds 250
   }
   foreach ($process in $processes) {
@@ -211,9 +265,13 @@ try {
   $log = Read-SharedText -Path $paperLog
   # The UUID is unique for this disposable boss, so filtering by UUID also
   # avoids depending on log byte offsets after Paper rotates a local log.
-  $bossLines = @($log -split '\r?\n' | Where-Object { $_ -match ('BOSS_DAMAGE_EVENT .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:') })
+  $bossLines = @($log -split '\r?\n' | Where-Object { $_ -match ('BOSS_V2_DAMAGE_ACCEPTED .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:') })
   if ($bossLines.Count -lt 2) {
-    throw "Fewer than two independent player damage events reached the virtual-health path:`n$($bossLines -join "`n")"
+    throw "Fewer than two independent player damage events reached the official real-health path:`n$($bossLines -join "`n")"
+  }
+  $cancelledAccepted = @($bossLines | Where-Object { $_ -notmatch 'accepted=true cancelled=false' })
+  if ($cancelledAccepted.Count -gt 0) {
+    throw "An accepted V2 boss hit was cancelled or not marked accepted=true/cancelled=false:`n$($cancelledAccepted -join "`n")"
   }
   $damagePattern = 'source=PLAYER:([0-9a-fA-F-]+).*?final=([0-9]+(?:\.[0-9]+)?).*?tick=([0-9]+)'
   $sum = 0.0D
@@ -234,15 +292,24 @@ try {
   }
   $final = Get-BossSnapshot
   $expected = [Math]::Max(0.0D, $boss.Health - $sum)
-  if ([Math]::Abs($final.Health - $expected) -gt 0.01D) {
-    throw "Virtual HP mismatch: before=$($boss.Health) final=$($final.Health) sum_final_damage=$sum expected=$expected`n$($bossLines -join "`n")"
+  $healthDelta = [Math]::Abs($final.Health - $expected)
+  # Bukkit stores LivingEntity health as a float.  Across a five-client burst,
+  # each accepted transaction is rounded when it is written back, so the
+  # authoritative log sum can differ from /data by a few hundredths without
+  # representing lost damage.  Keep the bound tight enough to catch a missed
+  # hit while allowing the documented float quantisation.
+  if ($healthDelta -gt 0.05D) {
+    throw "Real entity HP mismatch: before=$($boss.Health) final=$($final.Health) sum_final_damage=$sum expected=$expected delta=$healthDelta`n$($bossLines -join "`n")"
   }
   $sameTick = @($ticks.GetEnumerator() | Where-Object { $_.Value -ge 2 }).Count
   if ($RequireSameTick -and $sameTick -lt 1) {
     throw "The five-player probe did not observe two player hits in one server tick.`n$($bossLines -join "`n")"
   }
-  Write-Output "LIVE_BOSS_MULTIPLAYER_DAMAGE_PASS players=$($playerNames.Count) independent_attackers=$($attackers.Count) events=$($bossLines.Count) before=$($boss.Health) after=$($final.Health) summed_final_damage=$sum same_tick_event_groups=$sameTick boss=$($boss.Uuid)"
+  Write-Output "LIVE_BOSS_MULTIPLAYER_REAL_HEALTH_PASS players=$($playerNames.Count) independent_attackers=$($attackers.Count) events=$($bossLines.Count) before=$($boss.Health) after=$($final.Health) summed_final_damage=$sum expected=$expected health_delta=$healthDelta same_tick_event_groups=$sameTick boss=$($boss.Uuid)"
 } finally {
+  if (Test-Path -LiteralPath $attackBarrier -PathType Leaf) {
+    Remove-Item -LiteralPath $attackBarrier -Force
+  }
   foreach ($process in $processes) {
     if ($process -and -not $process.Process.HasExited) {
       try { $process.Process.Kill() } catch { }
@@ -252,6 +319,7 @@ try {
     if ($process) { try { $process.Process.WaitForExit(5000) | Out-Null } catch { } }
   }
   try {
+    $null = Invoke-LocalRcon -CommandText 'cmend boss unfreeze'
     $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
     $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
     if ($cleanup -notmatch 'boss=.*none') {

@@ -5,7 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
-VIRTUAL_POLICY = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/BossVirtualHealthPolicy.java").read_text(encoding="utf-8")
+REAL_HEALTH_POLICY = (ROOT / "copimine-end-event/src/me/copimine/endevent/domain/EventRealHealthDamagePolicy.java").read_text(encoding="utf-8")
 
 
 def _body(start_marker: str, end_marker: str) -> str:
@@ -14,21 +14,46 @@ def _body(start_marker: str, end_marker: str) -> str:
     return MAIN[start:end]
 
 
-def test_authoritative_damage_accumulator_keeps_every_independent_hit() -> None:
-    damage = _body("private void applyBossDamage", "private void triggerHalfPhase")
-    assert "BossVirtualHealthPolicy.applyFinalDamage" in damage
-    assert "double currentHealth = bossVirtualHealth(boss)" in damage
-    assert "double projectedHealth" in damage
-    assert "setBossVirtualHealth(boss, projectedHealth)" in damage
-    assert "applyHits(" in VIRTUAL_POLICY
-    assert "for (Double damage : finalDamages)" in VIRTUAL_POLICY
+def test_official_damage_leaves_accepted_hit_for_real_entity_health_pipeline() -> None:
+    damage = _body("private void handleV2BossDamage", "private void applyBossDamage")
+    assert "double healthBefore = boss.getHealth()" in damage
+    assert "double finalDamage = Math.max(0.0D, event.getFinalDamage())" in damage
+    assert "BossRealHealthDamagePolicy.apply(" in damage
+    accepted = damage[damage.index("event.setDamage(adjustedBaseDamage);"):]
+    assert "event.setCancelled(true)" not in accepted
+    assert "event.setDamage(" in accepted
+    assert "boss.setHealth(result.remainingHealth())" not in accepted
+    assert "releaseEventCombatHurtWindow(boss)" in accepted
+    assert "authority=entity-health" in damage
+    assert "BossVirtualHealthPolicy" not in damage
+    assert "setBossVirtualHealth" not in damage
 
 
-def test_bukkit_adapter_uses_each_event_final_damage_and_cancels_physical_projection() -> None:
+def test_real_health_damage_policy_documents_native_hurt_window_without_rewriting_hp() -> None:
+    assert "BossRealHealthDamagePolicy" in MAIN
+    assert "applySeries" in REAL_HEALTH_POLICY
+    assert "before - requested" in REAL_HEALTH_POLICY
+    assert "EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3" in MAIN
+    assert "configureEventCombatHurtWindow" in MAIN
+    assert "releaseEventCombatHurtWindow(boss)" in MAIN
+    assert "releaseEventCombatHurtWindow(victim)" in MAIN
+    assert "entity.setNoDamageTicks(0)" in MAIN
+    assert "setMaximumNoDamageTicks(0)" not in MAIN
+
+
+def test_hurt_window_reset_is_scoped_to_owned_event_entities() -> None:
+    assert "if (!EVENT_KIND_BOSS.equals(kind) && !isWaveCombatKind(kind))" in MAIN
+    assert "private void configureEventCombatHurtWindow" in MAIN
+    assert "entity instanceof LivingEntity living" in MAIN
+    assert "entity.setLastDamage(0.0D)" in MAIN
+
+
+def test_bukkit_adapter_uses_each_event_final_damage_and_keeps_accepted_projection() -> None:
     damage = _body("public void onBossDamage", "private void applyBossDamage")
     assert damage.count("event.getFinalDamage()") >= 2
-    assert damage.count("BossDamagePolicy.applyIncomingDamage") >= 2
+    assert "BossRealHealthDamagePolicy.apply(" in damage
     assert damage.count("event.setCancelled(true);") >= 3
+    assert "handleV2BossDamage(event, boss, source)" in damage
     assert "applyBossDamage(boss" in damage
     assert "BOSS_DAMAGE_EVENT" in damage
     assert "source=" in damage
@@ -44,23 +69,67 @@ def test_exhausted_multiplier_is_kept_once_per_hit_and_blocked_casts_still_fail_
     assert "BossCastState.JUDGMENT_CAST" in MAIN
 
 
-def test_virtual_health_never_delegates_authority_to_paper_health() -> None:
+def test_official_configuration_uses_real_entity_health_and_clears_legacy_markers() -> None:
     configure = _body("private boolean configureBoss(Enderman boss, boolean test)", "private void ensureBossBar()")
-    assert "setBossVirtualHealth(boss, configuredMaxHealth);" in configure
-    assert "boss.setHealth(config.bossHealth());" not in configure
-    assert "keyBossVirtualHealth" in MAIN
-    assert "keyBossVirtualMaxHealth" in MAIN
+    official = configure[configure.index("// V2 is authoritative"):]
+    assert "maxHealth.setBaseValue(configuredMaxHealth)" in official
+    assert "boss.setHealth(configuredMaxHealth)" in official
+    assert "setBossVirtualHealth(boss, configuredMaxHealth)" not in official
+    assert "keyBossVirtualHealth" in official
+    assert "keyBossVirtualMaxHealth" in official
+    assert ".remove(keyBossVirtualHealth)" in official
+    assert ".remove(keyBossVirtualMaxHealth)" in official
 
 
-def test_lethal_multi_hit_sequence_has_one_terminal_zero_and_cannot_resurrect() -> None:
-    assert "Math.max(0.0D, before - applied)" in VIRTUAL_POLICY
+def test_lethal_real_health_sequence_has_one_terminal_death_transaction() -> None:
     assert "commitOfficialBossDefeat(boss, source)" in MAIN
     assert "officialBossDeathCommitted" in MAIN
+    damage = _body("private void handleV2BossDamage", "private void applyBossDamage")
+    assert "result.lethal()" in damage
+    assert "boss.setHealth(result.remainingHealth())" not in damage
+    assert "event.setDamage(adjustedBaseDamage)" in damage
 
 
-def test_multiplayer_probe_has_a_test_only_boss_freeze_for_stable_reach() -> None:
+def test_local_admin_health_probe_uses_the_same_real_entity_value() -> None:
+    admin = _body("private void applyV2AdministrativeDamage", "private void triggerHalfPhase")
+    assert "double before" in admin
+    assert "boss.getHealth()" in admin
+    assert "boss.setHealth(after)" in admin
+    assert "synchronizeV2BossStage(boss)" in admin
+    assert "BossVirtualHealthPolicy" not in admin
+
+
+def test_multiplayer_probe_uses_the_official_real_health_boss_and_independent_clients() -> None:
     probe = (ROOT / "tests/RunEndRiftBossMultiPlayerDamageLive.ps1").read_text(encoding="utf-8")
+    bot = (ROOT / "tests/LocalEndRiftBossCombatBot.js").read_text(encoding="utf-8")
+    assert "function Plain" in probe
+    assert "cmend boss spawn official confirm" in probe
+    assert '" Health"' in probe
+    assert '" minecraft:generic.max_health get"' in probe
+    assert "BOSS_V2_DAMAGE_ACCEPTED" in probe
+    assert "BOSS_V2_DAMAGE_ACCEPTED" in MAIN
+    assert "end_event_boss_virtual_health" not in probe
     assert "cmend boss freeze" in probe
-    assert "testBossMovementFrozen" in MAIN
-    assert "testCombatAiMode && testBossMovementFrozen" in MAIN
-    assert "mob.setAI(false)" in MAIN
+    assert "release-attacks.barrier" in probe
+    assert "END_RIFT_BOSS_ATTACK_BARRIER" in probe
+    assert "function Wait-LocalAuthentication" in probe
+    assert "logged in" in probe
+    assert "hand: 0" in bot
+    assert "fs.existsSync(attackBarrierPath)" in bot
+    assert "authRetryDelaysMs" in bot
+    assert "[500, 2000, 5000, 9000, 13000]" in bot
+    assert "function startFollowing ()" in bot
+    assert "startFollowing()" in bot
+    assert bot.index("startFollowing()") < bot.index("tryAttack()")
+    assert "minecraft:teleport" in probe
+
+
+def test_local_damage_probe_can_freeze_the_official_v2_boss_without_changing_production_ai() -> None:
+    freeze = _body('case "freeze", "unfreeze"', 'case "kill"')
+    tick = _body("private void tickV2Boss", "private BossStagePolicy.CombatProfile currentBossCombatProfile")
+    assert "isV2OfficialBoss(boss)" in freeze
+    assert "testBossMovementFrozen" in tick
+    assert "if (testBossMovementFrozen && isV2OfficialBoss(boss))" in tick
+    assert "maintainBossPath(boss, now)" in tick
+    assert tick.index("if (testBossMovementFrozen && isV2OfficialBoss(boss))") < tick.index("maintainBossPath(boss, now)")
+    assert "isV2OfficialBoss(entity)" in MAIN

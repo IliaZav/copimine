@@ -68,15 +68,19 @@ public record CombatTraceRecord(
                 phase, castState, shielded, mspt);
     }
 
+    public CombatTraceDiagnosis diagnosis() {
+        return CombatTraceDiagnosis.classify(this);
+    }
+
     public String toLogLine() {
         return String.format(Locale.ROOT,
                 "COMBAT_TRACE tick=%d at=%d attacker=%s victim=%s attacker_kind=%s cause=%s raw=%.3f final=%.3f"
                         + " cancelled_before=%s cancelled_after=%s no_damage_ticks=%d max_no_damage_ticks=%d"
-                        + " last_damage=%.3f health_before=%.3f health_next_tick=%.3f phase=%s cast=%s shielded=%s mspt=%.2f",
+                        + " last_damage=%.3f health_before=%.3f health_next_tick=%.3f phase=%s cast=%s shielded=%s mspt=%.2f diagnosis=%s",
                 tick, observedAtMillis, id(attackerId), id(victimId), attackerKind, cause,
                 rawDamage, finalDamage, cancelledBefore, cancelledAfter, noDamageTicks,
                 maximumNoDamageTicks, lastDamage, healthBefore, nextTickHealth, phase,
-                castState, shielded, mspt);
+                castState, shielded, mspt, diagnosis());
     }
 
     private static String id(UUID value) {

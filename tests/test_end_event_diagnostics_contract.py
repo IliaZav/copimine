@@ -74,7 +74,7 @@ def test_ai_debug_reports_the_phase_combat_profile() -> None:
 
 def test_debug_subcommands_are_tab_completed() -> None:
     completion = MAIN[MAIN.index("public List<String> onTabComplete") :]
-    assert 'case "debug" -> List.of("packets", "objectives", "hazards", "perf", "ai")' in completion
+    assert 'case "debug" -> List.of("packets", "objectives", "hazards", "perf", "ai", "trace")' in completion
 
 
 def test_local_diagnostics_failure_probe_exercises_the_wave_transition_catch() -> None:

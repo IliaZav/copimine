@@ -69,6 +69,9 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_boss_health_scaling_contract.py `
       tests\test_end_event_shard_passives_contract.py `
       tests\test_end_event_boss_multi_player_damage_contract.py `
+      tests\test_end_event_v2_flow_contract.py `
+      tests\test_end_event_v2_cleanup_contract.py `
+      tests\test_end_event_v2_wave5_contract.py `
       tests\test_end_event_rift_obelisk_contract.py `
       tests\test_end_event_tentacle_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
@@ -77,6 +80,7 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_spell_matrix_contract.py `
       tests\test_end_event_wavefront_contract.py `
       tests\test_end_event_boss_final_strike_contract.py
+      tests\test_end_event_world_vfx_contract.py
   } finally {
     Pop-Location
   }
@@ -118,6 +122,12 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\CombatMovementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveObjectivePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V2WaveObjectivePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V2FogTimingPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\Wave5EncounterPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftCarrierPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\Wave3PortalPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\CombatTraceDiagnosisTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveRewardPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\WaveMechanicsPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
@@ -177,6 +187,12 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild BossStagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild CombatMovementPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveObjectivePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V2WaveObjectivePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V2FogTimingPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild Wave5EncounterPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftCarrierPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild Wave3PortalPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTraceDiagnosisTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveRewardPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveMechanicsPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild StormPatternPolicyTest

@@ -3,16 +3,16 @@ package me.copimine.endevent.domain;
 /**
  * Bounded roster scaling for the live waves.
  *
- * <p>The two-player composition is the configured wave plus six additional
- * mobs.  A larger roster grows that composition smoothly until the global
- * hard cap at twenty players.  Health/damage and objective durations use
- * separate, smaller multipliers so a full server feels stronger without
- * multiplying the number of expensive entities or effects without a bound.</p>
+ * <p>The two-player composition is the configured wave itself.  A larger
+ * roster grows that composition smoothly until the global hard cap at twenty
+ * players.  Health/damage and objective durations use separate, smaller
+ * multipliers so a full server feels stronger without multiplying expensive
+ * entities or effects without a bound.</p>
  */
 public final class WaveScalingPolicy {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
-    public static final int MIN_EXTRA_MOBS = 6;
+    public static final int MIN_EXTRA_MOBS = 0;
     public static final double MAX_MOB_STRENGTH_MULTIPLIER = 1.30D;
     public static final double MAX_EFFECT_MULTIPLIER = 1.25D;
 

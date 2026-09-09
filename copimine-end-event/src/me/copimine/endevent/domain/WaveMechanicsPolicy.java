@@ -38,8 +38,7 @@ public final class WaveMechanicsPolicy {
     /**
      * Wave IV is staggered into groups, but it must still honor the same
      * roster budget as the other waves.  These caps leave the two-player
-     * composition (+6 mobs) intact and only become restrictive at the global
-     * hard cap.
+     * composition intact and only become restrictive at the global hard cap.
      */
     public static int towerMobCap(int players) {
         if (players <= 2) {

@@ -33,6 +33,15 @@ public final class HazardMutationJournalTest {
             HazardMutationJournal.Entry fire = new HazardMutationJournal.Entry(
                     11, 68, -4, "minecraft:air", "", "FIRE");
             check(fire.isFireMutation(), "fire mutation must be explicitly tagged");
+            HazardMutationJournal.Entry safe = new HazardMutationJournal.Entry(
+                    12, 68, -4, "minecraft:stone", "minecraft:air", "EMERALD_BARRIER");
+            check(safe.isEmeraldBarrierMutation(), "emerald safe-zone mutation must be explicit");
+            HazardMutationJournal.Entry barrier = new HazardMutationJournal.Entry(
+                    13, 68, -4, "minecraft:stone", "minecraft:air", "BARRIER");
+            check(barrier.isBarrierMutation(), "barrier perimeter mutation must be explicit");
+            HazardMutationJournal.Entry ice = new HazardMutationJournal.Entry(
+                    14, 68, -4, "minecraft:stone", "", "ICE");
+            check(ice.isIceMutation(), "ice prisoner mutation must be explicit");
             System.out.println("HazardMutationJournalTest OK");
         } finally {
             try (var paths = Files.walk(directory)) {

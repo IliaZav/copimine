@@ -106,14 +106,18 @@ function Get-BossSnapshot {
   $match = [Regex]::Match($status,
     'boss=.*?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+hp=([0-9.]+)/([0-9.]+)')
   if (-not $match.Success) {
-    throw "Local test boss snapshot is missing:`n$status"
+    throw "Local official boss snapshot is missing:`n$status"
   }
   $uuid = $match.Groups[1].Value
-  $virtualCommand = 'data get entity ' + $uuid + ' BukkitValues."copimineendevent:end_event_boss_virtual_health"'
-  $virtualData = Invoke-LocalRcon -CommandText $virtualCommand
-  $virtualMatch = [Regex]::Match($virtualData, '([-0-9]+(?:\.[0-9]+)?)d\s*$')
-  if (-not $virtualMatch.Success) {
-    throw "Authoritative boss virtual HP is missing:`n$virtualData"
+  $healthData = [Regex]::Replace((Invoke-LocalRcon -CommandText ("data get entity " + $uuid + " Health")), '[§&][0-9A-FK-ORa-fk-or]', '')
+  $healthMatch = [Regex]::Match($healthData, '([-0-9]+(?:\.[0-9]+)?)f\s*$')
+  if (-not $healthMatch.Success) {
+    throw "Real entity Health is missing:`n$healthData"
+  }
+  $maxData = [Regex]::Replace((Invoke-LocalRcon -CommandText ("attribute " + $uuid + " minecraft:generic.max_health get")), '[§&][0-9A-FK-ORa-fk-or]', '')
+  $maxMatches = [Regex]::Matches($maxData, '[-0-9]+(?:\.[0-9]+)?')
+  if ($maxMatches.Count -eq 0) {
+    throw "Real entity max_health is missing:`n$maxData"
   }
   $physicalMatch = [Regex]::Match($status, 'physical=([0-9.]+)/([0-9.]+)')
   $physical = -1.0D
@@ -123,8 +127,8 @@ function Get-BossSnapshot {
   return [pscustomobject]@{
     Status = $status
     Uuid = $uuid
-    Health = [double]::Parse($virtualMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-    MaxHealth = [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
+    Health = [double]::Parse($healthMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+    MaxHealth = [double]::Parse($maxMatches[$maxMatches.Count - 1].Value, [Globalization.CultureInfo]::InvariantCulture)
     Physical = $physical
   }
 }
@@ -248,15 +252,15 @@ $normalBot = $null
 try {
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn'
+  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
   $boss = Get-BossSnapshot
   if ($boss.MaxHealth -ne 5000.0D) {
-    throw "The disposable obelisk harness must start at 5000 virtual HP; got $($boss.MaxHealth)."
+    throw "The official two-player obelisk probe must start at 5000 real HP; got $($boss.MaxHealth)."
   }
-  # Freeze the disposable test boss through the plugin's local-only harness,
-  # not with a raw NBT write that the five-tick AI watchdog would immediately
-  # undo. This keeps the exact player-damage assertion independent of boss
-  # melee while leaving the production boss controller unchanged.
+  # Freeze the disposable boss before any checkpoint damage.  Stage
+  # synchronization and obelisk runtime continue while the local boss AI is
+  # paused, but summon_servants and melee cannot contaminate the exact
+  # fireball-player damage observation window.
   $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
   $status = $boss.Status
   $coreMatch = [Regex]::Match($status, 'core=.*?(-?\d+),(-?\d+),(-?\d+)')
@@ -299,7 +303,11 @@ try {
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
     $null = Invoke-LocalRcon -CommandText ("clear $name")
-    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 1000")
+    # The disposable clients must survive the official boss AI while the
+    # obelisk hazard is being staged.  A large real health pool keeps both
+    # independent participants alive without Resistance, so the fireball's
+    # exact configured 6.0 damage remains observable.
+    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 100000")
     # Keep the reflector on the prepared vantage point while the disposable
     # boss is still running its own spell loop; otherwise a knockback can put
     # the reflected trajectory through the protected Core.
@@ -312,7 +320,7 @@ try {
     # large health pool makes the probe safe without adding unrelated effects
     # that would make Paper abbreviate active_effects with an ellipsis. The
     # exact-damage assertion below deliberately does not use Resistance.
-    $null = Invoke-LocalRcon -CommandText ("data merge entity $name {Health:1000f}")
+    $null = Invoke-LocalRcon -CommandText ("data merge entity $name {Health:100000f}")
   }
   # Keep the reflector between the obelisk and the second participant.  This
   # gives the client enough travel time to receive and swing at a LargeFireball
@@ -330,14 +338,27 @@ try {
       $position[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' 90 0')
   }
   Start-Sleep -Seconds 2
+  foreach ($name in $playerNames) {
+    $health = Get-EntityHealth -EntitySelector $name
+    if ($health -le 0.0D) {
+      throw "Obelisk probe participant is not alive before the RIFT checkpoint: $name health=$health"
+    }
+  }
 
-  # 5000 -> 2500 enters DISTORTION and unlocks the requested spell without
-  # entering the scripted Absorption/Judgment states.
+  # 5000 -> 2500 enters the V2 RIFT band and unlocks the one-shot spell without
+  # entering the scripted late states.
+  # The official V2 flow starts the one-shot obelisk cast as part of the
+  # AWAKENING -> RIFT transition.  Capture the log before the damage command;
+  # starting the checkpoint after the transition creates a false negative
+  # because RIFT_OBELISKS_SPAWNED is already in the log by then.
+  $stageOffset = Get-LogLength
+  $spellOffset = $stageOffset
   $null = Invoke-LocalRcon -CommandText 'cmend boss damage 2500'
-  $null = Invoke-LocalRcon -CommandText 'cmend boss phase normal'
+  Wait-LogCount -Pattern 'BOSS_V2_STAGE_TRANSITION .*to=RIFT' -Minimum 1 `
+    -AfterOffset $stageOffset -WaitSeconds 10 | Out-Null
   $preHazard = Get-BossSnapshot
-  if ($preHazard.Status -notmatch 'half=.*true' -or $preHazard.Status -notmatch 'boss=.*hp=2500/5000') {
-    throw "Local boss did not reach the DISTORTION checkpoint:`n$($preHazard.Status)"
+  if ($preHazard.Status -notmatch 'boss=.*hp=2500/5000') {
+    throw "Local official boss did not reach the RIFT checkpoint:`n$($preHazard.Status)"
   }
   # triggerHalfPhase may heal active players when the checkpoint is crossed;
   # capture the baseline only after the boss is settled in DISTORTION.
@@ -346,7 +367,9 @@ try {
   foreach ($name in $playerNames) {
     $directHealthBefore[$name] = Get-EntityHealth -EntitySelector $name
   }
-  $spellOffset = Get-LogLength
+  # Keep the transition checkpoint as the observation window.  The explicit
+  # command below is intentionally retained: in the official flow it must
+  # report already-used rather than create a second set of obelisks.
   $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
   Wait-LogCount -Pattern 'RIFT_OBELISKS_SPAWNED .*count=1' -Minimum 1 -AfterOffset $spellOffset | Out-Null
   Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 1 -AfterOffset $spellOffset | Out-Null
@@ -389,7 +412,7 @@ try {
   Write-Output 'LIVE_RIFT_OBELISK_ONESHOT_PASS first_spawn=1 repeat_spawn=0 reason=already-used-this-fight'
   $hazardAfter = Get-BossSnapshot
   if ([Math]::Abs($hazardAfter.Health - $preHazard.Health) -gt 0.0001D) {
-    throw "Rift Fireball changed boss virtual HP: before=$($preHazard.Health) after=$($hazardAfter.Health)"
+    throw "Rift Fireball changed official boss HP: before=$($preHazard.Health) after=$($hazardAfter.Health)"
   }
   $physicalChanged = $hazardAfter.Physical -ge 0.0D -and $preHazard.Physical -ge 0.0D -and
     [Math]::Abs($hazardAfter.Physical - $preHazard.Physical) -gt 0.01D
@@ -398,7 +421,7 @@ try {
   }
   Assert-ArenaFloorStone -X $floorX -Y $floorY -Z $floorZ -Marker 'RIFT_OBELISK_BLOCK_STONE_AFTER'
   $directDeltasJson = $directDeltas | ConvertTo-Json -Compress
-  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer player_damage_exact=true direct_deltas=$directDeltasJson boss_virtual_before=$($preHazard.Health) boss_virtual_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
+  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer player_damage_exact=true direct_deltas=$directDeltasJson boss_real_before=$($preHazard.Health) boss_real_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
 
   # After the reflected-only mechanic is gone, use a separate real survival
   # client to prove ordinary player damage still reaches the boss path.

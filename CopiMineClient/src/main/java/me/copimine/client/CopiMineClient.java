@@ -12,6 +12,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.text.Text;
 
 public final class CopiMineClient implements ClientModInitializer {
@@ -41,6 +42,7 @@ public final class CopiMineClient implements ClientModInitializer {
             visualManager.render(drawContext);
             EndRiftBossBarHud.render(drawContext);
         });
+        WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             if (client.player != null && client.player.isDead()) {

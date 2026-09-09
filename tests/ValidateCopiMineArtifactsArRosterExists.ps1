@@ -19,18 +19,20 @@ foreach ($id in $requiredIds) {
   }
 }
 
-$requiredPrices = @(
-  "price_ar: 2500",
-  "price_ar: 2200",
-  "price_ar: 1300",
-  "price_ar: 1800",
-  "price_ar: 5000",
-  "price_ar: 9999"
-)
+$expectedPrices = [ordered]@{
+  smena_bez_perekura_pickaxe = 100
+  lesnoy_bespredel_axe = 90
+  kopatel_transhey_shovel = 30
+  fermer_bez_sna_hoe = 50
+  dezhurniy_argument_sword = 200
+  vechniy_razgon_firework = 9999
+}
 
-foreach ($price in $requiredPrices) {
-  if ($content -notmatch [regex]::Escape($price)) {
-    throw "Missing AR artifact price marker: $price"
+foreach ($entry in $expectedPrices.GetEnumerator()) {
+  $item = [regex]::Match($content, "(?ms)^  - id: $([regex]::Escape($entry.Key))\r?\n.*?(?=^  - id:|^donation-catalog:|\z)")
+  if (-not $item.Success) { throw "Missing AR artifact roster item block: $($entry.Key)" }
+  if ($item.Value -notmatch "(?m)^    price_ar:\s*$($entry.Value)\s*$") {
+    throw "AR artifact price is not current for $($entry.Key): expected $($entry.Value)"
   }
 }
 

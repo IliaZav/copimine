@@ -1,17 +1,24 @@
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-$publicPages = @('shops.html', 'index.html', 'server.html', 'mods.html', 'cart.html', 'signin.html', 'register.html', 'error.html', '404.html', 'preview-player.html', 'preview-admin.html')
+$publicPages = @('shops.html', 'index.html', 'server.html', 'launcher.html', 'news.html', 'cart.html', 'signin.html', 'register.html', 'error.html', '404.html', 'preview-player.html', 'preview-admin.html')
 $publicSources = foreach ($page in $publicPages) {
   $path = Join-Path $root "admin-web\frontend\$page"
   if (Test-Path -LiteralPath $path) { Get-Content -Raw -Encoding UTF8 $path }
 }
+$style = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web\frontend\assets\style.css')
 $releaseUi = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web\frontend\assets\css\release-ui.css')
 $previewUi = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'admin-web\frontend\assets\css\preview.css')
 $errors = [System.Collections.Generic.List[string]]::new()
 
-foreach ($href in @('/assets/css/tokens.css', '/assets/css/themes.css', '/assets/css/release-ui.css')) {
-  foreach ($index in 0..($publicSources.Count - 1)) {
-    if ($publicSources[$index] -notmatch [regex]::Escape($href)) { $errors.Add("Public page index $index must link directly to $href") }
+foreach ($index in 0..($publicSources.Count - 1)) {
+  if ($publicSources[$index] -notmatch '/assets/style\.css(?:\?[^" ]+)?') {
+    $errors.Add("Public page index $index must link to the shared style entrypoint")
+  }
+}
+foreach ($import in @('./css/tokens.css', './css/themes.css', './css/release-ui.css')) {
+  $expectedImport = '@import url("' + $import + '")'
+  if ($style -notmatch [regex]::Escape($expectedImport)) {
+    $errors.Add("Shared style entrypoint must import $import")
   }
 }
 foreach ($marker in @('.public-brand-logo', 'max-width:', 'max-height:', 'object-fit: contain')) {

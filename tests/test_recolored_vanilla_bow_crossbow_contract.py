@@ -37,10 +37,6 @@ BOW_PROJECTILE_COORDS = {
 }
 
 BOW_OUTPUTS = {
-    "teleport_bow": "bow.png",
-    "teleport_bow_pulling_0": "bow_pulling_0.png",
-    "teleport_bow_pulling_1": "bow_pulling_1.png",
-    "teleport_bow_pulling_2": "bow_pulling_2.png",
     "cobblestone_trail_bow": "bow.png",
     "cobblestone_trail_bow_pulling_0": "bow_pulling_0.png",
     "cobblestone_trail_bow_pulling_1": "bow_pulling_1.png",
@@ -48,6 +44,10 @@ BOW_OUTPUTS = {
 }
 
 CROSSBOW_OUTPUTS = {
+    "teleport_bow": "crossbow_standby.png",
+    "teleport_bow_pulling_0": "crossbow_pulling_0.png",
+    "teleport_bow_pulling_1": "crossbow_pulling_1.png",
+    "teleport_bow_pulling_2": "crossbow_pulling_2.png",
     "explosive_crossbow": "crossbow_standby.png",
     "explosive_crossbow_pulling_0": "crossbow_pulling_0.png",
     "explosive_crossbow_pulling_1": "crossbow_pulling_1.png",
@@ -111,7 +111,7 @@ def test_recolored_bows_preserve_vanilla_geometry_with_projectile():
 
 def test_bow_pull_frames_are_distinct_and_keep_custom_projectile():
     frames = []
-    for output_name in ("teleport_bow_pulling_0", "teleport_bow_pulling_1", "teleport_bow_pulling_2"):
+    for output_name in ("cobblestone_trail_bow_pulling_0", "cobblestone_trail_bow_pulling_1", "cobblestone_trail_bow_pulling_2"):
         with Image.open(ARTIFACT_TEXTURES / f"{output_name}.png") as image:
             frames.append(image.convert("RGBA").tobytes())
     assert len(set(frames)) == 3

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "productId": "CopiMineLauncher",
+  "title": "CopiMine Launcher",
+  "versionSource": "CopiMineLauncher.Core.LauncherVersionInfo.Version",
+  "mainExecutable": "CopiMineLauncher.App.exe",
+  "targetFramework": "net10.0-windows",
+  "runtimeIdentifier": "win-x64",
+  "selfContained": true,
+  "packageExtension": ".nupkg",
+  "channels": [
+    "stable"
+  ]
+}

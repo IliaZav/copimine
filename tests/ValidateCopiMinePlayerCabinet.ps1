@@ -5,6 +5,7 @@ $backendSource = Join-Path $root 'admin-web\backend\main.py'
 $bootstrapSource = Join-Path $root 'admin-web\frontend\assets\app.js'
 $authPageSource = Join-Path $root 'admin-web\frontend\assets\js\auth\auth-page.js'
 $routesSource = Join-Path $root 'admin-web\frontend\assets\js\shared\app-routes.js'
+$cabinetRuntimeSource = Join-Path $root 'admin-web\frontend\assets\js\cabinet-runtime.js'
 $legacyFrontendSource = Join-Path $root 'admin-web\frontend\assets\js\legacy\app-legacy.js'
 $styleSource = Join-Path $root 'admin-web\frontend\assets\style.css'
 $legacyStyleSource = Join-Path $root 'admin-web\frontend\assets\css\legacy.css'
@@ -16,13 +17,14 @@ $backend = Get-Content -Raw -Encoding UTF8 $backendSource
 $bootstrap = Get-Content -Raw -Encoding UTF8 $bootstrapSource
 $authPage = Get-Content -Raw -Encoding UTF8 $authPageSource
 $routes = Get-Content -Raw -Encoding UTF8 $routesSource
+$cabinetRuntime = Get-Content -Raw -Encoding UTF8 $cabinetRuntimeSource
 $legacyFrontend = Get-Content -Raw -Encoding UTF8 $legacyFrontendSource
 $style = Get-Content -Raw -Encoding UTF8 $styleSource
 $legacyStyle = Get-Content -Raw -Encoding UTF8 $legacyStyleSource
 $index = Get-Content -Raw -Encoding UTF8 $indexSource
 $signin = Get-Content -Raw -Encoding UTF8 $signinSource
 $register = Get-Content -Raw -Encoding UTF8 $registerSource
-$frontend = @($bootstrap, $authPage, $routes, $legacyFrontend) -join "`n"
+$frontend = @($bootstrap, $authPage, $routes, $cabinetRuntime, $legacyFrontend) -join "`n"
 $allStyles = @($style, $legacyStyle) -join "`n"
 
 $markers = @(
@@ -30,8 +32,7 @@ $markers = @(
   '/api/player/login',
   '/api/session/me',
   '/api/player/me',
-  '/api/player/link/request',
-  '/api/player/link/confirm',
+  '/api/player/launcher/link/authorize',
   '/api/player/bank',
   '/api/player/bank/pin',
   '/api/player/bank/transfer',
@@ -40,8 +41,9 @@ $markers = @(
   'loadPlayerCabinet',
   'loadPlayerLink',
   'loadPlayerBank',
-  'playerRequestLinkCode',
-  'playerConfirmLinkCode',
+  'launcher_challenge',
+  'launcher_code',
+  'copimine://launcher/link',
   'playerSetPin',
   'playerTransfer',
   'playerResetBankPin',

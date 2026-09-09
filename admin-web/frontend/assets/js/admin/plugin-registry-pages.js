@@ -4,6 +4,7 @@ export function createPluginRegistryPages(deps) {
     state,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -104,7 +105,8 @@ export function createPluginRegistryPages(deps) {
     state.pluginRegistryStatus = status || {};
     state.pluginRegistrySchema = schema.editableKeys || {};
     state.pluginRegistryConfigValues = config.values || {};
-    return { plugins, selected, status, schema, config, audit };
+    const errors = [registry, status, schema, config, audit].map((row) => cleanText(row?.error || ""));
+    return { plugins, selected, status, schema, config, audit, error: errors.filter(Boolean).join("; ") };
   }
 
   function pluginRegistryPanel(registryState) {
@@ -248,7 +250,25 @@ export function createPluginRegistryPages(deps) {
       safeApi("/api/security/access", {}),
       loadPluginRegistryState()
     ]);
+    const features = config.features || {};
+    const postgres = config.postgres || {};
+    const authBackend = String(features.authBackend || "не определено");
+    const postgresState = features.postgresConnected
+      ? "подключена"
+      : features.postgresConfigured
+        ? "настроена, доступ не подтверждён"
+        : "не настроена";
+    const sourceState = (exists, ready = exists) => ready ? "доступен" : (exists ? "проверить" : "не найден");
     setView(`
+      ${apiNotice("Источники данных", [data, config, access, registryState])}
+      ${panel("Подключения БД", "Только безопасные сведения о том, откуда панель читает данные.", kv([
+        ["Основное хранилище", `PostgreSQL · ${postgresState}`],
+        ["База и схема", `${postgres.database || "—"} / ${postgres.schema || "—"}`],
+        ["Хранилище входа", authBackend],
+        ["Файл авторизации", `${sourceState(features.authDbExists)} · ${config.authDb || "—"}`],
+        ["База панели", `${sourceState(features.adminPluginDbExists)} · ${config.adminPluginDb || "—"}`],
+        ["CoreProtect", `${sourceState(features.coreprotectDbExists)} · ${config.coreprotectDb || "—"}`],
+      ]))}
       ${panel("Источники данных", "Плагины, файлы и базы данных панели.", table("sources", asArray(data.sources), [
         { key: "name", label: "Источник" },
         { key: "type", label: "Тип" },

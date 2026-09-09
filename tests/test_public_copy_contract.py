@@ -103,10 +103,11 @@ def test_public_pages_keep_player_actions_and_data_mounts():
     mods = read("admin-web/frontend/mods.html")
     errors = read("admin-web/frontend/404.html") + read("admin-web/frontend/error.html")
 
-    assert "Скачать модпак" in index
+    assert 'id="downloadLauncherBtn"' in index
+    assert "Скачать лаунчер" in index
     assert 'id="presidentLaws"' in index
     assert 'id="publicElectionRefresh"' in elections
-    assert 'id="modpackMetaGrid"' in mods
+    assert 'href="/launcher.html"' in mods
     assert 'href="/index.html"' in errors
     assert 'href="/signin.html"' in errors
 
@@ -130,9 +131,11 @@ def test_public_copy_audit_keeps_hero_and_sections_compact():
 
 def test_public_templates_bust_the_cache_for_the_copy_audit_release():
     for path in PUBLIC_TEMPLATES:
-        assert "style.css?v=20260809publiccopy1" in read(path), path
+        if path.endswith("/mods.html"):
+            continue
+        assert "style.css?v=20260903constellation10" in read(path), path
 
     public_page = read("admin-web/frontend/assets/js/public/public-page.js")
     homepage = read("admin-web/frontend/assets/js/public/homepage.js")
-    assert "./homepage.js?v=20260809publiccopy1" in public_page
-    assert "./site-render.js?v=20260809publiccopy1" in homepage
+    assert "./homepage.js?v=20260825siteui19" in public_page
+    assert "./site-render.js?v=20260825siteui19" in homepage

@@ -191,7 +191,7 @@ public final class ShaderRuntimeManager {
 
     public java.util.List<String> diagnosticLines() {
         java.util.ArrayList<String> lines = new java.util.ArrayList<>();
-        lines.add("Client version: " + CopiMineClient.CLIENT_VERSION);
+        lines.add("Client version: " + ClientReadyProtocol.clientVersion());
         lines.add("Fabric: " + yesNo(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("fabricloader")));
         lines.add("Fabric API: " + yesNo(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("fabric-api")));
         lines.add("Sodium: " + yesNo(net.fabricmc.loader.api.FabricLoader.getInstance().isModLoaded("sodium")));

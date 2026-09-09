@@ -1,0 +1,265 @@
+/* A small CopiMine signature: the page should feel like a world that is
+ * running, not a stack of template cards. Motion stays quiet and useful. */
+
+@keyframes copimineSceneDrift {
+  0%,
+  100% {
+    transform: translate3d(-1.1%, 0, 0) scale(1.055);
+  }
+
+  50% {
+    transform: translate3d(1.1%, -1.2%, 0) scale(1.075);
+  }
+}
+
+@keyframes copimineSignalSweep {
+  0% {
+    transform: translate3d(-28%, 0, 0) rotate(12deg);
+    opacity: 0;
+  }
+
+  18%,
+  72% {
+    opacity: .42;
+  }
+
+  100% {
+    transform: translate3d(118%, 0, 0) rotate(12deg);
+    opacity: 0;
+  }
+}
+
+@keyframes copimineBlockIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes copiminePixelBlink {
+  0%,
+  72%,
+  100% {
+    opacity: .28;
+    transform: scale(.72);
+  }
+
+  80% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+body[data-page-kind^="public"] .public-hero,
+body[data-page-kind^="public"] .launcher-hero,
+body[data-page-kind^="public"] .news-hero {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+}
+
+body[data-page-kind^="public"] .public-site {
+  overflow-x: clip;
+}
+
+body[data-page-kind^="public"] .public-hero::after,
+body[data-page-kind^="public"] .launcher-hero::after,
+body[data-page-kind^="public"] .news-hero::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -35%;
+  bottom: -35%;
+  left: 34%;
+  width: 12rem;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .12), transparent);
+  pointer-events: none;
+  animation: copimineSignalSweep 13s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+
+body[data-page-kind^="public"] .public-hero > *,
+body[data-page-kind^="public"] .launcher-hero > *,
+body[data-page-kind^="public"] .news-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+body[data-page-kind^="public"] .hero-media-art,
+body[data-page-kind^="public"] .scene-card,
+body[data-page-kind^="public"] .launcher-hero-visual {
+  overflow: hidden;
+}
+
+body[data-page-kind^="public"] .hero-media-art::after,
+body[data-page-kind^="public"] .scene-card::after,
+body[data-page-kind^="public"] .launcher-hero-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(116deg, transparent 0 42%, rgba(255, 255, 255, .13) 49%, transparent 57% 100%);
+  background-size: 220% 100%;
+  pointer-events: none;
+  animation: copimineSignalSweep 17s ease-in-out 1.2s infinite;
+}
+
+body[data-page-kind^="public"] .hero-media-art img,
+body[data-page-kind^="public"] .scene-card-image,
+body[data-page-kind^="public"] .launcher-hero-visual img {
+  transform: translate3d(calc(var(--scene-x, 0) * 5px), calc(var(--scene-y, 0) * 4px), 0) scale(1.05);
+  animation: copimineSceneDrift 18s ease-in-out infinite;
+  will-change: transform;
+}
+
+body[data-page-kind^="public"] .public-section,
+body[data-page-kind^="public"] .public-panel,
+body[data-page-kind^="public"] .launcher-feature-card,
+body[data-page-kind^="public"] .launcher-step,
+body[data-page-kind^="public"] .launcher-faq-card,
+body[data-page-kind^="public"] .news-card {
+  animation: copimineBlockIn 520ms cubic-bezier(.2, .75, .2, 1) both;
+}
+
+body[data-page-kind^="public"] .public-section:nth-of-type(3),
+body[data-page-kind^="public"] .public-panel:nth-child(3),
+body[data-page-kind^="public"] .launcher-feature-card:nth-child(2),
+body[data-page-kind^="public"] .launcher-step:nth-child(2),
+body[data-page-kind^="public"] .launcher-faq-card:nth-child(2),
+body[data-page-kind^="public"] .news-card:nth-child(2) {
+  animation-delay: 70ms;
+}
+
+body[data-page-kind^="public"] .public-section:nth-of-type(4),
+body[data-page-kind^="public"] .public-panel:nth-child(4),
+body[data-page-kind^="public"] .launcher-feature-card:nth-child(3),
+body[data-page-kind^="public"] .launcher-step:nth-child(3),
+body[data-page-kind^="public"] .launcher-faq-card:nth-child(3),
+body[data-page-kind^="public"] .news-card:nth-child(3) {
+  animation-delay: 140ms;
+}
+
+body[data-page-kind^="public"] .hero-sprite-chip,
+body[data-page-kind^="public"] .hero-inline-card,
+body[data-page-kind^="public"] .btn,
+body[data-page-kind^="public"] .launcher-feature-card,
+body[data-page-kind^="public"] .launcher-step,
+body[data-page-kind^="public"] .launcher-faq-card,
+body[data-page-kind^="public"] .news-card {
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+body[data-page-kind^="public"] .hero-sprite-chip:hover,
+body[data-page-kind^="public"] .hero-inline-card:hover,
+body[data-page-kind^="public"] .launcher-feature-card:hover,
+body[data-page-kind^="public"] .launcher-step:hover,
+body[data-page-kind^="public"] .launcher-faq-card:hover,
+body[data-page-kind^="public"] .news-card:hover {
+  transform: translate3d(0, -4px, 0);
+  border-color: var(--site-line-strong) !important;
+  box-shadow: 0 16px 30px rgba(25, 59, 39, .13) !important;
+}
+
+body[data-page-kind^="public"] .hero-sprite-chip {
+  position: relative;
+}
+
+body[data-page-kind^="public"] .hero-sprite-chip::after {
+  content: "";
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--site-moss);
+  animation: copiminePixelBlink 4.8s steps(2, end) infinite;
+}
+
+body[data-page-kind^="public"] .hero-sprite-chip:nth-child(2)::after { animation-delay: 1.4s; }
+body[data-page-kind^="public"] .hero-sprite-chip:nth-child(3)::after { animation-delay: 2.7s; }
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  body[data-page-kind^="public"][data-copimine-motion="on"] .hero-media-art img,
+  body[data-page-kind^="public"][data-copimine-motion="on"] .scene-card-image,
+  body[data-page-kind^="public"][data-copimine-motion="on"] .launcher-hero-visual img {
+    transition: transform 120ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page-kind^="public"] .public-hero::after,
+  body[data-page-kind^="public"] .launcher-hero::after,
+  body[data-page-kind^="public"] .news-hero::after,
+  body[data-page-kind^="public"] .hero-media-art::after,
+  body[data-page-kind^="public"] .scene-card::after,
+  body[data-page-kind^="public"] .launcher-hero-visual::after,
+  body[data-page-kind^="public"] .hero-media-art img,
+  body[data-page-kind^="public"] .scene-card-image,
+  body[data-page-kind^="public"] .launcher-hero-visual img,
+  body[data-page-kind^="public"] .public-section,
+  body[data-page-kind^="public"] .public-panel,
+  body[data-page-kind^="public"] .launcher-feature-card,
+  body[data-page-kind^="public"] .launcher-step,
+  body[data-page-kind^="public"] .launcher-faq-card,
+  body[data-page-kind^="public"] .news-card,
+  body[data-page-kind^="public"] .hero-sprite-chip::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Scroll state is the single page-level signal.  It gives long pages a
+ * quiet sense of progress while the reveal layer keeps each section readable. */
+body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+  content: "";
+  position: fixed;
+  z-index: 30;
+  top: 112px;
+  right: 16px;
+  width: 2px;
+  height: clamp(88px, 16vh, 180px);
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--site-aqua), var(--site-violet), transparent);
+  box-shadow: 0 0 16px rgba(83, 205, 184, .34);
+  pointer-events: none;
+  transform: scaleY(clamp(.08, var(--scroll-progress, 0), 1));
+  transform-origin: top center;
+}
+
+body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  animation: none;
+  transition: opacity 520ms cubic-bezier(.2, .75, .2, 1), transform 520ms cubic-bezier(.2, .75, .2, 1);
+  transition-delay: var(--motion-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (max-width: 680px) {
+  body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body[data-page-kind^="public"] .public-site[data-scroll-state="ready"]::after {
+    display: none;
+  }
+
+  body[data-page-kind^="public"] .public-site[data-motion-reveal="ready"] [data-motion-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

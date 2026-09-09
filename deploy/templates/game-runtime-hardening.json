@@ -32,7 +32,7 @@
   "authme": {
     "settings": {
       "security": {
-        "minPasswordLength": 12,
+        "minPasswordLength": 5,
         "passwordHash": "BCRYPT",
         "legacyHashes": ["SHA256"]
       }

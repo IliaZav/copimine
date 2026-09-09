@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-31",
+  "events": [
+    {
+      "slug": "end-rift",
+      "status": "current",
+      "eyebrow": "Энд",
+      "title": "Разлом Энда",
+      "summary": "В Энде что-то проснулось.",
+      "body": "Данж в глубине островов. Волны врагов. Босс, о котором пока молчат.",
+      "heroImage": "/assets/events/end-rift/end-landscape.png",
+      "portraitImage": "/assets/events/end-rift/enderman.png",
+      "sceneImage": "/assets/events/end-rift/end-city.jpg",
+      "dragonImage": "/assets/events/end-rift/end-landscape.png",
+      "accent": "#c09aff",
+      "requirements": [
+        { "name": "Подготовка", "value": "—" },
+        { "name": "Команда", "value": "—" },
+        { "name": "Тишина перед боем", "value": "—" }
+      ],
+      "waves": [
+        { "number": 1, "name": "Вход", "description": "" },
+        { "number": 2, "name": "Волны", "description": "" },
+        { "number": 3, "name": "Арена", "description": "" },
+        { "number": 4, "name": "Порог", "description": "" },
+        { "number": 5, "name": "Шум", "description": "" },
+        { "number": 6, "name": "Финал", "description": "" }
+      ],
+      "bossPhases": [
+        { "name": "Пробуждение", "range": "", "description": "" },
+        { "name": "Охота", "range": "", "description": "" },
+        { "name": "Искажение", "range": "", "description": "" },
+        { "name": "Поглощение", "range": "", "description": "" },
+        { "name": "Финал", "range": "", "description": "" }
+      ],
+      "rewards": [
+        "Награда участникам",
+        "Что-то останется после боя",
+        "Подробности позже"
+      ],
+      "videos": [],
+      "credits": [
+        { "label": "Кадр с драконом", "url": "https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png" },
+        { "label": "Кадр города Края", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_-_End_city.jpg" },
+        { "label": "Кадр эндермена", "url": "https://commons.wikimedia.org/wiki/File:Minecraft_Enderman.png" }
+      ],
+      "creditsHtml": "Источник кадра: Screenshot_from_the_Minecraft_End.png / Wikimedia Commons, CC BY 3.0 — https://commons.wikimedia.org/wiki/File:Screenshot_from_the_Minecraft_End.png"
+    },
+    {
+      "slug": "future-1",
+      "status": "upcoming",
+      "eyebrow": "Скоро",
+      "title": "Скоро",
+      "summary": "Следующий след уже близко.",
+      "body": "Название появится, когда придёт время.",
+      "heroImage": "/assets/events/end-rift/end-city.jpg",
+      "portraitImage": "",
+      "sceneImage": "/assets/events/end-rift/end-city.jpg",
+      "dragonImage": "/assets/events/end-rift/end-landscape.png",
+      "accent": "#8e89ff",
+      "requirements": [],
+      "waves": [],
+      "bossPhases": [],
+      "rewards": [],
+      "videos": [],
+      "credits": [],
+      "creditsHtml": ""
+    },
+    {
+      "slug": "future-2",
+      "status": "upcoming",
+      "eyebrow": "Скоро",
+      "title": "Скоро",
+      "summary": "Ещё один сигнал в темноте.",
+      "body": "Пока без имени и без даты.",
+      "heroImage": "/assets/events/end-rift/end-landscape.png",
+      "portraitImage": "",
+      "sceneImage": "/assets/events/end-rift/end-landscape.png",
+      "dragonImage": "/assets/events/end-rift/end-landscape.png",
+      "accent": "#a987e8",
+      "requirements": [],
+      "waves": [],
+      "bossPhases": [],
+      "rewards": [],
+      "videos": [],
+      "credits": [],
+      "creditsHtml": ""
+    }
+  ]
+}

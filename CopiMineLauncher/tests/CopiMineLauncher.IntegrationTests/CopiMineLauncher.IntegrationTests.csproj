@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" Version="8.10.0" PrivateAssets="all" />
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" PrivateAssets="all" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" PrivateAssets="all" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" PrivateAssets="all" />
+    <PackageReference Include="WireMock.Net" Version="2.14.0" PrivateAssets="all" />
+    <PackageReference Include="xunit" Version="2.9.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CopiMineLauncher.Infrastructure\CopiMineLauncher.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

@@ -10,7 +10,7 @@ foreach ($entry in @(
   @{ Name = 'error.html'; Source = $errorPage },
   @{ Name = '404.html'; Source = $notFoundPage }
 )) {
-  if ($entry.Source -notmatch 'error-page\.js\?v=20260718r1') {
+  if ($entry.Source -notmatch 'error-page\.js\?v=20260829siteui23') {
     throw "$($entry.Name) must load the shared error-page runtime."
   }
   if ($entry.Source -match '<script>') {

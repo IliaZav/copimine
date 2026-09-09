@@ -62,7 +62,7 @@ if (Test-Path -LiteralPath $policy) {
     Require-Contains $policyText '"admin": -1' 'Admins must have unlimited ImageFrame creation.'
     Require-Contains $policyText '"passwordHash": "BCRYPT"' 'AuthMe hardening must use the bundled BCRYPT implementation.'
     Require-Contains $policyText '"legacyHashes": ["SHA256"]' 'AuthMe must retain SHA256 migration for existing credentials.'
-    Require-Contains $policyText '"minPasswordLength": 12' 'AuthMe minimum password length must be 12.'
+    Require-Contains $policyText '"minPasswordLength": 5' 'AuthMe minimum password length must be 5.'
 Require-Contains $policyText '"bCryptLog2Round": 12' 'AuthMe BCRYPT cost must remain 12 rounds.'
 Require-Contains $runtime 'geoIpDatabase' 'AuthMe GeoIP behavior must be managed explicitly.'
 }

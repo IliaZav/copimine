@@ -8,6 +8,8 @@ foreach ($marker in @('openAdminGiftPlayersAsync', 'openAdminGiftCatalog', 'open
 }
 if ($economy -match 'createAdminGiftAsync[\s\S]{0,1800}mutateDonationBalanceInConnection') { $errors.Add('Administrative donation gifts must not debit the donation balance.') }
 if ($artifacts -notmatch 'FROM \(SELECT player_uuid' -or $artifacts -notmatch 'donation_purchases' -or $artifacts -notmatch 'artifact_item_instances') { $errors.Add('Offline player discovery query is missing.') }
-if ($artifacts -notmatch 'enabled\(\)\s*\|\|\s*adminGift') { $errors.Add('Gift catalog must include disabled items.') }
+if ($artifacts -notmatch 'adminGift\s*&&\s*!this\.isAdminOnlyCatalogItem\(item\.itemId\(\)\)') { $errors.Add('AR gift catalog must exclude admin-only entries.') }
+if ($artifacts -notmatch 'this\.isPurchasableDonationItem\(item\.itemId\(\)\)') { $errors.Add('Donation gift catalog must use the purchasable-item gate.') }
+if ($artifacts -notmatch 'isRetiredArtifact') { $errors.Add('Gift flow must honor retired-item filtering.') }
 if ($errors.Count) { throw ("Admin gift validation failed:`n - " + ($errors -join "`n - ")) }
 Write-Host 'ValidateCopiMineAdminGiftFlow passed.'

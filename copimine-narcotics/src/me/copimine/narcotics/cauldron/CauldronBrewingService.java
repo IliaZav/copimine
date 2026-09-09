@@ -23,6 +23,7 @@ import org.bukkit.inventory.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -42,6 +43,8 @@ public final class CauldronBrewingService {
     private NarcoticItemFactory itemFactory;
     private final Map<BlockKey, CauldronState> cache = new ConcurrentHashMap<>();
     private final Map<BlockKey, Object> locks = new ConcurrentHashMap<>();
+    private final Set<BlockKey> completionInFlight = ConcurrentHashMap.newKeySet();
+    private final Set<BlockKey> persistenceRecoveryInFlight = ConcurrentHashMap.newKeySet();
     private volatile boolean cacheReady = false;
 
     public CauldronBrewingService(CopiMineNarcotics plugin, NarcoticsConfigService configService, NarcoticsDatabase database, NarcoticsRecipeService recipeService, NarcoticItemFactory itemFactory) {
@@ -163,6 +166,10 @@ public final class CauldronBrewingService {
             return false;
         }
         BlockKey key = BlockKey.of(block);
+        if (completionInFlight.contains(key) || persistenceRecoveryInFlight.contains(key)) {
+            player.sendMessage("§eЭта варка уже обрабатывается. Попробуйте снова через несколько секунд.");
+            return false;
+        }
         IngredientEntry ingredient = recipeService.cauldronIngredientEntry(stack);
         if (ingredient == null) {
             return false;
@@ -177,12 +184,12 @@ public final class CauldronBrewingService {
 
             NarcoticDefinition exact = recipeService.matchExact(current);
             if (current.size() >= MINIMUM_RECIPE_CHECK_SIZE && exact != null) {
-                finishBrewing(block, key, exact, nextVersion, current.size(), false, player);
+                finishBrewing(block, key, exact, nextVersion, current.size(), false, player, ingredient);
                 return true;
             }
             int maximumRecipeSize = recipeService.maximumRecipeSize();
             if (current.size() < MINIMUM_RECIPE_CHECK_SIZE) {
-                return queueIngredients(block, key, current, nextVersion, nowMillis);
+                return queueIngredients(block, key, current, nextVersion, nowMillis, base, ingredient, player);
             }
             // The cauldron is a bounded input buffer.  Do not turn a partial
             // mixture into Zhuzevo at the minimum recipe size: a longer
@@ -190,7 +197,7 @@ public final class CauldronBrewingService {
             // one submitted stack used a representation that is not currently
             // recognized by the recipe matcher.
             if (current.size() < maximumRecipeSize) {
-                return queueIngredients(block, key, current, nextVersion, nowMillis);
+                return queueIngredients(block, key, current, nextVersion, nowMillis, base, ingredient, player);
             }
             return finishWrongMix(block, key, nextVersion, current.size(), player);
         }
@@ -270,13 +277,77 @@ public final class CauldronBrewingService {
     }
 
     private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version, int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator) {
+        finishBrewing(block, key, definition, version, ingredientCount, wrongMix, initiator, null);
+    }
+
+    private void finishBrewing(Block block, BlockKey key, NarcoticDefinition definition, long version,
+                               int ingredientCount, boolean wrongMix, org.bukkit.entity.Player initiator,
+                               IngredientEntry finalIngredient) {
+        if (!completionInFlight.add(key)) {
+            return;
+        }
+        long expectedVersion = Math.max(0L, version - 1L);
+        java.util.UUID ownerUuid = initiator == null ? null : initiator.getUniqueId();
+        String outputId = database.brewingOutputId(key, expectedVersion, ownerUuid, definition.id());
+        database.completeBrewingState(key, expectedVersion, ownerUuid, definition.id()).whenComplete((applied, error) ->
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (error != null || !Boolean.TRUE.equals(applied)) {
+                        database.brewingCompletionResolved(key, expectedVersion).whenComplete((resolved, resolveError) ->
+                                Bukkit.getScheduler().runTask(plugin, () -> {
+                                    if (resolveError != null) {
+                                        plugin.getLogger().log(java.util.logging.Level.WARNING,
+                                                "Brewing database completion status is unavailable for " + key,
+                                                resolveError);
+                                        completionInFlight.remove(key);
+                                        return;
+                                    }
+                                    if (Boolean.TRUE.equals(resolved)) {
+                                        materializeCompletedBrew(block, key, definition, expectedVersion,
+                                                ingredientCount, wrongMix, initiator, outputId);
+                                        return;
+                                    }
+                                    plugin.getLogger().warning("Brewing database completion failed for " + key
+                                            + ": " + (error == null ? "state version changed" : error.getMessage()));
+                                    if (finalIngredient != null && initiator != null) {
+                                        database.queuePendingIngredientRefunds(initiator.getUniqueId(), List.of(finalIngredient))
+                                                .exceptionally(refundError -> {
+                                                    plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                                                            "Unable to queue failed brewing ingredient refund for " + key,
+                                                            refundError);
+                                                    return null;
+                                                });
+                                    }
+                                    completionInFlight.remove(key);
+                                }));
+                    } else {
+                        materializeCompletedBrew(block, key, definition, expectedVersion,
+                                ingredientCount, wrongMix, initiator, outputId);
+                    }
+                }));
+    }
+
+    private void materializeCompletedBrew(Block block, BlockKey key, NarcoticDefinition definition,
+                                          long expectedVersion, int ingredientCount, boolean wrongMix,
+                                          org.bukkit.entity.Player initiator, String outputId) {
         if (wrongMix) {
             simulateWrongMixExplosion(block, initiator);
         }
-        block.getWorld().dropItemNaturally(block.getLocation().add(0.5D, 1.0D, 0.5D), itemFactory.createOfficialItem(definition, 1));
-        particle(block.getLocation().add(0.5D, 1.0D, 0.5D), Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
+        Location dropLocation = block.getLocation().add(0.5D, 1.0D, 0.5D);
+        var dropped = plugin.dropCompletedBrewingOutput(dropLocation, definition, outputId);
+        if (dropped == null) {
+            plugin.getLogger().warning("Brewing output could not be materialized for " + key
+                    + "; durable output row remains recoverable.");
+        } else {
+            database.markBrewingOutputWorldDropped(outputId).exceptionally(markError -> {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Unable to mark brewing output as WORLD_DROPPED " + outputId, markError);
+                return null;
+            });
+        }
+        particle(dropLocation, Particle.WITCH, "zhuzevo".equals(definition.id()) ? 24 : 12);
         spawnQueuedParticles(block, Math.max(1, ingredientCount), true);
-        clearState(block, key, version);
+        clearCompletedState(block, key, expectedVersion + 1L);
+        completionInFlight.remove(key);
     }
 
     private void simulateWrongMixExplosion(Block block, org.bukkit.entity.Player initiator) {
@@ -294,15 +365,60 @@ public final class CauldronBrewingService {
         }
     }
 
-    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version, long nowMillis) {
+    private boolean queueIngredients(Block block, BlockKey key, List<IngredientEntry> current, long version,
+                                     long nowMillis, CauldronState previous,
+                                     IngredientEntry addedIngredient, org.bukkit.entity.Player owner) {
         List<IngredientEntry> frozen = List.copyOf(current);
         cache.put(key, new CauldronState(frozen, version, nowMillis));
         database.saveBrewingState(key, version, frozen).exceptionally(error -> {
-            plugin.getLogger().warning("Brewing state save failed for " + key + ": " + error.getMessage());
+            if (!persistenceRecoveryInFlight.add(key)) {
+                return null;
+            }
+            plugin.getLogger().log(java.util.logging.Level.WARNING,
+                    "Brewing database save failed for " + key + ": " + error.getMessage(), error);
+            synchronized (lockFor(key)) {
+                CauldronState currentState = cache.get(key);
+                if (currentState == null || currentState.version() != version) {
+                    persistenceRecoveryInFlight.remove(key);
+                    return null;
+                }
+                if (previous.ingredients().isEmpty()) {
+                    cache.remove(key, currentState);
+                } else {
+                    cache.put(key, previous);
+                }
+            }
+            database.tombstoneBrewingState(key, version).whenComplete((tombstoned, tombstoneError) -> {
+                if (tombstoneError != null) {
+                    plugin.getLogger().log(java.util.logging.Level.WARNING,
+                            "Brewing database tombstone failed for " + key, tombstoneError);
+                } else if (addedIngredient != null && owner != null) {
+                    database.queuePendingIngredientRefunds(owner.getUniqueId(), List.of(addedIngredient))
+                            .exceptionally(refundError -> {
+                                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                                        "Unable to queue failed brewing ingredient refund for " + key, refundError);
+                                return null;
+                            });
+                }
+                persistenceRecoveryInFlight.remove(key);
+            });
             return null;
         });
         spawnQueuedParticles(block, frozen.size(), false);
         return true;
+    }
+
+    private void clearCompletedState(Block block, BlockKey key, long completedVersion) {
+        synchronized (lockFor(key)) {
+            CauldronState current = cache.get(key);
+            if (current != null && current.version() <= completedVersion) {
+                cache.remove(key, current);
+            }
+        }
+        extinguishRig(block);
+        if (configService.clearCauldronOnCompletion()) {
+            block.setType(Material.CAULDRON, false);
+        }
     }
 
     private void clearState(Block block, BlockKey key, long version) {

@@ -45,9 +45,6 @@ foreach ($entry in $manifest.items) {
   }
 }
 
-$compassSource = Get-Content -Raw -Encoding UTF8 (Join-Path $modelsRoot 'gde_moy_lut_blyt_compass.json')
-if ($compassSource -match 'time_to_pay_suchki_clock') { $errors.Add('Compass model must not reference the clock frames.') }
-if ($compassSource -notmatch 'copimine:item/artifacts/gde_moy_lut_blyat_compass') { $errors.Add('Compass model must use the CopiMine compass texture.') }
 $clockSource = Get-Content -Raw -Encoding UTF8 (Join-Path $modelsRoot 'time_to_pay_suchki_clock.json')
 if ($clockSource -notmatch 'copimine:item/artifacts/vremya_platit_nalogi_clock') { $errors.Add('Clock model must use the CopiMine clock texture.') }
 
@@ -57,15 +54,12 @@ if (Test-Path -LiteralPath $zip) {
   $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
   try {
     foreach ($path in @(
-      'assets/minecraft/models/item/compass.json',
       'assets/minecraft/models/item/clock.json',
-      'assets/minecraft/models/item/gde_moy_lut_blyt_compass_directional.json',
       'assets/minecraft/models/item/time_to_pay_suchki_clock_directional.json'
     )) {
       if (-not ($archive.Entries | Where-Object FullName -eq $path)) { $errors.Add("Resource pack is missing $path") }
     }
     foreach ($animation in @(
-      @{ path = 'assets/minecraft/models/item/gde_moy_lut_blyt_compass_directional.json'; count = 32; final = 'minecraft:item/gde_moy_lut_blyt_compass_16' },
       @{ path = 'assets/minecraft/models/item/time_to_pay_suchki_clock_directional.json'; count = 64; final = 'minecraft:item/time_to_pay_suchki_clock_00' }
     )) {
       $entry = $archive.Entries | Where-Object FullName -eq $animation.path

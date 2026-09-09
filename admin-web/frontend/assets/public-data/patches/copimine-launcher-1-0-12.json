@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-09-01-launcher-1.0.12",
+  "slug": "copimine-launcher-1-0-12",
+  "version": "1.0.12",
+  "title": "CopiMine Launcher 1.0.12",
+  "publishedAt": "2026-09-01T05:33:51Z",
+  "summary": [
+    "Исправлена редкая ошибка при одновременной подготовке игрового профиля.",
+    "Повторная проверка профиля больше не сталкивает временные файлы.",
+    "Пакет Launcher пересобран и проверен на локальном запуске."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "profile-repair",
+        "title": "Подготовка профиля",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Временный файл настроек CustomSkinLoader теперь получает отдельное имя. Параллельные операции больше не перезаписывают его друг другу."
+          },
+          {
+            "kind": "tested",
+            "text": "Одновременное восстановление одного игрового профиля проверено отдельным regression-тестом."
+          }
+        ]
+      },
+      {
+        "id": "release-check",
+        "title": "Проверка выпуска",
+        "changes": [
+          {
+            "kind": "tested",
+            "text": "Сборка Launcher проверена полным .NET suite, локальным Fabric-запуском и Paper READY/ACK тестом."
+          }
+        ]
+      }
+    ],
+    "technical": [],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-09-01T05:33:51Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-12.html"
+}

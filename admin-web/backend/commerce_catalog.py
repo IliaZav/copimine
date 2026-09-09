@@ -12,6 +12,10 @@ except Exception:  # pragma: no cover
 APP_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = APP_ROOT.parent
 DEFAULT_ITEMS_FILE = PROJECT_ROOT / "copimine-artifacts" / "items.yml"
+# Keep retired rows out of every newly generated shop response.  Old purchase
+# history can remain in the database; this only prevents the retired item from
+# being offered or selected for a new grant after a catalog update.
+RETIRED_DONATION_ITEM_IDS = frozenset({"gde_moy_lut_blyat_compass"})
 
 MINECRAFT_COLOR_RE = re.compile(r"§.|&[0-9A-FK-ORa-fk-or]")
 
@@ -103,6 +107,8 @@ def load_commerce_catalog(items_file: Path | None = None, fallback_base_url: str
             continue
         item_id = str(entry.get("item-id") or "").strip().lower()
         if not item_id:
+            continue
+        if item_id in RETIRED_DONATION_ITEM_IDS or not bool(entry.get("enabled", True)):
             continue
         lore = _string_list(entry.get("lore") or [])
         effect_description = str(entry.get("effect-description") or "").strip()
@@ -200,6 +206,8 @@ def admin_gift_catalog_snapshot(items_file: Path | None = None) -> dict[str, Any
             continue
         item_id = str(entry.get("item-id") or "").strip().lower()
         if not item_id:
+            continue
+        if item_id in RETIRED_DONATION_ITEM_IDS or not bool(entry.get("enabled", True)):
             continue
         lore = _string_list(entry.get("lore") or [])
         effect_description = str(entry.get("effect-description") or "").strip()

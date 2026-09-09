@@ -122,13 +122,23 @@ function syncCartAuthNav() {
   register?.classList.toggle("hidden", authenticated);
   cabinet?.classList.toggle("hidden", !authenticated);
   logout?.classList.toggle("hidden", !authenticated);
-  if (cabinet instanceof HTMLAnchorElement) {
-    cabinet.href = appRouteHref(defaultAppRouteForRole(role));
+  if (cabinet) {
+    const routeTarget = authenticated ? appRouteHref(defaultAppRouteForRole(role)) : "";
+    cabinet.dataset.routeTarget = routeTarget;
+    if (cabinet instanceof HTMLAnchorElement && routeTarget) cabinet.href = routeTarget;
     cabinet.textContent = role === "player" ? "Личный кабинет" : "Панель управления";
   }
 }
 
 function bindCartAuthNav() {
+  const cabinet = document.getElementById("publicCabinetBtn");
+  if (cabinet && cabinet.dataset.bound !== "true") {
+    cabinet.dataset.bound = "true";
+    cabinet.addEventListener("click", () => {
+      const routeTarget = cabinet.dataset.routeTarget || "";
+      if (routeTarget) window.location.href = routeTarget;
+    });
+  }
   const logout = document.getElementById("publicLogoutBtn");
   if (!(logout instanceof HTMLButtonElement) || logout.dataset.bound === "true") return;
   logout.dataset.bound = "true";
@@ -214,7 +224,7 @@ function buildEmptyState(currency) {
   const state = makeElement("div", "cart-empty-state");
   state.append(
     makeElement("strong", "", "Здесь пока нет предметов"),
-    makeElement("p", "", `Добавьте товары из ${currency === "ar" ? "AR-магазина" : "donation-магазина"}.`),
+    makeElement("p", "", `Добавьте товары из ${currency === "ar" ? "AR-магазина" : "донат-магазина"}.`),
   );
   const link = makeElement("a", "btn btn-secondary", "Перейти к лавке");
   link.href = "/shops.html";
@@ -297,7 +307,7 @@ function shouldRefreshCatalogAfterCheckoutError(message) {
   const staleCatalogFragments = [
     "Цена предметов изменилась",
     "Один из AR-предметов больше недоступен",
-    "Один из donation-предметов больше недоступен",
+    "Один из донат-предметов больше недоступен",
     "Один из выбранных предметов пока нельзя купить на сайте",
     "Для одного из выбранных предметов не задана цена",
     "Лимит поставки",
@@ -400,7 +410,7 @@ async function checkoutCurrency(currency) {
   } finally {
     if (button instanceof HTMLButtonElement) {
       button.dataset.loading = "false";
-      button.textContent = currency === "ar" ? "Оплатить AR-корзину" : "Оплатить donation-корзину";
+      button.textContent = currency === "ar" ? "Оплатить AR-корзину" : "Оплатить донат-корзину";
     }
     renderCart();
   }

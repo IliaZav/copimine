@@ -22,6 +22,7 @@ body.panel-admin-mode,
 body.junior-admin-mode,
 body.player-mode {
   color: #eef5f0;
+  overflow-x: hidden;
 }
 
 body.panel-admin-mode .sidebar,
@@ -195,6 +196,7 @@ body.player-mode .mini-health {
 body.panel-admin-mode .workspace,
 body.junior-admin-mode .workspace,
 body.player-mode .workspace {
+  min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
@@ -205,6 +207,7 @@ body.player-mode .workspace {
 body.panel-admin-mode .topbar,
 body.junior-admin-mode .topbar,
 body.player-mode .topbar {
+  min-width: 0;
   position: sticky;
   top: 16px;
   display: grid;
@@ -274,6 +277,7 @@ body.player-mode .top-actions .last-update {
 body.panel-admin-mode .view,
 body.junior-admin-mode .view,
 body.player-mode .view {
+  min-width: 0;
   width: min(1480px, 100%);
   margin: 0;
   gap: 18px;
@@ -402,7 +406,7 @@ body.junior-admin-mode .admin-search-results button {
   box-shadow: 0 24px 44px rgba(18, 25, 37, 0.14);
 }
 
-@media (max-width: 1240px) {
+@media (max-width: 1300px) {
   body.panel-admin-mode .topbar,
   body.junior-admin-mode .topbar,
   body.player-mode .topbar {

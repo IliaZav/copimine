@@ -161,14 +161,14 @@ def test_election_and_background_workers_are_bounded_and_shutdown_gracefully():
 def test_current_brewing_consumes_the_submitted_ingredient_and_uses_world_output():
     assert "prepareBrewingCompletionIntent" not in NARCOTICS
     assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
-    assert "dropItemNaturally" in NARCOTICS
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in NARCOTICS
 
 
 def test_current_brewing_persists_the_pending_prefix_before_completion():
     queue = NARCOTICS[NARCOTICS.index("private boolean queueIngredients"):NARCOTICS.index("private void clearState")]
     assert "saveBrewingState(key, version, frozen)" in queue
     assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
-    assert "dropItemNaturally" in NARCOTICS
+    assert "queuePendingIngredientRefunds" in queue
 
 
 def test_brewing_is_order_agnostic_and_shared_between_players():
@@ -184,8 +184,8 @@ def test_brewing_completion_survives_legacy_schema_and_stops_particle_loop():
     completion = NARCOTICS_DB[NARCOTICS_DB.index("prepareBrewingCompletionIntent"):NARCOTICS_DB.index("/** Reserve one unit")]
     assert "ON CONFLICT DO NOTHING" in completion
     assert "ON CONFLICT (world_name,x,y,z,state_version) DO UPDATE" not in completion
-    assert "completionInFlight.contains(key)" not in NARCOTICS
-    assert "clearState(block, key, version)" in NARCOTICS
+    assert "completionInFlight.contains(key)" in NARCOTICS
+    assert "clearCompletedState(block, key, expectedVersion + 1L)" in NARCOTICS
 
 
 def test_world_teleport_tokens_are_bound_and_border_replacement_is_atomic():
@@ -349,8 +349,8 @@ def test_silk_touch_ar_certification_handles_a_cancelled_or_empty_vanilla_drop_e
 
 def test_brewing_completion_retries_until_the_durable_tombstone_is_resolved():
     assert "public CompletableFuture<Boolean> brewingCompletionResolved" in NARCOTICS_DB
-    assert "database.brewingCompletionResolved" not in NARCOTICS
-    assert "scheduleBrewingCompletionRetry" not in NARCOTICS
+    assert "database.brewingCompletionResolved" in NARCOTICS
     finish = NARCOTICS[NARCOTICS.index("private void finishBrewing"):NARCOTICS.index("private void simulateWrongMixExplosion")]
-    assert "dropItemNaturally" in finish
-    assert "clearState(block, key, version)" in finish
+    assert "database.completeBrewingState" in finish
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in finish
+    assert "database.markBrewingOutputWorldDropped(outputId)" in finish

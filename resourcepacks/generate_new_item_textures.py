@@ -297,6 +297,114 @@ def draw_recipe_note() -> Image.Image:
     return image
 
 
+def draw_crossbow(kind: str, stage: str) -> Image.Image:
+    """Recolor the matching vanilla crossbow state without changing its shape."""
+    source_name = "crossbow_standby.png" if stage == "base" else f"crossbow_{stage}.png"
+    return recolor_vanilla_texture(source_name, RECOLOR_PALETTES[kind])
+
+
+def draw_charged_teleport_crossbow() -> Image.Image:
+    """Use the vanilla loaded-bolt silhouette with the teleport palette."""
+    return recolor_vanilla_texture(CROSSBOW_PROJECTILE_REFERENCE, RECOLOR_PALETTES["teleport"])
+
+
+def draw_gravedigger_contract() -> Image.Image:
+    image, draw = canvas()
+    outline = (39, 24, 18, 255)
+    parchment = (221, 190, 126, 255)
+    parchment_light = (247, 220, 161, 255)
+    parchment_shadow = (151, 111, 65, 255)
+    ink = (67, 43, 29, 255)
+    shovel = (92, 99, 104, 255)
+    shovel_dark = (42, 49, 54, 255)
+    poly(draw, [(3, 1), (12, 2), (14, 5), (13, 14), (4, 15), (1, 11), (2, 4)], outline)
+    poly(draw, [(4, 2), (11, 3), (13, 5), (12, 13), (4, 14), (2, 10), (3, 4)], parchment)
+    poly(draw, [(10, 2), (13, 5), (10, 5)], parchment_light)
+    line(draw, [(4, 7), (10, 7)], parchment_shadow, 1)
+    line(draw, [(4, 9), (9, 9)], parchment_shadow, 1)
+    line(draw, [(4, 11), (8, 11)], parchment_shadow, 1)
+    line(draw, [(8, 12), (11, 5)], shovel_dark, 2)
+    poly(draw, [(9, 4), (12, 4), (13, 6), (12, 7), (10, 6)], shovel)
+    rect(draw, (7, 12, 9, 13), ink)
+    return image
+
+
+def draw_signal_bell() -> Image.Image:
+    image, draw = canvas()
+    outline = (45, 29, 12, 255)
+    dark = (108, 62, 18, 255)
+    brass = (190, 126, 28, 255)
+    gold = (241, 190, 56, 255)
+    highlight = (255, 225, 112, 255)
+    rect(draw, (5, 2, 10, 3), outline)
+    rect(draw, (6, 1, 9, 2), brass)
+    rect(draw, (4, 4, 11, 11), outline)
+    poly(draw, [(5, 4), (10, 4), (11, 9), (13, 12), (2, 12), (4, 9)], brass)
+    rect(draw, (5, 5, 9, 9), gold)
+    rect(draw, (6, 5, 7, 8), highlight)
+    rect(draw, (3, 11, 12, 13), dark)
+    rect(draw, (4, 11, 11, 12), gold)
+    rect(draw, (7, 12, 8, 15), outline)
+    rect(draw, (6, 14, 9, 15), brass)
+    return image
+
+
+def draw_berserker_heart() -> Image.Image:
+    image, draw = canvas()
+    glow = (111, 16, 25, 255)
+    outline = (45, 8, 15, 255)
+    red_dark = (126, 17, 28, 255)
+    red = (211, 34, 47, 255)
+    red_light = (255, 82, 70, 255)
+    white = (255, 191, 133, 255)
+    rect(draw, (4, 2, 6, 3), glow)
+    rect(draw, (9, 2, 11, 3), glow)
+    rect(draw, (2, 4, 4, 6), glow)
+    rect(draw, (11, 4, 13, 6), glow)
+    poly(draw, [(3, 4), (6, 3), (8, 5), (10, 3), (13, 4), (13, 9), (8, 14), (3, 9)], outline)
+    poly(draw, [(4, 5), (6, 4), (8, 6), (10, 4), (12, 5), (12, 8), (8, 12), (4, 8)], red_dark)
+    poly(draw, [(5, 5), (7, 5), (8, 7), (9, 5), (11, 5), (11, 8), (8, 11), (5, 8)], red)
+    rect(draw, (6, 5, 7, 6), red_light)
+    rect(draw, (9, 6, 10, 7), red_light)
+    rect(draw, (7, 7, 8, 8), white)
+    return image
+
+
+def draw_zhilorez_pickaxe() -> Image.Image:
+    image, draw = canvas()
+    outline = (21, 21, 35, 255)
+    handle_dark = (66, 37, 24, 255)
+    handle = (145, 83, 42, 255)
+    metal_dark = (45, 37, 77, 255)
+    metal = (104, 77, 166, 255)
+    metal_light = (181, 153, 238, 255)
+    poly(draw, [(2, 2), (5, 1), (12, 3), (14, 6), (13, 8), (9, 6), (6, 5), (4, 7), (2, 6)], outline)
+    poly(draw, [(3, 3), (5, 2), (11, 4), (13, 6), (12, 7), (8, 5), (5, 4), (4, 6), (3, 5)], metal)
+    rect(draw, (5, 3, 6, 4), metal_light)
+    line(draw, [(8, 6), (5, 11), (3, 14)], outline, 3)
+    line(draw, [(8, 6), (5, 11), (3, 14)], handle, 2)
+    rect(draw, (2, 13, 4, 15), handle_dark)
+    rect(draw, (3, 13, 4, 14), handle)
+    return image
+
+
+def draw_night_cloak() -> Image.Image:
+    image, draw = canvas()
+    outline = (14, 16, 42, 255)
+    blue_dark = (26, 31, 78, 255)
+    blue = (46, 63, 132, 255)
+    blue_light = (79, 102, 194, 255)
+    violet = (117, 90, 198, 255)
+    poly(draw, [(5, 2), (10, 2), (12, 5), (14, 14), (10, 15), (8, 12), (6, 15), (2, 14), (4, 5)], outline)
+    poly(draw, [(6, 3), (9, 3), (11, 6), (12, 13), (9, 14), (8, 10), (6, 14), (3, 13), (5, 6)], blue_dark)
+    poly(draw, [(6, 4), (8, 4), (9, 7), (8, 12), (6, 13), (5, 7)], blue)
+    poly(draw, [(9, 4), (10, 6), (11, 12), (9, 13), (8, 9)], blue_light)
+    rect(draw, (7, 3, 8, 5), violet)
+    rect(draw, (4, 10, 5, 12), violet)
+    rect(draw, (11, 9, 12, 11), violet)
+    return image
+
+
 def main() -> None:
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     TEXTURE_DIR.mkdir(parents=True, exist_ok=True)
@@ -306,11 +414,29 @@ def main() -> None:
         "return_stone": draw_return_stone(),
         "infinite_torch": draw_infinite_torch(),
         "recipe_note": draw_recipe_note(),
+        "gravedigger_contract": draw_gravedigger_contract(),
+        "signal_bell": draw_signal_bell(),
+        "berserker_heart": draw_berserker_heart(),
+        "zhilorez_pickaxe": draw_zhilorez_pickaxe(),
+        "night_cloak": draw_night_cloak(),
     }.items():
         save_texture(name, image)
         save_model(name, name)
 
-    for kind, prefix in (("teleport", "teleport_bow"), ("trail", "cobblestone_trail_bow")):
+    for stage in ("base", "pulling_0", "pulling_1", "pulling_2"):
+        suffix = "" if stage == "base" else f"_{stage}"
+        name = f"teleport_bow{suffix}"
+        save_texture(name, draw_crossbow("teleport", stage))
+        parent = "minecraft:item/crossbow" if stage == "base" else f"minecraft:item/crossbow_{stage}"
+        save_model(name, name, parent)
+
+    for stage in ("charged", "charged_firework"):
+        name = f"teleport_bow_{stage}"
+        save_texture(name, draw_charged_teleport_crossbow())
+        parent = "minecraft:item/crossbow_arrow" if stage == "charged" else "minecraft:item/crossbow_firework"
+        save_model(name, name, parent)
+
+    for kind, prefix in (("trail", "cobblestone_trail_bow"),):
         for stage in range(4):
             suffix = "" if stage == 0 else f"_pulling_{stage - 1}"
             name = f"{prefix}{suffix}"

@@ -5,6 +5,7 @@ $index = Read-Utf8 $Paths.FrontendIndex
 $server = Read-Utf8 (Join-Path $root 'admin-web\frontend\server.html')
 $shops = Read-Utf8 (Join-Path $root 'admin-web\frontend\shops.html')
 $mods = Read-Utf8 (Join-Path $root 'admin-web\frontend\mods.html')
+$legacyRedirect = Read-Utf8 (Join-Path $root 'admin-web\frontend\assets\js\public\legacy-mods-redirect.js')
 $signin = Read-Utf8 $Paths.FrontendSignin
 $register = Read-Utf8 $Paths.FrontendRegister
 $dashboard = Read-Utf8 $Paths.FrontendCabinetDashboard
@@ -44,7 +45,7 @@ foreach ($page in @(
 foreach ($link in @(
   'href="/server.html"',
   'href="/shops.html"',
-  'href="/mods.html"',
+  'href="/launcher.html"',
   'href="/signin.html"'
 )) {
   Require-Contains $index $link "Public home must link to $link"
@@ -57,8 +58,9 @@ Require-Contains $server 'id="publicOnlineBoard"' 'server.html must keep the onl
 Require-Contains $shops 'id="publicArShopPreview"' 'shops.html must keep the AR shop preview mount.'
 Require-Contains $shops 'id="publicDonationShopPreview"' 'shops.html must keep the donation shop preview mount.'
 
-Require-Contains $mods 'id="modpackMetaGrid"' 'mods.html must keep the modpack meta mount.'
-Require-Contains $mods 'id="modpackFileGrid"' 'mods.html must keep the modpack file mount.'
+Require-Contains $mods 'rel="canonical" href="https://copimine.ru/launcher.html"' 'mods.html must remain a compatibility redirect to Launcher.'
+Require-Contains $mods 'legacy-mods-redirect.js' 'mods.html must load its compatibility redirect.'
+Require-Contains $legacyRedirect "window.location.replace('/launcher.html')" 'Legacy redirect script must redirect to Launcher.'
 
 Require-Contains $signin 'id="signin"' 'signin.html must keep the public sign-in route mount.'
 Require-Contains $signin 'id="loginForm"' 'signin.html must keep the login form.'

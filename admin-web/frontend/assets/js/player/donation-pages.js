@@ -1,4 +1,4 @@
-import { appRouteHref } from "../shared/app-routes.js";
+import { appRouteHref } from "../shared/app-routes.js?v=20260902route1";
 
 export function createPlayerDonationPages(deps) {
   const {

@@ -3,6 +3,7 @@ export function createAdminCommercePages(deps) {
     $,
     api,
     safeApi,
+    apiNotice,
     setLoading,
     setView,
     panel,
@@ -78,16 +79,16 @@ export function createAdminCommercePages(deps) {
   function playerLabel(row) {
     const name = cleanText(row?.name || row?.player_name || row?.username || row?.minecraft_name || row?.uuid || "");
     const uuid = cleanText(row?.uuid || row?.player_uuid || "");
-    return { name, uuid };
+    return { name, uuid, hasPlayerData: row?.hasPlayerData !== false };
   }
 
   function playerOptions(rows, selectedName = "") {
     return asArray(rows)
       .map((row) => {
-        const { name, uuid } = playerLabel(row);
+        const { name, uuid, hasPlayerData } = playerLabel(row);
         if (!name) return "";
         const selected = name === selectedName ? " selected" : "";
-        return `<option value="${esc(name)}"${selected} data-uuid="${esc(uuid)}">${esc(name)}</option>`;
+        return `<option value="${esc(name)}"${selected} data-uuid="${esc(uuid)}" data-has-player-data="${hasPlayerData ? "true" : "false"}">${esc(name)}</option>`;
       })
       .filter(Boolean)
       .join("");
@@ -113,6 +114,7 @@ export function createAdminCommercePages(deps) {
       .map((row) => ({
         name: cleanText(row.name || row.player || row.username || ""),
         uuid: cleanText(row.uuid || ""),
+        hasPlayerData: row.hasPlayerData !== false,
       }))
       .filter((row) => row.name)
       .sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
@@ -126,6 +128,7 @@ export function createAdminCommercePages(deps) {
     return {
       name: cleanText(select.value || ""),
       uuid: cleanText(option?.dataset?.uuid || ""),
+      hasPlayerData: option?.dataset?.hasPlayerData !== "false",
     };
   }
 
@@ -164,7 +167,10 @@ export function createAdminCommercePages(deps) {
       const fallbackAr = Number(arRow.balance || arRow.amount || 0);
       const fallbackDonation = Number(donationRow.balance || 0);
       applyValues(player, fallbackAr, fallbackDonation);
-      if (!player.name) return;
+      // The roster also contains whitelist/link entries that have not entered
+      // the world yet.  Their playerdata does not exist, so probing the full
+      // profile would create a harmless but noisy 404 on every economy load.
+      if (!player.name || player.hasPlayerData === false) return;
       const detail = await safeApi(`/api/players/${encodeURIComponent(player.name)}/full?limit=20`, null);
       if (!detail?.profile) return;
       const currentPlayer = selectedPlayerBySelect("adminBalancePlayer");
@@ -295,6 +301,7 @@ export function createAdminCommercePages(deps) {
     };
 
     setView(`
+      ${apiNotice("Экономика", [overview, ledger, donation, donationCatalog, treasury, audit])}
       <section class="layout-grid grid-4">
         ${metric("AR на руках", formatAr(arSummary.totalBalance ?? overview.totalKnownInPlayerData ?? 0), "Общий баланс игроков", "good")}
         ${metric("Счетов AR", arSummary.holders ?? arPlayers.length, "Игроки с найденным балансом", "neutral")}
@@ -314,10 +321,10 @@ export function createAdminCommercePages(deps) {
             ["Счет казны", treasury.account?.account_id || treasury.account?.accountId || "—"],
             ["Владелец казны", treasury.ownerName || "—"],
             ["Баланс казны", formatAr(treasury.account?.balance || 0)],
-            ["PIN казны", treasury.pin?.set ? "Задан; хранится только как хэш" : "не задан"],
             ["Каталог donation", `${donationItems.length} предметов · версия ${donationCatalog.catalogVersion || 0}`],
             ["Последнее обновление каталога", dt(donationCatalog.updatedAt || 0)],
           ])}
+          <p id="economy-treasury-pin" class="panel-hint">PIN казны: ${treasury.pin?.set ? "задан; хранится только как хэш" : "не задан"}.</p>
           <div class="spacer-12"></div>
           <div class="form-grid compact-grid">
             <label class="field-stack"><span>Новый баланс казны, AR</span><input id="treasuryBalanceValue" type="number" min="0" max="1000000000" step="1" value="${esc(String(Number(treasury.account?.balance || 0)))}" /></label>
@@ -326,7 +333,7 @@ export function createAdminCommercePages(deps) {
           </div>
           <p class="panel-hint">Удаление записи убирает её из журнала и публичной истории, но не меняет баланс. Для изменения денег используй поле выше.</p>
           ${treasuryLedgerMarkup(treasury.ledger)}
-        `)}
+        `, "", "economy-treasury")}
         ${panel("Баланс игрока", "Выберите игрока, посмотрите его текущие AR и donation, затем задайте точное значение и сохраните.", `
           <div class="field-stack">
             <label for="adminBalancePlayer">Игрок</label>
@@ -344,7 +351,7 @@ export function createAdminCommercePages(deps) {
               <button class="btn btn-secondary full" data-click="adminArAddBalance()">Зачислить AR</button>
             </div>
             <div class="form-grid compact-grid">
-              <label class="field-stack"><span>Добавить donation</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество donation" /></label>
+              <label class="field-stack"><span>Добавить донаты</span><input id="adminDonationAddAmount" type="number" min="1" step="1" placeholder="Количество донатов" /></label>
               <label class="field-stack"><span>Причина</span><input id="adminDonationAddReason" value="admin-topup" /></label>
               <button class="btn btn-secondary full" data-click="adminDonationAddBalance()">Зачислить donation</button>
               <button class="btn btn-primary full" data-click="adminApplyBalanceTopups()">Зачислить заполненные AR и donation</button>
@@ -690,7 +697,7 @@ export function createAdminCommercePages(deps) {
           account_scope: "TREASURY",
         }),
       });
-      toast(`PIN казны обновлён: ${result.pin}`);
+      toast("PIN казны обновлён");
       if ($("treasuryNewPin")) $("treasuryNewPin").value = "";
       await loadEconomy();
     } catch (err) {

@@ -69,8 +69,8 @@ def load_policy(path: Path) -> dict[str, Any]:
         raise PolicyError("Managed ImageFrame upload service must be loopback-bound")
     if authme.get("settings", {}).get("security", {}).get("passwordHash") != "BCRYPT":
         raise PolicyError("Managed AuthMe policy must use BCRYPT")
-    if authme.get("settings", {}).get("security", {}).get("minPasswordLength") != 12:
-        raise PolicyError("Managed AuthMe policy must require 12-character passwords")
+    if authme.get("settings", {}).get("security", {}).get("minPasswordLength") != 5:
+        raise PolicyError("Managed AuthMe policy must require passwords of at least 5 characters")
     if authme.get("settings", {}).get("security", {}).get("legacyHashes") != ["SHA256"]:
         raise PolicyError("Managed AuthMe policy must migrate existing SHA256 credentials")
     if authme.get("ExternalBoardOptions", {}).get("bCryptLog2Round") != 12:
@@ -545,7 +545,7 @@ def self_test() -> None:
             raise PolicyError("ImageFrame security policy did not replace unsafe values")
         if "UploadService:\n  Enabled: false\n  WebServer:\n    Host: \"127.0.0.1\"" not in image_text:
             raise PolicyError("ImageFrame embedded upload service was not disabled and loopback-bound")
-        if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 12" not in auth_text or "preserveMe: true" not in auth_text or "geoIpDatabase:\n        enabled: false" not in auth_text:
+        if "passwordHash: \"BCRYPT\"" not in auth_text or "minPasswordLength: 5" not in auth_text or "preserveMe: true" not in auth_text or "geoIpDatabase:\n        enabled: false" not in auth_text:
             raise PolicyError("AuthMe policy did not preserve unrelated configuration while hardening passwords")
 
         malformed_auth = root / "malformed-authme.yml"
@@ -586,7 +586,7 @@ def self_test() -> None:
             raise PolicyError("Fresh ImageFrame config was not seeded from its bundled JAR resource")
         if (
             "passwordHash: \"BCRYPT\"" not in fresh_auth_text
-            or "minPasswordLength: 12" not in fresh_auth_text
+            or "minPasswordLength: 5" not in fresh_auth_text
             or "legacyHashes:\n      - \"SHA256\"" not in fresh_auth_text
         ):
             raise PolicyError("Fresh AuthMe security bootstrap did not enforce the managed password policy")

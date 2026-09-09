@@ -1,0 +1,193 @@
+.launcher-admin-grid {
+  min-width: 0;
+}
+
+.launcher-admin-metrics .metric-value {
+  overflow-wrap: anywhere;
+}
+
+.launcher-release-summary,
+.launcher-stat-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.launcher-release-summary > div,
+.launcher-stat-list > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.launcher-release-summary span,
+.launcher-stat-list span,
+.launcher-news-status span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.launcher-release-summary strong,
+.launcher-stat-list strong {
+  overflow-wrap: anywhere;
+}
+
+.launcher-diagnostic-list,
+.launcher-news-preview-list {
+  display: grid;
+  gap: 7px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.launcher-diagnostic-list > div,
+.launcher-news-preview-list article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.launcher-diagnostic-list small,
+.launcher-news-preview-list small,
+.launcher-news-list-row small,
+.launcher-news-status small {
+  color: var(--muted);
+}
+
+.launcher-upload-box {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px dashed var(--line-strong, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+}
+
+.launcher-mod-table {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+.launcher-mod-table table {
+  min-width: 900px;
+}
+
+.launcher-mod-table td {
+  vertical-align: middle;
+}
+
+.launcher-mod-table input:not([type="checkbox"]) {
+  min-width: 120px;
+}
+
+@media (max-width: 900px) {
+  .launcher-mod-table table {
+    min-width: 680px;
+  }
+
+  .launcher-mod-table th,
+  .launcher-mod-table td {
+    white-space: normal;
+  }
+}
+
+.toggle-row.compact {
+  white-space: nowrap;
+}
+
+.launcher-news-list {
+  display: grid;
+  gap: 7px;
+  max-height: 390px;
+  overflow-y: auto;
+}
+
+.launcher-news-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 12px;
+  color: inherit;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+
+.launcher-news-list-row:hover,
+.launcher-news-list-row.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.launcher-news-list-row span:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.launcher-news-list-row strong {
+  overflow-wrap: anywhere;
+}
+
+.launcher-news-status {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.launcher-news-items-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.launcher-news-items-head h3 {
+  margin: 0;
+}
+
+.launcher-news-items {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.launcher-news-item-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+@media (max-width: 900px) {
+  .launcher-release-summary,
+  .launcher-stat-list {
+    grid-template-columns: 1fr;
+  }
+
+  .launcher-news-items-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

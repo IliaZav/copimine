@@ -441,6 +441,11 @@
   transition: border-color var(--speed-fast) ease, background-color var(--speed-fast) ease, transform var(--speed-fast) ease;
 }
 .preview-nav-item:hover { border-color: var(--line-strong) !important; transform: translateX(2px); }
+.preview-nav[data-preview-static="true"] .preview-nav-item { cursor: default; }
+.preview-nav[data-preview-static="true"] .preview-nav-item:hover {
+  border-color: var(--line) !important;
+  transform: none;
+}
 .preview-nav-item.is-active {
   border-color: var(--accent) !important;
   background: var(--status-gradient) !important;
@@ -474,6 +479,7 @@
   color: var(--accent-strong) !important;
 }
 .preview-button.is-primary { border-color: transparent !important; background: var(--accent-gradient) !important; color: var(--on-accent) !important; }
+.preview-button:disabled { cursor: not-allowed; opacity: .62; filter: saturate(.72); }
 
 .preview-bank-balance { background: var(--status-gradient) !important; }
 .preview-pill { min-height: 32px; }
@@ -522,6 +528,12 @@
     transition: transform var(--speed) cubic-bezier(.2, .8, .2, 1);
   }
   .preview-nav-open .preview-sidebar { transform: translateX(0); }
+  .preview-nav-open .preview-nav-toggle {
+    position: fixed;
+    top: 16px;
+    left: calc(min(320px, 88vw) - 58px);
+    z-index: 60;
+  }
   .preview-nav-toggle { display: inline-flex; }
   .preview-nav-backdrop {
     position: fixed;
@@ -546,4 +558,11 @@
   .preview-form-grid,
   .preview-actions { grid-template-columns: 1fr; }
   .preview-table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
+}
+
+@media (max-width: 340px) {
+  body.preview-shell {
+    min-width: 0;
+    overflow-x: clip;
+  }
 }

@@ -29,10 +29,12 @@ if ($artifact -match '(?s)case "COLD_FOG":(?:(?!case ").)*?addPotionEffect\(new 
     $errors.Add('Amulet visual feedback must not add a slowness debuff to its owner.')
 }
 Require $artifact 'PotionEffectType.NIGHT_VISION' 'Amulet visual feedback must remain a positive/non-debuff effect.'
-Require $artifact 'rayTraceBlocks' 'Donation compass must trace the look direction before teleporting.'
-Require $artifact '100.0D' 'Donation compass must cap teleport distance at 100 blocks.'
-Require $artifact 'teleport(' 'Donation compass must teleport the player, not modify the global vanilla compass target.'
-Require $artifact 'getHighestBlockYAt' 'Donation compass must place the player on the surface instead of underground.'
+if ($artifact -match 'LOOT_COMPASS|activateLootCompass|keyCompassCooldownUntil') {
+    $errors.Add('Retired donation compass runtime code must not be shipped.')
+}
+if ($items -match 'gde_moy_lut_blyat_compass') {
+    $errors.Add('Retired donation compass must not remain in the catalog.')
+}
 Require $items 'effect-profile-id: NAKOPAL_PICKAXE' 'The NAKOPAL_PICKAXE donation item must remain configured.'
 Require $items 'proc-chance: 1.0' 'The NAKOPAL_PICKAXE ability must proc reliably.'
 RequireRegex $items '(?s)item-id:\s*batin_remen_sudnogo_dnya.*?proc-chance:\s*1\.0' 'The Batin belt must reliably trigger its lightning ability.'

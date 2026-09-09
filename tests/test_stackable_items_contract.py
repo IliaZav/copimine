@@ -64,14 +64,14 @@ def test_ar_signing_keys_survive_restart_and_release_replacement() -> None:
 
 
 def test_custom_item_plugins_do_not_register_the_old_creative_antidupe_handlers() -> None:
-    """AR/narcotic transport stays vanilla; utility artifacts have a narrow guard."""
+    """AR/narcotic transport stays vanilla; artifacts use narrow guards."""
     for source in (ECONOMY, ARTIFACTS, NARCOTICS):
         if source != ARTIFACTS:
             assert "InventoryCreativeEvent" not in source
     assert "InventoryCreativeEvent" in ARTIFACTS
     assert "onUtilityArtifactCreative" in ARTIFACTS
     assert "isUtilityArtifactItem(event.getCursor())" in ARTIFACTS
-    assert "handleCreativeDonationLoss" not in ARTIFACTS
+    assert "handleCreativeDonationLoss" in ARTIFACTS
     assert "blockCreativeOfficialCopy" not in ARTIFACTS
     assert "onCreativeOfficialCopy" not in NARCOTICS
 

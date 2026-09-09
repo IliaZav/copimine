@@ -14,7 +14,14 @@
   function preferredTheme() {
     const stored = readStoredTheme();
     if (stored) return stored;
-    return "light";
+    // A clean visit starts in the same deep-night visual language as the
+    // Launcher. The header toggle still switches to light and remembers it.
+    const path = String(window.location.pathname || "/").replace(/\/$/, "") || "/";
+    const publicRoute = path === "/"
+      || path.endsWith(".html")
+      || path.startsWith("/news/")
+      || path.startsWith("/events/");
+    return publicRoute ? "dark" : "light";
   }
 
   function applyTheme(theme, persist) {

@@ -1,4 +1,9 @@
-import { appRouteHref, authLandingHref, defaultAppRouteForRole } from "../shared/app-routes.js";
+import {
+  appRouteHref,
+  authLandingHref,
+  defaultAppRouteForRole,
+  launcherReturnHrefFromAuthSearch,
+} from "../shared/app-routes.js?v=20260902route1";
 
 const CSRF_COOKIE = "cm_csrf";
 const CSRF_HEADER = "X-CSRF-Token";
@@ -104,11 +109,37 @@ function setRecoveryStatus(message = "", error = false) {
 function syncAuthForm() {
   const register = isRegisterPage();
   $("minecraftNameGroup")?.classList.toggle("hidden", !register);
+  const launcherReturn = launcherReturnHrefFromAuthSearch(window.location.search);
+  const switchToSignin = document.querySelector("[data-auth-switch='signin']");
+  const switchToRegister = document.querySelector("[data-auth-switch='register']");
+  if (switchToSignin) switchToSignin.href = authLandingHref("signin", launcherReturn);
+  if (switchToRegister) switchToRegister.href = authLandingHref("register", launcherReturn);
+
+  if (register && launcherReturn) {
+    try {
+      const requestedNick = new URL(launcherReturn, window.location.origin).searchParams.get("launcher_nick") || "";
+      const nicknameInput = $("playerMinecraftName");
+      if (/^[A-Za-z0-9_]{3,16}$/.test(requestedNick) && nicknameInput && !nicknameInput.value) {
+        nicknameInput.value = requestedNick;
+      }
+    } catch (_error) {
+      // Invalid return targets are ignored by launcherReturnHrefFromAuthSearch.
+    }
+  }
 }
 
 function redirectToRoleHome(role = "") {
   const target = roleHomeHref(role || "player");
   window.location.replace(target);
+}
+
+function redirectAfterAuth(role = "") {
+  const launcherReturn = launcherReturnHrefFromAuthSearch(window.location.search);
+  if (launcherReturn) {
+    window.location.replace(launcherReturn);
+    return;
+  }
+  redirectToRoleHome(role);
 }
 
 async function submitAuth(event) {
@@ -159,7 +190,7 @@ async function submitAuth(event) {
     window.location.replace("/cabinet/demoted.html");
     return;
   }
-  redirectToRoleHome(role);
+  redirectAfterAuth(role);
 }
 
 async function startRecovery(event) {
@@ -182,11 +213,12 @@ async function startRecovery(event) {
 async function confirmRecovery(event) {
   event?.preventDefault?.();
   const minecraftName = String($("recoveryMinecraftName")?.value || "").trim();
+  const username = String($("recoveryUsername")?.value || "").trim();
   const code = String($("recoveryCode")?.value || "").trim().toUpperCase();
   const newPassword = String($("recoveryPassword")?.value || "");
   const rememberMe = Boolean($("recoveryRememberMe")?.checked);
-  if (!minecraftName || !code || !newPassword) {
-    setRecoveryStatus("Заполните ник, код и новый пароль.", true);
+  if (!minecraftName || !username || !code || !newPassword) {
+    setRecoveryStatus("Заполните Minecraft-ник, логин сайта, код и новый пароль.", true);
     return;
   }
   setRecoveryStatus("");
@@ -195,13 +227,14 @@ async function confirmRecovery(event) {
     method: "POST",
     body: JSON.stringify({
       minecraft_name: minecraftName,
+      username,
       code,
       new_password: newPassword,
       remember_me: rememberMe,
     }),
   });
   const role = String(data.role || "player").trim().toLowerCase() || "player";
-  redirectToRoleHome(role);
+  redirectAfterAuth(role);
 }
 
 export async function initAuthPage() {
@@ -215,7 +248,7 @@ export async function initAuthPage() {
   try {
     const session = await resolveExistingSession();
     if (session?.role) {
-      redirectToRoleHome(session.role);
+      redirectAfterAuth(session.role);
       return;
     }
   } catch (_error) {

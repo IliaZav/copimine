@@ -52,6 +52,7 @@ $files = @(
     "thirdparty\client-mods\CustomSkinLoader_Fabric-14.26.1.jar",
     "thirdparty\client-mods\emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
     "thirdparty\client-mods\fabric-api-0.116.11+1.21.1.jar",
+    "thirdparty\client-mods\modmenu-11.0.4.jar",
     "thirdparty\client-mods\voicechat-fabric-1.21.1-2.6.16.jar",
     "thirdparty\client-mods\iris-fabric-1.8.8+mc1.21.1.jar",
     "thirdparty\client-mods\sodium-fabric-0.6.13+mc1.21.1.jar"
@@ -65,11 +66,6 @@ foreach ($relative in $files) {
     Assert-ReleaseChecksum -RelativePath $relative
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
-
-# The downloadable archive is deliberately a plain Fabric client payload:
-# only .minecraft/mods is packaged. Documentation, checksums and the JSON
-# manifest stay in the repository and public metadata, not inside the client
-# archive where launchers may copy them into the game directory.
 
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force

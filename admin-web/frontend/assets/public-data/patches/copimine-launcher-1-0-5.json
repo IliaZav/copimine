@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-28-launcher-1.0.5",
+  "slug": "copimine-launcher-1-0-5",
+  "version": "1.0.5",
+  "title": "CopiMine Launcher 1.0.5",
+  "publishedAt": "2026-08-28T21:18:41Z",
+  "summary": [
+    "Исправлена проверка обновлений Launcher: используется общий каталог стабильных релизов.",
+    "Версия внутри Launcher теперь совпадает с версией установщика.",
+    "Добавлена отдельная страница подтверждения привязки аккаунта."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "launcher-feed",
+        "title": "Launcher",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Убрана причина ошибки 404 при проверке обновлений через Velopack."
+          },
+          {
+            "kind": "fixed",
+            "text": "После установки Launcher больше не считает себя старой версией."
+          }
+        ]
+      },
+      {
+        "id": "account-link",
+        "title": "Привязка аккаунта",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Подтверждение открывается на отдельной странице сайта и возвращает результат в Launcher."
+          }
+        ]
+      }
+    ],
+    "technical": [],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-28T21:18:41Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-5.html"
+}

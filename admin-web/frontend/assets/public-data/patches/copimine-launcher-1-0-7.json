@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-29-launcher-1.0.7",
+  "slug": "copimine-launcher-1-0-7",
+  "version": "1.0.7",
+  "title": "CopiMine Launcher 1.0.7",
+  "publishedAt": "2026-08-29T06:59:58Z",
+  "summary": [
+    "Исправлена проверка обновлений и старых адресов Windows-feed.",
+    "Перед запуском перепроверяются обязательные файлы игры и моды.",
+    "Повреждённый или неполный файл теперь останавливает запуск с понятной причиной."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "update-feed",
+        "title": "Обновление Launcher",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Добавлены рабочие алиасы feed для старых сборок Launcher."
+          },
+          {
+            "kind": "tested",
+            "text": "Пакет обновления сверяется по размеру и содержимому после загрузки."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "managed-files",
+        "title": "Подготовка игры",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Проверка управляемых модов выполняется после восстановления и до поиска Java."
+          },
+          {
+            "kind": "fixed",
+            "text": "Неактуальный или изменённый обязательный JAR блокирует запуск, пока Launcher не восстановит его."
+          }
+        ]
+      }
+    ],
+    "bugfixes": []
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-29T06:59:58Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-7.html"
+}

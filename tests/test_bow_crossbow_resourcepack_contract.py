@@ -19,7 +19,7 @@ STAGE = ROOT / "resourcepacks" / "build" / "_stage"
 ZIP_PATH = ROOT / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
 
 PROJECTILE_ITEMS = {
-    "combat_crossbow": ("BOW", 10014, "teleport_bow"),
+    "combat_crossbow": ("CROSSBOW", 10014, "teleport_bow"),
     "cobblestone_trail_bow": ("BOW", 10015, "cobblestone_trail_bow"),
     "explosive_crossbow": ("CROSSBOW", 10016, "explosive_crossbow"),
 }
@@ -185,7 +185,7 @@ def test_built_models_preserve_vanilla_states_and_zip_contains_new_assets():
     assert crossbow["textures"]["layer0"] == "minecraft:item/crossbow_standby"
     assert torch["parent"] == "minecraft:block/torch"
     assert "textures" not in torch
-    assert any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in bow["overrides"])
+    assert any(override.get("predicate", {}).get("custom_model_data") == 10014 for override in crossbow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10016 for override in crossbow["overrides"])
     assert any(override.get("predicate", {}).get("custom_model_data") == 10017 for override in written_book["overrides"])
 
@@ -256,13 +256,20 @@ def test_custom_bow_states_are_self_contained_and_keep_vanilla_hand_transforms()
             "scale": [0.68, 0.68, 0.68],
         },
     }
-    for prefix in ("teleport_bow", "cobblestone_trail_bow"):
+    expected = {
+        "teleport_bow": ("minecraft:item/crossbow", "crossbow"),
+        "cobblestone_trail_bow": ("minecraft:item/bow", "bow"),
+    }
+    for prefix, (parent, transform_key) in expected.items():
         for suffix in ("", "_pulling_0", "_pulling_1", "_pulling_2"):
             model = model_json(
                 STAGE / "assets" / "copimine" / "models" / "item" / "artifacts" / f"{prefix}{suffix}.json"
             )
-            assert model["parent"] == "minecraft:item/generated"
-            assert model["display"] == expected_display
+            assert model["parent"] == (parent if not suffix else f"{parent}_{suffix[1:]}")
+            # Custom states inherit hand transforms from the generated root
+            # vanilla model; duplicating display data in each state would make
+            # future transform fixes drift between the states.
+            assert model.get("display") is None
 
 
 def test_custom_explosive_crossbow_states_are_self_contained_including_full_charge():
@@ -292,6 +299,14 @@ def test_custom_explosive_crossbow_states_are_self_contained_including_full_char
         model = model_json(
             SRC / "assets" / "copimine" / "models" / "item" / "artifacts" / f"explosive_crossbow{suffix}.json"
         )
-        assert model["parent"] == "minecraft:item/generated"
-        assert model["display"] == expected_display
+        expected_parent = {
+            "": "minecraft:item/crossbow",
+            "_pulling_0": "minecraft:item/crossbow_pulling_0",
+            "_pulling_1": "minecraft:item/crossbow_pulling_1",
+            "_pulling_2": "minecraft:item/crossbow_pulling_2",
+            "_charged": "minecraft:item/crossbow_arrow",
+            "_charged_firework": "minecraft:item/crossbow_firework",
+        }[suffix]
+        assert model["parent"] == expected_parent
+        assert model.get("display") is None
         assert model["textures"]["layer0"].startswith("copimine:item/artifacts/explosive_crossbow")

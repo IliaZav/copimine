@@ -66,7 +66,15 @@ release/
 
 # Project-local generated/runtime dirs
 /.worktrees/
+/artifacts/tools/
+/artifacts/launcher/
 local-runtime/
+admin-web/frontend/downloads/
+admin-web/frontend/launcher/*
+!admin-web/frontend/launcher/stable/
+admin-web/frontend/launcher/stable/*
+!admin-web/frontend/launcher/stable/instance-manifest.json
+!admin-web/frontend/launcher/stable/instance-manifest.sig
 admin-web/.venv/
 admin-web/.codex-audit-venv/
 admin-web/.venv-*/
@@ -124,3 +132,4 @@ minecraft/server/**
 !minecraft/server/plugins/AuthEffects/src/main/resources/plugin.yml
 !minecraft/server/plugins/AuthEffects/pom.xml
 !minecraft/server/plugins/AuthEffects/build-plugin.ps1
+.superdesign

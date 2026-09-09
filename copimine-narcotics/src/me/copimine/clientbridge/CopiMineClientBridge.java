@@ -13,6 +13,7 @@ import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.messaging.PluginMessageListener;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.Locale;
 import java.util.Map;
@@ -23,12 +24,16 @@ import java.util.stream.Collectors;
 public final class CopiMineClientBridge implements Listener, PluginMessageListener {
     private static final int MAX_INBOUND_MESSAGE_BYTES = 4_096;
     private static final long INBOUND_MESSAGE_INTERVAL_MILLIS = 50L;
+    private static final long READY_INBOUND_INTERVAL_MILLIS = 100L;
 
     private final CopiMineNarcotics plugin;
     private NarcoticsConfigService configService;
     private final ClientCapabilityService capabilities;
     private final ClientVisualEffectService visuals;
     private final Map<UUID, Long> nextInboundMessageAt = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> nextReadyMessageAt = new ConcurrentHashMap<>();
+    private final Map<UUID, BukkitTask> admissionTimeoutTasks = new ConcurrentHashMap<>();
+    private ClientReadyAdmission admission;
     private boolean clientModEnforcementWarningLogged = false;
 
     public CopiMineClientBridge(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
@@ -36,12 +41,15 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         this.configService = configService;
         this.capabilities = new ClientCapabilityService();
         this.visuals = new ClientVisualEffectService(plugin, capabilities);
+        this.admission = new ClientReadyAdmission(configService.clientGateTimeoutSeconds() * 1_000L);
         applyCapabilityTtl();
     }
 
     public void register() {
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        Bukkit.getMessenger().registerIncomingPluginChannel(plugin, ClientReadyPayloads.READY_CHANNEL, this);
+        Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, ClientReadyPayloads.ACK_CHANNEL);
         Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
@@ -51,14 +59,20 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             visuals.forgetPlayer(player);
             capabilities.clear(player.getUniqueId());
         }
+        clearPendingAdmissions();
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
         Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientReadyPayloads.READY_CHANNEL, this);
+        Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientReadyPayloads.ACK_CHANNEL);
         nextInboundMessageAt.clear();
+        nextReadyMessageAt.clear();
         visuals.shutdown();
     }
 
     public void reload(NarcoticsConfigService configService) {
+        clearPendingAdmissions();
         this.configService = configService;
+        this.admission = new ClientReadyAdmission(configService.clientGateTimeoutSeconds() * 1_000L);
         applyCapabilityTtl();
     }
 
@@ -79,7 +93,8 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     public String statusFor(Player player) {
-        return capabilities.describe(player) + ", visuals=" + visuals.playerSummary(player);
+        return "Admission=" + admissionStatus(player) + ", visuals=" + visuals.playerSummary(player)
+                + ", capability=" + capabilities.describe(player);
     }
 
     public String routeHint(Player player, String effectId) {
@@ -93,7 +108,14 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        if (!ClientBridgePayloads.CHANNEL.equalsIgnoreCase(channel) || !enabled()) {
+        if (!enabled()) {
+            return;
+        }
+        if (ClientReadyPayloads.READY_CHANNEL.equalsIgnoreCase(channel)) {
+            handleClientReady(player, message);
+            return;
+        }
+        if (!ClientBridgePayloads.CHANNEL.equalsIgnoreCase(channel)) {
             return;
         }
         if (message == null || message.length > MAX_INBOUND_MESSAGE_BYTES) {
@@ -128,14 +150,18 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        capabilities.clear(event.getPlayer().getUniqueId());
-        if (!enabled() || !configService.requireClientMod() || !configService.kickIfMissingClient()) {
+        Player player = event.getPlayer();
+        capabilities.clear(player.getUniqueId());
+        if (!enabled() || !configService.clientGateRequired()) {
             return;
         }
-        if (!clientModEnforcementWarningLogged) {
-            clientModEnforcementWarningLogged = true;
-            plugin.getLogger().warning("CopiMineClient channel HELLO cannot prove that a client mod is installed; automatic kicking is disabled.");
-        }
+        ClientReadyAdmission.PendingClientAdmission pending = admission.onJoin(player.getUniqueId(), System.currentTimeMillis());
+        long delayTicks = Math.max(1L, (configService.clientGateTimeoutSeconds() * 20L) + 1L);
+        scheduleAdmissionTimeout(player.getUniqueId(), pending.joinAttemptId(), delayTicks);
+        plugin.getLogger().fine("CLIENT_GATE_PENDING player=" + player.getName()
+                + " uuid=" + player.getUniqueId()
+                + " attempt=" + pending.joinAttemptId()
+                + " timeoutMs=" + admission.timeoutMillis());
     }
 
     @EventHandler
@@ -143,6 +169,14 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         visuals.forgetPlayer(event.getPlayer());
         capabilities.clear(event.getPlayer().getUniqueId());
         nextInboundMessageAt.remove(event.getPlayer().getUniqueId());
+        nextReadyMessageAt.remove(event.getPlayer().getUniqueId());
+        BukkitTask timeout = admissionTimeoutTasks.remove(event.getPlayer().getUniqueId());
+        if (timeout != null) {
+            timeout.cancel();
+        }
+        admission.onQuit(event.getPlayer().getUniqueId());
+        plugin.getLogger().fine("CLIENT_DISCONNECTED_DURING_CHECK player=" + event.getPlayer().getName()
+                + " uuid=" + event.getPlayer().getUniqueId());
     }
 
     @EventHandler
@@ -154,6 +188,209 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     @EventHandler
     public void onWorldChange(PlayerChangedWorldEvent event) {
         visuals.clearVisuals(event.getPlayer(), "world-change");
+    }
+
+    private void handleClientReady(Player player, byte[] message) {
+        if (player == null || !configService.clientGateRequired() || !allowReadyMessage(player)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        ClientReadyAdmission.ReadyDecision decision;
+        try {
+            ClientReadyAdmission.ReadyRequest request = ClientReadyPayloads.decodeReady(message);
+            decision = admission.onReady(player.getUniqueId(), request, now);
+            plugin.getLogger().fine("CLIENT_READY_RECEIVED player=" + player.getName()
+                    + " uuid=" + player.getUniqueId()
+                    + " clientVersion=" + request.clientVersion()
+                    + " clientProtocol=" + request.protocolVersion());
+        } catch (ClientReadyPayloads.MalformedReadyException malformed) {
+            decision = admission.onReady(player.getUniqueId(), null, now);
+        } catch (RuntimeException error) {
+            plugin.getLogger().severe("CLIENT_GATE_INTERNAL_ERROR player=" + player.getName()
+                    + " uuid=" + player.getUniqueId() + " error=" + error.getClass().getSimpleName());
+            if (player.isOnline()) {
+                player.kickPlayer(userMessage("INTERNAL_GATE_ERROR"));
+            }
+            return;
+        }
+
+        sendReadyAck(player, decision);
+        if (decision.decision() == ClientReadyAdmission.Decision.ACCEPTED
+                || decision.decision() == ClientReadyAdmission.Decision.DUPLICATE_ACCEPTED) {
+            cancelAdmissionTimeout(player.getUniqueId());
+        }
+        switch (decision.decision()) {
+            case ACCEPTED, DUPLICATE_ACCEPTED -> plugin.getLogger().info(
+                    "CLIENT_GATE_ACCEPT player=" + player.getName()
+                            + " uuid=" + player.getUniqueId()
+                            + " attempt=" + attemptOf(decision)
+                            + " clientVersion=" + versionOf(decision)
+                            + " clientProtocol=" + protocolOf(decision)
+                            + " requiredProtocol=" + ClientReadyAdmission.REQUIRED_PROTOCOL
+                            + " readyPackets=" + packetsOf(decision)
+                            + " elapsedMs=" + elapsedOf(decision, now));
+            case PROTOCOL_MISMATCH, MALFORMED_READY, AFTER_TIMEOUT -> plugin.getLogger().info(
+                    "CLIENT_GATE_REJECT reason=" + decision.reasonCode()
+                            + " player=" + player.getName()
+                            + " uuid=" + player.getUniqueId()
+                            + " attempt=" + attemptOf(decision)
+                            + " clientVersion=" + versionOf(decision)
+                            + " clientProtocol=" + protocolOf(decision)
+                            + " requiredProtocol=" + ClientReadyAdmission.REQUIRED_PROTOCOL
+                            + " elapsedMs=" + elapsedOf(decision, now));
+            default -> {
+            }
+        }
+        if (decision.shouldKick() && player.isOnline()) {
+            player.kickPlayer(userMessage(decision.reasonCode()));
+        }
+    }
+
+    private void sendReadyAck(Player player, ClientReadyAdmission.ReadyDecision decision) {
+        try {
+            ClientReadyAdmission.ReadyAck ack = decision.ack();
+            player.sendPluginMessage(plugin, ClientReadyPayloads.ACK_CHANNEL,
+                    ClientReadyPayloads.encodeAck(ack.accepted(), ack.requiredProtocol(), ack.receivedProtocol(), ack.reason()));
+            plugin.getLogger().fine("CLIENT_READY_ACK_SENT player=" + player.getName()
+                    + " uuid=" + player.getUniqueId()
+                    + " accepted=" + ack.accepted()
+                    + " reason=" + ack.reason());
+        } catch (RuntimeException error) {
+            plugin.getLogger().severe("CLIENT_GATE_INTERNAL_ERROR player=" + player.getName()
+                    + " uuid=" + player.getUniqueId() + " error=" + error.getClass().getSimpleName());
+            if (player.isOnline()) {
+                player.kickPlayer(userMessage("INTERNAL_GATE_ERROR"));
+            }
+        }
+    }
+
+    private void handleAdmissionTimeout(UUID playerId, UUID expectedAttemptId) {
+        ClientReadyAdmission.PendingClientAdmission current = admission.snapshot(playerId);
+        if (current == null || !expectedAttemptId.equals(current.joinAttemptId())) {
+            plugin.getLogger().fine("STALE_JOIN_ATTEMPT_IGNORED playerUuid=" + playerId
+                    + " attempt=" + expectedAttemptId);
+            return;
+        }
+
+        admissionTimeoutTasks.remove(playerId);
+        long now = System.currentTimeMillis();
+        ClientReadyAdmission.ReadyDecision decision = admission.onTimeout(playerId, expectedAttemptId, now);
+        if (decision.decision() == ClientReadyAdmission.Decision.STALE_ATTEMPT) {
+            plugin.getLogger().fine("STALE_JOIN_ATTEMPT_IGNORED playerUuid=" + playerId
+                    + " attempt=" + expectedAttemptId);
+            return;
+        }
+        if (decision.decision() == ClientReadyAdmission.Decision.NOT_DUE) {
+            Player player = Bukkit.getPlayer(playerId);
+            if (player == null || !player.isOnline()) {
+                admission.onQuit(playerId);
+                return;
+            }
+            long deadline = decision.state().startedAtMillis() + admission.timeoutMillis();
+            long remainingMillis = Math.max(1L, deadline - now);
+            long retryTicks = Math.max(1L, (remainingMillis + 49L) / 50L);
+            scheduleAdmissionTimeout(playerId, expectedAttemptId, retryTicks);
+            plugin.getLogger().fine("CLIENT_GATE_TIMEOUT_RECHECK player=" + player.getName()
+                    + " uuid=" + playerId
+                    + " attempt=" + expectedAttemptId
+                    + " remainingMs=" + remainingMillis);
+            return;
+        }
+        if (decision.decision() != ClientReadyAdmission.Decision.TIMEOUT) {
+            return;
+        }
+        Player player = Bukkit.getPlayer(playerId);
+        String name = player == null ? playerId.toString() : player.getName();
+        plugin.getLogger().info("CLIENT_GATE_REJECT reason=CLIENT_READY_TIMEOUT player=" + name
+                + " uuid=" + playerId
+                + " attempt=" + expectedAttemptId
+                + " waitedMs=" + admission.timeoutMillis());
+        if (player != null && player.isOnline() && configService.clientGateRequired()) {
+            player.kickPlayer(userMessage("CLIENT_READY_TIMEOUT"));
+        }
+    }
+
+    private void scheduleAdmissionTimeout(UUID playerId, UUID attemptId, long delayTicks) {
+        BukkitTask timeoutTask = Bukkit.getScheduler().runTaskLater(plugin,
+                () -> handleAdmissionTimeout(playerId, attemptId),
+                Math.max(1L, delayTicks));
+        BukkitTask previous = admissionTimeoutTasks.put(playerId, timeoutTask);
+        if (previous != null) {
+            previous.cancel();
+        }
+    }
+
+    private void cancelAdmissionTimeout(UUID playerId) {
+        BukkitTask timeout = admissionTimeoutTasks.remove(playerId);
+        if (timeout != null) {
+            timeout.cancel();
+        }
+    }
+
+    private void clearPendingAdmissions() {
+        for (BukkitTask task : admissionTimeoutTasks.values()) {
+            task.cancel();
+        }
+        admissionTimeoutTasks.clear();
+        admission.clear();
+    }
+
+    private String admissionStatus(Player player) {
+        if (player == null) {
+            return "player-missing";
+        }
+        ClientReadyAdmission.PendingClientAdmission state = admission.snapshot(player.getUniqueId());
+        if (state == null) {
+            return configService.clientGateRequired() ? "not-pending" : "disabled";
+        }
+        return (state.accepted() ? "ACCEPTED" : "PENDING")
+                + ", attempt=" + state.joinAttemptId()
+                + ", clientVersion=" + (state.clientVersion().isBlank() ? "-" : state.clientVersion())
+                + ", clientProtocol=" + (state.clientProtocol() == null ? "-" : state.clientProtocol())
+                + ", requiredProtocol=" + ClientReadyAdmission.REQUIRED_PROTOCOL
+                + ", readyPackets=" + state.readyPacketCount()
+                + ", elapsedMs=" + Math.max(0L, System.currentTimeMillis() - state.startedAtMillis())
+                + ", lastReadyAt=" + state.lastReadyAtMillis();
+    }
+
+    private boolean allowReadyMessage(Player player) {
+        long now = System.currentTimeMillis();
+        UUID playerId = player.getUniqueId();
+        long nextAllowed = nextReadyMessageAt.getOrDefault(playerId, 0L);
+        if (nextAllowed > now) {
+            return false;
+        }
+        nextReadyMessageAt.put(playerId, now + READY_INBOUND_INTERVAL_MILLIS);
+        return true;
+    }
+
+    private static String versionOf(ClientReadyAdmission.ReadyDecision decision) {
+        return decision.state() == null || decision.state().clientVersion().isBlank() ? "-" : decision.state().clientVersion();
+    }
+
+    private static int protocolOf(ClientReadyAdmission.ReadyDecision decision) {
+        return decision.state() == null || decision.state().clientProtocol() == null ? 0 : decision.state().clientProtocol();
+    }
+
+    private static int packetsOf(ClientReadyAdmission.ReadyDecision decision) {
+        return decision.state() == null ? 0 : decision.state().readyPacketCount();
+    }
+
+    private static UUID attemptOf(ClientReadyAdmission.ReadyDecision decision) {
+        return decision.state() == null ? null : decision.state().joinAttemptId();
+    }
+
+    private static long elapsedOf(ClientReadyAdmission.ReadyDecision decision, long now) {
+        return decision.state() == null ? 0L : Math.max(0L, now - decision.state().startedAtMillis());
+    }
+
+    private static String userMessage(String reason) {
+        return switch (reason) {
+            case "PROTOCOL_MISMATCH" -> "Ваша версия CopiMineClient несовместима с сервером. Обновите CopiMineClient.\nКод: PROTOCOL_MISMATCH";
+            case "MALFORMED_READY" -> "Не удалось прочитать ответ CopiMineClient. Обновите клиент.\nКод: MALFORMED_READY";
+            case "CLIENT_READY_TIMEOUT" -> "Для игры на CopiMine нужен актуальный CopiMineClient. Установите или обновите сборку через CopiMine Launcher либо вручную.\nКод: CLIENT_READY_TIMEOUT";
+            default -> "Не удалось проверить CopiMineClient из-за ошибки сервера. Сообщите администрации.\nКод: INTERNAL_GATE_ERROR";
+        };
     }
 
     public boolean handleCommand(CommandSender sender, String[] args, java.util.function.BiConsumer<Player, String> fallbackTest) {

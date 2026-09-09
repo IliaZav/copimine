@@ -55,7 +55,7 @@ class ReturnStoneRuntimeContractTest(unittest.TestCase):
             destination,
             "world.isChunkLoaded(candidate.getBlockX() >> 4, candidate.getBlockZ() >> 4)",
             "world.getWorldBorder().isInside(candidate)",
-            "isSafeCompassLocation(candidate)",
+            "isSafeTeleportLocation(candidate)",
             "getMinHeight()",
             "getMaxHeight()",
         )

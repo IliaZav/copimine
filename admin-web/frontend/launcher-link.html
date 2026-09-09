@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>CopiMine — привязка Launcher</title>
+  <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
+  <script src="/assets/js/theme/theme-bootstrap.js?v=20260829launcherlink6"></script>
+  <link rel="stylesheet" href="/assets/style.css?v=20260903constellation10" />
+  <link rel="stylesheet" href="/assets/css/launcher-link.css?v=20260829launcherlink6" />
+</head>
+<body class="launcher-link-page" data-page-kind="launcher-link" data-state="loading">
+  <main class="launcher-link-shell">
+    <section class="launcher-link-card" aria-labelledby="launcherLinkTitle">
+      <header class="launcher-link-head">
+        <a class="launcher-link-brand" href="/launcher.html">
+          <img src="/assets/brand/copimine-logo.png" alt="" />
+          <span>CopiMine Launcher</span>
+        </a>
+        <div class="launcher-link-eyebrow">Безопасный вход</div>
+        <h1 id="launcherLinkTitle">Привяжите Launcher к аккаунту</h1>
+        <p>Войдите на сайте и один раз подтвердите связь. Пароль сайта и пароль AuthMe в Launcher не передаются.</p>
+      </header>
+      <section id="launcherLinkStatus" class="launcher-link-body" aria-live="polite" aria-busy="true">
+        <div class="launcher-link-loading"><span class="launcher-link-spinner" aria-hidden="true"></span><span>Проверяем вход…</span></div>
+      </section>
+      <footer class="launcher-link-foot">
+        <small>Окно можно закрыть после подтверждения — Launcher сам получит ответ.</small>
+        <button id="launcherLinkClose" class="btn btn-ghost" type="button">Закрыть</button>
+      </footer>
+    </section>
+  </main>
+  <script type="module" src="/assets/js/launcher-link-page.js?v=20260902route1"></script>
+</body>
+</html>

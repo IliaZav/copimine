@@ -1,7 +1,7 @@
-import { initThemeToggle } from "./theme/theme-toggle.js?v=20260720r12";
-import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js";
-import { initPublicNav } from "./public/public-nav.js";
-import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js";
+import { initThemeToggle } from "./theme/theme-toggle.js?v=20260825siteui16";
+import { appRouteHref, normalizeAppRoute } from "./shared/app-routes.js?v=20260902route1";
+import { initPublicNav } from "./public/public-nav.js?v=20260829siteui23";
+import { initAuthPage, redirectLegacyAuthRoute } from "./auth/auth-page.js?v=20260902route1";
 
 const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["start", "index.html"],
@@ -14,13 +14,40 @@ const LEGACY_PUBLIC_REDIRECTS = new Map([
   ["tops", "server.html"],
   ["elections", "elections.html"],
   ["shops", "shops.html"],
-  ["mods", "mods.html"],
-  ["join", "mods.html"],
+  ["mods", "launcher.html"],
+  ["join", "launcher.html"],
   ["cabinet-zones", "signin.html"],
   ["register", "register.html"],
 ]);
 
 let cabinetRuntimePromise = null;
+
+function showCabinetRuntimeFailure(error) {
+  document.body?.setAttribute("data-boot-state", "error");
+  const boot = document.getElementById("bootStage");
+  if (!boot) return;
+  const technicalReason = String(error?.message || error || "Неизвестная ошибка").trim();
+  boot.setAttribute("aria-busy", "false");
+  const message = document.createElement("div");
+  message.className = "loading boot-error";
+  message.setAttribute("role", "alert");
+  message.textContent = "Кабинет не загрузился. Проверьте соединение и повторите попытку.";
+  const detail = document.createElement("p");
+  detail.className = "boot-error-detail";
+  detail.textContent = `Техническая причина: ${technicalReason}`;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "btn btn-primary";
+  retry.textContent = "Повторить";
+  retry.addEventListener("click", () => {
+    boot.replaceChildren(message, detail, retry);
+    boot.setAttribute("aria-busy", "true");
+    document.body?.setAttribute("data-boot-state", "loading");
+    requestCabinetRuntime();
+  }, { once: true });
+  boot.replaceChildren(message, detail, retry);
+  console.error("CopiMine cabinet runtime failed to load", error?.stack || technicalReason);
+}
 
 function currentHashRoute(hashValue = window.location.hash) {
   return String(hashValue || "").replace(/^#/, "").split("?", 1)[0].trim().toLowerCase();
@@ -50,7 +77,7 @@ function normalizeAuthHashRoute() {
 
 function loadCabinetRuntime() {
   if (cabinetRuntimePromise) return cabinetRuntimePromise;
-  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260721r1")
+  cabinetRuntimePromise = import("./cabinet-runtime.js?v=20260902route1")
     .then((module) => {
       document.documentElement.dataset.runtime = "ready";
       document.documentElement.dataset.cabinetRuntime = "modern";
@@ -58,14 +85,14 @@ function loadCabinetRuntime() {
     })
     .catch((error) => {
       cabinetRuntimePromise = null;
-      console.error("CopiMine cabinet runtime failed to load", error);
+      showCabinetRuntimeFailure(error);
       throw error;
     });
   return cabinetRuntimePromise;
 }
 
 function requestCabinetRuntime() {
-  void loadCabinetRuntime();
+  void loadCabinetRuntime().catch(() => undefined);
 }
 
 window.addEventListener("hashchange", () => {

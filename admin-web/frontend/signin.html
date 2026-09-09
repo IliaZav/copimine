@@ -7,34 +7,13 @@
   <title>CopiMine - Вход</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260809publiccopy1" />
-  <link rel="stylesheet" href="/assets/css/tokens.css" />
-  <link rel="stylesheet" href="/assets/css/themes.css" />
-  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260903constellation10" />
 </head>
 <body data-page-kind="signin" data-auth-flow="login" class="auth-screen">
   <div id="toast" class="toast-root" aria-live="polite"></div>
 
   <main class="public-site public-site-compact auth-public-site">
-    <header class="public-nav public-nav-auth">
-      <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <span class="public-brand-copy">
-          <strong>CopiMine</strong>
-          <small>Вход в кабинет</small>
-        </span>
-      </a>
-      <nav aria-label="Разделы сайта">
-        <a href="/index.html">Главная</a>
-        <a href="/server.html">Сервер</a>
-        <a href="/elections.html">Выборы</a>
-        <a href="/shops.html">Лавки</a>
-        <a href="/mods.html">Модпак</a>
-        <a href="/signin.html" aria-current="page">Войти</a>
-        <a href="/register.html">Регистрация</a>
-        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
-      </nav>
-    </header>
+    <header class="public-nav public-nav-auth"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span></a><button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/server.html">Сервер</a><a href="/elections.html">Выборы</a><a href="/shops.html">Лавки</a><a href="/launcher.html">Лаунчер</a><a href="/news.html">Новости</a><a href="/events.html">Ивенты</a><a id="publicSigninLink" href="/signin.html" aria-current="page">Войти</a><a id="publicRegisterLink" href="/register.html">Регистрация</a><button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button><button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button></nav></header>
 
     <div class="public-page-shell">
       <div id="signin" class="auth-shell">
@@ -54,7 +33,7 @@
               <h2>Что будет доступно сразу</h2>
               <ul class="auth-check-list">
                 <li>AR-банк, переводы, PIN и история операций.</li>
-                <li>Удалённая покупка доната и предметов без входа в игру.</li>
+                <li>Покупка донат-предметов прямо с сайта.</li>
                 <li>Панель администрации, если у аккаунта есть доступ.</li>
               </ul>
             </section>
@@ -77,7 +56,7 @@
               </form>
 
               <div class="auth-links">
-                <a href="/register.html">Нет аккаунта? Зарегистрироваться</a>
+                <a data-auth-switch="register" href="/register.html">Нет аккаунта? Зарегистрироваться</a>
               </div>
             </section>
           </div>
@@ -87,6 +66,6 @@
   </main>
 
   <div id="modalRoot"></div>
-  <script type="module" src="/assets/app.js?v=20260721r1"></script>
+  <script type="module" src="/assets/app.js?v=20260902route1"></script>
 </body>
 </html>

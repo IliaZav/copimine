@@ -7,34 +7,13 @@
   <title>CopiMine - Регистрация</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260809publiccopy1" />
-  <link rel="stylesheet" href="/assets/css/tokens.css" />
-  <link rel="stylesheet" href="/assets/css/themes.css" />
-  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260903constellation10" />
 </head>
 <body data-page-kind="register" data-auth-flow="register" class="auth-screen">
   <div id="toast" class="toast-root" aria-live="polite"></div>
 
   <main class="public-site public-site-compact auth-public-site">
-    <header class="public-nav public-nav-auth">
-      <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <span class="public-brand-copy">
-          <strong>CopiMine</strong>
-          <small>Регистрация</small>
-        </span>
-      </a>
-      <nav aria-label="Разделы сайта">
-        <a href="/index.html">Главная</a>
-        <a href="/server.html">Сервер</a>
-        <a href="/elections.html">Выборы</a>
-        <a href="/shops.html">Лавки</a>
-        <a href="/mods.html">Модпак</a>
-        <a href="/signin.html">Войти</a>
-        <a href="/register.html" aria-current="page">Регистрация</a>
-        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
-      </nav>
-    </header>
+    <header class="public-nav public-nav-auth"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span></a><button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/server.html">Сервер</a><a href="/elections.html">Выборы</a><a href="/shops.html">Лавки</a><a href="/launcher.html">Лаунчер</a><a href="/news.html">Новости</a><a href="/events.html">Ивенты</a><a id="publicSigninLink" href="/signin.html">Войти</a><a id="publicRegisterLink" href="/register.html" aria-current="page">Регистрация</a><button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button><button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button></nav></header>
 
     <div class="public-page-shell">
       <div class="auth-shell">
@@ -44,7 +23,7 @@
             <div class="auth-card-copy">
               <span class="auth-kicker">CopiMine</span>
               <h1>Регистрация аккаунта</h1>
-        <p>Логин, пароль и Minecraft-ник. После регистрации ник попадёт в whitelist.</p>
+        <p>Логин, пароль и Minecraft-ник. После регистрации ник попадёт в список игроков.</p>
             </div>
           </div>
 
@@ -82,14 +61,17 @@
               </form>
 
               <div class="auth-links">
-                <a href="/signin.html">Уже есть аккаунт? Войти</a>
+                <a data-auth-switch="signin" href="/signin.html">Уже есть аккаунт? Войти</a>
               </div>
 
               <section class="auth-recovery-card">
                 <h3>Восстановить доступ</h3>
-                <p>Если ваш ник уже есть в whitelist, получите код в игре и задайте новый пароль для сайта.</p>
+                <p>Введите Minecraft-ник, получите код в игре и укажите логин, под которым будете входить на сайт.</p>
                 <label for="recoveryMinecraftName">Minecraft-ник</label>
                 <input id="recoveryMinecraftName" autocomplete="nickname" spellcheck="false" placeholder="Тот же ник, что и на сервере" />
+
+                <label for="recoveryUsername">Логин сайта</label>
+                <input id="recoveryUsername" autocomplete="username" spellcheck="false" placeholder="Ваш логин для входа" />
 
                 <div class="auth-inline-actions">
                   <button id="recoveryStartBtn" type="button" class="btn btn-secondary">Отправить код в игру</button>
@@ -119,6 +101,6 @@
   </main>
 
   <div id="modalRoot"></div>
-  <script type="module" src="/assets/app.js?v=20260721r1"></script>
+  <script type="module" src="/assets/app.js?v=20260902route1"></script>
 </body>
 </html>

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/crossbow_firework",
+  "textures": {
+    "layer0": "copimine:item/artifacts/teleport_bow_charged_firework"
+  }
+}

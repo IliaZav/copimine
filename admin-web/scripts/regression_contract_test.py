@@ -63,17 +63,14 @@ def main() -> None:
     require(source, '"MINER_3X3"', "artifact effect registry")
     require(source, "breakMinerArea", "artifact 3x3 handler")
     require(miner, "effect: MINER_3X3", "CopiMine Miner catalog entry")
-    require(miner, "Копает 3x3.", "CopiMine Miner lore")
+    require(miner, "Копает 3 на 3", "CopiMine Miner lore")
 
     require(hammer, 'name: "&6Молот Ветра"', "Wind Hammer catalog entry")
     require(hammer, "material: MACE", "Wind Hammer catalog entry")
     require(hammer, "custom_model_data: 10012", "Wind Hammer catalog entry")
     require(hammer, "effect: WIND_HAMMER", "Wind Hammer catalog entry")
     require(hammer, "cooldown_seconds: 300", "Wind Hammer cooldown")
-    require(hammer, "ПКМ по земле: удар ветра.", "Wind Hammer lore")
-    require(hammer, "Подбрасывает владельца примерно на 20 блоков.", "Wind Hammer lore")
-    require(hammer, "Враги в радиусе 10 блоков замерзают на 5 секунд.", "Wind Hammer lore")
-    require(hammer, "Перезарядка: 5 минут.", "Wind Hammer lore")
+    require(hammer, "ПКМ по земле подбрасывает в воздух и станит врага", "Wind Hammer lore")
     assert "HASTE_BURST_LONG" not in hammer, "Wind Hammer must not use the retired haste effect"
     require(interact_handler, '"WIND_HAMMER".equals(var4)', "Wind Hammer interaction")
     require(interact_handler, "var5 != Action.RIGHT_CLICK_BLOCK", "Wind Hammer interaction")
@@ -106,7 +103,7 @@ def main() -> None:
     if DEPLOYED_ITEMS.is_file():
         deployed_items = DEPLOYED_ITEMS.read_text(encoding="utf-8")
         assert items == deployed_items, "deployed artifact catalog differs from source catalog"
-    require(items, "Освобождение от налогов на 3 месяца.", "tax clock lore")
+    require(items, "Освобождает от налогов на 3 месяца", "tax clock lore")
     require(treasury, "formatTaxExemptionRemaining", "bank tax-exemption rendering")
     require(treasury, "taxExemptionCountdown", "bank minute countdown")
     require(treasury, "window.setTimeout(render, 60000 - (Date.now() % 60000))", "site tax-exemption minute refresh")

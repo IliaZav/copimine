@@ -150,6 +150,36 @@
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.loading-error {
+  display: grid;
+  gap: 12px;
+  width: min(34rem, calc(100vw - 48px));
+  padding: 24px;
+  border: 1px solid color-mix(in srgb, var(--danger, #c94f4f) 45%, var(--line));
+  border-radius: 18px;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.loading-error-title {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.loading-error-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.boot-error-detail {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 body[data-page-kind="cabinet"][data-boot-state="loading"] .loading-shell {
   min-height: calc(100vh - 132px);
   align-content: start;
@@ -173,4 +203,11 @@ body[data-page-kind="cabinet"][data-boot-state="loading"] .loading {
 
 body[data-page-kind="cabinet"][data-boot-state="ready"] .loading-shell {
   display: none;
+}
+
+body[data-page-kind="cabinet"][data-boot-state="error"] .loading-shell {
+  min-height: calc(100vh - 132px);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--page-bg) 92%, transparent), transparent 34%),
+    radial-gradient(circle at top, color-mix(in srgb, var(--danger, #c94f4f) 8%, transparent), transparent 42%);
 }

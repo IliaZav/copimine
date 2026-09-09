@@ -35,6 +35,11 @@ client_bridge:
   fallback_to_server_overlay: false
   fallback_to_particles: true
 
+client_gate:
+  # Emergency administrative rollback only. Production target is true after staging gates pass.
+  required: true
+  ready_timeout_seconds: 15
+
 visuals:
   enabled: true
   mode: AUTO

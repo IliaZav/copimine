@@ -81,7 +81,7 @@ class UtilityArtifactCatalogContractTest(unittest.TestCase):
             "getRespawnLocation()",
             "runTaskLater(this",
             "300L",
-            "isSafeCompassLocation",
+            "isSafeTeleportLocation",
             "resolveMainWorld",
             "Bukkit.getWorld(\"world\")",
             "World.Environment.NORMAL",

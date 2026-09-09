@@ -9,6 +9,7 @@ $indexHtml = Join-Path $root "admin-web/frontend/index.html"
 $serverHtml = Join-Path $root "admin-web/frontend/server.html"
 $shopsHtml = Join-Path $root "admin-web/frontend/shops.html"
 $modsHtml = Join-Path $root "admin-web/frontend/mods.html"
+$legacyRedirectJs = Join-Path $root "admin-web/frontend/assets/js/public/legacy-mods-redirect.js"
 
 $publicPageContent = Get-Content -Raw -Path $publicPageJs
 $homepageContent = Get-Content -Raw -Path $homepageJs
@@ -33,13 +34,18 @@ Assert-Contains $siteDataContent "loadPublicModsPageData" "site-data.js"
 $htmlChecks = @(
   @{ Path = $indexHtml; Marker = 'data-page-kind="public-home"' },
   @{ Path = $serverHtml; Marker = 'data-page-kind="public-server"' },
-  @{ Path = $shopsHtml; Marker = 'data-page-kind="public-shops"' },
-  @{ Path = $modsHtml; Marker = 'data-page-kind="public-mods"' }
+  @{ Path = $shopsHtml; Marker = 'data-page-kind="public-shops"' }
 )
 
 foreach ($check in $htmlChecks) {
   $html = Get-Content -Raw -Path $check.Path
   Assert-Contains $html $check.Marker ([System.IO.Path]::GetFileName($check.Path))
 }
+
+$legacyModsHtml = Get-Content -Raw -Path $modsHtml
+$legacyRedirectContent = Get-Content -Raw -Path $legacyRedirectJs
+Assert-Contains $legacyModsHtml 'rel="canonical" href="https://copimine.ru/launcher.html"' 'mods.html'
+Assert-Contains $legacyModsHtml 'legacy-mods-redirect.js' 'mods.html'
+Assert-Contains $legacyRedirectContent "window.location.replace('/launcher.html')" 'legacy-mods-redirect.js'
 
 Write-Host "ValidateCopiMineWebPublicPagesSeparateRuntime passed."

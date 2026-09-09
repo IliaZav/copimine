@@ -65,7 +65,7 @@ Require-Match $cartPage '(?s)catch \(_reloadError\)\s*\{.*?blockCheckoutCurrency
 Require-Match $cartPage '(?s)const submittedSignature = checkoutCartSignature\(currency\);.*?await ensureCsrfCookie\(\);' 'submitted signature capture before checkout request'
 Require-Match $renderer '(?s)function shopItemAvailability\(row, currency, ownership = \{\}\).*?if \(row\?\.enabled === false\) return \{ unavailable: true, label: "\u0421\u043d\u044f\u0442\u043e \u0441 \u043f\u0440\u043e\u0434\u0430\u0436\u0438" \};.*?if \(currency === "ar"\)' 'disabled storefront item checked before currency ownership rules'
 Require-Match $cartPage '(?s)function cartItemAvailability\(currency, item\).*?if \(item\?\.enabled === false\) return \{ unavailable: true, label: "\u0421\u043d\u044f\u0442\u043e \u0441 \u043f\u0440\u043e\u0434\u0430\u0436\u0438" \};.*?if \(currency === "ar"\)' 'disabled cart item checked before currency ownership rules'
-Require-Match $cartPage '(?s)const staleCatalogFragments = \[.*?"\u041e\u0434\u0438\u043d \u0438\u0437 donation-\u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d"' 'disabled donation stale catalog refresh'
+Require-Match $cartPage '(?s)const staleCatalogFragments = \[.*?"\u041e\u0434\u0438\u043d \u0438\u0437 \u0434\u043e\u043d\u0430\u0442-\u043f\u0440\u0435\u0434\u043c\u0435\u0442\u043e\u0432 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d"' 'disabled donation stale catalog refresh'
 
 if (-not (Test-Path -LiteralPath $guardPath)) {
   $errors.Add('Checkout guard module is missing.')

@@ -7,42 +7,11 @@
   <title>CopiMine - Лавки</title>
   <link rel="icon" href="/assets/favicon.svg?v=20260723r3" type="image/svg+xml" />
   <script src="/assets/js/theme/theme-bootstrap.js"></script>
-  <link rel="stylesheet" href="/assets/style.css?v=20260809publiccopy1" />
-  <link rel="stylesheet" href="/assets/css/tokens.css" />
-  <link rel="stylesheet" href="/assets/css/themes.css" />
-  <link rel="stylesheet" href="/assets/css/release-ui.css" />
+  <link rel="stylesheet" href="/assets/style.css?v=20260903constellation10" />
 </head>
 <body data-page-kind="public-shops">
   <main class="public-site public-site-compact">
-    <header class="public-nav">
-      <a class="public-brand" href="/index.html" aria-label="CopiMine">
-        <img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" />
-        <span class="public-brand-copy">
-          <strong>CopiMine</strong>
-          <small>AR и donation-магазины</small>
-        </span>
-      </a>
-      <nav aria-label="Разделы сайта">
-        <a href="/index.html">Главная</a>
-        <a href="/server.html">Сервер</a>
-        <a href="/elections.html">Выборы</a>
-        <a href="/shops.html" aria-current="page">Лавки</a>
-        <a href="/mods.html">Модпак</a>
-        <a id="publicSigninLink" href="/signin.html">Войти</a>
-        <a id="publicRegisterLink" href="/register.html">Регистрация</a>
-        <button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button>
-        <button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button>
-        <button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button>
-        <a id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-label="Корзина пуста">
-          <span>Корзина</span>
-          <span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span>
-        </a>
-      </nav>
-      <a class="shop-cart-button shop-cart-mobile-shortcut" href="/cart.html" aria-label="Корзина пуста">
-        <span>Корзина</span>
-        <span class="shop-cart-count" aria-live="polite">0</span>
-      </a>
-    </header>
+    <header class="public-nav public-nav-auth"><a class="public-brand" href="/index.html" aria-label="CopiMine"><img class="public-brand-logo" src="/assets/brand/copimine-logo.png" alt="" /><span class="public-brand-copy"><strong>CopiMine</strong><small>Сайт сервера</small></span></a><button id="mobileNavToggle" class="btn icon-btn mobile-only" type="button" aria-label="Открыть меню">&#9776;</button><nav aria-label="Разделы сайта"><a href="/index.html">Главная</a><a href="/server.html">Сервер</a><a href="/elections.html">Выборы</a><a href="/shops.html" aria-current="page">Лавки</a><a href="/launcher.html">Лаунчер</a><a href="/news.html">Новости</a><a href="/events.html">Ивенты</a><a id="publicSigninLink" href="/signin.html">Войти</a><a id="publicRegisterLink" href="/register.html">Регистрация</a><button id="publicCabinetBtn" class="btn btn-secondary hidden" type="button">Кабинет</button><button id="publicLogoutBtn" class="btn btn-ghost hidden" type="button">Выход</button><button class="btn btn-ghost theme-toggle public-theme-toggle" data-theme-toggle="true" data-theme-toggle-compact="true" type="button">Тема</button><a id="shopCartButton" class="shop-cart-button" href="/cart.html" aria-label="Корзина пуста"><span>Корзина</span><span id="shopCartCount" class="shop-cart-count" aria-live="polite">0</span></a></nav></header>
 
     <div class="public-page-shell">
       <section class="public-hero public-hero-slim public-shops-hero">
@@ -51,8 +20,8 @@
             <span class="hero-kicker">Лавки</span>
             <span class="route-chip">Каталог</span>
           </div>
-          <h1>Каталог игровых предметов.</h1>
-          <p>Покупка на сайте, выдача — в игре.</p>
+          <h1>Выбери предметы для игры.</h1>
+          <p>Оплата на сайте, выдача — в игре.</p>
         </div>
 
         <aside class="public-hero-side">
@@ -60,9 +29,9 @@
             <img class="scene-card-image theme-light-asset" src="/assets/showcase/shops-light-v2.png" alt="Игровая площадь с лавками и кристаллами CopiMine" />
             <img class="scene-card-image theme-dark-asset" src="/assets/showcase/shops-dark-v2.png" alt="Ночная площадь с лавками и кристаллами CopiMine" aria-hidden="true" />
             <div class="scene-card-copy">
-              <span class="hero-kicker">Каталоги</span>
-              <strong>AR и donation разделены</strong>
-              <p>Два баланса — две отдельные корзины.</p>
+              <span class="hero-kicker">Два раздела</span>
+              <strong>AR и донат отдельно</strong>
+              <p>У каждого раздела свой баланс и своя корзина.</p>
             </div>
           </article>
 
@@ -74,8 +43,8 @@
             </div>
             <span class="hero-kicker">Оплата</span>
             <ul class="hero-check-list">
-              <li>AR-предметы оплачиваются из AR-банка.</li>
-              <li>Donation-предметы оплачиваются с donation-баланса.</li>
+              <li>Предметы за AR оплачиваются из AR-банка.</li>
+              <li>Донат-предметы оплачиваются с донат-баланса.</li>
               <li>После оплаты предмет забирается в игре.</li>
             </ul>
           </article>
@@ -86,8 +55,8 @@
         <div class="shop-storefront-head">
           <div>
             <span class="hero-kicker">Витрина</span>
-            <h2 id="shopCmsNoteTitle">Выберите товары.</h2>
-            <p id="shopCmsNoteBody">AR и donation оплачиваются отдельно.</p>
+            <h2 id="shopCmsNoteTitle">Выбери товары.</h2>
+            <p id="shopCmsNoteBody">AR и донат оплачиваются отдельно.</p>
           </div>
           <a class="btn btn-secondary shop-storefront-cart-link" href="/cart.html">Открыть корзину</a>
         </div>
@@ -95,9 +64,9 @@
         <section class="shop-catalog-band shop-catalog-band-ar" aria-labelledby="arShopTitle">
           <header class="shop-catalog-head">
             <div>
-              <span class="shop-catalog-eyebrow">AR-магазин</span>
+              <span class="shop-catalog-eyebrow">Магазин за AR</span>
               <h2 id="arShopTitle">Предметы за AR</h2>
-              <p>Оплата и выдача — в игре.</p>
+              <p>Оплата на сайте, получение — в игре.</p>
             </div>
           </header>
           <div id="publicArShopPreview" class="shop-product-grid" aria-live="polite">
@@ -108,9 +77,9 @@
         <section class="shop-catalog-band shop-catalog-band-donation" aria-labelledby="donationShopTitle">
           <header class="shop-catalog-head">
             <div>
-              <span class="shop-catalog-eyebrow">Donation-магазин</span>
+              <span class="shop-catalog-eyebrow">Донат-магазин</span>
               <h2 id="donationShopTitle">Именные предметы</h2>
-              <p>Оплата donation-балансом, выдача — в игре.</p>
+              <p>Оплата донат-балансом, получение — в игре.</p>
             </div>
           </header>
           <div id="publicDonationShopPreview" class="shop-product-grid" aria-live="polite">
@@ -122,6 +91,6 @@
     </div>
   </main>
 
-  <script type="module" src="/assets/js/public/public-page.js?v=20260809publiccopy1"></script>
+  <script type="module" src="/assets/js/public/public-page.js?v=20260902motion2"></script>
 </body>
 </html>

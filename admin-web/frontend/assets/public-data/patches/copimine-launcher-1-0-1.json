@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "2026-08-17-launcher-1.0.1",
+  "slug": "copimine-launcher-1-0-1",
+  "version": "1.0.1",
+  "title": "CopiMine Launcher 1.0.1",
+  "publishedAt": "2026-08-17T05:00:00Z",
+  "summary": [
+    "Minecraft, Java и обязательные моды теперь загружаются из хранилища CopiMine.",
+    "Добавлена проверка и восстановление локальной копии Minecraft 1.21.1.",
+    "Обновлён установщик с выбором папки и встроенным резервным способом восстановления."
+  ],
+  "sections": {
+    "general": [
+      {
+        "id": "server-hosted-runtime",
+        "title": "Файлы CopiMine",
+        "changes": [
+          {
+            "kind": "added",
+            "text": "Лаунчер получает Minecraft 1.21.1, Fabric Loader 0.19.3, Java 21 и нужные моды с серверов CopiMine."
+          },
+          {
+            "kind": "fixed",
+            "text": "Повреждённый файл не затирает рабочую игру: лаунчер сначала проверяет его размер и целостность."
+          }
+        ]
+      }
+    ],
+    "technical": [
+      {
+        "id": "official-mod-set",
+        "title": "Что входит в набор",
+        "changes": [
+          {
+            "kind": "changed",
+            "text": "В набор входят CopiMineClient, CustomSkinLoader, EmoteCraft, Fabric API, Simple Voice Chat, Iris и Sodium."
+          },
+          {
+            "kind": "added",
+            "text": "Mod Menu устанавливается вместе с набором, но остаётся необязательным для входа."
+          }
+        ]
+      }
+    ],
+    "bugfixes": [
+      {
+        "id": "provisioning-fallback",
+        "title": "Подготовка игры",
+        "changes": [
+          {
+            "kind": "fixed",
+            "text": "Если нужных файлов нет на сервере, лаунчер прямо скажет, чего не хватило, вместо повторной попытки через другой сайт."
+          }
+        ]
+      }
+    ]
+  },
+  "items": [],
+  "review": {
+    "reviewedBy": "release-review",
+    "reviewedAtUtc": "2026-08-17T05:10:00Z",
+    "genericMarketingCopyFound": false
+  },
+  "detailUrl": "/news/copimine-launcher-1-0-1.html"
+}

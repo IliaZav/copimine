@@ -9,12 +9,8 @@
   min-width: 0;
 }
 
-.shop-product-body p {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-  min-height: 3.75em;
+.shop-product-description {
+  overflow-wrap: anywhere;
   text-wrap: pretty;
 }
 
@@ -22,6 +18,17 @@
   overflow-wrap: anywhere;
   text-wrap: balance;
 }
+
+.copy-ip-status {
+  min-height: 1.35em;
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1.4;
+}
+
+.copy-ip-status[data-state="success"] { color: var(--site-moss); }
+.copy-ip-status[data-state="error"] { color: var(--site-coral); }
 
 .shop-product-footer {
   gap: 10px;
@@ -72,6 +79,29 @@
     z-index: 40;
   }
 
+  /* Keep the same control above the open drawer so it can close the drawer
+   * with a real pointer click, not only through a keyboard or nav item. */
+  body[data-page-kind="cabinet"] .cabinet-nav-toggle {
+    position: relative;
+    z-index: 50;
+  }
+
+  /* The drawer is a higher stacking context than the workspace header. Keep
+   * one close affordance above it while the other header actions stay out of
+   * the way. */
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar {
+    z-index: 50;
+    pointer-events: none;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar > :not(.cabinet-nav-toggle) {
+    visibility: hidden;
+  }
+
+  body[data-page-kind="cabinet"] #app.nav-open .workspace .topbar .cabinet-nav-toggle {
+    pointer-events: auto;
+  }
+
   body.panel-admin-mode .top-actions,
   body.junior-admin-mode .top-actions,
   body.player-mode .top-actions {
@@ -84,9 +114,8 @@
 }
 
 @media (max-width: 680px) {
-  .shop-product-body p {
+  .shop-product-description {
     min-height: 0;
-    -webkit-line-clamp: 4;
   }
 
   .table-wrap > table {
@@ -118,4 +147,76 @@
 
 .public-site .hero-side-card {
   gap: 12px;
+}
+
+/* Keep every public route on the same visual rhythm after the shared shell
+ * was consolidated.  These rules only touch the public shell and preview
+ * notice; cabinet controls keep their existing component contract. */
+.public-nav {
+  align-items: center;
+  min-height: 72px;
+}
+
+.public-nav nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.public-nav nav > a,
+.public-nav nav > .btn {
+  min-height: 38px;
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.public-actions > .btn,
+.public-actions > a.btn {
+  min-height: 44px;
+}
+
+.preview-disclaimer {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface-gradient);
+  color: var(--ink);
+}
+
+.preview-disclaimer p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.preview-disclaimer .btn {
+  justify-self: start;
+}
+
+@media (max-width: 720px) {
+  .public-nav {
+    min-height: 64px;
+  }
+
+  .public-nav nav {
+    gap: 4px;
+  }
+}
+
+/* Cabinet sidebar switches at the same 980px boundary used by the runtime.
+ * This closes the 761-980px gap where the sidebar was off-canvas without a
+ * visible control. */
+@media (max-width: 980px) {
+  body[data-page-kind="cabinet"] #app {
+    grid-template-columns: 1fr;
+  }
+
+  body[data-page-kind="cabinet"] .cabinet-nav-toggle {
+    display: inline-flex !important;
+  }
 }

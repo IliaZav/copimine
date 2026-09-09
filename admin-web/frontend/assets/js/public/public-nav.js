@@ -1,5 +1,86 @@
+import { getShopCartCount } from "./shop-cart.js";
+
 const OPEN_MENU_LABEL = "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
 const CLOSE_MENU_LABEL = "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e";
+const CART_PATH = "/cart.html";
+
+function createCartLink() {
+  const link = document.createElement("a");
+  link.className = "shop-cart-button";
+  link.href = CART_PATH;
+
+  const label = document.createElement("span");
+  label.textContent = "Корзина";
+  const count = document.createElement("span");
+  count.className = "shop-cart-count";
+  count.setAttribute("aria-live", "polite");
+  count.textContent = "0";
+  link.append(label, count);
+  return link;
+}
+
+function syncCartButtons(shell, count = getShopCartCount()) {
+  const safeCount = Number.isFinite(Number(count)) ? Math.max(0, Number(count)) : 0;
+  const current = window.location.pathname.endsWith(CART_PATH);
+  shell.querySelectorAll(".shop-cart-count").forEach((node) => {
+    node.textContent = String(safeCount);
+  });
+  shell.querySelectorAll(".shop-cart-button").forEach((node) => {
+    node.classList.toggle("has-items", safeCount > 0);
+    node.setAttribute("aria-label", safeCount ? `Корзина: ${safeCount} предмета` : "Корзина пуста");
+    if (current) node.setAttribute("aria-current", "page");
+    else node.removeAttribute("aria-current");
+  });
+}
+
+function syncEventsLink(nav) {
+  const link = nav.querySelector('a[href="/events.html"]');
+  if (!(link instanceof HTMLAnchorElement)) return;
+  const current = window.location.pathname.endsWith("/events.html") || window.location.pathname === "/events";
+  if (current) link.setAttribute("aria-current", "page");
+  else link.removeAttribute("aria-current");
+}
+
+function ensureCartButton(shell, nav) {
+  const cartLinks = [...shell.querySelectorAll(`a.shop-cart-button[href="${CART_PATH}"]`)].filter(
+    (node) => node instanceof HTMLAnchorElement,
+  );
+  const header = nav.closest(".public-nav");
+  if (!(header instanceof HTMLElement)) return;
+
+  let cart = cartLinks.find((node) => nav.contains(node)) || cartLinks[0];
+  if (!(cart instanceof HTMLAnchorElement)) {
+    cart = createCartLink();
+  }
+
+  for (const link of cartLinks) {
+    if (link !== cart) link.remove();
+  }
+  const media = window.matchMedia("(max-width: 1080px)");
+  const syncCartPlacement = () => {
+    const compact = media.matches;
+    if (compact) {
+      header.append(cart);
+      cart.classList.add("shop-cart-compact");
+    } else {
+      nav.append(cart);
+      cart.classList.remove("shop-cart-compact");
+    }
+  };
+  syncCartPlacement();
+
+  if (shell.dataset.cartBound !== "true") {
+    shell.dataset.cartBound = "true";
+    window.addEventListener("shopCartChanged", (event) => {
+      syncCartButtons(shell, event.detail?.count);
+    });
+  }
+  if (shell.dataset.cartPlacementBound !== "true") {
+    shell.dataset.cartPlacementBound = "true";
+    media.addEventListener("change", syncCartPlacement);
+  }
+  syncCartButtons(shell);
+}
 
 function setExpanded(button, expanded) {
   button.setAttribute("aria-expanded", expanded ? "true" : "false");
@@ -30,6 +111,9 @@ export function initPublicNav() {
     return;
   }
 
+  ensureCartButton(shell, nav);
+  syncEventsLink(nav);
+
   // Several public pages predate this module and already contain
   // #mobileNavToggle. Reuse that element so the enhancer never adds a second
   // visually identical menu control to the compact header.
@@ -45,7 +129,7 @@ export function initPublicNav() {
     setExpanded(toggle, false);
   }
 
-  const media = window.matchMedia("(max-width: 720px)");
+  const media = window.matchMedia("(max-width: 1080px)");
 
   const closeMenu = () => {
     shell.classList.remove("public-nav-open");

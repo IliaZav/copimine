@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "version": "1.0.14",
+  "minimumWindowsBuild": "19045",
+  "architecture": "x64",
+  "filename": "CopiMineLauncherSetup-1.0.14.exe",
+  "downloadUrl": "/downloads/launcher/CopiMineLauncherSetup-1.0.14.exe",
+  "sizeBytes": 1420673427,
+  "sha256": "65fcfe7bf3a8fe0217c305446b088b1bfc4979153aeb72cd6995f6b02a47e9c8",
+  "releaseNotesUrl": "/news/copimine-launcher-1-0-14.html",
+  "publishedAt": "2026-09-01T21:25:04.0006481+00:00",
+  "customInstallerFilename": "CopiMineLauncherFolderSetup-1.0.14.exe",
+  "customInstallerDownloadUrl": "/downloads/launcher/CopiMineLauncherFolderSetup-1.0.14.exe",
+  "customInstallerSizeBytes": 173359152,
+  "customInstallerSha256": "af100c145211c6176aaf7c6b67ed37c7eedebffd07e7dbacf58528b717fbfbc9",
+  "customInstallerMode": "folder-picker",
+  "msiFilename": "CopiMineLauncherSetup-1.0.14.msi",
+  "msiDownloadUrl": "/downloads/launcher/CopiMineLauncherSetup-1.0.14.msi",
+  "msiSizeBytes": 1408205608,
+  "msiSha256": "84010338cc09f20cb3f789ee0b953bd4555e02b3602a6d63d9909e4a01c65b8f",
+  "msiInstallLocation": "choose"
+}

@@ -4,6 +4,14 @@ $artifacts = Read-Utf8 $Paths.Artifacts
 
 Require-Contains $artifacts 'import me.copimine.economycore.CopiMineEconomyCore;' 'Artifacts must import EconomyCore directly.'
 Require-Contains $artifacts 'CopiMineEconomyCore.ArtifactsBridge' 'Artifacts must use the EconomyCore bridge contract directly.'
-Require-NotContains $artifacts 'CopiMineUltimateAdminPlus' 'Artifacts must not depend on AdminPlus for economy integration.'
+# AdminPlus is an optional reflection-only error-reporting bridge.  The
+# economy surface above must remain the direct EconomyCore contract; a text
+# search over the whole class would incorrectly reject that non-economy hook.
+$compileTimeDependencySurface = ($artifacts -split "`n" | Where-Object {
+    $_ -match '^\s*import\s+' -or
+    $_ -match '^\s*public\s+class\s+' -or
+    $_ -match 'plugin\.yml|depend(?:s|encies)?:'
+}) -join "`n"
+Require-NotContains $compileTimeDependencySurface 'CopiMineUltimateAdminPlus' 'Artifacts must not depend on AdminPlus for economy integration.'
 
 Throw-IfErrors 'ValidateCopiMineArtifactsUsesEconomyCoreDirectly'

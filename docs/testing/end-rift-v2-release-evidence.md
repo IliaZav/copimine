@@ -81,7 +81,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 
 - Fabric client Gradle build: `BUILD SUCCESSFUL`;
 - resource pack собран;
-- Python contracts: `436 passed, 17 warnings`;
+- Python contracts: `437 passed, 17 warnings`;
 - pure Java domain/policy tests: все перечисленные в gate тесты `OK`;
 - durable persistence/layout tests: все `OK`;
 - итог: `End Rift local checks passed.`
@@ -123,7 +123,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 - 5 игроков: полный проход и victory — `PASS`, event
   `d47ba29c-ec7b-4f98-8938-7bea3f76e461`;
 - 10 игроков: полный проход и victory — `PASS`, event
-  `cb6b2d7f-8b89-4e97-916e-8d351a1d2490`; boss max HP `13500` по V2 scaling;
+  `07d0963b-5e0b-498f-b152-7543756abf9f`; boss max HP `13500` по V2 scaling;
 - 20 игроков: 4 obelisks, bounded fireballs и scaling — `PASS`;
 - 5-player performance: 30 s, средний TPS `19.59`, max MSPT `6.56`, max ping
   `4 ms`;
@@ -147,7 +147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 
 Последний прогон после world-space VFX обновления и пересборки JAR:
 
-- полный gate: `436 passed, 17 warnings`, все Java domain/persistence/layout
+- полный gate: `437 passed, 17 warnings`, все Java domain/persistence/layout
   тесты `OK`, итог `End Rift local checks passed.`;
 - Paper перезапущен через `StartEndRiftLocalUserSession.ps1`, карта и локальная
   persistence сохранены, стартовый статус `READY_FOR_PLAYERS`, 30 plugins;
@@ -164,10 +164,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
   `player_damage_applied=109`, `ai_targets=77`, `ai_paths=51` — `PASS`;
 - 20-player obelisk load: `4/4`, boss real HP `20000`, fireballs `0/8`,
   staggered, pulse `5/40`, effects `40/60`, cleanup — `PASS`;
-- полный официальный двухигровой проход на текущем JAR: event
-  `8cce8392-3538-4d50-af91-138c05008973`, Wave 1–6, `AWAKENING,HUNT,RIFT,
-  OVERLOAD,RAGE,LAST_SEAL`, `RIFT_OBELISKS_SPAWNED`, boss defeat и victory —
-  `PASS`;
+- полный официальный десятигровой проход на текущем JAR: event
+  `07d0963b-5e0b-498f-b152-7543756abf9f`, 10 независимых клиентов, Wave 1–6,
+  `AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`,
+  `RIFT_OBELISKS_SPAWNED`, boss defeat и victory — `PASS`;
+- в том же прогоне после victory статус показал `event-mobs=0`, `boss=none`,
+  `rift-obelisks=0`, `rift-fireballs=0`, `victory=REWARDS_PENDING`; Paper log
+  подтвердил `BOSS_DEFEAT_COMMITTED`, `BOSS_DEFEATED`, cleanup и memorial с
+  никами всех 10 участников;
+- исправлен официальный live-driver: `Wait-LogRegex` теперь читает лог сразу
+  после каждого медленного `DuringWait` RCON-действия и делает финальное чтение
+  перед timeout. Регрессионный контракт — `1 passed`; это закрывает ложный
+  timeout, который возникал, когда маркер записывался во время обслуживания
+  десяти клиентов, а старый драйвер проверял лог только до этой операции;
 - visual live probe на текущем JAR: boss cue, Wave 1 wave-front, Wave 3
   layered portal (`12` tracked visuals), Wave 4 zone state, обе финальные
   сцены и cleanup, diagnostics — `PASS`; отдельный 30-секундный sampler дал
@@ -262,5 +271,6 @@ SHA-256 после последнего gate:
 - `resourcepacks/build/CopiMineResourcePack.zip` —
   `7AE745F16F7A1C78105B3BCBD49849A881A9C43036F7CE298EDEBF9975AFB31A`.
 
-До push этот файл и весь код должны попасть в один commit ветки
-`codex/end-rift-event`; production deployment из этой проверки не выполнялся.
+Изменение live-driver и его регрессионный контракт входят в текущий commit
+ветки `codex/end-rift-event`; production deployment из этой проверки не
+выполнялся.

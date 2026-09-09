@@ -76,6 +76,7 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_rift_obelisk_contract.py `
       tests\test_end_event_tentacle_contract.py `
       tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
+      tests\test_end_event_official_log_wait_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
       tests\test_end_event_spell_matrix_contract.py `

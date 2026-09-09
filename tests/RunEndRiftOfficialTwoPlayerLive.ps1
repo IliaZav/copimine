@@ -569,7 +569,7 @@ function Wait-LogRegex {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   $nextAction = Get-Date
-  while ((Get-Date) -lt $deadline) {
+  while ($true) {
     $chunk = Read-NewPaperLog
     if (-not [string]::IsNullOrEmpty($chunk)) {
       [void]$script:LogEvidence.Append($chunk)
@@ -579,11 +579,42 @@ function Wait-LogRegex {
       Write-Evidence "OFFICIAL_LOG_PASS pattern=$Pattern"
       return
     }
+    if ((Get-Date) -ge $deadline) {
+      break
+    }
     if ($null -ne $DuringWait -and (Get-Date) -ge $nextAction) {
       & $DuringWait
+      # DuringWait can issue several sequential RCON commands.  The server
+      # may write the awaited marker while that action is still running.  Read
+      # and test once more before checking the deadline, otherwise a slow
+      # multi-player maintenance action can turn a real pass into a timeout.
+      $chunk = Read-NewPaperLog
+      if (-not [string]::IsNullOrEmpty($chunk)) {
+        [void]$script:LogEvidence.Append($chunk)
+      }
+      $evidence = $script:LogEvidence.ToString()
+      if ([Regex]::IsMatch($evidence, $Pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+        Write-Evidence "OFFICIAL_LOG_PASS pattern=$Pattern"
+        return
+      }
+      if ((Get-Date) -ge $deadline) {
+        break
+      }
       $nextAction = (Get-Date).AddSeconds(1.5D)
     }
     Start-Sleep -Milliseconds 500
+  }
+
+  # Make the final read explicit as well.  A log write can race the final
+  # sleep even when no DuringWait action is configured.
+  $chunk = Read-NewPaperLog
+  if (-not [string]::IsNullOrEmpty($chunk)) {
+    [void]$script:LogEvidence.Append($chunk)
+  }
+  $evidence = $script:LogEvidence.ToString()
+  if ([Regex]::IsMatch($evidence, $Pattern, [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+    Write-Evidence "OFFICIAL_LOG_PASS pattern=$Pattern"
+    return
   }
   throw "Timed out waiting for local Paper log pattern '$Pattern'."
 }

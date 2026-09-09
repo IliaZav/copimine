@@ -175,6 +175,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\StartEndRiftLocalUse
 - после победы финальный статус восстановлен как `READY_FOR_PLAYERS` с
   `endUnlocked=true`, Core `CopiMine 8,68,-39`, руны `2/2`, временные сущности
   отсутствуют. End Rift error scan последнего Paper log — `clean`.
+- После visual probe локальный ресурсный прогресс был восстановлен штатными
+  командами (`128/128`, `100/100`, `64/64`, `64/64`) и Paper перезапущен ещё
+  раз. Restart сохранил карту, Core/арену/руны и перевёл runtime обратно в
+  `READY_FOR_PLAYERS`; production не затрагивался.
 
 При последнем локальном старте Paper также записал два внешних предупреждения,
 не относящихся к End Rift: voicechat не распознал строку версии Paper 1.21.1 и

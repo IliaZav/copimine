@@ -75,14 +75,17 @@ Invoke-EndRiftStep 'Python event contracts' {
       tests\test_end_event_v2_wave5_contract.py `
       tests\test_end_event_rift_obelisk_contract.py `
       tests\test_end_event_tentacle_contract.py `
-      tests\test_end_event_official_e2e_contract.py tests\test_end_event_skeleton_contract.py `
+      tests\test_end_rift_tentacle_articulated_contract.py `
+      tests\test_end_event_official_e2e_contract.py `
+      tests\test_end_event_skeleton_contract.py `
       tests\test_end_event_official_log_wait_contract.py `
       tests\test_end_event_skeleton_behavior_docs_contract.py `
       tests\test_end_event_boss_ai_behavior_docs_contract.py `
       tests\test_end_event_spell_matrix_contract.py `
       tests\test_end_event_wavefront_contract.py `
-      tests\test_end_event_boss_final_strike_contract.py
-      tests\test_end_event_world_vfx_contract.py
+      tests\test_end_event_boss_final_strike_contract.py `
+      tests\test_end_event_world_vfx_contract.py `
+      tests\test_end_event_v3_contract.py
   } finally {
     Pop-Location
   }
@@ -152,9 +155,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\WaveDamagePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskDamagePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftFireballCollisionPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\RiftFracturePolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskPlacementPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskTimingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\RiftObeliskCastPolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V3WaveObjectivePolicyTest.java') `
+      (Join-Path $endRiftRoot 'tests\V3ObeliskScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
       (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
@@ -165,6 +172,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
       (Join-Path $endRiftRoot 'tests\TentacleAnimationPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\TentacleScalingPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\TentacleControllerTest.java') `
+      (Join-Path $endRiftRoot 'tests\TentacleGuardianPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\AbyssAnchorPolicyTest.java') `
       (Join-Path $endRiftRoot 'tests\ShardPassivePolicyTest.java')
   if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
@@ -217,9 +225,13 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild WaveDamagePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskDamagePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFireballCollisionPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFracturePolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskPlacementPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskTimingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskCastPolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V3WaveObjectivePolicyTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild V3ObeliskScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
   Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest
@@ -230,6 +242,7 @@ Invoke-EndRiftStep 'Pure domain tests' {
   Invoke-EndRiftJavaMain $endRiftTestBuild TentacleAnimationPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild TentacleScalingPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild TentacleControllerTest
+  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleGuardianPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild AbyssAnchorPolicyTest
   Invoke-EndRiftJavaMain $endRiftTestBuild ShardPassivePolicyTest
 }

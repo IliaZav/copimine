@@ -2,9 +2,9 @@ package me.copimine.endevent.domain;
 
 /**
  * The V2 boss transaction is deliberately about the real Bukkit health
- * value.  The adapter uses this policy to validate and project the approved
- * hit onto the entity's normal damage event without introducing a second HP
- * authority.
+ * value. The adapter uses this policy to validate an approved hit and commit
+ * it once to the entity after cancelling the native event, without
+ * introducing a second HP authority.
  */
 public final class BossRealHealthDamagePolicy {
     private BossRealHealthDamagePolicy() {
@@ -26,10 +26,9 @@ public final class BossRealHealthDamagePolicy {
     }
 
     /**
-     * Scale the event's base amount so Bukkit's ordinary damage pipeline
-     * produces the already-finalized target amount.  Keeping the ratio based
-     * on the pre-adjustment final amount preserves armor/protection modifiers
-     * while applying the EXHAUSTED multiplier exactly once.
+     * Kept for compatibility with older diagnostics that compare the desired
+     * finalized amount with an event base amount. The official adapter no
+     * longer relies on Paper's native application for the boss transaction.
      */
     public static double scaleBaseDamage(double baseDamage, double finalizedDamage,
                                          double targetFinalDamage) {

@@ -14,28 +14,27 @@ def _body(start_marker: str, end_marker: str) -> str:
     return MAIN[start:end]
 
 
-def test_official_damage_leaves_accepted_hit_for_real_entity_health_pipeline() -> None:
+def test_official_damage_commits_each_accepted_hit_to_real_entity_health() -> None:
     damage = _body("private void handleV2BossDamage", "private void applyBossDamage")
     assert "double healthBefore = boss.getHealth()" in damage
     assert "double finalDamage = Math.max(0.0D, event.getFinalDamage())" in damage
     assert "BossRealHealthDamagePolicy.apply(" in damage
-    accepted = damage[damage.index("event.setDamage(adjustedBaseDamage);"):]
-    assert "event.setCancelled(true)" not in accepted
-    assert "event.setDamage(" in accepted
-    assert "boss.setHealth(result.remainingHealth())" not in accepted
-    assert "releaseEventCombatHurtWindow(boss)" in accepted
+    accepted = damage[damage.index("event.setCancelled(true);"):]
+    assert "boss.setHealth(result.remainingHealth())" in accepted
+    assert "event.setDamage(adjustedBaseDamage)" not in accepted
+    assert "releaseEventCombatHurtWindow(boss)" not in accepted
     assert "authority=entity-health" in damage
     assert "BossVirtualHealthPolicy" not in damage
     assert "setBossVirtualHealth" not in damage
 
 
-def test_real_health_damage_policy_documents_native_hurt_window_without_rewriting_hp() -> None:
+def test_real_health_damage_policy_does_not_depend_on_native_hurt_window() -> None:
     assert "BossRealHealthDamagePolicy" in MAIN
     assert "applySeries" in REAL_HEALTH_POLICY
     assert "before - requested" in REAL_HEALTH_POLICY
     assert "EVENT_ENTITY_MAX_NO_DAMAGE_TICKS = 3" in MAIN
     assert "configureEventCombatHurtWindow" in MAIN
-    assert "releaseEventCombatHurtWindow(boss)" in MAIN
+    assert "releaseEventCombatHurtWindow(boss)" not in MAIN
     assert "releaseEventCombatHurtWindow(victim)" in MAIN
     assert "entity.setNoDamageTicks(0)" in MAIN
     assert "setMaximumNoDamageTicks(0)" not in MAIN
@@ -48,7 +47,7 @@ def test_hurt_window_reset_is_scoped_to_owned_event_entities() -> None:
     assert "entity.setLastDamage(0.0D)" in MAIN
 
 
-def test_bukkit_adapter_uses_each_event_final_damage_and_keeps_accepted_projection() -> None:
+def test_bukkit_adapter_uses_each_event_final_damage_and_commits_real_health() -> None:
     damage = _body("public void onBossDamage", "private void applyBossDamage")
     assert damage.count("event.getFinalDamage()") >= 2
     assert "BossRealHealthDamagePolicy.apply(" in damage
@@ -86,8 +85,8 @@ def test_lethal_real_health_sequence_has_one_terminal_death_transaction() -> Non
     assert "officialBossDeathCommitted" in MAIN
     damage = _body("private void handleV2BossDamage", "private void applyBossDamage")
     assert "result.lethal()" in damage
-    assert "boss.setHealth(result.remainingHealth())" not in damage
-    assert "event.setDamage(adjustedBaseDamage)" in damage
+    assert "boss.setHealth(result.remainingHealth())" in damage
+    assert "event.setDamage(adjustedBaseDamage)" not in damage
 
 
 def test_local_admin_health_probe_uses_the_same_real_entity_value() -> None:

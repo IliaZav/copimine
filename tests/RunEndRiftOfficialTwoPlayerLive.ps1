@@ -11,7 +11,8 @@ param(
   [switch]$TowerFailureProbe,
   [switch]$RewardPickupProbe,
   [switch]$StopAfterRewardProbe,
-  [switch]$StopAfterWave3
+  [switch]$StopAfterWave3,
+  [switch]$StopAfterWave4
 )
 
 # Local-only official two-player run.  This driver prepares the isolated event
@@ -57,9 +58,12 @@ if ($PlayerNames.Count -eq 5) {
   $evidencePath = Join-Path $runtimeRoot 'official-three-player-live.log'
   $botLogDirectory = Join-Path $runtimeRoot 'official-three-player-bots'
 }
+$botControlDirectory = Join-Path $botLogDirectory 'control'
 
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
-if ((Get-Content -LiteralPath $configPath -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
+$configText = Get-Content -LiteralPath $configPath -Raw
+$isV3Flow = $configText -match '(?m)^\s*schema-version:\s*3\s*$'
+if ($configText -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: official End Rift run requires environment: local.'
 }
 if (-not (Test-Path -LiteralPath $serverDir -PathType Container)) {
@@ -408,6 +412,106 @@ function Keep-PlayersAtPoint {
   }
 }
 
+function Keep-PlayersAtV3ObeliskTargets {
+  param([Parameter(Mandatory = $true)][object[]]$Targets)
+  if ($Targets.Count -eq 0) {
+    Keep-PlayersAtCombatSweep -Core $core
+    return
+  }
+  # Keep the two disposable clients at one source at a time.  A reflected
+  # projectile follows the player's real look vector, so standing near the
+  # current source gives the live probe a short, deterministic return lane.
+  # The dwell is long enough for three fire intervals; cycling the points is
+  # still a real client interaction and does not alter server-side targeting
+  # or reflection semantics.
+  $now = Get-Date
+  if ($null -eq $script:V3ObeliskProbeIndex) {
+    $script:V3ObeliskProbeIndex = 0
+    $script:V3ObeliskProbeNextSwitch = $now.AddSeconds(15)
+  } elseif ($now -ge $script:V3ObeliskProbeNextSwitch) {
+    $script:V3ObeliskProbeIndex = ($script:V3ObeliskProbeIndex + 1) % $Targets.Count
+    $script:V3ObeliskProbeNextSwitch = $now.AddSeconds(15)
+  }
+  $target = $Targets[$script:V3ObeliskProbeIndex % $Targets.Count]
+  $dx = [double]$target.X - ($coreX + 0.5D)
+  $dz = [double]$target.Z - ($coreZ + 0.5D)
+  $length = [Math]::Max(0.01D, [Math]::Sqrt($dx * $dx + $dz * $dz))
+  # Stand just inside the obelisk's projectile approach path.  The player
+  # must be close enough to send a real use_entity attack, but never inside
+  # the journaled 3x3 base of the real block structure.
+  $safeX = [double]$target.X - $dx / $length * 2.8D
+  $safeZ = [double]$target.Z - $dz / $length * 2.8D
+  foreach ($name in $PlayerNames) {
+    Teleport-Player -Name $name -X $safeX -Y ([double]$target.Y) -Z $safeZ
+  }
+}
+
+function Get-V3ObeliskCount {
+  param([Parameter(Mandatory = $true)][int]$PlayerCount)
+  if ($PlayerCount -le 7) { return 4 }
+  if ($PlayerCount -le 10) { return 5 }
+  if ($PlayerCount -le 15) { return 5 }
+  return 6
+}
+
+function Get-V3ObeliskTargets {
+  param(
+    [Parameter(Mandatory = $true)][double]$CoreX,
+    [Parameter(Mandatory = $true)][double]$CoreY,
+    [Parameter(Mandatory = $true)][double]$CoreZ,
+    [Parameter(Mandatory = $true)][int]$Count
+  )
+  $targets = @()
+  for ($index = 0; $index -lt $Count; $index++) {
+    # Keep this calculation identical to V3ObeliskPlacementPolicy.candidates:
+    # the policy rounds radial offsets first, then the adapter adds the block
+    # center's .5 coordinate.  A four-player run happens to be a cross; for
+    # five and six players the angles are not axis-aligned, so a hard-coded
+    # four-point probe would check the wrong blocks and steer reflections away.
+    $angle = -[Math]::PI / 2.0D +
+      (2.0D * [Math]::PI * $index / [double]$Count)
+    $offsetX = [int][Math]::Round([Math]::Cos($angle) * 9.0D)
+    $offsetZ = [int][Math]::Round([Math]::Sin($angle) * 9.0D)
+    $targets += [pscustomobject]@{
+      X = $CoreX + $offsetX + 0.5D
+      Y = $CoreY
+      Z = $CoreZ + $offsetZ + 0.5D
+    }
+  }
+  return $targets
+}
+
+function Assert-V3ObeliskBaseBlocks {
+  param(
+    [Parameter(Mandatory = $true)][object[]]$Targets,
+    [Parameter(Mandatory = $true)][string]$Material,
+    [Parameter(Mandatory = $true)][int]$Expected
+  )
+  $objective = 'endrift_v3_probe'
+  $holder = '#endrift_v3_probe'
+  $null = Invoke-LocalRcon -CommandText ("scoreboard objectives add $objective dummy")
+  $matched = 0
+  try {
+    foreach ($target in $Targets) {
+      $x = [int][Math]::Floor([double]$target.X)
+      $y = [int][Math]::Floor([double]$target.Y)
+      $z = [int][Math]::Floor([double]$target.Z)
+      $null = Invoke-LocalRcon -CommandText ("scoreboard players set $holder $objective 0")
+      $null = Invoke-LocalRcon -CommandText ("execute if block $x $y $z minecraft:$Material run scoreboard players set $holder $objective 1")
+      $score = Invoke-LocalRcon -CommandText ("scoreboard players get $holder $objective")
+      if ($score -match '(?<!\d)1(?!\d)') {
+        $matched++
+      }
+    }
+  } finally {
+    $null = Invoke-LocalRcon -CommandText ("scoreboard objectives remove $objective")
+  }
+  Write-Evidence "OFFICIAL_V3_OBELISK_BLOCK_PROBE material=$Material matched=$matched expected=$Expected"
+  if ($matched -ne $Expected) {
+    throw "V3 obelisk block probe failed: material=$Material matched=$matched expected=$Expected"
+  }
+}
+
 function Assert-WaveRewardPickup {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
@@ -500,6 +604,88 @@ function Keep-PlayersNearBoss {
   }
 }
 
+function Get-GuardianHitboxPositions {
+  # Interaction companions are tagged by the plugin and are the only
+  # damageable surface for permanent guardians. Query only the bounded arena
+  # footprint; do not scan the world or depend on client-side display models.
+  $probe = Invoke-LocalRcon 'execute as @e[type=minecraft:interaction,tag=copimine_end_event,x=-12,y=65,z=-59,dx=40,dy=8,dz=40] run data get entity @s Pos'
+  $positions = @()
+  foreach ($match in [Regex]::Matches($probe,
+      '\[\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*\]')) {
+    $positions += [pscustomobject]@{
+      X = [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+      Y = [double]::Parse($match.Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture)
+      Z = [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
+    }
+  }
+  return $positions
+}
+
+function Keep-PlayersAtGuardiansAndBoss {
+  param([Parameter(Mandatory = $true)][string]$Uuid)
+  $bossPosition = Get-BossPosition $Uuid
+  $guardians = @(Get-GuardianHitboxPositions)
+  $offsets = @(
+    [pscustomobject]@{ X = 1.8D; Z = 0.0D },
+    [pscustomobject]@{ X = -1.8D; Z = 0.0D },
+    [pscustomobject]@{ X = 0.0D; Z = 1.8D },
+    [pscustomobject]@{ X = 0.0D; Z = -1.8D },
+    [pscustomobject]@{ X = 1.4D; Z = 1.4D }
+  )
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    if ($index -lt $guardians.Count) {
+      # Put one independent client beside each real Interaction hitbox. This
+      # keeps the two-player probe bounded while proving that all permanent
+      # guardians can be damaged concurrently; remaining clients stay on the
+      # boss and observe the shield.
+      $guardian = $guardians[$index]
+      Teleport-Player -Name $PlayerNames[$index] -X ($guardian.X + 1.25D) `
+        -Y ([double]$coreY) -Z $guardian.Z
+      continue
+    }
+    $offset = $offsets[$index % $offsets.Count]
+    Teleport-Player -Name $PlayerNames[$index] -X ($bossPosition[0] + $offset.X) `
+      -Y $bossPosition[1] -Z ($bossPosition[2] + $offset.Z)
+  }
+}
+
+function Set-OfficialBotCombatMode {
+  param(
+    [ValidateSet('PASSIVE', 'ACTIVE')]
+    [string]$Mode,
+    [int]$ActiveFromIndex = 0
+  )
+  for ($index = 0; $index -lt $PlayerNames.Count; $index++) {
+    $shouldBeActive = if ($Mode -eq 'ACTIVE') {
+      $index -ge $ActiveFromIndex
+    } else {
+      $index -lt $ActiveFromIndex
+    }
+    $marker = if ($shouldBeActive) { 'END_RIFT_RESUME' } else { 'END_RIFT_PASSIVE' }
+    $requestedMode = if ($shouldBeActive) { 'ACTIVE' } else { 'PASSIVE' }
+    # Chat markers are retained as human-readable evidence, but a burst of
+    # tellraw packets is not a reliable process-control channel on a busy
+    # local server. Each bot also polls its own mode file.
+    Set-Content -LiteralPath (Join-Path $botControlDirectory ($PlayerNames[$index] + '.mode')) `
+      -Value $requestedMode -NoNewline -Encoding ASCII
+    $null = Invoke-LocalRcon -CommandText ("tellraw " + $PlayerNames[$index] +
+      ' {"text":"' + $marker + '"}')
+  }
+  Write-Evidence "OFFICIAL_BOT_COMBAT_MODE mode=$Mode active_from_index=$ActiveFromIndex players=$($PlayerNames.Count)"
+}
+
+function Get-OfficialPermanentTentacleCount {
+  param([Parameter(Mandatory = $true)][int]$PlayerCount)
+  $safePlayers = [Math]::Max(0, [Math]::Min(20, $PlayerCount))
+  if ($safePlayers -eq 0) { return 0 }
+  if ($safePlayers -le 2) { return 2 }
+  if ($safePlayers -le 4) { return 3 }
+  if ($safePlayers -le 7) { return 4 }
+  if ($safePlayers -le 10) { return 5 }
+  if ($safePlayers -le 15) { return 6 }
+  return 8
+}
+
 function Wait-LocalPlayers {
   for ($attempt = 0; $attempt -lt 60; $attempt++) {
     $list = Invoke-LocalRcon -CommandText 'list'
@@ -526,10 +712,36 @@ function Wait-V2TransitionToWave {
     throw "V2 transition did not persist one rune per official player: completed=$CompletedWave pads=$($nextPads.Count) players=$($PlayerNames.Count)"
   }
   Keep-PlayersAtPads -Pads $nextPads
-  Wait-LogRegex -Pattern ("V2_WAVE_STARTED.*wave=" + $NextWave) -WaitSeconds 120 `
+  $waveStartPattern = if ($isV3Flow) {
+    'V3_WAVE_STARTED.*wave=' + $NextWave
+  } else {
+    'V2_WAVE_STARTED.*wave=' + $NextWave
+  }
+  Wait-LogRegex -Pattern $waveStartPattern -WaitSeconds 120 `
     -DuringWait { Keep-PlayersAtPads -Pads $nextPads }
   Write-Evidence "OFFICIAL_V2_TRANSITION_PASS event=$eventId completed_wave=$CompletedWave next_wave=$NextWave pads=$($nextPads.Count) hold_ms=5000"
   return ,$nextPads
+}
+
+function Wait-EventWaveStarted {
+  param([Parameter(Mandatory = $true)][int]$Wave, [int]$WaitSeconds = 120)
+  $pattern = if ($isV3Flow) {
+    'V3_WAVE_STARTED.*wave=' + $Wave
+  } else {
+    'V2_WAVE_STARTED.*wave=' + $Wave
+  }
+  Wait-LogRegex -Pattern $pattern -WaitSeconds $WaitSeconds
+}
+
+function Wait-EventWaveCompleted {
+  param([Parameter(Mandatory = $true)][int]$Wave, [int]$WaitSeconds = 240,
+        [scriptblock]$DuringWait = $null)
+  $pattern = if ($isV3Flow) {
+    'V3_WAVE_COMPLETED.*wave=' + $Wave
+  } else {
+    'V2_WAVE_COMPLETED.*wave=' + $Wave
+  }
+  Wait-LogRegex -Pattern $pattern -WaitSeconds $WaitSeconds -DuringWait $DuringWait
 }
 
 $script:LogOffset = [long](Get-Item -LiteralPath $paperLog).Length
@@ -619,6 +831,24 @@ function Wait-LogRegex {
   throw "Timed out waiting for local Paper log pattern '$Pattern'."
 }
 
+function Wait-LocalPhase {
+  param(
+    [Parameter(Mandatory = $true)][string]$PhasePattern,
+    [Parameter(Mandatory = $true)][int]$WaitSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($WaitSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $debug = Invoke-LocalRcon -CommandText 'cmend debug ai'
+    if ([Regex]::IsMatch($debug, 'phase=(' + $PhasePattern + ')',
+        [Text.RegularExpressions.RegexOptions]::IgnoreCase)) {
+      Write-Evidence "OFFICIAL_PHASE_PASS phase_pattern=$PhasePattern"
+      return
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Timed out waiting for local End Rift phase '$PhasePattern'."
+}
+
 function Prepare-OfficialAuthMeAccounts {
   foreach ($name in $PlayerNames) {
     # Register the disposable local accounts from the console before the
@@ -682,6 +912,14 @@ $processes = @()
 $pads = $null
 $core = $null
 $bossUuid = $null
+$v3ObeliskTargets = @()
+$reflectionEnvConfigured = $false
+$oldReflectEnabled = $null
+$oldReflectStartMs = $null
+$oldObeliskTargets = $null
+$oldBotControlDirectory = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_CONTROL_DIRECTORY', 'Process')
+$oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIAN_PROBE_NAMES', 'Process')
+$guardianProbeEnvConfigured = $false
 $runeCount = $PlayerNames.Count
 $setupCommand = if ($runeCount -eq 5) {
   'cmend core setat 8 68 -39 5'
@@ -690,6 +928,21 @@ $setupCommand = if ($runeCount -eq 5) {
 }
 try {
   New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
+  New-Item -ItemType Directory -Path $botControlDirectory -Force | Out-Null
+  Get-ChildItem -LiteralPath $botControlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+  foreach ($name in $PlayerNames) {
+    Set-Content -LiteralPath (Join-Path $botControlDirectory ($name + '.mode')) `
+      -Value 'ACTIVE' -NoNewline -Encoding ASCII
+  }
+  $env:END_RIFT_BOT_CONTROL_DIRECTORY = $botControlDirectory
+  # The first N clients are placed beside permanent guardians and attack only
+  # the real Interaction hitboxes. Remaining clients stay eligible to attack
+  # the boss, so large runs observe both the shield block and the guardian
+  # damage window instead of pausing every client in LAST_SEAL.
+  $guardianProbeNames = @($PlayerNames | Select-Object -First (Get-OfficialPermanentTentacleCount -PlayerCount $PlayerNames.Count))
+  $env:END_RIFT_GUARDIAN_PROBE_NAMES = ($guardianProbeNames -join ',')
+  $guardianProbeEnvConfigured = $true
   [IO.File]::WriteAllText($evidencePath, "$runLabel $(Get-Date -Format o) players=$($PlayerNames.Count)", [Text.UTF8Encoding]::new($false))
 
   # This is a local event-session reset only.  It restores the saved vanilla
@@ -721,6 +974,20 @@ try {
   $coreY = [double]$core[1]
   $coreZ = [double]$core[2]
   $eventId = Get-EventId $status
+  if ($isV3Flow) {
+    $v3ObeliskTargets = Get-V3ObeliskTargets -CoreX $coreX -CoreY $coreY -CoreZ $coreZ `
+      -Count (Get-V3ObeliskCount -PlayerCount $PlayerNames.Count)
+    # The optional reflection path is inherited only by these local probe
+    # processes.  It is never written to server configuration or production
+    # environment state.
+    $oldReflectEnabled = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_ENABLED', 'Process')
+    $oldReflectStartMs = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_START_MS', 'Process')
+    $oldObeliskTargets = [Environment]::GetEnvironmentVariable('END_RIFT_OBELISK_TARGETS', 'Process')
+    $env:END_RIFT_REFLECT_ENABLED = '1'
+    $env:END_RIFT_REFLECT_START_MS = '0'
+    $env:END_RIFT_OBELISK_TARGETS = ($v3ObeliskTargets | ConvertTo-Json -Compress)
+    $reflectionEnvConfigured = $true
+  }
   $pads = Get-PadCoordinates
   # RCON returns one string per status line.  Normalize the complete response
   # before matching.  Use Regex.IsMatch explicitly: PowerShell's -notmatch
@@ -766,10 +1033,10 @@ try {
   Wait-LogRegex -Pattern 'RITUAL_STARTED' -WaitSeconds 20 -DuringWait { Keep-PlayersAtPads -Pads $pads }
   Wait-LogRegex -Pattern 'RITUAL_COMPLETED' -WaitSeconds 80 -DuringWait { Keep-PlayersAtPads -Pads $pads }
 
-  Wait-LogRegex -Pattern 'V2_WAVE_STARTED.*wave=1' -WaitSeconds 20
+  Wait-EventWaveStarted -Wave 1 -WaitSeconds 20
   Wait-LogRegex -Pattern 'V2_WAVE_GROUP_SPAWN.*wave=1.*group=1/\d+.*spawned=\d+' -WaitSeconds 30
   Keep-PlayersAtWave1Carrier -Core $core
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=1' -WaitSeconds 240 -DuringWait { Keep-PlayersAtWave1Carrier -Core $core }
+  Wait-EventWaveCompleted -Wave 1 -WaitSeconds 240 -DuringWait { Keep-PlayersAtWave1Carrier -Core $core }
   if ($RewardPickupProbe) {
     Wait-LogRegex -Pattern 'WAVE_REWARD_SPAWNED.*wave=1' -WaitSeconds 20
     Write-Evidence "WAVE_REWARD_PICKUP_PROBE event=$eventId wave=1 recipients=$($PlayerNames.Count) mode=one-player-at-a-time"
@@ -793,7 +1060,7 @@ try {
   $pads = Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2
   Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=2.*HUNT_MARK' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
   Wait-LogRegex -Pattern 'V2_HUNT_CYCLE.*cycle=1' -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=2' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+  Wait-EventWaveCompleted -Wave 2 -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3
   # V2 Wave 3 has exactly three sequential portals for every roster size.
@@ -828,39 +1095,171 @@ try {
   # the inner ring.  Keep the bots on the authoritative mob positions while
   # waiting for the real Wave 3 completion marker; this exercises the same
   # portal-mob damage path without making the test depend on a lucky spawn.
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=3' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+  Wait-EventWaveCompleted -Wave 3 -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
   if ($StopAfterWave3) {
     Write-Evidence "OFFICIAL_WAVE3_PASS event=$eventId portals=$portalCount stop_after_wave3=true"
     return
   }
 
   $pads = Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4
-  Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=4.*BLACK_FOG' -WaitSeconds 20
-  Wait-LogRegex -Pattern 'V2_FOG_SAFE_START.*cycle=1/3' -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'V2_FOG_START.*cycle=1/3.*height=3' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'V2_FOG_COMPLETE.*cycles=3' -WaitSeconds 180 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+  if ($isV3Flow) {
+    $expectedV3Obelisks = Get-V3ObeliskCount -PlayerCount $PlayerNames.Count
+    Wait-LogRegex -Pattern ('V3_WAVE_STARTED.*wave=4.*objective=OBELISK_ASSAULT') `
+      -WaitSeconds 120 -DuringWait { Keep-PlayersAtV3ObeliskTargets -Targets $v3ObeliskTargets }
+    Wait-LogRegex -Pattern ('V3_OBELISK_ASSAULT_READY.*obelisks=' + $expectedV3Obelisks + '.*real_blocks=true') `
+      -WaitSeconds 30 -DuringWait { Keep-PlayersAtV3ObeliskTargets -Targets $v3ObeliskTargets }
 
-  $pads = Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5
-  Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=5.*COLLAPSE_RINGS' -WaitSeconds 20
-  Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=1/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
-  Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=3/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    $activeDeadline = (Get-Date).AddSeconds(45)
+    $activeCount = 0
+    while ((Get-Date) -lt $activeDeadline) {
+      $chunk = Read-NewPaperLog
+      if (-not [string]::IsNullOrEmpty($chunk)) {
+        [void]$script:LogEvidence.Append($chunk)
+      }
+      $activeCount = [Regex]::Matches(
+        $script:LogEvidence.ToString(),
+        'V3_OBELISK_ACTIVE event=' + [Regex]::Escape($eventId) + '\b').Count
+      if ($activeCount -ge $expectedV3Obelisks) {
+        break
+      }
+      Keep-PlayersAtV3ObeliskTargets -Targets $v3ObeliskTargets
+      Start-Sleep -Milliseconds 250
+    }
+    if ($activeCount -ne $expectedV3Obelisks) {
+      throw "V3 Wave 4 did not activate exactly $expectedV3Obelisks real obelisks: active=$activeCount"
+    }
+    Assert-V3ObeliskBaseBlocks -Targets $v3ObeliskTargets -Material 'polished_blackstone' -Expected $expectedV3Obelisks
+    Write-Evidence "OFFICIAL_V3_OBELISK_ACTIVE_PASS event=$eventId obelisks=$activeCount real_blocks=true"
 
-  $pads = Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6
-  # Wave 6 is chamber-isolated.  Keep each client near the authoritative mob
-  # positions so its own chamber can clear without ever opening a cross-room
-  # target path.  The controller itself remains responsible for assigning and
-  # validating the chamber; the probe only supplies player movement.
-  $expectedChambers = Get-WaveSixChamberCount
-  Wait-LogRegex -Pattern ("V2_CHAMBERS_COMPLETE.*chambers={0}" -f $expectedChambers) -WaitSeconds 360 `
-    -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
-  Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=6.*CHAMBERS' -WaitSeconds 30
-  $waveSixStatus = Invoke-LocalRcon -CommandText 'cmend debug ai'
-  if ($waveSixStatus -notmatch 'phase=.*PRE_BOSS_COOLDOWN|phase=.*WAVE_6') {
-    throw "Wave 6 did not leave the isolated chamber flow in a V2 phase:`n$waveSixStatus"
+    Wait-LogRegex -Pattern ('V3_RIFT_FIREBALL_LAUNCH.*event=' + [Regex]::Escape($eventId)) `
+      -WaitSeconds 180 -DuringWait { Keep-PlayersAtV3ObeliskTargets -Targets $v3ObeliskTargets }
+    $hitPattern = 'V3_OBELISK_REFLECTED_HIT event=' + [Regex]::Escape($eventId) +
+      ' obelisk=([0-9a-fA-F-]{36}) fireball=([0-9a-fA-F-]{36}).*consumed=true'
+    $hitDeadline = (Get-Date).AddSeconds(420)
+    $hitCount = 0
+    $hitObeliskCount = 0
+    $hitFireballCount = 0
+    while ((Get-Date) -lt $hitDeadline) {
+      $chunk = Read-NewPaperLog
+      if (-not [string]::IsNullOrEmpty($chunk)) {
+        [void]$script:LogEvidence.Append($chunk)
+      }
+      $hitMatches = [Regex]::Matches($script:LogEvidence.ToString(), $hitPattern)
+      $hitCount = $hitMatches.Count
+      $hitObeliskCount = @($hitMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique).Count
+      $hitFireballCount = @($hitMatches | ForEach-Object { $_.Groups[2].Value } | Sort-Object -Unique).Count
+      if (($hitCount -ge ($expectedV3Obelisks * 3)) -and $hitObeliskCount -eq $expectedV3Obelisks -and $hitFireballCount -eq $hitCount) {
+        break
+      }
+      Keep-PlayersAtV3ObeliskTargets -Targets $v3ObeliskTargets
+      Start-Sleep -Milliseconds 250
+    }
+    $doubleReflectRejects = [Regex]::Matches(
+      $script:LogEvidence.ToString(),
+      'RIFT_FIREBALL_REFLECT_REJECTED event=' + [Regex]::Escape($eventId) +
+      '.*reason=already-reflected').Count
+    Write-Evidence "OFFICIAL_V3_OBELISK_REFLECTION_PASS event=$eventId hits=$hitCount expected=$($expectedV3Obelisks * 3) distinct_obelisks=$hitObeliskCount distinct_fireballs=$hitFireballCount duplicate_reflect_rejects=$doubleReflectRejects"
+    if (($hitCount -lt ($expectedV3Obelisks * 3)) -or $hitObeliskCount -ne $expectedV3Obelisks -or $hitFireballCount -ne $hitCount) {
+      throw "V3 reflected-fireball coverage failed: hits=$hitCount expected=$($expectedV3Obelisks * 3) obelisks=$hitObeliskCount fireballs=$hitFireballCount"
+    }
+    Wait-EventWaveCompleted -Wave 4 -WaitSeconds 300 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+    # The temporary structure is journaled one block above the solid floor;
+    # the current arena map intentionally has air in that cell.  Verify the
+    # exact restored base rather than assuming a vanilla floor material.
+    Assert-V3ObeliskBaseBlocks -Targets $v3ObeliskTargets -Material 'air' -Expected $expectedV3Obelisks
+    Write-Evidence "OFFICIAL_V3_WAVE4_PASS event=$eventId obelisks=$expectedV3Obelisks reflected_hits=$hitCount real_blocks_restored=true"
+    if ($StopAfterWave4) {
+      Write-Evidence "OFFICIAL_WAVE4_PASS event=$eventId stop_after_wave4=true"
+      return
+    }
+    # Wave 4 is followed by the same persisted transition-rune handoff as the
+    # earlier V3 waves.  Waiting directly for Wave 5 leaves the live driver
+    # parked in INTERMISSION_4 with both clients off the runes.
+    $pads = Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5
   }
-  Write-Evidence "OFFICIAL_WAVE6_CHAMBER_PASS event=$eventId isolated=true chambers=$expectedChambers passage_open=true"
+
+  if ($isV3Flow) {
+    # V3 keeps the proven fog/ring/chamber adapters, but the public wave
+    # numbers and transitions are different.  Keep this branch explicit so a
+    # schema-3 run can never fall through into the retired V2 wave numbering.
+    Wait-LogRegex -Pattern 'V3_WAVE_STARTED.*wave=5.*objective=BLACK_FOG' -WaitSeconds 120 `
+      -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-LogRegex -Pattern 'V3_WAVE_OBJECTIVE_ADAPTER.*wave=5.*adapter_slot=4.*objective=BLACK_FOG' `
+      -WaitSeconds 30
+    for ($fogCycle = 1; $fogCycle -le 3; $fogCycle++) {
+      Wait-LogRegex -Pattern ("V2_FOG_SAFE_START.*cycle={0}/3" -f $fogCycle) -WaitSeconds 120 `
+        -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+      Wait-LogRegex -Pattern ("V2_FOG_START.*cycle={0}/3.*height=3" -f $fogCycle) -WaitSeconds 45 `
+        -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    }
+    Wait-LogRegex -Pattern 'V2_FOG_COMPLETE.*cycles=3' -WaitSeconds 180 `
+      -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-EventWaveCompleted -Wave 5 -WaitSeconds 300 `
+      -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+    Write-Evidence "OFFICIAL_V3_WAVE5_PASS event=$eventId objective=BLACK_FOG cycles=3"
+
+    # Wave 5 is followed by the explicit six-second Core restoration before
+    # the outer-edge runes for Wave 6 are created.
+    Wait-LocalPhase -PhasePattern 'CORE_RESTORATION|INTERMISSION_5' -WaitSeconds 30
+    Wait-LogRegex -Pattern 'V2_TRANSITION_RUNES_READY.*completed_wave=5' -WaitSeconds 60
+    $pads = Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6
+    Wait-LogRegex -Pattern 'V3_WAVE_STARTED.*wave=6.*objective=COLLAPSE_RINGS' -WaitSeconds 120 `
+      -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-LogRegex -Pattern 'V3_WAVE_OBJECTIVE_ADAPTER.*wave=6.*adapter_slot=5.*objective=COLLAPSE_RINGS' `
+      -WaitSeconds 30
+    for ($ring = 1; $ring -le 3; $ring++) {
+      Wait-LogRegex -Pattern ("V2_RING_COLLAPSED.*ring={0}/3" -f $ring) -WaitSeconds 150 `
+        -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    }
+    Wait-EventWaveCompleted -Wave 6 -WaitSeconds 360 `
+      -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+    Wait-LocalPhase -PhasePattern 'INTERMISSION_6|WAVE_7' -WaitSeconds 30
+    Write-Evidence "OFFICIAL_V3_WAVE6_PASS event=$eventId objective=COLLAPSE_RINGS rings=3"
+
+    $pads = Wait-V2TransitionToWave -CompletedWave 6 -NextWave 7
+    Wait-LogRegex -Pattern 'V3_WAVE_STARTED.*wave=7.*objective=REALITY_SPLIT' -WaitSeconds 120 `
+      -DuringWait { Keep-PlayersAtPads -Pads $pads }
+    Wait-LogRegex -Pattern 'V3_WAVE_OBJECTIVE_ADAPTER.*wave=7.*adapter_slot=6.*objective=REALITY_SPLIT' `
+      -WaitSeconds 30
+    Wait-LogRegex -Pattern ("V2_CHAMBERS_ASSIGNED.*chambers={0}" -f (Get-WaveSixChamberCount)) `
+      -WaitSeconds 60 -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
+    $expectedChambers = Get-WaveSixChamberCount
+    Wait-LogRegex -Pattern ("V2_CHAMBERS_COMPLETE.*chambers={0}" -f $expectedChambers) -WaitSeconds 420 `
+      -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
+    Wait-EventWaveCompleted -Wave 7 -WaitSeconds 360
+    $wave7Status = Invoke-LocalRcon -CommandText 'cmend debug ai'
+    if ($wave7Status -notmatch 'phase=.*PRE_BOSS_COOLDOWN') {
+      throw "V3 Wave 7 did not enter PRE_BOSS_COOLDOWN after all chambers completed:`n$wave7Status"
+    }
+    Write-Evidence "OFFICIAL_V3_WAVE7_PASS event=$eventId objective=REALITY_SPLIT chambers=$expectedChambers passage_open=true"
+  } else {
+    Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=4.*BLACK_FOG' -WaitSeconds 20
+    Wait-LogRegex -Pattern 'V2_FOG_SAFE_START.*cycle=1/3' -WaitSeconds 45 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-LogRegex -Pattern 'V2_FOG_START.*cycle=1/3.*height=3' -WaitSeconds 30 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-LogRegex -Pattern 'V2_FOG_COMPLETE.*cycles=3' -WaitSeconds 180 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+    Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=4' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatMobs -Core $core }
+
+    $pads = Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5
+    Wait-LogRegex -Pattern 'V2_WAVE_OBJECTIVE_STARTED.*wave=5.*COLLAPSE_RINGS' -WaitSeconds 20
+    Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=1/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
+    Wait-LogRegex -Pattern 'V2_RING_COLLAPSED.*ring=3/3' -WaitSeconds 90 -DuringWait { Keep-PlayersAtCoreRing -Core $core }
+    Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=5' -WaitSeconds 240 -DuringWait { Keep-PlayersAtCombatSweep -Core $core }
+
+    $pads = Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6
+    # Wave 6 is chamber-isolated.  Keep each client near the authoritative mob
+    # positions so its own chamber can clear without ever opening a cross-room
+    # target path.  The controller itself remains responsible for assigning and
+    # validating the chamber; the probe only supplies player movement.
+    $expectedChambers = Get-WaveSixChamberCount
+    Wait-LogRegex -Pattern ("V2_CHAMBERS_COMPLETE.*chambers={0}" -f $expectedChambers) -WaitSeconds 360 `
+      -DuringWait { Keep-PlayersAtWaveSixMobs -Core $core }
+    Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=6.*CHAMBERS' -WaitSeconds 30
+    $waveSixStatus = Invoke-LocalRcon -CommandText 'cmend debug ai'
+    if ($waveSixStatus -notmatch 'phase=.*PRE_BOSS_COOLDOWN|phase=.*WAVE_6') {
+      throw "Wave 6 did not leave the isolated chamber flow in a V2 phase:`n$waveSixStatus"
+    }
+    Write-Evidence "OFFICIAL_WAVE6_CHAMBER_PASS event=$eventId isolated=true chambers=$expectedChambers passage_open=true"
+  }
 
   Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED' -WaitSeconds 30
   Wait-LogRegex -Pattern 'BOSS_SPAWNED' -WaitSeconds 120
@@ -869,25 +1268,73 @@ try {
 
   Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=HUNT' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
   Assert-BossStage -Stage 'HUNT' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern '(?s)RIFT_TENTACLE_SPAWN.*temporary=false.*RIFT_TENTACLE_SPAWN.*temporary=false' `
-    -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-  $tentacleCount = [Regex]::Matches($script:LogEvidence.ToString(), 'RIFT_TENTACLE_SPAWN .*temporary=false').Count
-  if ($tentacleCount -lt 2) {
-    throw "Official HUNT stage did not materialize the two-player permanent tentacle set: count=$tentacleCount"
+  $preLastSealTentacleCount = [Regex]::Matches(
+    $script:LogEvidence.ToString(), 'RIFT_TENTACLE_SPAWN .*temporary=false').Count
+  if ($preLastSealTentacleCount -ne 0) {
+    throw "Permanent guardian tentacles appeared before LAST_SEAL: count=$preLastSealTentacleCount"
   }
-  Write-Evidence "OFFICIAL_TENTACLE_HUNT_PASS event=$eventId permanent_tentacles=$tentacleCount temporary_cap=6"
+  Write-Evidence "OFFICIAL_TENTACLE_PRE_LAST_SEAL_PASS event=$eventId permanent_tentacles=0"
   Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=RIFT' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
   Assert-BossStage -Stage 'RIFT' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'RIFT_OBELISKS_SPAWNED.*stage=RIFT' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  if ($isV3Flow) {
+    Wait-LogRegex -Pattern 'V3_RIFT_FRACTURES_STARTED.*phase=RIFT' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+    Wait-LogRegex -Pattern 'V3_RIFT_FRACTURE_ACTIVE.*phase=RIFT' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+    if ($script:LogEvidence.ToString() -match 'RIFT_OBELISKS_SPAWNED.*stage=RIFT') {
+      throw 'Official V3 RIFT stage unexpectedly started legacy boss obelisks.'
+    }
+    Write-Evidence "OFFICIAL_V3_RIFT_FRACTURE_PASS event=$eventId legacy_boss_obelisks=false"
+  } else {
+    Wait-LogRegex -Pattern 'RIFT_OBELISKS_SPAWNED.*stage=RIFT' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  }
   Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=OVERLOAD' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
   Assert-BossStage -Stage 'OVERLOAD' -BossUuid $bossUuid
   Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=RAGE' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
   Assert-BossStage -Stage 'RAGE' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=LAST_SEAL' -WaitSeconds 180 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  if ($PlayerNames.Count -ge 8) {
+    # The local protocol clients use a high-damage test sword. Let one real
+    # client cross the RAGE -> LAST_SEAL threshold while the others observe;
+    # this preserves the final guardian window instead of killing the boss in
+    # the same burst as the threshold transition.
+    Set-OfficialBotCombatMode -Mode PASSIVE -ActiveFromIndex 1
+  }
+  Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=LAST_SEAL' -WaitSeconds 180 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
   Assert-BossStage -Stage 'LAST_SEAL' -BossUuid $bossUuid
-  Wait-LogRegex -Pattern 'BOSS_V2_LAST_SEAL_VISUALS_STARTED' -WaitSeconds 30 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
-
-  Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED' -WaitSeconds 240 -DuringWait { Keep-PlayersNearBoss -Uuid $bossUuid }
+  if ($PlayerNames.Count -ge 8) {
+    # Once LAST_SEAL is active, guardian probes and the remaining boss probes
+    # must run together. The guardian shield blocks the latter until every
+    # permanent Interaction guardian is defeated, then the normal boss damage
+    # path resumes.
+    Set-OfficialBotCombatMode -Mode ACTIVE -ActiveFromIndex 0
+  }
+  Wait-LogRegex -Pattern 'BOSS_V2_LAST_SEAL_VISUALS_STARTED' -WaitSeconds 30 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
+  $expectedPermanentTentacles = Get-OfficialPermanentTentacleCount -PlayerCount $PlayerNames.Count
+  $tentacleDeadline = (Get-Date).AddSeconds(30)
+  $tentacleCount = 0
+  while ((Get-Date) -lt $tentacleDeadline) {
+    $tentacleChunk = Read-NewPaperLog
+    if (-not [string]::IsNullOrEmpty($tentacleChunk)) {
+      [void]$script:LogEvidence.Append($tentacleChunk)
+    }
+    $tentacleCount = [Regex]::Matches(
+      $script:LogEvidence.ToString(), 'RIFT_TENTACLE_SPAWN .*temporary=false').Count
+    if ($tentacleCount -ge $expectedPermanentTentacles) {
+      break
+    }
+    Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid
+    Start-Sleep -Milliseconds 250
+  }
+  if ($tentacleCount -ne $expectedPermanentTentacles) {
+    throw "LAST_SEAL did not materialize exactly $expectedPermanentTentacles permanent guardian tentacles: count=$tentacleCount"
+  }
+  Write-Evidence "OFFICIAL_TENTACLE_LAST_SEAL_PASS event=$eventId permanent_tentacles=$tentacleCount temporary_cap=6"
+  Wait-LogRegex -Pattern 'BOSS_V2_DAMAGE_BLOCKED.*reason=permanent-guardian-shield' `
+    -WaitSeconds 30 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
+  Wait-LogRegex -Pattern 'RIFT_TENTACLE_DAMAGE.*health_after=' `
+    -WaitSeconds 90 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
+  Wait-LogRegex -Pattern 'RIFT_GUARDIAN_SHIELD_BROKEN' `
+    -WaitSeconds 120 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
+  Write-Evidence "OFFICIAL_TENTACLE_COMBAT_PASS event=$eventId hitbox_damage=true boss_shield_observed=true damage_window=true"
+  Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED' -WaitSeconds 240 -DuringWait { Keep-PlayersAtGuardiansAndBoss -Uuid $bossUuid }
   Wait-LogRegex -Pattern 'BOSS_DEFEATED' -WaitSeconds 30
   Wait-LogRegex -Pattern 'END_EVENT_WAVE_COMBAT_CLEANUP.*reason=official-boss-defeat' -WaitSeconds 30
   Wait-LogRegex -Pattern 'VICTORY' -WaitSeconds 60
@@ -895,9 +1342,24 @@ try {
   if ($finalStatus -notmatch 'boss=.*none' -or $finalStatus -notmatch 'event-mobs=.*0') {
     throw "Official victory left event entities behind:`n$finalStatus"
   }
-  Write-Evidence "$passLabel event=$eventId boss=$bossUuid players=$($PlayerNames.Count) waves=1,2,3,4,5,6 stages=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL victory=true"
+  $waveList = if ($isV3Flow) { '1,2,3,4,5,6,7' } else { '1,2,3,4,5,6' }
+  Write-Evidence "$passLabel event=$eventId boss=$bossUuid players=$($PlayerNames.Count) waves=$waveList stages=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL victory=true"
   Write-Evidence $finalStatus
 } finally {
+  if ($null -eq $oldBotControlDirectory) { Remove-Item Env:END_RIFT_BOT_CONTROL_DIRECTORY -ErrorAction SilentlyContinue }
+  else { $env:END_RIFT_BOT_CONTROL_DIRECTORY = $oldBotControlDirectory }
+  if ($guardianProbeEnvConfigured) {
+    if ($null -eq $oldGuardianProbeNames) { Remove-Item Env:END_RIFT_GUARDIAN_PROBE_NAMES -ErrorAction SilentlyContinue }
+    else { $env:END_RIFT_GUARDIAN_PROBE_NAMES = $oldGuardianProbeNames }
+  }
+  if ($reflectionEnvConfigured) {
+    if ($null -eq $oldReflectEnabled) { Remove-Item Env:END_RIFT_REFLECT_ENABLED -ErrorAction SilentlyContinue }
+    else { $env:END_RIFT_REFLECT_ENABLED = $oldReflectEnabled }
+    if ($null -eq $oldReflectStartMs) { Remove-Item Env:END_RIFT_REFLECT_START_MS -ErrorAction SilentlyContinue }
+    else { $env:END_RIFT_REFLECT_START_MS = $oldReflectStartMs }
+    if ($null -eq $oldObeliskTargets) { Remove-Item Env:END_RIFT_OBELISK_TARGETS -ErrorAction SilentlyContinue }
+    else { $env:END_RIFT_OBELISK_TARGETS = $oldObeliskTargets }
+  }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) {
       try { $process.Kill() } catch { }

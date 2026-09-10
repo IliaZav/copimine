@@ -171,11 +171,17 @@ def test_client_resources_do_not_override_vanilla_textures() -> None:
 def test_tentacle_pose_is_connected_to_the_display_render_hook() -> None:
     mixins = (CLIENT / "src/main/resources/copimineclient.mixins.json").read_text(encoding="utf-8")
     renderer_mixin = (MIXIN_ROOT / "DisplayEntityRendererMixin.java").read_text(encoding="utf-8")
+    renderer = (CLIENT / "src/main/java/me/copimine/client/EndRiftTentacleRenderer.java").read_text(
+        encoding="utf-8"
+    )
+    bridge = (CLIENT / "src/main/java/me/copimine/client/ClientBridgeProtocol.java").read_text(
+        encoding="utf-8"
+    )
 
     assert '"DisplayEntityRendererMixin"' in mixins
-    assert "@Mixin(DisplayEntityRenderer.class)" in renderer_mixin
+    assert "@Mixin(net.minecraft.client.render.entity.DisplayEntityRenderer.class)" in renderer_mixin
     assert "DisplayEntity.ItemDisplayEntity" in renderer_mixin
-    assert "endEventTentaclePoseForEntity" in renderer_mixin
-    assert "matrices.push()" in renderer_mixin
-    assert "matrices.pop()" in renderer_mixin
+    assert "ci.cancel()" in renderer_mixin
     assert "EndRiftTentacleModel.VISUAL_ID" in renderer_mixin
+    assert "EndRiftTentacleRenderer.render" in bridge
+    assert "RIG.render" in renderer

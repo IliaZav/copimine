@@ -8,26 +8,36 @@
     "seg_02": "seg_01",
     "seg_03": "seg_02",
     "seg_04": "seg_03",
-    "tip": "seg_04",
+    "seg_05": "seg_04",
+    "tip": "seg_05",
     "tip_claw_1": "tip",
     "tip_claw_2": "tip",
     "tip_claw_3": "tip",
+    "tip_claw_4": "tip",
     "grab_socket": "tip"
   },
   "forward_axis": "+Z",
   "animations": {
+    "ready": {"duration_ticks": 60, "loop": true, "motion": "living_idle"},
+    "emerging": {"duration_ticks": 18, "loop": false, "motion": "segmented_rise"},
     "idle": {"duration_ticks": 60, "loop": true, "motion": "sway"},
     "emerge": {"duration_ticks": 18, "loop": false, "motion": "rise"},
     "telegraph_grab": {"duration_ticks": 20, "loop": false, "motion": "wind_up"},
     "grab_success": {"duration_ticks": 14, "loop": false, "motion": "close"},
     "hold": {"duration_ticks": 20, "loop": true, "motion": "restrain"},
     "throw": {"duration_ticks": 12, "loop": false, "motion": "release"},
+    "miss_recovery": {"duration_ticks": 14, "loop": false, "motion": "overshoot_recovery"},
+    "hit_recovery": {"duration_ticks": 7, "loop": false, "motion": "localized_recoil"},
+    "dying": {"duration_ticks": 20, "loop": false, "motion": "collapse"},
+    "dead_respawn": {"duration_ticks": 40, "loop": false, "motion": "hidden_wait"},
     "grab_miss": {"duration_ticks": 14, "loop": false, "motion": "slam"},
     "hurt": {"duration_ticks": 7, "loop": false, "motion": "recoil"},
     "death": {"duration_ticks": 20, "loop": false, "motion": "collapse"},
     "retract": {"duration_ticks": 16, "loop": false, "motion": "below_floor"},
     "spawn_under_player": {"duration_ticks": 7, "loop": false, "motion": "eruption"},
-    "shield_channel": {"duration_ticks": 40, "loop": true, "motion": "channel"}
+    "shield_channel": {"duration_ticks": 40, "loop": true, "motion": "channel"},
+    "recovery": {"duration_ticks": 16, "loop": false, "motion": "return_to_idle"}
   },
-  "markers": ["CONTACT", "HOLD_LOCK", "THROW_RELEASE", "RECOVERY_START", "HIDE_BELOW_FLOOR"]
+  "markers": ["CONTACT", "HOLD_LOCK", "THROW_RELEASE", "RECOVERY_START", "HIDE_BELOW_FLOOR"],
+  "marker_ticks": {"CONTACT": 8, "HOLD_LOCK": 12, "THROW_RELEASE": 8, "RECOVERY_START": 0, "HIDE_BELOW_FLOOR": 16}
 }

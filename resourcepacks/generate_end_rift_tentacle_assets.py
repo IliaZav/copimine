@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import math
 import random
 
@@ -8,7 +9,18 @@ from PIL import Image, ImageDraw, ImageFilter
 ROOT = Path(__file__).resolve().parent
 SERVER_TEXTURE = ROOT / "src/assets/copimine/textures/item/end_event_rift_tentacle_hd.png"
 CLIENT_TEXTURE = ROOT.parent / "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_tentacle_hd.png"
+MODEL = ROOT / "src/assets/copimine/models/item/end_event_rift_tentacle.json"
 SIZE = 256
+RIG_BONES = ("seg_01", "seg_02", "seg_03", "seg_04", "seg_05",
+             "tip_claw_1", "tip_claw_2", "tip_claw_3", "tip_claw_4", "grab_socket")
+
+# These identifiers mirror the server wire states. The JSON asset retains the
+# old aliases for clients that only use the fallback ItemDisplay model, but
+# every canonical V2 state has an explicit animation entry.
+CANONICAL_STATES = (
+    "ready", "emerging", "telegraph_grab", "grab_success", "hold", "throw",
+    "miss_recovery", "hit_recovery", "dying", "dead_respawn", "retract",
+    "spawn_under_player", "shield_channel", "recovery")
 
 
 def make_texture() -> Image.Image:
@@ -61,8 +73,10 @@ def make_texture() -> Image.Image:
         draw.line([start, mid, end], fill=(210, 48, 255, 230), width=4, joint="curve")
         draw.line([start, mid, end], fill=(119, 68, 208, 255), width=2, joint="curve")
 
-    # Three crystalline claws across the top edge: each is a separate visual cue.
-    for cx, lean in ((54, -1), (128, 0), (202, 1)):
+    # Four crystalline claws across the top edge: each maps to a separate
+    # articulated tip_claw bone.  grab_socket is an empty helper bone, not a
+    # painted part of the texture.
+    for cx, lean in ((42, -1), (100, 0), (156, 0), (214, 1)):
         tip = (cx + lean * 17, 2)
         draw.polygon([(cx - 15, 34), (cx + 11, 30), tip, (cx - 3, 8)],
                      fill=(34, 18, 70, 255), outline=(157, 70, 250, 255))
@@ -79,13 +93,61 @@ def make_texture() -> Image.Image:
     return image
 
 
+def model_cuboid(from_xyz: tuple[int, int, int], to_xyz: tuple[int, int, int]) -> dict:
+    """Return one solid fallback segment in vanilla model coordinates.
+
+    The optional client replaces the carrier with the articulated renderer.
+    This model is still deliberately complete: ItemDisplay users must see a
+    readable five-segment, four-claw object at the correct world height.
+    """
+    faces = {
+        face: {"texture": "#tentacle"}
+        for face in ("down", "up", "north", "south", "west", "east")
+    }
+    return {"from": list(from_xyz), "to": list(to_xyz), "faces": faces}
+
+
+def make_fallback_model() -> dict:
+    # The server scales this ordinary 0..16 model by 4.75, matching the
+    # 4.75-block articulated client rig.  The silhouette is narrow and
+    # segmented instead of a flat 1-block plane or an oversized cube.
+    elements = [
+        model_cuboid((6, 0, 6), (10, 3, 10)),
+        model_cuboid((6, 2, 6), (10, 7, 10)),
+        model_cuboid((5, 6, 5), (11, 11, 11)),
+        model_cuboid((6, 10, 6), (10, 15, 10)),
+        model_cuboid((5, 14, 5), (11, 16, 11)),
+        model_cuboid((2, 12, 5), (5, 16, 8)),
+        model_cuboid((11, 12, 5), (14, 16, 8)),
+        model_cuboid((5, 12, 2), (8, 16, 5)),
+        model_cuboid((5, 12, 11), (8, 16, 14)),
+    ]
+    return {
+        "parent": "minecraft:block/block",
+        "ambientocclusion": False,
+        "textures": {
+            "particle": "copimine:item/end_event_rift_tentacle_hd",
+            "tentacle": "copimine:item/end_event_rift_tentacle_hd",
+        },
+        "copimine_rig": {
+            "bones": ["root", "base", "seg_01", "seg_02", "seg_03", "seg_04",
+                      "seg_05", "tip", "tip_claw_1", "tip_claw_2", "tip_claw_3",
+                      "tip_claw_4"],
+            "grab_socket": {"parent": "tip", "geometry": False, "local": [0.0, 4.75, 0.0]},
+        },
+        "elements": elements,
+    }
+
+
 def main() -> None:
     texture = make_texture()
     SERVER_TEXTURE.parent.mkdir(parents=True, exist_ok=True)
     CLIENT_TEXTURE.parent.mkdir(parents=True, exist_ok=True)
+    MODEL.parent.mkdir(parents=True, exist_ok=True)
     texture.save(SERVER_TEXTURE, format="PNG", optimize=True)
     texture.save(CLIENT_TEXTURE, format="PNG", optimize=True)
-    print(f"generated {SERVER_TEXTURE} and {CLIENT_TEXTURE} ({SIZE}x{SIZE})")
+    MODEL.write_text(json.dumps(make_fallback_model(), indent=2) + "\n", encoding="utf-8")
+    print(f"generated {SERVER_TEXTURE}, {CLIENT_TEXTURE} and {MODEL} ({SIZE}x{SIZE})")
 
 
 if __name__ == "__main__":

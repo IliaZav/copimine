@@ -17,6 +17,8 @@ public final class V2WaveObjectivePolicyTest {
         }
         check(V2WaveObjectivePolicy.portalCount() == 3,
                 "Wave 3 must always use exactly three portals");
+        check(V2WaveObjectivePolicy.safeZoneCount(0, 0) == 0,
+                "zero living players must not create a meaningless safe zone");
         check(V2WaveObjectivePolicy.safeZoneCount(2, 0) == 1,
                 "duo Wave 4 first safe-zone set must contain one zone");
         check(V2WaveObjectivePolicy.safeZoneCount(10, 0) == 5,

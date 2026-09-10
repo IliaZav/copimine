@@ -18,11 +18,17 @@ public enum EventPhase {
     WAVE_4,
     INTERMISSION_4,
     WAVE_5,
-    /** V2 transition-rune hold between Wave 5 and chamber combat. */
+    /** V3 core restoration scene after the black-fog objective. */
+    CORE_RESTORATION,
+    /** Transition-rune hold after Wave 5. */
     INTERMISSION_5,
-    /** V2 chamber-combat wave. */
+    /** Collapse-ring wave in V3; chamber combat remains a legacy alias here. */
     WAVE_6,
-    /** V2 safe cooldown after chamber combat and before the boss cinematic. */
+    /** Transition-rune hold after the collapse rings in V3. */
+    INTERMISSION_6,
+    /** V3 isolated chamber wave. */
+    WAVE_7,
+    /** Safe cooldown after the final numbered wave and before the boss cinematic. */
     PRE_BOSS_COOLDOWN,
     /** Durable hand-off after Wave V and before a combat entity exists. */
     BOSS_CINEMATIC,

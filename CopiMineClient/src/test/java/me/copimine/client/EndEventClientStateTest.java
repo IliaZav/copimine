@@ -160,13 +160,21 @@ class EndEventClientStateTest {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
                 "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 100L));
-        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
-                "tentacle-uuid", "GRAB_SUCCESS", "control-id"), 110L));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 700L,
+                "tentacle-uuid", "GRAB_SUCCESS|t=44|health=DAMAGED", "control-id"), 110L));
         assertEquals("GRAB_SUCCESS", state.entityAnimationForEntity("tentacle-uuid"));
+        assertEquals("DAMAGED", state.tentacleHealthStateForEntity("tentacle-uuid"));
         assertTrue(state.tentaclePoseForEntity("tentacle-uuid", 7L).isFinite());
+        EndEventClientState.TentacleAnimationSnapshot snapshot =
+                state.tentacleAnimationSnapshot("tentacle-uuid");
+        assertEquals(44L, snapshot.stateStartServerTick());
+        assertEquals(110L, snapshot.startedAtMillis());
+        assertEquals(700L, snapshot.durationMillis());
+        assertEquals("DAMAGED", snapshot.healthState());
         assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
-                "tentacle-uuid", "HOLD", "control-id"), 120L));
+                "tentacle-uuid", "HOLD|health=CRITICAL", "control-id"), 120L));
         assertEquals("HOLD", state.entityAnimationForEntity("tentacle-uuid"));
+        assertEquals("CRITICAL", state.tentacleHealthStateForEntity("tentacle-uuid"));
         assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "tentacle-1", 0L,
                 "tentacle-uuid", "", "control-id"), 130L));
         assertTrue(state.entityAnimationForEntity("tentacle-uuid").isBlank());

@@ -19,15 +19,9 @@ public final class TentacleScalingPolicy {
                 : safePlayers <= 10 ? 5
                 : safePlayers <= 15 ? 6
                 : 8;
-        int stageCap = switch (stage) {
-            case AWAKENING -> 0;
-            case HUNT -> 2;
-            case RIFT -> 3;
-            case OVERLOAD -> 5;
-            case RAGE -> 6;
-            case LAST_SEAL -> MAX_PERMANENT;
-        };
-        return Math.min(partyTarget, stageCap);
+        // Guardian tentacles are a final-seal mechanic. Earlier stages may
+        // use bounded temporary grab visuals, but never permanent guardians.
+        return stage == V2BossStage.LAST_SEAL ? Math.min(partyTarget, MAX_PERMANENT) : 0;
     }
 
     public static int temporaryFor(int players, V2BossStage stage) {

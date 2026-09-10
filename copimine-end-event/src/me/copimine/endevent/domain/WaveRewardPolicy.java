@@ -9,13 +9,14 @@ import java.util.Map;
 /** Pure reward sizing and deterministic shared-rare decision for a wave. */
 public final class WaveRewardPolicy {
     public static final int MAX_PERSONAL_STACKS = 8;
+    public static final int MAX_SUPPORTED_WAVE = 7;
 
     private WaveRewardPolicy() {
     }
 
     public static RewardBundle bundle(int wave, int playerIndex, int participantCount,
                                       Map<String, Integer> configured) {
-        if (wave < 1 || wave > 6 || playerIndex < 0 || participantCount < 1
+        if (wave < 1 || wave > MAX_SUPPORTED_WAVE || playerIndex < 0 || participantCount < 1
                 || playerIndex >= participantCount || configured == null || configured.isEmpty()) {
             throw new IllegalArgumentException("invalid wave reward request");
         }
@@ -47,7 +48,7 @@ public final class WaveRewardPolicy {
      * under the event/wave key and must not roll once per participant.
      */
     public static boolean sharedRareRoll(String eventId, int wave, double chance) {
-        if (eventId == null || eventId.isBlank() || wave < 1 || wave > 5) {
+        if (eventId == null || eventId.isBlank() || wave < 1 || wave > MAX_SUPPORTED_WAVE) {
             return false;
         }
         if (Double.isNaN(chance) || Double.isInfinite(chance) || chance <= 0.0D || chance > 1.0D) {

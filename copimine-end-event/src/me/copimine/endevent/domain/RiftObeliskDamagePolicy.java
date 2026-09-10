@@ -17,7 +17,23 @@ public final class RiftObeliskDamagePolicy {
                                                boolean reflected,
                                                boolean generationMatches,
                                                boolean reflectedByPlayer) {
-        int safeHealth = Math.max(0, Math.min(DEFAULT_HEALTH, currentHealth));
+        return applyReflectedHit(currentHealth, DEFAULT_HEALTH, eventOwned, reflected,
+                generationMatches, reflectedByPlayer);
+    }
+
+    /**
+     * V3 keeps the same source/reflection contract but scales the real-block
+     * obelisk health by the bounded party profile (3, 4 or 5).  Keeping the
+     * maximum health explicit prevents a damaged object from being silently
+     * clamped back to the legacy three-hit value.
+     */
+    public static HitResult applyReflectedHit(int currentHealth, int maximumHealth,
+                                               boolean eventOwned,
+                                               boolean reflected,
+                                               boolean generationMatches,
+                                               boolean reflectedByPlayer) {
+        int safeMaximum = Math.max(0, maximumHealth);
+        int safeHealth = Math.max(0, Math.min(safeMaximum, currentHealth));
         if (safeHealth == 0) {
             return new HitResult(0, false, false, true);
         }

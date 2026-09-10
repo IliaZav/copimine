@@ -162,6 +162,12 @@ function Start-CombatBot {
   # real clients therefore drift through tick boundaries and reliably produce
   # an observable same-tick group without a plugin-only synthetic hit.
   $startInfo.EnvironmentVariables['END_RIFT_BOSS_ATTACK_EVERY_MS'] = '410'
+  # When the caller requires an actual same-event-tick group, each independent
+  # client emits a bounded raw-packet burst after the shared barrier.  The
+  # normal probe keeps its sparse cadence; this mode exists only to make the
+  # concurrency proof deterministic on a loaded Windows scheduler.
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_SYNC_BURST_COUNT'] = if ($RequireSameTick) { '4' } else { '0' }
+  $startInfo.EnvironmentVariables['END_RIFT_BOSS_SYNC_BURST_SPACING_MS'] = '12'
   $startInfo.EnvironmentVariables['END_RIFT_RAW_ATTACK'] = if ($HighLevelAttack) { '0' } else { '1' }
   $startInfo.EnvironmentVariables['END_RIFT_TRACE_ATTACK_PACKETS'] = if ($TraceAttackPackets) { '1' } else { '0' }
   $process = [Diagnostics.Process]::new()
@@ -270,9 +276,9 @@ try {
   if ($bossLines.Count -lt 2) {
     throw "Fewer than two independent player damage events reached the official real-health path:`n$($bossLines -join "`n")"
   }
-  $cancelledAccepted = @($bossLines | Where-Object { $_ -notmatch 'accepted=true cancelled=false' })
-  if ($cancelledAccepted.Count -gt 0) {
-    throw "An accepted V2 boss hit was cancelled or not marked accepted=true/cancelled=false:`n$($cancelledAccepted -join "`n")"
+  $notCommitted = @($bossLines | Where-Object { $_ -notmatch 'accepted=true cancelled=true authority=entity-health' })
+  if ($notCommitted.Count -gt 0) {
+    throw "An accepted V2 boss hit was not marked as a committed real-health transaction:`n$($notCommitted -join "`n")"
   }
   $damagePattern = 'source=PLAYER:([0-9a-fA-F-]+).*?final=([0-9]+(?:\.[0-9]+)?).*?tick=([0-9]+)'
   $sum = 0.0D
@@ -304,7 +310,7 @@ try {
   }
   $sameTick = @($ticks.GetEnumerator() | Where-Object { $_.Value -ge 2 }).Count
   if ($RequireSameTick -and $sameTick -lt 1) {
-    throw "The five-player probe did not observe two player hits in one server tick.`n$($bossLines -join "`n")"
+    throw "The $($playerNames.Count)-player probe did not observe two player hits in one server tick.`n$($bossLines -join "`n")"
   }
   Write-Output "LIVE_BOSS_MULTIPLAYER_REAL_HEALTH_PASS players=$($playerNames.Count) independent_attackers=$($attackers.Count) events=$($bossLines.Count) before=$($boss.Health) after=$($final.Health) summed_final_damage=$sum expected=$expected health_delta=$healthDelta same_tick_event_groups=$sameTick boss=$($boss.Uuid)"
 } finally {

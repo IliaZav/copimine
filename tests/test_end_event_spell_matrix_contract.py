@@ -24,6 +24,29 @@ def test_local_spell_matrix_exercises_every_boss_and_miniboss_spell() -> None:
         assert marker in text, marker
 
 
+def test_miniboss_matrix_reads_the_server_assignment_instead_of_assuming_a_fixed_wave_list() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    for marker in (
+        "TEST_WAVE_3_SPELL_ASSIGNMENTS",
+        "assignedMiniBossSpells",
+        "miniBossSpells=",
+        "foreach ($spell in $assignedMiniBossSpells)",
+    ):
+        assert marker in text, marker
+    assert "foreach ($spell in @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo'))" not in text
+
+
+def test_miniboss_matrix_uses_a_second_bounded_wave_when_wave_three_does_not_assign_every_spell() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    for marker in (
+        "cmend test wave 5",
+        "TEST_WAVE_5_SPELL_ASSIGNMENTS",
+        "requiredMiniBossSpellIds",
+        "missingMiniBossSpells",
+    ):
+        assert marker in text, marker
+
+
 def test_local_spell_matrix_exercises_all_phase_music_without_starting_automatic_music() -> None:
     text = SCRIPT.read_text(encoding="utf-8")
     for key in (

@@ -6,7 +6,7 @@ environment: local
 persistence:
   file: event-state.yml
   backup-file: event-state.yml.bak
-  schema-version: 2
+  schema-version: 3
 
 resources:
   DIAMOND: 100
@@ -95,6 +95,9 @@ music:
     wave-6:
       sound: copimine:end_rift/wave_6
       loop-seconds: 54
+    wave-7:
+      sound: copimine:end_rift/wave_7
+      loop-seconds: 58
     intermission-1:
       sound: copimine:end_rift/intermission_1
       loop-seconds: 14
@@ -110,6 +113,12 @@ music:
     intermission-5:
       sound: copimine:end_rift/intermission_5
       loop-seconds: 18
+    intermission-6:
+      sound: copimine:end_rift/intermission_6
+      loop-seconds: 18
+    core-restoration:
+      sound: copimine:end_rift/core_restoration
+      loop-seconds: 16
     pre-boss-cooldown:
       sound: copimine:end_rift/pre_boss_cooldown
       loop-seconds: 20
@@ -171,17 +180,31 @@ waves:
     elite-endermen: 4
     elite-skeletons: 1
   wave-4:
-    type: black_fog
-    endermen: 10
-    spiders: 8
-    skeletons: 5
-    elite-endermen: 3
-    elite-skeletons: 1
+    type: obelisk_assault
+    endermen: 1
+    spiders: 2
+    skeletons: 0
+    elite-endermen: 0
+    elite-skeletons: 0
   wave-5:
+    type: black_fog
+    endermen: 14
+    spiders: 10
+    skeletons: 6
+    elite-endermen: 6
+    elite-skeletons: 2
+  wave-6:
     type: collapse_rings
     endermen: 14
     spiders: 10
     skeletons: 6
+    elite-endermen: 6
+    elite-skeletons: 2
+  wave-7:
+    type: chambers
+    endermen: 0
+    spiders: 10
+    skeletons: 3
     elite-endermen: 6
     elite-skeletons: 2
   final:
@@ -251,6 +274,13 @@ wave-rewards:
     GOLDEN_APPLE: 6
     ECHO_SHARD: 8
     AMETHYST_SHARD: 32
+  wave-7:
+    ENDER_PEARL: 64
+    EXPERIENCE_BOTTLE: 80
+    DIAMOND: 16
+    GOLDEN_APPLE: 8
+    ECHO_SHARD: 12
+    AMETHYST_SHARD: 40
 
 wave-reward-shared-rare:
   wave-1: 0.0
@@ -258,6 +288,8 @@ wave-reward-shared-rare:
   wave-3: 0.0
   wave-4: 0.35
   wave-5: 0.50
+  wave-6: 0.60
+  wave-7: 0.75
 
 # One deterministic additive roll set per event-owned mob death.  The legacy
 # event-loot values above remain as the local fallback if a profile is omitted.
@@ -297,7 +329,7 @@ boss:
   # Base value for the two-player event. Official V2 freezes the real entity
   # max health from V2BossHealthScalingPolicy before the boss is spawned:
   # 2=5000, 3=6000, 4=7000, 5=8500, 6=9500, 7=10500, 8=11500,
-  # 9=12500, 10=13500, 11=14500, 12=15000, 13=15500, 14=16000,
+  # 9=12500, 10=13500, 11=14500, 12=15250, 13=16000, 14=16750,
   # 15=17500, 16=18000, 17=18500, 18=19000, 19=19500, 20=20000.
   health: 5000.0
   # These thresholds are base-pool anchors and keep their percentages when
@@ -331,14 +363,27 @@ boss:
     damage: 8.0
     radius: 4.0
     wither-ticks: 60
+  # Permanent LAST_SEAL guardians use server-side Interaction hitboxes. Their
+  # health is kept in a bounded slot ledger; the ItemDisplay is visual only.
+  tentacle-guardians:
+    enabled: true
+    damage-window-ticks: 300
+    respawn-delay-ticks: 800
+    attack-interval-ticks: 220
+    attack-stagger-ticks: 20
+    hitbox-width: 1.35
+    hitbox-height: 3.5
   # The mechanic is deliberately restricted to the V2 RIFT band. It uses tagged
   # displays and projectile hitboxes; vanilla block/fireball assets stay intact.
   rift-obelisks:
     enabled: true
-    stages: [RIFT]
+    stages: [DISTORTION]
     cooldown-seconds: [18, 24]
     health: 3
+    # Legacy boss-phase displays stay capped at four.  V3 Wave 4 uses the
+    # separate real-block cap below so the 16-20 player profile can use six.
     max-active: 4
+    v3-max-active: 6
     pulse-radius: 5.0
     pulse-interval-ticks: 40
     fire-interval-ticks: 80

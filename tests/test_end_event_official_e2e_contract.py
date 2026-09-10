@@ -62,6 +62,44 @@ def test_official_driver_does_not_skip_waves_or_boss_phases_with_test_commands()
 
 def test_official_driver_waits_for_all_six_v2_waves_and_every_boss_stage_in_order() -> None:
     source = DRIVER.read_text(encoding="utf-8")
+    config = (ROOT / "copimine-end-event/config.yml").read_text(encoding="utf-8")
+    if "schema-version: 3" in config:
+        # Schema 3 deliberately changes the official numbering to seven
+        # waves.  Keep the legacy assertions below for schema-2 fixtures, but
+        # make the checked-in driver prove the V3 route rather than requiring
+        # retired V2 wave markers.
+        ordered_markers = (
+            "Wait-EventWaveStarted -Wave 1",
+            "Wait-EventWaveCompleted -Wave 1",
+            "Wait-V2TransitionToWave -CompletedWave 1 -NextWave 2",
+            "Wait-EventWaveCompleted -Wave 2",
+            "Wait-V2TransitionToWave -CompletedWave 2 -NextWave 3",
+            "Wait-EventWaveCompleted -Wave 3",
+            "Wait-V2TransitionToWave -CompletedWave 3 -NextWave 4",
+            "V3_WAVE_STARTED.*wave=4.*objective=OBELISK_ASSAULT",
+            "OFFICIAL_V3_WAVE4_PASS",
+            "Wait-V2TransitionToWave -CompletedWave 4 -NextWave 5",
+            "V3_WAVE_STARTED.*wave=5.*objective=BLACK_FOG",
+            "OFFICIAL_V3_WAVE5_PASS",
+            "Wait-V2TransitionToWave -CompletedWave 5 -NextWave 6",
+            "V3_WAVE_STARTED.*wave=6.*objective=COLLAPSE_RINGS",
+            "OFFICIAL_V3_WAVE6_PASS",
+            "Wait-V2TransitionToWave -CompletedWave 6 -NextWave 7",
+            "V3_WAVE_STARTED.*wave=7.*objective=REALITY_SPLIT",
+            "OFFICIAL_V3_WAVE7_PASS",
+            "BOSS_CINEMATIC_STARTED",
+            "Assert-BossStage -Stage 'AWAKENING'",
+            "V3_RIFT_FRACTURES_STARTED.*phase=RIFT",
+            "OFFICIAL_V3_RIFT_FRACTURE_PASS",
+            "Assert-BossStage -Stage 'LAST_SEAL'",
+            "Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED'",
+        )
+        positions = [source.index(marker) for marker in ordered_markers]
+        assert positions == sorted(positions)
+        assert "WAVE_COMPLETED.*wave=FINAL" not in source
+        v3_rift_block = source[source.index("if ($isV3Flow) {", source.index("Assert-BossStage -Stage 'RIFT'")):source.index("} else {", source.index("Assert-BossStage -Stage 'RIFT'"))]
+        assert "Wait-LogRegex -Pattern 'RIFT_OBELISKS_SPAWNED.*stage=RIFT'" not in v3_rift_block
+        return
     ordered_markers = (
         "Wait-LogRegex -Pattern 'V2_WAVE_STARTED.*wave=1'",
         "Wait-LogRegex -Pattern 'V2_WAVE_COMPLETED.*wave=1'",
@@ -82,12 +120,13 @@ def test_official_driver_waits_for_all_six_v2_waves_and_every_boss_stage_in_orde
         "Wait-LogRegex -Pattern 'BOSS_CINEMATIC_STARTED'",
         "Assert-BossStage -Stage 'AWAKENING'",
         "Assert-BossStage -Stage 'HUNT'",
-        "RIFT_TENTACLE_SPAWN",
+        "OFFICIAL_TENTACLE_PRE_LAST_SEAL_PASS",
         "Assert-BossStage -Stage 'RIFT'",
         "Assert-BossStage -Stage 'OVERLOAD'",
         "Assert-BossStage -Stage 'RAGE'",
         "Assert-BossStage -Stage 'LAST_SEAL'",
         "BOSS_V2_LAST_SEAL_VISUALS_STARTED",
+        "OFFICIAL_TENTACLE_LAST_SEAL_PASS",
         "Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED'",
     )
     positions = [source.index(marker) for marker in ordered_markers]
@@ -204,6 +243,42 @@ def test_reward_probe_can_freeze_survival_bots_before_measuring_pickup() -> None
     assert "clearInterval(attackTimer)" in bot
 
 
+def test_mass_bot_mode_switch_does_not_overwrite_the_requested_mode() -> None:
+    """The ten-player LAST_SEAL pause must leave only the selected bot active."""
+    source = DRIVER.read_text(encoding="utf-8")
+    bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
+    assert "$requestedMode = if ($shouldBeActive)" in source
+    assert "$Mode =" not in source[source.index("function Set-OfficialBotCombatMode"):source.index("function Wait-LocalPlayers")]
+    assert "END_RIFT_BOT_CONTROL_DIRECTORY" in source
+    assert "pollControlMode" in bot
+    assert "controlFile" in bot
+
+
+def test_official_tentacle_probe_uses_the_same_bounded_scaling_as_the_server() -> None:
+    source = DRIVER.read_text(encoding="utf-8")
+    assert "function Get-OfficialPermanentTentacleCount" in source
+    for boundary in ("-le 2", "-le 4", "-le 7", "-le 10", "-le 15"):
+        assert boundary in source
+    assert "$expectedPermanentTentacles = Get-OfficialPermanentTentacleCount" in source
+    assert "Get-GuardianHitboxPositions" in source
+    assert "Keep-PlayersAtGuardiansAndBoss" in source
+    assert "BOSS_V2_DAMAGE_BLOCKED.*reason=permanent-guardian-shield" in source
+    assert "RIFT_TENTACLE_DAMAGE.*health_after=" in source
+    assert "RIFT_GUARDIAN_SHIELD_BROKEN" in source
+
+
+def test_official_multi_player_last_seal_probe_covers_guardians_and_boss() -> None:
+    """Large runs must not pause every bot while waiting for the shield log."""
+    source = DRIVER.read_text(encoding="utf-8")
+    expected = "Get-OfficialPermanentTentacleCount -PlayerCount $PlayerNames.Count"
+    assert expected in source
+    assert "$guardianProbeNames = @($PlayerNames | Select-Object -First (Get-OfficialPermanentTentacleCount -PlayerCount $PlayerNames.Count))" in source
+    assert "$env:END_RIFT_GUARDIAN_PROBE_NAMES = ($guardianProbeNames -join ',')" in source
+    last_seal = source[source.index("Wait-LogRegex -Pattern 'BOSS_V2_STAGE_TRANSITION.*to=LAST_SEAL'"):source.index("Wait-LogRegex -Pattern 'BOSS_DEFEAT_COMMITTED'")]
+    assert "Set-OfficialBotCombatMode -Mode ACTIVE -ActiveFromIndex 0" in last_seal
+    assert "BOSS_V2_DAMAGE_BLOCKED.*reason=permanent-guardian-shield" in last_seal
+
+
 def test_official_boss_phase_probe_uses_a_bounded_slow_attack_cadence() -> None:
     source = (ROOT / "tests/RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
     assert "+ ' 900'" in source
@@ -213,6 +288,9 @@ def test_boss_damage_probe_targets_the_authoritative_boss_uuid() -> None:
     bot = (ROOT / "tests/LocalEndRiftMobCombatBot.js").read_text(encoding="utf-8")
     assert "END_RIFT_BOSS_UUID" in bot
     assert "entity.uuid === configuredBossUuid" in bot
+    assert "END_RIFT_GUARDIAN_PROBE_NAMES" in bot
+    assert "isGuardianHitbox" in bot
+    assert "use_entity" in bot
 
 
 def test_official_driver_can_close_on_live_mob_positions_after_objective_deadline() -> None:

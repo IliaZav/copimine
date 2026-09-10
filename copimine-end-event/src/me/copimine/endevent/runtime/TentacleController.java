@@ -29,16 +29,26 @@ public final class TentacleController {
 
     public synchronized boolean register(long expectedGeneration, UUID entityId,
                                          boolean temporary, int slot, long startedTick) {
+        return register(expectedGeneration, entityId,
+                temporary ? TentacleAnimationPolicy.Kind.UNDER_PLAYER
+                        : TentacleAnimationPolicy.Kind.PERMANENT,
+                slot, startedTick);
+    }
+
+    public synchronized boolean register(long expectedGeneration, UUID entityId,
+                                         TentacleAnimationPolicy.Kind kind, int slot,
+                                         long startedTick) {
         if (!owns(expectedGeneration) || entityId == null || slot < 0
-                || states.containsKey(entityId)) {
+                || kind == null || states.containsKey(entityId)) {
             return false;
         }
+        boolean temporary = kind != TentacleAnimationPolicy.Kind.PERMANENT;
         if (temporary && temporaryCount() >= MAX_TEMPORARY
                 || !temporary && permanentCount() >= MAX_PERMANENT) {
             return false;
         }
-        states.put(entityId, new VisualState(entityId, temporary, slot,
-                TentacleAnimationPolicy.State.EMERGE, startedTick, null));
+        states.put(entityId, new VisualState(entityId, kind, slot,
+                TentacleAnimationPolicy.State.EMERGING, startedTick, null));
         return true;
     }
 
@@ -48,8 +58,9 @@ public final class TentacleController {
         if (current == null || next == null) {
             return false;
         }
-        states.put(entityId, new VisualState(entityId, current.temporary(), current.slot(),
-                next, startedTick, target));
+        TentacleAnimationPolicy.State canonical = TentacleAnimationPolicy.canonical(next);
+        states.put(entityId, new VisualState(entityId, current.kind(), current.slot(),
+                canonical, startedTick, target));
         return true;
     }
 
@@ -64,7 +75,9 @@ public final class TentacleController {
         if (current == null || marker == null || nowTick < current.startedTick()) {
             return false;
         }
-        return nowTick - current.startedTick() >= TentacleAnimationPolicy.markerTick(marker);
+        int markerTick = TentacleAnimationPolicy.markerTick(current.state(), marker);
+        return markerTick >= 0
+                && nowTick - current.startedTick() >= markerTick;
     }
 
     public synchronized void remove(UUID entityId) {
@@ -94,8 +107,11 @@ public final class TentacleController {
         states.clear();
     }
 
-    public record VisualState(UUID entityId, boolean temporary, int slot,
+    public record VisualState(UUID entityId, TentacleAnimationPolicy.Kind kind, int slot,
                               TentacleAnimationPolicy.State state,
                               long startedTick, UUID target) {
+        public boolean temporary() {
+            return kind != TentacleAnimationPolicy.Kind.PERMANENT;
+        }
     }
 }

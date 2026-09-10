@@ -358,13 +358,26 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.visualForEntity(uuid);
     }
 
+    public static Set<String> endEventVisualEntityIds() {
+        return END_EVENT_STATE.eventVisualEntityIds();
+    }
+
     public static String endEventAnimationForEntity(String uuid) {
         return END_EVENT_STATE.entityAnimationForEntity(uuid);
     }
 
-    public static EndRiftTentacleModel.Pose endEventTentaclePoseForEntity(
+    public static String endEventTentacleHealthForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleHealthStateForEntity(uuid);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseForEntity(
             String uuid, long elapsedTicks) {
         return END_EVENT_STATE.tentaclePoseForEntity(uuid, elapsedTicks);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseAt(
+            String uuid, long nowMillis) {
+        return END_EVENT_STATE.tentaclePoseForEntityAt(uuid, nowMillis);
     }
 
     public static String bossPhaseForEntity(String uuid) {
@@ -394,6 +407,11 @@ public final class ClientBridgeProtocol {
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
         END_EVENT_WORLD_VFX.render(context);
+    }
+
+    public static void renderEndEventTentacles(
+            net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        EndRiftTentacleRenderer.render(context);
     }
 
     public static EndEventWorldVfxManager endEventWorldVfx() {

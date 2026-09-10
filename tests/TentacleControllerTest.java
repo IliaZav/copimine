@@ -17,20 +17,36 @@ public final class TentacleControllerTest {
                 "controller must keep separate permanent and temporary counts");
         check(!controller.register(generation + 1, UUID.randomUUID(), false, 1, 100L),
                 "stale generation must be rejected");
-        check(controller.transition(permanent, TentacleAnimationPolicy.State.SHIELD_CHANNEL,
+        check(controller.transition(permanent, TentacleAnimationPolicy.State.GRAB_SUCCESS,
                         110L, null), "state transition must be generation-scoped");
         check(controller.state(permanent).state()
-                        == TentacleAnimationPolicy.State.SHIELD_CHANNEL,
+                        == TentacleAnimationPolicy.State.GRAB_SUCCESS,
                 "state must be stored for the bound entity");
+        check(controller.state(temporary).kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER,
+                "temporary registration must retain its under-player kind");
+        check(!controller.markerReached(permanent,
+                        TentacleAnimationPolicy.Marker.CONTACT, 117L),
+                "contact marker must not fire before its state offset");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 116L),
+                        TentacleAnimationPolicy.Marker.CONTACT, 118L),
+                "contact marker must use the active grab-success timeline");
+        check(controller.markerReached(permanent,
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 122L),
                 "server marker clock must be independent of client bone position");
         check(!controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 129L),
-                "future marker must not fire early");
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 122L),
+                "a marker owned by another state must not fire");
+        check(controller.transition(permanent, TentacleAnimationPolicy.State.THROW,
+                        130L, null), "throw state must be accepted");
+        check(!controller.markerReached(permanent,
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 137L),
+                "throw release must wait for its state offset");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 130L),
-                "throw release marker must fire on its server tick");
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 138L),
+                "throw release must use the active throw timeline");
+        check(!controller.markerReached(permanent,
+                        TentacleAnimationPolicy.Marker.RECOVERY_START, 138L),
+                "recovery marker must not fire during throw");
         controller.remove(temporary);
         check(controller.temporaryCount() == 0, "temporary cleanup must release its slot");
         controller.clear();

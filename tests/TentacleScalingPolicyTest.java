@@ -3,6 +3,7 @@ import me.copimine.endevent.domain.V2BossStage;
 
 public final class TentacleScalingPolicyTest {
     public static void main(String[] args) {
+        testPermanentGuardiansOnlyExistInTheLastSeal();
         check(TentacleScalingPolicy.permanentFor(2, V2BossStage.LAST_SEAL) == 2,
                 "a duo must have two permanent tentacles in the last seal");
         check(TentacleScalingPolicy.permanentFor(3, V2BossStage.LAST_SEAL) == 3,
@@ -31,6 +32,16 @@ public final class TentacleScalingPolicyTest {
         check(TentacleScalingPolicy.permanentFor(0, V2BossStage.LAST_SEAL) == 0,
                 "empty roster must not spawn tentacles");
         System.out.println("TentacleScalingPolicyTest OK");
+    }
+
+    private static void testPermanentGuardiansOnlyExistInTheLastSeal() {
+        for (V2BossStage stage : V2BossStage.values()) {
+            if (stage == V2BossStage.LAST_SEAL) {
+                continue;
+            }
+            check(TentacleScalingPolicy.permanentFor(20, stage) == 0,
+                    "permanent guardian tentacles must be absent before LAST_SEAL: " + stage);
+        }
     }
 
     private static void check(boolean condition, String message) {

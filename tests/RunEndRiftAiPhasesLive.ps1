@@ -179,15 +179,16 @@ function Assert-SkeletonWaveEvidence {
   $delta = Get-AppendedLogText -PreviousLength $PreviousLogLength
   $common = "WAVE_SKELETON_BEHAVIOR.*wave=$Wave.*variant=COMMON.*behavior=$ExpectedBehavior"
   if ($Wave -eq 4) {
-    # The disposable `test wave 4` path creates the same role and behavior
-    # metadata immediately, while the official paced path emits the separate
-    # CORE_ONLY tower movement marker after the group is released.  Accept
-    # either marker, but require the exact tower behavior in both cases.
-    $towerCommon = "WAVE_SKELETON_BEHAVIOR.*wave=4.*variant=COMMON.*behavior=tower_artillery.*guards_objective=true"
-    $towerMovement = 'WAVE_SKELETON_TOWER.*behavior=tower_artillery.*target=CORE_ONLY'
-    if ($delta -notmatch $towerCommon -and $delta -notmatch $towerMovement) {
-      throw "Wave $Wave did not emit the tower artillery behavior.`n$delta"
+    # V3 owns Wave 4 for the obelisk assault. The disposable test-wave path
+    # therefore uses the current bounded tower-role controller (endermen and
+    # spiders) rather than pretending that a skeleton is present. The
+    # authoritative markers are the telegraph and the path decision.
+    if ($delta -notmatch 'WAVE_TOWER_ALERT .*role=(BREAKER|RAIDER).*target=' -or
+        $delta -notmatch 'WAVE_AI_PATH .*tactic=(CORE_BREAKER|RAIDER_RUSH).*destination=') {
+      throw "Wave $Wave did not emit the current bounded tower behavior.`n$delta"
     }
+    Write-Output "LIVE_TOWER_WAVE_PASS wave=$Wave marker=WAVE_TOWER_ALERT path=WAVE_AI_PATH"
+    return
   } elseif ($delta -notmatch $common) {
     throw "Wave $Wave did not emit the common skeleton behavior '$ExpectedBehavior'.`n$delta"
   }

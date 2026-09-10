@@ -187,20 +187,67 @@ try {
 
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $beforeMini = Get-LogLength
-  $response = Invoke-LocalRcon -CommandText 'cmend test wave 3'
-  if ($response -match '(?i)refused|missing|event world') {
-    throw "Mini-boss spell wave was refused:`n$response"
+  # Follow the assignments emitted by the server.  Wave 3 can legitimately
+  # expose only four distinct elite spells because its skeleton elite owns the
+  # arrow spell.  A second bounded probe uses Wave 5 when needed; its larger
+  # elite set covers the remaining policy spell (including void_snare).
+  # The server markers are TEST_WAVE_3_SPELL_ASSIGNMENTS and
+  # TEST_WAVE_5_SPELL_ASSIGNMENTS respectively.
+  $supportedMiniBossSpellIds = @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo', 'rift_euphoria')
+  $requiredMiniBossSpellIds = @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo', 'rift_euphoria')
+  $waveAssignments = @()
+  foreach ($wave in @(3, 5)) {
+    $missingBeforeWave = @($requiredMiniBossSpellIds | Where-Object {
+        $_ -notin $waveAssignments
+      })
+    if ($wave -eq 5 -and $missingBeforeWave.Count -eq 0) {
+      break
+    }
+    if ($wave -eq 5) {
+      $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+    }
+    $beforeWave = Get-LogLength
+    $waveCommand = if ($wave -eq 3) { 'cmend test wave 3' } else { 'cmend test wave 5' }
+    $response = Invoke-LocalRcon -CommandText $waveCommand
+    if ($response -match '(?i)refused|missing|event world') {
+      throw "Mini-boss spell wave $wave was refused:`n$response"
+    }
+    # The second pass is the concrete TEST_WAVE_5_SPELL_ASSIGNMENTS probe.
+    $assignment = Wait-LogMarker -PreviousLength $beforeWave `
+      -Pattern "TEST_WAVE_${wave}_SPELL_ASSIGNMENTS.*miniBossSpells=\[[^\]]*\]" -TimeoutSeconds 8
+    $assignmentMatch = [Regex]::Match($assignment, 'miniBossSpells=\[(?<spells>[^\]]*)\]')
+    if (-not $assignmentMatch.Success) {
+      throw "Wave $wave did not publish its assigned mini-boss spell set.`n$assignment"
+    }
+    $waveSpells = @([Regex]::Matches($assignmentMatch.Groups['spells'].Value, '[a-z][a-z_]*') |
+      ForEach-Object { $_.Value } | Sort-Object -Unique)
+    if ($waveSpells.Count -eq 0) {
+      throw "Wave $wave published an empty mini-boss spell set.`n$assignment"
+    }
+    $unknownMiniBossSpells = @($waveSpells | Where-Object {
+        $_ -notin $supportedMiniBossSpellIds
+      })
+    if ($unknownMiniBossSpells.Count -gt 0) {
+      throw "Wave $wave published an unknown mini-boss spell: $($unknownMiniBossSpells -join ', ')"
+    }
+    $waveAssignments = @($waveAssignments + $waveSpells | Sort-Object -Unique)
   }
-  # Wave III has four stable elite spell assignments. The first casts are
-  # scheduled immediately; allow a small bounded window for all telegraphs and
-  # flights, never an unbounded sleep.
-  foreach ($spell in @('rift_step', 'void_snare', 'echo_pulse', 'arrow_salvo')) {
+  $assignedMiniBossSpells = @($waveAssignments | Sort-Object -Unique)
+  $missingMiniBossSpells = @($requiredMiniBossSpellIds | Where-Object {
+      $_ -notin $assignedMiniBossSpells
+    })
+  if ($missingMiniBossSpells.Count -gt 0) {
+    throw "The bounded mini-boss probes did not cover: $($missingMiniBossSpells -join ', ')"
+  }
+  foreach ($spell in $assignedMiniBossSpells) {
     Wait-LogMarker -PreviousLength $beforeMini `
-      -Pattern "MINIBOSS_SPELL_CAST.*spell=$spell" -TimeoutSeconds 22 | Out-Null
+      -Pattern "MINIBOSS_SPELL_TELEGRAPH.*spell=$spell" -TimeoutSeconds 45 | Out-Null
     Wait-LogMarker -PreviousLength $beforeMini `
-      -Pattern "MINIBOSS_SPELL_FLIGHT.*spell=$spell" -TimeoutSeconds 22 | Out-Null
+      -Pattern "MINIBOSS_SPELL_CAST.*spell=$spell" -TimeoutSeconds 45 | Out-Null
     Wait-LogMarker -PreviousLength $beforeMini `
-      -Pattern "SPELL_IMPACT_VISUAL spell=$spell" -TimeoutSeconds 22 | Out-Null
+      -Pattern "MINIBOSS_SPELL_FLIGHT.*spell=$spell" -TimeoutSeconds 45 | Out-Null
+    Wait-LogMarker -PreviousLength $beforeMini `
+      -Pattern "SPELL_IMPACT_VISUAL spell=$spell" -TimeoutSeconds 45 | Out-Null
     Write-Output "LIVE_MINIBOSS_SPELL_PASS spell=$spell telegraph_flight_cast_impact=1"
   }
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
@@ -213,7 +260,7 @@ try {
   if ($matrixLogDelta -match 'generated an exception') {
     throw "Spell matrix produced a Paper task exception:`n$matrixLogDelta"
   }
-  Write-Output 'LIVE_SPELL_MATRIX_PASS boss=7 mini=4 music_phases=14 cleanup=1'
+  Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 mini=$($assignedMiniBossSpells.Count) assigned=$($assignedMiniBossSpells -join ',') music_phases=14 cleanup=1"
 } finally {
   try { Invoke-LocalRcon -CommandText 'cmend wave clear' | Out-Null } catch { }
   try { Invoke-LocalRcon -CommandText 'cmend boss kill cleanup' | Out-Null } catch { }

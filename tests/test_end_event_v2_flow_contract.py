@@ -38,17 +38,16 @@ def test_wave_six_does_not_open_the_passage_between_staggered_groups() -> None:
     chamber = _method("private void tickV2ChamberObjective", "private void renderV2WaveObjective")
     assert "V2WaveObjectivePolicy.chambersComplete" in chamber
     assert "v2WaveSpawnGroupIndex >= v2WaveSpawnSchedule.size()" in chamber
-    assert "countLiveWaveEntitiesForWave(6)" in chamber
+    assert "countLiveWaveEntitiesForWave(chamberWaveNumber())" in chamber
 
 
-def test_official_boss_damage_does_not_cancel_an_accepted_real_health_hit() -> None:
+def test_official_boss_damage_commits_an_accepted_real_health_hit_atomically() -> None:
     damage = _method("private void handleV2BossDamage", "private void applyBossDamage")
     assert "BossRealHealthDamagePolicy.apply(" in damage
-    accepted = damage[damage.index("event.setDamage(adjustedBaseDamage);"):]
-    assert "boss.setHealth(result.remainingHealth())" not in accepted
-    assert "event.setCancelled(true);" not in accepted
-    assert "event.setDamage(adjustedBaseDamage);" in accepted
-    assert "cancelled=false" in accepted
+    assert "event.setCancelled(true);" in damage
+    assert "boss.setHealth(result.remainingHealth())" in damage
+    assert "event.setDamage(adjustedBaseDamage);" not in damage
+    assert "cancelled=true" in damage
     assert "authority=entity-health" in damage
 
 

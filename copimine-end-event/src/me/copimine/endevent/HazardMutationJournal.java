@@ -167,7 +167,7 @@ public final class HazardMutationJournal {
             mutation = mutation == null || mutation.isBlank() ? "MAGMA" : mutation.toUpperCase(java.util.Locale.ROOT);
             if (!mutation.equals("MAGMA") && !mutation.equals("FIRE")
                     && !mutation.equals("EMERALD_BARRIER") && !mutation.equals("BARRIER")
-                    && !mutation.equals("ICE")) {
+                    && !mutation.equals("ICE") && !mutation.equals("OBELISK")) {
                 throw new IllegalArgumentException("unsupported hazard mutation: " + mutation);
             }
         }
@@ -193,6 +193,11 @@ public final class HazardMutationJournal {
         /** A V2 Wave 5 prisoner cell temporarily covered with ice. */
         public boolean isIceMutation() {
             return mutation.equals("ICE");
+        }
+
+        /** A V3 Wave 4 obelisk cell journaled at its actual world height. */
+        public boolean isObeliskMutation() {
+            return mutation.equals("OBELISK");
         }
     }
 

@@ -15,8 +15,9 @@ public final class V2BossStagePolicyTest {
         check(jump.entered().size() == 5, "all skipped stages are reported");
         var recovery = V2BossStagePolicy.transition(V2BossStage.LAST_SEAL, 5000, 10000);
         check(recovery.current() == V2BossStage.LAST_SEAL, "stage never regresses");
-        check(V2BossStagePolicy.spellPool(V2BossStage.RIFT)
-                .contains(EndRiftAiPolicy.BossSpell.RIFT_OBELISKS), "obelisks only unlock in Rift");
+        check(!V2BossStagePolicy.spellPool(V2BossStage.RIFT)
+                .contains(EndRiftAiPolicy.BossSpell.RIFT_OBELISKS),
+                "official Rift phase uses fractures, not legacy obelisks");
         check(!V2BossStagePolicy.spellPool(V2BossStage.OVERLOAD)
                 .contains(EndRiftAiPolicy.BossSpell.RIFT_OBELISKS), "obelisks do not repeat after Rift");
         System.out.println("V2BossStagePolicyTest OK");

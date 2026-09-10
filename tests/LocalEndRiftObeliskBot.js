@@ -91,25 +91,19 @@ function writeAttack(entity) {
   attempted.add(entity.id)
   const target = nearbyObelisks()
     .sort((first, second) => distance(first.position, entity.position) - distance(second.position, entity.position))[0]
-  const configuredTarget = [targetPosition.x, targetPosition.y, targetPosition.z].every(Number.isFinite)
-    ? targetPosition
-    : null
-  const lookAt = configuredTarget
-    ? entity.position.offset(configuredTarget.x - entity.position.x,
-      configuredTarget.y - entity.position.y, configuredTarget.z - entity.position.z)
-    : (target?.position || entity.position)
-  // Wait until the real client look packet has been sent.  A forced
-  // Mineflayer look only updates its local model and can leave the server's
-  // Player#getEyeLocation direction unchanged when use_entity follows in the
-  // same callback.
-  lookAtServer(lookAt.offset(0, 0.65, 0))
+  // The attack ray must intersect the projectile itself.  Looking at the
+  // obelisk base can miss a LargeFireball that is above the player's eye line
+  // and makes a real client appear to swing without producing a reflection.
+  // The probe is placed between the source obelisk and the Core, so this same
+  // direction sends the reflected fireball back toward the obelisk.
+  lookAtServer(entity.position)
   setTimeout(() => {
     const refreshed = bot.entities[entity.id]
     if (!refreshed || !bot.entity || distance(refreshed.position, bot.entity.position) > 4.8) return
     // The movement plugin may emit an interpolation packet between the first
     // aim and this callback. Repeat the real look packet immediately before
     // use_entity so the server uses this exact reflected direction.
-    lookAtServer(lookAt.offset(0, 0.65, 0))
+    lookAtServer(refreshed.position)
     // Sending the same use_entity + arm_animation pair as a vanilla melee
     // client keeps the reflection path independent of Mineflayer's mob-only
     // attack helper.
@@ -120,7 +114,7 @@ function writeAttack(entity) {
     })
     bot._client.write('arm_animation', { hand: 0 })
     reflections += 1
-    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=${target ? target.id : 'none'}`)
+    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=projectile nearest_obelisk=${target ? target.id : 'none'}`)
   }, 75)
 }
 

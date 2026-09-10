@@ -5,51 +5,319 @@
     "particle": "copimine:item/end_event_rift_tentacle_hd",
     "tentacle": "copimine:item/end_event_rift_tentacle_hd"
   },
+  "copimine_rig": {
+    "bones": [
+      "root",
+      "base",
+      "seg_01",
+      "seg_02",
+      "seg_03",
+      "seg_04",
+      "seg_05",
+      "tip",
+      "tip_claw_1",
+      "tip_claw_2",
+      "tip_claw_3",
+      "tip_claw_4"
+    ],
+    "grab_socket": {
+      "parent": "tip",
+      "geometry": false,
+      "local": [
+        0.0,
+        4.75,
+        0.0
+      ]
+    }
+  },
   "elements": [
     {
-      "from": [3, 0, 3],
-      "to": [13, 3, 13],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        6,
+        0,
+        6
+      ],
+      "to": [
+        10,
+        3,
+        10
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [4, 2, 4],
-      "to": [12, 7, 12],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        6,
+        2,
+        6
+      ],
+      "to": [
+        10,
+        7,
+        10
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [3, 6, 5],
-      "to": [11, 11, 13],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        5,
+        6,
+        5
+      ],
+      "to": [
+        11,
+        11,
+        11
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [4, 10, 4],
-      "to": [12, 15, 12],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        6,
+        10,
+        6
+      ],
+      "to": [
+        10,
+        15,
+        10
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [5, 14, 5],
-      "to": [11, 16, 11],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        5,
+        14,
+        5
+      ],
+      "to": [
+        11,
+        16,
+        11
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [2, 13, 6],
-      "to": [6, 16, 9],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        2,
+        12,
+        5
+      ],
+      "to": [
+        5,
+        16,
+        8
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [10, 13, 6],
-      "to": [14, 16, 9],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        11,
+        12,
+        5
+      ],
+      "to": [
+        14,
+        16,
+        8
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [6, 14, 2],
-      "to": [9, 16, 6],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        5,
+        12,
+        2
+      ],
+      "to": [
+        8,
+        16,
+        5
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     },
     {
-      "from": [6, 14, 10],
-      "to": [9, 16, 14],
-      "faces": {"down": {"texture": "#tentacle"}, "up": {"texture": "#tentacle"}, "north": {"texture": "#tentacle"}, "south": {"texture": "#tentacle"}, "west": {"texture": "#tentacle"}, "east": {"texture": "#tentacle"}}
+      "from": [
+        5,
+        12,
+        11
+      ],
+      "to": [
+        8,
+        16,
+        14
+      ],
+      "faces": {
+        "down": {
+          "texture": "#tentacle"
+        },
+        "up": {
+          "texture": "#tentacle"
+        },
+        "north": {
+          "texture": "#tentacle"
+        },
+        "south": {
+          "texture": "#tentacle"
+        },
+        "west": {
+          "texture": "#tentacle"
+        },
+        "east": {
+          "texture": "#tentacle"
+        }
+      }
     }
   ]
 }

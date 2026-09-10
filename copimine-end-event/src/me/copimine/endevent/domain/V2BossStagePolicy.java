@@ -3,7 +3,7 @@ package me.copimine.endevent.domain;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Pure, monotonic V2 stage transitions and bounded spell availability. */
+/** Pure, monotonic official boss stage transitions and bounded spell availability. */
 public final class V2BossStagePolicy {
     private V2BossStagePolicy() {
     }
@@ -41,7 +41,6 @@ public final class V2BossStagePolicy {
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK);
             case RIFT -> List.of(
-                    EndRiftAiPolicy.BossSpell.RIFT_OBELISKS,
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);

@@ -9,6 +9,7 @@
     "KeyboardInputReverseMovementMixin",
     "EndermanEntityRendererMixin",
     "DisplayEntityRendererMixin",
+    "ClientWorldAccessor",
     "SpiderEntityRendererMixin",
     "ShulkerEntityRendererMixin",
     "SkeletonEntityRendererMixin"

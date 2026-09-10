@@ -35,9 +35,9 @@ public final class EndEventClientState {
             // bounded metadata fields, so ClientBridgeProtocol dispatches it
             // through the overload below.
             case "END_BOSS_BAR" -> false;
-            case "END_ENTITY_BIND" -> bindEntity(packet);
+            case "END_ENTITY_BIND" -> bindEntity(packet, nowMillis);
             case "END_ENTITY_UNBIND" -> unbindEntity(packet);
-            case "END_ENTITY_PHASE" -> applyEntityPhase(packet);
+            case "END_ENTITY_PHASE" -> applyEntityPhase(packet, nowMillis);
             case "END_CONTROL_START" -> startControl(packet, nowMillis);
             case "END_CONTROL_STOP" -> stopControl(packet);
             default -> false;
@@ -126,13 +126,57 @@ public final class EndEventClientState {
     }
 
     /**
+     * Server-selected health presentation for the articulated guardian.
+     * Unknown or missing values deliberately fall back to FULL so a malformed
+     * visual suffix can never hide a gameplay entity or affect its hitbox.
+     */
+    public synchronized String tentacleHealthStateForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "FULL";
+        }
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        return binding == null ? "FULL" : binding.healthState();
+    }
+
+    /**
      * Resolve a smooth client pose from the server state. The elapsed time is
      * visual-only; server marker timing remains authoritative for gameplay.
      */
-    public synchronized EndRiftTentacleModel.Pose tentaclePoseForEntity(
+    public synchronized EndRiftTentaclePose.TentaclePose tentaclePoseForEntity(
             String uuid, long elapsedTicks) {
         return EndRiftTentacleRenderer.poseFor(
                 visualForEntity(uuid), entityAnimationForEntity(uuid), elapsedTicks);
+    }
+
+    /** Resolve a pose from the phase receipt timeline rather than entity age. */
+    public synchronized EndRiftTentaclePose.TentaclePose tentaclePoseForEntityAt(
+            String uuid, long nowMillis) {
+        if (uuid == null || uuid.isBlank() || nowMillis < 0L) {
+            return EndRiftTentaclePose.TentaclePose.identity();
+        }
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        if (binding == null) {
+            return EndRiftTentaclePose.TentaclePose.identity();
+        }
+        long elapsedMillis = Math.max(0L, nowMillis - binding.startedAtMillis());
+        return EndRiftTentacleRenderer.poseForAt(
+                visualForEntity(uuid), binding.animationId(), elapsedMillis,
+                binding.durationMillis(), stableSeed(uuid));
+    }
+
+    /** IDs are used by the renderer only as a bounded lookup hint. */
+    public synchronized Set<String> eventVisualEntityIds() {
+        return Set.copyOf(entityVisuals.keySet());
+    }
+
+    public synchronized TentacleAnimationSnapshot tentacleAnimationSnapshot(String uuid) {
+        EntityAnimationBinding binding = uuid == null ? null : entityAnimations.get(uuid);
+        if (binding == null) {
+            return null;
+        }
+        return new TentacleAnimationSnapshot(binding.instanceId(), binding.animationId(),
+                binding.stateStartServerTick(), binding.startedAtMillis(), binding.durationMillis(),
+                binding.healthState());
     }
 
     public synchronized String bossUuid() {
@@ -260,12 +304,13 @@ public final class EndEventClientState {
         return true;
     }
 
-    private boolean bindEntity(EndEventPacket packet) {
+    private boolean bindEntity(EndEventPacket packet, long nowMillis) {
         if (packet.subjectId().isBlank() || packet.instanceId().isBlank() || packet.visualId().isBlank()) {
             return false;
         }
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
-        entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(packet.instanceId(), "IDLE"));
+        entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
+                packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL"));
         return true;
     }
 
@@ -279,7 +324,7 @@ public final class EndEventClientState {
         return true;
     }
 
-    private boolean applyEntityPhase(EndEventPacket packet) {
+    private boolean applyEntityPhase(EndEventPacket packet, long nowMillis) {
         if (packet.subjectId().isBlank() || packet.instanceId().isBlank()
                 || packet.phaseId().isBlank()) {
             return false;
@@ -291,14 +336,46 @@ public final class EndEventClientState {
                 || !Objects.equals(binding.instanceId(), packet.instanceId())) {
             return false;
         }
-        String animation = normalizeAnimation(packet.phaseId());
+        AnimationCue cue = parseAnimationCue(packet.phaseId());
+        String animation = cue.animationId();
         if (EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId())
                 && !EndRiftTentacleModel.supportsAnimation(animation)) {
             return false;
         }
-        entityAnimations.put(packet.subjectId(),
-                new EntityAnimationBinding(packet.instanceId(), animation));
+        long durationMillis = packet.durationMillis() > 0L
+                ? packet.durationMillis() : EndRiftTentacleAnimator.durationTicks(animation) * 50L;
+        entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
+                packet.instanceId(), animation, cue.stateStartServerTick(), nowMillis,
+                durationMillis, cue.healthState()));
         return true;
+    }
+
+    private static AnimationCue parseAnimationCue(String raw) {
+        String value = raw == null ? "" : raw.trim();
+        String[] parts = value.split("\\|", -1);
+        String animation = normalizeAnimation(parts.length == 0 ? value : parts[0]);
+        long stateStartServerTick = -1L;
+        String healthState = "FULL";
+        for (int index = 1; index < parts.length; index++) {
+            String part = parts[index].trim();
+            if (part.startsWith("t=")) {
+                try {
+                    long parsed = Long.parseLong(part.substring(2));
+                    if (parsed >= 0L) {
+                        stateStartServerTick = parsed;
+                    }
+                } catch (NumberFormatException ignored) {
+                    // A missing optional server tick does not make gameplay fail.
+                }
+            } else if (part.startsWith("health=")) {
+                healthState = normalizeHealthState(part.substring("health=".length()));
+            }
+        }
+        return new AnimationCue(animation, stateStartServerTick, healthState);
+    }
+
+    private static long stableSeed(String uuid) {
+        return uuid == null ? 0L : uuid.hashCode() * 0x9E3779B97F4A7C15L;
     }
 
     private boolean startControl(EndEventPacket packet, long nowMillis) {
@@ -395,9 +472,34 @@ public final class EndEventClientState {
     private record EntityVisualBinding(String instanceId, String visualId) {
     }
 
-    private record EntityAnimationBinding(String instanceId, String animationId) {
+    private record EntityAnimationBinding(String instanceId, String animationId,
+                                          long stateStartServerTick,
+                                          long startedAtMillis, long durationMillis,
+                                          String healthState) {
+    }
+
+    private record AnimationCue(String animationId, long stateStartServerTick,
+                                String healthState) {
+    }
+
+    public record TentacleAnimationSnapshot(String instanceId, String animationId,
+                                             long stateStartServerTick,
+                                             long startedAtMillis, long durationMillis,
+                                             String healthState) {
     }
 
     private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis) {
+    }
+
+    private static String normalizeHealthState(String value) {
+        if (value == null) {
+            return "FULL";
+        }
+        return switch (value.trim().toUpperCase(Locale.ROOT)) {
+            case "DAMAGED" -> "DAMAGED";
+            case "CRITICAL" -> "CRITICAL";
+            case "DEAD" -> "DEAD";
+            default -> "FULL";
+        };
     }
 }

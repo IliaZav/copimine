@@ -39,7 +39,7 @@ def test_spell_is_registered_only_in_distortion() -> None:
 def test_config_has_exact_safe_defaults_and_parser_rejects_other_stages() -> None:
     for line in (
         "enabled: true",
-        "stages: [RIFT]",
+        "stages: [DISTORTION]",
         "cooldown-seconds: [18, 24]",
         "health: 3",
         "max-active: 4",
@@ -147,6 +147,17 @@ def test_obelisk_cast_is_one_shot_per_boss_fight_and_persisted_on_boss() -> None
     assert "LIVE_RIFT_OBELISK_ONESHOT_PASS" in LIVE
     assert "RIFT_OBELISKS_SKIPPED .*reason=already-used-this-fight" in LIVE
     assert "cast=USED" in LIVE
+
+
+def test_manual_v2_obelisk_attempt_reaches_its_guard_during_another_cast() -> None:
+    dispatcher = _body("private void castV2BossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell",
+                       "private void castBossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell")
+    obelisk_branch = dispatcher.index("spell == EndRiftAiPolicy.BossSpell.RIFT_OBELISKS")
+    pool_guard = dispatcher.index("!V2BossStagePolicy.spellPool(v2BossStage).contains(spell)")
+    assert obelisk_branch < pool_guard
+    assert "startRiftObelisks(boss, forced)" in dispatcher
+    assert "boolean obeliskSpell = spell == EndRiftAiPolicy.BossSpell.RIFT_OBELISKS" in dispatcher
+    assert "!obeliskSpell && !V2BossStagePolicy.spellPool(v2BossStage).contains(spell)" in dispatcher
 
 
 def test_exact_pulse_and_hit_effects_are_policy_driven() -> None:

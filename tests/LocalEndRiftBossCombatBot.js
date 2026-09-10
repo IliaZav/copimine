@@ -14,6 +14,8 @@ const username = process.argv[2] || 'BossHitProbe'
 const durationMs = Number(process.argv[3] || 45000)
 const attackEveryMs = Number(process.env.END_RIFT_BOSS_ATTACK_EVERY_MS || 1100)
 const attackDelayMs = Number(process.env.END_RIFT_BOSS_ATTACK_DELAY_MS || 9000)
+const synchronizedBurstCount = Math.max(0, Number(process.env.END_RIFT_BOSS_SYNC_BURST_COUNT || 0))
+const synchronizedBurstSpacingMs = Math.max(0, Number(process.env.END_RIFT_BOSS_SYNC_BURST_SPACING_MS || 12))
 const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
 const rawAttackPackets = process.env.END_RIFT_RAW_ATTACK !== '0'
 const attackBarrierPath = process.env.END_RIFT_BOSS_ATTACK_BARRIER || ''
@@ -167,9 +169,53 @@ function tryAttack () {
   })
 }
 
+function sendRawAttack (target) {
+  if (!target || !rawAttackPackets) return false
+  // This is deliberately the same serverbound packet used by the ordinary
+  // probe.  The synchronized mode only removes the asynchronous lookAt and
+  // helper-side cooldown from the first packet in each independent client.
+  bot._client.write('use_entity', {
+    target: target.id,
+    mouse: 1,
+    hand: 0,
+    sneaking: false
+  })
+  bot._client.write('arm_animation', { hand: 0 })
+  attackCount += 1
+  console.log(`PLAYER_ATTACK ${username} count=${attackCount} bossId=${target.id} burst=true raw=${rawAttackPackets}`)
+  return true
+}
+
+function startSynchronizedBurst () {
+  if (synchronizedBurstCount < 1 || !bot.entity) return false
+  const target = bossEntity()
+  if (!target) {
+    logTargetMismatch()
+    return false
+  }
+  if (!bossSeen) {
+    bossSeen = true
+    console.log(`BOSS_ENTITY ${username} id=${target.id} pos=${target.position.x},${target.position.y},${target.position.z}`)
+  }
+  for (let index = 0; index < synchronizedBurstCount; index += 1) {
+    setTimeout(() => {
+      const refreshed = bossEntity()
+      if (refreshed && refreshed.id === target.id) sendRawAttack(refreshed)
+    }, index * synchronizedBurstSpacingMs)
+  }
+  console.log(`SYNC_BURST_RELEASED ${username} count=${synchronizedBurstCount} spacing_ms=${synchronizedBurstSpacingMs}`)
+  return true
+}
+
 function startAttacking () {
   if (attackTimer !== null) return
   armDurationTimer()
+  if (synchronizedBurstCount > 0) {
+    startFollowing()
+    startSynchronizedBurst()
+    console.log(`ATTACK_RELEASED ${username} synchronized=true`)
+    return
+  }
   attackTimer = setInterval(tryAttack, attackEveryMs)
   startFollowing()
   tryAttack()

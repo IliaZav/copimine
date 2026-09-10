@@ -396,7 +396,7 @@ def test_final_wave_entities_stay_on_the_same_mobile_ai_controller() -> None:
     assert "isWaveAiCombatEntity(entity)" in body
     phase_start = MAIN.index("private boolean isWaveAiCombatPhase")
     phase_body = MAIN[phase_start:MAIN.index("private boolean isMiniBossCombatPhase", phase_start)]
-    assert "case FINAL_WAVE" in phase_body
+    assert "phase == EventPhase.FINAL_WAVE" in phase_body
 
 
 def test_boss_servants_with_wave_zero_are_admitted_to_the_live_ai_controller() -> None:
@@ -418,6 +418,11 @@ def test_disposable_local_waves_are_admitted_without_enabling_natural_mob_ai() -
     tick_start = MAIN.index("private void tickWaveMobAi()")
     tick = MAIN[tick_start:MAIN.index("private void enforceWaveMobContainment", tick_start)]
     assert "isWaveAiCombatEntity(entity)" in tick
+    wave_six_start = MAIN.index("private boolean waveSixTargetAllowed")
+    wave_six = MAIN[wave_six_start:MAIN.index("private Location constrainWaveSixPreferred", wave_six_start)]
+    assert "!isOfficialEntity(entity)" in wave_six
+    assert '"local".equalsIgnoreCase(config == null ? "" : config.environment())' in wave_six
+    assert "return isCombatTarget(player);" in wave_six
 
 
 def test_tower_roles_have_reachable_core_stances_and_short_player_aggro() -> None:

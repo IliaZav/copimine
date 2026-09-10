@@ -43,6 +43,7 @@ public final class CopiMineClient implements ClientModInitializer {
             EndRiftBossBarHud.render(drawContext);
         });
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
+        WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventTentacles);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             if (client.player != null && client.player.isDead()) {

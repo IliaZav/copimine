@@ -23,16 +23,17 @@ public final class WaveRewardPolicyTest {
         boolean rareB = WaveRewardPolicy.sharedRareRoll("event-123", 5);
         check(rareA == rareB, "shared rare decision must be deterministic per event and wave");
         check(!WaveRewardPolicy.sharedRareRoll("", 5), "blank event id must fail closed");
+        check(WaveRewardPolicy.sharedRareRoll("event-123", 6, 1.0D),
+                "V3 Wave 6 must support a persisted shared rare roll");
+        check(WaveRewardPolicy.sharedRareRoll("event-123", 7, 1.0D),
+                "V3 Wave 7 must support a persisted shared rare roll");
+        check(!WaveRewardPolicy.sharedRareRoll("event-123", 8, 1.0D),
+                "unsupported wave shared rare rolls must fail closed");
 
         WaveRewardPolicy.RewardBundle waveSix = WaveRewardPolicy.bundle(6, 0, 2, configured);
         check(waveSix.stacks().equals(first.stacks()), "Wave 6 must use the same bounded bundle rules");
-        boolean rejected = false;
-        try {
-            WaveRewardPolicy.bundle(7, 0, 2, configured);
-        } catch (IllegalArgumentException expected) {
-            rejected = true;
-        }
-        check(rejected, "waves after the V2 flow must be rejected");
+        WaveRewardPolicy.RewardBundle waveSeven = WaveRewardPolicy.bundle(7, 0, 2, configured);
+        check(waveSeven.stacks().equals(first.stacks()), "V3 Wave 7 must use the same bounded bundle rules");
         System.out.println("WaveRewardPolicyTest OK");
     }
 

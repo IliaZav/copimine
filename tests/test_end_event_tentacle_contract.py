@@ -27,6 +27,13 @@ def test_server_owns_generation_scoped_tentacle_runtime_and_bounded_counts():
     assert "clearTentacles(" in body
     assert "tickV2Tentacles(" in body
     assert 'CLIENT_VISUAL_TENTACLE = "END_RIFT_TENTACLE_V1"' in body
+    assert "Interaction.class" in body
+    assert "tentacleGuardianHealth" in body
+    assert "TentacleGuardianPolicy.perGuardianHealth" in body
+    assert "tentacleGuardianShielded()" in body
+    assert "guardiansPendingInitialization" in body
+    assert "RIFT_GUARDIAN_SHIELD_BROKEN" in body
+    assert "RIFT_GUARDIAN_SHIELD_RESTORED" in body
 
 
 def test_server_uses_server_authoritative_grab_markers_and_cleanup():
@@ -37,6 +44,8 @@ def test_server_uses_server_authoritative_grab_markers_and_cleanup():
     assert "target.setVelocity(" in body
     assert "tentacleController.remove(" in body
     assert "cleanupOwnedEntities" in body
+    assert "removeTentacleHitbox" in body
+    assert "tentacleHitboxesByDisplay.clear()" in body
 
 
 def test_client_bridge_carries_server_tentacle_animation_state():

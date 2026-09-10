@@ -55,6 +55,9 @@ public record EventConfig(
         WaveDefinition wave3,
         WaveDefinition wave4,
         WaveDefinition wave5,
+        WaveDefinition wave6,
+        WaveDefinition wave7,
+        /** Legacy V2 final/chamber definition retained for snapshot migration. */
         WaveDefinition finalWave,
         Map<Integer, Map<String, Integer>> waveRewards,
         Map<Integer, Double> waveRewardSharedRareChances,
@@ -103,7 +106,8 @@ public record EventConfig(
         String clientControlId,
         String bridgeChannel,
         BossFinalStrikeTuning finalStrikeTuning,
-        RiftObeliskTuning riftObeliskTuning) {
+        RiftObeliskTuning riftObeliskTuning,
+        TentacleGuardianTuning tentacleGuardianTuning) {
 
     public EventConfig {
         resourceRequirements = Map.copyOf(resourceRequirements);
@@ -124,6 +128,9 @@ public record EventConfig(
         if (riftObeliskTuning == null) {
             throw new IllegalArgumentException("Rift Obelisk tuning is required");
         }
+        if (tentacleGuardianTuning == null) {
+            throw new IllegalArgumentException("Tentacle Guardian tuning is required");
+        }
         if (finalStrikeTuning == null) {
             throw new IllegalArgumentException("Boss final strike tuning is required");
         }
@@ -137,6 +144,13 @@ public record EventConfig(
                 || abyssAnchorCooldownSeconds > AbyssAnchorPolicy.MAX_COOLDOWN_SECONDS) {
             throw new IllegalArgumentException("abyss anchor cooldown is outside the safe bounds");
         }
+        if (schemaVersion >= 3 && (wave6 == null || wave7 == null)) {
+            throw new IllegalArgumentException("V3 wave definitions are required for schema 3");
+        }
+    }
+
+    public boolean isV3Flow() {
+        return schemaVersion >= 3 && wave6 != null && wave7 != null;
     }
 
     public static EventConfig load(JavaPlugin plugin) {
@@ -151,6 +165,8 @@ public record EventConfig(
         BossFinalStrikeTuning finalStrikeTuning = bossFinalStrikeTuning(
                 requiredSection(boss, "final-strike"));
         RiftObeliskTuning riftObeliskTuning = riftObeliskTuning(requiredSection(boss, "rift-obelisks"));
+        TentacleGuardianTuning tentacleGuardianTuning = tentacleGuardianTuning(
+                requiredSection(boss, "tentacle-guardians"));
         ConfigurationSection rewards = requiredSection(plugin, "rewards");
         ConfigurationSection eventLoot = plugin.getConfig().getConfigurationSection("event-loot");
         ConfigurationSection eventLootRolls = plugin.getConfig().getConfigurationSection("event-loot-rolls");
@@ -189,7 +205,9 @@ public record EventConfig(
         MusicTrack bossFinalMusic = musicTrack(music, "boss-final");
         MusicTrack victoryMusic = musicTrack(music, "victory");
         MusicTrack ritualWaitMusic = musicTrack(music, "ritual-wait");
-        Map<String, MusicTrack> phaseMusic = readPhaseMusic(requiredSection(music, "phase"));
+        int schemaVersion = persistenceSchemaVersion(plugin);
+        Map<String, MusicTrack> phaseMusic = readPhaseMusic(
+                requiredSection(music, "phase"), schemaVersion);
         double half = positiveDouble(boss, "half-health");
         double finalThreshold = positiveDouble(boss, "final-threshold");
         double finalHealth = positiveDouble(boss, "final-health");
@@ -229,7 +247,7 @@ public record EventConfig(
         }
 
         return new EventConfig(
-                persistence.getInt("schema-version", 1),
+                schemaVersion,
                 environment,
                 text(persistence.getString("file", "event-state.yml"), "event-state.yml"),
                 text(persistence.getString("backup-file", "event-state.yml.bak"), "event-state.yml.bak"),
@@ -266,9 +284,12 @@ public record EventConfig(
                 wave(waves, "wave-3"),
                 wave(waves, "wave-4"),
                 wave(waves, "wave-5"),
+                schemaVersion >= 3 ? wave(waves, "wave-6") : wave(waves, "final"),
+                schemaVersion >= 3 ? wave(waves, "wave-7") : wave(waves, "final"),
                 wave(waves, "final"),
-                readWaveRewards(plugin.getConfig().getConfigurationSection("wave-rewards")),
-                readWaveRewardSharedRareChances(plugin.getConfig().getConfigurationSection("wave-reward-shared-rare")),
+                readWaveRewards(plugin.getConfig().getConfigurationSection("wave-rewards"), schemaVersion),
+                readWaveRewardSharedRareChances(
+                        plugin.getConfig().getConfigurationSection("wave-reward-shared-rare"), schemaVersion),
                 waveMobLoot,
                 eliteLoot,
                 finalWaveLoot,
@@ -305,7 +326,8 @@ public record EventConfig(
                 text(client.getString("control-id", "END_RIFT_CONTROL_REVERSAL_V1"), "END_RIFT_CONTROL_REVERSAL_V1"),
                 text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"),
                 finalStrikeTuning,
-                riftObeliskTuning);
+                riftObeliskTuning,
+                tentacleGuardianTuning);
     }
 
     private static WaveDefinition wave(ConfigurationSection parent, String key) {
@@ -318,12 +340,14 @@ public record EventConfig(
                 nonNegative(section, "elite-skeletons"));
     }
 
-    private static Map<Integer, Map<String, Integer>> readWaveRewards(ConfigurationSection parent) {
+    private static Map<Integer, Map<String, Integer>> readWaveRewards(
+            ConfigurationSection parent, int schemaVersion) {
         if (parent == null) {
             throw new IllegalStateException("Missing configuration section: wave-rewards");
         }
         LinkedHashMap<Integer, Map<String, Integer>> rewards = new LinkedHashMap<>();
-        for (int wave = 1; wave <= 6; wave++) {
+        int maxWave = schemaVersion >= 3 ? 7 : 6;
+        for (int wave = 1; wave <= maxWave; wave++) {
             rewards.put(wave, readMaterials(requiredSection(parent, "wave-" + wave),
                     "wave-rewards.wave-" + wave));
         }
@@ -343,9 +367,11 @@ public record EventConfig(
         return Map.copyOf(copied);
     }
 
-    private static Map<Integer, Double> readWaveRewardSharedRareChances(ConfigurationSection parent) {
+    private static Map<Integer, Double> readWaveRewardSharedRareChances(
+            ConfigurationSection parent, int schemaVersion) {
         LinkedHashMap<Integer, Double> chances = new LinkedHashMap<>();
-        for (int wave = 1; wave <= 5; wave++) {
+        int maxWave = schemaVersion >= 3 ? 7 : 5;
+        for (int wave = 1; wave <= maxWave; wave++) {
             double chance = parent == null ? (wave >= 4 ? 0.25D : 0.0D)
                     : parent.getDouble("wave-" + wave, -1.0D);
             if (Double.isNaN(chance) || Double.isInfinite(chance) || chance < 0.0D || chance > 1.0D) {
@@ -395,6 +421,7 @@ public record EventConfig(
         int[] cooldown = secondsRange(section, "cooldown-seconds");
         int health = section.getInt("health", -1);
         int maxActive = section.getInt("max-active", -1);
+        int v3MaxActive = section.getInt("v3-max-active", -1);
         double pulseRadius = section.getDouble("pulse-radius", -1.0D);
         int pulseInterval = section.getInt("pulse-interval-ticks", -1);
         int fireInterval = section.getInt("fire-interval-ticks", -1);
@@ -406,6 +433,7 @@ public record EventConfig(
         int destructionDelayTicks = section.getInt("destruction-delay-ticks", -1);
         double minDistance = section.getDouble("min-distance", -1.0D);
         if (health != 3 || maxActive < 1 || maxActive > 4
+                || v3MaxActive < 1 || v3MaxActive > 6
                 || !(pulseRadius > 0.0D) || pulseRadius > 5.0D
                 || pulseInterval < 10 || pulseInterval > 200
                 || fireInterval < 20 || fireInterval > 400
@@ -420,7 +448,7 @@ public record EventConfig(
         }
         return new RiftObeliskTuning(
                 section.getBoolean("enabled", true), stages,
-                cooldown[0], cooldown[1], health, maxActive, pulseRadius,
+                cooldown[0], cooldown[1], health, maxActive, v3MaxActive, pulseRadius,
                 pulseInterval, fireInterval, maxFireballs, fireballDamage,
                 blindnessTicks, debuffTicks, spawnTelegraphTicks,
                 destructionDelayTicks, minDistance);
@@ -437,6 +465,26 @@ public record EventConfig(
             throw new IllegalStateException("boss.final-strike contains unsafe bounds");
         }
         return new BossFinalStrikeTuning(section.getBoolean("enabled", true), damage, radius, witherTicks);
+    }
+
+    private static TentacleGuardianTuning tentacleGuardianTuning(ConfigurationSection section) {
+        int damageWindowTicks = section.getInt("damage-window-ticks", -1);
+        int respawnDelayTicks = section.getInt("respawn-delay-ticks", -1);
+        int attackIntervalTicks = section.getInt("attack-interval-ticks", -1);
+        int attackStaggerTicks = section.getInt("attack-stagger-ticks", -1);
+        double hitboxWidth = section.getDouble("hitbox-width", -1.0D);
+        double hitboxHeight = section.getDouble("hitbox-height", -1.0D);
+        if (damageWindowTicks < 100 || damageWindowTicks > 600
+                || respawnDelayTicks < 400 || respawnDelayTicks > 1600
+                || attackIntervalTicks < 100 || attackIntervalTicks > 400
+                || attackStaggerTicks < 0 || attackStaggerTicks > 80
+                || !Double.isFinite(hitboxWidth) || hitboxWidth < 0.5D || hitboxWidth > 2.5D
+                || !Double.isFinite(hitboxHeight) || hitboxHeight < 1.5D || hitboxHeight > 5.0D) {
+            throw new IllegalStateException("boss.tentacle-guardians contains unsafe bounds");
+        }
+        return new TentacleGuardianTuning(section.getBoolean("enabled", true),
+                damageWindowTicks, respawnDelayTicks, attackIntervalTicks,
+                attackStaggerTicks, hitboxWidth, hitboxHeight);
     }
 
     private static LinkedHashMap<String, Integer> readMaterials(ConfigurationSection section, String path) {
@@ -613,20 +661,34 @@ public record EventConfig(
         return new MusicTrack(soundId, loopSeconds);
     }
 
-    private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent) {
-        List<String> requiredKeys = List.of(
+    private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent, int schemaVersion) {
+        List<String> requiredKeys = new ArrayList<>(List.of(
                 "wave-1", "wave-2", "wave-3", "wave-4", "wave-5", "wave-6",
                 "intermission-1", "intermission-2", "intermission-3", "intermission-4", "intermission-5",
                 "pre-boss-cooldown", "boss-cinematic", "boss-awakening", "boss-hunt",
                 "boss-rift", "boss-overload", "boss-rage", "boss-last-seal", "boss-finish",
                 // These names remain readable for snapshots and local admin
                 // commands, but are not selected by the official V2 flow.
-                "final-drain", "final-ritual", "final-wave");
+                "final-drain", "final-ritual", "final-wave"));
+        if (schemaVersion >= 3) {
+            requiredKeys.add("wave-7");
+            requiredKeys.add("intermission-6");
+            requiredKeys.add("core-restoration");
+        }
         LinkedHashMap<String, MusicTrack> tracks = new LinkedHashMap<>();
         for (String key : requiredKeys) {
             tracks.put(key, musicTrack(parent, key));
         }
         return tracks;
+    }
+
+    private static int persistenceSchemaVersion(JavaPlugin plugin) {
+        ConfigurationSection persistence = requiredSection(plugin, "persistence");
+        int value = persistence.getInt("schema-version", 1);
+        if (value < 1 || value > 3) {
+            throw new IllegalStateException("persistence.schema-version must be between 1 and 3");
+        }
+        return value;
     }
 
     private static String text(String value, String fallback) {
@@ -725,6 +787,7 @@ public record EventConfig(
             int cooldownMaxSeconds,
             int health,
             int maxActive,
+            int v3MaxActive,
             double pulseRadius,
             int pulseIntervalTicks,
             int fireIntervalTicks,
@@ -738,6 +801,7 @@ public record EventConfig(
         public RiftObeliskTuning {
             stages = List.copyOf(stages == null ? List.of() : stages);
             if (health != 3 || maxActive < 1 || maxActive > 4
+                    || v3MaxActive < 1 || v3MaxActive > 6
                     || cooldownMinSeconds < 1 || cooldownMaxSeconds < cooldownMinSeconds
                     || pulseRadius <= 0.0D || pulseRadius > 5.0D
                     || pulseIntervalTicks < 10 || fireIntervalTicks < 20
@@ -760,6 +824,23 @@ public record EventConfig(
             return enabled && stage != null
                     && (stages.contains(stage.name())
                     || stage == V2BossStage.RIFT && stages.contains("DISTORTION"));
+        }
+    }
+
+    public record TentacleGuardianTuning(
+            boolean enabled,
+            int damageWindowTicks,
+            int respawnDelayTicks,
+            int attackIntervalTicks,
+            int attackStaggerTicks,
+            double hitboxWidth,
+            double hitboxHeight) {
+        public TentacleGuardianTuning {
+            if (damageWindowTicks < 100 || respawnDelayTicks < 400
+                    || attackIntervalTicks < 100 || attackStaggerTicks < 0
+                    || hitboxWidth < 0.5D || hitboxHeight < 1.5D) {
+                throw new IllegalArgumentException("invalid Tentacle Guardian tuning");
+            }
         }
     }
 }

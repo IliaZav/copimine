@@ -50,6 +50,9 @@ public final class V2WaveObjectivePolicy {
      */
     public static int safeZoneCount(int livingPlayers, int phaseIndex) {
         int players = Math.max(0, livingPlayers);
+        if (players == 0) {
+            return 0;
+        }
         int phase = Math.max(0, Math.min(SAFE_ZONE_PHASES - 1, phaseIndex));
         int first = Math.min(5, Math.max(1, (players + 1) / 2));
         return Math.max(1, first - phase);

@@ -40,9 +40,10 @@ public final class EndEventStateMachine {
             return persisted;
         }
         return switch (persisted) {
-            case START_RITUAL, COUNTDOWN, WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2,
+                    case START_RITUAL, COUNTDOWN, WAVE_1, INTERMISSION_1, WAVE_2, INTERMISSION_2,
                     WAVE_3, INTERMISSION_3, WAVE_4, INTERMISSION_4, WAVE_5,
-                    INTERMISSION_5, WAVE_6, PRE_BOSS_COOLDOWN, BOSS_CINEMATIC, BOSS_ACTIVE,
+                    CORE_RESTORATION, INTERMISSION_5, WAVE_6, INTERMISSION_6, WAVE_7,
+                    PRE_BOSS_COOLDOWN, BOSS_CINEMATIC, BOSS_ACTIVE,
                     FINAL_DRAIN, FINAL_RITUAL, FINAL_WAVE, BOSS_FINISH,
                     VICTORY_PROCESSING, VICTORY -> EventPhase.READY_FOR_PLAYERS;
             default -> persisted;
@@ -68,9 +69,19 @@ public final class EndEventStateMachine {
         map.put(EventPhase.INTERMISSION_3, EnumSet.of(EventPhase.WAVE_4));
         map.put(EventPhase.WAVE_4, EnumSet.of(EventPhase.INTERMISSION_4));
         map.put(EventPhase.INTERMISSION_4, EnumSet.of(EventPhase.WAVE_5));
-        map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.INTERMISSION_5));
+        // CORE_RESTORATION is the V3 hand-off.  The direct edge remains for
+        // snapshots created by the V2 adapter and is never used by V3.
+        map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.CORE_RESTORATION,
+                EventPhase.INTERMISSION_5));
+        map.put(EventPhase.CORE_RESTORATION, EnumSet.of(EventPhase.INTERMISSION_5,
+                EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.INTERMISSION_5, EnumSet.of(EventPhase.WAVE_6, EventPhase.READY_FOR_PLAYERS));
-        map.put(EventPhase.WAVE_6, EnumSet.of(EventPhase.PRE_BOSS_COOLDOWN, EventPhase.READY_FOR_PLAYERS));
+        map.put(EventPhase.WAVE_6, EnumSet.of(EventPhase.INTERMISSION_6,
+                EventPhase.PRE_BOSS_COOLDOWN, EventPhase.READY_FOR_PLAYERS));
+        map.put(EventPhase.INTERMISSION_6, EnumSet.of(EventPhase.WAVE_7,
+                EventPhase.READY_FOR_PLAYERS));
+        map.put(EventPhase.WAVE_7, EnumSet.of(EventPhase.PRE_BOSS_COOLDOWN,
+                EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.PRE_BOSS_COOLDOWN, EnumSet.of(EventPhase.BOSS_CINEMATIC, EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.BOSS_CINEMATIC, EnumSet.of(EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(EventPhase.BOSS_FINISH, EventPhase.READY_FOR_PLAYERS));

@@ -236,5 +236,30 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          & .\tests\RunEndRiftEventChecks.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'End Rift event gate failed.' }
+          $log = Join-Path $env:RUNNER_TEMP 'end-rift-event-gate.log'
+          $gateExitCode = 0
+          try {
+            & .\tests\RunEndRiftEventChecks.ps1 *>&1 | Tee-Object -FilePath $log
+            $gateExitCode = $LASTEXITCODE
+          } catch {
+            $gateExitCode = 1
+            Write-Host $_
+          }
+          if ($gateExitCode -ne 0) {
+            $detail = if (Test-Path -LiteralPath $log) {
+              ((Get-Content -LiteralPath $log -Tail 30) -join ' ') -replace '\s+', ' '
+            } else {
+              'The End Rift gate produced no captured output.'
+            }
+            if ($detail.Length -gt 4000) { $detail = $detail.Substring($detail.Length - 4000) }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=End Rift gate detail::$detail"
+            throw "End Rift event gate failed with exit code $gateExitCode."
+          }
+      - name: Upload End Rift gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: end-rift-event-gate-diagnostics
+          path: ${{ runner.temp }}/end-rift-event-gate.log
+          if-no-files-found: ignore

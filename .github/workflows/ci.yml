@@ -40,6 +40,16 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check -r requirements-security.txt
           python -m pip_audit -r admin-web/requirements.txt --strict
+      - name: Prepare release fixtures required by contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
+          if ($LASTEXITCODE -ne 0) { throw 'Resource pack fixture build failed.' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned plugin fixture preparation failed.' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\thirdparty\grim-creative-patch\build-grim-creative-patch.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Grim Creative fixture build failed.' }
       - name: Run Python contract tests
         shell: pwsh
         env:

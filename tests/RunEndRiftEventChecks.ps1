@@ -162,7 +162,16 @@ Invoke-GateStep 'Current pure Java policies' {
 $mavenJars = @(Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter '*.jar' -Recurse |
   ForEach-Object FullName)
 $pluginClasses = (Resolve-Path (Join-Path $root 'copimine-end-event\build\classes')).Path
-$persistenceClasspath = @($testBuild, $pluginClasses) + $mavenJars
+$paperApiJar = $env:PAPER_API_JAR
+if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Leaf)) {
+  $paperApiJar = Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1 -ExpandProperty FullName
+}
+if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Leaf)) {
+  throw 'Pinned Paper API jar is required to compile persistence tests.'
+}
+$persistenceClasspath = @($testBuild, $pluginClasses, $paperApiJar) + $mavenJars
 $persistenceClasspathText = $persistenceClasspath -join [IO.Path]::PathSeparator
 $persistenceTests = @(
   'EventStateStoreTest',

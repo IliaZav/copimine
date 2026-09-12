@@ -470,6 +470,15 @@ def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -
     ), "the boss wait must not reset its cursor after Wave 7 completion"
 
 
+def test_end_rift_gate_keeps_pinned_paper_api_on_persistence_classpath() -> None:
+    gate = read(ROOT / "tests" / "RunEndRiftEventChecks.ps1")
+    assert re.search(
+        r"\$paperApiJar\s*=\s*\$env:PAPER_API_JAR[\s\S]*?"
+        r"\$persistenceClasspath\s*=\s*@\(\$testBuild,\s*\$pluginClasses,\s*\$paperApiJar\)",
+        gate,
+    ), "clean CI runners must include the pinned Paper API when compiling persistence tests"
+
+
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(

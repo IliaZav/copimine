@@ -665,7 +665,10 @@ try {
     }
     Wait-Log -AfterOffset $portalOffset -Pattern $portalCompletionPattern -WaitSeconds 45 -Action { Teleport-PlayersToPoint $actionX $core[1] $actionZ } | Out-Null
   }
-  $waveThreeTransitionOffset = Wait-WaveComplete -Wave 3 -Core $core -Seconds 300
+  # The final portal capture and Wave 3 completion may be committed in the
+  # same Paper tick.  Keep the pre-portal cursor so a fast multi-player run
+  # cannot advance past END_RIFT_WAVE_COMPLETED before this wait starts.
+  $waveThreeTransitionOffset = Wait-WaveComplete -Wave 3 -Core $core -Seconds 300 -AfterOffset $portalOffset
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=3 objective=RIFT_GATES portals=3"
   if ($StopAfterWave -eq 3) { return }
 

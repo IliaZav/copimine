@@ -13,7 +13,7 @@ def test_java_release_job_prepares_python_and_asserts_resource_pack_artifact() -
     install = "python -m pip install --disable-pip-version-check 'Pillow==12.3.0'"
     build = "Build resource pack release artifact"
     archive_assertion = "Resource pack archive was not created"
-    sidecar_assertion = "Resource pack SHA1 sidecar was not created"
+    sidecar_assertion = "Resource-pack digest sidecar was not created"
 
     assert setup in java_job
     assert install in java_job

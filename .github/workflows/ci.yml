@@ -218,7 +218,7 @@ jobs:
           $pack = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.zip'
           $sha = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.sha1'
           if (-not (Test-Path -LiteralPath $pack -PathType Leaf)) { throw "Resource pack archive was not created: $pack" }
-          if (-not (Test-Path -LiteralPath $sha -PathType Leaf)) { throw "Resource pack SHA1 sidecar was not created: $sha" }
+          if (-not (Test-Path -LiteralPath $sha -PathType Leaf)) { throw "Resource-pack digest sidecar was not created: $sha" }
           Write-Host "Resource pack fixture ready: $pack"
       - name: Prepare pinned third-party plugin fixtures
         shell: pwsh

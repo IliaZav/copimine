@@ -18,3 +18,14 @@ def test_ci_plugin_fixtures_are_pinned_and_not_latest() -> None:
     uri_lines = [line.lower() for line in script.splitlines() if "uri =" in line.lower()]
     assert uri_lines and all("latest" not in line for line in uri_lines)
     assert "Get-FileHash -Algorithm SHA256" in script
+
+
+def test_ci_plugin_fixture_preparation_materializes_required_configs() -> None:
+    script = (ROOT / "tests" / "PrepareCopiMinePluginFixtures.ps1").read_text(encoding="utf-8")
+    fixture_root = ROOT / "tests" / "fixtures" / "plugin-configs"
+    for plugin in ("Chunky", "SeeMore"):
+        fixture = fixture_root / plugin / "config.yml"
+        assert fixture.is_file(), f"Missing deterministic {plugin} config fixture"
+        assert fixture.read_text(encoding="utf-8").strip()
+        assert plugin in script
+        assert "Copy-Item" in script

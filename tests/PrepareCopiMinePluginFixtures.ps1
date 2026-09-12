@@ -60,4 +60,34 @@ foreach ($fixture in $fixtures) {
   Write-Host "Pinned $($fixture.Name) verified SHA256=$actual size=$($item.Length)"
 }
 
+# The performance/readiness validator also checks the plugin-owned config
+# shape.  These are deterministic release fixtures, not generated server
+# state, so a clean CI checkout can validate the same paths as a local stack.
+$configFixtures = @(
+  @{
+    Name = 'Chunky'
+    Source = Join-Path $Root 'tests\fixtures\plugin-configs\Chunky\config.yml'
+    Destination = Join-Path $pluginDir 'Chunky\config.yml'
+  },
+  @{
+    Name = 'SeeMore'
+    Source = Join-Path $Root 'tests\fixtures\plugin-configs\SeeMore\config.yml'
+    Destination = Join-Path $pluginDir 'SeeMore\config.yml'
+  }
+)
+
+foreach ($fixture in $configFixtures) {
+  if (-not (Test-Path -LiteralPath $fixture.Source -PathType Leaf)) {
+    throw "$($fixture.Name) config fixture is missing: $($fixture.Source)"
+  }
+  $destinationDirectory = Split-Path -Parent $fixture.Destination
+  New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+  if (-not (Test-Path -LiteralPath $fixture.Destination -PathType Leaf)) {
+    Copy-Item -LiteralPath $fixture.Source -Destination $fixture.Destination -Force
+    Write-Host "Materialized deterministic $($fixture.Name) config fixture."
+  } else {
+    Write-Host "Existing $($fixture.Name) config retained."
+  }
+}
+
 Write-Host 'CopiMine pinned server plugin fixtures are ready.'

@@ -188,11 +188,15 @@ jobs:
               <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-plain</artifactId><version>4.17.0</version></dependency>
               <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-logger-slf4j</artifactId><version>4.17.0</version></dependency>
               <dependency><groupId>net.md-5</groupId><artifactId>bungeecord-chat</artifactId><version>1.20-R0.2-deprecated+build.18</version></dependency>
-              <dependency><groupId>org.yaml</groupId><artifactId>snakeyaml</artifactId><version>2.2</version></dependency>
               <dependency><groupId>org.joml</groupId><artifactId>joml</artifactId><version>1.10.5</version></dependency>
             </dependencies>
           </project>
           '@ | Set-Content -LiteralPath $dependencyPom -Encoding utf8
+          $snakeYamlJar = Join-Path $env:USERPROFILE '.m2\repository\org\yaml\snakeyaml\2.2\snakeyaml-2.2.jar'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $snakeYamlJar) | Out-Null
+          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar' -OutFile $snakeYamlJar -TimeoutSec 60
+          $snakeYamlSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $snakeYamlJar).Hash.ToLowerInvariant()
+          if ($snakeYamlSha256 -ne '1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b') { throw "SnakeYAML SHA256 mismatch: $snakeYamlSha256" }
           mvn -q -B -f $dependencyPom dependency:go-offline
           if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
           "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append

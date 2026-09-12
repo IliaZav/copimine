@@ -487,13 +487,15 @@ def test_ci_java_job_installs_pytest_before_end_rift_gate() -> None:
     ), "the Java CI job must install pytest before invoking the End Rift gate"
 
 
-def test_ci_persistence_classpath_declares_snake_yaml_dependency() -> None:
+def test_ci_persistence_classpath_materializes_pinned_snake_yaml() -> None:
     workflow = read(ROOT / ".github" / "workflows" / "ci.yml")
     assert re.search(
-        r"<dependency>\s*<groupId>org\.yaml</groupId>\s*"
-        r"<artifactId>snakeyaml</artifactId>\s*<version>2\.2</version>\s*</dependency>",
+        r"\$snakeYamlJar\s*=\s*Join-Path\s+\$env:USERPROFILE\s+"
+        r"'.m2\\repository\\org\\yaml\\snakeyaml\\2\.2\\snakeyaml-2\.2\.jar'",
         workflow,
     ), "the CI persistence classpath must include SnakeYAML used by Bukkit YamlConfiguration"
+    assert "https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar" in workflow
+    assert "1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b" in workflow
 
 
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:

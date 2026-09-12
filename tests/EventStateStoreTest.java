@@ -9,6 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 
 public final class EventStateStoreTest {
     public static void main(String[] args) throws Exception {
@@ -32,6 +34,20 @@ public final class EventStateStoreTest {
                 "participants must survive a round trip");
         check(loaded.snapshot().currentBossPhase() == BossPhase.AWAKENING,
                 "current boss phase must survive a round trip");
+        Path orderedDirectory = Files.createTempDirectory("copimine-end-state-ordered-");
+        EventStateStore orderedStore = new EventStateStore(orderedDirectory,
+                "event-state.yml", "event-state.yml.bak", 4);
+        ArrayList<Runnable> queued = new ArrayList<>();
+        CompletableFuture<Boolean> pending = orderedStore.saveAsync(
+                snapshot("stale-async", EventPhase.COLLECTING.name(), 3L, player), queued::add);
+        check(queued.size() == 1 && !pending.isDone(),
+                "saveAsync must enqueue without running the snapshot immediately");
+        check(orderedStore.save(snapshot("newer-sync", EventPhase.READY_FOR_PLAYERS.name(), 4L, player)),
+                "newer synchronous checkpoint must succeed");
+        queued.get(0).run();
+        check(pending.join(), "an obsolete queued save is a successful no-op after supersession");
+        check("newer-sync".equals(orderedStore.load().snapshot().eventId()),
+                "an older async snapshot must never roll state back");
         String serialized = Files.readString(directory.resolve("event-state.yml"));
         for (String forbidden : List.of("half-health", "final-drain", "boss-stage",
                 "virtual-health", "absorption", "judgment")) {

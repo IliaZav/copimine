@@ -9,6 +9,7 @@ public final class EndRiftSession implements AutoCloseable {
     private final EndEventStateMachine stateMachine;
     private final AutoCloseable resourceScope;
     private boolean closed;
+    private RuntimeException cleanupFailure;
 
     public EndRiftSession(EncounterContext context, EventPhase initialPhase,
                           AutoCloseable resourceScope) {
@@ -23,6 +24,7 @@ public final class EndRiftSession implements AutoCloseable {
     public synchronized long generation() { return context.generation(); }
     public synchronized String eventId() { return context.eventId(); }
     public synchronized boolean closed() { return closed; }
+    public synchronized RuntimeException cleanupFailure() { return cleanupFailure; }
 
     public synchronized boolean accepts(String eventId, long generation) {
         return !closed && context.owns(eventId, generation);
@@ -34,7 +36,16 @@ public final class EndRiftSession implements AutoCloseable {
         EndEventStateMachine.TransitionResult result = stateMachine.transition(
                 expected, next, reason, idempotencyKey);
         if (!result.success()) return TransitionOutcome.rejected(phase(), result.code());
-        return new TransitionOutcome(true, next, "OK", result.reason(), result.idempotencyKey());
+        return new TransitionOutcome(true, next, result.code(), result.reason(), result.idempotencyKey());
+    }
+
+    public synchronized TransitionOutcome previewTransition(EventPhase expected, EventPhase next,
+                                                             String reason, String idempotencyKey) {
+        if (closed) return TransitionOutcome.rejected(phase(), "SESSION_CLOSED");
+        EndEventStateMachine.TransitionResult result = stateMachine.previewTransition(
+                expected, next, reason, idempotencyKey);
+        if (!result.success()) return TransitionOutcome.rejected(phase(), result.code());
+        return new TransitionOutcome(true, next, result.code(), result.reason(), result.idempotencyKey());
     }
 
     public synchronized void updateObjectiveForPhase() {
@@ -51,10 +62,20 @@ public final class EndRiftSession implements AutoCloseable {
     }
 
     public synchronized void close() {
-        if (closed) return;
+        if (closed) {
+            if (cleanupFailure != null) throw cleanupFailure;
+            return;
+        }
         closed = true;
         if (resourceScope != null) {
-            try { resourceScope.close(); } catch (Exception ignored) { }
+            try {
+                resourceScope.close();
+            } catch (Exception error) {
+                cleanupFailure = error instanceof RuntimeException runtime
+                        ? runtime
+                        : new IllegalStateException("Encounter resource cleanup failed", error);
+                throw cleanupFailure;
+            }
         }
     }
 

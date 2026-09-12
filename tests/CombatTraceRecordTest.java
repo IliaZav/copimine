@@ -30,6 +30,18 @@ public final class CombatTraceRecordTest {
         check(line.contains("ability=NONE") && line.contains("mspt=18.75"),
                 "trace serialization must expose current ability and runtime MSPT");
 
+        CombatTraceRecord authoritative = record.close(true, 35.0D, true);
+        check(authoritative.accepted(), "authoritative real-health mutation must be accepted in trace");
+        check(authoritative.authority().equals("REAL_ENTITY_HEALTH"),
+                "authoritative trace must identify entity-health authority");
+        check(authoritative.diagnosis() == me.copimine.endevent.domain.CombatTraceDiagnosis.APPLIED,
+                "authoritative cancelled event with exact HP delta must diagnose as applied");
+        String authoritativeLine = authoritative.toLogLine();
+        check(authoritativeLine.contains("accepted=true")
+                        && authoritativeLine.contains("expected_health=35.000")
+                        && authoritativeLine.contains("health_after=35.000"),
+                "trace must expose accepted, expected HP and actual next-tick HP");
+
         CombatTraceService service = new CombatTraceService(2);
         service.record(record);
         service.record(record.close(true, 35.0D));

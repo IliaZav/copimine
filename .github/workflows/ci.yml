@@ -158,6 +158,24 @@ jobs:
             & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
           }
+      - name: Build CopiMineClient release artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+      - name: Build resource pack release artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
+          if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
+      - name: Prepare pinned third-party plugin fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned third-party plugin fixtures failed verification.' }
       - name: Run all source and release-artifact validators
         shell: pwsh
         run: |

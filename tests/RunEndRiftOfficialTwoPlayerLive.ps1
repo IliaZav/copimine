@@ -148,7 +148,7 @@ function Get-Core {
   param([Parameter(Mandatory = $true)][string]$Status)
   $match = [Regex]::Match($Status, 'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
   if (-not $match.Success) { throw "Status did not expose Core coordinates: $Status" }
-  return @([int]$match.Groups[1].Value, [int]$match.Groups[2].Value, [int]$match.Groups[3].Value)
+  return [int[]]@([int]$match.Groups[1].Value, [int]$match.Groups[2].Value, [int]$match.Groups[3].Value)
 }
 
 function Get-RequiredPlayers {
@@ -380,7 +380,7 @@ function Teleport-PlayersToNearestChamberMob {
     param([Parameter(Mandatory = $true)][string]$Text)
     $match = [Regex]::Match($Text, '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
     if (-not $match.Success) { return $null }
-    return @([double]$match.Groups[1].Value, [double]$match.Groups[2].Value, [double]$match.Groups[3].Value)
+    return [double[]]@([double]$match.Groups[1].Value, [double]$match.Groups[2].Value, [double]$match.Groups[3].Value)
   }
   function Get-ChamberIndex {
     param(
@@ -436,7 +436,7 @@ function Teleport-GuardianProbeToNearest {
     param([Parameter(Mandatory = $true)][string]$Text)
     $match = [Regex]::Match($Text, '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
     if (-not $match.Success) { return $null }
-    return @([double]$match.Groups[1].Value, [double]$match.Groups[2].Value, [double]$match.Groups[3].Value)
+    return [double[]]@([double]$match.Groups[1].Value, [double]$match.Groups[2].Value, [double]$match.Groups[3].Value)
   }
   $playerPosition = Parse-Position (Invoke-LocalRcon ("data get entity $probe Pos"))
   if ($null -eq $playerPosition) { return }
@@ -520,7 +520,7 @@ try {
       $positionText = Invoke-LocalRcon ("data get entity $chargeId Pos")
       $positionMatch = [Regex]::Match($positionText, '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
       if ($positionMatch.Success) {
-        $chargePosition = @([double]$positionMatch.Groups[1].Value, [double]$positionMatch.Groups[2].Value, [double]$positionMatch.Groups[3].Value)
+        $chargePosition = [double[]]@([double]$positionMatch.Groups[1].Value, [double]$positionMatch.Groups[2].Value, [double]$positionMatch.Groups[3].Value)
       } else {
         Start-Sleep -Milliseconds 250
       }
@@ -533,7 +533,7 @@ try {
       # RCON asks for Pos.  That is valid gameplay, not a missing entity.
       $alreadyPickedUp = (Get-LogTail -Offset $carrierOffset) -match $pickupPattern
       if ($alreadyPickedUp) {
-        $chargePosition = @($core[0] + 0.5D, $core[1] + 1.0D, $core[2] + 0.5D)
+        $chargePosition = [double[]]@(([double]$core[0]) + 0.5D, ([double]$core[1]) + 1.0D, ([double]$core[2]) + 0.5D)
       }
     }
     if ($null -eq $chargePosition) { throw "Wave 1 charge location was not readable: $chargeId" }

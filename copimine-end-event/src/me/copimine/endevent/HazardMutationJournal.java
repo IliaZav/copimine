@@ -8,7 +8,9 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.bukkit.configuration.file.YamlConfiguration;
 
@@ -60,6 +62,19 @@ public final class HazardMutationJournal {
                 || world == null || world.isBlank() || entries == null) {
             lastFailure = "hazard journal metadata is incomplete";
             return false;
+        }
+        Set<String> cells = new HashSet<>();
+        for (Entry entry : entries) {
+            if (entry == null || entry.eventId().isBlank() || entry.generation() <= 0L
+                    || !eventId.equals(entry.eventId()) || generation != entry.generation()) {
+                lastFailure = "hazard journal entry is not owned by the prepared event generation";
+                return false;
+            }
+            String cell = entry.x() + ":" + entry.floorY() + ":" + entry.z();
+            if (!cells.add(cell)) {
+                lastFailure = "hazard journal contains duplicate cell " + cell;
+                return false;
+            }
         }
         return write(new Snapshot(CURRENT_SCHEMA, eventId, generation, world,
                 Status.PREPARED, entries));

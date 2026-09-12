@@ -434,6 +434,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private final Map<EntityDamageEvent, EventRealHealthDamagePolicy.Result> authoritativeEventMobDamage =
             new IdentityHashMap<>();
+    /** Marks the exact events whose final damage was written to real HP. */
+    private final Map<EntityDamageEvent, Boolean> authoritativeCombatTraceEvents =
+            new IdentityHashMap<>();
     private final Map<UUID, Entity> ownedEntities = new HashMap<>();
     private final Map<UUID, Long> portalWaveKnockbackUntilMillis = new HashMap<>();
     private final Map<UUID, Location> shardChannelStarts = new HashMap<>();
@@ -976,7 +979,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         rebuildPersistedVisuals();
         restorePersistedCombatRuntime();
-        recoverUnresolvedDeposits();
+        try {
+            recoverUnresolvedDeposits();
+        } catch (DepositJournal.JournalCorruptionException error) {
+            recoveryReason = "END_RIFT_DEPOSIT_RECOVERY_REQUIRED:" + error.getMessage();
+            if (phase != EventPhase.RECOVERY_REQUIRED) {
+                forcePhase(EventPhase.RECOVERY_REQUIRED, "deposit journal ownership requires recovery");
+            }
+            getLogger().log(Level.SEVERE, "END_RIFT_DEPOSIT_RECOVERY_REQUIRED event=" + eventId
+                    + " generation=" + generation, error);
+            saveStateSync();
+            return;
+        }
         resumeVictorySaga();
         tickTask = Bukkit.getScheduler().runTaskTimer(this, this::tick, 1L, 5L);
         playEventMusic(musicForPhase());
@@ -1596,7 +1610,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("RECOVERY_COMPLETE event=" + eventId + " generation=" + generation);
     }
 
-    private void cancelSessionTasks() {
+    private boolean cancelSessionTasks() {
+        boolean cleanupSucceeded = true;
         cancelCreativeTestTask();
         cancelBossSpawnTask();
         cancelBossFinalStrike();
@@ -1604,8 +1619,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearArenaInferno();
         clearWaveObjectiveState();
         if (encounterResourceScope != null) {
-            encounterResourceScope.close();
-            encounterResourceScope = null;
+            cleanupSucceeded = closeEncounterResourceScope("session cancellation");
         }
         if (taskRegistry != null) {
             taskRegistry.cancelAll();
@@ -1635,6 +1649,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         bossSpellPauseUntilMillis = 0L;
         transitionRuneWave = 0;
         transitionRuneDeadlineMillis = 0L;
+        return cleanupSucceeded;
+    }
+
+    /** Close the current generation scope while keeping failure visible to the owner. */
+    private boolean closeEncounterResourceScope(String reason) {
+        EncounterResourceScope scope = encounterResourceScope;
+        encounterResourceScope = null;
+        if (scope == null) return true;
+        EncounterResourceScope.CleanupResult result = scope.closeResources();
+        if (result.success()) return true;
+        recoveryReason = "END_RIFT_RESOURCE_CLEANUP_FAILED:" + (reason == null ? "unknown" : reason);
+        getLogger().log(Level.SEVERE, "END_RIFT_RESOURCE_CLEANUP_FAILED event=" + eventId
+                + " generation=" + generation + " reason=" + reason
+                + " failures=" + result.failures().size());
+        for (EncounterResourceScope.CleanupFailure failure : result.failures()) {
+            getLogger().log(Level.SEVERE, "cleanup resource=" + failure.resourceType()
+                    + " id=" + failure.resourceId(), failure.error());
+        }
+        return false;
     }
 
     private void cancelCreativeTestTask() {
@@ -1661,7 +1694,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             throw new IllegalArgumentException("generation must be positive");
         }
         if (encounterResourceScope != null) {
-            encounterResourceScope.close();
+            closeEncounterResourceScope("encounter generation replacement");
         }
         taskRegistry = new EventTaskRegistry(nextGeneration);
         encounterResourceScope = new EncounterResourceScope(nextGeneration, taskRegistry);
@@ -1911,6 +1944,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onDisable() {
         clearShardPassiveEffects();
         clearClientEffects();
+        pendingCombatTraces.clear();
+        authoritativeCombatTraceEvents.clear();
+        authoritativeEventMobDamage.clear();
         cancelSessionTasks();
         if (diagnosticsWatchdogTask != null) {
             diagnosticsWatchdogTask.cancel();
@@ -2069,6 +2105,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else if ("off".equals(requested) || "disable".equals(requested)) {
                 combatTraceEnabled = false;
                 pendingCombatTraces.clear();
+                authoritativeCombatTraceEvents.clear();
                 message(sender, "&7Combat Trace выключен.");
             } else if ("status".equals(requested)) {
                 message(sender, "&7Combat Trace: &f" + (combatTraceEnabled ? "ON" : "OFF")
@@ -5367,6 +5404,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onCombatTraceClose(EntityDamageEvent event) {
+        boolean authoritativeApplied = Boolean.TRUE.equals(authoritativeCombatTraceEvents.remove(event));
         CombatTraceRecord opened = pendingCombatTraces.remove(event);
         if (opened == null || !(event.getEntity() instanceof LivingEntity victim)) {
             return;
@@ -5374,7 +5412,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean cancelledAfter = event.isCancelled();
         Bukkit.getScheduler().runTask(this, () -> {
             double nextTickHealth = victim.isValid() && !victim.isDead() ? victim.getHealth() : 0.0D;
-            CombatTraceRecord closed = opened.close(cancelledAfter, nextTickHealth);
+            CombatTraceRecord closed = opened.close(cancelledAfter, nextTickHealth, authoritativeApplied);
             combatTrace.record(closed);
             getLogger().info(closed.toLogLine());
         });
@@ -5841,6 +5879,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !ownedEntities.containsKey(victim.getUniqueId())) {
             return;
         }
+        if (!victim.isValid() || victim.isDead() || victim.getHealth() <= 0.0D) {
+            event.setCancelled(true);
+            getLogger().fine("WAVE_MOB_DAMAGE_BLOCKED event=" + eventId
+                    + " mob=" + victim.getUniqueId() + " reason=dead-or-removed");
+            return;
+        }
         Player attacker = playerDamageAttacker(event.getDamager());
         if (attacker == null || !isCombatTarget(attacker)) {
             return;
@@ -5862,6 +5906,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         authoritativeEventMobDamage.put(event, result);
         event.setCancelled(true);
         victim.setHealth(result.remainingHealth());
+        authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
         getLogger().fine("WAVE_MOB_REAL_HEALTH_DAMAGE event=" + eventId
                 + " mob=" + victim.getType() + ":" + victim.getUniqueId()
                 + " attacker=" + attacker.getUniqueId()
@@ -6663,7 +6708,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         DepositJournal.Entry entry = new DepositJournal.Entry(
-                eventId + ":" + UUID.randomUUID(), player.getUniqueId(), held.getType(), accepted, progress + accepted, "PREPARED");
+                eventId + ":" + UUID.randomUUID(), eventId, generation, player.getUniqueId(),
+                held.getType(), accepted, progress + accepted, "PREPARED");
         if (!depositJournal.prepare(entry)) {
             player.sendMessage(ChatColor.RED + "Внесение не записано durable; предмет не изменён.");
             return;
@@ -6749,7 +6795,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void recoverUnresolvedDeposits() {
-        for (DepositJournal.Entry entry : depositJournal.unresolved()) {
+        for (DepositJournal.Entry entry : depositJournal.unresolvedFor(eventId, generation)) {
             Player player = Bukkit.getPlayer(entry.playerUuid());
             int progress = depositedResources.getOrDefault(entry.material().name(), 0);
             if (progress >= entry.afterProgress()) {
@@ -12014,7 +12060,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String original = currentTemporaryBlockOriginals.get(point);
             if (original != null) {
                 journalEntries.add(new HazardMutationJournal.Entry(
-                        point.x(), combatFloorY(), point.z(), original, "", "EMERALD_BARRIER"));
+                        point.x(), combatFloorY(), point.z(), original, "", "EMERALD_BARRIER",
+                        world.getUID().toString(), eventId, generation));
             }
         }
         for (HazardPlanner.Point point : currentBarrierCells) {
@@ -12023,7 +12070,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (original != null) {
                 journalEntries.add(new HazardMutationJournal.Entry(
                         point.x(), combatFloorY(), point.z(),
-                        floor.getBlockData().getAsString(), original, "BARRIER"));
+                        floor.getBlockData().getAsString(), original, "BARRIER",
+                        world.getUID().toString(), eventId, generation));
             }
         }
         HazardMutationJournal.Snapshot existingJournal = hazardJournal == null
@@ -14791,6 +14839,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !EVENT_KIND_BOSS.equals(readString(boss, keyKind))) {
             return;
         }
+        if (!boss.isValid() || boss.isDead() || boss.getHealth() <= 0.0D) {
+            event.setCancelled(true);
+            getLogger().fine("BOSS_DAMAGE_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " reason=dead-or-removed");
+            return;
+        }
         if (event.isCancelled()) {
             // Another listener (AuthEffects, AdminPlus, anti-cheat, or an
             // external protection plugin) already rejected this hit.  Never
@@ -14942,6 +14996,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // hurt window behind for the next independent player hit.
         event.setCancelled(true);
         boss.setHealth(result.remainingHealth());
+        authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
         getLogger().info("BOSS_DAMAGE_ACCEPTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " source="
                 + (source == null ? "environment" : source.getType() + ":" + source.getUniqueId())
@@ -15779,7 +15834,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     String original = floor.getBlockData().getAsString();
                     arenaInfernoOriginalBlocks.put(point, original);
                     journalEntries.add(new HazardMutationJournal.Entry(
-                            x, fireY - 1, z, original, "", "MAGMA"));
+                            x, fireY - 1, z, original, "", "MAGMA",
+                            world.getUID().toString(), eventId, generation));
                 }
             }
         }
@@ -19660,7 +19716,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " generation=" + staleGeneration + " next_generation="
                 + result.nextGeneration() + " reason=" + result.reason()
                 + " wipe_count=" + result.wipeCount());
-        cancelSessionTasks();
+        if (!cancelSessionTasks()) {
+            attemptLifecycle.abortWipe(staleGeneration);
+            recoveryReason = "END_RIFT_ATTEMPT_WIPE_CLEANUP_FAILED";
+            getLogger().severe("ATTEMPT_WIPE_FROZEN event=" + eventId
+                    + " generation=" + staleGeneration
+                    + " reason=resource cleanup failed; retry cleanup before commit");
+            saveStateSync();
+            return;
+        }
         removeTransitionRuneVisuals();
         cleanupOwnedEntities(eventId, staleGeneration);
         clearClientEffects();
@@ -19850,7 +19914,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void recoverUnresolvedDepositsFor(Player player) {
-        for (DepositJournal.Entry entry : depositJournal.unresolved()) {
+        for (DepositJournal.Entry entry : depositJournal.unresolvedFor(eventId, generation)) {
             if (!entry.playerUuid().equals(player.getUniqueId())) {
                 continue;
             }

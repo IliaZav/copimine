@@ -17,15 +17,15 @@ public final class ObeliskScalingPolicy {
             return new Profile(4, 3, 12, 3, 1);
         }
         if (livingPlayers <= 7) {
-            return new Profile(4, 4, 16, 4, 2);
+            return new Profile(4, 3, 12, 4, 2);
         }
         if (livingPlayers <= 10) {
-            return new Profile(5, 4, 20, 5, 2);
+            return new Profile(5, 3, 15, 5, 2);
         }
         if (livingPlayers <= 15) {
-            return new Profile(5, 5, 25, 6, 3);
+            return new Profile(5, 3, 15, 6, 3);
         }
-        return new Profile(6, 5, 30, 8, 3);
+        return new Profile(6, 3, 18, 8, 3);
     }
 
     public static int obeliskCount(int livingPlayers) {

@@ -27,7 +27,25 @@ public record CombatTraceRecord(
         EventPhase phase,
         BossAbilityState abilityState,
         boolean shielded,
-        double mspt) {
+        double mspt,
+        boolean authoritativeApplied) {
+
+    /** Backward-compatible constructor for non-authoritative/native traces. */
+    public CombatTraceRecord(long tick, long observedAtMillis,
+                             UUID attackerId, UUID victimId,
+                             String attackerKind, String cause,
+                             double rawDamage, double finalDamage,
+                             boolean cancelledBefore, boolean cancelledAfter,
+                             int noDamageTicks, int maximumNoDamageTicks,
+                             double lastDamage, double healthBefore,
+                             double nextTickHealth, EventPhase phase,
+                             BossAbilityState abilityState, boolean shielded,
+                             double mspt) {
+        this(tick, observedAtMillis, attackerId, victimId, attackerKind, cause,
+                rawDamage, finalDamage, cancelledBefore, cancelledAfter,
+                noDamageTicks, maximumNoDamageTicks, lastDamage, healthBefore,
+                nextTickHealth, phase, abilityState, shielded, mspt, false);
+    }
 
     public CombatTraceRecord {
         tick = Math.max(0L, tick);
@@ -58,14 +76,43 @@ public record CombatTraceRecord(
         return new CombatTraceRecord(tick, observedAtMillis, attackerId, victimId,
                 attackerKind, cause, rawDamage, finalDamage, cancelledBefore, cancelledBefore,
                 noDamageTicks, maximumNoDamageTicks, lastDamage, healthBefore, healthBefore,
-                phase, abilityState, shielded, mspt);
+                phase, abilityState, shielded, mspt, false);
     }
 
     public CombatTraceRecord close(boolean cancelledAfter, double nextTickHealth) {
+        return close(cancelledAfter, nextTickHealth, false);
+    }
+
+    public CombatTraceRecord close(boolean cancelledAfter, double nextTickHealth,
+                                   boolean authoritativeApplied) {
         return new CombatTraceRecord(tick, observedAtMillis, attackerId, victimId,
                 attackerKind, cause, rawDamage, finalDamage, cancelledBefore, cancelledAfter,
                 noDamageTicks, maximumNoDamageTicks, lastDamage, healthBefore, nextTickHealth,
-                phase, abilityState, shielded, mspt);
+                phase, abilityState, shielded, mspt, authoritativeApplied);
+    }
+
+    /** The exact amount observed on the entity between the two checkpoints. */
+    public double actualHealthDelta() {
+        return Math.max(0.0D, healthBefore - nextTickHealth);
+    }
+
+    /** Health Paper would be expected to leave after one accepted final hit. */
+    public double expectedHealth() {
+        return Math.max(0.0D, healthBefore - finalDamage);
+    }
+
+    /** True only when this trace has a real accepted health mutation. */
+    public boolean accepted() {
+        return authoritativeApplied || !cancelledAfter && actualHealthDelta() > 0.0001D;
+    }
+
+    /** Human-readable authority for the final health mutation. */
+    public String authority() {
+        if (authoritativeApplied) return "REAL_ENTITY_HEALTH";
+        if (accepted()) return "NATIVE_PAPER";
+        if (shielded) return "SHIELD_OR_POLICY";
+        if (cancelledAfter) return "CANCELLED";
+        return "NONE";
     }
 
     public CombatTraceDiagnosis diagnosis() {
@@ -76,11 +123,13 @@ public record CombatTraceRecord(
         return String.format(Locale.ROOT,
                 "COMBAT_TRACE tick=%d at=%d attacker=%s victim=%s attacker_kind=%s cause=%s raw=%.3f final=%.3f"
                         + " cancelled_before=%s cancelled_after=%s no_damage_ticks=%d max_no_damage_ticks=%d"
-                        + " last_damage=%.3f health_before=%.3f health_next_tick=%.3f phase=%s ability=%s shielded=%s mspt=%.2f diagnosis=%s",
+                        + " last_damage=%.3f health_before=%.3f expected_health=%.3f health_after=%.3f"
+                        + " health_next_tick=%.3f accepted=%s authority=%s phase=%s ability=%s shielded=%s mspt=%.2f diagnosis=%s",
                 tick, observedAtMillis, id(attackerId), id(victimId), attackerKind, cause,
                 rawDamage, finalDamage, cancelledBefore, cancelledAfter, noDamageTicks,
-                maximumNoDamageTicks, lastDamage, healthBefore, nextTickHealth, phase,
-                abilityState, shielded, mspt, diagnosis());
+                maximumNoDamageTicks, lastDamage, healthBefore, expectedHealth(), nextTickHealth,
+                nextTickHealth, accepted(), authority(), phase, abilityState, shielded, mspt,
+                diagnosis());
     }
 
     private static String id(UUID value) {

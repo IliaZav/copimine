@@ -16,6 +16,14 @@ public enum CombatTraceDiagnosis {
             return NO_EVENT_OBSERVED;
         }
         double observedDelta = Math.max(0.0D, trace.healthBefore() - trace.nextTickHealth());
+        if (trace.authoritativeApplied()) {
+            if (trace.actualHealthDelta() > 0.0001D
+                    && Math.abs(trace.actualHealthDelta() - trace.finalDamage())
+                    <= Math.max(0.25D, trace.finalDamage() * 0.05D)) {
+                return APPLIED;
+            }
+            return RACE_OR_REWRITE;
+        }
         if (trace.cancelledAfter()) {
             return trace.shielded() ? OTHER_PLUGIN_OR_POLICY : CANCELLED;
         }

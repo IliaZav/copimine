@@ -40,6 +40,59 @@ public final class DepositJournalTest {
         check(journal.unresolved().isEmpty(),
                 "only a provably torn final journal line may be ignored");
 
+        Path scopedDirectory = Files.createTempDirectory("copimine-end-deposit-scoped-");
+        try {
+            DepositJournal scopedJournal = new DepositJournal(scopedDirectory);
+            DepositJournal.Entry scoped = new DepositJournal.Entry(
+                    "event-1:deposit-1", "event-1", 7L, player,
+                    Material.DIAMOND, 3, 3, "PREPARED");
+            check(scopedJournal.prepare(scoped), "scoped prepare must be durable");
+            check(scopedJournal.unresolvedFor("event-1", 7L).size() == 1,
+                    "current event generation must see its own unresolved deposit");
+            boolean ownerRejected = false;
+            try {
+                scopedJournal.unresolvedFor("event-2", 8L);
+            } catch (DepositJournal.JournalCorruptionException expected) {
+                ownerRejected = true;
+            }
+            check(ownerRejected,
+                    "a deposit from another event generation must fail closed");
+        } finally {
+            try (var paths = Files.walk(scopedDirectory)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                        // Best-effort cleanup for this isolated temporary test directory.
+                    }
+                });
+            }
+        }
+
+        Path legacyDirectory = Files.createTempDirectory("copimine-end-deposit-legacy-");
+        try {
+            Files.writeString(legacyDirectory.resolve("deposit-journal.tsv"),
+                    "legacy-1\t" + player + "\tDIAMOND\t1\t1\tPREPARED\n");
+            boolean legacyRejected = false;
+            try {
+                new DepositJournal(legacyDirectory).unresolvedFor("event-1", 7L);
+            } catch (DepositJournal.JournalCorruptionException expected) {
+                legacyRejected = true;
+            }
+            check(legacyRejected,
+                    "an unresolved legacy unscoped deposit must require explicit recovery");
+        } finally {
+            try (var paths = Files.walk(legacyDirectory)) {
+                paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (Exception ignored) {
+                        // Best-effort cleanup for this isolated temporary test directory.
+                    }
+                });
+            }
+        }
+
         Path corruptDirectory = Files.createTempDirectory("copimine-end-deposit-corrupt-");
         Files.writeString(corruptDirectory.resolve("deposit-journal.tsv"),
                 "not-a-uuid\tbad\tDIAMOND\t1\t1\tPREPARED");

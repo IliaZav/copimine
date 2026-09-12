@@ -100,11 +100,17 @@ public final class AttemptLifecycleController {
         return true;
     }
 
-    /** Abort a failed cleanup while keeping the attempt frozen. */
+    /**
+     * Report a failed cleanup without publishing a new generation.
+     *
+     * <p>The old attempt intentionally remains frozen and the pending
+     * generation is retained. A caller may retry cleanup and call
+     * {@link #commitWipe(long)} once every owned resource has been removed.
+     * Clearing this state here would let stale callbacks mutate the old
+     * attempt after a partial wipe.</p>
+     */
     public synchronized boolean abortWipe(long expectedGeneration) {
         if (!wiping || !owns(expectedGeneration)) return false;
-        pendingNextGeneration = Long.MIN_VALUE;
-        wiping = false;
         return true;
     }
 

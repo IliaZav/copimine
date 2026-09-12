@@ -2,6 +2,7 @@ package me.copimine.endevent.domain;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
@@ -9,6 +10,7 @@ import java.util.Set;
 public final class EndEventStateMachine {
     private static final Map<EventPhase, Set<EventPhase>> TRANSITIONS = transitions();
     private EventPhase phase;
+    private final Map<String, AppliedTransition> appliedTransitions = new HashMap<>();
 
     public EndEventStateMachine(EventPhase initialPhase) {
         this.phase = initialPhase == null ? EventPhase.RECOVERY_REQUIRED : initialPhase;
@@ -18,19 +20,46 @@ public final class EndEventStateMachine {
         return phase;
     }
 
+    /** Validate a transition without mutating the graph or its idempotency ledger. */
+    public TransitionResult previewTransition(EventPhase expected, EventPhase next,
+                                              String reason, String idempotencyKey) {
+        return validate(expected, next, reason, idempotencyKey);
+    }
+
     public TransitionResult transition(EventPhase expected, EventPhase next,
                                        String reason, String idempotencyKey) {
-        if (expected == null || next == null || expected != phase) {
-            return TransitionResult.failure("EXPECTED_PHASE_MISMATCH");
+        TransitionResult validation = validate(expected, next, reason, idempotencyKey);
+        if (!validation.success() || "IDEMPOTENT_REPLAY".equals(validation.code())) {
+            return validation;
         }
+        String key = validation.idempotencyKey();
+        String safeReason = validation.reason();
+        phase = next;
+        appliedTransitions.put(key, new AppliedTransition(expected, next, safeReason));
+        return TransitionResult.success(safeReason, key);
+    }
+
+    private TransitionResult validate(EventPhase expected, EventPhase next,
+                                      String reason, String idempotencyKey) {
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             return TransitionResult.failure("IDEMPOTENCY_KEY_REQUIRED");
+        }
+        String key = idempotencyKey.trim();
+        AppliedTransition previous = appliedTransitions.get(key);
+        if (previous != null) {
+            if (previous.expected() != expected || previous.next() != next) {
+                return TransitionResult.failure("IDEMPOTENCY_KEY_CONFLICT");
+            }
+            return TransitionResult.replay(previous.reason(), key);
+        }
+        if (expected == null || next == null || expected != phase) {
+            return TransitionResult.failure("EXPECTED_PHASE_MISMATCH");
         }
         if (!TRANSITIONS.getOrDefault(phase, Set.of()).contains(next)) {
             return TransitionResult.failure("ILLEGAL_TRANSITION");
         }
-        phase = next;
-        return TransitionResult.success(reason == null ? "" : reason.trim(), idempotencyKey.trim());
+        String safeReason = reason == null ? "" : reason.trim();
+        return TransitionResult.success(safeReason, key);
     }
 
     /** A restart never resumes transient combat; it returns to a safe setup state. */
@@ -90,8 +119,14 @@ public final class EndEventStateMachine {
             return new TransitionResult(true, "OK", reason, idempotencyKey);
         }
 
+        private static TransitionResult replay(String reason, String idempotencyKey) {
+            return new TransitionResult(true, "IDEMPOTENT_REPLAY", reason, idempotencyKey);
+        }
+
         private static TransitionResult failure(String code) {
             return new TransitionResult(false, code, "", "");
         }
     }
+
+    private record AppliedTransition(EventPhase expected, EventPhase next, String reason) { }
 }

@@ -11,6 +11,7 @@ public final class EventTaskRegistry {
     private final Set<BukkitTask> tasks = ConcurrentHashMap.newKeySet();
 
     public EventTaskRegistry(long generation) {
+        if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
         this.generation = generation;
     }
 
@@ -32,6 +33,19 @@ public final class EventTaskRegistry {
 
     public boolean owns(long callbackGeneration) {
         return generation == callbackGeneration;
+    }
+
+    /**
+     * Execute a Bukkit callback only while its captured generation is still
+     * current. The check must happen at execution time, not only when a task
+     * is scheduled, because a delayed callback can outlive a wipe boundary.
+     */
+    public boolean runIfOwned(long callbackGeneration, Runnable callback) {
+        if (callback == null || !owns(callbackGeneration)) {
+            return false;
+        }
+        callback.run();
+        return true;
     }
 
     public void cancelAll() {

@@ -56,6 +56,30 @@ public final class DepositJournal {
         return result;
     }
 
+    /**
+     * Return unresolved records owned by exactly one current event generation.
+     * A legacy six-field record or a different owner is never guessed into the
+     * current attempt; the caller must put the event into recovery instead.
+     */
+    public synchronized List<Entry> unresolvedFor(String eventId, long generation) {
+        if (eventId == null || eventId.isBlank() || generation <= 0L) {
+            throw new JournalCorruptionException("current deposit journal owner is incomplete");
+        }
+        List<Entry> result = new ArrayList<>();
+        for (Entry entry : unresolved()) {
+            if (entry.legacy()) {
+                throw new JournalCorruptionException(
+                        "legacy unscoped deposit record requires administrative recovery: " + entry.id());
+            }
+            if (!entry.belongsTo(eventId, generation)) {
+                throw new JournalCorruptionException(
+                        "deposit record belongs to a different event generation: " + entry.id());
+            }
+            result.add(entry);
+        }
+        return result;
+    }
+
     public String lastFailure() {
         return lastFailure;
     }
@@ -64,7 +88,8 @@ public final class DepositJournal {
         try {
             Files.createDirectories(path.getParent());
             String line = String.join("\t",
-                    entry.id(), entry.playerUuid().toString(), entry.material().name(),
+                    entry.id(), entry.eventId(), Long.toString(entry.generation()),
+                    entry.playerUuid().toString(), entry.material().name(),
                     Integer.toString(entry.amount()), Integer.toString(entry.afterProgress()),
                     entry.status()) + "\n";
             try (FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE,
@@ -105,8 +130,9 @@ public final class DepositJournal {
                     throw malformed("blank complete journal line");
                 }
                 String[] fields = line.split("\\t", -1);
-                if (fields.length != 6) {
-                    // Only a final line with fewer than the six fields can be
+                if (fields.length != 8 && fields.length != 6) {
+                    // Only a final line with fewer than the six legacy fields
+                    // can be
                     // proven to be torn by an interrupted append. A complete
                     // six-field line, even without a trailing newline, must
                     // still parse strictly and must never disappear as if it
@@ -118,9 +144,20 @@ public final class DepositJournal {
                     throw malformed("expected six tab-separated fields");
                 }
                 try {
-                    result.put(fields[0], new Entry(
-                            fields[0], UUID.fromString(fields[1]), Material.valueOf(fields[2]),
-                            Integer.parseInt(fields[3]), Integer.parseInt(fields[4]), fields[5]));
+                    Entry entry;
+                    if (fields.length == 8) {
+                        entry = new Entry(fields[0], fields[1], Long.parseLong(fields[2]),
+                                UUID.fromString(fields[3]), Material.valueOf(fields[4]),
+                                Integer.parseInt(fields[5]), Integer.parseInt(fields[6]), fields[7]);
+                    } else {
+                        // Schema-1..3 deposit lines had no owner. They remain
+                        // readable for diagnostics, but unresolved legacy
+                        // work is rejected by unresolvedFor().
+                        entry = new Entry(fields[0], UUID.fromString(fields[1]),
+                                Material.valueOf(fields[2]), Integer.parseInt(fields[3]),
+                                Integer.parseInt(fields[4]), fields[5]);
+                    }
+                    result.put(fields[0], entry);
                 } catch (IllegalArgumentException error) {
                     throw malformed("invalid record: " + error.getMessage(), error);
                 }
@@ -144,17 +181,39 @@ public final class DepositJournal {
 
     public record Entry(
             String id,
+            String eventId,
+            long generation,
             UUID playerUuid,
             Material material,
             int amount,
             int afterProgress,
             String status) {
+        public Entry(String id, UUID playerUuid, Material material, int amount,
+                     int afterProgress, String status) {
+            this(id, "", -1L, playerUuid, material, amount, afterProgress, status);
+        }
+
         public Entry {
+            eventId = eventId == null ? "" : eventId.trim();
+            status = status == null ? "PREPARED" : status;
+            validate(id, eventId, generation, playerUuid, material, amount, afterProgress, status);
+        }
+
+        private static void validate(String id, String eventId, long generation,
+                                     UUID playerUuid, Material material, int amount,
+                                     int afterProgress, String status) {
             if (id == null || id.isBlank() || playerUuid == null || material == null
                     || amount < 1 || afterProgress < 0) {
                 throw new IllegalArgumentException("invalid deposit journal entry");
             }
-            status = status == null ? "PREPARED" : status;
+            if (id.indexOf('\t') >= 0 || id.indexOf('\n') >= 0
+                    || eventId != null && (eventId.indexOf('\t') >= 0 || eventId.indexOf('\n') >= 0)) {
+                throw new IllegalArgumentException("deposit journal identity contains a line separator");
+            }
+            if (eventId.isBlank() && generation != -1L
+                    || !eventId.isBlank() && generation <= 0L) {
+                throw new IllegalArgumentException("deposit journal owner must contain event id and positive generation");
+            }
             if (!status.equals("PREPARED") && !status.equals("ITEM_REMOVED")
                     && !status.equals("COMMITTED") && !status.equals("REFUNDED")
                     && !status.equals("REFUND_PENDING")) {
@@ -162,8 +221,16 @@ public final class DepositJournal {
             }
         }
 
+        public boolean legacy() {
+            return eventId.isBlank() && generation == -1L;
+        }
+
+        public boolean belongsTo(String expectedEventId, long expectedGeneration) {
+            return !legacy() && eventId.equals(expectedEventId) && generation == expectedGeneration;
+        }
+
         Entry withStatus(String next) {
-            return new Entry(id, playerUuid, material, amount, afterProgress, next);
+            return new Entry(id, eventId, generation, playerUuid, material, amount, afterProgress, next);
         }
     }
 

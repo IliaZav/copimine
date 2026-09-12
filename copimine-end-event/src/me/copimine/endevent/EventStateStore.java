@@ -16,6 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import me.copimine.endevent.migration.LegacyEndRiftSnapshotDecoder;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -31,6 +32,9 @@ public final class EventStateStore {
     private final Path path;
     private final Path backupPath;
     private final int schemaVersion;
+    /** Sequence save requests, not wall-clock timestamps, to prevent rollback. */
+    private final AtomicLong requestedSaveSequence = new AtomicLong();
+    private long committedSaveSequence;
 
     public EventStateStore(Path dataFolder, String fileName, String backupFileName, int schemaVersion) {
         this.path = safeChildPath(dataFolder, fileName, "state");
@@ -96,11 +100,12 @@ public final class EventStateStore {
         if (snapshot == null || executor == null) {
             return CompletableFuture.completedFuture(false);
         }
+        long sequence = requestedSaveSequence.incrementAndGet();
         CompletableFuture<Boolean> result = new CompletableFuture<>();
         try {
             executor.execute(() -> {
                 try {
-                    result.complete(save(snapshot));
+                    result.complete(saveAtSequence(snapshot, sequence));
                 } catch (RuntimeException error) {
                     result.complete(false);
                 }
@@ -115,11 +120,27 @@ public final class EventStateStore {
         if (snapshot == null || snapshot.schemaVersion() != schemaVersion) {
             return false;
         }
+        return saveAtSequence(snapshot, requestedSaveSequence.incrementAndGet());
+    }
+
+    /**
+     * Writes only the newest request that has not already been committed.
+     * Async saves and main-thread checkpoints share this fence, so an older
+     * queued snapshot can never overwrite a newer synchronous checkpoint.
+     */
+    private synchronized boolean saveAtSequence(EventSnapshot snapshot, long sequence) {
+        if (snapshot == null || snapshot.schemaVersion() != schemaVersion) {
+            return false;
+        }
+        if (sequence <= committedSaveSequence) {
+            return true;
+        }
         try {
             Files.createDirectories(path.getParent());
             YamlConfiguration yaml = new YamlConfiguration();
             writeCurrent(yaml, snapshot);
             writeAtomic(yaml.saveToString());
+            committedSaveSequence = sequence;
             return true;
         } catch (IOException | RuntimeException error) {
             return false;

@@ -2,6 +2,7 @@ package me.copimine.endevent.runtime;
 
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import me.copimine.endevent.domain.EndEventStateMachine;
@@ -24,8 +25,10 @@ import me.copimine.endevent.runtime.encounter.WaveEncounter;
 public final class EndRiftEncounterCoordinator implements AutoCloseable {
     private final EndRiftSession session;
     private final Map<EndRiftObjective.Objective, WaveEncounter> encounters = new EnumMap<>(EndRiftObjective.Objective.class);
+    private final Map<String, WaveOperation> waveOperations = new HashMap<>();
     private final List<Transition> history = new ArrayList<>();
     private boolean closed;
+    private RuntimeException closeFailure;
 
     public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase) {
         this(context, initialPhase, null);
@@ -33,6 +36,12 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase,
                                        AutoCloseable resourceScope) {
+        this(context, initialPhase, resourceScope, Map.of());
+    }
+
+    public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase,
+                                       AutoCloseable resourceScope,
+                                       Map<EndRiftObjective.Objective, WaveEncounter> overrides) {
         this.session = new EndRiftSession(context, initialPhase, resourceScope);
         register(new RiftCarriersEncounter());
         register(new RiftHuntEncounter());
@@ -41,6 +50,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         register(new BlackFogEncounter());
         register(new CollapseRingsEncounter());
         register(new RealitySplitEncounter());
+        if (overrides != null) overrides.values().forEach(this::register);
     }
 
     public synchronized EndRiftSession session() { return session; }
@@ -57,22 +67,37 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         if (closed) return rejected("COORDINATOR_CLOSED");
         EndRiftSession.TransitionOutcome outcome = session.transition(expected, next, reason, idempotencyKey);
         if (!outcome.accepted()) return rejected(outcome.code());
-        session.updateObjectiveForPhase();
-        history.add(new Transition(expected, next, idempotencyKey));
-        return accepted(next, "transition accepted");
+        if (!"IDEMPOTENT_REPLAY".equals(outcome.code())) {
+            session.updateObjectiveForPhase();
+            history.add(new Transition(expected, next, idempotencyKey));
+        }
+        return accepted(next, outcome.code(), "transition accepted");
     }
 
     /** Start the next canonical wave, including its required predecessor phase. */
     public synchronized Result startNextWave(EndRiftObjective.Objective objective,
                                              String reason, String idempotencyKey) {
         if (closed || objective == null) return rejected("INVALID_OBJECTIVE");
+        Result replay = replayWaveOperation("START", objective, idempotencyKey);
+        if (replay != null) return replay;
         EventPhase target = wavePhase(objective);
         EventPhase predecessor = predecessorPhase(objective);
         if (session.phase() != predecessor) return rejected("PREDECESSOR_PHASE_REQUIRED");
-        Result moved = transition(predecessor, target, reason, idempotencyKey);
-        if (!moved.accepted()) return moved;
         WaveEncounter encounter = encounters.get(objective);
-        return fromEncounter(encounter.start(session.context().withObjective(objective)));
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        EndRiftSession.TransitionOutcome preview = session.previewTransition(
+                predecessor, target, reason, idempotencyKey);
+        if (!preview.accepted()) return rejected(preview.code());
+        WaveEncounter.Result started = encounter.start(session.context().withObjective(objective));
+        if (!started.accepted()) return rejected("START_REJECTED");
+        Result moved = transition(predecessor, target, reason, idempotencyKey);
+        if (!moved.accepted()) {
+            encounter.reset();
+            return moved;
+        }
+        Result result = fromEncounter(started, target);
+        waveOperations.put(idempotencyKey.trim(), new WaveOperation("START", objective, result));
+        return result;
     }
 
     /** Start a wave after an adapter has already committed the phase transition. */
@@ -93,24 +118,31 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
     /** Complete an objective and enter its only legal following stage. */
     public synchronized Result completeWave(EndRiftObjective.Objective objective,
                                              String reason, String idempotencyKey) {
-        if (closed || objective == null || session.phase() != wavePhase(objective)) {
+        if (closed || objective == null) {
             return rejected("WAVE_PHASE_REQUIRED");
         }
         WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        Result replay = replayWaveOperation("COMPLETE", objective, idempotencyKey);
+        if (replay != null) return replay;
+        if (session.phase() != wavePhase(objective)) {
+            return rejected("WAVE_PHASE_REQUIRED");
+        }
+        EventPhase current = session.phase();
+        EventPhase next = nextPhaseFor(objective);
+        EndRiftSession.TransitionOutcome preview = session.previewTransition(
+                current, next, reason, idempotencyKey);
+        if (!preview.accepted()) return rejected(preview.code());
         WaveEncounter.Result completed = encounter.complete(session.context().withObjective(objective));
         if (!completed.complete()) return fromEncounter(completed);
-        EventPhase next = switch (objective) {
-            case RIFT_CARRIERS -> EventPhase.INTERMISSION_1;
-            case RIFT_HUNT -> EventPhase.INTERMISSION_2;
-            case RIFT_GATES -> EventPhase.INTERMISSION_3;
-            case OBELISK_ASSAULT -> EventPhase.CORE_RESTORATION;
-            case BLACK_FOG -> EventPhase.INTERMISSION_5;
-            case COLLAPSE_RINGS -> EventPhase.INTERMISSION_6;
-            case REALITY_SPLIT -> EventPhase.PRE_BOSS_COOLDOWN;
-        };
-        Result moved = transition(session.phase(), next, reason, idempotencyKey);
-        if (!moved.accepted()) return moved;
-        return fromEncounter(completed);
+        Result moved = transition(current, next, reason, idempotencyKey);
+        if (!moved.accepted()) {
+            encounter.reset();
+            return moved;
+        }
+        Result result = fromEncounter(completed, next);
+        waveOperations.put(idempotencyKey.trim(), new WaveOperation("COMPLETE", objective, result));
+        return result;
     }
 
     /** W4 has no transition-rune intermission; restoration is an explicit stage. */
@@ -147,14 +179,37 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     @Override
     public synchronized void close() {
-        if (closed) return;
+        if (closed) {
+            if (closeFailure != null) throw closeFailure;
+            return;
+        }
         closed = true;
-        encounters.values().forEach(WaveEncounter::reset);
-        session.close();
+        RuntimeException failure = null;
+        for (WaveEncounter encounter : encounters.values()) {
+            try {
+                encounter.reset();
+            } catch (RuntimeException error) {
+                failure = combineCloseFailure(failure, error);
+            }
+        }
+        try {
+            session.close();
+        } catch (RuntimeException error) {
+            failure = combineCloseFailure(failure, error);
+        }
+        closeFailure = failure;
+        if (failure != null) throw failure;
+    }
+
+    private static RuntimeException combineCloseFailure(RuntimeException first,
+                                                         RuntimeException next) {
+        if (first == null) return next;
+        if (next != null && next != first) first.addSuppressed(next);
+        return first;
     }
 
     private void register(WaveEncounter encounter) {
-        encounters.put(encounter.objective(), encounter);
+        if (encounter != null) encounters.put(encounter.objective(), encounter);
     }
 
     private static Result fromEncounter(WaveEncounter.Result result) {
@@ -162,8 +217,38 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
                 result.progress(), result.required());
     }
 
-    private Result accepted(EventPhase phase, String reason) {
-        return new Result(true, phase, "OK", reason, 0, 0);
+    private static Result fromEncounter(WaveEncounter.Result result, EventPhase phase) {
+        return new Result(result.accepted(), phase, result.status().name(), result.reason(),
+                result.progress(), result.required());
+    }
+
+    private Result replayWaveOperation(String kind, EndRiftObjective.Objective objective,
+                                       String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) return null;
+        WaveOperation operation = waveOperations.get(idempotencyKey.trim());
+        if (operation == null) return null;
+        if (!operation.kind().equals(kind) || operation.objective() != objective) {
+            return rejected("IDEMPOTENCY_KEY_CONFLICT");
+        }
+        Result result = operation.result();
+        return new Result(true, result.phase(), "IDEMPOTENT_REPLAY", result.reason(),
+                result.progress(), result.required());
+    }
+
+    private static EventPhase nextPhaseFor(EndRiftObjective.Objective objective) {
+        return switch (objective) {
+            case RIFT_CARRIERS -> EventPhase.INTERMISSION_1;
+            case RIFT_HUNT -> EventPhase.INTERMISSION_2;
+            case RIFT_GATES -> EventPhase.INTERMISSION_3;
+            case OBELISK_ASSAULT -> EventPhase.CORE_RESTORATION;
+            case BLACK_FOG -> EventPhase.INTERMISSION_5;
+            case COLLAPSE_RINGS -> EventPhase.INTERMISSION_6;
+            case REALITY_SPLIT -> EventPhase.PRE_BOSS_COOLDOWN;
+        };
+    }
+
+    private Result accepted(EventPhase phase, String code, String reason) {
+        return new Result(true, phase, code, reason, 0, 0);
     }
 
     private Result rejected(String reason) {
@@ -213,4 +298,6 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     public record Transition(EventPhase from, EventPhase to, String idempotencyKey) {
     }
+
+    private record WaveOperation(String kind, EndRiftObjective.Objective objective, Result result) { }
 }

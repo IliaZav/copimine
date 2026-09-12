@@ -107,6 +107,7 @@ $pureTests = @(
   'CombatTraceRecordTest',
   'EndEventDomainTest',
   'EndEventStateMachineTest',
+  'TransitionIdempotencyTest',
   'EndRiftEncounterCoordinatorTest',
   'EndRiftAiPolicyTest',
   'EventCombatScalingPolicyTest',
@@ -168,13 +169,16 @@ $persistenceTests = @(
   'DepositJournalTest',
   'EventLayoutStoreTest',
   'HazardMutationJournalTest',
-  'LegacyEndRiftSnapshotDecoderTest'
+  'LegacyEndRiftSnapshotDecoderTest',
+  'EncounterResourceScopeTest',
+  'EventTaskRegistryTest'
 )
 $persistenceSources = @($persistenceTests | ForEach-Object {
   $path = Join-Path $root ("tests\{0}.java" -f $_)
   if (-not (Test-Path -LiteralPath $path)) { throw "Missing persistence test: $path" }
   $path
 })
+$persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventTaskRegistry.java'
 
 Invoke-GateStep 'Current persistence and recovery' {
   & javac -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources

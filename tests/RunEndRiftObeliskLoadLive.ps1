@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateRange(16, 20)]
+  [ValidateRange(2, 20)]
   [int]$PlayerCount = 20,
   [ValidateRange(20, 300)]
   [int]$BotDurationSeconds = 180,
@@ -182,6 +182,7 @@ function Wait-LogCount {
 }
 
 function Wait-Players {
+  param([Parameter(Mandatory = $true)][int64]$AfterOffset)
   $deadline = (Get-Date).AddSeconds(90)
   $forceLoggedIn = @{}
   do {
@@ -201,10 +202,18 @@ function Wait-Players {
         $forceLoggedIn[$name] = $true
       }
     }
-    if ($missing.Count -eq 0) { return }
+    $loginTail = ''
+    $paperText = Read-SharedText -Path $paperLog
+    if ($AfterOffset -lt $paperText.Length) {
+      $loginTail = $paperText.Substring([int]$AfterOffset)
+    }
+    $notAuthenticated = @($playerNames | Where-Object {
+      $loginTail -notmatch ('AuthMe\].*\b' + [Regex]::Escape($_) + ' logged in\b')
+    })
+    if ($missing.Count -eq 0 -and $notAuthenticated.Count -eq 0) { return }
     Start-Sleep -Milliseconds 500
   } while ((Get-Date) -lt $deadline)
-  throw "Obelisk load clients did not all join: $($missing -join ', ')"
+  throw "Obelisk load clients did not all authenticate: missing=$($missing -join ', ') unauthenticated=$($notAuthenticated -join ', ')"
 }
 
 function Get-PlayerPosition {
@@ -252,8 +261,8 @@ function Start-LoadBot {
   $startInfo.EnvironmentVariables['END_RIFT_BOT_HOST'] = '127.0.0.1'
   $startInfo.EnvironmentVariables['END_RIFT_BOT_PORT'] = '25566'
   $startInfo.EnvironmentVariables['END_RIFT_REFLECT_ENABLED'] = '0'
-  # AuthMe is exercised through the local console force-login below.  Sending
-  # twenty concurrent register/login command streams makes AuthMe's own
+  # AuthMe is exercised through the local console force-login below. Sending
+  # many concurrent register/login command streams makes AuthMe's own
   # authentication timeout the bottleneck and can eject a real protocol client
   # before the event load has even started.
   $startInfo.EnvironmentVariables['END_RIFT_SKIP_AUTH_CHAT'] = '1'
@@ -294,14 +303,15 @@ $bossUuid = ''
 $success = $false
 try {
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
+  $joinOffset = Get-LogLength
   foreach ($name in $playerNames) {
     $processes += Start-LoadBot -Name $name
     # AuthMe performs a database-backed account lookup on each login.  A
-    # small deterministic launch gap keeps 20 local clients from competing
+    # small deterministic launch gap keeps local clients from competing
     # for the same login timeout and is still a real multiplayer load.
     Start-Sleep -Milliseconds 750
   }
-  Wait-Players
+  Wait-Players -AfterOffset $joinOffset
   Start-Sleep -Seconds 3
   Start-Sleep -Seconds 4
   $destinations = @{}
@@ -345,7 +355,7 @@ try {
     }
   }
   if ($stillOutside.Count -gt 0) {
-    throw "20-player load clients are not inside the arena after verified teleport: $($stillOutside -join ', ')"
+    throw "$PlayerCount-player load clients are not inside the arena after verified teleport: $($stillOutside -join ', ')"
   }
 
   # Wave 4 is the current obelisk encounter.  The old probe spawned a boss
@@ -366,23 +376,23 @@ try {
   # wrapper returns the raw formatted line.  The counters remain anchored to
   # the two labels, so a stray digit elsewhere cannot satisfy the check.
   $runtimeMatch = [Regex]::Match($status,
-    'rift-obelisks=.*?(\d+)/' + $expectedObelisks + '\s+.*?rift-fireballs=.*?(\d+)')
+    'rift-obelisks=.*?(\d+)/\d+\s+.*?rift-fireballs=.*?(\d+)')
   if (-not $runtimeMatch.Success) {
     $runtimeMatch = [Regex]::Match($statusPlain,
-      'rift-obelisks=(\d+)/' + $expectedObelisks + '\s+rift-fireballs=(\d+)')
+      'rift-obelisks=(\d+)/\d+\s+rift-fireballs=(\d+)')
   }
   if (-not $runtimeMatch.Success) { throw "Obelisk load status is missing runtime counters:`n$status" }
   $liveObelisks = [int]$runtimeMatch.Groups[1].Value
   $liveFireballs = [int]$runtimeMatch.Groups[2].Value
   if ($liveObelisks -ne $expectedObelisks) {
-    throw "20-player load lost an obelisk without a reflected hit: live=$liveObelisks`n$status"
+    throw "$PlayerCount-player load lost an obelisk without a reflected hit: live=$liveObelisks`n$status"
   }
   if ($liveFireballs -gt 8) {
     throw "Rift Fireball hard cap exceeded: live=$liveFireballs`n$status"
   }
   $list = Invoke-LocalRcon -CommandText 'list'
   $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
-  if ($missing.Count -gt 0) { throw "20-player load disconnected clients: $($missing -join ', ')`n$list" }
+  if ($missing.Count -gt 0) { throw "$PlayerCount-player load disconnected clients: $($missing -join ', ')`n$list" }
   $success = $true
   Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} obelisks={1}/{2} fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 hard_cap=56 arena_bound=true" -f
     $PlayerCount, $liveObelisks, $expectedObelisks, $liveFireballs)
@@ -403,7 +413,7 @@ try {
     $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
     $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
     $cleanupOk = ($cleanup -match 'boss=.*?none') -and
-      ($cleanup -match 'rift-obelisks=.*?0/' + $expectedObelisks) -and
+      ($cleanup -match 'rift-obelisks=.*?0/\d+') -and
       ($cleanup -match 'rift-fireballs=.*?0') -and
       ($cleanup -match 'state=.*(?:READY_FOR_PLAYERS|COLLECTING|UNCONFIGURED|UNLOCKED)')
     if (-not $cleanupOk) {

@@ -49,6 +49,34 @@ public final class HazardMutationJournalTest {
             HazardMutationJournal.Entry ice = new HazardMutationJournal.Entry(
                     14, 68, -4, "minecraft:stone", "", "ICE");
             check(ice.isIceMutation(), "ice prisoner mutation must be explicit");
+            Path invalidDirectory = Files.createTempDirectory("end-rift-hazard-journal-invalid-");
+            try {
+                HazardMutationJournal invalidJournal = new HazardMutationJournal(invalidDirectory);
+                HazardMutationJournal.Entry duplicate = new HazardMutationJournal.Entry(
+                        20, 67, -4, "minecraft:stone", "", "FIRE",
+                        worldId, "event-2", 8L);
+                HazardMutationJournal.Entry duplicateCell = new HazardMutationJournal.Entry(
+                        20, 67, -4, "minecraft:stone", "", "ICE",
+                        worldId, "event-2", 8L);
+                check(!invalidJournal.prepare("event-2", 8L, "CopiMine",
+                                List.of(duplicate, duplicateCell)),
+                        "duplicate hazard cells must be rejected before mutation");
+
+                HazardMutationJournal.Entry legacy = new HazardMutationJournal.Entry(
+                        21, 67, -4, "minecraft:stone", "", "FIRE");
+                check(!invalidJournal.prepare("event-2", 8L, "CopiMine", List.of(legacy)),
+                        "legacy unscoped hazard entries must not enter a new generation");
+            } finally {
+                try (var paths = Files.walk(invalidDirectory)) {
+                    paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (Exception ignored) {
+                            // Best-effort cleanup for this isolated temporary test directory.
+                        }
+                    });
+                }
+            }
             System.out.println("HazardMutationJournalTest OK");
         } finally {
             try (var paths = Files.walk(directory)) {

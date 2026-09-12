@@ -178,7 +178,7 @@ def test_w4_obelisk_contract_and_scaling() -> None:
     geometry = DOMAIN / "ObeliskGeometryPolicy.java"
     fire = DOMAIN / "ObeliskFireDirectorPolicy.java"
     projectile = DOMAIN / "ObeliskProjectilePolicy.java"
-    assert_contains(scaling, "MAX_OBELISKS = 6", "profileForPlayers", "new Profile(6, 5, 30")
+    assert_contains(scaling, "MAX_OBELISKS = 6", "profileForPlayers", "new Profile(6, 3, 18")
     assert_contains(integrity, "NOT_REFLECTED", "STALE_GENERATION", "OBELISK_RIFT_FIREBALL", "tryReflectedHit")
     assert_contains(geometry, "FOOTPRINT_RADIUS = 1", "HEIGHT = 5", "EMERGENCE_TICKS = 70")
     assert_contains(fire, "fireInterval", "chooseTarget", "staggerTicks")

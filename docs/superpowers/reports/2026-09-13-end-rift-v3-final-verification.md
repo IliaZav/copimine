@@ -12,8 +12,28 @@
 ~~~
 D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event
 branch: codex/end-rift-event
-gameplay/build candidate SHA: cd0720790fc958cd5dd91845e53057f66f4c12a5
+report source checkpoint SHA: cd0720790fc958cd5dd91845e53057f66f4c12a5
+current final branch SHA: 585f3aec56c3142860be191bcba0fd8277597493
 remote: https://github.com/IliaZav/copimine.git
+~~~
+
+После подготовки основной части этого отчёта в ветку добавлен только
+test-harness fix `585f3aec`: последний portal capture и событие завершения W3
+могли записываться в один Paper tick, из-за чего старый cursor пропускал уже
+существующую запись. Игровой код и собранные plugin/client/resource-pack
+артефакты этим коммитом не менялись. Для exact final SHA отдельно проверены
+локальный gate, валидаторы, Paper smoke и GitHub Actions.
+
+Exact final SHA rerun:
+
+~~~
+source SHA: 585f3aec56c3142860be191bcba0fd8277597493
+RunEndRiftEventChecks.ps1: PASS
+RunCopiMineValidators.ps1: 659/659 passed
+current contract pytest: 41 passed
+GitHub Actions: https://github.com/IliaZav/copimine/actions/runs/34724430071
+GitHub Actions conclusion: success
+jobs: java-plugins=success, static-and-contract=success
 ~~~
 
 В финальной серии коммитов V3 были доведены тестовый контур, live-пробы и CI:
@@ -121,12 +141,13 @@ powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\tests\RunCopiM
 
 ## CI и сборка
 
-Последний полностью зелёный CI для игрового кода и release-artifact checks:
+Последний полностью зелёный CI для exact final SHA игрового кода и
+release-artifact checks:
 
 ~~~
-workflow run: 34718626995
-https://github.com/IliaZav/copimine/actions/runs/34718626995
-sha: cd0720790fc958cd5dd91845e53057f66f4c12a5
+workflow run: 34724430071
+https://github.com/IliaZav/copimine/actions/runs/34724430071
+sha: 585f3aec56c3142860be191bcba0fd8277597493
 conclusion: success
 jobs: java-plugins=success, static-and-contract=success
 ~~~
@@ -148,6 +169,13 @@ CopiMineUltimateAdmin   BD32CC7F1F27DB59DBA535B914ED9E455500EB24D15053AFE7C7F51A
 AuthEffects             14427CD86435ED0354E8A20A1F96F14803EEB818E2CE4F2A70ED256DF3B9E063
 CopiMineClient          1B07DE9FE4A2685D2F092851BFDF007E9DC7261CD2C480BE1769899C5D6DF449
 Resource pack           9A5F444EA31F84EB3A5B476B3E65EE1A18B627AA2F57DA8E753E856DB634E47D
+~~~
+
+Дополнительная проверка развернутого client release JAR:
+
+~~~
+thirdparty/client-mods/CopiMineClient-0.1.1.jar
+SHA-256: 07A6F5D6577B4701B08618737EE79FFA8A0F7A3952A93AC0C92A25BD6B4947D7
 ~~~
 
 Resource pack build: SHA1 `73e44bed865225cbce39f42afa92aff4dde1e670`,
@@ -384,9 +412,9 @@ cd072079 test(end-rift): make persistence classpath deterministic
 
 Отчёт добавлен отдельным docs-коммитом и отправлен в
 `origin/codex/end-rift-event`. Точный SHA текущей головы ветки и CI run для
-него проверяются после публикации и указаны в итоговом handoff; это не
-дублируется внутри самого файла, потому что изменение этой строки меняет его
-содержащий commit.
+последней публикации указаны в начале этого файла. После изменения отчёта
+будет создан новый docs-коммит; его exact CI будет проверен отдельно до
+финального handoff.
 
 ## Итоговый verdict
 

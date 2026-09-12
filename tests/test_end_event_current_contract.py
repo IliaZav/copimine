@@ -487,6 +487,15 @@ def test_ci_java_job_installs_pytest_before_end_rift_gate() -> None:
     ), "the Java CI job must install pytest before invoking the End Rift gate"
 
 
+def test_ci_persistence_classpath_declares_snake_yaml_dependency() -> None:
+    workflow = read(ROOT / ".github" / "workflows" / "ci.yml")
+    assert re.search(
+        r"<dependency>\s*<groupId>org\.yaml</groupId>\s*"
+        r"<artifactId>snakeyaml</artifactId>\s*<version>2\.2</version>\s*</dependency>",
+        workflow,
+    ), "the CI persistence classpath must include SnakeYAML used by Bukkit YamlConfiguration"
+
+
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(

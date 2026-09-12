@@ -394,8 +394,12 @@ async function reflectFireball(entity) {
     await new Promise(resolve => setTimeout(resolve, 75))
     const refreshed = bot.entities[entity.id]
     if (!refreshed || distance(refreshed.position, bot.entity.position) > reflectTargetDistance) return false
-    const obeliskAnchor = sourceAnchor || nearestWave4ObeliskDisplay(refreshed.position)?.position
-    await lookAtServer(obeliskAnchor || refreshed.position)
+    // The server's aim-cone check is defined from the player to the
+    // projectile, not from the player to its source display. The source is
+    // still useful for diagnostics, but using it as the final look direction
+    // rejects valid diagonal reflections when the three points are not
+    // perfectly collinear.
+    await lookAtServer(refreshed.position)
     // Send the same serverbound attack interaction a vanilla player uses.
     // Do not call bot.attack here: Mineflayer's entity type filter can reject
     // LargeFireball before the packet is emitted.
@@ -407,7 +411,7 @@ async function reflectFireball(entity) {
     bot._client.write('arm_animation', { hand: 0 })
     reflectedEntityIds.add(refreshed.id)
     reflectionCount += 1
-    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${refreshed.id} target=obelisk distance=${distance(refreshed.position, bot.entity.position).toFixed(2)}`)
+    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${refreshed.id} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(refreshed.position, bot.entity.position).toFixed(2)}`)
     return true
   } catch (error) {
     console.error(`REFLECT_ERROR ${username} ${error.stack || error}`)

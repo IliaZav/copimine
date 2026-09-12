@@ -140,6 +140,34 @@ function Wait-LogCount {
   throw "Timed out waiting for $Minimum matches of '$Pattern'. See $paperLog"
 }
 
+function Wait-NewCarrierCharge {
+  param(
+    [Parameter(Mandatory = $true)][int64]$AfterOffset,
+    [Parameter(Mandatory = $true)][hashtable]$SeenCharges,
+    [int]$WaitSeconds = $TimeoutSeconds,
+    [scriptblock]$Action
+  )
+  $deadline = (Get-Date).AddSeconds($WaitSeconds)
+  while ((Get-Date) -lt $deadline) {
+    # Wave start, replacement spawn and charge creation can share one Paper
+    # tick. Scan from the single pre-wave cursor and select the first UUID
+    # that this probe has not consumed instead of advancing a byte cursor
+    # after each marker and losing same-tick output.
+    $tail = Get-LogTail -Offset $AfterOffset
+    $matches = [Regex]::Matches($tail, 'END_RIFT_CARRIER_CHARGE_CREATED.*charge=([0-9a-fA-F-]{36})')
+    foreach ($match in $matches) {
+      $candidate = $match.Groups[1].Value
+      if (-not $SeenCharges.ContainsKey($candidate)) {
+        $SeenCharges[$candidate] = $true
+        return $candidate
+      }
+    }
+    if ($null -ne $Action) { & $Action | Out-Null }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Timed out waiting for a new Wave 1 carrier charge. See $paperLog"
+}
+
 function Get-Status {
   return (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
 }
@@ -196,7 +224,22 @@ function Teleport-PlayersToPads {
   param([Parameter(Mandatory = $true)][object[]]$Pads)
   if ($Pads.Count -lt $playerNames.Count) { throw 'Not enough persisted runes for the local roster.' }
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
-    Teleport-Player $playerNames[$index] ($Pads[$index][0] + 0.5D) $Pads[$index][1] ($Pads[$index][2] + 0.5D)
+    # Windows PowerShell can add one extra array wrapper when a nested
+    # coordinate tuple crosses a scriptblock parameter boundary.  Unwrap the
+    # tuple and each scalar before arithmetic; otherwise a valid local run
+    # fails with Object[] op_Addition during the ritual/transition action.
+    $pad = $Pads[$index]
+    while ($pad -is [Array] -and $pad.Count -eq 1) { $pad = $pad[0] }
+    if ($pad -isnot [Array] -or $pad.Count -lt 3) {
+      throw "Rune coordinate tuple was malformed for player $($playerNames[$index]): $pad"
+    }
+    $x = $pad[0]
+    $y = $pad[1]
+    $z = $pad[2]
+    while ($x -is [Array] -and $x.Count -eq 1) { $x = $x[0] }
+    while ($y -is [Array] -and $y.Count -eq 1) { $y = $y[0] }
+    while ($z -is [Array] -and $z.Count -eq 1) { $z = $z[0] }
+    Teleport-Player $playerNames[$index] ([double]$x + 0.5D) ([double]$y) ([double]$z + 0.5D)
   }
 }
 
@@ -234,6 +277,39 @@ function Teleport-PlayersToCombatRing {
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
     $point = $points[$index % $points.Count]
     Teleport-Player $playerNames[$index] $point.X $point.Y $point.Z
+  }
+}
+
+function Teleport-PlayersToObeliskRing {
+  param([Parameter(Mandatory = $true)][object]$Core)
+  # Wave 4 is a directional reflection test.  Keeping both clients on the
+  # east/west pair makes the north/south obelisks depend on a long diagonal
+  # return path and can leave a valid live run waiting indefinitely.  Place
+  # the clients on deterministic points one block inside the authored
+  # obelisk ring, so every active source has a nearby real player and the
+  # server still validates the normal use_entity reflection packet.
+  $pending = [System.Collections.Generic.Stack[object]]::new()
+  $pending.Push($Core)
+  $coordinates = [System.Collections.Generic.List[object]]::new()
+  while ($pending.Count -gt 0) {
+    $value = $pending.Pop()
+    if ($value -is [Array]) {
+      for ($nested = $value.Length - 1; $nested -ge 0; $nested--) {
+        $pending.Push($value[$nested])
+      }
+    } else {
+      $coordinates.Add($value)
+    }
+  }
+  if ($coordinates.Count -lt 3) { throw "Core coordinates were not a flat XYZ tuple: $($coordinates -join ',')" }
+  $x = [double]$coordinates[0]
+  $y = [double]$coordinates[1]
+  $z = [double]$coordinates[2]
+  for ($index = 0; $index -lt $playerNames.Count; $index++) {
+    $angle = -[Math]::PI / 2.0D + (2.0D * [Math]::PI * $index / $playerNames.Count)
+    $pointX = $x + 0.5D + [Math]::Cos($angle) * 8.0D
+    $pointZ = $z + 0.5D + [Math]::Sin($angle) * 8.0D
+    Teleport-Player $playerNames[$index] $pointX $y $pointZ
   }
 }
 
@@ -348,10 +424,15 @@ function Wait-WaveComplete {
     [int]$Wave,
     [int[]]$Core,
     [int]$Seconds = $TimeoutSeconds,
-    [int64]$AfterOffset = -1
+    [int64]$AfterOffset = -1,
+    [scriptblock]$Action
   )
   $offset = if ($AfterOffset -ge 0) { $AfterOffset } else { Get-LogLength }
-  Wait-Log -AfterOffset $offset -Pattern ('END_RIFT_WAVE_COMPLETED.*wave=' + $Wave + '\b') -WaitSeconds $Seconds -Action { Teleport-PlayersToCombatRing -Core $Core } | Out-Null
+  $completionAction = $Action
+  if ($null -eq $completionAction) {
+    $completionAction = { Teleport-PlayersToCombatRing -Core $Core }
+  }
+  Wait-Log -AfterOffset $offset -Pattern ('END_RIFT_WAVE_COMPLETED.*wave=' + $Wave + '\b') -WaitSeconds $Seconds -Action $completionAction | Out-Null
   # Completion and the intermission transition marker are committed by the
   # same server tick. Return the pre-completion cursor to the caller so the
   # following Wait-Transition cannot skip that marker.
@@ -507,14 +588,15 @@ try {
   # the same server tick. Keep the pre-ritual cursor so a reader that observes
   # RITUAL_COMPLETED cannot skip the already-written W1 marker.
   $waveOffset = $ritualOffset
+  # Keep one cursor before WAVE_STARTED and the first charge marker. The
+  # objective can create the first carrier in the same tick as wave start.
+  $waveOneObjectiveOffset = $waveOffset
   Wait-Log -AfterOffset $waveOffset -Pattern ('END_RIFT_WAVE_STARTED.*event=' + $eventId + '.*wave=1\b') -WaitSeconds 30 | Out-Null
   $waveOneCompletionOffset = $null
+  $seenCarrierCharges = @{}
   for ($delivery = 1; $delivery -le 3; $delivery++) {
-    $carrierOffset = Get-LogLength
-    $created = Wait-Log -AfterOffset $carrierOffset -Pattern 'END_RIFT_CARRIER_CHARGE_CREATED.*charge=[0-9a-fA-F-]{36}' -WaitSeconds 120 -Action { Teleport-PlayersToCombatRing -Core $core }
-    $chargeMatch = [Regex]::Match($created, 'END_RIFT_CARRIER_CHARGE_CREATED.*charge=([0-9a-fA-F-]{36})')
-    if (-not $chargeMatch.Success) { throw "Wave 1 charge id was not exposed: $created" }
-    $chargeId = $chargeMatch.Groups[1].Value
+    $carrierOffset = $waveOneObjectiveOffset
+    $chargeId = Wait-NewCarrierCharge -AfterOffset $waveOneObjectiveOffset -SeenCharges $seenCarrierCharges -WaitSeconds 120 -Action { Teleport-PlayersToCombatRing -Core $core }
     $chargePosition = $null
     for ($attempt = 0; $attempt -lt 20 -and $null -eq $chargePosition; $attempt++) {
       $positionText = Invoke-LocalRcon ("data get entity $chargeId Pos")
@@ -531,7 +613,7 @@ try {
       # A carrier can die next to a player.  The display is then picked up in
       # the same server tick as its creation and is already gone by the time
       # RCON asks for Pos.  That is valid gameplay, not a missing entity.
-      $alreadyPickedUp = (Get-LogTail -Offset $carrierOffset) -match $pickupPattern
+      $alreadyPickedUp = (Get-LogTail -Offset $waveOneObjectiveOffset) -match $pickupPattern
       if ($alreadyPickedUp) {
         $chargePosition = [double[]]@(([double]$core[0]) + 0.5D, ([double]$core[1]) + 1.0D, ([double]$core[2]) + 0.5D)
       }
@@ -572,7 +654,16 @@ try {
     Teleport-PlayersToPoint $portalX $core[1] $portalZ
     $actionX = $portalX
     $actionZ = $portalZ
-    Wait-Log -AfterOffset $portalOffset -Pattern ('PORTAL_CAPTURE_PROGRESS.*index=' + $portalIndex + '.*completed=true') -WaitSeconds 45 -Action { Teleport-PlayersToPoint $actionX $core[1] $actionZ } | Out-Null
+    $portalCompletionPattern = if ($portalIndex -eq 2) {
+      # The final capture and objective transition are allowed to commit on
+      # one server tick.  In that case the progress line can stop at 88% and
+      # the authoritative objective-complete marker is the only completion
+      # evidence.  Accept both forms without weakening the earlier portals.
+      'PORTAL_CAPTURE_PROGRESS.*index=2.*completed=true|WAVE_OBJECTIVE_COMPLETE.*wave=3.*portals=3'
+    } else {
+      'PORTAL_CAPTURE_PROGRESS.*index=' + $portalIndex + '.*completed=true'
+    }
+    Wait-Log -AfterOffset $portalOffset -Pattern $portalCompletionPattern -WaitSeconds 45 -Action { Teleport-PlayersToPoint $actionX $core[1] $actionZ } | Out-Null
   }
   $waveThreeTransitionOffset = Wait-WaveComplete -Wave 3 -Core $core -Seconds 300
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=3 objective=RIFT_GATES portals=3"
@@ -582,10 +673,17 @@ try {
   $waveFourStartOffset = Wait-Transition -CompletedWave 3 -Pads $pads -AfterOffset $waveThreeTransitionOffset
   $obeliskCount = Get-ObeliskCount $playerNames.Count
   $w4Offset = $waveFourStartOffset
-  Wait-Log -AfterOffset $w4Offset -Pattern ('END_RIFT_OBELISK_ASSAULT_READY.*obelisks=' + $obeliskCount + '.*real_blocks=true') -WaitSeconds 150 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
-  Wait-LogCount -AfterOffset $w4Offset -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $obeliskCount -WaitSeconds 90 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
-  Wait-Log -AfterOffset $w4Offset -Pattern 'RIFT_FIREBALL_LAUNCH ' -WaitSeconds 120 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
-  $waveFourTransitionOffset = Wait-WaveComplete -Wave 4 -Core $core -Seconds 600
+  # The marker may already exist before Wait-Log is called.  In that case its
+  # action callback is intentionally not invoked, so position the probes once
+  # before each observation as well as while polling.
+  Teleport-PlayersToObeliskRing -Core $core
+  Wait-Log -AfterOffset $w4Offset -Pattern ('END_RIFT_OBELISK_ASSAULT_READY.*obelisks=' + $obeliskCount + '.*real_blocks=true') -WaitSeconds 150 -Action { Teleport-PlayersToObeliskRing -Core $core } | Out-Null
+  Teleport-PlayersToObeliskRing -Core $core
+  Wait-LogCount -AfterOffset $w4Offset -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $obeliskCount -WaitSeconds 90 -Action { Teleport-PlayersToObeliskRing -Core $core } | Out-Null
+  Teleport-PlayersToObeliskRing -Core $core
+  Wait-Log -AfterOffset $w4Offset -Pattern 'RIFT_FIREBALL_LAUNCH ' -WaitSeconds 120 -Action { Teleport-PlayersToObeliskRing -Core $core } | Out-Null
+  Teleport-PlayersToObeliskRing -Core $core
+  $waveFourTransitionOffset = Wait-WaveComplete -Wave 4 -Core $core -Seconds 600 -Action { Teleport-PlayersToObeliskRing -Core $core }
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=4 objective=OBELISK_ASSAULT obelisks=$obeliskCount"
   if ($StopAfterWave -eq 4) { return }
 
@@ -626,14 +724,17 @@ try {
   }
   Wait-Log -AfterOffset $chamberOffset -Pattern 'END_RIFT_CHAMBERS_COMPLETE' -WaitSeconds 900 -Action { Teleport-PlayersToNearestChamberMob } | Out-Null
   # Chamber completion and Wave 7 completion may share a tick as well.
-  Wait-WaveComplete -Wave 7 -Core $core -Seconds 900 -AfterOffset $chamberOffset | Out-Null
+  $waveSevenTransitionOffset = Wait-WaveComplete -Wave 7 -Core $core -Seconds 900 -AfterOffset $chamberOffset
   foreach ($name in $playerNames) {
     Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
   }
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=7 objective=REALITY_SPLIT chambers=local"
   if ($StopAfterWave -eq 7) { return }
 
-  $bossOffset = Get-LogLength
+  # The cinematic can be committed on the same tick as the Wave 7 completion.
+  # Reuse the pre-completion cursor so the official probe cannot miss the
+  # beginning of the boss transition.
+  $bossOffset = $waveSevenTransitionOffset
   Wait-Log -AfterOffset $bossOffset -Pattern 'BOSS_CINEMATIC_STARTED' -WaitSeconds 180 | Out-Null
   Wait-Log -AfterOffset $bossOffset -Pattern 'BOSS_SPAWNED' -WaitSeconds 240 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
   foreach ($stage in @('HUNT', 'RIFT', 'OVERLOAD', 'RAGE', 'LAST_SEAL')) {

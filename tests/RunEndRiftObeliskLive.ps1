@@ -189,14 +189,22 @@ try {
   foreach ($name in $names) {
     $null = Invoke-LocalRcon ("gamemode survival $name")
     $null = Invoke-LocalRcon ("clear $name")
-    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 100000")
+    # 1024 is the legal vanilla attribute ceiling.  The former 100000 probe
+    # value can be clamped/rejected by Paper, leaving a real client at 20 HP
+    # and turning the reflection test into a false timeout after a few hits.
+    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1024")
     $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
     # Keep the probe near the descending projectile's melee window. Slow
     # Falling is a player-side test harness adjustment only; it does not
     # change the world or event rules.
     $null = Invoke-LocalRcon ("effect clear $name")
     $null = Invoke-LocalRcon ("effect give $name minecraft:slow_falling 120 0 true")
-    $null = Invoke-LocalRcon ("data merge entity $name {Health:100000f}")
+    $null = Invoke-LocalRcon ("data merge entity $name {Health:1024f}")
+    $healthResult = Invoke-LocalRcon ("data get entity $name Health")
+    $healthMatch = [Regex]::Match($healthResult, '(\d+(?:\.\d+)?)')
+    if (-not $healthMatch.Success -or [double]$healthMatch.Groups[1].Value -lt 900.0D) {
+      throw "Could not prime the obelisk probe health for ${name}: $healthResult"
+    }
   }
   # Hold both probes beside the north anchor. The server still chooses the
   # target normally; stable height gives a real attack packet a short,

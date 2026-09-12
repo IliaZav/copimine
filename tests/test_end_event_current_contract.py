@@ -441,6 +441,35 @@ def test_official_probe_carries_wave_completion_cursor_into_transition() -> None
     assert re.search(r"Write-Evidence .*CURRENT_TRANSITION_PASS.*\| Out-Null[\s\S]*?return \[int64\]\$offset", probe)
 
 
+def test_official_probe_can_override_completion_repositioning_for_wave4() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert re.search(
+        r"function Wait-WaveComplete[\s\S]*?\[scriptblock\]\$Action",
+        probe,
+    ), "Wave completion helper must accept a caller-owned positioning action"
+    assert re.search(
+        r"function Wait-WaveComplete[\s\S]*?\$completionAction[\s\S]*?"
+        r"Wait-Log\s+-AfterOffset \$offset[\s\S]*?-Action \$completionAction",
+        probe,
+    ), "Wave 4 must not be silently repositioned to the generic combat ring"
+
+
+def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert re.search(
+        r"\$waveSevenTransitionOffset\s*=\s*Wait-WaveComplete\s+-Wave 7",
+        probe,
+    ), "Wave 7 completion must expose its pre-completion cursor"
+    assert re.search(
+        r"\$bossOffset\s*=\s*\$waveSevenTransitionOffset",
+        probe,
+    ), "boss waits must reuse the Wave 7 cursor because cinematic markers may share its completion tick"
+    assert not re.search(
+        r"Wait-WaveComplete\s+-Wave 7[\s\S]*?\$bossOffset\s*=\s*Get-LogLength",
+        probe,
+    ), "the boss wait must not reset its cursor after Wave 7 completion"
+
+
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(
@@ -457,10 +486,11 @@ def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     ), "Wave 6 must reuse the ring cursor because completion markers share a tick"
 
 
-def test_official_wave_bot_uses_the_obelisk_return_ray_for_reflection() -> None:
+def test_official_wave_bot_aims_at_the_projectile_for_reflection() -> None:
     bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
     assert "nearestWave4ObeliskDisplay" in bot
-    assert "target=obelisk" in bot
+    assert "target=projectile" in bot
+    assert "origin=${sourceAnchor ? 'known' : 'nearest'}" in bot
     assert "flags: { onGround, hasHorizontalCollision: undefined }" in bot
 
 

@@ -146,8 +146,12 @@ function writeAttack(entity) {
     // The movement plugin may emit an interpolation packet between the first
     // aim and this callback. Repeat the real look packet immediately before
     // use_entity so the server uses this exact reflected return direction.
-    const refreshedTarget = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(refreshed.position)
-    lookAtServer(refreshedTarget?.position || refreshed.position)
+    // Paper validates the reflection against the player's actual aim ray to
+    // the projectile. Aiming at the obelisk origin is only equivalent while
+    // the projectile, player and origin are perfectly collinear; diagonal
+    // targets otherwise get rejected as aim-outside-cone. Aim at the
+    // refreshed projectile for the real vanilla interaction packet.
+    lookAtServer(refreshed.position)
     // Sending the same use_entity + arm_animation pair as a vanilla melee
     // client keeps the reflection path independent of Mineflayer's mob-only
     // attack helper.
@@ -158,7 +162,8 @@ function writeAttack(entity) {
     })
     bot._client.write('arm_animation', { hand: 0 })
     reflections += 1
-    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=origin_obelisk nearest_obelisk=${refreshedTarget ? refreshedTarget.id : 'none'}`)
+    const refreshedTarget = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(refreshed.position)
+    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=projectile origin_obelisk=${refreshedTarget ? refreshedTarget.id : 'none'}`)
   }, 75)
 }
 

@@ -17,6 +17,8 @@ import java.util.List;
  */
 public final class EndRiftTentacleRig {
     public static final String GRAB_SOCKET = "grab_socket";
+    public static final int TEXTURE_SIZE = 512;
+    private static final int UV_SCALE = TEXTURE_SIZE / 256;
     public static final List<String> REQUIRED_BONES = List.of(
             "root", "base", "seg_01", "seg_02", "seg_03", "seg_04", "seg_05",
             "tip", "tip_claw_1", "tip_claw_2", "tip_claw_3", "tip_claw_4", GRAB_SOCKET);
@@ -58,7 +60,7 @@ public final class EndRiftTentacleRig {
         tip.addChild("tip_claw_3", claw(208, 0), ModelTransform.of(0.0F, 9.0F, -5.0F, 0.0F, 0.28F, 0.0F));
         tip.addChild("tip_claw_4", claw(224, 32), ModelTransform.of(0.0F, 9.0F, 5.0F, 0.0F, -0.28F, 0.0F));
         tip.addChild(GRAB_SOCKET, ModelPartBuilder.create(), ModelTransform.pivot(0.0F, 9.0F, 0.0F));
-        ModelPart modelRoot = TexturedModelData.of(data, 256, 256).createModel();
+        ModelPart modelRoot = TexturedModelData.of(data, TEXTURE_SIZE, TEXTURE_SIZE).createModel();
         return new RenderRig(modelRoot,
                 modelRoot.getChild("base"),
                 modelRoot.getChild("base").getChild("seg_01"),
@@ -69,14 +71,15 @@ public final class EndRiftTentacleRig {
     }
 
     private static ModelPartBuilder cube(int u, int v, int width, int height, int depth) {
-        return ModelPartBuilder.create().uv(u, v)
+        return ModelPartBuilder.create().uv(u * UV_SCALE, v * UV_SCALE)
                 .cuboid(-width / 2.0F, 0.0F, -depth / 2.0F, width, height, depth);
     }
 
     private static ModelPartBuilder claw(int u, int v) {
-        return ModelPartBuilder.create().uv(u, v)
+        return ModelPartBuilder.create().uv(u * UV_SCALE, v * UV_SCALE)
                 .cuboid(-2.0F, 0.0F, -2.0F, 4.0F, 9.0F, 4.0F)
-                .uv(u + 8, v).cuboid(-1.0F, 8.0F, -1.0F, 2.0F, 4.0F, 2.0F);
+                .uv((u + 8) * UV_SCALE, v * UV_SCALE)
+                .cuboid(-1.0F, 8.0F, -1.0F, 2.0F, 4.0F, 2.0F);
     }
 
     public record BoneDefinition(String name, String parent, float pivotX, float pivotY,

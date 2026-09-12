@@ -56,7 +56,7 @@ public abstract class EndRiftBossBarHudMixin {
     /**
      * 1.21.1 routes the textured boss-bar path through this overload.  Keep
      * the four-argument hook above for mappings/builds that still use the
-     * legacy wrapper, but cancel the actual draw overload as well so the
+     * compatibility wrapper, but cancel the actual draw overload as well so the
      * vanilla bar cannot appear underneath the custom HUD.
      */
     @Inject(

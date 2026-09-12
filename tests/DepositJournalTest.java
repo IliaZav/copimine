@@ -35,8 +35,30 @@ public final class DepositJournalTest {
         check(journal.refund(pending), "a later free slot must close the pending refund");
         check(journal.unresolved().isEmpty(), "closed pending refund must leave no unresolved work");
 
-        Files.writeString(directory.resolve("deposit-journal.tsv"), "malformed\nnot-a-uuid\tbad\n", java.nio.file.StandardOpenOption.APPEND);
-        check(journal.unresolved().isEmpty(), "malformed journal lines must be ignored without losing valid state");
+        Files.writeString(directory.resolve("deposit-journal.tsv"), "partial\tentry",
+                java.nio.file.StandardOpenOption.APPEND);
+        check(journal.unresolved().isEmpty(),
+                "only a provably torn final journal line may be ignored");
+
+        Path corruptDirectory = Files.createTempDirectory("copimine-end-deposit-corrupt-");
+        Files.writeString(corruptDirectory.resolve("deposit-journal.tsv"),
+                "not-a-uuid\tbad\tDIAMOND\t1\t1\tPREPARED");
+        boolean corrupt = false;
+        try {
+            new DepositJournal(corruptDirectory).unresolved();
+        } catch (DepositJournal.JournalCorruptionException expected) {
+            corrupt = true;
+        }
+        check(corrupt, "a complete malformed record must fail closed");
+        try (var paths = Files.walk(corruptDirectory)) {
+            paths.sorted(java.util.Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.deleteIfExists(path);
+                } catch (Exception ignored) {
+                    // Best-effort cleanup for this isolated temporary test directory.
+                }
+            });
+        }
 
         boolean rejected = false;
         try {

@@ -6,10 +6,9 @@ import java.util.Locale;
 /**
  * Server-owned timing and lifecycle contract for the End Rift tentacle.
  *
- * The canonical V2 names are deliberately explicit about whether the
- * tentacle is emerging, ready, recovering or dying. The deprecated aliases
- * are accepted only when reading old PDC/client state; {@link #wireName(State)}
- * never emits them.
+ * The names are deliberately explicit about whether the tentacle is emerging,
+ * ready, recovering or dying. Unknown persisted/client values fail closed to
+ * the neutral READY pose.
  */
 public final class TentacleAnimationPolicy {
     public enum Kind {
@@ -33,13 +32,7 @@ public final class TentacleAnimationPolicy {
         RETRACT,
         SPAWN_UNDER_PLAYER,
         SHIELD_CHANNEL,
-        RECOVERY,
-        /** Legacy values read by migration-compatible callers only. */
-        @Deprecated IDLE,
-        @Deprecated EMERGE,
-        @Deprecated GRAB_MISS,
-        @Deprecated HURT,
-        @Deprecated DEATH
+        RECOVERY
     }
 
     public enum Marker {
@@ -77,7 +70,6 @@ public final class TentacleAnimationPolicy {
             case SPAWN_UNDER_PLAYER -> 7;   // 0.35 seconds
             case SHIELD_CHANNEL -> 40;      // 2.0 seconds, looping
             case RECOVERY -> 16;            // 0.8 seconds
-            case IDLE, EMERGE, GRAB_MISS, HURT, DEATH -> 20;
         };
     }
 
@@ -107,21 +99,6 @@ public final class TentacleAnimationPolicy {
         };
     }
 
-    /** Compatibility helper for older tests/callers that only know the marker. */
-    @Deprecated
-    public static int markerTick(Marker marker) {
-        if (marker == null) {
-            return -1;
-        }
-        return switch (marker) {
-            case CONTACT -> 8;
-            case HOLD_LOCK -> 12;
-            case THROW_RELEASE -> 8;
-            case RECOVERY_START -> 0;
-            case HIDE_BELOW_FLOOR -> 16;
-        };
-    }
-
     /** Context-aware server/client transition contract. */
     public static State next(Kind kind, State current, boolean grabSucceeded) {
         Kind safeKind = kind == null ? Kind.TEMPORARY : kind;
@@ -145,7 +122,6 @@ public final class TentacleAnimationPolicy {
             case RETRACT -> State.RETRACT;
             case SPAWN_UNDER_PLAYER -> safeKind == Kind.UNDER_PLAYER
                     ? State.RECOVERY : State.RETRACT;
-            case IDLE, EMERGE, GRAB_MISS, HURT, DEATH -> State.READY;
         };
     }
 
@@ -159,19 +135,9 @@ public final class TentacleAnimationPolicy {
                 Math.max(0L, elapsedTicks) / (double) duration));
     }
 
-    /** Convert a legacy enum value to the canonical V2 lifecycle state. */
+    /** Return the canonical lifecycle state used by the server and client. */
     public static State canonical(State state) {
-        if (state == null) {
-            return null;
-        }
-        return switch (state) {
-            case IDLE -> State.READY;
-            case EMERGE -> State.EMERGING;
-            case GRAB_MISS -> State.MISS_RECOVERY;
-            case HURT -> State.HIT_RECOVERY;
-            case DEATH -> State.DYING;
-            default -> state;
-        };
+        return state;
     }
 
     /** Parse a persisted/wire value and fail closed to the neutral pose. */
@@ -180,13 +146,13 @@ public final class TentacleAnimationPolicy {
             return State.READY;
         }
         try {
-            return canonical(State.valueOf(raw.trim().toUpperCase(Locale.ROOT)));
+            return State.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ignored) {
             return State.READY;
         }
     }
 
-    /** Only canonical V2 names are emitted in PDC and END_ENTITY_PHASE. */
+    /** Only canonical names are emitted in PDC and END_ENTITY_PHASE. */
     public static String wireName(State state) {
         State safe = canonical(state);
         return (safe == null ? State.READY : safe).name();

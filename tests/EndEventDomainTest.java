@@ -2,7 +2,6 @@ import me.copimine.endevent.domain.CoreDepositMath;
 import me.copimine.endevent.domain.CoreInteractionGuard;
 import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EventPhase;
-import me.copimine.endevent.domain.FinalDrainMath;
 import me.copimine.endevent.domain.PadLayout;
 import me.copimine.endevent.domain.RewardRoster;
 
@@ -15,14 +14,13 @@ public final class EndEventDomainTest {
     public static void main(String[] args) {
         testLegalStateTransitions();
         testIllegalStateTransitionsDoNotAdvance();
-        testCanonicalFinalDrainAndVictoryTransitions();
-        testV2WavesLeadToBoss();
+        testCanonicalBossAndVictoryTransitions();
+        testCurrentWavesLeadToBoss();
         testTransientRecoveryAndTerminalUnlock();
         testPadGeometryHasExactlyNUniquePoints();
         testDepositCapLeavesRemainder();
         testDepositRejectsOffhandAndOfficialItems();
         testCoreInteractionGuardIsPerPlayerAndPerTick();
-        testFinalDrainUsesCurrentHealthAndMinimumOne();
         testRosterRequiresExactlyNDistinctOccupants();
         testRosterIsImmutable();
         System.out.println("EndEventDomainTest OK");
@@ -35,9 +33,9 @@ public final class EndEventDomainTest {
                 "collecting must transition to ready");
         check(machine.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.START_RITUAL,
                 "pads-occupied", "transition-2").success(),
-                "ready must transition to the V2 start ritual");
+                "ready must transition to the start ritual");
         check(machine.phase() == EventPhase.START_RITUAL,
-                "phase must advance after a legal V2 transition");
+                "phase must advance after a legal current transition");
     }
 
     private static void testIllegalStateTransitionsDoNotAdvance() {
@@ -61,16 +59,16 @@ public final class EndEventDomainTest {
                 "corrupt state must remain recovery required");
     }
 
-    private static void testCanonicalFinalDrainAndVictoryTransitions() {
+    private static void testCanonicalBossAndVictoryTransitions() {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.BOSS_ACTIVE);
-        check(!machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.FINAL_DRAIN,
-                        "legacy threshold", "final-drain-1").success(),
-                "V2 boss must not enter the legacy final drain phase");
+        check(!machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.WAVE_7,
+                        "forged phase", "last-seal-1").success(),
+                "boss phase changes must remain inside the boss controller");
         check(machine.phase() == EventPhase.BOSS_ACTIVE,
-                "rejected legacy transition must not mutate the V2 phase");
+                "rejected obsolete transition must not mutate the current phase");
         check(machine.transition(EventPhase.BOSS_ACTIVE, EventPhase.BOSS_FINISH,
                         "boss defeated", "boss-finish-1").success(),
-                "V2 boss must enter the canonical finish phase");
+                "boss must enter the canonical finish phase");
         check(machine.transition(EventPhase.BOSS_FINISH, EventPhase.VICTORY_PROCESSING,
                         "boss-dead", "victory-1").success(),
                 "boss death must enter the canonical victory saga");
@@ -79,21 +77,22 @@ public final class EndEventDomainTest {
                 "victory saga must be able to commit the terminal unlock");
     }
 
-    private static void testV2WavesLeadToBoss() {
+    private static void testCurrentWavesLeadToBoss() {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.START_RITUAL);
         EventPhase[] expected = {
                 EventPhase.WAVE_1, EventPhase.INTERMISSION_1,
                 EventPhase.WAVE_2, EventPhase.INTERMISSION_2,
                 EventPhase.WAVE_3, EventPhase.INTERMISSION_3,
-                EventPhase.WAVE_4, EventPhase.INTERMISSION_4,
+                EventPhase.WAVE_4, EventPhase.CORE_RESTORATION,
                 EventPhase.WAVE_5, EventPhase.INTERMISSION_5,
-                EventPhase.WAVE_6, EventPhase.PRE_BOSS_COOLDOWN,
+                EventPhase.WAVE_6, EventPhase.INTERMISSION_6,
+                EventPhase.WAVE_7, EventPhase.PRE_BOSS_COOLDOWN,
                 EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE
         };
         EventPhase current = EventPhase.START_RITUAL;
         for (int index = 0; index < expected.length; index++) {
             EventPhase next = expected[index];
-            check(machine.transition(current, next, "test-five-waves", "five-waves-" + index).success(),
+            check(machine.transition(current, next, "test-seven-waves", "seven-waves-" + index).success(),
                     "initial wave sequence must allow " + current + " -> " + next);
             check(machine.phase() == next, "state machine must advance to " + next);
             current = next;
@@ -146,16 +145,6 @@ public final class EndEventDomainTest {
         check(!guard.accept(11L, "", 4L, first), "blank event identity must fail closed");
     }
 
-    private static void testFinalDrainUsesCurrentHealthAndMinimumOne() {
-        check(close(FinalDrainMath.healthAfterDrain(20.0D, 20.0D, 0.60D, 1.0D), 8.0D),
-                "20 health must become 8 after a 60 percent current-health drain");
-        check(close(FinalDrainMath.healthAfterDrain(10.0D, 20.0D, 0.60D, 1.0D), 4.0D),
-                "10 health must become 4 after a 60 percent current-health drain");
-        check(close(FinalDrainMath.healthAfterDrain(2.0D, 20.0D, 0.60D, 1.0D), 1.0D),
-                "drain must never kill a player");
-        check(close(FinalDrainMath.healthAfterDrain(100.0D, 20.0D, 0.60D, 1.0D), 8.0D),
-                "health above the maximum must be capped before applying the drain");
-    }
 
     private static void testRosterRequiresExactlyNDistinctOccupants() {
         Set<UUID> occupants = Set.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
@@ -180,10 +169,6 @@ public final class EndEventDomainTest {
             rejected = true;
         }
         check(rejected, "official roster must be immutable");
-    }
-
-    private static boolean close(double actual, double expected) {
-        return Math.abs(actual - expected) < 0.000001D;
     }
 
     private static void check(boolean condition, String message) {

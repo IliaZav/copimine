@@ -74,14 +74,14 @@ try {
   Assert-Text 'entity Health NBT' $health '5000.0f'
   $max = Plain (Invoke-LocalRcon "attribute $bossUuid minecraft:generic.max_health get")
   Assert-Text 'entity max-health attribute' $max '5000.0'
-  $pdc = Plain (Invoke-LocalRcon "data get entity $bossUuid BukkitValues.`"copimineendevent:end_event_boss_v2_max_health`"")
-  Assert-Text 'V2 max-health marker' $pdc '5000.0d'
+  $pdc = Plain (Invoke-LocalRcon "data get entity $bossUuid BukkitValues.`"copimineendevent:end_event_boss_current_max_health`"")
+  Assert-Text 'current max-health marker' $pdc '5000.0d'
   $legacyPdc = Plain (Invoke-LocalRcon "data get entity $bossUuid BukkitValues.`"copimineendevent:end_event_boss_virtual_health`"")
   if ($legacyPdc -notmatch 'No value|No element|Found no') {
-    throw "Official V2 boss still carries a legacy virtual-health marker: $legacyPdc"
+    throw "The current boss still carries a legacy virtual-health marker: $legacyPdc"
   }
 
-  Write-Output "LIVE_BOSS_REAL_HEALTH_PASS boss=$bossUuid status=hp-5000/5000 physical-5000/5000 attribute-unclamped=true legacy-virtual-marker=false"
+  Write-Output "LIVE_BOSS_REAL_HEALTH_PASS boss=$bossUuid status=hp-5000/5000 physical-5000/5000 attribute-unclamped=true current-health-marker=true legacy-virtual-marker=false"
 }
 finally {
   try { Invoke-LocalRcon 'cmend boss kill cleanup' | Out-Null } catch { }

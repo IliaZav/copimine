@@ -4,9 +4,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.EventPhase;
 
-/** Immutable persistence boundary; transient Bukkit objects never cross it. */
+/**
+ * Schema-4 persistence boundary for one End Rift attempt.
+ *
+ * <p>Only durable current-flow facts belong here. Bukkit entities, AI
+ * decisions, projectile ids and temporary animation state are deliberately
+ * absent. Older files are decoded by the migration package before they reach
+ * this type.</p>
+ */
 public record EventSnapshot(
         int schemaVersion,
         String eventId,
@@ -33,10 +41,6 @@ public record EventSnapshot(
         Map<UUID, Long> shardCooldowns,
         Map<UUID, Long> abyssAnchorCooldowns,
         boolean coreCharged,
-        boolean halfHealthTriggered,
-        boolean controlSpellUnlocked,
-        boolean finalDrainTriggered,
-        boolean finalDrainApplied,
         boolean endUnlocked,
         boolean officialBossDeathCommitted,
         boolean bossLootCommitted,
@@ -48,24 +52,24 @@ public record EventSnapshot(
         long phaseDeadlineMillis,
         String recoveryReason,
         Set<UUID> participants,
-        Map<UUID, Double> finalDrainTargets,
-        Set<UUID> finalDrainAppliedPlayers,
         Set<Integer> waveRewardsIssued,
-        String bossStage,
-        String bossCastState,
-        long bossCastDeadlineMillis,
-        boolean absorptionTriggered,
-        boolean absorptionCompleted,
-        boolean absorptionAttackEmpowered,
-        boolean judgmentTriggered,
-        boolean judgmentCompleted,
+        String bossPhase,
+        String activeBossAbility,
+        long bossAbilityDeadlineMillis,
+        String bossDefeatSaga,
+        Map<String, String> objectiveProgress,
         Map<UUID, String> nightCloakRolls) {
 
+    public static final int CURRENT_SCHEMA = 4;
+
     public EventSnapshot {
-        eventId = eventId == null ? "" : eventId;
-        phase = phase == null ? EventPhase.RECOVERY_REQUIRED.name() : phase;
-        worldName = worldName == null ? "" : worldName;
-        coreBlockData = coreBlockData == null ? "" : coreBlockData;
+        if (schemaVersion < 1) {
+            throw new IllegalArgumentException("snapshot schema must be positive");
+        }
+        eventId = eventId == null ? "" : eventId.trim();
+        phase = phase == null ? EventPhase.RECOVERY_REQUIRED.name() : phase.trim();
+        worldName = worldName == null ? "" : worldName.trim();
+        coreBlockData = coreBlockData == null ? "" : coreBlockData.trim();
         resourceRequirements = Map.copyOf(resourceRequirements == null ? Map.of() : resourceRequirements);
         depositedResources = Map.copyOf(depositedResources == null ? Map.of() : depositedResources);
         pads = List.copyOf(pads == null ? List.of() : pads);
@@ -74,83 +78,46 @@ public record EventSnapshot(
         rewardStatuses = Map.copyOf(rewardStatuses == null ? Map.of() : rewardStatuses);
         shardCooldowns = Map.copyOf(shardCooldowns == null ? Map.of() : shardCooldowns);
         abyssAnchorCooldowns = Map.copyOf(abyssAnchorCooldowns == null ? Map.of() : abyssAnchorCooldowns);
-        nightCloakRolls = Map.copyOf(nightCloakRolls == null ? Map.of() : nightCloakRolls);
         participants = Set.copyOf(participants == null ? Set.of() : participants);
-        finalDrainTargets = Map.copyOf(finalDrainTargets == null ? Map.of() : finalDrainTargets);
-        finalDrainAppliedPlayers = Set.copyOf(finalDrainAppliedPlayers == null ? Set.of() : finalDrainAppliedPlayers);
         waveRewardsIssued = Set.copyOf(waveRewardsIssued == null ? Set.of() : waveRewardsIssued);
-        bossStage = bossStage == null || bossStage.isBlank() ? "AWAKENING" : bossStage;
-        bossCastState = bossCastState == null || bossCastState.isBlank() ? "NONE" : bossCastState;
-        bossCastDeadlineMillis = Math.max(0L, bossCastDeadlineMillis);
-        bossRewardStatus = bossRewardStatus == null || bossRewardStatus.isBlank()
-                ? "PENDING" : bossRewardStatus;
-        victoryStep = victoryStep == null ? "NONE" : victoryStep;
-        returnStoneStatus = returnStoneStatus == null ? "PENDING" : returnStoneStatus;
-        recoveryReason = recoveryReason == null ? "" : recoveryReason;
+        bossPhase = bossPhase == null || bossPhase.isBlank()
+                ? BossPhase.AWAKENING.name() : bossPhase.trim();
+        activeBossAbility = activeBossAbility == null || activeBossAbility.isBlank()
+                ? "NONE" : activeBossAbility.trim();
+        bossAbilityDeadlineMillis = Math.max(0L, bossAbilityDeadlineMillis);
+        bossDefeatSaga = bossDefeatSaga == null || bossDefeatSaga.isBlank()
+                ? "NONE" : bossDefeatSaga.trim();
+        objectiveProgress = Map.copyOf(objectiveProgress == null ? Map.of() : objectiveProgress);
+        nightCloakRolls = Map.copyOf(nightCloakRolls == null ? Map.of() : nightCloakRolls);
+        phaseDeadlineMillis = Math.max(0L, phaseDeadlineMillis);
+        updatedAt = Math.max(0L, updatedAt);
+        recoveryReason = recoveryReason == null ? "" : recoveryReason.trim();
     }
 
     public static EventSnapshot empty(int schemaVersion) {
         return new EventSnapshot(
-                schemaVersion, "", 0L, EventPhase.UNCONFIGURED.name(), "", 0, 0, 0, "", 0,
-                0, 0, 0, 0, 0, 0, Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(), Map.of(),
-                false, false, false, false, false, false, false, false, "PENDING", null,
-                "PENDING", "NONE", 0L, 0L, "", Set.of(), Map.of(), Set.of(), Set.of(),
-                "AWAKENING", "NONE", 0L, false, false, false, false, false, Map.of());
-    }
-
-    public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
-        return new EventSnapshot(
-                schemaVersion, eventId, generation, phase, worldName,
-                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
-                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
-                resourceRequirements, depositedResources, pads, resourceContributors,
-                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns, coreCharged,
-                halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
-                endUnlocked, officialBossDeathCommitted, bossLootCommitted,
-                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt, phaseDeadlineMillis,
-                recoveryReason,
-                updatedParticipants, finalDrainTargets,
-                finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
-                bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
-                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted, nightCloakRolls);
-    }
-
-    /**
-     * Copy the full durable snapshot while changing only the schema and
-     * lifecycle phase.  V2 migration uses this rather than reconstructing a
-     * partial snapshot, so resources, reward state, contributors and the
-     * current generation cannot silently disappear during recovery.
-     */
-    public EventSnapshot withSchemaAndPhase(int updatedSchemaVersion, EventPhase updatedPhase) {
-        EventPhase safePhase = updatedPhase == null ? EventPhase.RECOVERY_REQUIRED : updatedPhase;
-        return new EventSnapshot(
-                Math.max(1, updatedSchemaVersion), eventId, generation, safePhase.name(), worldName,
-                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
-                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
-                resourceRequirements, depositedResources, pads, resourceContributors,
-                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns, coreCharged,
-                halfHealthTriggered, controlSpellUnlocked, finalDrainTriggered, finalDrainApplied,
-                endUnlocked, officialBossDeathCommitted, bossLootCommitted,
-                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep, updatedAt,
-                phaseDeadlineMillis, recoveryReason, participants, finalDrainTargets,
-                finalDrainAppliedPlayers, waveRewardsIssued, bossStage, bossCastState,
-                bossCastDeadlineMillis, absorptionTriggered, absorptionCompleted,
-                absorptionAttackEmpowered, judgmentTriggered, judgmentCompleted, nightCloakRolls);
+                Math.max(1, schemaVersion), "", 0L, EventPhase.UNCONFIGURED.name(),
+                "", 0, 0, 0, "", 0,
+                0, 0, 0, 0, 0, 0,
+                Map.of(), Map.of(), List.of(), Set.of(), Set.of(), Map.of(), Map.of(), Map.of(),
+                false, false, false, false, "PENDING", null, "PENDING", "NONE",
+                0L, 0L, "", Set.of(), Set.of(), BossPhase.AWAKENING.name(), "NONE", 0L,
+                "NONE", Map.of(), Map.of());
     }
 
     public EventPhase eventPhase() {
         try {
-            String compatible = switch (phase) {
-                // States written by the first local prototypes used these
-                // names.  Read them into the canonical state machine without
-                // losing the rest of the durable snapshot.
-                case "FINAL_RITUAL" -> "FINAL_DRAIN";
-                case "VICTORY" -> "VICTORY_PROCESSING";
-                default -> phase;
-            };
-            return EventPhase.valueOf(compatible);
-        } catch (IllegalArgumentException invalid) {
-            return EventPhase.RECOVERY_REQUIRED;
+            return EventPhase.valueOf(phase);
+        } catch (RuntimeException invalid) {
+            throw new IllegalStateException("unknown current event phase: " + phase, invalid);
+        }
+    }
+
+    public BossPhase currentBossPhase() {
+        try {
+            return BossPhase.valueOf(bossPhase);
+        } catch (RuntimeException invalid) {
+            throw new IllegalStateException("unknown current boss phase: " + bossPhase, invalid);
         }
     }
 
@@ -158,7 +125,35 @@ public record EventSnapshot(
         return !eventId.isBlank() && requiredPlayers > 0 && !worldName.isBlank();
     }
 
-    public record PadSnapshot(int x, int y, int z, double radius, double angleRadians, String originalBlockData) {
+    public EventSnapshot withParticipants(Set<UUID> updatedParticipants) {
+        return new EventSnapshot(schemaVersion, eventId, generation, phase, worldName,
+                coreX, coreY, coreZ, coreBlockData, requiredPlayers,
+                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
+                resourceRequirements, depositedResources, pads, resourceContributors,
+                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns,
+                coreCharged, endUnlocked, officialBossDeathCommitted, bossLootCommitted,
+                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep,
+                updatedAt, phaseDeadlineMillis, recoveryReason, updatedParticipants,
+                waveRewardsIssued, bossPhase, activeBossAbility, bossAbilityDeadlineMillis,
+                bossDefeatSaga, objectiveProgress, nightCloakRolls);
+    }
+
+    public EventSnapshot withSchemaAndPhase(int updatedSchemaVersion, EventPhase updatedPhase) {
+        EventPhase safe = updatedPhase == null ? EventPhase.RECOVERY_REQUIRED : updatedPhase;
+        return new EventSnapshot(Math.max(1, updatedSchemaVersion), eventId, generation,
+                safe.name(), worldName, coreX, coreY, coreZ, coreBlockData, requiredPlayers,
+                arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ,
+                resourceRequirements, depositedResources, pads, resourceContributors,
+                officialRewardRoster, rewardStatuses, shardCooldowns, abyssAnchorCooldowns,
+                coreCharged, endUnlocked, officialBossDeathCommitted, bossLootCommitted,
+                bossRewardStatus, bossRewardRecipient, returnStoneStatus, victoryStep,
+                updatedAt, phaseDeadlineMillis, recoveryReason, participants, waveRewardsIssued,
+                bossPhase, activeBossAbility, bossAbilityDeadlineMillis, bossDefeatSaga,
+                objectiveProgress, nightCloakRolls);
+    }
+
+    public record PadSnapshot(int x, int y, int z, double radius,
+                              double angleRadians, String originalBlockData) {
         public PadSnapshot {
             originalBlockData = originalBlockData == null ? "" : originalBlockData;
         }

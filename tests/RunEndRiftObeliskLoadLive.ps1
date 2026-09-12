@@ -9,7 +9,7 @@ param(
 )
 
 # Local-only load/smoke probe.  It uses disposable real protocol clients and
-# the official V2 boss; it never rebuilds a world, changes production data,
+# the official current boss; it never rebuilds a world, changes production data,
 # or connects to anything except the isolated local Paper/RCON ports.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -348,44 +348,16 @@ try {
     throw "20-player load clients are not inside the arena after verified teleport: $($stillOutside -join ', ')"
   }
 
+  # Wave 4 is the current obelisk encounter.  The old probe spawned a boss
+  # and requested a removed spell id, so it never exercised the live W4 path.
+  $expectedObelisks = if ($PlayerCount -le 7) { 4 } elseif ($PlayerCount -le 15) { 5 } else { 6 }
   $spawnOffset = Get-LogLength
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
-  $spawnLog = Wait-LogCount -Pattern 'BOSS_STATS .*vanilla_base=' -AfterOffset $spawnOffset -WaitSeconds 30
-  $status = Invoke-LocalRcon -CommandText 'cmend status'
-  $statusPlain = Strip-MinecraftColors -Text $status
-  $bossMatch = [Regex]::Match($status,
-    'boss=.*?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+hp=([0-9.]+)/([0-9.]+)')
-  if (-not $bossMatch.Success) {
-    $bossMatch = [Regex]::Match($statusPlain,
-      'boss=.*?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+hp=([0-9.]+)/([0-9.]+)')
-  }
-  if (-not $bossMatch.Success) { throw "20-player load boss is missing:`n$status" }
-  $bossUuid = $bossMatch.Groups[1].Value
-  $maxHealth = [double]::Parse($bossMatch.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
-  if ($maxHealth -lt 19999.0D) {
-    throw "20-player load boss did not receive the 20000 real HP cap: max=$maxHealth`n$status"
-  }
-  $healthData = Invoke-LocalRcon -CommandText ("data get entity $bossUuid Health")
-  if ($healthData -notmatch '20000\.0f') {
-    throw "20-player load boss entity Health is not 20000.0f:`n$healthData"
-  }
-  $legacyVirtual = Invoke-LocalRcon -CommandText ("data get entity $bossUuid BukkitValues.`"copimineendevent:end_event_boss_virtual_health`"")
-  if ($legacyVirtual -notmatch 'No value|No element|Found no') {
-    throw "20-player official load boss retained a legacy virtual-health marker:`n$legacyVirtual"
-  }
-  $halfDamage = ($maxHealth / 2.0D).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
-  $spellOffset = Get-LogLength
-  $null = Invoke-LocalRcon -CommandText ("cmend boss damage $halfDamage")
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
-  Wait-LogCount -Pattern ('RIFT_OBELISKS_SPAWNED .*count=4 .*participants=' + $PlayerCount + ' .*stage=RIFT') `
-    -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_PULSE ' -Minimum 4 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*max_active=8' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_EFFECTS_APPLIED .*damage=6\.0 blindness_ticks=40 blindness_amplifier=0 weakness_ticks=60 weakness_amplifier=0 nausea_ticks=60 nausea_amplifier=1 slowness_ticks=60 slowness_amplifier=0 participants=20' `
-    -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 participants=20 .*blocks=false fire=false' `
-    -Minimum 1 -AfterOffset $spellOffset -WaitSeconds 30 | Out-Null
+  $null = Invoke-LocalRcon -CommandText 'cmend test wave 4'
+  Wait-LogCount -Pattern ('END_RIFT_OBELISK_ASSAULT_READY .*players=' + $PlayerCount + ' .*obelisks=' + $expectedObelisks + ' .*real_blocks=true') `
+    -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
+  Wait-LogCount -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum $expectedObelisks -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
+  Wait-LogCount -Pattern 'END_RIFT_OBELISK_PULSE ' -Minimum $expectedObelisks -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*cap=' -Minimum 1 -AfterOffset $spawnOffset -WaitSeconds 45 | Out-Null
 
   Start-Sleep -Seconds 3
   $status = Invoke-LocalRcon -CommandText 'cmend status'
@@ -394,15 +366,15 @@ try {
   # wrapper returns the raw formatted line.  The counters remain anchored to
   # the two labels, so a stray digit elsewhere cannot satisfy the check.
   $runtimeMatch = [Regex]::Match($status,
-    'rift-obelisks=.*?(\d+)/4\s+.*?rift-fireballs=.*?(\d+)')
+    'rift-obelisks=.*?(\d+)/' + $expectedObelisks + '\s+.*?rift-fireballs=.*?(\d+)')
   if (-not $runtimeMatch.Success) {
     $runtimeMatch = [Regex]::Match($statusPlain,
-      'rift-obelisks=(\d+)/4\s+rift-fireballs=(\d+)')
+      'rift-obelisks=(\d+)/' + $expectedObelisks + '\s+rift-fireballs=(\d+)')
   }
   if (-not $runtimeMatch.Success) { throw "Obelisk load status is missing runtime counters:`n$status" }
   $liveObelisks = [int]$runtimeMatch.Groups[1].Value
   $liveFireballs = [int]$runtimeMatch.Groups[2].Value
-  if ($liveObelisks -ne 4) {
+  if ($liveObelisks -ne $expectedObelisks) {
     throw "20-player load lost an obelisk without a reflected hit: live=$liveObelisks`n$status"
   }
   if ($liveFireballs -gt 8) {
@@ -412,8 +384,8 @@ try {
   $missing = @($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) })
   if ($missing.Count -gt 0) { throw "20-player load disconnected clients: $($missing -join ', ')`n$list" }
   $success = $true
-  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} max_boss_real_hp={1} entity_health=20000 obelisks={2}/4 fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 damage=6.0 effect_ticks=40/60" -f
-    $PlayerCount, $maxHealth, $liveObelisks, $liveFireballs)
+  Write-Output ("LIVE_RIFT_OBELISK_LOAD_PASS players={0} obelisks={1}/{2} fireballs={3}/8 staggered=true pulse_radius=5 pulse_ticks=40 hard_cap=56 arena_bound=true" -f
+    $PlayerCount, $liveObelisks, $expectedObelisks, $liveFireballs)
 } finally {
   foreach ($entry in $processes) {
     if ($entry -and -not $entry.Process.HasExited) {
@@ -427,16 +399,17 @@ try {
     try { Save-BotLogs -Processes $processes } catch { Write-Warning "Could not save obelisk load bot logs: $($_.Exception.Message)" }
   }
   try {
+    $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
     $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
     $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
     $cleanupOk = ($cleanup -match 'boss=.*?none') -and
-      ($cleanup -match 'rift-obelisks=.*?0/4') -and
+      ($cleanup -match 'rift-obelisks=.*?0/' + $expectedObelisks) -and
       ($cleanup -match 'rift-fireballs=.*?0') -and
       ($cleanup -match 'state=.*(?:READY_FOR_PLAYERS|COLLECTING|UNCONFIGURED|UNLOCKED)')
     if (-not $cleanupOk) {
       throw "Obelisk load cleanup left runtime state:`n$cleanup"
     }
-    Write-Output 'LIVE_RIFT_OBELISK_LOAD_CLEANUP_PASS boss=none rift-obelisks=0/4 rift-fireballs=0'
+    Write-Output ("LIVE_RIFT_OBELISK_LOAD_CLEANUP_PASS obelisks=0/{0} fireballs=0 eventMobs=0" -f $expectedObelisks)
   } catch {
     Write-Warning "Local obelisk load cleanup failed: $($_.Exception.Message)"
     if ($success) { throw }

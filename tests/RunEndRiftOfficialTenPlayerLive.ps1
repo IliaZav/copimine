@@ -6,7 +6,7 @@ param(
   [int]$TimeoutSeconds = 1700
 )
 
-# Ten real disposable protocol clients run the official V2 state machine on
+# Ten real disposable protocol clients run the official current state machine on
 # the isolated local Paper instance.  No production address, launcher, world
 # reset, or production database is involved.
 $ErrorActionPreference = 'Stop'

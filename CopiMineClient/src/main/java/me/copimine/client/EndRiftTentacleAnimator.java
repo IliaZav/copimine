@@ -117,7 +117,11 @@ public final class EndRiftTentacleAnimator {
             // During a real grab the upper chain curls down around the
             // server-authoritative player anchor, rather than leaving the
             // player floating at the neutral five-block tip height.
-            case "GRAB_SUCCESS", "HOLD" -> 2.25F;
+            // The socket travels into the cage during GRAB_SUCCESS. Starting
+            // it at the neutral tip height avoids a visible network-frame
+            // pop when TELEGRAPH_GRAB changes to the lunge animation.
+            case "GRAB_SUCCESS" -> 4.75F - smooth * 2.50F;
+            case "HOLD" -> 2.25F;
             case "THROW" -> 2.25F + smooth * 2.50F;
             default -> 4.75F;
         };
@@ -232,6 +236,10 @@ public final class EndRiftTentacleAnimator {
             raw = raw.substring(0, separator);
         }
         raw = raw.toUpperCase(Locale.ROOT);
+        // The server emits canonical V3 state names.  Keep the artist-facing
+        // animation aliases from the resource asset readable as a client
+        // fallback as well; this prevents a harmless resource/bridge alias
+        // from dropping the tentacle back to an unsupported pose.
         return switch (raw) {
             case "IDLE" -> "READY";
             case "EMERGE" -> "EMERGING";

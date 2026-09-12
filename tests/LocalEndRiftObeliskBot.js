@@ -20,6 +20,10 @@ const targetPosition = {
   y: Number(process.env.END_RIFT_OBELISK_Y),
   z: Number(process.env.END_RIFT_OBELISK_Z)
 }
+const corePosition = {
+  x: Number(process.env.END_RIFT_CORE_X),
+  z: Number(process.env.END_RIFT_CORE_Z)
+}
 const bot = mineflayer.createBot({ host, port, username, version: '1.21.1', auth: 'offline' })
 
 let joined = false
@@ -30,6 +34,8 @@ let sampleTimer = null
 let reflectTimer = null
 const attempted = new Set()
 const seenFireballIds = new Set()
+const rangeLoggedFireballIds = new Set()
+const fireballOriginTargets = new Map()
 
 function distance(first, second) {
   if (!first || !second) return Number.POSITIVE_INFINITY
@@ -57,11 +63,35 @@ function nearbyFireballs() {
   if (!bot.entity) return []
   return Object.values(bot.entities)
     .filter(isRiftFireball)
-    .filter(entity => entity.position && distance(entity.position, bot.entity.position) <= 4.8)
+    // The obelisk launches from its crown, above the survival player's eye
+    // line.  Keep the discovery envelope wide enough to see the first
+    // authoritative position and let the server's own interaction reach
+    // validation decide whether the use_entity packet is legal.
+    .filter(entity => entity.position && distance(entity.position, bot.entity.position) <= 7.0)
 }
 
 function nearbyObelisks() {
   return Object.values(bot.entities).filter(isDisplay).filter(entity => entity.position)
+}
+
+function isWave4ObeliskDisplay(entity) {
+  if (!entity?.position || !Number.isFinite(corePosition.x)
+    || !Number.isFinite(corePosition.z)) return false
+  const dx = entity.position.x - corePosition.x
+  const dz = entity.position.z - corePosition.z
+  const horizontalSquared = dx * dx + dz * dz
+  // The persistent Core/rune overlays occupy the inner five-block ring.
+  // Wave 4 obelisk segments are placed on the deterministic radius-nine
+  // ring.  Restricting the client probe to that ring prevents a rune or a
+  // stale display from becoming the reflection return target.
+  return horizontalSquared >= 7.5 * 7.5 && horizontalSquared <= 11.5 * 11.5
+}
+
+function nearestWave4ObeliskDisplay(point) {
+  if (!point) return null
+  return nearbyObelisks()
+    .filter(isWave4ObeliskDisplay)
+    .sort((first, second) => distance(first.position, point) - distance(second.position, point))[0] || null
 }
 
 function lookAtServer(point) {
@@ -88,22 +118,36 @@ function lookAtServer(point) {
 
 function writeAttack(entity) {
   if (!entity || attempted.has(entity.id)) return
+  // A LargeFireball is spawned above the five-block obelisk.  Marking it as
+  // attempted at spawn time loses the only real melee window before the
+  // projectile descends to the player.  Keep the entity retryable until it
+  // enters a bounded server-side melee distance.
+  if (!bot.entity || !entity.position) return
+  const range = distance(entity.position, bot.entity.position)
+  if (range > 6.5) {
+    if (!rangeLoggedFireballIds.has(entity.id)) {
+      rangeLoggedFireballIds.add(entity.id)
+      console.log(`RIFT_FIREBALL_OUT_OF_RANGE ${username} entityId=${entity.id} distance=${range.toFixed(2)} player=${bot.entity.position.x},${bot.entity.position.y},${bot.entity.position.z} projectile=${entity.position.x},${entity.position.y},${entity.position.z}`)
+    }
+    return
+  }
   attempted.add(entity.id)
-  const target = nearbyObelisks()
-    .sort((first, second) => distance(first.position, entity.position) - distance(second.position, entity.position))[0]
-  // The attack ray must intersect the projectile itself.  Looking at the
-  // obelisk base can miss a LargeFireball that is above the player's eye line
-  // and makes a real client appear to swing without producing a reflection.
-  // The probe is placed between the source obelisk and the Core, so this same
-  // direction sends the reflected fireball back toward the obelisk.
-  lookAtServer(entity.position)
+  const target = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(entity.position)
+  // The attack ray must still be close enough to the projectile for the
+  // server-side aim-cone check.  The return target is the crown of the
+  // obelisk that launched this projectile; looking at that crown sends the
+  // reflected fireball back along the authored source path instead of merely
+  // reproducing the outbound direction.
+  const aimPoint = target?.position || entity.position
+  lookAtServer(aimPoint)
   setTimeout(() => {
     const refreshed = bot.entities[entity.id]
-    if (!refreshed || !bot.entity || distance(refreshed.position, bot.entity.position) > 4.8) return
+    if (!refreshed || !bot.entity || distance(refreshed.position, bot.entity.position) > 6.5) return
     // The movement plugin may emit an interpolation packet between the first
     // aim and this callback. Repeat the real look packet immediately before
-    // use_entity so the server uses this exact reflected direction.
-    lookAtServer(refreshed.position)
+    // use_entity so the server uses this exact reflected return direction.
+    const refreshedTarget = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(refreshed.position)
+    lookAtServer(refreshedTarget?.position || refreshed.position)
     // Sending the same use_entity + arm_animation pair as a vanilla melee
     // client keeps the reflection path independent of Mineflayer's mob-only
     // attack helper.
@@ -114,7 +158,7 @@ function writeAttack(entity) {
     })
     bot._client.write('arm_animation', { hand: 0 })
     reflections += 1
-    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=projectile nearest_obelisk=${target ? target.id : 'none'}`)
+    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=origin_obelisk nearest_obelisk=${refreshedTarget ? refreshedTarget.id : 'none'}`)
   }, 75)
 }
 
@@ -160,6 +204,8 @@ bot.on('entitySpawn', entity => {
   if (isRiftFireball(entity)) {
     seenFireballIds.add(entity.id)
     fireballsSeen += 1
+    const origin = nearestWave4ObeliskDisplay(entity.position)
+    if (origin) fireballOriginTargets.set(entity.id, origin)
     console.log(`RIFT_FIREBALL_SEEN ${username} id=${entity.id} name=${entityName(entity)} pos=${entity.position?.x},${entity.position?.y},${entity.position?.z}`)
     // The entity-spawn packet is the first authoritative client-side point
     // at which the projectile is guaranteed to be present.  Schedule one

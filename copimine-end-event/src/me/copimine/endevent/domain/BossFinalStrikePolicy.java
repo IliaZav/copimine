@@ -1,6 +1,6 @@
 package me.copimine.endevent.domain;
 
-/** Pure timing and safety rules for the boss's one-shot catastrophe attack. */
+/** Bounded, one-shot strike that belongs to the LAST_SEAL phase only. */
 public final class BossFinalStrikePolicy {
     public static final int TELEGRAPH_TICKS = 20;
     public static final int CHARGE_TICKS = 20;
@@ -13,22 +13,16 @@ public final class BossFinalStrikePolicy {
     private BossFinalStrikePolicy() {
     }
 
-    public static boolean canStart(BossStage stage, boolean alreadyUsed,
+    public static boolean canStart(BossPhase phase, boolean alreadyUsed,
                                    boolean bossAlive, boolean hasTarget) {
-        return stage == BossStage.CATASTROPHE && !alreadyUsed && bossAlive && hasTarget;
+        return phase == BossPhase.LAST_SEAL && !alreadyUsed && bossAlive && hasTarget;
     }
 
     public static Phase phaseAt(long elapsedTicks) {
         long elapsed = Math.max(0L, elapsedTicks);
-        if (elapsed < TELEGRAPH_TICKS) {
-            return Phase.TELEGRAPH;
-        }
-        if (elapsed < IMPACT_TICK) {
-            return Phase.CHARGE;
-        }
-        if (elapsed < TOTAL_TICKS) {
-            return Phase.IMPACT;
-        }
+        if (elapsed < TELEGRAPH_TICKS) return Phase.TELEGRAPH;
+        if (elapsed < IMPACT_TICK) return Phase.CHARGE;
+        if (elapsed < TOTAL_TICKS) return Phase.IMPACT;
         return Phase.COMPLETE;
     }
 
@@ -37,16 +31,9 @@ public final class BossFinalStrikePolicy {
     }
 
     public static double validatedDamage(double configuredDamage) {
-        if (!Double.isFinite(configuredDamage) || configuredDamage <= 0.0D) {
-            return 0.0D;
-        }
+        if (!Double.isFinite(configuredDamage) || configuredDamage <= 0.0D) return 0.0D;
         return Math.min(MAX_DAMAGE, configuredDamage);
     }
 
-    public enum Phase {
-        TELEGRAPH,
-        CHARGE,
-        IMPACT,
-        COMPLETE
-    }
+    public enum Phase { TELEGRAPH, CHARGE, IMPACT, COMPLETE }
 }

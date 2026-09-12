@@ -23,7 +23,6 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_VISUAL_STOP = "visual_stop";
     public static final String TYPE_VISUAL_CLEAR_ALL = "visual_clear_all";
     public static final String TYPE_PING = "ping";
-    public static final String END_EVENT_MAGIC = "COPIMINE_END_EVENT_V1";
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
     public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
@@ -144,15 +143,8 @@ public final class ClientBridgeProtocol {
                 logWorldVfxResult(eventType, payload, applied);
                 return;
             }
-            EndEventPacket packet = new EndEventPacket(
-                    eventType,
-                    payload.sessionId(),
-                    payload.seq(),
-                    payload.clientVersion(),
-                    payload.durationMillis(),
-                    payload.mode(),
-                    payload.clearPolicy(),
-                    payload.source());
+            EndEventPacket packet = EndEventPacket.fromBridgePayload(
+                    eventType, payload);
             boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
                     ? END_EVENT_STATE.applyBossBar(packet, payload.intensity(),
                     payload.fadeInMillis(), payload.fadeOutMillis(), nowMillis)
@@ -368,6 +360,10 @@ public final class ClientBridgeProtocol {
 
     public static String endEventTentacleHealthForEntity(String uuid) {
         return END_EVENT_STATE.tentacleHealthStateForEntity(uuid);
+    }
+
+    public static String endEventTentacleTargetForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleTargetForEntity(uuid);
     }
 
     public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseForEntity(

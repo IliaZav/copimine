@@ -62,26 +62,27 @@ public final class RiftFireballPolicy {
     }
 
     /**
-     * Scale fireball duration and effect strength with participants. The
-     * two-player values stay exact; every value is bounded by ten seconds.
+     * Resolve the impact profile. Participant count changes only the bounded
+     * direct damage; crowd-control timing stays deterministic so a larger
+     * party is not punished by compounded, unbounded debuff duration.
      */
     public static EffectProfile scaledFireballEffects(double configuredDamage,
                                                        int blindnessTicks,
                                                        int debuffTicks,
                                                        int livingParticipants) {
         int players = boundedParticipants(livingParticipants);
-        int tier = participantTier(players);
-        int scaledBlindness = scaledDuration(blindnessTicks, players);
-        int scaledDebuff = scaledDuration(debuffTicks, players);
+        // The event contract is exact: Blindness I lasts 40 ticks and the
+        // three secondary effects last 60 ticks. Ignore stale config values
+        // rather than silently creating a different gameplay contract.
         return new EffectProfile(
                 scaledFireballDamage(configuredDamage, players),
-                scaledBlindness,
-                scaledDebuff,
-                Math.min(2, tier),
-                scaledDebuff,
-                Math.min(2, 1 + tier),
-                scaledDebuff,
-                Math.min(1, Math.max(0, tier - 1)));
+                40,
+                60,
+                0,
+                60,
+                1,
+                60,
+                0);
     }
 
     private static int boundedParticipants(int participants) {
@@ -91,26 +92,6 @@ public final class RiftFireballPolicy {
     private static double participantProgress(int participants) {
         return (participants - MIN_PARTICIPANTS)
                 / (double) (MAX_PARTICIPANTS - MIN_PARTICIPANTS);
-    }
-
-    private static int participantTier(int participants) {
-        if (participants <= 5) {
-            return 0;
-        }
-        if (participants <= 10) {
-            return 1;
-        }
-        if (participants <= 15) {
-            return 2;
-        }
-        return 3;
-    }
-
-    private static int scaledDuration(int configuredTicks, int participants) {
-        int baseTicks = Math.max(0, Math.min(MAX_EFFECT_TICKS, configuredTicks));
-        double progress = participantProgress(participants);
-        return Math.min(MAX_EFFECT_TICKS,
-                baseTicks + (int) Math.round((MAX_EFFECT_TICKS - baseTicks) * progress));
     }
 
     public record EffectProfile(double damage,

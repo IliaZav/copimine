@@ -1,7 +1,7 @@
 package me.copimine.endevent.domain;
 
 /**
- * Bounded server policy for the permanent guardians used by Boss V2's
+ * Bounded server policy for the permanent guardians used by the boss's
  * LAST_SEAL stage.
  *
  * The policy deliberately contains no Bukkit types.  The plugin adapter owns
@@ -34,7 +34,7 @@ public final class TentacleGuardianPolicy {
     }
 
     public static int perGuardianHealth(int players) {
-        int count = TentacleScalingPolicy.permanentFor(players, V2BossStage.LAST_SEAL);
+        int count = TentacleScalingPolicy.permanentFor(players, BossPhase.LAST_SEAL);
         if (count <= 0) {
             return 0;
         }
@@ -42,7 +42,7 @@ public final class TentacleGuardianPolicy {
         return (total + count - 1) / count;
     }
 
-    public static boolean shielded(V2BossStage stage, int livingGuardians,
+    public static boolean shielded(BossPhase stage, int livingGuardians,
                                    boolean damageWindowOpen) {
         return shielded(stage, livingGuardians, damageWindowOpen, false);
     }
@@ -54,25 +54,25 @@ public final class TentacleGuardianPolicy {
      * allowing that gap would let a full party kill the boss before its
      * permanent guardians exist.
      */
-    public static boolean shielded(V2BossStage stage, int livingGuardians,
+    public static boolean shielded(BossPhase stage, int livingGuardians,
                                    boolean damageWindowOpen,
                                    boolean guardiansPendingInitialization) {
-        return stage == V2BossStage.LAST_SEAL
+        return stage == BossPhase.LAST_SEAL
                 && !damageWindowOpen
                 && (livingGuardians > 0 || guardiansPendingInitialization);
     }
 
-    public static boolean damageWindowOpen(V2BossStage stage, int livingGuardians,
+    public static boolean damageWindowOpen(BossPhase stage, int livingGuardians,
                                            long startedTick, long nowTick) {
         return damageWindowOpen(stage, livingGuardians, startedTick, nowTick,
                 DAMAGE_WINDOW_TICKS);
     }
 
-    public static boolean damageWindowOpen(V2BossStage stage, int livingGuardians,
+    public static boolean damageWindowOpen(BossPhase stage, int livingGuardians,
                                            long startedTick, long nowTick,
                                            int durationTicks) {
         int safeDuration = Math.max(1, durationTicks);
-        return stage == V2BossStage.LAST_SEAL
+        return stage == BossPhase.LAST_SEAL
                 && livingGuardians <= 0
                 && startedTick >= 0L
                 && nowTick >= startedTick

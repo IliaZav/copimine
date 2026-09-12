@@ -2,57 +2,35 @@ package me.copimine.client;
 
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EndEventPacketTest {
     @Test
-    void decodesTheServerEnvelopeWithBoundedFields() throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        DataOutputStream out = new DataOutputStream(bytes);
-        out.writeUTF(ClientBridgeProtocol.END_EVENT_MAGIC);
-        out.writeUTF("END_CONTROL_START");
-        out.writeUTF("event-1");
-        out.writeLong(7L);
-        out.writeUTF("instance-1");
-        out.writeLong(5_000L);
-        out.writeUTF("subject-1");
-        out.writeUTF("boss-id");
-        out.writeUTF("control-id");
-        out.flush();
+    void keepsCurrentEventSemanticsExplicit() {
+        EndEventPacket packet = new EndEventPacket(
+                "END_BOSS_PHASE", "event-1", 7L, "instance-1", 5_000L,
+                "subject-1", "", "RIFT|CAST_RELEASE", "control-id");
 
-        EndEventPacket packet = EndEventPacket.parse(bytes.toByteArray());
-
-        assertEquals("END_CONTROL_START", packet.type());
+        assertEquals("END_BOSS_PHASE", packet.type());
         assertEquals("event-1", packet.eventId());
         assertEquals(7L, packet.generation());
         assertEquals("instance-1", packet.instanceId());
         assertEquals(5_000L, packet.durationMillis());
         assertEquals("subject-1", packet.subjectId());
+        assertEquals("RIFT|CAST_RELEASE", packet.phaseId());
     }
 
     @Test
-    void rejectsWrongMagicAndUnknownEventType() throws Exception {
-        assertThrows(IllegalArgumentException.class, () -> EndEventPacket.parse(envelope("WRONG", "END_BOSS_BIND")));
-        assertThrows(IllegalArgumentException.class, () -> EndEventPacket.parse(envelope(ClientBridgeProtocol.END_EVENT_MAGIC, "UNKNOWN")));
-    }
-
-    private static byte[] envelope(String magic, String type) throws Exception {
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        DataOutputStream out = new DataOutputStream(bytes);
-        out.writeUTF(magic);
-        out.writeUTF(type);
-        out.writeUTF("event");
-        out.writeLong(1L);
-        out.writeUTF("instance");
-        out.writeLong(1_000L);
-        out.writeUTF("");
-        out.writeUTF("");
-        out.writeUTF("");
-        out.flush();
-        return bytes.toByteArray();
+    void rejectsUnknownTypeAndUnsafeIdentity() {
+        assertThrows(IllegalArgumentException.class, () -> new EndEventPacket(
+                "UNKNOWN", "event", 1L, "instance", 1_000L,
+                "", "", "", ""));
+        assertThrows(IllegalArgumentException.class, () -> new EndEventPacket(
+                "END_BOSS_BIND", "event", 0L, "instance", 1_000L,
+                "subject", "visual", "", ""));
+        assertThrows(IllegalArgumentException.class, () -> new EndEventPacket(
+                "END_BOSS_BIND", "event", 1L, "instance", 600_001L,
+                "subject", "visual", "", ""));
     }
 }

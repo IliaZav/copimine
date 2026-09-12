@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EndRiftTentacleRigTest {
     @Test
     void hierarchyIsUniqueAndSocketHasNoGeometry() {
+        assertEquals(512, EndRiftTentacleRig.TEXTURE_SIZE);
         Set<String> names = new HashSet<>();
         for (EndRiftTentacleRig.BoneDefinition definition : EndRiftTentacleRig.definitions()) {
             assertTrue(names.add(definition.name()), definition.name());

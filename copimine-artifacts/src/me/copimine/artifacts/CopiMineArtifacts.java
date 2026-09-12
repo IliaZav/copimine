@@ -3421,6 +3421,44 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
        }
     }
 
+    /**
+     * Creative-mode deletion can clear a cursor without creating an Item
+     * entity, so the entity loss listeners cannot observe it.  Only the
+     * outside-inventory delete gesture is handled here; ordinary movement of
+     * an owner-bound donation inside the player's inventory remains intact.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onDonationCreative(InventoryCreativeEvent event) {
+       if (event == null || this.customShopItemsAreVanilla()
+             || !(event.getWhoClicked() instanceof Player player)
+             || event.getRawSlot() >= 0) {
+          return;
+       }
+       ItemStack candidate = event.getCursor();
+       OfficialDonationRef ref = this.officialDonationRef(candidate);
+       if (ref == null) {
+          candidate = event.getCurrentItem();
+          ref = this.officialDonationRef(candidate);
+       }
+       if (ref == null) {
+          return;
+       }
+       event.setCancelled(true);
+       this.handleCreativeDonationLoss(event, player, ref);
+    }
+
+    private void handleCreativeDonationLoss(InventoryCreativeEvent event, Player player, OfficialDonationRef ref) {
+       if (event == null || player == null || ref == null) {
+          return;
+       }
+       if (!this.recordDonationLossOnce(ref, "creative-delete")) {
+          player.updateInventory();
+          return;
+       }
+       this.flushPendingDonationLossJournalAsync();
+       player.updateInventory();
+    }
+
     private boolean creativeUtilityActionLeavesPlayerInventory(InventoryCreativeEvent event, Player player) {
        if (event == null || player == null || event.getView() == null || event.getRawSlot() < 0) {
           return false;

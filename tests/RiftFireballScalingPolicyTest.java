@@ -3,8 +3,8 @@ import me.copimine.endevent.domain.RiftFireballPolicy;
 public final class RiftFireballScalingPolicyTest {
     public static void main(String[] args) {
         testDamageStartsAtGhastLevelAndHasSmallBoundedGrowth();
-        testDurationsGrowWithPartySizeAndStopAtTenSeconds();
-        testIntensityGrowsWithoutUnboundedAmplifiers();
+        testDurationsStayReadableAndBounded();
+        testIntensityStaysAtTheExplicitImpactContract();
         System.out.println("RiftFireballScalingPolicyTest OK");
     }
 
@@ -23,7 +23,7 @@ public final class RiftFireballScalingPolicyTest {
                 "unsafe configured damage must fail closed at the hard cap");
     }
 
-    private static void testDurationsGrowWithPartySizeAndStopAtTenSeconds() {
+    private static void testDurationsStayReadableAndBounded() {
         RiftFireballPolicy.EffectProfile base =
                 RiftFireballPolicy.scaledFireballEffects(6.0D, 40, 60, 2);
         RiftFireballPolicy.EffectProfile scaled =
@@ -31,16 +31,11 @@ public final class RiftFireballScalingPolicyTest {
         check(base.blindnessTicks() == 40 && base.weaknessTicks() == 60
                         && base.nauseaTicks() == 60 && base.slownessTicks() == 60,
                 "two players must keep the requested base durations");
-        check(scaled.blindnessTicks() > base.blindnessTicks()
-                        && scaled.weaknessTicks() > base.weaknessTicks()
-                        && scaled.nauseaTicks() > base.nauseaTicks()
-                        && scaled.slownessTicks() > base.slownessTicks(),
-                "larger parties must receive longer fireball effects");
-        check(scaled.blindnessTicks() == RiftFireballPolicy.MAX_EFFECT_TICKS
-                        && scaled.weaknessTicks() == RiftFireballPolicy.MAX_EFFECT_TICKS
-                        && scaled.nauseaTicks() == RiftFireballPolicy.MAX_EFFECT_TICKS
-                        && scaled.slownessTicks() == RiftFireballPolicy.MAX_EFFECT_TICKS,
-                "no fireball effect may exceed ten seconds");
+        check(scaled.blindnessTicks() == base.blindnessTicks()
+                        && scaled.weaknessTicks() == base.weaknessTicks()
+                        && scaled.nauseaTicks() == base.nauseaTicks()
+                        && scaled.slownessTicks() == base.slownessTicks(),
+                "party size must not turn one fireball into an unbounded control chain");
         for (int players = 2; players <= 20; players++) {
             RiftFireballPolicy.EffectProfile profile =
                     RiftFireballPolicy.scaledFireballEffects(6.0D, 40, 60, players);
@@ -50,20 +45,14 @@ public final class RiftFireballScalingPolicyTest {
         }
     }
 
-    private static void testIntensityGrowsWithoutUnboundedAmplifiers() {
+    private static void testIntensityStaysAtTheExplicitImpactContract() {
         RiftFireballPolicy.EffectProfile base =
                 RiftFireballPolicy.scaledFireballEffects(6.0D, 40, 60, 2);
         RiftFireballPolicy.EffectProfile scaled =
                 RiftFireballPolicy.scaledFireballEffects(6.0D, 40, 60, 20);
-        check(scaled.weaknessAmplifier() > base.weaknessAmplifier(),
-                "large parties must receive stronger Weakness");
-        check(scaled.nauseaAmplifier() > base.nauseaAmplifier(),
-                "large parties must receive stronger Nausea");
-        check(scaled.slownessAmplifier() > base.slownessAmplifier(),
-                "large parties must receive stronger Slowness");
-        check(scaled.weaknessAmplifier() <= 2 && scaled.nauseaAmplifier() <= 2
-                        && scaled.slownessAmplifier() <= 1,
-                "effect amplifiers must remain bounded");
+        check(scaled.weaknessAmplifier() == 0 && scaled.nauseaAmplifier() == 1
+                        && scaled.slownessAmplifier() == 0,
+                "fireball debuffs must keep the explicit Bukkit amplifiers");
     }
 
     private static boolean close(double actual, double expected) {

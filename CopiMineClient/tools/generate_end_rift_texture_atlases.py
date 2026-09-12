@@ -4,7 +4,7 @@ These are native Minecraft UV sheets, not screenshots or concept thumbnails.  Th
 script intentionally keeps every sheet opaque at its declared atlas size so the
 vanilla model UVs receive a readable surface on every face.  Palette, cracks and
 sigils are kept different per entity so a wave mob cannot be mistaken for the
-elite, guardian, spider, or shulker.
+elite, guardian, spider, or skeleton.
 """
 
 from __future__ import annotations
@@ -101,11 +101,10 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
 
 def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
                               accent: tuple[int, int, int], core: tuple[int, int, int]) -> None:
-    # Keep the 128x128 UV sheet fully opaque, but make the surface itself
-    # readable at Minecraft scale.  The previous version filled the atlas
-    # with crossing guide lines; on the large torso cuboid that became a red
-    # checkerboard instead of armour.  This version uses restrained panels,
-    # mirrored cracks, and a few high-contrast emissive areas.
+    # Paint a clean 128px logical UV sheet first, then export a 512px atlas.
+    # The client model scales the same UV coordinates by four. This keeps the
+    # broad armour plates crisp at close range without returning to the old
+    # noisy checkerboard/guide-line look.
     image = Image.new("RGBA", (128, 128), (*palette[0], 255))
     draw = ImageDraw.Draw(image)
 
@@ -170,7 +169,8 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
     draw.line((64, 53, 64, 75), fill=rgba(accent), width=1)
     draw.line((59, 64, 69, 64), fill=rgba(palette[-1]), width=1)
     draw.point((64, 64), fill=rgba(core))
-    image.save(OUT / name, format="PNG", optimize=False)
+    image.resize((512, 512), Image.Resampling.NEAREST).save(
+        OUT / name, format="PNG", optimize=False)
 
 
 def spider_sheet() -> None:
@@ -187,23 +187,6 @@ def spider_sheet() -> None:
     for eye_x in (27, 34):
         draw.rectangle((eye_x, 10, eye_x + 1, 11), fill=(255, 91, 211, 255))
     image.save(OUT / "end_rift_spider.png", format="PNG", optimize=False)
-
-
-def shulker_sheet() -> None:
-    palette = [(24, 9, 54), (46, 15, 84), (79, 21, 123), (20, 80, 118), (30, 148, 173), (200, 71, 194)]
-    image = atlas((64, 64), palette, 113)
-    draw = ImageDraw.Draw(image)
-    panel_lines(draw, 64, 64, (30, 148, 173))
-    # Shell plates, seams, and a luminous core cover all shulker UV faces.
-    for y in range(4, 64, 8):
-        draw.line((3, y, 60, y + 3), fill=(200, 71, 194, 255), width=1)
-        draw.line((4, y + 2, 60, y + 5), fill=(20, 80, 118, 255), width=1)
-    draw.rectangle((17, 17, 46, 46), outline=(200, 71, 194, 255), width=2)
-    draw.rectangle((24, 24, 39, 39), outline=(30, 148, 173, 255), width=2)
-    draw.rectangle((29, 29, 34, 34), fill=(200, 224, 255, 255))
-    for x, y in ((8, 8), (55, 10), (10, 54), (54, 55)):
-        sigil(draw, (x, y), 4, [(200, 71, 194), (30, 148, 173), (200, 224, 255)], x + y)
-    image.save(OUT / "end_rift_shulker.png", format="PNG", optimize=False)
 
 
 def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
@@ -322,32 +305,39 @@ def main() -> None:
         (255, 232, 179),
     )
     rift_guardian_phase_sheet(
-        "rift_guardian_hunter.png",
+        "rift_guardian_hunt.png",
         [(10, 35, 37), (16, 70, 67), (21, 108, 93), (40, 146, 111), (173, 151, 62), (255, 222, 111)],
         163,
         (173, 151, 62),
         (159, 255, 226),
     )
     rift_guardian_phase_sheet(
-        "rift_guardian_distortion.png",
+        "rift_guardian_rift.png",
         [(24, 14, 59), (48, 24, 102), (77, 33, 146), (38, 95, 153), (54, 178, 188), (224, 81, 216)],
         179,
         (54, 178, 188),
         (248, 173, 255),
     )
     rift_guardian_phase_sheet(
-        "rift_guardian_absorption.png",
+        "rift_guardian_overload.png",
         [(8, 26, 56), (16, 55, 91), (23, 92, 132), (37, 129, 165), (90, 208, 188), (197, 255, 214)],
         191,
         (90, 208, 188),
         (223, 255, 237),
     )
     rift_guardian_phase_sheet(
-        "rift_guardian_catastrophe.png",
+        "rift_guardian_rage.png",
         [(52, 9, 25), (93, 15, 34), (143, 25, 39), (192, 45, 45), (242, 89, 54), (255, 226, 107)],
         211,
         (242, 89, 54),
         (255, 245, 157),
+    )
+    rift_guardian_phase_sheet(
+        "rift_guardian_last_seal.png",
+        [(12, 5, 24), (36, 9, 48), (83, 12, 76), (142, 18, 117), (230, 52, 177), (255, 196, 235)],
+        217,
+        (230, 52, 177),
+        (255, 196, 235),
     )
     rift_guardian_phase_sheet(
         "rift_guardian_final_strike.png",
@@ -357,7 +347,6 @@ def main() -> None:
         (255, 196, 235),
     )
     spider_sheet()
-    shulker_sheet()
     skeleton_sheet(
         "end_rift_skeleton.png",
         [(218, 213, 191), (164, 162, 151), (101, 110, 112), (47, 67, 82), (28, 128, 151), (89, 226, 211)],

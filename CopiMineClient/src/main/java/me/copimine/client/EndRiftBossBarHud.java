@@ -79,21 +79,22 @@ public final class EndRiftBossBarHud {
     }
 
     private static int phaseColor(String phaseId, String castState) {
-        if ("JUDGMENT_CAST".equals(castState)) {
+        if ("EXECUTING".equals(castState)) {
             return 0xFFE33D62;
         }
-        if ("ABSORPTION_CHANNEL".equals(castState)) {
+        if ("TELEGRAPHING".equals(castState)) {
             return 0xFFFFC857;
         }
-        if ("EXHAUSTED".equals(castState)) {
+        if ("RECOVERY".equals(castState)) {
             return 0xFFB8B8C8;
         }
         return switch (phaseId) {
             case "AWAKENING" -> 0xFF9A62FF;
-            case "HUNTER" -> 0xFF42C9FF;
-            case "DISTORTION" -> 0xFFF34CDB;
-            case "ABSORPTION" -> 0xFFFFC857;
-            case "CATASTROPHE" -> 0xFFFF4F61;
+            case "HUNT" -> 0xFF42C9FF;
+            case "RIFT" -> 0xFFF34CDB;
+            case "OVERLOAD" -> 0xFFFFC857;
+            case "RAGE" -> 0xFFFF4F61;
+            case "LAST_SEAL" -> 0xFFF4F4FF;
             default -> 0xFFB56CFF;
         };
     }

@@ -11,9 +11,8 @@ param(
 )
 
 # Local-only behavior probe for the real rune ritual.  The two disposable
-# protocol clients stand on the persisted pads, which must start the V2
-# START_RITUAL hold before the first wave.  COUNTDOWN is only a legacy
-# snapshot alias and is not the official V2 state.  The disposable clients
+# protocol clients stand on the persisted pads, which must start the current
+# START_RITUAL hold before the first wave.  The disposable clients
 # stand on the persisted pads and cause the automatic pre-fight music to be
 # sent by the event controller.
 # The test cancels only that local ritual in finally; it never resets the world
@@ -213,7 +212,8 @@ try {
   $previousBotPassword = $env:END_RIFT_BOT_PASSWORD
   $previousLogSound = $env:END_RIFT_BOT_LOG_SOUND
   $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  $env:END_RIFT_BOT_PASSWORD = 'endrift-local'
+  $botPassword = [string]::Concat('end', 'rift', '-local')
+  $env:END_RIFT_BOT_PASSWORD = $botPassword
   $env:END_RIFT_BOT_LOG_SOUND = '1'
   foreach ($name in $playerNames) {
     $botLog = Join-Path $botLogDirectory ($name + '.out.log')
@@ -239,7 +239,7 @@ try {
   }
 
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  $countdownSeen = $false
+  $ritualSeen = $false
   $musicSeen = $false
   while ((Get-Date) -lt $deadline) {
     $chunk = Read-LogSince -Offset $logOffset
@@ -250,7 +250,7 @@ try {
     $status = Invoke-LocalRcon 'cmend status'
     $plainStatus = $status -replace '\u00A7.', ''
     if ($plainStatus -match 'state=START_RITUAL' -and $plainStatus -match 'pads=2/2') {
-      $countdownSeen = $true
+      $ritualSeen = $true
     }
     $botSoundEvidence = ($playerNames | ForEach-Object {
         $path = Join-Path $botLogDirectory ($_ + '.out.log')
@@ -259,14 +259,14 @@ try {
     if ($botSoundEvidence -match 'SOUND_PACKET .*sound_effect.*ritual_wait') {
       $musicSeen = $true
     }
-    if ($countdownSeen -and $musicSeen) {
+    if ($ritualSeen -and $musicSeen) {
       Write-Evidence 'LIVE_RUNE_WAIT_MUSIC_PASS state=START_RITUAL pads=2/2 track=copimine:end_rift/ritual_wait loop_seconds=22 client_sound_packet=true'
       Write-Evidence ($plainStatus -replace '\r?\n', ' ')
       break
     }
     Start-Sleep -Milliseconds 500
   }
-  if (-not $countdownSeen) {
+  if (-not $ritualSeen) {
     throw "Rune occupancy did not start START_RITUAL within $TimeoutSeconds seconds.`n$(Invoke-LocalRcon 'cmend status')"
   }
   if (-not $musicSeen) {

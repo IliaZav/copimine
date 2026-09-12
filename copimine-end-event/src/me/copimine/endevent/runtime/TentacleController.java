@@ -52,8 +52,12 @@ public final class TentacleController {
         return true;
     }
 
-    public synchronized boolean transition(UUID entityId, TentacleAnimationPolicy.State next,
+    public synchronized boolean transition(long expectedGeneration, UUID entityId,
+                                            TentacleAnimationPolicy.State next,
                                             long startedTick, UUID target) {
+        if (!owns(expectedGeneration)) {
+            return false;
+        }
         VisualState current = states.get(entityId);
         if (current == null || next == null) {
             return false;
@@ -62,6 +66,16 @@ public final class TentacleController {
         states.put(entityId, new VisualState(entityId, current.kind(), current.slot(),
                 canonical, startedTick, target));
         return true;
+    }
+
+    /**
+     * Compatibility overload for callers that already hold this controller's
+     * current generation. New event code should pass the generation
+     * explicitly so a stale callback cannot mutate a replacement encounter.
+     */
+    public synchronized boolean transition(UUID entityId, TentacleAnimationPolicy.State next,
+                                            long startedTick, UUID target) {
+        return transition(generation, entityId, next, startedTick, target);
     }
 
     public synchronized VisualState state(UUID entityId) {

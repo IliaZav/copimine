@@ -15,16 +15,8 @@ public final class TentacleAnimationPolicyTest {
             check(ticks >= 5 && ticks <= 80,
                     state + " must have a bounded artist-brief duration");
         }
-        check(TentacleAnimationPolicy.loops(TentacleAnimationPolicy.State.IDLE),
-                "legacy idle alias must still loop");
         check(TentacleAnimationPolicy.loops(TentacleAnimationPolicy.State.READY),
                 "ready must loop");
-        check(TentacleAnimationPolicy.canonical(TentacleAnimationPolicy.State.EMERGE)
-                        == TentacleAnimationPolicy.State.EMERGING,
-                "legacy emerge must normalize to emerging");
-        check(TentacleAnimationPolicy.canonical(TentacleAnimationPolicy.State.HURT)
-                        == TentacleAnimationPolicy.State.HIT_RECOVERY,
-                "legacy hurt must normalize to hit recovery");
         check(TentacleAnimationPolicy.loops(TentacleAnimationPolicy.State.HOLD),
                 "hold must loop while the server keeps the player locked");
         check(TentacleAnimationPolicy.loops(TentacleAnimationPolicy.State.SHIELD_CHANNEL),
@@ -63,9 +55,9 @@ public final class TentacleAnimationPolicyTest {
 
     private static void testTransitionsKeepTheServerSequenceDeterministic() {
         check(TentacleAnimationPolicy.next(TentacleAnimationPolicy.Kind.TEMPORARY,
-                        TentacleAnimationPolicy.State.IDLE, true)
+                        TentacleAnimationPolicy.State.READY, true)
                         == TentacleAnimationPolicy.State.TELEGRAPH_GRAB,
-                "idle must telegraph before contact");
+                "ready must telegraph before contact");
         check(TentacleAnimationPolicy.next(TentacleAnimationPolicy.Kind.TEMPORARY,
                         TentacleAnimationPolicy.State.TELEGRAPH_GRAB, true)
                         == TentacleAnimationPolicy.State.GRAB_SUCCESS,
@@ -86,10 +78,6 @@ public final class TentacleAnimationPolicyTest {
                         TentacleAnimationPolicy.State.THROW, true)
                         == TentacleAnimationPolicy.State.RECOVERY,
                 "throw must enter the recovery animation");
-        check(TentacleAnimationPolicy.next(TentacleAnimationPolicy.Kind.PERMANENT,
-                        TentacleAnimationPolicy.State.GRAB_MISS, false)
-                        == TentacleAnimationPolicy.State.RECOVERY,
-                "permanent miss must recover in place");
         check(TentacleAnimationPolicy.next(TentacleAnimationPolicy.Kind.PERMANENT,
                         TentacleAnimationPolicy.State.RECOVERY, false)
                         == TentacleAnimationPolicy.State.SHIELD_CHANNEL,

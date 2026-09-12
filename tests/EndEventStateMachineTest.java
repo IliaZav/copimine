@@ -6,20 +6,33 @@ public final class EndEventStateMachineTest {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.READY_FOR_PLAYERS);
         check(machine.transition(EventPhase.READY_FOR_PLAYERS, EventPhase.START_RITUAL,
                 "all ritual runes held", "event:start-ritual").success(),
-                "V2 ready state must enter the distinct start ritual");
+                "ready state must enter the distinct start ritual");
         check(machine.transition(EventPhase.START_RITUAL, EventPhase.WAVE_1,
                 "ritual complete", "event:wave-one").success(),
-                "V2 start ritual must hand off to the first wave");
+                "start ritual must hand off to the first wave");
         EndEventStateMachine officialSequence = new EndEventStateMachine(EventPhase.WAVE_5);
         check(officialSequence.transition(EventPhase.WAVE_5, EventPhase.INTERMISSION_5,
                 "wave five complete", "event:intermission-five").success(),
-                "wave five must enter its V2 transition-rune intermission");
+                "wave five must enter its transition-rune intermission");
         check(officialSequence.transition(EventPhase.INTERMISSION_5, EventPhase.WAVE_6,
                 "runes complete", "event:wave-six").success(),
-                "the fifth intermission must enter Wave 6, not a legacy final wave");
-        check(!machine.transition(EventPhase.WAVE_1, EventPhase.FINAL_DRAIN,
-                "legacy final drain", "event:legacy-final").success(),
-                "an official V2 attempt must not enter legacy final drain");
+                "the fifth intermission must enter Wave 6");
+        check(!machine.transition(EventPhase.WAVE_1, EventPhase.BOSS_ACTIVE,
+                "skip waves", "event:skip-waves").success(),
+                "an official attempt must not skip mandatory waves");
+        EndEventStateMachine noSkip = new EndEventStateMachine(EventPhase.WAVE_6);
+        check(!noSkip.transition(EventPhase.WAVE_6, EventPhase.PRE_BOSS_COOLDOWN,
+                "skip wave seven", "event:skip-wave-seven").success(),
+                "Wave 6 must not enter pre-boss directly");
+        check(noSkip.transition(EventPhase.WAVE_6, EventPhase.INTERMISSION_6,
+                "wave six complete", "event:intermission-six").success(),
+                "Wave 6 must enter its intermission");
+        check(noSkip.transition(EventPhase.INTERMISSION_6, EventPhase.WAVE_7,
+                "runes complete", "event:wave-seven").success(),
+                "Wave 7 is mandatory");
+        check(noSkip.transition(EventPhase.WAVE_7, EventPhase.PRE_BOSS_COOLDOWN,
+                "wave seven complete", "event:pre-boss").success(),
+                "only Wave 7 may open the pre-boss cooldown");
         check(!machine.transition(EventPhase.WAVE_1, EventPhase.WAVE_5,
                 "backwards", "event:bad").success(), "combat must not go back to wave five");
         check(EndEventStateMachine.recoveryPhase(EventPhase.BOSS_CINEMATIC) == EventPhase.READY_FOR_PLAYERS,

@@ -19,8 +19,25 @@ class RiftGuardianModelTest {
             "CAST_RELEASE",
             "CAST_IMPACT",
             "PHASE_SHIFT",
-            "FINAL_AWAKENING",
-            "DEFEAT_COLLAPSE"
+            "DEFEAT_COLLAPSE",
+            "FINAL_STRIKE",
+            "RUN",
+            "MELEE_SWIPE",
+            "CHEST_STRIKE",
+            "GROUND_SLAM",
+            "MARK_CONTROL",
+            "SUMMON_CHANNEL",
+            "HURT",
+            "PHASE_TRANSITION",
+            "DYING",
+            "SPELL_VOID_BLAST",
+            "SPELL_RIFT_PROJECTILE",
+            "SPELL_RIFT_ARROWS",
+            "SPELL_ARROW_SALVO",
+            "SPELL_VOID_MARK",
+            "SPELL_SUMMON_SERVANTS",
+            "SPELL_RIFT_OBELISKS",
+            "SPELL_ARENA_INFERNO"
     };
 
     @Test
@@ -36,9 +53,14 @@ class RiftGuardianModelTest {
         assertNotNull(body.getChild("core_eye"));
         assertNotNull(body.getChild("crown_left"));
         assertNotNull(body.getChild("crown_right"));
-        assertNotNull(body.getChild("catastrophe_spine"));
+        assertNotNull(body.getChild("last_seal_spine"));
         assertNotNull(leftArm.getChild("left_talon"));
         assertNotNull(rightArm.getChild("right_talon"));
+    }
+
+    @Test
+    void usesTheHighResolutionGuardianAtlas() {
+        assertEquals(512, RiftGuardianModel.TEXTURE_SIZE);
     }
 
     @Test
@@ -54,29 +76,32 @@ class RiftGuardianModelTest {
     @Test
     void approvedAnimationsProduceDeterministicDistinctAndBoundedPoses() {
         RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
-        PoseSnapshot idle = pose(model, Phase.CATASTROPHE, "IDLE", 18.0F);
+        PoseSnapshot idle = pose(model, Phase.LAST_SEAL, "IDLE_BREATH", 18.0F);
 
         for (String animationId : APPROVED_ANIMATIONS) {
-            PoseSnapshot first = pose(model, Phase.CATASTROPHE, animationId, 18.0F);
-            PoseSnapshot second = pose(model, Phase.CATASTROPHE, animationId, 18.0F);
+            PoseSnapshot first = pose(model, Phase.LAST_SEAL, animationId, 18.0F);
+            PoseSnapshot second = pose(model, Phase.LAST_SEAL, animationId, 18.0F);
 
             assertEquals(first, second, "pose must be deterministic for " + animationId);
             assertNotSame(idle, first);
+            if ("IDLE_BREATH".equals(animationId)) {
+                assertEquals(idle, first, "idle animation must preserve the idle pose");
+                continue;
+            }
             assertTrue(first.differsFrom(idle), "animation must produce a distinct pose for " + animationId);
             assertTrue(first.isBounded(), "pose must stay bounded for " + animationId + ": " + first);
         }
     }
 
     @Test
-    void finalV2PhasesRaiseTheSilhouetteScale() {
+    void finalCurrentPhasesRaiseTheSilhouetteScale() {
         RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
 
         for (Phase phase : Phase.values()) {
-            pose(model, phase, "IDLE", 24.0F);
+            pose(model, phase, "IDLE_BREATH", 24.0F);
             ModelPart root = model.getPart();
             boolean raised = root.xScale > 1.01F || root.yScale > 1.01F || root.zScale > 1.01F;
-            boolean finalPhase = phase == Phase.RAGE || phase == Phase.LAST_SEAL
-                    || phase == Phase.CATASTROPHE;
+            boolean finalPhase = phase == Phase.RAGE || phase == Phase.LAST_SEAL;
             assertEquals(finalPhase, raised, "unexpected silhouette scale for " + phase);
             assertTrue(root.xScale <= 1.30F && root.yScale <= 1.30F && root.zScale <= 1.30F,
                     "silhouette scale escaped safe bounds for " + phase);
@@ -84,16 +109,16 @@ class RiftGuardianModelTest {
     }
 
     @Test
-    void finalAdornmentPartsStayFoldedUntilFinalAwakening() {
+    void finalAdornmentPartsStayFoldedUntilRage() {
         RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
 
-        poseParts(model, Phase.HUNTER, "IDLE_BREATH");
+        poseParts(model, Phase.HUNT, "IDLE_BREATH");
         assertFinalPartsFolded(model);
 
-        poseParts(model, Phase.AWAKENING, "FINAL_AWAKENING");
+        poseParts(model, Phase.RAGE, "IDLE_BREATH");
         assertFinalPartsRevealed(model);
 
-        poseParts(model, Phase.CATASTROPHE, "IDLE");
+        poseParts(model, Phase.LAST_SEAL, "IDLE_BREATH");
         assertFinalPartsRevealed(model);
     }
 
@@ -110,7 +135,7 @@ class RiftGuardianModelTest {
         ModelPart coreEye = body.getChild("core_eye");
         ModelPart crownLeft = body.getChild("crown_left");
         ModelPart crownRight = body.getChild("crown_right");
-        ModelPart catastropheSpine = body.getChild("catastrophe_spine");
+        ModelPart lastSealSpine = body.getChild("last_seal_spine");
         ModelPart leftTalon = leftArm.getChild("left_talon");
         ModelPart rightTalon = rightArm.getChild("right_talon");
 
@@ -122,7 +147,7 @@ class RiftGuardianModelTest {
                 crownLeft.pitch, crownLeft.yaw, crownRight.pitch, crownRight.yaw,
                 leftArm.pitch, leftArm.roll, rightArm.pitch, rightArm.roll,
                 leftTalon.pitch, rightTalon.pitch,
-                catastropheSpine.pitch, catastropheSpine.yScale
+                lastSealSpine.pitch, lastSealSpine.yScale
         );
     }
 
@@ -141,7 +166,7 @@ class RiftGuardianModelTest {
         assertFolded(body.getChild("crown_right"));
         assertFolded(leftArm.getChild("left_talon"));
         assertFolded(rightArm.getChild("right_talon"));
-        assertFolded(body.getChild("catastrophe_spine"));
+        assertFolded(body.getChild("last_seal_spine"));
     }
 
     private static void assertFinalPartsRevealed(RiftGuardianModel model) {
@@ -153,7 +178,7 @@ class RiftGuardianModelTest {
         assertRevealed(body.getChild("crown_right"));
         assertRevealed(leftArm.getChild("left_talon"));
         assertRevealed(rightArm.getChild("right_talon"));
-        assertRevealed(body.getChild("catastrophe_spine"));
+        assertRevealed(body.getChild("last_seal_spine"));
     }
 
     private static void assertFolded(ModelPart part) {
@@ -188,8 +213,8 @@ class RiftGuardianModelTest {
             float rightArmRoll,
             float leftTalonPitch,
             float rightTalonPitch,
-            float catastropheSpinePitch,
-            float catastropheSpineYScale) {
+            float lastSealSpinePitch,
+            float lastSealSpineYScale) {
 
         boolean differsFrom(PoseSnapshot other) {
             return Math.abs(rootXScale - other.rootXScale) > 0.001F
@@ -213,8 +238,8 @@ class RiftGuardianModelTest {
                     || Math.abs(rightArmRoll - other.rightArmRoll) > 0.001F
                     || Math.abs(leftTalonPitch - other.leftTalonPitch) > 0.001F
                     || Math.abs(rightTalonPitch - other.rightTalonPitch) > 0.001F
-                    || Math.abs(catastropheSpinePitch - other.catastropheSpinePitch) > 0.001F
-                    || Math.abs(catastropheSpineYScale - other.catastropheSpineYScale) > 0.001F;
+                    || Math.abs(lastSealSpinePitch - other.lastSealSpinePitch) > 0.001F
+                    || Math.abs(lastSealSpineYScale - other.lastSealSpineYScale) > 0.001F;
         }
 
         boolean isBounded() {
@@ -239,8 +264,8 @@ class RiftGuardianModelTest {
                     && finite(rightArmRoll) && bounded(rightArmRoll, -1.2F, 1.2F)
                     && finite(leftTalonPitch) && bounded(leftTalonPitch, -1.6F, 1.6F)
                     && finite(rightTalonPitch) && bounded(rightTalonPitch, -1.6F, 1.6F)
-                    && finite(catastropheSpinePitch) && bounded(catastropheSpinePitch, -1.4F, 1.4F)
-                    && finite(catastropheSpineYScale) && bounded(catastropheSpineYScale, 0.8F, 1.8F);
+                    && finite(lastSealSpinePitch) && bounded(lastSealSpinePitch, -1.4F, 1.4F)
+                    && finite(lastSealSpineYScale) && bounded(lastSealSpineYScale, 0.8F, 1.8F);
         }
 
         private static boolean finite(float value) {

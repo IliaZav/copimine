@@ -6,7 +6,7 @@ param(
   [string]$SecondBotName = 'RiftDamageB',
   [string[]]$AdditionalBotNames = @(),
   # The probe needs enough packets to observe same-tick coalescing, but must
-  # stop before five real clients can drain the 5000-HP local V2 boss.
+  # stop before five real clients can drain the 5000-HP local boss.
   [int]$BotDurationSeconds = 35,
   [int]$TimeoutSeconds = 55,
   [switch]$RequireSameTick,
@@ -14,7 +14,7 @@ param(
   [switch]$TraceAttackPackets
 )
 
-# Local-only test. It starts the official V2 boss and uses real independent
+# Local-only test. It starts the official current boss and uses real independent
 # player attack packets. It never changes the world layout or touches production.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -189,7 +189,7 @@ try {
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
   # This probe measures the authoritative multi-source health transaction, not
-  # pathfinding or reach. Freeze the official V2 boss only in the local
+  # pathfinding or reach. Freeze the official current boss only in the local
   # diagnostic environment so independent clients keep a deterministic target
   # while their packets race.
   $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
@@ -272,13 +272,13 @@ try {
   $log = Read-SharedText -Path $paperLog
   # The UUID is unique for this disposable boss, so filtering by UUID also
   # avoids depending on log byte offsets after Paper rotates a local log.
-  $bossLines = @($log -split '\r?\n' | Where-Object { $_ -match ('BOSS_V2_DAMAGE_ACCEPTED .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:') })
+  $bossLines = @($log -split '\r?\n' | Where-Object { $_ -match ('BOSS_DAMAGE_ACCEPTED .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:') })
   if ($bossLines.Count -lt 2) {
     throw "Fewer than two independent player damage events reached the official real-health path:`n$($bossLines -join "`n")"
   }
   $notCommitted = @($bossLines | Where-Object { $_ -notmatch 'accepted=true cancelled=true authority=entity-health' })
   if ($notCommitted.Count -gt 0) {
-    throw "An accepted V2 boss hit was not marked as a committed real-health transaction:`n$($notCommitted -join "`n")"
+    throw "An accepted current boss hit was not marked as a committed real-health transaction:`n$($notCommitted -join "`n")"
   }
   $damagePattern = 'source=PLAYER:([0-9a-fA-F-]+).*?final=([0-9]+(?:\.[0-9]+)?).*?tick=([0-9]+)'
   $sum = 0.0D

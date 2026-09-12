@@ -1,14 +1,20 @@
 $ErrorActionPreference = 'Stop'
 
-$endRiftRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$endRiftConfig = Join-Path $endRiftRoot 'copimine-end-event\config.yml'
-$endRiftConfigText = Get-Content -LiteralPath $endRiftConfig -Raw
-if ($endRiftConfigText -notmatch '(?m)^environment:\s*local\s*$') {
-  throw 'End Rift checks refuse to run: copimine-end-event/config.yml is not local.'
+# Current End Rift gate. This runner is deliberately local/staging-only and
+# names only the schema-4, seven-wave, real-health encounter. Production is
+# never started or mutated by this script.
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$configPath = Join-Path $root 'copimine-end-event\config.yml'
+$config = Get-Content -LiteralPath $configPath -Raw
+if ($config -notmatch '(?m)^environment:\s*(local|staging)\s*$') {
+  throw 'End Rift gate refuses to run: environment must be local or staging.'
+}
+if ($config -notmatch '(?m)^\s*schema-version:\s*4\s*$') {
+  throw 'End Rift gate refuses to run: schema 4 is required.'
 }
 
-function Invoke-EndRiftStep {
-  param([string]$Label, [scriptblock]$Action)
+function Invoke-GateStep {
+  param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][scriptblock]$Action)
   Write-Host "== $Label =="
   & $Action
   if ($LASTEXITCODE -ne 0) {
@@ -16,257 +22,188 @@ function Invoke-EndRiftStep {
   }
 }
 
-function Invoke-EndRiftJavaMain {
-  param([string]$Classpath, [string]$MainClass)
+function Invoke-JavaTest {
+  param([Parameter(Mandatory)][string]$Classpath, [Parameter(Mandatory)][string]$MainClass)
   & java -cp $Classpath $MainClass
-  $exitCode = $LASTEXITCODE
-  if ($exitCode -ne 0) {
-    throw "Java test $MainClass failed with exit code $exitCode"
+  if ($LASTEXITCODE -ne 0) {
+    throw "Java test $MainClass failed with exit code $LASTEXITCODE"
   }
 }
 
-Invoke-EndRiftStep 'WorldCore build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-world-core\build-plugin.ps1')
+$firstPartyBuilds = @(
+  @{ Label = 'WorldCore'; Directory = 'copimine-world-core' },
+  @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
+  @{ Label = 'End Event'; Directory = 'copimine-end-event' },
+  @{ Label = 'EconomyCore'; Directory = 'copimine-economy-core' },
+  @{ Label = 'ElectionCore'; Directory = 'copimine-election-core' },
+  @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
+  @{ Label = 'UltimateAdminPlus'; Directory = 'copimine-admin-plugin' },
+  @{ Label = 'AuthEffects'; Directory = 'minecraft\server\plugins\AuthEffects' }
+)
+foreach ($build in $firstPartyBuilds) {
+  $buildPath = Join-Path $root $build.Directory
+  Invoke-GateStep ("$($build.Label) build") {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $buildPath 'build-plugin.ps1')
+  }
 }
-Invoke-EndRiftStep 'Artifacts build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-artifacts\build-plugin.ps1')
-}
-Invoke-EndRiftStep 'End Event plugin build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'copimine-end-event\build-plugin.ps1')
-}
-Invoke-EndRiftStep 'Fabric client tests and build' {
-  Push-Location (Join-Path $endRiftRoot 'CopiMineClient')
+Invoke-GateStep 'CopiMineClient build' {
+  Push-Location (Join-Path $root 'CopiMineClient')
   try {
     & powershell -NoProfile -ExecutionPolicy Bypass -File '.\build-client.ps1'
   } finally {
     Pop-Location
   }
 }
-Invoke-EndRiftStep 'Resourcepack build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $endRiftRoot 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
+Invoke-GateStep 'Resource pack build' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
 }
-Invoke-EndRiftStep 'Python event contracts' {
-  Push-Location $endRiftRoot
+
+Invoke-GateStep 'Current Python contract' {
+  Push-Location $root
   try {
-    & python -m pytest -q tests\test_end_event_contract.py tests\test_end_event_resourcepack_contract.py `
-      tests\test_end_event_client_contract.py tests\test_end_event_spec_contract.py `
-      tests\test_end_event_layout_contract.py tests\test_end_event_commands_contract.py `
-      tests\test_end_event_item_lore_contract.py tests\test_end_event_runtime_invariants_contract.py `
-      tests\test_end_event_runtime_smoke_contract.py tests\test_end_event_ai_contract.py `
-      tests\test_end_event_music_contract.py tests\test_end_event_release_contract.py `
-      tests\test_end_event_visual_regressions.py tests\test_end_event_arena_protection_contract.py `
-      tests\test_end_event_gate_contract.py tests\test_end_event_bossbar_contract.py `
-      tests\test_end_event_client_texture_quality_contract.py tests\test_end_event_creative_run_contract.py `
-      tests\test_end_event_spell_names_contract.py tests\test_end_event_gate_selection_contract.py `
-      tests\test_end_event_command_reference_contract.py tests\test_end_event_completion_audit_contract.py `
-      tests\test_end_event_boss_regressions_contract.py tests\test_end_event_wave_objective_contract.py `
-      tests\test_end_event_wave_reward_contract.py tests\test_end_event_diagnostics_contract.py `
-      tests\test_end_event_portal_visual_contract.py tests\test_end_event_arena_scene_contract.py `
-      tests\test_end_rift_performance_contract.py tests\test_end_event_boss_virtual_health_contract.py `
-      tests\test_end_event_damage_cancellation_contract.py `
-      tests\test_end_event_combat_trace_contract.py `
-      tests\test_end_event_real_health_damage_contract.py `
-      tests\test_end_event_boss_health_scaling_contract.py `
-      tests\test_end_rift_client_model_contract.py `
-      tests\test_end_event_shard_passives_contract.py `
-      tests\test_end_event_boss_multi_player_damage_contract.py `
-      tests\test_end_event_v2_flow_contract.py `
-      tests\test_end_event_v2_cleanup_contract.py `
-      tests\test_end_event_v2_wave5_contract.py `
-      tests\test_end_event_rift_obelisk_contract.py `
-      tests\test_end_event_tentacle_contract.py `
-      tests\test_end_rift_tentacle_articulated_contract.py `
-      tests\test_end_event_official_e2e_contract.py `
-      tests\test_end_event_skeleton_contract.py `
-      tests\test_end_event_official_log_wait_contract.py `
-      tests\test_end_event_skeleton_behavior_docs_contract.py `
-      tests\test_end_event_boss_ai_behavior_docs_contract.py `
-      tests\test_end_event_spell_matrix_contract.py `
-      tests\test_end_event_wavefront_contract.py `
-      tests\test_end_event_boss_final_strike_contract.py `
-      tests\test_end_event_world_vfx_contract.py `
-      tests\test_end_event_v3_contract.py
+    & python -m pytest -q '.\tests\test_end_event_current_contract.py'
   } finally {
     Pop-Location
   }
 }
 
-$endRiftTestBuild = Join-Path $endRiftRoot 'tests\build\end-event-check'
-New-Item -ItemType Directory -Path $endRiftTestBuild -Force | Out-Null
-$endRiftTestClasspathEntries = @((Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path)
-$endRiftTestClasspathEntries += Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter '*.jar' -Recurse |
-  ForEach-Object FullName
-$endRiftTestClasspath = $endRiftTestClasspathEntries -join [IO.Path]::PathSeparator
-$endRiftDomainSources = (Get-ChildItem (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\domain\*.java')).FullName
+$testBuild = Join-Path $root 'tests\build\end-event-current'
+New-Item -ItemType Directory -Path $testBuild -Force | Out-Null
+$domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
+  ForEach-Object FullName)
+$runtimeSources = @(
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterContext.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftSession.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftEncounterCoordinator.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitChamberController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TransitionRuneController.java')
+)
+$runtimeSources += @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\encounter') -Filter '*.java' |
+  ForEach-Object FullName)
+$pureTests = @(
+  'AbyssAnchorPolicyTest',
+  'AttemptLifecycleControllerTest',
+  'BossDamagePolicyTest',
+  'BossAnimationIdTest',
+  'CreativeTestAdmissionPolicyTest',
+  'BossAiSimulationTest',
+  'BossCastTimelineTest',
+  'BossDefeatCinematicPolicyTest',
+  'BossFinalStrikePolicyTest',
+  'BossMovementPolicyTest',
+  'BossRealHealthDamagePolicyTest',
+  'BossStatsPolicyTest',
+  'BossTargetPolicyTest',
+  'BossVisualCuePolicyTest',
+  'ChamberIsolationPolicyTest',
+  'ChamberScalingPolicyTest',
+  'CollapseRingEncounterPolicyTest',
+  'CombatMovementPolicyTest',
+  'CombatTacticsPolicyTest',
+  'CombatTraceDiagnosisTest',
+  'CombatTraceRecordTest',
+  'EndEventDomainTest',
+  'EndEventStateMachineTest',
+  'EndRiftEncounterCoordinatorTest',
+  'EndRiftAiPolicyTest',
+  'EventCombatScalingPolicyTest',
+  'EventMobDamagePolicyTest',
+  'EventRealHealthDamagePolicyTest',
+  'GateOpeningPlanTest',
+  'HazardPlannerTest',
+  'NightCloakRollPolicyTest',
+  'PortalCapturePolicyTest',
+  'PressureBudgetControllerTest',
+  'ResourceProgressFormatterTest',
+  'RiftCarrierPolicyTest',
+  'RiftFireballCollisionPolicyTest',
+  'RiftFireballScalingPolicyTest',
+  'RiftFracturePolicyTest',
+  'RiftObeliskScalingPolicyTest',
+  'RiftObeliskTimingPolicyTest',
+  'ShardPassivePolicyTest',
+  'SkeletonArrowPolicyTest',
+  'SkeletonCombatPolicyTest',
+  'SpellVisualPolicyTest',
+  'TargetPressurePolicyTest',
+  'TentacleAnimationPolicyTest',
+  'TentacleControllerTest',
+  'TentacleGuardianPolicyTest',
+  'TentacleScalingPolicyTest',
+  'TransitionRuneControllerTest',
+  'TransitionRunePolicyTest',
+  'Wave3PortalPolicyTest',
+  'WaveCommanderPolicyTest',
+  'WaveDamagePolicyTest',
+  'WaveMechanicsPolicyTest',
+  'WaveRewardPolicyTest',
+  'WaveScalingPolicyTest',
+  'WaveVisualPolicyTest',
+  'ZoneVisualPolicyTest'
+)
+$pureSources = @($domainSources + $runtimeSources + ($pureTests | ForEach-Object {
+  $path = Join-Path $root ("tests\{0}.java" -f $_)
+  if (-not (Test-Path -LiteralPath $path)) { throw "Missing current Java test: $path" }
+  $path
+}))
 
-Invoke-EndRiftStep 'Pure domain tests' {
-  & javac -encoding UTF-8 -d $endRiftTestBuild $endRiftDomainSources `
-      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java') `
-      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\TransitionRuneController.java') `
-      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\WaveSixChamberController.java') `
-      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java') `
-      (Join-Path $endRiftRoot 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java') `
-      (Join-Path $endRiftRoot 'tests\EndEventDomainTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossThresholdPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\EndRiftAiPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\ResourceProgressFormatterTest.java') `
-      (Join-Path $endRiftRoot 'tests\GateOpeningPlanTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\CombatTraceRecordTest.java') `
-      (Join-Path $endRiftRoot 'tests\EventRealHealthDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TransitionRunePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TransitionRuneControllerTest.java') `
-      (Join-Path $endRiftRoot 'tests\EventCombatScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\EventMobDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TargetPressurePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\SkeletonCombatPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\SkeletonArrowPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveCommanderPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossMovementPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossStagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\CombatMovementPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveObjectivePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V2WaveObjectivePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V2FogTimingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\Wave5EncounterPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftCarrierPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\Wave3PortalPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\CombatTraceDiagnosisTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveRewardPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveMechanicsPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\StormPatternPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossCastPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\CombatTacticsPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossVisualCuePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\SpellVisualPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossStatsPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossHealthScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V2BossHealthScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V2BossStagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossRealHealthDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\ChamberScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\ChamberIsolationPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveSixChamberControllerTest.java') `
-      (Join-Path $endRiftRoot 'tests\AttemptLifecycleControllerTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossVirtualHealthPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\PortalCapturePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossTargetPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftObeliskScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftObeliskDamagePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftFireballCollisionPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftFracturePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftObeliskPlacementPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftObeliskTimingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftObeliskCastPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V3WaveObjectivePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\V3ObeliskScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\EndEventStateMachineTest.java') `
-      (Join-Path $endRiftRoot 'tests\ZoneVisualPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossArenaSetPiecePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\WaveVisualPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossFinalStrikePolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\BossDefeatCinematicPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\RiftFireballScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TentacleAnimationPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TentacleScalingPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\TentacleControllerTest.java') `
-      (Join-Path $endRiftRoot 'tests\TentacleGuardianPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\AbyssAnchorPolicyTest.java') `
-      (Join-Path $endRiftRoot 'tests\ShardPassivePolicyTest.java')
-  if ($LASTEXITCODE -ne 0) { throw 'Pure domain javac failed.' }
-  Invoke-EndRiftJavaMain $endRiftTestBuild EndEventDomainTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossThresholdPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild EndRiftAiPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild ResourceProgressFormatterTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild GateOpeningPlanTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTraceRecordTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild EventRealHealthDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TransitionRunePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TransitionRuneControllerTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild EventCombatScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild EventMobDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TargetPressurePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonCombatPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild SkeletonArrowPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveCommanderPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossMovementPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossStagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild CombatMovementPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveObjectivePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V2WaveObjectivePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V2FogTimingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild Wave5EncounterPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftCarrierPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild Wave3PortalPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTraceDiagnosisTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveRewardPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveMechanicsPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild StormPatternPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossCastPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild CombatTacticsPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossVisualCuePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild SpellVisualPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossStatsPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossHealthScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V2BossHealthScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V2BossStagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossRealHealthDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild ChamberScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild ChamberIsolationPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveSixChamberControllerTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild AttemptLifecycleControllerTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossVirtualHealthPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild PortalCapturePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossTargetPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskDamagePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFireballCollisionPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFracturePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskPlacementPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskTimingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftObeliskCastPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V3WaveObjectivePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild V3ObeliskScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild EndEventStateMachineTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild ZoneVisualPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossArenaSetPiecePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild WaveVisualPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossFinalStrikePolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild BossDefeatCinematicPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild RiftFireballScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleAnimationPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleScalingPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleControllerTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild TentacleGuardianPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild AbyssAnchorPolicyTest
-  Invoke-EndRiftJavaMain $endRiftTestBuild ShardPassivePolicyTest
-}
-Invoke-EndRiftStep 'Durable persistence and layout tests' {
-  & javac -encoding UTF-8 -cp $endRiftTestClasspath -d $endRiftTestBuild `
-    (Join-Path $endRiftRoot 'tests\EventStateStoreTest.java') `
-    (Join-Path $endRiftRoot 'tests\V2SnapshotMigrationPolicyTest.java') `
-    (Join-Path $endRiftRoot 'tests\DepositJournalTest.java') `
-    (Join-Path $endRiftRoot 'tests\EventLayoutStoreTest.java') `
-    (Join-Path $endRiftRoot 'tests\HazardMutationJournalTest.java')
-  if ($LASTEXITCODE -ne 0) { throw 'Persistence/layout javac failed.' }
-  $endRiftRunClasspath = @($endRiftTestBuild, (Resolve-Path (Join-Path $endRiftRoot 'copimine-end-event\build\classes')).Path) + $endRiftTestClasspathEntries
-  $endRiftRunClasspathText = $endRiftRunClasspath -join [IO.Path]::PathSeparator
-  Invoke-EndRiftJavaMain $endRiftRunClasspathText EventStateStoreTest
-  Invoke-EndRiftJavaMain $endRiftRunClasspathText V2SnapshotMigrationPolicyTest
-  Invoke-EndRiftJavaMain $endRiftRunClasspathText DepositJournalTest
-  Invoke-EndRiftJavaMain $endRiftRunClasspathText EventLayoutStoreTest
-  Invoke-EndRiftJavaMain $endRiftRunClasspathText HazardMutationJournalTest
+Invoke-GateStep 'Current pure Java policies' {
+  & javac -encoding UTF-8 -d $testBuild @pureSources
+  if ($LASTEXITCODE -ne 0) { throw 'Current pure Java compilation failed.' }
+  foreach ($name in $pureTests) {
+    Invoke-JavaTest -Classpath $testBuild -MainClass $name
+  }
 }
 
-Write-Host '== Local artifact hashes =='
-Get-FileHash (Join-Path $endRiftRoot 'copimine-world-core\CopiMineWorldCore.jar') -Algorithm SHA256
-Get-FileHash (Join-Path $endRiftRoot 'copimine-artifacts\CopiMineArtifacts.jar') -Algorithm SHA256
-Get-FileHash (Join-Path $endRiftRoot 'copimine-end-event\CopiMineEndEvent.jar') -Algorithm SHA256
-Get-FileHash (Join-Path $endRiftRoot 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar') -Algorithm SHA256
-Get-FileHash (Join-Path $endRiftRoot 'resourcepacks\build\CopiMineResourcePack.zip') -Algorithm SHA256
-Write-Host 'End Rift local checks passed.'
+$mavenJars = @(Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter '*.jar' -Recurse |
+  ForEach-Object FullName)
+$pluginClasses = (Resolve-Path (Join-Path $root 'copimine-end-event\build\classes')).Path
+$persistenceClasspath = @($testBuild, $pluginClasses) + $mavenJars
+$persistenceClasspathText = $persistenceClasspath -join [IO.Path]::PathSeparator
+$persistenceTests = @(
+  'EventStateStoreTest',
+  'DepositJournalTest',
+  'EventLayoutStoreTest',
+  'HazardMutationJournalTest',
+  'LegacyEndRiftSnapshotDecoderTest'
+)
+$persistenceSources = @($persistenceTests | ForEach-Object {
+  $path = Join-Path $root ("tests\{0}.java" -f $_)
+  if (-not (Test-Path -LiteralPath $path)) { throw "Missing persistence test: $path" }
+  $path
+})
+
+Invoke-GateStep 'Current persistence and recovery' {
+  & javac -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources
+  if ($LASTEXITCODE -ne 0) { throw 'Persistence Java compilation failed.' }
+  foreach ($name in $persistenceTests) {
+    Invoke-JavaTest -Classpath $persistenceClasspathText -MainClass $name
+  }
+}
+
+Invoke-GateStep 'Diff hygiene' {
+  & git diff --check
+  if ($LASTEXITCODE -ne 0) { throw 'Whitespace errors found by git diff --check.' }
+}
+
+Write-Host '== Current artifact hashes =='
+foreach ($artifact in @(
+  (Join-Path $root 'copimine-world-core\CopiMineWorldCore.jar'),
+  (Join-Path $root 'copimine-artifacts\CopiMineArtifacts.jar'),
+  (Join-Path $root 'copimine-end-event\CopiMineEndEvent.jar'),
+  (Join-Path $root 'copimine-economy-core\CopiMineEconomyCore.jar'),
+  (Join-Path $root 'copimine-election-core\CopiMineElectionCore.jar'),
+  (Join-Path $root 'copimine-narcotics\CopiMineNarcotics.jar'),
+  (Join-Path $root 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar'),
+  (Join-Path $root 'minecraft\server\plugins\AuthEffects.jar'),
+  (Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'),
+  (Join-Path $root 'resourcepacks\build\CopiMineResourcePack.zip')
+)) {
+  if (-not (Test-Path -LiteralPath $artifact)) { throw "Missing build artifact: $artifact" }
+  Get-FileHash -LiteralPath $artifact -Algorithm SHA256
+}
+
+Write-Host 'End Rift current local checks passed.'

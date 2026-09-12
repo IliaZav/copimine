@@ -20,8 +20,10 @@ public final class WaveVisualPolicy {
         return elapsedTicks >= 0 && elapsedTicks < OPENING_TICKS;
     }
 
-    public static Frame frame(int wave, int elapsedTicks, boolean completed) {
-        int safeWave = Math.max(1, Math.min(6, wave));
+    public static Frame frame(EndRiftObjective.Objective objective,
+                              int elapsedTicks, boolean completed) {
+        EndRiftObjective.Objective safeObjective = objective == null
+                ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
         int safeTicks = Math.max(0, elapsedTicks);
         double progress = completed
                 ? 1.0D
@@ -36,17 +38,17 @@ public final class WaveVisualPolicy {
         int innerPoints = Math.max(16, Math.min(MAX_RING_POINTS, outerPoints / 2));
         double pulseHeight = FLOOR_Y + eased * 0.20D;
         double radialEnergy = Math.max(0.0D, Math.min(1.0D, eased));
-        return new Frame(safeWave, safeTicks, outerRadius, innerRadius,
+        return new Frame(safeObjective, safeTicks, outerRadius, innerRadius,
                 outerPoints, innerPoints, FLOOR_Y, pulseHeight, radialEnergy,
                 completed || safeTicks >= OPENING_TICKS);
     }
 
-    public record Frame(int wave, int elapsedTicks, double outerRadius,
+    public record Frame(EndRiftObjective.Objective objective, int elapsedTicks, double outerRadius,
                         double innerRadius, int outerPoints, int innerPoints,
                         double floorY, double pulseHeight,
                         double radialEnergy, boolean completed) {
         public Frame {
-            wave = Math.max(1, Math.min(6, wave));
+            objective = objective == null ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
             elapsedTicks = Math.max(0, elapsedTicks);
             outerRadius = finitePositive(outerRadius, 1.25D);
             innerRadius = Math.max(0.5D, finitePositive(innerRadius, 0.5D));
@@ -56,6 +58,11 @@ public final class WaveVisualPolicy {
             pulseHeight = Double.isFinite(pulseHeight) ? Math.max(0.0D, pulseHeight) : FLOOR_Y;
             radialEnergy = Double.isFinite(radialEnergy)
                     ? Math.max(0.0D, Math.min(1.0D, radialEnergy)) : 0.0D;
+        }
+
+        /** Numeric label is presentation data derived from the objective. */
+        public int wave() {
+            return objective.ordinal() + 1;
         }
 
         private static double finitePositive(double value, double fallback) {

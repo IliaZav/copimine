@@ -6,7 +6,7 @@ param(
   [int]$TimeoutSeconds = 1700
 )
 
-# Five disposable Mineflayer clients run the real official End Rift state
+# Five disposable Mineflayer clients run the real current End Rift state
 # machine. The delegated driver only touches the isolated local Paper scene;
 # it never connects to a production address or resets the world/database.
 $ErrorActionPreference = 'Stop'

@@ -17,13 +17,19 @@ public final class AttemptLifecycleControllerTest {
         check(wiped.status() == AttemptLifecycleController.WipeStatus.ACCEPTED,
                 "all-dead wipe must be accepted");
         check(wiped.nextGeneration() == 11L, "wipe increments generation");
-        check(controller.living().size() == 2, "wipe restores roster to alive start state");
+        check(controller.wiping(), "accepted wipe must remain frozen until cleanup commits");
+        check(controller.living().isEmpty(), "roster must not be revived before cleanup commits");
+        check(!controller.markAlive(a, 10L), "stale callbacks are blocked during cleanup");
+        check(controller.commitWipe(10L), "cleanup transaction must commit the next generation");
+        check(controller.generation() == 11L, "committed wipe must publish the next generation");
+        check(controller.living().size() == 2, "commit restores roster to alive start state");
         check(controller.performAttemptWipe(10L, "stale").status()
                 == AttemptLifecycleController.WipeStatus.STALE_GENERATION,
                 "old callbacks cannot wipe a new generation");
         check(controller.performAttemptWipe(11L, "not dead").status()
                 == AttemptLifecycleController.WipeStatus.NO_LIVING_PLAYERS,
                 "new attempt with living roster is protected");
+        check(!controller.abortWipe(11L), "an idle generation cannot abort a wipe");
         System.out.println("AttemptLifecycleControllerTest OK");
     }
 

@@ -17,11 +17,9 @@ public final class BossVisualCuePolicy {
             "rift_arrows",
             "void_mark",
             "summon_servants",
-            "will_distortion",
             "rift_obelisks",
             "arena_inferno",
             "phase_shift",
-            "final_awaken",
             "defeat_collapse",
             "final_strike");
     private static final Map<String, Map<CueStage, Cue>> CUES = buildCues();
@@ -73,6 +71,44 @@ public final class BossVisualCuePolicy {
         return CUES;
     }
 
+    /**
+     * Resolves the animation that must be sent to the client for a cue stage.
+     * Telegraph and impact use shared timing poses; the release pose remains
+     * spell-specific so every boss ability has a readable silhouette.
+     */
+    public static String animationFor(String spellId, CueStage stage) {
+        if (spellId == null || stage == null) {
+            return BossAnimationId.UNKNOWN.wireId();
+        }
+        String normalized = normalize(spellId);
+        if (!CUES.containsKey(normalized)) {
+            return BossAnimationId.UNKNOWN.wireId();
+        }
+        return switch (normalized) {
+            case "phase_shift" -> BossAnimationId.PHASE_TRANSITION.wireId();
+            case "final_strike" -> BossAnimationId.FINAL_STRIKE.wireId();
+            case "defeat_collapse" -> BossAnimationId.DYING.wireId();
+            default -> switch (stage) {
+                case TELEGRAPH -> BossAnimationId.CAST_CHARGE.wireId();
+                case RELEASE -> spellAnimation(normalized);
+                case IMPACT -> BossAnimationId.CAST_IMPACT.wireId();
+            };
+        };
+    }
+
+    private static String spellAnimation(String spellId) {
+        return switch (spellId) {
+            case "void_blast" -> BossAnimationId.SPELL_VOID_BLAST.wireId();
+            case "rift_projectile" -> BossAnimationId.SPELL_RIFT_PROJECTILE.wireId();
+            case "rift_arrows" -> BossAnimationId.SPELL_RIFT_ARROWS.wireId();
+            case "void_mark" -> BossAnimationId.SPELL_VOID_MARK.wireId();
+            case "summon_servants" -> BossAnimationId.SPELL_SUMMON_SERVANTS.wireId();
+            case "rift_obelisks" -> BossAnimationId.SPELL_RIFT_OBELISKS.wireId();
+            case "arena_inferno" -> BossAnimationId.SPELL_ARENA_INFERNO.wireId();
+            default -> BossAnimationId.UNKNOWN.wireId();
+        };
+    }
+
     private static Map<String, Map<CueStage, Cue>> buildCues() {
         LinkedHashMap<String, Map<CueStage, Cue>> catalog = new LinkedHashMap<>();
         for (String spell : SPELLS) {
@@ -101,7 +137,7 @@ public final class BossVisualCuePolicy {
                 "minecraft:block.amethyst_block.chime",
                 "minecraft:block.portal.ambient",
                 "minecraft:entity.ender_dragon.shoot",
-                "minecraft:entity.shulker.shoot",
+                "minecraft:entity.enderman.teleport",
                 "minecraft:entity.blaze.shoot",
                 "minecraft:entity.illusioner.cast_spell",
                 "minecraft:entity.evoker.cast_spell",
@@ -117,7 +153,7 @@ public final class BossVisualCuePolicy {
                 "minecraft:entity.wither.spawn",
                 "minecraft:entity.player.hurt",
                 "minecraft:block.glass.break",
-                "minecraft:entity.shulker_bullet.hit",
+                "minecraft:block.sculk_shrieker.shriek",
                 "minecraft:block.amethyst_block.resonate",
                 "minecraft:block.portal.travel",
                 "minecraft:entity.ender_dragon.growl",

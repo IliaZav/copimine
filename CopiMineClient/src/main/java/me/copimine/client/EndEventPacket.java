@@ -1,11 +1,13 @@
 package me.copimine.client;
 
-import java.io.ByteArrayInputStream;
-import java.io.DataInputStream;
-import java.io.IOException;
 import java.util.Set;
 
-/** Bounded parser for the optional End Rift messages carried by the existing bridge channel. */
+/**
+ * Current End Rift semantic packet after the shared bridge envelope has been
+ * decoded.  The bridge has a fixed, shared v2 envelope, so this adapter keeps
+ * the event-specific meaning out of shared bridge fields such as
+ * {@code shaderpack}.
+ */
 public record EndEventPacket(
         String type,
         String eventId,
@@ -13,9 +15,9 @@ public record EndEventPacket(
         String instanceId,
         long durationMillis,
         String subjectId,
-        String bossId,
+        String visualId,
+        String phaseId,
         String controlId) {
-    private static final int MAX_PACKET_BYTES = 8_192;
     private static final int MAX_STRING_LENGTH = 256;
     private static final long MAX_DURATION_MILLIS = 600_000L;
     private static final Set<String> TYPES = Set.of(
@@ -36,7 +38,8 @@ public record EndEventPacket(
         eventId = bounded(eventId, "eventId");
         instanceId = bounded(instanceId, "instanceId");
         subjectId = bounded(subjectId, "subjectId");
-        bossId = bounded(bossId, "bossId");
+        visualId = bounded(visualId, "visualId");
+        phaseId = bounded(phaseId, "phaseId");
         controlId = bounded(controlId, "controlId");
         if (!TYPES.contains(type)) {
             throw new IllegalArgumentException("Unknown End Rift event type: " + type);
@@ -52,45 +55,30 @@ public record EndEventPacket(
         }
     }
 
-    /** The legacy bossId wire slot carries the bounded visual id for mob binds. */
-    public String visualId() {
-        return bossId;
-    }
-
-    /** The legacy bossId wire slot also carries the bounded boss phase/model id. */
-    public String phaseId() {
-        return bossId;
-    }
-
-    public static EndEventPacket parse(byte[] bytes) {
-        if (bytes == null || bytes.length == 0 || bytes.length > MAX_PACKET_BYTES) {
-            throw new IllegalArgumentException("End Rift packet is outside the safe size bound");
+    /**
+     * Maps the fixed shared-bridge fields to the current event semantics.
+     * Bind packets use the payload id as a visual id; phase packets use it as
+     * a phase/animation specification. The distinction is made once here,
+     * at the protocol boundary.
+     */
+    static EndEventPacket fromBridgePayload(String eventType, BridgePayload payload) {
+        if (payload == null) {
+            throw new IllegalArgumentException("End Rift bridge payload is required");
         }
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
-            String magic = input.readUTF();
-            if (!ClientBridgeProtocol.END_EVENT_MAGIC.equals(magic)) {
-                throw new IllegalArgumentException("Not an End Rift event packet");
-            }
-            EndEventPacket packet = readAfterMagic(input);
-            if (input.available() != 0) {
-                throw new IllegalArgumentException("Trailing bytes in End Rift event packet");
-            }
-            return packet;
-        } catch (IOException error) {
-            throw new IllegalArgumentException("Malformed End Rift event packet", error);
-        }
-    }
-
-    static EndEventPacket readAfterMagic(DataInputStream input) throws IOException {
+        String payloadId = !payload.clearPolicy().isBlank()
+                ? payload.clearPolicy() : payload.shaderpack();
+        boolean visual = eventType.endsWith("_BIND");
+        boolean phase = eventType.endsWith("_PHASE") || "END_BOSS_BAR".equals(eventType);
         return new EndEventPacket(
-                input.readUTF(),
-                input.readUTF(),
-                input.readLong(),
-                input.readUTF(),
-                input.readLong(),
-                input.readUTF(),
-                input.readUTF(),
-                input.readUTF());
+                eventType,
+                payload.sessionId(),
+                payload.seq(),
+                payload.clientVersion(),
+                payload.durationMillis(),
+                payload.mode(),
+                visual ? payloadId : "",
+                phase ? payloadId : "",
+                payload.source());
     }
 
     private static String bounded(String value, String field) {

@@ -18,8 +18,11 @@ public final class ShardPassivePolicy {
     }
 
     public static double endermanDamage(double incomingDamage, boolean authenticShard) {
-        if (!authenticShard || !Double.isFinite(incomingDamage) || incomingDamage <= 0.0D) {
-            return Math.max(0.0D, incomingDamage);
+        if (!Double.isFinite(incomingDamage) || incomingDamage <= 0.0D) {
+            return 0.0D;
+        }
+        if (!authenticShard) {
+            return incomingDamage;
         }
         return incomingDamage * ENDERMAN_DAMAGE_MULTIPLIER;
     }

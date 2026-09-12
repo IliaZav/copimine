@@ -35,6 +35,12 @@ public final class TransitionRunePolicyTest {
         check(duplicateRune.reason() == TransitionRunePolicy.Reason.DUPLICATE_RUNE,
                 "duplicate rune reason must be explicit");
 
+        TransitionRunePolicy.Check duplicatePlayer = TransitionRunePolicy.evaluate(roster, List.of(
+                occupied(alpha, "rune-a"), occupied(alpha, "rune-b"), occupied(bravo, "rune-c")));
+        check(!duplicatePlayer.complete(), "one player cannot occupy two runes");
+        check(duplicatePlayer.reason() == TransitionRunePolicy.Reason.DUPLICATE_PLAYER,
+                "duplicate player reason must be explicit");
+
         TransitionRunePolicy.Check dead = TransitionRunePolicy.evaluate(roster, List.of(
                 occupied(alpha, "rune-a"), new TransitionRunePolicy.RuneOccupancy(bravo, "rune-b", true, false, true)));
         check(!dead.complete() && dead.missingPlayers().equals(Set.of(bravo)),

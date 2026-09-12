@@ -17,8 +17,11 @@ public final class TentacleControllerTest {
                 "controller must keep separate permanent and temporary counts");
         check(!controller.register(generation + 1, UUID.randomUUID(), false, 1, 100L),
                 "stale generation must be rejected");
-        check(controller.transition(permanent, TentacleAnimationPolicy.State.GRAB_SUCCESS,
+        check(controller.transition(generation, permanent, TentacleAnimationPolicy.State.GRAB_SUCCESS,
                         110L, null), "state transition must be generation-scoped");
+        check(!controller.transition(generation + 1L, permanent,
+                        TentacleAnimationPolicy.State.THROW, 111L, null),
+                "a stale generation must not mutate an existing tentacle");
         check(controller.state(permanent).state()
                         == TentacleAnimationPolicy.State.GRAB_SUCCESS,
                 "state must be stored for the bound entity");
@@ -36,7 +39,7 @@ public final class TentacleControllerTest {
         check(!controller.markerReached(permanent,
                         TentacleAnimationPolicy.Marker.THROW_RELEASE, 122L),
                 "a marker owned by another state must not fire");
-        check(controller.transition(permanent, TentacleAnimationPolicy.State.THROW,
+        check(controller.transition(generation, permanent, TentacleAnimationPolicy.State.THROW,
                         130L, null), "throw state must be accepted");
         check(!controller.markerReached(permanent,
                         TentacleAnimationPolicy.Marker.THROW_RELEASE, 137L),

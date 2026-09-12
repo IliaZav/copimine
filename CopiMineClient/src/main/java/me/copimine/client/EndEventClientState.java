@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Locale;
+import java.util.UUID;
 
 /** Main-thread-owned client state for the optional End Rift boss/reverse-control visuals. */
 public final class EndEventClientState {
@@ -139,6 +140,18 @@ public final class EndEventClientState {
     }
 
     /**
+     * Server-selected target used only to turn the local visual toward the
+     * current victim.  The server still owns contact, locking and damage.
+     */
+    public synchronized String tentacleTargetForEntity(String uuid) {
+        if (uuid == null || uuid.isBlank()) {
+            return "";
+        }
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        return binding == null ? "" : binding.targetId();
+    }
+
+    /**
      * Resolve a smooth client pose from the server state. The elapsed time is
      * visual-only; server marker timing remains authoritative for gameplay.
      */
@@ -176,7 +189,7 @@ public final class EndEventClientState {
         }
         return new TentacleAnimationSnapshot(binding.instanceId(), binding.animationId(),
                 binding.stateStartServerTick(), binding.startedAtMillis(), binding.durationMillis(),
-                binding.healthState());
+                binding.healthState(), binding.targetId());
     }
 
     public synchronized String bossUuid() {
@@ -211,7 +224,7 @@ public final class EndEventClientState {
                 && !"NONE".equals(bar.castState())) {
             return normalizeAnimation(bar.castState());
         }
-        return "IDLE";
+        return "IDLE_BREATH";
     }
 
     public synchronized String bossCastStateForEntity(String uuid) {
@@ -310,7 +323,7 @@ public final class EndEventClientState {
         }
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
-                packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL"));
+                packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", ""));
         return true;
     }
 
@@ -336,26 +349,29 @@ public final class EndEventClientState {
                 || !Objects.equals(binding.instanceId(), packet.instanceId())) {
             return false;
         }
-        AnimationCue cue = parseAnimationCue(packet.phaseId());
+        boolean tentacleVisual = EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId());
+        AnimationCue cue = parseAnimationCue(packet.phaseId(), tentacleVisual);
         String animation = cue.animationId();
-        if (EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId())
-                && !EndRiftTentacleModel.supportsAnimation(animation)) {
+        if (tentacleVisual && !EndRiftTentacleModel.supportsAnimation(animation)) {
             return false;
         }
         long durationMillis = packet.durationMillis() > 0L
                 ? packet.durationMillis() : EndRiftTentacleAnimator.durationTicks(animation) * 50L;
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
                 packet.instanceId(), animation, cue.stateStartServerTick(), nowMillis,
-                durationMillis, cue.healthState()));
+                durationMillis, cue.healthState(), cue.targetId()));
         return true;
     }
 
-    private static AnimationCue parseAnimationCue(String raw) {
+    private static AnimationCue parseAnimationCue(String raw, boolean tentacleVisual) {
         String value = raw == null ? "" : raw.trim();
         String[] parts = value.split("\\|", -1);
-        String animation = normalizeAnimation(parts.length == 0 ? value : parts[0]);
+        String animation = tentacleVisual
+                ? normalizeTentacleAnimation(parts.length == 0 ? value : parts[0])
+                : normalizeAnimation(parts.length == 0 ? value : parts[0]);
         long stateStartServerTick = -1L;
         String healthState = "FULL";
+        String targetId = "";
         for (int index = 1; index < parts.length; index++) {
             String part = parts[index].trim();
             if (part.startsWith("t=")) {
@@ -369,13 +385,36 @@ public final class EndEventClientState {
                 }
             } else if (part.startsWith("health=")) {
                 healthState = normalizeHealthState(part.substring("health=".length()));
+            } else if (part.startsWith("target=")) {
+                targetId = normalizeTargetId(part.substring("target=".length()));
             }
         }
-        return new AnimationCue(animation, stateStartServerTick, healthState);
+        return new AnimationCue(animation, stateStartServerTick, healthState, targetId);
+    }
+
+    private static String normalizeTentacleAnimation(String animationId) {
+        String normalized = animationId == null ? "" : animationId.trim().toUpperCase(Locale.ROOT);
+        if (EndRiftTentacleModel.supportsAnimation(normalized)) {
+            return normalized;
+        }
+        CopiMineClientLogger.warn("Unknown End Rift tentacle animation in event packet: " + normalized);
+        return "UNKNOWN";
     }
 
     private static long stableSeed(String uuid) {
         return uuid == null ? 0L : uuid.hashCode() * 0x9E3779B97F4A7C15L;
+    }
+
+    private static String normalizeTargetId(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.isBlank()) {
+            return "";
+        }
+        try {
+            return UUID.fromString(normalized).toString();
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
     }
 
     private boolean startControl(EndEventPacket packet, long nowMillis) {
@@ -418,9 +457,15 @@ public final class EndEventClientState {
 
     private static String normalizeAnimation(String animationId) {
         if (animationId == null || animationId.isBlank()) {
-            return "IDLE";
+            return BossAnimationId.IDLE_BREATH.wireId();
         }
-        return animationId.trim().toUpperCase(Locale.ROOT);
+        String raw = animationId.replace('|', '_').trim();
+        BossAnimationId resolved = BossAnimationId.fromWire(raw);
+        if (resolved == BossAnimationId.UNKNOWN
+                && !BossAnimationId.UNKNOWN.wireId().equalsIgnoreCase(raw)) {
+            CopiMineClientLogger.error("Unknown End Rift animation in event packet: " + raw, null);
+        }
+        return resolved.wireId();
     }
 
     private void clearEffects() {
@@ -452,10 +497,9 @@ public final class EndEventClientState {
     }
 
     private static final Set<String> BOSS_PHASES = Set.of(
-            "AWAKENING", "HUNTER", "HUNT", "DISTORTION", "ABSORPTION",
-            "OVERLOAD", "RAGE", "LAST_SEAL", "CATASTROPHE");
+            "AWAKENING", "HUNT", "RIFT", "OVERLOAD", "RAGE", "LAST_SEAL");
     private static final Set<String> BOSS_CAST_STATES = Set.of(
-            "NONE", "ABSORPTION_CHANNEL", "JUDGMENT_CAST", "EXHAUSTED");
+            "NONE", "TELEGRAPHING", "EXECUTING", "RECOVERY");
 
     public record BossBarState(
             String instanceId,
@@ -475,17 +519,17 @@ public final class EndEventClientState {
     private record EntityAnimationBinding(String instanceId, String animationId,
                                           long stateStartServerTick,
                                           long startedAtMillis, long durationMillis,
-                                          String healthState) {
+                                          String healthState, String targetId) {
     }
 
     private record AnimationCue(String animationId, long stateStartServerTick,
-                                String healthState) {
+                                String healthState, String targetId) {
     }
 
     public record TentacleAnimationSnapshot(String instanceId, String animationId,
                                              long stateStartServerTick,
                                              long startedAtMillis, long durationMillis,
-                                             String healthState) {
+                                             String healthState, String targetId) {
     }
 
     private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis) {

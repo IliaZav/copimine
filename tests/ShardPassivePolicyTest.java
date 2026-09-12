@@ -20,6 +20,14 @@ public final class ShardPassivePolicyTest {
                 "authentic shard must halve Enderman damage");
         check(ShardPassivePolicy.endermanDamage(10.0D, false) == 10.0D,
                 "other players must keep normal Enderman damage");
+        check(ShardPassivePolicy.endermanDamage(Double.NaN, true) == 0.0D,
+                "NaN damage must fail closed");
+        check(ShardPassivePolicy.endermanDamage(Double.POSITIVE_INFINITY, true) == 0.0D,
+                "positive infinity damage must fail closed");
+        check(ShardPassivePolicy.endermanDamage(Double.NEGATIVE_INFINITY, false) == 0.0D,
+                "negative infinity damage must fail closed");
+        check(ShardPassivePolicy.endermanDamage(-1.0D, false) == 0.0D,
+                "negative damage must fail closed");
         System.out.println("ShardPassivePolicyTest OK");
     }
 

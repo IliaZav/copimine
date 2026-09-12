@@ -3,15 +3,14 @@ package me.copimine.endevent.domain;
 import java.util.Locale;
 
 /**
- * Pure combat contract for End Rift skeletons.  Bukkit owns the entity and
- * projectile lifecycle; this policy keeps target filtering and the two arrow
- * profiles deterministic and bounded.
+ * Player-only, objective-aware skeleton behavior.  No target decision here
+ * can select another mob, and every movement beat remains bounded to its
+ * current objective's arena/chamber.
  */
 public final class SkeletonCombatPolicy {
     private SkeletonCombatPolicy() {
     }
 
-    /** Skeletons may only acquire a living, event-eligible player target. */
     public static boolean canTargetPlayersOnly(String targetType, boolean combatTarget) {
         return combatTarget && "PLAYER".equalsIgnoreCase(
                 targetType == null ? "" : targetType.trim());
@@ -19,92 +18,86 @@ public final class SkeletonCombatPolicy {
 
     public static ArrowProfile arrowProfile(boolean miniBoss) {
         return miniBoss
-                ? new ArrowProfile(3, WaveDamagePolicy.minimumCombatDamage(8.0D, 4.0D), 70, "rift_salvo")
-                : new ArrowProfile(1, WaveDamagePolicy.minimumCombatDamage(5.0D, 4.0D), 50, "bone_tracer");
+                ? new ArrowProfile(3, 8.0D, 70, "rift_salvo")
+                : new ArrowProfile(1, 5.0D, 50, "bone_tracer");
     }
 
-    public static boolean hasArrowSpell(boolean miniBoss, int wave) {
-        return miniBoss && wave >= 3;
+    public static boolean hasArrowSpell(EndRiftObjective.Objective objective,
+                                        boolean miniBoss) {
+        return miniBoss && objective != null
+                && objective != EndRiftObjective.Objective.RIFT_CARRIERS;
     }
 
-    /**
-     * A live marked player is an immediate tactical override in Hunt (Wave
-     * II).  The controller still validates the Bukkit player before calling
-     * this method, so an offline/dead mark can never become a target.
-     */
-    public static boolean shouldPrioritizeMarkedTarget(int wave,
+    public static boolean shouldPrioritizeMarkedTarget(EndRiftObjective.Objective objective,
                                                        boolean focusMarkedPlayer,
                                                        boolean markedTargetEligible) {
-        return wave == 2 && focusMarkedPlayer && markedTargetEligible;
+        return objective == EndRiftObjective.Objective.RIFT_HUNT
+                && focusMarkedPlayer && markedTargetEligible;
     }
 
-    /** The short movement beat used while a skeleton keeps its firing lane. */
     public enum Maneuver {
         HOLD_LINE,
         SIDE_STEP,
         FALLBACK,
-        CROSS_FIRE
+        CROSS_FIRE,
+        ROTATE_COVER,
+        CHAMBER_STEP
     }
 
-    public static Maneuver maneuverForWave(int wave, boolean miniBoss, int cycle, int slot) {
-        int safeWave = Math.max(1, Math.min(6, wave));
-        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 4);
-        if (safeWave == 4) {
-            return beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.HOLD_LINE;
-        }
-        if (safeWave == 5 || safeWave == 6) {
-            return switch (beat) {
+    public static Maneuver maneuverFor(EndRiftObjective.Objective objective,
+                                       boolean miniBoss, int cycle, int slot) {
+        EndRiftObjective.Objective safeObjective = objective == null
+                ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
+        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 6);
+        return switch (safeObjective) {
+            case RIFT_CARRIERS -> beat % 2 == 0 ? Maneuver.HOLD_LINE : Maneuver.SIDE_STEP;
+            case RIFT_HUNT -> beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.SIDE_STEP;
+            case RIFT_GATES -> beat % 3 == 0 ? Maneuver.ROTATE_COVER : Maneuver.HOLD_LINE;
+            case OBELISK_ASSAULT -> beat % 2 == 0 ? Maneuver.ROTATE_COVER : Maneuver.CROSS_FIRE;
+            case BLACK_FOG -> switch (beat % 3) {
                 case 0 -> Maneuver.SIDE_STEP;
-                case 1 -> Maneuver.CROSS_FIRE;
-                case 2 -> Maneuver.FALLBACK;
-                default -> miniBoss ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
+                case 1 -> Maneuver.FALLBACK;
+                default -> Maneuver.CROSS_FIRE;
             };
-        }
-        if (safeWave == 2) {
-            return beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.SIDE_STEP;
-        }
-        if (safeWave == 3) {
-            return beat == 1 ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
-        }
-        return beat == 2 ? Maneuver.SIDE_STEP : Maneuver.HOLD_LINE;
+            case COLLAPSE_RINGS -> beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
+            case REALITY_SPLIT -> miniBoss ? Maneuver.CHAMBER_STEP : Maneuver.HOLD_LINE;
+        };
     }
 
-    /**
-     * Return the readable battlefield job for a skeleton in one wave.  The
-     * Bukkit controller uses this as a compact, deterministic input for
-     * navigation and logging; it never changes the player-only target rule.
-     */
-    public static WaveBehavior behaviorForWave(int wave, boolean miniBoss) {
-        int safeWave = Math.max(1, Math.min(6, wave));
-        WaveBehavior base = switch (safeWave) {
-            case 1 -> new WaveBehavior("bone_line", 9.0D, 15.0D,
-                    false, false, false, "одна точная стрела по игроку");
-            case 2 -> new WaveBehavior("marked_hunt", 8.0D, 14.0D,
-                    true, false, false, "фокус по отмеченной цели");
-            case 3 -> new WaveBehavior("portal_guard", 8.0D, 13.0D,
-                    false, true, false, "держит линию у портала");
-            case 4 -> new WaveBehavior("tower_artillery", 9.0D, 15.0D,
-                    false, true, false, "прикрывает ядро с дальней позиции");
-            case 5 -> new WaveBehavior("storm_kite", 10.0D, 16.0D,
-                    false, false, true, "обходит опасные клетки и отступает");
-            default -> new WaveBehavior("final_volley", 8.0D, 14.0D,
-                    false, false, true, "закрывает отход залпом");
+    public static WaveBehavior behaviorFor(EndRiftObjective.Objective objective,
+                                           boolean miniBoss) {
+        EndRiftObjective.Objective safeObjective = objective == null
+                ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
+        WaveBehavior base = switch (safeObjective) {
+            case RIFT_CARRIERS -> new WaveBehavior("carrier_screen", 9.0D, 15.0D,
+                    false, true, false, "держит коридор к носителю");
+            case RIFT_HUNT -> new WaveBehavior("marked_pursuit", 8.0D, 14.0D,
+                    true, false, false, "перекрывает отход отмеченной цели");
+            case RIFT_GATES -> new WaveBehavior("gate_line", 8.0D, 13.0D,
+                    false, true, false, "меняет огневую линию у врат");
+            case OBELISK_ASSAULT -> new WaveBehavior("obelisk_cover", 9.0D, 15.0D,
+                    false, true, false, "прикрывает обелиск с дальней позиции");
+            case BLACK_FOG -> new WaveBehavior("fog_scout", 10.0D, 16.0D,
+                    false, false, true, "отступает из чёрного тумана");
+            case COLLAPSE_RINGS -> new WaveBehavior("ring_guard", 9.0D, 15.0D,
+                    false, true, true, "держит разрыв между кольцами");
+            case REALITY_SPLIT -> new WaveBehavior("chamber_fireline", 8.0D, 14.0D,
+                    false, true, true, "не выходит из своей комнаты");
         };
         if (!miniBoss) {
             return base;
         }
-        return new WaveBehavior(base.id(),
-                Math.max(7.0D, base.minimumRange() - 1.0D),
+        return new WaveBehavior(base.id(), Math.max(7.0D, base.minimumRange() - 1.0D),
                 Math.max(base.minimumRange() + 2.0D, base.maximumRange() - 1.0D),
                 base.focusMarkedPlayer(), base.guardsObjective(), base.hazardAware(),
-                "тройной залп Разлома; " + base.tactic());
+                "командный тройной залп; " + base.tactic());
     }
 
     public record WaveBehavior(String id, double minimumRange, double maximumRange,
                                boolean focusMarkedPlayer, boolean guardsObjective,
                                boolean hazardAware, String tactic) {
         public WaveBehavior {
-            id = id == null || id.isBlank() ? "bone_line" : id.trim().toLowerCase(Locale.ROOT);
+            id = id == null || id.isBlank() ? "fireline" : id.trim().toLowerCase(Locale.ROOT);
             minimumRange = finite(minimumRange) ? Math.max(5.0D, minimumRange) : 8.0D;
             maximumRange = finite(maximumRange)
                     ? Math.max(minimumRange + 1.0D, maximumRange) : minimumRange + 4.0D;
@@ -127,6 +120,6 @@ public final class SkeletonCombatPolicy {
     }
 
     private static boolean finite(double value) {
-        return !Double.isNaN(value) && !Double.isInfinite(value);
+        return Double.isFinite(value);
     }
 }

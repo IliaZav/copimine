@@ -161,14 +161,14 @@ def test_election_and_background_workers_are_bounded_and_shutdown_gracefully():
 def test_current_brewing_consumes_the_submitted_ingredient_and_uses_world_output():
     assert "prepareBrewingCompletionIntent" not in NARCOTICS
     assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
-    assert "dropItemNaturally" in NARCOTICS
+    assert "dropCompletedBrewingOutput" in NARCOTICS
 
 
 def test_current_brewing_persists_the_pending_prefix_before_completion():
     queue = NARCOTICS[NARCOTICS.index("private boolean queueIngredients"):NARCOTICS.index("private void clearState")]
-    assert "saveBrewingState(key, version, frozen)" in queue
+    assert "saveBrewingState(key, version, frozen, ownerUuid)" in queue
     assert "itemFactory.consumeOne(player, stack)" in NARCOTICS
-    assert "dropItemNaturally" in NARCOTICS
+    assert "dropCompletedBrewingOutput" in NARCOTICS
 
 
 def test_brewing_is_order_agnostic_and_shared_between_players():
@@ -352,5 +352,6 @@ def test_brewing_completion_retries_until_the_durable_tombstone_is_resolved():
     assert "database.brewingCompletionResolved" not in NARCOTICS
     assert "scheduleBrewingCompletionRetry" not in NARCOTICS
     finish = NARCOTICS[NARCOTICS.index("private void finishBrewing"):NARCOTICS.index("private void simulateWrongMixExplosion")]
-    assert "dropItemNaturally" in finish
+    assert "completeBrewingState(key, version, ownerUuid, definition.id())" in finish
+    assert "dropCompletedBrewingOutput(dropLocation, definition, outputId)" in finish
     assert "clearState(block, key, version)" in finish

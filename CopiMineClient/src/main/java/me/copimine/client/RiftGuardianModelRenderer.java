@@ -8,7 +8,7 @@ public final class RiftGuardianModelRenderer {
     private final RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis) {
-        return modelForPhase(phaseId, transitionDurationMillis, "IDLE");
+        return modelForPhase(phaseId, transitionDurationMillis, "IDLE_BREATH");
     }
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis, String animationId) {
@@ -18,13 +18,13 @@ public final class RiftGuardianModelRenderer {
     }
 
     public Identifier textureForPhase(String phaseId) {
-        return textureForState(phaseId, "IDLE");
+        return textureForState(phaseId, "IDLE_BREATH");
     }
 
     public Identifier textureForState(String phaseId, String animationId) {
         String animation = normalizeAnimationId(animationId);
-        if ("FINAL_STRIKE".equals(animation) || "FINISHING_BLOW".equals(animation)) {
-            return texture("rift_guardian_final_strike");
+        if ("FINAL_STRIKE".equals(animation)) {
+            return texture("rift_guardian_final_strike.png");
         }
         return Phase.fromWireId(phaseId).texture();
     }
@@ -33,52 +33,27 @@ public final class RiftGuardianModelRenderer {
         return Identifier.of("copimineclient", "textures/entity/" + name);
     }
 
-    private static String normalizeAnimationId(String animationId) {
+    static String normalizeAnimationId(String animationId) {
         if (animationId == null || animationId.isBlank()) {
-            return "IDLE";
+            return BossAnimationId.IDLE_BREATH.wireId();
         }
-        String normalized = animationId.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "IDLE",
-                    "IDLE_BREATH",
-                    "DAMAGED_FLINCH",
-                    "TELEPORT_RIP",
-                    "CAST_CHARGE",
-                    "CAST_RELEASE",
-                    "CAST_IMPACT",
-                    "PHASE_SHIFT",
-                    "FINAL_AWAKENING",
-                    "DEFEAT_COLLAPSE",
-                    "FINAL_STRIKE",
-                    "FINISHING_BLOW",
-                    "ABSORPTION_CHANNEL",
-                    "JUDGMENT_CAST",
-                    "EXHAUSTED",
-                    "SPELL_VOID_BLAST",
-                    "SPELL_RIFT_PROJECTILE",
-                    "SPELL_RIFT_ARROWS",
-                    "SPELL_ARROW_SALVO",
-                    "SPELL_VOID_MARK",
-                    "SPELL_SUMMON_SERVANTS",
-                    "SPELL_SUMMON",
-                    "SPELL_WILL_DISTORTION",
-                    "SPELL_ARENA_INFERNO",
-                    "FINAL_PHASE",
-                    "SPELL_IMPACT" -> normalized;
-            default -> "IDLE";
-        };
+        String raw = animationId.replace('|', '_').trim();
+        BossAnimationId resolved = BossAnimationId.fromWire(raw);
+        if (resolved == BossAnimationId.UNKNOWN
+                && !BossAnimationId.UNKNOWN.wireId().equalsIgnoreCase(raw)) {
+            CopiMineClientLogger.error("Unknown End Rift boss animation: " + raw
+                    + "; keeping an explicit UNKNOWN pose", null);
+        }
+        return resolved.wireId();
     }
 
     public enum Phase {
         AWAKENING("rift_guardian_awakening.png"),
-        HUNTER("rift_guardian_hunter.png"),
-        HUNT("rift_guardian_hunter.png"),
-        DISTORTION("rift_guardian_distortion.png"),
-        ABSORPTION("rift_guardian_absorption.png"),
-        OVERLOAD("rift_guardian_absorption.png"),
-        RAGE("rift_guardian_catastrophe.png"),
-        LAST_SEAL("rift_guardian_catastrophe.png"),
-        CATASTROPHE("rift_guardian_catastrophe.png");
+        HUNT("rift_guardian_hunt.png"),
+        RIFT("rift_guardian_rift.png"),
+        OVERLOAD("rift_guardian_overload.png"),
+        RAGE("rift_guardian_rage.png"),
+        LAST_SEAL("rift_guardian_last_seal.png");
 
         private final Identifier texture;
 

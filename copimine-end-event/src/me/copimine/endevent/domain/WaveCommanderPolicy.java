@@ -1,23 +1,31 @@
 package me.copimine.endevent.domain;
 
-/** Small, bounded commander policy shared by the wave controller and tests. */
+/** Small, bounded commander policy shared by the objective controller and tests. */
 public final class WaveCommanderPolicy {
-    public static final int FIRST_DIFFICULT_WAVE = 3;
-    public static final int LAST_DIFFICULT_WAVE = 6;
     public static final double AURA_RADIUS_BLOCKS = 10.0D;
     public static final int AURA_DURATION_TICKS = 40;
     public static final int AURA_AMPLIFIER = 0; // Strength I.
-    public static final int MAX_LIVE_MOBS = 56;
 
     private WaveCommanderPolicy() {
     }
 
-    public static boolean isDifficultWave(int wave) {
-        return wave >= FIRST_DIFFICULT_WAVE && wave <= LAST_DIFFICULT_WAVE;
+    /** Current objectives that can carry one commander aura. */
+    public static boolean supportsCommander(EndRiftObjective.Objective objective) {
+        return objective == EndRiftObjective.Objective.RIFT_GATES
+                || objective == EndRiftObjective.Objective.OBELISK_ASSAULT
+                || objective == EndRiftObjective.Objective.BLACK_FOG
+                || objective == EndRiftObjective.Objective.COLLAPSE_RINGS
+                || objective == EndRiftObjective.Objective.REALITY_SPLIT;
     }
 
-    public static boolean shouldAssign(int wave, boolean elite, boolean alreadyAssigned) {
-        return isDifficultWave(wave) && elite && !alreadyAssigned;
+    /** Descriptive compatibility for code that asks whether an objective is difficult. */
+    public static boolean isDifficultObjective(EndRiftObjective.Objective objective) {
+        return supportsCommander(objective);
+    }
+
+    public static boolean shouldAssign(EndRiftObjective.Objective objective,
+                                       boolean elite, boolean alreadyAssigned) {
+        return supportsCommander(objective) && elite && !alreadyAssigned;
     }
 
     public static String displayName(String baseName) {

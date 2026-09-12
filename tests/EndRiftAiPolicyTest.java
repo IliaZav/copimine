@@ -1,10 +1,12 @@
 import java.util.List;
 import java.util.UUID;
+import me.copimine.endevent.domain.BossPhase;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
+import me.copimine.endevent.domain.EndRiftObjective;
 
 public final class EndRiftAiPolicyTest {
     public static void main(String[] args) {
-        testBossPhaseBoundaries();
+        testCanonicalBossPhaseBoundaries();
         testFairTargetRotationAvoidsRecentTargets();
         testWaveTargetMemoryIsBoundedAndNewestFirst();
         testBossSpellRotationAvoidsImmediateRepeat();
@@ -14,16 +16,15 @@ public final class EndRiftAiPolicyTest {
         System.out.println("EndRiftAiPolicyTest OK");
     }
 
-    private static void testBossPhaseBoundaries() {
-        check(EndRiftAiPolicy.bossPhase(2500.0D, 2500.0D, 1250.0D, 250.0D, false, false)
-                        == EndRiftAiPolicy.BossPhase.NORMAL,
-                "full-health boss must start in normal phase");
-        check(EndRiftAiPolicy.bossPhase(1250.0D, 2500.0D, 1250.0D, 250.0D, false, false)
-                        == EndRiftAiPolicy.BossPhase.HALF,
-                "boss must enter half phase at exactly 50 percent");
-        check(EndRiftAiPolicy.bossPhase(250.0D, 2500.0D, 1250.0D, 250.0D, true, false)
-                        == EndRiftAiPolicy.BossPhase.FINAL,
-                "boss must enter final phase at exactly 10 percent");
+    private static void testCanonicalBossPhaseBoundaries() {
+        check(BossPhase.forHealth(2500.0D, 2500.0D) == BossPhase.AWAKENING,
+                "full-health boss must start in awakening");
+        check(BossPhase.forHealth(2000.0D, 2500.0D) == BossPhase.HUNT,
+                "boss must enter hunt below 80 percent");
+        check(BossPhase.forHealth(1500.0D, 2500.0D) == BossPhase.RIFT,
+                "boss must enter rift below 60 percent");
+        check(BossPhase.forHealth(500.0D, 2500.0D) == BossPhase.LAST_SEAL,
+                "boss must enter last seal at 20 percent");
     }
 
     private static void testFairTargetRotationAvoidsRecentTargets() {
@@ -38,11 +39,15 @@ public final class EndRiftAiPolicyTest {
 
     private static void testBossSpellRotationAvoidsImmediateRepeat() {
         EndRiftAiPolicy.BossSpell first = EndRiftAiPolicy.chooseBossSpell(
-                List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST, EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), null, 0);
+                List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST,
+                        EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), null, 0);
         EndRiftAiPolicy.BossSpell second = EndRiftAiPolicy.chooseBossSpell(
-                List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST, EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), first, 0);
-        check(first == EndRiftAiPolicy.BossSpell.VOID_BLAST, "spell rotation must be deterministic for the first cast");
-        check(second == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE, "boss must not immediately repeat a spell");
+                List.of(EndRiftAiPolicy.BossSpell.VOID_BLAST,
+                        EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE), first, 0);
+        check(first == EndRiftAiPolicy.BossSpell.VOID_BLAST,
+                "spell rotation must be deterministic for the first cast");
+        check(second == EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
+                "boss must not immediately repeat a spell");
     }
 
     private static void testWaveTargetMemoryIsBoundedAndNewestFirst() {
@@ -69,8 +74,6 @@ public final class EndRiftAiPolicyTest {
             "Клеймо Пустоты",
             "Шквал Стрел Разлома",
             "Призыв слуг Разлома",
-            "Искажение воли",
-            "Обелиски Разлома",
             "Пламя Разлома",
             "Приговор Разлома"
         };
@@ -86,12 +89,17 @@ public final class EndRiftAiPolicyTest {
 
     private static void testEveryEliteHasExactlyOneDeterministicSpell() {
         for (int index = 0; index < 12; index++) {
-            EndRiftAiPolicy.MiniBossSpell spell = EndRiftAiPolicy.miniBossSpell(3, index);
+            EndRiftAiPolicy.MiniBossSpell spell = EndRiftAiPolicy.miniBossSpell(
+                    EndRiftObjective.Objective.OBELISK_ASSAULT, index);
             check(spell != null && !spell.id().isBlank(), "every elite must have one named spell");
-            check(EndRiftAiPolicy.miniBossSpell(3, index) == spell,
+            check(EndRiftAiPolicy.miniBossSpell(
+                    EndRiftObjective.Objective.OBELISK_ASSAULT, index) == spell,
                     "the same elite slot must keep the same spell after a rebuild");
         }
-        check(EndRiftAiPolicy.miniBossSpell(3, 0) != EndRiftAiPolicy.miniBossSpell(3, 1),
+        check(EndRiftAiPolicy.miniBossSpell(
+                        EndRiftObjective.Objective.OBELISK_ASSAULT, 0)
+                        != EndRiftAiPolicy.miniBossSpell(
+                                EndRiftObjective.Objective.OBELISK_ASSAULT, 1),
                 "adjacent elite mini-bosses must not all share one spell");
     }
 
@@ -113,8 +121,6 @@ public final class EndRiftAiPolicyTest {
     }
 
     private static void check(boolean condition, String message) {
-        if (!condition) {
-            throw new AssertionError(message);
-        }
+        if (!condition) throw new AssertionError(message);
     }
 }

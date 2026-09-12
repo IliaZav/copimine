@@ -1,51 +1,46 @@
-import me.copimine.endevent.domain.BossCastState;
+import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossDamagePolicy;
-import me.copimine.endevent.domain.BossStage;
+import me.copimine.endevent.domain.BossPhase;
+import me.copimine.endevent.domain.BossPhasePolicy;
+import me.copimine.endevent.domain.BossRealHealthDamagePolicy;
+
+import java.util.List;
 
 public final class BossDamagePolicyTest {
     public static void main(String[] args) {
-        testDamageIsAllowedNormallyAndAfterExpiredCast();
-        testOnlyActiveBoundedCastBlocksDamage();
-        testExhaustedWindowAmplifiesIncomingDamage();
-        testExhaustedMultiplierIsAppliedExactlyOnce();
+        check(BossDamagePolicy.damageAllowed(BossPhase.AWAKENING,
+                        BossPhasePolicy.DamageImmunityReason.NONE),
+                "normal boss damage must be allowed");
+        check(BossDamagePolicy.damageAllowed(BossPhase.RIFT,
+                        BossPhasePolicy.DamageImmunityReason.NONE),
+                "an ordinary cast phase must not make the boss immune");
+        check(!BossDamagePolicy.damageAllowed(BossPhase.LAST_SEAL,
+                        BossPhasePolicy.DamageImmunityReason.LAST_SEAL_GUARDIANS),
+                "Last Seal guardian shield must reject damage explicitly");
+        check(!BossDamagePolicy.damageAllowed(BossPhase.AWAKENING,
+                        BossPhasePolicy.DamageImmunityReason.BOSS_CINEMATIC),
+                "cinematic must reject damage explicitly");
+        check(BossDamagePolicy.damageAllowed(BossPhase.OVERLOAD,
+                        BossPhasePolicy.DamageImmunityReason.NONE),
+                "ordinary ability timeline state must not reject a valid hit");
+        check(BossDamagePolicy.applyIncomingDamage(10.0D) == 10.0D,
+                "normal damage must not be multiplied");
+        check(BossDamagePolicy.applyIncomingDamage(Double.NaN) == 0.0D,
+                "non-finite damage must fail closed");
+
+        var hits = BossRealHealthDamagePolicy.applyHits(5_000.0D,
+                List.of(10.0D, 14.0D, 8.0D), 5_000.0D);
+        check(hits.remainingHealth() == 4_968.0D,
+                "three same-tick players must compose on real health");
+        var fivePlayer = BossRealHealthDamagePolicy.applyHits(5_000.0D,
+                List.of(10.0D, 14.0D, 8.0D, 6.0D, 12.0D), 5_000.0D);
+        check(fivePlayer.remainingHealth() == 4_950.0D,
+                "five independent player hits must not lose an update");
+        check(BossAbilityState.NONE != null, "canonical ability state is present");
         System.out.println("BossDamagePolicyTest OK");
     }
 
-    private static void testDamageIsAllowedNormallyAndAfterExpiredCast() {
-        check(BossDamagePolicy.damageAllowed(BossStage.AWAKENING, BossCastState.NONE, 100L, 0L),
-                "normal boss must take damage");
-        check(BossDamagePolicy.damageAllowed(BossStage.ABSORPTION, BossCastState.ABSORPTION_CHANNEL, 5001L, 5000L),
-                "expired absorption must take damage");
-        check(BossDamagePolicy.damageAllowed(BossStage.CATASTROPHE, BossCastState.JUDGMENT_CAST, 10000L, 0L),
-                "cast with no deadline must fail open to damage");
-    }
-
-    private static void testOnlyActiveBoundedCastBlocksDamage() {
-        check(!BossDamagePolicy.damageAllowed(BossStage.ABSORPTION, BossCastState.ABSORPTION_CHANNEL, 4999L, 5000L),
-                "active absorption channel must be invulnerable");
-        check(!BossDamagePolicy.damageAllowed(BossStage.CATASTROPHE, BossCastState.JUDGMENT_CAST, 1999L, 2000L),
-                "active Judgment cast must be invulnerable");
-    }
-
-    private static void testExhaustedWindowAmplifiesIncomingDamage() {
-        check(BossDamagePolicy.incomingDamageMultiplier(BossCastState.EXHAUSTED) == 1.5D,
-                "exhausted boss must take 50 percent more damage");
-        check(BossDamagePolicy.damageAllowed(BossStage.CATASTROPHE, BossCastState.EXHAUSTED, 1L, 999999L),
-                "exhausted boss must remain damageable");
-    }
-
-    private static void testExhaustedMultiplierIsAppliedExactlyOnce() {
-        check(BossDamagePolicy.applyIncomingDamage(10.0D, BossCastState.EXHAUSTED) == 15.0D,
-                "exhausted multiplier must be applied once to the incoming damage");
-        check(BossDamagePolicy.applyIncomingDamage(10.0D, BossCastState.NONE) == 10.0D,
-                "normal damage must not be changed by the cast policy");
-        check(BossDamagePolicy.applyIncomingDamage(Double.NaN, BossCastState.EXHAUSTED) == 0.0D,
-                "non-finite incoming damage must fail closed");
-    }
-
     private static void check(boolean condition, String message) {
-        if (!condition) {
-            throw new AssertionError(message);
-        }
+        if (!condition) throw new AssertionError(message);
     }
 }

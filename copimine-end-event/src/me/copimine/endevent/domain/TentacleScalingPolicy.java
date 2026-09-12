@@ -1,6 +1,6 @@
 package me.copimine.endevent.domain;
 
-/** Bounded tentacle pressure for the six V2 boss stages. */
+/** Bounded tentacle pressure for the six boss phases. */
 public final class TentacleScalingPolicy {
     public static final int MAX_PERMANENT = 8;
     public static final int MAX_TEMPORARY = 6;
@@ -8,7 +8,7 @@ public final class TentacleScalingPolicy {
     private TentacleScalingPolicy() {
     }
 
-    public static int permanentFor(int players, V2BossStage stage) {
+    public static int permanentFor(int players, BossPhase stage) {
         int safePlayers = Math.max(0, Math.min(20, players));
         if (safePlayers == 0 || stage == null) {
             return 0;
@@ -21,13 +21,13 @@ public final class TentacleScalingPolicy {
                 : 8;
         // Guardian tentacles are a final-seal mechanic. Earlier stages may
         // use bounded temporary grab visuals, but never permanent guardians.
-        return stage == V2BossStage.LAST_SEAL ? Math.min(partyTarget, MAX_PERMANENT) : 0;
+        return stage == BossPhase.LAST_SEAL ? Math.min(partyTarget, MAX_PERMANENT) : 0;
     }
 
-    public static int temporaryFor(int players, V2BossStage stage) {
+    public static int temporaryFor(int players, BossPhase stage) {
         int safePlayers = Math.max(0, Math.min(20, players));
         if (safePlayers == 0 || stage == null
-                || (stage != V2BossStage.RAGE && stage != V2BossStage.LAST_SEAL)) {
+                || (stage != BossPhase.RAGE && stage != BossPhase.LAST_SEAL)) {
             return 0;
         }
         int slots = safePlayers <= 4 ? 2

@@ -38,16 +38,17 @@ public final class BossDefeatCinematicPolicy {
 
     /**
      * A process restart cannot resume the scheduler that was showing the
-     * player finisher.  The durable BOSS_FINISH + zero virtual HP boundary is
-     * therefore finalized immediately, while a positive pool remains a normal
-     * damageable boss and an already committed victory stays idempotent.
+     * player finisher. The durable BOSS_FINISH + zero real entity-health
+     * boundary is therefore finalized immediately, while a positive health
+     * value remains a normal damageable boss and a committed victory stays
+     * idempotent.
      */
     public static boolean shouldFinalizeAfterRestart(boolean bossFinishPhase,
                                                      boolean officialDeathCommitted,
                                                      boolean bossAlive,
-                                                     double virtualHealth) {
+                                                     double bossHealth) {
         return bossFinishPhase && !officialDeathCommitted && bossAlive
-                && Double.isFinite(virtualHealth) && virtualHealth <= 0.0D;
+                && Double.isFinite(bossHealth) && bossHealth <= 0.0D;
     }
 
     public enum Phase {

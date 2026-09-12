@@ -72,7 +72,7 @@ def test_local_session_uses_the_same_peer_tunnel_network_profile_for_radmin_and_
     assert "function Normalize-LocalPeerTunnelNetworkProperties" in text
     assert "Normalize-LocalPeerTunnelNetworkProperties\n" in text
     assert "Local peer-tunnel join property mismatch" in text
-    assert "Enabled Purpur alternate keep-alive and unclamped attributes for the local V2 test server." in text
+    assert "Enabled Purpur alternate keep-alive and unclamped attributes for the local End Rift V3 test server." in text
 
 
 def test_local_session_syncs_current_plugins_and_serves_verified_pack() -> None:
@@ -253,6 +253,17 @@ def test_local_runner_grants_op_only_to_whitelisted_accounts_present_in_local_au
         assert marker in grant_function
     assert "-c $queryScript" not in grant_function
     assert text.rindex("Grant-LocalWhitelistOperators") > text.index("Start-LocalPaper\n")
+
+
+def test_local_runner_allows_only_a_verified_resource_pack_digest_drift() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+    guard = text[text.index("function Test-AllowedResourcePackDigestDrift"):text.index("function New-LocalSecret")]
+
+    assert "Test-AllowedResourcePackDigestDrift" in guard
+    assert "resource-pack-sha1=" in guard
+    assert "Get-FileSha1 -Path $pack" in guard
+    assert "git -C $worktreeRoot show" in guard
+    assert "production server.properties" in guard
 
 
 def test_local_session_normalizes_paper_resource_pack_prompt_growth() -> None:

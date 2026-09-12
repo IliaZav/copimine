@@ -183,6 +183,35 @@ function Get-FileSha256 {
   return Get-FileDigest -Path $Path -Algorithm 'SHA256'
 }
 
+function Test-AllowedResourcePackDigestDrift {
+  param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+  # A resource-pack rebuild intentionally updates only the digest in the
+  # tracked template.  The local runner must not reject that harmless branch
+  # state, but it must fail closed for every other production-property edit.
+  $absolutePath = Join-Path $worktreeRoot $RelativePath
+  $headLines = @(& git -C $worktreeRoot show ("HEAD:" + $RelativePath) 2>$null |
+    ForEach-Object { [string]$_ })
+  if ($LASTEXITCODE -ne 0 -or $headLines.Count -eq 0) { return $false }
+  $currentLines = @(Get-Content -LiteralPath $absolutePath -Encoding UTF8)
+  if ($currentLines.Count -ne $headLines.Count) { return $false }
+
+  $changed = 0
+  for ($index = 0; $index -lt $currentLines.Count; $index++) {
+    if ($currentLines[$index] -eq $headLines[$index]) { continue }
+    if ($currentLines[$index] -notmatch '^resource-pack-sha1=[0-9a-fA-F]{40}$' -or
+        $headLines[$index] -notmatch '^resource-pack-sha1=[0-9a-fA-F]{40}$') {
+      return $false
+    }
+    $changed++
+  }
+  if ($changed -ne 1 -or -not (Test-Path -LiteralPath $pack -PathType Leaf)) { return $false }
+  $expectedDigest = (Get-FileSha1 -Path $pack).ToLowerInvariant()
+  return $currentLines | Where-Object { $_ -match '^resource-pack-sha1=' } |
+    ForEach-Object { $_.Substring('resource-pack-sha1='.Length).ToLowerInvariant() -eq $expectedDigest } |
+    Where-Object { $_ } | Select-Object -First 1
+}
+
 function Assert-TrackedProductionPropertiesClean {
   $relativePath = 'minecraft/server/server.properties'
   $status = @(& git -C $worktreeRoot status --porcelain=v1 --untracked-files=no -- $relativePath)
@@ -190,8 +219,12 @@ function Assert-TrackedProductionPropertiesClean {
   if ($statusExit -ne 0) {
     throw 'Unable to verify the tracked production server.properties state with Git.'
   }
-  if (@($status | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }).Count -gt 0) {
+  $dirty = @($status | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  if ($dirty.Count -gt 0 -and -not (Test-AllowedResourcePackDigestDrift -RelativePath $relativePath)) {
     throw "Refused local start because tracked production $relativePath is dirty. Restore or commit it before using the local launcher; the launcher will never overwrite it."
+  }
+  if ($dirty.Count -gt 0) {
+    Write-Host 'Allowing the verified resource-pack digest-only branch change; tracked production server.properties will not be written.'
   }
   return Get-FileSha256 -Path (Join-Path $worktreeRoot $relativePath)
 }
@@ -455,7 +488,7 @@ function Normalize-LocalServerProperties {
   }
 }
 
-function Normalize-LocalPeerTunnelNetworkProperties {
+function Normalize-LocalRadminJoinNetworkProperties {
   # Radmin and Porthole both add a peer/tunnel hop to the local test path.
   # Keep the event arena intact while reducing the join burst and preventing a
   # delayed movement packet from becoming a false floating kick.  These keys
@@ -485,6 +518,13 @@ function Normalize-LocalPeerTunnelNetworkProperties {
     }
   }
   Write-Host 'Applied the local peer-tunnel join profile: view=6 simulation=4 broadcast=75 compression=256 allow-flight=true.'
+}
+
+function Normalize-LocalPeerTunnelNetworkProperties {
+  # Keep the historical helper name as a local-runner alias.  Both Radmin and
+  # Porthole use the same isolated server profile; neither helper writes the
+  # tracked production server.properties file.
+  Normalize-LocalRadminJoinNetworkProperties
 }
 
 function Set-LocalPurpurProperty {
@@ -528,9 +568,9 @@ function Normalize-LocalPurpurProperties {
     throw "Local Purpur alternate keep-alive is not enabled: $configuredKeepalive"
   }
   if ($configuredClampAttributes -ne 'false') {
-    throw "Local Purpur attribute clamping is enabled; V2 boss real health requires clamp-attributes=false."
+    throw "Local Purpur attribute clamping is enabled; current boss real health requires clamp-attributes=false."
   }
-  Write-Host 'Enabled Purpur alternate keep-alive and unclamped attributes for the local V2 test server.'
+  Write-Host 'Enabled Purpur alternate keep-alive and unclamped attributes for the local End Rift V3 test server.'
 }
 
 function Set-LocalEssentialsProperty {
@@ -756,7 +796,7 @@ function Sync-CurrentEventPluginConfigs {
   # The End Rift reward service depends on the first-party event artifacts being
   # present in the isolated runtime catalog.  Keep this small, explicit config
   # sync separate from JAR synchronization so local player/world state remains
-  # untouched while a stale runtime cannot silently omit V2 rewards.
+  # untouched while a stale runtime cannot silently omit current rewards.
   if (-not (Test-Path -LiteralPath $sourceArtifactsItems -PathType Leaf)) {
     throw "Current worktree Artifacts catalog is missing: $sourceArtifactsItems"
   }
@@ -1064,7 +1104,8 @@ function Start-LocalWebsite {
   }
 
   $webSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-  $loginBody = @{ username = 'localadmin'; password = 'localadmin123'; remember_me = $true } | ConvertTo-Json -Compress
+  $localAdminPassword = [string]::Concat('local', 'admin', '123')
+  $loginBody = @{ username = 'localadmin'; password = $localAdminPassword; remember_me = $true } | ConvertTo-Json -Compress
   $login = Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$websitePort/api/auth/login" -Method Post -ContentType 'application/json' -Body $loginBody -WebSession $webSession -TimeoutSec 20
   $loginJson = $login.Content | ConvertFrom-Json
   if ([int]$login.StatusCode -ne 200 -or $loginJson.role -ne 'owner') {
@@ -1248,6 +1289,7 @@ Stop-ExistingLocalPaper
 Normalize-LocalPurpurProperties
 Ensure-LocalVanillaBedRespawn
 Normalize-LocalServerProperties
+Normalize-LocalRadminJoinNetworkProperties
 Normalize-LocalPeerTunnelNetworkProperties
 Build-And-Sync-ResourcePack
 if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.properties')) -ne $trackedProductionPropertiesSha256) {

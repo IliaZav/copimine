@@ -25,19 +25,19 @@ class EndEventClientStateTest {
         assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
                 "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
         assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
-                "boss-bind", 1_000L, "boss-uuid", "DISTORTION|JUDGMENT_CAST", "control-id"),
+                "boss-bind", 1_000L, "boss-uuid", "RIFT|EXECUTING", "control-id"),
                 0.736F, 1_840, 2_500, 200L));
 
         EndEventClientState.BossBarState bar = state.bossBar();
         assertTrue(state.hasActiveBossBar());
-        assertEquals("DISTORTION", bar.phaseId());
-        assertEquals("JUDGMENT_CAST", bar.castState());
+        assertEquals("RIFT", bar.phaseId());
+        assertEquals("EXECUTING", bar.castState());
         assertEquals(1_840, bar.health());
         assertEquals(2_500, bar.maxHealth());
         assertEquals(0.736F, bar.progress(), 0.0001F);
 
         assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
-                "other-binding", 1_000L, "other-boss", "CATASTROPHE|NONE", "control-id"),
+                "other-binding", 1_000L, "other-boss", "LAST_SEAL|NONE", "control-id"),
                 1.0F, 2_500, 2_500, 300L));
         assertTrue(state.hasActiveBossBar());
     }
@@ -49,20 +49,20 @@ class EndEventClientStateTest {
                 "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
 
         assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
-                "boss-bind", 1_200L, "boss-uuid", "CATASTROPHE|SPELL_VOID_BLAST", "control-id"), 110L));
-        assertEquals("CATASTROPHE", state.bossPhaseForEntity("boss-uuid"));
+                "boss-bind", 1_200L, "boss-uuid", "LAST_SEAL|SPELL_VOID_BLAST", "control-id"), 110L));
+        assertEquals("LAST_SEAL", state.bossPhaseForEntity("boss-uuid"));
         assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"));
 
         assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
-                "boss-bind", 1_000L, "boss-uuid", "CATASTROPHE|JUDGMENT_CAST", "control-id"),
+                "boss-bind", 1_000L, "boss-uuid", "LAST_SEAL|EXECUTING", "control-id"),
                 0.5F, 1_250, 2_500, 120L));
         assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"),
                 "a spell cue must not be replaced by a periodic bar snapshot");
 
         assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
-                "boss-bind", 1_200L, "boss-uuid", "CATASTROPHE|IDLE", "control-id"), 130L));
-        assertEquals("IDLE", state.bossAnimationForEntity("boss-uuid"));
-        assertEquals("JUDGMENT_CAST", state.bossCastStateForEntity("boss-uuid"));
+                "boss-bind", 1_200L, "boss-uuid", "LAST_SEAL|IDLE_BREATH", "control-id"), 130L));
+        assertEquals("IDLE_BREATH", state.bossAnimationForEntity("boss-uuid"));
+        assertEquals("EXECUTING", state.bossCastStateForEntity("boss-uuid"));
     }
 
     @Test
@@ -74,7 +74,7 @@ class EndEventClientStateTest {
                 "boss-bind", 1_000L, "boss-uuid", "AWAKENING|NONE", "control-id"),
                 1.0F, 2_500, 2_500, 110L));
         assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
-                "boss-bind", 1_000L, "boss-uuid", "CATASTROPHE|NONE", "control-id"),
+                "boss-bind", 1_000L, "boss-uuid", "LAST_SEAL|NONE", "control-id"),
                 0.1F, 250, 2_500, 120L));
         assertEquals("AWAKENING", state.bossBar().phaseId());
     }
@@ -146,10 +146,10 @@ class EndEventClientStateTest {
         assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SPIDER_V1"));
 
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-2", 0L,
-                "mob-uuid", "END_RIFT_SHULKER_V1", "control-id"), 200L));
+                "mob-uuid", "END_RIFT_SKELETON_V1", "control-id"), 200L));
         assertFalse(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-1", 0L,
                 "mob-uuid", "", "control-id"), 300L));
-        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SHULKER_V1"));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SKELETON_V1"));
         assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-2", 0L,
                 "mob-uuid", "", "control-id"), 400L));
         assertTrue(state.visualForEntity("mob-uuid").isBlank());
@@ -160,10 +160,12 @@ class EndEventClientStateTest {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
                 "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 100L));
+        String target = "123e4567-e89b-12d3-a456-426614174000";
         assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 700L,
-                "tentacle-uuid", "GRAB_SUCCESS|t=44|health=DAMAGED", "control-id"), 110L));
+                "tentacle-uuid", "GRAB_SUCCESS|t=44|health=DAMAGED|target=" + target, "control-id"), 110L));
         assertEquals("GRAB_SUCCESS", state.entityAnimationForEntity("tentacle-uuid"));
         assertEquals("DAMAGED", state.tentacleHealthStateForEntity("tentacle-uuid"));
+        assertEquals(target, state.tentacleTargetForEntity("tentacle-uuid"));
         assertTrue(state.tentaclePoseForEntity("tentacle-uuid", 7L).isFinite());
         EndEventClientState.TentacleAnimationSnapshot snapshot =
                 state.tentacleAnimationSnapshot("tentacle-uuid");
@@ -171,17 +173,22 @@ class EndEventClientStateTest {
         assertEquals(110L, snapshot.startedAtMillis());
         assertEquals(700L, snapshot.durationMillis());
         assertEquals("DAMAGED", snapshot.healthState());
+        assertEquals(target, snapshot.targetId());
         assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
                 "tentacle-uuid", "HOLD|health=CRITICAL", "control-id"), 120L));
         assertEquals("HOLD", state.entityAnimationForEntity("tentacle-uuid"));
         assertEquals("CRITICAL", state.tentacleHealthStateForEntity("tentacle-uuid"));
+        assertEquals("", state.tentacleTargetForEntity("tentacle-uuid"));
         assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "tentacle-1", 0L,
                 "tentacle-uuid", "", "control-id"), 130L));
         assertTrue(state.entityAnimationForEntity("tentacle-uuid").isBlank());
     }
 
     private static EndEventPacket packet(String type, String eventId, long generation, String instance,
-                                         long duration, String subject, String bossId, String controlId) {
-        return new EndEventPacket(type, eventId, generation, instance, duration, subject, bossId, controlId);
+                                         long duration, String subject, String payloadId, String controlId) {
+        boolean visual = type.endsWith("_BIND");
+        boolean phase = type.endsWith("_PHASE") || "END_BOSS_BAR".equals(type);
+        return new EndEventPacket(type, eventId, generation, instance, duration, subject,
+                visual ? payloadId : "", phase ? payloadId : "", controlId);
     }
 }

@@ -1,10 +1,16 @@
+import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.WaveVisualPolicy;
 
 public final class WaveVisualPolicyTest {
     public static void main(String[] args) {
-        WaveVisualPolicy.Frame start = WaveVisualPolicy.frame(1, 0, false);
-        WaveVisualPolicy.Frame middle = WaveVisualPolicy.frame(1, WaveVisualPolicy.OPENING_TICKS / 2, false);
-        WaveVisualPolicy.Frame end = WaveVisualPolicy.frame(1, WaveVisualPolicy.OPENING_TICKS, false);
+        WaveVisualPolicy.Frame start = WaveVisualPolicy.frame(
+                EndRiftObjective.Objective.RIFT_CARRIERS, 0, false);
+        WaveVisualPolicy.Frame middle = WaveVisualPolicy.frame(
+                EndRiftObjective.Objective.RIFT_CARRIERS,
+                WaveVisualPolicy.OPENING_TICKS / 2, false);
+        WaveVisualPolicy.Frame end = WaveVisualPolicy.frame(
+                EndRiftObjective.Objective.RIFT_CARRIERS,
+                WaveVisualPolicy.OPENING_TICKS, false);
 
         check(start.outerRadius() < middle.outerRadius(), "wavefront must expand during the first half");
         check(middle.outerRadius() < end.outerRadius(), "wavefront must expand during the second half");
@@ -17,15 +23,14 @@ public final class WaveVisualPolicyTest {
         check(!WaveVisualPolicy.active(WaveVisualPolicy.OPENING_TICKS),
                 "wavefront task must stop after the opening frame");
 
-        WaveVisualPolicy.Frame safe = WaveVisualPolicy.frame(999, -10, false);
-        check(safe.outerRadius() >= 0.0D && safe.outerPoints() >= 1,
-                "invalid inputs must be clamped to a safe frame");
+        WaveVisualPolicy.Frame safe = WaveVisualPolicy.frame(null, -10, false);
+        check(safe.objective() == EndRiftObjective.Objective.RIFT_CARRIERS
+                        && safe.outerPoints() >= 1,
+                "invalid inputs must be clamped to a safe current frame");
         System.out.println("WaveVisualPolicyTest OK");
     }
 
     private static void check(boolean condition, String message) {
-        if (!condition) {
-            throw new AssertionError(message);
-        }
+        if (!condition) throw new AssertionError(message);
     }
 }

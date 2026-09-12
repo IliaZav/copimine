@@ -1,11 +1,11 @@
-"""Render the local End Rift phase arrangements into Minecraft OGG assets.
+"""Render the canonical End Rift event music set into Minecraft OGG assets.
 
-The five checked-in source tracks are CC0 instrumental material already
-credited by END_RIFT_MUSIC_LICENSES.md.  This small offline renderer makes
-distinct, instrumental phase arrangements from those sources by choosing
-different sections, tempo, stereo motion, and a quiet original synth bed.
-It is a development tool only; the generated OGG files are the immutable
-resource-pack inputs used by the normal builder.
+The checked-in tracks are instrumental material already credited by
+END_RIFT_MUSIC_LICENSES.md.  This offline renderer makes deterministic
+phase-specific arrangements by choosing different sections, tempo, stereo
+motion, and a quiet original synth bed.  It is a development tool only; the
+generated OGG files are the immutable resource-pack inputs used by the normal
+builder.  Every output name below is part of the current seven-wave flow.
 
 Requires the optional development packages ``numpy`` and ``soundfile``.
 """
@@ -22,20 +22,30 @@ import soundfile as sf
 SPECS = {
     # output: source, offset seconds, duration seconds, tempo, tremolo Hz,
     # synth notes (MIDI), synth gain
-    "wave_1": ("waves.ogg", 0.0, 48.0, 1.00, 0.07, (45, 48, 52, 55), 0.075),
-    "wave_2": ("waves.ogg", 34.0, 46.0, 1.04, 0.11, (50, 53, 57, 60), 0.085),
-    "wave_3": ("boss.ogg", 10.0, 44.0, 0.99, 0.15, (38, 41, 45, 50), 0.080),
-    "wave_4": ("boss.ogg", 61.0, 50.0, 0.96, 0.19, (43, 46, 50, 55), 0.090),
-    "wave_5": ("boss.ogg", 88.0, 54.0, 1.02, 0.23, (36, 39, 43, 48), 0.100),
-    "intermission_1": ("victory.ogg", 0.0, 14.0, 0.92, 0.08, (55, 59, 62), 0.060),
-    "intermission_2": ("boss_half.ogg", 2.0, 14.0, 1.08, 0.12, (48, 51, 55), 0.065),
-    "intermission_3": ("boss_final.ogg", 5.0, 16.0, 0.95, 0.17, (43, 46, 50), 0.070),
-    "intermission_4": ("boss_half.ogg", 11.0, 16.0, 1.02, 0.21, (40, 44, 47), 0.075),
-    "boss_cinematic": ("boss.ogg", 0.0, 22.0, 0.88, 0.05, (31, 36, 43, 48), 0.095),
-    "final_drain": ("boss_final.ogg", 8.0, 24.0, 1.06, 0.28, (34, 38, 41, 46), 0.105),
-    "final_ritual": ("boss_half.ogg", 0.0, 20.0, 0.90, 0.32, (29, 33, 36, 41), 0.110),
-    "final_wave": ("boss_final.ogg", 0.0, 48.0, 1.03, 0.36, (36, 40, 43, 48), 0.115),
-    "boss_finish": ("victory.ogg", 0.0, 20.0, 0.98, 0.42, (60, 64, 67, 72), 0.080),
+    "ritual_wait": ("boss_cinematic.ogg", 0.0, 22.0, 0.86, 0.05, (31, 36, 43, 48), 0.095),
+    "wave_1": ("wave_1.ogg", 0.0, 48.0, 1.00, 0.07, (45, 48, 52, 55), 0.075),
+    "wave_2": ("wave_2.ogg", 4.0, 46.0, 1.04, 0.11, (50, 53, 57, 60), 0.085),
+    "wave_3": ("wave_3.ogg", 8.0, 44.0, 0.99, 0.15, (38, 41, 45, 50), 0.080),
+    "wave_4": ("wave_4.ogg", 3.0, 50.0, 0.96, 0.19, (43, 46, 50, 55), 0.090),
+    "wave_5": ("wave_5.ogg", 8.0, 54.0, 1.02, 0.23, (36, 39, 43, 48), 0.100),
+    "wave_6": ("wave_6.ogg", 12.0, 54.0, 0.98, 0.27, (34, 38, 42, 47), 0.105),
+    "wave_7": ("wave_6.ogg", 24.0, 58.0, 1.06, 0.31, (30, 34, 39, 45), 0.110),
+    "intermission_1": ("intermission_1.ogg", 0.0, 14.0, 0.92, 0.08, (55, 59, 62), 0.060),
+    "intermission_2": ("intermission_2.ogg", 2.0, 14.0, 1.08, 0.12, (48, 51, 55), 0.065),
+    "intermission_3": ("intermission_3.ogg", 1.0, 16.0, 0.95, 0.17, (43, 46, 50), 0.070),
+    "intermission_5": ("intermission_5.ogg", 0.0, 18.0, 1.02, 0.21, (40, 44, 47), 0.075),
+    "intermission_6": ("intermission_5.ogg", 7.0, 18.0, 1.00, 0.25, (37, 41, 45), 0.080),
+    "core_restoration": ("intermission_3.ogg", 4.0, 16.0, 0.90, 0.14, (46, 50, 55), 0.075),
+    "pre_boss_cooldown": ("pre_boss_cooldown.ogg", 0.0, 20.0, 0.88, 0.06, (29, 33, 38, 43), 0.095),
+    "boss_cinematic": ("boss_cinematic.ogg", 0.0, 22.0, 0.88, 0.05, (31, 36, 43, 48), 0.095),
+    "boss_awakening": ("boss_awakening.ogg", 0.0, 45.0, 0.96, 0.08, (32, 36, 41, 48), 0.090),
+    "boss_hunt": ("boss_hunt.ogg", 0.0, 45.0, 1.02, 0.14, (38, 43, 48, 53), 0.095),
+    "boss_rift": ("boss_rift.ogg", 0.0, 45.0, 1.00, 0.20, (34, 39, 44, 50), 0.100),
+    "boss_overload": ("boss_overload.ogg", 0.0, 45.0, 1.04, 0.26, (42, 46, 50, 55), 0.105),
+    "boss_rage": ("boss_rage.ogg", 0.0, 45.0, 1.08, 0.32, (36, 40, 43, 48), 0.110),
+    "boss_last_seal": ("boss_last_seal.ogg", 0.0, 45.0, 1.10, 0.38, (29, 33, 36, 41), 0.115),
+    "boss_finish": ("boss_finish.ogg", 0.0, 20.0, 0.98, 0.42, (60, 64, 67, 72), 0.080),
+    "victory": ("victory.ogg", 0.0, 20.0, 0.98, 0.10, (60, 64, 67, 72), 0.080),
 }
 
 

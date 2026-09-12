@@ -1,7 +1,7 @@
 package me.copimine.endevent.domain;
 
 /**
- * Bounded V2 pressure profile. The profile describes simultaneous pressure,
+ * Bounded pressure profile. The profile describes simultaneous pressure,
  * not a kill quota: a director may feed another group only after a slot is
  * released. That keeps twenty-player fights readable and below the global
  * event hostile cap.

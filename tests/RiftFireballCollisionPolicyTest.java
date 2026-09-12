@@ -5,6 +5,7 @@ public final class RiftFireballCollisionPolicyTest {
         testSweptPathHitsTheObeliskWhenFiveTickSamplingWouldTunnel();
         testMissOutsideHorizontalRadius();
         testMissOutsideVerticalBounds();
+        testReturnPathReachesRaisedCrownSocket();
         testZeroLengthPathUsesCurrentPoint();
         System.out.println("RiftFireballCollisionPolicyTest OK");
     }
@@ -43,6 +44,15 @@ public final class RiftFireballCollisionPolicyTest {
                         3.0D, 70.0D, 0.0D,
                         1.25D, 68.0D, 72.0D),
                 "a point inside the obelisk bounds must be a hit");
+    }
+
+    private static void testReturnPathReachesRaisedCrownSocket() {
+        check(RiftFireballCollisionPolicy.segmentIntersectsObelisk(
+                        8.5D, 69.0D, -46.0D,
+                        17.5D, 73.8D, -38.5D,
+                        17.5D, 68.0D, -38.5D,
+                        2.2D, 67.5D, 74.25D),
+                "a reflected path must still reach the authored crown launch socket");
     }
 
     private static void check(boolean condition, String message) {

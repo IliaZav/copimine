@@ -9,11 +9,9 @@ import java.util.SplittableRandom;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
-import me.copimine.endevent.domain.BossHealthScalingPolicy;
+import me.copimine.endevent.domain.BossHealthPolicy;
 import me.copimine.endevent.domain.BossFinalStrikePolicy;
 import me.copimine.endevent.domain.AbyssAnchorPolicy;
-import me.copimine.endevent.domain.BossStage;
-import me.copimine.endevent.domain.V2BossStage;
 import me.copimine.endevent.domain.PortalCapturePolicy;
 
 /** Validated, immutable runtime configuration for one End Rift server. */
@@ -23,7 +21,7 @@ public record EventConfig(
         String stateFile,
         String backupStateFile,
         Map<String, Integer> resourceRequirements,
-        int countdownSeconds,
+        int startRitualTimeoutSeconds,
         int intermissionSeconds,
         int minPlayers,
         int maxPlayers,
@@ -43,11 +41,6 @@ public record EventConfig(
         double skeletonEliteHealth,
         double skeletonEliteAttackDamageBonus,
         double musicVolume,
-        MusicTrack wavesMusic,
-        MusicTrack bossMusic,
-        MusicTrack bossHalfMusic,
-        MusicTrack bossFinalMusic,
-        MusicTrack victoryMusic,
         MusicTrack ritualWaitMusic,
         Map<String, MusicTrack> phaseMusic,
         WaveDefinition wave1,
@@ -57,18 +50,14 @@ public record EventConfig(
         WaveDefinition wave5,
         WaveDefinition wave6,
         WaveDefinition wave7,
-        /** Legacy V2 final/chamber definition retained for snapshot migration. */
-        WaveDefinition finalWave,
         Map<Integer, Map<String, Integer>> waveRewards,
         Map<Integer, Double> waveRewardSharedRareChances,
         Map<String, Integer> waveMobLoot,
         Map<String, Integer> eliteLoot,
-        Map<String, Integer> finalWaveLoot,
         Map<String, Integer> testLoot,
         Map<String, Map<String, LootEntry>> lootProfiles,
         double bossHealth,
         double bossAttackDamageBonus,
-        int debuffAmplifier,
         int bossTargetMinSeconds,
         int bossTargetMaxSeconds,
         int bossSpellMinSeconds,
@@ -78,14 +67,6 @@ public record EventConfig(
         int bossTargetLockSeconds,
         int bossTeleportCooldownSeconds,
         MiniBossTuning miniBossTuning,
-        int finalRitualTelegraphTicks,
-        double bossHalfHealth,
-        double bossFinalThreshold,
-        double bossFinalHealth,
-        double finalDrainFraction,
-        double finalDrainMinHealth,
-        int controlDurationSeconds,
-        int controlCooldownSeconds,
         int maxSummonedServants,
         int bossXp,
         int maxXpOrbs,
@@ -103,7 +84,6 @@ public record EventConfig(
         float portalYaw,
         float portalPitch,
         String clientBossId,
-        String clientControlId,
         String bridgeChannel,
         BossFinalStrikeTuning finalStrikeTuning,
         RiftObeliskTuning riftObeliskTuning,
@@ -118,7 +98,6 @@ public record EventConfig(
                 ? Map.of() : waveRewardSharedRareChances);
         waveMobLoot = Map.copyOf(waveMobLoot);
         eliteLoot = Map.copyOf(eliteLoot);
-        finalWaveLoot = Map.copyOf(finalWaveLoot);
         testLoot = Map.copyOf(testLoot);
         lootProfiles = copyLootProfiles(lootProfiles);
         phaseMusic = Map.copyOf(phaseMusic == null ? Map.of() : phaseMusic);
@@ -134,9 +113,6 @@ public record EventConfig(
         if (finalStrikeTuning == null) {
             throw new IllegalArgumentException("Boss final strike tuning is required");
         }
-        if (debuffAmplifier < 0 || debuffAmplifier > 3) {
-            throw new IllegalArgumentException("debuff amplifier must be between 0 and 3");
-        }
         if (!Double.isFinite(nightCloakChance) || nightCloakChance < 0.0D || nightCloakChance > 1.0D) {
             throw new IllegalArgumentException("night cloak chance must be between 0 and 1");
         }
@@ -144,13 +120,13 @@ public record EventConfig(
                 || abyssAnchorCooldownSeconds > AbyssAnchorPolicy.MAX_COOLDOWN_SECONDS) {
             throw new IllegalArgumentException("abyss anchor cooldown is outside the safe bounds");
         }
-        if (schemaVersion >= 3 && (wave6 == null || wave7 == null)) {
-            throw new IllegalArgumentException("V3 wave definitions are required for schema 3");
+        if (schemaVersion != 4 || wave6 == null || wave7 == null) {
+            throw new IllegalArgumentException("schema 4 requires the seven current wave definitions");
         }
     }
 
-    public boolean isV3Flow() {
-        return schemaVersion >= 3 && wave6 != null && wave7 != null;
+    public boolean isCurrentFlow() {
+        return schemaVersion == 4 && wave6 != null && wave7 != null;
     }
 
     public static EventConfig load(JavaPlugin plugin) {
@@ -188,7 +164,7 @@ public record EventConfig(
                 ritual.getDouble("portal-capture-decay-rate", PortalCapturePolicy.DEFAULT_DECAY_RATE));
         int waveCap = positiveInt(waves, "hard-cap");
         double health = positiveDouble(boss, "health");
-        if (Math.abs(health - BossHealthScalingPolicy.BASE_HEALTH) > 0.000001D) {
+        if (Math.abs(health - BossHealthPolicy.MIN_HEALTH) > 0.000001D) {
             throw new IllegalStateException("boss.health must remain 5000 for the roster scaling policy");
         }
         double spiderHealthBonus = nonNegativeDouble(mobs.getConfigurationSection("spider"), "health-bonus");
@@ -199,24 +175,16 @@ public record EventConfig(
         double skeletonEliteHealth = positiveDouble(skeleton, "elite-health");
         double skeletonEliteAttackDamageBonus = nonNegativeDouble(skeleton, "elite-attack-damage-bonus");
         double musicVolume = boundedVolume(music.getDouble("volume", 0.85D));
-        MusicTrack wavesMusic = musicTrack(music, "waves");
-        MusicTrack bossMusic = musicTrack(music, "boss");
-        MusicTrack bossHalfMusic = musicTrack(music, "boss-half");
-        MusicTrack bossFinalMusic = musicTrack(music, "boss-final");
-        MusicTrack victoryMusic = musicTrack(music, "victory");
         MusicTrack ritualWaitMusic = musicTrack(music, "ritual-wait");
         int schemaVersion = persistenceSchemaVersion(plugin);
         Map<String, MusicTrack> phaseMusic = readPhaseMusic(
                 requiredSection(music, "phase"), schemaVersion);
-        double half = positiveDouble(boss, "half-health");
-        double finalThreshold = positiveDouble(boss, "final-threshold");
-        double finalHealth = positiveDouble(boss, "final-health");
-        if (!(finalThreshold < half && finalHealth > finalThreshold && finalHealth <= health)) {
-            throw new IllegalStateException("boss thresholds must satisfy final-threshold < half-health < final-health <= health");
-        }
-        double drainFraction = boss.getDouble("final-drain-fraction", 0.60D);
-        if (!(drainFraction > 0.0D && drainFraction < 1.0D)) {
-            throw new IllegalStateException("boss.final-drain-fraction must be between 0 and 1");
+        ConfigurationSection phaseThresholds = requiredSection(boss, "phase-thresholds");
+        double huntFraction = phaseFraction(phaseThresholds, "hunt");
+        double lastSealFraction = phaseFraction(phaseThresholds, "last-seal");
+        if (!(lastSealFraction < huntFraction && huntFraction < 1.0D)) {
+            throw new IllegalStateException(
+                    "boss.phase-thresholds must satisfy 0 <= last-seal < hunt < 1");
         }
         int[] target = secondsRange(boss, "target-rotation-seconds");
         int[] spells = secondsRange(boss, "spell-cooldown-seconds");
@@ -227,10 +195,9 @@ public record EventConfig(
             throw new IllegalStateException("boss.spell-telegraph-ticks must be positive");
         }
         MiniBossTuning miniBossTuning = miniBossTuning(miniBosses);
-        int finalRitualTelegraphTicks = positiveInt(boss, "final-ritual-telegraph-ticks");
         LinkedHashMap<String, Integer> waveMobLoot = readOptionalMaterials(eventLoot, "wave-mob");
         LinkedHashMap<String, Integer> eliteLoot = readOptionalMaterials(eventLoot, "elite");
-        LinkedHashMap<String, Integer> finalWaveLoot = readOptionalMaterials(eventLoot, "final-wave");
+        LinkedHashMap<String, Integer> waveSevenLoot = readOptionalMaterials(eventLoot, "wave-7");
         LinkedHashMap<String, Integer> testLoot = readOptionalMaterials(eventLoot, "test");
         LinkedHashMap<String, Map<String, LootEntry>> lootProfiles = new LinkedHashMap<>();
         lootProfiles.put("common-enderman", readLootProfiles(eventLootRolls, "common-enderman", waveMobLoot));
@@ -238,7 +205,7 @@ public record EventConfig(
         lootProfiles.put("skeleton", readLootProfiles(eventLootRolls, "skeleton", waveMobLoot));
         lootProfiles.put("elite-enderman", readLootProfiles(eventLootRolls, "elite-enderman", eliteLoot));
         lootProfiles.put("elite-skeleton", readLootProfiles(eventLootRolls, "elite-skeleton", eliteLoot));
-        lootProfiles.put("final-wave", readLootProfiles(eventLootRolls, "final-wave", finalWaveLoot));
+        lootProfiles.put("reality-split", readLootProfiles(eventLootRolls, "wave-7", waveSevenLoot));
         lootProfiles.put("test", readLootProfiles(eventLootRolls, "test", testLoot));
         String environment = text(plugin.getConfig().getString("environment", ""), "");
         if (!"local".equalsIgnoreCase(environment) && !"staging".equalsIgnoreCase(environment)) {
@@ -252,7 +219,7 @@ public record EventConfig(
                 text(persistence.getString("file", "event-state.yml"), "event-state.yml"),
                 text(persistence.getString("backup-file", "event-state.yml.bak"), "event-state.yml.bak"),
                 requirements,
-                positiveInt(ritual, "countdown-seconds"),
+                positiveInt(ritual, "start-ritual-timeout-seconds"),
                 positiveInt(ritual, "intermission-seconds"),
                 minPlayers,
                 maxPlayers,
@@ -272,11 +239,6 @@ public record EventConfig(
                 skeletonEliteHealth,
                 skeletonEliteAttackDamageBonus,
                 musicVolume,
-                wavesMusic,
-                bossMusic,
-                bossHalfMusic,
-                bossFinalMusic,
-                victoryMusic,
                 ritualWaitMusic,
                 phaseMusic,
                 wave(waves, "wave-1"),
@@ -284,29 +246,21 @@ public record EventConfig(
                 wave(waves, "wave-3"),
                 wave(waves, "wave-4"),
                 wave(waves, "wave-5"),
-                schemaVersion >= 3 ? wave(waves, "wave-6") : wave(waves, "final"),
-                schemaVersion >= 3 ? wave(waves, "wave-7") : wave(waves, "final"),
-                wave(waves, "final"),
+                wave(waves, "wave-6"),
+                wave(waves, "wave-7"),
                 readWaveRewards(plugin.getConfig().getConfigurationSection("wave-rewards"), schemaVersion),
                 readWaveRewardSharedRareChances(
                         plugin.getConfig().getConfigurationSection("wave-reward-shared-rare"), schemaVersion),
                 waveMobLoot,
                 eliteLoot,
-                finalWaveLoot,
                 testLoot,
                 lootProfiles,
                 health,
                 boss.getDouble("attack-damage-bonus", 3.0D),
-                boundedAmplifier(boss.getInt("debuff-amplifier", 3)),
                  target[0], target[1], spells[0], spells[1],
                  positiveInt(boss, "spell-telegraph-ticks"), bossRecentTargetMemory,
                  bossTargetLockSeconds,
-                 bossTeleportCooldownSeconds, miniBossTuning, finalRitualTelegraphTicks,
-                half, finalThreshold, finalHealth,
-                drainFraction,
-                Math.max(1.0D, boss.getDouble("final-drain-min-health", 1.0D)),
-                positiveInt(boss, "control-duration-seconds"),
-                positiveInt(boss, "control-cooldown-seconds"),
+                bossTeleportCooldownSeconds, miniBossTuning,
                 Math.max(0, boss.getInt("max-summoned-servants", 4)),
                 Math.max(0, rewards.getInt("boss-xp", 3000)),
                 Math.max(0, rewards.getInt("max-xp-orbs", 20)),
@@ -322,8 +276,7 @@ public record EventConfig(
                 text(portal.getString("world", "CopiMine_the_end"), "CopiMine_the_end"),
                 portal.getDouble("x", 0.5D), portal.getDouble("y", 80.0D), portal.getDouble("z", 0.5D),
                 (float) portal.getDouble("yaw", 0.0D), (float) portal.getDouble("pitch", 0.0D),
-                text(client.getString("boss-id", "END_RIFT_GUARDIAN_V1"), "END_RIFT_GUARDIAN_V1"),
-                text(client.getString("control-id", "END_RIFT_CONTROL_REVERSAL_V1"), "END_RIFT_CONTROL_REVERSAL_V1"),
+                text(client.getString("boss-id", "END_RIFT_GUARDIAN"), "END_RIFT_GUARDIAN"),
                 text(client.getString("bridge-channel", "copimine:client_bridge"), "copimine:client_bridge"),
                 finalStrikeTuning,
                 riftObeliskTuning,
@@ -346,7 +299,7 @@ public record EventConfig(
             throw new IllegalStateException("Missing configuration section: wave-rewards");
         }
         LinkedHashMap<Integer, Map<String, Integer>> rewards = new LinkedHashMap<>();
-        int maxWave = schemaVersion >= 3 ? 7 : 6;
+        int maxWave = 7;
         for (int wave = 1; wave <= maxWave; wave++) {
             rewards.put(wave, readMaterials(requiredSection(parent, "wave-" + wave),
                     "wave-rewards.wave-" + wave));
@@ -370,7 +323,7 @@ public record EventConfig(
     private static Map<Integer, Double> readWaveRewardSharedRareChances(
             ConfigurationSection parent, int schemaVersion) {
         LinkedHashMap<Integer, Double> chances = new LinkedHashMap<>();
-        int maxWave = schemaVersion >= 3 ? 7 : 5;
+        int maxWave = 7;
         for (int wave = 1; wave <= maxWave; wave++) {
             double chance = parent == null ? (wave >= 4 ? 0.25D : 0.0D)
                     : parent.getDouble("wave-" + wave, -1.0D);
@@ -398,6 +351,15 @@ public record EventConfig(
         return value;
     }
 
+    private static double phaseFraction(ConfigurationSection parent, String key) {
+        double value = parent.getDouble(key, Double.NaN);
+        if (!Double.isFinite(value) || value <= 0.0D || value >= 1.0D) {
+            throw new IllegalStateException("boss.phase-thresholds." + key
+                    + " must be a fraction between 0 and 1");
+        }
+        return value;
+    }
+
     private static MiniBossTuning miniBossTuning(ConfigurationSection section) {
         int[] cooldown = secondsRange(section, "spell-cooldown-seconds");
         int telegraphTicks = positiveInt(section, "spell-telegraph-ticks");
@@ -414,14 +376,13 @@ public record EventConfig(
                 .filter(value -> !value.isBlank())
                 .distinct()
                 .toList();
-        if (!stages.equals(List.of("DISTORTION")) && !stages.equals(List.of("RIFT"))) {
+        if (!stages.equals(List.of("WAVE_4"))) {
             throw new IllegalStateException(
-                    "boss.rift-obelisks.stages must contain only DISTORTION or RIFT");
+                    "boss.rift-obelisks.stages must contain only WAVE_4");
         }
         int[] cooldown = secondsRange(section, "cooldown-seconds");
         int health = section.getInt("health", -1);
         int maxActive = section.getInt("max-active", -1);
-        int v3MaxActive = section.getInt("v3-max-active", -1);
         double pulseRadius = section.getDouble("pulse-radius", -1.0D);
         int pulseInterval = section.getInt("pulse-interval-ticks", -1);
         int fireInterval = section.getInt("fire-interval-ticks", -1);
@@ -432,8 +393,7 @@ public record EventConfig(
         int spawnTelegraphTicks = section.getInt("spawn-telegraph-ticks", -1);
         int destructionDelayTicks = section.getInt("destruction-delay-ticks", -1);
         double minDistance = section.getDouble("min-distance", -1.0D);
-        if (health != 3 || maxActive < 1 || maxActive > 4
-                || v3MaxActive < 1 || v3MaxActive > 6
+        if (health != 3 || maxActive < 1 || maxActive > 6
                 || !(pulseRadius > 0.0D) || pulseRadius > 5.0D
                 || pulseInterval < 10 || pulseInterval > 200
                 || fireInterval < 20 || fireInterval > 400
@@ -448,7 +408,7 @@ public record EventConfig(
         }
         return new RiftObeliskTuning(
                 section.getBoolean("enabled", true), stages,
-                cooldown[0], cooldown[1], health, maxActive, v3MaxActive, pulseRadius,
+                cooldown[0], cooldown[1], health, maxActive, pulseRadius,
                 pulseInterval, fireInterval, maxFireballs, fireballDamage,
                 blindnessTicks, debuffTicks, spawnTelegraphTicks,
                 destructionDelayTicks, minDistance);
@@ -536,11 +496,11 @@ public record EventConfig(
     }
 
     private static LinkedHashMap<String, LootEntry> readLootProfiles(
-            ConfigurationSection parent, String key, Map<String, Integer> legacy) {
+            ConfigurationSection parent, String key, Map<String, Integer> defaults) {
         LinkedHashMap<String, LootEntry> values = new LinkedHashMap<>();
         ConfigurationSection section = parent == null ? null : parent.getConfigurationSection(key);
         if (section == null) {
-            for (Map.Entry<String, Integer> entry : legacy.entrySet()) {
+            for (Map.Entry<String, Integer> entry : defaults.entrySet()) {
                 values.put(entry.getKey(), new LootEntry(1.0D, entry.getValue(), entry.getValue()));
             }
             return values;
@@ -641,13 +601,6 @@ public record EventConfig(
         return value;
     }
 
-    private static int boundedAmplifier(int value) {
-        if (value < 0 || value > 3) {
-            throw new IllegalStateException("boss.debuff-amplifier must be between 0 and 3");
-        }
-        return value;
-    }
-
     private static MusicTrack musicTrack(ConfigurationSection parent, String key) {
         ConfigurationSection section = requiredSection(parent, key);
         String soundId = text(section.getString("sound", ""), "");
@@ -663,18 +616,11 @@ public record EventConfig(
 
     private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent, int schemaVersion) {
         List<String> requiredKeys = new ArrayList<>(List.of(
-                "wave-1", "wave-2", "wave-3", "wave-4", "wave-5", "wave-6",
-                "intermission-1", "intermission-2", "intermission-3", "intermission-4", "intermission-5",
-                "pre-boss-cooldown", "boss-cinematic", "boss-awakening", "boss-hunt",
-                "boss-rift", "boss-overload", "boss-rage", "boss-last-seal", "boss-finish",
-                // These names remain readable for snapshots and local admin
-                // commands, but are not selected by the official V2 flow.
-                "final-drain", "final-ritual", "final-wave"));
-        if (schemaVersion >= 3) {
-            requiredKeys.add("wave-7");
-            requiredKeys.add("intermission-6");
-            requiredKeys.add("core-restoration");
-        }
+                "wave-1", "wave-2", "wave-3", "wave-4", "wave-5", "wave-6", "wave-7",
+                "intermission-1", "intermission-2", "intermission-3", "intermission-5",
+                "intermission-6", "core-restoration", "pre-boss-cooldown", "boss-cinematic",
+                "boss-awakening", "boss-hunt", "boss-rift", "boss-overload", "boss-rage",
+                "boss-last-seal", "boss-finish", "victory"));
         LinkedHashMap<String, MusicTrack> tracks = new LinkedHashMap<>();
         for (String key : requiredKeys) {
             tracks.put(key, musicTrack(parent, key));
@@ -685,8 +631,8 @@ public record EventConfig(
     private static int persistenceSchemaVersion(JavaPlugin plugin) {
         ConfigurationSection persistence = requiredSection(plugin, "persistence");
         int value = persistence.getInt("schema-version", 1);
-        if (value < 1 || value > 3) {
-            throw new IllegalStateException("persistence.schema-version must be between 1 and 3");
+        if (value != 4) {
+            throw new IllegalStateException("persistence.schema-version must be exactly 4");
         }
         return value;
     }
@@ -735,16 +681,28 @@ public record EventConfig(
         return phaseMusic.get(phaseKey);
     }
 
+    /**
+     * Current-flow aliases are resolved from canonical phase keys only. They
+     * deliberately do not read the removed aggregate music sections.
+     */
+    public MusicTrack wavesMusic() {
+        return phaseMusic("wave-1");
+    }
+
+    public MusicTrack bossMusic() {
+        return phaseMusic("boss-awakening");
+    }
+
+    public MusicTrack victoryMusic() {
+        return phaseMusic("victory");
+    }
+
     public List<MusicTrack> allMusicTracks() {
         return List.copyOf(new java.util.LinkedHashSet<>(phaseMusic.values()));
     }
 
     public Map<String, Integer> waveReward(int wave) {
         return waveRewards.getOrDefault(wave, Map.of());
-    }
-
-    public int debuffAmplifier() {
-        return debuffAmplifier;
     }
 
     public double waveRewardSharedRareChance(int wave) {
@@ -787,7 +745,6 @@ public record EventConfig(
             int cooldownMaxSeconds,
             int health,
             int maxActive,
-            int v3MaxActive,
             double pulseRadius,
             int pulseIntervalTicks,
             int fireIntervalTicks,
@@ -800,8 +757,7 @@ public record EventConfig(
             double minDistance) {
         public RiftObeliskTuning {
             stages = List.copyOf(stages == null ? List.of() : stages);
-            if (health != 3 || maxActive < 1 || maxActive > 4
-                    || v3MaxActive < 1 || v3MaxActive > 6
+            if (health != 3 || maxActive < 1 || maxActive > 6
                     || cooldownMinSeconds < 1 || cooldownMaxSeconds < cooldownMinSeconds
                     || pulseRadius <= 0.0D || pulseRadius > 5.0D
                     || pulseIntervalTicks < 10 || fireIntervalTicks < 20
@@ -809,21 +765,13 @@ public record EventConfig(
                     || fireballDamage <= 0.0D || blindnessTicks < 1 || debuffTicks < 1
                     || spawnTelegraphTicks < 5 || destructionDelayTicks < 1
                     || minDistance < 2.0D || minDistance > 12.0D
-                    || !stages.equals(List.of("DISTORTION")) && !stages.equals(List.of("RIFT"))) {
+                    || !stages.equals(List.of("WAVE_4"))) {
                 throw new IllegalArgumentException("invalid Rift Obelisk tuning");
             }
         }
 
-        public boolean enabledFor(BossStage stage) {
-            return enabled && stage != null
-                    && (stages.contains(stage.name())
-                    || stage == BossStage.DISTORTION && stages.contains("RIFT"));
-        }
-
-        public boolean enabledFor(V2BossStage stage) {
-            return enabled && stage != null
-                    && (stages.contains(stage.name())
-                    || stage == V2BossStage.RIFT && stages.contains("DISTORTION"));
+        public int currentMaxActive() {
+            return maxActive;
         }
     }
 

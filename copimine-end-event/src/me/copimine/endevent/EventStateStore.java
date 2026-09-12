@@ -16,14 +16,18 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
+import me.copimine.endevent.migration.LegacyEndRiftSnapshotDecoder;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 /**
- * Crash-safe local event state store.  The file is small, written as UTF-8,
- * fsynced before the atomic rename, and backed up before replacement.
+ * Crash-safe schema-4 store. The writer emits only current-flow keys; older
+ * files are read once through {@link LegacyEndRiftSnapshotDecoder} and are
+ * never passed through the live event model.
  */
 public final class EventStateStore {
+    public static final int CURRENT_SCHEMA = EventSnapshot.CURRENT_SCHEMA;
+
     private final Path path;
     private final Path backupPath;
     private final int schemaVersion;
@@ -31,6 +35,9 @@ public final class EventStateStore {
     public EventStateStore(Path dataFolder, String fileName, String backupFileName, int schemaVersion) {
         this.path = safeChildPath(dataFolder, fileName, "state");
         this.backupPath = safeChildPath(dataFolder, backupFileName, "backup state");
+        if (schemaVersion != CURRENT_SCHEMA) {
+            throw new IllegalArgumentException("End Rift state writer requires schema 4");
+        }
         this.schemaVersion = schemaVersion;
     }
 
@@ -65,27 +72,24 @@ public final class EventStateStore {
         if (backup.valid()) {
             return backup;
         }
-        EventSnapshot recovery = EventSnapshot.empty(schemaVersion);
+        EventSnapshot recovery = EventSnapshot.empty(schemaVersion).withSchemaAndPhase(
+                schemaVersion, me.copimine.endevent.domain.EventPhase.RECOVERY_REQUIRED);
         recovery = new EventSnapshot(
-                schemaVersion, recovery.eventId(), recovery.generation(), "RECOVERY_REQUIRED",
-                recovery.worldName(), recovery.coreX(), recovery.coreY(), recovery.coreZ(),
+                recovery.schemaVersion(), recovery.eventId(), recovery.generation(),
+                recovery.phase(), recovery.worldName(), recovery.coreX(), recovery.coreY(), recovery.coreZ(),
                 recovery.coreBlockData(), recovery.requiredPlayers(), recovery.arenaMinX(), recovery.arenaMinY(),
                 recovery.arenaMinZ(), recovery.arenaMaxX(), recovery.arenaMaxY(), recovery.arenaMaxZ(),
                 recovery.resourceRequirements(), recovery.depositedResources(), recovery.pads(),
                 recovery.resourceContributors(), recovery.officialRewardRoster(), recovery.rewardStatuses(),
-                recovery.shardCooldowns(), recovery.abyssAnchorCooldowns(),
-                recovery.coreCharged(), recovery.halfHealthTriggered(), recovery.controlSpellUnlocked(),
-                recovery.finalDrainTriggered(), recovery.finalDrainApplied(), recovery.endUnlocked(),
-                recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(), recovery.bossRewardStatus(),
-                recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
+                recovery.shardCooldowns(), recovery.abyssAnchorCooldowns(), recovery.coreCharged(),
+                recovery.endUnlocked(), recovery.officialBossDeathCommitted(), recovery.bossLootCommitted(),
+                recovery.bossRewardStatus(), recovery.bossRewardRecipient(), recovery.returnStoneStatus(),
                 recovery.victoryStep(), recovery.updatedAt(), recovery.phaseDeadlineMillis(),
-                "Both primary and backup event state files are invalid.", recovery.participants(),
-                recovery.finalDrainTargets(), recovery.finalDrainAppliedPlayers(), recovery.waveRewardsIssued(),
-                recovery.bossStage(), recovery.bossCastState(), recovery.bossCastDeadlineMillis(),
-                recovery.absorptionTriggered(), recovery.absorptionCompleted(),
-                recovery.absorptionAttackEmpowered(), recovery.judgmentTriggered(),
-                recovery.judgmentCompleted(), recovery.nightCloakRolls());
-        return LoadResult.invalid(recovery, primary.reason() + "; " + backup.reason());
+                primary.reason() + "; " + backup.reason(), recovery.participants(),
+                recovery.waveRewardsIssued(), recovery.bossPhase(), recovery.activeBossAbility(),
+                recovery.bossAbilityDeadlineMillis(), recovery.bossDefeatSaga(), recovery.objectiveProgress(),
+                recovery.nightCloakRolls());
+        return LoadResult.invalid(recovery, recovery.recoveryReason());
     }
 
     public CompletableFuture<Boolean> saveAsync(EventSnapshot snapshot, Executor executor) {
@@ -108,81 +112,76 @@ public final class EventStateStore {
     }
 
     public synchronized boolean save(EventSnapshot snapshot) {
-        if (snapshot == null) {
+        if (snapshot == null || snapshot.schemaVersion() != schemaVersion) {
             return false;
         }
         try {
             Files.createDirectories(path.getParent());
             YamlConfiguration yaml = new YamlConfiguration();
-            yaml.set("schema-version", snapshot.schemaVersion());
-            yaml.set("event.event-id", snapshot.eventId());
-            yaml.set("event.generation", snapshot.generation());
-            yaml.set("event.phase", snapshot.phase());
-            yaml.set("event.world", snapshot.worldName());
-            yaml.set("event.core.x", snapshot.coreX());
-            yaml.set("event.core.y", snapshot.coreY());
-            yaml.set("event.core.z", snapshot.coreZ());
-            yaml.set("event.core.block-data", snapshot.coreBlockData());
-            yaml.set("event.required-players", snapshot.requiredPlayers());
-            yaml.set("event.arena.min-x", snapshot.arenaMinX());
-            yaml.set("event.arena.min-y", snapshot.arenaMinY());
-            yaml.set("event.arena.min-z", snapshot.arenaMinZ());
-            yaml.set("event.arena.max-x", snapshot.arenaMaxX());
-            yaml.set("event.arena.max-y", snapshot.arenaMaxY());
-            yaml.set("event.arena.max-z", snapshot.arenaMaxZ());
-            yaml.set("event.core-charged", snapshot.coreCharged());
-            yaml.set("event.half-health-triggered", snapshot.halfHealthTriggered());
-            yaml.set("event.control-spell-unlocked", snapshot.controlSpellUnlocked());
-            yaml.set("event.final-drain-triggered", snapshot.finalDrainTriggered());
-            yaml.set("event.final-drain-applied", snapshot.finalDrainApplied());
-            yaml.set("event.end-unlocked", snapshot.endUnlocked());
-            yaml.set("event.official-boss-death-committed", snapshot.officialBossDeathCommitted());
-            yaml.set("event.boss-loot-committed", snapshot.bossLootCommitted());
-            yaml.set("event.boss-reward-status", snapshot.bossRewardStatus());
-            yaml.set("event.boss-reward-recipient", snapshot.bossRewardRecipient() == null
-                    ? null : snapshot.bossRewardRecipient().toString());
-            yaml.set("event.return-stone-status", snapshot.returnStoneStatus());
-            yaml.set("event.victory-step", snapshot.victoryStep());
-            yaml.set("event.updated-at", snapshot.updatedAt());
-            yaml.set("event.phase-deadline-millis", snapshot.phaseDeadlineMillis());
-            yaml.set("event.recovery-reason", snapshot.recoveryReason());
-            yaml.set("resources.requirements", snapshot.resourceRequirements());
-            yaml.set("resources.deposited", snapshot.depositedResources());
-            yaml.set("participants.resource-contributors", uuidStrings(snapshot.resourceContributors()));
-            yaml.set("participants.official-roster", uuidStrings(snapshot.officialRewardRoster()));
-            yaml.set("participants.all", uuidStrings(snapshot.participants()));
-            yaml.set("final-drain.targets", uuidDoubleMap(snapshot.finalDrainTargets()));
-            yaml.set("final-drain.applied-players", uuidStrings(snapshot.finalDrainAppliedPlayers()));
-            yaml.set("rewards.wave-rewards-issued", snapshot.waveRewardsIssued().stream().sorted().toList());
-            yaml.set("boss.stage", snapshot.bossStage());
-            yaml.set("boss.cast-state", snapshot.bossCastState());
-            yaml.set("boss.cast-deadline-millis", snapshot.bossCastDeadlineMillis());
-            yaml.set("boss.absorption-triggered", snapshot.absorptionTriggered());
-            yaml.set("boss.absorption-completed", snapshot.absorptionCompleted());
-            yaml.set("boss.absorption-attack-empowered", snapshot.absorptionAttackEmpowered());
-            yaml.set("boss.judgment-triggered", snapshot.judgmentTriggered());
-            yaml.set("boss.judgment-completed", snapshot.judgmentCompleted());
-            yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
-            yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
-            yaml.set("rewards.abyss-anchor-cooldowns", uuidLongMap(snapshot.abyssAnchorCooldowns()));
-            yaml.set("rewards.night-cloak-rolls", uuidStatusMap(snapshot.nightCloakRolls()));
-            List<Map<String, Object>> pads = new ArrayList<>();
-            for (EventSnapshot.PadSnapshot pad : snapshot.pads()) {
-                Map<String, Object> entry = new LinkedHashMap<>();
-                entry.put("x", pad.x());
-                entry.put("y", pad.y());
-                entry.put("z", pad.z());
-                entry.put("radius", pad.radius());
-                entry.put("angle", pad.angleRadians());
-                entry.put("original-block-data", pad.originalBlockData());
-                pads.add(entry);
-            }
-            yaml.set("pads", pads);
+            writeCurrent(yaml, snapshot);
             writeAtomic(yaml.saveToString());
             return true;
         } catch (IOException | RuntimeException error) {
             return false;
         }
+    }
+
+    private void writeCurrent(YamlConfiguration yaml, EventSnapshot snapshot) {
+        yaml.set("schema-version", CURRENT_SCHEMA);
+        yaml.set("event.event-id", snapshot.eventId());
+        yaml.set("event.generation", snapshot.generation());
+        yaml.set("event.phase", snapshot.phase());
+        yaml.set("event.world", snapshot.worldName());
+        yaml.set("event.core.x", snapshot.coreX());
+        yaml.set("event.core.y", snapshot.coreY());
+        yaml.set("event.core.z", snapshot.coreZ());
+        yaml.set("event.core.block-data", snapshot.coreBlockData());
+        yaml.set("event.required-players", snapshot.requiredPlayers());
+        yaml.set("event.arena.min-x", snapshot.arenaMinX());
+        yaml.set("event.arena.min-y", snapshot.arenaMinY());
+        yaml.set("event.arena.min-z", snapshot.arenaMinZ());
+        yaml.set("event.arena.max-x", snapshot.arenaMaxX());
+        yaml.set("event.arena.max-y", snapshot.arenaMaxY());
+        yaml.set("event.arena.max-z", snapshot.arenaMaxZ());
+        yaml.set("event.core-charged", snapshot.coreCharged());
+        yaml.set("event.end-unlocked", snapshot.endUnlocked());
+        yaml.set("event.official-boss-death-committed", snapshot.officialBossDeathCommitted());
+        yaml.set("event.boss-loot-committed", snapshot.bossLootCommitted());
+        yaml.set("event.boss-reward-status", snapshot.bossRewardStatus());
+        yaml.set("event.boss-reward-recipient", snapshot.bossRewardRecipient() == null
+                ? null : snapshot.bossRewardRecipient().toString());
+        yaml.set("event.return-stone-status", snapshot.returnStoneStatus());
+        yaml.set("event.victory-step", snapshot.victoryStep());
+        yaml.set("event.updated-at", snapshot.updatedAt());
+        yaml.set("event.phase-deadline-millis", snapshot.phaseDeadlineMillis());
+        yaml.set("event.recovery-reason", snapshot.recoveryReason());
+        yaml.set("resources.requirements", snapshot.resourceRequirements());
+        yaml.set("resources.deposited", snapshot.depositedResources());
+        yaml.set("participants.resource-contributors", uuidStrings(snapshot.resourceContributors()));
+        yaml.set("participants.official-roster", uuidStrings(snapshot.officialRewardRoster()));
+        yaml.set("participants.all", uuidStrings(snapshot.participants()));
+        yaml.set("rewards.wave-rewards-issued", snapshot.waveRewardsIssued().stream().sorted().toList());
+        yaml.set("rewards.statuses", uuidStatusMap(snapshot.rewardStatuses()));
+        yaml.set("rewards.shard-cooldowns", uuidLongMap(snapshot.shardCooldowns()));
+        yaml.set("rewards.abyss-anchor-cooldowns", uuidLongMap(snapshot.abyssAnchorCooldowns()));
+        yaml.set("rewards.night-cloak-rolls", uuidStatusMap(snapshot.nightCloakRolls()));
+        yaml.set("boss.phase", snapshot.bossPhase());
+        yaml.set("boss.active-ability", snapshot.activeBossAbility());
+        yaml.set("boss.ability-deadline-millis", snapshot.bossAbilityDeadlineMillis());
+        yaml.set("boss.defeat-saga", snapshot.bossDefeatSaga());
+        yaml.set("objective.progress", snapshot.objectiveProgress());
+        List<Map<String, Object>> padList = new ArrayList<>();
+        for (EventSnapshot.PadSnapshot pad : snapshot.pads()) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("x", pad.x());
+            entry.put("y", pad.y());
+            entry.put("z", pad.z());
+            entry.put("radius", pad.radius());
+            entry.put("angle", pad.angleRadians());
+            entry.put("original-block-data", pad.originalBlockData());
+            padList.add(entry);
+        }
+        yaml.set("pads", padList);
     }
 
     private LoadResult read(Path source, String label) {
@@ -191,16 +190,30 @@ public final class EventStateStore {
         }
         try {
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(source.toFile());
-            if (!yaml.contains("event.phase") || yaml.getInt("schema-version", -1) > schemaVersion) {
-                return LoadResult.invalid(EventSnapshot.empty(schemaVersion), label + " schema is unsupported");
+            if (!yaml.contains("schema-version")) {
+                return LoadResult.invalid(EventSnapshot.empty(schemaVersion), label + " schema is missing");
             }
-            return LoadResult.valid(V2SnapshotMigrationPolicy.migrate(fromYaml(yaml), schemaVersion), label);
+            int stored = yaml.getInt("schema-version", Integer.MIN_VALUE);
+            if (stored <= 0) {
+                return LoadResult.invalid(EventSnapshot.empty(schemaVersion),
+                        label + " schema must be positive");
+            }
+            if (stored > schemaVersion) {
+                return LoadResult.invalid(EventSnapshot.empty(schemaVersion),
+                        label + " schema " + stored + " is newer than " + schemaVersion);
+            }
+            EventSnapshot snapshot = stored == schemaVersion
+                    ? fromCurrentYaml(yaml) : LegacyEndRiftSnapshotDecoder.decode(yaml, schemaVersion);
+            snapshot.eventPhase();
+            snapshot.currentBossPhase();
+            return LoadResult.valid(snapshot, label + (stored == schemaVersion ? "" : ":MIGRATED"));
         } catch (RuntimeException error) {
-            return LoadResult.invalid(EventSnapshot.empty(schemaVersion), label + " parse failed: " + error.getMessage());
+            return LoadResult.invalid(EventSnapshot.empty(schemaVersion),
+                    label + " parse failed: " + String.valueOf(error.getMessage()));
         }
     }
 
-    private EventSnapshot fromYaml(YamlConfiguration yaml) {
+    private EventSnapshot fromCurrentYaml(YamlConfiguration yaml) {
         Map<String, Integer> requirements = integers(yaml.getConfigurationSection("resources.requirements"));
         Map<String, Integer> deposited = integers(yaml.getConfigurationSection("resources.deposited"));
         List<EventSnapshot.PadSnapshot> pads = new ArrayList<>();
@@ -208,58 +221,47 @@ public final class EventStateStore {
             pads.add(new EventSnapshot.PadSnapshot(
                     integer(raw.get("x")), integer(raw.get("y")), integer(raw.get("z")),
                     decimal(raw.get("radius")), decimal(raw.get("angle")),
-                    String.valueOf(raw.containsKey("original-block-data") ? raw.get("original-block-data") : "")));
+                    String.valueOf(raw.containsKey("original-block-data")
+                            ? raw.get("original-block-data") : "")));
         }
-        Set<UUID> contributors = uuids(yaml.getStringList("participants.resource-contributors"));
-        Set<UUID> roster = uuids(yaml.getStringList("participants.official-roster"));
-        Set<UUID> participants = uuids(yaml.getStringList("participants.all"));
-        Map<UUID, Double> finalDrainTargets = uuidDoubles(yaml.getConfigurationSection("final-drain.targets"));
-        Set<UUID> finalDrainAppliedPlayers = uuids(yaml.getStringList("final-drain.applied-players"));
-        Set<Integer> waveRewardsIssued = new LinkedHashSet<>(yaml.getIntegerList("rewards.wave-rewards-issued"));
-        Map<UUID, String> statuses = uuidStatuses(yaml.getConfigurationSection("rewards.statuses"));
-        Map<UUID, Long> cooldowns = uuidLongs(yaml.getConfigurationSection("rewards.shard-cooldowns"));
-        Map<UUID, Long> abyssAnchorCooldowns = uuidLongs(
-                yaml.getConfigurationSection("rewards.abyss-anchor-cooldowns"));
-        Map<UUID, String> nightCloakRolls = uuidStatuses(
-                yaml.getConfigurationSection("rewards.night-cloak-rolls"));
         return new EventSnapshot(
                 yaml.getInt("schema-version", schemaVersion),
-                yaml.getString("event.event-id", ""),
-                yaml.getLong("event.generation", 0L),
-                yaml.getString("event.phase", "RECOVERY_REQUIRED"),
-                yaml.getString("event.world", ""),
+                text(yaml.getString("event.event-id", "")), yaml.getLong("event.generation", 0L),
+                text(yaml.getString("event.phase", "RECOVERY_REQUIRED")),
+                text(yaml.getString("event.world", "")),
                 yaml.getInt("event.core.x"), yaml.getInt("event.core.y"), yaml.getInt("event.core.z"),
-                yaml.getString("event.core.block-data", ""), yaml.getInt("event.required-players"),
+                text(yaml.getString("event.core.block-data", "")), yaml.getInt("event.required-players"),
                 yaml.getInt("event.arena.min-x"), yaml.getInt("event.arena.min-y"), yaml.getInt("event.arena.min-z"),
                 yaml.getInt("event.arena.max-x"), yaml.getInt("event.arena.max-y"), yaml.getInt("event.arena.max-z"),
-                requirements, deposited, pads, contributors, roster, statuses, cooldowns, abyssAnchorCooldowns,
-                yaml.getBoolean("event.core-charged"), yaml.getBoolean("event.half-health-triggered"),
-                yaml.getBoolean("event.control-spell-unlocked"), yaml.getBoolean("event.final-drain-triggered"),
-                yaml.getBoolean("event.final-drain-applied"), yaml.getBoolean("event.end-unlocked"),
+                requirements, deposited, pads,
+                uuids(yaml.getStringList("participants.resource-contributors"), "resource contributors"),
+                uuids(yaml.getStringList("participants.official-roster"), "official roster"),
+                uuidStatuses(yaml.getConfigurationSection("rewards.statuses")),
+                uuidLongs(yaml.getConfigurationSection("rewards.shard-cooldowns")),
+                uuidLongs(yaml.getConfigurationSection("rewards.abyss-anchor-cooldowns")),
+                yaml.getBoolean("event.core-charged"), yaml.getBoolean("event.end-unlocked"),
                 yaml.getBoolean("event.official-boss-death-committed"),
                 yaml.getBoolean("event.boss-loot-committed"),
-                yaml.getString("event.boss-reward-status", "PENDING"),
-                uuidOrNull(yaml.getString("event.boss-reward-recipient", "")),
-                yaml.getString("event.return-stone-status", "PENDING"),
-                yaml.getString("event.victory-step", "NONE"), yaml.getLong("event.updated-at", 0L),
+                text(yaml.getString("event.boss-reward-status", "PENDING")),
+                uuidOrNullStrict(yaml.getString("event.boss-reward-recipient", "")),
+                text(yaml.getString("event.return-stone-status", "PENDING")),
+                text(yaml.getString("event.victory-step", "NONE")), yaml.getLong("event.updated-at", 0L),
                 yaml.getLong("event.phase-deadline-millis", 0L),
-                yaml.getString("event.recovery-reason", ""), participants, finalDrainTargets,
-                finalDrainAppliedPlayers, waveRewardsIssued,
-                yaml.getString("boss.stage", "AWAKENING"),
-                yaml.getString("boss.cast-state", "NONE"),
-                yaml.getLong("boss.cast-deadline-millis", 0L),
-                yaml.getBoolean("boss.absorption-triggered", false),
-                yaml.getBoolean("boss.absorption-completed", false),
-                yaml.getBoolean("boss.absorption-attack-empowered", false),
-                yaml.getBoolean("boss.judgment-triggered", false),
-                yaml.getBoolean("boss.judgment-completed", false), nightCloakRolls);
+                text(yaml.getString("event.recovery-reason", "")),
+                uuids(yaml.getStringList("participants.all"), "participants"),
+                new LinkedHashSet<>(yaml.getIntegerList("rewards.wave-rewards-issued")),
+                text(yaml.getString("boss.phase", "AWAKENING")),
+                text(yaml.getString("boss.active-ability", "NONE")),
+                yaml.getLong("boss.ability-deadline-millis", 0L),
+                text(yaml.getString("boss.defeat-saga", "NONE")),
+                stringMap(yaml.getConfigurationSection("objective.progress")),
+                uuidStatuses(yaml.getConfigurationSection("rewards.night-cloak-rolls")));
     }
 
     private void writeAtomic(String content) throws IOException {
         Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
-        try (FileChannel channel = FileChannel.open(
-                temporary, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE)) {
+        try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
             byte[] bytes = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             channel.write(java.nio.ByteBuffer.wrap(bytes));
             channel.force(true);
@@ -274,6 +276,10 @@ public final class EventStateStore {
         }
     }
 
+    private static String text(String value) {
+        return value == null ? "" : value.trim();
+    }
+
     private static List<String> uuidStrings(Set<UUID> values) {
         return values.stream().map(UUID::toString).sorted().toList();
     }
@@ -285,39 +291,34 @@ public final class EventStateStore {
         return result;
     }
 
-    private static UUID uuidOrNull(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
+    private static UUID uuidOrNullStrict(String value) {
+        if (value == null || value.isBlank()) return null;
         try {
-            return UUID.fromString(value);
+            return UUID.fromString(value.trim());
         } catch (IllegalArgumentException invalid) {
-            return null;
+            throw new IllegalArgumentException("malformed UUID: " + value, invalid);
         }
     }
 
-    private static Set<UUID> uuids(List<String> values) {
+    private static Set<UUID> uuids(List<String> values, String label) {
         Set<UUID> result = new LinkedHashSet<>();
-        for (String value : values) {
-            try {
-                result.add(UUID.fromString(value));
-            } catch (IllegalArgumentException ignored) {
-                // A malformed reward/participant identity is not admitted.
-            }
+        for (String value : values == null ? List.<String>of() : values) {
+            result.add(uuidOrNullStrict(value));
         }
+        result.remove(null);
         return result;
     }
 
     private static Map<UUID, String> uuidStatuses(ConfigurationSection section) {
         Map<UUID, String> result = new LinkedHashMap<>();
-        if (section == null) {
-            return result;
-        }
+        if (section == null) return result;
         for (String key : section.getKeys(false)) {
-            try {
-                result.put(UUID.fromString(key), section.getString(key, "PENDING"));
-            } catch (IllegalArgumentException ignored) {
+            UUID uuid = uuidOrNullStrict(key);
+            String status = section.getString(key);
+            if (status == null || status.isBlank()) {
+                throw new IllegalArgumentException("empty status for " + key);
             }
+            result.put(uuid, status.trim());
         }
         return result;
     }
@@ -329,37 +330,12 @@ public final class EventStateStore {
         return result;
     }
 
-    private static Map<String, Double> uuidDoubleMap(Map<UUID, Double> values) {
-        Map<String, Double> result = new LinkedHashMap<>();
-        values.entrySet().stream().sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> result.put(entry.getKey().toString(), entry.getValue()));
-        return result;
-    }
-
     private static Map<UUID, Long> uuidLongs(ConfigurationSection section) {
         Map<UUID, Long> result = new LinkedHashMap<>();
-        if (section == null) {
-            return result;
-        }
+        if (section == null) return result;
         for (String key : section.getKeys(false)) {
-            try {
-                result.put(UUID.fromString(key), section.getLong(key));
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-        return result;
-    }
-
-    private static Map<UUID, Double> uuidDoubles(ConfigurationSection section) {
-        Map<UUID, Double> result = new LinkedHashMap<>();
-        if (section == null) {
-            return result;
-        }
-        for (String key : section.getKeys(false)) {
-            try {
-                result.put(UUID.fromString(key), section.getDouble(key));
-            } catch (IllegalArgumentException ignored) {
-            }
+            UUID uuid = uuidOrNullStrict(key);
+            result.put(uuid, section.getLong(key));
         }
         return result;
     }
@@ -367,19 +343,33 @@ public final class EventStateStore {
     private static Map<String, Integer> integers(ConfigurationSection section) {
         Map<String, Integer> result = new LinkedHashMap<>();
         if (section != null) {
+            for (String key : section.getKeys(false)) result.put(key, section.getInt(key));
+        }
+        return result;
+    }
+
+    private static Map<String, String> stringMap(ConfigurationSection section) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (section != null) {
             for (String key : section.getKeys(false)) {
-                result.put(key, section.getInt(key));
+                String value = section.getString(key);
+                if (value != null) result.put(key, value);
             }
         }
         return result;
     }
 
     private static int integer(Object value) {
+        if (value == null) throw new IllegalArgumentException("missing integer in pads");
         return value instanceof Number number ? number.intValue() : Integer.parseInt(String.valueOf(value));
     }
 
     private static double decimal(Object value) {
-        return value instanceof Number number ? number.doubleValue() : Double.parseDouble(String.valueOf(value));
+        if (value == null) throw new IllegalArgumentException("missing decimal in pads");
+        double result = value instanceof Number number ? number.doubleValue()
+                : Double.parseDouble(String.valueOf(value));
+        if (!Double.isFinite(result)) throw new IllegalArgumentException("non-finite decimal in pads");
+        return result;
     }
 
     public record LoadResult(boolean valid, EventSnapshot snapshot, String source, String reason) {

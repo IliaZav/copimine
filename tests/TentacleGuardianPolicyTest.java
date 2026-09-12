@@ -1,7 +1,7 @@
 import me.copimine.endevent.domain.TentacleGuardianPolicy;
 import me.copimine.endevent.domain.TentacleAnimationPolicy;
 import me.copimine.endevent.domain.TentacleScalingPolicy;
-import me.copimine.endevent.domain.V2BossStage;
+import me.copimine.endevent.domain.BossPhase;
 
 public final class TentacleGuardianPolicyTest {
     public static void main(String[] args) {
@@ -23,24 +23,24 @@ public final class TentacleGuardianPolicyTest {
                 "five guardians must receive the rounded ten-player budget");
         check(TentacleGuardianPolicy.perGuardianHealth(20) == 42,
                 "eight guardians must receive the rounded twenty-player budget");
-        check(TentacleScalingPolicy.permanentFor(10, V2BossStage.LAST_SEAL) == 5,
+        check(TentacleScalingPolicy.permanentFor(10, BossPhase.LAST_SEAL) == 5,
                 "health distribution must use the official guardian count");
     }
 
     private static void testShieldWindowAndRespawnBoundaries() {
-        check(TentacleGuardianPolicy.shielded(V2BossStage.LAST_SEAL, 1, false),
+        check(TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 1, false),
                 "one living guardian must shield the boss");
-        check(!TentacleGuardianPolicy.shielded(V2BossStage.LAST_SEAL, 0, true),
+        check(!TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, true),
                 "the all-dead window must release the boss");
-        check(!TentacleGuardianPolicy.shielded(V2BossStage.RAGE, 1, false),
+        check(!TentacleGuardianPolicy.shielded(BossPhase.RAGE, 1, false),
                 "guardians must not shield before Last Seal");
-        check(TentacleGuardianPolicy.shielded(V2BossStage.LAST_SEAL, 0, false, true),
+        check(TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, false, true),
                 "Last Seal must be shielded while guardians are initializing");
-        check(!TentacleGuardianPolicy.shielded(V2BossStage.LAST_SEAL, 0, false, false),
+        check(!TentacleGuardianPolicy.shielded(BossPhase.LAST_SEAL, 0, false, false),
                 "an empty non-initializing set must not invent a shield window");
-        check(TentacleGuardianPolicy.damageWindowOpen(V2BossStage.LAST_SEAL, 0, 100L, 399L),
+        check(TentacleGuardianPolicy.damageWindowOpen(BossPhase.LAST_SEAL, 0, 100L, 399L),
                 "damage window must stay open for 300 ticks");
-        check(!TentacleGuardianPolicy.damageWindowOpen(V2BossStage.LAST_SEAL, 0, 100L, 400L),
+        check(!TentacleGuardianPolicy.damageWindowOpen(BossPhase.LAST_SEAL, 0, 100L, 400L),
                 "damage window must close at its exact boundary");
         check(!TentacleGuardianPolicy.respawnDue(900L, 800L, true),
                 "respawn must remain frozen during the damage window");

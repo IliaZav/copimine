@@ -16,10 +16,12 @@ $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $botLog = Join-Path $runtimeRoot 'spell-matrix-live-bot.log'
 $botErr = Join-Path $runtimeRoot 'spell-matrix-live-bot.err.log'
+$controlDirectory = Join-Path $runtimeRoot 'spell-matrix-control'
 
 $config = Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw
-if ($config -notmatch '(?m)^environment:\s*local\s*$') {
-  throw 'Refused: spell matrix requires environment: local.'
+if ($config -notmatch '(?m)^environment:\s*local\s*$' -or
+    $config -notmatch '(?m)^\s*schema-version:\s*4\s*$') {
+  throw 'Refused: spell matrix requires the current local schema.'
 }
 if (-not (Test-Path -LiteralPath $serverDir -PathType Container)) {
   throw "Isolated Paper directory is missing: $serverDir"
@@ -102,6 +104,53 @@ function Assert-BossSpell {
   Write-Output "LIVE_SPELL_PASS spell=$Spell telegraph=1 flight=1 cast=1 impact=1"
 }
 
+function Wait-BossCastRecovery {
+  # The production hazard ledger intentionally remains reserved during the
+  # short post-impact recovery window.  A forced spell matrix must wait for
+  # that window instead of racing the real boss controller and reporting a
+  # budget rejection as a missing spell.
+  Start-Sleep -Milliseconds 1300
+  for ($attempt = 0; $attempt -lt 12; $attempt++) {
+    $status = Invoke-LocalRcon -CommandText 'cmend boss info'
+    if ($status -match '(?m)bossCast=(?:NONE|$)' -or
+        $status -match '(?m)bossCastState=(?:NONE|$)') {
+      return
+    }
+    Start-Sleep -Milliseconds 100
+  }
+}
+
+function Assert-FinalStrike {
+  param([Parameter(Mandatory = $true)][int64]$PreviousLength)
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_FINAL_STRIKE_START.*stage=LAST_SEAL' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_FINAL_STRIKE_IMPACT.*blocks=false' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_FINAL_STRIKE_COMPLETE.*impacted=true' -TimeoutSeconds 8 | Out-Null
+  Write-Output 'LIVE_SPELL_PASS spell=final_strike telegraph=1 impact=1 recovery=1'
+}
+
+function Set-BossPhase {
+  param([Parameter(Mandatory = $true)][string]$Phase)
+  if ($Phase -eq 'awakening') {
+    Write-Output 'LIVE_BOSS_PHASE_PASS phase=AWAKENING initial=true'
+    return
+  }
+  $currentStatus = Invoke-LocalRcon -CommandText 'cmend boss info'
+  if ($currentStatus -match ('(?m)bossPhase=\xA7?f?' + $Phase.ToUpperInvariant() + '\b')) {
+    Write-Output "LIVE_BOSS_PHASE_PASS phase=$($Phase.ToUpperInvariant()) already=true"
+    return
+  }
+  $before = Get-LogLength
+  $response = Invoke-LocalRcon -CommandText ("cmend boss phase $Phase")
+  if ($response -match '(?i)refused|missing|ошиб') {
+    throw "Boss phase $Phase was refused:`n$response"
+  }
+  Wait-LogMarker -PreviousLength $before -Pattern ("BOSS_STAGE_TRANSITION.*to=" + $Phase.ToUpperInvariant() + '\b') -TimeoutSeconds 8 | Out-Null
+  Write-Output "LIVE_BOSS_PHASE_PASS phase=$($Phase.ToUpperInvariant())"
+}
+
 $botProcess = $null
 $stdoutTask = $null
 $stderrTask = $null
@@ -110,6 +159,15 @@ try {
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $core = Get-CoreCoordinates (Invoke-LocalRcon -CommandText 'cmend status')
   $matrixLogStart = Get-LogLength
+
+  New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+  Get-ChildItem -LiteralPath $controlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+  # This matrix is a spell/visual probe, not a damage probe.  Keep the bot
+  # passive so automatic melee cannot move the boss across a phase threshold
+  # while the script is preparing the next forced spell.
+  Set-Content -LiteralPath (Join-Path $controlDirectory ($BotName + '.mode')) `
+    -Value 'PASSIVE' -NoNewline -Encoding ASCII
 
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -123,8 +181,14 @@ try {
     $startInfo.ArgumentList.Add($botScript)
     $startInfo.ArgumentList.Add($BotName)
     $startInfo.ArgumentList.Add(([string]($BotDurationSeconds * 1000)))
+    $startInfo.ArgumentList.Add('')
+    $startInfo.ArgumentList.Add('')
+    $startInfo.ArgumentList.Add('')
+    $startInfo.ArgumentList.Add('')
+    $startInfo.ArgumentList.Add('')
+    $startInfo.ArgumentList.Add($controlDirectory)
   } else {
-    $startInfo.Arguments = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000))
+    $startInfo.Arguments = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000)) + ' "" "" "" "" "" "' + $controlDirectory + '"'
   }
   $botProcess = [Diagnostics.Process]::new()
   $botProcess.StartInfo = $startInfo
@@ -146,9 +210,11 @@ try {
   # Manual phase playback is explicitly local-only. Outside combat it must
   # produce only the TEST marker; no automatic event track may start.
   $phaseKeys = @(
-    'wave-1', 'wave-2', 'wave-3', 'wave-4', 'wave-5',
-    'intermission-1', 'intermission-2', 'intermission-3', 'intermission-4',
-    'boss-cinematic', 'final-drain', 'final-ritual', 'final-wave', 'boss-finish'
+    'ritual-wait', 'wave-1', 'wave-2', 'wave-3', 'wave-4', 'wave-5', 'wave-6', 'wave-7',
+    'intermission-1', 'intermission-2', 'intermission-3', 'intermission-5', 'intermission-6',
+    'core-restoration', 'pre-boss-cooldown', 'boss-cinematic', 'boss-awakening',
+    'boss-hunt', 'boss-rift', 'boss-overload', 'boss-rage', 'boss-last-seal',
+    'boss-finish', 'victory'
   )
   foreach ($key in $phaseKeys) {
     $before = Get-LogLength
@@ -166,24 +232,29 @@ try {
 
   $null = Invoke-LocalRcon -CommandText 'cmend boss spawn'
   Start-Sleep -Seconds 1
-  foreach ($spell in @(
-    'void_blast', 'rift_projectile', 'rift_arrows', 'void_mark',
-    'summon_servants', 'arena_inferno'
+  foreach ($entry in @(
+    @{ Phase = 'awakening'; Spell = 'void_blast' },
+    @{ Phase = 'awakening'; Spell = 'rift_projectile' },
+    @{ Phase = 'hunt'; Spell = 'rift_arrows' },
+    @{ Phase = 'hunt'; Spell = 'void_mark' },
+    @{ Phase = 'rift'; Spell = 'summon_servants' },
+    @{ Phase = 'rage'; Spell = 'arena_inferno' },
+    @{ Phase = 'last_seal'; Spell = 'final_strike' }
   )) {
+    Set-BossPhase -Phase $entry.Phase
+    $spell = $entry.Spell
     $before = Get-LogLength
     $response = Invoke-LocalRcon -CommandText ("cmend boss spell $spell")
     if ($response -match '(?i)refused|missing|not created') {
       throw "Boss spell $spell was refused:`n$response"
     }
-    Assert-BossSpell -Spell $spell -PreviousLength $before
-    Start-Sleep -Milliseconds 250
+    if ($spell -eq 'final_strike') {
+      Assert-FinalStrike -PreviousLength $before
+    } else {
+      Assert-BossSpell -Spell $spell -PreviousLength $before
+    }
+    Wait-BossCastRecovery
   }
-  $before = Get-LogLength
-  $response = Invoke-LocalRcon -CommandText ("cmend boss spell control_reverse $BotName")
-  if ($response -match '(?i)refused|missing') {
-    throw "Boss control spell was refused:`n$response"
-  }
-  Assert-BossSpell -Spell 'will_distortion' -PreviousLength $before
 
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $beforeMini = Get-LogLength
@@ -260,7 +331,7 @@ try {
   if ($matrixLogDelta -match 'generated an exception') {
     throw "Spell matrix produced a Paper task exception:`n$matrixLogDelta"
   }
-  Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 mini=$($assignedMiniBossSpells.Count) assigned=$($assignedMiniBossSpells -join ',') music_phases=14 cleanup=1"
+  Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 mini=$($assignedMiniBossSpells.Count) assigned=$($assignedMiniBossSpells -join ',') music_phases=24 cleanup=1 current_phases=6"
 } finally {
   try { Invoke-LocalRcon -CommandText 'cmend wave clear' | Out-Null } catch { }
   try { Invoke-LocalRcon -CommandText 'cmend boss kill cleanup' | Out-Null } catch { }
@@ -276,4 +347,5 @@ try {
       try { [IO.File]::WriteAllText($botErr, $stderrTask.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) } catch { }
     }
   }
+  Remove-Item -LiteralPath (Join-Path $controlDirectory ($BotName + '.mode')) -Force -ErrorAction SilentlyContinue
 }

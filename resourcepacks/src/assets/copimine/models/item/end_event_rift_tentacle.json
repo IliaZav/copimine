@@ -6,6 +6,11 @@
     "tentacle": "copimine:item/end_event_rift_tentacle_hd"
   },
   "copimine_rig": {
+    "texture_size": [
+      512,
+      512
+    ],
+    "forward_axis": "+Z",
     "bones": [
       "root",
       "base",

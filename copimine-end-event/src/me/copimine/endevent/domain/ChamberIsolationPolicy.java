@@ -47,8 +47,8 @@ public final class ChamberIsolationPolicy {
     }
 
     public static boolean allowsInteraction(UUID source, UUID target, Assignment assignment,
-                                            boolean passageOpen) {
-        return passageOpen || sameRoom(source, target, assignment);
+                                            boolean merged) {
+        return merged || sameRoom(source, target, assignment);
     }
 
     /**
@@ -56,8 +56,8 @@ public final class ChamberIsolationPolicy {
      * Once the passage is open the room gate no longer filters interactions.
      */
     public static boolean allowsMobTarget(int mobChamber, UUID target,
-                                          Assignment assignment, boolean passageOpen) {
-        if (passageOpen) {
+                                          Assignment assignment, boolean merged) {
+        if (merged) {
             return target != null && assignment != null
                     && assignment.chamberByPlayer().containsKey(target);
         }

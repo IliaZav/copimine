@@ -9,6 +9,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 /**
@@ -17,10 +18,11 @@ import org.bukkit.configuration.file.YamlConfiguration;
  * event resumes, without serializing entities or tasks.
  */
 public final class HazardMutationJournal {
-    private static final int CURRENT_SCHEMA = 2;
+    private static final int CURRENT_SCHEMA = 3;
 
     private final Path path;
     private final Path backupPath;
+    private volatile String lastFailure = "";
 
     public HazardMutationJournal(Path dataFolder) {
         this.path = dataFolder.resolve("end-rift-hazard-journal.yml");
@@ -33,17 +35,39 @@ public final class HazardMutationJournal {
             return primary;
         }
         Snapshot backup = read(backupPath);
-        return backup.valid() ? backup : Snapshot.empty();
+        if (backup.valid()) {
+            return backup;
+        }
+        if (!Files.exists(path) && !Files.exists(backupPath)) {
+            return Snapshot.empty();
+        }
+        return Snapshot.invalid();
     }
 
     public synchronized boolean prepare(String eventId, long generation, String world,
                                         List<Entry> entries) {
+        Snapshot existing = load();
+        if (!existing.valid()) {
+            lastFailure = "unresolved hazard journal is invalid; recovery is required";
+            return false;
+        }
+        if ((existing.status() == Status.PREPARED || existing.status() == Status.APPLIED)
+                && !existing.entries().isEmpty()) {
+            lastFailure = "unresolved hazard journal must be restored before a new prepare";
+            return false;
+        }
+        if (eventId == null || eventId.isBlank() || generation <= 0L
+                || world == null || world.isBlank() || entries == null) {
+            lastFailure = "hazard journal metadata is incomplete";
+            return false;
+        }
         return write(new Snapshot(CURRENT_SCHEMA, eventId, generation, world,
                 Status.PREPARED, entries));
     }
 
     public synchronized boolean markApplied() {
         Snapshot current = load();
+        if (!current.valid()) return false;
         if (current.status() != Status.PREPARED) {
             return current.status() == Status.APPLIED;
         }
@@ -52,6 +76,7 @@ public final class HazardMutationJournal {
 
     public synchronized boolean markRestored() {
         Snapshot current = load();
+        if (!current.valid()) return false;
         if (current.status() == Status.EMPTY || current.status() == Status.RESTORED) {
             return true;
         }
@@ -60,6 +85,10 @@ public final class HazardMutationJournal {
 
     public synchronized Path path() {
         return path;
+    }
+
+    public String lastFailure() {
+        return lastFailure;
     }
 
     private boolean write(Snapshot snapshot) {
@@ -80,23 +109,39 @@ public final class HazardMutationJournal {
                 value.put("floor-original", entry.floorOriginal());
                 value.put("web-original", entry.webOriginal());
                 value.put("mutation", entry.mutation());
+                if (entry.worldId() != null && !entry.worldId().isBlank()) {
+                    value.put("world-id", entry.worldId());
+                }
+                if (entry.eventId() != null && !entry.eventId().isBlank()) {
+                    value.put("event-id", entry.eventId());
+                }
+                if (entry.generation() >= 0L) {
+                    value.put("entry-generation", entry.generation());
+                }
                 entries.add(value);
             }
             yaml.set("entries", entries);
             writeAtomic(yaml.saveToString());
             return true;
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException error) {
+            lastFailure = "hazard journal write failed: " + error.getMessage();
             return false;
         }
     }
 
     private Snapshot read(Path source) {
         if (!Files.exists(source)) {
-            return Snapshot.empty();
+            return Snapshot.invalid();
         }
         try {
             YamlConfiguration yaml = YamlConfiguration.loadConfiguration(source.toFile());
-            if (yaml.getInt("schema-version", CURRENT_SCHEMA) > CURRENT_SCHEMA) {
+            if (!yaml.contains("schema-version")) {
+                lastFailure = "hazard journal schema is missing: " + source;
+                return Snapshot.invalid();
+            }
+            int schema = yaml.getInt("schema-version", -1);
+            if (schema != CURRENT_SCHEMA) {
+                lastFailure = "unsupported hazard journal schema " + schema;
                 return Snapshot.invalid();
             }
             Status status;
@@ -111,14 +156,29 @@ public final class HazardMutationJournal {
                         ? raw.get("floor-original") : "");
                 String web = String.valueOf(raw.containsKey("web-original")
                         ? raw.get("web-original") : "");
-                String mutation = String.valueOf(raw.containsKey("mutation")
-                        ? raw.get("mutation") : "MAGMA");
+                if (!raw.containsKey("mutation")) return Snapshot.invalid();
+                String mutation = String.valueOf(raw.get("mutation"));
                 entries.add(new Entry(integer(raw.get("x")), integer(raw.get("floor-y")),
-                        integer(raw.get("z")), floor, web, mutation));
+                        integer(raw.get("z")), floor, web, mutation,
+                        stringOrDefault(raw.get("world-id"), yaml.getString("world-id", "")),
+                        stringOrDefault(raw.get("event-id"), yaml.getString("event-id", "")),
+                        longRequired(raw.get("entry-generation"), yaml.getLong("generation", -1L))));
             }
-            return new Snapshot(CURRENT_SCHEMA, yaml.getString("event-id", ""),
-                    yaml.getLong("generation", 0L), yaml.getString("world", ""), status, entries, true);
-        } catch (RuntimeException ignored) {
+            String eventId = yaml.getString("event-id", "");
+            String world = yaml.getString("world", "");
+            long generation = yaml.getLong("generation", -1L);
+            if (eventId == null || eventId.isBlank() || world == null || world.isBlank()
+                    || generation <= 0L) return Snapshot.invalid();
+            for (Entry entry : entries) {
+                if (!entry.eventId().isBlank() && !eventId.equals(entry.eventId())
+                        || entry.generation() > 0L && entry.generation() != generation
+                        || !entry.worldId().isBlank() && !isUuid(entry.worldId())) {
+                    return Snapshot.invalid();
+                }
+            }
+            return new Snapshot(CURRENT_SCHEMA, eventId, generation, world, status, entries, true);
+        } catch (RuntimeException error) {
+            lastFailure = "hazard journal parse failed: " + error.getMessage();
             return Snapshot.invalid();
         }
     }
@@ -153,9 +213,14 @@ public final class HazardMutationJournal {
     }
 
     public record Entry(int x, int floorY, int z, String floorOriginal, String webOriginal,
-                        String mutation) {
+                        String mutation, String worldId, String eventId, long generation) {
         public Entry(int x, int floorY, int z, String floorOriginal, String webOriginal) {
-            this(x, floorY, z, floorOriginal, webOriginal, "MAGMA");
+            this(x, floorY, z, floorOriginal, webOriginal, "MAGMA", "", "", -1L);
+        }
+
+        public Entry(int x, int floorY, int z, String floorOriginal, String webOriginal,
+                     String mutation) {
+            this(x, floorY, z, floorOriginal, webOriginal, mutation, "", "", -1L);
         }
 
         public Entry {
@@ -170,6 +235,8 @@ public final class HazardMutationJournal {
                     && !mutation.equals("ICE") && !mutation.equals("OBELISK")) {
                 throw new IllegalArgumentException("unsupported hazard mutation: " + mutation);
             }
+            worldId = worldId == null ? "" : worldId;
+            eventId = eventId == null ? "" : eventId;
         }
 
         public boolean hasWebMutation() {
@@ -180,24 +247,51 @@ public final class HazardMutationJournal {
             return mutation.equals("FIRE");
         }
 
-        /** A V2 Wave 4 safe-zone cell: emerald floor plus optional barrier. */
+        /** A Wave 4 safe-zone cell: emerald floor plus optional barrier. */
         public boolean isEmeraldBarrierMutation() {
             return mutation.equals("EMERALD_BARRIER");
         }
 
-        /** A V2 safe-zone perimeter block above an untouched floor. */
+        /** A safe-zone perimeter block above an untouched floor. */
         public boolean isBarrierMutation() {
             return mutation.equals("BARRIER");
         }
 
-        /** A V2 Wave 5 prisoner cell temporarily covered with ice. */
+        /** A Wave 5 prisoner cell temporarily covered with ice. */
         public boolean isIceMutation() {
             return mutation.equals("ICE");
         }
 
-        /** A V3 Wave 4 obelisk cell journaled at its actual world height. */
+        /** A Wave 4 obelisk cell journaled at its actual world height. */
         public boolean isObeliskMutation() {
             return mutation.equals("OBELISK");
+        }
+    }
+
+    private static String stringOrDefault(Object value, String fallback) {
+        if (value == null) {
+            return fallback == null ? "" : fallback;
+        }
+        String text = String.valueOf(value);
+        return text.isBlank() ? (fallback == null ? "" : fallback) : text;
+    }
+
+    private static long longRequired(Object value, long fallback) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value == null) {
+            return fallback;
+        }
+        return Long.parseLong(String.valueOf(value));
+    }
+
+    private static boolean isUuid(String value) {
+        try {
+            UUID.fromString(value);
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
         }
     }
 

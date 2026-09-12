@@ -22,6 +22,20 @@ public final class RiftCarrierPolicyTest {
         state = RiftCarrierPolicy.deliver(state, generation, player, true, 122L);
         check(state.delivered() == 1 && state.phase() == RiftCarrierPolicy.Phase.READY_FOR_NEXT_CARRIER,
                 "delivery at Core must advance exactly one charge");
+        state = RiftCarrierPolicy.selectCarrier(state, generation, carrier);
+        state = RiftCarrierPolicy.carrierDied(state, generation, carrier, UUID.randomUUID(), 200L);
+        state = RiftCarrierPolicy.pickUp(state, generation, player, state.charge(), 201L);
+        RiftCarrierPolicy.State released = RiftCarrierPolicy.releaseHolder(
+                state, generation, player, 202L);
+        check(released.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED
+                        && released.holder() == null && released.charge() != null,
+                "holder death or disconnect must immediately drop the same charge");
+        check(RiftCarrierPolicy.releaseHolder(released, generation, player, 203L) == released,
+                "releasing a non-holder must not mutate the charge state");
+        state = released;
+        state = RiftCarrierPolicy.pickUp(state, generation, player, state.charge(), 204L);
+        state = RiftCarrierPolicy.deliver(state, generation, player, true, 205L);
+        check(state.delivered() == 2, "released charge must remain deliverable exactly once");
         check(RiftCarrierPolicy.shouldSpawnReplacement(state, generation, true, 0),
                 "an unfinished objective with no remaining candidates must request a bounded replacement carrier");
         check(!RiftCarrierPolicy.shouldSpawnReplacement(state, generation, false, 0),
@@ -30,7 +44,7 @@ public final class RiftCarrierPolicyTest {
         state = RiftCarrierPolicy.carrierDied(state, generation, carrier, UUID.randomUUID(), 200L);
         state = RiftCarrierPolicy.expireForReplacement(state, generation, 401L);
         check(state.phase() == RiftCarrierPolicy.Phase.READY_FOR_NEXT_CARRIER
-                        && state.charge() == null && state.delivered() == 1,
+                        && state.charge() == null && state.delivered() == 2,
                 "an expired undelivered charge must be cleared before a replacement carrier is spawned");
         state = RiftCarrierPolicy.selectCarrier(state, generation, carrier);
         state = RiftCarrierPolicy.carrierDied(state, generation, carrier, UUID.randomUUID(), 500L);

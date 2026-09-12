@@ -9,6 +9,7 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.util.Identifier;
+import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import me.copimine.client.mixin.ClientWorldAccessor;
 
@@ -119,6 +120,16 @@ public final class EndRiftTentacleRenderer {
             VertexConsumer buffer = consumers.getBuffer(RenderLayer.getEntityTranslucent(TEXTURE));
             matrices.push();
             matrices.translate(position.x, position.y, position.z);
+            Entity target = targetEntity(context, uuidValue);
+            Vec3d targetPosition = target == null ? null : target.getLerpedPos(tickDelta);
+            if (targetPosition != null && finite(targetPosition)) {
+                // The rig's authored forward axis is +Z. Rotate the whole
+                // articulated chain toward the server-selected target; all
+                // bone animation remains local and the server still owns the
+                // actual hit/lock decision.
+                matrices.multiply(RotationAxis.POSITIVE_Y.rotation(
+                        targetYaw(position, targetPosition)));
+            }
             matrices.scale(pose.rigScale() / 16.0F,
                     pose.rigScale() / 16.0F, pose.rigScale() / 16.0F);
             RIG.render(matrices, buffer, pose, FULL_BRIGHT_LIGHT, 0,
@@ -130,6 +141,27 @@ public final class EndRiftTentacleRenderer {
 
     private static boolean finite(Vec3d value) {
         return Double.isFinite(value.x) && Double.isFinite(value.y) && Double.isFinite(value.z);
+    }
+
+    private static Entity targetEntity(WorldRenderContext context, String tentacleUuid) {
+        String targetUuid = ClientBridgeProtocol.endEventTentacleTargetForEntity(tentacleUuid);
+        if (targetUuid == null || targetUuid.isBlank() || context == null || context.world() == null) {
+            return null;
+        }
+        try {
+            Entity target = ((ClientWorldAccessor) context.world())
+                    .copimine$getEntityLookup().get(UUID.fromString(targetUuid));
+            return target instanceof Entity candidate && !candidate.isRemoved() ? candidate : null;
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    static float targetYaw(Vec3d origin, Vec3d target) {
+        if (origin == null || target == null || !finite(origin) || !finite(target)) {
+            return 0.0F;
+        }
+        return (float) Math.atan2(target.x - origin.x, target.z - origin.z);
     }
 
     private static int tintForHealthState(String healthState) {

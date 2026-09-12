@@ -4,35 +4,36 @@ param(
   [string]$FirstBotName = 'ObeliskProbeA',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'ObeliskProbeB',
-  # Reflections are driven by real client packets and can miss while Paper is
-  # flushing AuthMe/session work.  Keep enough runway for three separate
-  # 80-tick launches instead of making the regression depend on one timing.
-  [int]$BotDurationSeconds = 150,
-  [int]$TimeoutSeconds = 95
+  [int]$BotDurationSeconds = 55,
+  [int]$TimeoutSeconds = 45
 )
 
-# Local-only integration probe. It uses real Mineflayer player connections,
-# real use_entity packets and the checked-out local Paper/PDC state. It never
-# rebuilds the world scene and refuses a non-local End Rift configuration.
+# Local-only Wave 4 integration probe. It uses two real Mineflayer player
+# connections and the normal Paper use_entity path. It never edits the map,
+# the event snapshot, or a production server.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
-$obeliskBotScript = Join-Path $root 'tests\LocalEndRiftObeliskBot.js'
-$combatBotScript = Join-Path $root 'tests\LocalEndRiftBossCombatBot.js'
+$botScript = Join-Path $root 'tests\LocalEndRiftObeliskBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $botLogDirectory = Join-Path $runtimeRoot 'rift-obelisk-bots'
-$playerNames = @($FirstBotName, $SecondBotName)
-$processes = @()
+$names = @($FirstBotName, $SecondBotName)
+$probes = @()
 
-if (@($playerNames | Select-Object -Unique).Count -ne $playerNames.Count) {
-  throw 'The obelisk probe requires unique player names.'
+if (@($names | Select-Object -Unique).Count -ne $names.Count) {
+  throw 'The Wave 4 obelisk probe requires unique player names.'
 }
-if ((Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
-  throw 'Refused: the Rift Obelisk probe requires environment: local.'
+$branch = (& git -C $root branch --show-current 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+  throw "Refused to run outside codex/end-rift-event: $branch"
 }
-foreach ($path in @($obeliskBotScript, $combatBotScript, $paperLog)) {
+$config = Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw
+if ($config -notmatch '(?m)^environment:\s*local\s*$') {
+  throw 'Refused: the Wave 4 probe requires environment: local.'
+}
+foreach ($path in @($rconScript, $botScript, $paperLog)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
     throw "Required local probe file is missing: $path"
   }
@@ -49,21 +50,32 @@ function Invoke-LocalRcon {
 }
 
 function Read-SharedText {
-  param([Parameter(Mandatory = $true)][string]$Path)
-  $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+  $stream = [IO.File]::Open($paperLog, [IO.FileMode]::Open, [IO.FileAccess]::Read,
+    [IO.FileShare]::ReadWrite)
   try {
     $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8, $true)
     try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
-  } finally {
-    $stream.Dispose()
-  }
+  } finally { $stream.Dispose() }
 }
 
-function Get-LogLength {
-  # Wait-LogCount slices the decoded UTF-8 string, so the checkpoint must be
-  # measured in characters rather than raw file bytes. Cyrillic plugin
-  # messages make those offsets diverge.
-  return (Read-SharedText -Path $paperLog).Length
+function Get-LogLength { return (Read-SharedText).Length }
+
+function Wait-Log {
+  param(
+    [Parameter(Mandatory = $true)][string]$Pattern,
+    [Parameter(Mandatory = $true)][long]$AfterOffset,
+    [int]$WaitSeconds = $TimeoutSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($WaitSeconds)
+  while ((Get-Date) -lt $deadline) {
+    $text = Read-SharedText
+    if ($AfterOffset -lt $text.Length) {
+      $tail = $text.Substring([int]$AfterOffset)
+      if ([Regex]::IsMatch($tail, $Pattern)) { return $tail }
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for '$Pattern'. See $paperLog"
 }
 
 function Wait-LogCount {
@@ -75,442 +87,174 @@ function Wait-LogCount {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   while ((Get-Date) -lt $deadline) {
-    $text = Read-SharedText -Path $paperLog
-    $tail = ''
-    if ($AfterOffset -lt $text.Length) {
-      $tail = $text.Substring([int]$AfterOffset)
-    }
-    $count = ([Regex]::Matches($tail, $Pattern)).Count
-    if ($count -ge $Minimum) {
-      return $tail
-    }
+    $text = Read-SharedText
+    $tail = if ($AfterOffset -lt $text.Length) {
+      $text.Substring([int]$AfterOffset)
+    } else { '' }
+    if (([Regex]::Matches($tail, $Pattern)).Count -ge $Minimum) { return $tail }
     Start-Sleep -Milliseconds 250
   }
-  throw "Timed out waiting for $Minimum log matches of '$Pattern'. See $paperLog"
+  throw "Timed out waiting for $Minimum matches of '$Pattern'. See $paperLog"
 }
 
-function Wait-LocalPlayers {
-  param([Parameter(Mandatory = $true)][string[]]$Names)
+function Wait-Players {
+  param([Parameter(Mandatory = $true)][string[]]$Players)
   for ($attempt = 0; $attempt -lt 80; $attempt++) {
-    $list = Invoke-LocalRcon -CommandText 'list'
-    if (@($Names | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) {
+    $list = Invoke-LocalRcon 'list'
+    if (@($Players | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) {
       return
     }
     Start-Sleep -Milliseconds 500
   }
-  throw "Local probe players did not join: $($Names -join ', ')"
+  throw "Probe players did not join: $($Players -join ', ')"
 }
 
-function Get-BossSnapshot {
-  $status = Invoke-LocalRcon -CommandText 'cmend status'
-  $match = [Regex]::Match($status,
-    'boss=.*?([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\s+hp=([0-9.]+)/([0-9.]+)')
-  if (-not $match.Success) {
-    throw "Local official boss snapshot is missing:`n$status"
-  }
-  $uuid = $match.Groups[1].Value
-  $healthData = [Regex]::Replace((Invoke-LocalRcon -CommandText ("data get entity " + $uuid + " Health")), '[§&][0-9A-FK-ORa-fk-or]', '')
-  $healthMatch = [Regex]::Match($healthData, '([-0-9]+(?:\.[0-9]+)?)f\s*$')
-  if (-not $healthMatch.Success) {
-    throw "Real entity Health is missing:`n$healthData"
-  }
-  $maxData = [Regex]::Replace((Invoke-LocalRcon -CommandText ("attribute " + $uuid + " minecraft:generic.max_health get")), '[§&][0-9A-FK-ORa-fk-or]', '')
-  $maxMatches = [Regex]::Matches($maxData, '[-0-9]+(?:\.[0-9]+)?')
-  if ($maxMatches.Count -eq 0) {
-    throw "Real entity max_health is missing:`n$maxData"
-  }
-  $physicalMatch = [Regex]::Match($status, 'physical=([0-9.]+)/([0-9.]+)')
-  $physical = -1.0D
-  if ($physicalMatch.Success) {
-    $physical = [double]::Parse($physicalMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-  }
-  return [pscustomobject]@{
-    Status = $status
-    Uuid = $uuid
-    Health = [double]::Parse($healthMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-    MaxHealth = [double]::Parse($maxMatches[$maxMatches.Count - 1].Value, [Globalization.CultureInfo]::InvariantCulture)
-    Physical = $physical
-  }
-}
-
-function Get-BossPosition {
-  param([Parameter(Mandatory = $true)][string]$BossUuid)
-  $data = Invoke-LocalRcon -CommandText ("data get entity $BossUuid Pos")
-  $match = [Regex]::Match($data, '\[\s*([-0-9.]+)d,\s*([-0-9.]+)d,\s*([-0-9.]+)d\s*\]')
-  if (-not $match.Success) { throw "Local boss position is missing:`n$data" }
-  return @(
-    [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture),
-    [double]::Parse($match.Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture),
-    [double]::Parse($match.Groups[3].Value, [Globalization.CultureInfo]::InvariantCulture)
-  )
-}
-
-function Get-EntityHealth {
-  param([Parameter(Mandatory = $true)][string]$EntitySelector)
-  $data = Invoke-LocalRcon -CommandText ("data get entity $EntitySelector Health")
-  $match = [Regex]::Match($data, '(?:Health:\s*)?([-0-9.]+)f?\s*$')
-  if (-not $match.Success) {
-    throw "Health is missing for ${EntitySelector}:`n$data"
-  }
-  return [double]::Parse($match.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-}
-
-function Assert-ArenaFloorStone {
+function Start-Bot {
   param(
-    [Parameter(Mandatory = $true)][int]$X,
-    [Parameter(Mandatory = $true)][int]$Y,
-    [Parameter(Mandatory = $true)][int]$Z,
-    [Parameter(Mandatory = $true)][string]$Marker
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][bool]$Reflect,
+    [Parameter(Mandatory = $true)][string]$OutputPath,
+    [Parameter(Mandatory = $true)][double]$CoreX,
+    [Parameter(Mandatory = $true)][double]$CoreZ
   )
-  $offset = Get-LogLength
-  # `data get block` only works for block entities (chests, command blocks,
-  # etc.), not an ordinary arena floor block. Use the vanilla block predicate
-  # against the known local arena material and require its observable log
-  # marker instead.
-  $null = Invoke-LocalRcon -CommandText (
-    "execute if block $X $Y $Z minecraft:stone run minecraft:say $Marker")
-  Wait-LogCount -Pattern ([Regex]::Escape($Marker)) -Minimum 1 -AfterOffset $offset -WaitSeconds 5 | Out-Null
-}
-
-function Start-NodeProbe {
-  param(
-    [Parameter(Mandatory = $true)][string]$ScriptPath,
-    [Parameter(Mandatory = $true)][string[]]$Arguments,
-    [Parameter(Mandatory = $true)][hashtable]$Environment
-  )
-  New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
-  $startInfo = [Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
-  $startInfo.WorkingDirectory = $root
-  $startInfo.UseShellExecute = $false
-  $startInfo.CreateNoWindow = $true
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
-  if ($null -ne $startInfo.ArgumentList) {
-    $startInfo.ArgumentList.Add($ScriptPath)
-    foreach ($argument in $Arguments) { $startInfo.ArgumentList.Add($argument) }
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $info = [Diagnostics.ProcessStartInfo]::new()
+  $info.FileName = $node
+  $info.WorkingDirectory = $root
+  $info.UseShellExecute = $false
+  $info.CreateNoWindow = $true
+  $info.RedirectStandardOutput = $true
+  $info.RedirectStandardError = $true
+  if ($null -ne $info.ArgumentList) {
+    $info.ArgumentList.Add($botScript)
+    $info.ArgumentList.Add($Name)
+    $info.ArgumentList.Add(([string]($BotDurationSeconds * 1000)))
   } else {
-    $quoted = @('"' + $ScriptPath + '"') + @($Arguments | ForEach-Object { '"' + $_ + '"' })
-    $startInfo.Arguments = $quoted -join ' '
+    $info.Arguments = '"' + $botScript + '" "' + $Name + '" ' +
+      ([string]($BotDurationSeconds * 1000))
   }
-  foreach ($entry in $Environment.GetEnumerator()) {
-    $startInfo.EnvironmentVariables[$entry.Key] = [string]$entry.Value
-  }
+  $info.EnvironmentVariables['END_RIFT_BOT_HOST'] = '127.0.0.1'
+  $info.EnvironmentVariables['END_RIFT_BOT_PORT'] = '25566'
+  $info.EnvironmentVariables['END_RIFT_REFLECT_ENABLED'] = if ($Reflect) { '1' } else { '0' }
+  $info.EnvironmentVariables['END_RIFT_REFLECT_AFTER_FIREBALLS'] = '0'
+  $info.EnvironmentVariables['END_RIFT_REFLECT_START_MS'] = '0'
+  $info.EnvironmentVariables['END_RIFT_SKIP_AUTH_CHAT'] = '0'
+  $info.EnvironmentVariables['END_RIFT_CORE_X'] = $CoreX.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
+  $info.EnvironmentVariables['END_RIFT_CORE_Z'] = $CoreZ.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
   $process = [Diagnostics.Process]::new()
-  $process.StartInfo = $startInfo
+  $process.StartInfo = $info
   $process.Start() | Out-Null
   return [pscustomobject]@{
+    Name = $Name
     Process = $process
     OutputTask = $process.StandardOutput.ReadToEndAsync()
     ErrorTask = $process.StandardError.ReadToEndAsync()
+    OutputPath = $OutputPath
   }
 }
 
-function Save-ProbeOutput {
-  param([Parameter(Mandatory = $true)][object]$Probe, [Parameter(Mandatory = $true)][string]$Name)
-  $output = $Probe.OutputTask.GetAwaiter().GetResult()
-  $errorOutput = $Probe.ErrorTask.GetAwaiter().GetResult()
-  [IO.File]::WriteAllText((Join-Path $botLogDirectory ($Name + '.log')), $output,
+function Save-BotOutput {
+  param([Parameter(Mandatory = $true)][object]$Probe)
+  $out = $Probe.OutputTask.GetAwaiter().GetResult()
+  $err = $Probe.ErrorTask.GetAwaiter().GetResult()
+  [IO.File]::WriteAllText($Probe.OutputPath, $out, [Text.UTF8Encoding]::new($false))
+  [IO.File]::WriteAllText(($Probe.OutputPath -replace '\.log$', '.err.log'), $err,
     [Text.UTF8Encoding]::new($false))
-  [IO.File]::WriteAllText((Join-Path $botLogDirectory ($Name + '.err.log')), $errorOutput,
-    [Text.UTF8Encoding]::new($false))
-  return [pscustomobject]@{ Output = $output; Error = $errorOutput }
+  return [pscustomobject]@{ Output = $out; Error = $err }
 }
 
-function Wait-PlayerEffects {
-  param(
-    [Parameter(Mandatory = $true)][string]$ImpactLog,
-    [Parameter(Mandatory = $true)][long]$AfterOffset,
-    [int]$WaitSeconds = 12
-  )
-  $affectedMatch = [Regex]::Match($ImpactLog,
-    'affected=\[([^\]]*)\]')
-  if (-not $affectedMatch.Success) {
-    throw "Rift Fireball impact did not report its affected players:`n$ImpactLog"
-  }
-  $playerIds = @([Regex]::Matches($affectedMatch.Groups[1].Value,
-    '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}') |
-    ForEach-Object { $_.Value })
-  if ($playerIds.Count -eq 0) {
-    throw "Rift Fireball impact did not apply effects to a player:`n$ImpactLog"
-  }
-  $pattern = 'RIFT_FIREBALL_EFFECTS_APPLIED .*player={0} .*damage=6\.0 ' +
-    'blindness_ticks=40 blindness_amplifier=0 ' +
-    'weakness_ticks=60 weakness_amplifier=0 ' +
-    'nausea_ticks=60 nausea_amplifier=1 ' +
-    'slowness_ticks=60 slowness_amplifier=0'
-  foreach ($playerId in $playerIds) {
-    Wait-LogCount -Pattern ($pattern -f [Regex]::Escape($playerId)) -Minimum 1 `
-      -AfterOffset $AfterOffset -WaitSeconds $WaitSeconds | Out-Null
-  }
-  return ($playerIds -join ',')
-}
-
-$boss = $null
-$obeliskBots = @()
-$normalBot = $null
 try {
-  $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
-  $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
-  $boss = Get-BossSnapshot
-  if ($boss.MaxHealth -ne 5000.0D) {
-    throw "The official two-player obelisk probe must start at 5000 real HP; got $($boss.MaxHealth)."
-  }
-  # Freeze the disposable boss before any checkpoint damage.  Stage
-  # synchronization and obelisk runtime continue while the local boss AI is
-  # paused, but summon_servants and melee cannot contaminate the exact
-  # fireball-player damage observation window.
-  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
-  $status = $boss.Status
-  $coreMatch = [Regex]::Match($status, 'core=.*?(-?\d+),(-?\d+),(-?\d+)')
-  if (-not $coreMatch.Success) { throw "Local Core coordinates are missing:`n$status" }
-  $coreX = [double]$coreMatch.Groups[1].Value
-  $coreY = [double]$coreMatch.Groups[2].Value
-  $coreZ = [double]$coreMatch.Groups[3].Value
-  $obeliskPosition = @(($coreX + 7.5D), $coreY, ($coreZ + 0.5D))
-  $floorX = [int]$coreX + 7
-  $floorY = [int]$coreY - 1
-  $floorZ = [int]$coreZ
-  Assert-ArenaFloorStone -X $floorX -Y $floorY -Z $floorZ -Marker 'RIFT_OBELISK_BLOCK_STONE_BEFORE'
+  New-Item -ItemType Directory -Force -Path $botLogDirectory | Out-Null
+  $null = Invoke-LocalRcon 'cmend boss kill cleanup'
+  $null = Invoke-LocalRcon 'cmend wave clear'
+  $null = Invoke-LocalRcon 'gamemode survival @a'
 
-  $commonEnvironment = @{
-    END_RIFT_BOT_HOST = '127.0.0.1'
-    END_RIFT_BOT_PORT = '25566'
-    # Let the first projectile land without a reflection so the exact
-    # fireball damage/effect contract is observed before the reflection loop.
-    # The first two observed event projectiles are deliberately left alone;
-    # reflection then starts from the third one.  This is independent of
-    # login, teleport and server startup timing, so the direct-impact and
-    # reflected-impact contracts cannot race each other.
-    END_RIFT_REFLECT_START_MS = '0'
-    END_RIFT_REFLECT_AFTER_FIREBALLS = '2'
-    END_RIFT_OBELISK_X = $obeliskPosition[0].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
-    END_RIFT_OBELISK_Y = $obeliskPosition[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
-    END_RIFT_OBELISK_Z = $obeliskPosition[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
+  $status = Invoke-LocalRcon 'cmend status'
+  if ($status -notmatch '(?m)core=.*?\s(-?\d+),(-?\d+),(-?\d+)') {
+    throw "Cannot determine the local Core position for the reflection probe:`n$status"
   }
-  for ($index = 0; $index -lt $playerNames.Count; $index++) {
-    $name = $playerNames[$index]
-    # One client owns the reflection attempts; the second remains a real
-    # participant/observer so duplicate use_entity packets cannot race each
-    # other and make the live assertion flaky.
-    $commonEnvironment['END_RIFT_REFLECT_ENABLED'] = if ($index -eq 0) { '1' } else { '0' }
-    $obeliskBots += Start-NodeProbe -ScriptPath $obeliskBotScript `
-      -Arguments @($name, ([string]($BotDurationSeconds * 1000))) -Environment $commonEnvironment
+  $coreX = [double]$Matches[1] + 0.5D
+  $coreZ = [double]$Matches[3] + 0.5D
+
+  $probes += Start-Bot -Name $names[0] -Reflect $true `
+    -OutputPath (Join-Path $botLogDirectory ($names[0] + '.log')) -CoreX $coreX -CoreZ $coreZ
+  # Both clients are real participants, but only one sends reflection packets.
+  # This removes a test-harness race where the second client correctly hit an
+  # already-reflected projectile and consumed the next observation window.
+  $probes += Start-Bot -Name $names[1] -Reflect $false `
+    -OutputPath (Join-Path $botLogDirectory ($names[1] + '.log')) -CoreX $coreX -CoreZ $coreZ
+  Wait-Players -Players $names
+  Start-Sleep -Seconds 3
+
+  foreach ($name in $names) {
+    $null = Invoke-LocalRcon ("gamemode survival $name")
+    $null = Invoke-LocalRcon ("clear $name")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 100000")
+    $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
+    # Keep the probe near the descending projectile's melee window. Slow
+    # Falling is a player-side test harness adjustment only; it does not
+    # change the world or event rules.
+    $null = Invoke-LocalRcon ("effect clear $name")
+    $null = Invoke-LocalRcon ("effect give $name minecraft:slow_falling 120 0 true")
+    $null = Invoke-LocalRcon ("data merge entity $name {Health:100000f}")
   }
-  Wait-LocalPlayers -Names $playerNames
-  Start-Sleep -Seconds 4
-  foreach ($name in $playerNames) {
-    $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
-    $null = Invoke-LocalRcon -CommandText ("clear $name")
-    # The disposable clients must survive the official boss AI while the
-    # obelisk hazard is being staged.  A large real health pool keeps both
-    # independent participants alive without Resistance, so the fireball's
-    # exact configured 6.0 damage remains observable.
-    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 100000")
-    # Keep the reflector on the prepared vantage point while the disposable
-    # boss is still running its own spell loop; otherwise a knockback can put
-    # the reflected trajectory through the protected Core.
-    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.knockback_resistance base set 1")
-    $null = Invoke-LocalRcon -CommandText ("effect clear $name")
-    # Keep the disposable probe alive and stationary while still recording
-    # the fireball's configured damage/effects in the server log.  This
-    # removes unrelated boss/wave knockback from the reflection assertion.
-    # Keep the effect NBT list limited to the four fireball effects. The
-    # large health pool makes the probe safe without adding unrelated effects
-    # that would make Paper abbreviate active_effects with an ellipsis. The
-    # exact-damage assertion below deliberately does not use Resistance.
-    $null = Invoke-LocalRcon -CommandText ("data merge entity $name {Health:100000f}")
-  }
-  # Keep the reflector between the obelisk and the second participant.  This
-  # gives the client enough travel time to receive and swing at a LargeFireball
-  # even when the fair-target cursor selects either participant.  The return
-  # path still points away from the protected Core.
+  # Hold both probes beside the north anchor. The server still chooses the
+  # target normally; stable height gives a real attack packet a short,
+  # deterministic melee window on the descending fireball without editing
+  # arena blocks.
   $positions = @(
-    @(($coreX + 4.0D), $coreY, ($coreZ - 0.5D)),
-    @(($coreX + 1.0D), $coreY, ($coreZ - 0.5D))
+    @(8.5D, 70.0D, -46.0D),
+    @(8.5D, 70.0D, -46.0D)
   )
-  for ($index = 0; $index -lt $playerNames.Count; $index++) {
-    $position = $positions[$index]
-    $null = Invoke-LocalRcon -CommandText ("tp $($playerNames[$index]) " +
-      $position[0].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
-      $position[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
-      $position[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' 90 0')
-  }
-  Start-Sleep -Seconds 2
-  foreach ($name in $playerNames) {
-    $health = Get-EntityHealth -EntitySelector $name
-    if ($health -le 0.0D) {
-      throw "Obelisk probe participant is not alive before the RIFT checkpoint: $name health=$health"
-    }
+  for ($index = 0; $index -lt $names.Count; $index++) {
+    $pos = $positions[$index]
+    $null = Invoke-LocalRcon ("tp " + $names[$index] + ' ' +
+      $pos[0].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
+      $pos[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
+      $pos[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' 90 0')
   }
 
-  # 5000 -> 2500 enters the V2 RIFT band and unlocks the one-shot spell without
-  # entering the scripted late states.
-  # The official V2 flow starts the one-shot obelisk cast as part of the
-  # AWAKENING -> RIFT transition.  Capture the log before the damage command;
-  # starting the checkpoint after the transition creates a false negative
-  # because RIFT_OBELISKS_SPAWNED is already in the log by then.
-  $stageOffset = Get-LogLength
-  $spellOffset = $stageOffset
-  $null = Invoke-LocalRcon -CommandText 'cmend boss damage 2500'
-  Wait-LogCount -Pattern 'BOSS_V2_STAGE_TRANSITION .*to=RIFT' -Minimum 1 `
-    -AfterOffset $stageOffset -WaitSeconds 10 | Out-Null
-  $preHazard = Get-BossSnapshot
-  if ($preHazard.Status -notmatch 'boss=.*hp=2500/5000') {
-    throw "Local official boss did not reach the RIFT checkpoint:`n$($preHazard.Status)"
-  }
-  # triggerHalfPhase may heal active players when the checkpoint is crossed;
-  # capture the baseline only after the boss is settled in DISTORTION.
-  Start-Sleep -Milliseconds 250
-  $directHealthBefore = @{}
-  foreach ($name in $playerNames) {
-    $directHealthBefore[$name] = Get-EntityHealth -EntitySelector $name
-  }
-  # Keep the transition checkpoint as the observation window.  The explicit
-  # command below is intentionally retained: in the official flow it must
-  # report already-used rather than create a second set of obelisks.
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
-  Wait-LogCount -Pattern 'RIFT_OBELISKS_SPAWNED .*count=1' -Minimum 1 -AfterOffset $spellOffset | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_ACTIVE ' -Minimum 1 -AfterOffset $spellOffset | Out-Null
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_LAUNCH .*reflected=false' -Minimum 1 -AfterOffset $spellOffset | Out-Null
-  $impactLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_IMPACT .*reflected=false .*damage=6\.0 .*blindness_ticks=40 .*debuff_ticks=60 .*participants=2 .*blocks=false fire=false' `
-    -Minimum 1 -AfterOffset $spellOffset
-  $effectPlayer = Wait-PlayerEffects -ImpactLog $impactLog -AfterOffset $spellOffset
-  $transactionLog = Wait-LogCount -Pattern 'RIFT_FIREBALL_DAMAGE_TRANSACTION .*expected=6\.0 actual=6\.0 .*applied=true' `
-    -Minimum 1 -AfterOffset $spellOffset
-  $transactionMatch = [Regex]::Match($transactionLog,
-    'RIFT_FIREBALL_DAMAGE_TRANSACTION .*player=([0-9a-fA-F-]{36}) expected=6\.0 actual=6\.0 .*applied=true')
-  if (-not $transactionMatch.Success) {
-    throw "The Rift Fireball transaction did not prove an exact real-health delta:`n$transactionLog"
-  }
-  $transactionPlayer = $transactionMatch.Groups[1].Value
-  Start-Sleep -Milliseconds 250
-  $directHealthAfter = @{}
-  $directDeltas = @{}
-  foreach ($name in $playerNames) {
-    $directHealthAfter[$name] = Get-EntityHealth -EntitySelector $name
-    $directDeltas[$name] = $directHealthBefore[$name] - $directHealthAfter[$name]
-    if ($name -eq $playerNames[0] -or $name -eq $playerNames[1]) {
-      # Only the player named by RIFT_FIREBALL_DAMAGE_TRANSACTION is required
-      # to show the exact configured damage.  The other participant may be
-      # healed by the stage-transition recovery pulse or vanilla regeneration
-      # during this observation window; treating that positive health change as
-      # a negative damage delta made the probe flaky without detecting a game
-      # bug.  The authoritative transaction log above remains the exact proof.
-      if ($name -eq $transactionPlayer -and
-          ($directDeltas[$name] -lt 5.99D -or $directDeltas[$name] -gt 6.01D)) {
-        throw "Rift Fireball transaction did not produce the configured exact impact: player=$name before=$($directHealthBefore[$name]) after=$($directHealthAfter[$name]) delta=$($directDeltas[$name])"
-      }
-    }
-  }
-  Wait-LogCount -Pattern 'RIFT_FIREBALL_REFLECTED ' -Minimum 3 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1 destroyed=false' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0 destroyed=true' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
-  Wait-LogCount -Pattern 'RIFT_OBELISK_CLEANUP .*reason=destroyed' -Minimum 1 -AfterOffset $spellOffset -WaitSeconds $BotDurationSeconds | Out-Null
-  $oneShotOffset = Get-LogLength
-  $null = Invoke-LocalRcon -CommandText 'cmend boss spell rift_obelisks'
-  $oneShotLog = Wait-LogCount -Pattern 'RIFT_OBELISKS_SKIPPED .*reason=already-used-this-fight' `
-    -Minimum 1 -AfterOffset $oneShotOffset
-  if (([Regex]::Matches($oneShotLog, 'RIFT_OBELISKS_SPAWNED ')).Count -ne 0) {
-    throw "Rift Obelisks spawned again after destruction in the same boss fight:`n$oneShotLog"
-  }
-  $oneShotStatus = Invoke-LocalRcon -CommandText 'cmend status'
-  # RCON preserves Minecraft colour codes, so normalize the display before
-  # asserting the one-shot marker instead of making the test depend on §f.
-  $oneShotStatusPlain = [Regex]::Replace($oneShotStatus, '[§&][0-9A-FK-ORa-fk-or]', '')
-  if ($oneShotStatusPlain -notmatch 'cast=USED') {
-    throw "Rift Obelisk one-shot state was not retained after destruction:`n$oneShotStatus"
-  }
-  Write-Output 'LIVE_RIFT_OBELISK_ONESHOT_PASS first_spawn=1 repeat_spawn=0 reason=already-used-this-fight'
-  $hazardAfter = Get-BossSnapshot
-  if ([Math]::Abs($hazardAfter.Health - $preHazard.Health) -gt 0.0001D) {
-    throw "Rift Fireball changed official boss HP: before=$($preHazard.Health) after=$($hazardAfter.Health)"
-  }
-  $physicalChanged = $hazardAfter.Physical -ge 0.0D -and $preHazard.Physical -ge 0.0D -and
-    [Math]::Abs($hazardAfter.Physical - $preHazard.Physical) -gt 0.01D
-  if ($physicalChanged) {
-    throw "Rift Fireball changed boss physical HP: before=$($preHazard.Physical) after=$($hazardAfter.Physical)"
-  }
-  Assert-ArenaFloorStone -X $floorX -Y $floorY -Z $floorZ -Marker 'RIFT_OBELISK_BLOCK_STONE_AFTER'
-  $directDeltasJson = $directDeltas | ConvertTo-Json -Compress
-  Write-Output "LIVE_RIFT_OBELISK_HAZARD_PASS boss=$($boss.Uuid) obelisks=1 fireballs=event-owned effects_player=$effectPlayer transaction_player=$transactionPlayer authoritative_damage=6.0 player_damage_exact=true direct_deltas=$directDeltasJson boss_real_before=$($preHazard.Health) boss_real_after=$($hazardAfter.Health) physical_before=$($preHazard.Physical) physical_after=$($hazardAfter.Physical) arena_block=minecraft:stone"
+  $waveOffset = Get-LogLength
+  $null = Invoke-LocalRcon 'cmend test wave 4'
+  Wait-Log -Pattern 'WAVE_OBJECTIVE_STARTED .*wave=4 .*objective=OBELISK_ASSAULT' `
+    -AfterOffset $waveOffset | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_ASSAULT_READY .*players=2 .*obelisks=4 .*real_blocks=true' `
+    -AfterOffset $waveOffset | Out-Null
+  Wait-LogCount -Pattern 'END_RIFT_OBELISK_ACTIVE ' -Minimum 4 -AfterOffset $waveOffset | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_PULSE .*radius=5\.0 .*effects_ticks=60' `
+    -AfterOffset $waveOffset | Out-Null
+  Wait-Log -Pattern 'RIFT_FIREBALL_LAUNCH .*reflected=false .*cap=1' `
+    -AfterOffset $waveOffset -WaitSeconds 30 | Out-Null
+  Wait-LogCount -Pattern 'RIFT_FIREBALL_REFLECTED ' -Minimum 3 `
+    -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_REFLECTED_HIT .*remaining_health=2 destroyed=false' `
+    -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_REFLECTED_HIT .*remaining_health=1 destroyed=false' `
+    -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_REFLECTED_HIT .*remaining_health=0 destroyed=true' `
+    -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
+  Wait-Log -Pattern 'END_RIFT_OBELISK_CLEANUP .*reason=destroyed' `
+    -AfterOffset $waveOffset -WaitSeconds $BotDurationSeconds | Out-Null
 
-  # After the reflected-only mechanic is gone, use a separate real survival
-  # client to prove ordinary player damage still reaches the boss path.
-  $normalBefore = Get-BossSnapshot
-  $normalDamagePattern = 'BOSS_DAMAGE_EVENT .*boss=' + [Regex]::Escape($boss.Uuid) + '.*source=PLAYER:'
-  $normalDamageOffset = Get-LogLength
-  $normalEnvironment = @{
-    END_RIFT_BOT_HOST = '127.0.0.1'
-    END_RIFT_BOT_PORT = '25566'
-    END_RIFT_BOSS_UUID = $boss.Uuid
-    END_RIFT_BOSS_ATTACK_DELAY_MS = '2500'
-    END_RIFT_BOSS_ATTACK_EVERY_MS = '900'
-    END_RIFT_RAW_ATTACK = '1'
+  $after = Invoke-LocalRcon 'cmend status'
+  $plain = $after -replace '\u00A7.', ''
+  if ($plain -notmatch 'rift-obelisks=3/6') {
+    throw "Expected one of four obelisks to be destroyed by reflected fireballs:`n$after"
   }
-  $normalBot = Start-NodeProbe -ScriptPath $combatBotScript `
-    -Arguments @('ObeliskNormalHit', '12000') -Environment $normalEnvironment
-  $processes += $normalBot
-  Wait-LocalPlayers -Names @('ObeliskNormalHit')
-  Start-Sleep -Seconds 4
-  $null = Invoke-LocalRcon -CommandText 'gamemode survival ObeliskNormalHit'
-  $null = Invoke-LocalRcon -CommandText 'clear ObeliskNormalHit'
-  $null = Invoke-LocalRcon -CommandText 'give ObeliskNormalHit minecraft:diamond_sword'
-  $normalPosition = Get-BossPosition -BossUuid $boss.Uuid
-  $null = Invoke-LocalRcon -CommandText ("tp ObeliskNormalHit " +
-    ($normalPosition[0] + 1.8D).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
-    $normalPosition[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
-    $normalPosition[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' 90 0')
-  $normalDeadline = (Get-Date).AddSeconds(18)
-  while (-not $normalBot.Process.HasExited -and (Get-Date) -lt $normalDeadline) {
-    Start-Sleep -Milliseconds 250
-  }
-  if (-not $normalBot.Process.HasExited) {
-    $normalBot.Process.Kill()
-    $normalBot.Process.WaitForExit(5000)
-    throw 'The ordinary post-obelisk survival client timed out.'
-  }
-  $normalOutput = Save-ProbeOutput -Probe $normalBot -Name 'ObeliskNormalHit'
-  if ($normalBot.Process.ExitCode -ne 0 -or $normalOutput.Output -notmatch 'PLAYER_END .*attacks=[1-9]') {
-    throw "The ordinary post-obelisk survival client failed.`n$($normalOutput.Output)`n$($normalOutput.Error)"
-  }
-  # Paper's async log appender can flush the final combat lines a few hundred
-  # milliseconds after the bot socket closes.  Wait for the actual event line
-  # before deciding that the authoritative boss path was not reached.
-  $normalDamageLog = Wait-LogCount -Pattern $normalDamagePattern -Minimum 1 `
-    -AfterOffset $normalDamageOffset -WaitSeconds 10
-  $normalAfter = Get-BossSnapshot
-  if ($normalAfter.Health -ge $normalBefore.Health) {
-    throw "Ordinary player damage stopped working after Rift Fireball: before=$($normalBefore.Health) after=$($normalAfter.Health)"
-  }
-  $normalDamageCount = ([Regex]::Matches($normalDamageLog, $normalDamagePattern)).Count
-  Write-Output "LIVE_RIFT_OBELISK_NORMAL_DAMAGE_PASS before=$($normalBefore.Health) after=$($normalAfter.Health) player_damage_events=$normalDamageCount"
-} finally {
-  foreach ($probe in $obeliskBots + @($normalBot)) {
+  Write-Output 'LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits=3 first_target_hp=2 second_target_hp=1 destroyed=true pulse_radius=5 fireball_cap=1 real_blocks=true'
+}
+finally {
+  foreach ($probe in $probes) {
     if ($probe -and -not $probe.Process.HasExited) {
       try { $probe.Process.Kill() } catch { }
     }
   }
-  foreach ($probe in $obeliskBots + @($normalBot)) {
+  foreach ($probe in $probes) {
     if ($probe) {
       try { $probe.Process.WaitForExit(5000) | Out-Null } catch { }
+      try { Save-BotOutput -Probe $probe | Out-Null } catch { }
     }
   }
-  for ($index = 0; $index -lt $obeliskBots.Count; $index++) {
-    try { Save-ProbeOutput -Probe $obeliskBots[$index] -Name $playerNames[$index] | Out-Null } catch { }
-  }
-  try { $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup' } catch { }
-  try {
-    $cleanup = Invoke-LocalRcon -CommandText 'cmend status'
-    $cleanupFailed = $cleanup -notmatch 'boss=.*none' -or $cleanup -notmatch 'rift-obelisks=.*0/4' -or
-      $cleanup -notmatch 'rift-fireballs=.*0' -or $cleanup -notmatch 'state=.*(?:READY_FOR_PLAYERS|COLLECTING|UNCONFIGURED|UNLOCKED)'
-    if ($cleanupFailed) {
-      throw "Rift Obelisk cleanup left runtime state behind:`n$cleanup"
-    }
-    Write-Output 'LIVE_RIFT_OBELISK_CLEANUP_PASS boss=none rift-obelisks=0/4 rift-fireballs=0'
-  } catch {
-    throw
-  }
+  try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
 }

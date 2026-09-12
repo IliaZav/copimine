@@ -9,13 +9,20 @@ public final class HazardMutationJournalTest {
         Path directory = Files.createTempDirectory("end-rift-hazard-journal-test-");
         try {
             HazardMutationJournal journal = new HazardMutationJournal(directory);
+            String worldId = java.util.UUID.randomUUID().toString();
             HazardMutationJournal.Entry entry = new HazardMutationJournal.Entry(
-                    10, 67, -4, "minecraft:stone", "minecraft:air");
+                    10, 67, -4, "minecraft:stone", "minecraft:air", "OBELISK",
+                    worldId, "event-1", 7L);
 
             check(journal.prepare("event-1", 7L, "CopiMine", List.of(entry)),
                     "prepare must be durable");
             check(journal.load().status() == HazardMutationJournal.Status.PREPARED,
                     "prepared state must be readable");
+            HazardMutationJournal.Entry loadedEntry = journal.load().entries().get(0);
+            check(loadedEntry.isObeliskMutation(), "obelisk mutation must be explicit");
+            check(worldId.equals(loadedEntry.worldId()), "entry world UUID must round-trip");
+            check("event-1".equals(loadedEntry.eventId()), "entry event UUID must round-trip");
+            check(loadedEntry.generation() == 7L, "entry generation must round-trip");
             check(journal.markApplied(), "applied state must be durable");
             check(journal.load().status() == HazardMutationJournal.Status.APPLIED,
                     "applied state must be readable");

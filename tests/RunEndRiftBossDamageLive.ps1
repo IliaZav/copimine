@@ -80,13 +80,13 @@ try {
   $status = Get-Status
   $bossUuid = Get-BossUuid $status
 
-  # Start at 5000 virtual HP and cross the real 2000 HP Absorption threshold.  The
-  # five-second cast is allowed to finish before the player probe attacks.
+  # Start at the current 5000 real HP pool and create a deterministic 2000 HP
+  # checkpoint before the player probe attacks.
   $null = Invoke-LocalRcon -CommandText 'cmend boss damage 3000'
   Start-Sleep -Seconds 7
-  $afterAbsorption = Get-Status
-  if ($afterAbsorption -notmatch 'hp=.*?2000/5000') {
-    throw "Local boss did not reach the post-Absorption 2000 HP checkpoint:`n$afterAbsorption"
+  $afterCheckpoint = Get-Status
+  if ($afterCheckpoint -notmatch 'hp=.*?2000/5000') {
+    throw "Local boss did not reach the 2000 HP checkpoint:`n$afterCheckpoint"
   }
 
   $node = (Get-Command node.exe -ErrorAction Stop).Source
@@ -165,7 +165,7 @@ try {
   if (-not $finalMatch.Success) { throw "Local boss final HP is missing:`n$finalStatus" }
   $finalHealth = [double]::Parse($finalMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
   if ($finalHealth -ge 2000.0D) {
-    throw "Real survival player attacks did not reduce the post-Absorption boss HP:`n$finalStatus`n$stdout"
+    throw "Real survival player attacks did not reduce the checkpointed boss HP:`n$finalStatus`n$stdout"
   }
   $damageLines = Select-String -LiteralPath (Join-Path $serverDir 'logs\latest.log') `
     -Pattern ("BOSS_DAMAGE_EVENT .*boss=" + [Regex]::Escape($bossUuid) + ".*source=PLAYER:")
@@ -173,7 +173,7 @@ try {
     throw "The server did not observe a player-sourced boss damage event for $bossUuid.`n$stdout"
   }
   Write-Output "LIVE_BOSS_DAMAGE_PASS before=1000 after=$finalHealth boss=$bossUuid bot=$BotName player_damage_events=$($damageLines.Count)"
-  Write-Output $afterAbsorption
+  Write-Output $afterCheckpoint
   Write-Output $finalStatus
 } finally {
   if ($process -and -not $process.HasExited) {

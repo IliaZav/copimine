@@ -6,7 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Pure validation and hold timing for a V2 transition-rune check.
+ * Pure validation and hold timing for a transition-rune check.
  *
  * <p>The Bukkit adapter decides where runes live and which players are inside
  * their small occupancy volumes. This policy deliberately knows only stable
@@ -24,7 +24,8 @@ public final class TransitionRunePolicy {
         EMPTY_ROSTER,
         MISSING_ROSTER_MEMBER,
         INELIGIBLE_ROSTER_MEMBER,
-        DUPLICATE_RUNE
+        DUPLICATE_RUNE,
+        DUPLICATE_PLAYER
     }
 
     public record RuneOccupancy(UUID playerId, String runeId, boolean connected,
@@ -65,6 +66,7 @@ public final class TransitionRunePolicy {
         Set<UUID> invalidPlayers = new LinkedHashSet<>();
         Set<String> usedRunes = new LinkedHashSet<>();
         boolean duplicateRune = false;
+        boolean duplicatePlayer = false;
         for (RuneOccupancy occupancy : observed) {
             if (occupancy == null || !expected.contains(occupancy.playerId())) {
                 continue;
@@ -73,18 +75,23 @@ public final class TransitionRunePolicy {
                 invalidPlayers.add(occupancy.playerId());
                 continue;
             }
+            if (!validPlayers.add(occupancy.playerId())) {
+                duplicatePlayer = true;
+                invalidPlayers.add(occupancy.playerId());
+                continue;
+            }
             if (!usedRunes.add(occupancy.runeId())) {
                 duplicateRune = true;
                 invalidPlayers.add(occupancy.playerId());
                 continue;
             }
-            validPlayers.add(occupancy.playerId());
         }
 
         Set<UUID> missing = new LinkedHashSet<>(expected);
         missing.removeAll(validPlayers);
-        if (!missing.isEmpty()) {
-            Reason reason = duplicateRune ? Reason.DUPLICATE_RUNE
+        if (!missing.isEmpty() || duplicatePlayer || duplicateRune) {
+            Reason reason = duplicatePlayer ? Reason.DUPLICATE_PLAYER
+                    : duplicateRune ? Reason.DUPLICATE_RUNE
                     : intersects(missing, invalidPlayers)
                     ? Reason.INELIGIBLE_ROSTER_MEMBER
                     : Reason.MISSING_ROSTER_MEMBER;

@@ -6,7 +6,7 @@ environment: local
 persistence:
   file: event-state.yml
   backup-file: event-state.yml.bak
-  schema-version: 3
+  schema-version: 4
 
 resources:
   DIAMOND: 100
@@ -15,7 +15,7 @@ resources:
   BLAZE_ROD: 64
 
 ritual:
-  countdown-seconds: 60
+  start-ritual-timeout-seconds: 60
   intermission-seconds: 20
   min-players: 2
   max-players: 20
@@ -54,28 +54,12 @@ mini-bosses:
 
 music:
   volume: 0.85
-  waves:
-    sound: copimine:end_rift/waves
-    loop-seconds: 95
-  boss:
-    sound: copimine:end_rift/boss
-    loop-seconds: 123
-  boss-half:
-    sound: copimine:end_rift/boss_half
-    loop-seconds: 26
-  boss-final:
-    sound: copimine:end_rift/boss_final
-    loop-seconds: 39
-  victory:
-    sound: copimine:end_rift/victory
-    loop-seconds: 0
   # Short, tense instrumental bed while players are still taking their rune
-  # positions.  It is selected only by READY_FOR_PLAYERS and COUNTDOWN.
+  # positions.  It is selected only while the event is waiting for players.
   ritual-wait:
     sound: copimine:end_rift/ritual_wait
     loop-seconds: 22
-  # Each event beat has its own instrumental arrangement.  The legacy tracks
-  # above remain as safe fallbacks for old commands and recovery snapshots.
+  # Each event beat has its own instrumental arrangement.
   phase:
     wave-1:
       sound: copimine:end_rift/wave_1
@@ -106,9 +90,6 @@ music:
       loop-seconds: 14
     intermission-3:
       sound: copimine:end_rift/intermission_3
-      loop-seconds: 16
-    intermission-4:
-      sound: copimine:end_rift/intermission_4
       loop-seconds: 16
     intermission-5:
       sound: copimine:end_rift/intermission_5
@@ -143,72 +124,59 @@ music:
     boss-last-seal:
       sound: copimine:end_rift/boss_last_seal
       loop-seconds: 45
-    final-drain:
-      sound: copimine:end_rift/final_drain
-      loop-seconds: 24
-    final-ritual:
-      sound: copimine:end_rift/final_ritual
-      loop-seconds: 20
-    final-wave:
-      sound: copimine:end_rift/final_wave
-      loop-seconds: 48
     boss-finish:
       sound: copimine:end_rift/boss_finish
+      loop-seconds: 20
+    victory:
+      sound: copimine:end_rift/victory
       loop-seconds: 20
 
 waves:
   hard-cap: 56
   wave-1:
-    type: awakening
+    type: RIFT_CARRIERS
     endermen: 7
     spiders: 10
     skeletons: 5
     elite-endermen: 0
     elite-skeletons: 0
   wave-2:
-    type: hunt
+    type: RIFT_HUNT
     endermen: 9
     spiders: 8
     skeletons: 4
     elite-endermen: 0
     elite-skeletons: 0
   wave-3:
-    type: portals
+    type: RIFT_GATES
     endermen: 12
     spiders: 1
     skeletons: 5
     elite-endermen: 4
     elite-skeletons: 1
   wave-4:
-    type: obelisk_assault
+    type: OBELISK_ASSAULT
     endermen: 1
     spiders: 2
     skeletons: 0
     elite-endermen: 0
     elite-skeletons: 0
   wave-5:
-    type: black_fog
+    type: BLACK_FOG
     endermen: 14
     spiders: 10
     skeletons: 6
     elite-endermen: 6
     elite-skeletons: 2
   wave-6:
-    type: collapse_rings
+    type: COLLAPSE_RINGS
     endermen: 14
     spiders: 10
     skeletons: 6
     elite-endermen: 6
     elite-skeletons: 2
   wave-7:
-    type: chambers
-    endermen: 0
-    spiders: 10
-    skeletons: 3
-    elite-endermen: 6
-    elite-skeletons: 2
-  final:
-    type: chambers
+    type: REALITY_SPLIT
     endermen: 0
     spiders: 10
     skeletons: 3
@@ -225,7 +193,7 @@ event-loot:
     ENDER_PEARL: 4
     AMETHYST_SHARD: 2
     EXPERIENCE_BOTTLE: 2
-  final-wave:
+  wave-7:
     ENDER_PEARL: 4
     BONE: 4
     AMETHYST_SHARD: 2
@@ -291,7 +259,7 @@ wave-reward-shared-rare:
   wave-6: 0.60
   wave-7: 0.75
 
-# One deterministic additive roll set per event-owned mob death.  The legacy
+# One deterministic additive roll set per event-owned mob death. The current
 # event-loot values above remain as the local fallback if a profile is omitted.
 event-loot-rolls:
   spider:
@@ -319,23 +287,20 @@ event-loot-rolls:
     BONE: {chance: 0.40, min: 2, max: 4}
     DIAMOND: {chance: 0.12, min: 1, max: 2}
     ECHO_SHARD: {chance: 0.08, min: 1, max: 1}
-  final-wave:
+  wave-7:
     ENDER_PEARL: {chance: 0.25, min: 1, max: 2}
     AMETHYST_SHARD: {chance: 0.15, min: 1, max: 3}
   test:
     ENDER_PEARL: {chance: 1.0, min: 1, max: 1}
 
 boss:
-  # Base value for the two-player event. Official V2 freezes the real entity
-  # max health from V2BossHealthScalingPolicy before the boss is spawned:
+  # Base value for the two-player event. The current flow freezes the real entity
+  # max health from BossHealthPolicy before the boss is spawned:
   # 2=5000, 3=6000, 4=7000, 5=8500, 6=9500, 7=10500, 8=11500,
   # 9=12500, 10=13500, 11=14500, 12=15250, 13=16000, 14=16750,
   # 15=17500, 16=18000, 17=18500, 18=19000, 19=19500, 20=20000.
   health: 5000.0
-  # These thresholds are base-pool anchors and keep their percentages when
-  # the frozen official roster increases the boss max HP.
-  # The configured increment is exactly +3 over the previous 8.0 value.
-  # BossStatsPolicy applies this value to the vanilla base once per hit.
+  # Phase thresholds are represented by the canonical BossPhasePolicy ratios.
   attack-damage-bonus: 11.0
   target-rotation-seconds: [5, 8]
   recent-target-memory: 3
@@ -343,21 +308,16 @@ boss:
   teleport-cooldown-seconds: 12
   spell-cooldown-seconds: [5, 8]
   spell-telegraph-ticks: 30
-  final-ritual-telegraph-ticks: 80
-  half-health: 2500.0
-  final-threshold: 500.0
-  final-health: 650.0
-  final-drain-fraction: 0.60
-  final-drain-min-health: 1.0
-  control-duration-seconds: 10
-  control-cooldown-seconds: 24
+  phase-thresholds:
+    hunt: 0.80
+    last-seal: 0.20
+  cinematic-telegraph-ticks: 80
   max-summoned-servants: 4
-  debuff-amplifier: 3
   arena-inferno:
     telegraph-ticks: 50
     duration-ticks: 100
     minimum-safe-ratio: 0.35
-  # One bounded, once-per-boss catastrophe strike. It never changes blocks.
+  # One bounded, once-per-boss LAST_SEAL strike. It never changes blocks.
   final-strike:
     enabled: true
     damage: 8.0
@@ -373,17 +333,14 @@ boss:
     attack-stagger-ticks: 20
     hitbox-width: 1.35
     hitbox-height: 3.5
-  # The mechanic is deliberately restricted to the V2 RIFT band. It uses tagged
-  # displays and projectile hitboxes; vanilla block/fireball assets stay intact.
+  # This optional boss visual is restricted to the current RIFT band. Vanilla
+  # fireball assets are never replaced globally.
   rift-obelisks:
     enabled: true
-    stages: [DISTORTION]
+    stages: [WAVE_4]
     cooldown-seconds: [18, 24]
     health: 3
-    # Legacy boss-phase displays stay capped at four.  V3 Wave 4 uses the
-    # separate real-block cap below so the 16-20 player profile can use six.
-    max-active: 4
-    v3-max-active: 6
+    max-active: 6
     pulse-radius: 5.0
     pulse-interval-ticks: 40
     fire-interval-ticks: 80
@@ -417,6 +374,5 @@ portal-room:
   pitch: 0.0
 
 client:
-  boss-id: END_RIFT_GUARDIAN_V1
-  control-id: END_RIFT_CONTROL_REVERSAL_V1
+  boss-id: END_RIFT_GUARDIAN
   bridge-channel: copimine:client_bridge

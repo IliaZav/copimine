@@ -43,7 +43,8 @@ public final class RiftCarrierPolicy {
 
     public static State pickUp(State state, long generation, UUID player,
                                UUID charge, long nowTick) {
-        if (!valid(state, generation) || player == null || !charge.equals(state.charge())
+        if (!valid(state, generation) || player == null || charge == null
+                || state.charge() == null || !charge.equals(state.charge())
                 || state.phase() != Phase.CHARGE_DROPPED || expired(state, nowTick)) {
             return state;
         }
@@ -62,6 +63,23 @@ public final class RiftCarrierPolicy {
         Phase next = delivered >= REQUIRED_DELIVERIES
                 ? Phase.COMPLETE : Phase.READY_FOR_NEXT_CARRIER;
         return new State(state.generation(), delivered, null, null, null, 0L, next);
+    }
+
+    /**
+     * Release a carried charge as soon as its authoritative holder becomes
+     * unusable. Death, disconnect and leaving the event world must not leave a
+     * ten-second carried state waiting for a timeout callback. The charge is
+     * kept, so another participant can pick up the same delivery immediately.
+     */
+    public static State releaseHolder(State state, long generation, UUID holder,
+                                      long nowTick) {
+        if (!valid(state, generation) || holder == null
+                || state.phase() != Phase.CHARGE_CARRIED
+                || !holder.equals(state.holder()) || state.charge() == null) {
+            return state;
+        }
+        return new State(state.generation(), state.delivered(), null, state.charge(), null,
+                safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_DROPPED);
     }
 
     /** Transfer an unclaimed or carried charge after its ten-second window. */

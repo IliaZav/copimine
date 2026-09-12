@@ -12,6 +12,10 @@ foreach ($item in @($mapping.items)) {
   }
   $asset = Join-Path $root "admin-web/frontend/assets/item-textures/$id.png"
   if (-not (Test-Path -LiteralPath $asset)) {
+    if ([string]$item.source_group -eq 'Generated' -and [string]$item.catalog -eq 'ADMIN_ONLY') {
+      $packAsset = Join-Path $root "resourcepacks/src/assets/copimine/textures/item/$id.png"
+      if (Test-Path -LiteralPath $packAsset) { continue }
+    }
     $missing.Add("$id (asset missing)")
     continue
   }

@@ -17,6 +17,7 @@ import org.bukkit.Material;
 /** Small fsynced PREPARED/ITEM_REMOVED/COMMITTED journal for core deposits. */
 public final class DepositJournal {
     private final Path path;
+    private volatile String lastFailure = "";
 
     public DepositJournal(Path dataFolder) {
         this.path = dataFolder.resolve("deposit-journal.tsv");
@@ -55,6 +56,10 @@ public final class DepositJournal {
         return result;
     }
 
+    public String lastFailure() {
+        return lastFailure;
+    }
+
     private boolean append(Entry entry) {
         try {
             Files.createDirectories(path.getParent());
@@ -69,7 +74,8 @@ public final class DepositJournal {
             }
             return true;
         } catch (IOException error) {
-            return false;
+            lastFailure = "deposit journal write failed: " + error.getMessage();
+            throw new JournalCorruptionException(lastFailure, error);
         }
     }
 
@@ -79,21 +85,61 @@ public final class DepositJournal {
             return result;
         }
         try {
-            for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+            String content = Files.readString(path, StandardCharsets.UTF_8);
+            String[] lines = content.split("\\n", -1);
+            for (int index = 0; index < lines.length; index++) {
+                String line = lines[index];
+                // String.split(..., -1) exposes the empty token after the
+                // journal's required final newline. It is a delimiter
+                // artifact, not a blank record. A second newline still
+                // produces an earlier blank token and is rejected below.
+                if (index == lines.length - 1 && content.endsWith("\n")) {
+                    continue;
+                }
+                boolean finalUnterminatedLine = index == lines.length - 1
+                        && !content.endsWith("\n");
+                if (finalUnterminatedLine && line.isBlank()) {
+                    continue;
+                }
+                if (line.isBlank()) {
+                    throw malformed("blank complete journal line");
+                }
                 String[] fields = line.split("\\t", -1);
                 if (fields.length != 6) {
-                    continue;
+                    // Only a final line with fewer than the six fields can be
+                    // proven to be torn by an interrupted append. A complete
+                    // six-field line, even without a trailing newline, must
+                    // still parse strictly and must never disappear as if it
+                    // were harmless recovery noise.
+                    if (finalUnterminatedLine && fields.length < 6) {
+                        lastFailure = "torn final deposit journal line ignored";
+                        continue;
+                    }
+                    throw malformed("expected six tab-separated fields");
                 }
                 try {
                     result.put(fields[0], new Entry(
                             fields[0], UUID.fromString(fields[1]), Material.valueOf(fields[2]),
                             Integer.parseInt(fields[3]), Integer.parseInt(fields[4]), fields[5]));
-                } catch (IllegalArgumentException ignored) {
+                } catch (IllegalArgumentException error) {
+                    throw malformed("invalid record: " + error.getMessage(), error);
                 }
             }
-        } catch (IOException ignored) {
+        } catch (IOException error) {
+            lastFailure = "deposit journal read failed: " + error.getMessage();
+            throw new JournalCorruptionException(lastFailure, error);
         }
         return result;
+    }
+
+    private JournalCorruptionException malformed(String message) {
+        lastFailure = message;
+        return new JournalCorruptionException(message);
+    }
+
+    private JournalCorruptionException malformed(String message, Throwable cause) {
+        lastFailure = message;
+        return new JournalCorruptionException(message, cause);
     }
 
     public record Entry(
@@ -104,14 +150,25 @@ public final class DepositJournal {
             int afterProgress,
             String status) {
         public Entry {
-            if (id == null || id.isBlank() || playerUuid == null || material == null || amount < 1) {
+            if (id == null || id.isBlank() || playerUuid == null || material == null
+                    || amount < 1 || afterProgress < 0) {
                 throw new IllegalArgumentException("invalid deposit journal entry");
             }
             status = status == null ? "PREPARED" : status;
+            if (!status.equals("PREPARED") && !status.equals("ITEM_REMOVED")
+                    && !status.equals("COMMITTED") && !status.equals("REFUNDED")
+                    && !status.equals("REFUND_PENDING")) {
+                throw new IllegalArgumentException("unknown deposit journal status: " + status);
+            }
         }
 
         Entry withStatus(String next) {
             return new Entry(id, playerUuid, material, amount, afterProgress, next);
         }
+    }
+
+    public static final class JournalCorruptionException extends IllegalStateException {
+        public JournalCorruptionException(String message) { super(message); }
+        public JournalCorruptionException(String message, Throwable cause) { super(message, cause); }
     }
 }

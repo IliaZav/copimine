@@ -1,3 +1,4 @@
+import me.copimine.endevent.domain.BossAnimationId;
 import me.copimine.endevent.domain.BossVisualCuePolicy;
 
 import java.util.LinkedHashSet;
@@ -13,11 +14,9 @@ public final class BossVisualCuePolicyTest {
             "rift_arrows",
             "void_mark",
             "summon_servants",
-            "will_distortion",
             "rift_obelisks",
             "arena_inferno",
             "phase_shift",
-            "final_awaken",
             "defeat_collapse",
             "final_strike");
 
@@ -54,7 +53,30 @@ public final class BossVisualCuePolicyTest {
                         spell + " " + stage + " particle budget must stay bounded");
                 require(cue.cooldownTicks() > 0, spell + " " + stage + " cooldown must be positive");
             }
+
+            require(BossAnimationId.isKnown(
+                            BossVisualCuePolicy.animationFor(spell, BossVisualCuePolicy.CueStage.TELEGRAPH)),
+                    spell + " telegraph animation must be in the shared catalog");
+            require(BossAnimationId.isKnown(
+                            BossVisualCuePolicy.animationFor(spell, BossVisualCuePolicy.CueStage.RELEASE)),
+                    spell + " release animation must be in the shared catalog");
+            require(BossAnimationId.isKnown(
+                            BossVisualCuePolicy.animationFor(spell, BossVisualCuePolicy.CueStage.IMPACT)),
+                    spell + " impact animation must be in the shared catalog");
         }
+
+        require("CAST_CHARGE".equals(BossVisualCuePolicy.animationFor(
+                        "void_blast", BossVisualCuePolicy.CueStage.TELEGRAPH)),
+                "telegraph must use the explicit charge pose");
+        require("SPELL_RIFT_OBELISKS".equals(BossVisualCuePolicy.animationFor(
+                        "rift_obelisks", BossVisualCuePolicy.CueStage.RELEASE)),
+                "obelisk release must use its dedicated pose");
+        require("PHASE_TRANSITION".equals(BossVisualCuePolicy.animationFor(
+                        "phase_shift", BossVisualCuePolicy.CueStage.IMPACT)),
+                "phase transition must use its dedicated pose");
+        require("DYING".equals(BossVisualCuePolicy.animationFor(
+                        "defeat_collapse", BossVisualCuePolicy.CueStage.IMPACT)),
+                "defeat collapse must use the dying pose");
 
         requireThrows(UnsupportedOperationException.class, () -> catalog.put("extra", Map.of()),
                 "cue catalog must be immutable");
@@ -79,7 +101,7 @@ public final class BossVisualCuePolicyTest {
         BossVisualCuePolicy.CueToken impactCue = new BossVisualCuePolicy.CueToken(
                 7L, owner, 12L, "void_blast:impact", 140L);
         BossVisualCuePolicy.CueToken terminalCue = new BossVisualCuePolicy.CueToken(
-                7L, owner, 13L, "final_awaken:release", 160L);
+                7L, owner, 13L, "defeat_collapse:impact", 160L);
 
         require(BossVisualCuePolicy.shouldSuppressDuplicate(first, sameCue, false, 119L),
                 "same cue before its deadline must be suppressed");
@@ -102,10 +124,10 @@ public final class BossVisualCuePolicyTest {
                 "the RELEASE reset must be rejected after IMPACT");
         String animation = "CAST_IMPACT";
         if (BossVisualCuePolicy.canReset(resetCue, resetCue, true, true, false)) {
-            animation = "IDLE";
+            animation = "IDLE_BREATH";
         }
-        require("IDLE".equals(animation),
-                "RELEASE to IMPACT must eventually reset the current animation to IDLE");
+        require("IDLE_BREATH".equals(animation),
+                "RELEASE to IMPACT must eventually reset the current animation to IDLE_BREATH");
         require(BossVisualCuePolicy.resetTokenForAcceptedCue(terminalCue, true) == null,
                 "terminal cues must not schedule an animation reset");
         System.out.println("BossVisualCuePolicyTest OK");

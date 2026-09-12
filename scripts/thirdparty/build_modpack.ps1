@@ -66,21 +66,10 @@ foreach ($relative in $files) {
     Copy-Item -LiteralPath $source -Destination (Join-Path $stage "mods") -Force
 }
 
-# Keep the payload safe to extract directly into a client directory: jars live
-# under mods/, while the small root documents provide the versions, checksums
-# and installation notes without being copied as game files.
-foreach ($relative in @(
-    "thirdparty\README_RU.txt",
-    "thirdparty\VOICE_CHAT_OFFICIAL_DOWNLOAD.txt",
-    "thirdparty\checksums.txt",
-    "thirdparty\modpack_manifest.json"
-)) {
-    $source = Join-Path $ProjectRoot $relative
-    if (-not (Test-Path -LiteralPath $source)) {
-        throw "Missing modpack metadata file: $relative"
-    }
-    Copy-Item -LiteralPath $source -Destination $stage -Force
-}
+# Keep the payload safe to extract directly into a client directory: the
+# archive is deliberately a pure Minecraft mods directory. Release metadata,
+# checksums and installation notes remain beside the archive and are served by
+# the website; putting them at the ZIP root would pollute the game directory.
 
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force

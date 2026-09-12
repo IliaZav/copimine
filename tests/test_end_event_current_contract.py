@@ -479,6 +479,14 @@ def test_end_rift_gate_keeps_pinned_paper_api_on_persistence_classpath() -> None
     ), "clean CI runners must include the pinned Paper API when compiling persistence tests"
 
 
+def test_ci_java_job_installs_pytest_before_end_rift_gate() -> None:
+    workflow = read(ROOT / ".github" / "workflows" / "ci.yml")
+    assert re.search(
+        r"Install resource-pack build dependency[\s\S]*?python -m pip install[^\n]*pytest",
+        workflow,
+    ), "the Java CI job must install pytest before invoking the End Rift gate"
+
+
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(

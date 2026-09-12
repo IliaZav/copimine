@@ -13,7 +13,7 @@
 D:\Desktop\Copimine\copimine-main\.worktrees\end-rift-event
 branch: codex/end-rift-event
 report source checkpoint SHA: cd0720790fc958cd5dd91845e53057f66f4c12a5
-current final branch SHA: 585f3aec56c3142860be191bcba0fd8277597493
+source/gameplay/build verification SHA: 585f3aec56c3142860be191bcba0fd8277597493
 remote: https://github.com/IliaZav/copimine.git
 ~~~
 
@@ -24,7 +24,7 @@ test-harness fix `585f3aec`: последний portal capture и событие
 артефакты этим коммитом не менялись. Для exact final SHA отдельно проверены
 локальный gate, валидаторы, Paper smoke и GitHub Actions.
 
-Exact final SHA rerun:
+Source/build rerun before report-only publication:
 
 ~~~
 source SHA: 585f3aec56c3142860be191bcba0fd8277597493

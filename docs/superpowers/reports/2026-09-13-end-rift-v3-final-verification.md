@@ -382,10 +382,11 @@ a3d5c6b0 ci(end-rift): pin SnakeYAML persistence fixture
 cd072079 test(end-rift): make persistence classpath deterministic
 ~~~
 
-После добавления этого отчёта он будет закоммичен отдельным docs-коммитом и
-отправлен в `origin/codex/end-rift-event`. Финальный SHA отчёта и отдельный
-CI run для него будут указаны в итоговом сообщении после повторной проверки
-remote.
+Отчёт добавлен отдельным docs-коммитом и отправлен в
+`origin/codex/end-rift-event`. Точный SHA текущей головы ветки и CI run для
+него проверяются после публикации и указаны в итоговом handoff; это не
+дублируется внутри самого файла, потому что изменение этой строки меняет его
+содержащий commit.
 
 ## Итоговый verdict
 

@@ -118,6 +118,15 @@ jobs:
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
+      - name: Set up Python for release assets
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install resource-pack build dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check 'Pillow==12.3.0'
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -206,6 +215,11 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
           if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
+          $pack = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.zip'
+          $sha = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.sha1'
+          if (-not (Test-Path -LiteralPath $pack -PathType Leaf)) { throw "Resource pack archive was not created: $pack" }
+          if (-not (Test-Path -LiteralPath $sha -PathType Leaf)) { throw "Resource pack SHA1 sidecar was not created: $sha" }
+          Write-Host "Resource pack fixture ready: $pack"
       - name: Prepare pinned third-party plugin fixtures
         shell: pwsh
         run: |

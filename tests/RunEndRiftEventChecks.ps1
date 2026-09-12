@@ -159,7 +159,14 @@ Invoke-GateStep 'Current pure Java policies' {
   }
 }
 
-$mavenJars = @(Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter '*.jar' -Recurse |
+$mavenRepository = Join-Path $env:USERPROFILE '.m2\repository'
+$guavaJar = Get-ChildItem -Path $mavenRepository -Filter 'guava-32.1.2-jre.jar' -Recurse -ErrorAction SilentlyContinue |
+  Select-Object -First 1 -ExpandProperty FullName
+if (-not $guavaJar -or -not (Test-Path -LiteralPath $guavaJar -PathType Leaf)) {
+  throw 'Pinned Guava 32.1.2 jar is required to run persistence tests.'
+}
+$mavenJars = @(Get-ChildItem -Path $mavenRepository -Filter '*.jar' -Recurse |
+  Where-Object { $_.Name -notlike 'guava-*.jar' } |
   ForEach-Object FullName)
 $pluginClasses = (Resolve-Path (Join-Path $root 'copimine-end-event\build\classes')).Path
 $paperApiJar = $env:PAPER_API_JAR
@@ -171,7 +178,7 @@ if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Le
 if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Leaf)) {
   throw 'Pinned Paper API jar is required to compile persistence tests.'
 }
-$persistenceClasspath = @($testBuild, $pluginClasses, $paperApiJar) + $mavenJars
+$persistenceClasspath = @($testBuild, $pluginClasses, $paperApiJar, $guavaJar) + $mavenJars
 $persistenceClasspathText = $persistenceClasspath -join [IO.Path]::PathSeparator
 $persistenceTests = @(
   'EventStateStoreTest',

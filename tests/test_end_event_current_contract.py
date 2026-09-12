@@ -474,9 +474,19 @@ def test_end_rift_gate_keeps_pinned_paper_api_on_persistence_classpath() -> None
     gate = read(ROOT / "tests" / "RunEndRiftEventChecks.ps1")
     assert re.search(
         r"\$paperApiJar\s*=\s*\$env:PAPER_API_JAR[\s\S]*?"
-        r"\$persistenceClasspath\s*=\s*@\(\$testBuild,\s*\$pluginClasses,\s*\$paperApiJar\)",
+        r"\$persistenceClasspath\s*=\s*@\(\$testBuild,\s*\$pluginClasses,\s*\$paperApiJar,\s*\$guavaJar\)",
         gate,
     ), "clean CI runners must include the pinned Paper API when compiling persistence tests"
+
+
+def test_end_rift_persistence_classpath_excludes_ambiguous_guava_versions() -> None:
+    gate = read(ROOT / "tests" / "RunEndRiftEventChecks.ps1")
+    assert re.search(
+        r"\$guavaJar\s*=\s*Get-ChildItem[\s\S]*?guava-32\.1\.2-jre\.jar[\s\S]*?"
+        r"\$mavenJars\s*=\s*@\(Get-ChildItem[\s\S]*?"
+        r"Where-Object\s+\{\s*\$_.Name\s+-notlike\s+['\"]guava-\*\.jar",
+        gate,
+    ), "persistence tests must not let an arbitrary Maven Guava jar win classpath order"
 
 
 def test_ci_java_job_installs_pytest_before_end_rift_gate() -> None:
@@ -496,6 +506,17 @@ def test_ci_persistence_classpath_materializes_pinned_snake_yaml() -> None:
     ), "the CI persistence classpath must include SnakeYAML used by Bukkit YamlConfiguration"
     assert "https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar" in workflow
     assert "1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b" in workflow
+
+
+def test_ci_persistence_classpath_materializes_compatible_guava() -> None:
+    workflow = read(ROOT / ".github" / "workflows" / "ci.yml")
+    assert re.search(
+        r"\$guavaJar\s*=\s*Join-Path\s+\$env:USERPROFILE\s+"
+        r"'.m2\\repository\\com\\google\\guava\\guava\\32\.1\.2-jre\\guava-32\.1\.2-jre\.jar'",
+        workflow,
+    ), "the CI persistence classpath must pin the Guava version expected by Paper API"
+    assert "https://repo.papermc.io/repository/maven-public/com/google/guava/guava/32.1.2-jre/guava-32.1.2-jre.jar" in workflow
+    assert "bc65dea7cf d9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce".replace(" ", "") in workflow.lower()
 
 
 def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:

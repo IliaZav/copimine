@@ -197,6 +197,11 @@ jobs:
           Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar' -OutFile $snakeYamlJar -TimeoutSec 60
           $snakeYamlSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $snakeYamlJar).Hash.ToLowerInvariant()
           if ($snakeYamlSha256 -ne '1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b') { throw "SnakeYAML SHA256 mismatch: $snakeYamlSha256" }
+          $guavaJar = Join-Path $env:USERPROFILE '.m2\repository\com\google\guava\guava\32.1.2-jre\guava-32.1.2-jre.jar'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $guavaJar) | Out-Null
+          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/com/google/guava/guava/32.1.2-jre/guava-32.1.2-jre.jar' -OutFile $guavaJar -TimeoutSec 60
+          $guavaSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $guavaJar).Hash.ToLowerInvariant()
+          if ($guavaSha256 -ne 'bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce') { throw "Guava SHA256 mismatch: $guavaSha256" }
           mvn -q -B -f $dependencyPom dependency:go-offline
           if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
           "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append

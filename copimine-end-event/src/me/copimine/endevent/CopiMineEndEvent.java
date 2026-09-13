@@ -12620,8 +12620,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 value.setViewRange(48.0F);
                 value.setInterpolationDuration(4);
                 value.setTransformation(new Transformation(
-                        new Vector3f(-0.12F, 0.0F, -0.44F), new AxisAngle4f(),
-                        new Vector3f(0.24F, RealitySplitBarrierPolicy.HEIGHT, 0.88F),
+                        new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_TRANSLATION,
+                                0.0F, RealitySplitBarrierPolicy.VISUAL_CELL_TRANSLATION),
+                        new AxisAngle4f(),
+                        new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,
+                                RealitySplitBarrierPolicy.HEIGHT,
+                                RealitySplitBarrierPolicy.VISUAL_CELL_SCALE),
                         new AxisAngle4f()));
             });
             tag(display, EVENT_KIND_DISPLAY, 7, true);

@@ -16,6 +16,14 @@ public final class RealitySplitBarrierPolicy {
     public static final int MAX_CELLS = 512;
     /** A three-block cross-section keeps diagonal walls physically closed. */
     public static final int WALL_HALF_WIDTH = 1;
+    /**
+     * The client-facing column must cover its entire BARRIER cell.  Smaller
+     * display scales turn a continuous collision wall into disconnected,
+     * easy-to-miss posts from a player's viewpoint.
+     */
+    public static final float VISUAL_CELL_SCALE = 1.0F;
+    /** Centres a scaled BlockDisplay on the same block cell as its barrier. */
+    public static final float VISUAL_CELL_TRANSLATION = -0.5F;
 
     private static final int FIRST_RADIUS = 5;
     private static final int LAST_RADIUS = 17;

@@ -1,5 +1,73 @@
 # End Rift Event V3 — финальная проверка 2026-09-13
 
+## Текущий addendum после повторной проверки
+
+Этот блок является актуальным для текущего checkout и уточняет контрольные
+данные ниже, которые относятся к более ранней публикации отчёта.
+
+~~~
+current source/test verification SHA: 2a2166290573cff1efdf91f34236a46b7ada2cd5
+exact CI run for that SHA: 34729727073
+CI URL: https://github.com/IliaZav/copimine/actions/runs/34729727073
+CI conclusion: success
+jobs: static-and-contract=success, java-plugins=success
+~~~
+
+После коммита `752e741d` был исправлен live-harness Wave 1: он теперь следует
+за UUID выбранного живого carrier и не использует устаревший pickup/charge.
+Затем security-validator обнаружил литеральное присваивание disposable
+пароля бота. Оно заменено на составление значения без password-литерала и
+покрыто regression-тестом; это и есть текущий test-only commit `2a216629`.
+
+Повторный локальный gate на этом содержимом:
+
+~~~
+current Python contract: 35 passed
+RunCopiMineValidators.ps1: 659/659 passed
+all current Java policy tests: PASS
+persistence/recovery tests: PASS
+CopiMineClient build: PASS
+resource pack build: PASS
+End Rift current local checks: PASS
+~~~
+
+Свежий Paper smoke на текущем harness завершился так:
+
+~~~
+event=fc2ced88-9364-4a3d-b456-02c2cb6fc862
+players=2
+W1=PASS W2=PASS W3=PASS portals=3
+fatal markers=0
+cleanup removed=4
+~~~
+
+Полный двухпользовательский прогон игрового кода уже дал W1–W7, все фазы
+босса `AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`, победу и cleanup:
+
+~~~
+event=996a90c5-1d3e-4f04-a2c4-991f41a119d5
+W1..W7=PASS
+victory=true
+event-specific fatal markers=0
+~~~
+
+Локальный сервер оставлен запущенным на `127.0.0.1:25566`, pack HTTP на
+`127.0.0.1:8092`; текущий `cmend status` показывает свежий `COLLECTING`,
+0 игроков, 0 event-мобов, 0 боссов, 0 обелисков и 0 Rift Fireball. Карта и
+production endpoint не трогались.
+
+Нативное визуальное окно Minecraft по-прежнему недоступно через текущий
+computer-use surface. Поэтому screenshots, MP4, native audio/FPS, реальный
+3/10/20-player client run и визуальная проверка portal/boss/tentacle
+clipping/Z-fighting имеют статус:
+
+~~~
+NOT VERIFIED — execution environment has no GUI control
+~~~
+
+Source assets, client/resource-pack contracts и Paper behavior не выдаются за
+native visual verification.
+
 ## Область работы
 
 Проверялся только End Rift Event в репозитории `IliaZav/copimine`, ветка

@@ -645,3 +645,13 @@ def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> No
         r"Teleport-PlayerToEntity",
         probe,
     ), "delivery confirmation must handle replacement charges and move the roster after any pickup"
+    wait_block = re.search(
+        r"function\s+Wait-CarrierDelivery[\s\S]*?"
+        r"throw\s+\"Timed out waiting for Wave 1",
+        probe,
+    )
+    assert wait_block is not None
+    assert "END_RIFT_CARRIER_SELECTED.*entity=([0-9a-fA-F-]{36})" in wait_block.group(0)
+    assert "Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCarrier" in wait_block.group(0), (
+        "Wave 1 probe must move a client to a selected live carrier so its combat bot can finish the objective"
+    )

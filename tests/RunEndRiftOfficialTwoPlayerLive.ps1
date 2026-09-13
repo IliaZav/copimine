@@ -181,14 +181,26 @@ function Wait-CarrierDelivery {
   )
   $deadline = (Get-Date).AddSeconds($WaitSeconds)
   $activeCharge = $null
+  $activeCarrier = $null
+  $teleportedCarrier = $null
+  $playersTeleportedToCore = $false
   $deliveredPattern = 'END_RIFT_CARRIER_DELIVERED.*charge=' + $DeliveryNumber + '/3'
-  $pickedPattern = 'END_RIFT_CARRIER_PICKED_UP.*charge=([0-9a-fA-F-]{36})'
   while ((Get-Date) -lt $deadline) {
     $tail = Get-LogTail -Offset $AfterOffset
     # A larger roster can pick a replacement charge before the first one is
     # delivered.  The objective's delivery counter is authoritative; do not
     # keep waiting on a stale UUID after the server has advanced.
     if ($tail -match $deliveredPattern) { return $tail }
+
+    $carrierMatches = [Regex]::Matches($tail,
+      'END_RIFT_CARRIER_SELECTED.*entity=([0-9a-fA-F-]{36})')
+    foreach ($match in $carrierMatches) {
+      $candidate = $match.Groups[1].Value
+      if ($candidate -ne $activeCarrier) {
+        $activeCarrier = $candidate
+        $teleportedCarrier = $null
+      }
+    }
 
     $chargeMatches = [Regex]::Matches($tail, 'END_RIFT_CARRIER_CHARGE_CREATED.*charge=([0-9a-fA-F-]{36})')
     foreach ($match in $chargeMatches) {
@@ -200,14 +212,29 @@ function Wait-CarrierDelivery {
       }
     }
 
-    if ($tail -match $pickedPattern) {
+    $pickedPattern = if ($null -ne $activeCharge) {
+      'END_RIFT_CARRIER_PICKED_UP.*charge=' + [Regex]::Escape($activeCharge)
+    } else {
+      $null
+    }
+    if ($null -ne $pickedPattern -and $tail -match $pickedPattern) {
       # Once any player has the carrier, moving the whole disposable roster to
       # the Core is enough to test the real delivery transition.  It also
       # avoids fighting the carrier holder with a stale display teleport.
-      Teleport-PlayersToPoint ($Core[0] + 0.5D) ($Core[1] + 1.0D) ($Core[2] + 0.5D)
+      if (-not $playersTeleportedToCore) {
+        Teleport-PlayersToPoint ($Core[0] + 0.5D) ($Core[1] + 1.0D) ($Core[2] + 0.5D)
+        $playersTeleportedToCore = $true
+      }
       $activeCharge = $null
     } elseif ($null -ne $activeCharge) {
       Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCharge
+    } elseif ($null -ne $activeCarrier -and $activeCarrier -ne $teleportedCarrier) {
+      # The carrier is a live mob until a bot kills it.  A larger roster can
+      # leave the selected mob outside the clients' current combat radius; move
+      # one disposable client to that authoritative entity exactly once so the
+      # normal player attack path can finish the objective and spawn its charge.
+      Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCarrier
+      $teleportedCarrier = $activeCarrier
     }
     Start-Sleep -Milliseconds 500
   }

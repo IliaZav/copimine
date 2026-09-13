@@ -61,7 +61,7 @@ Invoke-GateStep 'Resource pack build' {
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_end_event_current_contract.py'
+    & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py'
   } finally {
     Pop-Location
   }
@@ -91,6 +91,8 @@ $pureTests = @(
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',
+  'BlackFogTimingPolicyTest',
+  'CollapseRingGeometryPolicyTest',
   'BossDefeatCinematicPolicyTest',
   'BossFinalStrikePolicyTest',
   'BossMovementPolicyTest',
@@ -101,6 +103,7 @@ $pureTests = @(
   'ChamberIsolationPolicyTest',
   'ChamberScalingPolicyTest',
   'CollapseRingEncounterPolicyTest',
+  'RealitySplitBarrierPolicyTest',
   'CombatMovementPolicyTest',
   'CombatTacticsPolicyTest',
   'CombatTraceDiagnosisTest',

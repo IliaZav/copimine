@@ -107,6 +107,8 @@ import me.copimine.endevent.domain.BlackFogTimingPolicy;
 import me.copimine.endevent.domain.CollapseRingEncounterPolicy;
 import me.copimine.endevent.domain.PressureBudgetController;
 import me.copimine.endevent.domain.ChamberIsolationPolicy;
+import me.copimine.endevent.domain.CollapseRingGeometryPolicy;
+import me.copimine.endevent.domain.RealitySplitBarrierPolicy;
 import me.copimine.endevent.runtime.CombatTraceService;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 import me.copimine.endevent.runtime.TransitionRuneController;
@@ -268,6 +270,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RIFT_FIREBALL = 830013;
     private static final int MODEL_RIFT_OBELISK_PULSE = 830014;
     private static final int MODEL_RIFT_TENTACLE = 830017;
+    /** Small shell margin used to avoid z-fighting while keeping the Core on its block. */
+    private static final float CORE_OVERLAY_SCALE = 1.04F;
     private static final long TENTACLE_TEMPORARY_INTERVAL_TICKS = 160L;
     private static final double TENTACLE_PERMANENT_RADIUS = 6.5D;
     private static final double TENTACLE_MAX_GRAB_RANGE = 10.0D;
@@ -509,6 +513,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<HazardPlanner.Point> currentSafeZoneCells = new LinkedHashSet<>();
     private final Map<Integer, HazardPlanner.Point> currentSafeZoneCenters = new LinkedHashMap<>();
     private final Set<HazardPlanner.Point> currentBarrierCells = new LinkedHashSet<>();
+    /** Temporary Wave 7 collision walls, kept separate from Wave 5 fog cells. */
+    private final Set<RealitySplitBarrierPolicy.Cell> realitySplitBarrierCells = new LinkedHashSet<>();
+    private final Map<RealitySplitBarrierPolicy.Cell, String> realitySplitBarrierOriginals = new LinkedHashMap<>();
+    private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBarrierByBoundary = new LinkedHashMap<>();
+    private final Map<RealitySplitBarrierPolicy.Cell, UUID> realitySplitBarrierVisuals = new LinkedHashMap<>();
     private final Map<UUID, Long> currentFogLastImpactAt = new HashMap<>();
     private CollapseRingEncounterPolicy.State collapseRingEncounterState;
     private final Set<UUID> collapseRingGuardUuids = new LinkedHashSet<>();
@@ -1018,7 +1027,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         long now = System.currentTimeMillis();
-        EventPhase chamberPhase = isOfficialCurrentAttempt() ? EventPhase.WAVE_7 : EventPhase.WAVE_6;
+        EventPhase chamberPhase = EventPhase.WAVE_7;
         if (phase == chamberPhase && !realitySplitChamberController.owns(generation)) {
             realitySplitChamberController.begin(generation, new ArrayList<>(officialRewardRoster));
         }
@@ -1358,6 +1367,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             if (entry.isBarrierMutation()) {
+                Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
+                if (barrier.getType() == Material.BARRIER) {
+                    restoreBlock(barrier, entry.webOriginal());
+                    restored++;
+                } else {
+                    skipped++;
+                }
+                continue;
+            }
+            if (entry.isRealitySplitBarrierMutation()) {
                 Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
                 if (barrier.getType() == Material.BARRIER) {
                     restoreBlock(barrier, entry.webOriginal());
@@ -5022,7 +5041,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         CoreRemovalConfirmHolder holder = new CoreRemovalConfirmHolder(
                 player.getUniqueId(), eventId, generation);
         Inventory inventory = Bukkit.createInventory(holder, 27,
-                Component.text("Подтверждение снятия Core", NamedTextColor.DARK_RED));
+                Component.text("Core", NamedTextColor.DARK_RED));
         holder.attach(inventory);
         ItemStack filler = menuItem(Material.GRAY_STAINED_GLASS_PANE, " ", List.of());
         for (int slot = 0; slot < inventory.getSize(); slot++) {
@@ -5914,6 +5933,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!result.applied()) {
             return;
         }
+        armPortalWaveNoKnockback(victim);
         authoritativeEventMobDamage.put(event, result);
         event.setCancelled(true);
         victim.setHealth(result.remainingHealth());
@@ -5969,7 +5989,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         });
     }
 
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onPortalWaveMobAttack(EntityDamageByEntityEvent event) {
         if (event.getEntity() instanceof Player victim
                 && event.getDamager() instanceof LivingEntity attacker
@@ -5996,13 +6016,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
 
-        portalWaveKnockbackUntilMillis.put(mob.getUniqueId(), System.currentTimeMillis() + 250L);
+        armPortalWaveNoKnockback(mob);
         // Portal-wave mobs must hold their combat lane. Keep the player's
         // damage event and hit animation, but cancel only the knockback event
         // that Paper emits for this just-accepted player hit.
         getLogger().fine("WAVE_PORTAL_MOB_KNOCKBACK_DISABLED event=" + eventId
                 + " attacker=" + playerDamager.getUniqueId()
                 + " mob=" + mob.getUniqueId());
+    }
+
+    /**
+     * Arm only the short Paper follow-up window for an accepted Wave 3 hit.
+     * The authoritative damage listener cancels its event after committing
+     * real HP, so this state must be set before that cancellation and cannot
+     * depend on a cancelled-event monitor callback.
+     */
+    private void armPortalWaveNoKnockback(Entity entity) {
+        if (!(entity instanceof Mob mob)
+                || !isWaveCombatKind(readString(mob, keyKind))
+                || readInt(mob, keyWave, 0) != 3
+                || !ownedEntities.containsKey(mob.getUniqueId())) {
+            return;
+        }
+        portalWaveKnockbackUntilMillis.put(mob.getUniqueId(),
+                System.currentTimeMillis() + 250L);
     }
 
     /**
@@ -6410,7 +6447,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void spawnCoreOverlay(World world, Block core) {
         // The target block remains the real block selected by the admin.  Keep
-        // the display at the block centre and let the tiny shell expansion
+        // the display at the block centre and let the small shell expansion
         // expose every face without moving the visual onto the block above.
         // The vanilla block itself is still preserved and restored from its
         // original BlockData when the event is removed.
@@ -6435,8 +6472,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // Keep its origin at the block centre, but give the shell a small
             // symmetric margin so all six faces remain visible without moving
             // the Core onto the block above.
-            entity.setDisplayWidth(1.10F);
-            entity.setDisplayHeight(1.10F);
+            entity.setDisplayWidth(CORE_OVERLAY_SCALE);
+            entity.setDisplayHeight(CORE_OVERLAY_SCALE);
             entity.setPersistent(true);
             entity.setGravity(false);
             // Do not use the entity-level invulnerable flag here: Paper then
@@ -6447,7 +6484,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             entity.setInvulnerable(false);
             entity.setShadowRadius(0.0F);
             entity.setTransformation(new Transformation(
-                    new Vector3f(), new AxisAngle4f(), new Vector3f(1.10F, 1.10F, 1.10F), new AxisAngle4f()));
+                    new Vector3f(), new AxisAngle4f(),
+                    new Vector3f(CORE_OVERLAY_SCALE, CORE_OVERLAY_SCALE, CORE_OVERLAY_SCALE),
+                    new AxisAngle4f()));
         });
         tag(display, EVENT_KIND_CORE, 0, false);
     }
@@ -6485,13 +6524,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Location coreOverlayLocation(Block core) {
-        // ItemDisplay block models are centred on their display origin.  A
-        // centre anchor leaves the opaque vanilla block in front of the
-        // shell, so only the top face survives depth testing.  Anchor the
-        // model at the block's top plane: its lower half covers the real
-        // block and its tiny 1.10 scale margin keeps all faces visible
-        // without replacing or moving the vanilla block.
-        return core.getLocation().add(0.5D, 1.0D, 0.5D);
+        // ItemDisplay block models are centred on their display origin.  Put
+        // that origin at the target block centre; the symmetric shell margin
+        // in spawnCoreOverlay keeps the texture visible without making the
+        // Core a second block floating above its saved support.
+        return core.getLocation().add(0.5D, 0.5D, 0.5D);
     }
 
     private Location runeOverlayLocation(Block floor) {
@@ -6516,7 +6553,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Location location = display.getLocation();
         return location.getBlockX() == core.getX()
-                && location.getBlockY() == core.getY() + 1
+                && location.getBlockY() == core.getY()
                 && location.getBlockZ() == core.getZ();
     }
 
@@ -7528,6 +7565,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (anchor == null || skeleton == null || target == null) {
             return null;
         }
+        if (readInt(skeleton, keyWave, 0) == 6 && isCurrentCollapseGuard(skeleton)) {
+            return collapseRingTacticalDestination(anchor, skeleton, target);
+        }
         Location tacticalTarget = target.getLocation();
         if (behavior != null && behavior.guardsObjective()
                 && readInt(skeleton, keyWave, 0) == 3) {
@@ -7602,6 +7642,60 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 enforceCombatLeash(entity, anchor, radius, "WAVE_AI_LEASH");
             }
         }
+        enforceCollapseRingLanes(anchor);
+    }
+
+    /**
+     * Collapse Ring guards have a real battlefield lane, not just a cosmetic
+     * circle.  Keep them on the current ring with a bounded movement request;
+     * this prevents Paper pathfinding from turning all three pairs into one
+     * pile at the Core while preserving normal hit and death handling.
+     */
+    private void enforceCollapseRingLanes(Location anchor) {
+        if (anchor == null || !isOfficialCurrentAttempt() || activeWave != 6
+                || collapseRingEncounterState == null
+                || collapseRingEncounterState.generation() != generation) {
+            return;
+        }
+        int ring = collapseRingEncounterState.roomId();
+        double laneRadius = CollapseRingGeometryPolicy.ringRadius(ring);
+        if (laneRadius <= 0.0D) {
+            return;
+        }
+        for (UUID guardId : new LinkedHashSet<>(collapseRingGuardUuids)) {
+            Entity entity = ownedEntities.get(guardId);
+            if (!(entity instanceof Mob mob) || !isLiveOwnedEntity(guardId)) {
+                continue;
+            }
+            Location current = mob.getLocation();
+            double dx = current.getX() - anchor.getX();
+            double dz = current.getZ() - anchor.getZ();
+            double distance = Math.hypot(dx, dz);
+            if (CollapseRingGeometryPolicy.inRingBand(ring, dx, dz)) {
+                continue;
+            }
+            if (distance < 0.05D) {
+                long bits = guardId.getMostSignificantBits()
+                        ^ Long.rotateLeft(guardId.getLeastSignificantBits(), 11);
+                double angle = Math.floorMod((int) (bits ^ (bits >>> 32)), 3600)
+                        / 3600.0D * Math.PI * 2.0D;
+                dx = Math.cos(angle);
+                dz = Math.sin(angle);
+                distance = 1.0D;
+            }
+            Location preferred = anchor.clone().add(
+                    dx / distance * CollapseRingGeometryPolicy.clampToRingRadius(ring, distance),
+                    0.0D,
+                    dz / distance * CollapseRingGeometryPolicy.clampToRingRadius(ring, distance));
+            Location destination = findSafeCombatLocation(anchor, preferred,
+                    waveMovementRadius(), MIN_WAVE_CORE_DISTANCE_BLOCKS, -1);
+            if (destination == null) {
+                continue;
+            }
+            requestBoundedCombatMovement(mob, destination, 1.0D, anchor,
+                    boundedCombatRadius(config.containmentRadius()),
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS, "WAVE6_RING_LEASH");
+        }
     }
 
     /**
@@ -7625,7 +7719,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ? stableCombatRingLocation(anchor, mob, 5.0D, 8.0D) : target.getLocation();
             case SKELETON_FIRELINE -> preferred = stableCombatRingLocation(anchor, mob, 8.0D, 11.0D);
             case FOG_SCOUT, ELITE_HUNTER -> preferred = flankTargetLocation(anchor, mob, target);
-            case MARKED_HUNTER, CARRIER_ESCORT, RING_GUARD, CHAMBER_BLADE, ASSAULT
+            case RING_GUARD -> preferred = collapseRingTacticalDestination(anchor, mob, target);
+            case MARKED_HUNTER, CARRIER_ESCORT, CHAMBER_BLADE, ASSAULT
                     -> preferred = target.getLocation();
             default -> preferred = target.getLocation();
         }
@@ -7650,6 +7745,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " maneuver=" + maneuver + " destination=" + locationText(destination));
         }
         return destination;
+    }
+
+    private Location collapseRingTacticalDestination(Location anchor, Mob mob, Player target) {
+        if (anchor == null || mob == null || target == null) {
+            return null;
+        }
+        CollapseRingEncounterPolicy.State state = collapseRingEncounterState;
+        int ring = state == null || state.generation() != generation
+                ? Math.max(0, Math.min(CollapseRingGeometryPolicy.RING_COUNT - 1,
+                currentCollapsedRings)) : state.roomId();
+        double radius = CollapseRingGeometryPolicy.ringRadius(ring);
+        if (radius <= 0.0D) {
+            return null;
+        }
+        Vector radial = target.getLocation().toVector().subtract(anchor.toVector());
+        radial.setY(0.0D);
+        if (radial.lengthSquared() < 0.04D) {
+            radial = mob.getLocation().toVector().subtract(anchor.toVector());
+            radial.setY(0.0D);
+        }
+        if (radial.lengthSquared() < 0.04D) {
+            radial = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        radial.normalize();
+        Vector side = new Vector(-radial.getZ(), 0.0D, radial.getX());
+        double sideSign = (mob.getUniqueId().getLeastSignificantBits() & 1L) == 0L
+                ? 1.0D : -1.0D;
+        return anchor.clone().add(radial.multiply(radius))
+                .add(side.multiply(sideSign * 1.15D));
     }
 
     private Location applyMobManeuver(Location preferred, Location anchor, Mob mob,
@@ -9791,7 +9915,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** The chamber controller is used by the seventh numbered wave. */
     private int chamberWaveNumber() {
-        return isOfficialCurrentAttempt() ? 7 : 6;
+        return 7;
     }
 
     /** True when the entity belongs to the currently active isolated chamber wave. */
@@ -10459,6 +10583,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveSpawnGroupIndex = 1;
         waveSpawnEntityOffset = 0;
         waveSpawnSchedule = List.of(scaled);
+        if (wave == chamberWaveNumber()) {
+            List<UUID> localChamberRoster = activeLivingPlayers().stream()
+                    .map(Player::getUniqueId)
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+            realitySplitChamberController.begin(generation, localChamberRoster);
+            teleportCurrentParticipantsToChambers(world, core);
+        }
         // Keep the disposable probe on the same visual path as an official
         // wave.  The flags are cleared by clearWaveObjectiveState(), so this
         // cannot keep a test animation alive after /cmend wave clear.
@@ -11171,6 +11303,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             case REALITY_SPLIT -> {
                 wave6Complete = false;
+                spawnRealitySplitBarriers(world, core);
                 announceEventTitle("§dРАСКОЛ РЕАЛЬНОСТИ",
                         "§fКаждая комната должна пережить свой бой", true);
             }
@@ -11720,10 +11853,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         List<UUID> spawned = new ArrayList<>();
         double baseAngle = eventTickCounter * 0.01D + ring * Math.PI * 0.7D;
+        double ringRadius = CollapseRingGeometryPolicy.ringRadius(ring);
         for (int slot = 0; slot < 2; slot++) {
             double angle = baseAngle + (slot == 0 ? 0.0D : Math.PI);
-            Location spawn = core.clone().add(Math.cos(angle) * (6.0D + ring * 2.0D),
-                    0.0D, Math.sin(angle) * (6.0D + ring * 2.0D));
+            Location spawn = core.clone().add(Math.cos(angle) * ringRadius,
+                    0.0D, Math.sin(angle) * ringRadius);
             Location safe = findSafeCombatLocation(core, spawn,
                     boundedCombatRadius(config.arenaRadius()) - 1.0D,
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, -1);
@@ -11788,10 +11922,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickCurrentCollapseRingTargets(CollapseRingEncounterPolicy.State state) {
-        List<Player> players = activeLivingPlayers();
+        List<Player> players = activeLivingPlayers().stream()
+                .filter(this::isCombatTarget)
+                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
+                .toList();
         if (players.isEmpty()) {
             return;
         }
+        Location anchor = coreCombatAnchorLocation();
+        int ring = state == null ? currentCollapsedRings : state.roomId();
         for (UUID guardId : new LinkedHashSet<>(collapseRingGuardUuids)) {
             Entity entity = ownedEntities.get(guardId);
             if (!(entity instanceof Mob mob) || !isLiveOwnedEntity(guardId)) {
@@ -11804,8 +11943,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             Player target = players.get(Math.floorMod(
                     collapseRingGuardSlots.getOrDefault(guardId, 0)
-                            + (int) (eventTickCounter / CollapseRingEncounterPolicy.PAIR_TIMER_TICKS),
+                    + (int) (eventTickCounter / CollapseRingEncounterPolicy.PAIR_TIMER_TICKS),
                     players.size()));
+            if (anchor != null) {
+                List<Player> lanePlayers = players.stream()
+                        .filter(player -> CollapseRingGeometryPolicy.inRingBand(ring,
+                                player.getLocation().getX() - anchor.getX(),
+                                player.getLocation().getZ() - anchor.getZ()))
+                        .toList();
+                if (!lanePlayers.isEmpty()) {
+                    int slot = collapseRingGuardSlots.getOrDefault(guardId, 0);
+                    int cycle = (int) (eventTickCounter
+                            / CollapseRingEncounterPolicy.PAIR_TIMER_TICKS);
+                    target = lanePlayers.get(Math.floorMod(slot + cycle, lanePlayers.size()));
+                }
+            }
             if (isCombatTarget(target)) {
                 mob.setTarget(target);
             }
@@ -11911,8 +12063,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         generation, chamber);
                 if (marked) {
                     for (int other = 0; other < chamberCount; other++) {
-                        realitySplitChamberController.openCompletedPassage(
+                        boolean opened = realitySplitChamberController.openCompletedPassage(
                                 generation, chamber, other);
+                        if (opened) {
+                            openRealitySplitBoundary(
+                                    RealitySplitBarrierPolicy.boundaryForPair(
+                                            chamber, other, chamberCount), chamberCount);
+                        }
                     }
                     getLogger().info("END_RIFT_REALITY_SPLIT_CHAMBER_COMPLETE event=" + eventId
                             + " chamber=" + chamber + " completed="
@@ -11980,12 +12137,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
         } else if (objectiveWave == 6) {
-            for (Player viewer : eventAudience()) {
-                if (isEventParticleViewer(viewer, core)) {
-                    spawnPatternRing(viewer, core.clone().add(0.0D, 0.12D, 0.0D),
-                            new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
-                            3.0D, 16, now * 0.001D, Particle.REVERSE_PORTAL);
-                }
+            renderCurrentCollapseRings(core, now);
+        } else if (objectiveWave == 7) {
+            renderRealitySplitBarriers(core, now);
+        }
+    }
+
+    /** Render the same three radii that constrain the Wave 6 guard pairs. */
+    private void renderCurrentCollapseRings(Location core, long now) {
+        if (core == null || core.getWorld() == null) {
+            return;
+        }
+        Location floor = core.clone();
+        floor.setY(combatFloorY() + 1.03D);
+        for (Player viewer : eventAudience()) {
+            if (!isEventParticleViewer(viewer, core)) {
+                continue;
+            }
+            for (int ring = 0; ring < CollapseRingGeometryPolicy.RING_COUNT; ring++) {
+                Particle.DustOptions dust = switch (ring) {
+                    case 0 -> new Particle.DustOptions(Color.fromRGB(196, 55, 255), 1.0F);
+                    case 1 -> new Particle.DustOptions(Color.fromRGB(96, 219, 255), 1.0F);
+                    default -> new Particle.DustOptions(Color.fromRGB(255, 76, 214), 1.0F);
+                };
+                spawnPatternRing(viewer, floor,
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        CollapseRingGeometryPolicy.ringRadius(ring),
+                        CollapseRingGeometryPolicy.visualPointCount(ring),
+                        now * 0.0008D * (ring % 2 == 0 ? 1.0D : -1.0D) + ring * 0.42D,
+                        Particle.DUST, dust);
             }
         }
     }
@@ -12296,11 +12476,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int ring = 0; ring < EndRiftObjective.RING_COUNT; ring++) {
             final int ringIndex = ring;
             Set<UUID> group = new LinkedHashSet<>();
-            double radius = 5.0D + ring * 4.0D;
-            for (int index = 0; index < 20; index++) {
-                double angle = index * Math.PI * 2.0D / 20.0D;
-                Location origin = core.clone().add(Math.cos(angle) * radius,
-                        0.45D + ringIndex * 0.12D, Math.sin(angle) * radius);
+            double radius = CollapseRingGeometryPolicy.ringRadius(ring);
+            int segments = Math.max(24,
+                    CollapseRingGeometryPolicy.visualPointCount(ring) / 2);
+            for (int index = 0; index < segments; index++) {
+                double angle = index * Math.PI * 2.0D / segments;
+                Location origin = new Location(world,
+                        core.getX() + Math.cos(angle) * radius,
+                        combatFloorY() + 1.0D,
+                        core.getZ() + Math.sin(angle) * radius);
                 BlockDisplay display = world.spawn(origin, BlockDisplay.class, value -> {
                     value.setBlock((ringIndex == 1 ? Material.PURPUR_BLOCK
                             : Material.CRYING_OBSIDIAN).createBlockData());
@@ -12310,8 +12494,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     value.setPersistent(false);
                     value.setInterpolationDuration(5);
                     value.setTransformation(new Transformation(
-                            new Vector3f(-0.28F, -0.12F, -0.08F), new AxisAngle4f(),
-                            new Vector3f(0.56F, 0.24F, 0.16F), new AxisAngle4f()));
+                            new Vector3f(-0.42F, -0.94F, -0.10F),
+                            new AxisAngle4f((float) (angle + Math.PI / 2.0D), 0.0F, 1.0F, 0.0F),
+                            new Vector3f(0.84F, 0.18F, 0.20F), new AxisAngle4f()));
                 });
                 tag(display, EVENT_KIND_DISPLAY, 5, true);
                 ownedEntities.put(display.getUniqueId(), display);
@@ -12321,7 +12506,275 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             currentRingVisualGroups.put(ring, group);
         }
-        getLogger().info("END_RIFT_RINGS_READY event=" + eventId + " rings=3 pieces=60");
+        getLogger().info("END_RIFT_RINGS_READY event=" + eventId + " rings=3 pieces="
+                + currentRingVisuals.size() + " floor_y=" + combatFloorY()
+                + " radii=6,11,16 visual_points=64,80,96");
+    }
+
+    /**
+     * Build the visible and collidable Wave 7 room separators from the
+     * deterministic policy.  Only passable blocks are changed and every
+     * placed barrier is journaled before the first mutation.
+     */
+    private void spawnRealitySplitBarriers(World world, Location core) {
+        clearRealitySplitBarriers("wave7-rebuild");
+        if (world == null || core == null || !realitySplitChamberController.owns(generation)) {
+            return;
+        }
+        int chamberCount = realitySplitChamberController.assignment().chamberCount();
+        if (chamberCount < 2) {
+            getLogger().warning("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=insufficient-chambers");
+            return;
+        }
+        int floorY = combatFloorY();
+        List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
+        Map<RealitySplitBarrierPolicy.Cell, String> plannedOriginals = new LinkedHashMap<>();
+        for (RealitySplitBarrierPolicy.Cell cell : RealitySplitBarrierPolicy.cells(chamberCount)) {
+            int x = core.getBlockX() + cell.xOffset();
+            int z = core.getBlockZ() + cell.zOffset();
+            int y = floorY + cell.level();
+            Location location = new Location(world, x, y, z);
+            Block floor = world.getBlockAt(x, floorY, z);
+            Block barrier = world.getBlockAt(x, y, z);
+            if (x == coreX && z == coreZ
+                    || !isArenaLocation(location) || isGateLocation(location)
+                    || !floor.getType().isSolid() || floor.isLiquid()
+                    || !barrier.isPassable() || barrier.isLiquid()) {
+                continue;
+            }
+            String original = barrier.getBlockData().getAsString();
+            RealitySplitBarrierPolicy.Cell previous = cell;
+            if (plannedOriginals.putIfAbsent(previous, original) == null) {
+                journalEntries.add(new HazardMutationJournal.Entry(
+                        x, y - 1, z, floor.getBlockData().getAsString(), original,
+                        "REALITY_SPLIT_BARRIER", world.getUID().toString(), eventId, generation));
+            }
+        }
+        if (journalEntries.isEmpty()) {
+            getLogger().warning("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=no-safe-passable-cells");
+            return;
+        }
+        HazardMutationJournal.Snapshot existing = hazardJournal == null
+                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
+        if (existing.status() != HazardMutationJournal.Status.EMPTY
+                && existing.status() != HazardMutationJournal.Status.RESTORED
+                && !existing.entries().isEmpty()) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=hazard-journal-busy status=" + existing.status());
+            return;
+        }
+        if (hazardJournal == null
+                || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=journal-prepare-failed");
+            return;
+        }
+        try {
+            for (HazardMutationJournal.Entry entry : journalEntries) {
+                world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z())
+                        .setType(Material.BARRIER, false);
+            }
+            if (!hazardJournal.markApplied()) {
+                throw new IllegalStateException("Wave 7 barrier journal could not be marked APPLIED");
+            }
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_BARRIERS_APPLY_FAILED event=" + eventId, error);
+            for (HazardMutationJournal.Entry entry : journalEntries) {
+                Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
+                if (barrier.getType() == Material.BARRIER) {
+                    restoreBlock(barrier, entry.webOriginal());
+                }
+            }
+            hazardJournal.markRestored();
+            return;
+        }
+        realitySplitBarrierOriginals.putAll(plannedOriginals);
+        realitySplitBarrierCells.addAll(plannedOriginals.keySet());
+        for (int boundary = 0; boundary < (chamberCount == 2 ? 1 : chamberCount); boundary++) {
+            Set<RealitySplitBarrierPolicy.Cell> cells = new LinkedHashSet<>();
+            for (RealitySplitBarrierPolicy.Cell cell
+                    : RealitySplitBarrierPolicy.cellsForBoundary(boundary, chamberCount)) {
+                if (realitySplitBarrierCells.contains(cell)) {
+                    cells.add(cell);
+                }
+            }
+            if (!cells.isEmpty()) {
+                realitySplitBarrierByBoundary.put(boundary, cells);
+            }
+        }
+        Set<RealitySplitBarrierPolicy.Cell> visualBases = realitySplitBarrierCells.stream()
+                .filter(cell -> cell.level() == 1)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        for (RealitySplitBarrierPolicy.Cell cell : visualBases) {
+            int x = core.getBlockX() + cell.xOffset();
+            int z = core.getBlockZ() + cell.zOffset();
+            BlockDisplay display = world.spawn(new Location(world, x + 0.5D,
+                    floorY + 1.0D, z + 0.5D), BlockDisplay.class, value -> {
+                value.setBlock(Material.CRYING_OBSIDIAN.createBlockData());
+                value.setBrightness(new Display.Brightness(15, 15));
+                value.setGravity(false);
+                value.setInvulnerable(true);
+                value.setPersistent(false);
+                value.setViewRange(48.0F);
+                value.setInterpolationDuration(4);
+                value.setTransformation(new Transformation(
+                        new Vector3f(-0.12F, 0.0F, -0.44F), new AxisAngle4f(),
+                        new Vector3f(0.24F, RealitySplitBarrierPolicy.HEIGHT, 0.88F),
+                        new AxisAngle4f()));
+            });
+            tag(display, EVENT_KIND_DISPLAY, 7, true);
+            ownedEntities.put(display.getUniqueId(), display);
+            waveObjectiveVisuals.add(display.getUniqueId());
+            realitySplitBarrierVisuals.put(cell, display.getUniqueId());
+        }
+        world.playSound(core, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
+                SoundCategory.BLOCKS, 0.85F, 0.65F);
+        getLogger().info("END_RIFT_WAVE7_BARRIERS_READY event=" + eventId
+                + " chambers=" + chamberCount + " cells=" + realitySplitBarrierCells.size()
+                + " columns=" + visualBases.size() + " height=" + RealitySplitBarrierPolicy.HEIGHT
+                + " collision=true journaled=true");
+    }
+
+    /** Remove one completed adjacent room boundary while retaining others. */
+    private void openRealitySplitBoundary(int boundary, int chamberCount) {
+        if (boundary < 0 || chamberCount < 2) {
+            return;
+        }
+        Set<RealitySplitBarrierPolicy.Cell> cells = realitySplitBarrierByBoundary.remove(boundary);
+        if (cells == null || cells.isEmpty()) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            getLogger().severe("END_RIFT_WAVE7_BOUNDARY_OPEN_BLOCKED event=" + eventId
+                    + " boundary=" + boundary + " reason=world-not-loaded");
+            realitySplitBarrierByBoundary.put(boundary, cells);
+            return;
+        }
+        int restored = 0;
+        for (RealitySplitBarrierPolicy.Cell cell : cells) {
+            if (realitySplitBarrierStillNeeded(cell)) {
+                continue;
+            }
+            int x = coreX + cell.xOffset();
+            int z = coreZ + cell.zOffset();
+            Block barrier = world.getBlockAt(x, combatFloorY() + cell.level(), z);
+            if (barrier.getType() == Material.BARRIER) {
+                restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
+                restored++;
+            }
+            realitySplitBarrierCells.remove(cell);
+            realitySplitBarrierOriginals.remove(cell);
+            if (cell.level() == 1) {
+                removeRealitySplitBarrierVisual(cell);
+            }
+        }
+        if (realitySplitBarrierCells.isEmpty() && hazardJournal != null) {
+            hazardJournal.markRestored();
+        }
+        Location core = coreCombatAnchorLocation();
+        if (core != null) {
+            spawnEventParticle(core, Particle.END_ROD, 24, 1.4D, 1.0D, 1.4D, 0.03D);
+            core.getWorld().playSound(core, Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE,
+                    SoundCategory.BLOCKS, 0.8F, 1.35F);
+        }
+        getLogger().info("END_RIFT_WAVE7_BOUNDARY_OPENED event=" + eventId
+                + " boundary=" + boundary + " restored=" + restored
+                + " remaining_cells=" + realitySplitBarrierCells.size());
+    }
+
+    private boolean realitySplitBarrierStillNeeded(RealitySplitBarrierPolicy.Cell cell) {
+        for (Set<RealitySplitBarrierPolicy.Cell> cells : realitySplitBarrierByBoundary.values()) {
+            if (cells.contains(cell)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void removeRealitySplitBarrierVisual(RealitySplitBarrierPolicy.Cell cell) {
+        UUID visualId = realitySplitBarrierVisuals.remove(cell);
+        if (visualId == null) {
+            return;
+        }
+        Entity visual = ownedEntities.remove(visualId);
+        if (visual == null) {
+            visual = Bukkit.getEntity(visualId);
+        }
+        if (visual != null && visual.isValid()) {
+            visual.remove();
+        }
+        waveObjectiveVisuals.remove(visualId);
+    }
+
+    /** Full reset/restart cleanup for every remaining Wave 7 wall cell. */
+    private boolean clearRealitySplitBarriers(String reason) {
+        if (realitySplitBarrierCells.isEmpty() && realitySplitBarrierVisuals.isEmpty()) {
+            if (hazardJournal != null) {
+                hazardJournal.markRestored();
+            }
+            return true;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_BLOCKED event=" + eventId
+                    + " reason=world-not-loaded");
+            return false;
+        }
+        int restored = 0;
+        for (RealitySplitBarrierPolicy.Cell cell
+                : new LinkedHashSet<>(realitySplitBarrierCells)) {
+            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+            if (barrier.getType() == Material.BARRIER) {
+                restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
+                restored++;
+            }
+        }
+        for (RealitySplitBarrierPolicy.Cell cell
+                : new LinkedHashSet<>(realitySplitBarrierVisuals.keySet())) {
+            removeRealitySplitBarrierVisual(cell);
+        }
+        boolean journalRestored = hazardJournal == null || hazardJournal.markRestored();
+        if (!journalRestored) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_UNCOMMITTED event=" + eventId
+                    + " reason=journal-mark-restored-failed");
+            return false;
+        }
+        realitySplitBarrierCells.clear();
+        realitySplitBarrierOriginals.clear();
+        realitySplitBarrierByBoundary.clear();
+        realitySplitBarrierVisuals.clear();
+        getLogger().info("END_RIFT_WAVE7_BARRIERS_CLEANUP event=" + eventId
+                + " reason=" + reason + " restored=" + restored);
+        return true;
+    }
+
+    private void renderRealitySplitBarriers(Location core, long now) {
+        if (core == null || core.getWorld() == null || realitySplitBarrierCells.isEmpty()) {
+            return;
+        }
+        int rendered = 0;
+        for (RealitySplitBarrierPolicy.Cell cell : realitySplitBarrierCells) {
+            if (cell.level() != 1 || rendered++ >= 64) {
+                continue;
+            }
+            Location point = core.clone().add(cell.xOffset() + 0.0D,
+                    1.45D, cell.zOffset() + 0.0D);
+            for (Player viewer : eventAudience()) {
+                if (!isEventParticleViewer(viewer, point)) {
+                    continue;
+                }
+                viewer.spawnParticle(Particle.REVERSE_PORTAL, point, 1,
+                        0.12D, 1.2D, 0.12D, 0.01D);
+                if ((eventTickCounter / 5L + cell.xOffset() + cell.zOffset()) % 3L == 0L) {
+                    viewer.spawnParticle(Particle.END_ROD, point, 1,
+                            0.08D, 0.35D, 0.08D, 0.01D);
+                }
+            }
+        }
     }
 
     private void teleportCurrentParticipantsToChambers(World world, Location core) {
@@ -12943,6 +13396,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         testWave4ObeliskMode = false;
         clearWave4Obelisks("wave-objective-reset");
         cancelWaveSpawnTask();
+        clearRealitySplitBarriers("wave-objective-reset");
         clearCurrentSafeZoneVisuals();
         for (UUID visualId : new HashSet<>(currentRingVisuals)) {
             Entity visual = ownedEntities.remove(visualId);

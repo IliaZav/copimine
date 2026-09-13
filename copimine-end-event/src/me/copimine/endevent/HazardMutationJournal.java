@@ -247,7 +247,8 @@ public final class HazardMutationJournal {
             mutation = mutation == null || mutation.isBlank() ? "MAGMA" : mutation.toUpperCase(java.util.Locale.ROOT);
             if (!mutation.equals("MAGMA") && !mutation.equals("FIRE")
                     && !mutation.equals("EMERALD_BARRIER") && !mutation.equals("BARRIER")
-                    && !mutation.equals("ICE") && !mutation.equals("OBELISK")) {
+                    && !mutation.equals("ICE") && !mutation.equals("OBELISK")
+                    && !mutation.equals("REALITY_SPLIT_BARRIER")) {
                 throw new IllegalArgumentException("unsupported hazard mutation: " + mutation);
             }
             worldId = worldId == null ? "" : worldId;
@@ -280,6 +281,11 @@ public final class HazardMutationJournal {
         /** A Wave 4 obelisk cell journaled at its actual world height. */
         public boolean isObeliskMutation() {
             return mutation.equals("OBELISK");
+        }
+
+        /** A Wave 7 radial collision wall above an untouched floor. */
+        public boolean isRealitySplitBarrierMutation() {
+            return mutation.equals("REALITY_SPLIT_BARRIER");
         }
     }
 

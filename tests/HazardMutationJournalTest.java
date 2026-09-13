@@ -46,6 +46,10 @@ public final class HazardMutationJournalTest {
             HazardMutationJournal.Entry barrier = new HazardMutationJournal.Entry(
                     13, 68, -4, "minecraft:stone", "minecraft:air", "BARRIER");
             check(barrier.isBarrierMutation(), "barrier perimeter mutation must be explicit");
+            HazardMutationJournal.Entry splitBarrier = new HazardMutationJournal.Entry(
+                    15, 68, -4, "minecraft:stone", "minecraft:air", "REALITY_SPLIT_BARRIER");
+            check(splitBarrier.isRealitySplitBarrierMutation(),
+                    "Wave 7 barrier mutation must be explicitly tagged");
             HazardMutationJournal.Entry ice = new HazardMutationJournal.Entry(
                     14, 68, -4, "minecraft:stone", "", "ICE");
             check(ice.isIceMutation(), "ice prisoner mutation must be explicit");

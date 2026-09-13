@@ -131,40 +131,37 @@ function writeAttack(entity) {
     }
     return
   }
-  attempted.add(entity.id)
   const target = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(entity.position)
-  // The attack ray must still be close enough to the projectile for the
-  // server-side aim-cone check.  The return target is the crown of the
-  // obelisk that launched this projectile; looking at that crown sends the
-  // reflected fireball back along the authored source path instead of merely
-  // reproducing the outbound direction.
+  console.log(`RIFT_FIREBALL_CANDIDATE ${username} entityId=${entity.id} source=${target ? target.id : 'none'} sourceDistance=${target && bot.entity ? distance(target.position, bot.entity.position).toFixed(2) : 'na'} projectileDistance=${range.toFixed(2)}`)
+  // This probe stands beside the north obelisk.  A fireball from one of the
+  // other three columns can still pass through the client's tracking radius,
+  // but looking at it would send the real reflected projectile away from its
+  // source and create a valid reflection miss.  Restrict the disposable
+  // client to projectiles from the nearby source so the live assertion tests
+  // three actual source-to-player-to-obelisk hits instead of random misses.
+  if (target && distance(target.position, bot.entity.position) > 6.0) {
+    console.log(`RIFT_FIREBALL_SOURCE_SKIP ${username} entityId=${entity.id} source=${target.id} sourcePos=${target.position.x},${target.position.y},${target.position.z} player=${bot.entity.position.x},${bot.entity.position.y},${bot.entity.position.z}`)
+    return
+  }
+  attempted.add(entity.id)
+  // The return target is the crown of the obelisk that launched this
+  // projectile; looking at that crown sends the reflected fireball back along
+  // the authored source path instead of merely reproducing the outbound
+  // direction.
   const aimPoint = target?.position || entity.position
   lookAtServer(aimPoint)
-  setTimeout(() => {
-    const refreshed = bot.entities[entity.id]
-    if (!refreshed || !bot.entity || distance(refreshed.position, bot.entity.position) > 6.5) return
-    // The movement plugin may emit an interpolation packet between the first
-    // aim and this callback. Repeat the real look packet immediately before
-    // use_entity so the server uses this exact reflected return direction.
-    // Paper validates the reflection against the player's actual aim ray to
-    // the projectile. Aiming at the obelisk origin is only equivalent while
-    // the projectile, player and origin are perfectly collinear; diagonal
-    // targets otherwise get rejected as aim-outside-cone. Aim at the
-    // refreshed projectile for the real vanilla interaction packet.
-    lookAtServer(refreshed.position)
-    // Sending the same use_entity + arm_animation pair as a vanilla melee
-    // client keeps the reflection path independent of Mineflayer's mob-only
-    // attack helper.
-    bot._client.write('use_entity', {
-      target: refreshed.id,
-      mouse: 1,
-      sneaking: false
-    })
-    bot._client.write('arm_animation', { hand: 0 })
-    reflections += 1
-    const refreshedTarget = fireballOriginTargets.get(entity.id) || nearestWave4ObeliskDisplay(refreshed.position)
-    console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${refreshed.id} facing=projectile origin_obelisk=${refreshedTarget ? refreshedTarget.id : 'none'}`)
-  }, 75)
+  // The client receives the spawn position but not a useful interpolation
+  // stream for this Paper projectile before it is consumed. Send the real
+  // vanilla interaction packet in the same callback while this entity id is
+  // still live; waiting for a later map refresh loses the reflection window.
+  bot._client.write('use_entity', {
+    target: entity.id,
+    mouse: 1,
+    sneaking: false
+  })
+  bot._client.write('arm_animation', { hand: 0 })
+  reflections += 1
+  console.log(`RIFT_FIREBALL_REFLECT_ATTEMPT ${username} count=${reflections} entityId=${entity.id} facing=origin origin_obelisk=${target ? target.id : 'none'}`)
 }
 
 function sample() {

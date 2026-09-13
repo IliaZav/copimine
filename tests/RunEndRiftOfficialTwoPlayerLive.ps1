@@ -397,10 +397,15 @@ function Teleport-PlayersToObeliskRing {
   $obeliskRingAngles = if ($playerNames.Count -le 2) {
     @(-$halfPi, $halfPi)
   } else {
-    # Four cardinal lanes match the authored Wave 4 obelisk anchors.  With
-    # five or more clients the extra players reuse a lane, while every active
-    # obelisk still has a nearby reflection-capable client.
-    @(-$halfPi, 0.0D, $halfPi, [Math]::PI)
+    # Use one client lane per active obelisk.  The four-lane layout that was
+    # previously used for every roster left the two diagonal towers outside
+    # the bot reflection radius at the 5-obelisk (8-15 players) scale.
+    $laneCount = Get-ObeliskCount $playerNames.Count
+    @(
+      for ($lane = 0; $lane -lt $laneCount; $lane++) {
+        -$halfPi + (2.0D * [Math]::PI * $lane / $laneCount)
+      }
+    )
   }
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
     $angle = $obeliskRingAngles[$index % $obeliskRingAngles.Count]

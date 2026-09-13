@@ -202,17 +202,18 @@ try {
     # change the world or event rules.
     $null = Invoke-LocalRcon ("effect clear $name")
     # The reflection probe is measuring projectile ownership/HP transitions,
-    # not player survivability.  Protect the disposable client before writing
-    # its large real HP value so an asynchronous fireball cannot make the
-    # setup assertion flaky between data merge and data get.
+    # not player survivability.  Protect the disposable client while checking
+    # the supported real max-health attribute.  Paper deliberately rejects
+    # direct NBT health writes for players, so do not use data merge here.
     $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 120 4 true")
     $null = Invoke-LocalRcon ("effect give $name minecraft:regeneration 120 4 true")
     $null = Invoke-LocalRcon ("effect give $name minecraft:slow_falling 120 0 true")
-    $null = Invoke-LocalRcon ("data merge entity $name {Health:1024f}")
-    $healthResult = Invoke-LocalRcon ("data get entity $name Health")
-    $healthMatch = [Regex]::Match($healthResult, '(\d+(?:\.\d+)?)')
-    if (-not $healthMatch.Success -or [double]$healthMatch.Groups[1].Value -lt 900.0D) {
-      throw "Could not prime the obelisk probe health for ${name}: $healthResult"
+    $maxHealthResult = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base get")
+    # The player name is part of the command response and may contain digits;
+    # anchor the parse to the value after the response's "is" marker.
+    $maxHealthMatch = [Regex]::Match($maxHealthResult, 'is\s+(\d+(?:\.\d+)?)')
+    if (-not $maxHealthMatch.Success -or [double]$maxHealthMatch.Groups[1].Value -lt 900.0D) {
+      throw "Could not prime the obelisk probe max health for ${name}: $maxHealthResult"
     }
   }
   # Hold both probes beside the north anchor. The server still chooses the

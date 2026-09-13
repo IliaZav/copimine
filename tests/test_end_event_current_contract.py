@@ -471,13 +471,37 @@ def test_boss_bar_update_recreates_missing_bar_before_reading_audience() -> None
 def test_obelisk_probe_primes_health_after_survival_protection() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
     assert re.search(
-        r"gamemode spectator \$name[\s\S]*?data merge entity \$name \{Health:1024f\}[\s\S]*?gamemode survival \$name[\s\S]*?cmend test wave 4",
+        r"gamemode spectator \$name[\s\S]*?attribute \$name minecraft:generic\.max_health base set 1024[\s\S]*?"
+        r"attribute \$name minecraft:generic\.max_health base get[\s\S]*?gamemode survival \$name[\s\S]*?cmend test wave 4",
         probe,
-    ), "obelisk reflection probe must finish health setup before returning the bot to survival"
+    ), "obelisk reflection probe must verify max health before returning the bot to survival"
     assert re.search(
-        r"effect clear \$name[\s\S]*?effect give \$name minecraft:resistance 120 4 true[\s\S]*?data merge entity \$name \{Health:1024f\}",
+        r"effect clear \$name[\s\S]*?effect give \$name minecraft:resistance 120 4 true[\s\S]*?"
+        r"effect give \$name minecraft:regeneration 120 4 true[\s\S]*?"
+        r"attribute \$name minecraft:generic\.max_health base get",
         probe,
-    ), "obelisk reflection probe must protect the bot before priming its real health"
+    ), "obelisk reflection probe must protect the bot before verifying its real max health"
+
+
+def test_obelisk_probe_uses_supported_player_max_health_commands() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
+    assert "data merge entity $name {Health:1024f}" not in probe, (
+        "Paper rejects direct NBT health writes for players; the live probe must not rely on that command"
+    )
+    assert re.search(
+        r"attribute \$name minecraft:generic\.max_health base set 1024[\s\S]*?"
+        r"attribute \$name minecraft:generic\.max_health base get[\s\S]*?"
+        r"\$maxHealthMatch",
+        probe,
+    ), "the probe must verify the supported real max-health attribute instead of an impossible player NBT write"
+
+
+def test_obelisk_probe_parses_attribute_value_after_command_prefix() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
+    assert re.search(
+        r"\$maxHealthMatch\s*=\s*\[Regex\]::Match\(\$maxHealthResult,\s*'is\\s\+",
+        probe,
+    ), "the probe must not parse digits from a player's name as the max-health value"
 
 
 def test_official_wave7_probe_targets_every_supported_living_mob_type() -> None:
@@ -490,18 +514,22 @@ def test_official_wave7_probe_targets_every_supported_living_mob_type() -> None:
     )
 
 
-def test_official_obelisk_probe_covers_four_cardinal_reflection_lanes() -> None:
+def test_official_obelisk_probe_covers_every_active_reflection_lane() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert "$halfPi = [Math]::PI / 2.0D" in probe, (
         "obelisk lane angles must be computed as one scalar before array construction"
     )
-    assert "@(-$halfPi, 0.0D, $halfPi, [Math]::PI)" in probe, (
-        "five-player obelisk probe must keep cardinal angles scalar"
-    )
     assert re.search(
-        r"\$obeliskRingAngles[\s\S]*?\[Math\]::PI\s*/\s*2\.0D[\s\S]*?\[Math\]::PI",
+        r"\$laneCount\s*=\s*Get-ObeliskCount\s+\$playerNames\.Count",
         probe,
-    ), "multi-player obelisk probe must cover the four authored cardinal lanes"
+    ), "multi-player obelisk probe must derive lanes from the active obelisk count"
+    assert re.search(
+        r"for \(\$lane = 0; \$lane -lt \$laneCount; \$lane\+\+\)[\s\S]*?"
+        r"\$halfPi\s*\+\s*\(2\.0D \* \[Math\]::PI \* \$lane / \$laneCount\)",
+        probe,
+    ), (
+        "multi-player obelisk probe must place reflection-capable clients on every active tower lane"
+    )
 
 
 def test_official_probe_keeps_the_pre_ritual_cursor_for_w1() -> None:
@@ -684,6 +712,34 @@ def test_official_wave_bot_aims_at_the_projectile_for_reflection() -> None:
     assert "target=projectile" in bot
     assert "origin=${sourceAnchor ? 'known' : 'nearest'}" in bot
     assert "flags: { onGround, hasHorizontalCollision: undefined }" in bot
+
+
+def test_official_wave_bot_uses_stable_projectile_identity() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert "function projectileIdentity(entity)" in bot
+    assert "entity.uuid" in bot
+    assert "reflectedProjectiles.has(projectileKey)" in bot
+    assert "reflectedProjectiles.add(projectileKey)" in bot
+    assert "reflectionTimers.has(projectileKey)" in bot
+    assert "projectileOrigins.get(projectileKey)" in bot
+    assert "current && projectileIdentity(current) === projectileKey" in bot
+    assert "reflectedEntityIds" not in bot
+
+
+def test_official_wave_bot_waits_for_projectile_uuid_before_scheduling() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert re.search(
+        r"function scheduleFireballReflection\(entity\)[\s\S]*?"
+        r"const uuid = String\(entity\?\.uuid \|\| ''\)\.trim\(\)[\s\S]*?"
+        r"if \(!uuid\) return",
+        bot,
+    ), "the probe must not create a fallback-id reflection timer before UUID metadata arrives"
+    assert re.search(
+        r"async function reflectFireball\(entity\)[\s\S]*?"
+        r"const uuid = String\(entity\?\.uuid \|\| ''\)\.trim\(\)[\s\S]*?"
+        r"if \(!uuid\) return false",
+        bot,
+    ), "direct reflection must reject an entity whose UUID is not known yet"
 
 
 def test_official_wave7_bot_has_room_local_autopilot() -> None:

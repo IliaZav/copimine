@@ -79,7 +79,11 @@ let sampleCount = 0
 let movedEntities = new Map()
 let attackCount = 0
 let reflectionCount = 0
-const reflectedEntityIds = new Set()
+// Mineflayer reuses a numeric entity id after a projectile is removed.  The
+// server still gives each spawn a new UUID, so reflection state must follow
+// that stable identity or later fireballs can be incorrectly treated as
+// already reflected.
+const reflectedProjectiles = new Set()
 const reflectionTimers = new Set()
 const projectileOrigins = new Map()
 
@@ -121,6 +125,15 @@ function distance(a, b) {
   const dy = a.y - b.y
   const dz = a.z - b.z
   return Math.sqrt(dx * dx + dy * dy + dz * dz)
+}
+
+function projectileIdentity(entity) {
+  const uuid = String(entity?.uuid || '').trim()
+  return uuid ? `uuid:${uuid}` : `id:${entity?.id ?? 'unknown'}`
+}
+
+function isCurrentProjectile(current, projectileKey) {
+  return current && projectileIdentity(current) === projectileKey
 }
 
 function isConfiguredArenaMob(entity) {
@@ -381,21 +394,25 @@ async function lookAtServer(point) {
 }
 
 async function reflectFireball(entity) {
-  if (!reflectEnabled || !bot.entity || !isRiftFireball(entity)
-    || reflectedEntityIds.has(entity.id)) return false
+  if (!reflectEnabled || !bot.entity || !isRiftFireball(entity)) return false
+  const uuid = String(entity?.uuid || '').trim()
+  if (!uuid) return false
+  const projectileKey = projectileIdentity(entity)
+  if (reflectedProjectiles.has(projectileKey)) return false
   const current = bot.entities[entity.id]
-  if (!current || !current.position
+  if (!isCurrentProjectile(current, projectileKey) || !current.position
     || distance(current.position, bot.entity.position) > reflectTargetDistance) return false
   try {
     // The player must first acquire the projectile, then keep the return
     // target in view when the attack packet is sent.  This is how a player
     // sends an incoming fireball back toward the obelisk instead of merely
     // punching it upward into empty air.
-    const sourceAnchor = projectileOrigins.get(entity.id)
+    const sourceAnchor = projectileOrigins.get(projectileKey)
     await lookAtServer(current.position)
     await new Promise(resolve => setTimeout(resolve, 75))
     const refreshed = bot.entities[entity.id]
-    if (!refreshed || distance(refreshed.position, bot.entity.position) > reflectTargetDistance) return false
+    if (!isCurrentProjectile(refreshed, projectileKey) || !refreshed.position
+      || distance(refreshed.position, bot.entity.position) > reflectTargetDistance) return false
     // The server's aim-cone check is defined from the player to the
     // projectile, not from the player to its source display. The source is
     // still useful for diagnostics, but using it as the final look direction
@@ -405,15 +422,18 @@ async function reflectFireball(entity) {
     // Send the same serverbound attack interaction a vanilla player uses.
     // Do not call bot.attack here: Mineflayer's entity type filter can reject
     // LargeFireball before the packet is emitted.
+    const target = bot.entities[entity.id]
+    if (!isCurrentProjectile(target, projectileKey)
+      || distance(target.position, bot.entity.position) > reflectTargetDistance) return false
     bot._client.write('use_entity', {
-      target: refreshed.id,
+      target: target.id,
       mouse: 1,
       sneaking: false,
     })
     bot._client.write('arm_animation', { hand: 0 })
-    reflectedEntityIds.add(refreshed.id)
+    reflectedProjectiles.add(projectileKey)
     reflectionCount += 1
-    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${refreshed.id} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(refreshed.position, bot.entity.position).toFixed(2)}`)
+    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)}`)
     return true
   } catch (error) {
     console.error(`REFLECT_ERROR ${username} ${error.stack || error}`)
@@ -422,17 +442,23 @@ async function reflectFireball(entity) {
 }
 
 function scheduleFireballReflection(entity) {
-  if (!reflectEnabled || !isRiftFireball(entity) || reflectedEntityIds.has(entity.id)
-    || reflectionTimers.has(entity.id)) return
+  if (!reflectEnabled || !isRiftFireball(entity)) return
+  const uuid = String(entity?.uuid || '').trim()
+  if (!uuid) return
+  const projectileKey = projectileIdentity(entity)
+  if (reflectedProjectiles.has(projectileKey) || reflectionTimers.has(projectileKey)) return
   const timer = setTimeout(async () => {
-    reflectionTimers.delete(entity.id)
+    reflectionTimers.delete(projectileKey)
     for (let attempt = 0; attempt < 25; attempt++) {
-      if (await reflectFireball(entity)) return
-      if (!bot.entities[entity.id]) return
+      if (reflectedProjectiles.has(projectileKey)) return
+      const current = bot.entities[entity.id]
+      if (!isCurrentProjectile(current, projectileKey)) return
+      if (await reflectFireball(current)) return
+      if (!isCurrentProjectile(bot.entities[entity.id], projectileKey)) return
       await new Promise(resolve => setTimeout(resolve, 100))
     }
   }, reflectStartDelayMs)
-  reflectionTimers.add(entity.id)
+  reflectionTimers.add(projectileKey)
 }
 
 bot._client.on('packet', (data, meta) => {
@@ -467,6 +493,10 @@ bot.once('spawn', () => {
 
 bot.on('entitySpawn', entity => {
   scheduleFireballReflection(entity)
+  if (isRiftFireball(entity) && entity.position) {
+    projectileOrigins.set(projectileIdentity(entity),
+      nearestWave4ObeliskDisplay(entity.position)?.position || entity.position)
+  }
   if (isFireballEntity(entity) || entity?.name === 'unknown') {
     console.log(`ENTITY_PROJECTILE ${username} id=${entity?.id} name=${entity?.name} type=${entity?.type} entityType=${entity?.entityType} display=${entity?.displayName}`)
   }
@@ -488,7 +518,10 @@ bot._client.on('spawn_entity', packet => {
   if (String(registryName).toLowerCase().includes('fireball')
     || String(entity?.name).toLowerCase().includes('fireball')) {
     const spawnPoint = new Vec3(packet.x, packet.y, packet.z)
-    projectileOrigins.set(packet.entityId, nearestWave4ObeliskDisplay(spawnPoint)?.position || spawnPoint)
+    if (entity) {
+      projectileOrigins.set(projectileIdentity(entity),
+        nearestWave4ObeliskDisplay(spawnPoint)?.position || spawnPoint)
+    }
     console.log(`ENTITY_PROJECTILE_PACKET ${username} id=${packet.entityId} packet_type=${packet.type} registry=${registryName} name=${entity?.name} pos=${packet.x},${packet.y},${packet.z}`)
   }
 })

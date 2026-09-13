@@ -19,6 +19,8 @@ const arenaRadius = Number(process.argv[7])
 const configuredAttackIntervalMs = Number(
   process.argv[8] || process.env.END_RIFT_ATTACK_INTERVAL_MS || 400,
 )
+const skipRegister = process.env.END_RIFT_BOT_SKIP_REGISTER === '1'
+const botPassword = process.env.END_RIFT_BOT_PASSWORD || 'endrift-local'
 const configuredBossUuid = process.env.END_RIFT_BOSS_UUID || ''
 const reflectEnabled = process.env.END_RIFT_REFLECT_ENABLED === '1'
 const reflectStartDelayMs = Math.max(0, Number(process.env.END_RIFT_REFLECT_START_MS || 0))
@@ -443,8 +445,8 @@ bot._client.on('packet', (data, meta) => {
 bot.once('spawn', () => {
   joined = true
   console.log(`PLAYER_JOIN ${username} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled}`)
-  bot.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat('/login endrift-local'), delay)
+  if (!skipRegister) bot.chat(`/register ${botPassword} ${botPassword}`)
+  for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat(`/login ${botPassword}`), delay)
   // Mineflayer's physics plugin already acknowledges server teleports and
   // sends the matching position packet.  A second 100 ms position loop fights
   // that controller, produces invalid-packet spam after RCON sweeps, and can

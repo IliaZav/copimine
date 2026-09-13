@@ -470,6 +470,50 @@ def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -
     ), "the boss wait must not reset its cursor after Wave 7 completion"
 
 
+def test_official_probe_staggers_multi_client_login_burst() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert re.search(
+        r"Prepare-AuthMeAccounts[\s\S]*?"
+        r"END_RIFT_BOT_SKIP_REGISTER[\s\S]*?"
+        r"foreach\s*\(\$name\s+in\s+\$playerNames\)[\s\S]*?"
+        r"\$authOffset\s*=\s*Get-LogLength[\s\S]*?"
+        r"Start-PlayerBot\s+-Name\s+\$name\s+-Core\s+\$core[\s\S]*?"
+        r"Wait-PlayerAuthenticated\s+-Name\s+\$name\s+-AfterOffset\s+\$authOffset",
+        probe,
+    ), "official multi-client probe must serialize AuthMe handshakes without a connection burst"
+
+
+def test_official_probe_uses_disposable_pre_registered_accounts() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert re.search(
+        r"function\s+Prepare-AuthMeAccounts[\s\S]*?authme unregister[\s\S]*?"
+        r"authme register \$name endrift-local",
+        probe,
+    ), "official probe must prepare disposable AuthMe accounts before connecting"
+    assert "END_RIFT_BOT_SKIP_REGISTER" in bot and "if (!skipRegister)" in bot
+
+
+def test_official_probe_does_not_flood_rcon_while_waiting_for_wave_one_charge() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wait_block = re.search(r"function\s+Wait-CarrierDelivery[\s\S]*?throw\s+\"Timed out waiting for Wave 1", probe)
+    assert wait_block is not None, "Wave 1 delivery wait block is missing"
+    assert "-Action" not in wait_block.group(0), (
+        "10-player Wave 1 probe must not issue an unbounded RCON action callback"
+    )
+    assert re.search(
+        r"Wait-CarrierDelivery\s+-AfterOffset\s+\$carrierOffset[\s\S]*?"
+        r"-DeliveryNumber\s+\$delivery",
+        probe,
+    ), "Wave 1 probe must wait on authoritative delivery progress rather than a stale charge UUID"
+    assert re.search(
+        r"function\s+Teleport-PlayerToEntity[\s\S]*?"
+        r"execute\s+as\s+@e\[uuid=\$EntityUuid,limit=1\]\s+at\s+@s\s+run\s+"
+        r"minecraft:teleport\s+\$Name\s+~\s+~\s+~",
+        probe,
+    ), "charge pickup must use an entity-relative teleport fallback"
+
+
 def test_end_rift_gate_keeps_pinned_paper_api_on_persistence_classpath() -> None:
     gate = read(ROOT / "tests" / "RunEndRiftEventChecks.ps1")
     assert re.search(
@@ -589,10 +633,15 @@ def test_official_boss_probe_handles_last_seal_guardians() -> None:
 def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(
-        r"chargePosition[\s\S]*?CARRIER_PICKED_UP[\s\S]*?chargeId",
+        r"function\s+Teleport-PlayerToEntity[\s\S]*?"
+        r"execute\s+as\s+@e\[uuid=\$EntityUuid,limit=1\]\s+at\s+@s\s+run\s+"
+        r"minecraft:teleport\s+\$Name\s+~\s+~\s+~",
         probe,
-    ), "the Wave 1 probe must handle the display disappearing after an immediate pickup"
+    ), "the Wave 1 probe must use an entity-relative fallback for a transient charge display"
     assert re.search(
-        r"Wait-Log\s+-AfterOffset \$carrierOffset\s+-Pattern \$pickupPattern",
-    probe,
-    ), "pickup confirmation must remain scoped to the current carrier cursor"
+        r"function\s+Wait-CarrierDelivery[\s\S]*?"
+        r"END_RIFT_CARRIER_PICKED_UP[\s\S]*?"
+        r"Teleport-PlayersToPoint[\s\S]*?"
+        r"Teleport-PlayerToEntity",
+        probe,
+    ), "delivery confirmation must handle replacement charges and move the roster after any pickup"

@@ -41,6 +41,8 @@ $oldControlDirectory = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_CONTR
 $oldWave7Chambers = [Environment]::GetEnvironmentVariable('END_RIFT_WAVE7_CHAMBERS', 'Process')
 $oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIAN_PROBE_NAMES', 'Process')
 $oldAttackInterval = [Environment]::GetEnvironmentVariable('END_RIFT_ATTACK_INTERVAL_MS', 'Process')
+$oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
+$oldBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
   $originalRequiredPlayers = 0
   $originalCore = $null
 
@@ -168,6 +170,50 @@ function Wait-NewCarrierCharge {
   throw "Timed out waiting for a new Wave 1 carrier charge. See $paperLog"
 }
 
+function Wait-CarrierDelivery {
+  param(
+    [Parameter(Mandatory = $true)][int64]$AfterOffset,
+    [Parameter(Mandatory = $true)][int]$DeliveryNumber,
+    [Parameter(Mandatory = $true)][hashtable]$SeenCharges,
+    [Parameter(Mandatory = $true)][int[]]$Core,
+    [Parameter(Mandatory = $true)][string]$PickupPlayer,
+    [int]$WaitSeconds = 120
+  )
+  $deadline = (Get-Date).AddSeconds($WaitSeconds)
+  $activeCharge = $null
+  $deliveredPattern = 'END_RIFT_CARRIER_DELIVERED.*charge=' + $DeliveryNumber + '/3'
+  $pickedPattern = 'END_RIFT_CARRIER_PICKED_UP.*charge=([0-9a-fA-F-]{36})'
+  while ((Get-Date) -lt $deadline) {
+    $tail = Get-LogTail -Offset $AfterOffset
+    # A larger roster can pick a replacement charge before the first one is
+    # delivered.  The objective's delivery counter is authoritative; do not
+    # keep waiting on a stale UUID after the server has advanced.
+    if ($tail -match $deliveredPattern) { return $tail }
+
+    $chargeMatches = [Regex]::Matches($tail, 'END_RIFT_CARRIER_CHARGE_CREATED.*charge=([0-9a-fA-F-]{36})')
+    foreach ($match in $chargeMatches) {
+      $candidate = $match.Groups[1].Value
+      if (-not $SeenCharges.ContainsKey($candidate)) {
+        $SeenCharges[$candidate] = $true
+        $activeCharge = $candidate
+        break
+      }
+    }
+
+    if ($tail -match $pickedPattern) {
+      # Once any player has the carrier, moving the whole disposable roster to
+      # the Core is enough to test the real delivery transition.  It also
+      # avoids fighting the carrier holder with a stale display teleport.
+      Teleport-PlayersToPoint ($Core[0] + 0.5D) ($Core[1] + 1.0D) ($Core[2] + 0.5D)
+      $activeCharge = $null
+    } elseif ($null -ne $activeCharge) {
+      Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCharge
+    }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Timed out waiting for Wave 1 carrier delivery $DeliveryNumber/3. See $paperLog"
+}
+
 function Get-Status {
   return (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
 }
@@ -218,6 +264,18 @@ function Format-Coordinate {
 function Teleport-Player {
   param([string]$Name, [double]$X, [double]$Y, [double]$Z)
   $null = Invoke-LocalRcon ("tp $Name $(Format-Coordinate $X) $(Format-Coordinate $Y) $(Format-Coordinate $Z) 180 0")
+}
+
+function Teleport-PlayerToEntity {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][string]$EntityUuid
+  )
+  # ItemDisplay UUIDs can disappear between two separate RCON reads when a
+  # 10-player roster is generating replacement carriers. Resolve the
+  # destination and execute the teleport in the same vanilla command context;
+  # this also avoids Essentials' /tp destination parser.
+  $null = Invoke-LocalRcon ("execute as @e[uuid=$EntityUuid,limit=1] at @s run minecraft:teleport $Name ~ ~ ~")
 }
 
 function Teleport-PlayersToPads {
@@ -377,6 +435,36 @@ function Start-PlayerBot {
     (Format-Coordinate ($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
   $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru
   $script:processes += $process
+}
+
+function Prepare-AuthMeAccounts {
+  foreach ($name in $playerNames) {
+    # These are disposable local probe accounts.  Serialising the database
+    # writes before any client connects avoids AuthMe's async /register race
+    # when a larger official roster is launched.
+    $unregisterOffset = Get-LogLength
+    $unregisterResponse = Invoke-LocalRcon ("authme unregister $name")
+    if ($unregisterResponse -notmatch "(?i)This user isn't registered!") {
+      Wait-Log -AfterOffset $unregisterOffset `
+        -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
+        -WaitSeconds 60 | Out-Null
+    }
+    $registerOffset = Get-LogLength
+    $null = Invoke-LocalRcon ("authme register $name endrift-local")
+    Wait-Log -AfterOffset $registerOffset `
+      -Pattern ("AuthMe\].*Rcon registered " + [Regex]::Escape($name)) `
+      -WaitSeconds 60 | Out-Null
+  }
+}
+
+function Wait-PlayerAuthenticated {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][int64]$AfterOffset
+  )
+  Wait-Log -AfterOffset $AfterOffset `
+    -Pattern ("AuthMe\].*" + [Regex]::Escape($Name) + " logged in") `
+    -WaitSeconds 90 | Out-Null
 }
 
 function Wait-PlayersOnline {
@@ -569,9 +657,18 @@ try {
   # normal boss path resume once the shield is legitimately removed.
   $env:END_RIFT_GUARDIAN_PROBE_NAMES = $playerNames -join ','
   $env:END_RIFT_ATTACK_INTERVAL_MS = '200'
+  Prepare-AuthMeAccounts
+  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+  $env:END_RIFT_BOT_PASSWORD = 'endrift-local'
   foreach ($name in $playerNames) {
     Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
+    $authOffset = Get-LogLength
     Start-PlayerBot -Name $name -Core $core
+    # Wait for the real AuthMe completion marker before launching the next
+    # client.  This keeps the disposable multi-player probe concurrent during
+    # gameplay while removing only the connection-time database bottleneck.
+    Wait-PlayerAuthenticated -Name $name -AfterOffset $authOffset
+    Start-Sleep -Milliseconds 250
   }
   Wait-PlayersOnline
   Configure-Players
@@ -596,41 +693,15 @@ try {
   $seenCarrierCharges = @{}
   for ($delivery = 1; $delivery -le 3; $delivery++) {
     $carrierOffset = $waveOneObjectiveOffset
-    $chargeId = Wait-NewCarrierCharge -AfterOffset $waveOneObjectiveOffset -SeenCharges $seenCarrierCharges -WaitSeconds 120 -Action { Teleport-PlayersToCombatRing -Core $core }
-    $chargePosition = $null
-    for ($attempt = 0; $attempt -lt 20 -and $null -eq $chargePosition; $attempt++) {
-      $positionText = Invoke-LocalRcon ("data get entity $chargeId Pos")
-      $positionMatch = [Regex]::Match($positionText, '\[(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\s*,\s*(-?\d+(?:\.\d+)?)[dD]?\]')
-      if ($positionMatch.Success) {
-        $chargePosition = [double[]]@([double]$positionMatch.Groups[1].Value, [double]$positionMatch.Groups[2].Value, [double]$positionMatch.Groups[3].Value)
-      } else {
-        Start-Sleep -Milliseconds 250
-      }
-    }
-    $pickupPattern = 'END_RIFT_CARRIER_PICKED_UP.*charge=' + [Regex]::Escape($chargeId)
-    $alreadyPickedUp = $false
-    if ($null -eq $chargePosition) {
-      # A carrier can die next to a player.  The display is then picked up in
-      # the same server tick as its creation and is already gone by the time
-      # RCON asks for Pos.  That is valid gameplay, not a missing entity.
-      $alreadyPickedUp = (Get-LogTail -Offset $waveOneObjectiveOffset) -match $pickupPattern
-      if ($alreadyPickedUp) {
-        $chargePosition = [double[]]@(([double]$core[0]) + 0.5D, ([double]$core[1]) + 1.0D, ([double]$core[2]) + 0.5D)
-      }
-    }
-    if ($null -eq $chargePosition) { throw "Wave 1 charge location was not readable: $chargeId" }
-    if (-not $alreadyPickedUp) {
-      Teleport-PlayersToPoint $chargePosition[0] $chargePosition[1] $chargePosition[2]
-      Wait-Log -AfterOffset $carrierOffset -Pattern $pickupPattern -WaitSeconds 60 -Action { Teleport-PlayersToPoint $chargePosition[0] $chargePosition[1] $chargePosition[2] } | Out-Null
-    }
-    Teleport-PlayersToPoint ($core[0] + 0.5D) ($core[1] + 1.0D) ($core[2] + 0.5D)
+    $pickupPlayer = $playerNames[($delivery - 1) % $playerNames.Count]
     if ($delivery -eq 3) {
       # The final delivery and W1 completion are committed synchronously by
       # the same server tick.  Capture the offset before that delivery so the
       # completion marker cannot be missed by a post-delivery reader.
       $waveOneCompletionOffset = $carrierOffset
     }
-    Wait-Log -AfterOffset $carrierOffset -Pattern ('END_RIFT_CARRIER_DELIVERED.*charge=' + $delivery + '/3') -WaitSeconds 60 -Action { Teleport-PlayersToPoint ($core[0] + 0.5D) ($core[1] + 1.0D) ($core[2] + 0.5D) } | Out-Null
+    Wait-CarrierDelivery -AfterOffset $carrierOffset -DeliveryNumber $delivery `
+      -SeenCharges $seenCarrierCharges -Core $core -PickupPlayer $pickupPlayer -WaitSeconds 180 | Out-Null
   }
   Wait-Log -AfterOffset $waveOneCompletionOffset -Pattern 'END_RIFT_WAVE_COMPLETED.*wave=1\b' -WaitSeconds 300 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
   $waveOneTransitionOffset = $waveOneCompletionOffset
@@ -766,6 +837,8 @@ finally {
   if ($null -eq $oldWave7Chambers) { Remove-Item Env:END_RIFT_WAVE7_CHAMBERS -ErrorAction SilentlyContinue } else { $env:END_RIFT_WAVE7_CHAMBERS = $oldWave7Chambers }
   if ($null -eq $oldGuardianProbeNames) { Remove-Item Env:END_RIFT_GUARDIAN_PROBE_NAMES -ErrorAction SilentlyContinue } else { $env:END_RIFT_GUARDIAN_PROBE_NAMES = $oldGuardianProbeNames }
   if ($null -eq $oldAttackInterval) { Remove-Item Env:END_RIFT_ATTACK_INTERVAL_MS -ErrorAction SilentlyContinue } else { $env:END_RIFT_ATTACK_INTERVAL_MS = $oldAttackInterval }
+  if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
+  if ($null -eq $oldBotPassword) { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PASSWORD = $oldBotPassword }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
   }

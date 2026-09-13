@@ -207,6 +207,22 @@ def test_cleanup_and_generation_ownership() -> None:
     assert "generation <= 0L" in read(RUNTIME / "RealitySplitChamberController.java")
 
 
+def test_disposable_boss_cleanup_clears_test_wave_marker() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    match = re.search(
+        r"private void restoreSafePhaseAfterDisposableBossCleanup\(\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\n\n    private void clearBossOnly",
+        root,
+    )
+    assert match, "disposable cleanup method must remain a small, inspectable boundary"
+    body = match.group("body")
+    assert "clearWaveObjectiveState();" in body
+    assert "activeWave = 0;" in body
+    assert "if (!isPersistedBossPhase(phase))" not in body, (
+        "test cleanup must clear the diagnostic wave marker even when the official phase is COLLECTING"
+    )
+
+
 def test_transition_runes_are_a_bijection() -> None:
     policy = DOMAIN / "TransitionRunePolicy.java"
     controller = RUNTIME / "TransitionRuneController.java"

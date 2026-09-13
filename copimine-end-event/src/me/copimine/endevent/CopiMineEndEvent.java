@@ -14184,9 +14184,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void restoreSafePhaseAfterDisposableBossCleanup() {
-        if (!isPersistedBossPhase(phase)) {
-            return;
-        }
+        // This method is called only after isDisposableBossCleanupContext(...)
+        // accepted the cleanup.  The disposable AI harness may have left a
+        // diagnostic wave number while the durable event is already in
+        // COLLECTING, so cleanup must still clear the marker in that phase.
         cancelSessionTasks();
         clearWaveObjectiveState();
         activeWave = 0;

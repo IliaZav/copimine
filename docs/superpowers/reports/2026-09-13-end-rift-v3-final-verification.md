@@ -562,3 +562,50 @@ RELEASE VERDICT: NOT READY FOR FINAL VISUAL RELEASE
 Причина `NOT READY` — отсутствие управляемого native Minecraft UI в текущем
 окружении, а не ошибка, скрытая в серверных тестах. Для выпуска нужны ещё
 ручные клиентские скриншоты/видео и реальные 3/10/20-player runs.
+
+## Current checkpoint addendum — 2026-09-13
+
+Последний кодовый checkpoint этой проверки:
+
+~~~
+f4c785c70f1f18e966191ab338daee03e2124357
+~~~
+
+В этом checkpoint исправлены два дефекта live-тестового контура:
+
+- состояние отражённого Rift Fireball теперь привязано к UUID projectile, а не
+  к переиспользуемому числовому ID Mineflayer entity; повторное появление
+  projectile больше не считается старым отражением;
+- live obelisk probe больше не пытается менять NBT игрока запрещённой командой;
+  для тестовых игроков используется поддержанный Paper attribute API, а
+  ответ `name is value` разбирается после маркера `is`.
+
+Актуальные результаты после этих исправлений:
+
+- `python -m pytest -q .\\tests\\test_end_event_current_contract.py` — 47 passed;
+- `RunEndRiftOfficialTwoPlayerLive.ps1` с 10 клиентами, Wave 1–4 — PASS;
+  Wave 3 содержит 3 портала, Wave 4 создал 5 обелисков; 15/15 отражённых
+  projectile были уникальны, по 3 попадания на каждый обелиск;
+- `RunEndRiftObeliskLive.ps1` с 2 клиентами — PASS: 4/4 обелиска, 3
+  отражённых попадания, состояния HP 3→2→1→destroyed, fireball cap 1;
+- после обоих live-сценариев: `wave=0`, `event-mobs=0`, `boss=none`,
+  `rift-obelisks=0`, `rift-fireballs=0`; карта и Core сохранены;
+- локальный Paper слушает `25566`, RCON — `127.0.0.1:25576`, resource-pack
+  HTTP — `127.0.0.1:8092`.
+
+Артефакты этого checkpoint:
+
+- End Rift plugin: 651440 bytes,
+  SHA-256 `3E6697B18DD6551121F683B2255BBD2E1057E8885AEEB6E951FD8004429FE9AE`;
+- CopiMineClient: 9349447 bytes,
+  SHA-256 `1B07DE9FE4A2685D2F092851BFDF007E9DC7261CD2C480BE1769899C5D6DF449`;
+- resource pack: 24147549 bytes,
+  SHA-256 `9A5F444EA31F84EB3A5B476B3E65EE1A18B627AA2F57DA8E753E856DB634E47D`.
+
+GitHub Actions run `34740608823` для SHA `f4c785c70f1f18e966191ab338daee03e2124357`
+завершён с `success` для обоих jobs.
+
+Native Minecraft UI по-прежнему `NOT VERIFIED`: в текущем окружении нет
+доступной native Minecraft app surface, поэтому screenshots/video, фактический
+рендер моделей/порталов/щупалец, звук, FPS и ручные 3/10/20-player client runs
+не выдаются за проверенные.

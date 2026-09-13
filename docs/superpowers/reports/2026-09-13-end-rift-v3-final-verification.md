@@ -654,3 +654,127 @@ Native Minecraft UI по-прежнему `NOT VERIFIED`: в текущем ок
 доступной native Minecraft app surface, поэтому screenshots/video, фактический
 рендер моделей/порталов/щупалец, звук, FPS и ручные 3/10/20-player client runs
 не выдаются за проверенные.
+
+## Current supplied-assets and animation checkpoint — 2026-09-13
+
+Исходным кодовым checkpoint перед этим блоком был `9819f624aab48764c80463cbb6ee8cc5a6b225d5`.
+Он уже содержал server-side исправления волн, колец, обелисков, барьеров,
+real-HP Boss и cleanup. В этот checkpoint добавлена клиентская интеграция
+переданных пользовательских ресурсов и отдельная проверка времени анимации.
+
+### Пользовательские assets и фактическая привязка
+
+~~~text
+models.rar              SHA-256 2A994415246D7F03EB7160414A116427B21A7867347CA27B941EA477441E73CD
+modelsboss.rar           SHA-256 2A994415246D7F03EB7160414A116427B21A7867347CA27B941EA477441E73CD
+end event.rar            SHA-256 8FD8BB8622B273ABFF3224FC4FD1F1E8E1E5DD74C9FE299EC5558DC1509027F5
+udar_iz_grudi.json       SHA-256 C53C68D133F42B61C50DF329BD87235E87835B1B4DB63FC80176539B26D87141
+udar_po_zemle.animation.json
+                         SHA-256 85D9AE6BC72BF09454BC1ABCBC9FFB716E7F06E0D8C0CE507C148C7C80E88CE1
+~~~
+
+`models.rar` и `modelsboss.rar` оказались одинаковым архивом исходного
+Bedrock-босса. В него импортированы geometry с 16 bones/123 cubes, исходной
+UV-сеткой 16x16 и PNG 128x128. `end event.rar` содержит пользовательские
+skins Enderman и Spider. Отдельных Skeleton/Elite geometry/skin в переданных
+архивах нет, поэтому для этих типов не создавался ложный mapping на чужую
+модель: их существующие event resources сохранены.
+
+Runtime mapping теперь такой:
+
+~~~text
+server END_RIFT_GUARDIAN_V1 (bound UUID)
+ -> EndermanEntityRendererMixin
+ -> RiftGuardianModelRenderer
+ -> UserEndBossModelData
+ -> assets/copimineclient/models/entity/end_rift_guardian/geometry.json
+ -> textures/entity/end_rift_user_boss.png
+
+END_RIFT_ENDERMAN_V1 -> textures/entity/end_rift_user_enderman.png
+END_RIFT_SPIDER_V1   -> textures/entity/end_rift_user_spider.png
+udar_iz_grudi.json   -> animations/udar_iz_grudi.json -> CHEST_STRIKE
+udar_po_zemle...json -> animations/udar_po_zemle.animation.json -> GROUND_SLAM
+~~~
+
+Для Bedrock six-face UV добавлен runtime replacement на `ModelPart.Quad` с
+accessor mixins; procedural boss mesh и старые phase texture fallback больше не
+используются официальным Boss renderer. Server animation cue теперь запускает
+клиентские one-shot clips от времени получения нового cue, а не от общего
+возраста entity. Это было покрыто сначала RED-тестом (отсутствовал метод
+animation clock), затем GREEN после реализации.
+
+Asset hashes в checkout:
+
+~~~text
+geometry.json              61491 bytes  SHA-256 301583A2EFEA6C5B597C4FE2CADCED68D7838B80F630D1D16F8AAA8265964783
+end_rift_user_boss.png      6035 bytes  SHA-256 F298ED322335C5439C19DDDB8014AA0960B83F3FB27D692580A75E051516C45D
+end_rift_user_enderman.png  1000 bytes  SHA-256 A9A154F232919627451431E3F3874C9E850F23E531EAE2CFE4A2A4A9CC16EDF447
+end_rift_user_spider.png    1876 bytes  SHA-256 19C46FF4AA829E7101B25A50A55090CD1D8145C2F83B95D64C13A20F6B5C9ABF
+~~~
+
+### Verification after the asset checkpoint
+
+~~~text
+CopiMineClient: gradle clean test                         PASS (BUILD SUCCESSFUL)
+Current Python contract:                                  48 passed
+RunEndRiftEventChecks.ps1:                                 61 passed; all listed pure-Java policies OK
+CopiMineClient/build-client.ps1:                           PASS (BUILD SUCCESSFUL)
+End Rift plugin build:                                    PASS
+Plugin SHA-256:                                           2F5BD30F787BF23F876D6916EBBF0C9D4CD365A3309EBE4687C2C1409531E8B7
+CopiMineClient JAR SHA-256:                               DF84DC9702BA7AEF4F1A6F5BD6FDC8814AEA5FC1FEF13277159F7423ABFF9C02
+Resource pack SHA-256:                                    C3CF19BC270C8B00D21B6A57B9B3E702A0CCB4725C0ADC76BB79264869FDF2E5
+Resource pack HTTP GET 127.0.0.1:8092:                   200 / 24147588 bytes
+~~~
+
+Актуальный Fabric runtime-load был запущен на Minecraft 1.21.1 / Fabric
+Loader 0.19.3 с 55 mods. `copimineclient` и resource manager загрузились до
+OpenAL/texture atlases без crash; процесс был остановлен вручную после этого
+load check. Это не считается native gameplay/visual PASS.
+
+### Server-side live evidence
+
+~~~text
+Paper/Purpur local endpoint: 127.0.0.1:25566
+RCON:                         127.0.0.1:25576
+
+2-player full run:             W1..W7 PASS; Boss phases all six; victory=true
+2-player real Boss HP:         5000 -> 4977.545; 8 accepted events; same-tick group=1
+5-player real Boss HP:         5000 -> 4943.8623; 20 accepted events; same-tick group=1
+                                summed final=56.13439977169040; expected=4943.86560022830960;
+                                float delta=0.00330022830960
+Mob combat:                    moved=1718; attacks=51; player_hurt=23; AI targets=111; paths=71
+Wave 6 boundaries:             3 rings; radii 6,11,16; visual displays=120; leash=true
+Wave 7 barriers:                2 chambers; 234 cells; 78 visual displays; collision=true
+Wave 7 cleanup:                 blocks restored=true; displays removed=true; transient=0
+Boss real-health marker:        hp=5000/5000; max attribute unclamped; virtual marker=false
+Post-test cleanup:              wave=0; event-mobs=0; boss=none; obelisks=0; fireballs=0
+~~~
+
+The five-player retry using fresh names completed bot connection and attack
+release but did not emit the harness summary line; it is deliberately not
+counted as a new PASS. The successful 5-player result above is the previously
+captured real-HP run against the unchanged server damage path. One unrelated
+AuthMe registration exception appeared during the retry and was not an End
+Rift error; cleanup still completed.
+
+Boss projectiles were not changed. No projectile speed, fuse, hitbox,
+reflection, damage, trajectory, or parry rule was modified in this checkpoint.
+
+### Git and release gate
+
+~~~text
+Asset/animation commit:      10a6dd77 (pushed)
+Remote:                      origin https://github.com/IliaZav/copimine.git
+Remote branch:               codex/end-rift-event -> 10a6dd77
+GitHub Actions for 10a6dd77: NOT VERIFIED (gh CLI is unavailable in this environment)
+Native Minecraft visual QA: NOT VERIFIED (Computer Use returned apps=[])
+Screenshots/video:           NOT VERIFIED; no native Minecraft surface was exposed
+3/10/20 native-player runs:  NOT VERIFIED
+RELEASE VERDICT:             NOT READY FOR FINAL VISUAL RELEASE
+~~~
+
+The source, server-side live checks, builds, resource hashes, and cleanup gates
+are green. The remaining release blockers are evidence blockers: a native
+Minecraft window must be exposed to Computer Use for visual inspection of the
+new model/textures, obelisks, gates, core, rings, barriers and animations, and
+for the requested screenshots/video. No such visual result is claimed here.

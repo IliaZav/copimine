@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EndermanRendererSelectionTest {
     private static final String ENTITY_UUID = "11111111-1111-1111-1111-111111111111";
     private static final Identifier VALID_TEXTURE = Identifier.of(
-            "copimineclient", "textures/entity/rift_guardian_awakening.png");
+            "copimineclient", "textures/entity/end_rift_user_boss.png");
 
     @Test
     void unboundEntityUsesVanillaSelection() {

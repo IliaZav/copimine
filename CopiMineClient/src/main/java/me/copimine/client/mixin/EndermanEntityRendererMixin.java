@@ -57,8 +57,10 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         String phaseId = ClientBridgeProtocol.bossPhaseForEntity(bossUuid);
         long transitionMillis = ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(bossUuid);
         String animationId = ClientBridgeProtocol.bossAnimationForEntity(bossUuid);
+        float animationElapsedTicks = ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(
+                bossUuid, System.currentTimeMillis());
         EntityModel<EndermanEntity> guardianModel = copimine$guardianRenderer.modelForPhase(
-                phaseId, transitionMillis, animationId);
+                phaseId, transitionMillis, animationId, animationElapsedTicks);
         copimine$modelSwap = EndermanRendererSelection.begin(model, guardianModel, selection);
         model = copimine$modelSwap.currentModel();
     }
@@ -90,7 +92,7 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
         Identifier texture = switch (visual) {
             case "END_RIFT_GUARDIAN_V1" -> texture("end_rift_guardian");
             case "END_RIFT_ELITE_V1" -> texture("end_rift_elite");
-            case "END_RIFT_ENDERMAN_V1" -> texture("end_rift_enderman");
+            case "END_RIFT_ENDERMAN_V1" -> texture("end_rift_user_enderman");
             default -> null;
         };
         if (!visual.isBlank() && COPIMINE_LOGGED_RENDER_ENTITIES.add(entity.getUuid().toString())) {

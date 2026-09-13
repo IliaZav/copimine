@@ -14,18 +14,26 @@ class RiftGuardianModelRendererTest {
         for (RiftGuardianModelRenderer.Phase phase : RiftGuardianModelRenderer.Phase.values()) {
             Identifier texture = renderer.textureForPhase(phase.name());
             assertEquals("copimineclient", texture.getNamespace());
-            assertTrue(texture.getPath().startsWith("textures/entity/rift_guardian_"));
-            assertTrue(texture.getPath().endsWith(".png"), "missing .png for " + phase);
+            assertEquals("textures/entity/end_rift_user_boss.png", texture.getPath());
         }
     }
 
     @Test
-    void finalStrikeUsesItsDedicatedTextureFile() {
+    void finalStrikeKeepsTheSuppliedBossTextureFile() {
         RiftGuardianModelRenderer renderer = new RiftGuardianModelRenderer();
 
         assertEquals(
-                Identifier.of("copimineclient", "textures/entity/rift_guardian_final_strike.png"),
+                Identifier.of("copimineclient", "textures/entity/end_rift_user_boss.png"),
                 renderer.textureForState("LAST_SEAL", "FINAL_STRIKE"));
+    }
+
+    @Test
+    void suppliedArtistClipsAreLoadedForTheirRuntimeActions() {
+        assertTrue(UserEndBossAnimationPlayer.hasClip("IDLE_BREATH"));
+        assertTrue(UserEndBossAnimationPlayer.hasClip("CHEST_STRIKE"));
+        assertTrue(UserEndBossAnimationPlayer.hasClip("GROUND_SLAM"));
+        assertTrue(UserEndBossAnimationPlayer.clipLengthSeconds("CHEST_STRIKE") > 4.0F);
+        assertTrue(UserEndBossAnimationPlayer.clipLengthSeconds("GROUND_SLAM") > 9.0F);
     }
 
     @Test

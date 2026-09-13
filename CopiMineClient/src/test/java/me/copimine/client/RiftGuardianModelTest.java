@@ -59,18 +59,46 @@ class RiftGuardianModelTest {
     }
 
     @Test
-    void usesTheHighResolutionGuardianAtlas() {
-        assertEquals(512, RiftGuardianModel.TEXTURE_SIZE);
+    void usesTheSuppliedGuardianTextureAtlas() {
+        assertEquals(128, RiftGuardianModel.TEXTURE_SIZE);
     }
 
     @Test
-    void baseSilhouetteIsTallAndSlenderInsteadOfAThickCube() {
-        assertTrue(RiftGuardianModel.TORSO_HEIGHT / RiftGuardianModel.TORSO_WIDTH >= 1.70F);
-        assertTrue(RiftGuardianModel.TORSO_WIDTH <= 16.0F);
-        assertTrue(RiftGuardianModel.TORSO_DEPTH <= 9.0F);
-        assertTrue(RiftGuardianModel.ARM_HEIGHT >= 28.0F);
-        assertTrue(RiftGuardianModel.LEG_HEIGHT >= 28.0F);
-        assertTrue(RiftGuardianModel.ARM_PIVOT_X <= 13.5F);
+    void usesTheSuppliedBedrockGeometrySkeleton() {
+        assertEquals(
+                "/assets/copimineclient/models/entity/end_rift_guardian/geometry.json",
+                RiftGuardianModel.USER_MODEL_RESOURCE);
+
+        RiftGuardianModel model = new RiftGuardianModel(
+                RiftGuardianModel.getTexturedModelData().createModel());
+        ModelPart root = model.getPart();
+
+        assertTrue(root.getChild("body").hasChild("torso"));
+        assertTrue(root.getChild("left_arm").hasChild("right_hand_low"));
+        assertTrue(root.getChild("right_arm").hasChild("left_hand_low"));
+        assertTrue(root.getChild("left_leg").hasChild("right_leg_low"));
+        assertTrue(root.getChild("right_leg").hasChild("left_leg_low"));
+    }
+
+    @Test
+    void suppliedSkeletonProvidesTheFullReadableSilhouette() {
+        RiftGuardianModel model = new RiftGuardianModel(
+                RiftGuardianModel.getTexturedModelData().createModel());
+
+        long nonEmptyParts = model.getPart().traverse()
+                .filter(part -> !part.isEmpty())
+                .count();
+        assertTrue(nonEmptyParts >= 12,
+                "the imported artist skeleton should expose the full boss silhouette");
+        assertTrue(model.getPart().getChild("head").isEmpty() == false);
+        assertTrue(model.getPart().getChild("left_leg").hasChild("right_leg_low"));
+        assertTrue(model.getPart().getChild("right_leg").hasChild("left_leg_low"));
+        assertTrue(model.getPart().getChild("left_leg").getChild("right_leg_low").hasChild("group"));
+        assertTrue(model.getPart().getChild("right_leg").getChild("left_leg_low").hasChild("group2"));
+        assertTrue(model.getPart().getChild("left_leg").getChild("right_leg_low")
+                .getChild("group").isEmpty() == false);
+        assertTrue(model.getPart().getChild("right_leg").getChild("left_leg_low")
+                .getChild("group2").isEmpty() == false);
     }
 
     @Test

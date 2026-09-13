@@ -31,7 +31,7 @@ public final class EndEventClientState {
         return switch (packet.type()) {
             case "END_BOSS_BIND" -> bindBoss(packet);
             case "END_BOSS_UNBIND" -> unbindBoss(packet);
-            case "END_BOSS_PHASE" -> applyBossPhase(packet);
+            case "END_BOSS_PHASE" -> applyBossPhase(packet, nowMillis);
             // The bar carries its numeric state in the bridge envelope's
             // bounded metadata fields, so ClientBridgeProtocol dispatches it
             // through the overload below.
@@ -257,6 +257,22 @@ public final class EndEventClientState {
         return binding == null ? 0L : binding.transitionDurationMillis();
     }
 
+    /**
+     * Returns the client clock elapsed since the latest server-selected boss
+     * animation cue.  A new cue always starts at zero, so one-shot clips are
+     * not evaluated against the entity's unrelated lifetime.
+     */
+    public synchronized long bossAnimationElapsedMillisForEntity(String uuid, long nowMillis) {
+        if (uuid == null || uuid.isBlank() || nowMillis < 0L) {
+            return 0L;
+        }
+        BossPhaseBinding binding = bossPhase.get(uuid);
+        if (binding == null) {
+            return 0L;
+        }
+        return Math.max(0L, nowMillis - binding.startedAtMillis());
+    }
+
     public synchronized String controlInstanceId() {
         return controlInstance;
     }
@@ -302,6 +318,10 @@ public final class EndEventClientState {
     }
 
     public synchronized boolean applyBossPhase(EndEventPacket packet) {
+        return applyBossPhase(packet, System.currentTimeMillis());
+    }
+
+    private synchronized boolean applyBossPhase(EndEventPacket packet, long nowMillis) {
         if (packet.subjectId().isBlank()
                 || packet.instanceId().isBlank()
                 || packet.phaseId().isBlank()
@@ -313,7 +333,8 @@ public final class EndEventClientState {
         bossPhase.put(packet.subjectId(), new BossPhaseBinding(
                 packet.instanceId(),
                 packet.phaseId(),
-                packet.durationMillis()));
+                packet.durationMillis(),
+                nowMillis));
         return true;
     }
 
@@ -532,7 +553,8 @@ public final class EndEventClientState {
                                              String healthState, String targetId) {
     }
 
-    private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis) {
+    private record BossPhaseBinding(String instanceId, String phaseId, long transitionDurationMillis,
+                                    long startedAtMillis) {
     }
 
     private static String normalizeHealthState(String value) {

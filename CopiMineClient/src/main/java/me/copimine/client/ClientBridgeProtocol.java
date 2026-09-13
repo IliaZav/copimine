@@ -388,6 +388,11 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.bossAnimationForEntity(uuid);
     }
 
+    public static float bossAnimationElapsedTicksForEntity(String uuid, long nowMillis) {
+        long elapsedMillis = END_EVENT_STATE.bossAnimationElapsedMillisForEntity(uuid, nowMillis);
+        return elapsedMillis / 50.0F;
+    }
+
     public static String bossCastStateForEntity(String uuid) {
         return END_EVENT_STATE.bossCastStateForEntity(uuid);
     }

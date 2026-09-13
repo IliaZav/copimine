@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(SpiderEntityRenderer.class)
 public abstract class SpiderEntityRendererMixin {
     private static final Identifier COPIMINE_SPIDER_TEXTURE = Identifier.of(
-            "copimineclient", "textures/entity/end_rift_spider.png");
+            "copimineclient", "textures/entity/end_rift_user_spider.png");
 
     @Inject(method = "getTexture", at = @At("HEAD"), cancellable = true)
     private void copimine$spiderTexture(SpiderEntity entity, CallbackInfoReturnable<Identifier> cir) {

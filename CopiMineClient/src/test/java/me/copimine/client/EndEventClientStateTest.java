@@ -66,6 +66,24 @@ class EndEventClientStateTest {
     }
 
     @Test
+    void restartsTheBossAnimationClockForEveryServerCue() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 1_000L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "AWAKENING|CHEST_STRIKE", "control-id"), 1_100L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_100L));
+        assertEquals(450L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_550L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "AWAKENING|GROUND_SLAM", "control-id"), 1_700L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_700L));
+        assertEquals(50L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_750L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("unknown", 1_750L));
+    }
+
+    @Test
     void staleBossBarCannotReplaceANewerGenerationSnapshot() {
         EndEventClientState state = new EndEventClientState();
         state.apply(packet("END_BOSS_BIND", "event-1", 2L,

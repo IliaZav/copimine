@@ -12,8 +12,14 @@ public final class RiftGuardianModelRenderer {
     }
 
     public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis, String animationId) {
+        return modelForPhase(phaseId, transitionDurationMillis, animationId, Float.NaN);
+    }
+
+    public RiftGuardianModel modelForPhase(String phaseId, long transitionDurationMillis,
+                                           String animationId, float animationElapsedTicks) {
         model.setPhase(Phase.fromWireId(phaseId), transitionDurationMillis);
         model.setAnimation(normalizeAnimationId(animationId));
+        model.setAnimationElapsedTicks(animationElapsedTicks);
         return model;
     }
 
@@ -22,11 +28,10 @@ public final class RiftGuardianModelRenderer {
     }
 
     public Identifier textureForState(String phaseId, String animationId) {
-        String animation = normalizeAnimationId(animationId);
-        if ("FINAL_STRIKE".equals(animation)) {
-            return texture("rift_guardian_final_strike.png");
-        }
-        return Phase.fromWireId(phaseId).texture();
+        // The phase changes are carried by the server animation/VFX state;
+        // the supplied boss mesh and its 128x128 skin remain the single
+        // authoritative client asset for every phase.
+        return texture("end_rift_user_boss.png");
     }
 
     private static Identifier texture(String name) {
@@ -48,17 +53,17 @@ public final class RiftGuardianModelRenderer {
     }
 
     public enum Phase {
-        AWAKENING("rift_guardian_awakening.png"),
-        HUNT("rift_guardian_hunt.png"),
-        RIFT("rift_guardian_rift.png"),
-        OVERLOAD("rift_guardian_overload.png"),
-        RAGE("rift_guardian_rage.png"),
-        LAST_SEAL("rift_guardian_last_seal.png");
+        AWAKENING,
+        HUNT,
+        RIFT,
+        OVERLOAD,
+        RAGE,
+        LAST_SEAL;
 
         private final Identifier texture;
 
-        Phase(String textureName) {
-            this.texture = RiftGuardianModelRenderer.texture(textureName);
+        Phase() {
+            this.texture = RiftGuardianModelRenderer.texture("end_rift_user_boss.png");
         }
 
         public Identifier texture() {

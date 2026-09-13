@@ -10,6 +10,8 @@
     "EndermanEntityRendererMixin",
     "DisplayEntityRendererMixin",
     "ClientWorldAccessor",
+    "ModelPartAccessor",
+    "ModelPartCuboidAccessor",
     "SpiderEntityRendererMixin",
     "SkeletonEntityRendererMixin"
   ],

@@ -308,6 +308,54 @@ def test_client_asset_dimensions_and_event_visuals() -> None:
     assert "targetSuffix" in read(PLUGIN_SRC / "CopiMineEndEvent.java")
 
 
+def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None:
+    geometry_path = CLIENT_ASSETS / "models" / "entity" / "end_rift_guardian" / "geometry.json"
+    geometry = json.loads(read(geometry_path))
+    definitions = geometry["minecraft:geometry"]
+    assert len(definitions) == 1
+    definition = definitions[0]
+    assert definition["description"]["texture_width"] == 16
+    assert definition["description"]["texture_height"] == 16
+    bones = definition["bones"]
+    assert len(bones) == 16
+    cubes = [cube for bone in bones for cube in bone.get("cubes", [])]
+    assert len(cubes) >= 100
+    assert all(set(cube["uv"]) == {"north", "south", "east", "west", "up", "down"}
+               for cube in cubes)
+
+    entity = CLIENT_ASSETS / "textures" / "entity"
+    assert png_size(entity / "end_rift_user_boss.png") == (128, 128)
+    assert png_size(entity / "end_rift_user_enderman.png") == (64, 32)
+    assert png_size(entity / "end_rift_user_spider.png") == (64, 32)
+
+    animation_dir = CLIENT_ASSETS / "models" / "entity" / "end_rift_guardian" / "animations"
+    for name in ("idle.json", "running.json", "swipe.json", "hurt.json", "dying.json",
+                 "udar_iz_grudi.json", "udar_po_zemle.animation.json"):
+        animation = json.loads(read(animation_dir / name))
+        assert len(animation["animations"]) == 1
+        assert "animation_length" in next(iter(animation["animations"].values()))
+
+    model = read(CLIENT_JAVA / "UserEndBossModelData.java")
+    animator = read(CLIENT_JAVA / "UserEndBossAnimationPlayer.java")
+    renderer = read(CLIENT_JAVA / "RiftGuardianModelRenderer.java")
+    catalog = read(CLIENT_JAVA / "EndEventTextureCatalog.java")
+    state = read(CLIENT_JAVA / "EndEventClientState.java")
+    assert "applyExactFaceUv" in model
+    assert "ModelPart.Quad" in model
+    assert '"body".equals(sourceName)' in model
+    assert "UserEndBossAnimationPlayer.apply" in read(CLIENT_JAVA / "RiftGuardianModel.java")
+    assert "bossAnimationElapsedMillisForEntity" in state
+    assert "startedAtMillis" in state
+    assert "bossAnimationElapsedTicksForEntity" in read(CLIENT_JAVA / "ClientBridgeProtocol.java")
+    assert "setAnimationElapsedTicks" in read(CLIENT_JAVA / "RiftGuardianModel.java")
+    assert "System.currentTimeMillis()" in read(CLIENT_JAVA / "mixin" / "EndermanEntityRendererMixin.java")
+    assert "udar_iz_grudi.json" in animator
+    assert "udar_po_zemle.animation.json" in animator
+    assert "end_rift_user_boss.png" in renderer
+    assert "end_rift_user_enderman.png" in catalog
+    assert "end_rift_user_spider.png" in catalog
+
+
 def test_tentacle_rig_asset_contract() -> None:
     model_path = PACK_ASSETS / "models" / "item" / "end_event_rift_tentacle.json"
     model = json.loads(read(model_path))

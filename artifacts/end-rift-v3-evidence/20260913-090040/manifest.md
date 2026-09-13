@@ -2,7 +2,7 @@
 
 Date: 2026-09-13
 Branch: `codex/end-rift-event`
-Final source checkpoint: `7dee013a4439122c47f0f86db226042d92d374d9`
+Final source checkpoint: `e584480e9b18e8749adeb91b754dc233fd53d6f9`
 
 ## Local Paper restart
 
@@ -48,3 +48,26 @@ Final source checkpoint: `7dee013a4439122c47f0f86db226042d92d374d9`
 
 Native client screenshots, video, audio, FPS, camera-visible model alignment,
 Z-fighting and manual 3/10/20-client runs remain `NOT VERIFIED`.
+
+## Current full Paper run
+
+- Command: `tests/RunEndRiftOfficialTwoPlayerLive.ps1 -FirstBotName
+  EndRiftFinalA -SecondBotName EndRiftFinalB -BotDurationSeconds 900
+  -TimeoutSeconds 900`
+- Event: `3567fbc7-445c-4afd-bb87-eb33e4d47bd7`; generation `920`.
+- Players: 2. W1 `RIFT_CARRIERS`, W2 `RIFT_HUNT`, W3 `RIFT_GATES` with 3
+  portals, W4 `OBELISK_ASSAULT`, W5 `BLACK_FOG` with 3 cycles, W6
+  `COLLAPSE_RINGS` with 3 rings, W7 `REALITY_SPLIT`: all PASS.
+- Boss phases: `AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`; victory `true`.
+- Final RCON state: `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`,
+  `rift-obelisks=0/6`, `rift-fireballs=0`.
+- Result: exit code `0`; no End Rift error markers. The current map and Core
+  were preserved.
+
+## Exact final GitHub checkpoint
+
+- Commit: `e584480e9b18e8749adeb91b754dc233fd53d6f9`.
+- Branch: `codex/end-rift-event`; remote SHA matches exactly.
+- GitHub Actions run `615`:
+  <https://github.com/IliaZav/copimine/actions/runs/34741821764>
+- Conclusion: `success` (`static-and-contract` and `java-plugins`).

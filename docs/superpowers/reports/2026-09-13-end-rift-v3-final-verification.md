@@ -1,5 +1,50 @@
 # End Rift Event V3 — финальная проверка 2026-09-13
 
+## Самый свежий exact checkpoint — `e584480e9b18e8749adeb91b754dc233fd53d6f9`
+
+Эта секция относится к последнему опубликованному checkout и повторному
+локальному Paper-прогону после безопасного рестарта с сохранением карты.
+
+~~~
+branch: codex/end-rift-event
+remote branch SHA: e584480e9b18e8749adeb91b754dc233fd53d6f9
+CI run: 34741821764 (615)
+CI conclusion: success
+Paper endpoint: 127.0.0.1:25566
+RCON: 127.0.0.1:25576 (local only)
+resource-pack HTTP: http://127.0.0.1:8092/CopiMineResourcePack.zip
+event: 3567fbc7-445c-4afd-bb87-eb33e4d47bd7
+generation: 920
+players: 2
+~~~
+
+Повторный полный server-side run завершён с кодом `0`:
+
+~~~
+W1 RIFT_CARRIERS: PASS
+W2 RIFT_HUNT: PASS
+W3 RIFT_GATES: PASS, portals=3
+W4 OBELISK_ASSAULT: PASS
+W5 BLACK_FOG: PASS, cycles=3
+W6 COLLAPSE_RINGS: PASS, rings=3
+W7 REALITY_SPLIT: PASS, chambers=local
+boss phases: AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL
+victory: true
+post-run: state=UNLOCKED wave=0 event-mobs=0 boss=none obelisks=0 fireballs=0
+~~~
+
+На последнем checkpoint сохранены исходная карта и Core; после победы не
+осталось event entities, обелисков, Rift Fireball или активных волн. Нативная
+клиентская визуальная проверка по-прежнему имеет статус:
+
+~~~
+NOT VERIFIED — execution environment has no GUI control
+~~~
+
+Причина не изменилась: в текущем окружении нет управляемой native Minecraft
+app surface, поэтому нельзя честно приложить клиентские screenshots/video или
+подтвердить реальный render, звук и FPS.
+
 ## Exact final checkpoint — `ff1bd071`
 
 Эта секция обновлена после последнего исправления и относится к exact final

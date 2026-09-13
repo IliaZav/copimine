@@ -14468,6 +14468,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void updateCurrentBossBar(LivingEntity boss) {
+        // The disposable /cmend test ai path intentionally keeps the
+        // official setup untouched and can reach this updater before the
+        // normal official configure path creates a BossBar.  Restore the
+        // shared presentation invariant before reading its audience; this is
+        // deliberately independent from damage, phase, and invulnerability
+        // decisions.
+        ensureBossBar();
         double max = Math.max(1.0D, bossMaxHealth(boss));
         double health = Math.max(0.0D, Math.min(max, boss.getHealth()));
         double progress = health / max;

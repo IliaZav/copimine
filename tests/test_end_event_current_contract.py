@@ -441,6 +441,17 @@ def test_single_boss_damage_probe_isolates_reach_from_real_health() -> None:
     ), "single-boss probe must release its local freeze during cleanup"
 
 
+def test_boss_bar_update_recreates_missing_bar_before_reading_audience() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    method = re.search(
+        r"private void updateCurrentBossBar\(LivingEntity boss\)\s*\{([\s\S]*?)\n\s*double max",
+        source,
+    )
+    assert method and "ensureBossBar();" in method.group(1), (
+        "every boss update path must restore the vanilla BossBar invariant"
+    )
+
+
 def test_obelisk_probe_primes_health_after_survival_protection() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
     assert re.search(

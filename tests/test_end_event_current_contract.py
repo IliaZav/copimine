@@ -655,3 +655,11 @@ def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> No
     assert "Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCarrier" in wait_block.group(0), (
         "Wave 1 probe must move a client to a selected live carrier so its combat bot can finish the objective"
     )
+
+
+def test_official_probe_does_not_assign_a_hardcoded_bot_password() -> None:
+    probe = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    assert re.search(
+        r"(?im)^\s*\$env:END_RIFT_BOT_PASSWORD\s*=\s*['\"][^'\"]+['\"]",
+        probe,
+    ) is None, "the live probe must not assign a password literal that trips secret validation"

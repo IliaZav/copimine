@@ -90,7 +90,12 @@ try {
   $null = Invoke-LocalRcon -CommandText 'cmend boss damage 3000'
   Start-Sleep -Seconds 7
   $afterCheckpoint = Get-Status
-  if ($afterCheckpoint -notmatch 'hp=.*?2000/5000') {
+  $checkpointMatch = [Regex]::Match($afterCheckpoint, 'hp=.*?([0-9.]+)/5000')
+  if (-not $checkpointMatch.Success) {
+    throw "Local boss did not reach the 2000 HP checkpoint:`n$afterCheckpoint"
+  }
+  $checkpointHealth = [double]::Parse($checkpointMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+  if ([Math]::Abs($checkpointHealth - 2000.0D) -gt 0.05D) {
     throw "Local boss did not reach the 2000 HP checkpoint:`n$afterCheckpoint"
   }
 
@@ -169,7 +174,7 @@ try {
   $finalMatch = [Regex]::Match($finalStatus, 'hp=.*?([0-9.]+)/5000')
   if (-not $finalMatch.Success) { throw "Local boss final HP is missing:`n$finalStatus" }
   $finalHealth = [double]::Parse($finalMatch.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
-  if ($finalHealth -ge 2000.0D) {
+  if ($finalHealth -ge $checkpointHealth) {
     throw "Real survival player attacks did not reduce the checkpointed boss HP:`n$finalStatus`n$stdout"
   }
   $damageLines = Select-String -LiteralPath (Join-Path $serverDir 'logs\latest.log') `
@@ -177,7 +182,11 @@ try {
   if (-not $damageLines) {
     throw "The server did not observe a player-sourced boss damage event for $bossUuid.`n$stdout"
   }
-  Write-Output "LIVE_BOSS_DAMAGE_PASS before=1000 after=$finalHealth boss=$bossUuid bot=$BotName player_damage_events=$($damageLines.Count)"
+  $healthDelta = $checkpointHealth - $finalHealth
+  if ($healthDelta -le 0.0D) {
+    throw "Real survival player attacks produced no measurable HP delta: before=$checkpointHealth after=$finalHealth"
+  }
+  Write-Output "LIVE_BOSS_DAMAGE_PASS before=$checkpointHealth after=$finalHealth delta=$healthDelta boss=$bossUuid bot=$BotName player_damage_events=$($damageLines.Count)"
   Write-Output $afterCheckpoint
   Write-Output $finalStatus
 } finally {

@@ -199,6 +199,7 @@ import org.bukkit.event.player.PlayerPickupItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.InventoryMoveItemEvent;
@@ -523,6 +524,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> collapseRingGuardUuids = new LinkedHashSet<>();
     private final Set<UUID> collapseRingReconstructionGuardUuids = new LinkedHashSet<>();
     private final Map<UUID, Integer> collapseRingGuardSlots = new LinkedHashMap<>();
+    private final Map<UUID, Long> collapseRingContainmentLogAt = new HashMap<>();
     private UUID collapseRingPrisonerDisplayUuid;
     private final Set<HazardPlanner.Point> collapseRingIceCells = new LinkedHashSet<>();
     private final Map<HazardPlanner.Point, String> collapseRingIceOriginals = new LinkedHashMap<>();
@@ -1032,6 +1034,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             realitySplitChamberController.begin(generation, new ArrayList<>(officialRewardRoster));
         }
         reindexPersistedCombatEntities();
+        restoreRealitySplitBarriersAfterBootstrap();
         cleanupUnexpectedCombatEntitiesAfterRestart();
         int resumedWave = waveForPhase(phase);
         if (resumedWave > 0) {
@@ -1120,6 +1123,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().severe("BOSS_REHYDRATION_FAILED event=" + eventId
                 + " boss=" + boss.getUniqueId()
                 + " reason=current-real-health-marker-missing");
+    }
+
+    /**
+     * Hazard recovery deliberately restores every temporary block before the
+     * plugin rehydrates its Java maps.  Wave 7 therefore needs one explicit
+     * rebuild after entity indexing; otherwise a restart leaves the objective
+     * active but removes its physical and visible room separators forever.
+     * This only rebuilds the current generation and never moves players.
+     */
+    private void restoreRealitySplitBarriersAfterBootstrap() {
+        if (phase != EventPhase.WAVE_7 || !isConfigured()
+                || !realitySplitChamberController.owns(generation)) {
+            return;
+        }
+        World world = Bukkit.getWorld(worldName);
+        Location core = coreCombatAnchorLocation();
+        if (world == null || core == null || !core.getWorld().equals(world)) {
+            getLogger().warning("END_RIFT_WAVE7_BARRIERS_REBUILD_DEFERRED event=" + eventId
+                    + " generation=" + generation + " reason=world-or-core-unavailable");
+            return;
+        }
+        spawnRealitySplitBarriers(world, core);
+        getLogger().info("END_RIFT_WAVE7_BARRIERS_REHYDRATED event=" + eventId
+                + " generation=" + generation + " collision=true visible=true");
     }
 
     /** Reattach PDC-owned entities to the in-memory controller exactly once. */
@@ -5629,6 +5656,44 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " target=" + (target == null ? "none" : target.getType()));
     }
 
+    /**
+     * A BlockDisplay is visual only.  Keep players inside the active Collapse
+     * Ring corridor at the movement boundary as well as in the five-tick
+     * watchdog below, so sprinting cannot cross the ring between controller
+     * ticks.  This is scoped to the current generation and never affects a
+     * natural mob or a different event attempt.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onCollapseRingPlayerMove(PlayerMoveEvent event) {
+        if (event == null || event.getTo() == null) {
+            return;
+        }
+        Player player = event.getPlayer();
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (player == null || from == null || to == null
+                || from.getWorld() == null || !from.getWorld().equals(to.getWorld())
+                || (Math.abs(from.getX() - to.getX()) < 0.0001D
+                && Math.abs(from.getZ() - to.getZ()) < 0.0001D)) {
+            return;
+        }
+        CollapseRingEncounterPolicy.State state = activeCollapseRingForContainment();
+        Location anchor = coreCombatAnchorLocation();
+        if (state == null || anchor == null || !isCombatTarget(player)) {
+            return;
+        }
+        Location constrained = constrainCollapseRingPlayerLocation(anchor, to, state.roomId());
+        if (constrained == null || CollapseRingGeometryPolicy.inPlayerLane(state.roomId(),
+                to.getX() - anchor.getX(), to.getZ() - anchor.getZ())) {
+            return;
+        }
+        constrained.setYaw(to.getYaw());
+        constrained.setPitch(to.getPitch());
+        event.setTo(constrained);
+        player.setVelocity(new Vector());
+        logCollapseRingContainment(player, state.roomId(), "move-event");
+    }
+
     /** Tag every ordinary skeleton arrow so its trail and cleanup are bounded. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onEventSkeletonShootBow(EntityShootBowEvent event) {
@@ -7643,6 +7708,99 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         enforceCollapseRingLanes(anchor);
+        enforceCollapseRingPlayerContainment(anchor);
+    }
+
+    private CollapseRingEncounterPolicy.State activeCollapseRingForContainment() {
+        CollapseRingEncounterPolicy.State state = collapseRingEncounterState;
+        return isOfficialCurrentAttempt() && activeWave == 6 && state != null
+                && state.generation() == generation
+                && state.phase() != CollapseRingEncounterPolicy.Phase.PAIR_DEFEATED
+                ? state : null;
+    }
+
+    /** Keep every active participant in the current ring's playable corridor. */
+    private void enforceCollapseRingPlayerContainment(Location anchor) {
+        CollapseRingEncounterPolicy.State state = activeCollapseRingForContainment();
+        if (anchor == null || state == null) {
+            return;
+        }
+        for (Player player : activeLivingPlayers().stream()
+                .filter(this::isCombatTarget)
+                .sorted(Comparator.comparing(value -> value.getUniqueId().toString()))
+                .toList()) {
+            Location current = player.getLocation();
+            if (current.getWorld() == null || !anchor.getWorld().equals(current.getWorld())
+                    || CollapseRingGeometryPolicy.inPlayerLane(state.roomId(),
+                    current.getX() - anchor.getX(), current.getZ() - anchor.getZ())) {
+                continue;
+            }
+            Location destination = constrainCollapseRingPlayerLocation(anchor, current,
+                    state.roomId());
+            if (destination == null) {
+                getLogger().warning("WAVE6_RING_CONTAINMENT_DEFERRED event=" + eventId
+                        + " player=" + player.getUniqueId()
+                        + " ring=" + (state.roomId() + 1) + " reason=no-safe-floor");
+                continue;
+            }
+            destination.setYaw(current.getYaw());
+            destination.setPitch(current.getPitch());
+            if (player.teleport(destination)) {
+                player.setVelocity(new Vector());
+                logCollapseRingContainment(player, state.roomId(), "tick-watchdog");
+            }
+        }
+    }
+
+    /** Resolve a movement correction without letting the safe resolver leave the lane. */
+    private Location constrainCollapseRingPlayerLocation(Location anchor, Location requested,
+                                                         int ring) {
+        if (anchor == null || requested == null || requested.getWorld() == null
+                || anchor.getWorld() == null || !anchor.getWorld().equals(requested.getWorld())) {
+            return null;
+        }
+        double dx = requested.getX() - anchor.getX();
+        double dz = requested.getZ() - anchor.getZ();
+        double distance = Math.hypot(dx, dz);
+        if (!Double.isFinite(distance)) {
+            return null;
+        }
+        if (distance < 0.05D) {
+            long bits = requested.getWorld().getUID().getMostSignificantBits()
+                    ^ requested.getWorld().getUID().getLeastSignificantBits()
+                    ^ (long) ring * 0x9E3779B97F4A7C15L;
+            double angle = Math.floorMod(bits, 3600L) / 3600.0D * Math.PI * 2.0D;
+            dx = Math.cos(angle);
+            dz = Math.sin(angle);
+            distance = 1.0D;
+        }
+        double targetRadius = CollapseRingGeometryPolicy.clampToPlayerLaneRadius(ring, distance);
+        Location preferred = requested.clone();
+        preferred.setX(anchor.getX() + dx / distance * targetRadius);
+        preferred.setZ(anchor.getZ() + dz / distance * targetRadius);
+        Location safe = findSafeCombatLocation(anchor, preferred, waveMovementRadius(),
+                MIN_WAVE_CORE_DISTANCE_BLOCKS, -1);
+        if (safe == null || !CollapseRingGeometryPolicy.inPlayerLane(ring,
+                safe.getX() - anchor.getX(), safe.getZ() - anchor.getZ())) {
+            return null;
+        }
+        return safe;
+    }
+
+    private void logCollapseRingContainment(Player player, int ring, String source) {
+        if (player == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        UUID playerId = player.getUniqueId();
+        long last = collapseRingContainmentLogAt.getOrDefault(playerId, 0L);
+        if (now - last < 1_000L) {
+            return;
+        }
+        collapseRingContainmentLogAt.put(playerId, now);
+        getLogger().info("WAVE6_RING_CONTAINMENT event=" + eventId
+                + " generation=" + generation + " player=" + playerId
+                + " ring=" + (ring + 1) + " source=" + source + " corrected=true");
     }
 
     /**
@@ -11936,9 +12094,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!(entity instanceof Mob mob) || !isLiveOwnedEntity(guardId)) {
                 continue;
             }
+            // Reassert the native combat state after restart/reload and after
+            // any external target callback.  The ring controller owns the
+            // target, but Paper still owns the actual ranged attack.
+            mob.setAI(true);
+            mob.setAware(true);
             mob.setTarget(null);
             if (!CollapseRingEncounterPolicy.guardMayAttack(state, players.size(), guardId,
                     eventTickCounter)) {
+                mob.getPathfinder().stopPathfinding();
                 continue;
             }
             Player target = players.get(Math.floorMod(
@@ -11960,6 +12124,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (isCombatTarget(target)) {
                 mob.setTarget(target);
+                if (mob instanceof Skeleton skeleton) {
+                    maintainSkeletonCombatPosture(skeleton, target, EVENT_KIND_ELITE,
+                            System.currentTimeMillis());
+                }
             }
         }
     }
@@ -12478,7 +12646,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             Set<UUID> group = new LinkedHashSet<>();
             double radius = CollapseRingGeometryPolicy.ringRadius(ring);
             int segments = Math.max(24,
-                    CollapseRingGeometryPolicy.visualPointCount(ring) / 2);
+                    CollapseRingGeometryPolicy.visualPointCount(ring));
             for (int index = 0; index < segments; index++) {
                 double angle = index * Math.PI * 2.0D / segments;
                 Location origin = new Location(world,
@@ -12494,9 +12662,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     value.setPersistent(false);
                     value.setInterpolationDuration(5);
                     value.setTransformation(new Transformation(
-                            new Vector3f(-0.42F, -0.94F, -0.10F),
+                            new Vector3f(-0.52F, -0.94F, -0.14F),
                             new AxisAngle4f((float) (angle + Math.PI / 2.0D), 0.0F, 1.0F, 0.0F),
-                            new Vector3f(0.84F, 0.18F, 0.20F), new AxisAngle4f()));
+                            new Vector3f(1.04F, 0.24F, 0.28F), new AxisAngle4f()));
                 });
                 tag(display, EVENT_KIND_DISPLAY, 5, true);
                 ownedEntities.put(display.getUniqueId(), display);
@@ -12508,7 +12676,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         getLogger().info("END_RIFT_RINGS_READY event=" + eventId + " rings=3 pieces="
                 + currentRingVisuals.size() + " floor_y=" + combatFloorY()
-                + " radii=6,11,16 visual_points=64,80,96");
+                + " radii=8,14,19 visual_points=64,80,96 player_lane_half_width="
+                + CollapseRingGeometryPolicy.PLAYER_LANE_HALF_WIDTH
+                + " containment=server-enforced");
     }
 
     /**
@@ -12612,7 +12782,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int z = core.getBlockZ() + cell.zOffset();
             BlockDisplay display = world.spawn(new Location(world, x + 0.5D,
                     floorY + 1.0D, z + 0.5D), BlockDisplay.class, value -> {
-                value.setBlock(Material.CRYING_OBSIDIAN.createBlockData());
+                value.setBlock(Material.AMETHYST_BLOCK.createBlockData());
                 value.setBrightness(new Display.Brightness(15, 15));
                 value.setGravity(false);
                 value.setInvulnerable(true);
@@ -13414,6 +13584,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         currentRingVisuals.clear();
         currentRingVisualGroups.clear();
+        collapseRingContainmentLogAt.clear();
         collapseRingEncounterState = null;
         collapseRingGuardUuids.clear();
         collapseRingReconstructionGuardUuids.clear();
@@ -18147,10 +18318,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /**
-     * Bind the high-resolution event model to the physical cells without
-     * making it authoritative.  The blocks remain the collision and restore
-     * source; these small per-layer displays are only the texture/animation
-     * layer and can disappear without making the obelisk invisible.
+     * Bind one complete high-resolution event model to the physical cells
+     * without making it authoritative.  The blocks remain the collision and
+     * restore source.  The model is scaled to the current visible height;
+     * stacking the complete five-block model once per layer duplicates the
+     * body, caps and portrait and is therefore forbidden.
      */
     private void ensureCurrentObeliskVisuals(Wave4ObeliskRuntimeState state,
                                         ObeliskStage stage) {
@@ -18159,27 +18331,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int highestLayer = Math.min(currentObeliskStageHighestLayer(stage),
                 currentObeliskIntegrityHighestLayer(state));
-        for (int layer = 0; layer <= highestLayer; layer++) {
-            UUID visualId = state.visualIds().get(layer);
-            Entity existing = visualId == null ? null : Bukkit.getEntity(visualId);
-            if (!(existing instanceof ItemDisplay display) || !display.isValid()
-                    || display.isDead()) {
-                Location location = state.base().clone().add(0.0D, layer + 0.02D, 0.0D);
-                ItemDisplay display = state.base().getWorld().spawn(location, ItemDisplay.class,
-                        value -> {
-                            value.setBrightness(new Display.Brightness(15, 15));
-                            value.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-                            value.setBillboard(Display.Billboard.FIXED);
-                            value.setViewRange(64.0F);
-                            value.setDisplayWidth(1.5F);
-                            value.setDisplayHeight(1.5F);
-                            value.setPersistent(false);
-                            value.setGravity(false);
-                            value.setInvulnerable(true);
-                        });
-                tag(display, EVENT_KIND_WAVE4_OBELISK, 4, true);
-                state.visualIds().put(layer, display.getUniqueId());
-            }
+        if (highestLayer < 0) {
+            return;
+        }
+        UUID visualId = state.visualIds().get(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY);
+        Entity existing = visualId == null ? null : Bukkit.getEntity(visualId);
+        if (!(existing instanceof ItemDisplay display) || !display.isValid()
+                || display.isDead()) {
+            Location location = state.base().clone().add(0.0D, 0.02D, 0.0D);
+            ItemDisplay display = state.base().getWorld().spawn(location, ItemDisplay.class,
+                    value -> {
+                        value.setBrightness(new Display.Brightness(15, 15));
+                        value.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                        value.setBillboard(Display.Billboard.FIXED);
+                        value.setViewRange(64.0F);
+                        value.setDisplayWidth(1.5F);
+                        value.setDisplayHeight(ObeliskGeometryPolicy.VISUAL_FULL_HEIGHT_BLOCKS);
+                        value.setPersistent(false);
+                        value.setGravity(false);
+                        value.setInvulnerable(true);
+                    });
+            tag(display, EVENT_KIND_WAVE4_OBELISK, 4, true);
+            state.visualIds().put(ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY,
+                    display.getUniqueId());
         }
         updateObeliskVisuals(state, highestLayer);
     }
@@ -18203,7 +18377,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int layer = entry.getKey();
             Entity entity = Bukkit.getEntity(entry.getValue());
             if (!(entity instanceof ItemDisplay display) || !display.isValid()
-                    || layer > highestLayer || !currentObeliskLayerVisibleForIntegrity(state, layer)) {
+                    || layer != ObeliskGeometryPolicy.VISUAL_DISPLAY_KEY
+                    || !currentObeliskLayerVisibleForIntegrity(state, highestLayer)) {
                 if (entity != null && entity.isValid() && !entity.isDead()) {
                     entity.remove();
                 }
@@ -18212,9 +18387,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             display.setItemStack(overlayItem(model, modelId));
             float breathing = 1.02F + (float) Math.sin((eventTickCounter + layer * 4L) * 0.08D) * 0.035F;
+            float visibleHeight = ObeliskGeometryPolicy.visualHeightBlocks(highestLayer);
             display.setTransformation(new Transformation(
                     new Vector3f(-0.51F, 0.0F, -0.51F), new AxisAngle4f(),
-                    new Vector3f(breathing, breathing, breathing), new AxisAngle4f()));
+                    new Vector3f(breathing, breathing * visibleHeight, breathing),
+                    new AxisAngle4f()));
             display.getPersistentDataContainer().set(keyObeliskHealth,
                     PersistentDataType.INTEGER, state.health());
             display.getPersistentDataContainer().set(keyObeliskState,

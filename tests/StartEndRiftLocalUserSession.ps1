@@ -2,6 +2,7 @@
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$AdminNickname = 'SudoKillDash9',
+  [string]$ClientGameDirectory = 'D:\.minecraft\versions\ServerRP',
   [switch]$LaunchClient,
   [switch]$Porthole
 )
@@ -25,6 +26,9 @@ $pgCtl = Join-Path $sharedRuntimeRoot 'postgresql\pgsql\bin\pg_ctl.exe'
 $pgDataDir = (Resolve-Path (Join-Path $localRuntimeRoot 'end-rift-pgdata')).Path
 $pack = Join-Path $sourcePackDir 'CopiMineResourcePack.zip'
 $targetPack = Join-Path $targetPackDir 'CopiMineResourcePack.zip'
+$clientBuildScript = Join-Path $worktreeRoot 'CopiMineClient\build-client.ps1'
+$clientArtifactSyncScript = Join-Path $scriptRoot 'SyncEndRiftClientArtifacts.ps1'
+$sourceClientJar = Join-Path $worktreeRoot 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
 $serverProperties = Join-Path $serverDir 'server.properties'
 $serverPropertiesBaseline = Join-Path $serverDir 'server.properties.pre-local-resourcepack'
 $purpurConfig = Join-Path $serverDir 'purpur.yml'
@@ -665,6 +669,41 @@ function Build-And-Sync-ResourcePack {
   Write-Host "Resource pack ready SHA1=$sourceHash SHA256=$sourceSha256 bytes=$((Get-Item -LiteralPath $targetPack).Length)"
 }
 
+function Sync-CurrentClientArtifacts {
+  if (-not (Test-Path -LiteralPath $clientBuildScript -PathType Leaf)) {
+    throw "Fabric client build script is missing: $clientBuildScript"
+  }
+  if (-not (Test-Path -LiteralPath $clientArtifactSyncScript -PathType Leaf)) {
+    throw "Fabric client artifact synchronizer is missing: $clientArtifactSyncScript"
+  }
+  Write-Host 'Building the current Fabric client before local Minecraft synchronization.'
+  & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $clientBuildScript
+  if ($LASTEXITCODE -ne 0) {
+    throw "Fabric client build failed with exit code $LASTEXITCODE."
+  }
+  if (-not (Test-Path -LiteralPath $sourceClientJar -PathType Leaf)) {
+    throw "Built Fabric client JAR is missing: $sourceClientJar"
+  }
+  $syncArguments = @(
+    '-NoLogo',
+    '-NoProfile',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    $clientArtifactSyncScript,
+    '-SourceClientJar',
+    $sourceClientJar,
+    '-SourceResourcePack',
+    $pack,
+    '-ClientGameDirectory',
+    $ClientGameDirectory
+  )
+  & powershell.exe @syncArguments
+  if ($LASTEXITCODE -ne 0) {
+    throw "Fabric client artifact synchronization failed with exit code $LASTEXITCODE."
+  }
+}
+
 function Get-YamlScalar {
   param(
     [Parameter(Mandatory = $true)][string]$Text,
@@ -751,6 +790,8 @@ function Assert-LocalStartupPrerequisites {
       $paper,
       $pgCtl,
       $websitePython,
+      $clientBuildScript,
+      $clientArtifactSyncScript,
       $serverPropertiesBaseline,
       (Join-Path $scriptRoot 'InvokeEndRiftLocalRcon.ps1'),
       (Join-Path $scriptRoot 'StartEndRiftLocal.ps1'),
@@ -763,6 +804,15 @@ function Assert-LocalStartupPrerequisites {
   $java = Get-Command java.exe -ErrorAction SilentlyContinue
   if ($null -eq $java) { throw 'Java is not available on PATH for the local Paper server.' }
   if ($PluginSources.Count -ne 30) { throw "Expected 30 current plugin sources, found $($PluginSources.Count)." }
+  foreach ($clientDirectory in @(
+      $ClientGameDirectory,
+      (Join-Path $ClientGameDirectory 'mods'),
+      (Join-Path $ClientGameDirectory 'resourcepacks')
+    )) {
+    if (-not (Test-Path -LiteralPath $clientDirectory -PathType Container)) {
+      throw "Required local Minecraft client directory is missing: $clientDirectory"
+    }
+  }
 }
 
 function Sync-CurrentPlugins {
@@ -1295,6 +1345,7 @@ Build-And-Sync-ResourcePack
 if ((Get-FileSha256 -Path (Join-Path $worktreeRoot 'minecraft\server\server.properties')) -ne $trackedProductionPropertiesSha256) {
   throw 'Local resource-pack preparation changed tracked production minecraft/server/server.properties.'
 }
+Sync-CurrentClientArtifacts
 $currentPluginSources = @(Sync-CurrentPlugins)
 Sync-CurrentEventPluginConfigs
 Sync-CurrentEventConfig

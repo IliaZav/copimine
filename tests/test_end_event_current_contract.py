@@ -503,6 +503,12 @@ def test_single_boss_damage_probe_isolates_reach_from_real_health() -> None:
         r"finally[\s\S]*?boss unfreeze[\s\S]*?boss kill cleanup",
         probe,
     ), "single-boss probe must release its local freeze during cleanup"
+    assert "$checkpointHealth" in probe, (
+        "single-boss probe must report the health checkpoint it actually measured"
+    )
+    assert "before=$checkpointHealth" in probe, (
+        "single-boss live output must not contain a stale hard-coded HP value"
+    )
 
 
 def test_boss_bar_update_recreates_missing_bar_before_reading_audience() -> None:
@@ -529,6 +535,15 @@ def test_obelisk_probe_primes_health_after_survival_protection() -> None:
         r"attribute \$name minecraft:generic\.max_health base get",
         probe,
     ), "obelisk reflection probe must protect the bot before verifying its real max health"
+    assert "minecraft:slow_falling" not in probe, (
+        "the reflection probe must not combine slow falling with its jump loop and drift above the projectile"
+    )
+    assert "END_RIFT_OBELISK_PROBE_SUPPORT_NOT_AIR" in probe, (
+        "the reflection probe must verify its temporary support cell before mutating the local arena"
+    )
+    assert "setblock 8 69 -46 minecraft:glass" in probe and "setblock 8 69 -46 air" in probe, (
+        "the reflection probe's temporary support cell must be restored during cleanup"
+    )
 
 
 def test_obelisk_probe_uses_supported_player_max_health_commands() -> None:
@@ -550,6 +565,24 @@ def test_obelisk_probe_parses_attribute_value_after_command_prefix() -> None:
         r"\$maxHealthMatch\s*=\s*\[Regex\]::Match\(\$maxHealthResult,\s*'is\\s\+",
         probe,
     ), "the probe must not parse digits from a player's name as the max-health value"
+
+
+def test_obelisk_bot_retries_projectiles_until_paper_reach() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftObeliskBot.js")
+    range_guard = re.search(
+        r"const range\s*=\s*distance\(entity\.position,\s*bot\.entity\.position\)[\s\S]*?"
+        r"if \(range > ([0-9.]+)\) \{([\s\S]*?)return\s*\n\s*\}",
+        bot,
+    )
+    assert range_guard and float(range_guard.group(1)) <= 4.75, (
+        "the obelisk bot must wait for a projectile to enter Paper's reliable interact reach"
+    )
+    assert bot.index("attempted.add(entity.id)") > range_guard.end(), (
+        "a projectile must remain retryable while it is outside reliable interact reach"
+    )
+    assert "bot.setControlState('jump', true)" not in bot, (
+        "the reflection probe must use a stable support position instead of climbing above the projectile"
+    )
 
 
 def test_official_wave7_probe_targets_every_supported_living_mob_type() -> None:
@@ -866,3 +899,25 @@ def test_official_probe_does_not_assign_a_hardcoded_bot_password() -> None:
         r"(?im)^\s*\$env:END_RIFT_BOT_PASSWORD\s*=\s*['\"][^'\"]+['\"]",
         probe,
     ) is None, "the live probe must not assign a password literal that trips secret validation"
+
+
+def test_boss_shield_live_probe_covers_blocked_vulnerable_and_restored_states() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftBossShieldLive.ps1")
+    assert "cmend boss spawn official confirm" in probe
+    assert "cmend boss phase last_seal" in probe
+    assert "cmend boss phase hunt" in probe
+    assert "reason=permanent-guardian-shield" in probe
+    assert re.search(
+        r"shieldBefore[\s\S]*?shieldAfter[\s\S]*?Abs\(\$shieldAfter\s*-\s*\$shieldBefore\)",
+        probe,
+    ), "shield-on probe must compare two measured real-health checkpoints"
+    assert re.search(
+        r"vulnerableBefore[\s\S]*?vulnerableAfter[\s\S]*?vulnerableAfter\s*-ge\s*\$vulnerableBefore",
+        probe,
+    ), "vulnerable phase probe must require a real HP decrease"
+    assert re.search(
+        r"restoredBefore[\s\S]*?restoredAfter[\s\S]*?Abs\(\$restoredAfter\s*-\s*\$restoredBefore\)",
+        probe,
+    ), "restored shield probe must compare another real-health checkpoint"
+    assert "BOSS_DAMAGE_ACCEPTED" in probe
+    assert "cmend boss kill cleanup" in probe

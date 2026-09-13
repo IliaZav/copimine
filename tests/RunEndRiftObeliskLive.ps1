@@ -9,8 +9,10 @@ param(
 )
 
 # Local-only Wave 4 integration probe. It uses two real Mineflayer player
-# connections and the normal Paper use_entity path. It never edits the map,
-# the event snapshot, or a production server.
+# connections and the normal Paper use_entity path. It only adds one
+# temporary support block in the isolated local arena, after verifying the
+# cell is air, and restores that cell during cleanup; it never edits an event
+# snapshot or a production server.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
@@ -21,6 +23,7 @@ $paperLog = Join-Path $serverDir 'logs\latest.log'
 $botLogDirectory = Join-Path $runtimeRoot 'rift-obelisk-bots'
 $names = @($FirstBotName, $SecondBotName)
 $probes = @()
+$supportBlockPlaced = $false
 
 if (@($names | Select-Object -Unique).Count -ne $names.Count) {
   throw 'The Wave 4 obelisk probe requires unique player names.'
@@ -169,6 +172,34 @@ try {
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'gamemode survival @a'
 
+  # The outbound fireball starts 5.8 blocks above the obelisk base. A normal
+  # survival player settles on y=68, so the entity spawn point is outside
+  # Paper's reliable use_entity reach. Use a verified, temporary glass step
+  # at the probe's fixed coordinate instead of changing projectile physics or
+  # relying on an unstable jump/slow-falling loop.
+  $supportCheckOffset = Get-LogLength
+  $null = Invoke-LocalRcon 'execute unless block 8 69 -46 air run minecraft:say END_RIFT_OBELISK_PROBE_SUPPORT_NOT_AIR'
+  Start-Sleep -Milliseconds 200
+  $supportCheckText = Read-SharedText
+  $supportCheckTail = if ($supportCheckOffset -lt $supportCheckText.Length) {
+    $supportCheckText.Substring([int]$supportCheckOffset)
+  } else { '' }
+  if ($supportCheckTail -match 'END_RIFT_OBELISK_PROBE_SUPPORT_NOT_AIR') {
+    throw 'The verified local obelisk probe support cell is not air; refusing to overwrite it.'
+  }
+  $null = Invoke-LocalRcon 'setblock 8 69 -46 minecraft:glass'
+  $supportBlockPlaced = $true
+  $supportSetOffset = Get-LogLength
+  $null = Invoke-LocalRcon 'execute unless block 8 69 -46 glass run minecraft:say END_RIFT_OBELISK_PROBE_SUPPORT_SET_FAILED'
+  Start-Sleep -Milliseconds 200
+  $supportSetText = Read-SharedText
+  $supportSetTail = if ($supportSetOffset -lt $supportSetText.Length) {
+    $supportSetText.Substring([int]$supportSetOffset)
+  } else { '' }
+  if ($supportSetTail -match 'END_RIFT_OBELISK_PROBE_SUPPORT_SET_FAILED') {
+    throw 'The local obelisk probe support block could not be placed.'
+  }
+
   $status = Invoke-LocalRcon 'cmend status'
   if ($status -notmatch '(?m)core=.*?\s(-?\d+),(-?\d+),(-?\d+)') {
     throw "Cannot determine the local Core position for the reflection probe:`n$status"
@@ -197,9 +228,6 @@ try {
     # and turning the reflection test into a false timeout after a few hits.
     $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1024")
     $null = Invoke-LocalRcon ("attribute $name minecraft:generic.knockback_resistance base set 1")
-    # Keep the probe near the descending projectile's melee window. Slow
-    # Falling is a player-side test harness adjustment only; it does not
-    # change the world or event rules.
     $null = Invoke-LocalRcon ("effect clear $name")
     # The reflection probe is measuring projectile ownership/HP transitions,
     # not player survivability.  Protect the disposable client while checking
@@ -207,7 +235,6 @@ try {
     # direct NBT health writes for players, so do not use data merge here.
     $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 120 4 true")
     $null = Invoke-LocalRcon ("effect give $name minecraft:regeneration 120 4 true")
-    $null = Invoke-LocalRcon ("effect give $name minecraft:slow_falling 120 0 true")
     $maxHealthResult = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base get")
     # The player name is part of the command response and may contain digits;
     # anchor the parse to the value after the response's "is" marker.
@@ -275,6 +302,9 @@ finally {
       try { $probe.Process.WaitForExit(5000) | Out-Null } catch { }
       try { Save-BotOutput -Probe $probe | Out-Null } catch { }
     }
+  }
+  if ($supportBlockPlaced) {
+    try { $null = Invoke-LocalRcon 'setblock 8 69 -46 air' } catch { Write-Warning "Could not restore the temporary obelisk probe support cell: $($_.Exception.Message)" }
   }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }

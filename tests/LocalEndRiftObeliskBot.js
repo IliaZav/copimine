@@ -124,7 +124,7 @@ function writeAttack(entity) {
   // enters a bounded server-side melee distance.
   if (!bot.entity || !entity.position) return
   const range = distance(entity.position, bot.entity.position)
-  if (range > 6.5) {
+  if (range > 4.5) {
     if (!rangeLoggedFireballIds.has(entity.id)) {
       rangeLoggedFireballIds.add(entity.id)
       console.log(`RIFT_FIREBALL_OUT_OF_RANGE ${username} entityId=${entity.id} distance=${range.toFixed(2)} player=${bot.entity.position.x},${bot.entity.position.y},${bot.entity.position.z} projectile=${entity.position.x},${entity.position.y},${entity.position.z}`)

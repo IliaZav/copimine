@@ -132,7 +132,7 @@ try {
   $null = Invoke-LocalRcon 'cmend test wave 6'
   Wait-Log -AfterOffset $wave6Offset -Pattern 'WAVE_TEST_STARTED.*wave=6\b' | Out-Null
   $ringLog = Wait-Log -AfterOffset $wave6Offset `
-    -Pattern 'END_RIFT_RINGS_READY.*radii=6,11,16.*visual_points=64,80,96'
+    -Pattern 'END_RIFT_RINGS_READY.*radii=8,14,19.*visual_points=64,80,96.*containment=server-enforced'
   $floorMatch = [Regex]::Match($ringLog, 'END_RIFT_RINGS_READY.*floor_y=(-?\d+)')
   if (-not $floorMatch.Success) { throw "Wave 6 did not expose the combat floor: $ringLog" }
   $floorY = [int]$floorMatch.Groups[1].Value
@@ -141,13 +141,13 @@ try {
   if (-not $wave6Match.Success -or [int]$wave6Match.Groups[1].Value -lt 100) {
     throw "Wave 6 did not expose all enlarged ring visuals: $wave6Objective"
   }
-  Write-Output "LIVE_WAVE6_BOUNDARIES_PASS rings=3 radii=6,11,16 visual_displays=$($wave6Match.Groups[1].Value) visual_points=64,80,96 leash_policy=true"
+  Write-Output "LIVE_WAVE6_BOUNDARIES_PASS rings=3 radii=8,14,19 visual_displays=$($wave6Match.Groups[1].Value) visual_points=64,80,96 leash_policy=true player_containment=true"
 
   $null = Invoke-LocalRcon 'cmend wave clear'
   $wave7Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 7'
   $barrierLog = Wait-Log -AfterOffset $wave7Offset `
-    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=3.*collision=true.*journaled=true'
+    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=5.*collision=true.*journaled=true'
   $barrierMatch = [Regex]::Match($barrierLog, 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+)')
   if (-not $barrierMatch.Success -or [int]$barrierMatch.Groups[1].Value -le 0) {
     throw "Wave 7 barrier count was not positive: $barrierLog"

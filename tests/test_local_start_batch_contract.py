@@ -364,6 +364,20 @@ def test_local_runner_uses_only_current_worktree_plugin_sources() -> None:
     assert "--skip-server-properties" in text
 
 
+def test_local_runner_syncs_fresh_fabric_client_and_pack_before_starting_paper() -> None:
+    text = RUNNER.read_text(encoding="utf-8")
+
+    assert "[string]$ClientGameDirectory" in text
+    assert "function Sync-CurrentClientArtifacts" in text
+    assert "CopiMineClient\\build-client.ps1" in text
+    assert "SyncEndRiftClientArtifacts.ps1" in text
+    assert "CopiMineClient-0.1.1.jar" in text
+    assert "Sync-CurrentClientArtifacts\n" in text
+    assert text.index("Build-And-Sync-ResourcePack\n") < text.index("Sync-CurrentClientArtifacts\n")
+    assert text.index("Sync-CurrentClientArtifacts\n") < text.index("Start-LocalPaper\n")
+    assert text.index("Sync-CurrentClientArtifacts\n") < text.index("Launch-MinecraftClientIfNeeded\n")
+
+
 def test_local_runner_rejects_dirty_tracked_production_properties_before_stopping_paper() -> None:
     text = RUNNER.read_text(encoding="utf-8")
 

@@ -9,8 +9,10 @@ public final class CollapseRingGeometryPolicy {
     public static final int RING_COUNT = 3;
     public static final int MAX_VISUAL_POINTS = 256;
     public static final double RING_BAND_HALF_WIDTH = 2.25D;
+    /** The player-sized corridor inside the active ring's visual band. */
+    public static final double PLAYER_LANE_HALF_WIDTH = 1.0D;
 
-    private static final double[] RING_RADII = {6.0D, 11.0D, 16.0D};
+    private static final double[] RING_RADII = {8.0D, 14.0D, 19.0D};
     private static final int[] VISUAL_POINTS = {64, 80, 96};
 
     private CollapseRingGeometryPolicy() {
@@ -30,6 +32,26 @@ public final class CollapseRingGeometryPolicy {
             return false;
         }
         return Math.abs(Math.hypot(xOffset, zOffset) - radius) <= RING_BAND_HALF_WIDTH;
+    }
+
+    /** True when a player can stand in the active ring without crossing it. */
+    public static boolean inPlayerLane(int ring, double xOffset, double zOffset) {
+        double radius = ringRadius(ring);
+        if (radius <= 0.0D || !Double.isFinite(xOffset) || !Double.isFinite(zOffset)) {
+            return false;
+        }
+        return Math.abs(Math.hypot(xOffset, zOffset) - radius) <= PLAYER_LANE_HALF_WIDTH;
+    }
+
+    /** Project a requested player radius onto the safe, player-sized corridor. */
+    public static double clampToPlayerLaneRadius(int ring, double requestedRadius) {
+        double radius = ringRadius(ring);
+        if (radius <= 0.0D) {
+            return 0.0D;
+        }
+        double safeRequested = Double.isFinite(requestedRadius) ? requestedRadius : radius;
+        return Math.max(radius - PLAYER_LANE_HALF_WIDTH,
+                Math.min(radius + PLAYER_LANE_HALF_WIDTH, safeRequested));
     }
 
     /** Return the lane radius nearest to a finite requested radius. */

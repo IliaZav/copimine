@@ -56,3 +56,18 @@ def test_obelisk_hd_states_are_real_high_resolution_assets():
         with Image.open(texture) as image:
             assert max(image.size) >= 512
             assert image.getbbox() is not None
+
+
+def test_end_rift_vanilla_models_use_only_supported_element_rotation_angles():
+    """Minecraft rejects arbitrary element rotations instead of rendering a fallback."""
+    supported_angles = {-45, -22.5, 0, 22.5, 45}
+    models_root = COPIMINE / "models"
+    for path in models_root.rglob("*.json"):
+        model = json.loads(path.read_text(encoding="utf-8"))
+        for index, element in enumerate(model.get("elements", ())):
+            rotation = element.get("rotation")
+            if rotation is not None:
+                assert rotation["angle"] in supported_angles, (
+                    f"{path.relative_to(ASSET_ROOT)} element {index} has unsupported "
+                    f"rotation angle {rotation['angle']}"
+                )

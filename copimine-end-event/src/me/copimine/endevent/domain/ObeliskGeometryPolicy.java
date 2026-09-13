@@ -8,6 +8,10 @@ public final class ObeliskGeometryPolicy {
     public static final int EMERGENCE_TICKS = 70;
     public static final int FOOTPRINT_RADIUS = 1;
     public static final int HEIGHT = 5;
+    /** One complete model is scaled to the physical five-block silhouette. */
+    public static final int VISUAL_DISPLAY_KEY = 0;
+    public static final int VISUAL_DISPLAY_COUNT = 1;
+    public static final float VISUAL_FULL_HEIGHT_BLOCKS = 5.0F;
 
     private ObeliskGeometryPolicy() {
     }
@@ -84,6 +88,12 @@ public final class ObeliskGeometryPolicy {
             case EMERGE_CROWN, AWAKEN, ACTIVE -> 4;
         };
         return cells.stream().filter(cell -> cell.layer() <= highestLayer).toList();
+    }
+
+    /** Resolve the visible model height without ever creating duplicate towers. */
+    public static float visualHeightBlocks(int highestLayer) {
+        int visibleLayers = Math.max(1, Math.min(HEIGHT, highestLayer + 1));
+        return visibleLayers;
     }
 
     private static void addSquare(List<Cell> cells, int x, int y, int z, int layer) {

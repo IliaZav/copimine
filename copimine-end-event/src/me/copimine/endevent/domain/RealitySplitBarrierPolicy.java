@@ -10,10 +10,18 @@ import java.util.Set;
  * blocks before placing the temporary collision barrier.
  */
 public final class RealitySplitBarrierPolicy {
-    public static final int HEIGHT = 3;
-    public static final double MIN_RADIUS = 4.5D;
-    public static final double MAX_RADIUS = 17.5D;
-    public static final int MAX_CELLS = 512;
+    /** Five solid levels stop a player from jumping over a room separator. */
+    public static final int HEIGHT = 5;
+    /** Start beside the Core so no walkable central gap connects rooms. */
+    public static final double MIN_RADIUS = 0.5D;
+    /**
+     * A radial line reaches a square arena edge after travelling farther than
+     * its nominal twenty-block radius.  The adapter clips the resulting cells
+     * to the configured arena bounds, so this closes the diagonal corner
+     * bypass without mutating blocks outside the event.
+     */
+    public static final double MAX_RADIUS = 27.5D;
+    public static final int MAX_CELLS = 1536;
     /** A three-block cross-section keeps diagonal walls physically closed. */
     public static final int WALL_HALF_WIDTH = 1;
     /**
@@ -25,8 +33,8 @@ public final class RealitySplitBarrierPolicy {
     /** Centres a scaled BlockDisplay on the same block cell as its barrier. */
     public static final float VISUAL_CELL_TRANSLATION = -0.5F;
 
-    private static final int FIRST_RADIUS = 5;
-    private static final int LAST_RADIUS = 17;
+    private static final int FIRST_RADIUS = 1;
+    private static final int LAST_RADIUS = 27;
     private static final int MAX_CHAMBERS = 4;
 
     private RealitySplitBarrierPolicy() {

@@ -1,5 +1,6 @@
 package me.copimine.client;
 
+import java.util.Locale;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.text.Text;
@@ -15,17 +16,29 @@ import net.minecraft.util.Identifier;
 public final class EndRiftBossBarHud {
     private static final Identifier FRAME = Identifier.of(
             "copimineclient", "textures/gui/end_rift_bossbar_frame.png");
-    // The artwork is intentionally kept at a dense source resolution and
-    // drawn smaller than native.  This keeps the crystals and bone filigree
-    // clean on both a 854x480 test client and larger screens.
-    private static final int SOURCE_WIDTH = 2172;
-    private static final int SOURCE_HEIGHT = 724;
-    private static final int WIDTH = 384;
-    private static final int HEIGHT = 128;
-    private static final int INNER_LEFT = 54;
-    private static final int INNER_RIGHT = 330;
-    private static final int INNER_TOP = 48;
-    private static final int INNER_BOTTOM = 80;
+    // The supplied frame is a 256x32 transparent overlay, not a 2172x724
+    // panel.  Drawing it with the old dimensions sampled outside the image
+    // and produced the oversized flat-purple bar seen in-game.
+    private static final int SOURCE_WIDTH = 256;
+    private static final int SOURCE_HEIGHT = 32;
+    private static final int WIDTH = 320;
+    private static final int HEIGHT = 72;
+    private static final int FRAME_Y = 22;
+    private static final int FRAME_HEIGHT = 40;
+    private static final int INNER_LEFT = 21;
+    private static final int INNER_RIGHT = 299;
+    private static final int INNER_TOP = 34;
+    private static final int INNER_BOTTOM = 50;
+    private static final int SEGMENT_COUNT = 20;
+    /** Health thresholds for the five transitions between six boss phases. */
+    private static final float[] PHASE_MARKERS = {0.20F, 0.30F, 0.45F, 0.60F, 0.80F};
+    private static final String[] PHASE_MARKER_LABELS = {"SEAL", "RAGE", "OVER", "RIFT", "HUNT"};
+
+    static {
+        if (PHASE_MARKERS.length == 5 && PHASE_MARKER_LABELS.length != PHASE_MARKERS.length) {
+            throw new IllegalStateException("End Rift phase marker labels are out of sync");
+        }
+    }
 
     private EndRiftBossBarHud() {
     }
@@ -46,36 +59,102 @@ public final class EndRiftBossBarHud {
         int x = Math.max(0, (context.getScaledWindowWidth() - WIDTH) / 2);
         int y = 4;
         int phaseColor = phaseColor(state.phaseId(), state.castState());
+        float progress = clampProgress(state.progress());
 
         // Opaque backing masks the vanilla bar for this one event while the
         // mixin below cancels its draw call. Other BossBars are untouched.
-        context.fill(x + INNER_LEFT - 2, y + INNER_TOP - 2,
-                x + INNER_RIGHT + 2, y + INNER_BOTTOM + 2, 0xE50A0D18);
-        context.fill(x + INNER_LEFT, y + INNER_TOP,
-                x + INNER_RIGHT, y + INNER_BOTTOM, 0xFF171526);
+        context.fill(x + 18, y + 1, x + WIDTH - 18, y + 20, 0xD50A0D18);
+        context.drawCenteredTextWithShadow(client.textRenderer, Text.literal("СТРАЖ РАЗЛОМА"),
+                context.getScaledWindowWidth() / 2, y + 1, 0xFFF6E8FF);
+        context.drawTextWithShadow(client.textRenderer,
+                Text.literal(phaseLabel(state.phaseId())), x + 22, y + 10, phaseColor);
+        context.drawTextWithShadow(client.textRenderer,
+                Text.literal(formatHealth(state.health(), state.maxHealth())),
+                x + WIDTH - 22 - client.textRenderer.getWidth(formatHealth(state.health(), state.maxHealth())),
+                y + 10, 0xFFE7E8F2);
 
-        int filled = Math.round((INNER_RIGHT - INNER_LEFT) * state.progress());
+        int filled = Math.round((INNER_RIGHT - INNER_LEFT) * progress);
         if (filled > 0) {
             context.fill(x + INNER_LEFT, y + INNER_TOP,
-                    x + INNER_LEFT + filled, y + INNER_BOTTOM, phaseColor);
+                    x + INNER_LEFT + filled, y + INNER_BOTTOM, 0xFF171526);
+            drawSegmentedFill(context, x, y, filled, phaseColor);
             // A restrained highlight keeps the bar readable without spawning
             // particles or adding per-frame allocations.
             context.fill(x + INNER_LEFT, y + INNER_TOP,
                     x + INNER_LEFT + filled, y + INNER_TOP + 2, brighten(phaseColor));
         }
-        int notchStep = (INNER_RIGHT - INNER_LEFT) / 10;
-        for (int notch = 1; notch < 10; notch++) {
-            int notchX = x + INNER_LEFT + notch * notchStep;
-            context.fill(notchX, y + INNER_TOP + 1, notchX + 1,
-                    y + INNER_BOTTOM - 1, 0x6A080914);
+        for (int notch = 1; notch < SEGMENT_COUNT; notch++) {
+            int notchX = x + INNER_LEFT + Math.round(
+                    (INNER_RIGHT - INNER_LEFT) * notch / (float) SEGMENT_COUNT);
+            context.fill(notchX, y + INNER_TOP - 1, notchX + 1,
+                    y + INNER_BOTTOM + 1, 0xA0080914);
+        }
+        for (int marker = 0; marker < PHASE_MARKERS.length; marker++) {
+            int markerX = x + INNER_LEFT + Math.round(
+                    (INNER_RIGHT - INNER_LEFT) * PHASE_MARKERS[marker]);
+            drawPhaseMarker(context, client, markerX, y + FRAME_Y,
+                    PHASE_MARKER_LABELS[marker], progress <= PHASE_MARKERS[marker] + 0.001F,
+                    phaseColor);
         }
 
-        context.drawTexture(FRAME, x, y, 0, 0, WIDTH, HEIGHT,
+        context.drawTexture(FRAME, x, y + FRAME_Y, 0, 0, WIDTH, FRAME_HEIGHT,
                 SOURCE_WIDTH, SOURCE_HEIGHT);
+        context.drawCenteredTextWithShadow(client.textRenderer,
+                Text.literal(castLabel(state.castState())),
+                context.getScaledWindowWidth() / 2, y + 57, 0xFFBEB8D5);
+    }
 
-        String title = "СТРАЖ РАЗЛОМА";
-        context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(title),
-                context.getScaledWindowWidth() / 2, y + 42, 0xFFF6E8FF);
+    private static void drawSegmentedFill(DrawContext context, int x, int y,
+                                          int filled, int color) {
+        int segmentWidth = (INNER_RIGHT - INNER_LEFT) / SEGMENT_COUNT;
+        for (int segment = 0; segment < SEGMENT_COUNT; segment++) {
+            int left = x + INNER_LEFT + segment * segmentWidth;
+            int right = Math.min(x + INNER_LEFT + filled,
+                    x + INNER_LEFT + (segment + 1) * segmentWidth - 1);
+            if (right > left) {
+                context.fill(left, y + INNER_TOP, right, y + INNER_BOTTOM, color);
+            }
+        }
+    }
+
+    private static void drawPhaseMarker(DrawContext context, MinecraftClient client, int x,
+                                        int frameY, String label, boolean active, int color) {
+        int markerColor = active ? brighten(color) : 0xFF6D6880;
+        context.fill(x - 1, frameY + 8, x + 1, frameY + 32, markerColor);
+        context.fill(x - 3, frameY + 7, x + 3, frameY + 9, markerColor);
+        context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(label), x,
+                frameY + 40, active ? 0xFFF0E8FF : 0xFF8B879B);
+    }
+
+    private static String formatHealth(double health, double maxHealth) {
+        double safeHealth = Math.max(0.0D, Double.isFinite(health) ? health : 0.0D);
+        double safeMax = Math.max(1.0D, Double.isFinite(maxHealth) ? maxHealth : 1.0D);
+        return String.format(Locale.ROOT, "%.0f / %.0f", Math.min(safeHealth, safeMax), safeMax);
+    }
+
+    private static String phaseLabel(String phaseId) {
+        return switch (phaseId == null ? "" : phaseId) {
+            case "HUNT" -> "ОХОТА";
+            case "RIFT" -> "РАЗЛОМ";
+            case "OVERLOAD" -> "ПЕРЕГРУЗКА";
+            case "RAGE" -> "ЯРОСТЬ";
+            case "LAST_SEAL" -> "ПОСЛЕДНЯЯ ПЕЧАТЬ";
+            default -> "ПРОБУЖДЕНИЕ";
+        };
+    }
+
+    private static String castLabel(String castState) {
+        return switch (castState == null ? "" : castState) {
+            case "TELEGRAPHING" -> "КАНАЛИЗАЦИЯ";
+            case "EXECUTING" -> "АТАКА";
+            case "RECOVERY" -> "ВОССТАНОВЛЕНИЕ";
+            default -> "REAL HP · ФАЗОВЫЕ ПРЕДЕЛЫ";
+        };
+    }
+
+    private static float clampProgress(double value) {
+        return (float) Math.max(0.0D, Math.min(1.0D,
+                Double.isFinite(value) ? value : 0.0D));
     }
 
     private static int phaseColor(String phaseId, String castState) {

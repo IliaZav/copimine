@@ -213,6 +213,10 @@ function startAttacking () {
   if (synchronizedBurstCount > 0) {
     startFollowing()
     startSynchronizedBurst()
+    // The burst proves same-tick concurrency, but it must not replace the
+    // normal cadence.  Keep sending real use_entity packets for the rest of
+    // the probe so a five-client run can exercise the required 100+ hits.
+    attackTimer = setInterval(tryAttack, attackEveryMs)
     console.log(`ATTACK_RELEASED ${username} synchronized=true`)
     return
   }

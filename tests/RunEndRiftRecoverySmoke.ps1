@@ -53,7 +53,43 @@ Write-Host 'PASS recovery state=UNLOCKED|UNCONFIGURED|COLLECTING|READY_FOR_PLAYE
 Write-Host 'PASS recovery endUnlocked=true'
 Write-Host 'PASS recovery durable event-state phase and end-unlocked=true'
 if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
-  $logText = Get-Content -LiteralPath $LogPath -Raw
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  function Read-GzipLogText {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $fileStream = [IO.File]::OpenRead($Path)
+    $gzipStream = [IO.Compression.GzipStream]::new(
+      $fileStream, [IO.Compression.CompressionMode]::Decompress)
+    $reader = [IO.StreamReader]::new($gzipStream)
+    try {
+      return $reader.ReadToEnd()
+    } finally {
+      $reader.Dispose()
+      $gzipStream.Dispose()
+      $fileStream.Dispose()
+    }
+  }
+
+  # Paper rotates latest.log at midnight/size boundaries.  A restart record
+  # can therefore be in the newest compressed sibling even while the active
+  # latest.log contains only the post-startup runtime diagnostics.  Read the
+  # active log plus a bounded set of rotated siblings so recovery evidence is
+  # tied to the same isolated server without scanning unbounded history.
+  $logFiles = [System.Collections.Generic.List[string]]::new()
+  $logFiles.Add((Resolve-Path -LiteralPath $LogPath).Path)
+  $logDirectory = Split-Path -Parent $LogPath
+  if (Test-Path -LiteralPath $logDirectory -PathType Container) {
+    Get-ChildItem -LiteralPath $logDirectory -Filter '*.gz' -File |
+      Sort-Object LastWriteTime -Descending |
+      Select-Object -First 8 |
+      ForEach-Object { $logFiles.Add($_.FullName) }
+  }
+  $logText = (($logFiles | Select-Object -Unique | ForEach-Object {
+        if ($_.EndsWith('.gz', [StringComparison]::OrdinalIgnoreCase)) {
+          Read-GzipLogText -Path $_
+        } else {
+          Get-Content -LiteralPath $_ -Raw
+        }
+      }) -join [Environment]::NewLine)
   if ($logText -match 'NoClassDefFoundError|ClassNotFoundException|CopiMineEndEvent failed closed') {
     throw 'Recovery smoke found a typed dependency or failed-closed End Event bootstrap error.'
   }
@@ -83,5 +119,7 @@ if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
   } else {
     Write-Host 'PASS recovery persisted phase and idempotent already-unlocked transition'
   }
+  Write-Host ("PASS recovery startup logs current={0} rotated={1}" -f
+    $LogPath, [Math]::Max(0, $logFiles.Count - 1))
 }
 Write-Host 'End Rift durable recovery smoke passed.'

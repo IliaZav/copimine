@@ -5,10 +5,12 @@ param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$SecondBotName = 'RiftDamageB',
   [string[]]$AdditionalBotNames = @(),
-  # The probe needs enough packets to observe same-tick coalescing, but must
-  # stop before five real clients can drain the 5000-HP local boss.
+  # The probe needs enough packets to observe same-tick coalescing while
+  # keeping the disposable boss health high enough for a 100+ hit run.
   [int]$BotDurationSeconds = 35,
   [int]$TimeoutSeconds = 55,
+  [ValidateRange(1, 100000)]
+  [int]$MinimumAcceptedEvents = 100,
   [switch]$RequireSameTick,
   [switch]$HighLevelAttack,
   [switch]$TraceAttackPackets
@@ -296,6 +298,9 @@ try {
   }
   if ($attackers.Count -lt 2) {
     throw "Damage events came from fewer than two player UUIDs: $($attackers -join ',')"
+  }
+  if ($playerNames.Count -eq 5 -and $bossLines.Count -lt $MinimumAcceptedEvents) {
+    throw "The five-player probe requires at least $MinimumAcceptedEvents accepted events; observed $($bossLines.Count)."
   }
   $final = Get-BossSnapshot
   $expected = [Math]::Max(0.0D, $boss.Health - $sum)

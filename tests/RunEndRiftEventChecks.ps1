@@ -61,7 +61,7 @@ Invoke-GateStep 'Resource pack build' {
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py'
+    & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py'
   } finally {
     Pop-Location
   }

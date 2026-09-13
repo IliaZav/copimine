@@ -6,6 +6,7 @@ public final class CombatMovementPolicyTest {
         testStepStopsAtTarget();
         testInvalidInputsProduceNoMovement();
         testArenaBoundsRejectUnsafePositions();
+        testContainmentRadiusLeavesNativeMovementMargin();
         System.out.println("CombatMovementPolicyTest OK");
     }
 
@@ -45,6 +46,18 @@ public final class CombatMovementPolicyTest {
         check(!CombatMovementPolicy.withinBounds(0.5D, 68.0D, 0.5D,
                 4.5D, 72.0D, 0.5D, 20.0D, 3.0D, 3.5D),
                 "vertical escape must be rejected");
+    }
+
+    private static void testContainmentRadiusLeavesNativeMovementMargin() {
+        double configuredRadius = 20.0D;
+        double movementRadius = CombatMovementPolicy.movementContainmentRadius(configuredRadius);
+        check(movementRadius < configuredRadius,
+                "AI movement radius must be inside the configured leash");
+        check(configuredRadius - movementRadius
+                        >= CombatMovementPolicy.CONTAINMENT_SAFETY_MARGIN_BLOCKS,
+                "AI movement radius must reserve the configured safety margin");
+        check(CombatMovementPolicy.movementContainmentRadius(Double.NaN) == 0.0D,
+                "non-finite containment radius must fail closed");
     }
 
     private static void check(boolean condition, String message) {

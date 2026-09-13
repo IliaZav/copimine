@@ -2,7 +2,12 @@
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$BotName = 'RiftSpellTest',
-  [int]$BotDurationSeconds = 120
+  # The complete matrix contains 24 music phases, seven boss spell probes,
+  # recovery waits, and the mini-boss assignment checks.  Keep the disposable
+  # client connected for the whole sequence so a valid final-strike probe is
+  # not invalidated by the bot's own lifetime expiring.
+  [ValidateRange(240, 600)]
+  [int]$BotDurationSeconds = 300
 )
 
 # Local-only spell/music smoke. It talks to the isolated Paper RCON endpoint,

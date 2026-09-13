@@ -7,8 +7,23 @@ package me.copimine.endevent.domain;
  */
 public final class CombatMovementPolicy {
     public static final double MAX_COMBAT_STEP_BLOCKS = 0.20D;
+    /**
+     * Native Pathfinder movement can advance an entity between controller
+     * samples. Keep wave destinations inside the configured leash so a valid
+     * one-tick movement cannot briefly cross the diagnostic boundary.
+     */
+    public static final double CONTAINMENT_SAFETY_MARGIN_BLOCKS = 1.0D;
 
     private CombatMovementPolicy() {
+    }
+
+    public static double movementContainmentRadius(double configuredRadius) {
+        if (!finite(configuredRadius) || configuredRadius <= 0.0D) {
+            return 0.0D;
+        }
+        double reserved = configuredRadius - CONTAINMENT_SAFETY_MARGIN_BLOCKS;
+        return reserved > MAX_COMBAT_STEP_BLOCKS
+                ? reserved : configuredRadius * 0.5D;
     }
 
     /**

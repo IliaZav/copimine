@@ -405,6 +405,78 @@ def test_live_probes_use_only_current_encounter_vocabulary() -> None:
             assert token not in text, f"{path}: stale live-probe token {token}"
 
 
+def test_spell_matrix_probe_keeps_bot_alive_for_full_matrix() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftSpellMatrixLive.ps1")
+    assert re.search(
+        r"\[ValidateRange\(240,\s*600\)\][\s\S]*?\[int\]\$BotDurationSeconds\s*=\s*300",
+        probe,
+    ), "spell matrix bot must outlive music, spell, and final-strike probes"
+
+
+def test_wave_containment_watchdog_runs_every_server_tick() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    movement = read(DOMAIN / "CombatMovementPolicy.java")
+    assert "waveContainmentTask" in source
+    assert re.search(
+        r"runTaskTimer\(\s*this,\s*this::tickWaveMobContainment,\s*1L,\s*1L\)",
+        source,
+    ), "wave containment must be checked every server tick"
+    assert "tickWaveMobContainment" in source
+    assert "CONTAINMENT_SAFETY_MARGIN_BLOCKS" in movement
+    assert re.search(
+        r"private void enforceWaveMobContainment\(\)[\s\S]*?double radius\s*=\s*waveMovementRadius\(\)",
+        source,
+    ), "wave leash must enter the boundary margin before native pathing can overshoot"
+
+
+def test_single_boss_damage_probe_isolates_reach_from_real_health() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftBossDamageLive.ps1")
+    assert re.search(
+        r"boss spawn official confirm[\s\S]*?boss freeze[\s\S]*?boss damage 3000",
+        probe,
+    ), "single-boss survival probe must freeze the target before measuring HP"
+    assert re.search(
+        r"finally[\s\S]*?boss unfreeze[\s\S]*?boss kill cleanup",
+        probe,
+    ), "single-boss probe must release its local freeze during cleanup"
+
+
+def test_obelisk_probe_primes_health_after_survival_protection() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftObeliskLive.ps1")
+    assert re.search(
+        r"gamemode spectator \$name[\s\S]*?data merge entity \$name \{Health:1024f\}[\s\S]*?gamemode survival \$name[\s\S]*?cmend test wave 4",
+        probe,
+    ), "obelisk reflection probe must finish health setup before returning the bot to survival"
+    assert re.search(
+        r"effect clear \$name[\s\S]*?effect give \$name minecraft:resistance 120 4 true[\s\S]*?data merge entity \$name \{Health:1024f\}",
+        probe,
+    ), "obelisk reflection probe must protect the bot before priming its real health"
+
+
+def test_official_wave7_probe_targets_every_supported_living_mob_type() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert "@('enderman', 'skeleton', 'spider')" in probe, (
+        "Wave 7 chamber positioning must enumerate every official living mob type"
+    )
+    assert "type=$entityType" in probe, (
+        "Wave 7 helper must use the enumerated type when selecting targets"
+    )
+
+
+def test_official_obelisk_probe_covers_four_cardinal_reflection_lanes() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert "$halfPi = [Math]::PI / 2.0D" in probe, (
+        "obelisk lane angles must be computed as one scalar before array construction"
+    )
+    assert "@(-$halfPi, 0.0D, $halfPi, [Math]::PI)" in probe, (
+        "five-player obelisk probe must keep cardinal angles scalar"
+    )
+    assert re.search(
+        r"\$obeliskRingAngles[\s\S]*?\[Math\]::PI\s*/\s*2\.0D[\s\S]*?\[Math\]::PI",
+        probe,
+    ), "multi-player obelisk probe must cover the four authored cardinal lanes"
+
+
 def test_official_probe_keeps_the_pre_ritual_cursor_for_w1() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(r"\$runLogOffset\s*=\s*Get-LogLength", probe)

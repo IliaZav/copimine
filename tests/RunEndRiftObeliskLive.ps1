@@ -187,7 +187,10 @@ try {
   Start-Sleep -Seconds 3
 
   foreach ($name in $names) {
-    $null = Invoke-LocalRcon ("gamemode survival $name")
+    # Use Spectator only while priming the disposable probe. The event starts
+    # in Survival below, after the health/position setup is complete; this
+    # prevents already-running arena hazards from racing the setup assertion.
+    $null = Invoke-LocalRcon ("gamemode spectator $name")
     $null = Invoke-LocalRcon ("clear $name")
     # 1024 is the legal vanilla attribute ceiling.  The former 100000 probe
     # value can be clamped/rejected by Paper, leaving a real client at 20 HP
@@ -198,6 +201,12 @@ try {
     # Falling is a player-side test harness adjustment only; it does not
     # change the world or event rules.
     $null = Invoke-LocalRcon ("effect clear $name")
+    # The reflection probe is measuring projectile ownership/HP transitions,
+    # not player survivability.  Protect the disposable client before writing
+    # its large real HP value so an asynchronous fireball cannot make the
+    # setup assertion flaky between data merge and data get.
+    $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 120 4 true")
+    $null = Invoke-LocalRcon ("effect give $name minecraft:regeneration 120 4 true")
     $null = Invoke-LocalRcon ("effect give $name minecraft:slow_falling 120 0 true")
     $null = Invoke-LocalRcon ("data merge entity $name {Health:1024f}")
     $healthResult = Invoke-LocalRcon ("data get entity $name Health")
@@ -220,6 +229,9 @@ try {
       $pos[0].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
       $pos[1].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' ' +
       $pos[2].ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) + ' 90 0')
+  }
+  foreach ($name in $names) {
+    $null = Invoke-LocalRcon ("gamemode survival $name")
   }
 
   $waveOffset = Get-LogLength

@@ -77,6 +77,11 @@ try {
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
   $null = Invoke-LocalRcon -CommandText 'cmend boss spawn official confirm'
+  # This probe isolates the real-health damage transaction.  Without the
+  # local freeze, the official boss can path away while the survival bot is
+  # preparing its next packet; the bot then reports an attack although Paper
+  # correctly never creates a damage event for an out-of-reach target.
+  $null = Invoke-LocalRcon -CommandText 'cmend boss freeze'
   $status = Get-Status
   $bossUuid = Get-BossUuid $status
 
@@ -179,6 +184,9 @@ try {
   if ($process -and -not $process.HasExited) {
     try { $process.Kill() } catch { }
   }
+  try {
+    Invoke-LocalRcon -CommandText 'cmend boss unfreeze' | Out-Null
+  } catch { }
   try {
     Invoke-LocalRcon -CommandText 'cmend boss kill cleanup' | Out-Null
     $cleanupStatus = Get-Status

@@ -390,8 +390,20 @@ function Teleport-PlayersToObeliskRing {
   $x = [double]$coordinates[0]
   $y = [double]$coordinates[1]
   $z = [double]$coordinates[2]
+  # Calculate the scalar once.  PowerShell parses division inside an array
+  # literal as an operation on the whole expression in some invocation
+  # contexts, which can turn the five-player lane list into Object[].
+  $halfPi = [Math]::PI / 2.0D
+  $obeliskRingAngles = if ($playerNames.Count -le 2) {
+    @(-$halfPi, $halfPi)
+  } else {
+    # Four cardinal lanes match the authored Wave 4 obelisk anchors.  With
+    # five or more clients the extra players reuse a lane, while every active
+    # obelisk still has a nearby reflection-capable client.
+    @(-$halfPi, 0.0D, $halfPi, [Math]::PI)
+  }
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
-    $angle = -[Math]::PI / 2.0D + (2.0D * [Math]::PI * $index / $playerNames.Count)
+    $angle = $obeliskRingAngles[$index % $obeliskRingAngles.Count]
     $pointX = $x + 0.5D + [Math]::Cos($angle) * 8.0D
     $pointZ = $z + 0.5D + [Math]::Sin($angle) * 8.0D
     Teleport-Player $playerNames[$index] $pointX $y $pointZ
@@ -608,14 +620,29 @@ function Teleport-PlayersToNearestChamberMob {
     if ($null -eq $playerPosition) { continue }
     $playerChamber = Get-ChamberIndex $playerPosition[0] $playerPosition[2] $wave7ChamberCount
     if ($playerChamber -lt 0) { continue }
-    $targetText = Invoke-LocalRcon ("execute positioned $(Format-Coordinate $playerPosition[0]) $(Format-Coordinate $playerPosition[1]) $(Format-Coordinate $playerPosition[2]) run data get entity @e[tag=copimine_end_event,type=enderman,sort=nearest,limit=1,distance=..24] Pos")
-    $targetPosition = Parse-Position $targetText
-    if ($null -eq $targetPosition) { continue }
-    if ((Get-ChamberIndex $targetPosition[0] $targetPosition[2] $wave7ChamberCount) -ne $playerChamber) { continue }
-    $dx = $targetPosition[0] - $playerPosition[0]
-    $dy = $targetPosition[1] - $playerPosition[1]
-    $dz = $targetPosition[2] - $playerPosition[2]
-    if ($dx * $dx + $dy * $dy + $dz * $dz -gt 18.0D) {
+    # Wave 7 can leave one official elite/guardian alive.  Its custom name is
+    # not a reliable protocol type, so query every LivingEntity type used by
+    # the current wave and choose the nearest same-chamber target.  Restricting
+    # this helper to endermen made a valid skeleton/spider guardian invisible
+    # to the disposable positioning aid and could make the official probe hang.
+    $targetCandidates = @()
+    foreach ($entityType in @('enderman', 'skeleton', 'spider')) {
+      $targetText = Invoke-LocalRcon ("execute positioned $(Format-Coordinate $playerPosition[0]) $(Format-Coordinate $playerPosition[1]) $(Format-Coordinate $playerPosition[2]) run data get entity @e[tag=copimine_end_event,type=$entityType,sort=nearest,limit=1,distance=..24] Pos")
+      $targetPosition = Parse-Position $targetText
+      if ($null -eq $targetPosition) { continue }
+      if ((Get-ChamberIndex $targetPosition[0] $targetPosition[2] $wave7ChamberCount) -ne $playerChamber) { continue }
+      $dx = $targetPosition[0] - $playerPosition[0]
+      $dy = $targetPosition[1] - $playerPosition[1]
+      $dz = $targetPosition[2] - $playerPosition[2]
+      $targetCandidates += [pscustomobject]@{
+        Position = $targetPosition
+        DistanceSquared = $dx * $dx + $dy * $dy + $dz * $dz
+      }
+    }
+    $targetCandidate = $targetCandidates | Sort-Object DistanceSquared | Select-Object -First 1
+    if ($null -eq $targetCandidate) { continue }
+    $targetPosition = $targetCandidate.Position
+    if ($targetCandidate.DistanceSquared -gt 18.0D) {
       Teleport-Player $name $targetPosition[0] $targetPosition[1] $targetPosition[2]
     }
   }

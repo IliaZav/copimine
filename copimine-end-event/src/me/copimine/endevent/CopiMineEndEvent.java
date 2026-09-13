@@ -612,6 +612,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventArtifactRewardService rewardService;
     private BukkitTask bootstrapTask;
     private BukkitTask tickTask;
+    private BukkitTask waveContainmentTask;
     private BukkitTask musicLoopTask;
     private BukkitTask arenaBoundaryTask;
     private BukkitTask gateSelectionPreviewTask;
@@ -993,6 +994,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         resumeVictorySaga();
         tickTask = Bukkit.getScheduler().runTaskTimer(this, this::tick, 1L, 5L);
+        // Pathfinder movement is native Paper state and can advance between
+        // the five-tick AI decisions.  A single central per-tick watchdog
+        // keeps every current-generation wave mob inside the leash without
+        // creating one scheduler task per entity.
+        waveContainmentTask = Bukkit.getScheduler().runTaskTimer(
+                this, this::tickWaveMobContainment, 1L, 1L);
         playEventMusic(musicForPhase());
         getLogger().info("CopiMineEndEvent services ready; phase=" + phase + " event=" + eventId);
     }
@@ -1955,6 +1962,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseOverlayChunkTickets();
         if (tickTask != null) {
             tickTask.cancel();
+        }
+        if (waveContainmentTask != null) {
+            waveContainmentTask.cancel();
+            waveContainmentTask = null;
         }
         if (bootstrapTask != null) {
             bootstrapTask.cancel();
@@ -7285,6 +7296,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Paper's Pathfinder can move a mob after the five-tick tactical pass.
+     * Keep this watchdog deliberately small and central: it only inspects
+     * already-owned wave entities and applies the same safe resolver as the
+     * normal AI controller.
+     */
+    private void tickWaveMobContainment() {
+        if (!bootstrapped || !isEnabled()
+                || (!isCombatPhase() && !hasLiveTestWaveEntities())) {
+            return;
+        }
+        enforceWaveMobContainment();
+    }
+
     private boolean isWaveTargetAllowed(Entity entity, Player player) {
         if (!isCombatTarget(player) || !realitySplitTargetAllowed(entity, player)) {
             return false;
@@ -7358,7 +7383,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location destination = waveTacticalDestination(mob, target, kind, now);
         if (destination == null || isCoreBlockPosition(destination)) {
             destination = findSafeCombatLocation(anchor, waveCoreFlankDestination(anchor, mob),
-                    boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                    waveMovementRadius(),
                     MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob));
         }
         if (destination == null || outsideCombatVertical(destination, anchor)
@@ -7538,7 +7563,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return findSafeCombatLocation(anchor, preferred,
-                boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                waveMovementRadius(),
                 MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(skeleton));
     }
 
@@ -7570,7 +7595,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (anchor == null) {
             return;
         }
-        double radius = boundedCombatRadius(config.containmentRadius());
+        double radius = waveMovementRadius();
         for (Entity entity : new ArrayList<>(ownedEntities.values())) {
             String kind = readString(entity, keyKind);
             if (isWaveCombatKind(kind) && isLiveOwnedEntity(entity.getUniqueId())) {
@@ -7617,7 +7642,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         preferred = applyMobManeuver(preferred, anchor, mob, target, maneuver);
         preferred = constrainRealitySplitPreferred(anchor, preferred, mob);
         Location destination = findSafeCombatLocation(anchor, preferred,
-                boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                waveMovementRadius(),
                 MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob));
         if (destination != null) {
             getLogger().fine("WAVE_AI_TACTIC_DESTINATION entity=" + mob.getUniqueId()
@@ -7717,7 +7742,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             // so a whole wave surrounds the Core instead of collapsing onto
             // one fallback cell or repeatedly pushing against the block.
             destination = findSafeCombatLocation(anchor, waveCoreFlankDestination(anchor, mob),
-                    boundedCombatRadius(config.containmentRadius()) - 1.0D,
+                    waveMovementRadius(),
                     MIN_WAVE_CORE_DISTANCE_BLOCKS);
         }
         if (destination == null
@@ -9464,6 +9489,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private double boundedCombatRadius(double configuredRadius) {
         return Math.max(1.0D, Math.min(MAX_COMBAT_RADIUS_BLOCKS, configuredRadius));
+    }
+
+    /** Keep native Pathfinder movement inside the public containment radius. */
+    private double waveMovementRadius() {
+        return CombatMovementPolicy.movementContainmentRadius(
+                boundedCombatRadius(config.containmentRadius()));
     }
 
     private int abilityDebuffAmplifier(String abilityId) {

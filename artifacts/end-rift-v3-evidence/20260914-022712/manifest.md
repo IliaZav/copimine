@@ -29,6 +29,7 @@ changed.
 | `boss-multiplayer/FreshFiveA.log` … `FreshFiveE.log` | captured | five bot reports, 7234 bytes each |
 | `performance/performance-five.csv` | captured | `5133A4A5687D29D8F447BE545991DD84991009E16642C022020DF659977670A`, 664 bytes |
 | `reports/live-results.md` | tracked | summarized command output and PASS criteria |
+| `reports/extended-live-results.md` | tracked | additional AI, visual-contract, scaling, spell, gate and recovery probes |
 | `client/native-qa-not-verified.md` | tracked | records the Computer Use limitation |
 
 The `.log` files are intentionally retained locally as evidence but remain

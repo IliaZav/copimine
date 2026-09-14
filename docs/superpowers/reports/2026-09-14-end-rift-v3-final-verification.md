@@ -186,3 +186,23 @@ The remaining action is to rerun the supplied native Computer Use check on a
 host where the Minecraft client window is exposed, then capture real
 screenshots/video for the listed models, textures, bossbar, rooms, gates,
 obelisk, core, rings, tentacles and all wave/boss transitions.
+
+## Video files
+
+| File | What it would show | Build | Status |
+|---|---|---|---|
+| `video/01_END_RIFT_V3_FULL_FINAL_RUN.mp4` | native continuous W1–W7 and boss run | current local artifact | NOT VERIFIED — no native recorder/window |
+| `video/clips/*.mp4` | native mechanics and animation clips | current local artifact | NOT VERIFIED — no native recorder/window |
+
+No video is claimed or fabricated. The evidence directory contains the
+server-side logs and reports only.
+
+## Screenshots
+
+| Location | What it would show | Status |
+|---|---|---|
+| `screenshots/` | portal, obelisks, core, rooms, boss, tentacles and phase visuals | NOT VERIFIED — native Minecraft surface unavailable |
+| `client/` | client log and native capture metadata | native QA note only; no client screenshot |
+
+Additional server-side probes are recorded in
+`artifacts/end-rift-v3-evidence/20260914-022712/reports/extended-live-results.md`.

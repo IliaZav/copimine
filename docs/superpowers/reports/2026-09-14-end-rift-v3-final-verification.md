@@ -199,11 +199,21 @@ LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits
 
 The official two-player Paper run passed W1 through W7, including W6
 `COLLAPSE_RINGS`, W7 `REALITY_SPLIT`, all six boss phases
-`AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`, victory and cleanup. Final
-state was `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`. The latest run
-used event `09572556-ee1d-45cb-82e7-aa7fe47a8019` and emitted
-`BOSS_DEFEAT_COMMITTED`, one `BOSS_REWARDS_DELIVERED`, and
-`VICTORY_COMPLETE`.
+`AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`, victory and cleanup. The
+historical run used event `09572556-ee1d-45cb-82e7-aa7fe47a8019`; the fresh
+post-fix run used event `344f3c8c-42c5-42d2-88a2-cd481ce5e5cc` and emitted all
+wave transitions, `BOSS_DEFEAT_COMMITTED`, one
+`BOSS_REWARDS_DELIVERED`, and `END_EVENT_VICTORY_MEMORIAL`. Its final
+authoritative state was `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`.
+
+The fresh run used two real Mineflayer clients (`EndRiftFinalC2` and
+`EndRiftFinalD2`) with a 1200-second client lifetime. It completed the three
+Wave 6 pairs and the full Wave 7 chamber objective before boss combat. The
+boss started at real HP `5000.0/5000.0`; accepted transactions reduced that
+same `LivingEntity` through every phase, including `TELEGRAPHING`, `RECOVERY`
+and `LAST_SEAL`, and the lethal transaction recorded
+`health_before=62.5 health_after=0.0 lethal=true`. No wipe or offline-grace
+condition occurred in this run.
 
 ## Native Minecraft verification status
 

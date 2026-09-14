@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
-  [string]$BotName = 'EndRiftShieldProbe',
+  [string]$BotName = 'RiftShieldProbe',
   [ValidateRange(20, 180)]
   [int]$BotDurationSeconds = 55
 )
@@ -26,6 +26,9 @@ if (-not (Test-Path -LiteralPath $serverDir -PathType Container)) {
 }
 if (-not (Test-Path -LiteralPath $botScript -PathType Leaf)) {
   throw "Local boss combat probe is missing: $botScript"
+}
+if ($BotName.Length -gt 16) {
+  throw "Minecraft usernames are limited to 16 characters: $BotName"
 }
 
 function Invoke-LocalRcon {

@@ -69,6 +69,25 @@ The relevant listener ordering is:
 `EventRealHealthDamagePolicy` and `BossRealHealthDamagePolicy`; trace data is
 implemented by `CombatTraceRecord` and `CombatTraceService`.
 
+## Continuation fixes
+
+- The disposable Creative full-run now snapshots and restores the participant
+  set, clears the transient wave/objective marker before boss cleanup, removes
+  wave objective state, and persists the restored state. The live visual probe
+  now requires `wave=0 event-mobs=0 boss=none` and the same participant count
+  after cleanup.
+- The server-side visual diagnostic now reports the actual client catalog
+  paths instead of synthesizing filenames from display ids. The Paper probe
+  reported the supplied boss texture at
+  `assets/copimineclient/textures/entity/end_rift_user_boss.png` and the
+  supplied geometry at
+  `assets/copimineclient/models/entity/end_rift_guardian/geometry.json`.
+- The first shield probe failure was in the disposable Mineflayer harness: its
+  default name had 18 characters, beyond Minecraft's 16-character username
+  limit, so Paper rejected the handshake before a player joined. The default
+  is now `RiftShieldProbe` and the script rejects overlong names explicitly.
+  The production shield and projectile paths were not changed.
+
 ## Implemented areas
 
 - Official V2/V3 boss authority is `GENERIC_MAX_HEALTH` plus
@@ -113,7 +132,10 @@ Commands and results:
 
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventChecks.ps1
-PASS — 68 passed in 1.11s; Java policies, persistence/recovery, builds and pack checks passed
+PASS — 72 passed in 1.09s; Java policies, persistence/recovery, builds and pack checks passed
+
+python -m pytest -q tests/test_end_event_current_contract.py -k boss_shield_live_probe_covers
+PASS — 1 passed; the default shield probe name is within Minecraft's username limit
 
 python -m pytest -q tests/test_end_rift_client_hud_contract.py
 PASS — 2 passed; phase-marker labels and cast status have separate layout lanes
@@ -140,29 +162,37 @@ Evidence files are under
 ### Mob
 
 ```text
-attacks=69
-LIVE_MOB_COMBAT_PASS moved=2020 player_hurt=62 player_damage_applied=65 ai_targets=42 ai_paths=25
+attacks=62
+LIVE_MOB_COMBAT_PASS moved=1842 player_hurt=219 player_damage_applied=221 ai_targets=808 ai_paths=474
 ```
 
 ### Boss real HP and shield
 
 ```text
-boss damage: before=2000 after=1720 delta=280 — PASS
+real HP: status=hp-5000/5000 physical-5000/5000; entity Health=5000.0f; max attribute=5000.0; legacy virtual marker absent — PASS
+boss damage: before=2000 after=1765 delta=235; player_damage_events=47 — PASS
 shield ON: 950 -> 950 — PASS
-shield OFF: 3950 -> 3942 — PASS
+shield OFF: 3950 -> 3945 — PASS
 shield restored: 950 -> 950 — PASS
 ```
 
 ### Five players, same target, same-tick groups
 
 ```text
-players=5 events=495 same_tick_event_groups=97
+players=5 events=435 same_tick_event_groups=86
 starting HP=5000
-accepted final damage=1999.14377391338560
-expected ending HP=3000.85622608661440
-actual ending HP=3000.8586
-absolute health_delta=0.00237391338560
+accepted final damage=1756.26508891582667
+expected ending HP=3243.73491108417333
+actual ending HP=3243.7402
+absolute health_delta=0.00528891582667
 PASS — within the documented entity-health float write tolerance
+```
+
+The Wave 4 projectile regression was rerun after one disposable-client timing
+miss. The passing run reported:
+
+```text
+LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits=3 first_target_hp=2 second_target_hp=1 destroyed=true pulse_radius=5 fireball_cap=1 real_blocks=true
 ```
 
 ### Waves and boss phases
@@ -170,7 +200,10 @@ PASS — within the documented entity-health float write tolerance
 The official two-player Paper run passed W1 through W7, including W6
 `COLLAPSE_RINGS`, W7 `REALITY_SPLIT`, all six boss phases
 `AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL`, victory and cleanup. Final
-state was `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`.
+state was `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`. The latest run
+used event `09572556-ee1d-45cb-82e7-aa7fe47a8019` and emitted
+`BOSS_DEFEAT_COMMITTED`, one `BOSS_REWARDS_DELIVERED`, and
+`VICTORY_COMPLETE`.
 
 ## Native Minecraft verification status
 

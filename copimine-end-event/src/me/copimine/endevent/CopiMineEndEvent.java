@@ -760,6 +760,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long creativeTestGeneration;
     private int creativeTestStage;
     private int creativeTestStageTicks;
+    /** Participant ids observed before a disposable Creative run starts. */
+    private final Set<UUID> creativeTestParticipantSnapshot = new LinkedHashSet<>();
     private long nextVictoryRetryMillis;
     private UUID bossUuid;
     private UUID bossKillerUuid;
@@ -4035,12 +4037,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (visual.isBlank()) {
                     continue;
                 }
+                String resource = clientVisualResourcePath(visual);
                 message(sender, "&7MOB_VISUAL uuid=" + entity.getUniqueId()
                         + " role=" + readString(entity, keyKind)
                         + " clientVisual=" + visual
                         + " boundViewers=" + eventAudience().size()
-                        + " resource=assets/copimineclient/textures/entity/"
-                        + visual.toLowerCase(Locale.ROOT) + ".png");
+                        + " resource=" + (resource.isBlank() ? "UNMAPPED" : resource));
                 reported++;
             }
             String total = "MOB_VISUAL_TOTAL=" + reported
@@ -4058,15 +4060,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String requestedPhase = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : bossPhase.name().toLowerCase(Locale.ROOT);
             message(sender, "&7BOSS_VISUAL uuid=" + live.getUniqueId()
                     + " bossPhase=" + bossPhase.name()
-                    + " requestedPhase=" + requestedPhase
-                    + " bossBinding=" + (bossBindingInstanceId.isBlank() ? "none" : bossBindingInstanceId)
-                    + " boundViewers=" + eventAudience().size()
-                    + " resource=assets/copimineclient/textures/entity/rift_guardian_"
-                    + requestedPhase + ".png"
-                    + " &8(official phase/roster/victory не изменены)");
+                     + " requestedPhase=" + requestedPhase
+                     + " bossBinding=" + (bossBindingInstanceId.isBlank() ? "none" : bossBindingInstanceId)
+                     + " boundViewers=" + eventAudience().size()
+                     + " resource=" + clientBossResourcePath()
+                     + " model=" + clientBossModelResourcePath()
+                     + " textureStrategy=shared_supplied_boss_texture"
+                     + " &8(official phase/roster/victory не изменены)");
             return;
         }
         message(sender, "&e/cmend test visuals mobs|boss [phase]");
+    }
+
+    private String clientVisualResourcePath(String visualId) {
+        return switch (visualId) {
+            case CLIENT_VISUAL_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
+            case CLIENT_VISUAL_ELITE -> "assets/copimineclient/textures/entity/end_rift_elite.png";
+            case CLIENT_VISUAL_SPIDER -> "assets/copimineclient/textures/entity/end_rift_user_spider.png";
+            case CLIENT_VISUAL_SKELETON -> "assets/copimineclient/textures/entity/end_rift_skeleton.png";
+            case CLIENT_VISUAL_ELITE_SKELETON -> "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png";
+            case CLIENT_VISUAL_OBELISK_FULL -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_full_hd.png";
+            case CLIENT_VISUAL_OBELISK_DAMAGED -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_damaged_hd.png";
+            case CLIENT_VISUAL_OBELISK_CRITICAL -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_critical_hd.png";
+            case EVENT_KIND_RIFT_FIREBALL -> "assets/copimineclient/textures/entity/end_event_rift_fireball_hd.png";
+            case CLIENT_VISUAL_TENTACLE -> "assets/copimineclient/textures/entity/end_rift_tentacle_hd.png";
+            default -> "";
+        };
+    }
+
+    private String clientBossResourcePath() {
+        return "assets/copimineclient/textures/entity/end_rift_user_boss.png";
+    }
+
+    private String clientBossModelResourcePath() {
+        return "assets/copimineclient/models/entity/end_rift_guardian/geometry.json";
     }
 
     /**
@@ -4110,6 +4137,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearBossOnly();
         clearActiveRiftProjectiles();
         clearVoidMarkZones();
+        creativeTestParticipantSnapshot.clear();
+        creativeTestParticipantSnapshot.addAll(participantUuids);
         creativeTestPlayerUuid = player.getUniqueId();
         creativeTestGeneration = generation;
         creativeTestStage = 0;
@@ -4331,9 +4360,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " success=" + success + " reason=" + reason
                 + " official_phase_unchanged=" + !officialCombatStateActive()
                 + " official_roster=" + officialRewardRoster.size());
+        // The creative run drives the production wave/objective controllers
+        // without changing the durable phase.  Reset the transient marker
+        // before clearBossOnly(), whose disposable cleanup snapshot may run
+        // while the test flag is still set.
+        activeWave = 0;
         clearWaveEntities();
+        clearWaveObjectiveState();
         clearBossOnly();
         clearCombatAiState();
+        participantUuids.clear();
+        participantUuids.addAll(creativeTestParticipantSnapshot);
+        creativeTestParticipantSnapshot.clear();
         if (bossBar != null) {
             bossBar.removeAll();
         }
@@ -4341,6 +4379,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         creativeTestGeneration = 0L;
         creativeTestStage = 0;
         creativeTestStageTicks = 0;
+        if (!saveStateSync()) {
+            getLogger().warning("CREATIVE_TEST_CLEANUP_STATE_SAVE_FAILED event=" + eventId
+                    + " generation=" + runGeneration);
+        }
         getLogger().info("CREATIVE_TEST_COMPLETE event=" + eventId + " generation=" + runGeneration
                 + " success=" + success + " operator=" + operator
                 + " official_phase=" + phase + " official_roster=" + officialRewardRoster.size()

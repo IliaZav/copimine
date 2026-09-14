@@ -223,6 +223,43 @@ def test_disposable_boss_cleanup_clears_test_wave_marker() -> None:
     )
 
 
+def test_creative_full_run_cleans_transient_wave_state() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    match = re.search(
+        r"private void finishCreativeTest\(boolean success, String reason\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\n\n    private void handleWave",
+        root,
+    )
+    assert match, "creative full-run cleanup method must remain inspectable"
+    body = match.group("body")
+    assert "clearWaveObjectiveState();" in body, (
+        "creative full-run cleanup must remove objective visuals, barriers, rings and timers"
+    )
+    assert re.search(r"activeWave\s*=\s*0\s*;", body), (
+        "creative full-run cleanup must not leave the disposable wave marker active"
+    )
+    assert "saveStateSync" in body, (
+        "creative full-run cleanup must persist the restored transient state"
+    )
+    assert "creativeTestParticipantSnapshot" in body, (
+        "creative full-run cleanup must remember the pre-test participant state"
+    )
+    assert "participantUuids.clear();" in body
+    assert "participantUuids.addAll(creativeTestParticipantSnapshot);" in body
+
+
+def test_creative_full_run_snapshots_participants_before_enabling_test_ai() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = root.index("private void startCreativeTest")
+    end = root.index("private boolean officialCombatStateActive", start)
+    body = root[start:end]
+    assert "creativeTestParticipantSnapshot.clear();" in body
+    assert "creativeTestParticipantSnapshot.addAll(participantUuids);" in body
+    assert body.index("creativeTestParticipantSnapshot.addAll(participantUuids);") < body.index(
+        "testCombatAiMode = true;"
+    )
+
+
 def test_transition_runes_are_a_bijection() -> None:
     policy = DOMAIN / "TransitionRunePolicy.java"
     controller = RUNTIME / "TransitionRuneController.java"
@@ -306,6 +343,55 @@ def test_client_asset_dimensions_and_event_visuals() -> None:
     assert "tentacleTargetForEntity" in state_text
     assert "targetYaw" in read(CLIENT_JAVA / "EndRiftTentacleRenderer.java")
     assert "targetSuffix" in read(PLUGIN_SRC / "CopiMineEndEvent.java")
+
+
+def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    visual_match = re.search(
+        r"private void handleTestVisuals\(CommandSender sender, String\[\] args\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\s*(?=/\*\*|private void startCreativeTest)",
+        root,
+    )
+    assert visual_match, "visual diagnostic handler must remain inspectable"
+    visual_body = visual_match.group("body")
+    assert "clientVisualResourcePath(visual)" in visual_body
+    assert "visual.toLowerCase(Locale.ROOT) + \".png\"" not in visual_body
+    assert "clientBossResourcePath()" in visual_body
+    assert "rift_guardian_\" + requestedPhase + \".png" not in visual_body
+
+    mapping_match = re.search(
+        r"private String clientVisualResourcePath\(String visualId\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\n\n    private String clientBossResourcePath",
+        root,
+    )
+    assert mapping_match, "server visual-resource mapping must be explicit"
+    mapping = mapping_match.group("body")
+    for name in (
+        "end_rift_user_enderman.png",
+        "end_rift_elite.png",
+        "end_rift_user_spider.png",
+        "end_rift_skeleton.png",
+        "end_rift_elite_skeleton.png",
+        "end_rift_tentacle_hd.png",
+    ):
+        assert name in mapping, name
+    assert "end_rift_user_boss.png" in root
+
+
+def test_live_visual_probe_verifies_creative_cleanup_state() -> None:
+    script = read(ROOT / "tests" / "RunEndRiftVisualFivePlayerLive.ps1")
+    assert "CURRENT_CREATIVE_CLEANUP_PASS" in script
+    assert "$baselineParticipantMatch" in script
+    assert "$afterCreativeParticipantMatch" in script
+    assert "baselineParticipants" in script
+    assert re.search(
+        r"\$creativeStatus\s*=\s*\(Invoke-LocalRcon 'cmend status'\)",
+        script,
+    )
+    assert re.search(
+        r"creativeStatus\s*-notmatch\s*'\(\?m\)wave=0\\s\+event-mobs=0\\s\+boss=none'",
+        script,
+    )
 
 
 def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None:
@@ -903,6 +989,9 @@ def test_official_probe_does_not_assign_a_hardcoded_bot_password() -> None:
 
 def test_boss_shield_live_probe_covers_blocked_vulnerable_and_restored_states() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftBossShieldLive.ps1")
+    default_name = re.search(r"\[string\]\$BotName\s*=\s*'([^']+)'", probe)
+    assert default_name is not None
+    assert len(default_name.group(1)) <= 16, "the default shield bot name must fit Minecraft's 16-character username limit"
     assert "cmend boss spawn official confirm" in probe
     assert "cmend boss phase last_seal" in probe
     assert "cmend boss phase hunt" in probe

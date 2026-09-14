@@ -177,6 +177,12 @@ foreach ($name in $playerNames) {
 $viewerProcess = $null
 try {
   $baselineStatus = Invoke-LocalRcon 'cmend status'
+  $baselinePlain = $baselineStatus -replace '\u00A7.', ''
+  $baselineParticipantMatch = [Regex]::Match($baselinePlain, '(?m)participants=(\d+)')
+  if (-not $baselineParticipantMatch.Success) {
+    throw "Could not determine the baseline participant count: $baselineStatus"
+  }
+  $baselineParticipants = [int]$baselineParticipantMatch.Groups[1].Value
   $core = Get-Core $baselineStatus
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
@@ -216,6 +222,20 @@ try {
   }
   Assert-Output $creativeLog 'BOSS_VISUAL_CUE' 'BOSS_VISUAL_CUE'
   Write-Evidence 'CURRENT_BOSS_VISUAL_CUES_PASS spells=distinct phase_updates=recorded'
+
+  $creativeStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+  if ($creativeStatus -notmatch '(?m)wave=0\s+event-mobs=0\s+boss=none') {
+    throw "Creative visual flow left transient wave state behind:`n$creativeStatus"
+  }
+  $afterCreativeParticipantMatch = [Regex]::Match($creativeStatus, '(?m)participants=(\d+)')
+  if (-not $afterCreativeParticipantMatch.Success) {
+    throw "Could not determine the participant count after Creative cleanup: $creativeStatus"
+  }
+  $afterCreativeParticipants = [int]$afterCreativeParticipantMatch.Groups[1].Value
+  if ($afterCreativeParticipants -ne $baselineParticipants) {
+    throw "Creative visual flow changed the durable participant roster: baseline=$baselineParticipants after=$afterCreativeParticipants`n$creativeStatus"
+  }
+  Write-Evidence "CURRENT_CREATIVE_CLEANUP_PASS wave=0 event-mobs=0 boss=none participants=$afterCreativeParticipants"
 
   $null = Invoke-LocalRcon 'cmend wave clear'
   $portalOffset = Get-LogLength

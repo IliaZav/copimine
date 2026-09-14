@@ -134,6 +134,10 @@ Commands and results:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventChecks.ps1
 PASS — 76 passed in 1.37s; Java policies, persistence/recovery, builds and pack checks passed
 
+Final rerun after the official scenario:
+PASS — 76 passed in 1.22s; clean build, current contracts, Java policies,
+persistence/recovery and artifact hash checks
+
 python -m pytest -q tests/test_end_event_current_contract.py -k 'distributed_client_jar_contains_the_current_boss_assets or wave6_ring_displays or wave7_barriers_validate_or_repair or server_visual_diagnostics'
 PASS — 4 passed, 54 deselected; current distributed client catalog and visual mappings are pinned
 
@@ -218,6 +222,16 @@ and `LAST_SEAL`, and the lethal transaction recorded
 `health_before=62.5 health_after=0.0 lethal=true`. No wipe or offline-grace
 condition occurred in this run.
 
+A second clean post-fix official run was completed after the continuation
+changes with event `6111a7a1-0e9f-49e2-b286-9662ecf1a201` and clients
+`EndRiftFinalG`/`EndRiftFinalH` using the same 1200-second lifetime. It emitted
+the complete W1-W7 sequence, all six boss stages, victory and the final
+authoritative state `UNLOCKED`, `wave=0`, `event-mobs=0`, `boss=none`.
+The earlier attempted run with a 600-second lifetime is intentionally not
+counted as a product failure: both disposable clients reached their explicit
+timer at the start of boss combat, the server observed the disconnects,
+expired its 25-second offline grace and accepted the documented roster wipe.
+
 ### Fresh continuation probes
 
 The continuation changes were rebuilt into the isolated local Paper runtime
@@ -256,6 +270,8 @@ client JAR SHA-1    1d9f9ef1445903556ca1d443e33cd02b03f0f75b
 client JAR SHA-256  4cf4c92f82cd201b975c57b0b88fb2a12ecd1f677d74fdd68d976704b0409895
 modpack SHA-1       2380aee0310793bd4d6fb33c0f8072f71fddbb52
 modpack SHA-256     0a07cd05c7931ebd7c736ff1b1ef83ff9f60482a6121d900d9767501eab716b5
+server plugin SHA-256 93f38c64410fd9e116ccc9cff9aa9ab13bb57f7f53f3f5e7855f66bd53c73f04
+resource pack SHA-256 335f68a8ccf1a5be6fecfd97b711a4684d61cc47c486c43637bd4dbcaa3bc1c1
 ```
 
 ## User bug matrix

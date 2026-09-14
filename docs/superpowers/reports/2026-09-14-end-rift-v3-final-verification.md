@@ -4,7 +4,7 @@ Date: 2026-09-14
 Branch: `codex/end-rift-event`
 Repository: `https://github.com/IliaZav/copimine`
 Starting SHA for this repair continuation: `c5a9f282073303208788828384e1d0801e6863dc`
-Code/test checkpoint: `150a1910b4990de973332aec3e3cb1e92f64abff`
+Previous code/test checkpoint: `150a1910b4990de973332aec3e3cb1e92f64abff`
 
 This report records the server/source work and the exact local Paper evidence.
 It does not claim a native Minecraft visual pass: Computer Use exposed no
@@ -75,7 +75,8 @@ implemented by `CombatTraceRecord` and `CombatTraceService`.
   `LivingEntity.getHealth()/setHealth()`. The verified local boss uses max HP
   `5000`; the old `1024`-style display is not the runtime authority.
 - The custom client bossbar reads real current/max HP, has phase markers and
-  cleanup; the native rendering itself remains unverified here.
+  cleanup. Its layout now keeps title/details, phase labels and cast status on
+  separate vertical lanes; the native rendering itself remains unverified here.
 - Supplied boss model/skin/animations are wired into the client/resource-pack
   bridge. Supplied Enderman/Spider skins are referenced for mob overlays.
 - Obelisk display geometry is one complete scaled model, rather than a full
@@ -113,6 +114,12 @@ Commands and results:
 ```text
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventChecks.ps1
 PASS — 68 passed in 1.11s; Java policies, persistence/recovery, builds and pack checks passed
+
+python -m pytest -q tests/test_end_rift_client_hud_contract.py
+PASS — 2 passed; phase-marker labels and cast status have separate layout lanes
+
+CopiMineClient/.gradle-dist/gradle-8.10.2/bin/gradle.bat --no-daemon test
+PASS — CopiMineClient BUILD SUCCESSFUL in 15s
 
 python -m pytest -q tests/test_end_rift_multiplayer_probe_contract.py tests/test_end_rift_recovery_contract.py
 PASS — 4 passed

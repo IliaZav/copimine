@@ -22,9 +22,13 @@ public final class EndRiftBossBarHud {
     private static final int SOURCE_WIDTH = 256;
     private static final int SOURCE_HEIGHT = 32;
     private static final int WIDTH = 320;
-    private static final int HEIGHT = 72;
+    private static final int HEIGHT = 88;
+    private static final int TITLE_Y = 0;
+    private static final int DETAIL_Y = 11;
     private static final int FRAME_Y = 22;
     private static final int FRAME_HEIGHT = 40;
+    private static final int PHASE_LABEL_OFFSET = 40;
+    private static final int CAST_LABEL_OFFSET = 74;
     private static final int INNER_LEFT = 21;
     private static final int INNER_RIGHT = 299;
     private static final int INNER_TOP = 34;
@@ -65,13 +69,13 @@ public final class EndRiftBossBarHud {
         // mixin below cancels its draw call. Other BossBars are untouched.
         context.fill(x + 18, y + 1, x + WIDTH - 18, y + 20, 0xD50A0D18);
         context.drawCenteredTextWithShadow(client.textRenderer, Text.literal("СТРАЖ РАЗЛОМА"),
-                context.getScaledWindowWidth() / 2, y + 1, 0xFFF6E8FF);
+                context.getScaledWindowWidth() / 2, y + TITLE_Y, 0xFFF6E8FF);
         context.drawTextWithShadow(client.textRenderer,
-                Text.literal(phaseLabel(state.phaseId())), x + 22, y + 10, phaseColor);
+                Text.literal(phaseLabel(state.phaseId())), x + 22, y + DETAIL_Y, phaseColor);
         context.drawTextWithShadow(client.textRenderer,
                 Text.literal(formatHealth(state.health(), state.maxHealth())),
                 x + WIDTH - 22 - client.textRenderer.getWidth(formatHealth(state.health(), state.maxHealth())),
-                y + 10, 0xFFE7E8F2);
+                y + DETAIL_Y, 0xFFE7E8F2);
 
         int filled = Math.round((INNER_RIGHT - INNER_LEFT) * progress);
         if (filled > 0) {
@@ -101,7 +105,7 @@ public final class EndRiftBossBarHud {
                 SOURCE_WIDTH, SOURCE_HEIGHT);
         context.drawCenteredTextWithShadow(client.textRenderer,
                 Text.literal(castLabel(state.castState())),
-                context.getScaledWindowWidth() / 2, y + 57, 0xFFBEB8D5);
+                context.getScaledWindowWidth() / 2, y + CAST_LABEL_OFFSET, 0xFFBEB8D5);
     }
 
     private static void drawSegmentedFill(DrawContext context, int x, int y,
@@ -123,7 +127,7 @@ public final class EndRiftBossBarHud {
         context.fill(x - 1, frameY + 8, x + 1, frameY + 32, markerColor);
         context.fill(x - 3, frameY + 7, x + 3, frameY + 9, markerColor);
         context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(label), x,
-                frameY + 40, active ? 0xFFF0E8FF : 0xFF8B879B);
+                frameY + PHASE_LABEL_OFFSET, active ? 0xFFF0E8FF : 0xFF8B879B);
     }
 
     private static String formatHealth(double health, double maxHealth) {

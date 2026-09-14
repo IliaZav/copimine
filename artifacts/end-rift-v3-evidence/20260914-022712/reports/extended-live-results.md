@@ -57,6 +57,24 @@ LIVE_RUNE_WAIT_MUSIC_CLEANUP_PASS state=READY_FOR_PLAYERS pads=0/2 occupied=0 ev
 The spell matrix exercised telegraph, flight, cast, impact and recovery for
 boss and mini-boss spells. It did not alter projectile policy.
 
+## Bossbar layout repair
+
+The client HUD contract first failed because phase labels were drawn at
+`frameY + 40` while the cast/status line was drawn at `y + 57`, causing the
+two rows to overlap. The repair uses separate phase-label and cast-status
+offsets, keeps the compact frame, and was verified with:
+
+```text
+python -m pytest -q tests/test_end_rift_client_hud_contract.py
+2 passed
+CopiMineClient Gradle test
+BUILD SUCCESSFUL
+```
+
+This is a source/build verification only; native in-game bossbar rendering is
+still explicitly **NOT VERIFIED** because no Minecraft client window was
+exposed to Computer Use.
+
 ## Scene, gate and destructive cleanup probes
 
 ```text

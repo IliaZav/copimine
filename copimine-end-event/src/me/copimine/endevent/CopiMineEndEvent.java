@@ -272,6 +272,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_RIFT_FIREBALL = 830013;
     private static final int MODEL_RIFT_OBELISK_PULSE = 830014;
     private static final int MODEL_RIFT_TENTACLE = 830017;
+    /** The Wave 7 wall must be visible without relying on a client display entity. */
+    private static final Material REALITY_SPLIT_WALL_MATERIAL = Material.AMETHYST_BLOCK;
     /** Small shell margin used to avoid z-fighting while keeping the Core on its block. */
     private static final float CORE_OVERLAY_SCALE = 1.04F;
     private static final long TENTACLE_TEMPORARY_INTERVAL_TICKS = 160L;
@@ -1413,7 +1415,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             if (entry.isRealitySplitBarrierMutation()) {
                 Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
-                if (barrier.getType() == Material.BARRIER) {
+                if (isRealitySplitBarrierBlock(barrier)) {
                     restoreBlock(barrier, entry.webOriginal());
                     restored++;
                 } else {
@@ -12938,7 +12940,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             for (HazardMutationJournal.Entry entry : journalEntries) {
                 world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z())
-                        .setType(Material.BARRIER, false);
+                        .setType(REALITY_SPLIT_WALL_MATERIAL, false);
             }
             if (!hazardJournal.markApplied()) {
                 throw new IllegalStateException("Wave 7 barrier journal could not be marked APPLIED");
@@ -12947,7 +12949,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_BARRIERS_APPLY_FAILED event=" + eventId, error);
             for (HazardMutationJournal.Entry entry : journalEntries) {
                 Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
-                if (barrier.getType() == Material.BARRIER) {
+                if (isRealitySplitBarrierBlock(barrier)) {
                     restoreBlock(barrier, entry.webOriginal());
                 }
             }
@@ -13002,7 +13004,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("END_RIFT_WAVE7_BARRIERS_READY event=" + eventId
                 + " chambers=" + chamberCount + " cells=" + realitySplitBarrierCells.size()
                 + " columns=" + visualBases.size() + " height=" + RealitySplitBarrierPolicy.HEIGHT
-                + " collision=true journaled=true");
+                + " material=" + REALITY_SPLIT_WALL_MATERIAL.getKey().getKey()
+                + " collision=true visible=true journaled=true");
     }
 
     /**
@@ -13069,7 +13072,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             int x = coreX + cell.xOffset();
             int z = coreZ + cell.zOffset();
             Block barrier = world.getBlockAt(x, combatFloorY() + cell.level(), z);
-            if (barrier.getType() == Material.BARRIER) {
+            if (isRealitySplitBarrierBlock(barrier)) {
                 restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
                 restored++;
             }
@@ -13136,7 +13139,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 : new LinkedHashSet<>(realitySplitBarrierCells)) {
             Block barrier = world.getBlockAt(coreX + cell.xOffset(),
                     combatFloorY() + cell.level(), coreZ + cell.zOffset());
-            if (barrier.getType() == Material.BARRIER) {
+            if (isRealitySplitBarrierBlock(barrier)) {
                 restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
                 restored++;
             }
@@ -13158,6 +13161,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         getLogger().info("END_RIFT_WAVE7_BARRIERS_CLEANUP event=" + eventId
                 + " reason=" + reason + " restored=" + restored);
         return true;
+    }
+
+    /**
+     * Accept both the current visible wall and the legacy invisible barrier
+     * while recovering a journal created by an older plugin build.
+     */
+    private boolean isRealitySplitBarrierBlock(Block block) {
+        if (block == null) {
+            return false;
+        }
+        Material material = block.getType();
+        return material == REALITY_SPLIT_WALL_MATERIAL || material == Material.BARRIER;
     }
 
     private void renderRealitySplitBarriers(Location core, long now) {

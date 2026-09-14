@@ -47,11 +47,16 @@ def test_wave7_has_journaled_physical_boundaries_and_opening() -> None:
     assert "openRealitySplitBoundary(" in root
     assert "Material.BARRIER" in root
     assert "Material.AMETHYST_BLOCK" in root
+    assert "REALITY_SPLIT_WALL_MATERIAL" in root
+    assert "isRealitySplitBarrierBlock" in root
+    assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
     assert "journaled=true" in root
     assert "localChamberRoster" in root
     live_script = ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1"
     assert live_script.exists()
     live = read(live_script)
+    assert "minecraft:amethyst_block" in live
+    assert "wall_material=amethyst_block" in live
     assert "LIVE_WAVE6_BOUNDARIES_PASS" in live
     assert "LIVE_WAVE7_BARRIERS_PASS" in live
     assert "LIVE_WAVE7_BARRIER_CLEANUP_PASS" in live

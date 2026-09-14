@@ -12,7 +12,8 @@ param(
 
 # Local-only runtime probe for the two objectives that need physical arena
 # geometry. It uses disposable test waves, never edits the saved arena by
-# design, and verifies that Wave 7's BARRIER cells are removed by cleanup.
+# design, and verifies that Wave 7's visible AMETHYST_BLOCK wall cells are
+# removed by cleanup. Legacy BARRIER cells remain accepted during recovery.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
@@ -92,13 +93,14 @@ function Assert-BarrierBlock([int[]]$Core, [int]$FloorY, [int64]$AfterOffset) {
   )
   foreach ($point in $points) {
     $probe = 'END_RIFT_BARRIER_PROBE_PASS'
+    $null = Invoke-LocalRcon ("execute if block $($point.X) $($point.Y) $($point.Z) minecraft:amethyst_block run say $probe")
     $null = Invoke-LocalRcon ("execute if block $($point.X) $($point.Y) $($point.Z) minecraft:barrier run say $probe")
     Start-Sleep -Milliseconds 150
     if ((Log-Tail $AfterOffset) -match $probe) {
       return "$($point.X),$($point.Y),$($point.Z)"
     }
   }
-  throw 'Wave 7 created no probeable physical BARRIER cell.'
+  throw 'Wave 7 created no probeable physical AMETHYST_BLOCK/BARRIER cell.'
 }
 
 $names = @($FirstBotName, $SecondBotName)
@@ -147,7 +149,7 @@ try {
   $wave7Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 7'
   $barrierLog = Wait-Log -AfterOffset $wave7Offset `
-    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=5.*collision=true.*journaled=true'
+    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=5.*material=amethyst_block.*collision=true.*visible=true.*journaled=true'
   $barrierMatch = [Regex]::Match($barrierLog, 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+)')
   if (-not $barrierMatch.Success -or [int]$barrierMatch.Groups[1].Value -le 0) {
     throw "Wave 7 barrier count was not positive: $barrierLog"
@@ -158,7 +160,7 @@ try {
     throw "Wave 7 did not expose barrier visuals: $wave7Objective"
   }
   $probePoint = Assert-BarrierBlock -Core $core -FloorY $floorY -AfterOffset $wave7Offset
-  Write-Output "LIVE_WAVE7_BARRIERS_PASS chambers=2 cells=$($barrierMatch.Groups[1].Value) visual_displays=$($wave7VisualMatch.Groups[1].Value) barrier=$($probePoint -join ',') collision=true"
+  Write-Output "LIVE_WAVE7_BARRIERS_PASS chambers=2 cells=$($barrierMatch.Groups[1].Value) visual_displays=$($wave7VisualMatch.Groups[1].Value) wall_material=amethyst_block barrier=$($probePoint -join ',') collision=true"
 
   $cleanupOffset = Log-Length
   $null = Invoke-LocalRcon 'cmend wave clear'

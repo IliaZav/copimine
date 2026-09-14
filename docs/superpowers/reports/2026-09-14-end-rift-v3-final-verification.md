@@ -92,6 +92,10 @@ implemented by `CombatTraceRecord` and `CombatTraceService`.
   CustomModelData `830018`, backed by the existing End Rift portal texture,
   and bound one scaled ItemDisplay to the gate preview/open/close/restore
   lifecycle. The collision remains the real journaled gate block cuboid.
+- Wave 7's visible layer was still dependent on a `BlockDisplay` even though
+  the physical cells were invisible `BARRIER` blocks. The room separator now
+  writes real journaled `AMETHYST_BLOCK` cells, accepts legacy `BARRIER`
+  cells during recovery, and the live probe checks the actual block material.
 
 ## Implemented areas
 
@@ -107,8 +111,9 @@ implemented by `CombatTraceRecord` and `CombatTraceService`.
   five-block model duplicated at each layer.
 - Wave 6 rings use radii `8,14,19`, 64/80/96 points, a player containment lane,
   movement enforcement and AI target/path reassertion.
-- Wave 7 uses visible Amethyst barriers with physical collision and restart
-  rebuild; the live probe reports 480 barrier cells and 120 visual displays.
+- Wave 7 uses real visible Amethyst wall blocks with physical collision and
+  restart rebuild; the live probe reports 480 wall cells and 120 optional
+  decorative displays.
 - Rift gates now have a dedicated arch-and-rift 3D model, a server-side
   resource-pack binding and explicit lifecycle cleanup; opening removes the
   model only after all gate layers are open, while closing restores it.
@@ -143,7 +148,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 PASS — 76 passed in 1.37s; Java policies, persistence/recovery, builds and pack checks passed
 
 Final rerun after the official scenario:
-PASS — 76 passed in 1.22s; clean build, current contracts, Java policies,
+PASS — 77 passed in 1.22s; clean build, current contracts, Java policies,
 persistence/recovery and artifact hash checks
 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventChecks.ps1
@@ -171,6 +176,9 @@ PASS — 4 passed
 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftRecoverySmoke.ps1
 PASS — current and rotated gzip logs, durable phase and unlock recovery
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunCopiMineValidators.ps1
+PASS — VALIDATOR_SUMMARY total=659 passed=659 failed=0 skipped=0
 ```
 
 The five-player contract now requires at least 100 accepted events when five
@@ -281,6 +289,17 @@ CURRENT_OFFICIAL_PASS event=83ca6eeb-fb39-4140-a47a-43f3581ba9f5 players=2 waves
 state=UNLOCKED wave=0 event-mobs=0 boss=none victory=VICTORY_COMPLETE
 ```
 
+A fourth clean official run was completed after the Wave 7 wall-material
+repair with event `c3c22c94-1b55-4275-9368-34c0e44a2c10` and clients
+`ERWallFinA`/`ERWallFinB`. It passed the same W1-W7 sequence, all six boss
+stages and victory; the authoritative final state again had no event mobs or
+boss:
+
+```text
+CURRENT_OFFICIAL_PASS event=c3c22c94-1b55-4275-9368-34c0e44a2c10 players=2 waves=1,2,3,4,5,6,7 stages=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL victory=true
+state=UNLOCKED wave=0 event-mobs=0 boss=none victory=VICTORY_COMPLETE
+```
+
 ### Fresh continuation probes
 
 The continuation changes were rebuilt into the isolated local Paper runtime
@@ -288,7 +307,7 @@ and rechecked with the current distributed client JAR:
 
 ```text
 LIVE_WAVE6_BOUNDARIES_PASS rings=3 radii=8,14,19 visual_displays=240 visual_points=64,80,96 leash_policy=true player_containment=true
-LIVE_WAVE7_BARRIERS_PASS chambers=2 cells=480 visual_displays=120 barrier=13,68,-39 collision=true
+LIVE_WAVE7_BARRIERS_PASS chambers=2 cells=480 visual_displays=120 wall_material=amethyst_block barrier=13,68,-39 collision=true
 LIVE_WAVE7_BARRIER_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0
 LIVE_GATE_MODEL_PASS model=end_event_rift_gate custom_model_data=830018 lifecycle=preview-open-close collision=real_gate_blocks
 LIVE_BOSS_REAL_HEALTH_PASS boss=58a26657-ebe2-4bac-a641-6562c55e2546 status=hp-5000/5000 physical-5000/5000 attribute-unclamped=true current-health-marker=true legacy-virtual-marker=false
@@ -324,7 +343,7 @@ client JAR SHA-1    1d9f9ef1445903556ca1d443e33cd02b03f0f75b
 client JAR SHA-256  4cf4c92f82cd201b975c57b0b88fb2a12ecd1f677d74fdd68d976704b0409895
 modpack SHA-1       2380aee0310793bd4d6fb33c0f8072f71fddbb52
 modpack SHA-256     0a07cd05c7931ebd7c736ff1b1ef83ff9f60482a6121d900d9767501eab716b5
-server plugin SHA-256 2ec988f0c86c245562daa256093ef3e2daa59577687cacb339c2e9903b11beeb
+server plugin SHA-256 f9d563a6f745637e2eb180a2ea33f6ba6169fa37173ae7e2f4cf0a94a25e7b88
 resource pack SHA-256 34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9
 ```
 
@@ -343,7 +362,7 @@ resource pack SHA-256 34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112f
 | Wave 6 rings were tiny/invisible and passable | The thin ring ItemDisplay strip was translated to `-0.94F`, inside the solid floor; the visual lane and containment needed an end-to-end check | Raised the ring strip to `0.02F` above the combat floor and retained server containment/leash/AI handling in `CopiMineEndEvent.java` | `LIVE_WAVE6_BOUNDARIES_PASS` reports three rings, radii `8,14,19`, 240 visual displays and player containment | Paper mechanics and visibility contracts pass; native visual still not verified |
 | AI inside rings was broken | AI target/path decisions and zone enforcement were not being proven together | Preserved target/path reassertion and bounded teleport guards; added/ran current AI phases and combat probes | `LIVE_CURRENT_AI_PASS` and `LIVE_MOB_COMBAT_PASS` pass | AI behaves in Paper runtime |
 | Wave 6 was incomplete or softlocked | Sequential disposable probes could leave stale transient wave state | Reset `activeWave` on disposable clear, persist state, and require final cleanup in `RunEndRiftVisualFivePlayerLive.ps1` | Wave 6 live probe and final `wave=0 event-mobs=0 boss=none` cleanup pass | Fixed in local test flow; official full-run probe also passed |
-| Wave 7 had no visible walls/rooms | A lost chamber assignment could cause cleanup before rebuild, leaving no replacement boundaries | Added `ensureRealitySplitChamberAssignment()` before `clearRealitySplitBarriers("wave7-rebuild")` in `CopiMineEndEvent.java`; retained visible Amethyst barriers and collision journal | `LIVE_WAVE7_BARRIERS_PASS` reports 480 cells/120 displays and collision; cleanup restores blocks | Paper logic pass; native room/barrier appearance still not verified |
+| Wave 7 had no visible walls/rooms | A lost chamber assignment could cause cleanup before rebuild, leaving no replacement boundaries; the physical layer was also invisible `BARRIER` | Added `ensureRealitySplitChamberAssignment()` before `clearRealitySplitBarriers("wave7-rebuild")`; switched the current wall cells to journaled `AMETHYST_BLOCK` with legacy barrier recovery in `CopiMineEndEvent.java` and strengthened `RunEndRiftWave6Wave7BoundariesLive.ps1` | `LIVE_WAVE7_BARRIERS_PASS` reports 480 cells, `wall_material=amethyst_block`, 120 optional displays and collision; cleanup restores blocks | Paper logic and real block material pass; native room/barrier appearance still not verified |
 
 ## Distribution and deployment gate
 

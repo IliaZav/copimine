@@ -409,6 +409,13 @@
       "texture": "copimine:item/end_event_portal"
     },
     {
+      "id": "end_event_rift_gate",
+      "custom_model_data": 830018,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_gate",
+      "texture": "copimine:item/end_event_portal"
+    },
+    {
       "id": "end_event_rift_obelisk_full",
       "custom_model_data": 830010,
       "base_material": "paper",

@@ -265,6 +265,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MODEL_PORTAL_OVERLAY = 830007;
     private static final int MODEL_PORTAL_INNER_OVERLAY = 830008;
     private static final int MODEL_PORTAL_SHARD_OVERLAY = 830009;
+    private static final int MODEL_RIFT_GATE = 830018;
     private static final int MODEL_RIFT_OBELISK_FULL = 830010;
     private static final int MODEL_RIFT_OBELISK_DAMAGED = 830011;
     private static final int MODEL_RIFT_OBELISK_CRITICAL = 830012;
@@ -471,6 +472,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<Integer, List<Location>> wavePortals = new LinkedHashMap<>();
     private final Map<Integer, List<UUID>> wavePortalModelVisuals = new LinkedHashMap<>();
     private final Map<UUID, PortalVisualLayer> wavePortalVisualLayers = new LinkedHashMap<>();
+    /** One scaled, resource-pack gate model; the configured blocks remain authoritative. */
+    private final Set<UUID> gateModelVisuals = new LinkedHashSet<>();
     private final Map<Integer, List<PortalCapturePolicy.PortalState>> portalCaptureStates = new LinkedHashMap<>();
     /** Keeps the disposable Wave 3 visual probe animated without entering an official phase. */
     private boolean testPortalVisualMode;
@@ -656,6 +659,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         FRAME,
         INNER,
         SHARD
+    }
+
+    private record GateVisualGeometry(Location origin, int width, int height, int depth) {
     }
 
     /** Explicit state for the three safe-zone/fog cycles in Current Wave 4. */
@@ -3143,6 +3149,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cGate snapshot не сохранён; preview не начат.");
             return;
         }
+        ensureGateModelVisual();
         startGateSelectionPreview(sender);
         message(sender, "&aGate preview создан частицами; ванильные блоки не заменялись. "
                 + "Snapshot durable сохранён для безопасного открытия/restore.");
@@ -3209,6 +3216,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cGate snapshot не сохранён durable; открытие отменено.");
             return false;
         }
+        ensureGateModelVisual();
 
         String openingEventId = eventId;
         long openingGeneration = generation;
@@ -3267,6 +3275,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&cСостояние закрытия Gate не сохранено durable; блоки не изменены.");
             return false;
         }
+        ensureGateModelVisual();
 
         String closingEventId = eventId;
         long closingGeneration = generation;
@@ -3360,6 +3369,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             abortGateClosing("durable RESTORED state failed", snapshot);
             return;
         }
+        ensureGateModelVisual();
         cancelGateOpeningTask();
         getLogger().info("END_EVENT_GATE_CLOSED event=" + eventId + " generation=" + generation
                 + " progress=" + gateProgressText());
@@ -3369,6 +3379,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelGateOpeningTask();
         restoreGateSnapshot(layoutState.gatePos1(), snapshot);
         layoutState = withGateState(snapshot, "OPENED");
+        clearGateModelVisual();
         saveStateSync();
         getLogger().warning("END_EVENT_GATE_CLOSE_ABORTED event=" + eventId + " generation=" + generation
                 + " reason=" + reason);
@@ -3447,6 +3458,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             abortGateOpening("durable OPENED state failed", snapshot, openingForVictory);
             return;
         }
+        clearGateModelVisual();
         cancelGateOpeningTask();
         getLogger().info("END_EVENT_GATE_OPENED event=" + eventId + " generation=" + generation
                 + " progress=" + gateProgressText());
@@ -3462,6 +3474,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelGateOpeningTask();
         restoreGateSnapshot(layoutState.gatePos1(), snapshot);
         layoutState = withGateState(Map.of(), "RESTORED");
+        ensureGateModelVisual();
         if (openingForVictory) {
             victoryGatePending = false;
         }
@@ -3587,6 +3600,113 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return new Location(world, x, y + 0.5D, z);
     }
 
+    /**
+     * Keep a real 3D gateway visible while its collision cuboid is closed or
+     * animating.  The model uses the same Paper CustomModelData path as the
+     * other event displays; no client mod is required to see the gate.
+     */
+    private void ensureGateModelVisual() {
+        if (!isGateConfigured() || phase == EventPhase.UNLOCKED
+                || "OPENED".equalsIgnoreCase(layoutState.gateStatus())) {
+            clearGateModelVisual();
+            return;
+        }
+        EventLayoutState.Point first = layoutState.gatePos1();
+        EventLayoutState.Point second = layoutState.gatePos2();
+        World world = Bukkit.getWorld(first.world());
+        if (world == null) {
+            getLogger().warning("END_EVENT_GATE_MODEL_DEFERRED event=" + eventId
+                    + " reason=world-not-loaded world=" + first.world());
+            return;
+        }
+        GateVisualGeometry geometry = gateVisualGeometry(world, first, second);
+        ItemDisplay display = null;
+        for (UUID id : new LinkedHashSet<>(gateModelVisuals)) {
+            Entity candidate = Bukkit.getEntity(id);
+            if (display == null && candidate instanceof ItemDisplay itemDisplay
+                    && itemDisplay.isValid() && !itemDisplay.isDead()) {
+                display = itemDisplay;
+                continue;
+            }
+            if (candidate != null && candidate.isValid() && !candidate.isDead()) {
+                candidate.remove();
+            }
+            ownedEntities.remove(id);
+            gateModelVisuals.remove(id);
+        }
+        boolean spawned = display == null;
+        if (display == null) {
+            display = world.spawn(geometry.origin(), ItemDisplay.class, value -> {
+                value.setItemStack(overlayItem(MODEL_RIFT_GATE, "end_event_rift_gate"));
+                value.setBrightness(new Display.Brightness(15, 15));
+                value.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                value.setBillboard(Display.Billboard.FIXED);
+                value.setViewRange(96.0F);
+                value.setDisplayWidth(Math.max(2.0F, Math.max(geometry.width(), geometry.depth()) + 1.0F));
+                value.setDisplayHeight(geometry.height() + 1.0F);
+                value.setPersistent(true);
+                value.setGravity(false);
+                value.setInvulnerable(true);
+                value.setShadowRadius(0.0F);
+            });
+            tag(display, EVENT_KIND_DISPLAY, 3, false);
+            gateModelVisuals.add(display.getUniqueId());
+        }
+        display.teleport(geometry.origin());
+        display.setItemStack(overlayItem(MODEL_RIFT_GATE, "end_event_rift_gate"));
+        display.setTransformation(gateModelTransformation(geometry));
+        ownedEntities.put(display.getUniqueId(), display);
+        if (spawned) {
+            getLogger().info("END_EVENT_GATE_MODEL_READY event=" + eventId
+                    + " model=end_event_rift_gate custom_model_data=" + MODEL_RIFT_GATE
+                    + " origin=" + formatLocation(geometry.origin())
+                    + " size=" + geometry.width() + "x" + geometry.height() + "x" + geometry.depth()
+                    + " collision=real_gate_blocks");
+        }
+    }
+
+    private GateVisualGeometry gateVisualGeometry(World world,
+                                                   EventLayoutState.Point first,
+                                                   EventLayoutState.Point second) {
+        int minX = Math.min(first.x(), second.x());
+        int minY = Math.min(first.y(), second.y());
+        int minZ = Math.min(first.z(), second.z());
+        int width = Math.abs(first.x() - second.x()) + 1;
+        int height = Math.abs(first.y() - second.y()) + 1;
+        int depth = Math.abs(first.z() - second.z()) + 1;
+        return new GateVisualGeometry(new Location(world, minX + 0.5D, minY, minZ + 0.5D),
+                width, height, depth);
+    }
+
+    private Transformation gateModelTransformation(GateVisualGeometry geometry) {
+        // end_event_rift_gate occupies x=0..16, y=0..16 and z=2..14 in the
+        // normalized model.  The translation anchors its lower corner to the
+        // first block while the non-uniform scale fills the bounded cuboid.
+        float depthScale = geometry.depth() / 0.75F;
+        return new Transformation(
+                new Vector3f(-0.5F, 0.0F, -0.5F - geometry.depth() / 6.0F), new AxisAngle4f(),
+                new Vector3f(geometry.width(), geometry.height(), depthScale),
+                new AxisAngle4f());
+    }
+
+    private void clearGateModelVisual() {
+        int removed = 0;
+        for (UUID id : new LinkedHashSet<>(gateModelVisuals)) {
+            Entity entity = ownedEntities.remove(id);
+            if (entity == null) {
+                entity = Bukkit.getEntity(id);
+            }
+            if (entity != null && entity.isValid() && !entity.isDead()) {
+                entity.remove();
+                removed++;
+            }
+        }
+        gateModelVisuals.clear();
+        if (removed > 0) {
+            getLogger().info("END_EVENT_GATE_MODEL_CLEARED event=" + eventId + " removed=" + removed);
+        }
+    }
+
     /** Renders the same saved door layers as a compact portal-opening animation. */
     private void renderFinalDoorOpening(World world, int y, int layerIndex,
                                         int totalLayers, boolean removed) {
@@ -3654,6 +3774,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EventLayoutState previous = layoutState;
         layoutState = new EventLayoutState(previous.arenaPos1(), previous.arenaPos2(), previous.gatePos1(), previous.gatePos2(),
                 Map.of(), "RESTORED", previous.portalRoom());
+        ensureGateModelVisual();
         if (saveStateSync()) {
             message(sender, "&aGate восстановлен по durable snapshot.");
         } else {
@@ -6404,6 +6525,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             spawnRuneOverlay(world, pad);
         }
         spawnCoreText(world);
+        ensureGateModelVisual();
         getLogger().info("END_EVENT_PHYSICAL_VISUALS core=" + core.getType()
                 + " pads=VANILLA_FLOOR_BLOCKS displays=CORE_OVERLAY_AND_RUNE_OVERLAYS");
     }
@@ -6554,6 +6676,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (removed > 0) {
             getLogger().info("END_EVENT_VISUAL_CLEANUP removed=" + removed + " scope=event-arena");
         }
+        gateModelVisuals.removeIf(id -> !ownedEntities.containsKey(id));
     }
 
     /** Remove only transition-pad displays; the Core shell and its text stay. */
@@ -21143,6 +21266,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             commanderAuraEntities.clear();
             clearRiftObelisks("owned event cleanup");
             clearTentacles("owned event cleanup");
+            gateModelVisuals.clear();
         }
         getLogger().info("END_EVENT_OWNED_CLEANUP event=" + expectedEventId + " generations=all removed=" + removed);
     }
@@ -21191,6 +21315,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             commanderAuraEntities.clear();
             clearRiftObelisks("owned generation cleanup");
             clearTentacles("owned generation cleanup");
+            gateModelVisuals.clear();
         }
     }
 
@@ -21199,6 +21324,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Entity entity = event.getEntity();
         if (entity != null) {
             UUID removedId = entity.getUniqueId();
+            gateModelVisuals.remove(removedId);
             UUID displayId = tentacleDisplaysByHitbox.remove(removedId);
             if (displayId != null) {
                 tentacleHitboxesByDisplay.remove(displayId, removedId);

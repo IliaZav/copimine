@@ -532,6 +532,29 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
     assert not missing, f"distributed client jar is stale, missing {sorted(missing)}"
 
 
+def test_gate_has_a_runtime_model_and_lifecycle_binding() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    manifest = json.loads(read(PACK / "models_manifest.json"))
+    gate = next((row for row in manifest["items"] if row.get("id") == "end_event_rift_gate"), None)
+    assert gate is not None, "the End Rift gate must have a dedicated resource-pack model"
+    assert gate["custom_model_data"] == 830018
+    assert gate["base_material"] == "paper"
+    model_path = PACK / "src" / "assets" / "copimine" / "models" / "item" / "end_event_rift_gate.json"
+    assert model_path.is_file()
+    model = json.loads(read(model_path))
+    assert model.get("parent") == "minecraft:block/block"
+    assert len(model.get("elements", [])) >= 5
+    builder = read(PACK / "build-resourcepack.py")
+    assert "assets/copimine/models/item/end_event_rift_gate.json" in builder
+    assert "830018" in read(PACK / "models_manifest.json")
+    assert '"custom_model_data": 830018' in read(PACK / "build" / "_stage" / "assets" / "minecraft" / "models" / "item" / "paper.json")
+    assert "MODEL_RIFT_GATE = 830018" in root
+    assert "ensureGateModelVisual" in root
+    assert "clearGateModelVisual" in root
+    assert root.index("ensureGateModelVisual") < root.index("finishGateOpening")
+    assert root.index("clearGateModelVisual") < root.index("finishGateOpening")
+
+
 def test_tentacle_rig_asset_contract() -> None:
     model_path = PACK_ASSETS / "models" / "item" / "end_event_rift_tentacle.json"
     model = json.loads(read(model_path))

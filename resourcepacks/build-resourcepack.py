@@ -103,6 +103,7 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/models/item/end_event_portal.json",
     "assets/copimine/models/item/end_event_portal_inner.json",
     "assets/copimine/models/item/end_event_portal_shard.json",
+    "assets/copimine/models/item/end_event_rift_gate.json",
     "assets/copimine/models/item/end_event_rift_obelisk_full.json",
     "assets/copimine/models/item/end_event_rift_obelisk_damaged.json",
     "assets/copimine/models/item/end_event_rift_obelisk_critical.json",

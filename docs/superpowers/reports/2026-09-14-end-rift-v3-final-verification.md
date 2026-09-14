@@ -3,8 +3,8 @@
 Date: 2026-09-14
 Branch: `codex/end-rift-event`
 Repository: `https://github.com/IliaZav/copimine`
-Starting SHA for this repair continuation: `c5a9f282073303208788828384e1d0801e6863dc`
-Previous code/test checkpoint: `150a1910b4990de973332aec3e3cb1e92f64abff`
+This gate-model continuation started from `0e32fb39da30cbb83581dbe88a0577b5c0a8abce`.
+The final source, artifact and CI SHA is the containing commit of this report.
 
 This report records the server/source work and the exact local Paper evidence.
 It does not claim a native Minecraft visual pass: Computer Use exposed no
@@ -87,6 +87,11 @@ implemented by `CombatTraceRecord` and `CombatTraceService`.
   limit, so Paper rejected the handshake before a player joined. The default
   is now `RiftShieldProbe` and the script rejects overlong names explicitly.
   The production shield and projectile paths were not changed.
+- The gate had no model display at all: only the physical cuboid and particle
+  opening effect existed. Added the dedicated `end_event_rift_gate` model at
+  CustomModelData `830018`, backed by the existing End Rift portal texture,
+  and bound one scaled ItemDisplay to the gate preview/open/close/restore
+  lifecycle. The collision remains the real journaled gate block cuboid.
 
 ## Implemented areas
 
@@ -104,6 +109,9 @@ implemented by `CombatTraceRecord` and `CombatTraceService`.
   movement enforcement and AI target/path reassertion.
 - Wave 7 uses visible Amethyst barriers with physical collision and restart
   rebuild; the live probe reports 480 barrier cells and 120 visual displays.
+- Rift gates now have a dedicated arch-and-rift 3D model, a server-side
+  resource-pack binding and explicit lifecycle cleanup; opening removes the
+  model only after all gate layers are open, while closing restores it.
 - Rift Fireball mechanics were not changed. Reflection/obelisk tests still
   verify reflected current-generation fireballs and boss immunity.
 - Recovery, cleanup, death/victory idempotency and non-event ownership guards
@@ -138,6 +146,14 @@ Final rerun after the official scenario:
 PASS — 76 passed in 1.22s; clean build, current contracts, Java policies,
 persistence/recovery and artifact hash checks
 
+powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventChecks.ps1
+PASS — 77 passed in 1.25s; gate model contract, clean build, Java policies,
+persistence/recovery and artifact hash checks
+
+python -m pytest -q tests/test_end_event_current_contract.py -k gate_has_a_runtime_model_and_lifecycle_binding
+PASS — 1 passed; CustomModelData 830018, vanilla model elements and lifecycle
+binding are pinned
+
 python -m pytest -q tests/test_end_event_current_contract.py -k 'distributed_client_jar_contains_the_current_boss_assets or wave6_ring_displays or wave7_barriers_validate_or_repair or server_visual_diagnostics'
 PASS — 4 passed, 54 deselected; current distributed client catalog and visual mappings are pinned
 
@@ -163,8 +179,9 @@ cadence. This prevents a false PASS from four attacks per bot.
 
 ## Live Paper verification
 
-Evidence files are under
-`artifacts/end-rift-v3-evidence/20260914-022712/`.
+Evidence files for this continuation are under
+`artifacts/end-rift-v3-evidence/20260914-103247/`. Earlier Paper evidence is
+retained under `artifacts/end-rift-v3-evidence/20260914-022712/`.
 
 ### Mob
 
@@ -172,6 +189,27 @@ Evidence files are under
 attacks=62
 LIVE_MOB_COMBAT_PASS moved=1842 player_hurt=219 player_damage_applied=221 ai_targets=808 ai_paths=474
 ```
+
+### Gate model and lifecycle
+
+The local staging server was configured temporarily at
+`CopiMine 29,68,-40 .. CopiMine 29,71,-38`. The fresh resource pack was
+served over the staging HTTP endpoint with SHA-1
+`a04f7d1c93465cd0f79db6bad5c2b12c3f1ab6a6` and SHA-256
+`34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9`.
+The server emitted:
+
+```text
+END_EVENT_GATE_MODEL_READY model=end_event_rift_gate custom_model_data=830018 origin=CopiMine:29.50,68.00,-39.50 size=1x4x3 collision=real_gate_blocks
+```
+
+An in-game RCON data query of the spawned ItemDisplay returned
+`minecraft:paper`, `minecraft:custom_model_data=830018` and the custom name
+`end_event_rift_gate`. `open 2` reached `OPENED` and removed the model only
+after `12/12` blocks opened; `close 2` restored the model and the final gate
+delete left `gate=UNSET`, `event-mobs=0`, `boss=none`. The complete command
+transcript is in
+`artifacts/end-rift-v3-evidence/20260914-103247/reports/gate-model-lifecycle.txt`.
 
 ### Boss real HP and shield
 
@@ -232,6 +270,17 @@ counted as a product failure: both disposable clients reached their explicit
 timer at the start of boss combat, the server observed the disconnects,
 expired its 25-second offline grace and accepted the documented roster wipe.
 
+A third clean official run was completed after the dedicated gate-model
+change with event `83ca6eeb-fb39-4140-a47a-43f3581ba9f5` and clients
+`EndRiftFinalI`/`EndRiftFinalJ`. It passed the complete W1-W7 sequence,
+including `COLLAPSE_RINGS` and `REALITY_SPLIT`, then all six boss stages and
+victory:
+
+```text
+CURRENT_OFFICIAL_PASS event=83ca6eeb-fb39-4140-a47a-43f3581ba9f5 players=2 waves=1,2,3,4,5,6,7 stages=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL victory=true
+state=UNLOCKED wave=0 event-mobs=0 boss=none victory=VICTORY_COMPLETE
+```
+
 ### Fresh continuation probes
 
 The continuation changes were rebuilt into the isolated local Paper runtime
@@ -241,7 +290,8 @@ and rechecked with the current distributed client JAR:
 LIVE_WAVE6_BOUNDARIES_PASS rings=3 radii=8,14,19 visual_displays=240 visual_points=64,80,96 leash_policy=true player_containment=true
 LIVE_WAVE7_BARRIERS_PASS chambers=2 cells=480 visual_displays=120 barrier=13,68,-39 collision=true
 LIVE_WAVE7_BARRIER_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0
-LIVE_BOSS_REAL_HEALTH_PASS boss=a0de7b5e-7aee-427a-84f2-879f643013ee status=hp-5000/5000 physical-5000/5000 attribute-unclamped=true current-health-marker=true legacy-virtual-marker=false
+LIVE_GATE_MODEL_PASS model=end_event_rift_gate custom_model_data=830018 lifecycle=preview-open-close collision=real_gate_blocks
+LIVE_BOSS_REAL_HEALTH_PASS boss=58a26657-ebe2-4bac-a641-6562c55e2546 status=hp-5000/5000 physical-5000/5000 attribute-unclamped=true current-health-marker=true legacy-virtual-marker=false
 LIVE_RIFT_WAVE4_OBELISK_PASS players=2 obelisks=4 active_before=4 reflected_hits=3 first_target_hp=2 second_target_hp=1 destroyed=true pulse_radius=5 fireball_cap=1 real_blocks=true
 LIVE_MOB_COMBAT_PASS moved=1813 attacks=37 player_hurt=73 player_damage_applied=76 ai_targets=449 ai_paths=246
 LIVE_CURRENT_AI_PASS waves=1,2,3,4,5,6,7 boss_phases=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL teleport_guards=2
@@ -257,6 +307,10 @@ CURRENT_WAVE4_VISUAL_PASS obelisk=real-block-state telegraph=present
 CURRENT_VISUAL_FINAL_CLEANUP_PASS wave=0 event-mobs=0 boss=none
 ```
 
+The same fresh visual acceptance on the rebuilt local runtime also reported
+`CURRENT_VISUAL_FIVE_PLAYER_PASS clients=5 wave_front=true portals=true
+obelisk=true boss_cues=true music_tracks=24 cleanup_requested=true`.
+
 The ring display transform was corrected from an offset below the combat
 floor to `combatFloorY() + 1.0D`; Wave 7 now repairs a missing generation
 chamber assignment before clearing and rebuilding its walls. Manual
@@ -270,8 +324,8 @@ client JAR SHA-1    1d9f9ef1445903556ca1d443e33cd02b03f0f75b
 client JAR SHA-256  4cf4c92f82cd201b975c57b0b88fb2a12ecd1f677d74fdd68d976704b0409895
 modpack SHA-1       2380aee0310793bd4d6fb33c0f8072f71fddbb52
 modpack SHA-256     0a07cd05c7931ebd7c736ff1b1ef83ff9f60482a6121d900d9767501eab716b5
-server plugin SHA-256 93f38c64410fd9e116ccc9cff9aa9ab13bb57f7f53f3f5e7855f66bd53c73f04
-resource pack SHA-256 335f68a8ccf1a5be6fecfd97b711a4684d61cc47c486c43637bd4dbcaa3bc1c1
+server plugin SHA-256 2ec988f0c86c245562daa256093ef3e2daa59577687cacb339c2e9903b11beeb
+resource pack SHA-256 34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9
 ```
 
 ## User bug matrix
@@ -283,7 +337,7 @@ resource pack SHA-256 335f68a8ccf1a5be6fecfd97b711a4684d61cc47c486c43637bd4dbcaa
 | Boss model was wrong and animations were not visible | Runtime clients could be stale even when server references were correct | Distributed current boss geometry, texture, importer/renderer classes and `udar_iz_grudi`/`udar_po_zemle` clips in the client JAR | Boss visual cue and phase probes pass; JAR contains every required class/resource | Current runtime artifact is fixed; native mesh/animation alignment remains unverified |
 | Boss HP and boss bar were wrong/broken | Old UI/client artifact and a virtual-health path could diverge from the real entity | Real `LivingEntity` HP authority remains 5000; current `EndRiftBossBarHud` is distributed; real-health and boss-visual wrappers are covered | `LIVE_BOSS_REAL_HEALTH_PASS` and boss visual wrapper pass | Server authority and distributed HUD fixed; native artwork still requires an exposed client window |
 | Obelisks had wrong/no model or texture | Diagnostics reported a nonexistent `copimineclient` entity texture path for server `ItemDisplay` models | Corrected obelisk/fireball/tentacle server paths to `assets/copimine/textures/item/...`; kept client namespace only for the articulated overlay | Wave 4 created CMD `830010` displays; obelisk reflection/destroy probe passes | Runtime mapping fixed; native UV/appearance still not verified |
-| Rift gates looked like a cube or had no texture/model | The live server had the three-layer portal model, but the public pack URL was serving an old pack | Current pack retains the arch/frame/inner/shard models and textures; Wave 3 mapping is checked by `tests/test_end_event_current_contract.py` | Paper created CMD `830007/830008/830009` layers; current local pack contains the model | Local source/artifact fixed; public deployment is still stale and native appearance is unverified |
+| Rift gates looked like a cube or had no texture/model | The gate lifecycle had no 3D gate ItemDisplay at all; only physical blocks and particles were present | Added `resourcepacks/src/assets/copimine/models/item/end_event_rift_gate.json`, manifest CMD `830018`, resource-pack build inclusion, and `ensureGateModelVisual`/`clearGateModelVisual` lifecycle binding in `CopiMineEndEvent.java` | Fresh local Paper lifecycle probe returned CMD `830018`; `open 2` cleared it only at `12/12`, `close 2` restored it, and `gate delete confirm` cleaned it | Local source/artifact/runtime fixed; public deployment is still stale and native appearance is unverified |
 | Core was not seated on its block | Core visual transform/origin was previously below or off the block | Kept the corrected core placement and current visual contract | Five-player visual probe reports the current core and cleanup | Paper/source pass; native multi-angle placement not verified |
 | Projectiles could not be reflected | User confirmed this was a testing error, not an event bug | No projectile speed, timer, hitbox, damage, trajectory or reflection code was changed | Wave 4 regression reports reflected hits and obelisk destruction | Preserved and regression-tested |
 | Wave 6 rings were tiny/invisible and passable | The thin ring ItemDisplay strip was translated to `-0.94F`, inside the solid floor; the visual lane and containment needed an end-to-end check | Raised the ring strip to `0.02F` above the combat floor and retained server containment/leash/AI handling in `CopiMineEndEvent.java` | `LIVE_WAVE6_BOUNDARIES_PASS` reports three rings, radii `8,14,19`, 240 visual displays and player containment | Paper mechanics and visibility contracts pass; native visual still not verified |
@@ -294,8 +348,8 @@ resource pack SHA-256 335f68a8ccf1a5be6fecfd97b711a4684d61cc47c486c43637bd4dbcaa
 ## Distribution and deployment gate
 
 The current local resource pack is built and pinned at SHA-1
-`f5805906b94977dce2728b93a63997af7339da17` and SHA-256
-`335f68a8ccf1a5be6fecfd97b711a4684d61cc47c486c43637bd4dbcaa3bc1c1`. The
+`a04f7d1c93465cd0f79db6bad5c2b12c3f1ab6a6` and SHA-256
+`34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9`. The
 configured public URL
 `https://copimine.ru/resourcepacks/CopiMineResourcePack.zip` was checked
 read-only and returned HTTP 200 but only 553461 bytes, ETag

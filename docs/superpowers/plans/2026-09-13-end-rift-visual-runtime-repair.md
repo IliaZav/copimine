@@ -1,5 +1,13 @@
 # End Rift visual runtime repair implementation plan
 
+> Status update (2026-09-14): the source/resource-pack work and local Paper
+> runtime checks in this historical checklist are complete, including the
+> dedicated gate model/lifecycle binding added in this continuation. The
+> remaining release gate is native Computer Use visual capture; the current
+> host exposes no Minecraft app target. See
+> `docs/superpowers/reports/2026-09-14-end-rift-v3-final-verification.md` for
+> the authoritative per-bug result and explicit remaining items.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the current End Rift client and resource-pack artifacts render the supplied assets and repair the visible Wave 3, Wave 4, Wave 7, and boss HUD defects without altering the working boss projectile mechanic.
@@ -8,7 +16,9 @@
 
 **Tech Stack:** Java 21/Paper-Purpur plugin, Fabric 1.21.1 client, vanilla resource-pack JSON, Python pytest contracts, PowerShell local runtime harness.
 
-**Spec:** User-authored End Rift V3 bug list in this Codex task; no separate repository specification exists. This plan is the scoped executable specification for the remaining visual/runtime defects.
+**Spec:** `docs/superpowers/specs/2026-09-10-end-rift-event-v3-final.md` plus
+the user-authored End Rift V3 bug list in this Codex task. The final report is
+the authoritative status for this historical plan.
 
 ## Global Constraints
 

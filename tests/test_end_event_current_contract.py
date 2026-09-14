@@ -11,6 +11,7 @@ import json
 import re
 import struct
 from pathlib import Path
+from zipfile import ZipFile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,7 @@ RUNTIME = PLUGIN_SRC / "runtime"
 CLIENT = ROOT / "CopiMineClient"
 CLIENT_JAVA = CLIENT / "src" / "main" / "java" / "me" / "copimine" / "client"
 CLIENT_ASSETS = CLIENT / "src" / "main" / "resources" / "assets" / "copimineclient"
+DISTRIBUTED_CLIENT_JAR = ROOT / "thirdparty" / "client-mods" / "CopiMineClient-0.1.1.jar"
 PACK = ROOT / "resourcepacks"
 PACK_ASSETS = PACK / "src" / "assets" / "copimine"
 DOCS = ROOT / "docs"
@@ -223,6 +225,52 @@ def test_disposable_boss_cleanup_clears_test_wave_marker() -> None:
     )
 
 
+def test_manual_disposable_wave_clear_resets_transient_wave_marker() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    match = re.search(
+        r"private void handleWave\(CommandSender sender, String\[\] args\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\n\n    private void handleBoss",
+        root,
+    )
+    assert match, "wave command handler must remain inspectable"
+    clear_match = re.search(
+        r'if \("clear"\.equalsIgnoreCase\(args\[1\]\)[^\{]*\{'
+        r"(?P<body>[\s\S]*?)\n        \}",
+        match.group("body"),
+    )
+    assert clear_match, "manual wave clear branch must remain inspectable"
+    clear_body = clear_match.group("body")
+    assert "activeWave = 0;" in clear_body, (
+        "clearing a disposable test wave must not leave a stale wave number in READY_FOR_PLAYERS"
+    )
+    assert "saveStateSync" in clear_body, (
+        "disposable wave cleanup must persist its restored transient state"
+    )
+
+
+def test_wave6_ring_displays_are_above_the_solid_combat_floor() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void spawnCurrentRingVisuals")
+    end = source.index("private void spawnRealitySplitBarriers", start)
+    body = source[start:end]
+
+    assert "combatFloorY() + 1.0D" in body
+    assert "new Vector3f(-0.52F, 0.02F, -0.14F)" in body
+    assert "-0.94F" not in body
+
+
+def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void spawnRealitySplitBarriers")
+    end = source.index("/** Remove one completed adjacent room boundary", start)
+    body = source[start:end]
+
+    assert "ensureRealitySplitChamberAssignment" in body
+    assert body.index("if (!ensureRealitySplitChamberAssignment())") < body.index(
+        'clearRealitySplitBarriers("wave7-rebuild")'
+    )
+
+
 def test_creative_full_run_cleans_transient_wave_state() -> None:
     root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     match = re.search(
@@ -372,10 +420,23 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
         "end_rift_user_spider.png",
         "end_rift_skeleton.png",
         "end_rift_elite_skeleton.png",
-        "end_rift_tentacle_hd.png",
     ):
         assert name in mapping, name
     assert "end_rift_user_boss.png" in root
+
+    # ItemDisplay visuals are resolved by the server resource pack, not by
+    # the optional Fabric client jar.  Keep this contract tied to the actual
+    # runtime namespace so diagnostics cannot report a made-up client path.
+    assert 'assets/copimine/textures/item/end_event_rift_obelisk_full_hd.png' in mapping
+    assert 'assets/copimine/textures/item/end_event_rift_obelisk_damaged_hd.png' in mapping
+    assert 'assets/copimine/textures/item/end_event_rift_obelisk_critical_hd.png' in mapping
+    assert 'assets/copimine/textures/item/end_event_rift_fireball_hd.png' in mapping
+    assert 'assets/copimine/textures/item/end_event_rift_tentacle_hd.png' in mapping
+    assert 'assets/copimineclient/textures/entity/end_event_rift_obelisk_full_hd.png' not in mapping
+    assert 'assets/copimineclient/textures/entity/end_event_rift_fireball_hd.png' not in mapping
+    assert 'assets/copimineclient/textures/entity/end_rift_tentacle_hd.png' in mapping
+    assert 'server=' in mapping
+    assert ';client=' in mapping
 
 
 def test_live_visual_probe_verifies_creative_cleanup_state() -> None:
@@ -390,6 +451,12 @@ def test_live_visual_probe_verifies_creative_cleanup_state() -> None:
     )
     assert re.search(
         r"creativeStatus\s*-notmatch\s*'\(\?m\)wave=0\\s\+event-mobs=0\\s\+boss=none'",
+        script,
+    )
+    assert "CURRENT_VISUAL_FINAL_CLEANUP_PASS" in script
+    assert "$finalStatus" in script
+    assert re.search(
+        r"finalStatus\s*-notmatch\s*'\(\?m\)wave=0\\s\+event-mobs=0\\s\+boss=none'",
         script,
     )
 
@@ -440,6 +507,29 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert "end_rift_user_boss.png" in renderer
     assert "end_rift_user_enderman.png" in catalog
     assert "end_rift_user_spider.png" in catalog
+
+
+def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
+    assert DISTRIBUTED_CLIENT_JAR.is_file(), DISTRIBUTED_CLIENT_JAR
+    with ZipFile(DISTRIBUTED_CLIENT_JAR) as archive:
+        names = set(archive.namelist())
+    required = {
+        "me/copimine/client/UserEndBossModelData.class",
+        "me/copimine/client/UserEndBossAnimationPlayer.class",
+        "me/copimine/client/EndRiftBossBarHud.class",
+        "assets/copimineclient/models/entity/end_rift_guardian/geometry.json",
+        "assets/copimineclient/textures/entity/end_rift_user_boss.png",
+        "assets/copimineclient/textures/gui/end_rift_bossbar_frame.png",
+        "assets/copimineclient/textures/entity/end_rift_user_enderman.png",
+        "assets/copimineclient/textures/entity/end_rift_user_spider.png",
+        "assets/copimineclient/textures/entity/end_rift_elite.png",
+        "assets/copimineclient/textures/entity/end_rift_skeleton.png",
+        "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
+        "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_iz_grudi.json",
+        "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_po_zemle.animation.json",
+    }
+    missing = required - names
+    assert not missing, f"distributed client jar is stale, missing {sorted(missing)}"
 
 
 def test_tentacle_rig_asset_contract() -> None:

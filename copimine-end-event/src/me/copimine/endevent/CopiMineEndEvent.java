@@ -4079,11 +4079,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case CLIENT_VISUAL_SPIDER -> "assets/copimineclient/textures/entity/end_rift_user_spider.png";
             case CLIENT_VISUAL_SKELETON -> "assets/copimineclient/textures/entity/end_rift_skeleton.png";
             case CLIENT_VISUAL_ELITE_SKELETON -> "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png";
-            case CLIENT_VISUAL_OBELISK_FULL -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_full_hd.png";
-            case CLIENT_VISUAL_OBELISK_DAMAGED -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_damaged_hd.png";
-            case CLIENT_VISUAL_OBELISK_CRITICAL -> "assets/copimineclient/textures/entity/end_event_rift_obelisk_critical_hd.png";
-            case EVENT_KIND_RIFT_FIREBALL -> "assets/copimineclient/textures/entity/end_event_rift_fireball_hd.png";
-            case CLIENT_VISUAL_TENTACLE -> "assets/copimineclient/textures/entity/end_rift_tentacle_hd.png";
+            // These visuals are ItemDisplays.  Their model and texture are
+            // resolved by the server resource pack's copimine namespace;
+            // copimineclient is reserved for UUID-bound entity renderers in
+            // the optional Fabric client jar.
+            case CLIENT_VISUAL_OBELISK_FULL -> "assets/copimine/textures/item/end_event_rift_obelisk_full_hd.png";
+            case CLIENT_VISUAL_OBELISK_DAMAGED -> "assets/copimine/textures/item/end_event_rift_obelisk_damaged_hd.png";
+            case CLIENT_VISUAL_OBELISK_CRITICAL -> "assets/copimine/textures/item/end_event_rift_obelisk_critical_hd.png";
+            case EVENT_KIND_RIFT_FIREBALL -> "assets/copimine/textures/item/end_event_rift_fireball_hd.png";
+            // Tentacles have both layers at runtime: the server ItemDisplay
+            // supplies the resource-pack model, while the optional Fabric
+            // renderer adds the articulated client overlay.
+            case CLIENT_VISUAL_TENTACLE -> "server=assets/copimine/textures/item/end_event_rift_tentacle_hd.png"
+                    + ";client=assets/copimineclient/textures/entity/end_rift_tentacle_hd.png";
             default -> "";
         };
     }
@@ -4395,7 +4403,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if ("clear".equalsIgnoreCase(args[1])) {
+            boolean disposableWave = !isOfficialAttempt()
+                    && !testCombatAiMode
+                    && activeWave > 0;
             clearWaveEntities();
+            if (disposableWave) {
+                // `/cmend test wave` deliberately leaves the durable phase
+                // untouched.  Clear its transient marker as well, otherwise
+                // READY_FOR_PLAYERS can report a stale wave after a visual
+                // probe and the next probe starts from the wrong objective.
+                activeWave = 0;
+                phaseDeadlineMillis = 0L;
+                if (!saveStateSync()) {
+                    getLogger().warning("DISPOSABLE_WAVE_CLEANUP_STATE_SAVE_FAILED event=" + eventId);
+                }
+                getLogger().info("DISPOSABLE_WAVE_CLEANUP_STATE_RESTORED event=" + eventId
+                        + " phase=" + phase + " activeWave=0");
+            }
             message(sender, "&aУдалены только event-owned wave entities.");
             return;
         }
@@ -12704,7 +12728,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     value.setPersistent(false);
                     value.setInterpolationDuration(5);
                     value.setTransformation(new Transformation(
-                            new Vector3f(-0.52F, -0.94F, -0.14F),
+                            new Vector3f(-0.52F, 0.02F, -0.14F),
                             new AxisAngle4f((float) (angle + Math.PI / 2.0D), 0.0F, 1.0F, 0.0F),
                             new Vector3f(1.04F, 0.24F, 0.28F), new AxisAngle4f()));
                 });
@@ -12729,6 +12753,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * placed barrier is journaled before the first mutation.
      */
     private void spawnRealitySplitBarriers(World world, Location core) {
+        if (!ensureRealitySplitChamberAssignment()) {
+            getLogger().warning("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=insufficient-chambers-and-no-repair-roster");
+            return;
+        }
         clearRealitySplitBarriers("wave7-rebuild");
         if (world == null || core == null || !realitySplitChamberController.owns(generation)) {
             return;
@@ -12851,6 +12880,46 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " chambers=" + chamberCount + " cells=" + realitySplitBarrierCells.size()
                 + " columns=" + visualBases.size() + " height=" + RealitySplitBarrierPolicy.HEIGHT
                 + " collision=true journaled=true");
+    }
+
+    /**
+     * Rebuild the generation-scoped room assignment before changing any wall.
+     * A restart or a disposable probe can leave the controller empty while a
+     * durable Wave 7 phase is still active; clearing first would remove a
+     * valid wall and then return with no replacement.
+     */
+    private boolean ensureRealitySplitChamberAssignment() {
+        if (realitySplitChamberController.owns(generation)
+                && realitySplitChamberController.assignment().chamberCount() >= 2) {
+            return true;
+        }
+        List<UUID> roster;
+        if (!officialRewardRoster.isEmpty()) {
+            roster = officialRewardRoster.stream()
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+        } else {
+            roster = activeLivingPlayers().stream()
+                    .map(Player::getUniqueId)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+        }
+        if (roster.size() < 2) {
+            return false;
+        }
+        realitySplitChamberController.begin(generation, roster);
+        int chamberCount = realitySplitChamberController.assignment().chamberCount();
+        if (chamberCount < 2) {
+            return false;
+        }
+        getLogger().warning("END_RIFT_WAVE7_CHAMBERS_REPAIRED event=" + eventId
+                + " generation=" + generation + " roster=" + roster.size()
+                + " chambers=" + chamberCount);
+        return true;
     }
 
     /** Remove one completed adjacent room boundary while retaining others. */

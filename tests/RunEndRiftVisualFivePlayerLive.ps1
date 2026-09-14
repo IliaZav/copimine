@@ -282,6 +282,11 @@ try {
   }
   Write-Evidence "CURRENT_MUSIC_CATALOG_PASS tracks=$musicCount event_scope=manual_local_test"
   $null = Invoke-LocalRcon 'cmend wave clear'
+  $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+  if ($finalStatus -notmatch '(?m)wave=0\s+event-mobs=0\s+boss=none') {
+    throw "Visual probe cleanup left transient wave state behind:`n$finalStatus"
+  }
+  Write-Evidence 'CURRENT_VISUAL_FINAL_CLEANUP_PASS wave=0 event-mobs=0 boss=none'
   Write-Evidence 'NATIVE_CLIENT_SCREENSHOT=NOT_VERIFIED'
   Write-Evidence 'CURRENT_VISUAL_FIVE_PLAYER_PASS clients=5 wave_front=true portals=true obelisk=true boss_cues=true music_tracks=24 cleanup_requested=true'
 } finally {

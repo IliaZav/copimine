@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 
 Result: `End Rift current local checks passed.`
 
-The gate completed the server plugin builds, Fabric client Gradle build (`BUILD SUCCESSFUL`), resource-pack build, current Python contracts (`133 passed in 1.68s`), Java policy/persistence checks, artifact parity checks, and `git diff --check`. The build emitted five existing API deprecation warnings; no compilation or test failures occurred.
+The gate completed the server plugin builds, Fabric client Gradle build (`BUILD SUCCESSFUL`), resource-pack build, current Python contracts (`133 passed in 1.89s`), Java policy/persistence checks, artifact parity checks, and `git diff --check`. The build emitted five existing API deprecation warnings; no compilation or test failures occurred.
 
 The focused disposable-wave regression was intentionally red before the repair and green after it. The final focused contract set reported `17 passed` for the current Wave 6/7 boundary and disposable-completion checks.
 
@@ -79,11 +79,11 @@ All hashes below are SHA-256 unless stated otherwise. The current build gate rep
 
 | Artifact | Size | SHA-256 |
 |---|---:|---|
-| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,433,544 | `ebfb91742f76ee6473372572961ed6a09334400472b6861fc6be38522643a1ee` |
-| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,433,544 | `ebfb91742f76ee6473372961ed6a09334400472b6861fc6be38522643a1ee` |
+| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,433,491 | `dcb45d605f50d8fbc62b6672741511c70a171d5e50da49937dbd5f476abb019f` |
+| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,433,491 | `dcb45d605f50d8fbc62b6672741511c70a171d5e50da49937dbd5f476abb019f` |
 | `copimine-end-event/CopiMineEndEvent.jar` | 778,433 | `dd1a8a7cabb0721542297c6a3914e0bbaa8d45c046d1d5bf5a758f51c9ec4c7d` |
 | `minecraft/server/plugins/CopiMineEndEvent.jar` | 778,433 | `dd1a8a7cabb0721542297c6a3914e0bbaa8d45c046d1d5bf5a758f51c9ec4c7d` |
-| `thirdparty/CopiMineMods.zip` | 21,637,512 | `6706b2f7ae656fc062ad83f3a17ade16a5d9e41754e112ba035339d4e8b36603` |
+| `thirdparty/CopiMineMods.zip` | 21,637,486 | `015d9998884cb521543592beadf28b30ad3329ac132a07fa0174855e902a52de` |
 | resource-pack build output | — | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 
 The resource-pack hash is also recorded by the resource-pack build and manifest checks.
@@ -121,7 +121,10 @@ The source-side Bedrock importer, animation parser, model-selection contracts, l
 No production server upload or installation was performed. The source and selected evidence were published to `https://github.com/IliaZav/copimine`:
 
 - commit: `5e3d2cd61af075c126715562389c814b6c1c8e69` (`fix: close End Rift guardian and wave boundary gaps`);
+- client artifact parity/build normalization: `1407ad84907d4a9da71f9d248942b3905a664cd6` (`fix: normalize client resource artifact`);
 - branch: `codex/end-rift-event`;
 - pull request: [#3 — fix: close End Rift guardian and wave boundary gaps](https://github.com/IliaZav/copimine/pull/3).
+
+GitHub Actions verification for `1407ad84907d4a9da71f9d248942b3905a664cd6` completed successfully in [run #645](https://github.com/IliaZav/copimine/actions/runs/35110552028): both `static-and-contract` and `java-plugins` passed, including the clean-runner client build, artifact validators, the 133 Python contracts, and the End Rift event gate.
 
 The pull request is open for review and has not been merged.

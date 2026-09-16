@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the role-collapsed End Rift wave visuals with clean, assembled, low-noise models for every ordinary, elite, guardian, ritual-guard, and ritual-caster variant, while preserving authoritative server hitboxes and producing inspectable previews for each model.
+**Goal:** Replace the role-collapsed End Rift wave visuals with clean, assembled, low-noise models for every ordinary, elite, guardian, ritual-guard, and ritual-caster type+role combination, while preserving authoritative server hitboxes and producing inspectable previews for each model.
 
 **Architecture:** The server will publish a distinct visual ID for each gameplay role/type combination. The Fabric client will resolve that ID to a dedicated model instance and a hand-authored opaque UV atlas; render-only parts remain outside the server collision boundary. A deterministic Pillow preview tool will assemble the same named visual roles into front/three-quarter cards and a review board, while native Minecraft capture remains a separate evidence level.
 
@@ -42,20 +42,23 @@
 |---|---|---|
 | ordinary Enderman | `END_RIFT_ENDERMAN_V1` | `end_rift_user_enderman.png` |
 | elite Enderman | `END_RIFT_ELITE_V1` | `end_rift_elite.png` |
-| special Wave Guardian Enderman | `END_RIFT_WAVE_GUARDIAN_V1` | `end_rift_wave_guardian.png` |
+| special Wave Guardian Enderman | `END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1` | `end_rift_wave_guardian_enderman.png` |
 | Wave 6 ritual caster | `END_RIFT_RITUAL_CASTER_V1` | `end_rift_ritual_caster.png` |
+| ritual-guard Enderman | `END_RIFT_RITUAL_GUARD_ENDERMAN_V1` | `end_rift_ritual_guard_enderman.png` |
 | ordinary Skeleton | `END_RIFT_SKELETON_V1` | `end_rift_skeleton.png` |
 | elite Skeleton | `END_RIFT_ELITE_SKELETON_V1` | `end_rift_elite_skeleton.png` |
-| special ritual-guard Skeleton | `END_RIFT_RITUAL_GUARD_V1` | `end_rift_ritual_guard.png` |
+| special Wave Guardian Skeleton | `END_RIFT_WAVE_GUARDIAN_SKELETON_V1` | `end_rift_wave_guardian_skeleton.png` |
+| special ritual-guard Skeleton | `END_RIFT_RITUAL_GUARD_SKELETON_V1` | `end_rift_ritual_guard_skeleton.png` |
 | ordinary Spider | `END_RIFT_SPIDER_V1` | `end_rift_user_spider.png` |
 | elite Spider | `END_RIFT_ELITE_SPIDER_V1` | `end_rift_elite_spider.png` |
 | special Wave Guardian Spider | `END_RIFT_WAVE_GUARDIAN_SPIDER_V1` | `end_rift_wave_guardian_spider.png` |
+| special ritual-guard Spider | `END_RIFT_RITUAL_GUARD_SPIDER_V1` | `end_rift_ritual_guard_spider.png` |
 
 - Consumes the existing server `EVENT_KIND_*` tags; it does not change the
   entity type or collision profile.
 
 - [ ] **Step 1: Add failing selection/catalog assertions.** Extend the JUnit
-  tests with exact expectations for the four new IDs and add Python assertions
+  tests with exact expectations for the seven new IDs and add Python assertions
   that the server maps `EVENT_KIND_WAVE_GUARDIAN`, `EVENT_KIND_RITUAL_GUARD`,
   and elite spiders to those IDs. The test shape is:
 
@@ -64,14 +67,14 @@
 void specialWaveVariantsUseTheirOwnVisualContracts() {
     assertEquals(EndermanRendererSelection.Kind.WAVE_GUARDIAN,
             EndermanRendererSelection.selectVisual(
-                    ENTITY_UUID, "END_RIFT_WAVE_GUARDIAN_V1", null,
+                    ENTITY_UUID, "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", null,
                     Identifier.of("copimineclient",
-                            "textures/entity/end_rift_wave_guardian.png"), true).kind());
-    assertEquals("end_rift_wave_guardian_v1",
+                            "textures/entity/end_rift_wave_guardian_enderman.png"), true).kind());
+    assertEquals("end_rift_wave_guardian_enderman_v1",
             EndermanRendererSelection.selectVisual(
-                    ENTITY_UUID, "END_RIFT_WAVE_GUARDIAN_V1", null,
+                    ENTITY_UUID, "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", null,
                     Identifier.of("copimineclient",
-                            "textures/entity/end_rift_wave_guardian.png"), true).geometryId());
+                            "textures/entity/end_rift_wave_guardian_enderman.png"), true).geometryId());
 }
 ```
 
@@ -212,17 +215,18 @@ git push origin codex/end-rift-event
 - Test: `CopiMineClient/src/test/java/me/copimine/client/RiftSpiderModelTest.java`
 
 **Interfaces:**
-- `RiftEventSkeletonModel.Variant` has `ORDINARY`, `ELITE`,
-  `RITUAL_GUARD`; `WAVE_GUARDIAN` is an additional skeleton variant when the
-  server binds that role.
-- `RiftSpiderModel.Variant` has `ORDINARY`, `ELITE`, `WAVE_GUARDIAN`.
+- `RiftEventSkeletonModel.Variant` has `ORDINARY`, `ELITE`, `WAVE_GUARDIAN`,
+  and `RITUAL_GUARD` values.
+- `RiftSpiderModel.Variant` has `ORDINARY`, `ELITE`, `WAVE_GUARDIAN`, and
+  `RITUAL_GUARD` values.
 - Each renderer owner exposes `modelFor(String visualId)` or a typed variant
   and returns a stable instance for each ID.
 
 - [ ] **Step 1: Add failing tests for skeleton roles.** Create
   `RiftEventSkeletonModelTest` and assert named jaw/rib/forearm/knee parts for
-  ordinary, shoulder/horn parts for elite, guard sigil/crest for ritual guard,
-  and distinct renderer instances.
+  ordinary, shoulder/horn parts for elite, guardian crest/spine for
+  `WAVE_GUARDIAN`, guard sigil/crest for `RITUAL_GUARD`, and distinct renderer
+  instances for all four roles.
 
 ```java
 @Test
@@ -239,8 +243,8 @@ void skeletonRolesAreNotTextureOnlyVariants() {
 - [ ] **Step 2: Add failing tests for spider roles.** Extend
   `RiftSpiderModelTest` to construct each variant, assert eight articulated leg
   roots, a body shell, and role-only parts such as `elite_carapace` and
-  `guardian_spine`; assert that `RiftSpiderModelRenderer` owns three distinct
-  instances.
+  `guardian_spine`, and `guard_seal`; assert that `RiftSpiderModelRenderer`
+  owns four distinct instances.
 
 - [ ] **Step 3: Run the new tests and confirm RED.**
 
@@ -257,8 +261,9 @@ Expected: FAIL on the missing variant builders/parts.
 
 - [ ] **Step 5: Implement spider variants.** Replace the single model instance
   with variant-specific geometry: ordinary has a compact shell and eight thin
-  legs, elite adds a raised carapace and two front fangs, and the guardian adds
-  a central spine/crest and reinforced leg joints. Preserve vanilla spider leg
+  legs, elite adds a raised carapace and two front fangs, the guardian adds a
+  central spine/crest and reinforced leg joints, and the ritual guard adds a
+  front seal plus shorter defensive fangs. Preserve vanilla spider leg
   animation and keep every added part render-only.
 
 - [ ] **Step 6: Wire selection and render swapping.** Map skeleton visual IDs to
@@ -287,10 +292,13 @@ git push origin codex/end-rift-event
 - Create: `CopiMineClient/tools/validate_end_rift_mob_uv.py`
 - Modify: `tests/test_end_event_wave_mob_visual_contract.py`
 - Modify: `tests/test_end_event_current_contract.py`
-- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_wave_guardian.png`
-- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_ritual_guard.png`
+- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_wave_guardian_enderman.png`
+- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_ritual_guard_enderman.png`
+- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_wave_guardian_skeleton.png`
+- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_ritual_guard_skeleton.png`
 - Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_elite_spider.png`
 - Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_wave_guardian_spider.png`
+- Create: `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_ritual_guard_spider.png`
 
 **Interfaces:**
 - `generate_end_rift_texture_atlases.py` remains the single deterministic
@@ -300,7 +308,7 @@ git push origin codex/end-rift-event
   declared palette larger than the role limit.
 
 - [ ] **Step 1: Add failing image/UV tests.** Extend the Python contract with
-  the four new filenames and add a role table whose expected dimensions are
+  the seven new filenames and add a role table whose expected dimensions are
   `(64, 32)`, alpha is exactly `{255}`, and palette limits are `14` for normal
   variants and `16` for bone-heavy variants. Add a test that runs:
 
@@ -316,7 +324,7 @@ assert result.returncode == 0, result.stderr
 
 Run: `python -m pytest -q tests/test_end_event_wave_mob_visual_contract.py`.
 
-Expected: FAIL because the four new assets and UV auditor do not exist.
+Expected: FAIL because the seven new assets and UV auditor do not exist.
 
 - [ ] **Step 3: Implement deterministic, hand-authored role sheets.** Add
   functions `wave_guardian_sheet`, `ritual_guard_sheet`,
@@ -375,7 +383,7 @@ git push origin codex/end-rift-event
   references only as references and never labels a software preview as native.
 
 - [ ] **Step 1: Add the preview contract test.** Assert that the script has a
-  `ROLE_SPECS` entry for all ten role/type combinations and that a generated
+  `ROLE_SPECS` entry for all thirteen role/type combinations and that a generated
   card has a non-background foreground bounding box, a visible two-tone body,
   and no transparent output pixels.
 

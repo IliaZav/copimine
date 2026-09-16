@@ -39,6 +39,17 @@ processResources {
     filesMatching("fabric.mod.json") {
         expand "version": project.version
     }
+    // Git checkouts may expose text resources with different line endings.
+    // Normalize generated JSON outputs so the client artifact is identical
+    // on the local Windows build and on the Windows CI runner.
+    doLast {
+        fileTree(destinationDir).matching { include "**/*.json" }.files.each { resource ->
+            def normalized = resource.getText("UTF-8")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+            resource.setText(normalized, "UTF-8")
+        }
+    }
 }
 
 def shaderpackRoot = file("src/main/resources/assets/copimineclient/shaderpacks")

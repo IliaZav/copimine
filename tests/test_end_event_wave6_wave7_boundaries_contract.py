@@ -27,7 +27,7 @@ def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> Non
     assert "DRAIN_INTERVAL_MILLIS = 20_000L" in health
     assert "DRAIN_HEALTH = 2.0D" in health
     assert "MIN_HEALTH = 1.0D" in health
-    ritual_start = root.index("private void startRitualSphereObjective")
+    ritual_start = root.index("private boolean startRitualSphereObjective")
     ritual_end = root.index("private void restorePersistedRitualSphereObjective", ritual_start)
     ritual_body = root[ritual_start:ritual_end]
     assert "Location combatCore = coreCombatAnchorLocation();" in ritual_body
@@ -45,7 +45,7 @@ def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> Non
 
 def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private void startCanonicalObjective")
+    start = root.index("private boolean startCanonicalObjective")
     end = root.index("private void startWaveObjective", start)
     start_body = root[start:end]
     assert "case COLLAPSE_RINGS -> getLogger().warning(\"WAVE6_LEGACY_COLLAPSE_RING_REFUSED" in start_body
@@ -73,7 +73,7 @@ def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
 
 def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private void startRitualSphereObjective")
+    start = root.index("private boolean startRitualSphereObjective")
     end = root.index("private Location ritualSphereCenter", start)
     body = root[start:end]
     assert "placeRitualEntity(caster, casterLocation, \"CASTER\", casterSlot, -1)" in body
@@ -96,6 +96,55 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     capture_body = root[capture_start:capture_end]
     assert "ritualSphereVisualUuid == null" in capture_body
     assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in capture_body
+
+
+def test_wave6_failed_start_cannot_emit_started_marker_or_advance_objective() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+
+    assert "private boolean startCanonicalObjective" in root
+    assert "private boolean startRitualSphereObjective" in root
+
+    canonical_start = root.index("private boolean startCanonicalObjective")
+    canonical_end = root.index("private void startWaveObjective", canonical_start)
+    canonical_body = root[canonical_start:canonical_end]
+    marker = 'getLogger().info("WAVE_OBJECTIVE_STARTED'
+    failure_guard = "if (!started) {"
+    assert "started = startRitualSphereObjective(world, core);" in canonical_body
+    assert failure_guard in canonical_body
+    assert canonical_body.index(failure_guard) < canonical_body.index(marker)
+    assert "return false;" in canonical_body[canonical_body.index(failure_guard):canonical_body.index(marker)]
+
+    ritual_start = root.index("private boolean startRitualSphereObjective")
+    ritual_end = root.index("private Location ritualSphereCenter", ritual_start)
+    ritual_body = root[ritual_start:ritual_end]
+    invalid_start = ritual_body.index(
+        "if (world == null || core == null || generation <= 0L"
+    )
+    invalid_end = ritual_body.index(
+        'clearRitualSphereObjective("new-start")', invalid_start
+    )
+    invalid_context = ritual_body[invalid_start:invalid_end]
+    for marker_name in (
+        "waveObjectiveStartedMillis = 0L;",
+        "waveObjectiveLastSecond = -1;",
+        "waveObjectiveMobCount = 0;",
+        "waveObjectiveComplete = false;",
+    ):
+        assert marker_name in invalid_context
+    assert "return false;" in invalid_context
+
+    tick_start = root.index("private boolean tickCurrentObjective")
+    tick_end = root.index("private boolean tickWaveObjective", tick_start)
+    tick_body = root[tick_start:tick_end]
+    retry_start = tick_body.index("if (waveObjectiveStartedMillis <= 0L)")
+    now_offset = tick_body.index("long now = System.currentTimeMillis();", retry_start)
+    retry_body = tick_body[retry_start:now_offset]
+    start_call = "startCanonicalObjective(objectiveWave, world, core)"
+    assert start_call in retry_body
+    assert "return false;" in retry_body
+    assert retry_body.index("return false;") > retry_body.index(
+        start_call
+    )
 
 
 def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:

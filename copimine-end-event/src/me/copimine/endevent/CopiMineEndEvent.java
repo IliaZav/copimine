@@ -12613,15 +12613,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Initialise the one canonical objective owned by the current wave. */
-    private void startCanonicalObjective(int wave, World world, Location core) {
+    private boolean startCanonicalObjective(int wave, World world, Location core) {
         if (world == null || core == null || wave < 1
                 || !EndRiftObjective.isNumberedWave(wave)) {
-            return;
+            return false;
         }
         waveObjectiveStartedMillis = System.currentTimeMillis();
         waveObjectiveLastSecond = -1;
         waveObjectiveComplete = false;
         waveObjectiveMobCount = countLiveWaveEntitiesForWave(wave);
+        boolean started = true;
         switch (EndRiftObjective.objective(wave)) {
             case RIFT_CARRIERS -> {
                 currentCarrierCharges = 0;
@@ -12661,7 +12662,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + eventId + " generation=" + generation);
             case RITUAL_SPHERE -> {
                 clearLegacyCollapseRingState("ritual-sphere-start");
-                startRitualSphereObjective(world, core);
+                started = startRitualSphereObjective(world, core);
             }
             case REALITY_SPLIT -> {
                 wave6Complete = false;
@@ -12670,9 +12671,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         "§fКаждая комната должна пережить свой бой", true);
             }
         }
+        if (!started) {
+            return false;
+        }
         getLogger().info("WAVE_OBJECTIVE_STARTED event=" + eventId
                 + " wave=" + wave + " objective=" + EndRiftObjective.objective(wave)
                 + " mobs=" + waveObjectiveMobCount + " generation=" + generation);
+        return true;
     }
 
     private void startWaveObjective(int wave, World world, Location core) {
@@ -12715,7 +12720,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             World world = Bukkit.getWorld(worldName);
             Location core = coreCombatAnchorLocation();
             if (world != null && core != null) {
-                startCanonicalObjective(objectiveWave, world, core);
+                if (!startCanonicalObjective(objectiveWave, world, core)) {
+                    return false;
+                }
+            }
+            if (waveObjectiveStartedMillis <= 0L) {
+                return false;
             }
         }
         long now = System.currentTimeMillis();
@@ -13154,7 +13164,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Start the fixed, server-owned Wave 6 Ritual Sphere encounter. */
-    private void startRitualSphereObjective(World world, Location core) {
+    private boolean startRitualSphereObjective(World world, Location core) {
         // startWaveObjective receives the Core's top location, while all
         // combat geometry (floor, sphere, prisoner and safe mob destinations)
         // is defined relative to the playable feet-level anchor.  Normalise
@@ -13168,9 +13178,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || (!isOfficialCurrentAttempt() && !testWaveFrontVisualMode)) {
             waveObjectiveStartedMillis = 0L;
             waveObjectiveLastSecond = -1;
+            waveObjectiveMobCount = 0;
+            waveObjectiveComplete = false;
             getLogger().warning("WAVE6_RITUAL_START_REFUSED event=" + eventId
                     + " generation=" + generation + " reason=invalid-context");
-            return;
+            return false;
         }
         clearRitualSphereObjective("new-start");
         cleanupLegacyWave6Entities();
@@ -13262,7 +13274,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             waveObjectiveStartedMillis = 0L;
             waveObjectiveLastSecond = -1;
             waveObjectiveMobCount = 0;
-            return;
+            waveObjectiveComplete = false;
+            return false;
         }
         waveObjectiveMobCount = profile.casterCount() + profile.guardCount();
         getLogger().info("WAVE6_RITUAL_SPHERE_READY event=" + eventId
@@ -13277,6 +13290,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " health_floor=" + RitualPrisonerHealthPolicy.MIN_HEALTH
                 + " authority=server");
         saveStateAsync();
+        return true;
     }
 
     /** Place one ritual entity as a transaction: a failed spawn never leaks. */

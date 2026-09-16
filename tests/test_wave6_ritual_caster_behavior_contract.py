@@ -94,3 +94,18 @@ def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> No
     assert "caster" in model.lower()
     assert "leftArm.pitch" in model
     assert "rightArm.pitch" in model
+
+
+def test_wave6_live_ai_probe_allows_server_controlled_passive_casters() -> None:
+    probe = read(ROOT / "tests/RunEndRiftAiPhasesLive.ps1")
+    root = read(SRC / "CopiMineEndEvent.java")
+    assert "AllowPassiveRitualCasters" in probe
+    assert "ritualCasters=(\\d+)" in probe
+    assert "$expectedEnabled = $mobile - $casterCount" in probe
+    assert "enabled -ne $expectedEnabled" in probe
+    assert "ritualCastersTargeted" in probe
+    assert "target=none" in probe
+    assert "-AllowPassiveRitualCasters" in probe
+    assert "ritualCasters=" in root
+    assert "ritualCastersPassive=" in root
+    assert "ritualCastersTargeted=" in root

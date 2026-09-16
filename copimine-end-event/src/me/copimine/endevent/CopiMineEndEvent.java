@@ -2662,6 +2662,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     ? bossPhase.name() : bossPhase.name();
             int mobile = 0;
             int aiEnabled = 0;
+            int ritualCasters = 0;
+            int ritualCastersPassive = 0;
+            int ritualCastersTargeted = 0;
+            int ritualGuards = 0;
             int targeted = 0;
             int coreObjective = 0;
             int outside = 0;
@@ -2676,11 +2680,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     continue;
                 }
                 mobile++;
+                if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
+                    ritualCasters++;
+                    if (!mob.hasAI()) {
+                        ritualCastersPassive++;
+                    }
+                } else if (EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                    ritualGuards++;
+                }
                 if (mob.hasAI()) {
                     aiEnabled++;
                 }
                 if (mob.getTarget() instanceof Player player && isCombatTarget(player)) {
                     targeted++;
+                    if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
+                        ritualCastersTargeted++;
+                    }
                 }
                 if (isCurrentCollapseGuard(entity)) {
                     coreObjective++;
@@ -2718,7 +2733,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " mobile=" + mobile + " aiEnabled=" + aiEnabled + " targeted=" + targeted
                     + " coreObjective=" + coreObjective
                     + " outside=" + outside + " onCore=" + onCore
-                    + " bossCast=" + bossAbilityState + " stepCap=" + MAX_COMBAT_STEP_BLOCKS);
+                    + " bossCast=" + bossAbilityState + " stepCap=" + MAX_COMBAT_STEP_BLOCKS
+                    + " ritualCasters=" + ritualCasters + " ritualCastersPassive="
+                    + ritualCastersPassive + " ritualCastersTargeted=" + ritualCastersTargeted
+                    + " ritualGuards=" + ritualGuards);
             BossPhasePolicy.CombatProfile profile = currentBossCombatProfile();
             message(sender, "&7AI_PROFILE stage=" + diagnosticStage
                     + " abilityState=" + bossAbilityState

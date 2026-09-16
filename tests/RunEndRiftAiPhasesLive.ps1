@@ -80,18 +80,39 @@ function Wait-Online {
 }
 
 function Assert-AiDiagnostics {
-  param([string]$Label, [int]$MinimumMobile = 1)
+  param(
+    [string]$Label,
+    [int]$MinimumMobile = 1,
+    [switch]$AllowPassiveRitualCasters
+  )
   $raw = (Invoke-LocalRcon 'cmend debug ai') -replace '\u00A7.', ''
   $match = [Regex]::Match($raw, 'AI_DIAGNOSTICS.*mobile=(\d+)\s+aiEnabled=(\d+)\s+targeted=(\d+)\s+coreObjective=(\d+)\s+outside=(\d+)\s+onCore=(\d+)\s+bossCast=([A-Z_]+)')
   if (-not $match.Success) { throw "$Label did not expose AI diagnostics: $raw" }
+  $roleMatch = [Regex]::Match($raw, 'ritualCasters=(\d+)\s+ritualCastersPassive=(\d+)\s+ritualCastersTargeted=(\d+)\s+ritualGuards=(\d+)')
+  if (-not $roleMatch.Success) { throw "$Label did not expose role-aware AI diagnostics: $raw" }
   $mobile = [int]$match.Groups[1].Value
   $enabled = [int]$match.Groups[2].Value
   $outside = [int]$match.Groups[5].Value
   $onCore = [int]$match.Groups[6].Value
-  if ($mobile -lt $MinimumMobile -or $enabled -ne $mobile -or $outside -ne 0 -or $onCore -ne 0) {
+  $casterCount = [int]$roleMatch.Groups[1].Value
+  $passiveCasters = [int]$roleMatch.Groups[2].Value
+  $casterTargets = [int]$roleMatch.Groups[3].Value
+  $ritualGuards = [int]$roleMatch.Groups[4].Value
+  $expectedEnabled = $mobile
+  if ($AllowPassiveRitualCasters) {
+    # Wave 6 casters are deliberately server-controlled: they keep their
+    # native mob AI disabled while the guards live, but still channel the
+    # Ritual Sphere from the event controller.  The typed diagnostics expose
+    # the complete role counts because AI_TARGETS is intentionally capped.
+    if (($casterCount -lt 1) -or ($ritualGuards -lt 1) -or ($passiveCasters -ne $casterCount) -or ($casterTargets -ne 0)) {
+      throw "$Label did not keep every Ritual Caster passive with target=none while its guards were alive: $raw"
+    }
+    $expectedEnabled = $mobile - $casterCount
+  }
+  if ($mobile -lt $MinimumMobile -or $enabled -ne $expectedEnabled -or $outside -ne 0 -or $onCore -ne 0) {
     throw "$Label violated bounded AI diagnostics: $raw"
   }
-  Write-Output "LIVE_CURRENT_AI_DIAGNOSTICS label=$Label mobile=$mobile enabled=$enabled outside=$outside on_core=$onCore"
+  Write-Output "LIVE_CURRENT_AI_DIAGNOSTICS label=$Label mobile=$mobile enabled=$enabled ritual_casters=$casterCount passive_casters=$passiveCasters caster_targets=$casterTargets guards=$ritualGuards expected_enabled=$expectedEnabled outside=$outside on_core=$onCore"
 }
 
 function Start-ProbeBot([int[]]$Core) {
@@ -134,7 +155,11 @@ try {
     } else {
       Start-Sleep -Seconds 3
     }
-    Assert-AiDiagnostics -Label ("wave-$wave")
+    if ($wave -eq 6) {
+      Assert-AiDiagnostics -Label ("wave-$wave") -AllowPassiveRitualCasters
+    } else {
+      Assert-AiDiagnostics -Label ("wave-$wave")
+    }
     $delta = Log-Tail $offset
     if ($delta -notmatch 'WAVE_AI_TARGET|WAVE_AI_PATH|WAVE_AI_TACTIC|WAVE_SKELETON_BEHAVIOR|END_RIFT_OBELISK_ACTIVE|WAVE_6_PAIR_SPAWNED|END_RIFT_CHAMBERS_ASSIGNED') {
       throw "Wave $wave did not emit a current AI decision marker."

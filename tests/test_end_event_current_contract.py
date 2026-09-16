@@ -671,8 +671,15 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
         "end_rift_user_enderman.png",
         "end_rift_elite.png",
         "end_rift_user_spider.png",
+        "end_rift_wave_guardian_enderman.png",
         "end_rift_skeleton.png",
         "end_rift_elite_skeleton.png",
+        "end_rift_wave_guardian_skeleton.png",
+        "end_rift_ritual_guard_enderman.png",
+        "end_rift_ritual_guard_skeleton.png",
+        "end_rift_elite_spider.png",
+        "end_rift_wave_guardian_spider.png",
+        "end_rift_ritual_guard_spider.png",
         "end_rift_ritual_caster.png",
     ):
         assert name in mapping, name
@@ -691,6 +698,33 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
     assert 'assets/copimineclient/textures/entity/end_rift_tentacle_hd.png' in mapping
     assert 'server=' in mapping
     assert ';client=' in mapping
+
+
+def test_server_keeps_special_mob_roles_on_independent_visual_ids() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    for visual_id in (
+        "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
+        "END_RIFT_WAVE_GUARDIAN_SKELETON_V1",
+        "END_RIFT_RITUAL_GUARD_ENDERMAN_V1",
+        "END_RIFT_RITUAL_GUARD_SKELETON_V1",
+        "END_RIFT_ELITE_SPIDER_V1",
+        "END_RIFT_WAVE_GUARDIAN_SPIDER_V1",
+        "END_RIFT_RITUAL_GUARD_SPIDER_V1",
+    ):
+        assert visual_id in root, visual_id
+
+    mapping_match = re.search(
+        r"private String clientVisualId\(Entity entity\)\s*\{"
+        r"(?P<body>[\s\S]*?)\n    \}\n\n    private boolean isVisualEventMob",
+        root,
+    )
+    assert mapping_match, "server entity visual mapping must remain inspectable"
+    mapping = mapping_match.group("body")
+    assert "EVENT_KIND_WAVE_GUARDIAN.equals(kind)" in mapping
+    assert "EVENT_KIND_RITUAL_GUARD.equals(kind)" in mapping
+    assert "CLIENT_VISUAL_ELITE_SPIDER" in mapping
+    assert "CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER" in mapping
+    assert "CLIENT_VISUAL_RITUAL_GUARD_SPIDER" in mapping
 
 
 def test_live_visual_probe_verifies_creative_cleanup_state() -> None:

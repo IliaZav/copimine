@@ -49,6 +49,10 @@ public final class EndermanRendererSelection {
                     "END_RIFT_ENDERMAN_V1", "end_rift_enderman_v1", "END_RIFT_ENDERMAN");
             case "END_RIFT_ELITE_V1" -> new Decision(Kind.ELITE, texture,
                     "END_RIFT_ELITE_V1", "end_rift_elite_v1", "END_RIFT_ELITE");
+            case "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1" -> new Decision(Kind.WAVE_GUARDIAN, texture,
+                    "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", "end_rift_wave_guardian_enderman_v1", "END_RIFT_WAVE_GUARDIAN");
+            case "END_RIFT_RITUAL_GUARD_ENDERMAN_V1" -> new Decision(Kind.RITUAL_GUARD, texture,
+                    "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", "end_rift_ritual_guard_enderman_v1", "END_RIFT_RITUAL_GUARD");
             case "END_RIFT_RITUAL_CASTER_V1" -> new Decision(Kind.RITUAL_CASTER, texture,
                     "END_RIFT_RITUAL_CASTER_V1", "end_rift_ritual_caster_v1", "END_RIFT_RITUAL_CASTER");
             case "END_RIFT_GUARDIAN_V1" -> new Decision(Kind.GUARDIAN, texture,
@@ -74,6 +78,8 @@ public final class EndermanRendererSelection {
         }
         if (normalized.equals("END_RIFT_ENDERMAN_V1")
                 || normalized.equals("END_RIFT_ELITE_V1")
+                || normalized.equals("END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1")
+                || normalized.equals("END_RIFT_RITUAL_GUARD_ENDERMAN_V1")
                 || normalized.equals("END_RIFT_RITUAL_CASTER_V1")
                 || normalized.equals("END_RIFT_GUARDIAN_V1")) {
             Decision decision = selectVisual("diagnostic", normalized, null, texture, textureAvailable);
@@ -83,12 +89,27 @@ public final class EndermanRendererSelection {
             case "END_RIFT_SPIDER_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "EVENT_SPIDER", normalized,
                     "end_rift_spider_v1", "END_RIFT_SPIDER", texture);
+            case "END_RIFT_ELITE_SPIDER_V1" -> formatNonEndermanDiagnostic(
+                    textureAvailable, "ELITE_SPIDER", normalized,
+                    "end_rift_elite_spider_v1", "END_RIFT_ELITE_SPIDER", texture);
+            case "END_RIFT_WAVE_GUARDIAN_SPIDER_V1" -> formatNonEndermanDiagnostic(
+                    textureAvailable, "WAVE_GUARDIAN_SPIDER", normalized,
+                    "end_rift_wave_guardian_spider_v1", "END_RIFT_WAVE_GUARDIAN_SPIDER", texture);
+            case "END_RIFT_RITUAL_GUARD_SPIDER_V1" -> formatNonEndermanDiagnostic(
+                    textureAvailable, "RITUAL_GUARD_SPIDER", normalized,
+                    "end_rift_ritual_guard_spider_v1", "END_RIFT_RITUAL_GUARD_SPIDER", texture);
             case "END_RIFT_SKELETON_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "EVENT_SKELETON", normalized,
                     "vanilla_skeleton", "END_RIFT_SKELETON", texture);
             case "END_RIFT_ELITE_SKELETON_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "ELITE_SKELETON", normalized,
                     "vanilla_skeleton", "END_RIFT_ELITE_SKELETON", texture);
+            case "END_RIFT_WAVE_GUARDIAN_SKELETON_V1" -> formatNonEndermanDiagnostic(
+                    textureAvailable, "WAVE_GUARDIAN_SKELETON", normalized,
+                    "end_rift_wave_guardian_skeleton_v1", "END_RIFT_WAVE_GUARDIAN_SKELETON", texture);
+            case "END_RIFT_RITUAL_GUARD_SKELETON_V1" -> formatNonEndermanDiagnostic(
+                    textureAvailable, "RITUAL_GUARD_SKELETON", normalized,
+                    "end_rift_ritual_guard_skeleton_v1", "END_RIFT_RITUAL_GUARD_SKELETON", texture);
             case "END_RIFT_TENTACLE_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "TENTACLE", normalized,
                     "end_rift_tentacle_rig", "END_RIFT_TENTACLE", texture);
@@ -138,6 +159,8 @@ public final class EndermanRendererSelection {
         VANILLA,
         EVENT_ENDERMAN,
         ELITE,
+        WAVE_GUARDIAN,
+        RITUAL_GUARD,
         RITUAL_CASTER,
         GUARDIAN
     }

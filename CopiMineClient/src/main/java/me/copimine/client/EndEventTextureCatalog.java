@@ -72,10 +72,17 @@ public final class EndEventTextureCatalog {
         Map<String, Identifier> textures = new LinkedHashMap<>();
         textures.put("END_RIFT_ENDERMAN_V1", entityTexture("end_rift_user_enderman.png"));
         textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));
+        textures.put("END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", entityTexture("end_rift_wave_guardian_enderman.png"));
+        textures.put("END_RIFT_RITUAL_GUARD_ENDERMAN_V1", entityTexture("end_rift_ritual_guard_enderman.png"));
         textures.put("END_RIFT_GUARDIAN_V1", entityTexture("end_rift_user_boss.png"));
         textures.put("END_RIFT_SPIDER_V1", entityTexture("end_rift_user_spider.png"));
+        textures.put("END_RIFT_ELITE_SPIDER_V1", entityTexture("end_rift_elite_spider.png"));
+        textures.put("END_RIFT_WAVE_GUARDIAN_SPIDER_V1", entityTexture("end_rift_wave_guardian_spider.png"));
+        textures.put("END_RIFT_RITUAL_GUARD_SPIDER_V1", entityTexture("end_rift_ritual_guard_spider.png"));
         textures.put("END_RIFT_SKELETON_V1", entityTexture("end_rift_skeleton.png"));
         textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));
+        textures.put("END_RIFT_WAVE_GUARDIAN_SKELETON_V1", entityTexture("end_rift_wave_guardian_skeleton.png"));
+        textures.put("END_RIFT_RITUAL_GUARD_SKELETON_V1", entityTexture("end_rift_ritual_guard_skeleton.png"));
         textures.put("END_RIFT_RITUAL_CASTER_V1", entityTexture("end_rift_ritual_caster.png"));
         textures.put("END_RIFT_OBELISK_FULL_V1", entityTexture("end_event_rift_obelisk_full_hd.png"));
         textures.put("END_RIFT_OBELISK_DAMAGED_V1", entityTexture("end_event_rift_obelisk_damaged_hd.png"));

@@ -33,7 +33,7 @@ public abstract class SkeletonEntityRendererMixin {
         Identifier texture = switch (visual) {
             case "END_RIFT_ELITE_SKELETON_V1" -> COPIMINE_ELITE_SKELETON_TEXTURE;
             case "END_RIFT_SKELETON_V1" -> COPIMINE_SKELETON_TEXTURE;
-            default -> null;
+            default -> EndEventTextureCatalog.textureForVisual(visual);
         };
         boolean resourcePresent = texture != null && EndEventTextureCatalog.isAvailable(texture);
         EndEventTextureCatalog.logLookup("mob:" + visual, texture);

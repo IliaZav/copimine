@@ -271,9 +271,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String EVENT_KIND_WAVE_REWARD = "WAVE_REWARD";
     private static final String CLIENT_VISUAL_ENDERMAN = "END_RIFT_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_ELITE = "END_RIFT_ELITE_V1";
+    private static final String CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN = "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1";
+    private static final String CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN = "END_RIFT_RITUAL_GUARD_ENDERMAN_V1";
     private static final String CLIENT_VISUAL_SPIDER = "END_RIFT_SPIDER_V1";
+    private static final String CLIENT_VISUAL_ELITE_SPIDER = "END_RIFT_ELITE_SPIDER_V1";
+    private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER = "END_RIFT_WAVE_GUARDIAN_SPIDER_V1";
+    private static final String CLIENT_VISUAL_RITUAL_GUARD_SPIDER = "END_RIFT_RITUAL_GUARD_SPIDER_V1";
     private static final String CLIENT_VISUAL_SKELETON = "END_RIFT_SKELETON_V1";
     private static final String CLIENT_VISUAL_ELITE_SKELETON = "END_RIFT_ELITE_SKELETON_V1";
+    private static final String CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON = "END_RIFT_WAVE_GUARDIAN_SKELETON_V1";
+    private static final String CLIENT_VISUAL_RITUAL_GUARD_SKELETON = "END_RIFT_RITUAL_GUARD_SKELETON_V1";
     private static final String CLIENT_VISUAL_RITUAL_CASTER = "END_RIFT_RITUAL_CASTER_V1";
     private static final String CLIENT_VISUAL_OBELISK_FULL = "END_RIFT_OBELISK_FULL_V1";
     private static final String CLIENT_VISUAL_OBELISK_DAMAGED = "END_RIFT_OBELISK_DAMAGED_V1";
@@ -4702,9 +4709,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return switch (visualId) {
             case CLIENT_VISUAL_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
             case CLIENT_VISUAL_ELITE -> "assets/copimineclient/textures/entity/end_rift_elite.png";
+            case CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_wave_guardian_enderman.png";
+            case CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_ritual_guard_enderman.png";
             case CLIENT_VISUAL_SPIDER -> "assets/copimineclient/textures/entity/end_rift_user_spider.png";
+            case CLIENT_VISUAL_ELITE_SPIDER -> "assets/copimineclient/textures/entity/end_rift_elite_spider.png";
+            case CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER -> "assets/copimineclient/textures/entity/end_rift_wave_guardian_spider.png";
+            case CLIENT_VISUAL_RITUAL_GUARD_SPIDER -> "assets/copimineclient/textures/entity/end_rift_ritual_guard_spider.png";
             case CLIENT_VISUAL_SKELETON -> "assets/copimineclient/textures/entity/end_rift_skeleton.png";
             case CLIENT_VISUAL_ELITE_SKELETON -> "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png";
+            case CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON -> "assets/copimineclient/textures/entity/end_rift_wave_guardian_skeleton.png";
+            case CLIENT_VISUAL_RITUAL_GUARD_SKELETON -> "assets/copimineclient/textures/entity/end_rift_ritual_guard_skeleton.png";
             case CLIENT_VISUAL_RITUAL_CASTER -> "assets/copimineclient/textures/entity/end_rift_ritual_caster.png";
             // These visuals are ItemDisplays.  Their model and texture are
             // resolved by the server resource pack's copimine namespace;
@@ -24957,19 +24971,38 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return entity instanceof ItemDisplay ? CLIENT_VISUAL_TENTACLE : "";
         }
         if (entity.getType() == EntityType.SPIDER) {
+            if (EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                return CLIENT_VISUAL_RITUAL_GUARD_SPIDER;
+            }
+            if (EVENT_KIND_WAVE_GUARDIAN.equals(kind)) {
+                return CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER;
+            }
+            if (EVENT_KIND_ELITE.equals(kind)) {
+                return CLIENT_VISUAL_ELITE_SPIDER;
+            }
             return CLIENT_VISUAL_SPIDER;
         }
         if (entity.getType() == EntityType.SKELETON) {
-            return EVENT_KIND_RITUAL_GUARD.equals(kind) || isSkeletonMiniBoss(entity)
-                    ? CLIENT_VISUAL_ELITE_SKELETON : CLIENT_VISUAL_SKELETON;
+            if (EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                return CLIENT_VISUAL_RITUAL_GUARD_SKELETON;
+            }
+            if (EVENT_KIND_WAVE_GUARDIAN.equals(kind)) {
+                return CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON;
+            }
+            return isSkeletonMiniBoss(entity) ? CLIENT_VISUAL_ELITE_SKELETON : CLIENT_VISUAL_SKELETON;
         }
         if (entity.getType() == EntityType.ENDERMAN) {
-            if (EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_WAVE_GUARDIAN.equals(kind)
-                    || EVENT_KIND_RITUAL_GUARD.equals(kind)) {
-                return CLIENT_VISUAL_ELITE;
-            }
             if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
                 return CLIENT_VISUAL_RITUAL_CASTER;
+            }
+            if (EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                return CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN;
+            }
+            if (EVENT_KIND_WAVE_GUARDIAN.equals(kind)) {
+                return CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN;
+            }
+            if (EVENT_KIND_ELITE.equals(kind)) {
+                return CLIENT_VISUAL_ELITE;
             }
             if (EVENT_KIND_WAVE_MOB.equals(kind)) {
                 return CLIENT_VISUAL_ENDERMAN;

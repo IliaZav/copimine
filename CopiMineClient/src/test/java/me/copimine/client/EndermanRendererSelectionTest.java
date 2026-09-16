@@ -114,6 +114,18 @@ class EndermanRendererSelectionTest {
     }
 
     @Test
+    void specialWaveGuardianUsesItsOwnGeometryAndTextureContract() {
+        EndermanRendererSelection.Decision decision = EndermanRendererSelection.selectVisual(
+                ENTITY_UUID, "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", null,
+                Identifier.of("copimineclient", "textures/entity/end_rift_wave_guardian_enderman.png"), true);
+
+        assertEquals("END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", decision.modelId());
+        assertEquals("end_rift_wave_guardian_enderman_v1", decision.geometryId());
+        assertEquals("END_RIFT_WAVE_GUARDIAN", decision.animationSet());
+        assertTrue(decision.usesCustomModel());
+    }
+
+    @Test
     void ordinaryVanillaEndermanRemainsVanillaAndHasNoEventMetadata() {
         EndermanRendererSelection.Decision decision = EndermanRendererSelection.selectVisual(
                 ENTITY_UUID, "", null,

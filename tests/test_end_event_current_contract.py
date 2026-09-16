@@ -673,6 +673,7 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
         "end_rift_user_spider.png",
         "end_rift_skeleton.png",
         "end_rift_elite_skeleton.png",
+        "end_rift_ritual_caster.png",
     ):
         assert name in mapping, name
     assert "end_rift_user_boss.png" in root
@@ -783,6 +784,7 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
         "assets/copimineclient/textures/entity/end_rift_elite.png",
         "assets/copimineclient/textures/entity/end_rift_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
+        "assets/copimineclient/textures/entity/end_rift_ritual_caster.png",
         "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_iz_grudi.json",
         "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_po_zemle.animation.json",
     }

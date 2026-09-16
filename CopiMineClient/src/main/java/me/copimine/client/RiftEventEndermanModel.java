@@ -26,18 +26,31 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
     private final ModelPart riftCore;
     private final ModelPart riftShell;
     private final ModelPart variantCrest;
+    private final ModelPart casterFocus;
     private final boolean elite;
+    private final boolean caster;
 
     public RiftEventEndermanModel(ModelPart root, boolean elite) {
+        this(root, elite, false);
+    }
+
+    public RiftEventEndermanModel(ModelPart root, boolean elite, boolean caster) {
         super(root);
         this.root = root;
         this.riftCore = root.getChild("rift_core");
         this.riftShell = root.getChild("rift_shell");
         this.variantCrest = root.getChild("variant_crest");
+        this.casterFocus = root.getChild("caster_focus");
         this.elite = elite;
+        this.caster = caster;
+        this.casterFocus.visible = caster;
     }
 
     public static TexturedModelData getTexturedModelData(boolean elite) {
+        return getTexturedModelData(elite, false);
+    }
+
+    public static TexturedModelData getTexturedModelData(boolean elite, boolean caster) {
         ModelData data = BipedEntityModel.getModelData(Dilation.NONE, -14.0F);
         ModelPartData root = data.getRoot();
         root.addChild("rift_core", ModelPartBuilder.create()
@@ -49,6 +62,10 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         root.addChild("variant_crest", ModelPartBuilder.create()
                         .uv(32, 0).cuboid(-3.5F, -11.0F, -1.0F, 7.0F, elite ? 4.0F : 2.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -14.0F, 0.0F));
+        root.addChild("caster_focus", ModelPartBuilder.create()
+                        .uv(40, 0).cuboid(-2.0F, -1.0F, -3.2F, 4.0F, 4.0F, 1.0F)
+                        .uv(40, 5).cuboid(-1.0F, 3.0F, -2.7F, 2.0F, 2.0F, 1.0F),
+                ModelTransform.pivot(0.0F, -3.0F, 0.0F));
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }
 
@@ -65,10 +82,24 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         riftShell.pitch = pulse * 0.035F;
         riftShell.yaw = pulse * (elite ? 0.10F : 0.06F);
         variantCrest.pitch = pulse * (elite ? 0.16F : 0.08F);
+        if (caster) {
+            // The server owns the cast/aggro state; this dedicated model pose
+            // keeps the passive caster readable even while its AI is frozen.
+            leftArm.pitch = -1.22F + pulse * 0.035F;
+            rightArm.pitch = -1.22F - pulse * 0.035F;
+            leftArm.roll = -0.12F;
+            rightArm.roll = 0.12F;
+            casterFocus.yaw = pulse * 0.14F;
+            casterFocus.pitch = pulse * 0.08F;
+        }
     }
 
     public boolean isElite() {
         return elite;
+    }
+
+    public boolean isCaster() {
+        return caster;
     }
 
     public ModelPart getPart() {

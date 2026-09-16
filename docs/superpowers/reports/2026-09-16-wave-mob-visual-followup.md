@@ -5,7 +5,10 @@
 The wave skeleton and elite skeleton now have a dedicated long-form client rig
 and a shared dark-purple texture contract. The ordinary and elite variants are
 selected only for server-bound event UUIDs; vanilla skeleton entities keep
-their normal renderer path and gameplay hitbox.
+their normal renderer path and gameplay hitbox. Wave 6 ritual casters now have
+their own raised-arm client pose and a server-side state machine: they channel
+while guards are alive, keep channeling while exposed after the guards fall,
+and wake into combat only after an accepted hit.
 
 The same clean surface rules were applied to the wave Enderman, elite, and
 spider atlases: opaque texels, a compact purple palette, and sparse symmetric
@@ -27,6 +30,21 @@ accents instead of semitransparent guide pixels or seeded noise.
   - elite shoulder plates are render-only model parts and do not change the
     entity collision shape;
   - idle limb pulse is bounded and remains inside the vanilla model contract.
+- `copimine-end-event/src/me/copimine/endevent/domain/RitualCasterTacticsPolicy.java`
+  - defines the guarded-channel, exposed-channel, and awakened-attack states;
+  - gives caster slots 0–5 six distinct attack identities.
+- `copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java`
+  - freezes caster AI and player targeting while the guard gate is active;
+  - persists the awakened flag in entity PDC after the first authoritative hit;
+  - dispatches six explicit attacks: sphere barrage, rift mark, reverse pull,
+    control swap, void lance, and rift spikes;
+  - publishes the dedicated `END_RIFT_RITUAL_CASTER_V1` visual id.
+- `CopiMineClient/src/main/java/me/copimine/client/RiftEventEndermanModel.java`
+  - adds a dedicated caster variant with raised arms and a pulsing focus part.
+- `CopiMineClient/src/main/java/me/copimine/client/EndermanRendererSelection.java`
+  - binds `END_RIFT_RITUAL_CASTER_V1` to the dedicated caster model and atlas.
+- `CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/end_rift_ritual_caster.png`
+  - adds the opaque 64×32 raised-arm channel atlas.
 - `CopiMineClient/src/main/java/me/copimine/client/RiftEventSkeletonModelRenderer.java`
   - owns separate ordinary and elite model instances.
 - `CopiMineClient/src/main/java/me/copimine/client/mixin/LivingEntityRendererMixin.java`
@@ -38,27 +56,28 @@ accents instead of semitransparent guide pixels or seeded noise.
   - renders a deterministic review board from the supplied references, the
     generated 64×32 UV sheets, and the source-rig bind-pose schematic.
 - `thirdparty/` and `admin-web/frontend/assets/public-data/`
-  - refreshed the distributed client JAR, modpack ZIP, checksums, and snapshot
-    after the client build.
+  - refreshed the distributed client JAR, modpack ZIP, checksums, snapshot, and
+    third-party manifest after the client build.
 
 ## Visual proof
 
 `artifacts/end-rift-v3-evidence/wave-mob-reference-style-proof-20260916.png`
 
 The proof board is deliberately labelled static source/artifact proof. It
-shows the exact supplied references beside the generated atlases and the
-continuous child-part geometry. It is not a native Minecraft screenshot.
+shows the exact supplied references beside the generated atlases, the
+continuous child-part geometry, and the passive raised-arm caster pose with a
+channel sphere. It is not a native Minecraft screenshot.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| `python -m pytest -q tests/test_end_event_wave_mob_visual_contract.py tests/test_end_event_current_contract.py` | 98 passed |
+| `python -m pytest -q tests/test_wave6_ritual_caster_behavior_contract.py tests/test_end_event_wave_mob_visual_contract.py tests/test_end_event_current_contract.py tests/test_end_event_wave6_wave7_boundaries_contract.py` | 121 passed |
 | `powershell -NoProfile -ExecutionPolicy Bypass -File CopiMineClient/build-client.ps1` | `BUILD SUCCESSFUL` |
-| `powershell -NoProfile -ExecutionPolicy Bypass -File tests/RunEndRiftEventChecks.ps1` | passed: 135 Python contracts, all listed pure-Java policy tests, client/server builds, resource pack, packaging, and hash gate |
-| Source-built/staged client JAR SHA-256 | `63eaabc15e576b305591996df1fa7f2088b8cbfd31e7b98608592ac9a72cf4c9` |
-| Staged `thirdparty/CopiMineMods.zip` SHA-256 | `4b44585f6c10077679ed4429999412ffa3de9913da43f1a693f1945d1445e771` |
-| Static proof PNG SHA-256 | `9f99598fbf3a813bf27911eccad9c59e100d09ad6a32f773398f709b75343726` |
+| `powershell -NoProfile -ExecutionPolicy Bypass -File tests/RunEndRiftEventChecks.ps1` | passed: 144 Python contracts, all listed pure-Java policy tests including `RitualCasterTacticsPolicyTest`, client/server builds, resource pack, packaging, and hash gate |
+| Source-built/staged client JAR SHA-256 | `301e026d20dc50254fac1c9df1283efcb0896d3beec4d79d1c184a7b7640a0b3` |
+| Staged `thirdparty/CopiMineMods.zip` SHA-256 | `93d3f9cc6aca40e731f9a095666c3818b32fc35d74f731cd86b8103ccd8a89b0` |
+| Static proof PNG SHA-256 | `729950c71e38d612fa4d04dda1264f527804f1e55083976aa7ac886076a32f7e` |
 
 ## Native capture boundary
 

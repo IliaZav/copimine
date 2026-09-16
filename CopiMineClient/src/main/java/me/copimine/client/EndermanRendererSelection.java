@@ -49,6 +49,8 @@ public final class EndermanRendererSelection {
                     "END_RIFT_ENDERMAN_V1", "end_rift_enderman_v1", "END_RIFT_ENDERMAN");
             case "END_RIFT_ELITE_V1" -> new Decision(Kind.ELITE, texture,
                     "END_RIFT_ELITE_V1", "end_rift_elite_v1", "END_RIFT_ELITE");
+            case "END_RIFT_RITUAL_CASTER_V1" -> new Decision(Kind.RITUAL_CASTER, texture,
+                    "END_RIFT_RITUAL_CASTER_V1", "end_rift_ritual_caster_v1", "END_RIFT_RITUAL_CASTER");
             case "END_RIFT_GUARDIAN_V1" -> new Decision(Kind.GUARDIAN, texture,
                     "END_RIFT_GUARDIAN_V1", "end_rift_guardian", "END_RIFT_GUARDIAN");
             default -> vanilla();
@@ -72,6 +74,7 @@ public final class EndermanRendererSelection {
         }
         if (normalized.equals("END_RIFT_ENDERMAN_V1")
                 || normalized.equals("END_RIFT_ELITE_V1")
+                || normalized.equals("END_RIFT_RITUAL_CASTER_V1")
                 || normalized.equals("END_RIFT_GUARDIAN_V1")) {
             Decision decision = selectVisual("diagnostic", normalized, null, texture, textureAvailable);
             return decision.diagnosticLine() + ", resourcePresent=" + textureAvailable;
@@ -135,6 +138,7 @@ public final class EndermanRendererSelection {
         VANILLA,
         EVENT_ENDERMAN,
         ELITE,
+        RITUAL_CASTER,
         GUARDIAN
     }
 

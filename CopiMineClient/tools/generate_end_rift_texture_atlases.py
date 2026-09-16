@@ -18,75 +18,63 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "main" / "resources" / "assets" / "copimineclient" / "textures" / "entity"
 
 
-def atlas(size: tuple[int, int], palette: list[tuple[int, int, int]], seed: int) -> Image.Image:
-    width, height = size
-    image = Image.new("RGBA", size, (*palette[0], 255))
-    draw = ImageDraw.Draw(image)
-
-    # The atlas is a material, not a concept thumbnail. Keep every texel
-    # opaque and use a small hand-authored palette. Broad plates survive
-    # Minecraft's mip sampling; no interpolated or semitransparent guide
-    # colours are allowed to create holes and colour noise on the model.
-    columns = 4
-    rows = 3
-    for row in range(rows):
-        top = row * height // rows
-        bottom = (row + 1) * height // rows - 1
-        for column in range(columns):
-            left = column * width // columns
-            right = (column + 1) * width // columns - 1
-            fill = palette[(row * columns + column + seed) % len(palette)]
-            draw.rectangle((left, top, right, bottom), fill=(*fill, 255))
-    draw.rectangle((0, 0, width - 1, height - 1), outline=(*palette[1], 255), width=1)
-    draw.line((width // 2, 1, width // 2, height - 2), fill=(*palette[2], 255), width=1)
-    return image
+def rgba(color: tuple[int, int, int]) -> tuple[int, int, int, int]:
+    return (*color, 255)
 
 
-def panel_lines(draw: ImageDraw.ImageDraw, width: int, height: int, color: tuple[int, int, int]) -> None:
-    # Only mark the large UV islands. A dense grid reads as pixel dirt on a
-    # moving mob, while these opaque seams still separate the mapped faces.
-    for x in (width // 4, width // 2, (width * 3) // 4):
-        draw.line((x, 1, x, height - 2), fill=(*color, 255), width=1)
-    draw.line((1, height // 2, width - 2, height // 2), fill=(*color, 255), width=1)
+def clean_surface(size: tuple[int, int], base: tuple[int, int, int]) -> Image.Image:
+    """Create an opaque sheet without generated checkerboards or guide lines."""
+    return Image.new("RGBA", size, rgba(base))
 
 
-def sigil(draw: ImageDraw.ImageDraw, origin: tuple[int, int], radius: int,
-          colors: list[tuple[int, int, int]], phase: int) -> None:
-    ox, oy = origin
-    outer, inner, spark = colors
-    # Keep the sigil symmetric. The previous seeded polyline made the small
-    # 64x32 atlas look like a spill of unrelated pixels when wrapped around a
-    # moving skeleton.
-    draw.line((ox, oy - radius, ox + radius, oy, ox, oy + radius,
-               ox - radius, oy, ox, oy - radius), fill=(*outer, 255), width=1)
-    inner_radius = max(1, radius // 2)
-    draw.rectangle((ox - inner_radius, oy - inner_radius,
-                    ox + inner_radius, oy + inner_radius),
-                   outline=(*inner, 255), width=1)
-    draw.line((ox - inner_radius, oy, ox + inner_radius, oy), fill=(*spark, 255), width=1)
-    draw.line((ox, oy - inner_radius, ox, oy + inner_radius), fill=(*spark, 255), width=1)
-    draw.point((ox, oy), fill=(*spark, 255))
+def angular(draw: ImageDraw.ImageDraw, points: tuple[tuple[int, int], ...],
+            color: tuple[int, int, int], width: int = 1) -> None:
+    draw.line(points, fill=rgba(color), width=width, joint="curve")
 
 
 def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
                    accent: tuple[int, int, int], eye: tuple[int, int, int]) -> None:
-    image = atlas((64, 32), palette, seed)
+    """Paint a restrained hand-authored Enderman UV sheet.
+
+    The old generator filled the UV sheet with a regular 4×3 grid.  That grid
+    was visible as twelve unrelated blocks on the mob.  These marks follow the
+    humanoid islands instead: a dark shell, one chest seam, short limb seams,
+    and a single controlled eye/core colour.
+    """
+    dark, shadow, mid, light = palette[:4]
+    image = clean_surface((64, 32), dark)
     draw = ImageDraw.Draw(image)
-    panel_lines(draw, 64, 32, palette[1])
-    # The broad areas follow the normal 64x32 humanoid UV footprint.  The
-    # marks intentionally cross several faces so they remain visible after
-    # the vanilla model wraps the sheet.
-    for offset in (0, 16, 32, 48):
-        draw.line((offset + 2, 3, min(offset + 13, 63), 13), fill=(*accent, 255), width=1)
-        draw.line((offset + 4, 14, min(offset + 14, 63), 2), fill=(*palette[-1], 255), width=1)
-    sigil(draw, (12, 7), 5, [accent, palette[-1], eye], seed % 7)
-    sigil(draw, (27, 23), 6, [palette[-1], accent, eye], (seed + 3) % 9)
-    # Enderman eyes are kept in the head band, bright enough to survive the
-    # game renderer's mip level but small enough to remain pixel art.
-    draw.rectangle((8, 5, 11, 6), fill=(*eye, 255))
-    draw.rectangle((17, 5, 20, 6), fill=(*eye, 255))
-    for x in (4, 29, 54):
-        draw.rectangle((x, 27, x + 1, 28), fill=(*accent, 255))
+
+    # Head and neck: one broad face with a broken forehead seam.
+    draw.rectangle((1, 1, 14, 8), fill=rgba(shadow))
+    draw.rectangle((3, 2, 12, 7), fill=rgba(mid))
+    angular(draw, ((4, 2), (6, 4), (5, 7), (9, 7), (11, 4)), light)
+    draw.rectangle((5, 4, 7, 5), fill=rgba(eye))
+    draw.rectangle((10, 4, 12, 5), fill=rgba(eye))
+
+    # Torso island: the chest seam is deliberately asymmetrical rather than a
+    # tiled panel, so it reads as a rift fracture once wrapped around the body.
+    draw.rectangle((16, 1, 27, 14), fill=rgba(shadow))
+    angular(draw, ((21, 2), (20, 5), (22, 8), (21, 12), (24, 14)), accent, 1)
+    draw.rectangle((20, 7, 22, 9), fill=rgba(eye))
+    draw.point((23, 5), fill=rgba(light))
+
+    # Arms and legs use short, offset seams. They are not full-height stripes,
+    # which prevents mipmapping from turning the sheet into a barcode.
+    for start in (32, 48):
+        draw.rectangle((start + 1, 1, start + 7, 14), fill=rgba(shadow))
+        angular(draw, ((start + 2, 3), (start + 5, 6), (start + 3, 10),
+                       (start + 6, 13)), light)
+    for start in (0, 8, 40, 56):
+        draw.rectangle((start + 1, 17, min(start + 6, 63), 30), fill=rgba(shadow))
+        angular(draw, ((start + 2, 19), (start + 5, 22), (start + 3, 26),
+                       (min(start + 5, 63), 29)), mid)
+    for x in (3, 12, 51):
+        draw.rectangle((x, 27, min(x + 1, 63), 28), fill=rgba(accent))
+
+    # Keep the seed as a stable variant knob without introducing random noise.
+    if seed % 2 == 0:
+        draw.point((29, 12), fill=rgba(accent))
     image.save(OUT / name, format="PNG", optimize=False)
 
 
@@ -165,41 +153,119 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
 
 
 def spider_sheet() -> None:
-    palette = [(10, 2, 16), (20, 4, 30), (33, 11, 41), (52, 14, 67), (78, 20, 98), (112, 24, 142)]
-    image = atlas((64, 32), palette, 71)
+    dark = (10, 2, 16)
+    shell = (31, 9, 42)
+    mid = (60, 17, 79)
+    edge = (103, 24, 127)
+    eye = (208, 37, 255)
+    image = clean_surface((64, 32), dark)
     draw = ImageDraw.Draw(image)
-    panel_lines(draw, 64, 32, (52, 14, 67))
-    # Eight legs are represented as restrained violet seams over a dark shell.
-    for x in (4, 12, 20, 28, 36, 44, 52, 60):
-        draw.line((x, 18, max(0, x - 6), 30), fill=(78, 20, 98, 255), width=2)
-        draw.line((x, 19, min(63, x + 7), 28), fill=(112, 24, 142, 255), width=1)
-    draw.rectangle((25, 9, 38, 21), outline=(112, 24, 142, 255), width=2)
-    draw.rectangle((29, 12, 34, 17), fill=(20, 4, 30, 255), outline=(136, 0, 255, 255), width=1)
-    for eye_x in (27, 34):
-        draw.rectangle((eye_x, 10, eye_x + 1, 11), fill=(174, 0, 255, 255))
+    # One shell island and eight tapered leg marks; no artificial atlas grid.
+    draw.polygon([(24, 8), (39, 8), (43, 13), (40, 21), (23, 21), (20, 14)],
+                 fill=rgba(shell), outline=rgba(edge))
+    angular(draw, ((25, 10), (31, 13), (38, 10)), mid)
+    draw.rectangle((28, 13, 35, 17), fill=rgba(dark), outline=rgba(edge))
+    draw.rectangle((29, 13, 31, 14), fill=rgba(eye))
+    draw.rectangle((33, 13, 35, 14), fill=rgba(eye))
+    for x, bend in ((4, -4), (12, 4), (20, -3), (28, 4),
+                    (36, -4), (44, 4), (52, -3), (60, 4)):
+        angular(draw, ((x, 19), (x + bend, 24), (x + bend // 2, 30)), edge, 2)
+        draw.point((x + bend // 2, 28), fill=rgba(mid))
     image.save(OUT / "end_rift_spider.png", format="PNG", optimize=False)
 
 
 def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
                    accent: tuple[int, int, int], eye: tuple[int, int, int]) -> None:
-    """Paint a readable 64x32 skeleton UV sheet with bone plates and sigils."""
-    image = atlas((64, 32), palette, seed)
+    """Paint an authored skeleton UV sheet with bone accents and no grid."""
+    dark, shell, mid, light = palette[:4]
+    bone_shadow = (94, 84, 108)
+    bone = (205, 199, 216)
+    bone_light = (246, 243, 250)
+    image = clean_surface((64, 32), dark)
     draw = ImageDraw.Draw(image)
-    panel_lines(draw, 64, 32, palette[1])
-    # Rib and joint bands keep the vanilla skeleton silhouette readable while
-    # the angular rift marks make the two server-bound variants distinct.
-    for y in (4, 10, 17, 24):
-        draw.line((2, y, 19, y + 1), fill=(*accent, 255), width=1)
-        draw.line((44, y + 1, 61, y), fill=(*accent, 255), width=1)
-    draw.rectangle((24, 3, 39, 15), outline=(*accent, 255), width=2)
-    draw.rectangle((27, 6, 30, 9), fill=(*eye, 255))
-    draw.rectangle((33, 6, 36, 9), fill=(*eye, 255))
-    draw.line((30, 12, 33, 12), fill=(*palette[-1], 255), width=1)
-    sigil(draw, (12, 23), 4, [accent, palette[-1], eye], seed % 7)
-    sigil(draw, (51, 22), 4, [palette[-1], accent, eye], (seed + 3) % 9)
-    for x in (5, 30, 55):
-        draw.rectangle((x, 27, x + 1, 28), fill=(*accent, 255))
+
+    # Head: a compact mask, two controlled eyes and a visible jaw line.
+    draw.rectangle((1, 1, 14, 8), fill=rgba(shell))
+    draw.rectangle((3, 2, 12, 7), fill=rgba(mid))
+    angular(draw, ((4, 2), (6, 4), (5, 6), (9, 6), (11, 3)), light)
+    draw.rectangle((5, 4, 7, 5), fill=rgba(eye))
+    draw.rectangle((10, 4, 12, 5), fill=rgba(eye))
+    draw.rectangle((5, 7, 11, 8), fill=rgba(bone_shadow))
+    draw.point((7, 7), fill=rgba(bone_light))
+
+    # Torso: ribs are short bone strokes around one chest rift, not a tiled
+    # rectangle. The same rhythm survives on the front and side faces.
+    draw.rectangle((16, 1, 27, 15), fill=rgba(shell))
+    draw.rectangle((19, 2, 24, 14), fill=rgba(mid))
+    for y, span in ((4, 2), (7, 3), (10, 2), (13, 1)):
+        angular(draw, ((17, y), (20, y + 1), (21, y)), bone)
+        angular(draw, ((23, y), (24, y + 1), (26, y)), bone)
+    angular(draw, ((21, 2), (20, 5), (22, 8), (21, 11), (24, 14)), accent)
+    draw.rectangle((21, 7, 22, 9), fill=rgba(eye))
+
+    # Arms: alternating violet shell and deliberate bone cuffs echo the
+    # supplied long-limbed reference without making every pixel bright.
+    for start in (32, 48):
+        draw.rectangle((start + 1, 1, min(start + 7, 63), 15), fill=rgba(shell))
+        angular(draw, ((start + 2, 2), (start + 6, 5), (start + 3, 9),
+                       (start + 7, 13)), light)
+        draw.rectangle((start + 2, 11, min(start + 6, 63), 13), fill=rgba(bone_shadow))
+        draw.point((start + 3, 11), fill=rgba(bone_light))
+    if seed % 2 == 0:
+        draw.rectangle((42, 5, 45, 7), fill=rgba(bone))
+        draw.rectangle((58, 5, 61, 7), fill=rgba(bone))
+
+    # Legs: two narrow vertical bone columns, broken by dark knee and ankle
+    # joints to match the reference silhouette.
+    for start in (0, 8):
+        draw.rectangle((start + 1, 17, start + 6, 31), fill=rgba(shell))
+        draw.rectangle((start + 2, 18, start + 5, 26), fill=rgba(bone_shadow))
+        draw.rectangle((start + 2, 19, start + 4, 22), fill=rgba(bone_light))
+        draw.rectangle((start + 3, 24, start + 5, 25), fill=rgba(dark))
+        draw.rectangle((start + 2, 27, start + 5, 30), fill=rgba(bone))
+    # The remaining UV island carries the rift core and small shin shards.
+    draw.rectangle((24, 17, 31, 24), fill=rgba(shell))
+    angular(draw, ((27, 17), (26, 20), (28, 22), (27, 24)), accent)
+    draw.rectangle((26, 19, 28, 21), fill=rgba(eye))
+    for x in (40, 56):
+        draw.rectangle((x, 24, min(x + 2, 63), 29), fill=rgba(bone_shadow))
+        draw.point((x + 1, 25), fill=rgba(bone_light))
     image.save(OUT / name, format="PNG", optimize=False)
+
+
+def ritual_caster_sheet() -> None:
+    """Paint the raised-arm caster surface used by the Wave 6 Enderman rig."""
+    dark = (9, 2, 17)
+    shell = (25, 5, 38)
+    mid = (54, 11, 77)
+    violet = (112, 19, 149)
+    rift = (218, 43, 255)
+    bone = (224, 214, 235)
+    image = clean_surface((64, 32), dark)
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((1, 1, 14, 8), fill=rgba(shell))
+    draw.rectangle((4, 2, 11, 7), fill=rgba(mid))
+    angular(draw, ((5, 2), (7, 5), (6, 7), (10, 7)), violet)
+    draw.rectangle((5, 4, 7, 5), fill=rgba(rift))
+    draw.rectangle((10, 4, 12, 5), fill=rgba(rift))
+    draw.rectangle((16, 1, 27, 15), fill=rgba(shell))
+    draw.rectangle((19, 2, 24, 14), fill=rgba(mid))
+    angular(draw, ((21, 2), (20, 5), (22, 8), (21, 12), (24, 14)), violet)
+    draw.rectangle((20, 7, 22, 10), fill=rgba(rift))
+    # Two raised-arm islands with pale cuffs: the texture reinforces the pose
+    # instead of fighting it with a horizontal checkerboard.
+    for start in (32, 48):
+        draw.rectangle((start + 1, 1, min(start + 7, 63), 15), fill=rgba(shell))
+        angular(draw, ((start + 2, 14), (start + 5, 10), (start + 3, 6),
+                       (start + 6, 2)), violet)
+        draw.rectangle((start + 2, 2, min(start + 5, 63), 4), fill=rgba(bone))
+        draw.point((start + 4, 2), fill=rgba(rift))
+    for start in (0, 8, 40, 56):
+        draw.rectangle((start + 1, 17, min(start + 6, 63), 30), fill=rgba(shell))
+        angular(draw, ((start + 2, 19), (start + 5, 23), (start + 3, 28)), mid)
+    draw.rectangle((29, 18, 34, 23), fill=rgba(shell), outline=rgba(violet))
+    draw.rectangle((31, 19, 32, 22), fill=rgba(rift))
+    image.save(OUT / "end_rift_ritual_caster.png", format="PNG", optimize=False)
 
 
 def bossbar_frame() -> None:
@@ -352,6 +418,7 @@ def main() -> None:
         (156, 0, 255),
         (214, 24, 255),
     )
+    ritual_caster_sheet()
     bossbar_frame()
 
 

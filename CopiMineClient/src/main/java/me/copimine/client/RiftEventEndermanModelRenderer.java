@@ -9,11 +9,14 @@ public final class RiftEventEndermanModelRenderer {
             RiftEventEndermanModel.getTexturedModelData(false).createModel(), false);
     private final RiftEventEndermanModel elite = new RiftEventEndermanModel(
             RiftEventEndermanModel.getTexturedModelData(true).createModel(), true);
+    private final RiftEventEndermanModel ritualCaster = new RiftEventEndermanModel(
+            RiftEventEndermanModel.getTexturedModelData(false, true).createModel(), false, true);
 
     public EntityModel<EndermanEntity> modelFor(EndermanRendererSelection.Kind kind) {
         return switch (kind) {
             case EVENT_ENDERMAN -> ordinary;
             case ELITE -> elite;
+            case RITUAL_CASTER -> ritualCaster;
             default -> null;
         };
     }

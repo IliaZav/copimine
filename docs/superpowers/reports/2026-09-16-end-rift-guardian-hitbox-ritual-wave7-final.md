@@ -8,7 +8,7 @@ Branch: `codex/end-rift-event`
 
 ## Outcome
 
-The current source layer contains the End Rift guardian model import, authored animation wiring, scoped renderer selection, server-authoritative boss hitboxes and damage, the Ritual Sphere Wave 6 path, and the one-block physical/visual Wave 7 barrier path. The disposable Wave 6/7 runtime contract now completes through restart, natural cleanup, and command cleanup. The result is ready for GitHub review as a source-and-runtime change set.
+The current source layer contains the End Rift guardian model import, authored animation wiring, scoped renderer selection, server-authoritative boss hitboxes and damage, the Ritual Sphere Wave 6 path, and the one-block physical/visual Wave 7 barrier path. The disposable Wave 6/7 runtime contract now completes through restart, natural cleanup, and command cleanup. The guardian follow-up also aligns hitboxes with the rotated bind-pose geometry, normalizes the client texture palette, and refreshes the staged client/modpack artifacts so the distributed client is the tested client.
 
 This record deliberately separates source/build evidence, local live-server evidence, and native visual evidence. A passing contract or a historical screenshot is not treated as proof of a current full Minecraft visual acceptance run.
 
@@ -49,7 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\RunEndRiftEventCheck
 
 Result: `End Rift current local checks passed.`
 
-The gate completed the server plugin builds, Fabric client Gradle build (`BUILD SUCCESSFUL`), resource-pack build, current Python contracts (`133 passed in 1.89s`), Java policy/persistence checks, artifact parity checks, and `git diff --check`. The build emitted five existing API deprecation warnings; no compilation or test failures occurred.
+The gate completed the server plugin builds, Fabric client Gradle build (`BUILD SUCCESSFUL`), resource-pack build, current Python contracts (`135 passed in 2.05s`), Java policy/persistence checks, artifact parity checks, and `git diff --check`. The build emitted five existing API deprecation warnings; no compilation or test failures occurred. The first run after the texture fix correctly failed on a stale staged client JAR; the staged JAR, modpack, checksums, and public snapshot were then regenerated and the complete gate passed.
 
 The focused disposable-wave regression was intentionally red before the repair and green after it. The final focused contract set reported `17 passed` for the current Wave 6/7 boundary and disposable-completion checks.
 
@@ -79,19 +79,21 @@ All hashes below are SHA-256 unless stated otherwise. The current build gate rep
 
 | Artifact | Size | SHA-256 |
 |---|---:|---|
-| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,433,491 | `dcb45d605f50d8fbc62b6672741511c70a171d5e50da49937dbd5f476abb019f` |
-| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,433,491 | `dcb45d605f50d8fbc62b6672741511c70a171d5e50da49937dbd5f476abb019f` |
-| `copimine-end-event/CopiMineEndEvent.jar` | 778,433 | `dd1a8a7cabb0721542297c6a3914e0bbaa8d45c046d1d5bf5a758f51c9ec4c7d` |
-| `minecraft/server/plugins/CopiMineEndEvent.jar` | 778,433 | `dd1a8a7cabb0721542297c6a3914e0bbaa8d45c046d1d5bf5a758f51c9ec4c7d` |
-| `thirdparty/CopiMineMods.zip` | 21,637,486 | `015d9998884cb521543592beadf28b30ad3329ac132a07fa0174855e902a52de` |
+| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,431,136 | `9ffc0628975fc86aafe3286eebd6f1a508d6355c4fa800c067670dadd5c84920` |
+| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,431,136 | `9ffc0628975fc86aafe3286eebd6f1a508d6355c4fa800c067670dadd5c84920` |
+| `copimine-end-event/CopiMineEndEvent.jar` | 780,743 | `700033bad3e75fc5899b026d75d2babe05424aca16da31fb43828a0cfd303e08` |
+| `minecraft/server/plugins/CopiMineEndEvent.jar` | 780,743 | `700033bad3e75fc5899b026d75d2babe05424aca16da31fb43828a0cfd303e08` |
+| `thirdparty/CopiMineMods.zip` | 21,635,094 | `f2a6beb19d37918d93daf99ba0ab61146937b08580830a8ec75d42caf543f5f1` |
 | resource-pack build output | — | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
+| `artifacts/end-rift-v3-evidence/boss-hitbox-profile-bind-pose-20260916.png` | 56,131 | `a7f0c9d4150625447268f3ebff8366b8cbbaa812a360bb3aefdd95ca05c8abb5` |
+| `artifacts/end-rift-v3-evidence/boss-texture-reference-atlas-20260916.png` | 49,694 | `8d82673b7794aa8e348a1cfc4f6cb4c96b323c9e563cffd1860da083b160210a` |
 
 The resource-pack hash is also recorded by the resource-pack build and manifest checks.
 
-The user-supplied reference image is committed as `artifacts/end-rift-v3-evidence/reference-boss-user.png` and was copied without modification:
+The user-supplied reference image is committed as `artifacts/end-rift-v3-evidence/reference-boss-user.png` and was copied without modification. The latest attached reference has the same bytes and hash:
 
-- source: `C:\Users\zavod\AppData\Local\Temp\codex-clipboard-4a302487-6ab7-4bc8-b309-ba3de1827dbf.png`;
-- dimensions: 256x768;
+- source: `C:\Users\zavod\AppData\Local\Temp\codex-clipboard-d5622bb1-1365-49ed-9004-3e3a6ef7a28d.png`;
+- dimensions: 331x751;
 - size: 24,472 bytes;
 - SHA-256: `af6f06e069b5942d748fca69c2001a19dff6150016fb5dc00c2982c9bcc10ca7`.
 
@@ -110,7 +112,7 @@ The vanilla bossbar frame confirms the HUD correction and model resource resolut
 
 ## Explicit visual-verification boundary
 
-`REAL MINECRAFT VISUAL VERIFICATION NOT PERFORMED` for the current final change set: the Computer Use surface available in this turn reported no native application/window, so a new in-world screenshot and a continuous 15-second flight recording could not be captured through the requested computer interface.
+`REAL MINECRAFT VISUAL VERIFICATION NOT PERFORMED` for the current final change set: the Computer Use surface available in this turn reported no native application/window (`apps=[]`). Plugin Management also reported that `computer-use@openai-bundled` is not installed in this session; its native app-control methods are therefore not repairable from this repository. A TLauncher process was started as a permitted launch attempt, but the Computer Use runtime still exposed no controllable Minecraft window, so a new in-world screenshot and a continuous 15-second flight recording could not be captured through the requested interface.
 
 `NOT VERIFIED IN GAME` for the full matrix of exact reference fidelity, front/side silhouette, authored attack animations, all guardian hitbox parts, Wave 6 cardinal/diagonal/corner movement, Wave 7 restart visibility, damage stages, defeat/reward HUD, and official multiplayer visual flow.
 
@@ -118,10 +120,13 @@ The source-side Bedrock importer, animation parser, model-selection contracts, l
 
 ## Publication boundary
 
-No production server upload or installation was performed. The source and selected evidence were published to `https://github.com/IliaZav/copimine`:
+No production server upload or installation was performed. The source, static visual evidence, and refreshed distribution artifacts were published to `https://github.com/IliaZav/copimine`:
 
 - commit: `5e3d2cd61af075c126715562389c814b6c1c8e69` (`fix: close End Rift guardian and wave boundary gaps`);
 - client artifact parity/build normalization: `1407ad84907d4a9da71f9d248942b3905a664cd6` (`fix: normalize client resource artifact`);
+- bind-pose hitboxes and static hitbox proof: `8ba68131` (`fix: align guardian hitboxes with bind pose`);
+- guardian texture palette and static atlas proof: `70830faa` (`fix: normalize guardian texture palette`);
+- the staged client/modpack refresh and this report are included in the follow-up distribution commit on this branch;
 - branch: `codex/end-rift-event`;
 - pull request: [#3 — fix: close End Rift guardian and wave boundary gaps](https://github.com/IliaZav/copimine/pull/3).
 

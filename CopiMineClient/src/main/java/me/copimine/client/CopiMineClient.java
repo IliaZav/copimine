@@ -40,7 +40,6 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> {
             visualManager.render(drawContext);
-            EndRiftBossBarHud.render(drawContext);
         });
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventTentacles);
@@ -100,14 +99,30 @@ public final class CopiMineClient implements ClientModInitializer {
                                     return 1;
                                 }))
                         .then(ClientCommandManager.literal("endrift")
-                                .then(ClientCommandManager.literal("textures")
-                                        .executes(context -> {
-                                            context.getSource().sendFeedback(Text.literal("End Rift textures:"));
-                                            for (String line : EndEventTextureCatalog.diagnosticLines()) {
-                                                context.getSource().sendFeedback(Text.literal(" - " + line));
-                                            }
-                                            return 1;
-                                        })))
+                        .then(ClientCommandManager.literal("textures")
+                                .executes(context -> {
+                                    context.getSource().sendFeedback(Text.literal("End Rift textures:"));
+                                    for (String line : EndEventTextureCatalog.diagnosticLines()) {
+                                        context.getSource().sendFeedback(Text.literal(" - " + line));
+                                    }
+                                    return 1;
+                                }))
+                        .then(ClientCommandManager.literal("selection")
+                                .executes(context -> {
+                                    EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
+                                    var lines = endEvent.selectionDiagnosticLines();
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "End Rift renderer selections: " + lines.size()));
+                                    if (lines.isEmpty()) {
+                                        context.getSource().sendFeedback(Text.literal(
+                                                " - no server-bound event visuals in client state"));
+                                    } else {
+                                        for (String line : lines) {
+                                            context.getSource().sendFeedback(Text.literal(" - " + line));
+                                        }
+                                    }
+                                    return 1;
+                                })))
                         .then(ClientCommandManager.literal("debug")
                                 .then(ClientCommandManager.literal("on").executes(context -> {
                                     config.setDebugOverlay(true);

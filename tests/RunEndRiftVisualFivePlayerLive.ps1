@@ -242,7 +242,7 @@ try {
   $portalResponse = Invoke-LocalRcon 'cmend test wave 3'
   if ($portalResponse -match '(?i)refused|ошиб|missing') { throw "Wave 3 visual probe was refused: $portalResponse" }
   Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE_FRONT_STARTED.*wave=3' -Seconds 30 | Out-Null
-  Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTAL_VISUALS.*portals=3.*layers=FRAME,INNER,SHARD' -Seconds 30 | Out-Null
+  Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTAL_VISUALS.*portals=3.*layers=GATE,INNER,SHARD' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE_TEST_STARTED.*wave=3' -Seconds 30 | Out-Null
   $objective = Invoke-LocalRcon 'cmend debug objectives'
   $visualMatch = [Regex]::Match(($objective -replace '\u00A7.', ''), 'visuals=(\d+)')
@@ -255,7 +255,7 @@ try {
     $mobVisual = Get-LogTail -Offset $mobVisualOffset
   }
   Assert-Output $mobVisual 'MOB_VISUAL_TOTAL=([1-9]\d*)' 'MOB_VISUAL_TOTAL'
-  Write-Evidence "CURRENT_WAVE3_VISUAL_PASS portals=3 layers=FRAME,INNER,SHARD displays=$($visualMatch.Groups[1].Value)"
+  Write-Evidence "CURRENT_WAVE3_VISUAL_PASS portals=3 layers=GATE,INNER,SHARD displays=$($visualMatch.Groups[1].Value)"
 
   $null = Invoke-LocalRcon 'cmend wave clear'
   $w4Offset = Get-LogLength

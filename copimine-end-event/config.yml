@@ -169,7 +169,7 @@ waves:
     elite-endermen: 6
     elite-skeletons: 2
   wave-6:
-    type: COLLAPSE_RINGS
+    type: RITUAL_SPHERE
     endermen: 14
     spiders: 10
     skeletons: 6

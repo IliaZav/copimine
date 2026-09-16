@@ -190,7 +190,10 @@ public final class EventStateStore {
         yaml.set("boss.active-ability", snapshot.activeBossAbility());
         yaml.set("boss.ability-deadline-millis", snapshot.bossAbilityDeadlineMillis());
         yaml.set("boss.defeat-saga", snapshot.bossDefeatSaga());
-        yaml.set("objective.progress", snapshot.objectiveProgress());
+        // ConfigurationSection treats dots in map keys as path separators on
+        // read. Store objective progress as an entry list so keys such as
+        // reality-split.player.<uuid> round-trip byte-for-byte.
+        yaml.set("objective.progress.entries", objectiveProgressEntries(snapshot.objectiveProgress()));
         List<Map<String, Object>> padList = new ArrayList<>();
         for (EventSnapshot.PadSnapshot pad : snapshot.pads()) {
             Map<String, Object> entry = new LinkedHashMap<>();
@@ -275,8 +278,42 @@ public final class EventStateStore {
                 text(yaml.getString("boss.active-ability", "NONE")),
                 yaml.getLong("boss.ability-deadline-millis", 0L),
                 text(yaml.getString("boss.defeat-saga", "NONE")),
-                stringMap(yaml.getConfigurationSection("objective.progress")),
+                objectiveProgress(yaml),
                 uuidStatuses(yaml.getConfigurationSection("rewards.night-cloak-rolls")));
+    }
+
+    private static List<Map<String, Object>> objectiveProgressEntries(Map<String, String> values) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        values.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            Map<String, Object> encoded = new LinkedHashMap<>();
+            encoded.put("key", entry.getKey());
+            encoded.put("value", entry.getValue());
+            result.add(encoded);
+        });
+        return result;
+    }
+
+    private static Map<String, String> objectiveProgress(YamlConfiguration yaml) {
+        List<Map<?, ?>> entries = yaml.getMapList("objective.progress.entries");
+        if (!entries.isEmpty()) {
+            Map<String, String> result = new LinkedHashMap<>();
+            for (Map<?, ?> entry : entries) {
+                Object rawKey = entry.get("key");
+                Object rawValue = entry.get("value");
+                if (!(rawKey instanceof String key) || key.isBlank()
+                        || !(rawValue instanceof String value)) {
+                    throw new IllegalArgumentException("objective progress entry must contain string key/value");
+                }
+                if (result.put(key, value) != null) {
+                    throw new IllegalArgumentException("duplicate objective progress key: " + key);
+                }
+            }
+            return result;
+        }
+        // Schema-4 files written before the entry-list format used a flat map.
+        // Keep reading those files so an upgrade does not discard progress;
+        // the next successful checkpoint rewrites them safely.
+        return stringMap(yaml.getConfigurationSection("objective.progress"));
     }
 
     private void writeAtomic(String content) throws IOException {
@@ -372,9 +409,14 @@ public final class EventStateStore {
     private static Map<String, String> stringMap(ConfigurationSection section) {
         Map<String, String> result = new LinkedHashMap<>();
         if (section != null) {
-            for (String key : section.getKeys(false)) {
-                String value = section.getString(key);
-                if (value != null) result.put(key, value);
+            // getKeys(false) only exposes the first path component when an
+            // older schema-4 file contains literal dotted keys. Deep values
+            // preserve the complete relative key and let that file migrate
+            // on its next successful checkpoint.
+            for (Map.Entry<String, Object> entry : section.getValues(true).entrySet()) {
+                if (entry.getValue() instanceof String value) {
+                    result.put(entry.getKey(), value);
+                }
             }
         }
         return result;

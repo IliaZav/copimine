@@ -11,20 +11,21 @@ public final class RealitySplitBarrierPolicyTest {
                 "Wave 7 room walls must be visibly taller than a player jump");
         check(RealitySplitBarrierPolicy.MIN_RADIUS <= 1.5D,
                 "Wave 7 walls must close the central Core bypass");
-        check(RealitySplitBarrierPolicy.MAX_RADIUS >= 20.0D,
+        check(RealitySplitBarrierPolicy.MAX_RADIUS >= 30.0D,
                 "Wave 7 walls must reach the arena edge instead of leaving an outer bypass");
         check(RealitySplitBarrierPolicy.cells(4).size()
                         <= RealitySplitBarrierPolicy.MAX_CELLS,
                 "four-room separator must remain bounded");
-        check(RealitySplitBarrierPolicy.WALL_HALF_WIDTH == 1,
-                "room separator must have a collision-safe three-block cross-section");
+        check(RealitySplitBarrierPolicy.WALL_HALF_WIDTH == 0,
+                "room separator must be one block wide");
         check(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE >= 0.99F,
                 "Wave 7 visual wall must fill each collision cell instead of leaving pillar gaps");
         check(RealitySplitBarrierPolicy.VISUAL_CELL_TRANSLATION == -0.5F,
                 "Wave 7 visual wall must be centred on its collision cell");
         check(RealitySplitBarrierPolicy.cellsForBoundary(0, 4).size()
-                        > 13 * RealitySplitBarrierPolicy.HEIGHT,
-                "diagonal room separator must fill its cross-section instead of a one-cell chain");
+                        <= (int) (2 * RealitySplitBarrierPolicy.MAX_RADIUS)
+                                * RealitySplitBarrierPolicy.HEIGHT,
+                "room separator must not expand into a multi-block wall");
         check(RealitySplitBarrierPolicy.cells(4).stream()
                         .allMatch(cell -> cell.level() >= 1
                                 && cell.level() <= RealitySplitBarrierPolicy.HEIGHT),

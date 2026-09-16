@@ -1,6 +1,7 @@
 package me.copimine.endevent.domain;
 
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -25,11 +26,22 @@ public final class CollapseRingEncounterPolicy {
                                 UUID guardA,
                                 UUID guardB,
                                 long rotationStartedTick) {
+        return initial(generation, roomId, guardA, guardB, rotationStartedTick, Set.of());
+    }
+
+    /** Start a guard encounter bound to one frozen player pair/group. */
+    public static State initial(long generation,
+                                int roomId,
+                                UUID guardA,
+                                UUID guardB,
+                                long rotationStartedTick,
+                                Set<UUID> assignedPlayers) {
         requireGeneration(generation);
         requireRoom(roomId);
         requirePair(guardA, guardB);
         return new State(generation, roomId, guardA, guardB, null, -1L, -1L,
-                REVIVE_HEALTH_FRACTION, Phase.BOTH_ALIVE, safeTick(rotationStartedTick));
+                REVIVE_HEALTH_FRACTION, Phase.BOTH_ALIVE, safeTick(rotationStartedTick),
+                assignedPlayers);
     }
 
     /** Apply one idempotent guard-death callback. */
@@ -109,7 +121,7 @@ public final class CollapseRingEncounterPolicy {
     private static State timeout(State state, long generation) {
         return new State(generation, state.roomId(), state.guardA(), state.guardB(), null,
                 -1L, -1L, state.reviveHealthFraction(), Phase.BOTH_ALIVE,
-                state.rotationStartedTick());
+                state.rotationStartedTick(), state.assignedPlayers());
     }
 
     private static boolean valid(State state, long generation) {
@@ -157,7 +169,23 @@ public final class CollapseRingEncounterPolicy {
                         long killWindowDeadlineTick,
                         double reviveHealthFraction,
                         Phase phase,
-                        long rotationStartedTick) {
+                        long rotationStartedTick,
+                        Set<UUID> assignedPlayers) {
+        public State(long generation,
+                     int roomId,
+                     UUID guardA,
+                     UUID guardB,
+                     UUID firstDownGuardId,
+                     long firstDownTick,
+                     long killWindowDeadlineTick,
+                     double reviveHealthFraction,
+                     Phase phase,
+                     long rotationStartedTick) {
+            this(generation, roomId, guardA, guardB, firstDownGuardId, firstDownTick,
+                    killWindowDeadlineTick, reviveHealthFraction, phase,
+                    rotationStartedTick, Set.of());
+        }
+
         public State {
             requireGeneration(generation);
             requireRoom(roomId);
@@ -165,6 +193,10 @@ public final class CollapseRingEncounterPolicy {
             if (firstDownGuardId != null && !firstDownGuardId.equals(guardA)
                     && !firstDownGuardId.equals(guardB)) {
                 throw new IllegalArgumentException("first down guard is not part of the pair");
+            }
+            assignedPlayers = Set.copyOf(assignedPlayers == null ? Set.of() : assignedPlayers);
+            if (assignedPlayers.stream().anyMatch(Objects::isNull)) {
+                throw new IllegalArgumentException("assigned player set contains null");
             }
             if (firstDownTick < -1L || killWindowDeadlineTick < -1L
                     || rotationStartedTick < 0L) {
@@ -189,12 +221,13 @@ public final class CollapseRingEncounterPolicy {
 
         private State firstDown(UUID guardId, long downTick, long deadline) {
             return new State(generation, roomId, guardA, guardB, guardId, downTick,
-                    deadline, reviveHealthFraction, Phase.FIRST_DOWN, rotationStartedTick);
+                    deadline, reviveHealthFraction, Phase.FIRST_DOWN, rotationStartedTick,
+                    assignedPlayers);
         }
 
         private State withPhase(Phase next, UUID firstDownId, long downTick, long deadline) {
             return new State(generation, roomId, guardA, guardB, firstDownId, downTick,
-                    deadline, reviveHealthFraction, next, rotationStartedTick);
+                    deadline, reviveHealthFraction, next, rotationStartedTick, assignedPlayers);
         }
     }
 }

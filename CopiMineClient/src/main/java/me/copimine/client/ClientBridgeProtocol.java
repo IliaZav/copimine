@@ -26,6 +26,7 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
     public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
+    public static final String TYPE_CONTROL_INPUT = "END_CONTROL_INPUT";
     public static final String TYPE_END_WORLD_BEAM = "END_WORLD_BEAM";
     public static final String TYPE_END_WORLD_VFX_CLEAR = "END_WORLD_VFX_CLEAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
@@ -340,6 +341,31 @@ public final class ClientBridgeProtocol {
 
     public static boolean isReverseMovementActive() {
         return END_EVENT_STATE.isReverseActive(System.currentTimeMillis());
+    }
+
+    public static boolean isControlSwapActive() {
+        return END_EVENT_STATE.isControlSwapActive(System.currentTimeMillis());
+    }
+
+    /** Send only the current keyboard sample; the server validates all identity and expiry fields. */
+    public static void sendControlInput(float forward, float sideways) {
+        if (!connected || !helloSent || !helloAcknowledged
+                || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!END_EVENT_STATE.isControlSwapActive(now)) {
+            return;
+        }
+        String eventId = END_EVENT_STATE.eventId();
+        String instanceId = END_EVENT_STATE.controlInstanceId();
+        String pairId = END_EVENT_STATE.controlPairId();
+        if (eventId.isBlank() || instanceId.isBlank() || pairId.isBlank()) {
+            return;
+        }
+        ClientPlayNetworking.send(BridgePayload.controlInput(
+                sessionId, END_EVENT_STATE.generation(), eventId, instanceId,
+                pairId, forward, sideways));
     }
 
     public static boolean isBoundEndBoss(String uuid) {

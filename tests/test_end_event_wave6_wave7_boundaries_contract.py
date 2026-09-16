@@ -11,60 +11,416 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_wave6_uses_one_geometry_for_visuals_and_guard_containment() -> None:
-    policy = read(DOMAIN / "CollapseRingGeometryPolicy.java")
+def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> None:
+    config = read(PLUGIN / "config.yml")
+    objective = read(DOMAIN / "EndRiftObjective.java")
     root = read(SRC / "CopiMineEndEvent.java")
-    assert "RING_RADII = {8.0D, 14.0D, 19.0D}" in policy
-    assert "RING_BAND_HALF_WIDTH = 2.25D" in policy
-    assert "CollapseRingGeometryPolicy.ringRadius(ring)" in root
-    assert "CollapseRingGeometryPolicy.visualPointCount(ring)" in root
-    assert "CollapseRingGeometryPolicy.inPlayerLane" in root
-    assert "CollapseRingGeometryPolicy.clampToPlayerLaneRadius" in root
-    assert "renderCurrentCollapseRings(core, now)" in root
-    assert "enforceCollapseRingLanes(anchor)" in root
-    assert "enforceCollapseRingPlayerContainment(anchor)" in root
-    assert "PlayerMoveEvent" in root
-    assert "WAVE6_RING_CONTAINMENT" in root
-    assert "WAVE6_RING_LEASH" in root
-    assert "combatFloorY() + 1.0D" in root
-    assert "private int chamberWaveNumber()" in root
-    assert "private int chamberWaveNumber() {\n        return 7;\n    }" in root
+    scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
+    health = read(DOMAIN / "RitualPrisonerHealthPolicy.java")
+    assert "  wave-6:\n    type: RITUAL_SPHERE" in config
+    assert "case 6 -> Objective.RITUAL_SPHERE" in objective
+    assert "WAVE6_RITUAL_SPHERE_READY" in root
+    assert "startRitualSphereObjective(world, core);" in root
+    assert "tickCurrentRitualSphereObjective(now);" in root
+    assert "RITUAL_SPHERE_ZONE_SIZE = 4" in root
+    assert "RitualSphereEncounterSnapshot" in root
+    assert "DRAIN_INTERVAL_MILLIS = 20_000L" in health
+    assert "DRAIN_HEALTH = 2.0D" in health
+    assert "MIN_HEALTH = 1.0D" in health
+    ritual_start = root.index("private void startRitualSphereObjective")
+    ritual_end = root.index("private void restorePersistedRitualSphereObjective", ritual_start)
+    ritual_body = root[ritual_start:ritual_end]
+    assert "Location combatCore = coreCombatAnchorLocation();" in ritual_body
+    assert "if (combatCore != null) {" in ritual_body
+    assert "core = combatCore;" in ritual_body
+    for marker in (
+        "new Profile(count, 4, 12, 1, 1, count == 2 ? 0 : 1, 13)",
+        "new Profile(count, 4, 12, 2, 1, 1, 12)",
+        "new Profile(count, 5, 15, 3, 2, 2, 11)",
+        "new Profile(count, 5, 15, 4, 2, 2, 10)",
+        "new Profile(count, 6, 18, 5, 3, 3, 9)",
+    ):
+        assert marker in scaling
 
 
-def test_wave7_has_journaled_physical_boundaries_and_opening() -> None:
+def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    start = root.index("private void startCanonicalObjective")
+    end = root.index("private void startWaveObjective", start)
+    start_body = root[start:end]
+    assert "case COLLAPSE_RINGS -> getLogger().warning(\"WAVE6_LEGACY_COLLAPSE_RING_REFUSED" in start_body
+    assert "case RITUAL_SPHERE ->" in start_body
+    assert "startRitualSphereObjective(world, core);" in start_body
+
+    tick_start = root.index("private boolean tickCurrentObjective")
+    tick_end = root.index("private boolean tickWaveObjective", tick_start)
+    tick_body = root[tick_start:tick_end]
+    assert "case RITUAL_SPHERE -> tickCurrentRitualSphereObjective(now);" in tick_body
+    assert "WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED" in tick_body
+
+    render_start = root.index("private void renderWaveObjective")
+    render_end = root.index("/** Render the same three radii", render_start)
+    render_body = root[render_start:render_end]
+    assert "renderCurrentRitualSphere(core, now);" in render_body
+    assert "renderCurrentCollapseRings(core, now);" not in render_body
+
+    containment_start = root.index("private CollapseRingEncounterPolicy.State activeCollapseRingForContainment")
+    containment_end = root.index("private boolean collapseRingPlayerAssigned", containment_start)
+    containment_body = root[containment_start:containment_end]
+    assert "Objective.COLLAPSE_RINGS" in containment_body
+    assert "activeWave == 6" in containment_body
+
+
+def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    start = root.index("private void startRitualSphereObjective")
+    end = root.index("private Location ritualSphereCenter", start)
+    body = root[start:end]
+    assert "placeRitualEntity(caster, casterLocation, \"CASTER\", casterSlot, -1)" in body
+    assert "placeRitualEntity(guard, guardLocation, \"GUARD\", casterSlot, guardSlot)" in body
+    assert "WAVE6_RITUAL_ENTITY_PLACEMENT_FAILED" in root
+    placement_start = root.index("private boolean placeRitualEntity")
+    placement_end = root.index("private Location ritualSphereCenter", placement_start)
+    placement_body = root[placement_start:placement_end]
+    assert "removeRitualEntity(entity.getUniqueId())" in placement_body
+    assert "reason=spawn-refused" in placement_body
+    assert "reason=no-safe-destination" in placement_body
+    assert "reason=teleport-refused" in placement_body
+
+
+def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     policy = read(DOMAIN / "RealitySplitBarrierPolicy.java")
     journal = read(SRC / "HazardMutationJournal.java")
     root = read(SRC / "CopiMineEndEvent.java")
+    live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
     assert "HEIGHT = 5" in policy
     assert "MIN_RADIUS = 0.5D" in policy
-    assert "MAX_RADIUS = 27.5D" in policy
+    assert "MAX_RADIUS = 32.0D" in policy
     assert "MAX_CELLS = 1536" in policy
     assert "boundaryForPair" in policy
+    assert "WALL_HALF_WIDTH = 0" in policy
     assert "REALITY_SPLIT_BARRIER" in journal
     assert "spawnRealitySplitBarriers(world, core)" in root
     assert "restoreRealitySplitBarriersAfterBootstrap()" in root
     assert "clearRealitySplitBarriers(\"wave-objective-reset\")" in root
     assert "openRealitySplitBoundary(" in root
     assert "Material.BARRIER" in root
-    assert "Material.AMETHYST_BLOCK" in root
-    assert "REALITY_SPLIT_WALL_MATERIAL" in root
+    assert "REALITY_SPLIT_WALL_MATERIAL = Material.BARRIER" in root
+    assert "value.setBlock(Material.AMETHYST_BLOCK.createBlockData())" in root
     assert "isRealitySplitBarrierBlock" in root
     assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
     assert "journaled=true" in root
     assert "localChamberRoster" in root
-    live_script = ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1"
-    assert live_script.exists()
-    live = read(live_script)
-    assert "minecraft:amethyst_block" in live
-    assert "wall_material=amethyst_block" in live
-    assert "LIVE_WAVE6_BOUNDARIES_PASS" in live
-    assert "LIVE_WAVE7_BARRIERS_PASS" in live
-    assert "LIVE_WAVE7_BARRIER_CLEANUP_PASS" in live
+    assert "minecraft:barrier" in live_script
+    assert "wall_material=barrier" in live_script
+    assert "LIVE_WAVE7_ONE_BLOCK_WALL_PASS" in live_script
+    assert "LIVE_WAVE7_COMMAND_CLEANUP_PASS" in live_script
+    assert "LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS" in live_script
+    assert "LIVE_WAVE7_RESTART_RECOVERY_PASS" in live_script
+    assert "-Action {" not in live_script
+    assert "Join-Path $runtimeRoot 'end-rift.env'" in live_script
+    assert "Join-Path $runtimeRoot 'local.env'" not in live_script
+    assert "Wait-Log-MarkerIncrease" in live_script
+    assert "BeforeLength" in live_script
+    assert "restartLogLengthBefore" in live_script
+    assert "weapon.mainhand with minecraft:netherite_sword" in live_script
+    assert "minecraft:instant_health 1 10 true" in live_script
+    assert " 20 250'" in live_script
+    assert "function Restart-Bots" in live_script
+    assert "Wait-BotsOffline -Names $Names" in live_script
+    assert "Restart-Bots -Names $names -Core $core" in live_script
+    assert "function Clear-LocalArenaAmbientMobs" in live_script
+    ambient_start = live_script.index("function Clear-LocalArenaAmbientMobs")
+    ambient_end = live_script.index("function Wait-BotsOnline", ambient_start)
+    ambient_body = live_script[ambient_start:ambient_end]
+    assert "execute positioned" in ambient_body
+    for mob_type in ("minecraft:spider", "minecraft:enderman", "minecraft:skeleton"):
+        assert f"'{mob_type}'" in ambient_body
+    assert "type=$mobType,distance=..32" in ambient_body
+    assert "function Set-LocalArenaMobSpawning" in live_script
+    assert "gamerule doMobSpawning false" in live_script
+    assert "previousLocalMobSpawning" in live_script
+    wave6_start = live_script.index("$wave6Offset = Log-Length")
+    assert "Set-LocalArenaMobSpawning -Enabled $false" in live_script[:wave6_start]
+    finally_start = live_script.index("finally {")
+    assert "Set-LocalArenaMobSpawning -Enabled ($previousLocalMobSpawning -eq 'true')" in live_script[finally_start:]
+    assert "Clear-LocalArenaAmbientMobs -Core $core" in live_script[:wave6_start]
+    wave7_start = live_script.index("$wave7Offset = Log-Length")
+    assert "Clear-LocalArenaAmbientMobs -Core $core" in live_script[wave6_start:wave7_start]
+    restart_start = live_script.index("$restartLogLengthBefore = Log-Length")
+    assert "Clear-LocalArenaAmbientMobs" not in live_script[restart_start:]
+    configure_start = live_script.index("function Configure-Bot")
+    configure_end = live_script.index("function Wait-BotsOnline", configure_start)
+    configure_body = live_script[configure_start:configure_end]
+    assert "[switch]$SkipTeleport" in configure_body
+    assert "attribute $name minecraft:generic.knockback_resistance base set 1" in configure_body
+    restart_start = live_script.index("Start-LocalMinecraft")
+    restart_body = live_script[restart_start:]
+    assert "Configure-Bot -Name $name -Core $core -SkipTeleport" in restart_body
+    join_start = root.index("public void onPlayerJoin")
+    join_end = root.index("public void onPlayerQuit", join_start)
+    join_body = root[join_start:join_end]
+    assert "teleportRealitySplitPlayerToChamberCenter" in join_body
+    assert "reconnect-center-retry" in root
+    center_start = root.index("private void teleportRealitySplitPlayerToChamberCenter")
+    center_end = root.index("/**\n     * Keep every live Wave 7 participant", center_start)
+    center_body = root[center_start:center_end]
+    assert "100L" in center_body
+    contain_start = root.index("private void containRealitySplitParticipant")
+    contain_end = root.index("/**\n     * Walking, jumping and flight movement", contain_start)
+    contain_body = root[contain_start:contain_end]
+    assert "realitySplitChamberCenter" in contain_body
+    leash_start = root.index("private void enforceCombatLeash")
+    leash_end = root.index("private PotionEffectType narcoticPotionEffect", leash_start)
+    leash_body = root[leash_start:leash_end]
+    assert "int chamberForLeash = chamber >= 0" in leash_body
+    assert "realitySplitLeashPreferred" in leash_body
+    assert "findSafeCombatLocation(anchor, preferred, radius - 0.75D, minCoreDistance,\n                chamberForLeash, entity)" in leash_body
+    assert '(chamberForLeash >= 0 ? " chamber=" + chamberForLeash : "")' in leash_body
+    leash_preferred_start = root.index("private Location realitySplitLeashPreferred")
+    leash_preferred_end = root.index("private void teleportRealitySplitPlayerToChamberCenter", leash_preferred_start)
+    leash_preferred_body = root[leash_preferred_start:leash_preferred_end]
+    assert "realitySplitChamberCombatPoint" in leash_preferred_body
+    assert "mob.getTarget() instanceof Player target" in leash_preferred_body
+    assert "realitySplitTargetAllowed(entity, target)" in leash_preferred_body
+    assert "target.getLocation()" in leash_preferred_body
+    target_start = root.index("private boolean realitySplitTargetAllowed")
+    target_end = root.index("private Location constrainRealitySplitPreferred", target_start)
+    target_body = root[target_start:target_end]
+    assert "realitySplitLocalTargetAllowed" in target_body
+    assert "END_RIFT_BOT_WAVE7_AUTOPILOT" in live_script
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert "wave7AutopilotDefault" in bot
+    assert "enterActiveMode(wave7AutopilotDefault)" in bot
+    assert "findWalkablePath" in bot
+    assert "navigationPath" in bot
+    assert "navigationRecoveryUntil" in bot
+    assert "block.boundingBox === 'empty'" in bot
+    assert "sameWave7ChamberPoint" in bot
+    assert "wave7NavigationRadius" in bot
+    assert "isWave7NavigationPoint" in bot
+    assert "wave7Autopilot && navigationPath.length === 0" in bot
+    assert "bot.setControlState('jump', Boolean(" in bot
+    assert "|| (waypoint && waypoint.y > Math.floor(currentPosition.y))" in bot
+    assert "AI_WAVE7_STATE" in root
+    assert "pdc_chamber" in root
+    assert "target_distance" in root
+    mob_path_start = root.index("private void maintainWaveMobPath")
+    mob_path_end = root.index("private boolean requestBoundedCombatMovement", mob_path_start)
+    mob_path_body = root[mob_path_start:mob_path_end]
+    fallback_start = mob_path_body.index("if (destination == null || isCoreBlockPosition(destination))")
+    fallback_body = mob_path_body[fallback_start:]
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob), mob);" in fallback_body
+    location_start = root.index("Location resolved = new Location", root.index("private Location findSafeCombatLocation"))
+    location_end = root.index("BossMovementPolicy.Candidate policyCandidate", location_start)
+    resolved_location_body = root[location_start:location_end]
+    assert "ChamberIsolationPolicy.containsPoint(" in resolved_location_body
+    assert "resolved.getX() - center.getX()" in resolved_location_body
+    assert "resolved.getZ() - center.getZ()" in resolved_location_body
 
 
-def test_wave7_barrier_is_not_a_permanent_map_change() -> None:
+def test_wave7_collision_and_visual_layers_are_separate() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    recovery = read(SRC / "CopiMineEndEvent.java")
+    policy = read(DOMAIN / "RealitySplitBarrierPolicy.java")
+    assert "WALL_HALF_WIDTH = 0" in policy
+    assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
+    assert "value.setBlock(Material.AMETHYST_BLOCK.createBlockData())" in root
+    assert "world border" not in root.lower()
+
+
+def test_disposable_wave_completion_does_not_require_official_reward_roster() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    start = root.index("private void tickWaveCompletion")
+    end = root.index("private boolean spawnWaveCompletionLoot", start)
+    body = root[start:end]
+    assert "boolean disposableWave = testWaveFrontVisualMode && !isOfficialAttempt();" in body
+    assert "if (!disposableWave && !spawnWaveCompletionLoot(completedWave)) {" in body
+    assert "DISPOSABLE_WAVE_NATURAL_COMPLETE" in body
+
+
+def test_event_wave_mobs_are_protected_from_wall_and_sun_environment_damage() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+
+    sun_start = root.index("public void onEventEndermanSunDamage")
+    sun_end = root.index("private Player playerDamageAttacker", sun_start)
+    sun_body = root[sun_start:sun_end]
+    assert "DamageCause.FIRE_TICK" in sun_body
+    assert "ownedEntities.containsKey(enderman.getUniqueId())" in sun_body
+    assert "isWaveCombatKind(kind)" in sun_body
+    assert "!isOfficialEntity(enderman)" not in sun_body
+    assert "event.setCancelled(true)" in sun_body
+
+    suffocation_start = root.index("public void onEventMobSuffocation")
+    suffocation_end = root.index("public void onWaveMobPlayerDamageAuthoritative", suffocation_start)
+    suffocation_body = root[suffocation_start:suffocation_end]
+    assert "DamageCause.SUFFOCATION" in suffocation_body
+    assert "ownedEntities.containsKey(entity.getUniqueId())" in suffocation_body
+    assert "isWaveCombatKind(readString(entity, keyKind))" in suffocation_body
+    assert "event.setCancelled(true)" in suffocation_body
+    assert "findSafeCombatLocation" in suffocation_body
+    assert "teleportCombatEntity" in suffocation_body
+
+
+def test_wave7_player_teleport_permits_are_destination_bound_and_scoped() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    assert "Map<UUID, Location> realitySplitPlayerTeleportPermits" in root
+    assert "issueRealitySplitPlayerTeleportPermit" in root
+    assert "clearRealitySplitPlayerTeleportPermit" in root
+    assert "sameTeleportDestination" in root
+
+    for method_name in (
+        "private void teleportCurrentParticipantsToChambers",
+        "private void teleportRealitySplitPlayerToChamberCenter",
+        "private void containRealitySplitParticipant",
+    ):
+        start = root.index(method_name)
+        end = root.find("\n    private ", start + len(method_name))
+        if end < 0:
+            end = root.find("\n    /**", start + len(method_name))
+        body = root[start:end]
+        if "issueRealitySplitPlayerTeleportPermit(playerId, destination)" not in body:
+            start = root.index(method_name, start + len(method_name))
+            end = root.find("\n    private ", start + len(method_name))
+            if end < 0:
+                end = root.find("\n    /**", start + len(method_name))
+            body = root[start:end]
+        assert "issueRealitySplitPlayerTeleportPermit(playerId, destination)" in body
+        assert "clearRealitySplitPlayerTeleportPermit(playerId, destination)" in body
+
+    handler_start = root.index("public void onRealitySplitPlayerTeleport")
+    handler_end = root.index("private boolean isRealitySplitPlayerRuntimeActive", handler_start)
+    handler_body = root[handler_start:handler_end]
+    assert "isRealitySplitPlayerTeleportPermitted(event)" in handler_body
+    assert "realitySplitPlayerTeleportPermits.remove(playerId)" not in handler_body
+
+
+def test_wave7_rejected_player_move_sends_a_server_position_correction() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    move_start = root.index("public void onRealitySplitPlayerMove")
+    move_end = root.index("/**\n     * Scope an internal player teleport", move_start)
+    move_body = root[move_start:move_end]
+    assert "event.setTo(from)" in move_body
+    assert "issueRealitySplitPlayerTeleportPermit(player.getUniqueId(), from)" in move_body
+    assert "player.teleport(from)" in move_body
+    assert "clearRealitySplitPlayerTeleportPermit(player.getUniqueId(), from)" in move_body
+
+
+def test_wave7_rejected_move_recovers_when_from_is_already_outside_room() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    move_start = root.index("public void onRealitySplitPlayerMove")
+    move_end = root.index("/**\n     * Scope an internal player teleport", move_start)
+    move_body = root[move_start:move_end]
+    # A knockback packet can make both PlayerMoveEvent locations invalid for
+    # the closed room. Replaying that invalid `from` forever leaves the
+    # client at the outer edge and prevents it from reaching its own mobs.
+    assert "boolean fromAllowed = isRealitySplitDestinationAllowed(" in move_body
+    assert "if (!fromAllowed)" in move_body
+    assert 'containRealitySplitParticipant(player, generation, "move-recovery")' in move_body
+    assert "event.setTo(player.getLocation())" in move_body
+
+
+def test_wave7_inward_inner_boundary_move_recenters_inside_assigned_room() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    policy = read(SRC / "domain" / "RealitySplitPlayerTeleportPolicy.java")
+    move_start = root.index("public void onRealitySplitPlayerMove")
+    move_end = root.index("/**\n     * Scope an internal player teleport", move_start)
+    move_body = root[move_start:move_end]
+    assert "requiresInnerBoundaryRecovery" in policy
+    assert "requiresBoundaryRecovery" in policy
+    assert "requiresBoundaryRecovery" in move_body
+    assert 'teleportRealitySplitPlayerToChamberCenter(\n                    player, generation, "inner-boundary-recovery")' in move_body
+    assert "WAVE7_PLAYER_BOUNDARY_RECOVERED" in move_body
+    assert "event.setTo(player.getLocation())" in move_body
+
+
+def test_wave7_velocity_fallback_keeps_mobs_inside_their_assigned_chamber() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    helper_start = root.index("private boolean requestBoundedCombatMovement")
+    helper_end = root.index("private boolean isSafeCombatStep", helper_start)
+    helper_body = root[helper_start:helper_end]
+    assert "int chamberId" in helper_body
+    assert "isSafeCombatStep(anchor, next, radius, minimumCoreDistance, chamberId, mob)" in helper_body
+
+    wave_path_start = root.index("private void maintainWaveMobPath")
+    wave_path_end = root.index("private boolean requestBoundedCombatMovement", wave_path_start)
+    wave_path_body = root[wave_path_start:wave_path_end]
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS,\n                    realitySplitChamberId(mob)," in wave_path_body
+
+    stuck_start = root.index("private void watchWaveMobProgress")
+    stuck_end = root.index("/**\n     * Give each event role", stuck_start)
+    stuck_body = root[stuck_start:stuck_end]
+    assert "MIN_WAVE_CORE_DISTANCE_BLOCKS,\n                    realitySplitChamberId(mob)," in stuck_body
+
+
+def test_wave7_mob_destinations_use_full_hitbox_and_target_separation() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    policy = read(DOMAIN / "RealitySplitCombatSeparationPolicy.java")
+    assert "RealitySplitCombatSeparationPolicy" in root
+    assert "DEFAULT_MIN_SEPARATION = 1.75D" in policy
+    assert "isSafeCombatEntityLocation" in root
+    assert "isSafeCombatParticipantLocation" in root
+    assert "entity.getWidth()" in root
+    assert "entity.getHeight()" in root
+    assert "realitySplitCombatPreferred(anchor, preferred, target, mob)" in root
+    assert "realitySplitCombatPreferred(anchor, preferred, player, entity)" in root
+    assert "findSafeCombatLocation(anchor, preferred,\n                waveMovementRadius(),\n                MIN_WAVE_CORE_DISTANCE_BLOCKS, realitySplitChamberId(mob), mob)" in root
+
+
+def test_wave7_player_containment_rejects_wall_intersection() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    containment_start = root.index("private void containRealitySplitParticipant")
+    containment_end = root.index("/**\n     * Walking, jumping", containment_start)
+    containment_body = root[containment_start:containment_end]
+    assert "isSafeCombatParticipantLocation(player.getLocation(), player)" in containment_body
+    assert "isRealitySplitDestinationAllowed(player.getUniqueId(), player.getLocation(), assignment)\n                && isSafeCombatParticipantLocation(player.getLocation(), player)" in containment_body
+    assert "findSafeCombatLocation(anchor, preferred, radius,\n                MIN_WAVE_CORE_DISTANCE_BLOCKS, chamber, player)" in containment_body
+
+
+def test_wave7_bot_serializes_aim_and_attack_against_navigation_race() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    # The probe used to await Mineflayer's asynchronous lookAt while its
+    # navigation timer could send a second look packet. The server then
+    # decoded a valid ATTACK for an in-range mob using the wrong server-side
+    # view direction, so live damage disappeared without a plugin exception.
+    assert "let meleeActionInFlight = false" in bot
+    assert "if (meleeActionInFlight) return" in bot
+    assert "lookAtServer(lookPoint)" in bot
+    assert "lookAtServer(finalTarget.position.offset(0, 0.8, 0))" in bot
+    assert "bot.look(yaw, pitch, true)" in bot
+    assert "bot._client.write('look', {" in bot
+    assert "yaw: Math.fround((Math.PI - yaw) * 180 / Math.PI)" in bot
+    assert "pitch: Math.fround(-pitch * 180 / Math.PI)" in bot
+    assert "bot._client.write('use_entity', {" in bot
+    assert "hand: 0" in bot
+    assert "bot._client.write('arm_animation', { hand: 0 })" in bot
+    assert "if (bot.quickBarSlot !== 0)" in bot
+    assert "bot.lookAt(" not in bot
+
+
+def test_wave7_cleanup_reconciles_persisted_cells_even_when_live_maps_are_empty() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    start = root.index("private boolean clearRealitySplitBarriers")
+    end = root.index("private boolean isRealitySplitBarrierBlock", start)
+    body = root[start:end]
+    assert "hazardJournal.load()" in body
+    assert "isRealitySplitBarrierMutation()" in body
+    assert "realitySplitBarrierCells.isEmpty()" in body
+    assert "RESTORED" in body
     assert "hazardJournal.markRestored()" in root
     assert "restoreBlock(barrier, realitySplitBarrierOriginals.get(cell))" in root
-    assert "entry.isRealitySplitBarrierMutation()" in recovery
+
+
+def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    assert '"test-wave-generation"' in root
+    assert '"test-wave", "7"' in root
+    assert "persistedDisposableWave7" in root
+    assert "testWaveFrontVisualMode && activeWave == 7" in root
+    assert "END_RIFT_WAVE7_BARRIERS_REHYDRATED" in root
+    assert "preserveWave7ForRestart" in root
+    assert "cancelSessionTasks(preserveWave7ForRestart)" in root
+    assert "cancelSessionTasks(boolean preserveWave7ForRestart)" in root
+    roster_start = root.index("List<UUID> localChamberRoster")
+    roster_end = root.index("if (test)", roster_start)
+    roster_body = root[roster_start:roster_end]
+    assert "Bukkit.getOnlinePlayers().stream().filter(this::isCombatTarget)" in roster_body

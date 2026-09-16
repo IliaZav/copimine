@@ -20,10 +20,10 @@ public final class RealitySplitBarrierPolicy {
      * to the configured arena bounds, so this closes the diagonal corner
      * bypass without mutating blocks outside the event.
      */
-    public static final double MAX_RADIUS = 27.5D;
+    public static final double MAX_RADIUS = 32.0D;
     public static final int MAX_CELLS = 1536;
-    /** A three-block cross-section keeps diagonal walls physically closed. */
-    public static final int WALL_HALF_WIDTH = 1;
+    /** The gameplay collision wall is exactly one block wide. */
+    public static final int WALL_HALF_WIDTH = 0;
     /**
      * The client-facing column must cover its entire BARRIER cell.  Smaller
      * display scales turn a continuous collision wall into disconnected,
@@ -34,16 +34,37 @@ public final class RealitySplitBarrierPolicy {
     public static final float VISUAL_CELL_TRANSLATION = -0.5F;
 
     private static final int FIRST_RADIUS = 1;
-    private static final int LAST_RADIUS = 27;
+    private static final int LAST_RADIUS = 31;
     private static final int MAX_CHAMBERS = 4;
 
     private RealitySplitBarrierPolicy() {
     }
 
     public static List<Cell> cells(int chamberCount) {
+        return cellsExcludingBoundaries(chamberCount, Set.of());
+    }
+
+    /**
+     * Return only the still-closed physical separators.  The open boundary
+     * set is supplied by the persisted Wave 7 graph so a restart cannot
+     * recreate a passage that players have already crossed.
+     */
+    public static List<Cell> cellsExcludingBoundaries(int chamberCount,
+                                                       Set<Integer> openBoundaries) {
         int count = safeChamberCount(chamberCount);
         Set<Cell> result = new LinkedHashSet<>();
+        Set<Integer> excluded = new LinkedHashSet<>();
+        if (openBoundaries != null) {
+            for (Integer boundary : openBoundaries) {
+                if (boundary != null && boundary >= 0 && boundary < boundaryCount(count)) {
+                    excluded.add(boundary);
+                }
+            }
+        }
         for (int boundary = 0; boundary < boundaryCount(count); boundary++) {
+            if (excluded.contains(boundary)) {
+                continue;
+            }
             result.addAll(cellsForBoundary(boundary, count));
         }
         return List.copyOf(result);
@@ -59,25 +80,63 @@ public final class RealitySplitBarrierPolicy {
         int directions = count == 2 ? 2 : 1;
         for (int direction = 0; direction < directions; direction++) {
             double sign = direction == 0 ? 1.0D : -1.0D;
+            int previousX = 0;
+            int previousZ = 0;
+            boolean hasPrevious = false;
             for (int radius = FIRST_RADIUS; radius <= LAST_RADIUS; radius++) {
-                // Fill the perpendicular cross-section as well as the center
-                // line.  A one-cell diagonal chain leaves corner gaps that a
-                // player can cross; three cells keep the physical BARRIER
-                // wall closed without making the room geometry excessive.
-                double perpendicularX = -Math.sin(angle) * sign;
-                double perpendicularZ = Math.cos(angle) * sign;
-                for (int width = -WALL_HALF_WIDTH; width <= WALL_HALF_WIDTH; width++) {
-                    int x = (int) Math.round(Math.cos(angle) * radius * sign
-                            + perpendicularX * width);
-                    int z = (int) Math.round(Math.sin(angle) * radius * sign
-                            + perpendicularZ * width);
-                    for (int level = 1; level <= HEIGHT; level++) {
-                        result.add(new Cell(x, z, level));
+                int targetX = (int) Math.round(Math.cos(angle) * radius * sign);
+                int targetZ = (int) Math.round(Math.sin(angle) * radius * sign);
+                if (WALL_HALF_WIDTH == 0) {
+                    // A rounded diagonal can jump from (x,z) to (x+1,z+1),
+                    // leaving a corner gap that a player can squeeze through.
+                    // Connect successive samples with an edge-connected,
+                    // cardinal staircase.  It remains one block wide while
+                    // making the union of collision cells continuous.
+                    if (!hasPrevious) {
+                        addCellColumn(result, targetX, targetZ);
+                    } else {
+                        addCardinalSegment(result, previousX, previousZ, targetX, targetZ);
+                    }
+                } else {
+                    double perpendicularX = -Math.sin(angle) * sign;
+                    double perpendicularZ = Math.cos(angle) * sign;
+                    for (int width = -WALL_HALF_WIDTH; width <= WALL_HALF_WIDTH; width++) {
+                        int x = (int) Math.round(Math.cos(angle) * radius * sign
+                                + perpendicularX * width);
+                        int z = (int) Math.round(Math.sin(angle) * radius * sign
+                                + perpendicularZ * width);
+                        addCellColumn(result, x, z);
                     }
                 }
+                previousX = targetX;
+                previousZ = targetZ;
+                hasPrevious = true;
             }
         }
         return List.copyOf(result);
+    }
+
+    private static void addCardinalSegment(Set<Cell> result,
+                                           int startX, int startZ,
+                                           int targetX, int targetZ) {
+        int x = startX;
+        int z = startZ;
+        while (x != targetX || z != targetZ) {
+            int dx = targetX - x;
+            int dz = targetZ - z;
+            if (dx != 0 && (dz == 0 || Math.abs(dx) >= Math.abs(dz))) {
+                x += Integer.signum(dx);
+            } else {
+                z += Integer.signum(dz);
+            }
+            addCellColumn(result, x, z);
+        }
+    }
+
+    private static void addCellColumn(Set<Cell> result, int x, int z) {
+        for (int level = 1; level <= HEIGHT; level++) {
+            result.add(new Cell(x, z, level));
+        }
     }
 
     /**

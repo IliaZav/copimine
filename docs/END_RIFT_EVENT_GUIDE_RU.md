@@ -6,7 +6,7 @@
 проверки.
 
 Цели волн по порядку: `RIFT_CARRIERS`, `RIFT_HUNT`, `RIFT_GATES`,
-`OBELISK_ASSAULT`, `BLACK_FOG`, `COLLAPSE_RINGS`, `REALITY_SPLIT`.
+`OBELISK_ASSAULT`, `BLACK_FOG`, `RITUAL_SPHERE`, `REALITY_SPLIT`.
 
 ## Команды
 
@@ -104,8 +104,12 @@ Core Restoration — волновая награда и восстановлен
 Wave 5 — три цикла чёрного тумана: telegraph, безопасное окно, freeze и
 постепенное возвращение поля.
 
-Wave 6 — пары и локальные кольца. У каждой пары свой deadline и относительное
-вращение; состояние соседней пары не влияет на текущую.
+Wave 6 — Ritual Sphere: пленник удерживается сервером у Core и получает
+фиксированный drain раз в 20 секунд на 2 HP, но здоровье не опускается ниже 1.
+У каждого из 4–6 кастеров ровно три локальных стража; щит кастера ослабевает
+по мере гибели его стражей. Сфера запускает ограниченные projectile, infected
+zone, reverse movement и pair control-swap способности. Старые Collapse Rings
+остаются только декодером совместимости и в live Wave 6 не запускаются.
 
 Wave 7 — reality split: комнаты изолированы по целям, pathfinding, projectile,
 AoE и teleport до открытия прохода.

@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
   [ValidateRange(900, 3600)]
-  [int]$BotDurationSeconds = 1800,
+  [int]$BotDurationSeconds = 3600,
   [ValidateRange(600, 3500)]
-  [int]$TimeoutSeconds = 1700
+  [int]$TimeoutSeconds = 3500
 )
 
 # Five disposable Mineflayer clients run the real current End Rift state

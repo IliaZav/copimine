@@ -14,4 +14,11 @@ class EndEventTextureCatalogTest {
                 "copimineclient:textures/entity/end_rift_user_spider.png",
                 EndEventTextureCatalog.textureForVisual("END_RIFT_SPIDER_V1").toString());
     }
+
+    @Test
+    void serverBossVisualAliasResolvesToTheSuppliedBossSkin() {
+        assertEquals(
+                "copimineclient:textures/entity/end_rift_user_boss.png",
+                EndEventTextureCatalog.textureForVisual("END_RIFT_GUARDIAN").toString());
+    }
 }

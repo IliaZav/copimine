@@ -14,6 +14,9 @@ const username = process.argv[2] || 'BossHitProbe'
 const durationMs = Number(process.argv[3] || 45000)
 const attackEveryMs = Number(process.env.END_RIFT_BOSS_ATTACK_EVERY_MS || 1100)
 const attackDelayMs = Number(process.env.END_RIFT_BOSS_ATTACK_DELAY_MS || 9000)
+const aimOffsetX = Number(process.env.END_RIFT_BOSS_AIM_OFFSET_X || 0)
+const aimOffsetY = Number(process.env.END_RIFT_BOSS_AIM_OFFSET_Y || 1.2)
+const aimOffsetZ = Number(process.env.END_RIFT_BOSS_AIM_OFFSET_Z || 0)
 const synchronizedBurstCount = Math.max(0, Number(process.env.END_RIFT_BOSS_SYNC_BURST_COUNT || 0))
 const synchronizedBurstSpacingMs = Math.max(0, Number(process.env.END_RIFT_BOSS_SYNC_BURST_SPACING_MS || 12))
 const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
@@ -82,6 +85,10 @@ function stopFollowing () {
   }
 }
 
+function bossAimPoint (boss) {
+  return boss.position.offset(aimOffsetX, aimOffsetY, aimOffsetZ)
+}
+
 function followBoss () {
   if (!bot.entity || typeof bot.setControlState !== 'function') return
   const boss = bossEntity()
@@ -103,7 +110,7 @@ function followBoss () {
     bot.setControlState('back', false)
     bot.setControlState('sprint', false)
   }
-  bot.lookAt(boss.position.offset(0, 1.0, 0), true).catch(error => {
+  bot.lookAt(bossAimPoint(boss), true).catch(error => {
     console.error(`FOLLOW_ERROR ${username} ${error.stack || error}`)
   })
 }
@@ -125,7 +132,7 @@ function tryAttack () {
     bossSeen = true
     console.log(`BOSS_ENTITY ${username} id=${boss.id} pos=${boss.position.x},${boss.position.y},${boss.position.z}`)
   }
-  bot.lookAt(boss.position.offset(0, 1.2, 0), true).then(() => {
+  bot.lookAt(bossAimPoint(boss), true).then(() => {
     // The boss can move during lookAt's asynchronous turn. Re-resolve the
     // entity and measure reach immediately before the use_entity packet so a
     // stale client-side position cannot turn a real player hit into a miss.

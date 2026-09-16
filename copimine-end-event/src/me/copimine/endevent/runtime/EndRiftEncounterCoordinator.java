@@ -12,6 +12,7 @@ import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
 import me.copimine.endevent.runtime.encounter.CollapseRingsEncounter;
 import me.copimine.endevent.runtime.encounter.ObeliskAssaultEncounter;
 import me.copimine.endevent.runtime.encounter.RealitySplitEncounter;
+import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
 import me.copimine.endevent.runtime.encounter.RiftCarriersEncounter;
 import me.copimine.endevent.runtime.encounter.RiftGatesEncounter;
 import me.copimine.endevent.runtime.encounter.RiftHuntEncounter;
@@ -49,6 +50,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         register(new ObeliskAssaultEncounter());
         register(new BlackFogEncounter());
         register(new CollapseRingsEncounter());
+        register(new RitualSphereEncounter());
         register(new RealitySplitEncounter());
         if (overrides != null) overrides.values().forEach(this::register);
     }
@@ -160,7 +162,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case INTERMISSION_1 -> EndRiftObjective.Objective.RIFT_HUNT;
             case INTERMISSION_2 -> EndRiftObjective.Objective.RIFT_GATES;
             case INTERMISSION_3 -> EndRiftObjective.Objective.OBELISK_ASSAULT;
-            case INTERMISSION_5 -> EndRiftObjective.Objective.COLLAPSE_RINGS;
+            case INTERMISSION_5 -> EndRiftObjective.Objective.RITUAL_SPHERE;
             case INTERMISSION_6 -> EndRiftObjective.Objective.REALITY_SPLIT;
             default -> null;
         };
@@ -242,7 +244,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case RIFT_GATES -> EventPhase.INTERMISSION_3;
             case OBELISK_ASSAULT -> EventPhase.CORE_RESTORATION;
             case BLACK_FOG -> EventPhase.INTERMISSION_5;
-            case COLLAPSE_RINGS -> EventPhase.INTERMISSION_6;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.INTERMISSION_6;
             case REALITY_SPLIT -> EventPhase.PRE_BOSS_COOLDOWN;
         };
     }
@@ -262,7 +264,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case RIFT_GATES -> EventPhase.WAVE_3;
             case OBELISK_ASSAULT -> EventPhase.WAVE_4;
             case BLACK_FOG -> EventPhase.WAVE_5;
-            case COLLAPSE_RINGS -> EventPhase.WAVE_6;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.WAVE_6;
             case REALITY_SPLIT -> EventPhase.WAVE_7;
         };
     }
@@ -274,7 +276,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case RIFT_GATES -> EventPhase.INTERMISSION_2;
             case OBELISK_ASSAULT -> EventPhase.INTERMISSION_3;
             case BLACK_FOG -> EventPhase.CORE_RESTORATION;
-            case COLLAPSE_RINGS -> EventPhase.INTERMISSION_5;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.INTERMISSION_5;
             case REALITY_SPLIT -> EventPhase.INTERMISSION_6;
         };
     }
@@ -286,7 +288,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             case WAVE_3 -> EndRiftObjective.Objective.RIFT_GATES;
             case WAVE_4 -> EndRiftObjective.Objective.OBELISK_ASSAULT;
             case WAVE_5 -> EndRiftObjective.Objective.BLACK_FOG;
-            case WAVE_6 -> EndRiftObjective.Objective.COLLAPSE_RINGS;
+            case WAVE_6 -> EndRiftObjective.Objective.RITUAL_SPHERE;
             case WAVE_7 -> EndRiftObjective.Objective.REALITY_SPLIT;
             default -> null;
         };

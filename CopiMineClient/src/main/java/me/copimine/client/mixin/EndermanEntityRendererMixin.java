@@ -5,20 +5,16 @@ import me.copimine.client.CopiMineClientLogger;
 import me.copimine.client.EndEventTextureCatalog;
 import me.copimine.client.EndermanRendererSelection;
 import me.copimine.client.RiftGuardianModelRenderer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.render.entity.EndermanEntityRenderer;
 import net.minecraft.client.render.entity.MobEntityRenderer;
 import net.minecraft.client.render.entity.model.EntityModel;
 import net.minecraft.entity.mob.EndermanEntity;
 import net.minecraft.util.Identifier;
-import net.minecraft.client.util.math.MatrixStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.HashSet;
@@ -31,8 +27,6 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
     private static final Set<String> COPIMINE_LOGGED_RENDER_ENTITIES = new HashSet<>();
     @Unique
     private final RiftGuardianModelRenderer copimine$guardianRenderer = new RiftGuardianModelRenderer();
-    @Unique
-    private EndermanRendererSelection.ModelSwap<EntityModel<EndermanEntity>> copimine$modelSwap;
 
     protected EndermanEntityRendererMixin(EntityRendererFactory.Context context, EntityModel<EndermanEntity> model, float shadowRadius) {
         super(context, model, shadowRadius);
@@ -40,39 +34,6 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
 
     private static Identifier texture(String name) {
         return Identifier.of("copimineclient", "textures/entity/" + name + ".png");
-    }
-
-    @Inject(method = "render(Lnet/minecraft/entity/mob/EndermanEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"))
-    private void copimine$useGuardianModelForBoundBoss(EndermanEntity entity, float yaw, float tickDelta,
-                                                       MatrixStack matrices, VertexConsumerProvider vertexConsumers,
-                                                       int light, CallbackInfo ci) {
-        if (entity == null) {
-            return;
-        }
-        String bossUuid = entity.getUuid().toString();
-        EndermanRendererSelection.Decision selection = copimine$guardianSelection(bossUuid);
-        if (!selection.usesGuardianModel()) {
-            return;
-        }
-        String phaseId = ClientBridgeProtocol.bossPhaseForEntity(bossUuid);
-        long transitionMillis = ClientBridgeProtocol.bossPhaseTransitionMillisForEntity(bossUuid);
-        String animationId = ClientBridgeProtocol.bossAnimationForEntity(bossUuid);
-        float animationElapsedTicks = ClientBridgeProtocol.bossAnimationElapsedTicksForEntity(
-                bossUuid, System.currentTimeMillis());
-        EntityModel<EndermanEntity> guardianModel = copimine$guardianRenderer.modelForPhase(
-                phaseId, transitionMillis, animationId, animationElapsedTicks);
-        copimine$modelSwap = EndermanRendererSelection.begin(model, guardianModel, selection);
-        model = copimine$modelSwap.currentModel();
-    }
-
-    @Inject(method = "render(Lnet/minecraft/entity/mob/EndermanEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))
-    private void copimine$restoreVanillaModelAfterBoundBoss(EndermanEntity entity, float yaw, float tickDelta,
-                                                            MatrixStack matrices, VertexConsumerProvider vertexConsumers,
-                                                            int light, CallbackInfo ci) {
-        if (copimine$modelSwap != null) {
-            model = copimine$modelSwap.restore();
-            copimine$modelSwap = null;
-        }
     }
 
     @Inject(method = "getTexture", at = @At("HEAD"), cancellable = true)
@@ -89,12 +50,7 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
             return;
         }
         String visual = ClientBridgeProtocol.endEventVisualForEntity(entityUuid);
-        Identifier texture = switch (visual) {
-            case "END_RIFT_GUARDIAN_V1" -> texture("end_rift_guardian");
-            case "END_RIFT_ELITE_V1" -> texture("end_rift_elite");
-            case "END_RIFT_ENDERMAN_V1" -> texture("end_rift_user_enderman");
-            default -> null;
-        };
+        Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
         if (!visual.isBlank() && COPIMINE_LOGGED_RENDER_ENTITIES.add(entity.getUuid().toString())) {
             boolean resourcePresent = EndEventTextureCatalog.isAvailable(texture);
             CopiMineClientLogger.info("End Rift renderer visual=" + visual
@@ -123,4 +79,5 @@ public abstract class EndermanEntityRendererMixin extends MobEntityRenderer<Ende
                 guardianTexture,
                 EndEventTextureCatalog.isAvailable(guardianTexture));
     }
+
 }

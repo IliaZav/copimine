@@ -34,6 +34,46 @@ public final class EventStateStoreTest {
                 "participants must survive a round trip");
         check(loaded.snapshot().currentBossPhase() == BossPhase.AWAKENING,
                 "current boss phase must survive a round trip");
+        check("0".equals(loaded.snapshot().objectiveProgress()
+                        .get("reality-split.player." + player)),
+                "dotted objective keys must survive a round trip without being flattened");
+        check("1160".equals(loaded.snapshot().objectiveProgress()
+                        .get("reality-split.generation")),
+                "generation objective key must survive a round trip");
+        Path legacyDirectory = Files.createTempDirectory("copimine-end-state-legacy-");
+        String legacyYaml = """
+                schema-version: 4
+                event:
+                  event-id: legacy-event
+                  generation: 1160
+                  phase: READY_FOR_PLAYERS
+                  world: CopiMine
+                  core:
+                    x: 10
+                    y: 70
+                    z: 20
+                    block-data: minecraft:crying_obsidian
+                  required-players: 2
+                  arena:
+                    min-x: 0
+                    min-y: 60
+                    min-z: 0
+                    max-x: 20
+                    max-y: 80
+                    max-z: 40
+                objective:
+                  progress:
+                    reality-split.player.%s: '0'
+                    reality-split.generation: '1160'
+                    test-wave: '7'
+                """.formatted(player);
+        Files.writeString(legacyDirectory.resolve("event-state.yml"), legacyYaml);
+        EventStateStore.LoadResult legacyLoaded = new EventStateStore(legacyDirectory,
+                "event-state.yml", "event-state.yml.bak", 4).load();
+        check(legacyLoaded.valid(), "pre-entry-list state must remain readable");
+        check("0".equals(legacyLoaded.snapshot().objectiveProgress()
+                        .get("reality-split.player." + player)),
+                "legacy dotted objective keys must be recovered before migration");
         Path orderedDirectory = Files.createTempDirectory("copimine-end-state-ordered-");
         EventStateStore orderedStore = new EventStateStore(orderedDirectory,
                 "event-state.yml", "event-state.yml.bak", 4);
@@ -86,7 +126,10 @@ public final class EventStateStoreTest {
                 Set.of(player), Set.of(player), Map.of(player, "PENDING"), Map.of(), Map.of(),
                 false, false, false, false, "PENDING", null, "PENDING", "NONE",
                 123L, 456L, "", Set.of(player), Set.of(1),
-                BossPhase.AWAKENING.name(), "NONE", 0L, "NONE", Map.of(), Map.of());
+                BossPhase.AWAKENING.name(), "NONE", 0L, "NONE",
+                Map.of("reality-split.player." + player, "0",
+                        "reality-split.generation", "1160", "test-wave", "7"),
+                Map.of());
     }
 
     private static void check(boolean condition, String message) {

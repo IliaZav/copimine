@@ -19,6 +19,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     static final int TEXTURE_SIZE = UserEndBossModelData.TEXTURE_WIDTH;
     static final String USER_MODEL_RESOURCE = UserEndBossModelData.RESOURCE;
     private final ModelPart root;
+    private final ModelPart head;
     private final ModelPart torso;
     private final ModelPart leftShoulder;
     private final ModelPart rightShoulder;
@@ -49,6 +50,7 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
     public RiftGuardianModel(ModelPart root) {
         super(root);
         this.root = root;
+        this.head = root.getChild("head");
         UserEndBossModelData.applyExactFaceUv(root);
         ModelPart body = root.getChild("body");
         this.torso = body.getChild("torso");
@@ -136,8 +138,12 @@ public final class RiftGuardianModel extends EndermanEntityModel<EndermanEntity>
         }
         applyFinalSilhouette(animationProgress);
         hideFinalAdornmentOutsideFinalState(animation);
-        root.yaw = MathHelper.clamp(headYaw * 0.017453292F, -0.5F, 0.5F);
-        torso.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.35F, 0.35F);
+        // Look is a head/neck channel.  Rotating the imported root made the
+        // whole guardian, legs, and tentacle attachments orbit when a player
+        // moved the camera.  Keep the imported bind rotation and add only the
+        // bounded look delta to the head bone.
+        head.yaw += MathHelper.clamp(headYaw * 0.017453292F, -0.5F, 0.5F);
+        head.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.35F, 0.35F);
         clampPose();
     }
 

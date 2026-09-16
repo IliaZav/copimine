@@ -15,7 +15,42 @@ class EndEventClientStateTest {
         assertTrue(state.isBossBound("boss-uuid"));
         assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L, "control-1", 10_000L, "", "boss-id", "control-id"), 100L));
         assertTrue(state.isReverseActive(101L));
+        assertFalse(state.isControlSwapActive(101L));
+        assertEquals("REVERSE", state.controlMode());
         assertTrue(state.controlInstanceId().equals("control-1"));
+    }
+
+    @Test
+    void keepsControlSwapSeparateFromReverseAndRetainsServerPairMetadata() {
+        EndEventClientState state = new EndEventClientState();
+        String target = "123e4567-e89b-12d3-a456-426614174000";
+        String pair = "swap:event-1:7:pair";
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 7L,
+                "" + pair + ":a", 6_000L, target, "", pair), 100L));
+
+        assertFalse(state.isReverseActive(101L));
+        assertTrue(state.isControlSwapActive(101L));
+        assertEquals("SWAP", state.controlMode());
+        assertEquals(target, state.controlTargetUuid());
+        assertEquals(pair, state.controlPairId());
+        assertEquals(pair + ":a", state.controlInstanceId());
+    }
+
+    @Test
+    void expiredSwapClearsTargetAndPairWithoutLeakingIntoReverseMovement() {
+        EndEventClientState state = new EndEventClientState();
+        String pair = "swap:event-1:7:pair";
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 7L,
+                pair + ":b", 6_000L,
+                "123e4567-e89b-12d3-a456-426614174000", "", pair), 100L));
+
+        assertFalse(state.isControlSwapActive(6_100L));
+        assertFalse(state.isReverseActive(6_100L));
+        assertEquals("NONE", state.controlMode());
+        assertEquals("", state.controlTargetUuid());
+        assertEquals("", state.controlPairId());
+        assertEquals("", state.controlInstanceId());
     }
 
     @Test
@@ -142,6 +177,21 @@ class EndEventClientStateTest {
         assertFalse(state.isBossBound("boss-1"));
         assertFalse(state.isReverseActive(201L));
         assertTrue(state.isBossBound("boss-2"));
+    }
+
+    @Test
+    void delayedPacketFromPreviousEventCannotReplaceNewerEventGeneration() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-a", 10L,
+                "bind-a", 0L, "boss-a", "", ""), 100L));
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-b", 11L,
+                "bind-b", 0L, "boss-b", "", ""), 200L));
+
+        assertFalse(state.apply(packet("END_BOSS_BIND", "event-a", 10L,
+                "bind-a-delayed", 0L, "boss-a", "", ""), 300L));
+        assertTrue(state.isBossBound("boss-b"));
+        assertFalse(state.isBossBound("boss-a"));
     }
 
     @Test

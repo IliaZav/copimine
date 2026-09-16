@@ -33,7 +33,7 @@ function Invoke-JavaTest {
 $firstPartyBuilds = @(
   @{ Label = 'WorldCore'; Directory = 'copimine-world-core' },
   @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
-  @{ Label = 'End Event'; Directory = 'copimine-end-event' },
+  @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
   @{ Label = 'EconomyCore'; Directory = 'copimine-economy-core' },
   @{ Label = 'ElectionCore'; Directory = 'copimine-election-core' },
   @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
@@ -43,7 +43,10 @@ $firstPartyBuilds = @(
 foreach ($build in $firstPartyBuilds) {
   $buildPath = Join-Path $root $build.Directory
   Invoke-GateStep ("$($build.Label) build") {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $buildPath 'build-plugin.ps1')
+    $buildArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+      (Join-Path $buildPath 'build-plugin.ps1'))
+    if ($build.SyncServerConfig) { $buildArgs += '-SyncServerConfig' }
+    & powershell @buildArgs
   }
 }
 Invoke-GateStep 'CopiMineClient build' {
@@ -61,7 +64,7 @@ Invoke-GateStep 'Resource pack build' {
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-    & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py'
+    & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py'
   } finally {
     Pop-Location
   }
@@ -94,6 +97,9 @@ $pureTests = @(
   'BlackFogTimingPolicyTest',
   'CollapseRingGeometryPolicyTest',
   'BossDefeatCinematicPolicyTest',
+  'BossHitboxDedupePolicyTest',
+  'BossHitboxProfileTest',
+  'BossHitboxTransformPolicyTest',
   'BossFinalStrikePolicyTest',
   'BossMovementPolicyTest',
   'BossRealHealthDamagePolicyTest',
@@ -103,7 +109,21 @@ $pureTests = @(
   'ChamberIsolationPolicyTest',
   'ChamberScalingPolicyTest',
   'CollapseRingEncounterPolicyTest',
+  'CollapseRingEncounterSnapshotTest',
   'RealitySplitBarrierPolicyTest',
+  'RealitySplitBarrierRecoveryTest',
+  'RealitySplitChamberControllerTest',
+  'RealitySplitChamberSnapshotTest',
+  'RealitySplitPlayerTeleportPolicyTest',
+  'RealitySplitPlayerKnockbackPolicyTest',
+  'RealitySplitCombatSeparationPolicyTest',
+  'RitualCasterShieldPolicyTest',
+  'RitualControlPairPolicyTest',
+  'RitualGuardAggroPolicyTest',
+  'RitualPrisonerHealthPolicyTest',
+  'RitualSphereEncounterPolicyTest',
+  'RitualSphereEncounterSnapshotTest',
+  'RitualSphereScalingPolicyTest',
   'CombatMovementPolicyTest',
   'CombatTacticsPolicyTest',
   'CombatTraceDiagnosisTest',

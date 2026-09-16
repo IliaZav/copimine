@@ -13,9 +13,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** Plays the animation clips supplied with the End Rift boss asset. */
 final class UserEndBossAnimationPlayer {
@@ -47,20 +49,27 @@ final class UserEndBossAnimationPlayer {
         for (Map.Entry<String, BoneTrack> entry : clip.bones().entrySet()) {
             ModelPart part = UserEndBossModelData.findBone(root, entry.getKey());
             if (part == null) {
-                continue;
+                throw new IllegalStateException("End Rift animation bone closure failed animation="
+                        + animationId + " missing_bone=" + entry.getKey()
+                        + " source=" + UserEndBossModelData.RESOURCE);
             }
             BoneTrack track = entry.getValue();
             Vector rotation = track.rotation().sample(time);
             if (rotation != null) {
-                part.pitch += radians(rotation.x());
-                part.yaw += radians(rotation.y());
-                part.roll += radians(rotation.z());
+                BedrockCoordinateTransform.Vec3 targetRotation =
+                        BedrockCoordinateTransform.sourceRotation(
+                                rotation.x(), rotation.y(), rotation.z()).toEulerXyzDegrees();
+                part.pitch += radians((float) targetRotation.x());
+                part.yaw += radians((float) targetRotation.y());
+                part.roll += radians((float) targetRotation.z());
             }
             Vector position = track.position().sample(time);
             if (position != null) {
-                part.pivotX += position.x();
-                part.pivotY -= position.y();
-                part.pivotZ += position.z();
+                BedrockCoordinateTransform.Vec3 targetDelta = BedrockCoordinateTransform.sourceDelta(
+                        position.x(), position.y(), position.z());
+                part.pivotX += (float) targetDelta.x();
+                part.pivotY += (float) targetDelta.y();
+                part.pivotZ += (float) targetDelta.z();
             }
             Vector scale = track.scale().sample(time);
             if (scale != null) {
@@ -97,16 +106,22 @@ final class UserEndBossAnimationPlayer {
             if (animations == null || animations.entrySet().size() != 1) {
                 throw new IllegalStateException("Expected one animation in " + resource);
             }
-            JsonObject animation = animations.entrySet().iterator().next().getValue().getAsJsonObject();
-            float length = animation.has("animation_length")
-                    ? animation.get("animation_length").getAsFloat() : 0.0F;
+            BedrockAssetValidator.AnimationManifest manifest = BedrockAssetValidator.validateAnimation(
+                    document, resource, UserEndBossModelData.sourceBoneNames());
+            Map.Entry<String, JsonElement> animationEntry = animations.entrySet().iterator().next();
+            JsonObject animation = animationEntry.getValue().getAsJsonObject();
+            float length = (float) manifest.lengthSeconds();
             Map<String, BoneTrack> bones = new HashMap<>();
             JsonObject boneObject = animation.getAsJsonObject("bones");
             if (boneObject != null) {
                 for (Map.Entry<String, JsonElement> boneEntry : boneObject.entrySet()) {
-                    bones.put(boneEntry.getKey(), parseTrack(boneEntry.getValue().getAsJsonObject()));
+                    bones.put(boneEntry.getKey(), parseTrack(boneEntry.getValue().getAsJsonObject(),
+                            resource, "animations." + animationEntry.getKey()
+                                    + ".bones." + boneEntry.getKey()));
                 }
             }
+            BedrockAssetValidator.requireBoneClosure(resource, canonicalId,
+                    manifest.boneNames(), bones.keySet());
             clips.put(canonicalId, new Clip(length, loop, Map.copyOf(bones)));
         } catch (IOException | RuntimeException error) {
             if (error instanceof IllegalStateException state) {
@@ -116,57 +131,93 @@ final class UserEndBossAnimationPlayer {
         }
     }
 
-    private static BoneTrack parseTrack(JsonObject source) {
+    private static BoneTrack parseTrack(JsonObject source, String resource, String path) {
         return new BoneTrack(
-                parseChannel(source.getAsJsonObject("rotation")),
-                parseChannel(source.getAsJsonObject("position")),
-                parseChannel(source.getAsJsonObject("scale")));
+                parseChannel(source.get("rotation"), resource, path + ".rotation"),
+                parseChannel(source.get("position"), resource, path + ".position"),
+                parseChannel(source.get("scale"), resource, path + ".scale"));
     }
 
-    private static Channel parseChannel(JsonObject source) {
-        if (source == null) {
+    private static Channel parseChannel(JsonElement source, String resource, String path) {
+        if (source == null || source.isJsonNull()) {
             return Channel.EMPTY;
         }
+        if (source.isJsonArray()) {
+            return new Channel(List.of(new Keyframe(0.0F, readVector(source, resource, path))));
+        }
+        if (!source.isJsonObject()) {
+            fail(resource, path + " must be an object or vector");
+        }
+        JsonObject keyframes = source.getAsJsonObject();
         List<Keyframe> frames = new ArrayList<>();
-        for (Map.Entry<String, JsonElement> entry : source.entrySet()) {
-            try {
-                float time = Float.parseFloat(entry.getKey());
-                Vector vector = readVector(entry.getValue());
-                if (vector != null) {
-                    frames.add(new Keyframe(time, vector));
-                }
-            } catch (NumberFormatException ignored) {
-                // Bedrock metadata keys are not keyframes; ignore them safely.
+        Set<Double> times = new HashSet<>();
+        for (Map.Entry<String, JsonElement> entry : keyframes.entrySet()) {
+            if ("lerp_mode".equals(entry.getKey())) {
+                fail(resource, path + ".lerp_mode is unsupported until interpolation modes are implemented");
             }
+            double time;
+            try {
+                time = Double.parseDouble(entry.getKey());
+            } catch (NumberFormatException ignored) {
+                fail(resource, path + "." + entry.getKey() + " is not a numeric keyframe time");
+                return Channel.EMPTY;
+            }
+            if (!Double.isFinite(time) || time < 0.0D || !times.add(time)) {
+                fail(resource, path + "." + entry.getKey() + " is an invalid or duplicate keyframe time");
+            }
+            frames.add(new Keyframe((float) time, readVector(entry.getValue(), resource,
+                    path + "." + entry.getKey())));
+        }
+        if (frames.isEmpty()) {
+            fail(resource, path + " contains no keyframes");
         }
         frames.sort(Comparator.comparingDouble(Keyframe::time));
-        return frames.isEmpty() ? Channel.EMPTY : new Channel(List.copyOf(frames));
+        return new Channel(List.copyOf(frames));
     }
 
-    private static Vector readVector(JsonElement element) {
+    private static Vector readVector(JsonElement element, String resource, String path) {
         if (element == null || element.isJsonNull()) {
-            return null;
+            fail(resource, path + " must contain a vector");
         }
         if (element.isJsonArray()) {
-            return vector(element.getAsJsonArray());
+            return vector(element.getAsJsonArray(), resource, path);
         }
         if (!element.isJsonObject()) {
-            return null;
+            fail(resource, path + " must contain a vector array");
         }
         JsonObject object = element.getAsJsonObject();
-        for (String key : new String[]{"vector", "post", "pre"}) {
-            if (object.has(key)) {
-                return readVector(object.get(key));
-            }
+        if (object.has("pre") || object.has("post")) {
+            fail(resource, path
+                    + " uses pre/post keyframes, which are unsupported until interpolation is implemented");
         }
-        return null;
+        if (object.size() != 1 || !object.has("vector")) {
+            fail(resource + " " + path, "unsupported keyframe object fields: " + object.keySet());
+        }
+        return readVector(object.get("vector"), resource, path + ".vector");
     }
 
-    private static Vector vector(JsonArray array) {
+    private static Vector vector(JsonArray array, String resource, String path) {
         if (array.size() != 3) {
-            return null;
+            fail(resource, path + " must contain three numbers");
         }
-        return new Vector(array.get(0).getAsFloat(), array.get(1).getAsFloat(), array.get(2).getAsFloat());
+        float x = finite(array.get(0), resource, path + "[0]");
+        float y = finite(array.get(1), resource, path + "[1]");
+        float z = finite(array.get(2), resource, path + "[2]");
+        return new Vector(x, y, z);
+    }
+
+    private static float finite(JsonElement element, String resource, String path) {
+        if (element == null || !element.isJsonPrimitive()
+                || !element.getAsJsonPrimitive().isNumber()
+                || !Float.isFinite(element.getAsFloat())) {
+            fail(resource, path + " must be a finite number");
+        }
+        return element.getAsFloat();
+    }
+
+    private static void fail(String resource, String message) {
+        throw new IllegalStateException("End Rift animation validation failed source="
+                + resource + ": " + message);
     }
 
     private static String canonical(String animationId) {

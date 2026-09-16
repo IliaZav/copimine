@@ -4,10 +4,11 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "GameRendererAccessor",
-    "EndRiftBossBarHudMixin",
     "ArmorFeatureRendererMixin",
     "KeyboardInputReverseMovementMixin",
     "EndermanEntityRendererMixin",
+    "EndermanEyesFeatureRendererMixin",
+    "LivingEntityRendererMixin",
     "DisplayEntityRendererMixin",
     "ClientWorldAccessor",
     "ModelPartAccessor",

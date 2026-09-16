@@ -27,7 +27,7 @@ public final class EndRiftObjective {
             case 3 -> Objective.RIFT_GATES;
             case 4 -> Objective.OBELISK_ASSAULT;
             case 5 -> Objective.BLACK_FOG;
-            case 6 -> Objective.COLLAPSE_RINGS;
+            case 6 -> Objective.RITUAL_SPHERE;
             case 7 -> Objective.REALITY_SPLIT;
             default -> throw new IllegalArgumentException("unknown wave: " + wave);
         };
@@ -86,7 +86,9 @@ public final class EndRiftObjective {
         RIFT_GATES("Врата Разлома"),
         OBELISK_ASSAULT("Штурм Обелисков"),
         BLACK_FOG("Чёрный Туман"),
+        /** Legacy compatibility id for snapshots/tests; never selected for live Wave 6. */
         COLLAPSE_RINGS("Кольца Коллапса"),
+        RITUAL_SPHERE("Ритуальная Сфера"),
         REALITY_SPLIT("Раскол Реальности");
 
         private final String title;

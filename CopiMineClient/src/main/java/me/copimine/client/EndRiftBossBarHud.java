@@ -110,11 +110,17 @@ public final class EndRiftBossBarHud {
 
     private static void drawSegmentedFill(DrawContext context, int x, int y,
                                           int filled, int color) {
-        int segmentWidth = (INNER_RIGHT - INNER_LEFT) / SEGMENT_COUNT;
+        int innerWidth = INNER_RIGHT - INNER_LEFT;
         for (int segment = 0; segment < SEGMENT_COUNT; segment++) {
-            int left = x + INNER_LEFT + segment * segmentWidth;
+            // Do not truncate the 278px inner track to 260px by using an
+            // integer segment width.  Rounded boundaries distribute the
+            // remainder across the twenty segments and make full health
+            // reach the frame on both sides.
+            int segmentLeft = Math.round(innerWidth * segment / (float) SEGMENT_COUNT);
+            int segmentRight = Math.round(innerWidth * (segment + 1) / (float) SEGMENT_COUNT);
+            int left = x + INNER_LEFT + segmentLeft;
             int right = Math.min(x + INNER_LEFT + filled,
-                    x + INNER_LEFT + (segment + 1) * segmentWidth - 1);
+                    x + INNER_LEFT + segmentRight);
             if (right > left) {
                 context.fill(left, y + INNER_TOP, right, y + INNER_BOTTOM, color);
             }

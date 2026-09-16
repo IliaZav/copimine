@@ -110,7 +110,7 @@ public final class CombatTacticsPolicy {
             case RIFT_GATES -> MobTactic.GATE_DEFENDER;
             case OBELISK_ASSAULT -> MobTactic.OBELISK_GUARD;
             case BLACK_FOG -> MobTactic.FOG_SCOUT;
-            case COLLAPSE_RINGS -> MobTactic.RING_GUARD;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> MobTactic.RING_GUARD;
             case REALITY_SPLIT -> MobTactic.CHAMBER_BLADE;
         };
     }

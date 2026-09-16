@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Locale;
 
 /**
  * Single source of truth for the client-side End Rift entity textures.
@@ -27,7 +28,11 @@ public final class EndEventTextureCatalog {
         if (visualId == null || visualId.isBlank()) {
             return null;
         }
-        return VISUAL_TEXTURES.get(visualId.trim());
+        String normalized = visualId.trim().toUpperCase(Locale.ROOT);
+        if ("END_RIFT_GUARDIAN".equals(normalized)) {
+            normalized = "END_RIFT_GUARDIAN_V1";
+        }
+        return VISUAL_TEXTURES.get(normalized);
     }
 
     public static boolean isAvailable(Identifier texture) {
@@ -67,6 +72,7 @@ public final class EndEventTextureCatalog {
         Map<String, Identifier> textures = new LinkedHashMap<>();
         textures.put("END_RIFT_ENDERMAN_V1", entityTexture("end_rift_user_enderman.png"));
         textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));
+        textures.put("END_RIFT_GUARDIAN_V1", entityTexture("end_rift_user_boss.png"));
         textures.put("END_RIFT_SPIDER_V1", entityTexture("end_rift_user_spider.png"));
         textures.put("END_RIFT_SKELETON_V1", entityTexture("end_rift_skeleton.png"));
         textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));

@@ -10,7 +10,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** Event spiders receive a texture only after a server UUID binding. */
+/** Event spiders receive the supplied skin only after a server UUID binding. */
 @Mixin(SpiderEntityRenderer.class)
 public abstract class SpiderEntityRendererMixin {
     private static final Identifier COPIMINE_SPIDER_TEXTURE = Identifier.of(

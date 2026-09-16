@@ -8,6 +8,7 @@ removed encounter generation back into the official flow.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import struct
 from pathlib import Path
@@ -34,7 +35,7 @@ CURRENT_WAVES = [
     "RIFT_GATES",
     "OBELISK_ASSAULT",
     "BLACK_FOG",
-    "COLLAPSE_RINGS",
+    "RITUAL_SPHERE",
     "REALITY_SPLIT",
 ]
 CURRENT_BOSS_PHASES = ["AWAKENING", "HUNT", "RIFT", "OVERLOAD", "RAGE", "LAST_SEAL"]
@@ -104,6 +105,47 @@ def test_local_schema_and_current_config() -> None:
     assert "max-active-fireballs: 8" in config
     assert "blindness-ticks: 40" in config
     assert "debuff-ticks: 60" in config
+
+
+def test_staged_client_artifact_matches_current_source_build() -> None:
+    source_jar = CLIENT / "build" / "libs" / "CopiMineClient-0.1.1.jar"
+    assert source_jar.is_file(), f"source-built client artifact is missing: {source_jar}"
+    assert DISTRIBUTED_CLIENT_JAR.is_file(), (
+        f"staged client artifact is missing: {DISTRIBUTED_CLIENT_JAR}"
+    )
+
+    source_bytes = source_jar.read_bytes()
+    staged_bytes = DISTRIBUTED_CLIENT_JAR.read_bytes()
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    staged_sha256 = hashlib.sha256(staged_bytes).hexdigest()
+    assert staged_sha256 == source_sha256, (
+        "staged CopiMineClient JAR is not the artifact produced from the current source: "
+        f"source={source_sha256} staged={staged_sha256}"
+    )
+
+    manifest = json.loads(read(ROOT / "thirdparty" / "thirdparty_manifest.json"))
+    client_rows = [
+        row for row in manifest["artifacts"]["clientMods"]
+        if row.get("path") == "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
+    ]
+    assert len(client_rows) == 1
+    assert client_rows[0]["sha256"] == source_sha256
+    assert client_rows[0]["sha1"] == hashlib.sha1(source_bytes).hexdigest()
+
+    checksums = read(ROOT / "thirdparty" / "checksums.txt")
+    assert f"SHA256  thirdparty/client-mods/CopiMineClient-0.1.1.jar  {source_sha256}" in checksums
+
+
+def test_modpack_manifest_matches_the_staged_archive() -> None:
+    archive = ROOT / "thirdparty" / "CopiMineMods.zip"
+    assert archive.is_file(), f"staged modpack archive is missing: {archive}"
+
+    manifest = json.loads(read(ROOT / "thirdparty" / "thirdparty_manifest.json"))
+    archive_bytes = archive.read_bytes()
+    archive_metadata = manifest["clientArchive"]
+    assert archive_metadata["path"] == "thirdparty/CopiMineMods.zip"
+    assert archive_metadata["sha1"] == hashlib.sha1(archive_bytes).hexdigest()
+    assert archive_metadata["sha256"] == hashlib.sha256(archive_bytes).hexdigest()
 
 
 def test_current_domain_vocabulary_and_graph() -> None:
@@ -248,15 +290,155 @@ def test_manual_disposable_wave_clear_resets_transient_wave_marker() -> None:
     )
 
 
-def test_wave6_ring_displays_are_above_the_solid_combat_floor() -> None:
+def test_disposable_wave_natural_completion_restores_phase_without_advancing_event() -> None:
+    root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    assert "boolean disposableWave = testWaveFrontVisualMode && !isOfficialAttempt();" in root
+    assert "DISPOSABLE_WAVE_NATURAL_COMPLETE" in root
+    assert re.search(
+        r"if \(testWaveFrontVisualMode && activeWave >= 1 && activeWave <= 7\s*&&",
+        root,
+    )
+    assert "activeWave = 0;" in root
+
+
+def test_wave6_ritual_sphere_uses_server_owned_drain_and_exact_scaling() -> None:
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
-    start = source.index("private void spawnCurrentRingVisuals")
-    end = source.index("private void spawnRealitySplitBarriers", start)
+    scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
+    health = read(DOMAIN / "RitualPrisonerHealthPolicy.java")
+    snapshot = read(DOMAIN / "RitualSphereEncounterSnapshot.java")
+    assert "case RITUAL_SPHERE ->" in source
+    assert "startRitualSphereObjective(world, core);" in source
+    assert "tickCurrentRitualSphereObjective(now);" in source
+    assert "WAVE6_RITUAL_SPHERE_READY" in source
+    assert "authority=server" in source
+    assert "DRAIN_INTERVAL_MILLIS = 20_000L" in health
+    assert "DRAIN_HEALTH = 2.0D" in health
+    assert "MIN_HEALTH = 1.0D" in health
+    assert "RITUAL_SPHERE_ZONE_SIZE = 4" in source
+    assert "RitualSphereEncounterSnapshot" in snapshot
+    for marker in (
+        "new Profile(count, 4, 12, 1, 1, count == 2 ? 0 : 1, 13)",
+        "new Profile(count, 4, 12, 2, 1, 1, 12)",
+        "new Profile(count, 5, 15, 3, 2, 2, 11)",
+        "new Profile(count, 5, 15, 4, 2, 2, 10)",
+        "new Profile(count, 6, 18, 5, 3, 3, 9)",
+    ):
+        assert marker in scaling
+
+
+def test_wave6_ritual_sphere_visuals_keep_wave_ownership_and_rehydrate() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void spawnRitualSphereVisual")
+    end = source.index("private void tagRitualPrisoner", start)
+    body = source[start:end]
+    assert "tag(display, EVENT_KIND_DISPLAY, 6, true)" in body
+    assert "setPersistent(true)" in body
+    assert "end_event_ritual_sphere" in body
+    assert "restorePersistedRitualSphereObjective" in source
+    assert "restorePersistedRitualSphereObjective();" in source
+    assert "RITUAL_SPHERE_HEIGHT_OFFSET" in source
+
+
+def test_wave6_legacy_rings_are_not_rendered_or_ticked_live() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    tick_start = source.index("private boolean tickCurrentObjective")
+    tick_end = source.index("private boolean tickWaveObjective", tick_start)
+    tick_body = source[tick_start:tick_end]
+    assert "case RITUAL_SPHERE -> tickCurrentRitualSphereObjective(now);" in tick_body
+    assert "case COLLAPSE_RINGS -> getLogger().fine(\"WAVE6_LEGACY_COLLAPSE_RING_NOT_TICKED" in tick_body
+
+    render_start = source.index("private void renderWaveObjective")
+    render_end = source.index("/** Render the same three radii", render_start)
+    render_body = source[render_start:render_end]
+    assert "renderCurrentRitualSphere(core, now);" in render_body
+    assert "renderCurrentCollapseRings(core, now);" not in render_body
+
+    containment_start = source.index("private CollapseRingEncounterPolicy.State activeCollapseRingForContainment")
+    containment_end = source.index("private boolean collapseRingPlayerAssigned", containment_start)
+    containment_body = source[containment_start:containment_end]
+    assert "Objective.COLLAPSE_RINGS" in containment_body
+    assert "activeWave == 6" in containment_body
+
+
+def test_wave_three_portals_use_the_upright_gate_model() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private List<UUID> spawnPortalModelVisual")
+    end = source.index("private ItemDisplay spawnPortalModelLayer", start)
     body = source[start:end]
 
-    assert "combatFloorY() + 1.0D" in body
-    assert "new Vector3f(-0.52F, 0.02F, -0.14F)" in body
-    assert "-0.94F" not in body
+    assert "MODEL_RIFT_GATE" in body
+    assert '"end_event_rift_gate"' in body
+    assert "MODEL_PORTAL_OVERLAY" not in body
+
+
+def test_spider_renderer_uses_an_adapted_custom_model() -> None:
+    model = CLIENT_JAVA / "RiftSpiderModel.java"
+    renderer = CLIENT_JAVA / "RiftSpiderModelRenderer.java"
+    mixin = CLIENT_JAVA / "mixin" / "SpiderEntityRendererMixin.java"
+    render_mixin = CLIENT_JAVA / "mixin" / "LivingEntityRendererMixin.java"
+    assert model.is_file()
+    assert renderer.is_file()
+    assert mixin.is_file()
+    assert_contains(model, "right_hind_leg", "left_front_leg", "rift_core", "rift_shell")
+    assert_contains(renderer, "RiftSpiderModel")
+    assert_contains(render_mixin, "render(Lnet/minecraft/entity/LivingEntity", "RiftSpiderModelRenderer", "copimine$activeModel")
+    assert "end_rift_user_spider.png" in read(CLIENT_JAVA / "EndEventTextureCatalog.java")
+
+
+def test_spider_renderer_model_selection_does_not_mutate_shared_model_state() -> None:
+    mixin = read(CLIENT_JAVA / "mixin" / "LivingEntityRendererMixin.java")
+    assert "@Redirect" in mixin
+    assert "opcode = Opcodes.GETFIELD" in mixin
+    assert "copimine$activeModel" in mixin
+    assert "copimine$spiderModelSwap" not in mixin
+    assert "copimine$spiderModelSwap.restore()" not in mixin
+    assert "model = (M)" not in mixin
+
+
+def test_end_rift_uses_the_vanilla_bossbar_until_custom_hud_is_reworked() -> None:
+    client = read(CLIENT_JAVA / "CopiMineClient.java")
+    mixins = read(CLIENT / "src" / "main" / "resources" / "copimineclient.mixins.json")
+    server = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    assert "EndRiftBossBarHud.render" not in client
+    assert "EndRiftBossBarHudMixin" not in mixins
+    update_start = server.index("private void updateCurrentBossBar")
+    update_end = server.index("private void finishBossCast", update_start)
+    update_body = server[update_start:update_end]
+    assert "sendCurrentBossBarVisualUpdate" not in update_body
+    bind_start = server.index("private void bindBossClient")
+    bind_end = server.index("private void sendBossPhaseVisualUpdate", bind_start)
+    bind_body = server[bind_start:bind_end]
+    assert "sendBossBarVisualUpdate" not in bind_body
+
+
+def test_bound_guardian_does_not_render_the_vanilla_enderman_eyes_layer() -> None:
+    mixin = CLIENT_JAVA / "mixin" / "EndermanEyesFeatureRendererMixin.java"
+    mixins = read(CLIENT / "src" / "main" / "resources" / "copimineclient.mixins.json")
+    assert mixin.is_file(), "the vanilla Enderman eyes layer must have a scoped suppression hook"
+    assert "EndermanEyesFeatureRendererMixin" in mixins
+    assert_contains(
+        mixin,
+        "EyesFeatureRenderer.class",
+        "ClientBridgeProtocol.isBoundEndBoss",
+        "callback.cancel()",
+    )
+
+
+def test_leaving_visual_audience_clears_player_scoped_client_state() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void refreshClientBindingsForOnlinePlayers")
+    end = source.index("private void refreshClientBindingsForPlayer", start)
+    body = source[start:end]
+    branch = re.search(
+        r"if \(!isEventVisualViewer\(player\)\)\s*\{([\s\S]*?)\n\s*\}",
+        body,
+    )
+    assert branch, "viewer-loss branch must remain explicit"
+    branch_body = branch.group(1)
+    assert "clearClientEffects(player);" in branch_body
+    assert branch_body.index("clearClientEffects(player);") < branch_body.index(
+        "clientBindingReadyPlayers.remove(uuid);"
+    )
 
 
 def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() -> None:
@@ -269,6 +451,33 @@ def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() ->
     assert body.index("if (!ensureRealitySplitChamberAssignment())") < body.index(
         'clearRealitySplitBarriers("wave7-rebuild")'
     )
+
+
+def test_wave7_player_containment_covers_move_watchdog_join_and_respawn() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    tick_start = source.index("private void tick()")
+    tick_end = source.index("private void updatePadOccupancy", tick_start)
+    tick = source[tick_start:tick_end]
+    assert "containRealitySplitPlayers();" in tick
+
+    move_start = source.index("public void onRealitySplitPlayerMove")
+    move_end = source.index("public void onRealitySplitPlayerTeleport", move_start)
+    move = source[move_start:move_end]
+    assert "PlayerMoveEvent" in move
+    assert "RealitySplitPlayerTeleportPolicy.allows" in move
+    assert "event.setTo(from)" in move
+
+    join_start = source.index("public void onPlayerJoin")
+    join_end = source.index("public void onPlayerQuit", join_start)
+    join = source[join_start:join_end]
+    # Reconnects are deliberately sent to the chamber center first. The
+    # regular containment watchdog then enforces the same room boundary.
+    assert "teleportRealitySplitPlayerToChamberCenter" in join
+
+    respawn_start = source.index("public void onPlayerRespawn")
+    respawn_end = source.index("private void tickOfflineRosterGrace", respawn_start)
+    respawn = source[respawn_start:respawn_end]
+    assert "containRealitySplitParticipant" in respawn
 
 
 def test_creative_full_run_cleans_transient_wave_state() -> None:
@@ -324,7 +533,9 @@ def test_rewards_are_durable_and_per_player() -> None:
     assert_contains(reward, "resolve", "roll", "SplittableRandom")
     assert "night-cloak-chance: 0.30" in read(PLUGIN / "config.yml")
     assert_contains(snapshot, "nightCloakRolls", "officialRewardRoster", "waveRewardsIssued")
-    assert_contains(store, "CURRENT_SCHEMA", "writeCurrent", "rewards.night-cloak-rolls")
+    assert_contains(store, "CURRENT_SCHEMA", "writeCurrent", "rewards.night-cloak-rolls",
+                    "objective.progress.entries", "objectiveProgressEntries", "objectiveProgress")
+    assert 'yaml.set("objective.progress", snapshot.objectiveProgress())' not in read(store)
     assert "EventArtifactRewardService" in artifacts
     assert "issueVictoryRewards" in artifacts
 
@@ -501,7 +712,7 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert "startedAtMillis" in state
     assert "bossAnimationElapsedTicksForEntity" in read(CLIENT_JAVA / "ClientBridgeProtocol.java")
     assert "setAnimationElapsedTicks" in read(CLIENT_JAVA / "RiftGuardianModel.java")
-    assert "System.currentTimeMillis()" in read(CLIENT_JAVA / "mixin" / "EndermanEntityRendererMixin.java")
+    assert "System.currentTimeMillis()" in read(CLIENT_JAVA / "mixin" / "LivingEntityRendererMixin.java")
     assert "udar_iz_grudi.json" in animator
     assert "udar_po_zemle.animation.json" in animator
     assert "end_rift_user_boss.png" in renderer
@@ -517,6 +728,9 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
         "me/copimine/client/UserEndBossModelData.class",
         "me/copimine/client/UserEndBossAnimationPlayer.class",
         "me/copimine/client/EndRiftBossBarHud.class",
+        "me/copimine/client/RiftSpiderModel.class",
+        "me/copimine/client/RiftSpiderModelRenderer.class",
+        "me/copimine/client/mixin/LivingEntityRendererMixin.class",
         "assets/copimineclient/models/entity/end_rift_guardian/geometry.json",
         "assets/copimineclient/textures/entity/end_rift_user_boss.png",
         "assets/copimineclient/textures/gui/end_rift_bossbar_frame.png",
@@ -674,6 +888,132 @@ def test_spell_matrix_probe_keeps_bot_alive_for_full_matrix() -> None:
         r"\[ValidateRange\(240,\s*600\)\][\s\S]*?\[int\]\$BotDurationSeconds\s*=\s*300",
         probe,
     ), "spell matrix bot must outlive music, spell, and final-strike probes"
+
+
+def test_multiplayer_wrappers_allow_the_full_scaled_boss_run() -> None:
+    for wrapper in (
+        ROOT / "tests" / "RunEndRiftOfficialFivePlayerLive.ps1",
+        ROOT / "tests" / "RunEndRiftOfficialTenPlayerLive.ps1",
+    ):
+        probe = read(wrapper)
+        assert re.search(
+            r"\[ValidateRange\(900,\s*3600\)\][\s\S]*?"
+            r"\[int\]\$BotDurationSeconds\s*=\s*3600",
+            probe,
+        ), f"{wrapper.name} must keep clients alive through the scaled boss"
+        assert re.search(
+            r"\[ValidateRange\(600,\s*3500\)\][\s\S]*?"
+            r"\[int\]\$TimeoutSeconds\s*=\s*3500",
+            probe,
+        ), f"{wrapper.name} must wait long enough for the scaled boss"
+
+
+def test_multiplayer_wave1_delivery_moves_only_each_authoritative_holder() -> None:
+    driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    pickup_branch = re.search(
+        r"# Every charge can be picked up by a different participant\.[\s\S]*?"
+        r"Teleport-Player \$pickedHolderMatch\.Groups\[1\]\.Value[\s\S]*?"
+        r"\$activeCharge = \$null",
+    driver,
+    )
+    assert pickup_branch, "Wave 1 delivery branch must teleport every charge holder"
+    branch = pickup_branch.group(0)
+    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in branch, (
+        "multi-player delivery must move only the authoritative charge holder so "
+        "later participants are delivered without stacking the roster"
+    )
+    assert "$playersTeleportedToCore" not in driver, (
+        "multi-player delivery must not stack every client on the Core"
+    )
+
+
+def test_multiplayer_wave1_delivery_moves_the_authoritative_picked_holder() -> None:
+    driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wait_block = re.search(
+        r"function\s+Wait-CarrierDelivery[\s\S]*?"
+        r"throw\s+\"Timed out waiting for Wave 1",
+        driver,
+    )
+    assert wait_block, "Wave 1 delivery wait block is missing"
+    body = wait_block.group(0)
+    assert "END_RIFT_CARRIER_PICKED_UP" in body
+    assert "player_name=([A-Za-z0-9_]{1,16})" in body, (
+        "delivery probe must read the player name from the authoritative pickup marker"
+    )
+    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in body, (
+        "delivery probe must teleport the player who actually picked up the charge, "
+        "not whichever roster slot was scheduled for that delivery"
+    )
+
+
+def test_wave1_harness_resolves_named_players_without_unsupported_uuid_selectors() -> None:
+    driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    source = read(
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+    )
+    assert "player_name=" in source, (
+        "the authoritative carrier pickup marker must expose the player name "
+        "so the local Paper driver can target that player without UUID selectors"
+    )
+    assert re.search(
+        r"END_RIFT_CARRIER_SELECTED[\s\S]*?location=",
+        source,
+    ), "carrier selection must expose a runtime location for the combat probe"
+    assert "Teleport-PlayerUuid" not in driver
+    assert "@a[uuid=" not in driver
+    assert "@e[uuid=" not in driver
+    assert "player_name=([A-Za-z0-9_]{1,16})" in driver
+    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in driver
+
+
+def test_multiplayer_wave3_capture_does_not_stack_the_roster_on_each_portal() -> None:
+    driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    capture_block = re.search(
+        r"for \(\$portalIndex = 0; \$portalIndex -lt 3; \$portalIndex\+\+\)[\s\S]*?"
+        r"\$waveThreeTransitionOffset = Wait-WaveComplete",
+        driver,
+    )
+    assert capture_block, "Wave 3 portal capture loop is missing"
+    body = capture_block.group(0)
+    assert re.search(
+        r"\$capturePlayer\s*=\s*\$playerNames\[\$portalIndex\s*%\s*\$playerNames\.Count\][\s\S]*?"
+        r"Teleport-Player\s+\$capturePlayer",
+        body,
+    ), "Wave 3 must place one authoritative player on each active portal"
+    assert "Teleport-PlayersToPoint $portalX" not in body
+    assert "Teleport-PlayersToPoint $actionX" not in body
+
+
+def test_wave1_charge_probe_uses_authoritative_logged_locations() -> None:
+    driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert re.search(
+        r"function\s+Parse-LoggedLocation[\s\S]*?"
+        r"location=\[\^\\s\]\+",
+        driver,
+    ), "Wave 1 probe must parse runtime locations from authoritative server markers"
+    assert "END_RIFT_CARRIER_SELECTED[^\\r\\n]*entity=" in driver
+    assert "activeCarrierLocation = Parse-LoggedLocation $match.Value" in driver, (
+        "Wave 1 probe must use the selected carrier's logged location"
+    )
+
+
+def test_combat_anchor_fallback_ignores_the_core_structure_when_runes_are_gone() -> None:
+    source = read(
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+    )
+    combat_level = re.search(
+        r"private\s+int\s+combatLevelY\(\)\s*\{([\s\S]*?)\n\s*private\s+int\s+playableSurfaceScore",
+        source,
+    )
+    assert combat_level, "combat level resolver is missing"
+    body = combat_level.group(1)
+    assert "playableSurfaceScore" in body, (
+        "after ritual pads are removed, combat level must sample playable floor cells "
+        "instead of treating the Core's vertical structure as the floor"
+    )
+    assert "return bestFloorY + 1" not in body, (
+        "the old adjacent-structure heuristic can select the top of the Core as the combat floor"
+    )
 
 
 def test_wave_containment_watchdog_runs_every_server_tick() -> None:
@@ -861,6 +1201,64 @@ def test_official_probe_can_override_completion_repositioning_for_wave4() -> Non
     ), "Wave 4 must not be silently repositioned to the generic combat ring"
 
 
+def test_official_probe_does_not_teleport_players_every_combat_poll() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wait_block = re.search(
+        r"function Wait-WaveComplete[\s\S]*?\n}\n\nfunction Wait-CoreRestoration",
+        probe,
+    )
+    assert wait_block is not None, "Wave completion helper is missing"
+    body = wait_block.group(0)
+    assert "Teleport-PlayersIfOutsideCombatArea" in body, (
+        "combat completion polling must only recover players that actually left the arena"
+    )
+    default_action = re.search(
+        r"if \(\$null -eq \$completionAction\) \{([\s\S]*?)\n\s*}\n\s*Wait-Log",
+        body,
+    )
+    assert default_action is not None, "Wave completion default action is missing"
+    assert "Teleport-PlayersToCombatRing" not in default_action.group(1), (
+        "repositioning every 500ms prevents the real bot from walking to a Wave 2 target"
+    )
+
+
+def test_official_probe_does_not_reset_obelisk_positions_every_poll() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wave4_block = re.search(
+        r"\$w4Offset\s*=\s*\$waveFourStartOffset[\s\S]*?"
+        r"Write-Evidence \"CURRENT_WAVE_PASS event=\$eventId wave=4",
+        probe,
+    )
+    assert wave4_block is not None, "Wave 4 probe block is missing"
+    body = wave4_block.group(0)
+    assert "Teleport-PlayersToObeliskRing -Core $core" in body, (
+        "Wave 4 must still place clients near the authored obelisk ring"
+    )
+    assert "Teleport-PlayersToObeliskRingIfDisplaced" in body, (
+        "Wave 4 polling must have a conditional recovery path for knockback"
+    )
+    assert re.search(
+        r"\$w4Offset[\s\S]*?Set-PlayerBotMode\s+-Mode PASSIVE[\s\S]*?"
+        r"Teleport-PlayersToObeliskRing",
+        body,
+    ), "Wave 4 probe must keep combat navigation from leaving reflection lanes"
+    mode_helper = re.search(
+        r"function Set-PlayerBotMode[\s\S]*?\n}\n\nfunction Start-PlayerBot",
+        probe,
+    )
+    assert mode_helper and "Set-Content" in mode_helper.group(0), (
+        "the shared bot-mode helper must persist the passive mode consumed by real clients"
+    )
+    assert re.search(
+        r"\$waveFourTransitionOffset[\s\S]*?Set-PlayerBotMode\s+-Mode ACTIVE",
+        body,
+    ), "Wave 4 probe must resume real mob combat after the obelisk objective"
+    assert not re.search(
+        r"-Action\s+\{\s*Teleport-PlayersToObeliskRing\s+-Core\s+\$core\s*\}",
+        body,
+    ), "repositioning every 500ms prevents real clients from reflecting fireballs"
+
+
 def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(
@@ -908,17 +1306,255 @@ def test_official_probe_does_not_flood_rcon_while_waiting_for_wave_one_charge() 
     assert "-Action" not in wait_block.group(0), (
         "10-player Wave 1 probe must not issue an unbounded RCON action callback"
     )
-    assert re.search(
-        r"Wait-CarrierDelivery\s+-AfterOffset\s+\$carrierOffset[\s\S]*?"
-        r"-DeliveryNumber\s+\$delivery",
-        probe,
+    assert all(
+        re.search(
+            rf"Wait-CarrierDelivery\s+-AfterOffset\s+\$carrierOffset[\s\S]*?"
+            rf"-DeliveryNumber\s+{delivery_number}",
+            probe,
+        )
+        for delivery_number in (1, 2, 3)
     ), "Wave 1 probe must wait on authoritative delivery progress rather than a stale charge UUID"
-    assert re.search(
-        r"function\s+Teleport-PlayerToEntity[\s\S]*?"
-        r"execute\s+as\s+@e\[uuid=\$EntityUuid,limit=1\]\s+at\s+@s\s+run\s+"
-        r"minecraft:teleport\s+\$Name\s+~\s+~\s+~",
+    assert "Parse-LoggedLocation" in probe
+    assert "Teleport-PlayersToNearestWaveMobIfFar" in wait_block.group(0), (
+        "Wave 1 delivery polling must keep one real client near the current mob "
+        "until the carrier marker exists"
+    )
+    assert "@a[uuid=" not in probe and "@e[uuid=" not in probe, (
+        "the local Paper driver must not rely on unsupported UUID selectors"
+    )
+
+
+def test_official_probe_does_not_revisit_historical_carrier_each_poll() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wait_block = re.search(
+        r"function Wait-CarrierDelivery[\s\S]*?"
+        r"throw \"Timed out waiting for Wave 1",
         probe,
-    ), "charge pickup must use an entity-relative teleport fallback"
+    )
+    assert wait_block is not None, "Wave 1 delivery wait block is missing"
+    body = wait_block.group(0)
+    carrier_block = re.search(
+        r"\$carrierMatches\s*=\s*\[Regex\]::Matches[\s\S]*?"
+        r"\$chargeMatches\s*=",
+        body,
+    )
+    assert carrier_block is not None, "carrier selection scan is missing"
+    carrier_body = carrier_block.group(0)
+    assert re.search(
+        r"if\s*\(\$carrierMatches\.Count\s*-gt\s*0\)[\s\S]*?"
+        r"\$match\s*=\s*\$carrierMatches\[\$carrierMatches\.Count\s*-\s*1\]",
+        carrier_body,
+    ), "each poll must retain only the newest selected carrier marker"
+    assert "foreach ($match in $carrierMatches)" not in carrier_body, (
+        "replaying historical carrier markers causes a teleport reset-loop"
+    )
+
+
+def test_official_probe_recovers_to_the_current_carrier_without_replaying_history() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wait_block = re.search(
+        r"function Wait-CarrierDelivery[\s\S]*?"
+        r"throw \"Timed out waiting for Wave 1",
+        probe,
+    )
+    assert wait_block is not None, "Wave 1 delivery wait block is missing"
+    carrier_body = re.search(
+        r"elseif \(\$null -ne \$activeCarrier[\s\S]*?"
+        r"elseif \(\$null -eq \$activeCarrier",
+        wait_block.group(0),
+    )
+    assert carrier_body is not None, "active carrier recovery branch is missing"
+    assert "Teleport-PlayersToNearestWaveMobIfFar -Name $PickupPlayer" in carrier_body.group(0), (
+        "the probe must conditionally follow the live carrier after its logged spawn position "
+        "becomes stale"
+    )
+
+
+def test_official_probe_uses_a_windows_powershell_compatible_tick_counter() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert "[Environment]::TickCount64" not in probe, (
+        "Windows PowerShell on the local probe host does not expose Environment.TickCount64"
+    )
+    assert probe.count("[Environment]::TickCount") >= 3, (
+        "combat, Wave 1 and Wave 4 recovery paths must use the supported tick counter"
+    )
+
+
+def test_official_probe_rotates_small_wave4_rosters_across_all_obelisk_lanes() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert "function Teleport-PlayersToWave4ReflectionLaneIfDue" in probe, (
+        "small official Wave 4 rosters need a bounded lane-rotation helper"
+    )
+    assert re.search(
+        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?"
+        r"\[Environment\]::TickCount[\s\S]*?"
+        r"lastWave4LaneChangeAt[\s\S]*?Get-ObeliskCount",
+        probe,
+    ), "Wave 4 lane rotation must be throttled and use the configured obelisk count"
+    wave4_block = re.search(
+        r"\$w4Offset\s*=\s*\$waveFourStartOffset[\s\S]*?"
+        r"Write-Evidence \"CURRENT_WAVE_PASS event=\$eventId wave=4",
+        probe,
+    )
+    assert wave4_block is not None, "Wave 4 probe block is missing"
+    assert "Teleport-PlayersToWave4ReflectionLaneIfDue -Core $core" in wave4_block.group(0), (
+        "Wave 4 completion polling must move a 2-3 player roster between authored lanes"
+    )
+
+
+def test_official_probe_pauses_mob_navigation_during_wave4_reflection() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    assert "function Set-PlayerBotMode" in probe, (
+        "the official probe needs an explicit control-file mode switch"
+    )
+    wave4_block = re.search(
+        r"\$w4Offset\s*=\s*\$waveFourStartOffset[\s\S]*?"
+        r"Write-Evidence \"CURRENT_WAVE_PASS event=\$eventId wave=4",
+        probe,
+    )
+    assert wave4_block is not None, "Wave 4 probe block is missing"
+    wave4_text = wave4_block.group(0)
+    assert "Set-PlayerBotMode -Mode PASSIVE" in wave4_text, (
+        "Wave 4 must stop mob navigation so players stay on the reflection lane"
+    )
+    assert re.search(
+        r"Wait-WaveComplete -Wave 4[\s\S]*?\n\s*Set-PlayerBotMode -Mode ACTIVE",
+        wave4_text,
+    ), "the probe must resume real mob attacks after Wave 4 completes"
+
+
+def test_combat_bot_passive_mode_cancels_inflight_navigation() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    passive_block = re.search(
+        r"function enterPassiveMode \(\) \{[\s\S]*?\n\}\n\nfunction enterActiveMode",
+        bot,
+    )
+    assert passive_block is not None, "the combat bot passive-mode handler is missing"
+    assert "stopNavigation()" in passive_block.group(0), (
+        "passive mode must cancel an already-running navigation interval"
+    )
+
+
+def test_wave4_lane_helper_recovers_displacement_during_lane_dwell() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    helper = re.search(
+        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
+        probe,
+    )
+    assert helper is not None, "Wave 4 lane helper is missing"
+    helper_text = helper.group(0)
+    assert "$shouldRotate" in helper_text, (
+        "lane rotation and position recovery need separate decisions"
+    )
+    assert re.search(
+        r"\$shouldRotate[\s\S]*?\$targetX[\s\S]*?\$dx \* \$dx",
+        helper_text,
+    ), "the helper must still check the current player's distance on every poll"
+    assert not re.search(
+        r"-lt 20000L\)\s*\{\s*return\s*\}",
+        helper_text,
+    ), "a lane dwell must not skip recovery after mob knockback"
+
+
+def test_wave4_lane_recovery_keeps_real_clients_inside_projectile_window() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    helper = re.search(
+        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
+        probe,
+    )
+    assert helper is not None, "Wave 4 lane helper is missing"
+    helper_text = helper.group(0)
+    assert "$laneTolerance = 0.75D" in helper_text, (
+        "lane recovery must use a sub-block tolerance so a one-block mob nudge is corrected"
+    )
+    assert "$reflectionRadius = 7.0D" in helper_text, (
+        "reflection lanes must stay at the clear inner radius instead of the east-wall collision edge"
+    )
+    assert re.search(
+        r"\$targetX[\s\S]*\$reflectionRadius|\$targetZ[\s\S]*\$reflectionRadius",
+        helper_text,
+    ), "both coordinates must use the clear inner reflection radius"
+    assert re.search(
+        r"\$dx \* \$dx \+ \$dz \* \$dz -gt \$laneTolerance \* \$laneTolerance",
+        helper_text,
+    ), "lane recovery must apply the tight tolerance to every poll"
+
+
+def test_official_probe_shortens_small_roster_wave4_lane_dwell() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    helper = re.search(
+        r"function Teleport-PlayersToWave4ReflectionLaneIfDue[\s\S]*?\n}\n\nfunction Get-OfflinePlayerUuid",
+        probe,
+    )
+    assert helper is not None, "Wave 4 lane helper is missing"
+    helper_text = helper.group(0)
+    assert "$wave4LaneDwellMs = 6000L" in helper_text, (
+        "small official rosters need a bounded short dwell so every active source gets repeated real reflection attempts"
+    )
+    assert re.search(
+        r"\$now\s*-\s*\$script:lastWave4LaneChangeAt\s*-ge\s*\$wave4LaneDwellMs",
+        helper_text,
+    ), "Wave 4 rotation must use the explicit short dwell constant"
+
+
+def test_official_probe_removes_mob_knockback_from_reflection_clients() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    configure = re.search(
+        r"function Configure-Players[\s\S]*?\n}\n\nfunction Wait-Transition",
+        probe,
+    )
+    assert configure is not None, "official player configuration block is missing"
+    assert "minecraft:generic.knockback_resistance base set 1" in configure.group(0), (
+        "reflection clients must not be displaced by event mobs while the probe measures real use_entity hits"
+    )
+
+
+def test_official_probe_does_not_reset_wave5_or_wave6_combat_clients() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    wave5 = re.search(
+        r"\$fogOffset\s*=\s*\$waveFiveStartOffset[\s\S]*?"
+        r"\$waveFiveTransitionOffset",
+        probe,
+    )
+    assert wave5 is not None, "Wave 5 probe block is missing"
+    wave6 = re.search(
+        r"\$ritualOffset\s*=\s*\$waveSixStartOffset[\s\S]*?"
+        r"\$waveSixTransitionOffset",
+        probe,
+    )
+    assert wave6 is not None, "Wave 6 probe block is missing"
+    for block_name, block in (("Wave 5", wave5.group(0)), ("Wave 6", wave6.group(0))):
+        assert "Teleport-PlayersIfOutsideCombatArea -Core $core" in block, (
+            f"{block_name} must use conditional arena recovery"
+        )
+        assert "-Action { Teleport-PlayersToCombatRing -Core $core }" not in block, (
+            f"{block_name} must not reset a real client every 500ms while it is fighting"
+        )
+
+
+def test_official_probe_recovers_wave5_and_wave6_melee_range_without_fake_damage() -> None:
+    probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
+    helper = re.search(
+        r"function Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange[\s\S]*?\n}\n\nfunction Teleport-PlayersToNearestChamberMob",
+        probe,
+    )
+    assert helper is not None, "wave combat range recovery helper is missing"
+    helper_text = helper.group(0)
+    assert "tag=copimine_end_event" in helper_text
+    assert "DistanceSquared" in helper_text
+    assert "2.75D * 2.75D" in helper_text
+    assert "Teleport-Player" in helper_text
+    assert "/damage" not in helper_text and "/kill" not in helper_text
+    assert re.search(
+        r"\$fogOffset[\s\S]*?Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange[\s\S]*?"
+        r"\$waveFiveTransitionOffset",
+        probe,
+    ), "Wave 5 polling must keep a real client in melee range of the current mob"
+    assert re.search(
+        r"\$ritualOffset[\s\S]*?Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange[\s\S]*?"
+        r"\$waveSixTransitionOffset",
+        probe,
+    ), "Wave 6 polling must keep a real client in melee range of the current mob"
 
 
 def test_end_rift_gate_keeps_pinned_paper_api_on_persistence_classpath() -> None:
@@ -981,9 +1617,9 @@ def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
         probe,
     ), "Wave 7 must reuse the chamber cursor because completion markers share a tick"
     assert re.search(
-        r"Wait-WaveComplete\s+-Wave 6[\s\S]*?-AfterOffset \$ringsOffset",
+        r"Wait-WaveComplete\s+-Wave 6[\s\S]*?-AfterOffset \$ritualOffset",
         probe,
-    ), "Wave 6 must reuse the ring cursor because completion markers share a tick"
+    ), "Wave 6 must reuse the Ritual Sphere cursor because completion markers share a tick"
 
 
 def test_official_wave_bot_aims_at_the_projectile_for_reflection() -> None:
@@ -991,7 +1627,12 @@ def test_official_wave_bot_aims_at_the_projectile_for_reflection() -> None:
     assert "nearestWave4ObeliskDisplay" in bot
     assert "target=projectile" in bot
     assert "origin=${sourceAnchor ? 'known' : 'nearest'}" in bot
-    assert "flags: { onGround, hasHorizontalCollision: undefined }" in bot
+    # Mineflayer's forced look path updates both the public entity rotation and
+    # its private last-sent rotation before the attack packet is emitted.
+    assert "bot.look(yaw, pitch, true)" in bot
+    assert "await lookAtServer(current.position)" in bot
+    assert "await lookAtServer(refreshed.position)" in bot
+    assert "bot._client.write('use_entity'" in bot
 
 
 def test_official_wave_bot_uses_stable_projectile_identity() -> None:
@@ -1004,6 +1645,48 @@ def test_official_wave_bot_uses_stable_projectile_identity() -> None:
     assert "projectileOrigins.get(projectileKey)" in bot
     assert "current && projectileIdentity(current) === projectileKey" in bot
     assert "reflectedEntityIds" not in bot
+
+
+def test_official_wave_bot_serializes_reflection_attempts_per_projectile() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert "const reflectionInFlight = new Set()" in bot, (
+        "the official wave bot must track a projectile while its asynchronous reflection loop is running"
+    )
+    assert re.search(
+        r"if \(reflectedProjectiles\.has\(projectileKey\)\s*\|\|\s*"
+        r"reflectionInFlight\.has\(projectileKey\)\) return",
+        bot,
+    ), "a rescan must not schedule a second reflection loop for the same projectile"
+    assert re.search(
+        r"const timer = setTimeout\(async \(\) => \{[\s\S]*?"
+        r"reflectionTimers\.delete\(projectileKey\)[\s\S]*?"
+        r"reflectionInFlight\.add\(projectileKey\)[\s\S]*?"
+        r"try \{[\s\S]*?finally \{[\s\S]*?"
+        r"reflectionInFlight\.delete\(projectileKey\)",
+        bot,
+    ), "the in-flight marker must survive until the async attempt loop exits"
+
+
+def test_official_wave_bot_enters_survival_melee_range_before_attacking() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert "const meleeAttackDistance = 2.75" in bot, (
+        "the official wave bot must use a conservative survival interaction range"
+    )
+    assert re.search(
+        r"function attackNearest\(\)[\s\S]*?"
+        r"\.filter\(entity => distance\(entity\.position, bot\.entity\.position\)"
+        r" <= meleeAttackDistance\)",
+        bot,
+    ), "the bot must only emit a melee attack once the target is inside the safe range"
+    assert re.search(
+        r"function tickWave7Navigation\(\)[\s\S]*?"
+        r"if \(targetDistance <= meleeAttackDistance\)",
+        bot,
+    ), "the bot must keep navigating until a target is inside the same safe range"
+    assert re.search(
+        r"if \(!target\) \{[\s\S]*?navigateWave7\(navigationTarget\)",
+        bot,
+    ), "an out-of-range target must select bounded navigation instead of being skipped"
 
 
 def test_official_wave_bot_waits_for_projectile_uuid_before_scheduling() -> None:
@@ -1020,6 +1703,25 @@ def test_official_wave_bot_waits_for_projectile_uuid_before_scheduling() -> None
         r"if \(!uuid\) return false",
         bot,
     ), "direct reflection must reject an entity whose UUID is not known yet"
+
+
+def test_official_wave_bot_rescans_entities_after_large_fireball_registry_resolution() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    assert "function scanRiftFireballs()" in bot, (
+        "the official wave bot must recover when LargeFireball is initially exposed as an unknown entity"
+    )
+    assert re.search(
+        r"function scanRiftFireballs\(\)[\s\S]*?Object\.values\(bot\.entities\)[\s\S]*?"
+        r"isRiftFireball\(entity\)[\s\S]*?scheduleFireballReflection\(entity\)",
+        bot,
+    ), "the rescan must schedule every now-resolved fireball through the normal UUID path"
+    assert re.search(
+        r"reflectionScanTimer\s*=\s*setInterval\(scanRiftFireballs,\s*100\)",
+        bot,
+    ), "the rescan must run on a bounded 100 ms cadence during a live client session"
+    assert "clearInterval(reflectionScanTimer)" in bot, (
+        "the fireball rescan timer must be cleared when the client ends"
+    )
 
 
 def test_official_wave7_bot_has_room_local_autopilot() -> None:
@@ -1068,26 +1770,25 @@ def test_official_boss_probe_handles_last_seal_guardians() -> None:
 def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(
-        r"function\s+Teleport-PlayerToEntity[\s\S]*?"
-        r"execute\s+as\s+@e\[uuid=\$EntityUuid,limit=1\]\s+at\s+@s\s+run\s+"
-        r"minecraft:teleport\s+\$Name\s+~\s+~\s+~",
+        r"function\s+Parse-LoggedLocation[\s\S]*?"
+        r"return\s+,\(\[double\[\]\]@\(",
         probe,
-    ), "the Wave 1 probe must use an entity-relative fallback for a transient charge display"
+    ), "the Wave 1 probe must parse a stable absolute location from the marker"
     assert re.search(
         r"function\s+Wait-CarrierDelivery[\s\S]*?"
         r"END_RIFT_CARRIER_PICKED_UP[\s\S]*?"
-        r"Teleport-PlayersToPoint[\s\S]*?"
-        r"Teleport-PlayerToEntity",
+        r"pickedHolderMatch[\s\S]*?"
+        r"Teleport-Player\s+\$pickedHolderMatch\.Groups\[1\]\.Value",
         probe,
-    ), "delivery confirmation must handle replacement charges and move the roster after any pickup"
+    ), "delivery confirmation must parse and move the authoritative holder after any pickup"
     wait_block = re.search(
         r"function\s+Wait-CarrierDelivery[\s\S]*?"
         r"throw\s+\"Timed out waiting for Wave 1",
         probe,
     )
     assert wait_block is not None
-    assert "END_RIFT_CARRIER_SELECTED.*entity=([0-9a-fA-F-]{36})" in wait_block.group(0)
-    assert "Teleport-PlayerToEntity -Name $PickupPlayer -EntityUuid $activeCarrier" in wait_block.group(0), (
+    assert "END_RIFT_CARRIER_SELECTED[^\\r\\n]*entity=([0-9a-fA-F-]{36})" in wait_block.group(0)
+    assert "Teleport-Player $PickupPlayer $activeCarrierLocation[0]" in wait_block.group(0), (
         "Wave 1 probe must move a client to a selected live carrier so its combat bot can finish the objective"
     )
 

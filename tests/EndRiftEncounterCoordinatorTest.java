@@ -9,9 +9,9 @@ import me.copimine.endevent.domain.ObeliskScalingPolicy;
 import me.copimine.endevent.runtime.EncounterContext;
 import me.copimine.endevent.runtime.EndRiftEncounterCoordinator;
 import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
-import me.copimine.endevent.runtime.encounter.CollapseRingsEncounter;
 import me.copimine.endevent.runtime.encounter.ObeliskAssaultEncounter;
 import me.copimine.endevent.runtime.encounter.RealitySplitEncounter;
+import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
 import me.copimine.endevent.runtime.encounter.RiftCarriersEncounter;
 import me.copimine.endevent.runtime.encounter.RiftGatesEncounter;
 import me.copimine.endevent.runtime.encounter.RiftHuntEncounter;
@@ -92,15 +92,14 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.completeWave(EndRiftObjective.Objective.BLACK_FOG, "w5 done", "w5-complete").accepted(),
                 "wave 5 must complete");
         check(coordinator.advanceIntermission("w6", "w6-start").accepted(), "wave 6 must start");
-        CollapseRingsEncounter rings = (CollapseRingsEncounter) coordinator.encounter(
-                EndRiftObjective.Objective.COLLAPSE_RINGS);
-        for (int ring = 1; ring <= 3; ring++) {
-            check(rings.firstGuardDown(context.withObjective(EndRiftObjective.Objective.COLLAPSE_RINGS), ring, 100L),
-                    "first guard death must start timer");
-            check(rings.completePair(context.withObjective(EndRiftObjective.Objective.COLLAPSE_RINGS), ring, 300L).accepted(),
-                    "pair must complete at inclusive deadline");
+        RitualSphereEncounter ritual = (RitualSphereEncounter) coordinator.encounter(
+                EndRiftObjective.Objective.RITUAL_SPHERE);
+        check(ritual.state() != null, "ritual sphere must initialize its prisoner state");
+        for (int caster = 0; caster < 4; caster++) {
+            check(ritual.casterDefeated(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE)).accepted(),
+                    "ritual caster defeat must count");
         }
-        check(coordinator.completeWave(EndRiftObjective.Objective.COLLAPSE_RINGS,
+        check(coordinator.completeWave(EndRiftObjective.Objective.RITUAL_SPHERE,
                 "w6 done", "w6-complete").accepted(), "wave 6 must complete");
         check(coordinator.advanceIntermission("w7", "w7-start").accepted(), "wave 7 must start");
         RealitySplitEncounter split = (RealitySplitEncounter) coordinator.encounter(

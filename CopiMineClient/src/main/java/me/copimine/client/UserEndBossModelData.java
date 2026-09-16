@@ -37,7 +37,6 @@ final class UserEndBossModelData {
     static final int SOURCE_TEXTURE_HEIGHT = 16;
     static final int TEXTURE_WIDTH = 128;
     static final int TEXTURE_HEIGHT = 128;
-    private static final float MODEL_ORIGIN_Y = 24.0F;
     private static final float UV_SCALE = TEXTURE_WIDTH / (float) SOURCE_TEXTURE_WIDTH;
 
     private UserEndBossModelData() {
@@ -63,16 +62,18 @@ final class UserEndBossModelData {
 
         ModelData data = new ModelData();
         ModelPartData root = data.getRoot();
-        root.addChild("hat", ModelPartBuilder.create(), ModelTransform.pivot(0.0F, MODEL_ORIGIN_Y, 0.0F));
+        root.addChild("hat", ModelPartBuilder.create(), ModelTransform.pivot(
+                0.0F, (float) BedrockCoordinateTransform.pointTranslationY(), 0.0F));
         ModelPartData body = root.addChild("body", ModelPartBuilder.create(),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         Map<String, ModelPartData> built = new HashMap<>();
+        Map<String, BedrockCoordinateTransform.Pose> worldPoses = new HashMap<>();
         for (Bone bone : bones) {
             if (bone.parent().isBlank()) {
                 ModelPartData parent = "body".equals(bone.name()) ? body : root;
                 String modelName = rootModelName(bone.name());
-                addBone(parent, bone, null, modelName, built);
+                addBone(parent, bone, null, modelName, built, worldPoses);
             }
         }
         for (Bone bone : bones) {
@@ -82,7 +83,7 @@ final class UserEndBossModelData {
                     throw new IllegalStateException("Missing parent for supplied End Rift bone: "
                             + bone.name() + " -> " + bone.parent());
                 }
-                addBone(parent, bone, byName.get(bone.parent()), bone.name(), built);
+                addBone(parent, bone, byName.get(bone.parent()), bone.name(), built, worldPoses);
             }
         }
         if (built.size() != bones.size()) {
@@ -94,6 +95,15 @@ final class UserEndBossModelData {
         // the artist geometry itself is held by the imported bones above.
         addMarkers(body, root);
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    }
+
+    static java.util.Set<String> sourceBoneNames() {
+        List<Bone> bones = parseBones(readGeometry().getAsJsonArray("bones"));
+        java.util.Set<String> names = new java.util.LinkedHashSet<>();
+        for (Bone bone : bones) {
+            names.add(bone.name());
+        }
+        return java.util.Set.copyOf(names);
     }
 
     /**
@@ -178,10 +188,12 @@ final class UserEndBossModelData {
     }
 
     private static ModelPart.Quad[] createFaceQuads(Cube cube, Point pivot) {
-        Point origin = new Point(
+        BedrockCoordinateTransform.Vec3 convertedOrigin = BedrockCoordinateTransform.sourceDelta(
                 cube.origin().x() - pivot.x(),
-                pivot.y() - cube.origin().y() - cube.size().y(),
+                cube.origin().y() + cube.size().y() - pivot.y(),
                 cube.origin().z() - pivot.z());
+        Point origin = new Point((float) convertedOrigin.x(), (float) convertedOrigin.y(),
+                (float) convertedOrigin.z());
         Point size = cube.size();
         Point min = new Point(origin.x(), origin.y(), origin.z());
         Point max = new Point(origin.x() + size.x(), origin.y() + size.y(), origin.z() + size.z());
@@ -251,10 +263,23 @@ final class UserEndBossModelData {
     }
 
     private static ModelPartData addBone(ModelPartData parentData, Bone bone, Bone parent,
-                                         String modelName, Map<String, ModelPartData> built) {
-        Point parentPoint = parent == null ? new Point(0.0F, 0.0F, 0.0F) : modelPoint(parent.pivot());
-        Point bonePoint = modelPoint(bone.pivot());
-        Point localPivot = bonePoint.subtract(parentPoint);
+                                         String modelName, Map<String, ModelPartData> built,
+                                         Map<String, BedrockCoordinateTransform.Pose> worldPoses) {
+        BedrockCoordinateTransform.Pose parentPose = parent == null
+                ? BedrockCoordinateTransform.Pose.identity()
+                : worldPoses.get(parent.name());
+        if (parentPose == null) {
+            throw new IllegalStateException("Missing converted parent pose for supplied End Rift bone: "
+                    + bone.name() + " -> " + bone.parent());
+        }
+        BedrockCoordinateTransform.Pose bonePose = new BedrockCoordinateTransform.Pose(
+                BedrockCoordinateTransform.sourcePoint(new BedrockCoordinateTransform.Vec3(
+                        bone.pivot().x(), bone.pivot().y(), bone.pivot().z())),
+                parentPose.rotation().multiply(BedrockCoordinateTransform.sourceRotation(
+                        bone.rotation().x(), bone.rotation().y(), bone.rotation().z())));
+        BedrockCoordinateTransform.Pose localPose = bonePose.relativeTo(parentPose);
+        Point localPivot = point(localPose.translation());
+        Point targetRotation = targetRotation(localPose.rotation());
         ModelPartBuilder builder = ModelPartBuilder.create();
         List<Cube> rotatedCubes = new ArrayList<>();
         for (Cube cube : bone.cubes()) {
@@ -266,19 +291,24 @@ final class UserEndBossModelData {
         }
         ModelPartData part = parentData.addChild(modelName, builder,
                 ModelTransform.of(localPivot.x(), localPivot.y(), localPivot.z(),
-                        radians(bone.rotation().x()), radians(bone.rotation().y()), radians(bone.rotation().z())));
+                        radians(targetRotation.x()), radians(targetRotation.y()), radians(targetRotation.z())));
         built.put(bone.name(), part);
+        worldPoses.put(bone.name(), bonePose);
 
         for (int index = 0; index < rotatedCubes.size(); index++) {
             Cube cube = rotatedCubes.get(index);
-            Point cubePoint = modelPoint(cube.pivot());
-            Point cubeLocalPivot = cubePoint.subtract(bonePoint);
+            BedrockCoordinateTransform.Vec3 convertedCubePivot = bonePose.rotation().inverse().transform(
+                    BedrockCoordinateTransform.sourcePoint(new BedrockCoordinateTransform.Vec3(
+                            cube.pivot().x(), cube.pivot().y(), cube.pivot().z()))
+                            .subtract(bonePose.translation()));
+            Point cubeLocalPivot = point(convertedCubePivot);
+            Point cubeRotation = targetRotation(cube.rotation());
             ModelPartBuilder cubeBuilder = ModelPartBuilder.create();
             addCube(cubeBuilder, cube, cube.pivot());
             part.addChild("source_cube_" + index, cubeBuilder,
                     ModelTransform.of(cubeLocalPivot.x(), cubeLocalPivot.y(), cubeLocalPivot.z(),
-                            radians(cube.rotation().x()), radians(cube.rotation().y()),
-                            radians(cube.rotation().z())));
+                            radians(cubeRotation.x()), radians(cubeRotation.y()),
+                            radians(cubeRotation.z())));
         }
         return part;
     }
@@ -286,9 +316,12 @@ final class UserEndBossModelData {
     private static void addCube(ModelPartBuilder builder, Cube cube, Point pivot) {
         Point origin = cube.origin();
         Point size = cube.size();
-        Point local = new Point(origin.x() - pivot.x(),
-                pivot.y() - origin.y() - size.y(),
+        BedrockCoordinateTransform.Vec3 localVector = BedrockCoordinateTransform.sourceDelta(
+                origin.x() - pivot.x(),
+                origin.y() + size.y() - pivot.y(),
                 origin.z() - pivot.z());
+        Point local = new Point((float) localVector.x(), (float) localVector.y(),
+                (float) localVector.z());
         Face north = cube.face("north");
         builder.uv(Math.round(north.u() * UV_SCALE), Math.round(north.v() * UV_SCALE))
                 .cuboid(local.x(), local.y(), local.z(), size.x(), size.y(), size.z());
@@ -296,17 +329,26 @@ final class UserEndBossModelData {
 
     private static String rootModelName(String sourceName) {
         return switch (sourceName) {
-            case "right_hand" -> "left_arm";
-            case "left_hand" -> "right_arm";
-            case "right_leg" -> "left_leg";
-            case "left_leg" -> "right_leg";
+            case "right_hand" -> "right_arm";
+            case "left_hand" -> "left_arm";
+            case "right_leg" -> "right_leg";
+            case "left_leg" -> "left_leg";
             case "body" -> "torso";
             default -> sourceName;
         };
     }
 
-    private static Point modelPoint(Point source) {
-        return new Point(source.x(), MODEL_ORIGIN_Y - source.y(), source.z());
+    private static Point targetRotation(Point source) {
+        return targetRotation(BedrockCoordinateTransform.sourceRotation(
+                source.x(), source.y(), source.z()));
+    }
+
+    private static Point targetRotation(BedrockCoordinateTransform.Matrix3 target) {
+        return point(target.toEulerXyzDegrees());
+    }
+
+    private static Point point(BedrockCoordinateTransform.Vec3 value) {
+        return new Point((float) value.x(), (float) value.y(), (float) value.z());
     }
 
     private static float radians(float degrees) {
@@ -323,6 +365,13 @@ final class UserEndBossModelData {
             JsonArray geometries = document.getAsJsonArray("minecraft:geometry");
             if (geometries == null || geometries.size() != 1) {
                 throw new IllegalStateException("Expected one supplied End Rift geometry definition");
+            }
+            BedrockAssetValidator.validateGeometry(document, RESOURCE);
+            try (InputStream texture = UserEndBossModelData.class.getResourceAsStream(
+                    "/assets/copimineclient/textures/entity/end_rift_user_boss.png")) {
+                BedrockAssetValidator.validateTexture(texture,
+                        "/assets/copimineclient/textures/entity/end_rift_user_boss.png",
+                        TEXTURE_WIDTH, TEXTURE_HEIGHT);
             }
             return geometries.get(0).getAsJsonObject();
         } catch (IOException | RuntimeException error) {

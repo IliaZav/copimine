@@ -59,7 +59,7 @@ public final class SkeletonCombatPolicy {
                 case 1 -> Maneuver.FALLBACK;
                 default -> Maneuver.CROSS_FIRE;
             };
-            case COLLAPSE_RINGS -> beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
             case REALITY_SPLIT -> miniBoss ? Maneuver.CHAMBER_STEP : Maneuver.HOLD_LINE;
         };
     }
@@ -79,7 +79,7 @@ public final class SkeletonCombatPolicy {
                     false, true, false, "прикрывает обелиск с дальней позиции");
             case BLACK_FOG -> new WaveBehavior("fog_scout", 10.0D, 16.0D,
                     false, false, true, "отступает из чёрного тумана");
-            case COLLAPSE_RINGS -> new WaveBehavior("ring_guard", 9.0D, 15.0D,
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> new WaveBehavior("ring_guard", 9.0D, 15.0D,
                     false, true, true, "держит разрыв между кольцами");
             case REALITY_SPLIT -> new WaveBehavior("chamber_fireline", 8.0D, 14.0D,
                     false, true, true, "не выходит из своей комнаты");

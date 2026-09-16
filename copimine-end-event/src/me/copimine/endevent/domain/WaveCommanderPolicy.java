@@ -15,6 +15,7 @@ public final class WaveCommanderPolicy {
                 || objective == EndRiftObjective.Objective.OBELISK_ASSAULT
                 || objective == EndRiftObjective.Objective.BLACK_FOG
                 || objective == EndRiftObjective.Objective.COLLAPSE_RINGS
+                || objective == EndRiftObjective.Objective.RITUAL_SPHERE
                 || objective == EndRiftObjective.Objective.REALITY_SPLIT;
     }
 

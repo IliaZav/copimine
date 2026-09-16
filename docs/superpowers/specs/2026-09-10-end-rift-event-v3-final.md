@@ -29,7 +29,7 @@ schema 4, мир арены — `CopiMine`, максимум — 20 участн
 `BOSS_ACTIVE -> BOSS_FINISH -> VICTORY_PROCESSING -> UNLOCKED`.
 
 Канонические цели волн по порядку: `RIFT_CARRIERS`, `RIFT_HUNT`, `RIFT_GATES`,
-`OBELISK_ASSAULT`, `BLACK_FOG`, `COLLAPSE_RINGS`, `REALITY_SPLIT`.
+`OBELISK_ASSAULT`, `BLACK_FOG`, `RITUAL_SPHERE`, `REALITY_SPLIT`.
 
 Каждый переход проверяет текущий event id, generation, мир, Core и владельца
 ресурсов. Состояние `RECOVERY_REQUIRED` используется при неполной записи или
@@ -109,13 +109,22 @@ Nausea II и Slowness I на 60 тиков. Пульсация наносит т
 видят безопасную зону и получают bounded freeze/telegraph, затем поле постепенно
 возвращается. Сценарий не создаёт бесконечных задач и не превышает общий budget.
 
-### Wave 6 — Collapse Rings
+### Wave 6 — Ritual Sphere
 
-Команды игроков объединяются в пары. Для каждой пары сохраняются участники,
-локальный таймер и относительный угол вращения. Таймер начинается при первом
-выбывшем, дедлайн трактуется включительно; при успехе пара закрывается, при
-тайм-ауте возвращается в состояние двух живых. Данные одной пары не видны и не
-влияют на другую.
+Сервер создаёт одну Ritual Sphere, выбирает одного пленника и удерживает его у
+Core. Каждые 20 секунд применяется drain `-2 HP`, но здоровье пленника никогда
+не опускается ниже `1 HP`; disconnect/death переводит роль на следующего
+живого участника. Масштабирование фиксировано: 2–4 игрока — 4 кастера и 12
+стражей, 5–8 — 4/12, 9–12 — 5/15, 13–16 — 5/15, 17–20 — 6/18. У каждого
+кастера ровно три стража, а щит проходит состояния `FULL`, `WEAKENED`,
+`CRITICAL`, `BROKEN`.
+
+Способности кастеров ограничены профилем: server-authoritative projectiles,
+4×4 infected zones, reverse movement и control-swap пар максимум для трёх
+пар. Reverse и swap взаимно исключаются для одного игрока; клиент отправляет
+только bounded input sample, а сервер проверяет event id, generation, world,
+pair, target и expiry. `COLLAPSE_RINGS` сохранён только для миграции старых
+снимков и никогда не выбирается live `objective(6)`.
 
 ### Wave 7 — Reality Split
 

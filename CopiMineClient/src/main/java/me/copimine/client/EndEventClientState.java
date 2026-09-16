@@ -1,6 +1,8 @@
 package me.copimine.client;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -19,6 +21,9 @@ public final class EndEventClientState {
     private final Map<String, EntityVisualBinding> entityVisuals = new HashMap<>();
     private final Map<String, EntityAnimationBinding> entityAnimations = new HashMap<>();
     private String controlInstance = "";
+    private String controlMode = "";
+    private String controlTargetUuid = "";
+    private String controlPairId = "";
     private long controlExpiresAt;
 
     public synchronized boolean apply(EndEventPacket packet, long nowMillis) {
@@ -79,12 +84,27 @@ public final class EndEventClientState {
     }
 
     public synchronized boolean isReverseActive(long nowMillis) {
-        if (controlInstance.isBlank() || nowMillis >= controlExpiresAt) {
-            controlInstance = "";
-            controlExpiresAt = 0L;
-            return false;
-        }
-        return true;
+        return isControlActive("REVERSE", nowMillis);
+    }
+
+    /** Whether the server has an unexpired paired control-swap receipt. */
+    public synchronized boolean isControlSwapActive(long nowMillis) {
+        return isControlActive("SWAP", nowMillis);
+    }
+
+    /** Current control mode, or {@code NONE} when no control effect is active. */
+    public synchronized String controlMode() {
+        return controlMode.isBlank() ? "NONE" : controlMode;
+    }
+
+    /** UUID of the paired player selected by the server, if any. */
+    public synchronized String controlTargetUuid() {
+        return controlTargetUuid;
+    }
+
+    /** Server-issued pair identifier used to authenticate client input. */
+    public synchronized String controlPairId() {
+        return controlPairId;
     }
 
     public synchronized boolean isBossBound(String uuid) {
@@ -180,6 +200,34 @@ public final class EndEventClientState {
     /** IDs are used by the renderer only as a bounded lookup hint. */
     public synchronized Set<String> eventVisualEntityIds() {
         return Set.copyOf(entityVisuals.keySet());
+    }
+
+    /**
+     * Exposes the server-bound visual contract currently held by the client.
+     * The command using this method is deliberately read-only: it reports the
+     * UUID, selected variant, model, geometry, texture and animation set that
+     * the renderer will resolve, plus resource availability at this client.
+     */
+    public synchronized List<String> selectionDiagnosticLines() {
+        List<String> lines = new ArrayList<>();
+        if (!bossUuid.isBlank()) {
+            String visual = bossVisualId.isBlank() ? "END_RIFT_GUARDIAN_V1" : bossVisualId;
+            var texture = EndEventTextureCatalog.textureForVisual(visual);
+            lines.add("entity=" + bossUuid + " "
+                    + EndermanRendererSelection.diagnosticLineForVisual(
+                    visual, texture, EndEventTextureCatalog.isAvailable(texture))
+                    + ", phase=" + bossPhaseForEntity(bossUuid)
+                    + ", animation=" + bossAnimationForEntity(bossUuid));
+        }
+        entityVisuals.keySet().stream().sorted().forEach(uuid -> {
+            String visual = entityVisuals.get(uuid).visualId();
+            var texture = EndEventTextureCatalog.textureForVisual(visual);
+            lines.add("entity=" + uuid + " "
+                    + EndermanRendererSelection.diagnosticLineForVisual(
+                    visual, texture, EndEventTextureCatalog.isAvailable(texture))
+                    + ", animation=" + entityAnimationForEntity(uuid));
+        });
+        return List.copyOf(lines);
     }
 
     public synchronized TentacleAnimationSnapshot tentacleAnimationSnapshot(String uuid) {
@@ -442,10 +490,18 @@ public final class EndEventClientState {
         if (packet.instanceId().isBlank() || packet.durationMillis() <= 0L) {
             return false;
         }
+        boolean swap = packet.controlId().startsWith("swap:");
+        String mode = swap ? "SWAP" : "REVERSE";
+        String target = normalizeTargetId(packet.subjectId());
+        if (swap && (target.isBlank() || packet.controlId().isBlank())) {
+            return false;
+        }
         if (Objects.equals(controlInstance, packet.instanceId())) {
             // A retransmitted START is an idempotent delivery confirmation.
             // It must not turn a ten-second effect into a longer one.
-            return true;
+            return Objects.equals(controlMode, mode)
+                    && Objects.equals(controlTargetUuid, target)
+                    && Objects.equals(controlPairId, swap ? packet.controlId() : "");
         }
         if (!controlInstance.isBlank() && nowMillis < controlExpiresAt) {
             // The server owns the one-active-effect invariant.  Refuse a
@@ -454,6 +510,9 @@ public final class EndEventClientState {
             return false;
         }
         controlInstance = packet.instanceId();
+        controlMode = mode;
+        controlTargetUuid = target;
+        controlPairId = swap ? packet.controlId() : "";
         controlExpiresAt = nowMillis + packet.durationMillis();
         return true;
     }
@@ -463,8 +522,23 @@ public final class EndEventClientState {
             return false;
         }
         controlInstance = "";
+        controlMode = "";
+        controlTargetUuid = "";
+        controlPairId = "";
         controlExpiresAt = 0L;
         return true;
+    }
+
+    private boolean isControlActive(String expectedMode, long nowMillis) {
+        if (nowMillis < 0L || controlInstance.isBlank() || nowMillis >= controlExpiresAt) {
+            controlInstance = "";
+            controlMode = "";
+            controlTargetUuid = "";
+            controlPairId = "";
+            controlExpiresAt = 0L;
+            return false;
+        }
+        return Objects.equals(controlMode, expectedMode);
     }
 
     private static String basePhase(String phaseId) {
@@ -498,16 +572,24 @@ public final class EndEventClientState {
         entityVisuals.clear();
         entityAnimations.clear();
         controlInstance = "";
+        controlMode = "";
+        controlTargetUuid = "";
+        controlPairId = "";
         controlExpiresAt = 0L;
     }
 
     private boolean acceptEnvelope(EndEventPacket packet) {
+        // Generation is the monotonic ordering key even when a new event ID is
+        // introduced.  Compare it before adopting a different ID; otherwise a
+        // delayed packet from the previous event can clear the current event
+        // and resurrect stale client visuals.
+        if (!eventId.isBlank() && packet.generation() < generation) {
+            return false;
+        }
         if (!eventId.isBlank() && !Objects.equals(eventId, packet.eventId())) {
             clearEffects();
             eventId = packet.eventId();
             generation = packet.generation();
-        } else if (!eventId.isBlank() && packet.generation() < generation) {
-            return false;
         } else if (!Objects.equals(eventId, packet.eventId())) {
             eventId = packet.eventId();
             generation = packet.generation();

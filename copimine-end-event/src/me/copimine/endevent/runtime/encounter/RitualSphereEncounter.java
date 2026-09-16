@@ -1,0 +1,62 @@
+package me.copimine.endevent.runtime.encounter;
+
+import java.util.UUID;
+import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
+import me.copimine.endevent.domain.RitualSphereScalingPolicy;
+import me.copimine.endevent.runtime.EncounterContext;
+
+/** Coordinator adapter for the server-side Wave 6 Ritual Sphere objective. */
+public final class RitualSphereEncounter extends AbstractWaveEncounter {
+    private RitualSphereEncounterPolicy.State state;
+
+    public RitualSphereEncounter() {
+        super(me.copimine.endevent.domain.EndRiftObjective.Objective.RITUAL_SPHERE, 6, 4);
+    }
+
+    @Override
+    public synchronized Result start(EncounterContext context) {
+        Result result = super.start(context);
+        if (result.status() == Status.STARTED) {
+            state = RitualSphereEncounterPolicy.initial(context.generation(),
+                    firstParticipant(context), context.livingParticipants().size(), 0L);
+        }
+        return result;
+    }
+
+    public synchronized Result drain(EncounterContext context, double currentHealth, long nowMillis) {
+        if (!accepts(context) || state == null) {
+            return rejected("STALE_OR_NOT_STARTED");
+        }
+        RitualSphereEncounterPolicy.DrainTransition transition =
+                RitualSphereEncounterPolicy.advanceDrain(state, currentHealth, nowMillis);
+        state = transition.state();
+        return result(Status.IN_PROGRESS, transition.applied()
+                ? "prisoner drain applied" : "prisoner drain not due");
+    }
+
+    public synchronized Result casterDefeated(EncounterContext context) {
+        if (!accepts(context)) {
+            return rejected("STALE_OR_NOT_STARTED");
+        }
+        return addProgress(context, 1, "ritual caster defeated");
+    }
+
+    public synchronized RitualSphereEncounterPolicy.State state() {
+        return state;
+    }
+
+    @Override
+    protected synchronized int requiredFor(EncounterContext context) {
+        return RitualSphereScalingPolicy.forPlayers(context.livingParticipants().size()).casterCount();
+    }
+
+    @Override
+    protected synchronized void onReset() {
+        state = null;
+    }
+
+    private static UUID firstParticipant(EncounterContext context) {
+        return context.livingParticipants().stream().sorted().findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("ritual requires a prisoner"));
+    }
+}

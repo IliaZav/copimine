@@ -74,10 +74,14 @@ class RiftGuardianModelTest {
         ModelPart root = model.getPart();
 
         assertTrue(root.getChild("body").hasChild("torso"));
-        assertTrue(root.getChild("left_arm").hasChild("right_hand_low"));
-        assertTrue(root.getChild("right_arm").hasChild("left_hand_low"));
-        assertTrue(root.getChild("left_leg").hasChild("right_leg_low"));
-        assertTrue(root.getChild("right_leg").hasChild("left_leg_low"));
+        assertTrue(root.getChild("left_arm").hasChild("left_hand_low"),
+                "the source left_hand hierarchy must stay on the runtime left arm");
+        assertTrue(root.getChild("right_arm").hasChild("right_hand_low"),
+                "the source right_hand hierarchy must stay on the runtime right arm");
+        assertTrue(root.getChild("left_leg").hasChild("left_leg_low"),
+                "the source left_leg hierarchy must stay on the runtime left leg");
+        assertTrue(root.getChild("right_leg").hasChild("right_leg_low"),
+                "the source right_leg hierarchy must stay on the runtime right leg");
     }
 
     @Test
@@ -91,14 +95,26 @@ class RiftGuardianModelTest {
         assertTrue(nonEmptyParts >= 12,
                 "the imported artist skeleton should expose the full boss silhouette");
         assertTrue(model.getPart().getChild("head").isEmpty() == false);
-        assertTrue(model.getPart().getChild("left_leg").hasChild("right_leg_low"));
-        assertTrue(model.getPart().getChild("right_leg").hasChild("left_leg_low"));
-        assertTrue(model.getPart().getChild("left_leg").getChild("right_leg_low").hasChild("group"));
-        assertTrue(model.getPart().getChild("right_leg").getChild("left_leg_low").hasChild("group2"));
-        assertTrue(model.getPart().getChild("left_leg").getChild("right_leg_low")
-                .getChild("group").isEmpty() == false);
-        assertTrue(model.getPart().getChild("right_leg").getChild("left_leg_low")
+        assertTrue(model.getPart().getChild("left_leg").hasChild("left_leg_low"));
+        assertTrue(model.getPart().getChild("right_leg").hasChild("right_leg_low"));
+        assertTrue(model.getPart().getChild("left_leg").getChild("left_leg_low").hasChild("group2"));
+        assertTrue(model.getPart().getChild("left_leg").getChild("left_leg_low").hasChild("group4"));
+        assertTrue(model.getPart().getChild("right_leg").getChild("right_leg_low").hasChild("group3"));
+        assertTrue(model.getPart().getChild("left_leg").getChild("left_leg_low")
                 .getChild("group2").isEmpty() == false);
+        assertTrue(model.getPart().getChild("right_leg").getChild("right_leg_low")
+                .getChild("group3").isEmpty() == false);
+    }
+
+    @Test
+    void rotatedCubePivotIsRelativeToTheRotatedBone() {
+        RiftGuardianModel model = new RiftGuardianModel(
+                RiftGuardianModel.getTexturedModelData().createModel());
+        ModelPart rotatedCube = model.getPart().getChild("head").getChild("source_cube_0");
+
+        assertEquals(-6.500000F, rotatedCube.pivotX, 0.0001F);
+        assertEquals(-15.191046F, rotatedCube.pivotY, 0.0001F);
+        assertEquals(-5.277983F, rotatedCube.pivotZ, 0.0001F);
     }
 
     @Test
@@ -148,6 +164,57 @@ class RiftGuardianModelTest {
 
         poseParts(model, Phase.LAST_SEAL, "IDLE_BREATH");
         assertFinalPartsRevealed(model);
+    }
+
+    @Test
+    void headLookRotatesHeadWithoutRotatingRootOrLowerBody() {
+        RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
+        ModelPart root = model.getPart();
+        ModelPart head = root.getChild("head");
+        ModelPart torso = root.getChild("body").getChild("torso");
+
+        model.setPhase(Phase.HUNT, 0L);
+        model.setAnimation("IDLE_BREATH");
+        model.setAngles(null, 0.0F, 0.0F, 12.0F, 0.0F, 0.0F);
+        float rootYaw = root.yaw;
+        float torsoYaw = torso.yaw;
+        float headYaw = head.yaw;
+
+        model.setAngles(null, 0.0F, 0.0F, 12.0F, 45.0F, 0.0F);
+
+        assertEquals(rootYaw, root.yaw, 0.0001F, "look must not rotate the whole root");
+        assertEquals(torsoYaw, torso.yaw, 0.0001F, "look must not rotate the lower body");
+        assertTrue(Math.abs(head.yaw - headYaw) > 0.1F, "head must receive the look yaw");
+    }
+
+    @Test
+    void restoresImportedBindPoseBeforeEveryAnimationFrame() {
+        RiftGuardianModel model = new RiftGuardianModel(RiftGuardianModel.getTexturedModelData().createModel());
+        ModelPart head = model.getPart().getChild("head");
+        float bindPivotX = head.pivotX;
+        float bindPivotY = head.pivotY;
+        float bindPivotZ = head.pivotZ;
+        float bindPitch = head.pitch;
+        float bindYaw = head.yaw;
+        float bindRoll = head.roll;
+
+        model.setPhase(Phase.HUNT, 0L);
+        model.setAnimation("UNSUPPORTED_TEST_CLIP");
+        model.setAngles(null, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertBindPose(head, bindPivotX, bindPivotY, bindPivotZ, bindPitch, bindYaw, bindRoll);
+
+        model.setAngles(null, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F);
+        assertBindPose(head, bindPivotX, bindPivotY, bindPivotZ, bindPitch, bindYaw, bindRoll);
+    }
+
+    private static void assertBindPose(ModelPart part, float pivotX, float pivotY, float pivotZ,
+                                       float pitch, float yaw, float roll) {
+        assertEquals(pivotX, part.pivotX, 0.0001F);
+        assertEquals(pivotY, part.pivotY, 0.0001F);
+        assertEquals(pivotZ, part.pivotZ, 0.0001F);
+        assertEquals(pitch, part.pitch, 0.0001F);
+        assertEquals(yaw, part.yaw, 0.0001F);
+        assertEquals(roll, part.roll, 0.0001F);
     }
 
     private static PoseSnapshot pose(RiftGuardianModel model, Phase phase, String animationId, float animationProgress) {

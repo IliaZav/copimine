@@ -1,3 +1,7 @@
+param(
+  [switch]$SyncServerConfig
+)
+
 $ErrorActionPreference = 'Stop'
 
 $pluginDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -56,7 +60,8 @@ jar --create --file $jar --date=2020-01-01T00:00:00Z -C $classes .
 if ($LASTEXITCODE -ne 0) { throw "jar packaging failed for CopiMineEndEvent." }
 Copy-Item -LiteralPath $jar -Destination $serverJar -Force
 New-Item -ItemType Directory -Path $serverDataDir -Force | Out-Null
-if (-not (Test-Path (Join-Path $serverDataDir 'config.yml'))) {
+$serverConfig = Join-Path $serverDataDir 'config.yml'
+if ($SyncServerConfig -or -not (Test-Path $serverConfig)) {
   Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $serverDataDir 'config.yml') -Force
 }
 Write-Host "Built $jar"

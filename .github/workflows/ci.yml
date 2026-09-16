@@ -50,6 +50,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Pinned plugin fixture preparation failed.' }
           & powershell -NoProfile -ExecutionPolicy Bypass -File .\thirdparty\grim-creative-patch\build-grim-creative-patch.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Grim Creative fixture build failed.' }
+      - name: Build client artifact required by contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+          $clientJar = Join-Path $env:GITHUB_WORKSPACE 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
+          if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw "CopiMineClient artifact was not created: $clientJar" }
       - name: Run Python contract tests
         shell: pwsh
         env:

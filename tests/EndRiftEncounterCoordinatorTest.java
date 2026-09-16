@@ -94,7 +94,8 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.advanceIntermission("w6", "w6-start").accepted(), "wave 6 must start");
         RitualSphereEncounter ritual = (RitualSphereEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.RITUAL_SPHERE);
-        check(ritual.state() != null, "ritual sphere must initialize its prisoner state");
+        check(ritual.state() == null,
+                "ritual sphere must wait for physical seal capture before initializing state");
         for (int caster = 0; caster < 4; caster++) {
             check(ritual.casterDefeated(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE)).accepted(),
                     "ritual caster defeat must count");

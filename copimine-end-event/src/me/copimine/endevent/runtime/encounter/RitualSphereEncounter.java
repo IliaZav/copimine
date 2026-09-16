@@ -1,6 +1,8 @@
 package me.copimine.endevent.runtime.encounter;
 
+import java.util.List;
 import java.util.UUID;
+import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.runtime.EncounterContext;
@@ -17,10 +19,28 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
     public synchronized Result start(EncounterContext context) {
         Result result = super.start(context);
         if (result.status() == Status.STARTED) {
-            state = RitualSphereEncounterPolicy.initial(context.generation(),
-                    firstParticipant(context), context.livingParticipants().size(), 0L);
+            state = null;
         }
         return result;
+    }
+
+    /** Capture exactly one eligible participant after physical seal entry. */
+    public synchronized Result capture(EncounterContext context,
+                                       List<RitualSealCapturePolicy.Candidate> candidates,
+                                       double sealX, double sealZ, long nowMillis) {
+        if (!accepts(context)) {
+            return rejected("STALE_OR_NOT_STARTED");
+        }
+        if (state != null) {
+            return result(Status.IN_PROGRESS, "prisoner already captured");
+        }
+        UUID prisoner = RitualSealCapturePolicy.select(candidates, sealX, sealZ);
+        if (prisoner == null || !context.isLivingParticipant(prisoner)) {
+            return result(Status.IN_PROGRESS, "waiting for prisoner");
+        }
+        state = RitualSphereEncounterPolicy.initial(context.generation(), prisoner,
+                context.livingParticipants().size(), nowMillis);
+        return result(Status.IN_PROGRESS, "prisoner captured");
     }
 
     public synchronized Result drain(EncounterContext context, double currentHealth, long nowMillis) {
@@ -53,10 +73,5 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
     @Override
     protected synchronized void onReset() {
         state = null;
-    }
-
-    private static UUID firstParticipant(EncounterContext context) {
-        return context.livingParticipants().stream().sorted().findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("ritual requires a prisoner"));
     }
 }

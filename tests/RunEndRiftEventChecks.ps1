@@ -123,6 +123,7 @@ $pureTests = @(
   'RitualGuardAggroPolicyTest',
   'RitualPrisonerHealthPolicyTest',
   'RitualSealCapturePolicyTest',
+  'RitualTargetPolicyTest',
   'RitualSphereEncounterPolicyTest',
   'RitualSphereCaptureTransitionTest',
   'RitualSphereEncounterSnapshotTest',

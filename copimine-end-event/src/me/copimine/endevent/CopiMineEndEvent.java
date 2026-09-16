@@ -110,6 +110,7 @@ import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.domain.RitualSealCapturePolicy;
+import me.copimine.endevent.domain.RitualTargetPolicy;
 import me.copimine.endevent.domain.RitualPrisonerHealthPolicy;
 import me.copimine.endevent.domain.RitualCasterShieldPolicy;
 import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
@@ -6485,7 +6486,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 wavePlayerAggroUntil.put(guardId, System.currentTimeMillis()
                         + WAVE_MOB_AGGRO_MILLIS);
                 Entity guard = ownedEntities.get(guardId);
-                if (guard instanceof Mob mob && isCombatTarget(player)) {
+                if (guard instanceof Mob mob && ritualGuardTargetAllowed(mob, player)) {
                     mob.setTarget(player);
                 }
             }
@@ -6622,7 +6623,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (ARROW_SPELL_EXPLOSIVE.equals(spell)) {
             event.setCancelled(true);
             if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                    || !realitySplitTargetAllowed(skeleton, player)) {
+                    || !realitySplitTargetAllowed(skeleton, player)
+                    || !ritualProjectileTargetAllowed(skeleton, player)) {
                 cleanupEventArrow(arrow.getUniqueId());
                 getLogger().info("SKELETON_EXPLOSIVE_ARROW_BLOCKED event=" + eventId
                         + " arrow=" + arrow.getUniqueId() + " target="
@@ -6634,7 +6636,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (ARROW_SPELL_POISON_NAUSEA.equals(spell)) {
             if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                    || !realitySplitTargetAllowed(skeleton, player)) {
+                    || !realitySplitTargetAllowed(skeleton, player)
+                    || !ritualProjectileTargetAllowed(skeleton, player)) {
                 event.setCancelled(true);
                 getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                         + " spell=" + spell + " target=" + event.getEntity().getType());
@@ -6660,7 +6663,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                || !realitySplitTargetAllowed(skeleton, player)) {
+                || !realitySplitTargetAllowed(skeleton, player)
+                || !ritualProjectileTargetAllowed(skeleton, player)) {
             event.setCancelled(true);
             getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                     + " target=" + event.getEntity().getType());
@@ -6701,7 +6705,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         event.setCancelled(true);
-        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)) {
+        boolean ritualProjectile = ARROW_SPELL_RITUAL_PROJECTILE.equals(spell);
+        boolean ritualVoidLance = ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
+        if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
+                || (ritualProjectile || ritualVoidLance) && !isFreeRitualTarget(player)) {
             cleanupEventArrow(arrow.getUniqueId());
             getLogger().info("EVENT_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                     + " spell=" + spell + " target=" + event.getEntity().getType());
@@ -6717,8 +6724,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         boolean miniBoss = EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell);
-        boolean ritualProjectile = ARROW_SPELL_RITUAL_PROJECTILE.equals(spell);
-        boolean ritualVoidLance = ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
         int successfulDrains = ritualSphereState == null
                 ? 0 : ritualSphereState.successfulDrains();
         double damage = ritualProjectile
@@ -6761,7 +6766,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !(event.getDamager() instanceof Player attacker)
                 || !isWaveCombatKind(readString(mob, keyKind))
                 || !isWaveAiCombatEntity(mob)
-                || !isCombatTarget(attacker)) {
+                || !isCombatTarget(attacker)
+                || (isCurrentRitualCaster(mob) || isCurrentRitualGuard(mob))
+                && !isFreeRitualTarget(attacker)) {
             return;
         }
         long now = System.currentTimeMillis();
@@ -9413,7 +9420,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             LivingEntity shooter = arrow.getShooter() instanceof LivingEntity living ? living : null;
             int affected = 0;
             double radius = SkeletonArrowPolicy.EXPLOSIVE_DAMAGE_RADIUS_BLOCKS;
-            for (Player player : activeLivingPlayers()) {
+            for (Player player : ritualFreeTargetsForProjectile(shooter)) {
                 if (!player.getWorld().equals(world)
                         || player.getLocation().distanceSquared(point) > radius * radius
                         || shooter != null && !realitySplitTargetAllowed(shooter, player)) {
@@ -13535,7 +13542,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (caster instanceof Mob mob) {
             mob.setAI(true);
             mob.setAware(true);
-            if (attacker != null && isCombatTarget(attacker)) {
+            if (attacker != null && isFreeRitualTarget(attacker)) {
                 mob.setTarget(attacker);
             }
         }
@@ -13937,30 +13944,81 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         };
     }
 
+    /**
+     * Resolve every Ritual Sphere player recipient through the one pure
+     * free-player policy.  The map only restores Player objects after the
+     * policy has made the eligibility decision, so callers cannot bypass the
+     * prisoner exclusion by retaining a stale Bukkit object.
+     */
+    private List<Player> ritualFreeTargets(Collection<Player> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, Player> playersById = new LinkedHashMap<>();
+        List<RitualTargetPolicy.Candidate> policyCandidates = new ArrayList<>();
+        for (Player candidate : candidates) {
+            if (candidate == null || candidate.getUniqueId() == null) {
+                continue;
+            }
+            UUID playerId = candidate.getUniqueId();
+            playersById.putIfAbsent(playerId, candidate);
+            policyCandidates.add(new RitualTargetPolicy.Candidate(playerId,
+                    isCombatTarget(candidate)));
+        }
+        return RitualTargetPolicy.freeTargets(policyCandidates, ritualPrisonerUuid).stream()
+                .map(playersById::get)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private boolean isFreeRitualTarget(Player player) {
+        if (player == null || player.getUniqueId() == null) {
+            return false;
+        }
+        return RitualTargetPolicy.freeTargets(List.of(
+                new RitualTargetPolicy.Candidate(player.getUniqueId(), isCombatTarget(player))),
+                ritualPrisonerUuid).contains(player.getUniqueId());
+    }
+
+    private boolean ritualProjectileTargetAllowed(Entity shooter, Player player) {
+        return !(isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter))
+                || isFreeRitualTarget(player);
+    }
+
+    private List<Player> ritualFreeTargetsForProjectile(LivingEntity shooter) {
+        return isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)
+                ? ritualFreeTargets(activeLivingPlayers()) : activeLivingPlayers();
+    }
+
     private Player ritualNearestTarget(Location origin, double radius) {
-        return activeLivingPlayers().stream()
-                .filter(this::isCombatTarget)
+        if (origin == null) {
+            return null;
+        }
+        return ritualFreeTargets(activeLivingPlayers()).stream()
                 .filter(player -> horizontalDistanceSquared(origin, player.getLocation())
                         <= radius * radius)
-                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
-                .findFirst().orElse(null);
+                .min(Comparator.comparingDouble(
+                                (Player player) -> horizontalDistanceSquared(origin, player.getLocation()))
+                        .thenComparing((Player player) -> player.getUniqueId().toString()))
+                .orElse(null);
     }
 
     private Player ritualNearestGuardTarget(Mob guard, Mob caster, long now) {
         boolean casterAlert = ritualCasterAlertUntil.getOrDefault(caster.getUniqueId(), 0L) >= now;
         boolean guardAlert = wavePlayerAggroUntil.getOrDefault(guard.getUniqueId(), 0L) >= now;
-        return activeLivingPlayers().stream()
-                .filter(this::isCombatTarget)
+        return ritualFreeTargets(activeLivingPlayers()).stream()
                 .filter(player -> ritualGuardTargetAllowed(guard, player))
                 .filter(player -> RitualGuardAggroPolicy.shouldWake(
                         Math.sqrt(horizontalDistanceSquared(player.getLocation(), caster.getLocation())),
                         casterAlert, guardAlert, guard instanceof Skeleton))
-                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
-                .findFirst().orElse(null);
+                .min(Comparator.comparingDouble(
+                                (Player player) -> horizontalDistanceSquared(guard.getLocation(), player.getLocation()))
+                        .thenComparing((Player player) -> player.getUniqueId().toString()))
+                .orElse(null);
     }
 
     private boolean ritualTargetAllowed(Entity source, Player player) {
-        if (!isCombatTarget(player) || source == null || player.getWorld() == null
+        if (!isFreeRitualTarget(player) || source == null || player.getWorld() == null
                 || source.getWorld() == null || !source.getWorld().equals(player.getWorld())) {
             return false;
         }
@@ -14080,12 +14138,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnRitualVoidLance(LivingEntity caster, Player target) {
+        if (!ritualTargetAllowed(caster, target)) {
+            return;
+        }
         riftArrowVolley(caster, target, ARROW_SPELL_RITUAL_VOID_LANCE,
                 new SkeletonCombatPolicy.ArrowProfile(1, 0.0D, 26, "void_lance"));
     }
 
     private void spawnRitualRiftSpikes(LivingEntity caster, Player target, long now) {
-        if (caster == null || target == null || !isCombatTarget(target)) {
+        if (caster == null || target == null || !ritualTargetAllowed(caster, target)) {
             return;
         }
         Location center = target.getLocation().clone();
@@ -14112,7 +14173,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnRitualProjectileVolley(LivingEntity caster, Player target, int count) {
-        if (caster == null || target == null || count <= 0) {
+        if (caster == null || target == null || count <= 0
+                || !ritualTargetAllowed(caster, target)) {
             return;
         }
         riftArrowVolley(caster, target, ARROW_SPELL_RITUAL_PROJECTILE,
@@ -14121,7 +14183,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualZone(Player target, long now) {
-        if (target == null || ritualSphereState == null) {
+        if (target == null || ritualSphereState == null || !isFreeRitualTarget(target)) {
             return;
         }
         expireRitualZones(now);
@@ -14152,7 +14214,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (now < telegraph) {
                 continue;
             }
-            for (Player player : activeLivingPlayers()) {
+            for (Player player : ritualFreeTargets(activeLivingPlayers())) {
                 if (!ritualZoneContains(center, player.getLocation())) {
                     continue;
                 }
@@ -14186,7 +14248,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualReverse(Player target, long now) {
-        if (target == null || ritualControlInstances.containsKey(target.getUniqueId())
+        if (target == null || !isFreeRitualTarget(target)
+                || ritualControlInstances.containsKey(target.getUniqueId())
                 || ritualSphereState == null) {
             return;
         }
@@ -14203,9 +14266,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (ritualSphereState == null) {
             return;
         }
-        List<String> ids = activeLivingPlayers().stream()
+        List<String> ids = ritualFreeTargets(activeLivingPlayers()).stream()
                 .map(player -> player.getUniqueId().toString())
-                .sorted().toList();
+                .toList();
         for (RitualControlPairPolicy.Pair pair : RitualControlPairPolicy.pair(
                 ids, ritualSphereState.profile().controlSwapPairs())) {
             UUID first = parseUuidOrNull(pair.first());
@@ -20426,7 +20489,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void riftArrowVolley(LivingEntity caster, Player target, String spellId,
                                  SkeletonCombatPolicy.ArrowProfile profile) {
+        boolean ritualVolley = isCurrentRitualCaster(caster)
+                || ARROW_SPELL_RITUAL_PROJECTILE.equals(spellId)
+                || ARROW_SPELL_RITUAL_VOID_LANCE.equals(spellId);
         if (caster == null || target == null || !isCombatTarget(target)
+                || ritualVolley && !isFreeRitualTarget(target)
                 || caster.getWorld() == null || profile == null
                 || activeEventArrowAges.size() >= MAX_ACTIVE_EVENT_ARROWS) {
             return;
@@ -25708,7 +25775,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         Player target = targetId == null ? null : Bukkit.getPlayer(targetId);
         String targetInstance = ritualControlInstances.get(targetId);
-        if (target == null || !isCombatTarget(target) || !source.getWorld().equals(target.getWorld())
+        if (target == null || !isFreeRitualTarget(source) || !isFreeRitualTarget(target)
+                || !source.getWorld().equals(target.getWorld())
                 || targetInstance == null || !targetInstance.startsWith(pairId + ":")) {
             return;
         }

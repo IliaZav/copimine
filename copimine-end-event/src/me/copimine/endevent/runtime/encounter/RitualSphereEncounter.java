@@ -54,6 +54,17 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
                 ? "prisoner drain applied" : "prisoner drain not due");
     }
 
+    @Override
+    public synchronized Result complete(EncounterContext context) {
+        if (!accepts(context)) {
+            return rejected("STALE_OR_NOT_STARTED");
+        }
+        if (state == null) {
+            return rejected("PRISONER_CAPTURE_REQUIRED");
+        }
+        return super.complete(context);
+    }
+
     public synchronized Result casterDefeated(EncounterContext context) {
         if (!accepts(context)) {
             return rejected("STALE_OR_NOT_STARTED");

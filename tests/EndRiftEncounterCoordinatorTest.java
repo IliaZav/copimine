@@ -1,4 +1,5 @@
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -6,6 +7,7 @@ import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.ObeliskScalingPolicy;
+import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.runtime.EncounterContext;
 import me.copimine.endevent.runtime.EndRiftEncounterCoordinator;
 import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
@@ -96,6 +98,18 @@ public final class EndRiftEncounterCoordinatorTest {
                 EndRiftObjective.Objective.RITUAL_SPHERE);
         check(ritual.state() == null,
                 "ritual sphere must wait for physical seal capture before initializing state");
+        EndRiftEncounterCoordinator.Result beforeCapture = coordinator.completeWave(
+                EndRiftObjective.Objective.RITUAL_SPHERE,
+                "w6 before capture", "w6-before-capture");
+        check(!beforeCapture.accepted(),
+                "wave 6 completion must be rejected before ritual seal capture");
+        check(coordinator.phase() == EventPhase.WAVE_6,
+                "rejected pre-capture completion must keep wave 6 active");
+        check(ritual.capture(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE),
+                List.of(new RitualSealCapturePolicy.Candidate(first, true, 0.0D, 0.0D)),
+                0.0D, 0.0D, 100_000L).accepted(),
+                "wave 6 must capture a participant before caster completion");
+        check(ritual.state() != null, "wave 6 capture must initialize ritual state");
         for (int caster = 0; caster < 4; caster++) {
             check(ritual.casterDefeated(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE)).accepted(),
                     "ritual caster defeat must count");

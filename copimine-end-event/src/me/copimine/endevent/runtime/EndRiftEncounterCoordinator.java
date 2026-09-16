@@ -136,7 +136,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
                 current, next, reason, idempotencyKey);
         if (!preview.accepted()) return rejected(preview.code());
         WaveEncounter.Result completed = encounter.complete(session.context().withObjective(objective));
-        if (!completed.complete()) return fromEncounter(completed);
+        if (!completed.accepted() || !completed.complete()) return fromEncounter(completed);
         Result moved = transition(current, next, reason, idempotencyKey);
         if (!moved.accepted()) {
             encounter.reset();

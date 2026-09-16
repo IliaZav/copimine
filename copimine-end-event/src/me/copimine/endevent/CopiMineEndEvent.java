@@ -13166,6 +13166,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (world == null || core == null || generation <= 0L
                 || (!isOfficialCurrentAttempt() && !testWaveFrontVisualMode)) {
+            waveObjectiveStartedMillis = 0L;
+            waveObjectiveLastSecond = -1;
             getLogger().warning("WAVE6_RITUAL_START_REFUSED event=" + eventId
                     + " generation=" + generation + " reason=invalid-context");
             return;
@@ -13248,13 +13250,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         if (!complete || ritualCasterUuids.size() != profile.casterCount()
-                || ritualGuardUuids.size() != profile.guardCount()) {
+                || ritualGuardUuids.size() != profile.guardCount()
+                || ritualSphereVisualUuid == null
+                || !isLiveOwnedEntity(ritualSphereVisualUuid)) {
             getLogger().severe("WAVE6_RITUAL_START_FAILED event=" + eventId
                     + " generation=" + generation + " casters=" + ritualCasterUuids.size()
                     + " expected_casters=" + profile.casterCount()
                     + " guards=" + ritualGuardUuids.size()
                     + " expected_guards=" + profile.guardCount());
             clearRitualSphereObjective("start-failed");
+            waveObjectiveStartedMillis = 0L;
+            waveObjectiveLastSecond = -1;
+            waveObjectiveMobCount = 0;
             return;
         }
         waveObjectiveMobCount = profile.casterCount() + profile.guardCount();
@@ -13699,7 +13706,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Capture the first eligible participant physically inside the visible seal. */
     private void attemptRitualPrisonerCapture(long now) {
-        if (ritualSphereState != null || ritualPrisonerUuid != null) {
+        if (ritualSphereVisualUuid == null
+                || !isLiveOwnedEntity(ritualSphereVisualUuid)
+                || ritualSphereState != null || ritualPrisonerUuid != null) {
             return;
         }
         Location core = coreCombatAnchorLocation();

@@ -15,8 +15,6 @@ public final class RitualSealCapturePolicy {
             return null;
         }
         double radiusSquared = CAPTURE_RADIUS_BLOCKS * CAPTURE_RADIUS_BLOCKS;
-        Candidate selected = null;
-        double selectedDistanceSquared = 0.0D;
         for (Candidate candidate : candidates) {
             if (candidate == null || !candidate.eligible()) {
                 continue;
@@ -27,22 +25,9 @@ public final class RitualSealCapturePolicy {
             if (distanceSquared > radiusSquared) {
                 continue;
             }
-            if (selected == null) {
-                selected = candidate;
-                selectedDistanceSquared = distanceSquared;
-                continue;
-            }
-            // The caller supplies the deterministic participant order.  If
-            // two eligible participants entered on the same boundary tick at
-            // the same distance, UUID order makes the capture deterministic
-            // without allowing an outside UUID to win first.
-            if (Double.compare(distanceSquared, selectedDistanceSquared) == 0
-                    && candidate.playerId().toString().compareTo(
-                    selected.playerId().toString()) < 0) {
-                selected = candidate;
-            }
+            return candidate.playerId();
         }
-        return selected == null ? null : selected.playerId();
+        return null;
     }
 
     public record Candidate(UUID playerId, boolean eligible, double x, double z) {

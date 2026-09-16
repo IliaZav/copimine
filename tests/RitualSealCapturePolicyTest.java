@@ -35,14 +35,14 @@ public final class RitualSealCapturePolicyTest {
                         Math.nextUp(RitualSealCapturePolicy.CAPTURE_RADIUS_BLOCKS), 0.0D)
         ), 0.0D, 0.0D) == null, "a candidate just outside the radius must not be captured");
 
-        UUID tieLow = UUID.fromString("00000000-0000-0000-0000-000000000002");
-        UUID tieHigh = UUID.fromString("ffffffff-ffff-ffff-ffff-fffffffffff3");
+        UUID callerFirst = UUID.fromString("ffffffff-ffff-ffff-ffff-fffffffffff3");
+        UUID callerSecond = UUID.fromString("00000000-0000-0000-0000-000000000002");
         UUID tieSelected = RitualSealCapturePolicy.select(List.of(
-                new RitualSealCapturePolicy.Candidate(tieHigh, true, 0.5D, 0.0D),
-                new RitualSealCapturePolicy.Candidate(tieLow, true, -0.5D, 0.0D)
+                new RitualSealCapturePolicy.Candidate(callerFirst, true, 0.5D, 0.0D),
+                new RitualSealCapturePolicy.Candidate(callerSecond, true, -0.5D, 0.0D)
         ), 0.0D, 0.0D);
-        check(tieLow.equals(tieSelected),
-                "equal-distance eligible candidates must select the lexicographically lower UUID");
+        check(callerFirst.equals(tieSelected),
+                "equal-distance eligible candidates must preserve the first caller candidate");
 
         check(RitualSealCapturePolicy.select(null, 0.0D, 0.0D) == null,
                 "null candidates must not capture anyone");

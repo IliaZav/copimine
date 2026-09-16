@@ -86,6 +86,16 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
     assert "reason=spawn-refused" in placement_body
     assert "reason=no-safe-destination" in placement_body
     assert "reason=teleport-refused" in placement_body
+    assert "ritualSphereVisualUuid == null" in body
+    assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in body
+    assert "waveObjectiveStartedMillis = 0L;" in body
+    assert "waveObjectiveLastSecond = -1;" in body
+
+    capture_start = root.index("private void attemptRitualPrisonerCapture")
+    capture_end = root.index("private void ensureRitualPrisoner", capture_start)
+    capture_body = root[capture_start:capture_end]
+    assert "ritualSphereVisualUuid == null" in capture_body
+    assert "!isLiveOwnedEntity(ritualSphereVisualUuid)" in capture_body
 
 
 def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:

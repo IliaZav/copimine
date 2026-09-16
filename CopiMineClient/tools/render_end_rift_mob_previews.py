@@ -334,14 +334,14 @@ def main() -> None:
         path = OUT / f"{spec.slug}.png"
         card.save(path, format="PNG", optimize=False)
         cards.append(card)
-        manifest.append({**asdict(spec), "preview": str(path)})
+        manifest.append({**asdict(spec), "preview": path.relative_to(ROOT.parent).as_posix()})
 
     columns, rows = 4, 4
     card_width, card_height = 420, 500
     board = Image.new("RGBA", (columns * card_width, rows * card_height + 86), (4, 4, 12, 255))
     board_draw = ImageDraw.Draw(board)
     board_draw.text((22, 17), "COPIMINE / END RIFT MOB MODEL REVIEW", font=_font(30, True), fill=(249, 241, 255, 255))
-    board_draw.text((24, 53), "Static assembled previews from runtime UV atlases • native hitboxes unchanged", 
+    board_draw.text((24, 53), "Static assembled previews from runtime UV atlases • native hitboxes unchanged",
                     font=_font(14), fill=(190, 176, 214, 255))
     for index, card in enumerate(cards):
         x = (index % columns) * card_width

@@ -71,7 +71,7 @@ variant model/renderer classes.
 | `minecraft/server/plugins/CopiMineEndEvent.jar` | 786,613 | `1e14edeb9823c350c9bcf14a9d157dc2bd2cc599aa5f923561ed275b200b399a` |
 | `thirdparty/CopiMineMods.zip` | 21,651,501 | `8c582afbd4f19267bf8645ec304f5c83d9ecbe5465f1351818e095d2a1ed3b7d` |
 | `resourcepacks/build/CopiMineResourcePack.zip` | 24,150,260 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
-| `end-rift-mob-model-board-20260916.png` | 169,023 | `d42cdf784b1a4f8adc1844e52054c279930bcddc8da85f12380feb031b34a0a0` |
+| `end-rift-mob-model-board-20260916.png` | 169,023 | `91f57a62157dbc411abba56059864bf5ee659b8a6f69c382f482659c00128a6a` |
 
 ## Native QA boundary
 

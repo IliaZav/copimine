@@ -152,12 +152,25 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
         OUT / name, format="PNG", optimize=False)
 
 
-def spider_sheet() -> None:
+def spider_sheet(name: str = "end_rift_spider.png", role: str = "ordinary") -> None:
+    """Paint a clean 64x32 spider atlas for one gameplay role.
+
+    The UV layout stays stable across the four spider roles, while the sparse
+    crest/seal marks give each role a readable material identity.  Keeping the
+    layout stable is important: the renderer can swap a role model and texture
+    atomically without exposing a checkerboard or an untextured limb.
+    """
     dark = (10, 2, 16)
     shell = (31, 9, 42)
     mid = (60, 17, 79)
     edge = (103, 24, 127)
     eye = (208, 37, 255)
+    if role == "elite":
+        shell, mid, edge, eye = (25, 5, 38), (72, 12, 102), (151, 26, 207), (230, 52, 255)
+    elif role == "wave_guardian":
+        shell, mid, edge, eye = (18, 5, 31), (61, 17, 91), (174, 45, 229), (230, 70, 255)
+    elif role == "ritual_guard":
+        shell, mid, edge, eye = (27, 4, 45), (83, 15, 110), (190, 50, 218), (238, 70, 255)
     image = clean_surface((64, 32), dark)
     draw = ImageDraw.Draw(image)
     # One shell island and eight tapered leg marks; no artificial atlas grid.
@@ -171,7 +184,20 @@ def spider_sheet() -> None:
                     (36, -4), (44, 4), (52, -3), (60, 4)):
         angular(draw, ((x, 19), (x + bend, 24), (x + bend // 2, 30)), edge, 2)
         draw.point((x + bend // 2, 28), fill=rgba(mid))
-    image.save(OUT / "end_rift_spider.png", format="PNG", optimize=False)
+    if role == "elite":
+        angular(draw, ((22, 8), (27, 5), (32, 8), (37, 5), (42, 8)), edge, 1)
+        draw.rectangle((23, 18, 25, 20), fill=rgba(mid))
+        draw.rectangle((38, 18, 40, 20), fill=rgba(mid))
+    elif role == "wave_guardian":
+        angular(draw, ((31, 8), (29, 5), (31, 3), (33, 5), (31, 8)), eye, 1)
+        draw.rectangle((21, 12, 23, 16), fill=rgba(mid))
+        draw.rectangle((41, 12, 43, 16), fill=rgba(mid))
+    elif role == "ritual_guard":
+        draw.rectangle((27, 18, 36, 19), fill=rgba(edge))
+        draw.rectangle((30, 18, 33, 20), fill=rgba(eye))
+        angular(draw, ((24, 9), (27, 7), (30, 9)), edge, 1)
+        angular(draw, ((33, 9), (36, 7), (39, 9)), edge, 1)
+    image.save(OUT / name, format="PNG", optimize=False)
 
 
 def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
@@ -419,6 +445,37 @@ def main() -> None:
         (214, 24, 255),
     )
     ritual_caster_sheet()
+    enderman_sheet(
+        "end_rift_wave_guardian_enderman.png",
+        [(7, 1, 15), (17, 2, 29), (32, 7, 55), (58, 11, 88), (111, 20, 167), (168, 30, 226)],
+        251,
+        (173, 24, 255),
+        (238, 76, 255),
+    )
+    enderman_sheet(
+        "end_rift_ritual_guard_enderman.png",
+        [(11, 1, 20), (27, 3, 43), (51, 8, 72), (82, 15, 106), (164, 33, 192), (238, 91, 229)],
+        263,
+        (204, 74, 228),
+        (238, 70, 255),
+    )
+    skeleton_sheet(
+        "end_rift_wave_guardian_skeleton.png",
+        [(7, 1, 15), (17, 2, 29), (32, 7, 55), (58, 11, 88), (111, 20, 167), (168, 30, 226)],
+        271,
+        (173, 24, 255),
+        (238, 76, 255),
+    )
+    skeleton_sheet(
+        "end_rift_ritual_guard_skeleton.png",
+        [(11, 1, 20), (27, 3, 43), (51, 8, 72), (82, 15, 106), (164, 33, 192), (238, 91, 229)],
+        277,
+        (204, 74, 228),
+        (238, 70, 255),
+    )
+    spider_sheet("end_rift_elite_spider.png", "elite")
+    spider_sheet("end_rift_wave_guardian_spider.png", "wave_guardian")
+    spider_sheet("end_rift_ritual_guard_spider.png", "ritual_guard")
     bossbar_frame()
 
 

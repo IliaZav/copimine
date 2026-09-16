@@ -100,10 +100,10 @@ public final class EndermanRendererSelection {
                     "end_rift_ritual_guard_spider_v1", "END_RIFT_RITUAL_GUARD_SPIDER", texture);
             case "END_RIFT_SKELETON_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "EVENT_SKELETON", normalized,
-                    "vanilla_skeleton", "END_RIFT_SKELETON", texture);
+                    "end_rift_skeleton_v1", "END_RIFT_SKELETON", texture);
             case "END_RIFT_ELITE_SKELETON_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "ELITE_SKELETON", normalized,
-                    "vanilla_skeleton", "END_RIFT_ELITE_SKELETON", texture);
+                    "end_rift_elite_skeleton_v1", "END_RIFT_ELITE_SKELETON", texture);
             case "END_RIFT_WAVE_GUARDIAN_SKELETON_V1" -> formatNonEndermanDiagnostic(
                     textureAvailable, "WAVE_GUARDIAN_SKELETON", normalized,
                     "end_rift_wave_guardian_skeleton_v1", "END_RIFT_WAVE_GUARDIAN_SKELETON", texture);

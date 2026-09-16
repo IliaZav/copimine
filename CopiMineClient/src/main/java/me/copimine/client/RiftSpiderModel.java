@@ -20,20 +20,49 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
     public static final int TEXTURE_WIDTH = 64;
     public static final int TEXTURE_HEIGHT = 32;
 
+    public enum Variant {
+        ORDINARY,
+        ELITE,
+        WAVE_GUARDIAN,
+        RITUAL_GUARD
+    }
+
     private final ModelPart root;
     private final ModelPart riftCore;
     private final ModelPart riftShell;
     private final ModelPart riftSpines;
+    private final ModelPart eliteCarapace;
+    private final ModelPart guardianSpine;
+    private final ModelPart guardSeal;
+    private final ModelPart ritualFocus;
+    private final Variant variant;
 
     public RiftSpiderModel(ModelPart root) {
+        this(root, Variant.ORDINARY);
+    }
+
+    public RiftSpiderModel(ModelPart root, Variant variant) {
         super(root);
         this.root = root;
         this.riftCore = root.getChild("rift_core");
         this.riftShell = root.getChild("rift_shell");
         this.riftSpines = root.getChild("rift_spines");
+        this.eliteCarapace = root.getChild("elite_carapace");
+        this.guardianSpine = root.getChild("guardian_spine");
+        this.guardSeal = root.getChild("guard_seal");
+        this.ritualFocus = root.getChild("ritual_focus");
+        this.variant = variant;
+        this.eliteCarapace.visible = variant != Variant.ORDINARY;
+        this.guardianSpine.visible = variant == Variant.WAVE_GUARDIAN;
+        this.guardSeal.visible = variant == Variant.RITUAL_GUARD;
+        this.ritualFocus.visible = variant == Variant.RITUAL_GUARD;
     }
 
     public static TexturedModelData getTexturedModelData() {
+        return getTexturedModelData(Variant.ORDINARY);
+    }
+
+    public static TexturedModelData getTexturedModelData(Variant variant) {
         ModelData data = new ModelData();
         ModelPartData root = data.getRoot();
 
@@ -67,6 +96,25 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
                         .uv(56, 16).cuboid(-1.0F, -5.0F, -4.0F, 2.0F, 3.0F, 2.0F),
                 ModelTransform.pivot(0.0F, 15.0F, 6.0F));
 
+        root.addChild("elite_carapace", ModelPartBuilder.create()
+                        .uv(0, 24).cuboid(-5.5F, -4.2F, -6.5F, 11.0F, 2.2F, 13.0F)
+                        .uv(0, 24).cuboid(-6.2F, -2.4F, -4.8F, 1.6F, 2.2F, 8.0F)
+                        .uv(0, 24).cuboid(4.6F, -2.4F, -4.8F, 1.6F, 2.2F, 8.0F),
+                ModelTransform.pivot(0.0F, 15.0F, 7.0F));
+        root.addChild("guardian_spine", ModelPartBuilder.create()
+                        .uv(24, 24).cuboid(-1.0F, -7.0F, 5.8F, 2.0F, 3.0F, 2.0F)
+                        .uv(24, 29).cuboid(-1.2F, -4.6F, 6.0F, 2.4F, 3.2F, 1.6F)
+                        .uv(32, 24).cuboid(-1.4F, -2.0F, 6.1F, 2.8F, 2.8F, 1.4F),
+                ModelTransform.pivot(0.0F, 15.0F, 4.0F));
+        root.addChild("guard_seal", ModelPartBuilder.create()
+                        .uv(38, 24).cuboid(-2.4F, -5.4F, -8.15F, 4.8F, 3.8F, 0.45F)
+                        .uv(38, 29).cuboid(-1.1F, -6.6F, -8.25F, 2.2F, 1.2F, 0.35F),
+                ModelTransform.pivot(0.0F, 15.0F, -2.0F));
+        root.addChild("ritual_focus", ModelPartBuilder.create()
+                        .uv(46, 24).cuboid(-1.5F, -1.5F, -8.6F, 3.0F, 3.0F, 1.0F)
+                        .uv(54, 24).cuboid(-0.6F, -2.5F, -8.45F, 1.2F, 1.0F, 0.7F),
+                ModelTransform.pivot(0.0F, 15.0F, 1.0F));
+
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }
 
@@ -99,6 +147,16 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         riftShell.yaw = pulse * 0.045F;
         riftSpines.pitch = pulse * 0.10F;
         riftSpines.yaw = pulse * 0.08F;
+        eliteCarapace.roll = pulse * (variant == Variant.ELITE ? 0.04F : 0.025F);
+        eliteCarapace.yaw = pulse * 0.025F;
+        guardianSpine.pitch = pulse * 0.08F;
+        guardianSpine.yaw = pulse * 0.11F;
+        guardSeal.yaw = pulse * 0.12F;
+        ritualFocus.yScale = 1.0F + pulse * 0.16F;
+    }
+
+    public Variant variant() {
+        return variant;
     }
 
     public ModelPart getPart() {

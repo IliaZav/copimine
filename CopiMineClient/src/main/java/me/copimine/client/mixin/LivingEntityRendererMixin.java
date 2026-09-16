@@ -83,11 +83,11 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         // through the Enderman/boss decision object: doing so reports the
         // wrong model and animation metadata even though the final geometry is
         // a spider.
-        if (!"END_RIFT_SPIDER_V1".equals(visual)
+        if (!isEventSpiderVisual(visual)
                 || !EndEventTextureCatalog.isAvailable(texture)) {
             return;
         }
-        copimine$activeModel = copimine$spiderRenderer.model();
+        copimine$activeModel = copimine$spiderRenderer.modelFor(visual);
     }
 
     @Redirect(
@@ -152,12 +152,26 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     @Unique
     private void copimine$selectSkeletonModel(AbstractSkeletonEntity entity) {
         String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
-        boolean elite = "END_RIFT_ELITE_SKELETON_V1".equals(visual);
-        boolean ordinary = "END_RIFT_SKELETON_V1".equals(visual);
         Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
-        if ((!elite && !ordinary) || !EndEventTextureCatalog.isAvailable(texture)) {
+        if (!isEventSkeletonVisual(visual) || !EndEventTextureCatalog.isAvailable(texture)) {
             return;
         }
-        copimine$activeModel = copimine$skeletonRenderer.modelFor(elite);
+        copimine$activeModel = copimine$skeletonRenderer.modelFor(visual);
+    }
+
+    @Unique
+    private static boolean isEventSpiderVisual(String visual) {
+        return "END_RIFT_SPIDER_V1".equals(visual)
+                || "END_RIFT_ELITE_SPIDER_V1".equals(visual)
+                || "END_RIFT_WAVE_GUARDIAN_SPIDER_V1".equals(visual)
+                || "END_RIFT_RITUAL_GUARD_SPIDER_V1".equals(visual);
+    }
+
+    @Unique
+    private static boolean isEventSkeletonVisual(String visual) {
+        return "END_RIFT_SKELETON_V1".equals(visual)
+                || "END_RIFT_ELITE_SKELETON_V1".equals(visual)
+                || "END_RIFT_WAVE_GUARDIAN_SKELETON_V1".equals(visual)
+                || "END_RIFT_RITUAL_GUARD_SKELETON_V1".equals(visual);
     }
 }

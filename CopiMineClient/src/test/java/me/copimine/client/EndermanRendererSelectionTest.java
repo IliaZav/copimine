@@ -91,6 +91,20 @@ class EndermanRendererSelectionTest {
     }
 
     @Test
+    void diagnosticLineForSkeletonExposesItsDedicatedGeometryContract() {
+        Identifier texture = Identifier.of(
+                "copimineclient", "textures/entity/end_rift_wave_guardian_skeleton.png");
+
+        assertEquals(
+                "variant=WAVE_GUARDIAN_SKELETON, model=END_RIFT_WAVE_GUARDIAN_SKELETON_V1, "
+                        + "geometry=end_rift_wave_guardian_skeleton_v1, "
+                        + "texture=copimineclient:textures/entity/end_rift_wave_guardian_skeleton.png, "
+                        + "animationSet=END_RIFT_WAVE_GUARDIAN_SKELETON, resourcePresent=true",
+                EndermanRendererSelection.diagnosticLineForVisual(
+                        "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", texture, true));
+    }
+
+    @Test
     void diagnosticAcceptsTheServerBossVisualAlias() {
         assertEquals(
                 "variant=GUARDIAN, model=END_RIFT_GUARDIAN_V1, "

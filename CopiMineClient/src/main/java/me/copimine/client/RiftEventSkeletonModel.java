@@ -25,6 +25,13 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
     private static final int TEXTURE_WIDTH = 64;
     private static final int TEXTURE_HEIGHT = 32;
 
+    public enum Variant {
+        ORDINARY,
+        ELITE,
+        WAVE_GUARDIAN,
+        RITUAL_GUARD
+    }
+
     private final ModelPart root;
     private final ModelPart head;
     private final ModelPart leftForearm;
@@ -36,9 +43,18 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
     private final ModelPart eliteShoulderLeft;
     private final ModelPart eliteShoulderRight;
     private final ModelPart chestRift;
-    private final boolean elite;
+    private final ModelPart guardCrest;
+    private final ModelPart guardChestSeal;
+    private final ModelPart guardianSpine;
+    private final ModelPart eliteMantle;
+    private final ModelPart eliteHornCrown;
+    private final Variant variant;
 
     public RiftEventSkeletonModel(ModelPart root, boolean elite) {
+        this(root, elite ? Variant.ELITE : Variant.ORDINARY);
+    }
+
+    public RiftEventSkeletonModel(ModelPart root, Variant variant) {
         super(root);
         this.root = root;
         this.head = root.getChild("head");
@@ -51,15 +67,33 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         this.eliteShoulderLeft = root.getChild("left_arm").getChild("elite_shoulder_left");
         this.eliteShoulderRight = root.getChild("right_arm").getChild("elite_shoulder_right");
         this.chestRift = root.getChild("body").getChild("chest_rift");
-        this.elite = elite;
+        this.guardCrest = root.getChild("guard_crest");
+        this.guardChestSeal = root.getChild("guard_chest_seal");
+        this.guardianSpine = root.getChild("guardian_spine");
+        this.eliteMantle = root.getChild("elite_mantle");
+        this.eliteHornCrown = root.getChild("elite_horn_crown");
+        this.variant = variant;
+        boolean elite = isEliteVariant(variant);
+        boolean guardian = variant == Variant.WAVE_GUARDIAN;
+        boolean ritual = variant == Variant.RITUAL_GUARD;
         this.eliteHornLeft.visible = elite;
         this.eliteHornRight.visible = elite;
         this.eliteShoulderLeft.visible = elite;
         this.eliteShoulderRight.visible = elite;
+        this.guardCrest.visible = guardian || ritual;
+        this.guardChestSeal.visible = guardian || ritual;
+        this.guardianSpine.visible = guardian;
+        this.eliteMantle.visible = elite;
+        this.eliteHornCrown.visible = elite;
         this.hat.visible = false;
     }
 
     public static TexturedModelData getTexturedModelData(boolean elite) {
+        return getTexturedModelData(elite ? Variant.ELITE : Variant.ORDINARY);
+    }
+
+    public static TexturedModelData getTexturedModelData(Variant variant) {
+        boolean elite = isEliteVariant(variant);
         ModelData data = new ModelData();
         ModelPartData root = data.getRoot();
 
@@ -143,7 +177,32 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         rightLeg.addChild("right_ankle_bone", cube(16, 16, -1.35F, 18.5F, -1.35F,
                         2.7F, 1.5F, 2.7F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
+        root.addChild("guard_crest", ModelPartBuilder.create()
+                        .uv(40, 20).cuboid(-3.4F, -1.2F, -2.05F, 6.8F, 1.6F, 0.45F)
+                        .uv(40, 23).cuboid(-2.4F, -2.6F, -1.95F, 4.8F, 1.3F, 0.35F),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        root.addChild("guard_chest_seal", ModelPartBuilder.create()
+                        .uv(48, 20).cuboid(-1.8F, 1.8F, -2.0F, 3.6F, 4.4F, 0.35F),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        root.addChild("guardian_spine", ModelPartBuilder.create()
+                        .uv(52, 20).cuboid(-1.0F, 1.0F, 1.65F, 2.0F, 8.5F, 0.65F)
+                        .uv(58, 20).cuboid(-1.6F, 2.5F, 1.5F, 3.2F, 1.0F, 0.8F)
+                        .uv(58, 22).cuboid(-1.6F, 5.0F, 1.5F, 3.2F, 1.0F, 0.8F),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        root.addChild("elite_mantle", ModelPartBuilder.create()
+                        .uv(32, 24).cuboid(-6.0F, -1.0F, -2.5F, 12.0F, 2.4F, 5.0F),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        root.addChild("elite_horn_crown", ModelPartBuilder.create()
+                        .uv(48, 26).cuboid(-3.2F, -11.0F, -1.2F, 1.8F, 4.0F, 2.0F)
+                        .uv(48, 26).cuboid(1.4F, -11.0F, -1.2F, 1.8F, 4.0F, 2.0F),
+                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    }
+
+    private static boolean isEliteVariant(Variant variant) {
+        return variant == Variant.ELITE || variant == Variant.WAVE_GUARDIAN
+                || variant == Variant.RITUAL_GUARD;
     }
 
     private static ModelPartBuilder cube(int u, int v, float x, float y, float z,
@@ -158,6 +217,7 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);
 
         float pulse = MathHelper.sin(animationProgress * 0.14F);
+        boolean elite = isEliteVariant(variant);
         leftForearm.roll += pulse * (elite ? 0.09F : 0.06F);
         rightForearm.roll -= pulse * (elite ? 0.09F : 0.06F);
         leftLowerLeg.yaw += pulse * 0.03F;
@@ -167,12 +227,21 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         eliteHornLeft.roll += pulse * 0.035F;
         eliteHornRight.roll -= pulse * 0.035F;
         chestRift.yScale = 1.0F + pulse * (elite ? 0.16F : 0.10F);
+        guardCrest.yaw = pulse * (variant == Variant.RITUAL_GUARD ? 0.10F : 0.04F);
+        guardChestSeal.yScale = 1.0F + pulse * (variant == Variant.WAVE_GUARDIAN ? 0.18F : 0.10F);
+        guardianSpine.yScale = 1.0F + pulse * 0.08F;
+        eliteMantle.roll = pulse * 0.025F;
+        eliteHornCrown.pitch = pulse * 0.04F;
         head.yaw += MathHelper.clamp(headYaw * 0.017453292F, -0.45F, 0.45F);
         head.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.3F, 0.3F);
     }
 
     public boolean isElite() {
-        return elite;
+        return isEliteVariant(variant);
+    }
+
+    public Variant variant() {
+        return variant;
     }
 
     public ModelPart getPart() {

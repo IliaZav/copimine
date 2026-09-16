@@ -37,7 +37,12 @@ def _texture_colors(path: Path) -> tuple[set[int], set[tuple[int, int, int]]]:
 
 
 def test_wave_skeleton_atlases_are_opaque_and_reference_purple() -> None:
-    for name in ("end_rift_skeleton.png", "end_rift_elite_skeleton.png"):
+    for name in (
+        "end_rift_skeleton.png",
+        "end_rift_elite_skeleton.png",
+        "end_rift_wave_guardian_skeleton.png",
+        "end_rift_ritual_guard_skeleton.png",
+    ):
         path = ENTITY / name
         assert path.is_file(), name
         with Image.open(path).convert("RGBA") as image:
@@ -59,6 +64,11 @@ def test_other_wave_mob_atlases_keep_the_same_clean_surface_contract() -> None:
         "end_rift_enderman.png",
         "end_rift_elite.png",
         "end_rift_spider.png",
+        "end_rift_wave_guardian_enderman.png",
+        "end_rift_ritual_guard_enderman.png",
+        "end_rift_elite_spider.png",
+        "end_rift_wave_guardian_spider.png",
+        "end_rift_ritual_guard_spider.png",
     ):
         path = ENTITY / name
         assert path.is_file(), name
@@ -87,6 +97,39 @@ def test_ritual_caster_atlas_is_opaque_and_has_a_controlled_channel_accent() -> 
         or (red >= 180 and green >= 170 and blue >= 180)
         for red, green, blue in colors
     )
+
+
+def test_every_runtime_mob_role_has_a_native_uv_sheet() -> None:
+    from CopiMineClient.tools.validate_end_rift_mob_uv import EXPECTED_MOB_ATLASES, validate_atlases
+
+    report = validate_atlases(ENTITY)
+    assert set(report) == set(EXPECTED_MOB_ATLASES)
+    assert all(not issues for issues in report.values()), report
+
+
+def test_role_models_have_explicit_variant_parts_and_visual_routing() -> None:
+    enderman = (CLIENT_JAVA / "RiftEventEndermanModel.java").read_text(encoding="utf-8")
+    spider = (CLIENT_JAVA / "RiftSpiderModel.java").read_text(encoding="utf-8")
+    spider_renderer = (CLIENT_JAVA / "RiftSpiderModelRenderer.java").read_text(encoding="utf-8")
+    for role in ("WAVE_GUARDIAN", "RITUAL_GUARD"):
+        assert role in enderman
+        assert role in spider
+    for part in ("body_shell", "horn_left", "guardian_mantle", "guard_seal"):
+        assert part in enderman, part
+    for part in ("elite_carapace", "guardian_spine", "ritual_focus"):
+        assert part in spider, part
+    assert "modelFor(String visualId)" in spider_renderer
+
+
+def test_assembled_preview_board_covers_every_runtime_mob_role() -> None:
+    preview_tool = CLIENT / "tools" / "render_end_rift_mob_previews.py"
+    evidence = ROOT / "artifacts" / "end-rift-v3-evidence"
+    board = evidence / "end-rift-mob-model-board-20260916.png"
+    previews = evidence / "model-previews"
+    assert preview_tool.is_file()
+    assert board.is_file()
+    assert len(list(previews.glob("*.png"))) == 13
+    assert "Static assembled previews" in preview_tool.read_text(encoding="utf-8")
 
 
 def test_wave_skeletons_use_a_dedicated_long_rig_and_scoped_renderer_swap() -> None:

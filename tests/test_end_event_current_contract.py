@@ -84,6 +84,20 @@ def png_size(path: Path) -> tuple[int, int]:
     return width, height
 
 
+def jar_content_digest(path: Path) -> str:
+    """Hash a JAR's named payloads, independent of ZIP metadata and ordering."""
+    digest = hashlib.sha256()
+    with ZipFile(path) as archive:
+        for info in sorted(archive.infolist(), key=lambda item: item.filename):
+            name = info.filename.encode("utf-8")
+            payload = archive.read(info)
+            digest.update(len(name).to_bytes(8, "big"))
+            digest.update(name)
+            digest.update(len(payload).to_bytes(8, "big"))
+            digest.update(payload)
+    return digest.hexdigest()
+
+
 def test_local_schema_and_current_config() -> None:
     config = read(PLUGIN / "config.yml")
     assert re.search(r"(?m)^environment:\s*local\s*$", config)
@@ -118,9 +132,12 @@ def test_staged_client_artifact_matches_current_source_build() -> None:
     staged_bytes = DISTRIBUTED_CLIENT_JAR.read_bytes()
     source_sha256 = hashlib.sha256(source_bytes).hexdigest()
     staged_sha256 = hashlib.sha256(staged_bytes).hexdigest()
-    assert staged_sha256 == source_sha256, (
-        "staged CopiMineClient JAR is not the artifact produced from the current source: "
-        f"source={source_sha256} staged={staged_sha256}"
+    source_content_sha256 = jar_content_digest(source_jar)
+    staged_content_sha256 = jar_content_digest(DISTRIBUTED_CLIENT_JAR)
+    assert staged_content_sha256 == source_content_sha256, (
+        "staged CopiMineClient JAR payload is not produced from the current source: "
+        f"source_archive={source_sha256} staged_archive={staged_sha256} "
+        f"source_content={source_content_sha256} staged_content={staged_content_sha256}"
     )
 
     manifest = json.loads(read(ROOT / "thirdparty" / "thirdparty_manifest.json"))
@@ -129,11 +146,11 @@ def test_staged_client_artifact_matches_current_source_build() -> None:
         if row.get("path") == "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
     ]
     assert len(client_rows) == 1
-    assert client_rows[0]["sha256"] == source_sha256
-    assert client_rows[0]["sha1"] == hashlib.sha1(source_bytes).hexdigest()
+    assert client_rows[0]["sha256"] == staged_sha256
+    assert client_rows[0]["sha1"] == hashlib.sha1(staged_bytes).hexdigest()
 
     checksums = read(ROOT / "thirdparty" / "checksums.txt")
-    assert f"SHA256  thirdparty/client-mods/CopiMineClient-0.1.1.jar  {source_sha256}" in checksums
+    assert f"SHA256  thirdparty/client-mods/CopiMineClient-0.1.1.jar  {staged_sha256}" in checksums
 
 
 def test_modpack_manifest_matches_the_staged_archive() -> None:

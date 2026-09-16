@@ -23,21 +23,10 @@ def atlas(size: tuple[int, int], palette: list[tuple[int, int, int]], seed: int)
     image = Image.new("RGBA", size, (*palette[0], 255))
     draw = ImageDraw.Draw(image)
 
-    # Use large, aligned armour/cloth panels instead of per-pixel noise. The
-    # midpoint shades are material layers, not random grain: they keep the
-    # atlas readable at the model's mip level while retaining the twelve-colour
-    # quality gate used for event entities.
-    def mix(left: tuple[int, int, int], right: tuple[int, int, int], amount: float) -> tuple[int, int, int]:
-        return tuple(round(a + (b - a) * amount) for a, b in zip(left, right))
-
-    layered = list(palette)
-    for index in range(len(palette)):
-        layered.append(mix(palette[index], palette[(index + 1) % len(palette)], 0.42))
-
-    # The old random checkerboard made every model look dirty once Minecraft
-    # sampled the 64x32 sheet at distance. Each of these twelve plates is
-    # deliberately broad and flat; the one-pixel seams and sparse accents
-    # below provide enough depth without a dirty checkerboard.
+    # The atlas is a material, not a concept thumbnail. Keep every texel
+    # opaque and use a small hand-authored palette. Broad plates survive
+    # Minecraft's mip sampling; no interpolated or semitransparent guide
+    # colours are allowed to create holes and colour noise on the model.
     columns = 4
     rows = 3
     for row in range(rows):
@@ -46,34 +35,36 @@ def atlas(size: tuple[int, int], palette: list[tuple[int, int, int]], seed: int)
         for column in range(columns):
             left = column * width // columns
             right = (column + 1) * width // columns - 1
-            fill = layered[(row * columns + column + seed) % len(layered)]
+            fill = palette[(row * columns + column + seed) % len(palette)]
             draw.rectangle((left, top, right, bottom), fill=(*fill, 255))
     draw.rectangle((0, 0, width - 1, height - 1), outline=(*palette[1], 255), width=1)
-    draw.line((width // 2, 1, width // 2, height - 2), fill=(*palette[2], 210), width=1)
+    draw.line((width // 2, 1, width // 2, height - 2), fill=(*palette[2], 255), width=1)
     return image
 
 
 def panel_lines(draw: ImageDraw.ImageDraw, width: int, height: int, color: tuple[int, int, int]) -> None:
-    # Only mark the large UV islands.  A dense grid reads as pixel dirt on a
-    # moving mob, while these four seams still separate the mapped faces.
+    # Only mark the large UV islands. A dense grid reads as pixel dirt on a
+    # moving mob, while these opaque seams still separate the mapped faces.
     for x in (width // 4, width // 2, (width * 3) // 4):
-        draw.line((x, 1, x, height - 2), fill=(*color, 150), width=1)
-    draw.line((1, height // 2, width - 2, height // 2), fill=(*color, 140), width=1)
+        draw.line((x, 1, x, height - 2), fill=(*color, 255), width=1)
+    draw.line((1, height // 2, width - 2, height // 2), fill=(*color, 255), width=1)
 
 
 def sigil(draw: ImageDraw.ImageDraw, origin: tuple[int, int], radius: int,
           colors: list[tuple[int, int, int]], phase: int) -> None:
     ox, oy = origin
     outer, inner, spark = colors
-    points = []
-    for index in range(8):
-        x = ox + ((index * radius + phase) % (radius * 2 + 1)) - radius
-        y = oy + (((index * 3 + phase) * radius) % (radius * 2 + 1)) - radius
-        points.append((x, y))
-    draw.line((ox - radius, oy, ox + radius, oy), fill=(*outer, 255), width=1)
-    draw.line((ox, oy - radius, ox, oy + radius), fill=(*outer, 255), width=1)
-    draw.rectangle((ox - radius // 2, oy - radius // 2, ox + radius // 2, oy + radius // 2), outline=(*inner, 255), width=1)
-    draw.line(points, fill=(*spark, 255), width=1, joint="curve")
+    # Keep the sigil symmetric. The previous seeded polyline made the small
+    # 64x32 atlas look like a spill of unrelated pixels when wrapped around a
+    # moving skeleton.
+    draw.line((ox, oy - radius, ox + radius, oy, ox, oy + radius,
+               ox - radius, oy, ox, oy - radius), fill=(*outer, 255), width=1)
+    inner_radius = max(1, radius // 2)
+    draw.rectangle((ox - inner_radius, oy - inner_radius,
+                    ox + inner_radius, oy + inner_radius),
+                   outline=(*inner, 255), width=1)
+    draw.line((ox - inner_radius, oy, ox + inner_radius, oy), fill=(*spark, 255), width=1)
+    draw.line((ox, oy - inner_radius, ox, oy + inner_radius), fill=(*spark, 255), width=1)
     draw.point((ox, oy), fill=(*spark, 255))
 
 
@@ -174,18 +165,18 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
 
 
 def spider_sheet() -> None:
-    palette = [(36, 8, 37), (67, 12, 54), (103, 19, 69), (17, 39, 72), (31, 76, 105), (184, 44, 106)]
+    palette = [(10, 2, 16), (20, 4, 30), (33, 11, 41), (52, 14, 67), (78, 20, 98), (112, 24, 142)]
     image = atlas((64, 32), palette, 71)
     draw = ImageDraw.Draw(image)
-    panel_lines(draw, 64, 32, (31, 76, 105))
-    # Eight legs are represented as angular cyan veins over a crimson shell.
+    panel_lines(draw, 64, 32, (52, 14, 67))
+    # Eight legs are represented as restrained violet seams over a dark shell.
     for x in (4, 12, 20, 28, 36, 44, 52, 60):
-        draw.line((x, 18, max(0, x - 6), 30), fill=(31, 76, 105, 255), width=2)
-        draw.line((x, 19, min(63, x + 7), 28), fill=(184, 44, 106, 255), width=1)
-    draw.rectangle((25, 9, 38, 21), outline=(184, 44, 106, 255), width=2)
-    draw.rectangle((29, 12, 34, 17), fill=(17, 39, 72, 255), outline=(96, 224, 255, 255), width=1)
+        draw.line((x, 18, max(0, x - 6), 30), fill=(78, 20, 98, 255), width=2)
+        draw.line((x, 19, min(63, x + 7), 28), fill=(112, 24, 142, 255), width=1)
+    draw.rectangle((25, 9, 38, 21), outline=(112, 24, 142, 255), width=2)
+    draw.rectangle((29, 12, 34, 17), fill=(20, 4, 30, 255), outline=(136, 0, 255, 255), width=1)
     for eye_x in (27, 34):
-        draw.rectangle((eye_x, 10, eye_x + 1, 11), fill=(255, 91, 211, 255))
+        draw.rectangle((eye_x, 10, eye_x + 1, 11), fill=(174, 0, 255, 255))
     image.save(OUT / "end_rift_spider.png", format="PNG", optimize=False)
 
 
@@ -278,17 +269,17 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     enderman_sheet(
         "end_rift_enderman.png",
-        [(10, 14, 44), (18, 22, 72), (32, 35, 105), (72, 34, 142), (145, 44, 191), (30, 176, 214)],
+        [(10, 2, 16), (20, 4, 30), (33, 11, 41), (52, 14, 67), (78, 20, 98), (112, 24, 142)],
         17,
-        (145, 44, 191),
-        (255, 117, 231),
+        (136, 0, 255),
+        (174, 0, 255),
     )
     enderman_sheet(
         "end_rift_elite.png",
-        [(7, 35, 51), (11, 69, 82), (16, 112, 121), (21, 164, 153), (205, 154, 55), (235, 225, 131)],
+        [(8, 2, 14), (18, 3, 27), (30, 6, 45), (48, 9, 67), (76, 14, 103), (116, 20, 151)],
         29,
-        (205, 154, 55),
-        (120, 255, 236),
+        (156, 0, 255),
+        (214, 24, 255),
     )
     enderman_sheet(
         "end_rift_guardian.png",
@@ -349,17 +340,17 @@ def main() -> None:
     spider_sheet()
     skeleton_sheet(
         "end_rift_skeleton.png",
-        [(218, 213, 191), (164, 162, 151), (101, 110, 112), (47, 67, 82), (28, 128, 151), (89, 226, 211)],
+        [(10, 2, 16), (20, 4, 30), (33, 11, 41), (52, 14, 67), (78, 20, 98), (112, 24, 142)],
         227,
-        (28, 128, 151),
-        (198, 255, 241),
+        (136, 0, 255),
+        (174, 0, 255),
     )
     skeleton_sheet(
         "end_rift_elite_skeleton.png",
-        [(240, 226, 194), (186, 151, 90), (111, 68, 72), (52, 19, 49), (208, 46, 134), (255, 117, 231)],
+        [(8, 2, 14), (18, 3, 27), (30, 6, 45), (48, 9, 67), (76, 14, 103), (116, 20, 151)],
         239,
-        (208, 46, 134),
-        (255, 220, 246),
+        (156, 0, 255),
+        (214, 24, 255),
     )
     bossbar_frame()
 

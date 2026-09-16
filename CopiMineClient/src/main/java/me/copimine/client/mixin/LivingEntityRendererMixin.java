@@ -4,14 +4,17 @@ import me.copimine.client.ClientBridgeProtocol;
 import me.copimine.client.EndEventTextureCatalog;
 import me.copimine.client.EndermanRendererSelection;
 import me.copimine.client.RiftEventEndermanModelRenderer;
+import me.copimine.client.RiftEventSkeletonModelRenderer;
 import me.copimine.client.RiftGuardianModelRenderer;
 import me.copimine.client.RiftSpiderModelRenderer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.LivingEntityRenderer;
 import net.minecraft.client.render.entity.model.EntityModel;
 import net.minecraft.client.render.entity.model.SpiderEntityModel;
+import net.minecraft.client.render.entity.model.SkeletonEntityModel;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.mob.AbstractSkeletonEntity;
 import net.minecraft.entity.mob.EndermanEntity;
 import net.minecraft.entity.mob.SpiderEntity;
 import net.minecraft.util.Identifier;
@@ -25,9 +28,9 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * LivingEntityRenderer owns the actual render method for spiders.  The
- * concrete SpiderEntityRenderer only overrides texture/lying-angle methods,
- * so the model selection is applied at the shared render boundary.
+ * LivingEntityRenderer owns the shared render method used by the event
+ * skeletons and spiders. Their concrete renderers mostly provide texture and
+ * pose details, so model selection is applied at this shared boundary.
  *
  * <p>The vanilla renderer model is never replaced.  The field reads emitted
  * by {@code render} are redirected to a scoped model while the current call
@@ -47,16 +50,23 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     @Unique
     private final RiftEventEndermanModelRenderer copimine$eventRenderer = new RiftEventEndermanModelRenderer();
     @Unique
+    private final RiftEventSkeletonModelRenderer copimine$skeletonRenderer = new RiftEventSkeletonModelRenderer();
+    @Unique
     private EntityModel<?> copimine$activeModel;
 
     @Inject(method = "render(Lnet/minecraft/entity/LivingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"))
-    private void copimine$selectAdaptedSpiderModel(LivingEntity entity, float yaw, float tickDelta,
+    private void copimine$selectEventModel(LivingEntity entity, float yaw, float tickDelta,
                                                     MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                                     int light, CallbackInfo ci) {
         // A previous render may have failed before its RETURN callback.  The
         // vanilla field was not changed, so clearing this scoped selector is
         // sufficient to make the next invocation fail closed.
         copimine$activeModel = null;
+        if (entity instanceof AbstractSkeletonEntity skeleton
+                && getModel() instanceof SkeletonEntityModel<?>) {
+            copimine$selectSkeletonModel(skeleton);
+            return;
+        }
         if (entity instanceof EndermanEntity enderman
                 && getModel() instanceof net.minecraft.client.render.entity.model.EndermanEntityModel<?>) {
             copimine$selectEndermanModel(enderman);
@@ -86,13 +96,13 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
                     value = "FIELD",
                     target = "Lnet/minecraft/client/render/entity/LivingEntityRenderer;model:Lnet/minecraft/client/render/entity/model/EntityModel;",
                     opcode = Opcodes.GETFIELD))
-    private EntityModel<?> copimine$readScopedSpiderModel(LivingEntityRenderer<?, ?> renderer) {
+    private EntityModel<?> copimine$readScopedEventModel(LivingEntityRenderer<?, ?> renderer) {
         EntityModel<?> active = copimine$activeModel;
         return active == null ? renderer.getModel() : active;
     }
 
     @Inject(method = "render(Lnet/minecraft/entity/LivingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))
-    private void copimine$clearScopedSpiderModel(LivingEntity entity, float yaw, float tickDelta,
+    private void copimine$clearScopedEventModel(LivingEntity entity, float yaw, float tickDelta,
                                                   MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                                   int light, CallbackInfo ci) {
         copimine$activeModel = null;
@@ -137,5 +147,17 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         if (customModel != null) {
             copimine$activeModel = customModel;
         }
+    }
+
+    @Unique
+    private void copimine$selectSkeletonModel(AbstractSkeletonEntity entity) {
+        String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
+        boolean elite = "END_RIFT_ELITE_SKELETON_V1".equals(visual);
+        boolean ordinary = "END_RIFT_SKELETON_V1".equals(visual);
+        Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
+        if ((!elite && !ordinary) || !EndEventTextureCatalog.isAvailable(texture)) {
+            return;
+        }
+        copimine$activeModel = copimine$skeletonRenderer.modelFor(elite);
     }
 }

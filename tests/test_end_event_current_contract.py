@@ -772,6 +772,8 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
         "me/copimine/client/EndRiftBossBarHud.class",
         "me/copimine/client/RiftSpiderModel.class",
         "me/copimine/client/RiftSpiderModelRenderer.class",
+        "me/copimine/client/RiftEventSkeletonModel.class",
+        "me/copimine/client/RiftEventSkeletonModelRenderer.class",
         "me/copimine/client/mixin/LivingEntityRendererMixin.class",
         "assets/copimineclient/models/entity/end_rift_guardian/geometry.json",
         "assets/copimineclient/textures/entity/end_rift_user_boss.png",

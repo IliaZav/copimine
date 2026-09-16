@@ -87,15 +87,39 @@ def png_size(path: Path) -> tuple[int, int]:
 def jar_content_digest(path: Path) -> str:
     """Hash a JAR's named payloads, independent of ZIP metadata and ordering."""
     digest = hashlib.sha256()
-    with ZipFile(path) as archive:
-        for info in sorted(archive.infolist(), key=lambda item: item.filename):
-            name = info.filename.encode("utf-8")
-            payload = archive.read(info)
-            digest.update(len(name).to_bytes(8, "big"))
-            digest.update(name)
-            digest.update(len(payload).to_bytes(8, "big"))
-            digest.update(payload)
+    for name, payload in jar_entry_payloads(path):
+        encoded_name = name.encode("utf-8")
+        digest.update(len(encoded_name).to_bytes(8, "big"))
+        digest.update(encoded_name)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
     return digest.hexdigest()
+
+
+def jar_entry_payloads(path: Path) -> list[tuple[str, bytes]]:
+    with ZipFile(path) as archive:
+        return [
+            (info.filename, archive.read(info))
+            for info in sorted(archive.infolist(), key=lambda item: item.filename)
+        ]
+
+
+def jar_entry_digests(path: Path) -> dict[str, str]:
+    return {
+        name: hashlib.sha256(payload).hexdigest()
+        for name, payload in jar_entry_payloads(path)
+    }
+
+
+def _jar_digest_debug(source: Path, staged: Path) -> str:
+    source_entries = jar_entry_digests(source)
+    staged_entries = jar_entry_digests(staged)
+    names = sorted(set(source_entries) | set(staged_entries))
+    different = [
+        name for name in names
+        if source_entries.get(name) != staged_entries.get(name)
+    ]
+    return ", ".join(different[:24]) or "<none>"
 
 
 def test_local_schema_and_current_config() -> None:
@@ -137,7 +161,8 @@ def test_staged_client_artifact_matches_current_source_build() -> None:
     assert staged_content_sha256 == source_content_sha256, (
         "staged CopiMineClient JAR payload is not produced from the current source: "
         f"source_archive={source_sha256} staged_archive={staged_sha256} "
-        f"source_content={source_content_sha256} staged_content={staged_content_sha256}"
+        f"source_content={source_content_sha256} staged_content={staged_content_sha256} "
+        f"different_entries={_jar_digest_debug(source_jar, DISTRIBUTED_CLIENT_JAR)}"
     )
 
     manifest = json.loads(read(ROOT / "thirdparty" / "thirdparty_manifest.json"))

@@ -14,8 +14,9 @@ import java.util.Set;
  * model units (sixteen model units per block).  The profile is deliberately a
  * small list of proxy boxes rather than a guess based on the vanilla
  * Enderman AABB.  The values below are generated from the checked-in
- * {@code geometry.json}: every center and extent is the union of the cubes on
- * the corresponding source bone(s).  Runtime code never reads the client
+ * {@code geometry.json}: every center and extent is the axis-aligned envelope
+ * of the corresponding source cubes after their bind-pose bone hierarchy and
+ * cube rotations have been applied.  Runtime code never reads the client
  * resource or depends on the client mod being installed.</p>
  */
 public final class BossHitboxProfile {
@@ -75,34 +76,47 @@ public final class BossHitboxProfile {
      */
     public static BossHitboxProfile canonical() {
         return new BossHitboxProfile(List.of(
-                // head: head bone including its crown/crest cubes
-                part(PartId.HEAD, "head", 0.0D, 70.75D, 0.5D,
-                        14.5D, 9.0D, 19.0D, 0),
+                // head: the rotated head bone including its crown/crest cubes
+                part(PartId.HEAD, "head", 0.0D, 70.6732992256D, 1.2842263817D,
+                        14.4644440107D, 10.4219158504D, 19.9603486544D, 0,
+                        0.0D, 61.0D, 0.75D),
                 // body lower and upper envelopes are intentionally separate;
                 // this avoids turning the empty waist/shoulder space into a
                 // single huge target while keeping the real torso hittable.
-                part(PartId.CHEST, "body", 0.0D, 49.625D, 0.625D,
-                        11.5D, 6.25D, 22.5D, 0),
-                part(PartId.PELVIS, "body", 0.0D, 37.75D, 0.75D,
-                        10.0D, 5.5D, 8.5D, 0),
-                part(PartId.LEFT_UPPER_ARM, "left_hand", -7.75D, 51.875D, 0.5D,
-                        4.0D, 4.0D, 21.25D, 0),
-                part(PartId.LEFT_FOREARM, "left_hand_low", -8.0D, 31.25D, 0.5D,
-                        3.0D, 3.0D, 20.0D, 0),
-                part(PartId.RIGHT_UPPER_ARM, "right_hand", 7.75D, 51.875D, 0.5D,
-                        4.0D, 4.0D, 21.25D, 0),
-                part(PartId.RIGHT_FOREARM, "right_hand_low", 8.0D, 31.25D, 0.5D,
-                        3.0D, 3.0D, 20.0D, 0),
+                // The two envelopes are the y<40 and y>=40 cube groups on
+                // the rotated source body bone.
+                part(PartId.CHEST, "body", 0.0D, 50.6138129700D, -0.2442505502D,
+                        11.5D, 7.8292277219D, 21.7138607270D, 0,
+                        0.0D, 62.0D, 0.0D),
+                part(PartId.PELVIS, "body", 0.0D, 36.6779816645D, -1.3445918024D,
+                        11.0D, 5.8276938105D, 7.1600929259D, 0,
+                        0.0D, 62.0D, 0.0D),
+                part(PartId.LEFT_UPPER_ARM, "left_hand", -5.2365464907D, 53.0348418104D,
+                        -3.3052346583D, 8.1872555779D, 11.4787277965D,
+                        21.4306459399D, 0, -7.5D, 62.5D, 0.75D),
+                part(PartId.LEFT_FOREARM, "left_hand_low", -5.7856480035D, 31.7140814232D,
+                        2.2459368031D, 7.5314943688D, 6.5299723365D,
+                        20.2335698117D, 0, -8.0D, 41.25D, 0.75D),
+                part(PartId.RIGHT_UPPER_ARM, "right_hand", 5.2365464907D, 53.0348418104D,
+                        -3.3052346583D, 8.1872555779D, 11.4787277965D,
+                        21.4306459399D, 0, 7.5D, 62.5D, 0.75D),
+                part(PartId.RIGHT_FOREARM, "right_hand_low", 5.7856480035D, 31.7140814232D,
+                        2.2459368031D, 7.5314943688D, 6.5299723365D,
+                        20.2335698117D, 0, 8.0D, 41.25D, 0.75D),
                 // Each leg is two source envelopes because the geometry has a
                 // long lower assembly plus the raised knee/upper assembly.
-                part(PartId.LEFT_LEG, "group2", -3.0D, 10.5D, 0.125D,
-                        3.0D, 3.25D, 21.0D, 0),
-                part(PartId.LEFT_LEG, "group6", -3.0D, 29.75D, 0.75D,
-                        3.0D, 3.0D, 12.5D, 1),
-                part(PartId.RIGHT_LEG, "group", 3.0D, 10.5D, 0.125D,
-                        3.0D, 3.25D, 21.0D, 0),
-                part(PartId.RIGHT_LEG, "group5", 3.0D, 29.75D, 0.75D,
-                        3.0D, 3.0D, 12.5D, 1)
+                part(PartId.LEFT_LEG, "group6", -3.0D, 29.6703755177D, -1.9648348425D,
+                        3.0D, 4.6059119869D, 12.7846393438D, 0,
+                        -3.0D, 23.0D, 0.75D),
+                part(PartId.LEFT_LEG, "group2+group4", -3.0D, 11.7451726525D,
+                        0.0715123060D, 3.0D, 7.6080144079D, 23.3920818671D, 1,
+                        -3.0D, 23.5D, 1.75D),
+                part(PartId.RIGHT_LEG, "group5", 3.0D, 29.6703755177D, -1.9648348425D,
+                        3.0D, 4.6059119869D, 12.7846393438D, 0,
+                        3.0D, 23.0D, 0.75D),
+                part(PartId.RIGHT_LEG, "group+group3", 3.0D, 11.7451726525D,
+                        0.0715123060D, 3.0D, 7.6080144079D, 23.3920818671D, 1,
+                        3.0D, 23.5D, 1.75D)
         ));
     }
 
@@ -130,9 +144,9 @@ public final class BossHitboxProfile {
 
     private static Part part(PartId id, String boneName, double centerX, double centerY,
                              double centerZ, double width, double depth, double height,
-                             int segmentIndex) {
+                             int segmentIndex, double pivotX, double pivotY, double pivotZ) {
         return new Part(id, boneName, new Vec3(centerX, centerY, centerZ),
-                width, depth, height, segmentIndex);
+                width, depth, height, segmentIndex, new Vec3(pivotX, pivotY, pivotZ));
     }
 
     private static Bounds boundsOf(List<Part> parts) {
@@ -163,7 +177,14 @@ public final class BossHitboxProfile {
 
     public record Part(PartId id, String boneName, Vec3 centerModel,
                        double widthModel, double depthModel, double heightModel,
-                       int segmentIndex) {
+                       int segmentIndex, Vec3 posePivotModel) {
+        public Part(PartId id, String boneName, Vec3 centerModel,
+                    double widthModel, double depthModel, double heightModel,
+                    int segmentIndex) {
+            this(id, boneName, centerModel, widthModel, depthModel, heightModel,
+                    segmentIndex, centerModel);
+        }
+
         public Part {
             if (id == null) {
                 throw new IllegalArgumentException("hitbox part id is required");
@@ -173,6 +194,9 @@ public final class BossHitboxProfile {
             }
             if (centerModel == null) {
                 throw new IllegalArgumentException("hitbox part center is required: " + id);
+            }
+            if (posePivotModel == null) {
+                throw new IllegalArgumentException("hitbox part pose pivot is required: " + id);
             }
             requirePositiveFinite(widthModel, "widthModel");
             requirePositiveFinite(depthModel, "depthModel");

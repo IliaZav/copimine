@@ -19,6 +19,8 @@ public final class BossHitboxTransformPolicy {
         }
         Matrix3 poseRotation = Matrix3.eulerXyz(
                 pose.pitchDegrees(), pose.yawDegrees(), pose.rollDegrees());
+        Vec3 posePivot = new Vec3(part.posePivotModel().x(),
+                part.posePivotModel().y(), part.posePivotModel().z());
         List<Vec3> corners = new ArrayList<>(8);
         double halfWidth = part.widthModel() / 2.0D;
         double halfHeight = part.heightModel() / 2.0D;
@@ -30,7 +32,8 @@ public final class BossHitboxTransformPolicy {
                             part.centerModel().x() + x * halfWidth,
                             part.centerModel().y() + y * halfHeight,
                             part.centerModel().z() + z * halfDepth);
-                    Vec3 posed = poseRotation.transform(corner).add(new Vec3(
+                    Vec3 posed = poseRotation.transform(corner.subtract(posePivot))
+                            .add(posePivot).add(new Vec3(
                             pose.translationModelX(), pose.translationModelY(),
                             pose.translationModelZ()));
                     corners.add(rotateAroundWorldYaw(posed.scale(1.0D / MODEL_UNITS_PER_BLOCK), anchor.yawDegrees()));
@@ -150,6 +153,10 @@ public final class BossHitboxTransformPolicy {
     }
 
     public record Vec3(double x, double y, double z) {
+        private Vec3 subtract(Vec3 other) {
+            return new Vec3(x - other.x(), y - other.y(), z - other.z());
+        }
+
         private Vec3 add(Vec3 other) {
             return new Vec3(x + other.x(), y + other.y(), z + other.z());
         }

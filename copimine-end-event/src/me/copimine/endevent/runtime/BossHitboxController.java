@@ -214,6 +214,32 @@ public final class BossHitboxController {
     }
 
     /**
+     * Validates a hit reported against one square Interaction proxy against
+     * the exact model-space envelope for that segment.  Paper exposes only a
+     * square horizontal Interaction size, so the proxy itself is deliberately
+     * treated as a broad selector; damage is accepted only when the attacker's
+     * ray also crosses the selected rotated model box.
+     */
+    public boolean proxyRayIntersects(LivingEntity boss, Interaction proxy,
+                                      Entity source,
+                                      Map<BossHitboxProfile.PartId,
+                                              BossHitboxTransformPolicy.PoseOffset> poses,
+                                      double maxDistance) {
+        if (!owns(proxy) || boss == null || source == null
+                || !hasBoss(boss.getUniqueId()) || !boss.isValid() || boss.isDead()) {
+            return false;
+        }
+        BossHitboxProfile.Part part = partForProxy(proxy);
+        SourceRay ray = sourceRay(source);
+        if (part == null || ray == null || ray.origin().getWorld() == null
+                || !ray.origin().getWorld().equals(boss.getWorld())) {
+            return false;
+        }
+        return rayIntersects(transformedBox(boss, part, poses), ray.origin(),
+                ray.direction(), boundedDistance(maxDistance));
+    }
+
+    /**
      * Validates the legacy LivingEntity carrier hit against the composite
      * model boxes.  The client normally selects an Interaction proxy, but a
      * vanilla Enderman renderer can still send a click for the carrier when
@@ -226,39 +252,18 @@ public final class BossHitboxController {
                                                 BossHitboxTransformPolicy.PoseOffset> poses,
                                         double maxDistance) {
         if (boss == null || source == null || !hasBoss(boss.getUniqueId())
-                || !boss.isValid() || boss.isDead() || !source.isValid()) {
+                || !boss.isValid() || boss.isDead()) {
             return false;
         }
-        Location origin;
-        Vector direction;
-        if (source instanceof LivingEntity living) {
-            origin = living.getEyeLocation();
-            direction = origin.getDirection();
-        } else if (source instanceof org.bukkit.entity.Projectile projectile) {
-            origin = projectile.getLocation();
-            direction = projectile.getVelocity();
-            if (direction.lengthSquared() < 1.0E-8D) {
-                return false;
-            }
-            direction.normalize();
-        } else {
+        SourceRay ray = sourceRay(source);
+        if (ray == null || ray.origin().getWorld() == null
+                || !ray.origin().getWorld().equals(boss.getWorld())) {
             return false;
         }
-        if (origin.getWorld() == null || !origin.getWorld().equals(boss.getWorld())
-                || direction.lengthSquared() < 1.0E-8D) {
-            return false;
-        }
-        direction.normalize();
-        double distanceLimit = Math.max(0.1D, Math.min(32.0D, maxDistance));
+        double distanceLimit = boundedDistance(maxDistance);
         for (BossHitboxProfile.Part part : profile.parts()) {
-            BossHitboxTransformPolicy.PoseOffset pose = poses == null
-                    ? BossHitboxTransformPolicy.PoseOffset.NONE
-                    : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
-            BossHitboxTransformPolicy.Box box = BossHitboxTransformPolicy.transform(part,
-                    new BossHitboxTransformPolicy.Anchor(boss.getLocation().getX(),
-                            boss.getLocation().getY(), boss.getLocation().getZ(), boss.getLocation().getYaw()),
-                    pose);
-            if (rayIntersects(box, origin, direction, distanceLimit)) {
+            if (rayIntersects(transformedBox(boss, part, poses), ray.origin(),
+                    ray.direction(), distanceLimit)) {
                 return true;
             }
         }
@@ -457,6 +462,58 @@ public final class BossHitboxController {
         }
     }
 
+    private BossHitboxProfile.Part partForProxy(Interaction proxy) {
+        Slot slot = proxy == null ? null : slots.get(proxy.getUniqueId());
+        if (slot == null) {
+            return null;
+        }
+        return profile.parts().stream()
+                .filter(candidate -> candidate.id() == slot.partId()
+                        && candidate.segmentIndex() == slot.segmentIndex())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private BossHitboxTransformPolicy.Box transformedBox(
+            LivingEntity boss,
+            BossHitboxProfile.Part part,
+            Map<BossHitboxProfile.PartId,
+                    BossHitboxTransformPolicy.PoseOffset> poses) {
+        BossHitboxTransformPolicy.PoseOffset pose = poses == null
+                ? BossHitboxTransformPolicy.PoseOffset.NONE
+                : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
+        Location location = boss.getLocation();
+        return BossHitboxTransformPolicy.transform(part,
+                new BossHitboxTransformPolicy.Anchor(location.getX(), location.getY(),
+                        location.getZ(), location.getYaw()), pose);
+    }
+
+    private SourceRay sourceRay(Entity source) {
+        if (source == null || !source.isValid()) {
+            return null;
+        }
+        Location origin;
+        Vector direction;
+        if (source instanceof LivingEntity living) {
+            origin = living.getEyeLocation();
+            direction = origin.getDirection();
+        } else if (source instanceof org.bukkit.entity.Projectile projectile) {
+            origin = projectile.getLocation();
+            direction = projectile.getVelocity();
+        } else {
+            return null;
+        }
+        if (origin == null || origin.getWorld() == null || direction == null
+                || direction.lengthSquared() < 1.0E-8D) {
+            return null;
+        }
+        return new SourceRay(origin, direction.clone().normalize());
+    }
+
+    private double boundedDistance(double maxDistance) {
+        return Math.max(0.1D, Math.min(32.0D, maxDistance));
+    }
+
     private boolean rayIntersects(BossHitboxTransformPolicy.Box box, Location origin,
                                   Vector direction, double maxDistance) {
         double tMin = 0.0D;
@@ -523,6 +580,9 @@ public final class BossHitboxController {
             }
         }
         return null;
+    }
+
+    private record SourceRay(Location origin, Vector direction) {
     }
 
     private record Slot(UUID uuid, BossHitboxProfile.PartId partId, int segmentIndex) {

@@ -39,6 +39,16 @@ public final class BossHitboxTransformPolicyTest {
         BossHitboxTransformPolicy.Box rotated = BossHitboxTransformPolicy.transform(
                 head, origin, new BossHitboxTransformPolicy.PoseOffset(
                         0.0D, 0.0D, 0.0D, 0.0D, 0.0D, 35.0D));
+        double roll = Math.toRadians(35.0D);
+        double relativeY = head.centerModel().y() - head.posePivotModel().y();
+        double expectedCenterX = origin.x()
+                + (head.posePivotModel().x() - Math.sin(roll) * relativeY) / 16.0D;
+        double expectedCenterY = origin.y()
+                + (head.posePivotModel().y() + Math.cos(roll) * relativeY) / 16.0D;
+        check(close(rotated.center().x(), expectedCenterX),
+                "animated rotation must happen around the source bone pivot on X");
+        check(close(rotated.center().y(), expectedCenterY),
+                "animated rotation must happen around the source bone pivot on Y");
         check(rotated.width() > 0.0D && rotated.depth() > 0.0D && rotated.height() > 0.0D,
                 "rotated boxes must remain finite and positive");
         check(Double.isFinite(rotated.center().x()) && Double.isFinite(rotated.center().y())

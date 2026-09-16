@@ -18617,6 +18617,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             event.setCancelled(true);
             return;
         }
+        if (!bossHitboxController.proxyRayIntersects(boss, proxy, event.getDamager(),
+                bossHitboxPoseOffsets(), 8.0D)) {
+            event.setCancelled(true);
+            getLogger().fine("BOSS_HITBOX_RAY_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
+                    + " part=" + bossHitboxController.partId(proxy)
+                    + " source=" + event.getDamager().getUniqueId()
+                    + " generation=" + generation);
+            return;
+        }
         String attackIdentity = bossHitboxController.attackIdentity(event, Bukkit.getCurrentTick());
         if (!bossHitboxController.acceptHit(proxy, attackIdentity, generation,
                 System.currentTimeMillis())) {
@@ -18652,6 +18662,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (boss == null || !isCurrentBossCarrier(boss)) {
             event.setCancelled(true);
             projectile.remove();
+            return;
+        }
+        if (!bossHitboxController.proxyRayIntersects(boss, proxy, projectile,
+                bossHitboxPoseOffsets(), 8.0D)) {
+            event.setCancelled(true);
+            projectile.remove();
+            getLogger().fine("BOSS_HITBOX_RAY_BLOCKED event=" + eventId
+                    + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
+                    + " part=" + bossHitboxController.partId(proxy)
+                    + " source=" + projectile.getUniqueId()
+                    + " generation=" + generation);
             return;
         }
         getLogger().info("BOSS_HITBOX_PROJECTILE_EVENT event=" + eventId
@@ -19193,6 +19214,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int waveCombatRemoved = clearWaveCombatEntities("official-boss-defeat");
         activeWave = 0;
         cancelBossFinalStrike();
+        if (bossHitboxController != null) {
+            bossHitboxController.cleanup();
+            lastBossHitboxUpdateServerTick = Long.MIN_VALUE;
+        }
         bossAbilityState = BossAbilityState.NONE;
         bossCastDeadlineMillis = 0L;
         bossSpellPauseUntilMillis = 0L;

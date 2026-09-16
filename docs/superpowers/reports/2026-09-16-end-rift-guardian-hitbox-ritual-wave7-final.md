@@ -118,4 +118,10 @@ The source-side Bedrock importer, animation parser, model-selection contracts, l
 
 ## Publication boundary
 
-No production server upload or installation was performed. The intended publication target is `https://github.com/IliaZav/copimine`, branch `codex/end-rift-event`; the final commit and pull-request handles will be added to this report after the GitHub publication step completes.
+No production server upload or installation was performed. The source and selected evidence were published to `https://github.com/IliaZav/copimine`:
+
+- commit: `5e3d2cd61af075c126715562389c814b6c1c8e69` (`fix: close End Rift guardian and wave boundary gaps`);
+- branch: `codex/end-rift-event`;
+- pull request: [#3 — fix: close End Rift guardian and wave boundary gaps](https://github.com/IliaZav/copimine/pull/3).
+
+The pull request is open for review and has not been merged.

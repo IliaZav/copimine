@@ -239,8 +239,6 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         guardianSpine.yScale = 1.0F + pulse * 0.08F;
         eliteMantle.roll = pulse * 0.025F;
         eliteHornCrown.pitch = pulse * 0.04F;
-        head.yaw += MathHelper.clamp(headYaw * 0.017453292F, -0.45F, 0.45F);
-        head.pitch += MathHelper.clamp(headPitch * 0.017453292F, -0.3F, 0.3F);
     }
 
     public boolean isElite() {

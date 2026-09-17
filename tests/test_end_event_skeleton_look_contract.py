@@ -1,0 +1,24 @@
+"""Guard the vanilla skeleton look path against a second local rotation."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MODEL = ROOT / "CopiMineClient" / "src" / "main" / "java" / "me" / "copimine" / "client" / "RiftEventSkeletonModel.java"
+
+
+def test_skeleton_does_not_apply_head_look_after_vanilla_set_angles() -> None:
+    source = MODEL.read_text(encoding="utf-8")
+    super_start = source.index("super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);")
+    set_angles_end = source.index("    public boolean isElite()", super_start)
+    after_super = source[super_start:set_angles_end]
+    assert "head.yaw += MathHelper.clamp(headYaw" not in after_super
+    assert "head.pitch += MathHelper.clamp(headPitch" not in after_super
+
+
+def test_skeleton_keeps_the_vanilla_head_part_for_single_look_application() -> None:
+    source = MODEL.read_text(encoding="utf-8")
+    assert "ModelPart head;" in source
+    assert "super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);" in source

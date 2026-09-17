@@ -109,6 +109,7 @@ import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
+import me.copimine.endevent.domain.RitualSphereProjectilePolicy;
 import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.domain.RitualTargetPolicy;
 import me.copimine.endevent.domain.RitualZoneEffectPolicy;
@@ -454,6 +455,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long RITUAL_PRISONER_REPAIR_MILLIS = 250L;
     private static final long RITUAL_CONTROL_DURATION_MILLIS = 6_000L;
     private static final long RITUAL_ABILITY_TICK_MILLIS = 250L;
+    private static final double RITUAL_PROJECTILE_MAX_ORIGIN_DISTANCE_BLOCKS = 0.25D;
     private static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
     // Small deterministic steering beats keep movement readable without
     // creating another repeating task per mob.
@@ -921,6 +923,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyCombatTactic;
     private NamespacedKey keyArrowSpell;
     private NamespacedKey keyRitualProjectile;
+    private NamespacedKey keyRitualProjectileOriginX;
+    private NamespacedKey keyRitualProjectileOriginY;
+    private NamespacedKey keyRitualProjectileOriginZ;
+    private NamespacedKey keyRitualProjectileOwner;
+    private NamespacedKey keyRitualProjectileTarget;
+    private NamespacedKey keyRitualProjectileExpiresTick;
     private NamespacedKey keyWaveCommander;
     private NamespacedKey keyCommanderAura;
     private NamespacedKey keyShardPassiveActive;
@@ -1014,6 +1022,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyCombatTactic = new NamespacedKey(this, "end_event_combat_tactic");
             keyArrowSpell = new NamespacedKey(this, "end_event_arrow_spell");
             keyRitualProjectile = new NamespacedKey(this, "end_event_ritual_projectile");
+            keyRitualProjectileOriginX = new NamespacedKey(this, "end_event_ritual_projectile_origin_x");
+            keyRitualProjectileOriginY = new NamespacedKey(this, "end_event_ritual_projectile_origin_y");
+            keyRitualProjectileOriginZ = new NamespacedKey(this, "end_event_ritual_projectile_origin_z");
+            keyRitualProjectileOwner = new NamespacedKey(this, "end_event_ritual_projectile_owner");
+            keyRitualProjectileTarget = new NamespacedKey(this, "end_event_ritual_projectile_target");
+            keyRitualProjectileExpiresTick = new NamespacedKey(this, "end_event_ritual_projectile_expires_tick");
             keyWaveCommander = new NamespacedKey(this, "end_event_wave_commander");
             keyCommanderAura = new NamespacedKey(this, "end_event_commander_aura");
             keyShardPassiveActive = new NamespacedKey(this, "end_event_shard_passive_active");
@@ -5770,6 +5784,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return worldName.isBlank() ? "unset" : worldName + " " + coreX + "," + coreY + "," + coreZ;
     }
 
+    private boolean isFiniteLocation(Location location) {
+        return location != null && location.getWorld() != null
+                && Double.isFinite(location.getX()) && Double.isFinite(location.getY())
+                && Double.isFinite(location.getZ());
+    }
+
+    private boolean isFiniteVector(Vector vector) {
+        return vector != null && Double.isFinite(vector.getX())
+                && Double.isFinite(vector.getY()) && Double.isFinite(vector.getZ());
+    }
+
+    private String projectileLocationText(Location location) {
+        return !isFiniteLocation(location) ? "unset"
+                : location.getWorld().getName() + " " + location.getX() + ","
+                + location.getY() + "," + location.getZ();
+    }
+
     private String locationText(Location location) {
         return location == null || location.getWorld() == null
                 ? "unset" : location.getWorld().getName() + " " + location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ();
@@ -9299,6 +9330,48 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             arrow.getPersistentDataContainer().set(keyRitualProjectile,
                     PersistentDataType.BYTE, (byte) 1);
         }
+    }
+
+    /** Persist the launch socket once; no later tick is allowed to rewrite it. */
+    private boolean tagRitualProjectileOrigin(Arrow arrow, Location origin) {
+        if (arrow == null || !isFiniteLocation(origin)
+                || keyRitualProjectileOriginX == null
+                || keyRitualProjectileOriginY == null
+                || keyRitualProjectileOriginZ == null) {
+            return false;
+        }
+        PersistentDataContainer data = arrow.getPersistentDataContainer();
+        if (data.has(keyRitualProjectileOriginX, PersistentDataType.DOUBLE)
+                || data.has(keyRitualProjectileOriginY, PersistentDataType.DOUBLE)
+                || data.has(keyRitualProjectileOriginZ, PersistentDataType.DOUBLE)) {
+            return false;
+        }
+        data.set(keyRitualProjectileOriginX, PersistentDataType.DOUBLE, origin.getX());
+        data.set(keyRitualProjectileOriginY, PersistentDataType.DOUBLE, origin.getY());
+        data.set(keyRitualProjectileOriginZ, PersistentDataType.DOUBLE, origin.getZ());
+        return true;
+    }
+
+    /** Keep logical owner, intended recipient, and expiry separate from launch position. */
+    private boolean tagRitualProjectileTarget(Arrow arrow, LivingEntity caster, Player target) {
+        if (arrow == null || caster == null || target == null
+                || keyRitualProjectileOwner == null || keyRitualProjectileTarget == null
+                || keyRitualProjectileExpiresTick == null) {
+            return false;
+        }
+        PersistentDataContainer data = arrow.getPersistentDataContainer();
+        if (data.has(keyRitualProjectileOwner, PersistentDataType.STRING)
+                || data.has(keyRitualProjectileTarget, PersistentDataType.STRING)
+                || data.has(keyRitualProjectileExpiresTick, PersistentDataType.LONG)) {
+            return false;
+        }
+        data.set(keyRitualProjectileOwner, PersistentDataType.STRING,
+                caster.getUniqueId().toString());
+        data.set(keyRitualProjectileTarget, PersistentDataType.STRING,
+                target.getUniqueId().toString());
+        data.set(keyRitualProjectileExpiresTick, PersistentDataType.LONG,
+                eventTickCounter + EVENT_ARROW_MAX_TICKS);
+        return true;
     }
 
     private void clearRitualProjectileMarker(Entity entity) {
@@ -14225,9 +14298,115 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !ritualTargetAllowed(caster, target)) {
             return;
         }
-        riftArrowVolley(caster, target, ARROW_SPELL_RITUAL_PROJECTILE,
-                new SkeletonCombatPolicy.ArrowProfile(Math.min(5, count), 0.0D,
-                        20, "ritual_sphere"));
+        Location sphereOrigin = ritualSphereCenter(coreCombatAnchorLocation());
+        if (sphereOrigin == null || sphereOrigin.getWorld() == null
+                || caster.getWorld() == null || !sphereOrigin.getWorld().equals(caster.getWorld())) {
+            return;
+        }
+        spawnRitualSphereProjectileVolley(caster, sphereOrigin, target, Math.min(5, count));
+    }
+
+    /**
+     * Spawn the Wave 6 barrage from the visible Ritual Sphere while retaining
+     * the caster as the logical damage/channel owner.  This adapter deliberately
+     * does not delegate to the ordinary caster-origin arrow volley.
+     */
+    private void spawnRitualSphereProjectileVolley(LivingEntity caster, Location sphereOrigin,
+                                                    Player target, int count) {
+        if (caster == null || sphereOrigin == null || target == null || count <= 0
+                || !ritualTargetAllowed(caster, target) || sphereOrigin.getWorld() == null
+                || target.getWorld() == null || !sphereOrigin.getWorld().equals(target.getWorld())
+                || activeEventArrowAges.size() >= MAX_ACTIVE_EVENT_ARROWS) {
+            return;
+        }
+        Location targetPoint = target.getEyeLocation().clone();
+        RitualSphereProjectilePolicy.Vec3 policyDirection = RitualSphereProjectilePolicy.direction(
+                new RitualSphereProjectilePolicy.Vec3(sphereOrigin.getX(), sphereOrigin.getY(), sphereOrigin.getZ()),
+                new RitualSphereProjectilePolicy.Vec3(targetPoint.getX(), targetPoint.getY(), targetPoint.getZ()));
+        Vector base = new Vector(policyDirection.x(), policyDirection.y(), policyDirection.z());
+        if (!isFiniteVector(base) || base.lengthSquared() < 1.0E-12D) {
+            return;
+        }
+        base.normalize();
+        Vector side = base.clone().crossProduct(new Vector(0.0D, 1.0D, 0.0D));
+        if (!isFiniteVector(side) || side.lengthSquared() < 0.0001D) {
+            side = new Vector(1.0D, 0.0D, 0.0D);
+        }
+        side.normalize();
+        int available = Math.min(count,
+                MAX_ACTIVE_EVENT_ARROWS - activeEventArrowAges.size());
+        int spawned = 0;
+        for (int index = 0; index < available; index++) {
+            if (!ritualTargetAllowed(caster, target)) {
+                return;
+            }
+            double lateral = (index - (available - 1) / 2.0D) * 0.12D;
+            double vertical = (index - (available - 1) / 2.0D) * 0.035D;
+            Vector direction = base.clone()
+                    .add(side.clone().multiply(lateral))
+                    .add(new Vector(0.0D, vertical, 0.0D));
+            if (!isFiniteVector(direction) || direction.lengthSquared() < 1.0E-12D) {
+                continue;
+            }
+            direction.normalize();
+            Vector velocity = direction.clone().multiply(RitualSphereProjectilePolicy.MAX_INITIAL_SPEED);
+            if (!isFiniteVector(velocity) || !Double.isFinite(velocity.length())
+                    || velocity.length() > RitualSphereProjectilePolicy.MAX_INITIAL_SPEED + 1.0E-9D) {
+                continue;
+            }
+            Arrow arrow = sphereOrigin.getWorld().spawn(sphereOrigin.clone(), Arrow.class);
+            arrow.setGravity(false);
+            arrow.setVisibleByDefault(false);
+            arrow.setShooter(caster);
+            arrow.setVelocity(velocity);
+            arrow.setDamage(0.0D);
+            arrow.setCritical(true);
+            arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
+            arrow.setColor(Color.fromRGB(244, 60, 255));
+            tag(arrow, EVENT_KIND_PROJECTILE, readInt(caster, keyWave, 0), isOfficialEntity(caster));
+            tagRitualProjectile(arrow);
+            tagArrowSpell(arrow, ARROW_SPELL_RITUAL_PROJECTILE);
+            if (!tagRitualProjectileOrigin(arrow, sphereOrigin)
+                    || !tagRitualProjectileTarget(arrow, caster, target)) {
+                cleanupEventArrow(arrow.getUniqueId());
+                continue;
+            }
+            Location projectileSpawn = arrow.getLocation().clone();
+            double originDistance = Double.POSITIVE_INFINITY;
+            if (projectileSpawn.getWorld() != null
+                    && sphereOrigin.getWorld().equals(projectileSpawn.getWorld())
+                    && isFiniteLocation(projectileSpawn)) {
+                originDistance = sphereOrigin.distance(projectileSpawn);
+            }
+            boolean originWithinTolerance = Double.isFinite(originDistance)
+                    && originDistance <= RITUAL_PROJECTILE_MAX_ORIGIN_DISTANCE_BLOCKS;
+            getLogger().info("WAVE6_RITUAL_PROJECTILE_ORIGIN_ASSERT event=" + eventId
+                    + " generation=" + generation + " arrow=" + arrow.getUniqueId()
+                    + " caster=" + caster.getUniqueId() + " target=" + target.getUniqueId()
+                    + " sphere_origin=" + projectileLocationText(sphereOrigin)
+                    + " projectile_spawn=" + projectileLocationText(projectileSpawn)
+                    + " origin_distance=" + originDistance
+                    + " max_distance=" + RITUAL_PROJECTILE_MAX_ORIGIN_DISTANCE_BLOCKS
+                    + " passed=" + originWithinTolerance);
+            if (!originWithinTolerance) {
+                getLogger().warning("WAVE6_RITUAL_PROJECTILE_REJECTED event=" + eventId
+                        + " arrow=" + arrow.getUniqueId()
+                        + " reason=origin-distance-exceeded");
+                cleanupEventArrow(arrow.getUniqueId());
+                continue;
+            }
+            trackEventArrow(arrow);
+            spawned++;
+        }
+        spawnEventParticle(sphereOrigin, Particle.END_ROD, 20,
+                0.25D, 0.25D, 0.25D, 0.02D);
+        getLogger().info("WAVE6_RITUAL_PROJECTILE_VOLLEY_SPAWN event=" + eventId
+                + " caster=" + caster.getUniqueId() + " sphere_origin="
+                + projectileLocationText(sphereOrigin) + " target=" + target.getUniqueId()
+                + " arrows=" + spawned + " speed="
+                + RitualSphereProjectilePolicy.MAX_INITIAL_SPEED
+                + " damage=server collision=block-player lifetime_ticks="
+                + EVENT_ARROW_MAX_TICKS + " cleanup=event-arrow-tracker");
     }
 
     private void startRitualZone(Player target, long now) {

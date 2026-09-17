@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTROLLER = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "runtime" / "BossHitboxController.java"
+POLICY = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "BossHitboxProxyReconciliationPolicy.java"
+RUNNER = ROOT / "tests" / "RunEndRiftEventChecks.ps1"
+
+
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def test_policy_owns_expected_live_missing_and_stale_math() -> None:
+    source = read(POLICY)
+    assert "missing.removeAll(liveKeys)" in source
+    assert "stale.removeAll(expectedKeys)" in source
+    assert "expectedKeys(BossHitboxProfile profile)" in source
+    assert "record Key(BossHitboxProfile.PartId partId, int segmentIndex)" in source
+    assert "requiresRebuild()" in source
+
+
+def test_controller_repairs_before_update_and_each_damage_route() -> None:
+    source = read(CONTROLLER)
+    assert "BossHitboxProxyReconciliationPolicy" in source
+    assert "if (!ensureHealthy(boss))" in source
+    assert source.count("ensureHealthy(boss)") >= 4
+    assert "boolean rebuilt = begin(boss, repairEventId, repairGeneration);" in source
+    assert "BOSS_HITBOX_PROXY_RECREATED event=" in source
+    assert "part=" in source and "segment=" in source and "generation=" in source
+    assert "liveReconciliation()" in source
+
+
+def test_reconciliation_is_registered_in_the_current_gate() -> None:
+    runner = read(RUNNER)
+    assert "BossHitboxProxyReconciliationPolicyTest" in runner
+    assert "test_end_event_boss_hitbox_reconciliation_contract.py" in runner

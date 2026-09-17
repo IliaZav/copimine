@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime;
 import me.copimine.endevent.domain.BossHitboxDedupePolicy;
 import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossHitboxProfile;
+import me.copimine.endevent.domain.BossHitboxProxyReconciliationPolicy;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.BossOrientedHitboxPolicy;
 import org.bukkit.Bukkit;
@@ -21,8 +22,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -154,6 +157,9 @@ public final class BossHitboxController {
                 || !boss.isValid() || boss.isDead() || slots.isEmpty()) {
             return;
         }
+        if (!ensureHealthy(boss)) {
+            return;
+        }
         Map<BossHitboxProfile.PartKey, BossHitboxPose> safePoses =
                 poses == null ? Map.of() : Map.copyOf(poses);
         Iterator<Map.Entry<UUID, Slot>> iterator = slots.entrySet().iterator();
@@ -224,8 +230,11 @@ public final class BossHitboxController {
                                       Map<BossHitboxProfile.PartKey,
                                               BossHitboxPose> poses,
                                       double maxDistance) {
-        if (!owns(proxy) || boss == null || source == null
+        if (boss == null || source == null
                 || !hasBoss(boss.getUniqueId()) || !boss.isValid() || boss.isDead()) {
+            return false;
+        }
+        if (!ensureHealthy(boss) || !owns(proxy)) {
             return false;
         }
         BossHitboxProfile.Part part = partForProxy(proxy);
@@ -252,6 +261,9 @@ public final class BossHitboxController {
                                         double maxDistance) {
         if (boss == null || source == null || !hasBoss(boss.getUniqueId())
                 || !boss.isValid() || boss.isDead()) {
+            return false;
+        }
+        if (!ensureHealthy(boss)) {
             return false;
         }
         SourceRay ray = sourceRay(source);
@@ -284,6 +296,9 @@ public final class BossHitboxController {
         if (boss == null || projectile == null || !hasBoss(boss.getUniqueId())
                 || !boss.isValid() || boss.isDead() || !projectile.isValid()
                 || projectile.getWorld() == null || !projectile.getWorld().equals(boss.getWorld())) {
+            return null;
+        }
+        if (!ensureHealthy(boss)) {
             return null;
         }
         Vector velocity = projectile.getVelocity();
@@ -344,6 +359,56 @@ public final class BossHitboxController {
 
     public boolean debug() {
         return debug;
+    }
+
+    /**
+     * Reconciles the live tagged selector set before any damage route runs.
+     * A repair rebuilds the complete generation-owned rig, so a partially
+     * missing limb can never leave the surviving proxies as a false authority.
+     */
+    private boolean ensureHealthy(LivingEntity boss) {
+        if (boss == null || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || eventId.isBlank() || slots.isEmpty()) {
+            return false;
+        }
+        BossHitboxProxyReconciliationPolicy.Result reconciliation =
+                liveReconciliation();
+        if (!reconciliation.requiresRebuild()) {
+            return true;
+        }
+        String repairEventId = eventId;
+        long repairGeneration = generation;
+        UUID repairBossId = boss.getUniqueId();
+        boolean rebuilt = begin(boss, repairEventId, repairGeneration);
+        if (!rebuilt) {
+            plugin.getLogger().warning("BOSS_HITBOX_PROXY_REPAIR_FAILED event=" + repairEventId
+                    + " boss=" + repairBossId + " generation=" + repairGeneration
+                    + " missing=" + reconciliation.missing()
+                    + " stale=" + reconciliation.stale());
+            return false;
+        }
+        for (BossHitboxProxyReconciliationPolicy.Key key
+                : BossHitboxProxyReconciliationPolicy.expectedKeys(profile)) {
+            plugin.getLogger().info("BOSS_HITBOX_PROXY_RECREATED event=" + repairEventId
+                    + " boss=" + repairBossId + " part=" + key.partId()
+                    + " segment=" + key.segmentIndex() + " generation=" + repairGeneration);
+        }
+        return true;
+    }
+
+    private BossHitboxProxyReconciliationPolicy.Result liveReconciliation() {
+        Set<BossHitboxProxyReconciliationPolicy.Key> live = new LinkedHashSet<>();
+        for (Slot slot : slots.values()) {
+            Entity entity = Bukkit.getEntity(slot.uuid());
+            if (!(entity instanceof Interaction proxy) || !proxy.isValid()
+                    || !matchesTag(proxy, eventId, bossUuid)) {
+                continue;
+            }
+            live.add(new BossHitboxProxyReconciliationPolicy.Key(
+                    slot.partId(), slot.segmentIndex()));
+        }
+        return BossHitboxProxyReconciliationPolicy.reconcile(
+                BossHitboxProxyReconciliationPolicy.expectedKeys(profile), live);
     }
 
     /** Removes tracked proxies and forgets every generation-scoped identity. */

@@ -49,8 +49,6 @@ public final class BossHitboxController {
     private final Map<UUID, BossOrientedHitboxPolicy.Vec3> previousProjectilePositions =
             new LinkedHashMap<>();
     private final Set<UUID> consumedProjectileIds = new HashSet<>();
-    private long lastReconciliationServerTick = Long.MIN_VALUE;
-    private BossHitboxProxyReconciliationPolicy.Result cachedReconciliation;
     private final NamespacedKey eventKey;
     private final NamespacedKey generationKey;
     private final NamespacedKey kindKey;
@@ -501,12 +499,6 @@ public final class BossHitboxController {
     }
 
     private BossHitboxProxyReconciliationPolicy.Result liveReconciliation() {
-        long serverTick = Bukkit.getCurrentTick();
-        if (cachedReconciliation != null
-                && lastReconciliationServerTick == serverTick
-                && indexedSlotsHealthy()) {
-            return cachedReconciliation;
-        }
         List<BossHitboxProxyReconciliationPolicy.Key> live = new ArrayList<>();
         int malformed = slots.size() == profile.proxyCount() ? 0 : 1;
         for (Slot slot : slots.values()) {
@@ -551,23 +543,7 @@ public final class BossHitboxController {
         BossHitboxProxyReconciliationPolicy.Result result =
                 BossHitboxProxyReconciliationPolicy.reconcile(
                 BossHitboxProxyReconciliationPolicy.expectedKeys(profile), live);
-        cachedReconciliation = result.withMalformed(malformed);
-        lastReconciliationServerTick = serverTick;
-        return cachedReconciliation;
-    }
-
-    private boolean indexedSlotsHealthy() {
-        if (slots.size() != profile.proxyCount()) {
-            return false;
-        }
-        for (Slot slot : slots.values()) {
-            Entity entity = Bukkit.getEntity(slot.uuid());
-            if (!(entity instanceof Interaction proxy) || !proxy.isValid()
-                    || !slotMetadataMatches(proxy, slot)) {
-                return false;
-            }
-        }
-        return true;
+        return result.withMalformed(malformed);
     }
 
     private boolean slotMetadataMatches(Interaction proxy, Slot slot) {
@@ -622,8 +598,6 @@ public final class BossHitboxController {
         dedupe.clear();
         previousProjectilePositions.clear();
         consumedProjectileIds.clear();
-        lastReconciliationServerTick = Long.MIN_VALUE;
-        cachedReconciliation = null;
         bossUuid = null;
         eventId = "";
         generation = Long.MIN_VALUE;

@@ -35,8 +35,6 @@ def test_controller_repairs_before_update_and_each_damage_route() -> None:
     assert "part=" in source and "segment=" in source and "generation=" in source
     assert "liveReconciliation()" in source
     assert "slotMetadataMatches" in source
-    assert "indexedSlotsHealthy" in source
-    assert "lastReconciliationServerTick" in source
     assert "isCurrentEvent" in source
     assert "!proxy.isValid()" in source
     assert "getPersistentDataContainer" in source
@@ -46,6 +44,18 @@ def test_controller_repairs_before_update_and_each_damage_route() -> None:
     accept_start = source.index("public boolean acceptHit(")
     accept_end = source.index("public String attackIdentity", accept_start)
     assert "ensureHealthy" in source[accept_start:accept_end]
+
+
+def test_controller_does_not_reuse_a_same_tick_world_scan() -> None:
+    source = read(CONTROLLER)
+    assert "cachedReconciliation" not in source
+    assert "lastReconciliationServerTick" not in source
+    assert "indexedSlotsHealthy" not in source
+    live_start = source.index("private BossHitboxProxyReconciliationPolicy.Result liveReconciliation()")
+    live_end = source.index("private boolean slotMetadataMatches", live_start)
+    live_source = source[live_start:live_end]
+    assert "world.getEntities()" in live_source
+    assert "Bukkit.getCurrentTick()" not in live_source
 
 
 def test_reconciliation_is_registered_in_the_current_gate() -> None:

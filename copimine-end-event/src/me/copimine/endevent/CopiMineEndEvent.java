@@ -919,6 +919,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyArtifactUniqueId;
     private NamespacedKey keyCombatTactic;
     private NamespacedKey keyArrowSpell;
+    private NamespacedKey keyRitualProjectile;
     private NamespacedKey keyWaveCommander;
     private NamespacedKey keyCommanderAura;
     private NamespacedKey keyShardPassiveActive;
@@ -1011,6 +1012,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyTentacleHealthState = new NamespacedKey(this, "end_event_tentacle_health_state");
             keyCombatTactic = new NamespacedKey(this, "end_event_combat_tactic");
             keyArrowSpell = new NamespacedKey(this, "end_event_arrow_spell");
+            keyRitualProjectile = new NamespacedKey(this, "end_event_ritual_projectile");
             keyWaveCommander = new NamespacedKey(this, "end_event_wave_commander");
             keyCommanderAura = new NamespacedKey(this, "end_event_commander_aura");
             keyShardPassiveActive = new NamespacedKey(this, "end_event_shard_passive_active");
@@ -6588,6 +6590,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextSkeletonArrowMillis.put(skeleton.getUniqueId(),
                 now + profile.cooldownTicks() * 50L);
         tag(arrow, EVENT_KIND_PROJECTILE, readInt(skeleton, keyWave, 0), isOfficialEntity(skeleton));
+        if (isCurrentRitualCaster(skeleton) || isCurrentRitualGuard(skeleton)) {
+            tagRitualProjectile(arrow);
+        }
         SkeletonArrowPolicy.ArrowKind arrowKind = SkeletonArrowPolicy.forShot(
                 miniBoss, random.nextLong());
         String arrowSpell = switch (arrowKind) {
@@ -6614,17 +6619,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Ordinary skeleton arrows may hurt eligible players, never event mobs. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onEventSkeletonArrowDamage(EntityDamageByEntityEvent event) {
-        if (!(event.getDamager() instanceof Arrow arrow)
-                || !(arrow.getShooter() instanceof Skeleton skeleton)
-                || !isEventSkeleton(skeleton) || !isEventArrow(arrow)) {
+        if (!(event.getDamager() instanceof Arrow arrow) || !isEventArrow(arrow)) {
             return;
         }
+        boolean ritualProjectile = isRitualProjectile(arrow);
+        Skeleton skeleton = arrow.getShooter() instanceof Skeleton candidate ? candidate : null;
+        if (!ritualProjectile && (skeleton == null || !isEventSkeleton(skeleton))) {
+            return;
+        }
+        String shooterId = skeleton == null ? "none" : skeleton.getUniqueId().toString();
         String spell = readString(arrow, keyArrowSpell);
         if (ARROW_SPELL_EXPLOSIVE.equals(spell)) {
             event.setCancelled(true);
             if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                    || !realitySplitTargetAllowed(skeleton, player)
-                    || !ritualProjectileTargetAllowed(skeleton, player)) {
+                    || skeleton != null && !realitySplitTargetAllowed(skeleton, player)
+                    || !ritualProjectileTargetAllowed(arrow, player)) {
                 cleanupEventArrow(arrow.getUniqueId());
                 getLogger().info("SKELETON_EXPLOSIVE_ARROW_BLOCKED event=" + eventId
                         + " arrow=" + arrow.getUniqueId() + " target="
@@ -6636,8 +6645,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (ARROW_SPELL_POISON_NAUSEA.equals(spell)) {
             if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                    || !realitySplitTargetAllowed(skeleton, player)
-                    || !ritualProjectileTargetAllowed(skeleton, player)) {
+                    || skeleton != null && !realitySplitTargetAllowed(skeleton, player)
+                    || !ritualProjectileTargetAllowed(arrow, player)) {
                 event.setCancelled(true);
                 getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                         + " spell=" + spell + " target=" + event.getEntity().getType());
@@ -6652,7 +6661,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         SkeletonArrowPolicy.STATUS_DURATION_TICKS,
                         SkeletonArrowPolicy.STATUS_AMPLIFIER, false, true, true));
                 getLogger().info("SKELETON_ARROW_STATUS_HIT arrow=" + arrow.getUniqueId()
-                        + " shooter=" + skeleton.getUniqueId() + " target=" + player.getUniqueId()
+                        + " shooter=" + shooterId + " target=" + player.getUniqueId()
                         + " poison_nausea_level=III duration_ticks="
                         + SkeletonArrowPolicy.STATUS_DURATION_TICKS);
             }
@@ -6663,8 +6672,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                || !realitySplitTargetAllowed(skeleton, player)
-                || !ritualProjectileTargetAllowed(skeleton, player)) {
+                || skeleton != null && !realitySplitTargetAllowed(skeleton, player)
+                || !ritualProjectileTargetAllowed(arrow, player)) {
             event.setCancelled(true);
             getLogger().info("SKELETON_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                     + " target=" + event.getEntity().getType());
@@ -6672,7 +6681,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         getLogger().info("SKELETON_ARROW_PLAYER_HIT arrow=" + arrow.getUniqueId()
-                + " shooter=" + skeleton.getUniqueId() + " target=" + player.getUniqueId()
+                + " shooter=" + shooterId + " target=" + player.getUniqueId()
                 + " damage=" + event.getFinalDamage());
     }
 
@@ -6693,6 +6702,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (ARROW_SPELL_SKELETON.equals(spell)
                 || ARROW_SPELL_POISON_NAUSEA.equals(spell)
                 || ARROW_SPELL_EXPLOSIVE.equals(spell)) {
+            if (isRitualProjectile(arrow)) {
+                onEventSkeletonArrowDamage(event);
+            }
             return;
         }
         onCustomEventArrowDamage(event, arrow, spell);
@@ -6708,7 +6720,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean ritualProjectile = ARROW_SPELL_RITUAL_PROJECTILE.equals(spell);
         boolean ritualVoidLance = ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
         if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
-                || (ritualProjectile || ritualVoidLance) && !isFreeRitualTarget(player)) {
+                || !ritualProjectileTargetAllowed(arrow, player)) {
             cleanupEventArrow(arrow.getUniqueId());
             getLogger().info("EVENT_ARROW_NON_PLAYER_BLOCKED arrow=" + arrow.getUniqueId()
                     + " spell=" + spell + " target=" + event.getEntity().getType());
@@ -9278,6 +9290,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && activeEventArrowAges.containsKey(entity.getUniqueId());
     }
 
+    private boolean isRitualProjectileSpell(String spell) {
+        return ARROW_SPELL_RITUAL_PROJECTILE.equals(spell)
+                || ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
+    }
+
+    private boolean isRitualProjectile(Arrow arrow) {
+        return arrow != null && keyRitualProjectile != null
+                && arrow.getPersistentDataContainer().getOrDefault(
+                keyRitualProjectile, PersistentDataType.BYTE, (byte) 0) == (byte) 1;
+    }
+
+    private void tagRitualProjectile(Arrow arrow) {
+        if (arrow != null && keyRitualProjectile != null) {
+            arrow.getPersistentDataContainer().set(keyRitualProjectile,
+                    PersistentDataType.BYTE, (byte) 1);
+        }
+    }
+
+    private void clearRitualProjectileMarker(Entity entity) {
+        if (entity instanceof Arrow arrow && keyRitualProjectile != null) {
+            arrow.getPersistentDataContainer().remove(keyRitualProjectile);
+        }
+    }
+
     private void tagArrowSpell(Arrow arrow, String spellId) {
         if (arrow != null && keyArrowSpell != null && spellId != null && !spellId.isBlank()) {
             arrow.getPersistentDataContainer().set(keyArrowSpell,
@@ -9325,7 +9361,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isEventArrowPhaseAllowed(Arrow arrow) {
-        if (arrow == null || !(arrow.getShooter() instanceof Entity shooter)) {
+        if (arrow == null) {
+            return false;
+        }
+        if (isRitualProjectile(arrow)) {
+            return isCombatPhase() || testCombatAiMode || hasLiveTestWaveEntities();
+        }
+        if (!(arrow.getShooter() instanceof Entity shooter)) {
             return false;
         }
         String kind = readString(shooter, keyKind);
@@ -9403,6 +9445,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         statusArrowEffectsApplied.remove(arrowId);
         detonatedEventArrows.remove(arrowId);
         Entity arrow = ownedEntities.remove(arrowId);
+        if (arrow == null) {
+            arrow = Bukkit.getEntity(arrowId);
+        }
+        clearRitualProjectileMarker(arrow);
         if (arrow != null && arrow.isValid() && !arrow.isDead()) {
             arrow.remove();
         }
@@ -9420,7 +9466,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             LivingEntity shooter = arrow.getShooter() instanceof LivingEntity living ? living : null;
             int affected = 0;
             double radius = SkeletonArrowPolicy.EXPLOSIVE_DAMAGE_RADIUS_BLOCKS;
-            for (Player player : ritualFreeTargetsForProjectile(shooter)) {
+            for (Player player : ritualFreeTargetsForProjectile(arrow)) {
                 if (!player.getWorld().equals(world)
                         || player.getLocation().distanceSquared(point) > radius * radius
                         || shooter != null && !realitySplitTargetAllowed(shooter, player)) {
@@ -13980,13 +14026,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ritualPrisonerUuid).contains(player.getUniqueId());
     }
 
-    private boolean ritualProjectileTargetAllowed(Entity shooter, Player player) {
-        return !(isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter))
-                || isFreeRitualTarget(player);
+    private boolean ritualProjectileTargetAllowed(Arrow arrow, Player player) {
+        if (arrow == null) {
+            return false;
+        }
+        if (isRitualProjectile(arrow)) {
+            return isFreeRitualTarget(player);
+        }
+        return !isRitualProjectileSpell(readString(arrow, keyArrowSpell));
     }
 
-    private List<Player> ritualFreeTargetsForProjectile(LivingEntity shooter) {
-        return isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)
+    private List<Player> ritualFreeTargetsForProjectile(Arrow arrow) {
+        if (arrow == null || isRitualProjectileSpell(readString(arrow, keyArrowSpell))
+                && !isRitualProjectile(arrow)) {
+            return List.of();
+        }
+        return isRitualProjectile(arrow)
                 ? ritualFreeTargets(activeLivingPlayers()) : activeLivingPlayers();
     }
 
@@ -20490,6 +20545,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void riftArrowVolley(LivingEntity caster, Player target, String spellId,
                                  SkeletonCombatPolicy.ArrowProfile profile) {
         boolean ritualVolley = isCurrentRitualCaster(caster)
+                || isCurrentRitualGuard(caster)
                 || ARROW_SPELL_RITUAL_PROJECTILE.equals(spellId)
                 || ARROW_SPELL_RITUAL_VOID_LANCE.equals(spellId);
         if (caster == null || target == null || !isCombatTarget(target)
@@ -20530,6 +20586,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             arrow.setPickupStatus(AbstractArrow.PickupStatus.DISALLOWED);
             arrow.setColor(Color.fromRGB(244, 60, 255));
             tag(arrow, EVENT_KIND_PROJECTILE, readInt(caster, keyWave, 0), isOfficialEntity(caster));
+            if (ritualVolley) {
+                tagRitualProjectile(arrow);
+            }
             tagArrowSpell(arrow, projectileSpell);
             trackEventArrow(arrow);
         }

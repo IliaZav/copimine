@@ -279,5 +279,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: end-rift-event-gate-diagnostics
-          path: ${{ runner.temp }}/end-rift-event-gate.log
+          path: |
+            ${{ runner.temp }}/end-rift-event-gate.log
+            artifacts/end-rift-diagnostics/**
+            minecraft/server/plugins/CopiMineEndEvent/diagnostics/**
           if-no-files-found: ignore

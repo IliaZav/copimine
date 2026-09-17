@@ -28,6 +28,16 @@ public final class SkeletonCombatPolicy {
                 && objective != EndRiftObjective.Objective.RIFT_CARRIERS;
     }
 
+    /**
+     * A closed Reality Split chamber is intentionally too small for an
+     * unbounded ranged kite.  Keep the skeleton's bow/spell attack, but leave
+     * its firing position reachable by the player assigned to that chamber.
+     */
+    public static boolean shouldHoldPositionInClosedChamber(
+            EndRiftObjective.Objective objective) {
+        return objective == EndRiftObjective.Objective.REALITY_SPLIT;
+    }
+
     public static boolean shouldPrioritizeMarkedTarget(EndRiftObjective.Objective objective,
                                                        boolean focusMarkedPlayer,
                                                        boolean markedTargetEligible) {

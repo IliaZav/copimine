@@ -1,6 +1,7 @@
 package me.copimine.endevent;
 
 import java.util.Set;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.bukkit.Bukkit;
 import org.bukkit.scheduler.BukkitTask;
@@ -9,6 +10,8 @@ import org.bukkit.scheduler.BukkitTask;
 public final class EventTaskRegistry {
     private final long generation;
     private final Set<BukkitTask> tasks = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> completedTaskIds = ConcurrentHashMap.newKeySet();
+    private final Set<Integer> cancelledTaskIds = ConcurrentHashMap.newKeySet();
 
     public EventTaskRegistry(long generation) {
         if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
@@ -67,6 +70,37 @@ public final class EventTaskRegistry {
         return size();
     }
 
+    /** Stable task ids for the central diagnostic cleanup boundary. */
+    public List<Integer> taskIds() {
+        pruneCompleted();
+        return tasks.stream().filter(task -> task != null)
+                .map(BukkitTask::getTaskId).sorted().toList();
+    }
+
+    /**
+     * Return and clear one-shot task ids observed as complete during pruning.
+     * The event adapter turns these ids into TASK/COMPLETE records so the
+     * diagnostic report can distinguish a finished one-shot from a leaked
+     * repeating task.
+     */
+    public List<Integer> drainCompletedTaskIds() {
+        List<Integer> result = completedTaskIds.stream().sorted().toList();
+        completedTaskIds.removeAll(result);
+        return result;
+    }
+
+    /**
+     * Return and clear task ids observed as cancelled before the event adapter
+     * reached its cleanup boundary. Paper may cancel plugin tasks as part of
+     * shutdown before onDisable() runs, so the adapter must retain that
+     * terminal state instead of silently turning the task into a leak.
+     */
+    public List<Integer> drainCancelledTaskIds() {
+        List<Integer> result = cancelledTaskIds.stream().sorted().toList();
+        cancelledTaskIds.removeAll(result);
+        return result;
+    }
+
     /**
      * Drop cancelled handles and one-shot callbacks that have already left
      * Bukkit's scheduler. Paper does not mark every completed one-shot handle
@@ -74,7 +108,19 @@ public final class EventTaskRegistry {
      * after long events.
      */
     public void pruneCompleted() {
-        tasks.removeIf(task -> task == null || task.isCancelled() || completed(task));
+        tasks.removeIf(task -> {
+            if (task == null) {
+                return true;
+            }
+            boolean cancelled = task.isCancelled();
+            boolean completed = completed(task);
+            if (cancelled) {
+                cancelledTaskIds.add(task.getTaskId());
+            } else if (completed) {
+                completedTaskIds.add(task.getTaskId());
+            }
+            return cancelled || completed;
+        });
     }
 
     private boolean completed(BukkitTask task) {

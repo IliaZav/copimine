@@ -26,6 +26,176 @@ $botProcesses = [System.Collections.Generic.List[object]]::new()
 $previousWave7Autopilot = $env:END_RIFT_BOT_WAVE7_AUTOPILOT
 $combatTraceProbe = $env:END_RIFT_BOT_COMBAT_TRACE -eq '1'
 $previousLocalMobSpawning = $null
+$diagnosticRoot = Join-Path $root 'artifacts\end-rift-diagnostics'
+$runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$branch = (& git -C $root branch --show-current 2>$null).Trim()
+$gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()
+$referenceSha = '79781d8c8be3827078a77972ccba851df4eb819f'
+$dirtyStatus = @(& git -C $root status --short 2>$null)
+$runDir = Join-Path $diagnosticRoot ($runStamp + '-' + $gitHead.Substring(0, [Math]::Min(12, $gitHead.Length)))
+$diagnosticSource = Join-Path $serverDir 'plugins\CopiMineEndEvent\diagnostics\end-rift-events.jsonl'
+$diagnosticStartSequence = 0L
+$script:activeLiveStepId = $null
+$script:livePaperResult = 'NOT RUN'
+$script:diagnosticReportResult = 'NOT RUN'
+$script:runMetadata = [ordered]@{}
+
+function Write-Utf8NoBom {
+  param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
+  [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new($false))
+}
+
+function Write-RunMetadata {
+  Write-Utf8NoBom -Path (Join-Path $runDir 'metadata.json') `
+    -Text ($script:runMetadata | ConvertTo-Json -Depth 12)
+}
+
+function Start-LiveStep {
+  param([Parameter(Mandatory = $true)][string]$Id, [Parameter(Mandatory = $true)][string]$Description)
+  $script:activeLiveStepId = $Id
+  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') `
+    -Value ("LIVE_TEST STEP_START id=$Id description=" + ($Description -replace '[\r\n]+', ' '))
+  Write-Host "LIVE_TEST STEP_START id=$Id"
+}
+
+function Complete-LiveStep {
+  if ($null -eq $script:activeLiveStepId) { return }
+  $id = $script:activeLiveStepId
+  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') -Value "LIVE_TEST STEP_PASS id=$id"
+  Write-Host "LIVE_TEST STEP_PASS id=$id"
+  $script:activeLiveStepId = $null
+}
+
+function Fail-LiveStep {
+  param([string]$Detail = 'step failed')
+  if ($null -eq $script:activeLiveStepId) { return }
+  $id = $script:activeLiveStepId
+  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') `
+    -Value ("LIVE_TEST STEP_FAIL id=$id detail=" + ($Detail -replace '[\r\n]+', ' '))
+  Write-Host "LIVE_TEST STEP_FAIL id=$id"
+  $script:activeLiveStepId = $null
+}
+
+function Get-HighestDiagnosticSequence {
+  $highest = 0L
+  $candidates = @($diagnosticSource, ($diagnosticSource + '.1'))
+  foreach ($candidate in $candidates) {
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+    foreach ($line in Get-Content -LiteralPath $candidate) {
+      try {
+        $record = $line | ConvertFrom-Json -ErrorAction Stop
+        if ($null -ne $record.sequence) {
+          $highest = [Math]::Max($highest, [int64]$record.sequence)
+        }
+      } catch {
+        # Existing pre-run compatibility data is not copied into this run.
+        # Newly written records are parsed strictly by Export-DiagnosticRun.
+      }
+    }
+  }
+  return $highest
+}
+
+function Export-DiagnosticRun {
+  $records = [System.Collections.Generic.List[object]]::new()
+  $candidates = @(($diagnosticSource + '.1'), $diagnosticSource)
+  foreach ($candidate in $candidates) {
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+    $lineNumber = 0
+    foreach ($line in Get-Content -LiteralPath $candidate) {
+      $lineNumber++
+      if ([string]::IsNullOrWhiteSpace($line)) {
+        throw "Blank diagnostic JSONL line at $candidate`:$lineNumber"
+      }
+      try {
+        $record = $line | ConvertFrom-Json -ErrorAction Stop
+      } catch {
+        throw "Malformed diagnostic JSONL line at $candidate`:$lineNumber`: $($_.Exception.Message)"
+      }
+      if ($null -eq $record.sequence) {
+        throw "Diagnostic record has no sequence at $candidate`:$lineNumber"
+      }
+      $sequence = [int64]$record.sequence
+      if ($sequence -gt $diagnosticStartSequence) {
+        $records.Add($record)
+      }
+    }
+  }
+  $ordered = @($records | Sort-Object { [int64]$_.sequence })
+  if ($ordered.Count -eq 0) {
+    throw "No central diagnostic records were written after sequence $diagnosticStartSequence."
+  }
+  $lines = foreach ($record in $ordered) {
+    $record | ConvertTo-Json -Depth 20 -Compress
+  }
+  Write-Utf8NoBom -Path (Join-Path $runDir 'end-rift-events.jsonl') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
+  $script:runMetadata['diagnosticStartSequence'] = $diagnosticStartSequence
+  $script:runMetadata['diagnosticRecords'] = $ordered.Count
+}
+
+function Record-DiagnosticStatus {
+  param([string]$StatusText)
+  if ([string]::IsNullOrWhiteSpace($StatusText)) { return }
+  $patterns = [ordered]@{
+    diagnosticEventsDropped = 'dropped=(\d+)'
+    diagnosticWriteFailures = 'failures=(\d+)'
+    diagnosticMaxQueueDepth = 'queueMax=(\d+)'
+    diagnosticRotations = 'rotations=(\d+)'
+  }
+  foreach ($entry in $patterns.GetEnumerator()) {
+    $match = [Regex]::Match($StatusText, $entry.Value)
+    if ($match.Success) { $script:runMetadata[$entry.Key] = [int64]$match.Groups[1].Value }
+  }
+  $modeMatch = [Regex]::Match($StatusText, 'END_RIFT_DIAGNOSTICS mode=([A-Z]+)')
+  if ($modeMatch.Success) { $script:runMetadata['diagnosticMode'] = $modeMatch.Groups[1].Value }
+}
+
+function Write-ArtifactHashes {
+  $artifacts = @(
+    @{ Name = 'CopiMineEndEvent.jar'; Path = (Join-Path $root 'copimine-end-event\CopiMineEndEvent.jar') },
+    @{ Name = 'Purpur server jar'; Path = (Join-Path $serverDir 'purpur.jar') },
+    @{ Name = 'CopiMineClient.jar'; Path = (Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar') },
+    @{ Name = 'CopiMineResourcePack.zip'; Path = (Join-Path $root 'resourcepacks\build\CopiMineResourcePack.zip') }
+  )
+  $lines = foreach ($artifact in $artifacts) {
+    if (-not (Test-Path -LiteralPath $artifact.Path -PathType Leaf)) {
+      throw "Required live artifact is missing: $($artifact.Path)"
+    }
+    $hash = (Get-FileHash -LiteralPath $artifact.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$hash $($artifact.Name)"
+  }
+  Write-Utf8NoBom -Path (Join-Path $runDir 'artifact-hashes.txt') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
+}
+
+New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+$javaVersion = try { (& java -version 2>&1 | Select-Object -First 1).ToString().Trim() } catch { 'unknown' }
+$script:runMetadata = [ordered]@{
+  repository = 'IliaZav/copimine'
+  branch = $branch
+  referenceSha = $referenceSha
+  gitHead = $gitHead
+  dirty = ($dirtyStatus.Count -gt 0)
+  dirtyStatus = @($dirtyStatus)
+  serverVersion = 'Purpur local-runtime'
+  javaVersion = $javaVersion
+  diagnosticMode = 'VERBOSE'
+  nativeMinecraft = 'NOT VERIFIED'
+  livePaperResult = 'RUNNING'
+  ciResult = 'NOT RECORDED'
+  runDirectory = $runDir
+  eventId = ''
+  testPlan = @('W6-SEAL-01', 'W7-BARRIER-01', 'W7-RESTART-01', 'W7-NATURAL-CLEANUP-01', 'W7-COMMAND-CLEANUP-01')
+}
+$diagnosticStartSequence = Get-HighestDiagnosticSequence
+Write-RunMetadata
+Write-Utf8NoBom -Path (Join-Path $runDir 'evidence-index.json') -Text ((ConvertTo-Json -InputObject (,[ordered]@{
+  id = 'native-minecraft-visual'
+  file = ''
+  gitHead = $gitHead
+  eventSequence = $null
+  description = 'Native Minecraft screenshot/video unavailable in this environment.'
+  result = 'NOT VERIFIED'
+}) -Depth 8))
 
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
@@ -305,9 +475,10 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
   throw 'Refused: boundary probe requires isolated local ports.'
 }
 
-$core = Get-Core (Invoke-LocalRcon 'cmend status')
-$floorY = $core[1]
 try {
+  Start-LiveStep -Id 'W6-SETUP-01' -Description 'Prepare isolated local arena, trace mode, and two real clients.'
+  $core = Get-Core (Invoke-LocalRcon 'cmend status')
+  $floorY = $core[1]
   # Keep each real client in the room assigned by the server's Wave 7
   # containment controller. This is a navigation bound only; damage,
   # chamber ownership and completion remain server-authoritative.
@@ -327,7 +498,9 @@ try {
   }
   Clear-LocalArenaAmbientMobs -Core $core
   Restart-Bots -Names $names -Core $core
+  Complete-LiveStep
 
+  Start-LiveStep -Id 'W6-SEAL-01' -Description 'Capture one prisoner through the physical seal and observe the first authorized drain.'
   $wave6Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 6'
   Wait-Log -AfterOffset $wave6Offset -Pattern 'WAVE_TEST_STARTED.*wave=6\b' | Out-Null
@@ -353,7 +526,9 @@ try {
     throw "Wave 6 did not expose Ritual Sphere visuals: $wave6Objective"
   }
   Write-Output "LIVE_WAVE6_RITUAL_SPHERE_PASS casters=4 guards=12 prisoner=$($prisonerMatch.Groups[1].Value) drain_interval_ms=20000 drain_hp=2 health_floor=1 visual_displays=$($wave6Match.Groups[1].Value) legacy_rings=false"
+  Complete-LiveStep
 
+  Start-LiveStep -Id 'W7-BARRIER-01' -Description 'Build the connected one-block Wave 7 barrier and probe a real collision cell.'
   $null = Invoke-LocalRcon 'cmend wave clear'
   Clear-LocalArenaAmbientMobs -Core $core
   Restart-Bots -Names $names -Core $core
@@ -380,7 +555,9 @@ try {
     throw "Wave 7 did not expose barrier visuals: $wave7Objective"
   }
   Write-Output "LIVE_WAVE7_ONE_BLOCK_WALL_PASS chambers=2 cells=$($barrierMatch.Groups[1].Value) columns=$($columnMatch.Groups[1].Value) visual_displays=$($wave7VisualMatch.Groups[1].Value) wall_material=barrier barrier=$probePoint collision=true connected=raster"
+  Complete-LiveStep
 
+  Start-LiveStep -Id 'W7-RESTART-01' -Description 'Restart the isolated Paper server and verify journal/PDC barrier rehydration before combat.'
   # A disposable test wave normally remains in READY_FOR_PLAYERS.  Persisted
   # Wave 7 is deliberately restartable so this probe can exercise the same
   # PDC/journal recovery boundary without touching an official roster.
@@ -421,6 +598,7 @@ try {
   $restartProbeOffset = Log-Length
   $restartProbePoint = Assert-BarrierBlock -Core $core -FloorY $floorY -AfterOffset $restartProbeOffset
   Write-Output "LIVE_WAVE7_RESTART_RECOVERY_PASS rehydrated=true collision=true visible=true barrier=$restartProbePoint journal_replayed=true"
+  Complete-LiveStep
   # The recovered Wave 7 room is already closed.  Keep the player's durable
   # position and let the server-side reconnect/containment path own placement;
   # a central admin teleport would be rejected by the very wall being tested.
@@ -429,6 +607,7 @@ try {
   Sync-BotsHeldItem
   Start-Sleep -Seconds 7
 
+  Start-LiveStep -Id 'W7-NATURAL-CLEANUP-01' -Description 'Allow recovered Wave 7 to complete naturally and verify server-owned cleanup.'
   $naturalOffset = Log-Length
   Wait-Log -AfterOffset $naturalOffset -Pattern 'END_RIFT_CHAMBERS_COMPLETE.*chambers=2' -Seconds $BotDurationSeconds | Out-Null
   Wait-Log -AfterOffset $naturalOffset -Pattern 'DISPOSABLE_WAVE_NATURAL_COMPLETE.*wave=7.*cleanup=server.*phase_unchanged=true' -Seconds $TimeoutSeconds | Out-Null
@@ -437,7 +616,9 @@ try {
     throw "Natural Wave 7 completion left event mobs: $naturalStatus"
   }
   Write-Output 'LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0 phase_unchanged=true'
+  Complete-LiveStep
 
+  Start-LiveStep -Id 'W7-COMMAND-CLEANUP-01' -Description 'Run explicit Wave 7 cleanup, dump canonical state, and collect diagnostic counters.'
   $cleanupOffset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 7'
   Wait-Log -AfterOffset $cleanupOffset -Pattern 'END_RIFT_WAVE7_BARRIERS_READY' -Seconds $TimeoutSeconds | Out-Null
@@ -448,13 +629,32 @@ try {
     throw "Wave 7 command cleanup left transient state: $status"
   }
   Write-Output 'LIVE_WAVE7_COMMAND_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0'
+  $null = Invoke-LocalRcon 'cmend debug dump'
+  $diagnosticStatus = Invoke-LocalRcon 'cmend debug status'
+  Record-DiagnosticStatus -StatusText $diagnosticStatus
+  Complete-LiveStep
+  $script:livePaperResult = 'PASS'
+}
+catch {
+  $script:livePaperResult = 'FAIL'
+  Fail-LiveStep -Detail $_.Exception.Message
+  throw
 }
 finally {
+  try {
+    $diagnosticStatus = Invoke-LocalRcon 'cmend debug status'
+    Record-DiagnosticStatus -StatusText $diagnosticStatus
+  } catch { }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
   if ($combatTraceProbe) { try { $null = Invoke-LocalRcon 'cmend debug trace off' } catch { } }
   if ($previousLocalMobSpawning -ne $null) {
     try { Set-LocalArenaMobSpawning -Enabled ($previousLocalMobSpawning -eq 'true') } catch { }
+  }
+  try { $null = Invoke-LocalRcon 'stop' } catch { }
+  try { Wait-Port -Port 25576 -Expected $false -Seconds 30 } catch { }
+  foreach ($process in $processes) {
+    if ($process -and -not $process.HasExited) { try { $process.WaitForExit(10000) | Out-Null } catch { } }
   }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
@@ -466,5 +666,47 @@ finally {
     Remove-Item Env:END_RIFT_BOT_WAVE7_AUTOPILOT -ErrorAction SilentlyContinue
   } else {
     $env:END_RIFT_BOT_WAVE7_AUTOPILOT = $previousWave7Autopilot
+  }
+  try {
+    $script:runMetadata['livePaperResult'] = $script:livePaperResult
+    $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
+    Write-ArtifactHashes
+    Export-DiagnosticRun
+    Write-RunMetadata
+    $reportOutput = (& python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir 2>&1 | Out-String).Trim()
+    $reportExit = $LASTEXITCODE
+    if ($reportExit -ne 0) {
+      throw "Diagnostic report generation failed: $reportOutput"
+    }
+    $summary = Get-Content -LiteralPath (Join-Path $runDir 'summary.json') -Raw | ConvertFrom-Json
+    $script:diagnosticReportResult = [string]$summary.result
+    # The first report pass reads the pre-report metadata. Persist the actual
+    # report result and rebuild once so metadata.json, summary.json and
+    # report.md all describe the same completed audit.
+    $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
+    Write-RunMetadata
+    $reportOutput = (& python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir 2>&1 | Out-String).Trim()
+    $reportExit = $LASTEXITCODE
+    if ($reportExit -ne 0) {
+      throw "Diagnostic report regeneration failed: $reportOutput"
+    }
+    $summary = Get-Content -LiteralPath (Join-Path $runDir 'summary.json') -Raw | ConvertFrom-Json
+    $script:diagnosticReportResult = [string]$summary.result
+    if ($script:diagnosticReportResult -ne 'PASS') {
+      $script:livePaperResult = $script:diagnosticReportResult
+      $script:runMetadata['livePaperResult'] = $script:livePaperResult
+      $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
+      Write-RunMetadata
+      $null = & python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir
+      throw "Diagnostic report is not PASS: $($script:diagnosticReportResult)"
+    }
+    Write-Host "END_RIFT_DIAGNOSTIC_REPORT_PASS runDir=$runDir"
+  } catch {
+    if ($script:livePaperResult -eq 'PASS') { $script:livePaperResult = 'FAIL' }
+    $script:runMetadata['livePaperResult'] = $script:livePaperResult
+    $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
+    try { Write-RunMetadata } catch { }
+    Write-Error $_
+    throw
   }
 }

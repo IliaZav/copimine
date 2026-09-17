@@ -9,6 +9,8 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.RejectedExecutionException;
@@ -17,6 +19,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import me.copimine.endevent.diagnostics.EndRiftDiagnosticService;
 
 /**
  * Non-blocking diagnostics sink for wave transitions and main-thread stalls.
@@ -29,13 +32,24 @@ public final class WaveTransitionDiagnostics {
 
     private final Path path;
     private final Logger logger;
+    private final EndRiftDiagnosticService structuredDiagnostics;
     private final Object fileLock = new Object();
     private final ConcurrentHashMap<String, Long> transitionStartedAtNanos = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor writer;
     private volatile boolean closed;
 
     public WaveTransitionDiagnostics(Path dataFolder, Logger logger) {
+        this(dataFolder, logger, null);
+    }
+
+    /**
+     * Keep the legacy transition file for existing probes while mirroring
+     * lifecycle records into the central correlated diagnostic stream.
+     */
+    public WaveTransitionDiagnostics(Path dataFolder, Logger logger,
+                                     EndRiftDiagnosticService structuredDiagnostics) {
         this.logger = logger;
+        this.structuredDiagnostics = structuredDiagnostics;
         this.path = dataFolder.resolve("diagnostics").resolve("wave-transitions.jsonl");
         try {
             Files.createDirectories(path.getParent());
@@ -146,11 +160,49 @@ public final class WaveTransitionDiagnostics {
         if (closed) {
             return;
         }
+        publishStructured(event, fields);
         String line = jsonLine(event, fields);
         try {
             writer.execute(() -> append(line));
         } catch (RejectedExecutionException ignored) {
             logger.warning("END_EVENT_DIAGNOSTICS_QUEUE_FULL event=" + event);
+        }
+    }
+
+    private void publishStructured(String legacyEvent, Object... fields) {
+        if (structuredDiagnostics == null) {
+            return;
+        }
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (int index = 0; index + 1 < fields.length; index += 2) {
+            values.put(String.valueOf(fields[index]), fields[index + 1]);
+        }
+        long generation = number(values.get("generation"), 0L);
+        Object waveValue = values.containsKey("wave") ? values.get("wave") : values.get("toWave");
+        Integer wave = waveValue == null ? null : (int) number(waveValue, 0L);
+        String category = "WAVE_MAIN_THREAD_STALL".equals(legacyEvent) ? "PERFORMANCE" : "WAVE";
+        String action = switch (legacyEvent) {
+            case "WAVE_TRANSITION_STARTED" -> "START";
+            case "WAVE_TRANSITION_COMMITTED" -> "COMPLETE";
+            case "WAVE_TRANSITION_FAILED" -> "FAIL";
+            default -> "WARN";
+        };
+        String severity = "FAIL".equals(action) ? "ERROR" : "INFO";
+        String reason = String.valueOf(values.getOrDefault("reason", ""));
+        String correlation = "wave:" + generation + ":" + (wave == null ? "unknown" : wave);
+        structuredDiagnostics.emit(0L, generation, wave,
+                String.valueOf(values.getOrDefault("phase", "")), category, action,
+                severity, null, null, null, correlation, reason, values);
+    }
+
+    private static long number(Object value, long fallback) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return value == null ? fallback : Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
         }
     }
 

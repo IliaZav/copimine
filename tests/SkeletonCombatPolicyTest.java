@@ -64,6 +64,12 @@ public final class SkeletonCombatPolicyTest {
                         EndRiftObjective.Objective.REALITY_SPLIT, true).id()
                         .equals("chamber_fireline"),
                 "last wave miniboss skeletons must keep a chamber fireline");
+        require(SkeletonCombatPolicy.shouldHoldPositionInClosedChamber(
+                        EndRiftObjective.Objective.REALITY_SPLIT),
+                "Wave 7 skeletons must hold a reachable firing position inside a closed chamber");
+        require(!SkeletonCombatPolicy.shouldHoldPositionInClosedChamber(
+                        EndRiftObjective.Objective.RIFT_GATES),
+                "non-split waves must retain their normal ranged movement posture");
         require(SkeletonCombatPolicy.behaviorFor(
                         EndRiftObjective.Objective.RIFT_GATES, true).minimumRange()
                         < SkeletonCombatPolicy.behaviorFor(

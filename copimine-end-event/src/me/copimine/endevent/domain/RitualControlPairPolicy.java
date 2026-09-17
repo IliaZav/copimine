@@ -17,15 +17,24 @@ public final class RitualControlPairPolicy {
     }
 
     public static List<Pair> pair(List<String> participantIds, int requestedPairs) {
+        return pair(participantIds, null, requestedPairs);
+    }
+
+    public static List<Pair> pair(List<String> participantIds, String excludedId, int requestedPairs) {
         if (participantIds == null || requestedPairs <= 0) {
             return List.of();
         }
         int limit = Math.min(MAX_PAIRS, requestedPairs);
         Set<String> unique = new LinkedHashSet<>();
         for (String id : participantIds) {
-            if (id != null && !id.isBlank()) {
-                unique.add(id.trim());
+            if (id == null || id.isBlank()) {
+                continue;
             }
+            String normalized = id.trim();
+            if (excludedId != null && excludedId.equals(normalized)) {
+                continue;
+            }
+            unique.add(normalized);
         }
         List<String> ids = new ArrayList<>(unique);
         List<Pair> result = new ArrayList<>();

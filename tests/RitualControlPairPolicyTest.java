@@ -13,6 +13,14 @@ public final class RitualControlPairPolicyTest {
         check(!RitualControlPairPolicy.canActivate(true, true),
                 "reverse and control swap must be mutually exclusive");
 
+        List<RitualControlPairPolicy.Pair> withoutPrisoner = RitualControlPairPolicy.pair(
+                List.of("prisoner", "a", "b", "c", "d"), "prisoner", 2);
+        check(withoutPrisoner.size() == 2,
+                "two free control pairs should still be formed when enough free players exist");
+        check(withoutPrisoner.stream().noneMatch(pair ->
+                        pair.first().equals("prisoner") || pair.second().equals("prisoner")),
+                "the ritual prisoner must never be included in a control-swap pair");
+
         List<RitualControlPairPolicy.Pair> pairs = RitualControlPairPolicy.pair(
                 List.of("a", "b", "c", "d", "e"), 2);
         check(pairs.size() == 2, "pair assignment must be bounded by requested pairs");

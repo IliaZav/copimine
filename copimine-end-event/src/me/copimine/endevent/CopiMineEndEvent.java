@@ -14314,15 +14314,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<String> ids = ritualFreeTargets(activeLivingPlayers()).stream()
                 .map(player -> player.getUniqueId().toString())
                 .toList();
+        String excludedId = ritualPrisonerUuid == null ? null : ritualPrisonerUuid.toString();
         for (RitualControlPairPolicy.Pair pair : RitualControlPairPolicy.pair(
-                ids, ritualSphereState.profile().controlSwapPairs())) {
+                ids, excludedId, ritualSphereState.profile().controlSwapPairs())) {
             UUID first = parseUuidOrNull(pair.first());
             UUID second = parseUuidOrNull(pair.second());
             boolean firstReverseActive = ritualReverseUntil.getOrDefault(first, 0L) > now;
             boolean secondReverseActive = ritualReverseUntil.getOrDefault(second, 0L) > now;
             if (first == null || second == null || ritualControlInstances.containsKey(first)
                     || ritualControlInstances.containsKey(second) || firstReverseActive
-                    || secondReverseActive || !RitualControlPairPolicy.canActivate(false, false)) {
+                    || secondReverseActive || !isValidRitualControlParticipant(first)
+                    || !isValidRitualControlParticipant(second)
+                    || !RitualControlPairPolicy.canActivate(false, false)) {
                 continue;
             }
             String pairId = "swap:" + eventId + ":" + generation + ":" + UUID.randomUUID();
@@ -14345,32 +14348,63 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickRitualControls(long now) {
-        Set<UUID> expired = ritualControlExpiresAt.entrySet().stream()
-                .filter(entry -> now >= entry.getValue())
-                .map(Map.Entry::getKey).collect(Collectors.toCollection(LinkedHashSet::new));
-        for (UUID id : expired) {
+        for (UUID id : new LinkedHashSet<>(ritualControlInstances.keySet())) {
+            if (!ritualControlInstances.containsKey(id)) {
+                continue;
+            }
             UUID partner = ritualControlPartners.get(id);
-            clearRitualControl(id, "expired");
-            if (partner != null) {
-                clearRitualControl(partner, "expired");
+            boolean pairedStateInvalid = partner != null
+                    && (!Objects.equals(ritualControlPartners.get(partner), id)
+                    || !ritualControlInstances.containsKey(partner)
+                    || !ritualControlExpiresAt.containsKey(partner));
+            boolean participantInvalid = !isValidRitualControlParticipant(id)
+                    || partner != null && !isValidRitualControlParticipant(partner);
+            if (pairedStateInvalid || participantInvalid) {
+                clearRitualControl(id, "invalid-participant");
+            } else if (now >= ritualControlExpiresAt.getOrDefault(id, 0L)) {
+                clearRitualControl(id, "expired");
             }
         }
+    }
+
+    private boolean isValidRitualControlParticipant(UUID playerId) {
+        Player player = playerId == null ? null : Bukkit.getPlayer(playerId);
+        return player != null && isFreeRitualTarget(player);
     }
 
     private void clearRitualControl(UUID playerId, String reason) {
         if (playerId == null) {
             return;
         }
-        String instance = ritualControlInstances.remove(playerId);
-        ritualReverseUntil.remove(playerId);
-        ritualControlExpiresAt.remove(playerId);
         UUID partner = ritualControlPartners.remove(playerId);
+        if (partner != null) {
+            clearRitualControlPair(playerId, partner, reason);
+            return;
+        }
+        String instance = ritualControlInstances.remove(playerId);
+        ritualControlExpiresAt.remove(playerId);
+        ritualReverseUntil.remove(playerId);
         Player player = Bukkit.getPlayer(playerId);
         if (instance != null) {
             sendEndControlPacket(player, "STOP", instance, 0L, playerId, reason);
         }
-        if (partner != null && Objects.equals(ritualControlPartners.get(partner), playerId)) {
-            ritualControlPartners.remove(partner);
+    }
+
+    private void clearRitualControlPair(UUID first, UUID second, String reason) {
+        if (first == null || second == null || first.equals(second)) {
+            return;
+        }
+        String firstInstance = ritualControlInstances.remove(first);
+        String secondInstance = ritualControlInstances.remove(second);
+        ritualControlPartners.remove(first);
+        ritualControlPartners.remove(second);
+        ritualControlExpiresAt.remove(first);
+        ritualControlExpiresAt.remove(second);
+        if (firstInstance != null) {
+            sendEndControlPacket(Bukkit.getPlayer(first), "STOP", firstInstance, 0L, first, reason);
+        }
+        if (secondInstance != null) {
+            sendEndControlPacket(Bukkit.getPlayer(second), "STOP", secondInstance, 0L, second, reason);
         }
     }
 
@@ -14390,9 +14424,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         UUID partner = ritualControlPartners.get(playerId);
-        clearRitualControl(playerId, reason);
         if (partner != null) {
-            clearRitualControl(partner, reason + "-partner");
+            clearRitualControlPair(playerId, partner, reason);
+        } else {
+            clearRitualControl(playerId, reason);
         }
     }
 
@@ -24421,6 +24456,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         releaseCurrentCarrierHolder(uuid, "world-change");
+        clearRitualControlForPlayerLifecycle(uuid, "world-change");
         clientBindingReadyPlayers.remove(uuid);
         cancelShardChannel(uuid);
         if (worldAccessService == null || !worldAccessService.isEndWorld(event.getPlayer().getWorld())) {
@@ -25827,6 +25863,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (target == null || !isFreeRitualTarget(source) || !isFreeRitualTarget(target)
                 || !source.getWorld().equals(target.getWorld())
                 || targetInstance == null || !targetInstance.startsWith(pairId + ":")) {
+            clearRitualControl(sourceId, "invalid-participant");
             return;
         }
         Vector forwardVector = target.getLocation().getDirection();

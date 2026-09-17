@@ -202,9 +202,13 @@ public final class BossOrientedHitboxPolicy {
             double radians = Math.toRadians(degrees);
             double cosine = Math.cos(radians);
             double sine = Math.sin(radians);
-            return new Matrix3(cosine, 0.0D, sine,
+            // Bukkit entity yaw uses the Minecraft world convention: +90
+            // degrees maps local X to world +Z and local Z to world -X.
+            // Keep this separate from Matrix3.euler's authored model-space
+            // Y rotation, whose sign follows the Bedrock animation data.
+            return new Matrix3(cosine, 0.0D, -sine,
                     0.0D, 1.0D, 0.0D,
-                    -sine, 0.0D, cosine);
+                    sine, 0.0D, cosine);
         }
 
         public static Matrix3 euler(Euler euler) {

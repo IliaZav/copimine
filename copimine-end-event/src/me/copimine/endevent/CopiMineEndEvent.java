@@ -38,6 +38,7 @@ import me.copimine.endevent.domain.BossAbilityState;
 import me.copimine.endevent.domain.BossAbilityId;
 import me.copimine.endevent.domain.BossAbilitySelector;
 import me.copimine.endevent.domain.BossAnimationId;
+import me.copimine.endevent.domain.BossAnimationPosePolicy;
 import me.copimine.endevent.domain.BossBrain;
 import me.copimine.endevent.domain.BossCastTimeline;
 import me.copimine.endevent.domain.BossDamagePolicy;
@@ -839,6 +840,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private UUID bossHazardReservationId;
     private BossPhase bossPhase = BossPhase.AWAKENING;
     private BossAbilityState bossAbilityState = BossAbilityState.NONE;
+    private String bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
+    private long bossHitboxAnimationStartedMillis;
     private long bossCastDeadlineMillis;
     private boolean bossFinalStrikeUsed;
     private boolean bossDefeatCinematicStarted;
@@ -1869,6 +1872,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveRewardsIssued.addAll(snapshot.waveRewardsIssued());
         bossPhase = snapshot.currentBossPhase();
         bossAbilityState = BossAbilityState.NONE;
+        bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
+        bossHitboxAnimationStartedMillis = System.currentTimeMillis();
         bossCastDeadlineMillis = 0L;
         coreCharged = snapshot.coreCharged();
         endUnlocked = snapshot.endUnlocked();
@@ -18350,6 +18355,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         nextBossPerceptionMillis = 0L;
         bossPhase = BossPhase.AWAKENING;
         bossAbilityState = BossAbilityState.NONE;
+        startBossHitboxAnimation(BossAnimationId.IDLE_BREATH.wireId());
         bossCastDeadlineMillis = 0L;
         bossFinalStrikeUsed = false;
         bossDefeatCinematicStarted = false;
@@ -18601,6 +18607,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelBossCastTask();
         bossPhase = BossPhase.AWAKENING;
         bossAbilityState = BossAbilityState.NONE;
+        bossHitboxAnimationId = BossAnimationId.IDLE_BREATH.wireId();
+        bossHitboxAnimationStartedMillis = System.currentTimeMillis();
         bossCastDeadlineMillis = 0L;
         bossFinalStrikeUsed = false;
         bossDefeatCinematicStarted = false;
@@ -18742,42 +18750,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /**
-     * The client animation protocol exposes named boss cues rather than a
-     * server-side bone pose.  Keep the server correction deliberately small:
-     * it follows the two visible arm groups during the bounded cast states
-     * and leaves all other model parts on their geometry-derived bind pose.
-     */
+    /** Samples the same authored animation timeline used by the client. */
     private Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> bossHitboxPoseOffsets() {
-        return switch (bossAbilityState) {
-            case TELEGRAPHING -> Map.of(
-                    BossHitboxProfile.PartId.LEFT_UPPER_ARM,
-                    new BossHitboxTransformPolicy.PoseOffset(-1.5D, 3.0D, 0.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.LEFT_FOREARM,
-                    new BossHitboxTransformPolicy.PoseOffset(-1.5D, 3.0D, 0.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.RIGHT_UPPER_ARM,
-                    new BossHitboxTransformPolicy.PoseOffset(1.5D, 3.0D, 0.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.RIGHT_FOREARM,
-                    new BossHitboxTransformPolicy.PoseOffset(1.5D, 3.0D, 0.0D,
-                            0.0D, 0.0D, 0.0D));
-            case EXECUTING -> Map.of(
-                    BossHitboxProfile.PartId.LEFT_UPPER_ARM,
-                    new BossHitboxTransformPolicy.PoseOffset(-3.0D, -2.0D, 2.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.LEFT_FOREARM,
-                    new BossHitboxTransformPolicy.PoseOffset(-3.0D, -2.0D, 2.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.RIGHT_UPPER_ARM,
-                    new BossHitboxTransformPolicy.PoseOffset(3.0D, -2.0D, 2.0D,
-                            0.0D, 0.0D, 0.0D),
-                    BossHitboxProfile.PartId.RIGHT_FOREARM,
-                    new BossHitboxTransformPolicy.PoseOffset(3.0D, -2.0D, 2.0D,
-                            0.0D, 0.0D, 0.0D));
-            default -> Map.of();
-        };
+        double elapsedTicks = Math.max(0.0D,
+                (System.currentTimeMillis() - bossHitboxAnimationStartedMillis) / 50.0D);
+        return BossAnimationPosePolicy.sample(bossHitboxAnimationId, elapsedTicks);
+    }
+
+    private void startBossHitboxAnimation(String animationId) {
+        bossHitboxAnimationId = canonicalBossAnimation(animationId);
+        bossHitboxAnimationStartedMillis = System.currentTimeMillis();
     }
 
     private void renderBossHitboxDebug(LivingEntity boss,
@@ -25667,11 +25649,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Sends a short client-only animation cue; gameplay remains server-authoritative. */
     private void sendBossAnimationVisualUpdate(Entity boss, String animationId) {
-        if (boss == null || bossUuid == null || bossBindingInstanceId.isBlank()
-                || !bossUuid.equals(boss.getUniqueId()) || bossPhase == null) {
+        if (boss == null || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
+                || bossPhase == null) {
             return;
         }
         String animation = canonicalBossAnimation(animationId);
+        // Start the authoritative hitbox clock at the same transition that
+        // starts the client clip.  This remains active even before a player
+        // binds the visual, because gameplay hit acceptance must not depend
+        // on the presence of a client HUD.
+        startBossHitboxAnimation(animation);
+        if (bossBindingInstanceId.isBlank()) {
+            return;
+        }
         for (Player player : eventAudience()) {
             if (!player.isOnline() || !player.getWorld().equals(boss.getWorld())) {
                 continue;

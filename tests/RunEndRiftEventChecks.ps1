@@ -60,11 +60,14 @@ Invoke-GateStep 'CopiMineClient build' {
 Invoke-GateStep 'Resource pack build' {
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
 }
+Invoke-GateStep 'Authored boss pose generator parity' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'copimine-end-event\tools\GenerateBossAnimationPoses.ps1') -Check
+}
 
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py'
+  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py'
   } finally {
     Pop-Location
   }
@@ -91,6 +94,7 @@ $pureTests = @(
   'AttemptLifecycleControllerTest',
   'BossDamagePolicyTest',
   'BossAnimationIdTest',
+  'BossAnimationPosePolicyTest',
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',

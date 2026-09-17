@@ -18652,7 +18652,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || boss == null || !boss.isValid() || boss.isDead()) {
             return;
         }
-        Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> poses =
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> poses =
                 bossHitboxPoseOffsets();
         for (Entity entity : boss.getWorld().getNearbyEntities(boss.getLocation(),
                 16.0D, 16.0D, 16.0D)) {
@@ -18742,7 +18742,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         lastBossHitboxUpdateServerTick = serverTick;
-        Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> poses =
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> poses =
                 bossHitboxPoseOffsets();
         bossHitboxController.update(boss, poses);
         if (bossHitboxController.debug() && serverTick % 5L == 0L) {
@@ -18751,10 +18751,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Samples the same authored animation timeline used by the client. */
-    private Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> bossHitboxPoseOffsets() {
+    private Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> bossHitboxPoseOffsets() {
         double elapsedTicks = Math.max(0.0D,
                 (System.currentTimeMillis() - bossHitboxAnimationStartedMillis) / 50.0D);
-        return BossAnimationPosePolicy.sample(bossHitboxAnimationId, elapsedTicks);
+        return BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId, elapsedTicks);
     }
 
     private void startBossHitboxAnimation(String animationId) {
@@ -18763,7 +18763,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void renderBossHitboxDebug(LivingEntity boss,
-                                       Map<BossHitboxProfile.PartId,
+                                       Map<BossHitboxProfile.PartKey,
                                                BossHitboxTransformPolicy.PoseOffset> poses) {
         for (BossHitboxTransformPolicy.Box box : bossHitboxController.debugBoxes(boss, poses).values()) {
             Location[] corners = {

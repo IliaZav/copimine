@@ -18,7 +18,6 @@ import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -149,16 +148,13 @@ public final class BossHitboxController {
 
     /** Updates/reuses the existing proxies; no entity is spawned in this path. */
     public void update(LivingEntity boss,
-                       Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> poses) {
+                       Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> poses) {
         if (boss == null || bossUuid == null || !bossUuid.equals(boss.getUniqueId())
                 || !boss.isValid() || boss.isDead() || slots.isEmpty()) {
             return;
         }
-        EnumMap<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> safePoses =
-                new EnumMap<>(BossHitboxProfile.PartId.class);
-        if (poses != null) {
-            safePoses.putAll(poses);
-        }
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> safePoses =
+                poses == null ? Map.of() : Map.copyOf(poses);
         Iterator<Map.Entry<UUID, Slot>> iterator = slots.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<UUID, Slot> entry = iterator.next();
@@ -181,7 +177,7 @@ public final class BossHitboxController {
                     new BossHitboxTransformPolicy.Anchor(
                             boss.getLocation().getX(), boss.getLocation().getY(),
                             boss.getLocation().getZ(), boss.getLocation().getYaw()),
-                    safePoses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE));
+                    safePoses.getOrDefault(partKey(part), BossHitboxTransformPolicy.PoseOffset.NONE));
             Location destination = new Location(boss.getWorld(), box.center().x(),
                     box.center().y(), box.center().z(), boss.getYaw(), 0.0F);
             proxy.teleport(destination);
@@ -223,7 +219,7 @@ public final class BossHitboxController {
      */
     public boolean proxyRayIntersects(LivingEntity boss, Interaction proxy,
                                       Entity source,
-                                      Map<BossHitboxProfile.PartId,
+                                      Map<BossHitboxProfile.PartKey,
                                               BossHitboxTransformPolicy.PoseOffset> poses,
                                       double maxDistance) {
         if (!owns(proxy) || boss == null || source == null
@@ -249,7 +245,7 @@ public final class BossHitboxController {
      * current model box.
      */
     public boolean carrierRayIntersects(LivingEntity boss, Entity source,
-                                        Map<BossHitboxProfile.PartId,
+                                        Map<BossHitboxProfile.PartKey,
                                                 BossHitboxTransformPolicy.PoseOffset> poses,
                                         double maxDistance) {
         if (boss == null || source == null || !hasBoss(boss.getUniqueId())
@@ -280,7 +276,7 @@ public final class BossHitboxController {
      */
     public Interaction projectileHitProxy(LivingEntity boss,
                                          org.bukkit.entity.Projectile projectile,
-                                         Map<BossHitboxProfile.PartId,
+                                         Map<BossHitboxProfile.PartKey,
                                                  BossHitboxTransformPolicy.PoseOffset> poses,
                                          double maxDistance) {
         if (boss == null || projectile == null || !hasBoss(boss.getUniqueId())
@@ -380,7 +376,7 @@ public final class BossHitboxController {
     }
 
     public Map<UUID, BossHitboxTransformPolicy.Box> debugBoxes(LivingEntity boss,
-                                                                Map<BossHitboxProfile.PartId,
+                                                                Map<BossHitboxProfile.PartKey,
                                                                         BossHitboxTransformPolicy.PoseOffset> poses) {
         if (!debug || boss == null || !hasBoss(boss.getUniqueId())) {
             return Map.of();
@@ -398,7 +394,7 @@ public final class BossHitboxController {
                     new BossHitboxTransformPolicy.Anchor(boss.getLocation().getX(),
                             boss.getLocation().getY(), boss.getLocation().getZ(), boss.getYaw()),
                     poses == null ? BossHitboxTransformPolicy.PoseOffset.NONE
-                            : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE)));
+                            : poses.getOrDefault(partKey(part), BossHitboxTransformPolicy.PoseOffset.NONE)));
         }
         return Map.copyOf(result);
     }
@@ -478,11 +474,11 @@ public final class BossHitboxController {
     private BossOrientedHitboxPolicy.OrientedBox transformedObb(
             LivingEntity boss,
             BossHitboxProfile.Part part,
-            Map<BossHitboxProfile.PartId,
+            Map<BossHitboxProfile.PartKey,
                     BossHitboxTransformPolicy.PoseOffset> poses) {
         BossHitboxTransformPolicy.PoseOffset pose = poses == null
                 ? BossHitboxTransformPolicy.PoseOffset.NONE
-                : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
+                : poses.getOrDefault(partKey(part), BossHitboxTransformPolicy.PoseOffset.NONE);
         Location location = boss.getLocation();
         return BossOrientedHitboxPolicy.fromPart(part,
                 new BossHitboxTransformPolicy.Anchor(location.getX(), location.getY(),
@@ -530,7 +526,7 @@ public final class BossHitboxController {
 
     private Interaction projectileHitProxyAlongRay(LivingEntity boss, Location origin,
                                                    Vector direction,
-                                                   Map<BossHitboxProfile.PartId,
+                                                   Map<BossHitboxProfile.PartKey,
                                                            BossHitboxTransformPolicy.PoseOffset> poses,
                                                    double maxDistance) {
         if (origin == null || direction == null || direction.lengthSquared() < 1.0E-8D) {
@@ -551,7 +547,7 @@ public final class BossHitboxController {
             }
             BossHitboxTransformPolicy.PoseOffset pose = poses == null
                     ? BossHitboxTransformPolicy.PoseOffset.NONE
-                    : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
+                    : poses.getOrDefault(partKey(part), BossHitboxTransformPolicy.PoseOffset.NONE);
             BossOrientedHitboxPolicy.OrientedBox box = BossOrientedHitboxPolicy.fromPart(part,
                     new BossHitboxTransformPolicy.Anchor(boss.getLocation().getX(),
                             boss.getLocation().getY(), boss.getLocation().getZ(), boss.getLocation().getYaw()),
@@ -561,6 +557,10 @@ public final class BossHitboxController {
             }
         }
         return null;
+    }
+
+    private BossHitboxProfile.PartKey partKey(BossHitboxProfile.Part part) {
+        return new BossHitboxProfile.PartKey(part.id(), part.segmentIndex());
     }
 
     private record SourceRay(Location origin, Vector direction) {

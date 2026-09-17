@@ -6,36 +6,52 @@ import java.util.Map;
 
 public final class BossAnimationPosePolicyTest {
     public static void main(String[] args) {
-        Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> bind =
-                BossAnimationPosePolicy.sample("CHEST_STRIKE", 0.0D);
-        Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> attack =
-                BossAnimationPosePolicy.sample("CHEST_STRIKE", 40.0D);
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> bind =
+                BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 0.0D);
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> attack =
+                BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 40.0D);
 
         BossHitboxTransformPolicy.PoseOffset armAtBind = bind.get(
-                BossHitboxProfile.PartId.LEFT_UPPER_ARM);
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
         BossHitboxTransformPolicy.PoseOffset armAtAttack = attack.get(
-                BossHitboxProfile.PartId.LEFT_UPPER_ARM);
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
         require(armAtBind != null && armAtAttack != null, "left arm sample is required");
         require(!same(armAtBind, armAtAttack),
                 "authored attack frame must move the left upper arm");
 
         BossHitboxTransformPolicy.PoseOffset unanimatedAtBind = bind.get(
-                BossHitboxProfile.PartId.LEFT_LEG);
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
         BossHitboxTransformPolicy.PoseOffset unanimatedAtAttack = attack.get(
-                BossHitboxProfile.PartId.LEFT_LEG);
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
         require(same(BossHitboxTransformPolicy.PoseOffset.NONE, unanimatedAtBind),
                 "bone absent from clip must stay at bind pose");
         require(same(unanimatedAtBind, unanimatedAtAttack),
                 "unanimated leg must remain at bind pose during chest strike");
 
         BossHitboxTransformPolicy.PoseOffset midpoint =
-                BossAnimationPosePolicy.sample("CHEST_STRIKE", 20.0D).get(
-                        BossHitboxProfile.PartId.LEFT_UPPER_ARM);
+                BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 20.0D).get(
+                        new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
         require(midpoint != null && midpoint.translationModelZ() > 0.0D,
                 "linear authored interpolation must be visible at midpoint");
-        require(BossAnimationPosePolicy.sample("unknown", 10.0D).values().stream()
+        require(BossAnimationPosePolicy.sampleSegments("unknown", 10.0D).values().stream()
                         .allMatch(BossAnimationPosePolicyTest::isNone),
                 "unknown animation must fail closed to bind pose");
+
+        BossHitboxTransformPolicy.PoseOffset childForearm =
+                BossAnimationPosePolicy.sampleSegments("IDLE_BREATH", 40.0D).get(
+                        new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_FOREARM, 0));
+        require(childForearm != null && !isNone(childForearm),
+                "a child forearm must inherit its animated parent transform");
+
+        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> slam =
+                BossAnimationPosePolicy.sampleSegments("GROUND_SLAM", 50.0D);
+        BossHitboxTransformPolicy.PoseOffset upperLeg = slam.get(
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
+        BossHitboxTransformPolicy.PoseOffset lowerLeg = slam.get(
+                new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 1));
+        require(upperLeg != null && lowerLeg != null, "both authored leg segments are required");
+        require(!same(upperLeg, lowerLeg),
+                "the lower leg segment must compose its own authored child track");
         System.out.println("BossAnimationPosePolicyTest OK");
     }
 

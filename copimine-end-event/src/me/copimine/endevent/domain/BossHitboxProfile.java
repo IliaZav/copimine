@@ -231,6 +231,18 @@ public final class BossHitboxProfile {
         }
     }
 
+    /** Stable identity for one hitbox segment, including repeated part ids. */
+    public record PartKey(PartId partId, int segmentIndex) {
+        public PartKey {
+            if (partId == null) {
+                throw new IllegalArgumentException("hitbox part id is required");
+            }
+            if (segmentIndex < 0) {
+                throw new IllegalArgumentException("hitbox segment index must not be negative");
+            }
+        }
+    }
+
     public record Bounds(double minX, double minY, double minZ,
                          double maxX, double maxY, double maxZ) {
         public Bounds {

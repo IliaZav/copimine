@@ -13,6 +13,7 @@ $repositoryRoot = (Resolve-Path (Join-Path $pluginRoot '..')).Path
 $clientAssetRoot = Join-Path $repositoryRoot 'CopiMineClient\src\main\resources\assets\copimineclient\models\entity\end_rift_guardian'
 $animationRoot = Join-Path $clientAssetRoot 'animations'
 $defaultOutput = Join-Path $pluginRoot 'src\me\copimine\endevent\domain\GeneratedBossAnimationPoses.java'
+$clientAnimationPlayerPath = Join-Path $repositoryRoot 'CopiMineClient\src\main\java\me\copimine\client\UserEndBossAnimationPlayer.java'
 
 if (-not $OutputPath) {
   $OutputPath = $defaultOutput
@@ -197,12 +198,49 @@ foreach ($bone in $geometryBones) {
       Parent = $parent
       Pivot = $pivot
       BindRotation = $bindRotation
-    })
+  })
+}
+
+# A missing parent is rejected above, but a parent cycle would otherwise
+# produce a partially composed runtime pose. Reject it before generating the
+# checked-in server resource so malformed geometry cannot reach combat code.
+$parentByBone = @{}
+foreach ($definition in $geometryDefinitions) {
+  $parentByBone[$definition.Name] = $definition.Parent
+}
+foreach ($definition in $geometryDefinitions) {
+  $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  $current = $definition.Name
+  while ($null -ne $current) {
+    if (-not $seen.Add($current)) {
+      Fail-Asset $geometryPath "bone hierarchy contains a cycle at '$current'"
+    }
+    $current = $parentByBone[$current]
+  }
+}
+
+if (-not (Test-Path -LiteralPath $clientAnimationPlayerPath -PathType Leaf)) {
+  Fail-Asset $clientAnimationPlayerPath 'client animation loop owner is missing'
+}
+$clientAnimationPlayerSource = Get-Content -LiteralPath $clientAnimationPlayerPath -Raw
+foreach ($clipSpec in $clips) {
+  $filePattern = [regex]::Escape([string]$clipSpec.File)
+  $idPattern = [regex]::Escape([string]$clipSpec.Id)
+  $loopPattern = 'load\s*\(\s*clips\s*,\s*"{0}"\s*,\s*"{1}"\s*,\s*(true|false)\s*\)' -f $filePattern, $idPattern
+  $loopMatch = [regex]::Match($clientAnimationPlayerSource, $loopPattern)
+  if (-not $loopMatch.Success) {
+    Fail-Asset $clientAnimationPlayerPath "missing loop declaration for $($clipSpec.File) -> $($clipSpec.Id)"
+  }
+  $clientLoop = $loopMatch.Groups[1].Value -eq 'true'
+  if ($clientLoop -ne [bool]$clipSpec.Loop) {
+    Fail-Asset $clientAnimationPlayerPath "loop declaration for $($clipSpec.Id) does not match generator specification"
+  }
 }
 
 $parsedClips = [Collections.Generic.List[object]]::new()
 $digestInputs = [Collections.Generic.List[object]]::new()
 $digestInputs.Add([ordered]@{ Name = 'geometry.json'; Path = $geometryPath })
+$digestInputs.Add([ordered]@{ Name = 'client/UserEndBossAnimationPlayer.java'; Path = $clientAnimationPlayerPath })
 foreach ($clipSpec in $clips) {
   $path = Join-Path $animationRoot $clipSpec.File
   $document = Read-Json $path
@@ -235,7 +273,7 @@ foreach ($clipSpec in $clips) {
         Scale = Get-Channel $boneProperty.Value.scale $path "animation.bones.$boneName.scale"
       }
       if ($null -ne $parsedTrack.Scale) {
-        Fail-Asset $path "animation.bones.$boneName.scale is unsupported by server hitbox PoseOffset"
+        Fail-Asset $path "animation.bones.$boneName.scale is unsupported by server hitbox BossHitboxPose"
       }
       $tracks[$boneName] = $parsedTrack
     }

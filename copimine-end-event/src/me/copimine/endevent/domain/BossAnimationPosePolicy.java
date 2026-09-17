@@ -15,10 +15,13 @@ import java.util.Set;
  * independent world transform: it is composed after every animated parent.
  * This policy keeps that rule on the server by evaluating the generated
  * pivot/parent metadata into one affine transform for each hitbox segment.
- * The result keeps its composed rotation matrix in {@link BossHitboxPose}
- * until the OBB is built, without loading client classes or resources.  A
- * legacy Euler view remains available through {@link #sample(String, double)}
- * for callers that still need the renderer-facing pose shape.</p>
+ * The animated world transform is compared with the generated bind transform,
+ * so the result is a relative pose applied to the already bind-derived
+ * hitbox profile. It keeps its composed rotation matrix in
+ * {@link BossHitboxPose} until the OBB is built, without loading client
+ * classes or resources. A legacy Euler view remains available through
+ * {@link #sample(String, double)} for callers that still need the
+ * renderer-facing pose shape.</p>
  */
 public final class BossAnimationPosePolicy {
     private static final BossHitboxProfile PROFILE = BossHitboxProfile.canonical();
@@ -34,6 +37,10 @@ public final class BossAnimationPosePolicy {
             Map.entry(new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 1), "group2"),
             Map.entry(new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.RIGHT_LEG, 0), "group5"),
             Map.entry(new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.RIGHT_LEG, 1), "group"));
+
+    static {
+        validateSourceBoneMapping();
+    }
 
     private BossAnimationPosePolicy() {
     }
@@ -68,12 +75,16 @@ public final class BossAnimationPosePolicy {
         double time = clip.loop()
                 ? elapsedTicks % clip.lengthTicks()
                 : Math.min(elapsedTicks, clip.lengthTicks());
-        Map<String, Affine> cache = new HashMap<>();
+        Map<String, Affine> animatedCache = new HashMap<>();
+        Map<String, Affine> bindCache = new HashMap<>();
         for (Map.Entry<BossHitboxProfile.PartKey, String> entry : SOURCE_BONES.entrySet()) {
             BossHitboxProfile.Part part = partFor(entry.getKey());
-            Affine composed = composedTransform(entry.getValue(), clip, time, cache, new HashSet<>());
-            if (part != null && composed != null) {
-                result.put(entry.getKey(), toPose(part, composed));
+            Affine animated = composedTransform(entry.getValue(), clip, time,
+                    animatedCache, new HashSet<>());
+            Affine bind = composedTransform(entry.getValue(), null, 0.0D,
+                    bindCache, new HashSet<>());
+            if (part != null && animated != null && bind != null) {
+                result.put(entry.getKey(), toPose(part, animated.compose(bind.inverse())));
             }
         }
         return Map.copyOf(result);
@@ -112,6 +123,20 @@ public final class BossAnimationPosePolicy {
         return null;
     }
 
+    private static void validateSourceBoneMapping() {
+        if (SOURCE_BONES.size() != PROFILE.parts().size()) {
+            throw new IllegalStateException("boss animation source mapping does not cover every hitbox segment");
+        }
+        for (BossHitboxProfile.Part part : PROFILE.parts()) {
+            BossHitboxProfile.PartKey key = new BossHitboxProfile.PartKey(
+                    part.id(), part.segmentIndex());
+            String boneName = SOURCE_BONES.get(key);
+            if (boneName == null || GeneratedBossAnimationPoses.bone(boneName) == null) {
+                throw new IllegalStateException("missing generated source bone for hitbox segment: " + key);
+            }
+        }
+    }
+
     private static Affine composedTransform(
             String boneName,
             GeneratedBossAnimationPoses.Clip clip,
@@ -127,14 +152,17 @@ public final class BossAnimationPosePolicy {
         if (definition == null || !visiting.add(boneName)) {
             return null;
         }
-        GeneratedBossAnimationPoses.BoneTrack track = clip.bones().get(boneName);
-        GeneratedBossAnimationPoses.Vec3 rotation = sample(
+        GeneratedBossAnimationPoses.BoneTrack track = clip == null ? null : clip.bones().get(boneName);
+        GeneratedBossAnimationPoses.Vec3 bindRotation = definition.bindRotation();
+        GeneratedBossAnimationPoses.Vec3 animationRotation = sample(
                 track == null ? null : track.rotation(), time);
         GeneratedBossAnimationPoses.Vec3 position = sample(
                 track == null ? null : track.position(), time);
         BossOrientedHitboxPolicy.Matrix3 localRotation = BossOrientedHitboxPolicy.Matrix3.euler(
                 new BossOrientedHitboxPolicy.Euler(
-                        component(rotation, 0), component(rotation, 1), component(rotation, 2)));
+                        component(bindRotation, 0) + component(animationRotation, 0),
+                        component(bindRotation, 1) + component(animationRotation, 1),
+                        component(bindRotation, 2) + component(animationRotation, 2)));
         BossOrientedHitboxPolicy.Vec3 pivot = toOriented(definition.pivot());
         BossOrientedHitboxPolicy.Vec3 localTranslation = pivot
                 .subtract(localRotation.transform(pivot))
@@ -145,7 +173,11 @@ public final class BossAnimationPosePolicy {
             result = local;
         } else {
             Affine parent = composedTransform(definition.parent(), clip, time, cache, visiting);
-            result = parent == null ? local : parent.compose(local);
+            if (parent == null) {
+                visiting.remove(boneName);
+                return null;
+            }
+            result = parent.compose(local);
         }
         visiting.remove(boneName);
         cache.put(boneName, result);
@@ -254,6 +286,11 @@ public final class BossAnimationPosePolicy {
         private Affine compose(Affine child) {
             return new Affine(linear.multiply(child.linear),
                     linear.transform(child.translation).add(translation));
+        }
+
+        private Affine inverse() {
+            BossOrientedHitboxPolicy.Matrix3 inverse = linear.transpose();
+            return new Affine(inverse, inverse.transform(translation.scale(-1.0D)));
         }
     }
 }

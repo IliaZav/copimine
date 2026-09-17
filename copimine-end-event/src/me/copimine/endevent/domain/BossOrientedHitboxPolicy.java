@@ -96,6 +96,60 @@ public final class BossOrientedHitboxPolicy {
                 ? OptionalDouble.of(tMin) : OptionalDouble.empty();
     }
 
+    /**
+     * Tests the finite projectile segment from {@code previous} to
+     * {@code current} against an OBB.  Unlike a ray, the segment cannot hit a
+     * box that lies beyond the projectile's sampled current position.
+     */
+    public static boolean segmentIntersects(OrientedBox box, Vec3 previous,
+                                            Vec3 current) {
+        return segmentEntryDistance(box, previous, current).isPresent();
+    }
+
+    /** Returns the distance from the previous sample to the first segment hit. */
+    public static OptionalDouble segmentEntryDistance(OrientedBox box, Vec3 previous,
+                                                     Vec3 current) {
+        if (box == null || previous == null || current == null) {
+            return OptionalDouble.empty();
+        }
+        Vec3 delta = current.subtract(previous);
+        double segmentLength = delta.length();
+        Matrix3 inverse = box.orientation().transpose();
+        Vec3 localOrigin = inverse.transform(previous.subtract(box.center()));
+        Vec3 localDelta = inverse.transform(delta);
+        double tMin = 0.0D;
+        double tMax = 1.0D;
+        double[] origins = {localOrigin.x(), localOrigin.y(), localOrigin.z()};
+        double[] directions = {localDelta.x(), localDelta.y(), localDelta.z()};
+        double[] halfExtents = {box.halfExtents().x(), box.halfExtents().y(),
+                box.halfExtents().z()};
+        for (int axis = 0; axis < 3; axis++) {
+            double origin = origins[axis];
+            double direction = directions[axis];
+            double halfExtent = halfExtents[axis];
+            if (Math.abs(direction) <= PARALLEL_EPSILON) {
+                if (origin < -halfExtent || origin > halfExtent) {
+                    return OptionalDouble.empty();
+                }
+                continue;
+            }
+            double near = (-halfExtent - origin) / direction;
+            double far = (halfExtent - origin) / direction;
+            if (near > far) {
+                double swap = near;
+                near = far;
+                far = swap;
+            }
+            tMin = Math.max(tMin, near);
+            tMax = Math.min(tMax, far);
+            if (tMin > tMax) {
+                return OptionalDouble.empty();
+            }
+        }
+        return tMax >= 0.0D && tMin <= 1.0D
+                ? OptionalDouble.of(tMin * segmentLength) : OptionalDouble.empty();
+    }
+
     public record Vec3(double x, double y, double z) {
         public Vec3 {
             requireFinite(x, "x");

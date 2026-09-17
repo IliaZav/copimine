@@ -29,8 +29,9 @@ def test_obb_policy_exposes_finite_ray_and_model_part_transforms() -> None:
 
 
 def test_controller_uses_obb_for_all_acceptance_routes() -> None:
-    assert CONTROLLER.count("BossOrientedHitboxPolicy.fromPartWithPose(") >= 2
+    assert CONTROLLER.count("BossOrientedHitboxPolicy.fromPartWithPose(") >= 1
     assert CONTROLLER.count("rayIntersects(transformedObb(") >= 2
+    assert CONTROLLER.count("BossOrientedHitboxPolicy.segmentIntersects(") >= 2
     assert "private boolean rayIntersects(BossOrientedHitboxPolicy.OrientedBox" in CONTROLLER
     assert "BossOrientedHitboxPolicy.nearestHitDistance(" in CONTROLLER
     assert "double[] minimums" not in CONTROLLER

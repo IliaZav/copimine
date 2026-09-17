@@ -18644,9 +18644,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /**
      * Server-side fallback for projectile paths that Paper does not report as
-     * a hit on an Interaction entity. It is bounded to the live boss rig,
-     * excludes event-owned hostile arrows, and uses the same generation-scoped
-     * identity as the direct ProjectileHitEvent path.
+     * a hit on an Interaction entity. It intersects the finite previous-to-
+     * current sample against the live boss rig, excludes event-owned hostile
+     * arrows, and uses the same generation-scoped identity as the direct
+     * ProjectileHitEvent path.
      */
     private void tickBossHitboxProjectiles(LivingEntity boss) {
         if (bossHitboxController == null || phase != EventPhase.BOSS_ACTIVE
@@ -18673,17 +18674,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             Interaction proxy = bossHitboxController.projectileHitProxy(boss, projectile,
-                    poses, 8.0D);
+                    poses);
             if (proxy == null) {
                 continue;
             }
-            String attackIdentity = "projectile:" + projectile.getUniqueId();
-            if (!bossHitboxController.acceptHit(proxy, attackIdentity, generation,
+            if (!bossHitboxController.acceptProjectileHit(proxy, projectile, generation,
                     System.currentTimeMillis())) {
+                bossHitboxController.forgetProjectile(projectile.getUniqueId());
                 projectile.remove();
                 continue;
             }
             boolean accepted = applyCurrentBossProjectileDamage(boss, projectile);
+            bossHitboxController.forgetProjectile(projectile.getUniqueId());
             projectile.remove();
             getLogger().info("BOSS_HITBOX_PROJECTILE_SWEEP event=" + eventId
                     + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
@@ -19400,11 +19402,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             projectile.remove();
             return;
         }
-        if (!bossHitboxController.proxyRayIntersects(boss, proxy, projectile,
-                bossHitboxPoseOffsets(), 8.0D)) {
+        if (!bossHitboxController.proxySegmentIntersects(boss, proxy, projectile,
+                bossHitboxPoseOffsets())) {
             event.setCancelled(true);
+            bossHitboxController.forgetProjectile(projectile.getUniqueId());
             projectile.remove();
-            getLogger().fine("BOSS_HITBOX_RAY_BLOCKED event=" + eventId
+            getLogger().fine("BOSS_HITBOX_SEGMENT_BLOCKED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
                     + " part=" + bossHitboxController.partId(proxy)
                     + " source=" + projectile.getUniqueId()
@@ -19420,9 +19423,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         String attackIdentity = "projectile:" + projectile.getUniqueId();
-        if (!bossHitboxController.acceptHit(proxy, attackIdentity, generation,
+        if (!bossHitboxController.acceptProjectileHit(proxy, projectile, generation,
                 System.currentTimeMillis())) {
             event.setCancelled(true);
+            bossHitboxController.forgetProjectile(projectile.getUniqueId());
             projectile.remove();
             getLogger().fine("BOSS_HITBOX_DUPLICATE_DROPPED event=" + eventId
                     + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()
@@ -19430,6 +19434,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         handleCurrentBossProjectileDamage(event, boss, projectile);
+        bossHitboxController.forgetProjectile(projectile.getUniqueId());
         projectile.remove();
         getLogger().fine("BOSS_HITBOX_PROJECTILE_DAMAGE_ROUTED event=" + eventId
                 + " boss=" + boss.getUniqueId() + " proxy=" + proxy.getUniqueId()

@@ -20,6 +20,7 @@ import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -44,6 +45,9 @@ public final class BossHitboxController {
     private final BossHitboxProfile profile;
     private final BossHitboxDedupePolicy dedupe = new BossHitboxDedupePolicy();
     private final Map<UUID, Slot> slots = new LinkedHashMap<>();
+    private final Map<UUID, BossOrientedHitboxPolicy.Vec3> previousProjectilePositions =
+            new LinkedHashMap<>();
+    private final Set<UUID> consumedProjectileIds = new HashSet<>();
     private final NamespacedKey eventKey;
     private final NamespacedKey generationKey;
     private final NamespacedKey kindKey;
@@ -286,37 +290,90 @@ public final class BossHitboxController {
     }
 
     /**
-     * Finds a model proxy crossed by a live projectile. Some Paper versions
-     * do not expose an Interaction as ProjectileHitEvent#getHitEntity for
-     * every projectile shape, so the plugin also performs a bounded server
-     * sweep. Checking both directions covers the sampled projectile segment,
-     * including a projectile that has already stopped at its far endpoint.
+     * Finds a model proxy crossed by a projectile's finite previous-to-current
+     * sample.  The first observation is a zero-length sample at the current
+     * point; every later observation represents exactly one server tick.
      */
     public Interaction projectileHitProxy(LivingEntity boss,
                                          org.bukkit.entity.Projectile projectile,
                                          Map<BossHitboxProfile.PartKey,
-                                                 BossHitboxPose> poses,
-                                         double maxDistance) {
+                                                 BossHitboxPose> poses) {
         if (boss == null || projectile == null || !hasBoss(boss.getUniqueId())
                 || !boss.isValid() || boss.isDead() || !projectile.isValid()
                 || projectile.getWorld() == null || !projectile.getWorld().equals(boss.getWorld())) {
             return null;
         }
+        BossOrientedHitboxPolicy.Vec3 current = point(projectile.getLocation());
+        if (current == null) {
+            return null;
+        }
+        BossOrientedHitboxPolicy.Vec3 previous = previousProjectilePositions.put(
+                projectile.getUniqueId(), current);
+        if (previous == null) {
+            previous = current;
+        }
+        return projectileHitProxySegment(boss, previous, current, poses);
+    }
+
+    /**
+     * Validates the proxy reported by ProjectileHitEvent against the same
+     * finite sample tracked for the projectile.  Updating the sample here
+     * keeps the event path and the scheduled fallback on one trajectory.
+     */
+    public boolean proxySegmentIntersects(LivingEntity boss, Interaction proxy,
+                                          org.bukkit.entity.Projectile projectile,
+                                          Map<BossHitboxProfile.PartKey,
+                                                  BossHitboxPose> poses) {
+        if (boss == null || projectile == null || !owns(proxy)
+                || !hasBoss(boss.getUniqueId()) || !boss.isValid() || boss.isDead()
+                || !projectile.isValid() || projectile.getLocation() == null
+                || projectile.getWorld() == null || !projectile.getWorld().equals(boss.getWorld())) {
+            return false;
+        }
+        BossOrientedHitboxPolicy.Vec3 current = point(projectile.getLocation());
+        if (current == null) {
+            return false;
+        }
+        BossOrientedHitboxPolicy.Vec3 previous = previousProjectilePositions.put(
+                projectile.getUniqueId(), current);
+        if (previous == null) {
+            previous = current;
+        }
+        if (!ensureHealthy(boss) || !owns(proxy)) {
+            return false;
+        }
+        BossHitboxProfile.Part part = partForProxy(proxy);
+        return part != null && BossOrientedHitboxPolicy.segmentIntersects(
+                transformedObb(boss, part, poses), previous, current);
+    }
+
+    /** Finds the first canonical proxy crossed by one finite projectile sample. */
+    private Interaction projectileHitProxySegment(
+            LivingEntity boss,
+            BossOrientedHitboxPolicy.Vec3 previous,
+            BossOrientedHitboxPolicy.Vec3 current,
+            Map<BossHitboxProfile.PartKey, BossHitboxPose> poses) {
         if (!ensureHealthy(boss)) {
             return null;
         }
-        Vector velocity = projectile.getVelocity();
-        if (velocity.lengthSquared() < 1.0E-8D) {
-            return null;
+        for (Map.Entry<UUID, Slot> entry : slots.entrySet()) {
+            Entity entity = Bukkit.getEntity(entry.getKey());
+            if (!(entity instanceof Interaction proxy) || !proxy.isValid()) {
+                continue;
+            }
+            BossHitboxProfile.Part part = profile.parts().stream()
+                    .filter(candidate -> candidate.id() == entry.getValue().partId()
+                            && candidate.segmentIndex() == entry.getValue().segmentIndex())
+                    .findFirst().orElse(null);
+            if (part == null) {
+                continue;
+            }
+            if (BossOrientedHitboxPolicy.segmentIntersects(
+                    transformedObb(boss, part, poses), previous, current)) {
+                return proxy;
+            }
         }
-        double distance = Math.max(0.25D, Math.min(8.0D, maxDistance));
-        Interaction hit = projectileHitProxyAlongRay(boss, projectile.getLocation(),
-                velocity.clone().normalize(), poses, distance);
-        if (hit != null) {
-            return hit;
-        }
-        return projectileHitProxyAlongRay(boss, projectile.getLocation(),
-                velocity.clone().normalize().multiply(-1.0D), poses, distance);
+        return null;
     }
 
     /** Routes one accepted event through the single generation-scoped dedupe. */
@@ -331,6 +388,37 @@ public final class BossHitboxController {
         }
         return owns(proxy) && currentGeneration == generation
                 && dedupe.accept(attackIdentity, generation, nowMillis);
+    }
+
+    /**
+     * Accepts one projectile UUID for the whole encounter generation.  The
+     * short melee/projectile dedupe remains useful for duplicate Bukkit
+     * callbacks, while this durable UUID set prevents a still-live projectile
+     * from being accepted again after that TTL expires.
+     */
+    public boolean acceptProjectileHit(Interaction proxy,
+                                       org.bukkit.entity.Projectile projectile,
+                                       long currentGeneration, long nowMillis) {
+        if (projectile == null) {
+            return false;
+        }
+        UUID projectileId = projectile.getUniqueId();
+        if (consumedProjectileIds.contains(projectileId)) {
+            return false;
+        }
+        if (!acceptHit(proxy, "projectile:" + projectileId,
+                currentGeneration, nowMillis)) {
+            return false;
+        }
+        consumedProjectileIds.add(projectileId);
+        return true;
+    }
+
+    /** Stops retaining a projectile's trajectory after it has been removed. */
+    public void forgetProjectile(UUID projectileId) {
+        if (projectileId != null) {
+            previousProjectilePositions.remove(projectileId);
+        }
     }
 
     public String attackIdentity(EntityDamageByEntityEvent event, long serverTick) {
@@ -481,6 +569,8 @@ public final class BossHitboxController {
         cleanupEntities(slots.keySet().stream().map(Bukkit::getEntity).toList());
         slots.clear();
         dedupe.clear();
+        previousProjectilePositions.clear();
+        consumedProjectileIds.clear();
         bossUuid = null;
         eventId = "";
         generation = Long.MIN_VALUE;
@@ -639,6 +729,17 @@ public final class BossHitboxController {
         return new SourceRay(origin, direction.clone().normalize());
     }
 
+    private BossOrientedHitboxPolicy.Vec3 point(Location location) {
+        if (location == null || location.getWorld() == null
+                || !Double.isFinite(location.getX())
+                || !Double.isFinite(location.getY())
+                || !Double.isFinite(location.getZ())) {
+            return null;
+        }
+        return new BossOrientedHitboxPolicy.Vec3(
+                location.getX(), location.getY(), location.getZ());
+    }
+
     private double boundedDistance(double maxDistance) {
         return Math.max(0.1D, Math.min(32.0D, maxDistance));
     }
@@ -654,41 +755,6 @@ public final class BossHitboxController {
                         new BossOrientedHitboxPolicy.Vec3(origin.getX(), origin.getY(), origin.getZ()),
                         new BossOrientedHitboxPolicy.Vec3(direction.getX(), direction.getY(), direction.getZ())),
                 box, maxDistance).isPresent();
-    }
-
-    private Interaction projectileHitProxyAlongRay(LivingEntity boss, Location origin,
-                                                   Vector direction,
-                                                   Map<BossHitboxProfile.PartKey,
-                                                           BossHitboxPose> poses,
-                                                   double maxDistance) {
-        if (origin == null || direction == null || direction.lengthSquared() < 1.0E-8D) {
-            return null;
-        }
-        direction.normalize();
-        for (Map.Entry<UUID, Slot> entry : slots.entrySet()) {
-            Entity entity = Bukkit.getEntity(entry.getKey());
-            if (!(entity instanceof Interaction proxy) || !proxy.isValid()) {
-                continue;
-            }
-            BossHitboxProfile.Part part = profile.parts().stream()
-                    .filter(candidate -> candidate.id() == entry.getValue().partId()
-                            && candidate.segmentIndex() == entry.getValue().segmentIndex())
-                    .findFirst().orElse(null);
-            if (part == null) {
-                continue;
-            }
-            BossHitboxPose pose = poses == null
-                    ? BossHitboxPose.NONE
-                    : poses.getOrDefault(partKey(part), BossHitboxPose.NONE);
-            BossOrientedHitboxPolicy.OrientedBox box = BossOrientedHitboxPolicy.fromPartWithPose(part,
-                    new BossHitboxTransformPolicy.Anchor(boss.getLocation().getX(),
-                            boss.getLocation().getY(), boss.getLocation().getZ(), boss.getLocation().getYaw()),
-                    pose);
-            if (rayIntersects(box, origin, direction, maxDistance)) {
-                return proxy;
-            }
-        }
-        return null;
     }
 
     private BossHitboxProfile.PartKey partKey(BossHitboxProfile.Part part) {

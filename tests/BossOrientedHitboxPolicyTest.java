@@ -30,7 +30,37 @@ public final class BossOrientedHitboxPolicyTest {
         check(Math.abs(centreHit.getAsDouble() - 4.8585786438D) < 1.0E-6D,
                 "the centre ray must report the rotated box entry distance");
 
+        testFiniteProjectileSegments(thinDiagonal);
+
         System.out.println("BossOrientedHitboxPolicyTest OK");
+    }
+
+    private static void testFiniteProjectileSegments(BossOrientedHitboxPolicy.OrientedBox box) {
+        check(!BossOrientedHitboxPolicy.segmentIntersects(
+                        box,
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, -4.0D),
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, -2.0D)),
+                "a projectile segment ending before the box must not hit");
+        check(!BossOrientedHitboxPolicy.segmentIntersects(
+                        box,
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, 2.0D),
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, 4.0D)),
+                "a projectile segment already past the box must not hit it again");
+        check(BossOrientedHitboxPolicy.segmentIntersects(
+                        box,
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, -2.0D),
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, 2.0D)),
+                "a projectile segment crossing the box must hit");
+        check(!BossOrientedHitboxPolicy.segmentIntersects(
+                        box,
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, -4.0D),
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, -4.0D)),
+                "a zero-length segment outside the box must not invent a hit");
+        check(BossOrientedHitboxPolicy.segmentIntersects(
+                        box,
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, 0.0D),
+                        new BossOrientedHitboxPolicy.Vec3(0.0D, 0.0D, 0.0D)),
+                "a zero-length segment inside the box must hit exactly once");
     }
 
     private static boolean enclosingAabbWouldHit(BossOrientedHitboxPolicy.Ray ray,

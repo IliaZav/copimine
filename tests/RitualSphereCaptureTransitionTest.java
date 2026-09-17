@@ -21,16 +21,16 @@ public final class RitualSphereCaptureTransitionTest {
         check(encounter.start(context).status() ==
                         me.copimine.endevent.runtime.encounter.WaveEncounter.Status.STARTED,
                 "Ritual Sphere must start");
-        check(encounter.state() == null,
-                "Wave 6 must wait for physical seal capture before creating prisoner state");
+        check(encounter.state() != null && !RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
+                "Wave 6 must start in an explicit waiting state before physical seal capture");
 
         long capturedAt = 100_000L;
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 4.0D, 4.0D)
         ), 0.0D, 0.0D, capturedAt).accepted(),
                 "an outside participant must leave the encounter waiting");
-        check(encounter.state() == null,
-                "an outside participant must not create prisoner state");
+        check(encounter.state() != null && !RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
+                "an outside participant must leave the authoritative state waiting");
         check(!RitualSphereEncounterPolicy.drainDue(encounter.state(), capturedAt + 20_000L),
                 "a waiting encounter must not make a drain due");
 

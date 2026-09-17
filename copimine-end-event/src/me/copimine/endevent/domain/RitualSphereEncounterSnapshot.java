@@ -32,7 +32,7 @@ public final class RitualSphereEncounterSnapshot {
         }
         Map<String, String> encoded = new LinkedHashMap<>();
         encoded.put(GENERATION, Long.toString(state.generation()));
-        encoded.put(PRISONER, state.prisoner().toString());
+        encoded.put(PRISONER, state.prisoner() == null ? "" : state.prisoner().toString());
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
         encoded.put(DRAINS, Integer.toString(state.successfulDrains()));
         encoded.put(INTENSITY, Integer.toString(state.intensity()));
@@ -56,7 +56,7 @@ public final class RitualSphereEncounterSnapshot {
         if (generation != expectedGeneration) {
             throw new IllegalArgumentException("Ritual Sphere snapshot generation does not match event generation");
         }
-        UUID prisoner = parseUuid(required(encoded, PRISONER), PRISONER);
+        UUID prisoner = parseNullableUuid(required(encoded, PRISONER), PRISONER);
         int participants = parseInt(required(encoded, PARTICIPANTS), PARTICIPANTS);
         int drains = parseInt(required(encoded, DRAINS), DRAINS);
         int intensity = parseInt(required(encoded, INTENSITY), INTENSITY);
@@ -71,9 +71,18 @@ public final class RitualSphereEncounterSnapshot {
         if (intensity != RitualSphereScalingPolicy.intensityForSuccessfulDrains(drains)) {
             throw new IllegalArgumentException("Ritual Sphere snapshot intensity does not match drains");
         }
-        RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
-                generation, prisoner, RitualSphereScalingPolicy.forPlayers(participants),
-                drains, intensity, lastDrain);
+        RitualSphereEncounterPolicy.State state;
+        if (prisoner == null) {
+            if (drains != 0 || intensity != 0 || lastDrain != -1L) {
+                throw new IllegalArgumentException(
+                        "waiting Ritual Sphere snapshot must not contain captured state");
+            }
+            state = RitualSphereEncounterPolicy.waiting(generation, participants);
+        } else {
+            state = new RitualSphereEncounterPolicy.State(
+                    generation, prisoner, RitualSphereScalingPolicy.forPlayers(participants),
+                    drains, intensity, lastDrain);
+        }
         return new Data(state);
     }
 
@@ -91,6 +100,13 @@ public final class RitualSphereEncounterSnapshot {
         } catch (RuntimeException error) {
             throw new IllegalArgumentException("Ritual Sphere snapshot has invalid UUID in " + key, error);
         }
+    }
+
+    private static UUID parseNullableUuid(String value, String key) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return parseUuid(value, key);
     }
 
     private static int parseInt(String value, String key) {

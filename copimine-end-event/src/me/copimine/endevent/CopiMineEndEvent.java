@@ -600,7 +600,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, Location> ritualZoneCenters = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualZoneTelegraphUntil = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualZoneExpiresAt = new LinkedHashMap<>();
-    private UUID ritualPrisonerUuid;
     private Location ritualPrisonerAnchor;
     private UUID ritualSphereVisualUuid;
     private long ritualNextBeamRefreshMillis;
@@ -1800,7 +1799,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualControlExpiresAt.clear();
         ritualReverseUntil.clear();
         ritualZoneReverseRecipients.clear();
-        ritualPrisonerUuid = null;
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
         wave6Complete = false;
@@ -1810,9 +1808,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 RitualSphereEncounterSnapshot.Data wave6 = RitualSphereEncounterSnapshot.decode(
                         snapshot.objectiveProgress(), generation);
                 ritualSphereState = wave6.state();
-                if (ritualSphereState != null) {
-                    ritualPrisonerUuid = ritualSphereState.prisoner();
-                }
             } else {
                 getLogger().warning("WAVE6_RITUAL_SNAPSHOT_MISSING event=" + eventId
                         + " generation=" + generation
@@ -13372,6 +13367,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cleanupLegacyWave6Entities();
         int participants = eventScalePlayers();
         RitualSphereScalingPolicy.Profile profile = RitualSphereScalingPolicy.forPlayers(participants);
+        ritualSphereState = RitualSphereEncounterPolicy.waiting(generation, participants);
         ritualNextBeamRefreshMillis = 0L;
         ritualAbilityCursor = 0;
         wave6Complete = false;
@@ -13569,10 +13565,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearRitualPrisonerTag() {
-        if (ritualPrisonerUuid == null || keyRitualPrisoner == null) {
+        UUID prisonerId = ritualPrisonerId();
+        if (prisonerId == null || keyRitualPrisoner == null) {
             return;
         }
-        Player player = Bukkit.getPlayer(ritualPrisonerUuid);
+        Player player = Bukkit.getPlayer(prisonerId);
         if (player != null) {
             player.getPersistentDataContainer().remove(keyRitualPrisoner);
         }
@@ -13754,14 +13751,19 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && ritualSphereState != null && ritualSphereState.generation() == generation;
     }
 
+    /** The policy state is the only owner of the current prisoner identity. */
+    private UUID ritualPrisonerId() {
+        return ritualSphereState == null ? null : ritualSphereState.prisoner();
+    }
+
     private boolean ritualWaveActive() {
         return activeWave == 6 && (isOfficialCurrentAttempt() || testWaveFrontVisualMode);
     }
 
     private boolean isCurrentRitualPrisoner(Player player) {
+        UUID prisonerId = ritualPrisonerId();
         return player != null && ritualObjectiveActive()
-                && ritualPrisonerUuid != null
-                && ritualPrisonerUuid.equals(player.getUniqueId());
+                && prisonerId != null && prisonerId.equals(player.getUniqueId());
     }
 
     private void restorePersistedRitualSphereObjective() {
@@ -13775,7 +13777,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             startRitualSphereObjective(Bukkit.getWorld(worldName), coreCombatAnchorLocation());
             return;
         }
-        ritualPrisonerUuid = ritualSphereState.prisoner();
         Location core = coreCombatAnchorLocation();
         if (core != null) {
             ritualPrisonerAnchor = ritualPrisonerLocation(core);
@@ -13795,14 +13796,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             startRitualSphereObjective(Bukkit.getWorld(worldName), core);
             return;
         }
-        Player prisoner = ritualPrisonerUuid == null ? null : Bukkit.getPlayer(ritualPrisonerUuid);
+        UUID prisonerId = ritualPrisonerId();
+        Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
         if (prisoner != null && prisoner.isOnline() && ritualPrisonerAnchor != null) {
             tagRitualPrisoner(prisoner);
             teleportRitualPrisoner(prisoner, ritualPrisonerAnchor);
         }
         wave6Complete = false;
         getLogger().info("WAVE6_RITUAL_REHYDRATED event=" + eventId
-                + " generation=" + generation + " prisoner=" + ritualPrisonerUuid
+                + " generation=" + generation + " prisoner=" + prisonerId
                 + " casters=" + liveRitualCasterCount()
                 + " guards=" + liveRitualGuardCount()
                 + " successful_drains=" + ritualSphereState.successfulDrains());
@@ -13870,9 +13872,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ritualWaveActive()) {
             return;
         }
-        if (ritualSphereState == null) {
+        if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
             attemptRitualPrisonerCapture(now);
-            if (ritualSphereState == null) {
+            if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
                 return;
             }
         }
@@ -13886,7 +13888,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (now >= ritualNextPrisonerRepairMillis) {
             ritualNextPrisonerRepairMillis = now + RITUAL_PRISONER_REPAIR_MILLIS;
-            Player prisoner = ritualPrisonerUuid == null ? null : Bukkit.getPlayer(ritualPrisonerUuid);
+            UUID prisonerId = ritualPrisonerId();
+            Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
             if (prisoner != null && prisoner.isOnline() && prisoner.getHealth() < RitualPrisonerHealthPolicy.MIN_HEALTH) {
                 prisoner.setHealth(RitualPrisonerHealthPolicy.MIN_HEALTH);
             }
@@ -13906,7 +13909,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void attemptRitualPrisonerCapture(long now) {
         if (ritualSphereVisualUuid == null
                 || !isLiveOwnedEntity(ritualSphereVisualUuid)
-                || ritualSphereState != null || ritualPrisonerUuid != null) {
+                || RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
             return;
         }
         Location core = coreCombatAnchorLocation();
@@ -13939,9 +13942,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (prisoner == null) {
             return;
         }
-        ritualSphereState = RitualSphereEncounterPolicy.initial(
-                generation, captured, eventScalePlayers(), now);
-        ritualPrisonerUuid = captured;
+        if (ritualSphereState == null) {
+            ritualSphereState = RitualSphereEncounterPolicy.waiting(
+                    generation, eventScalePlayers());
+        }
+        ritualSphereState = RitualSphereEncounterPolicy.capture(
+                ritualSphereState, captured, now);
         ritualPrisonerAnchor = ritualPrisonerLocation(core);
         ritualNextBeamRefreshMillis = 0L;
         ritualNextAbilityMillis = now + 2_000L;
@@ -13957,28 +13963,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void ensureRitualPrisoner(long now) {
-        Player prisoner = ritualPrisonerUuid == null ? null : Bukkit.getPlayer(ritualPrisonerUuid);
+        UUID prisonerId = ritualPrisonerId();
+        Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
         if (prisoner == null || !prisoner.isOnline() || prisoner.isDead()
                 || prisoner.getHealth() <= 0.0D) {
             Player replacement = activeLivingPlayers().stream()
                     .filter(this::isCombatTarget)
-                    .filter(candidate -> ritualPrisonerUuid == null
-                            || !candidate.getUniqueId().equals(ritualPrisonerUuid))
+                    .filter(candidate -> prisonerId == null
+                            || !candidate.getUniqueId().equals(prisonerId))
                     .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
                     .findFirst().orElse(null);
             if (replacement == null) {
                 return;
             }
             clearRitualPrisonerTag();
-            ritualPrisonerUuid = replacement.getUniqueId();
-            ritualSphereState = new RitualSphereEncounterPolicy.State(
-                    generation, ritualPrisonerUuid, ritualSphereState.profile(),
-                    ritualSphereState.successfulDrains(), ritualSphereState.intensity(),
-                    ritualSphereState.lastDrainMillis());
+            ritualSphereState = RitualSphereEncounterPolicy.reassignCapturedPrisoner(
+                    ritualSphereState, replacement.getUniqueId());
             ritualPrisonerAnchor = ritualPrisonerLocation(coreCombatAnchorLocation());
             tagRitualPrisoner(replacement);
             getLogger().warning("WAVE6_RITUAL_PRISONER_REASSIGNED event=" + eventId
-                    + " generation=" + generation + " player=" + ritualPrisonerUuid);
+                    + " generation=" + generation + " player=" + replacement.getUniqueId());
             saveStateAsync();
             prisoner = replacement;
         }
@@ -14005,11 +14009,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void applyRitualSphereDrain(long now) {
-        if (ritualSphereState == null || ritualPrisonerUuid == null
+        UUID prisonerId = ritualPrisonerId();
+        if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState) || prisonerId == null
                 || !RitualSphereEncounterPolicy.drainDue(ritualSphereState, now)) {
             return;
         }
-        Player prisoner = Bukkit.getPlayer(ritualPrisonerUuid);
+        Player prisoner = Bukkit.getPlayer(prisonerId);
         double currentHealth = prisoner == null ? RitualPrisonerHealthPolicy.MIN_HEALTH
                 : prisoner.getHealth();
         RitualSphereEncounterPolicy.DrainTransition transition =
@@ -14023,7 +14028,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     0.35D, 0.65D, 0.35D, 0.02D);
         }
         getLogger().info("WAVE6_RITUAL_PRISONER_DRAIN event=" + eventId
-                + " generation=" + generation + " player=" + ritualPrisonerUuid
+                + " generation=" + generation + " player=" + prisonerId
                 + " applied=" + transition.applied() + " damage="
                 + transition.health().appliedDamage() + " remaining="
                 + transition.health().remainingHealth() + " intensity="
@@ -14142,7 +14147,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             policyCandidates.add(new RitualTargetPolicy.Candidate(playerId,
                     isCombatTarget(candidate)));
         }
-        return RitualTargetPolicy.freeTargets(policyCandidates, ritualPrisonerUuid).stream()
+        return RitualTargetPolicy.freeTargets(policyCandidates, ritualPrisonerId()).stream()
                 .map(playersById::get)
                 .filter(Objects::nonNull)
                 .toList();
@@ -14154,7 +14159,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         return RitualTargetPolicy.freeTargets(List.of(
                 new RitualTargetPolicy.Candidate(player.getUniqueId(), isCombatTarget(player))),
-                ritualPrisonerUuid).contains(player.getUniqueId());
+                ritualPrisonerId()).contains(player.getUniqueId());
     }
 
     private boolean ritualProjectileTargetAllowed(Arrow arrow, Player player) {
@@ -14479,8 +14484,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             for (Player player : ritualFreeTargets(activeLivingPlayers())) {
                 boolean insideActiveZone = ritualZoneContains(center, player.getLocation());
-                boolean prisoner = ritualPrisonerUuid != null
-                        && ritualPrisonerUuid.equals(player.getUniqueId());
+                UUID prisonerId = ritualPrisonerId();
+                boolean prisoner = prisonerId != null
+                        && prisonerId.equals(player.getUniqueId());
                 boolean controlSwapActive = ritualControlPartners.containsKey(player.getUniqueId());
                 RitualZoneEffectPolicy.Result effects = RitualZoneEffectPolicy.effect(
                         prisoner, insideActiveZone, controlSwapActive);
@@ -14582,7 +14588,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         List<String> ids = ritualFreeTargets(activeLivingPlayers()).stream()
                 .map(player -> player.getUniqueId().toString())
                 .toList();
-        String excludedId = ritualPrisonerUuid == null ? null : ritualPrisonerUuid.toString();
+        UUID prisonerId = ritualPrisonerId();
+        String excludedId = prisonerId == null ? null : prisonerId.toString();
         for (RitualControlPairPolicy.Pair pair : RitualControlPairPolicy.pair(
                 ids, excludedId, ritualSphereState.profile().controlSwapPairs())) {
             UUID first = parseUuidOrNull(pair.first());
@@ -14780,7 +14787,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAlertUntil.clear();
         ritualCasterAwakened.clear();
         ritualSphereState = null;
-        ritualPrisonerUuid = null;
         ritualPrisonerAnchor = null;
         ritualNextBeamRefreshMillis = 0L;
         ritualNextAbilityMillis = 0L;
@@ -24432,7 +24438,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID uuid = event.getPlayer().getUniqueId();
         releaseCurrentCarrierHolder(uuid, "disconnect");
         clearRitualControlForPlayerLifecycle(uuid, "disconnect");
-        if (Objects.equals(ritualPrisonerUuid, uuid)) {
+        if (Objects.equals(ritualPrisonerId(), uuid)) {
             event.getPlayer().getPersistentDataContainer().remove(keyRitualPrisoner);
         }
         if (isOfficialAttemptActive() && attemptLifecycle.owns(generation)
@@ -24458,7 +24464,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID uuid = event.getEntity().getUniqueId();
         releaseCurrentCarrierHolder(uuid, "death");
         clearRitualControlForPlayerLifecycle(uuid, "death");
-        if (Objects.equals(ritualPrisonerUuid, uuid)) {
+        if (Objects.equals(ritualPrisonerId(), uuid)) {
             event.getEntity().getPersistentDataContainer().remove(keyRitualPrisoner);
         }
         offlineRosterGraceUntilMillis.remove(uuid);

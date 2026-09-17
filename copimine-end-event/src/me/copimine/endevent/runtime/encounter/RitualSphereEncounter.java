@@ -19,7 +19,8 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
     public synchronized Result start(EncounterContext context) {
         Result result = super.start(context);
         if (result.status() == Status.STARTED) {
-            state = null;
+            state = RitualSphereEncounterPolicy.waiting(context.generation(),
+                    context.livingParticipants().size());
         }
         return result;
     }
@@ -31,15 +32,14 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         if (!accepts(context)) {
             return rejected("STALE_OR_NOT_STARTED");
         }
-        if (state != null) {
+        if (RitualSphereEncounterPolicy.hasCaptured(state)) {
             return result(Status.IN_PROGRESS, "prisoner already captured");
         }
         UUID prisoner = RitualSealCapturePolicy.select(candidates, sealX, sealZ);
         if (prisoner == null || !context.isLivingParticipant(prisoner)) {
             return result(Status.IN_PROGRESS, "waiting for prisoner");
         }
-        state = RitualSphereEncounterPolicy.initial(context.generation(), prisoner,
-                context.livingParticipants().size(), nowMillis);
+        state = RitualSphereEncounterPolicy.capture(state, prisoner, nowMillis);
         return result(Status.IN_PROGRESS, "prisoner captured");
     }
 
@@ -59,7 +59,7 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         if (!accepts(context)) {
             return rejected("STALE_OR_NOT_STARTED");
         }
-        if (state == null) {
+        if (!RitualSphereEncounterPolicy.hasCaptured(state)) {
             return rejected("PRISONER_CAPTURE_REQUIRED");
         }
         return super.complete(context);

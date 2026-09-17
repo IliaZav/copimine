@@ -96,8 +96,9 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.advanceIntermission("w6", "w6-start").accepted(), "wave 6 must start");
         RitualSphereEncounter ritual = (RitualSphereEncounter) coordinator.encounter(
                 EndRiftObjective.Objective.RITUAL_SPHERE);
-        check(ritual.state() == null,
-                "ritual sphere must wait for physical seal capture before initializing state");
+        check(ritual.state() != null && !me.copimine.endevent.domain.RitualSphereEncounterPolicy
+                        .hasCaptured(ritual.state()),
+                "ritual sphere must start in an explicit waiting state before physical seal capture");
         EndRiftEncounterCoordinator.Result beforeCapture = coordinator.completeWave(
                 EndRiftObjective.Objective.RITUAL_SPHERE,
                 "w6 before capture", "w6-before-capture");

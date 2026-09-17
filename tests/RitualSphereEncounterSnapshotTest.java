@@ -20,6 +20,17 @@ public final class RitualSphereEncounterSnapshotTest {
         check(restored.successfulDrains() == 4 && restored.intensity() == 4,
                 "drain intensity must round-trip");
         check(restored.lastDrainMillis() == 123_456L, "drain timestamp must round-trip");
+
+        RitualSphereEncounterPolicy.State waiting = RitualSphereEncounterPolicy.waiting(9L, 13);
+        Map<String, String> waitingEncoded = RitualSphereEncounterSnapshot.encode(waiting);
+        RitualSphereEncounterPolicy.State waitingRestored = RitualSphereEncounterSnapshot
+                .decode(waitingEncoded, 9L).state();
+        check(waitingRestored != null && !RitualSphereEncounterPolicy.hasCaptured(waitingRestored),
+                "waiting state must round-trip without a prisoner");
+        check(waitingRestored.lastDrainMillis() < 0L,
+                "waiting snapshot must preserve the no-drain timestamp");
+        check(!RitualSphereEncounterPolicy.drainDue(waitingRestored, 120_000L),
+                "rehydrated waiting state must not make a drain due");
         check(RitualSphereEncounterSnapshot.decode(Map.of(), 9L).state() == null,
                 "missing state must decode as absent");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(encoded, 8L),

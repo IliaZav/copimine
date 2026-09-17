@@ -7,16 +7,55 @@ public final class RitualSphereEncounterPolicy {
     private RitualSphereEncounterPolicy() {
     }
 
-    public static State initial(long generation, UUID prisoner, int participants, long nowMillis) {
-        if (generation <= 0L || prisoner == null || nowMillis < 0L) {
-            throw new IllegalArgumentException("ritual sphere identity and start time are required");
+    public static State waiting(long generation, int participants) {
+        if (generation <= 0L) {
+            throw new IllegalArgumentException("ritual sphere generation is required");
         }
-        return new State(generation, prisoner,
-                RitualSphereScalingPolicy.forPlayers(participants), 0, 0, nowMillis);
+        return new State(generation, null, RitualSphereScalingPolicy.forPlayers(participants),
+                0, 0, -1L);
+    }
+
+    /** Compatibility entry point for callers that already have a captured prisoner. */
+    public static State initial(long generation, UUID prisoner, int participants, long nowMillis) {
+        if (prisoner == null || nowMillis < 0L) {
+            throw new IllegalArgumentException("ritual sphere prisoner and capture time are required");
+        }
+        return capture(waiting(generation, participants), prisoner, nowMillis);
+    }
+
+    /** Capture the first prisoner once; later capture attempts are no-ops. */
+    public static State capture(State state, UUID prisoner, long nowMillis) {
+        if (state == null) {
+            throw new IllegalArgumentException("ritual sphere state is required");
+        }
+        if (hasCaptured(state)) {
+            return state;
+        }
+        if (prisoner == null || nowMillis < 0L) {
+            throw new IllegalArgumentException("ritual sphere prisoner and capture time are required");
+        }
+        return new State(state.generation(), prisoner, state.profile(),
+                state.successfulDrains(), state.intensity(), nowMillis);
+    }
+
+    /** Replace a captured participant without resetting the drain clock. */
+    public static State reassignCapturedPrisoner(State state, UUID prisoner) {
+        if (!hasCaptured(state) || prisoner == null) {
+            throw new IllegalArgumentException("captured ritual sphere state and replacement are required");
+        }
+        if (prisoner.equals(state.prisoner())) {
+            return state;
+        }
+        return new State(state.generation(), prisoner, state.profile(),
+                state.successfulDrains(), state.intensity(), state.lastDrainMillis());
+    }
+
+    public static boolean hasCaptured(State state) {
+        return state != null && state.prisoner() != null;
     }
 
     public static boolean drainDue(State state, long nowMillis) {
-        return state != null && state.generation() > 0L
+        return hasCaptured(state) && state.generation() > 0L
                 && RitualPrisonerHealthPolicy.drainDue(nowMillis, state.lastDrainMillis());
     }
 
@@ -37,7 +76,7 @@ public final class RitualSphereEncounterPolicy {
     }
 
     public static boolean abilityEnabled(State state, int casterSlot, boolean casterAlive) {
-        return state != null && casterAlive && casterSlot >= 0
+        return hasCaptured(state) && casterAlive && casterSlot >= 0
                 && casterSlot < Ability.values().length;
     }
 
@@ -56,11 +95,15 @@ public final class RitualSphereEncounterPolicy {
                         RitualSphereScalingPolicy.Profile profile,
                         int successfulDrains, int intensity, long lastDrainMillis) {
         public State {
-            if (generation <= 0L || prisoner == null || profile == null
+            if (generation <= 0L || profile == null
                     || successfulDrains < 0 || intensity < 0
                     || intensity > RitualSphereScalingPolicy.MAX_INTENSITY
-                    || lastDrainMillis < 0L) {
+                    || (prisoner == null ? lastDrainMillis >= 0L : lastDrainMillis < 0L)) {
                 throw new IllegalArgumentException("invalid ritual sphere state");
+            }
+            if (prisoner == null && (successfulDrains != 0 || intensity != 0
+                    || lastDrainMillis != -1L)) {
+                throw new IllegalArgumentException("waiting ritual sphere state must be empty");
             }
             successfulDrains = Math.min(RitualSphereScalingPolicy.MAX_INTENSITY,
                     successfulDrains);

@@ -37,7 +37,8 @@ def test_start_path_passes_the_current_prisoner_to_pairing() -> None:
     body = method_body(source, "private void startRitualControlSwap(long now)")
 
     assert "ritualFreeTargets(activeLivingPlayers())" in body
-    assert "ritualPrisonerUuid == null ? null : ritualPrisonerUuid.toString()" in body
+    assert "UUID prisonerId = ritualPrisonerId();" in body
+    assert "String excludedId = prisonerId == null ? null : prisonerId.toString();" in body
     assert "RitualControlPairPolicy.pair(\n                ids, excludedId," in body
 
 

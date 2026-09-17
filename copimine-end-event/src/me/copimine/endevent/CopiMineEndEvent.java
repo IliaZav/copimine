@@ -168,6 +168,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.command.RemoteConsoleCommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Enderman;
 import org.bukkit.entity.EnderPearl;
@@ -4516,6 +4517,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             handleTestVisuals(sender, args);
             return;
         }
+        if ("ritual".equalsIgnoreCase(args[1])) {
+            handleTestRitual(sender, args);
+            return;
+        }
         if ("scene".equalsIgnoreCase(args[1])) {
             handleTestScene(sender, args);
             return;
@@ -4566,6 +4571,139 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         message(sender, "&e/cmend test run creative | wave <1-7> | scene <clear> | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+    }
+
+    /**
+     * Deterministic local/staging-only controls for the Wave 6 live matrix.
+     *
+     * <p>These commands are console-only and deliberately call the same
+     * server-owned ability methods as the encounter tick.  They exist so the
+     * acceptance probe can force each core ability without changing combat
+     * balance or depending on disposable clients defeating four spatially
+     * separated guard groups within a wall-clock timeout.  Production has no
+     * route to this dispatcher: both the environment and sender checks are
+     * enforced here.</p>
+     */
+    private void handleTestRitual(CommandSender sender, String[] args) {
+        if (config == null || !("local".equalsIgnoreCase(config.environment())
+                || "staging".equalsIgnoreCase(config.environment()))) {
+            message(sender, "&cLOCAL_TEST_HOOK разрешён только при environment=local|staging.");
+            return;
+        }
+        if (!(sender instanceof ConsoleCommandSender)
+                && !(sender instanceof RemoteConsoleCommandSender)) {
+            message(sender, "&cLOCAL_TEST_HOOK доступен только серверной консоли.");
+            return;
+        }
+        if (args.length < 3) {
+            message(sender, "&e/cmend test ritual force <projectile|zone|reverse|swap> | controls clear | complete");
+            return;
+        }
+        String action = args[2].toLowerCase(Locale.ROOT);
+        if ("controls".equals(action)) {
+            if (args.length < 4 || !"clear".equalsIgnoreCase(args[3])) {
+                message(sender, "&e/cmend test ritual controls clear");
+                return;
+            }
+            clearRitualControls("local-test-hook");
+            message(sender, "&aLOCAL_TEST_HOOK controls cleared.");
+            return;
+        }
+        if ("complete".equals(action)) {
+            if (!ritualWaveActive() || ritualSphereState == null) {
+                message(sender, "&cLOCAL_TEST_HOOK ritual sphere is not active.");
+                return;
+            }
+            for (UUID id : new LinkedHashSet<>(ritualCasterUuids)) {
+                removeRitualEntity(id);
+            }
+            for (UUID id : new LinkedHashSet<>(ritualGuardUuids)) {
+                removeRitualEntity(id);
+            }
+            getLogger().info("WAVE6_RITUAL_TEST_COMPLETION_REQUEST event=" + eventId
+                    + " generation=" + generation + " source=LOCAL_TEST_HOOK");
+            message(sender, "&aLOCAL_TEST_HOOK completion requested.");
+            return;
+        }
+        if (!"force".equals(action) || args.length < 4) {
+            message(sender, "&e/cmend test ritual force <projectile|zone|reverse|swap> | controls clear | complete");
+            return;
+        }
+        RitualCasterTacticsPolicy.Role role = switch (args[3].toLowerCase(Locale.ROOT)) {
+            case "projectile" -> RitualCasterTacticsPolicy.Role.PROJECTILE_CASTER;
+            case "zone" -> RitualCasterTacticsPolicy.Role.ZONE_CASTER;
+            case "reverse" -> RitualCasterTacticsPolicy.Role.REVERSE_CASTER;
+            case "swap" -> RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER;
+            default -> null;
+        };
+        if (role == null) {
+            message(sender, "&e/cmend test ritual force <projectile|zone|reverse|swap>");
+            return;
+        }
+        if (forceRitualCoreAbilityForTest(role)) {
+            message(sender, "&aLOCAL_TEST_HOOK forced " + role.name() + ".");
+        } else {
+            message(sender, "&cLOCAL_TEST_HOOK could not force " + role.name() + ".");
+        }
+    }
+
+    /** Invoke one real core ability while preserving its production target gates. */
+    private boolean forceRitualCoreAbilityForTest(RitualCasterTacticsPolicy.Role role) {
+        if (role == null || !ritualWaveActive() || ritualSphereState == null
+                || ritualPrisonerId() == null) {
+            return false;
+        }
+        Entity caster = ritualCasterUuids.stream()
+                .map(ownedEntities::get)
+                .filter(entity -> entity instanceof LivingEntity
+                        && isLiveOwnedEntity(entity.getUniqueId()))
+                .filter(entity -> RitualCasterTacticsPolicy.roleForSlot(
+                        ritualCasterSlots.getOrDefault(entity.getUniqueId(), -1)) == role)
+                .sorted(Comparator.comparing(entity -> entity.getUniqueId().toString()))
+                .findFirst()
+                .orElse(null);
+        if (!(caster instanceof LivingEntity livingCaster)) {
+            return false;
+        }
+        Player target = ritualFreeTargets(activeLivingPlayers()).stream()
+                .filter(Player::isOnline)
+                .sorted(Comparator.comparing(player -> player.getUniqueId().toString()))
+                .findFirst()
+                .orElse(null);
+        if (target == null && role != RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER) {
+            return false;
+        }
+        long now = System.currentTimeMillis();
+        boolean applied;
+        switch (role) {
+            case PROJECTILE_CASTER -> {
+                int before = activeEventArrowAges.size();
+                spawnRitualProjectileVolley(livingCaster, target,
+                        ritualSphereState.profile().projectilesPerVolley());
+                applied = activeEventArrowAges.size() > before;
+            }
+            case ZONE_CASTER -> {
+                int before = ritualZoneCenters.size();
+                startRitualZone(target, now);
+                applied = ritualZoneCenters.size() > before;
+            }
+            case REVERSE_CASTER -> applied = startRitualReverse(target, now, false);
+            case CONTROL_SWAP_CASTER -> {
+                int before = ritualControlPartners.size();
+                startRitualControlSwap(now);
+                applied = ritualControlPartners.size() > before;
+            }
+            default -> applied = false;
+        }
+        if (applied) {
+            getLogger().info("WAVE6_RITUAL_ABILITY event=" + eventId
+                    + " generation=" + generation + " caster=" + caster.getUniqueId()
+                    + " slot=" + ritualCasterSlots.getOrDefault(caster.getUniqueId(), -1)
+                    + " role=" + role + " cooldown_ms=LOCAL_TEST_HOOK"
+                    + " intensity=" + ritualSphereState.intensity()
+                    + " source=LOCAL_TEST_HOOK");
+        }
+        return applied;
     }
 
     /**
@@ -14561,6 +14699,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (previousExpiry <= now + 1_000L) {
                 sendEndControlPacket(target, "START", currentInstance,
                         expires - now, playerId, "reverse");
+                getLogger().info("WAVE6_RITUAL_CONTROL event=" + eventId
+                        + " generation=" + generation + " mode=REVERSE action=START"
+                        + " player=" + playerId + " partner=none prisoner="
+                        + ritualPrisonerId() + " control_id=" + currentInstance);
             }
             return true;
         }
@@ -14574,6 +14716,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualZoneReverseRecipients.add(playerId);
         }
         sendEndControlPacket(target, "START", instance, expires - now, playerId, "reverse");
+        getLogger().info("WAVE6_RITUAL_CONTROL event=" + eventId
+                + " generation=" + generation + " mode=REVERSE action=START"
+                + " player=" + playerId + " partner=none prisoner="
+                + ritualPrisonerId() + " control_id=" + instance);
         return true;
     }
 
@@ -14624,6 +14770,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     expires - now, second, pairId);
             sendEndControlPacket(Bukkit.getPlayer(second), "START", secondInstance,
                     expires - now, first, pairId);
+            getLogger().info("WAVE6_RITUAL_CONTROL event=" + eventId
+                    + " generation=" + generation + " mode=SWAP action=START"
+                    + " first=" + first + " second=" + second + " prisoner="
+                    + ritualPrisonerId() + " control_id=" + pairId);
             break;
         }
     }
@@ -14729,6 +14879,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (secondInstance != null) {
             sendEndControlPacket(Bukkit.getPlayer(second), "STOP", secondInstance, 0L, second, reason);
+        }
+        if (firstInstance != null || secondInstance != null) {
+            String mode = (firstInstance != null && firstInstance.startsWith("reverse:"))
+                    || (secondInstance != null && secondInstance.startsWith("reverse:"))
+                    ? "REVERSE" : "SWAP";
+            getLogger().info("WAVE6_RITUAL_CONTROL event=" + eventId
+                    + " generation=" + generation + " mode=" + mode + " action=STOP"
+                    + " first=" + first + " second=" + second + " prisoner="
+                    + ritualPrisonerId() + " reason=" + reason);
         }
     }
 

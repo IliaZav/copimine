@@ -16,6 +16,11 @@ def test_skeleton_does_not_apply_head_look_after_vanilla_set_angles() -> None:
     after_super = source[super_start:set_angles_end]
     assert "head.yaw += MathHelper.clamp(headYaw" not in after_super
     assert "head.pitch += MathHelper.clamp(headPitch" not in after_super
+    assert "leftForearm.roll += pulse" in after_super
+    assert "rightForearm.roll -= pulse" in after_super
+    assert "chestRift.yScale =" in after_super
+    assert "eliteMantle.roll =" in after_super
+    assert after_super.count("super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);") == 1
 
 
 def test_skeleton_keeps_the_vanilla_head_part_for_single_look_application() -> None:

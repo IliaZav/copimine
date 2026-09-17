@@ -83,6 +83,12 @@ def test_generated_pose_table_covers_every_boss_hitbox_role() -> None:
         assert bone in generated
     assert 'record BoneDefinition(String parent' in generated
     assert 'new BoneDefinition("left_hand"' in generated
+    assert 'new BoneDefinition("left_leg_low"' in generated
+    assert 'new BoneDefinition("right_leg_low"' in generated
+    assert "composedTransform" in source
+    assert "definition.parent()" in source
+    assert "parent.compose(local)" in source
+    assert "sampleSegments" in source
 
 
 def test_authoritative_hitbox_update_uses_authored_clock_not_state_offsets() -> None:

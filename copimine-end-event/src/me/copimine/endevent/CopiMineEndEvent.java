@@ -111,6 +111,7 @@ import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.domain.RitualTargetPolicy;
+import me.copimine.endevent.domain.RitualZoneEffectPolicy;
 import me.copimine.endevent.domain.RitualPrisonerHealthPolicy;
 import me.copimine.endevent.domain.RitualCasterShieldPolicy;
 import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
@@ -611,6 +612,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Map<UUID, UUID> ritualControlPartners = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualControlExpiresAt = new LinkedHashMap<>();
     private final Map<UUID, Long> ritualReverseUntil = new LinkedHashMap<>();
+    private final Set<UUID> ritualZoneReverseRecipients = new LinkedHashSet<>();
     private final Set<UUID> ritualPrisonerTeleportPermits = new LinkedHashSet<>();
     private long ritualLastContainmentLogMillis;
     private long ritualLastDamageLogMillis;
@@ -1783,6 +1785,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualControlPartners.clear();
         ritualControlExpiresAt.clear();
         ritualReverseUntil.clear();
+        ritualZoneReverseRecipients.clear();
         ritualPrisonerUuid = null;
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
@@ -14252,6 +14255,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void tickRitualZones(long now) {
         expireRitualZones(now);
+        Set<UUID> activeZoneReverseRecipients = new LinkedHashSet<>();
         for (Map.Entry<UUID, Location> entry : new LinkedHashMap<>(ritualZoneCenters).entrySet()) {
             UUID zoneId = entry.getKey();
             Location center = entry.getValue();
@@ -14260,18 +14264,32 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             for (Player player : ritualFreeTargets(activeLivingPlayers())) {
-                if (!ritualZoneContains(center, player.getLocation())) {
-                    continue;
+                boolean insideActiveZone = ritualZoneContains(center, player.getLocation());
+                boolean prisoner = ritualPrisonerUuid != null
+                        && ritualPrisonerUuid.equals(player.getUniqueId());
+                boolean controlSwapActive = ritualControlPartners.containsKey(player.getUniqueId());
+                RitualZoneEffectPolicy.Result effects = RitualZoneEffectPolicy.effect(
+                        prisoner, insideActiveZone, controlSwapActive);
+                if (effects.wither()) {
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.WITHER, 40, 0,
+                            false, true, true));
                 }
-                player.addPotionEffect(new PotionEffect(PotionEffectType.POISON, 40, 0,
-                        false, true, true));
-                player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 1,
-                        false, true, true));
-                if (now / 1_000L != (now - 50L) / 1_000L) {
-                    player.damage(1.0D);
+                if (effects.slowness()) {
+                    player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 40, 1,
+                            false, true, true));
+                }
+                if (effects.reverseMovement()
+                        && startRitualReverse(player, now, true)) {
+                    activeZoneReverseRecipients.add(player.getUniqueId());
                 }
             }
         }
+        for (UUID playerId : new LinkedHashSet<>(ritualZoneReverseRecipients)) {
+            if (!activeZoneReverseRecipients.contains(playerId)) {
+                clearRitualZoneReverse(playerId, "zone-exit");
+            }
+        }
+        ritualZoneReverseRecipients.retainAll(activeZoneReverseRecipients);
     }
 
     private boolean ritualZoneContains(Location center, Location point) {
@@ -14293,18 +14311,54 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualReverse(Player target, long now) {
+        startRitualReverse(target, now, false);
+    }
+
+    private boolean startRitualReverse(Player target, long now, boolean zoneOwned) {
         if (target == null || !isFreeRitualTarget(target)
-                || ritualControlInstances.containsKey(target.getUniqueId())
+                || ritualControlPartners.containsKey(target.getUniqueId())
                 || ritualSphereState == null) {
-            return;
+            return false;
         }
-        String instance = "reverse:" + eventId + ":" + generation + ":" + target.getUniqueId();
+        UUID playerId = target.getUniqueId();
+        String currentInstance = ritualControlInstances.get(playerId);
+        if (currentInstance != null) {
+            if (!zoneOwned || !ritualZoneReverseRecipients.contains(playerId)
+                    || !currentInstance.startsWith("reverse:")) {
+                return false;
+            }
+            long previousExpiry = ritualReverseUntil.getOrDefault(playerId, 0L);
+            long expires = now + Math.round(RITUAL_CONTROL_DURATION_MILLIS
+                    * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains()));
+            ritualReverseUntil.put(playerId, expires);
+            ritualControlExpiresAt.put(playerId, expires);
+            if (previousExpiry <= now + 1_000L) {
+                sendEndControlPacket(target, "START", currentInstance,
+                        expires - now, playerId, "reverse");
+            }
+            return true;
+        }
+        String instance = "reverse:" + eventId + ":" + generation + ":" + playerId;
         long expires = now + Math.round(RITUAL_CONTROL_DURATION_MILLIS
                 * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains()));
-        ritualControlInstances.put(target.getUniqueId(), instance);
-        ritualReverseUntil.put(target.getUniqueId(), expires);
-        ritualControlExpiresAt.put(target.getUniqueId(), expires);
-        sendEndControlPacket(target, "START", instance, expires - now, target.getUniqueId(), "reverse");
+        ritualControlInstances.put(playerId, instance);
+        ritualReverseUntil.put(playerId, expires);
+        ritualControlExpiresAt.put(playerId, expires);
+        if (zoneOwned) {
+            ritualZoneReverseRecipients.add(playerId);
+        }
+        sendEndControlPacket(target, "START", instance, expires - now, playerId, "reverse");
+        return true;
+    }
+
+    private void clearRitualZoneReverse(UUID playerId, String reason) {
+        if (playerId == null || !ritualZoneReverseRecipients.remove(playerId)) {
+            return;
+        }
+        String instance = ritualControlInstances.get(playerId);
+        if (instance != null && instance.startsWith("reverse:")) {
+            clearRitualControl(playerId, reason);
+        }
     }
 
     private void startRitualControlSwap(long now) {
@@ -14427,6 +14481,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearRitualControlPair(playerId, partner, reason);
         if (reverseOnly) {
             ritualReverseUntil.remove(playerId);
+            ritualZoneReverseRecipients.remove(playerId);
         }
     }
 
@@ -14458,6 +14513,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualControlPartners.clear();
         ritualControlExpiresAt.clear();
         ritualReverseUntil.clear();
+        ritualZoneReverseRecipients.clear();
     }
 
     /** A disconnect/death must tear down both halves of a paired swap immediately. */

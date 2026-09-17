@@ -11,8 +11,9 @@ context.
 - Repository: [IliaZav/copimine](https://github.com/IliaZav/copimine)
 - Branch: `codex/end-rift-event`
 - Verification commit: `9950553101c623075315d248d6fe9a70ac1964e8`
+- Artifact synchronization commit: `4d77523acaa9736b037f97aa9a36e2783338242c`
 - Commit: `fix(end-rift): restore Wave 7 probe combat`
-- Published branch update: `origin/codex/end-rift-event` points to the same SHA
+- Published branch update: the artifact commit was pushed to `origin/codex/end-rift-event`
 - Deployment: isolated local Paper/PostgreSQL validation only; no production deployment
 
 ### Bug ER-019 — Wave 7 natural completion could not finish both chambers
@@ -96,6 +97,21 @@ The resource pack generator reported SHA-1
 
 The installed local Paper plugin was byte-for-byte identical to the source
 build (`a4fc6a99...d0ffd2`).
+
+### GitHub CI
+
+The first published documentation/code HEAD (`a0287fa5...`) correctly failed
+the provenance gate because its staged client JAR was stale. After publishing
+`4d77523a...`, the required GitHub Actions jobs passed in both triggered runs:
+
+| Event | Run | `static-and-contract` | `java-plugins` |
+| --- | --- | --- | --- |
+| push | [35268129725](https://github.com/IliaZav/copimine/actions/runs/35268129725) | PASS (`105360344216`) | PASS (`105360343916`) |
+| pull request | [35268134940](https://github.com/IliaZav/copimine/actions/runs/35268134940) | PASS (`105360361503`) | PASS (`105360361073`) |
+
+The failure annotations from the earlier run identified the exact source and
+staged client content digests; no test was weakened or skipped to obtain the
+passing result.
 
 ### Visual gate
 

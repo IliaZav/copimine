@@ -72,6 +72,12 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     for x in (3, 12, 51):
         draw.rectangle((x, 27, min(x + 1, 63), 28), fill=rgba(accent))
 
+    # jaw_patch: dedicated lower island for the jaw plate at UV (50, 30). Keeping this
+    # patch out of the horn island prevents the face from borrowing horn
+    # pixels when the standard cuboid footprint is sampled.
+    draw.rectangle((50, 30, 63, 31), fill=rgba(shadow))
+    angular(draw, ((51, 30), (55, 31), (59, 30), (63, 31)), light)
+
     # Keep the seed as a stable variant knob without introducing random noise.
     if seed % 2 == 0:
         draw.point((29, 12), fill=rgba(accent))
@@ -184,6 +190,12 @@ def spider_sheet(name: str = "end_rift_spider.png", role: str = "ordinary") -> N
                     (36, -4), (44, 4), (52, -3), (60, 4)):
         angular(draw, ((x, 19), (x + bend, 24), (x + bend // 2, 30)), edge, 2)
         draw.point((x + bend // 2, 28), fill=rgba(mid))
+    # shared spider shell island: the large shell, elite carapace, and body extension intentionally share
+    # one dark material island at UV (0, 16). Paint it as one coherent plate
+    # so those authored boxes do not pick up unrelated leg pixels.
+    draw.rectangle((0, 12, 47, 31), fill=rgba(shell))
+    angular(draw, ((3, 15), (12, 18), (20, 15), (29, 20), (40, 16), (46, 19)), mid)
+    angular(draw, ((5, 29), (13, 25), (22, 29), (31, 24), (42, 28)), edge)
     if role == "elite":
         angular(draw, ((22, 8), (27, 5), (32, 8), (37, 5), (42, 8)), edge, 1)
         draw.rectangle((23, 18, 25, 20), fill=rgba(mid))
@@ -256,6 +268,11 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     for x in (40, 56):
         draw.rectangle((x, 24, min(x + 2, 63), 29), fill=rgba(bone_shadow))
         draw.point((x + 1, 25), fill=rgba(bone_light))
+    # elite_shoulder_patch: dedicated lower shoulder island at UV (40, 16). It stays separate from
+    # the arm islands so the elite silhouette does not inherit cuff pixels.
+    draw.rectangle((40, 16, 59, 23), fill=rgba(shell))
+    angular(draw, ((41, 17), (45, 19), (49, 17), (54, 21), (58, 18)), bone)
+    draw.rectangle((47, 20, 52, 22), fill=rgba(bone_shadow))
     image.save(OUT / name, format="PNG", optimize=False)
 
 

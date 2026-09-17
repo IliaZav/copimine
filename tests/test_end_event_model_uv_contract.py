@@ -38,3 +38,14 @@ def test_uv_footprint_test_is_present_in_the_client_project() -> None:
     source = test.read_text(encoding="utf-8")
     assert "standardBoxRejectsUvFootprintOutsideAtlas" in source
     assert "standardBoxAcceptsFootprintInsideAtlas" in source
+
+
+def test_repaired_layout_uses_dedicated_lower_islands_for_moved_parts() -> None:
+    enderman = (CLIENT / "RiftEventEndermanModel.java").read_text(encoding="utf-8")
+    skeleton = (CLIENT / "RiftEventSkeletonModel.java").read_text(encoding="utf-8")
+    generator = (ROOT / "CopiMineClient/tools/generate_end_rift_texture_atlases.py").read_text(encoding="utf-8")
+    assert "50, 30, -3.0F, -0.4F, -4.15F" in enderman
+    assert "40, 16, -2.8F, -1.8F, -2.15F" in skeleton
+    assert "jaw_patch" in generator
+    assert "elite_shoulder_patch" in generator
+    assert "shared spider shell island" in generator

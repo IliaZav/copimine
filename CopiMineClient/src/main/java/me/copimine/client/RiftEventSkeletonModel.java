@@ -141,7 +141,7 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
                         4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
         leftArm.addChild("left_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
                         3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftArm.addChild("elite_shoulder_left", cube(40, 8, -2.8F, -1.8F, -2.15F,
+        leftArm.addChild("elite_shoulder_left", cube(40, 16, -2.8F, -1.8F, -2.15F,
                         5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         ModelPartData rightArm = root.addChild("right_arm", cube(40, 0,
@@ -153,7 +153,7 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
                         4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
         rightArm.addChild("right_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
                         3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightArm.addChild("elite_shoulder_right", cube(40, 8, -2.8F, -1.8F, -2.15F,
+        rightArm.addChild("elite_shoulder_right", cube(40, 16, -2.8F, -1.8F, -2.15F,
                         5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         ModelPartData leftLeg = root.addChild("left_leg", cube(0, 16,

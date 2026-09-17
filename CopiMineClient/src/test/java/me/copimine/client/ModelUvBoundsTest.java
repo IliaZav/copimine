@@ -23,4 +23,13 @@ class ModelUvBoundsTest {
                         0.0F, 0.0F,
                         8.0F, 8.0F, 8.0F));
     }
+
+    @Test
+    void standardBoxUsesTheVanillaSingleDepthVerticalBand() {
+        assertDoesNotThrow(() ->
+                ModelUvBounds.requireStandardBoxFits(
+                        64, 32,
+                        0.0F, 22.0F,
+                        8.0F, 8.0F, 2.0F));
+    }
 }

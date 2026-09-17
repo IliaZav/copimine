@@ -122,7 +122,7 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
                         48, 0, 1.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
                 ModelTransform.of(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.12F));
         head.addChild("jaw_plate", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        50, 0, -3.0F, -0.4F, -4.15F, 6.0F, 1.3F, 0.45F),
+                        50, 30, -3.0F, -0.4F, -4.15F, 6.0F, 1.3F, 0.45F),
                 ModelTransform.NONE);
 
         ModelPartData body = root.getChild("body");

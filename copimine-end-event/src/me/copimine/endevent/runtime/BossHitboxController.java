@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime;
 import me.copimine.endevent.domain.BossHitboxDedupePolicy;
 import me.copimine.endevent.domain.BossHitboxProfile;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
+import me.copimine.endevent.domain.BossOrientedHitboxPolicy;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -235,7 +236,7 @@ public final class BossHitboxController {
                 || !ray.origin().getWorld().equals(boss.getWorld())) {
             return false;
         }
-        return rayIntersects(transformedBox(boss, part, poses), ray.origin(),
+        return rayIntersects(transformedObb(boss, part, poses), ray.origin(),
                 ray.direction(), boundedDistance(maxDistance));
     }
 
@@ -262,7 +263,7 @@ public final class BossHitboxController {
         }
         double distanceLimit = boundedDistance(maxDistance);
         for (BossHitboxProfile.Part part : profile.parts()) {
-            if (rayIntersects(transformedBox(boss, part, poses), ray.origin(),
+            if (rayIntersects(transformedObb(boss, part, poses), ray.origin(),
                     ray.direction(), distanceLimit)) {
                 return true;
             }
@@ -474,7 +475,7 @@ public final class BossHitboxController {
                 .orElse(null);
     }
 
-    private BossHitboxTransformPolicy.Box transformedBox(
+    private BossOrientedHitboxPolicy.OrientedBox transformedObb(
             LivingEntity boss,
             BossHitboxProfile.Part part,
             Map<BossHitboxProfile.PartId,
@@ -483,7 +484,7 @@ public final class BossHitboxController {
                 ? BossHitboxTransformPolicy.PoseOffset.NONE
                 : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
         Location location = boss.getLocation();
-        return BossHitboxTransformPolicy.transform(part,
+        return BossOrientedHitboxPolicy.fromPart(part,
                 new BossHitboxTransformPolicy.Anchor(location.getX(), location.getY(),
                         location.getZ(), location.getYaw()), pose);
     }
@@ -514,37 +515,17 @@ public final class BossHitboxController {
         return Math.max(0.1D, Math.min(32.0D, maxDistance));
     }
 
-    private boolean rayIntersects(BossHitboxTransformPolicy.Box box, Location origin,
+    private boolean rayIntersects(BossOrientedHitboxPolicy.OrientedBox box, Location origin,
                                   Vector direction, double maxDistance) {
-        double tMin = 0.0D;
-        double tMax = maxDistance;
-        double[] originValues = {origin.getX(), origin.getY(), origin.getZ()};
-        double[] directionValues = {direction.getX(), direction.getY(), direction.getZ()};
-        double[] minimums = {box.minX(), box.minY(), box.minZ()};
-        double[] maximums = {box.maxX(), box.maxY(), box.maxZ()};
-        for (int axis = 0; axis < 3; axis++) {
-            double component = directionValues[axis];
-            if (Math.abs(component) < 1.0E-8D) {
-                if (originValues[axis] < minimums[axis]
-                        || originValues[axis] > maximums[axis]) {
-                    return false;
-                }
-                continue;
-            }
-            double near = (minimums[axis] - originValues[axis]) / component;
-            double far = (maximums[axis] - originValues[axis]) / component;
-            if (near > far) {
-                double swap = near;
-                near = far;
-                far = swap;
-            }
-            tMin = Math.max(tMin, near);
-            tMax = Math.min(tMax, far);
-            if (tMin > tMax) {
-                return false;
-            }
+        if (box == null || origin == null || direction == null
+                || origin.getWorld() == null || direction.lengthSquared() < 1.0E-8D) {
+            return false;
         }
-        return tMax >= 0.0D && tMin <= maxDistance;
+        return BossOrientedHitboxPolicy.nearestHitDistance(
+                new BossOrientedHitboxPolicy.Ray(
+                        new BossOrientedHitboxPolicy.Vec3(origin.getX(), origin.getY(), origin.getZ()),
+                        new BossOrientedHitboxPolicy.Vec3(direction.getX(), direction.getY(), direction.getZ())),
+                box, maxDistance).isPresent();
     }
 
     private Interaction projectileHitProxyAlongRay(LivingEntity boss, Location origin,
@@ -571,7 +552,7 @@ public final class BossHitboxController {
             BossHitboxTransformPolicy.PoseOffset pose = poses == null
                     ? BossHitboxTransformPolicy.PoseOffset.NONE
                     : poses.getOrDefault(part.id(), BossHitboxTransformPolicy.PoseOffset.NONE);
-            BossHitboxTransformPolicy.Box box = BossHitboxTransformPolicy.transform(part,
+            BossOrientedHitboxPolicy.OrientedBox box = BossOrientedHitboxPolicy.fromPart(part,
                     new BossHitboxTransformPolicy.Anchor(boss.getLocation().getX(),
                             boss.getLocation().getY(), boss.getLocation().getZ(), boss.getLocation().getYaw()),
                     pose);

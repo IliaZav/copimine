@@ -15,8 +15,10 @@ import java.util.Set;
  * independent world transform: it is composed after every animated parent.
  * This policy keeps that rule on the server by evaluating the generated
  * pivot/parent metadata into one affine transform for each hitbox segment.
- * The result is converted to the existing {@link BossHitboxTransformPolicy}
- * pose shape without loading client classes or resources.</p>
+ * The result keeps its composed rotation matrix in {@link BossHitboxPose}
+ * until the OBB is built, without loading client classes or resources.  A
+ * legacy Euler view remains available through {@link #sample(String, double)}
+ * for callers that still need the renderer-facing pose shape.</p>
  */
 public final class BossAnimationPosePolicy {
     private static final BossHitboxProfile PROFILE = BossHitboxProfile.canonical();
@@ -45,16 +47,16 @@ public final class BossAnimationPosePolicy {
      * missing clips, and malformed animation ids deliberately resolve to the
      * bind pose rather than to guessed combat-state offsets.
      */
-    public static Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> sampleSegments(
+    public static Map<BossHitboxProfile.PartKey, BossHitboxPose> sampleSegments(
             String animationId, double elapsedTicks) {
         if (!Double.isFinite(elapsedTicks) || elapsedTicks < 0.0D) {
             throw new IllegalArgumentException("elapsedTicks must be finite and non-negative");
         }
-        LinkedHashMap<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> result =
+        LinkedHashMap<BossHitboxProfile.PartKey, BossHitboxPose> result =
                 new LinkedHashMap<>();
         for (BossHitboxProfile.Part part : PROFILE.parts()) {
             result.put(new BossHitboxProfile.PartKey(part.id(), part.segmentIndex()),
-                    BossHitboxTransformPolicy.PoseOffset.NONE);
+                    BossHitboxPose.NONE);
         }
 
         BossAnimationId canonical = BossAnimationId.fromWire(animationId);
@@ -71,7 +73,7 @@ public final class BossAnimationPosePolicy {
             BossHitboxProfile.Part part = partFor(entry.getKey());
             Affine composed = composedTransform(entry.getValue(), clip, time, cache, new HashSet<>());
             if (part != null && composed != null) {
-                result.put(entry.getKey(), toPoseOffset(part, composed));
+                result.put(entry.getKey(), toPose(part, composed));
             }
         }
         return Map.copyOf(result);
@@ -84,13 +86,16 @@ public final class BossAnimationPosePolicy {
      */
     public static Map<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> sample(
             String animationId, double elapsedTicks) {
-        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> segments =
+        Map<BossHitboxProfile.PartKey, BossHitboxPose> segments =
                 sampleSegments(animationId, elapsedTicks);
         EnumMap<BossHitboxProfile.PartId, BossHitboxTransformPolicy.PoseOffset> result =
                 new EnumMap<>(BossHitboxProfile.PartId.class);
-        for (Map.Entry<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> entry
+        for (Map.Entry<BossHitboxProfile.PartKey, BossHitboxPose> entry
                 : segments.entrySet()) {
-            result.putIfAbsent(entry.getKey().partId(), entry.getValue());
+            BossHitboxProfile.Part part = partFor(entry.getKey());
+            if (part != null) {
+                result.putIfAbsent(entry.getKey().partId(), toPoseOffset(entry.getValue()));
+            }
         }
         for (BossHitboxProfile.PartId partId : BossHitboxProfile.PartId.values()) {
             result.putIfAbsent(partId, BossHitboxTransformPolicy.PoseOffset.NONE);
@@ -147,29 +152,37 @@ public final class BossAnimationPosePolicy {
         return result;
     }
 
-    private static BossHitboxTransformPolicy.PoseOffset toPoseOffset(
+    private static BossHitboxPose toPose(
             BossHitboxProfile.Part part, Affine transform) {
-        BossOrientedHitboxPolicy.Euler euler = toEuler(transform.linear());
         BossOrientedHitboxPolicy.Vec3 pivot = new BossOrientedHitboxPolicy.Vec3(
                 part.posePivotModel().x(), part.posePivotModel().y(), part.posePivotModel().z());
         BossOrientedHitboxPolicy.Vec3 movedPivot = transform.apply(pivot);
         BossOrientedHitboxPolicy.Vec3 translation = movedPivot.subtract(pivot);
+        return new BossHitboxPose(translation.x(), translation.y(), translation.z(),
+                transform.linear());
+    }
+
+    private static BossHitboxTransformPolicy.PoseOffset toPoseOffset(BossHitboxPose pose) {
+        BossOrientedHitboxPolicy.Euler euler = toEuler(pose.rotation());
         return new BossHitboxTransformPolicy.PoseOffset(
-                translation.x(), translation.y(), translation.z(),
+                pose.translationModelX(), pose.translationModelY(), pose.translationModelZ(),
                 euler.pitchDegrees(), euler.yawDegrees(), euler.rollDegrees());
     }
 
     private static BossOrientedHitboxPolicy.Euler toEuler(BossOrientedHitboxPolicy.Matrix3 matrix) {
-        double pitch = Math.atan2(-matrix.m12(),
-                Math.hypot(matrix.m02(), matrix.m22()));
-        double cosinePitch = Math.cos(pitch);
-        double yaw;
+        // Matrix3.euler uses Rx * Ry * Rz.  This is the same inverse order
+        // used by the client coordinate helper: m02 is sin(yaw), while the
+        // pitch/roll pairs share cos(yaw).  Do not use hypot(m02,m22) here;
+        // it mixes the yaw and pitch terms and is wrong for combined poses.
+        double yaw = Math.asin(Math.max(-1.0D, Math.min(1.0D, matrix.m02())));
+        double cosineYaw = Math.cos(yaw);
+        double pitch;
         double roll;
-        if (Math.abs(cosinePitch) > 1.0E-8D) {
-            yaw = Math.atan2(matrix.m02(), matrix.m22() / cosinePitch);
+        if (Math.abs(cosineYaw) > 1.0E-8D) {
+            pitch = Math.atan2(-matrix.m12(), matrix.m22());
             roll = Math.atan2(-matrix.m01(), matrix.m00());
         } else {
-            yaw = 0.0D;
+            pitch = 0.0D;
             roll = Math.atan2(matrix.m10(), matrix.m11());
         }
         return new BossOrientedHitboxPolicy.Euler(

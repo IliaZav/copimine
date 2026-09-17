@@ -11,6 +11,10 @@ EVENT = SERVER / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java
 GENERATOR = SERVER / "tools" / "GenerateBossAnimationPoses.ps1"
 GENERATED = DOMAIN / "GeneratedBossAnimationPoses.java"
 POLICY = DOMAIN / "BossAnimationPosePolicy.java"
+POSE = DOMAIN / "BossHitboxPose.java"
+TRANSFORM = DOMAIN / "BossHitboxTransformPolicy.java"
+OBB = DOMAIN / "BossOrientedHitboxPolicy.java"
+PURE_TEST = ROOT / "tests" / "BossAnimationPosePolicyTest.java"
 RUNNER = ROOT / "tests" / "RunEndRiftEventChecks.ps1"
 ANIMATION_ROOT = (
     ROOT
@@ -89,6 +93,16 @@ def test_generated_pose_table_covers_every_boss_hitbox_role() -> None:
     assert "definition.parent()" in source
     assert "parent.compose(local)" in source
     assert "sampleSegments" in source
+    pose = read(POSE)
+    transform = read(TRANSFORM)
+    obb = read(OBB)
+    pure_test = read(PURE_TEST)
+    assert "public record BossHitboxPose" in pose
+    assert "BossOrientedHitboxPolicy.Matrix3 rotation" in pose
+    assert "transformWithPose" in transform
+    assert "fromPartWithPose" in obb
+    assert "expectedParentRotation" in pure_test
+    assert "OBB path must consume the composed matrix without Euler loss" in pure_test
 
 
 def test_authoritative_hitbox_update_uses_authored_clock_not_state_offsets() -> None:
@@ -99,7 +113,7 @@ def test_authoritative_hitbox_update_uses_authored_clock_not_state_offsets() -> 
     assert "BossAnimationPosePolicy.sampleSegments(bossHitboxAnimationId, elapsedTicks)" in event
     assert "new BossHitboxTransformPolicy.PoseOffset(-1.5D" not in event
     assert "new BossHitboxTransformPolicy.PoseOffset(-3.0D" not in event
-    start = event.index("private Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> bossHitboxPoseOffsets()")
+    start = event.index("private Map<BossHitboxProfile.PartKey, BossHitboxPose> bossHitboxPoseOffsets()")
     end = event.index("private void renderBossHitboxDebug", start)
     pose_method = event[start:end]
     assert "switch (bossAbilityState)" not in pose_method

@@ -17,8 +17,16 @@ public final class BossHitboxTransformPolicy {
         if (part == null || anchor == null || pose == null) {
             throw new IllegalArgumentException("part, anchor, and pose are required");
         }
-        Matrix3 poseRotation = Matrix3.eulerXyz(
-                pose.pitchDegrees(), pose.yawDegrees(), pose.rollDegrees());
+        return transformWithPose(part, anchor, BossHitboxPose.fromOffset(pose));
+    }
+
+    /** Applies a lossless matrix pose for the authoritative animated rig. */
+    public static Box transformWithPose(BossHitboxProfile.Part part, Anchor anchor,
+                                        BossHitboxPose pose) {
+        if (part == null || anchor == null || pose == null) {
+            throw new IllegalArgumentException("part, anchor, and pose are required");
+        }
+        BossOrientedHitboxPolicy.Matrix3 poseRotation = pose.rotation();
         Vec3 posePivot = new Vec3(part.posePivotModel().x(),
                 part.posePivotModel().y(), part.posePivotModel().z());
         List<Vec3> corners = new ArrayList<>(8);
@@ -32,11 +40,16 @@ public final class BossHitboxTransformPolicy {
                             part.centerModel().x() + x * halfWidth,
                             part.centerModel().y() + y * halfHeight,
                             part.centerModel().z() + z * halfDepth);
-                    Vec3 posed = poseRotation.transform(corner.subtract(posePivot))
-                            .add(posePivot).add(new Vec3(
-                            pose.translationModelX(), pose.translationModelY(),
-                            pose.translationModelZ()));
-                    corners.add(rotateAroundWorldYaw(posed.scale(1.0D / MODEL_UNITS_PER_BLOCK), anchor.yawDegrees()));
+                    BossOrientedHitboxPolicy.Vec3 posed = poseRotation.transform(
+                                    toOriented(corner.subtract(posePivot)))
+                            .add(toOriented(posePivot))
+                            .add(new BossOrientedHitboxPolicy.Vec3(
+                                    pose.translationModelX(), pose.translationModelY(),
+                                    pose.translationModelZ()));
+                    BossOrientedHitboxPolicy.Vec3 world =
+                            BossOrientedHitboxPolicy.Matrix3.rotationY(anchor.yawDegrees())
+                                    .transform(posed.scale(1.0D / MODEL_UNITS_PER_BLOCK));
+                    corners.add(new Vec3(world.x(), world.y(), world.z()));
                 }
             }
         }
@@ -66,14 +79,8 @@ public final class BossHitboxTransformPolicy {
         return List.copyOf(result);
     }
 
-    private static Vec3 rotateAroundWorldYaw(Vec3 localBlocks, double yawDegrees) {
-        double yaw = Math.toRadians(yawDegrees);
-        double cos = Math.cos(yaw);
-        double sin = Math.sin(yaw);
-        return new Vec3(
-                cos * localBlocks.x() - sin * localBlocks.z(),
-                localBlocks.y(),
-                sin * localBlocks.x() + cos * localBlocks.z());
+    private static BossOrientedHitboxPolicy.Vec3 toOriented(Vec3 vector) {
+        return new BossOrientedHitboxPolicy.Vec3(vector.x(), vector.y(), vector.z());
     }
 
     private static double clamp(double value) {
@@ -155,55 +162,6 @@ public final class BossHitboxTransformPolicy {
     public record Vec3(double x, double y, double z) {
         private Vec3 subtract(Vec3 other) {
             return new Vec3(x - other.x(), y - other.y(), z - other.z());
-        }
-
-        private Vec3 add(Vec3 other) {
-            return new Vec3(x + other.x(), y + other.y(), z + other.z());
-        }
-
-        private Vec3 scale(double factor) {
-            return new Vec3(x * factor, y * factor, z * factor);
-        }
-    }
-
-    private record Matrix3(double m00, double m01, double m02,
-                           double m10, double m11, double m12,
-                           double m20, double m21, double m22) {
-        private static Matrix3 eulerXyz(double pitchDegrees, double yawDegrees,
-                                        double rollDegrees) {
-            double pitch = Math.toRadians(pitchDegrees);
-            double yaw = Math.toRadians(yawDegrees);
-            double roll = Math.toRadians(rollDegrees);
-            double cp = Math.cos(pitch);
-            double sp = Math.sin(pitch);
-            double cy = Math.cos(yaw);
-            double sy = Math.sin(yaw);
-            double cr = Math.cos(roll);
-            double sr = Math.sin(roll);
-            Matrix3 rx = new Matrix3(1, 0, 0, 0, cp, -sp, 0, sp, cp);
-            Matrix3 ry = new Matrix3(cy, 0, sy, 0, 1, 0, -sy, 0, cy);
-            Matrix3 rz = new Matrix3(cr, -sr, 0, sr, cr, 0, 0, 0, 1);
-            return rx.multiply(ry).multiply(rz);
-        }
-
-        private Vec3 transform(Vec3 vector) {
-            return new Vec3(
-                    m00 * vector.x() + m01 * vector.y() + m02 * vector.z(),
-                    m10 * vector.x() + m11 * vector.y() + m12 * vector.z(),
-                    m20 * vector.x() + m21 * vector.y() + m22 * vector.z());
-        }
-
-        private Matrix3 multiply(Matrix3 other) {
-            return new Matrix3(
-                    m00 * other.m00 + m01 * other.m10 + m02 * other.m20,
-                    m00 * other.m01 + m01 * other.m11 + m02 * other.m21,
-                    m00 * other.m02 + m01 * other.m12 + m02 * other.m22,
-                    m10 * other.m00 + m11 * other.m10 + m12 * other.m20,
-                    m10 * other.m01 + m11 * other.m11 + m12 * other.m21,
-                    m10 * other.m02 + m11 * other.m12 + m12 * other.m22,
-                    m20 * other.m00 + m21 * other.m10 + m22 * other.m20,
-                    m20 * other.m01 + m21 * other.m11 + m22 * other.m21,
-                    m20 * other.m02 + m21 * other.m12 + m22 * other.m22);
         }
     }
 

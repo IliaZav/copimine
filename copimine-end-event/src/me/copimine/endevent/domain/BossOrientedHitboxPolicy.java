@@ -22,8 +22,17 @@ public final class BossOrientedHitboxPolicy {
         if (part == null || anchor == null || pose == null) {
             throw new IllegalArgumentException("part, anchor, and pose are required");
         }
-        Matrix3 poseRotation = Matrix3.euler(new Euler(
-                pose.pitchDegrees(), pose.yawDegrees(), pose.rollDegrees()));
+        return fromPartWithPose(part, anchor, BossHitboxPose.fromOffset(pose));
+    }
+
+    /** Builds the OBB from the lossless matrix pose used by animated hitboxes. */
+    public static OrientedBox fromPartWithPose(BossHitboxProfile.Part part,
+                                               BossHitboxTransformPolicy.Anchor anchor,
+                                               BossHitboxPose pose) {
+        if (part == null || anchor == null || pose == null) {
+            throw new IllegalArgumentException("part, anchor, and pose are required");
+        }
+        Matrix3 poseRotation = pose.rotation();
         Matrix3 bodyYaw = Matrix3.rotationY(anchor.yawDegrees());
         Vec3 pivot = new Vec3(part.posePivotModel().x(), part.posePivotModel().y(),
                 part.posePivotModel().z());
@@ -31,8 +40,7 @@ public final class BossOrientedHitboxPolicy {
                 part.centerModel().z())
                 .subtract(pivot);
         modelCenter = poseRotation.transform(modelCenter).add(pivot).add(new Vec3(
-                pose.translationModelX(), pose.translationModelY(),
-                pose.translationModelZ()));
+                pose.translationModelX(), pose.translationModelY(), pose.translationModelZ()));
         Vec3 worldOffset = bodyYaw.transform(modelCenter.scale(1.0D / MODEL_UNITS_PER_BLOCK));
         Vec3 worldCenter = new Vec3(anchor.x() + worldOffset.x(),
                 anchor.y() + worldOffset.y(), anchor.z() + worldOffset.z());

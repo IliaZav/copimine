@@ -1,34 +1,35 @@
 import me.copimine.endevent.domain.BossAnimationPosePolicy;
+import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossHitboxProfile;
-import me.copimine.endevent.domain.BossHitboxTransformPolicy;
+import me.copimine.endevent.domain.BossOrientedHitboxPolicy;
 
 import java.util.Map;
 
 public final class BossAnimationPosePolicyTest {
     public static void main(String[] args) {
-        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> bind =
+        Map<BossHitboxProfile.PartKey, BossHitboxPose> bind =
                 BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 0.0D);
-        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> attack =
+        Map<BossHitboxProfile.PartKey, BossHitboxPose> attack =
                 BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 40.0D);
 
-        BossHitboxTransformPolicy.PoseOffset armAtBind = bind.get(
+        BossHitboxPose armAtBind = bind.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
-        BossHitboxTransformPolicy.PoseOffset armAtAttack = attack.get(
+        BossHitboxPose armAtAttack = attack.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
         require(armAtBind != null && armAtAttack != null, "left arm sample is required");
         require(!same(armAtBind, armAtAttack),
                 "authored attack frame must move the left upper arm");
 
-        BossHitboxTransformPolicy.PoseOffset unanimatedAtBind = bind.get(
+        BossHitboxPose unanimatedAtBind = bind.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
-        BossHitboxTransformPolicy.PoseOffset unanimatedAtAttack = attack.get(
+        BossHitboxPose unanimatedAtAttack = attack.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
-        require(same(BossHitboxTransformPolicy.PoseOffset.NONE, unanimatedAtBind),
+        require(same(BossHitboxPose.NONE, unanimatedAtBind),
                 "bone absent from clip must stay at bind pose");
         require(same(unanimatedAtBind, unanimatedAtAttack),
                 "unanimated leg must remain at bind pose during chest strike");
 
-        BossHitboxTransformPolicy.PoseOffset midpoint =
+        BossHitboxPose midpoint =
                 BossAnimationPosePolicy.sampleSegments("CHEST_STRIKE", 20.0D).get(
                         new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_UPPER_ARM, 0));
         require(midpoint != null && midpoint.translationModelZ() > 0.0D,
@@ -37,17 +38,30 @@ public final class BossAnimationPosePolicyTest {
                         .allMatch(BossAnimationPosePolicyTest::isNone),
                 "unknown animation must fail closed to bind pose");
 
-        BossHitboxTransformPolicy.PoseOffset childForearm =
+        BossHitboxPose childForearm =
                 BossAnimationPosePolicy.sampleSegments("IDLE_BREATH", 40.0D).get(
                         new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_FOREARM, 0));
         require(childForearm != null && !isNone(childForearm),
                 "a child forearm must inherit its animated parent transform");
+        BossOrientedHitboxPolicy.Matrix3 expectedParentRotation =
+                BossOrientedHitboxPolicy.Matrix3.euler(new BossOrientedHitboxPolicy.Euler(
+                        0.8647D, 1.8673D, 4.6231D));
+        require(matrixSame(expectedParentRotation, childForearm.rotation()),
+                "combined child pose must preserve the exact parent rotation matrix");
+        BossHitboxProfile.Part forearm = BossHitboxProfile.canonical().parts(
+                BossHitboxProfile.PartId.LEFT_FOREARM).get(0);
+        BossOrientedHitboxPolicy.OrientedBox forearmBox =
+                BossOrientedHitboxPolicy.fromPartWithPose(forearm,
+                        new me.copimine.endevent.domain.BossHitboxTransformPolicy.Anchor(
+                                0.0D, 0.0D, 0.0D, 0.0D), childForearm);
+        require(matrixSame(childForearm.rotation(), forearmBox.orientation()),
+                "OBB path must consume the composed matrix without Euler loss");
 
-        Map<BossHitboxProfile.PartKey, BossHitboxTransformPolicy.PoseOffset> slam =
+        Map<BossHitboxProfile.PartKey, BossHitboxPose> slam =
                 BossAnimationPosePolicy.sampleSegments("GROUND_SLAM", 50.0D);
-        BossHitboxTransformPolicy.PoseOffset upperLeg = slam.get(
+        BossHitboxPose upperLeg = slam.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 0));
-        BossHitboxTransformPolicy.PoseOffset lowerLeg = slam.get(
+        BossHitboxPose lowerLeg = slam.get(
                 new BossHitboxProfile.PartKey(BossHitboxProfile.PartId.LEFT_LEG, 1));
         require(upperLeg != null && lowerLeg != null, "both authored leg segments are required");
         require(!same(upperLeg, lowerLeg),
@@ -55,18 +69,28 @@ public final class BossAnimationPosePolicyTest {
         System.out.println("BossAnimationPosePolicyTest OK");
     }
 
-    private static boolean same(BossHitboxTransformPolicy.PoseOffset first,
-                                BossHitboxTransformPolicy.PoseOffset second) {
+    private static boolean same(BossHitboxPose first, BossHitboxPose second) {
         return Math.abs(first.translationModelX() - second.translationModelX()) < 1.0E-9D
                 && Math.abs(first.translationModelY() - second.translationModelY()) < 1.0E-9D
                 && Math.abs(first.translationModelZ() - second.translationModelZ()) < 1.0E-9D
-                && Math.abs(first.pitchDegrees() - second.pitchDegrees()) < 1.0E-9D
-                && Math.abs(first.yawDegrees() - second.yawDegrees()) < 1.0E-9D
-                && Math.abs(first.rollDegrees() - second.rollDegrees()) < 1.0E-9D;
+                && matrixSame(first.rotation(), second.rotation());
     }
 
-    private static boolean isNone(BossHitboxTransformPolicy.PoseOffset pose) {
-        return same(BossHitboxTransformPolicy.PoseOffset.NONE, pose);
+    private static boolean isNone(BossHitboxPose pose) {
+        return same(BossHitboxPose.NONE, pose);
+    }
+
+    private static boolean matrixSame(me.copimine.endevent.domain.BossOrientedHitboxPolicy.Matrix3 first,
+                                      me.copimine.endevent.domain.BossOrientedHitboxPolicy.Matrix3 second) {
+        return Math.abs(first.m00() - second.m00()) < 1.0E-9D
+                && Math.abs(first.m01() - second.m01()) < 1.0E-9D
+                && Math.abs(first.m02() - second.m02()) < 1.0E-9D
+                && Math.abs(first.m10() - second.m10()) < 1.0E-9D
+                && Math.abs(first.m11() - second.m11()) < 1.0E-9D
+                && Math.abs(first.m12() - second.m12()) < 1.0E-9D
+                && Math.abs(first.m20() - second.m20()) < 1.0E-9D
+                && Math.abs(first.m21() - second.m21()) < 1.0E-9D
+                && Math.abs(first.m22() - second.m22()) < 1.0E-9D;
     }
 
     private static void require(boolean condition, String message) {

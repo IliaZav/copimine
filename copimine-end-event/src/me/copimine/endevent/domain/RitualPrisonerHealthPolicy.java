@@ -25,14 +25,9 @@ public final class RitualPrisonerHealthPolicy {
         return nowMillis - lastDrainMillis >= DRAIN_INTERVAL_MILLIS;
     }
 
-    /** Amount of non-lethal environmental/entity damage that may be applied. */
+    /** Captured prisoners take no external damage between authoritative drains. */
     public static double safeExternalDamage(double currentHealth, double requestedDamage) {
-        double safeHealth = finiteOrFloor(currentHealth);
-        if (!Double.isFinite(requestedDamage) || requestedDamage <= 0.0D
-                || safeHealth <= MIN_HEALTH) {
-            return 0.0D;
-        }
-        return Math.min(requestedDamage, safeHealth - MIN_HEALTH);
+        return 0.0D;
     }
 
     public record DrainResult(double remainingHealth, double appliedDamage, int intensityGain) {

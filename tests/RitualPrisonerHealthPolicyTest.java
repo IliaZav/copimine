@@ -24,10 +24,12 @@ public final class RitualPrisonerHealthPolicyTest {
                 "drain must not fire early");
         check(RitualPrisonerHealthPolicy.drainDue(60_000L, 40_000L),
                 "cadence must work for subsequent ticks");
-        check(RitualPrisonerHealthPolicy.safeExternalDamage(5.0D, 99.0D) == 4.0D,
-                "external trapped-player damage must preserve one HP");
+        check(RitualPrisonerHealthPolicy.safeExternalDamage(20.0D, 99.0D) == 0.0D,
+                "captured prisoner must ignore all non-ritual external damage");
+        check(RitualPrisonerHealthPolicy.safeExternalDamage(5.0D, 1.0D) == 0.0D,
+                "small external hits must also deal zero damage while captured");
         check(RitualPrisonerHealthPolicy.safeExternalDamage(1.0D, 99.0D) == 0.0D,
-                "external damage must not kill a floor-health prisoner");
+                "external damage must remain zero at the ritual floor");
         System.out.println("RitualPrisonerHealthPolicyTest OK");
     }
 

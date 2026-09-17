@@ -451,7 +451,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final long RITUAL_ZONE_DURATION_MILLIS = 5_000L;
     private static final long RITUAL_BEAM_REFRESH_MILLIS = 500L;
     private static final long RITUAL_PRISONER_REPAIR_MILLIS = 250L;
-    private static final double RITUAL_PRISONER_MAX_EXTERNAL_DAMAGE = 1.0D;
     private static final long RITUAL_CONTROL_DURATION_MILLIS = 6_000L;
     private static final long RITUAL_ABILITY_TICK_MILLIS = 250L;
     private static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
@@ -6443,7 +6442,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " cause=" + event.getCause());
     }
 
-    /** Apply at most one point of external damage while retaining the 1 HP floor. */
+    /** Cancel every external damage event; the ritual drain is the only health authority. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onRitualPrisonerDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Player prisoner)
@@ -6451,21 +6450,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         event.setCancelled(true);
-        double requested = Math.min(RITUAL_PRISONER_MAX_EXTERNAL_DAMAGE,
-                Math.max(0.0D, event.getFinalDamage()));
-        double applied = RitualPrisonerHealthPolicy.safeExternalDamage(
-                prisoner.getHealth(), requested);
-        if (applied > 0.0D) {
-            prisoner.setHealth(Math.max(RitualPrisonerHealthPolicy.MIN_HEALTH,
-                    prisoner.getHealth() - applied));
-        }
         long now = System.currentTimeMillis();
         if (now - ritualLastDamageLogMillis >= 1_000L) {
             ritualLastDamageLogMillis = now;
             getLogger().info("WAVE6_RITUAL_PRISONER_DAMAGE_GUARDED event=" + eventId
-                    + " player=" + prisoner.getUniqueId() + " requested=" + requested
-                    + " applied=" + applied + " floor="
-                    + RitualPrisonerHealthPolicy.MIN_HEALTH);
+                    + " player=" + prisoner.getUniqueId()
+                    + " action=external_damage_ignored");
         }
     }
 

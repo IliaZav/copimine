@@ -242,3 +242,5 @@ def test_live_probe_rebuilds_report_after_persisting_report_result() -> None:
 
     assert "$script:runMetadata['diagnosticReportResult']" in script
     assert script.count("build_end_rift_diagnostic_report.py") >= 2
+    assert "Get-Command java.exe" in script
+    assert "javaVersion = $javaVersion" in script

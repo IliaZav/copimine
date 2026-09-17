@@ -27,6 +27,7 @@ def test_policy_owns_expected_live_missing_and_stale_math() -> None:
 def test_controller_repairs_before_update_and_each_damage_route() -> None:
     source = read(CONTROLLER)
     assert "BossHitboxProxyReconciliationPolicy" in source
+    assert "BossHitboxProxyMetadataPolicy" in source
     assert "if (!ensureHealthy(boss))" in source
     assert source.count("ensureHealthy(boss)") >= 4
     assert "boolean rebuilt = begin(boss, repairEventId, repairGeneration);" in source
@@ -34,6 +35,10 @@ def test_controller_repairs_before_update_and_each_damage_route() -> None:
     assert "part=" in source and "segment=" in source and "generation=" in source
     assert "liveReconciliation()" in source
     assert "slotMetadataMatches" in source
+    assert "indexedSlotsHealthy" in source
+    assert "lastReconciliationServerTick" in source
+    assert "isCurrentEvent" in source
+    assert "!proxy.isValid()" in source
     assert "getPersistentDataContainer" in source
     assert "world.getEntities()" in source
     assert "duplicates()" in source

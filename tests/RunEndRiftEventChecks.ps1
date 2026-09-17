@@ -106,6 +106,7 @@ $pureTests = @(
   'BossHitboxTransformPolicyTest',
   'BossOrientedHitboxPolicyTest',
   'BossHitboxProxyReconciliationPolicyTest',
+  'BossHitboxProxyMetadataPolicyTest',
   'BossFinalStrikePolicyTest',
   'BossMovementPolicyTest',
   'BossRealHealthDamagePolicyTest',

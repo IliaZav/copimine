@@ -3,6 +3,7 @@ package me.copimine.endevent.runtime;
 import me.copimine.endevent.domain.BossHitboxDedupePolicy;
 import me.copimine.endevent.domain.BossHitboxPose;
 import me.copimine.endevent.domain.BossHitboxProfile;
+import me.copimine.endevent.domain.BossHitboxProxyMetadataPolicy;
 import me.copimine.endevent.domain.BossHitboxProxyReconciliationPolicy;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.BossOrientedHitboxPolicy;
@@ -48,6 +49,8 @@ public final class BossHitboxController {
     private final Map<UUID, BossOrientedHitboxPolicy.Vec3> previousProjectilePositions =
             new LinkedHashMap<>();
     private final Set<UUID> consumedProjectileIds = new HashSet<>();
+    private long lastReconciliationServerTick = Long.MIN_VALUE;
+    private BossHitboxProxyReconciliationPolicy.Result cachedReconciliation;
     private final NamespacedKey eventKey;
     private final NamespacedKey generationKey;
     private final NamespacedKey kindKey;
@@ -498,6 +501,12 @@ public final class BossHitboxController {
     }
 
     private BossHitboxProxyReconciliationPolicy.Result liveReconciliation() {
+        long serverTick = Bukkit.getCurrentTick();
+        if (cachedReconciliation != null
+                && lastReconciliationServerTick == serverTick
+                && indexedSlotsHealthy()) {
+            return cachedReconciliation;
+        }
         List<BossHitboxProxyReconciliationPolicy.Key> live = new ArrayList<>();
         int malformed = slots.size() == profile.proxyCount() ? 0 : 1;
         for (Slot slot : slots.values()) {
@@ -516,44 +525,59 @@ public final class BossHitboxController {
                 continue;
             }
             for (Entity entity : new ArrayList<>(world.getEntities())) {
-                if (!(entity instanceof Interaction proxy) || !isTagged(proxy)
-                        || !matchesTag(proxy, eventId, bossUuid)) {
+                if (!(entity instanceof Interaction proxy)) {
                     continue;
                 }
-                long taggedGeneration = proxy.getPersistentDataContainer().getOrDefault(
-                        generationKey, PersistentDataType.LONG, Long.MIN_VALUE);
-                if (taggedGeneration != generation) {
-                    malformed++;
+                BossHitboxProxyMetadataPolicy.Actual actual = proxyMetadata(proxy);
+                if (!BossHitboxProxyMetadataPolicy.isCurrentEvent(actual, KIND, eventId)) {
                     continue;
                 }
                 if (indexed.contains(proxy.getUniqueId())) {
                     continue;
                 }
-                BossHitboxProfile.PartId taggedPart = taggedPart(proxy);
-                int taggedSegment = segmentKey(proxy);
-                if (taggedPart == null || taggedSegment < 0) {
+                if (!proxy.isValid() || !bossUuid.equals(actual.parentUuid())
+                        || actual.generation() != generation) {
+                    malformed++;
+                    continue;
+                }
+                if (actual.partId() == null || actual.segmentIndex() < 0) {
                     malformed++;
                     continue;
                 }
                 live.add(new BossHitboxProxyReconciliationPolicy.Key(
-                        taggedPart, taggedSegment));
+                        actual.partId(), actual.segmentIndex()));
             }
         }
         BossHitboxProxyReconciliationPolicy.Result result =
                 BossHitboxProxyReconciliationPolicy.reconcile(
                 BossHitboxProxyReconciliationPolicy.expectedKeys(profile), live);
-        return result.withMalformed(malformed);
+        cachedReconciliation = result.withMalformed(malformed);
+        lastReconciliationServerTick = serverTick;
+        return cachedReconciliation;
+    }
+
+    private boolean indexedSlotsHealthy() {
+        if (slots.size() != profile.proxyCount()) {
+            return false;
+        }
+        for (Slot slot : slots.values()) {
+            Entity entity = Bukkit.getEntity(slot.uuid());
+            if (!(entity instanceof Interaction proxy) || !proxy.isValid()
+                    || !slotMetadataMatches(proxy, slot)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean slotMetadataMatches(Interaction proxy, Slot slot) {
-        if (proxy == null || slot == null || !matchesTag(proxy, eventId, bossUuid)) {
+        if (proxy == null || slot == null) {
             return false;
         }
-        long taggedGeneration = proxy.getPersistentDataContainer().getOrDefault(
-                generationKey, PersistentDataType.LONG, Long.MIN_VALUE);
-        return taggedGeneration == generation
-                && slot.partId().name().equals(partKey(proxy))
-                && slot.segmentIndex() == segmentKey(proxy);
+        return BossHitboxProxyMetadataPolicy.matches(proxyMetadata(proxy),
+                new BossHitboxProxyMetadataPolicy.Expected(
+                        KIND, eventId, bossUuid, generation,
+                        slot.partId(), slot.segmentIndex()));
     }
 
     private BossHitboxProfile.PartId taggedPart(Interaction proxy) {
@@ -564,6 +588,33 @@ public final class BossHitboxController {
         }
     }
 
+    private BossHitboxProxyMetadataPolicy.Actual proxyMetadata(Interaction proxy) {
+        if (proxy == null) {
+            return new BossHitboxProxyMetadataPolicy.Actual(
+                    null, null, null, Long.MIN_VALUE, null, -1);
+        }
+        String parentText = proxy.getPersistentDataContainer().getOrDefault(
+                parentKey, PersistentDataType.STRING, "");
+        UUID parent = null;
+        try {
+            if (parentText != null && !parentText.isBlank()) {
+                parent = UUID.fromString(parentText);
+            }
+        } catch (IllegalArgumentException ignored) {
+            // A malformed parent tag is represented as null and fails closed.
+        }
+        return new BossHitboxProxyMetadataPolicy.Actual(
+                proxy.getPersistentDataContainer().getOrDefault(
+                        kindKey, PersistentDataType.STRING, ""),
+                proxy.getPersistentDataContainer().getOrDefault(
+                        eventKey, PersistentDataType.STRING, ""),
+                parent,
+                proxy.getPersistentDataContainer().getOrDefault(
+                        generationKey, PersistentDataType.LONG, Long.MIN_VALUE),
+                taggedPart(proxy),
+                segmentKey(proxy));
+    }
+
     /** Removes tracked proxies and forgets every generation-scoped identity. */
     public void cleanup() {
         cleanupEntities(slots.keySet().stream().map(Bukkit::getEntity).toList());
@@ -571,6 +622,8 @@ public final class BossHitboxController {
         dedupe.clear();
         previousProjectilePositions.clear();
         consumedProjectileIds.clear();
+        lastReconciliationServerTick = Long.MIN_VALUE;
+        cachedReconciliation = null;
         bossUuid = null;
         eventId = "";
         generation = Long.MIN_VALUE;

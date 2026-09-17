@@ -33,4 +33,14 @@ class RiftEventSkeletonModelTest {
         assertNotNull(ritualGuard);
         assertNotSame(waveGuardian, ritualGuard);
     }
+
+    @Test
+    void everySkeletonRoleConstructsThroughTheCheckedUvPath() {
+        for (RiftEventSkeletonModel.Variant variant : RiftEventSkeletonModel.Variant.values()) {
+            RiftEventSkeletonModel model = new RiftEventSkeletonModel(
+                    RiftEventSkeletonModel.getTexturedModelData(variant).createModel(), variant);
+            assertNotNull(model.getPart());
+            assertNotNull(model.getPart().getChild("body"));
+        }
+    }
 }

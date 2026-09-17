@@ -90,29 +90,42 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
                 ModelTransform.pivot(0.0F, 15.0F, 3.0F));
         root.addChild("rift_shell", cube(0, 16, -4.5F, -3.0F, -5.0F, 9.0F, 5.0F, 10.0F),
                 ModelTransform.pivot(0.0F, 15.0F, 7.0F));
-        root.addChild("rift_spines", ModelPartBuilder.create()
-                        .uv(48, 16).cuboid(-1.0F, -7.0F, -1.0F, 2.0F, 4.0F, 2.0F)
-                        .uv(48, 22).cuboid(-1.0F, -5.0F, 2.0F, 2.0F, 3.0F, 2.0F)
-                        .uv(56, 16).cuboid(-1.0F, -5.0F, -4.0F, 2.0F, 3.0F, 2.0F),
+        root.addChild("rift_spines", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(48, 16, -1.0F, -7.0F, -1.0F,
+                                2.0F, 4.0F, 2.0F),
+                        new ModelUvBounds.Box(48, 22, -1.0F, -5.0F, 2.0F,
+                                2.0F, 3.0F, 2.0F),
+                        new ModelUvBounds.Box(56, 16, -1.0F, -5.0F, -4.0F,
+                                2.0F, 3.0F, 2.0F)),
                 ModelTransform.pivot(0.0F, 15.0F, 6.0F));
 
-        root.addChild("elite_carapace", ModelPartBuilder.create()
-                        .uv(0, 24).cuboid(-5.5F, -4.2F, -6.5F, 11.0F, 2.2F, 13.0F)
-                        .uv(0, 24).cuboid(-6.2F, -2.4F, -4.8F, 1.6F, 2.2F, 8.0F)
-                        .uv(0, 24).cuboid(4.6F, -2.4F, -4.8F, 1.6F, 2.2F, 8.0F),
+        root.addChild("elite_carapace", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(0, 16, -5.5F, -4.2F, -6.5F,
+                                11.0F, 2.2F, 13.0F),
+                        new ModelUvBounds.Box(0, 21, -6.2F, -2.4F, -4.8F,
+                                1.6F, 2.2F, 8.0F),
+                        new ModelUvBounds.Box(0, 21, 4.6F, -2.4F, -4.8F,
+                                1.6F, 2.2F, 8.0F)),
                 ModelTransform.pivot(0.0F, 15.0F, 7.0F));
-        root.addChild("guardian_spine", ModelPartBuilder.create()
-                        .uv(24, 24).cuboid(-1.0F, -7.0F, 5.8F, 2.0F, 3.0F, 2.0F)
-                        .uv(24, 29).cuboid(-1.2F, -4.6F, 6.0F, 2.4F, 3.2F, 1.6F)
-                        .uv(32, 24).cuboid(-1.4F, -2.0F, 6.1F, 2.8F, 2.8F, 1.4F),
+        root.addChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(24, 24, -1.0F, -7.0F, 5.8F,
+                                2.0F, 3.0F, 2.0F),
+                        new ModelUvBounds.Box(24, 26, -1.2F, -4.6F, 6.0F,
+                                2.4F, 3.2F, 1.6F),
+                        new ModelUvBounds.Box(32, 24, -1.4F, -2.0F, 6.1F,
+                                2.8F, 2.8F, 1.4F)),
                 ModelTransform.pivot(0.0F, 15.0F, 4.0F));
-        root.addChild("guard_seal", ModelPartBuilder.create()
-                        .uv(38, 24).cuboid(-2.4F, -5.4F, -8.15F, 4.8F, 3.8F, 0.45F)
-                        .uv(38, 29).cuboid(-1.1F, -6.6F, -8.25F, 2.2F, 1.2F, 0.35F),
+        root.addChild("guard_seal", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(38, 24, -2.4F, -5.4F, -8.15F,
+                                4.8F, 3.8F, 0.45F),
+                        new ModelUvBounds.Box(38, 29, -1.1F, -6.6F, -8.25F,
+                                2.2F, 1.2F, 0.35F)),
                 ModelTransform.pivot(0.0F, 15.0F, -2.0F));
-        root.addChild("ritual_focus", ModelPartBuilder.create()
-                        .uv(46, 24).cuboid(-1.5F, -1.5F, -8.6F, 3.0F, 3.0F, 1.0F)
-                        .uv(54, 24).cuboid(-0.6F, -2.5F, -8.45F, 1.2F, 1.0F, 0.7F),
+        root.addChild("ritual_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(46, 24, -1.5F, -1.5F, -8.6F,
+                                3.0F, 3.0F, 1.0F),
+                        new ModelUvBounds.Box(54, 24, -0.6F, -2.5F, -8.45F,
+                                1.2F, 1.0F, 0.7F)),
                 ModelTransform.pivot(0.0F, 15.0F, 1.0F));
 
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
@@ -120,15 +133,16 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
 
     private static void addLeg(ModelPartData root, String name, float x, float y,
                                float z, boolean mirrored) {
-        root.addChild(name, ModelPartBuilder.create().uv(18, 0)
-                        .mirrored(mirrored).cuboid(mirrored ? -2.0F : -14.0F,
-                                -1.0F, -1.0F, 16.0F, 2.0F, 2.0F),
+        root.addChild(name, ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        18, 0, mirrored ? -2.0F : -14.0F,
+                        -1.0F, -1.0F, 16.0F, 2.0F, 2.0F, mirrored),
                 ModelTransform.pivot(x, y, z));
     }
 
     private static ModelPartBuilder cube(int u, int v, float x, float y, float z,
                                          float width, float height, float depth) {
-        return ModelPartBuilder.create().uv(u, v).cuboid(x, y, z, width, height, depth);
+        return ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT, u, v,
+                x, y, z, width, height, depth);
     }
 
     @Override

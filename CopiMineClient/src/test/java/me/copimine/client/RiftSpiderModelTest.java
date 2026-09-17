@@ -28,4 +28,14 @@ class RiftSpiderModelTest {
         assertEquals(64, RiftSpiderModel.TEXTURE_WIDTH);
         assertEquals(32, RiftSpiderModel.TEXTURE_HEIGHT);
     }
+
+    @Test
+    void everySpiderRoleConstructsThroughTheCheckedUvPath() {
+        for (RiftSpiderModel.Variant variant : RiftSpiderModel.Variant.values()) {
+            RiftSpiderModel model = new RiftSpiderModel(
+                    RiftSpiderModel.getTexturedModelData(variant).createModel(), variant);
+            assertNotNull(model.getPart());
+            assertNotNull(model.getPart().getChild("body"));
+        }
+    }
 }

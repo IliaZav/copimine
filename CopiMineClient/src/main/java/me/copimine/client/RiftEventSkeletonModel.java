@@ -1,6 +1,5 @@
 package me.copimine.client;
 
-import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelData;
 import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.model.ModelPartBuilder;
@@ -100,8 +99,8 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         ModelPartData head = root.addChild("head", cube(0, 0,
                         -3.5F, -7.0F, -3.5F, 7.0F, 7.0F, 7.0F),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("hat", ModelPartBuilder.create().cuboid(
-                        -3.5F, -7.0F, -3.5F, 7.0F, 7.0F, 7.0F, Dilation.NONE),
+        root.addChild("hat", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 0, -3.5F, -7.0F, -3.5F, 7.0F, 7.0F, 7.0F),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
         head.addChild("jaw", cube(8, 0, -2.5F, -1.1F, -3.7F,
                         5.0F, 1.1F, 0.55F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
@@ -140,9 +139,9 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
                         3.1F, 12.0F, 2.6F), ModelTransform.pivot(0.0F, 8.4F, 0.0F));
         leftArm.addChild("left_elbow_bone", cube(48, 0, -2.15F, 6.9F, -1.75F,
                         4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftArm.addChild("left_wrist_bone", cube(52, 0, -1.8F, 18.0F, -1.6F,
+        leftArm.addChild("left_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
                         3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftArm.addChild("elite_shoulder_left", cube(56, 8, -2.8F, -1.8F, -2.15F,
+        leftArm.addChild("elite_shoulder_left", cube(40, 8, -2.8F, -1.8F, -2.15F,
                         5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         ModelPartData rightArm = root.addChild("right_arm", cube(40, 0,
@@ -152,9 +151,9 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
                         3.1F, 12.0F, 2.6F), ModelTransform.pivot(0.0F, 8.4F, 0.0F));
         rightArm.addChild("right_elbow_bone", cube(48, 0, -2.15F, 6.9F, -1.75F,
                         4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightArm.addChild("right_wrist_bone", cube(52, 0, -1.8F, 18.0F, -1.6F,
+        rightArm.addChild("right_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
                         3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightArm.addChild("elite_shoulder_right", cube(56, 8, -2.8F, -1.8F, -2.15F,
+        rightArm.addChild("elite_shoulder_right", cube(40, 8, -2.8F, -1.8F, -2.15F,
                         5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         ModelPartData leftLeg = root.addChild("left_leg", cube(0, 16,
@@ -177,24 +176,31 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         rightLeg.addChild("right_ankle_bone", cube(16, 16, -1.35F, 18.5F, -1.35F,
                         2.7F, 1.5F, 2.7F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
-        root.addChild("guard_crest", ModelPartBuilder.create()
-                        .uv(40, 20).cuboid(-3.4F, -1.2F, -2.05F, 6.8F, 1.6F, 0.45F)
-                        .uv(40, 23).cuboid(-2.4F, -2.6F, -1.95F, 4.8F, 1.3F, 0.35F),
+        root.addChild("guard_crest", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(40, 20, -3.4F, -1.2F, -2.05F,
+                                6.8F, 1.6F, 0.45F),
+                        new ModelUvBounds.Box(40, 23, -2.4F, -2.6F, -1.95F,
+                                4.8F, 1.3F, 0.35F)),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("guard_chest_seal", ModelPartBuilder.create()
-                        .uv(48, 20).cuboid(-1.8F, 1.8F, -2.0F, 3.6F, 4.4F, 0.35F),
+        root.addChild("guard_chest_seal", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        48, 20, -1.8F, 1.8F, -2.0F, 3.6F, 4.4F, 0.35F),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("guardian_spine", ModelPartBuilder.create()
-                        .uv(52, 20).cuboid(-1.0F, 1.0F, 1.65F, 2.0F, 8.5F, 0.65F)
-                        .uv(58, 20).cuboid(-1.6F, 2.5F, 1.5F, 3.2F, 1.0F, 0.8F)
-                        .uv(58, 22).cuboid(-1.6F, 5.0F, 1.5F, 3.2F, 1.0F, 0.8F),
+        root.addChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(52, 20, -1.0F, 1.0F, 1.65F,
+                                2.0F, 8.5F, 0.65F),
+                        new ModelUvBounds.Box(56, 20, -1.6F, 2.5F, 1.5F,
+                                3.2F, 1.0F, 0.8F),
+                        new ModelUvBounds.Box(56, 22, -1.6F, 5.0F, 1.5F,
+                                3.2F, 1.0F, 0.8F)),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("elite_mantle", ModelPartBuilder.create()
-                        .uv(32, 24).cuboid(-6.0F, -1.0F, -2.5F, 12.0F, 2.4F, 5.0F),
+        root.addChild("elite_mantle", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        30, 24, -6.0F, -1.0F, -2.5F, 12.0F, 2.4F, 5.0F),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("elite_horn_crown", ModelPartBuilder.create()
-                        .uv(48, 26).cuboid(-3.2F, -11.0F, -1.2F, 1.8F, 4.0F, 2.0F)
-                        .uv(48, 26).cuboid(1.4F, -11.0F, -1.2F, 1.8F, 4.0F, 2.0F),
+        root.addChild("elite_horn_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(48, 26, -3.2F, -11.0F, -1.2F,
+                                1.8F, 4.0F, 2.0F),
+                        new ModelUvBounds.Box(48, 26, 1.4F, -11.0F, -1.2F,
+                                1.8F, 4.0F, 2.0F)),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
 
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
@@ -207,7 +213,8 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
 
     private static ModelPartBuilder cube(int u, int v, float x, float y, float z,
                                          float width, float height, float depth) {
-        return ModelPartBuilder.create().uv(u, v).cuboid(x, y, z, width, height, depth);
+        return ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT, u, v,
+                x, y, z, width, height, depth);
     }
 
     @Override

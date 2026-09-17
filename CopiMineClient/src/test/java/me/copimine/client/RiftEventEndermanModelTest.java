@@ -48,4 +48,14 @@ class RiftEventEndermanModelTest {
         assertNotSame(renderer.modelFor(EndermanRendererSelection.Kind.WAVE_GUARDIAN),
                 renderer.modelFor(EndermanRendererSelection.Kind.RITUAL_GUARD));
     }
+
+    @Test
+    void everyEndermanRoleConstructsThroughTheCheckedUvPath() {
+        for (RiftEventEndermanModel.Variant variant : RiftEventEndermanModel.Variant.values()) {
+            RiftEventEndermanModel model = new RiftEventEndermanModel(
+                    RiftEventEndermanModel.getTexturedModelData(variant).createModel(), variant);
+            assertNotNull(model.getPart());
+            assertNotNull(model.getPart().getChild("rift_core"));
+        }
+    }
 }

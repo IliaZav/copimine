@@ -3,7 +3,6 @@ package me.copimine.client;
 import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelData;
 import net.minecraft.client.model.ModelPart;
-import net.minecraft.client.model.ModelPartBuilder;
 import net.minecraft.client.model.ModelPartData;
 import net.minecraft.client.model.ModelTransform;
 import net.minecraft.client.model.TexturedModelData;
@@ -99,65 +98,69 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
                 || variant == Variant.RITUAL_GUARD;
         ModelData data = BipedEntityModel.getModelData(Dilation.NONE, -14.0F);
         ModelPartData root = data.getRoot();
-        root.addChild("rift_core", ModelPartBuilder.create()
-                        .uv(0, 0).cuboid(-2.5F, -5.0F, -3.0F, 5.0F, 5.0F, 2.0F),
+        root.addChild("rift_core", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 0, -2.5F, -5.0F, -3.0F, 5.0F, 5.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -8.0F, -2.25F));
-        root.addChild("rift_shell", ModelPartBuilder.create()
-                        .uv(16, 0).cuboid(-4.5F, -1.0F, -2.5F, 9.0F, 3.0F, 5.0F),
+        root.addChild("rift_shell", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        16, 0, -4.5F, -1.0F, -2.5F, 9.0F, 3.0F, 5.0F),
                 ModelTransform.pivot(0.0F, -10.0F, 0.0F));
-        root.addChild("variant_crest", ModelPartBuilder.create()
-                        .uv(32, 0).cuboid(-3.5F, -11.0F, -1.0F, 7.0F, elite ? 4.0F : 2.0F, 2.0F),
+        root.addChild("variant_crest", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        32, 0, -3.5F, -11.0F, -1.0F, 7.0F, elite ? 4.0F : 2.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -14.0F, 0.0F));
-        root.addChild("caster_focus", ModelPartBuilder.create()
-                        .uv(40, 0).cuboid(-2.0F, -1.0F, -3.2F, 4.0F, 4.0F, 1.0F)
-                        .uv(40, 5).cuboid(-1.0F, 3.0F, -2.7F, 2.0F, 2.0F, 1.0F),
+        root.addChild("caster_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(40, 0, -2.0F, -1.0F, -3.2F,
+                                4.0F, 4.0F, 1.0F),
+                        new ModelUvBounds.Box(40, 5, -1.0F, 3.0F, -2.7F,
+                                2.0F, 2.0F, 1.0F)),
                 ModelTransform.pivot(0.0F, -3.0F, 0.0F));
 
         ModelPartData head = root.getChild("head");
-        head.addChild("horn_left", ModelPartBuilder.create()
-                        .uv(48, 0).cuboid(-3.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
+        head.addChild("horn_left", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        48, 0, -3.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
                 ModelTransform.of(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, -0.12F));
-        head.addChild("horn_right", ModelPartBuilder.create()
-                        .uv(48, 0).cuboid(1.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
+        head.addChild("horn_right", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        48, 0, 1.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
                 ModelTransform.of(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.12F));
-        head.addChild("jaw_plate", ModelPartBuilder.create()
-                        .uv(56, 0).cuboid(-3.0F, -0.4F, -4.15F, 6.0F, 1.3F, 0.45F),
+        head.addChild("jaw_plate", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        50, 0, -3.0F, -0.4F, -4.15F, 6.0F, 1.3F, 0.45F),
                 ModelTransform.NONE);
 
         ModelPartData body = root.getChild("body");
-        body.addChild("body_shell", ModelPartBuilder.create()
-                        .uv(0, 8).cuboid(-4.25F, -0.4F, -2.35F, 8.5F, 11.0F, 4.7F),
+        body.addChild("body_shell", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 8, -4.25F, -0.4F, -2.35F, 8.5F, 11.0F, 4.7F),
                 ModelTransform.NONE);
-        body.addChild("chest_rift", ModelPartBuilder.create()
-                        .uv(18, 8).cuboid(-0.8F, 1.7F, -2.65F, 1.6F, 5.6F, 0.5F),
+        body.addChild("chest_rift", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        18, 8, -0.8F, 1.7F, -2.65F, 1.6F, 5.6F, 0.5F),
                 ModelTransform.NONE);
-        body.addChild("guardian_mantle", ModelPartBuilder.create()
-                        .uv(24, 8).cuboid(-6.0F, -1.0F, -2.9F, 12.0F, 2.6F, 5.8F)
-                        .uv(24, 17).cuboid(-5.0F, 1.0F, -2.7F, 10.0F, 1.5F, 5.4F),
+        body.addChild("guardian_mantle", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(24, 8, -6.0F, -1.0F, -2.9F,
+                                12.0F, 2.6F, 5.8F),
+                        new ModelUvBounds.Box(24, 17, -5.0F, 1.0F, -2.7F,
+                                10.0F, 1.5F, 5.4F)),
                 ModelTransform.NONE);
-        body.addChild("guardian_spine", ModelPartBuilder.create()
-                        .uv(40, 8).cuboid(-1.0F, 1.0F, 2.05F, 2.0F, 9.0F, 0.6F),
+        body.addChild("guardian_spine", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        40, 8, -1.0F, 1.0F, 2.05F, 2.0F, 9.0F, 0.6F),
                 ModelTransform.NONE);
-        body.addChild("guard_seal", ModelPartBuilder.create()
-                        .uv(46, 8).cuboid(-1.9F, 5.0F, -2.75F, 3.8F, 3.8F, 0.5F),
+        body.addChild("guard_seal", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        46, 8, -1.9F, 5.0F, -2.75F, 3.8F, 3.8F, 0.5F),
                 ModelTransform.NONE);
 
         ModelPartData leftArm = root.getChild("left_arm");
-        leftArm.addChild("left_forearm", ModelPartBuilder.create()
-                        .uv(0, 23).cuboid(-2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F),
+        leftArm.addChild("left_forearm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 18, -2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F),
                 ModelTransform.NONE);
         ModelPartData rightArm = root.getChild("right_arm");
-        rightArm.addChild("right_forearm", ModelPartBuilder.create()
-                        .uv(0, 23).mirrored().cuboid(-2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F),
+        rightArm.addChild("right_forearm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 18, -2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F, true),
                 ModelTransform.NONE);
 
         ModelPartData leftLeg = root.getChild("left_leg");
-        leftLeg.addChild("left_shin", ModelPartBuilder.create()
-                        .uv(18, 23).cuboid(-2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F),
+        leftLeg.addChild("left_shin", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        18, 20, -2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F),
                 ModelTransform.NONE);
         ModelPartData rightLeg = root.getChild("right_leg");
-        rightLeg.addChild("right_shin", ModelPartBuilder.create()
-                        .uv(18, 23).mirrored().cuboid(-2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F),
+        rightLeg.addChild("right_shin", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        18, 20, -2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F, true),
                 ModelTransform.NONE);
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }

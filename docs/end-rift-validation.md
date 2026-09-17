@@ -1,6 +1,113 @@
 # END RIFT FINAL VERIFICATION
 
-Verification record for the CopiMine End Rift event work on 2026-09-16.
+Verification record for the CopiMine End Rift event work. The latest update is
+for 2026-09-17; the earlier 2026-09-16 record is retained below as historical
+context.
+
+## Latest verification — 2026-09-17
+
+### Repository and commit
+
+- Repository: [IliaZav/copimine](https://github.com/IliaZav/copimine)
+- Branch: `codex/end-rift-event`
+- Verification commit: `9950553101c623075315d248d6fe9a70ac1964e8`
+- Commit: `fix(end-rift): restore Wave 7 probe combat`
+- Published branch update: `origin/codex/end-rift-event` points to the same SHA
+- Deployment: isolated local Paper/PostgreSQL validation only; no production deployment
+
+### Bug ER-019 — Wave 7 natural completion could not finish both chambers
+
+Symptom:
+
+The two-client boundary probe reached the one-block walls and restart
+rehydration, but could time out waiting for
+`END_RIFT_CHAMBERS_COMPLETE.*chambers=2`.
+
+Reproduction:
+
+Run `tests/RunEndRiftWave6Wave7BoundariesLive.ps1` with two real local
+Mineflayer clients after a Paper restart. The earlier failed attempts produced
+attack packets but only one client produced accepted native player damage.
+
+Root cause:
+
+The harness used the unnamespaced `item` command, which Essentials could
+intercept; reused AuthMe accounts could also reload after the probe configured
+their attributes. Mineflayer could believe slot 0 was already selected and
+skip the held-item packet, leaving Paper's weapon modifier inactive. Separately,
+Wave 7 mini-boss snare/echo-pulse applied Weakness II, which reduced a normal
+weapon's native attack damage to zero during the probe.
+
+Regression:
+
+`tests/test_end_event_wave6_wave7_boundaries_contract.py` now covers the
+namespaced and verified weapon setup, post-login synchronization, the held-item
+transition, and the bounded mini-boss Weakness mapping.
+
+Fix:
+
+The harness now uses `minecraft:item`, verifies `SelectedItem`, resets the
+probe attack base after login, waits for AuthMe profile settlement, and asks
+the real clients to send a held-item `1 -> 0` transition. Production logic
+keeps Slowness II for the two attacks but applies Weakness I, preserving the
+debuff without making ordinary sword damage zero.
+
+Manual:
+
+The fresh two-client Paper/Mineflayer run passed all of the following on the
+source that produced the verification commit:
+
+```text
+LIVE_WAVE6_RITUAL_SPHERE_PASS casters=4 guards=12 prisoner=deaf442b-9573-37d9-ae48-d1ad29f2bdad drain_interval_ms=20000 drain_hp=2 health_floor=1 visual_displays=1 legacy_rings=false
+LIVE_WAVE7_ONE_BLOCK_WALL_PASS chambers=2 cells=152 columns=38 visual_displays=38 wall_material=barrier barrier=13,69,-39 collision=true connected=raster
+LIVE_WAVE7_RESTART_RECOVERY_PASS rehydrated=true collision=true visible=true barrier=13,69,-39 journal_replayed=true
+LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0 phase_unchanged=true
+LIVE_WAVE7_COMMAND_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0
+```
+
+The server trace also recorded positive native attack damage from both clients
+while the mini-boss debuff was active (`nms_attack_damage=4.0`) and accepted
+`WAVE_MOB_PLAYER_DAMAGE_APPLIED` events for both player UUIDs.
+
+Status: PASS
+
+### Automated validation for `9950553101c623075315d248d6fe9a70ac1964e8`
+
+All commands ran from the declared project Python environment where required:
+
+```text
+python -m pytest -q tests                         # 575 passed, 58 warnings
+.\tests\RunCopiMineValidators.ps1               # 659/659 passed
+.\tests\RunEndRiftEventChecks.ps1              # passed: 216 Python contracts, pure Java policies, persistence, hashes, and diff hygiene
+git diff --check                                  # passed before commit
+```
+
+The resource pack generator reported SHA-1
+`a04f7d1c93465cd0f79db6bad5c2b12c3f1ab6a6`.
+
+### Artifact identity
+
+| Artifact | Bytes | SHA-256 |
+| --- | ---: | --- |
+| End Rift server plugin | 845,689 | `a4fc6a99ea374357546e23ca758cf4bf364bfa1d37aa1226811fdedba9d0ffd2` |
+| Fabric client JAR | 9,453,629 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
+| Modpack ZIP | 21,654,841 | `5c9197d47757a10d388f03482ca3d7b3ec85bf4153e021406985bf4f0a0f8d95` |
+| Resource pack ZIP | 24,150,260 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
+
+The installed local Paper plugin was byte-for-byte identical to the source
+build (`a4fc6a99...d0ffd2`).
+
+### Visual gate
+
+Native GUI verification was attempted for this exact SHA, but the Computer Use
+bridge exposed `apps=[]` and did not expose a callable `getApp` operation.
+Existing screenshots in the worktree are not claimed as fresh evidence for
+this commit.
+
+`REAL MINECRAFT VISUAL VERIFICATION NOT PERFORMED FOR 9950553101c623075315d248d6fe9a70ac1964e8`
+
+This keeps the visual gate open; the source/runtime completion above does not
+substitute for a current native Minecraft screenshot.
 
 ## Repository
 

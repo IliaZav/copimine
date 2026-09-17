@@ -11076,7 +11076,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 SLOWNESS_DEBUFF_TICKS, abilityDebuffAmplifier("mini-void-snare"), false, true, true));
         target.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
-                MINI_VOID_SNARE_DEBUFF_TICKS, abilityDebuffAmplifier("mini-void-snare"), false, true, true));
+                MINI_VOID_SNARE_DEBUFF_TICKS, weaknessDebuffAmplifier("mini-void-snare"), false, true, true));
         spawnEventParticle(mark, Particle.REVERSE_PORTAL, 28, 1.2D, 0.1D, 1.2D, 0.02D);
     }
 
@@ -11097,7 +11097,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             player.setVelocity(push.normalize().multiply(0.35D).setY(0.22D));
             player.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS,
-                    MINI_ECHO_PULSE_DEBUFF_TICKS, abilityDebuffAmplifier("mini-echo-pulse"), false, true, true));
+                    MINI_ECHO_PULSE_DEBUFF_TICKS, weaknessDebuffAmplifier("mini-echo-pulse"), false, true, true));
         }
         spawnEventParticle(center.add(0.0D, 1.0D, 0.0D), Particle.END_ROD,
                 32, 1.0D, 0.6D, 1.0D, 0.03D);
@@ -11238,6 +11238,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private double waveMovementRadius() {
         return CombatMovementPolicy.movementContainmentRadius(
                 boundedCombatRadius(config.containmentRadius()));
+    }
+
+    /** Keep mini-boss Weakness meaningful without making ordinary weapons deal zero damage. */
+    private int weaknessDebuffAmplifier(String abilityId) {
+        if (abilityId == null) {
+            return 0;
+        }
+        return switch (abilityId) {
+            case "mini-void-snare", "mini-echo-pulse" -> 0;
+            default -> abilityDebuffAmplifier(abilityId);
+        };
     }
 
     private int abilityDebuffAmplifier(String abilityId) {

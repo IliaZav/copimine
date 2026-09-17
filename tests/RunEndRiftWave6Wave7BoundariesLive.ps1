@@ -124,6 +124,11 @@ function Configure-Bot {
   )
   $null = Invoke-LocalRcon ("gamemode survival $name")
   $null = Invoke-LocalRcon ("attribute $name minecraft:generic.max_health base set 1000")
+  # The local probe accounts are reused between runs.  Older diagnostics set
+  # their persistent base attack damage to zero, which makes a netherite-sword
+  # packet reach PrePlayerAttack but fail Paper's positive-damage gate for one
+  # client.  Reset it to the vanilla survival base before every live wave.
+  $null = Invoke-LocalRcon ("attribute $name minecraft:generic.attack_damage base set 1")
   # Keep the geometry probe focused on containment, reach and server-authority
   # instead of allowing a mob hit to eject a client from its assigned chamber.
   # The official multi-player probe uses the same deterministic combat setup.
@@ -133,10 +138,24 @@ function Configure-Bot {
   # harness maximum without relying on that overflow edge case.
   $null = Invoke-LocalRcon ("effect give $name minecraft:instant_health 1 10 true")
   $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 1000 4 true")
-  $null = Invoke-LocalRcon ("item replace entity $name weapon.mainhand with minecraft:netherite_sword")
+  $null = Invoke-LocalRcon ("minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword")
+  $weaponState = Invoke-LocalRcon ("data get entity $name SelectedItem")
+  if ($weaponState -notmatch 'minecraft:netherite_sword') {
+    throw "Boundary probe weapon setup failed for $name`: $weaponState"
+  }
   if (-not $SkipTeleport) {
     $null = Invoke-LocalRcon ("tp $name $($core[0] + 6) $($core[1]) $($core[2] + 0.5)")
   }
+}
+
+function Teleport-Player {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][double]$X,
+    [Parameter(Mandatory = $true)][double]$Y,
+    [Parameter(Mandatory = $true)][double]$Z
+  )
+  $null = Invoke-LocalRcon ("tp $Name $X $Y $Z")
 }
 
 function Wait-BotsOnline([string[]]$Names) {
@@ -148,6 +167,21 @@ function Wait-BotsOnline([string[]]$Names) {
   throw "Boundary probe players did not join: $($Names -join ', ')"
 }
 
+function Wait-BotLoginSettle {
+  # The local accounts are authenticated by AuthMe shortly after the network
+  # join.  Configure persistent attributes only after that profile reload, or
+  # an old account value can silently replace the deterministic probe setup.
+  Start-Sleep -Seconds 7
+}
+
+function Sync-BotsHeldItem {
+  # Mineflayer can believe slot 0 is already selected and skip the packet that
+  # makes Paper re-evaluate the item attribute modifier. Signal the already
+  # configured clients after every replacement instead of racing from spawn.
+  $null = Invoke-LocalRcon 'say END_RIFT_BOUNDARY_SYNC_HELD_ITEM'
+  Start-Sleep -Milliseconds 500
+}
+
 function Restart-Bots([string[]]$Names, [int[]]$Core) {
   # Wave 6 can run long enough for a short-lived diagnostic client to expire
   # before Wave 7 begins.  Refresh both clients at this boundary so the server
@@ -157,7 +191,9 @@ function Restart-Bots([string[]]$Names, [int[]]$Core) {
   Wait-BotsOffline -Names $Names
   foreach ($name in $Names) { Start-Bot -Name $name -Core $Core }
   Wait-BotsOnline -Names $Names
+  Wait-BotLoginSettle
   foreach ($name in $Names) { Configure-Bot -Name $name -Core $Core }
+  Sync-BotsHeldItem
   Start-Sleep -Seconds 2
 }
 
@@ -300,9 +336,16 @@ try {
   if ($ritualLog -match 'END_RIFT_RINGS_READY|WAVE_6_PAIR_SPAWNED') {
     throw 'Legacy Collapse Rings appeared in the live Wave 6 log.'
   }
+  # The live objective starts in WAITING_FOR_PRISONER.  Put exactly one real
+  # client on the visible seal and require the server-authored capture marker
+  # before waiting for the first drain; starting both clients at core+6 is an
+  # outside-seal state and must never be treated as a capture.
+  Teleport-Player -Name $SecondBotName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
+  $captureLog = Wait-Log -AfterOffset $wave6Offset `
+    -Pattern 'WAVE6_RITUAL_PRISONER_CAPTURED[^\r\n]*player=[0-9a-fA-F-]{32,36}[^\r\n]*first_drain_at=\d+'
   $drainLog = Wait-Log -AfterOffset $wave6Offset `
     -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN.*applied=true.*damage=(?:1\.9+|2(?:\.0+)?)' -Seconds 90
-  $prisonerMatch = [Regex]::Match($ritualLog, 'prisoner=([0-9a-fA-F-]{36})')
+  $prisonerMatch = [Regex]::Match($captureLog, 'player=([0-9a-fA-F-]{32,36})')
   if (-not $prisonerMatch.Success) { throw "Ritual Sphere did not identify a prisoner: $ritualLog" }
   $wave6Objective = Invoke-LocalRcon 'cmend debug objectives'
   $wave6Match = [Regex]::Match(($wave6Objective -replace '\u00A7.', ''), 'visuals=(\d+)')
@@ -381,7 +424,9 @@ try {
   # The recovered Wave 7 room is already closed.  Keep the player's durable
   # position and let the server-side reconnect/containment path own placement;
   # a central admin teleport would be rejected by the very wall being tested.
+  Wait-BotLoginSettle
   foreach ($name in $names) { Configure-Bot -Name $name -Core $core -SkipTeleport }
+  Sync-BotsHeldItem
   Start-Sleep -Seconds 7
 
   $naturalOffset = Log-Length

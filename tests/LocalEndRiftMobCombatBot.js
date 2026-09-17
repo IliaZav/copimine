@@ -109,6 +109,39 @@ let sampleCount = 0
 let movedEntities = new Map()
 let attackCount = 0
 let reflectionCount = 0
+// AuthMe can reload a local account's inventory after spawn.  Mineflayer
+// skips setQuickBarSlot(0) when slot 0 is already its local value, but Paper
+// still needs one held-item packet to activate the equipment modifier for the
+// probe sword.  The boundary harness explicitly signals after it has applied
+// the sword, so this cannot race the configuration command. Repeating it
+// would reset vanilla attack cooldowns.
+let heldItemSyncSent = false
+let heldItemSyncReturnTimer = null
+
+function syncHeldItem () {
+  if (heldItemSyncSent || heldItemSyncReturnTimer !== null || !bot._client) return
+  try {
+    // A same-slot packet is ignored by the server's inventory listener.  A
+    // short 1 -> 0 transition forces the equipment tracker to remove and
+    // re-equip the sword, which activates its attack-damage modifier.
+    bot._client.write('held_item_slot', { slotId: 1 })
+    heldItemSyncReturnTimer = setTimeout(() => {
+      try {
+        if (!bot._client) return
+        bot._client.write('held_item_slot', { slotId: 0 })
+        heldItemSyncSent = true
+        console.log(`HELD_ITEM_SYNC ${username} slot=1->0`)
+      } catch (error) {
+        console.error(`HELD_ITEM_SYNC_ERROR ${username} ${error.stack || error}`)
+      } finally {
+        heldItemSyncReturnTimer = null
+      }
+    }, 150)
+  } catch (error) {
+    console.error(`HELD_ITEM_SYNC_ERROR ${username} ${error.stack || error}`)
+  }
+}
+
 // Mineflayer reuses a numeric entity id after a projectile is removed.  The
 // server still gives each spawn a new UUID, so reflection state must follow
 // that stable identity or later fireballs can be incorrectly treated as
@@ -880,6 +913,7 @@ bot._client.on('spawn_entity', packet => {
 })
 bot.on('message', message => {
   const text = message?.toString?.() || ''
+  if (text.includes('END_RIFT_BOUNDARY_SYNC_HELD_ITEM')) syncHeldItem()
   if (text.includes('END_RIFT_PASSIVE')) enterPassiveMode()
   if (text.includes('END_RIFT_RESUME')) enterActiveMode(false)
 })
@@ -895,6 +929,7 @@ bot.on('error', error => {
 })
 bot.on('end', () => {
   for (const timer of [sampleTimer, attackTimer, healthTimer, controlTimer, navigationTimer]) if (timer !== null) clearInterval(timer)
+  if (heldItemSyncReturnTimer !== null) clearTimeout(heldItemSyncReturnTimer)
   if (reflectionScanTimer !== null) clearInterval(reflectionScanTimer)
   for (const timer of reflectionTimers) clearTimeout(timer)
   projectileOrigins.clear()

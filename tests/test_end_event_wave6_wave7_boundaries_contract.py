@@ -213,6 +213,12 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     configure_body = live_script[configure_start:configure_end]
     assert "[switch]$SkipTeleport" in configure_body
     assert "attribute $name minecraft:generic.knockback_resistance base set 1" in configure_body
+    assert "minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword" in configure_body
+    assert "data get entity $name SelectedItem" in configure_body
+    assert "Boundary probe weapon setup failed" in configure_body
+    assert "attribute $name minecraft:generic.attack_damage base set 1" in configure_body
+    assert "function Wait-BotLoginSettle" in live_script
+    assert live_script.count("Wait-BotLoginSettle") >= 3
     restart_start = live_script.index("Start-LocalMinecraft")
     restart_body = live_script[restart_start:]
     assert "Configure-Bot -Name $name -Core $core -SkipTeleport" in restart_body
@@ -258,6 +264,13 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "sameWave7ChamberPoint" in bot
     assert "wave7NavigationRadius" in bot
     assert "isWave7NavigationPoint" in bot
+    assert "heldItemSyncSent" in bot
+    assert "bot._client.write('held_item_slot'" in bot
+    assert "slotId: 1" in bot
+    assert "slotId: 0" in bot
+    assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" in bot
+    assert "END_RIFT_BOUNDARY_SYNC_HELD_ITEM" in live_script
+    assert "function Sync-BotsHeldItem" in live_script
     assert "wave7Autopilot && navigationPath.length === 0" in bot
     assert "bot.setControlState('jump', Boolean(" in bot
     assert "|| (waypoint && waypoint.y > Math.floor(currentPosition.y))" in bot
@@ -276,6 +289,22 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "ChamberIsolationPolicy.containsPoint(" in resolved_location_body
     assert "resolved.getX() - center.getX()" in resolved_location_body
     assert "resolved.getZ() - center.getZ()" in resolved_location_body
+
+
+def test_wave6_boundary_harness_captures_a_real_prisoner_before_waiting_for_drain() -> None:
+    live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
+    wave6_start = live_script.index("$wave6Offset = Log-Length")
+    wave7_start = live_script.index("$wave7Offset = Log-Length", wave6_start)
+    wave6_body = live_script[wave6_start:wave7_start]
+    capture = wave6_body.index("WAVE6_RITUAL_PRISONER_CAPTURED")
+    drain = wave6_body.index("WAVE6_RITUAL_PRISONER_DRAIN")
+    assert "Teleport-Player -Name $SecondBotName -X ($core[0] + 0.5D)" in wave6_body
+    assert "-Z ($core[2] + 0.5D)" in wave6_body
+    assert "Wait-Log -AfterOffset $wave6Offset" in wave6_body[:capture]
+    assert capture < drain
+    assert "first_drain_at" in wave6_body[:drain]
+    assert "$prisonerMatch = [Regex]::Match($captureLog" in wave6_body
+    assert "$prisonerMatch = [Regex]::Match($ritualLog" not in wave6_body
 
 
 def test_wave7_collision_and_visual_layers_are_separate() -> None:
@@ -483,3 +512,29 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     roster_end = root.index("if (test)", roster_start)
     roster_body = root[roster_start:roster_end]
     assert "Bukkit.getOnlinePlayers().stream().filter(this::isCombatTarget)" in roster_body
+
+
+def test_wave7_mini_boss_weakness_does_not_zero_normal_weapon_damage() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    snare_start = root.index("private void miniBossVoidSnare")
+    snare_end = root.index("private void miniBossEchoPulse", snare_start)
+    snare_body = root[snare_start:snare_end]
+    echo_start = root.index("private void miniBossEchoPulse")
+    echo_end = root.index("private void miniBossArrowSalvo", echo_start)
+    echo_body = root[echo_start:echo_end]
+    amplifier_start = root.index("private int abilityDebuffAmplifier")
+    amplifier_end = root.index("/** Number used by bounded wave scaling", amplifier_start)
+    amplifier_body = root[amplifier_start:amplifier_end]
+    weakness_start = root.index("private int weaknessDebuffAmplifier")
+    weakness_end = root.index("private int abilityDebuffAmplifier", weakness_start)
+    weakness_body = root[weakness_start:weakness_end]
+
+    # Weakness II is an eight-point native attack-damage penalty in Java
+    # Edition. It made a normal weapon report zero damage in the live Wave 7
+    # boundary probe, so the two mini-boss attacks must use the bounded level
+    # rather than the generic movement/debuff amplifier.
+    assert "weaknessDebuffAmplifier(\"mini-void-snare\")" in snare_body
+    assert "weaknessDebuffAmplifier(\"mini-echo-pulse\")" in echo_body
+    assert "private int weaknessDebuffAmplifier(String abilityId)" in root
+    assert 'case "mini-void-snare", "mini-echo-pulse" -> 0;' in weakness_body
+    assert 'case "mini-rift-step", "mini-void-snare", "mini-echo-pulse" -> 1;' in amplifier_body

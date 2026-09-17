@@ -126,9 +126,43 @@ def test_wave6_completion_captures_log_offset_before_request() -> None:
 def test_wave6_dynamic_uuid_patterns_are_bound_before_wait_log() -> None:
     script = read_script()
     assert "$reversePrisonerPattern =" in script
-    assert "$swapPrisonerPattern =" in script
     assert "-match $reversePrisonerPattern" in script
-    assert "-Pattern $swapPrisonerPattern" in script
+    assert "$swapFreePairPattern =" in script
+    assert "-Pattern $swapFreePairPattern" in script
+
+
+def test_wave6_live_probe_requires_exact_hook_ack_and_positive_free_targets() -> None:
+    script = read_script()
+    for needle in (
+        "$projectileResponse",
+        "forced\\s+PROJECTILE_CASTER",
+        "role=PROJECTILE_CASTER[^\\r\\n]*source=LOCAL_TEST_HOOK",
+        "$reverseFreePattern =",
+        "-Pattern $reverseFreePattern",
+        "$swapFreePairPattern =",
+        "-Pattern $swapFreePairPattern",
+        "LIVE_WAVE6_DRAIN_39_5S_PASS",
+        "$drainsBeforeSecondDeadline",
+        "WAVE6_RITUAL_COMPLETE[^\\r\\n]*cleanup=server[^\\r\\n]*sphere=false",
+        "$cleanupLog",
+        "projectiles=0",
+    ):
+        assert needle in script
+
+
+def test_wave6_completion_marker_is_owned_by_the_server_cleanup_path() -> None:
+    source = EVENT_SOURCE.read_text(encoding="utf-8")
+    for needle in (
+        "clearActiveEventArrows();",
+        "WAVE6_RITUAL_COMPLETE event=",
+        'sphere=" + (ritualSphereVisualUuid != null)',
+        'zones=" + ritualZoneCenters.size()',
+        'controls=" + ritualControlInstances.size()',
+        'beams=" + activeWorldVfxInstances.keySet().stream()',
+        'projectiles=" + activeEventArrowAges.size()',
+        "prisoner_tag=cleared",
+    ):
+        assert needle in source
 
 
 def test_wave6_control_transitions_emit_runtime_evidence() -> None:

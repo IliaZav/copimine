@@ -152,6 +152,12 @@ function Wait-Log {
   throw "Timed out waiting for '$Pattern'. See $paperLog"
 }
 
+function Get-AppliedRitualDrainCount {
+  param([Parameter(Mandatory = $true)][int64]$Offset)
+  return [Regex]::Matches((Get-LogTail -Offset $Offset),
+    'WAVE6_RITUAL_PRISONER_DRAIN[^\r\n]*applied=true').Count
+}
+
 function Get-Core([string]$Status) {
   $match = [Regex]::Match(($Status -replace '\u00A7.', ''), 'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
   if (-not $match.Success) { throw "Core is missing from status: $Status" }
@@ -499,6 +505,13 @@ try {
   if ($waitForSecondDrainMillis -gt 0L) {
     Start-Sleep -Milliseconds ([int][Math]::Min($waitForSecondDrainMillis, 300000L))
   }
+  $drainsBeforeSecondDeadline = Get-AppliedRitualDrainCount -Offset $captureOffset
+  if ($drainsBeforeSecondDeadline -ne 1) {
+    throw "A second ritual drain appeared before its server deadline: count=$drainsBeforeSecondDeadline"
+  }
+  Assert-HealthEqual -Name $SecondBotName -Expected $healthAfterFirstDrain `
+    -Reason 'prisoner health changed before the second 20 second drain boundary' | Out-Null
+  Write-Evidence "LIVE_WAVE6_DRAIN_39_5S_PASS health=$healthAfterFirstDrain applied_drains=$drainsBeforeSecondDeadline unchanged=true"
   $secondDrainLog = Wait-Log -AfterOffset $captureOffset `
     -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN[^\r\n]*applied=true[^\r\n]*remaining=1(?:\.0+)?' -Seconds 10
   $healthAtFloor = Get-PlayerHealth -Name $SecondBotName
@@ -518,16 +531,32 @@ try {
   # spatially separated guard groups within a wall-clock timeout.
   Set-BotMode -Name $FirstBotName -Mode PASSIVE
   Set-BotMode -Name $ThirdBotName -Mode PASSIVE
-  $abilityOffset = Get-LogLength
-  $null = Invoke-LocalRcon 'cmend test ritual force projectile'
-  $abilityLog = Wait-Log -AfterOffset $abilityOffset `
-    -Pattern 'WAVE6_RITUAL_ABILITY[^\r\n]*role=(?:PROJECTILE_CASTER|ZONE_CASTER|REVERSE_CASTER|CONTROL_SWAP_CASTER)' -Seconds $TimeoutSeconds
+  $projectileOffset = Get-LogLength
+  $projectileResponse = Invoke-LocalRcon 'cmend test ritual force projectile'
+  if ($projectileResponse -notmatch '(?i)forced\s+PROJECTILE_CASTER') {
+    throw "Projectile local hook was not acknowledged: $projectileResponse"
+  }
+  $projectileAbilityPattern = 'WAVE6_RITUAL_ABILITY[^\r\n]*role=PROJECTILE_CASTER[^\r\n]*source=LOCAL_TEST_HOOK'
+  $projectileAbilityLog = Wait-Log -AfterOffset $projectileOffset `
+    -Pattern $projectileAbilityPattern -Seconds $TimeoutSeconds
+  $projectileAbilityLine = [Regex]::Match($projectileAbilityLog, $projectileAbilityPattern).Value
+  $projectileEventMatch = [Regex]::Match($projectileAbilityLine, 'event=([0-9a-fA-F-]{32,36})')
+  $projectileGenerationMatch = [Regex]::Match($projectileAbilityLine, 'generation=(\d+)')
+  $projectileCasterMatch = [Regex]::Match($projectileAbilityLine, 'caster=([0-9a-fA-F-]{32,36})')
+  if (-not $projectileEventMatch.Success -or -not $projectileGenerationMatch.Success -or
+      -not $projectileCasterMatch.Success) {
+    throw "Projectile ability marker did not carry event, generation, and caster: $projectileAbilityLine"
+  }
   $thirdUuid = Get-OfflinePlayerUuid -Name $ThirdBotName
   $thirdUuidPattern = Get-UuidRegexPattern -Uuid $thirdUuid
-  $originPattern = 'WAVE6_RITUAL_PROJECTILE_ORIGIN_ASSERT[^\r\n]*target=(?:' +
+  $originPattern = 'WAVE6_RITUAL_PROJECTILE_ORIGIN_ASSERT[^\r\n]*event=' +
+    [Regex]::Escape($projectileEventMatch.Groups[1].Value) +
+    '[^\r\n]*generation=' + [Regex]::Escape($projectileGenerationMatch.Groups[1].Value) +
+    '[^\r\n]*caster=' + [Regex]::Escape($projectileCasterMatch.Groups[1].Value) +
+    '[^\r\n]*target=(?:' +
     $firstUuidPattern + '|' + $thirdUuidPattern +
     ')[^\r\n]*sphere_origin=[^\r\n]*projectile_spawn=[^\r\n]*origin_distance=(?:0|0\.0+)[^\r\n]*passed=true'
-  $originLog = Wait-Log -AfterOffset $abilityOffset `
+  $originLog = Wait-Log -AfterOffset $projectileOffset `
     -Pattern $originPattern -Seconds $TimeoutSeconds
   if ($originLog -match 'caster=[^\r\n]*sphere_origin=') {
     Write-Evidence 'LIVE_WAVE6_PROJECTILE_ORIGIN_PASS sphere_origin=true projectile_spawn=true max_distance=0.25 caster_origin=false'
@@ -535,10 +564,15 @@ try {
     throw "Sphere projectile origin marker was incomplete: $originLog"
   }
 
-  $null = Invoke-LocalRcon 'cmend test ritual force zone'
-  Wait-Log -AfterOffset $abilityOffset `
-    -Pattern 'WAVE6_RITUAL_ABILITY[^\r\n]*role=ZONE_CASTER[^\r\n]*source=LOCAL_TEST_HOOK' -Seconds $TimeoutSeconds | Out-Null
-  $zoneLog = Wait-Log -AfterOffset $abilityOffset `
+  $zoneOffset = Get-LogLength
+  $zoneResponse = Invoke-LocalRcon 'cmend test ritual force zone'
+  if ($zoneResponse -notmatch '(?i)forced\s+ZONE_CASTER') {
+    throw "Zone local hook was not acknowledged: $zoneResponse"
+  }
+  $zoneAbilityPattern = 'WAVE6_RITUAL_ABILITY[^\r\n]*role=ZONE_CASTER[^\r\n]*source=LOCAL_TEST_HOOK'
+  Wait-Log -AfterOffset $zoneOffset `
+    -Pattern $zoneAbilityPattern -Seconds $TimeoutSeconds | Out-Null
+  $zoneLog = Wait-Log -AfterOffset $zoneOffset `
     -Pattern 'WAVE6_RITUAL_ZONE_TELEGRAPH[^\r\n]*zone=([0-9a-fA-F-]{32,36})[^\r\n]*center=\S+\s+-?\d+,-?\d+,-?\d+[^\r\n]*size=4' -Seconds $TimeoutSeconds
   $zoneMatch = [Regex]::Match($zoneLog,
     'WAVE6_RITUAL_ZONE_TELEGRAPH[^\r\n]*zone=([0-9a-fA-F-]{32,36})[^\r\n]*center=')
@@ -575,32 +609,45 @@ try {
   Start-Sleep -Milliseconds 500
   $null = Invoke-LocalRcon 'cmend test ritual controls clear'
   Start-Sleep -Milliseconds 500
-  $null = Invoke-LocalRcon 'cmend test ritual force reverse'
+  $reverseOffset = Get-LogLength
+  $reverseResponse = Invoke-LocalRcon 'cmend test ritual force reverse'
+  if ($reverseResponse -notmatch '(?i)forced\s+REVERSE_CASTER') {
+    throw "Reverse local hook was not acknowledged: $reverseResponse"
+  }
+  $reverseAbilityPattern = 'WAVE6_RITUAL_ABILITY[^\r\n]*role=REVERSE_CASTER[^\r\n]*source=LOCAL_TEST_HOOK'
+  Wait-Log -AfterOffset $reverseOffset `
+    -Pattern $reverseAbilityPattern -Seconds $TimeoutSeconds | Out-Null
   $reversePrisonerPattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=REVERSE[^\r\n]*action=START[^\r\n]*player=' + $secondUuidPattern
-  $reverseLog = Wait-Log -AfterOffset $abilityOffset `
-    -Pattern 'WAVE6_RITUAL_ABILITY[^\r\n]*role=REVERSE_CASTER[^\r\n]*source=LOCAL_TEST_HOOK' -Seconds $TimeoutSeconds
+  $reverseFreePattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=REVERSE[^\r\n]*action=START[^\r\n]*player=(?:' +
+    $firstUuidPattern + '|' + $thirdUuidPattern + ')'
+  $reverseLog = Wait-Log -AfterOffset $reverseOffset `
+    -Pattern $reverseFreePattern -Seconds $TimeoutSeconds
   if ($reverseLog -match $reversePrisonerPattern) {
     throw "Ritual reverse targeted the prisoner: $reverseLog"
   }
   $null = Invoke-LocalRcon 'cmend test ritual controls clear'
   Start-Sleep -Milliseconds 500
-  $null = Invoke-LocalRcon 'cmend test ritual force swap'
-  $swapPrisonerPattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*prisoner=' + $secondUuidPattern
-  $controlLog = Wait-Log -AfterOffset $abilityOffset `
-    -Pattern 'WAVE6_RITUAL_ABILITY[^\r\n]*role=CONTROL_SWAP_CASTER[^\r\n]*source=LOCAL_TEST_HOOK' -Seconds $TimeoutSeconds
-  $swapLog = Wait-Log -AfterOffset $abilityOffset `
-    -Pattern $swapPrisonerPattern -Seconds $TimeoutSeconds
-  $swapIncludesPrisonerPattern = 'mode=SWAP[^\r\n]*first=' + $secondUuidPattern +
-    '|mode=SWAP[^\r\n]*second=' + $secondUuidPattern
-  if ($swapLog -match $swapIncludesPrisonerPattern) {
-    throw "Ritual control swap included the prisoner: $swapLog"
+  $swapOffset = Get-LogLength
+  $swapResponse = Invoke-LocalRcon 'cmend test ritual force swap'
+  if ($swapResponse -notmatch '(?i)forced\s+CONTROL_SWAP_CASTER') {
+    throw "Swap local hook was not acknowledged: $swapResponse"
   }
+  $swapAbilityPattern = 'WAVE6_RITUAL_ABILITY[^\r\n]*role=CONTROL_SWAP_CASTER[^\r\n]*source=LOCAL_TEST_HOOK'
+  Wait-Log -AfterOffset $swapOffset `
+    -Pattern $swapAbilityPattern -Seconds $TimeoutSeconds | Out-Null
+  $swapFreePairPattern = '(?:WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*first=' +
+    $firstUuidPattern + '[^\r\n]*second=' + $thirdUuidPattern + '[^\r\n]*prisoner=' + $secondUuidPattern +
+    '|WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*first=' +
+    $thirdUuidPattern + '[^\r\n]*second=' + $firstUuidPattern + '[^\r\n]*prisoner=' + $secondUuidPattern + ')'
+  $swapLog = Wait-Log -AfterOffset $swapOffset `
+    -Pattern $swapFreePairPattern -Seconds $TimeoutSeconds
   Write-Evidence 'LIVE_WAVE6_ABILITY_ROLES_PASS projectile=server sphere zone=4x4 reverse=server control_swap=server'
   Write-Evidence 'LIVE_WAVE6_FREE_TARGET_CONTROL_PASS reverse=true swap=true prisoner_excluded=true reverse_swap_mutex=true'
 
   $completionOffset = Get-LogLength
   $null = Invoke-LocalRcon 'cmend test ritual complete'
-  Wait-Log -AfterOffset $completionOffset -Pattern 'WAVE6_RITUAL_COMPLETE[^\r\n]*cleanup=server' -Seconds $TimeoutSeconds | Out-Null
+  $cleanupPattern = 'WAVE6_RITUAL_COMPLETE[^\r\n]*cleanup=server[^\r\n]*sphere=false[^\r\n]*zones=0[^\r\n]*controls=0[^\r\n]*beams=0[^\r\n]*projectiles=0[^\r\n]*prisoner_tag=cleared'
+  $cleanupLog = Wait-Log -AfterOffset $completionOffset -Pattern $cleanupPattern -Seconds $TimeoutSeconds
   Start-Sleep -Seconds 2
   $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
   $objectiveStatus = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''

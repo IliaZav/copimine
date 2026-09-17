@@ -14045,7 +14045,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             finishRitualSphereVisuals("all-casters-and-guards-defeated");
             saveStateAsync();
             getLogger().info("WAVE6_RITUAL_COMPLETE event=" + eventId
-                    + " generation=" + generation + " cleanup=server");
+                    + " generation=" + generation + " cleanup=server"
+                    + " sphere=" + (ritualSphereVisualUuid != null)
+                    + " zones=" + ritualZoneCenters.size()
+                    + " controls=" + ritualControlInstances.size()
+                    + " beams=" + activeWorldVfxInstances.keySet().stream()
+                    .filter(key -> key.startsWith("wave6-ritual-")).count()
+                    + " projectiles=" + activeEventArrowAges.size()
+                    + " prisoner_tag=cleared");
         }
     }
 
@@ -14921,6 +14928,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualZoneTelegraphUntil.clear();
         ritualZoneExpiresAt.clear();
         clearWorldVfxBeamsByPrefix("wave6-ritual-");
+        clearActiveEventArrows();
         if (ritualSphereVisualUuid != null) {
             Entity display = ownedEntities.remove(ritualSphereVisualUuid);
             if (display == null) {

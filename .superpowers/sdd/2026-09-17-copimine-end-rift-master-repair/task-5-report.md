@@ -178,7 +178,91 @@ deployment was performed for Task 5. The runtime lifecycle behavior is covered
 by the narrow source contract and plugin compilation only; this report makes
 no live-run claim.
 
+## Fix-round 1 review finding and evidence
+
+Review status before this round: `CHANGES_REQUESTED`.
+
+Important finding: `applyRitualControlInput` accepted stale or inconsistent
+half-pairs because it checked only the source instance and the target instance
+prefix. It did not require target-to-source partner symmetry, matching target
+expiry, or a complete two-sided pair. Null/self partners could return without
+cleanup, and `tickRitualControls` iterated only the instance map, allowing
+missing-partner or missing-expiry state to survive.
+
+The fix is scoped to the existing control state and contract:
+
+- Input now requires the exact source instance, both `swap:` instance IDs with
+  the same pair ID and distinct roles, target-to-source partner symmetry, both
+  expiry entries present and equal, both players online/free, and both players
+  in the same non-null world.
+- Null, self, asymmetric, missing-instance, pair-ID mismatch, missing-expiry,
+  unequal-expiry, invalid-player, and world-mismatch input paths all call the
+  same `clearRitualControlPair(sourceId, targetId, reason)` cleanup route.
+- Tick now scans the union of the instance, partner, and expiry map keys. It
+  validates bidirectional partners, both instance pair IDs and roles, equal
+  expiries, valid online/free participants, and shared world before applying
+  expiry or retaining a swap pair.
+- Reverse-only entries remain on their existing single-entry lifecycle. Their
+  reverse marker is removed only by the reverse-only cleanup path; malformed
+  swap cleanup does not remove `ritualReverseUntil` or other unrelated reverse
+  state.
+- `clearRitualControlPair` now accepts null/self second members, clears every
+  known member from all three control maps, and sends STOP for each known
+  instance without an early return.
+
+### Fix-round 1 TDD and verification
+
+The strengthened source contract was run before the runtime edit:
+
+```text
+python -m pytest -q .\tests\test_end_event_ritual_control_pair_contract.py
+```
+
+Observed RED result:
+
+```text
+...FF                                                                    [100%]
+2 failed, 3 passed in 0.27s
+CONTRACT_RED_EXIT=1
+```
+
+The failures were the expected missing union-map tick validation and the
+existing early return that rejected null/self pair cleanup.
+
+After the runtime edit, the focused contract passed:
+
+```text
+5 passed in 0.14s
+```
+
+The focused Java policy gate passed:
+
+```text
+RitualControlPairPolicyTest OK
+```
+
+The relevant Wave 6 and End Rift contract set passed:
+
+```text
+python -m pytest -q .\tests\test_end_event_current_contract.py .\tests\test_wave6_ritual_caster_behavior_contract.py .\tests\test_end_event_ritual_projectile_provenance_contract.py .\tests\test_end_event_ritual_prisoner_health_contract.py .\tests\test_end_event_ritual_control_pair_contract.py
+120 passed in 0.98s
+```
+
+The scoped plugin build passed:
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File '.\copimine-end-event\build-plugin.ps1' -SyncServerConfig
+```
+
+Observed result: exit `0`; `CopiMineEndEvent.jar` was built and copied to the
+server plugin directory. The compiler reported the same five existing
+`EntityKnockbackEvent`/`EntityRemoveEvent` removal warnings and no errors.
+
+No Paper/Purpur live server, Bukkit harness, native Minecraft run, upload, or
+deployment was performed for fix-round 1. The source contract and plugin build
+are static/compile evidence, not player-visible runtime acceptance.
+
 ## Commit
 
-The scoped changes will be committed locally on `codex/end-rift-event`. No
-GitHub push will be performed.
+The fix-round 1 scoped source, contract, and report changes will be committed
+locally on `codex/end-rift-event`. No GitHub push will be performed.

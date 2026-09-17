@@ -14348,58 +14348,100 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickRitualControls(long now) {
-        for (UUID id : new LinkedHashSet<>(ritualControlInstances.keySet())) {
-            if (!ritualControlInstances.containsKey(id)) {
+        Set<UUID> controlIds = new LinkedHashSet<>();
+        controlIds.addAll(ritualControlInstances.keySet());
+        controlIds.addAll(ritualControlPartners.keySet());
+        controlIds.addAll(ritualControlExpiresAt.keySet());
+        for (UUID id : controlIds) {
+            if (id == null) {
                 continue;
             }
             UUID partner = ritualControlPartners.get(id);
-            boolean pairedStateInvalid = partner != null
-                    && (!Objects.equals(ritualControlPartners.get(partner), id)
-                    || !ritualControlInstances.containsKey(partner)
-                    || !ritualControlExpiresAt.containsKey(partner));
-            boolean participantInvalid = !isValidRitualControlParticipant(id)
-                    || partner != null && !isValidRitualControlParticipant(partner);
-            if (pairedStateInvalid || participantInvalid) {
-                clearRitualControl(id, "invalid-participant");
-            } else if (now >= ritualControlExpiresAt.getOrDefault(id, 0L)) {
-                clearRitualControl(id, "expired");
+            String instance = ritualControlInstances.get(id);
+            boolean reverseOnly = partner == null && instance != null
+                    && instance.startsWith("reverse:");
+            if (reverseOnly) {
+                Long expiresAt = ritualControlExpiresAt.get(id);
+                if (!isValidRitualControlParticipant(id) || expiresAt == null) {
+                    clearRitualControl(id, "invalid-participant");
+                } else if (now >= expiresAt) {
+                    clearRitualControl(id, "expired");
+                }
+                continue;
+            }
+
+            String partnerInstance = partner == null ? null : ritualControlInstances.get(partner);
+            Long expiresAt = ritualControlExpiresAt.get(id);
+            Long partnerExpiresAt = partner == null ? null : ritualControlExpiresAt.get(partner);
+            boolean pairedStateInvalid = partner == null || partner.equals(id)
+                    || !Objects.equals(ritualControlPartners.get(partner), id)
+                    || instance == null || partnerInstance == null
+                    || ritualControlPairId(instance) == null
+                    || ritualControlPairId(partnerInstance) == null
+                    || !Objects.equals(ritualControlPairId(instance), ritualControlPairId(partnerInstance))
+                    || Objects.equals(instance, partnerInstance)
+                    || expiresAt == null || partnerExpiresAt == null
+                    || !Objects.equals(expiresAt, partnerExpiresAt)
+                    || !isValidRitualControlParticipant(id)
+                    || !isValidRitualControlParticipant(partner)
+                    || !ritualControlPlayersShareWorld(id, partner);
+            if (pairedStateInvalid) {
+                clearRitualControlPair(id, partner, "invalid-participant");
+            } else if (now >= expiresAt) {
+                clearRitualControlPair(id, partner, "expired");
             }
         }
     }
 
     private boolean isValidRitualControlParticipant(UUID playerId) {
         Player player = playerId == null ? null : Bukkit.getPlayer(playerId);
-        return player != null && isFreeRitualTarget(player);
+        return player != null && player.isOnline() && isFreeRitualTarget(player);
+    }
+
+    private boolean ritualControlPlayersShareWorld(UUID first, UUID second) {
+        Player firstPlayer = first == null ? null : Bukkit.getPlayer(first);
+        Player secondPlayer = second == null ? null : Bukkit.getPlayer(second);
+        return firstPlayer != null && firstPlayer.isOnline()
+                && secondPlayer != null && secondPlayer.isOnline()
+                && firstPlayer.getWorld() != null && secondPlayer.getWorld() != null
+                && firstPlayer.getWorld().equals(secondPlayer.getWorld());
+    }
+
+    private String ritualControlPairId(String instance) {
+        if (instance == null || !instance.startsWith("swap:")
+                || (!instance.endsWith(":a") && !instance.endsWith(":b"))) {
+            return null;
+        }
+        int roleSeparator = instance.lastIndexOf(':');
+        return roleSeparator <= "swap:".length() ? null : instance.substring(0, roleSeparator);
     }
 
     private void clearRitualControl(UUID playerId, String reason) {
         if (playerId == null) {
             return;
         }
-        UUID partner = ritualControlPartners.remove(playerId);
-        if (partner != null) {
-            clearRitualControlPair(playerId, partner, reason);
-            return;
-        }
-        String instance = ritualControlInstances.remove(playerId);
-        ritualControlExpiresAt.remove(playerId);
-        ritualReverseUntil.remove(playerId);
-        Player player = Bukkit.getPlayer(playerId);
-        if (instance != null) {
-            sendEndControlPacket(player, "STOP", instance, 0L, playerId, reason);
+        UUID partner = ritualControlPartners.get(playerId);
+        boolean reverseOnly = partner == null
+                && ritualControlInstances.get(playerId) != null
+                && ritualControlInstances.get(playerId).startsWith("reverse:");
+        clearRitualControlPair(playerId, partner, reason);
+        if (reverseOnly) {
+            ritualReverseUntil.remove(playerId);
         }
     }
 
     private void clearRitualControlPair(UUID first, UUID second, String reason) {
-        if (first == null || second == null || first.equals(second)) {
-            return;
+        String firstInstance = first == null ? null : ritualControlInstances.remove(first);
+        String secondInstance = second == null || Objects.equals(first, second)
+                ? null : ritualControlInstances.remove(second);
+        if (first != null) {
+            ritualControlPartners.remove(first);
+            ritualControlExpiresAt.remove(first);
         }
-        String firstInstance = ritualControlInstances.remove(first);
-        String secondInstance = ritualControlInstances.remove(second);
-        ritualControlPartners.remove(first);
-        ritualControlPartners.remove(second);
-        ritualControlExpiresAt.remove(first);
-        ritualControlExpiresAt.remove(second);
+        if (second != null && !Objects.equals(first, second)) {
+            ritualControlPartners.remove(second);
+            ritualControlExpiresAt.remove(second);
+        }
         if (firstInstance != null) {
             sendEndControlPacket(Bukkit.getPlayer(first), "STOP", firstInstance, 0L, first, reason);
         }
@@ -25842,28 +25884,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void applyRitualControlInput(Player source, String instanceId, String pairId,
                                          double forward, double sideways) {
-        if (!ritualObjectiveActive() || source == null || instanceId == null
-                || pairId == null || !pairId.startsWith("swap:")
-                || !instanceId.startsWith(pairId + ":")) {
+        if (!ritualObjectiveActive() || source == null) {
             return;
         }
         UUID sourceId = source.getUniqueId();
         UUID targetId = ritualControlPartners.get(sourceId);
-        if (!Objects.equals(ritualControlInstances.get(sourceId), instanceId)
-                || targetId == null || targetId.equals(sourceId)) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now >= ritualControlExpiresAt.getOrDefault(sourceId, 0L)) {
-            clearRitualControl(sourceId, "input-expired");
-            return;
-        }
+        String sourceInstance = ritualControlInstances.get(sourceId);
+        String targetInstance = targetId == null ? null : ritualControlInstances.get(targetId);
+        Long expiresAt = ritualControlExpiresAt.get(sourceId);
+        Long targetExpiresAt = targetId == null ? null : ritualControlExpiresAt.get(targetId);
         Player target = targetId == null ? null : Bukkit.getPlayer(targetId);
-        String targetInstance = ritualControlInstances.get(targetId);
-        if (target == null || !isFreeRitualTarget(source) || !isFreeRitualTarget(target)
-                || !source.getWorld().equals(target.getWorld())
-                || targetInstance == null || !targetInstance.startsWith(pairId + ":")) {
-            clearRitualControl(sourceId, "invalid-participant");
+        long now = System.currentTimeMillis();
+        boolean invalidPair = instanceId == null || pairId == null || !pairId.startsWith("swap:")
+                || !Objects.equals(ritualControlPairId(sourceInstance), pairId)
+                || !Objects.equals(ritualControlPairId(sourceInstance), ritualControlPairId(targetInstance))
+                || !Objects.equals(sourceInstance, instanceId)
+                || targetId == null || targetId.equals(sourceId)
+                || !Objects.equals(ritualControlPartners.get(targetId), sourceId)
+                || sourceInstance == null || targetInstance == null
+                || Objects.equals(sourceInstance, targetInstance)
+                || expiresAt == null || targetExpiresAt == null
+                || !Objects.equals(expiresAt, targetExpiresAt)
+                || !source.isOnline() || target == null || !target.isOnline()
+                || !isFreeRitualTarget(source) || !isFreeRitualTarget(target)
+                || source.getWorld() == null || target.getWorld() == null
+                || !source.getWorld().equals(target.getWorld());
+        if (invalidPair) {
+            clearRitualControlPair(sourceId, targetId, "invalid-participant");
+            return;
+        }
+        if (now >= expiresAt) {
+            clearRitualControlPair(sourceId, targetId, "input-expired");
             return;
         }
         Vector forwardVector = target.getLocation().getDirection();

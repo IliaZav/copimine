@@ -77,15 +77,48 @@ def test_all_pair_lifecycle_triggers_use_atomic_cleanup() -> None:
         assert "clearRitualControlForPlayerLifecycle" in method_body(source, handler)
 
     tick_body = method_body(source, "private void tickRitualControls(long now)")
-    assert "!isValidRitualControlParticipant" in tick_body
-    assert 'clearRitualControl(id, "invalid-participant")' in tick_body
-    assert "now >= ritualControlExpiresAt.getOrDefault(id, 0L)" in tick_body
-    assert 'clearRitualControl(id, "expired")' in tick_body
+    assert "ritualControlPartners.keySet()" in tick_body
+    assert "ritualControlExpiresAt.keySet()" in tick_body
+    assert "!Objects.equals(ritualControlPartners.get(partner), id)" in tick_body
+    assert "!Objects.equals(ritualControlPairId(instance), ritualControlPairId(partnerInstance))" in tick_body
+    assert "!Objects.equals(expiresAt, partnerExpiresAt)" in tick_body
+    assert "!ritualControlPlayersShareWorld(id, partner)" in tick_body
+    assert "clearRitualControlPair(id, partner, \"invalid-participant\")" in tick_body
+    assert "now >= expiresAt" in tick_body
+    assert 'clearRitualControlPair(id, partner, "expired")' in tick_body
 
     input_body = method_body(
         source,
         "private void applyRitualControlInput(Player source, String instanceId, String pairId",
     )
+    assert "String sourceInstance = ritualControlInstances.get(sourceId);" in input_body
+    assert "String targetInstance = targetId == null ? null : ritualControlInstances.get(targetId);" in input_body
+    assert "Long expiresAt = ritualControlExpiresAt.get(sourceId);" in input_body
+    assert "Long targetExpiresAt = targetId == null ? null : ritualControlExpiresAt.get(targetId);" in input_body
+    assert "!Objects.equals(ritualControlPartners.get(targetId), sourceId)" in input_body
+    assert "!Objects.equals(expiresAt, targetExpiresAt)" in input_body
+    assert "!source.isOnline()" in input_body
+    assert "!target.isOnline()" in input_body
     assert "!isFreeRitualTarget(source)" in input_body
     assert "!isFreeRitualTarget(target)" in input_body
-    assert 'clearRitualControl(sourceId, "invalid-participant")' in input_body
+    assert "!Objects.equals(sourceInstance, instanceId)" in input_body
+    assert "!Objects.equals(ritualControlPairId(sourceInstance), ritualControlPairId(targetInstance))" in input_body
+    assert 'clearRitualControlPair(sourceId, targetId, "invalid-participant")' in input_body
+    assert 'clearRitualControlPair(sourceId, targetId, "input-expired")' in input_body
+
+
+def test_pair_cleanup_accepts_malformed_member_ids_without_touching_reverse_state() -> None:
+    source = SOURCE.read_text(encoding="utf-8")
+    teardown_body = method_body(source, "private void clearRitualControlPair(UUID first, UUID second, String reason)")
+
+    assert "if (first == null || second == null || first.equals(second))" not in teardown_body
+    for map_name in (
+        "ritualControlInstances",
+        "ritualControlPartners",
+        "ritualControlExpiresAt",
+    ):
+        assert f"{map_name}.remove(first)" in teardown_body
+        assert f"{map_name}.remove(second)" in teardown_body
+    assert 'sendEndControlPacket(Bukkit.getPlayer(first), "STOP"' in teardown_body
+    assert 'sendEndControlPacket(Bukkit.getPlayer(second), "STOP"' in teardown_body
+    assert "ritualReverseUntil.remove" not in teardown_body

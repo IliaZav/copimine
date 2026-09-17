@@ -2,7 +2,7 @@
 
 The caster is a staged encounter role, not a normal Enderman with a shorter
 aggro timer.  These checks keep the guard gate, first-hit wake-up, persistent
-state and per-slot attack catalogue explicit in source and in the pure policy.
+state and four-role slot mapping explicit in source and in the pure policy.
 """
 
 from pathlib import Path
@@ -31,19 +31,27 @@ def test_ritual_caster_policy_has_guarded_exposed_and_awakened_states() -> None:
     assert "castsSphere" in policy
 
 
-def test_each_wave6_caster_slot_owns_a_distinct_attack() -> None:
+def test_wave6_caster_slots_use_core_roles_and_bounded_amplifiers() -> None:
     policy = read(DOMAIN / "RitualCasterTacticsPolicy.java")
-    for attack in (
-        "SPHERE_BARRAGE",
-        "RIFT_MARK",
-        "REVERSE_PULL",
-        "CONTROL_SWAP",
-        "VOID_LANCE",
-        "RIFT_SPIKES",
+    for role in (
+        "PROJECTILE_CASTER",
+        "ZONE_CASTER",
+        "REVERSE_CASTER",
+        "CONTROL_SWAP_CASTER",
+        "AMPLIFIER",
     ):
-        assert attack in policy
-    assert "attackForSlot(int casterSlot)" in policy
-    assert "Math.floorMod(casterSlot, Attack.values().length)" in policy
+        assert role in policy
+    assert "public static Role roleForSlot(int casterSlot)" in policy
+    for mapping in (
+        "case 0 -> Role.PROJECTILE_CASTER",
+        "case 1 -> Role.ZONE_CASTER",
+        "case 2 -> Role.REVERSE_CASTER",
+        "case 3 -> Role.CONTROL_SWAP_CASTER",
+        "default -> Role.AMPLIFIER",
+    ):
+        assert mapping in policy
+    assert "VOID_LANCE" not in policy
+    assert "RIFT_SPIKES" not in policy
 
 
 def test_wave6_caster_runtime_keeps_casters_passive_until_guard_death_and_first_hit() -> None:
@@ -69,17 +77,24 @@ def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_a
     start = root.index("private void castNextRitualAbility")
     end = root.index("private void startRitualZone", start)
     body = root[start:end]
-    assert "RitualCasterTacticsPolicy.Attack attack" in body
-    assert "switch (attack)" in body
+    assert "RitualCasterTacticsPolicy.Role role" in body
+    assert "RitualCasterTacticsPolicy.roleForSlot(slot)" in body
+    assert "RitualCasterTacticsPolicy.Role.AMPLIFIER" in body
+    assert "switch (role)" in body
     for handler in (
         "spawnRitualProjectileVolley",
         "startRitualZone",
         "startRitualReverse",
         "startRitualControlSwap",
+    ):
+        assert handler in body
+    for removed in (
+        "VOID_LANCE",
+        "RIFT_SPIKES",
         "spawnRitualVoidLance",
         "spawnRitualRiftSpikes",
     ):
-        assert handler in body
+        assert removed not in body
     assert "RitualSphereEncounterPolicy.Ability.values()" not in body
 
 

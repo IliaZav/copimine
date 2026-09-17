@@ -440,7 +440,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String ARROW_SPELL_POISON_NAUSEA = "skeleton_poison_nausea";
     private static final String ARROW_SPELL_EXPLOSIVE = "skeleton_explosive";
     private static final String ARROW_SPELL_RITUAL_PROJECTILE = "ritual_sphere_projectile";
-    private static final String ARROW_SPELL_RITUAL_VOID_LANCE = "ritual_void_lance";
     private static final double RITUAL_PROJECTILE_BASE_DAMAGE = 6.0D;
     private static final int MINIBOSS_NARCOTIC_DURATION_TICKS = 10 * 20;
     private static final int MINIBOSS_WITHER_DURATION_TICKS = 10 * 20;
@@ -6743,7 +6742,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         event.setCancelled(true);
         boolean ritualProjectile = ARROW_SPELL_RITUAL_PROJECTILE.equals(spell);
-        boolean ritualVoidLance = ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
         if (!(event.getEntity() instanceof Player player) || !isCombatTarget(player)
                 || !ritualProjectileTargetAllowed(arrow, player)) {
             cleanupEventArrow(arrow.getUniqueId());
@@ -6766,8 +6764,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         double damage = ritualProjectile
                 ? RITUAL_PROJECTILE_BASE_DAMAGE
                 * RitualSphereScalingPolicy.projectileDamageMultiplier(successfulDrains)
-                : ritualVoidLance
-                ? 8.0D * RitualSphereScalingPolicy.projectileDamageMultiplier(successfulDrains)
                 : miniBoss ? SkeletonCombatPolicy.arrowProfile(true).damage()
                 : BOSS_PROJECTILE_DAMAGE;
         if (shooter != null && shooter.isValid() && !shooter.isDead()) {
@@ -6775,7 +6771,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else {
             player.damage(damage);
         }
-        int debuffTicks = ritualProjectile || ritualVoidLance ? 40
+        int debuffTicks = ritualProjectile ? 40
                 : miniBoss ? SLOWNESS_DEBUFF_TICKS : BOSS_PROJECTILE_DEBUFF_TICKS;
         player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS,
                 debuffTicks, abilityDebuffAmplifier("wave-arrow"), false, true, true));
@@ -9316,8 +9312,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean isRitualProjectileSpell(String spell) {
-        return ARROW_SPELL_RITUAL_PROJECTILE.equals(spell)
-                || ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell);
+        return ARROW_SPELL_RITUAL_PROJECTILE.equals(spell);
     }
 
     private boolean isRitualProjectile(Arrow arrow) {
@@ -9561,12 +9556,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 viewer.spawnParticle(Particle.DUST, point, 2,
                         0.03D, 0.03D, 0.03D, 0.0D,
                         new Particle.DustOptions(Color.fromRGB(244, 60, 255), 1.0F));
-            } else if (ARROW_SPELL_RITUAL_VOID_LANCE.equals(spell)) {
-                viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 3,
-                        0.04D, 0.04D, 0.04D, 0.008D);
-                viewer.spawnParticle(Particle.DUST, point, 2,
-                        0.03D, 0.03D, 0.03D, 0.0D,
-                        new Particle.DustOptions(Color.fromRGB(213, 52, 255), 1.2F));
             } else if (EndRiftAiPolicy.BossSpell.RIFT_ARROWS.id().equals(spell)) {
                 viewer.spawnParticle(Particle.SOUL_FIRE_FLAME, point, 2,
                         0.04D, 0.04D, 0.04D, 0.005D);
@@ -14269,34 +14258,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        RitualCasterTacticsPolicy.Attack attack = RitualCasterTacticsPolicy.attackForSlot(slot);
-        if (attack == RitualCasterTacticsPolicy.Attack.CONTROL_SWAP) {
+        RitualCasterTacticsPolicy.Role role = RitualCasterTacticsPolicy.roleForSlot(slot);
+        if (role == RitualCasterTacticsPolicy.Role.AMPLIFIER) {
+            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
+            return;
+        }
+        if (role == RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER) {
             startRitualControlSwap(now);
         }
         Player target = ritualNearestTarget(casterEntity.getLocation(),
                 boundedCombatRadius(config.containmentRadius()));
-        if (target == null && attack != RitualCasterTacticsPolicy.Attack.CONTROL_SWAP) {
+        if (target == null && role != RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        switch (attack) {
-            case SPHERE_BARRAGE -> spawnRitualProjectileVolley((LivingEntity) casterEntity, target,
+        switch (role) {
+            case PROJECTILE_CASTER -> spawnRitualProjectileVolley((LivingEntity) casterEntity, target,
                     ritualSphereState.profile().projectilesPerVolley());
-            case RIFT_MARK -> startRitualZone(target, now);
-            case REVERSE_PULL -> startRitualReverse(target, now);
-            case CONTROL_SWAP -> {
+            case ZONE_CASTER -> startRitualZone(target, now);
+            case REVERSE_CASTER -> startRitualReverse(target, now);
+            case CONTROL_SWAP_CASTER -> {
                 // The pair action was started above because it does not need a
                 // single target.  Keeping the branch explicit documents that
                 // this caster owns a different attack, not a shared volley.
             }
-            case VOID_LANCE -> spawnRitualVoidLance((LivingEntity) casterEntity, target);
-            case RIFT_SPIKES -> spawnRitualRiftSpikes((LivingEntity) casterEntity, target, now);
         }
         long cooldown = RitualSphereScalingPolicy.majorCooldownMillis(
                 ritualSphereState.profile(), ritualSphereState.successfulDrains());
         ritualNextAbilityMillis = now + Math.max(RITUAL_ABILITY_TICK_MILLIS, cooldown);
         getLogger().info("WAVE6_RITUAL_ABILITY event=" + eventId + " caster="
-                + casterEntity.getUniqueId() + " slot=" + slot + " attack=" + attack.id()
+                + casterEntity.getUniqueId() + " slot=" + slot + " role=" + role
                 + " cooldown_ms=" + cooldown + " intensity=" + ritualSphereState.intensity());
     }
 
@@ -14335,41 +14326,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().fine("WAVE6_RITUAL_CASTER_CHANNEL event=" + eventId
                     + " caster=" + caster.getUniqueId() + " state=" + tactics);
         }
-    }
-
-    private void spawnRitualVoidLance(LivingEntity caster, Player target) {
-        if (!ritualTargetAllowed(caster, target)) {
-            return;
-        }
-        riftArrowVolley(caster, target, ARROW_SPELL_RITUAL_VOID_LANCE,
-                new SkeletonCombatPolicy.ArrowProfile(1, 0.0D, 26, "void_lance"));
-    }
-
-    private void spawnRitualRiftSpikes(LivingEntity caster, Player target, long now) {
-        if (caster == null || target == null || !ritualTargetAllowed(caster, target)) {
-            return;
-        }
-        Location center = target.getLocation().clone();
-        center.setY(combatFloorY() + 1.0D);
-        for (Player viewer : eventAudience()) {
-            if (!isEventParticleViewer(viewer, center)) {
-                continue;
-            }
-            for (int spike = 0; spike < 5; spike++) {
-                double angle = now * 0.002D + spike * Math.PI * 2.0D / 5.0D;
-                Location base = center.clone().add(Math.cos(angle) * 1.4D, 0.0D,
-                        Math.sin(angle) * 1.4D);
-                Location tip = base.clone().add(0.0D, 1.8D, 0.0D);
-                spawnPatternSegment(viewer, base, tip, Particle.DRAGON_BREATH,
-                        new Particle.DustOptions(Color.fromRGB(213, 52, 255), 1.15F));
-            }
-        }
-        target.damage(4.0D, caster);
-        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 50, 1,
-                false, true, true));
-        getLogger().info("WAVE6_RITUAL_RIFT_SPIKES event=" + eventId
-                + " caster=" + caster.getUniqueId() + " target=" + target.getUniqueId()
-                + " damage=4.0 collision=server");
     }
 
     private void spawnRitualProjectileVolley(LivingEntity caster, Player target, int count) {
@@ -20927,8 +20883,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                  SkeletonCombatPolicy.ArrowProfile profile) {
         boolean ritualVolley = isCurrentRitualCaster(caster)
                 || isCurrentRitualGuard(caster)
-                || ARROW_SPELL_RITUAL_PROJECTILE.equals(spellId)
-                || ARROW_SPELL_RITUAL_VOID_LANCE.equals(spellId);
+                || ARROW_SPELL_RITUAL_PROJECTILE.equals(spellId);
         if (caster == null || target == null || !isCombatTarget(target)
                 || ritualVolley && !isFreeRitualTarget(target)
                 || caster.getWorld() == null || profile == null

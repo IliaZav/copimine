@@ -1,7 +1,7 @@
 package me.copimine.endevent.domain;
 
 /**
- * Pure state and attack selection rules for a Wave 6 Ritual Sphere caster.
+ * Pure state and role selection rules for a Wave 6 Ritual Sphere caster.
  *
  * <p>The guard gate is evaluated before the damage flag on purpose.  A caster
  * whose shield is still supplied by at least one living guard remains a
@@ -32,12 +32,18 @@ public final class RitualCasterTacticsPolicy {
         return castsSphere(state);
     }
 
-    /** Select one stable, unique tactic for each Wave 6 caster slot. */
-    public static Attack attackForSlot(int casterSlot) {
+    /** Select the bounded core role for a Wave 6 caster slot. */
+    public static Role roleForSlot(int casterSlot) {
         if (casterSlot < 0) {
             throw new IllegalArgumentException("caster slot must be non-negative");
         }
-        return Attack.values()[Math.floorMod(casterSlot, Attack.values().length)];
+        return switch (casterSlot) {
+            case 0 -> Role.PROJECTILE_CASTER;
+            case 1 -> Role.ZONE_CASTER;
+            case 2 -> Role.REVERSE_CASTER;
+            case 3 -> Role.CONTROL_SWAP_CASTER;
+            default -> Role.AMPLIFIER;
+        };
     }
 
     public enum State {
@@ -46,22 +52,11 @@ public final class RitualCasterTacticsPolicy {
         AWAKENED_ATTACKING
     }
 
-    public enum Attack {
-        SPHERE_BARRAGE("sphere-barrage"),
-        RIFT_MARK("rift-mark"),
-        REVERSE_PULL("reverse-pull"),
-        CONTROL_SWAP("control-swap"),
-        VOID_LANCE("void-lance"),
-        RIFT_SPIKES("rift-spikes");
-
-        private final String id;
-
-        Attack(String id) {
-            this.id = id;
-        }
-
-        public String id() {
-            return id;
-        }
+    public enum Role {
+        PROJECTILE_CASTER,
+        ZONE_CASTER,
+        REVERSE_CASTER,
+        CONTROL_SWAP_CASTER,
+        AMPLIFIER
     }
 }

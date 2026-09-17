@@ -27,16 +27,24 @@ public final class RitualCasterTacticsPolicyTest {
                         RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
                 "awakened casters must be allowed to attack");
 
-        RitualCasterTacticsPolicy.Attack[] attacks = new RitualCasterTacticsPolicy.Attack[6];
-        for (int slot = 0; slot < attacks.length; slot++) {
-            attacks[slot] = RitualCasterTacticsPolicy.attackForSlot(slot);
-            for (int previous = 0; previous < slot; previous++) {
-                check(attacks[previous] != attacks[slot],
-                        "caster slots 0-5 must have distinct attacks");
-            }
-        }
-        check("sphere-barrage".equals(attacks[0].id()), "slot zero attack id");
-        check("rift-spikes".equals(attacks[5].id()), "slot five attack id");
+        check(RitualCasterTacticsPolicy.roleForSlot(0)
+                        == RitualCasterTacticsPolicy.Role.PROJECTILE_CASTER,
+                "slot 0 owns sphere projectiles");
+        check(RitualCasterTacticsPolicy.roleForSlot(1)
+                        == RitualCasterTacticsPolicy.Role.ZONE_CASTER,
+                "slot 1 owns corrupted zones");
+        check(RitualCasterTacticsPolicy.roleForSlot(2)
+                        == RitualCasterTacticsPolicy.Role.REVERSE_CASTER,
+                "slot 2 owns reverse movement");
+        check(RitualCasterTacticsPolicy.roleForSlot(3)
+                        == RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER,
+                "slot 3 owns control swap");
+        check(RitualCasterTacticsPolicy.roleForSlot(4)
+                        == RitualCasterTacticsPolicy.Role.AMPLIFIER,
+                "slot 4 must amplify the ritual rather than introduce a fifth spell");
+        check(RitualCasterTacticsPolicy.roleForSlot(5)
+                        == RitualCasterTacticsPolicy.Role.AMPLIFIER,
+                "slot 5 must amplify the ritual rather than introduce a sixth spell");
         System.out.println("RitualCasterTacticsPolicyTest OK");
     }
 

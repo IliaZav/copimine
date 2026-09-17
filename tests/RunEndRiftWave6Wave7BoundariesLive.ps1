@@ -170,9 +170,8 @@ function Write-ArtifactHashes {
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 $javaVersion = try {
   $javaExecutable = (Get-Command java.exe -ErrorAction Stop).Source
-  $javaOutput = @(& $javaExecutable -version 2>&1 | ForEach-Object { $_.ToString() })
-  $versionLine = $javaOutput | Where-Object { $_ -match '\bversion\b' } | Select-Object -First 1
-  if ([string]::IsNullOrWhiteSpace([string]$versionLine)) { 'unknown' } else { [string]$versionLine.Trim() }
+  $fileVersion = (Get-Item -LiteralPath $javaExecutable -ErrorAction Stop).VersionInfo.ProductVersion
+  if ([string]::IsNullOrWhiteSpace([string]$fileVersion)) { 'unknown' } else { [string]$fileVersion.Trim() }
 } catch { 'unknown' }
 $script:runMetadata = [ordered]@{
   repository = 'IliaZav/copimine'

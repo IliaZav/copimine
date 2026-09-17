@@ -17,6 +17,8 @@ def test_policy_owns_expected_live_missing_and_stale_math() -> None:
     source = read(POLICY)
     assert "missing.removeAll(liveKeys)" in source
     assert "stale.removeAll(expectedKeys)" in source
+    assert "duplicates" in source
+    assert "duplicate" in source.lower()
     assert "expectedKeys(BossHitboxProfile profile)" in source
     assert "record Key(BossHitboxProfile.PartId partId, int segmentIndex)" in source
     assert "requiresRebuild()" in source
@@ -31,6 +33,14 @@ def test_controller_repairs_before_update_and_each_damage_route() -> None:
     assert "BOSS_HITBOX_PROXY_RECREATED event=" in source
     assert "part=" in source and "segment=" in source and "generation=" in source
     assert "liveReconciliation()" in source
+    assert "slotMetadataMatches" in source
+    assert "getPersistentDataContainer" in source
+    assert "world.getEntities()" in source
+    assert "duplicates()" in source
+    assert "malformed" in source
+    accept_start = source.index("public boolean acceptHit(")
+    accept_end = source.index("public String attackIdentity", accept_start)
+    assert "ensureHealthy" in source[accept_start:accept_end]
 
 
 def test_reconciliation_is_registered_in_the_current_gate() -> None:

@@ -30,16 +30,18 @@ public final class BossHitboxProxyReconciliationPolicy {
     }
 
     public static Result reconcile(Collection<Key> expected, Collection<Key> live) {
-        Set<Key> expectedKeys = normalize(expected, "expected");
-        Set<Key> liveKeys = normalize(live == null ? List.of() : live, "live");
+        List<Key> expectedValues = normalize(expected, "expected");
+        List<Key> liveValues = normalize(live == null ? List.of() : live, "live");
+        Set<Key> expectedKeys = unique(expectedValues);
+        Set<Key> liveKeys = unique(liveValues);
         LinkedHashSet<Key> missing = new LinkedHashSet<>(expectedKeys);
         missing.removeAll(liveKeys);
         LinkedHashSet<Key> stale = new LinkedHashSet<>(liveKeys);
         stale.removeAll(expectedKeys);
-        return new Result(missing, stale);
+        return new Result(missing, stale, duplicates(liveValues), 0);
     }
 
-    private static Set<Key> normalize(Collection<Key> values, String name) {
+    private static List<Key> normalize(Collection<Key> values, String name) {
         if (values == null) {
             throw new IllegalArgumentException(name + " keys are required");
         }
@@ -51,21 +53,53 @@ public final class BossHitboxProxyReconciliationPolicy {
             sorted.add(key);
         }
         sorted.sort(KEY_ORDER);
-        return new LinkedHashSet<>(sorted);
+        return List.copyOf(sorted);
     }
 
-    public record Result(Set<Key> missing, Set<Key> stale) {
+    private static Set<Key> unique(List<Key> values) {
+        return new LinkedHashSet<>(values);
+    }
+
+    private static Set<Key> duplicates(List<Key> values) {
+        LinkedHashSet<Key> seen = new LinkedHashSet<>();
+        LinkedHashSet<Key> duplicate = new LinkedHashSet<>();
+        for (Key value : values) {
+            if (!seen.add(value)) {
+                duplicate.add(value);
+            }
+        }
+        return duplicate;
+    }
+
+    public record Result(Set<Key> missing, Set<Key> stale, Set<Key> duplicates,
+                         int malformed) {
+        public Result(Set<Key> missing, Set<Key> stale) {
+            this(missing, stale, Set.of(), 0);
+        }
+
         public Result {
             missing = immutableOrdered(missing, "missing");
             stale = immutableOrdered(stale, "stale");
+            duplicates = immutableOrdered(duplicates, "duplicates");
+            if (malformed < 0) {
+                throw new IllegalArgumentException("malformed proxy count must not be negative");
+            }
         }
 
         public boolean isHealthy() {
-            return missing.isEmpty() && stale.isEmpty();
+            return missing.isEmpty() && stale.isEmpty() && duplicates.isEmpty()
+                    && malformed == 0;
         }
 
         public boolean requiresRebuild() {
             return !isHealthy();
+        }
+
+        public Result withMalformed(int count) {
+            if (count < 0) {
+                throw new IllegalArgumentException("malformed proxy count must not be negative");
+            }
+            return new Result(missing, stale, duplicates, count);
         }
 
         private static Set<Key> immutableOrdered(Set<Key> values, String name) {

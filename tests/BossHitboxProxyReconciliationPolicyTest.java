@@ -1,7 +1,10 @@
 import me.copimine.endevent.domain.BossHitboxProfile;
 import me.copimine.endevent.domain.BossHitboxProxyReconciliationPolicy;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 public final class BossHitboxProxyReconciliationPolicyTest {
@@ -30,6 +33,38 @@ public final class BossHitboxProxyReconciliationPolicyTest {
                         BossHitboxProfile.PartId.RIGHT_FOREARM, 7)),
                 "unexpected segment must be reported stale");
         require(!result.isHealthy(), "missing/stale keys cannot be healthy");
+
+        List<BossHitboxProxyReconciliationPolicy.Key> duplicateLive = new ArrayList<>(expected);
+        duplicateLive.add(new BossHitboxProxyReconciliationPolicy.Key(
+                BossHitboxProfile.PartId.LEFT_FOREARM, 0));
+        result = BossHitboxProxyReconciliationPolicy.reconcile(expected, duplicateLive);
+        require(result.duplicates().contains(new BossHitboxProxyReconciliationPolicy.Key(
+                        BossHitboxProfile.PartId.LEFT_FOREARM, 0)),
+                "duplicate physical proxy must be reported");
+        require(result.requiresRebuild(), "duplicate proxy must request reconciliation");
+        boolean immutable = false;
+        try {
+            result.duplicates().clear();
+        } catch (UnsupportedOperationException expectedException) {
+            immutable = true;
+        }
+        require(immutable, "reconciliation result sets must be immutable");
+
+        List<BossHitboxProxyReconciliationPolicy.Key> damagedA = new ArrayList<>(expected);
+        damagedA.remove(new BossHitboxProxyReconciliationPolicy.Key(
+                BossHitboxProfile.PartId.RIGHT_FOREARM, 0));
+        damagedA.add(new BossHitboxProxyReconciliationPolicy.Key(
+                BossHitboxProfile.PartId.RIGHT_FOREARM, 7));
+        List<BossHitboxProxyReconciliationPolicy.Key> damagedB = new ArrayList<>(damagedA);
+        Collections.reverse(damagedB);
+        BossHitboxProxyReconciliationPolicy.Result orderedA =
+                BossHitboxProxyReconciliationPolicy.reconcile(expected, damagedA);
+        BossHitboxProxyReconciliationPolicy.Result orderedB =
+                BossHitboxProxyReconciliationPolicy.reconcile(expected, damagedB);
+        require(orderedA.missing().equals(orderedB.missing())
+                        && orderedA.stale().equals(orderedB.stale()),
+                "reconciliation output must remain deterministic");
+        require(orderedA.malformed() == 0, "pure reconciliation must start with no malformed count");
         System.out.println("BossHitboxProxyReconciliationPolicyTest OK");
     }
 

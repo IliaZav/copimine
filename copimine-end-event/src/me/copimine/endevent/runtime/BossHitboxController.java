@@ -22,7 +22,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -96,7 +95,7 @@ public final class BossHitboxController {
             }
             slots.put(proxy.getUniqueId(), new Slot(proxy.getUniqueId(), part.id(), part.segmentIndex()));
         }
-        update(boss, Map.of());
+        updateProxies(boss, Map.of());
         return slots.size() == profile.proxyCount();
     }
 
@@ -146,7 +145,7 @@ public final class BossHitboxController {
             slots.put(proxy.getUniqueId(), new Slot(proxy.getUniqueId(), part.id(), part.segmentIndex()));
         }
         cleanupEntities(recovered.values());
-        update(boss, Map.of());
+        updateProxies(boss, Map.of());
         return slots.size() == profile.proxyCount();
     }
 
@@ -160,6 +159,11 @@ public final class BossHitboxController {
         if (!ensureHealthy(boss)) {
             return;
         }
+        updateProxies(boss, poses);
+    }
+
+    private void updateProxies(LivingEntity boss,
+                                Map<BossHitboxProfile.PartKey, BossHitboxPose> poses) {
         Map<BossHitboxProfile.PartKey, BossHitboxPose> safePoses =
                 poses == null ? Map.of() : Map.copyOf(poses);
         Iterator<Map.Entry<UUID, Slot>> iterator = slots.entrySet().iterator();
@@ -318,6 +322,13 @@ public final class BossHitboxController {
     /** Routes one accepted event through the single generation-scoped dedupe. */
     public boolean acceptHit(Interaction proxy, String attackIdentity,
                              long currentGeneration, long nowMillis) {
+        if (!owns(proxy) || currentGeneration != generation) {
+            return false;
+        }
+        LivingEntity boss = parentBoss(proxy);
+        if (boss == null || !ensureHealthy(boss)) {
+            return false;
+        }
         return owns(proxy) && currentGeneration == generation
                 && dedupe.accept(attackIdentity, generation, nowMillis);
     }
@@ -384,7 +395,9 @@ public final class BossHitboxController {
             plugin.getLogger().warning("BOSS_HITBOX_PROXY_REPAIR_FAILED event=" + repairEventId
                     + " boss=" + repairBossId + " generation=" + repairGeneration
                     + " missing=" + reconciliation.missing()
-                    + " stale=" + reconciliation.stale());
+                    + " stale=" + reconciliation.stale()
+                    + " duplicates=" + reconciliation.duplicates()
+                    + " malformed=" + reconciliation.malformed());
             return false;
         }
         for (BossHitboxProxyReconciliationPolicy.Key key
@@ -397,18 +410,70 @@ public final class BossHitboxController {
     }
 
     private BossHitboxProxyReconciliationPolicy.Result liveReconciliation() {
-        Set<BossHitboxProxyReconciliationPolicy.Key> live = new LinkedHashSet<>();
+        List<BossHitboxProxyReconciliationPolicy.Key> live = new ArrayList<>();
+        int malformed = slots.size() == profile.proxyCount() ? 0 : 1;
         for (Slot slot : slots.values()) {
             Entity entity = Bukkit.getEntity(slot.uuid());
             if (!(entity instanceof Interaction proxy) || !proxy.isValid()
-                    || !matchesTag(proxy, eventId, bossUuid)) {
+                    || !slotMetadataMatches(proxy, slot)) {
+                malformed++;
                 continue;
             }
             live.add(new BossHitboxProxyReconciliationPolicy.Key(
                     slot.partId(), slot.segmentIndex()));
         }
-        return BossHitboxProxyReconciliationPolicy.reconcile(
+        Set<UUID> indexed = Set.copyOf(slots.keySet());
+        for (World world : plugin.getServer().getWorlds()) {
+            if (world == null) {
+                continue;
+            }
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                if (!(entity instanceof Interaction proxy) || !isTagged(proxy)
+                        || !matchesTag(proxy, eventId, bossUuid)) {
+                    continue;
+                }
+                long taggedGeneration = proxy.getPersistentDataContainer().getOrDefault(
+                        generationKey, PersistentDataType.LONG, Long.MIN_VALUE);
+                if (taggedGeneration != generation) {
+                    malformed++;
+                    continue;
+                }
+                if (indexed.contains(proxy.getUniqueId())) {
+                    continue;
+                }
+                BossHitboxProfile.PartId taggedPart = taggedPart(proxy);
+                int taggedSegment = segmentKey(proxy);
+                if (taggedPart == null || taggedSegment < 0) {
+                    malformed++;
+                    continue;
+                }
+                live.add(new BossHitboxProxyReconciliationPolicy.Key(
+                        taggedPart, taggedSegment));
+            }
+        }
+        BossHitboxProxyReconciliationPolicy.Result result =
+                BossHitboxProxyReconciliationPolicy.reconcile(
                 BossHitboxProxyReconciliationPolicy.expectedKeys(profile), live);
+        return result.withMalformed(malformed);
+    }
+
+    private boolean slotMetadataMatches(Interaction proxy, Slot slot) {
+        if (proxy == null || slot == null || !matchesTag(proxy, eventId, bossUuid)) {
+            return false;
+        }
+        long taggedGeneration = proxy.getPersistentDataContainer().getOrDefault(
+                generationKey, PersistentDataType.LONG, Long.MIN_VALUE);
+        return taggedGeneration == generation
+                && slot.partId().name().equals(partKey(proxy))
+                && slot.segmentIndex() == segmentKey(proxy);
+    }
+
+    private BossHitboxProfile.PartId taggedPart(Interaction proxy) {
+        try {
+            return BossHitboxProfile.PartId.valueOf(partKey(proxy));
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
     }
 
     /** Removes tracked proxies and forgets every generation-scoped identity. */

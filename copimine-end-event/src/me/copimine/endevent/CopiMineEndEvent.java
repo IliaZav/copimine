@@ -110,6 +110,7 @@ import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.domain.RitualSphereProjectilePolicy;
+import me.copimine.endevent.domain.RitualSphereProjectileProvenancePolicy;
 import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.domain.RitualTargetPolicy;
 import me.copimine.endevent.domain.RitualZoneEffectPolicy;
@@ -9375,8 +9376,79 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearRitualProjectileMarker(Entity entity) {
-        if (entity instanceof Arrow arrow && keyRitualProjectile != null) {
-            arrow.getPersistentDataContainer().remove(keyRitualProjectile);
+        if (!(entity instanceof Arrow arrow)) {
+            return;
+        }
+        PersistentDataContainer data = arrow.getPersistentDataContainer();
+        if (keyRitualProjectile != null) {
+            data.remove(keyRitualProjectile);
+        }
+        if (keyRitualProjectileOriginX != null) {
+            data.remove(keyRitualProjectileOriginX);
+        }
+        if (keyRitualProjectileOriginY != null) {
+            data.remove(keyRitualProjectileOriginY);
+        }
+        if (keyRitualProjectileOriginZ != null) {
+            data.remove(keyRitualProjectileOriginZ);
+        }
+        if (keyRitualProjectileOwner != null) {
+            data.remove(keyRitualProjectileOwner);
+        }
+        if (keyRitualProjectileTarget != null) {
+            data.remove(keyRitualProjectileTarget);
+        }
+        if (keyRitualProjectileExpiresTick != null) {
+            data.remove(keyRitualProjectileExpiresTick);
+        }
+    }
+
+    /**
+     * A dedicated sphere arrow is trusted only while all of its immutable
+     * launch provenance is present and internally consistent.  The shared
+     * ritual marker remains valid for older ritual arrow effects; this stricter
+     * check is applied only to the sphere barrage spell.
+     */
+    private boolean ritualSphereProjectileProvenanceAllowed(Arrow arrow, UUID hitTarget) {
+        if (arrow == null || !isRitualProjectile(arrow)
+                || !ARROW_SPELL_RITUAL_PROJECTILE.equals(readString(arrow, keyArrowSpell))) {
+            return false;
+        }
+        PersistentDataContainer data = arrow.getPersistentDataContainer();
+        Double originX = keyRitualProjectileOriginX == null
+                ? null : data.get(keyRitualProjectileOriginX, PersistentDataType.DOUBLE);
+        Double originY = keyRitualProjectileOriginY == null
+                ? null : data.get(keyRitualProjectileOriginY, PersistentDataType.DOUBLE);
+        Double originZ = keyRitualProjectileOriginZ == null
+                ? null : data.get(keyRitualProjectileOriginZ, PersistentDataType.DOUBLE);
+        Long expiresAtTick = keyRitualProjectileExpiresTick == null
+                ? null : data.get(keyRitualProjectileExpiresTick, PersistentDataType.LONG);
+        UUID owner = parseUuid(data, keyRitualProjectileOwner);
+        UUID intendedTarget = parseUuid(data, keyRitualProjectileTarget);
+        UUID shooter = arrow.getShooter() instanceof Entity entity
+                ? entity.getUniqueId() : null;
+        UUID checkedTarget = hitTarget == null ? intendedTarget : hitTarget;
+        if (originX == null || originY == null || originZ == null || expiresAtTick == null) {
+            return false;
+        }
+        return RitualSphereProjectileProvenancePolicy.accepts(
+                true, owner, shooter, intendedTarget, checkedTarget,
+                new RitualSphereProjectileProvenancePolicy.Vec3(originX, originY, originZ),
+                expiresAtTick, eventTickCounter);
+    }
+
+    private UUID parseUuid(PersistentDataContainer data, NamespacedKey key) {
+        if (data == null || key == null) {
+            return null;
+        }
+        String raw = data.get(key, PersistentDataType.STRING);
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException ignored) {
+            return null;
         }
     }
 
@@ -9431,6 +9503,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         if (isRitualProjectile(arrow)) {
+            if (ARROW_SPELL_RITUAL_PROJECTILE.equals(readString(arrow, keyArrowSpell))
+                    && !ritualSphereProjectileProvenanceAllowed(arrow, null)) {
+                return false;
+            }
             return isCombatPhase() || testCombatAiMode || hasLiveTestWaveEntities();
         }
         if (!(arrow.getShooter() instanceof Entity shooter)) {
@@ -14097,7 +14173,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         if (isRitualProjectile(arrow)) {
-            return isFreeRitualTarget(player);
+            return isFreeRitualTarget(player)
+                    && (!ARROW_SPELL_RITUAL_PROJECTILE.equals(readString(arrow, keyArrowSpell))
+                    || ritualSphereProjectileProvenanceAllowed(
+                    arrow, player == null ? null : player.getUniqueId()));
         }
         return !isRitualProjectileSpell(readString(arrow, keyArrowSpell));
     }

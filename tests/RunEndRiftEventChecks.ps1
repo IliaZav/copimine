@@ -130,6 +130,7 @@ $pureTests = @(
   'RitualSphereEncounterSnapshotTest',
   'RitualSphereScalingPolicyTest',
   'RitualSphereProjectilePolicyTest',
+  'RitualSphereProjectileProvenancePolicyTest',
   'CombatMovementPolicyTest',
   'CombatTacticsPolicyTest',
   'CombatTraceDiagnosisTest',

@@ -85,6 +85,31 @@ def test_sphere_projectile_provenance_persists_origin_owner_target_and_lifetime(
         assert required in source
 
 
+def test_sphere_projectile_provenance_is_validated_at_tick_and_hit_boundaries() -> None:
+    source = read(SOURCE)
+    for required in (
+        "private boolean ritualSphereProjectileProvenanceAllowed(Arrow arrow, UUID hitTarget)",
+        "RitualSphereProjectileProvenancePolicy.accepts(",
+        "parseUuid(data, keyRitualProjectileOwner)",
+        "parseUuid(data, keyRitualProjectileTarget)",
+        "eventTickCounter)",
+        "!ritualSphereProjectileProvenanceAllowed(arrow, null)",
+        "player == null ? null : player.getUniqueId()",
+    ):
+        assert required in source
+
+    cleanup = method_body(source, "private void clearRitualProjectileMarker")
+    for key in (
+        "keyRitualProjectileOriginX",
+        "keyRitualProjectileOriginY",
+        "keyRitualProjectileOriginZ",
+        "keyRitualProjectileOwner",
+        "keyRitualProjectileTarget",
+        "keyRitualProjectileExpiresTick",
+    ):
+        assert f"data.remove({key})" in cleanup
+
+
 def test_ordinary_caster_arrow_adapter_keeps_its_existing_origin() -> None:
     source = read(SOURCE)
     ordinary = method_body(source, "private void riftArrowVolley")

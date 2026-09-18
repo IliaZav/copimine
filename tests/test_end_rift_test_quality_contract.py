@@ -59,6 +59,7 @@ def test_required_live_boundaries_and_quality_evidence_are_present() -> None:
         "LIVE_BOSS_HITBOX_SELF_HEAL_PASS",
         "LIVE_BOSS_HITBOX_NO_DUPLICATE_PASS",
         "LIVE_BOSS_HITBOX_CLEANUP_IDEMPOTENT_PASS",
+        "[Regex]::Escape($missBotName)",
     ):
         assert needle in boss, needle
     for needle in (

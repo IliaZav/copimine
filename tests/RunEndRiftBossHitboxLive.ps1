@@ -364,7 +364,7 @@ try {
   $null = Invoke-LocalRcon ("give $missBotName minecraft:diamond_sword")
   $null = Invoke-LocalRcon ("tp $missBotName $(Format-Coordinate $botX) $(Format-Coordinate $botY) $(Format-Coordinate $botZ) 90 0")
   $missOutput = Finish-Bot $missBot
-  $missAttacks = @([Regex]::Matches($missOutput.Stdout, 'PLAYER_ATTACK\s+' + [Regex]::Escape($BotName)))
+  $missAttacks = @([Regex]::Matches($missOutput.Stdout, 'PLAYER_ATTACK\s+' + [Regex]::Escape($missBotName)))
   $missAccepted = Accepted-Lines $missOffset $bossUuid
   $missTail = Log-Tail $missOffset
   $missAfter = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))

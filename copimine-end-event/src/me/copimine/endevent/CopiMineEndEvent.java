@@ -1215,6 +1215,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else if (persistedWave > 0) {
             restorePersistedCollapseRingEncounter();
         }
+        boolean wave7SceneActive = phase == EventPhase.WAVE_7
+                || testWaveFrontVisualMode && activeWave == 7;
+        if (!wave7SceneActive) {
+            // A restart can rehydrate wave=0 while leaving physical artifacts
+            // from an older Wave 7/Wave 3 implementation in the arena.  The
+            // Wave 6 transition cleanup is too late for that case: remove the
+            // bounded legacy visuals before any player sees the scene.
+            clearRealitySplitBarriers("bootstrap-non-wave7");
+            clearLegacyWave7BarrierArtifacts("bootstrap-non-wave7");
+            clearLegacyWave3PortalArtifacts("bootstrap-non-wave7");
+        }
         restoreRealitySplitBarriersAfterBootstrap();
         if (persistedWave > 0 && EndRiftObjective.objective(persistedWave)
                 == EndRiftObjective.Objective.COLLAPSE_RINGS) {

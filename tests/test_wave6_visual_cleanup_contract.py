@@ -31,6 +31,16 @@ def test_wave6_start_removes_stale_walls_and_wave3_portals() -> None:
     assert "clearLegacyWave3PortalArtifacts" in body
 
 
+def test_bootstrap_clears_stale_wave7_walls_and_wave3_portals_outside_wave7() -> None:
+    source = read(SERVER)
+    start = source.index("private void restorePersistedCombatRuntime")
+    end = source.index("private void restorePersistedRitualSphereObjective", start)
+    body = source[start:end]
+    assert "clearRealitySplitBarriers(\"bootstrap-non-wave7\")" in body
+    assert "clearLegacyWave7BarrierArtifacts(\"bootstrap-non-wave7\")" in body
+    assert "clearLegacyWave3PortalArtifacts(\"bootstrap-non-wave7\")" in body
+
+
 def test_prisoner_anchor_is_inside_the_sphere_not_three_blocks_to_the_side() -> None:
     source = read(SERVER)
     start = source.index("private Location ritualPrisonerLocation")

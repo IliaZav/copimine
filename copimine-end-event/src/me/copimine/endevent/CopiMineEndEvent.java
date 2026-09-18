@@ -142,6 +142,7 @@ import me.copimine.endevent.runtime.TentacleController;
 import me.copimine.endevent.runtime.RealitySplitChamberController;
 import me.copimine.endevent.runtime.BossHitboxController;
 import me.copimine.endevent.diagnostics.EndRiftDiagnosticEvent;
+import me.copimine.endevent.diagnostics.EndRiftDiagnosticJson;
 import me.copimine.endevent.diagnostics.EndRiftDiagnosticMode;
 import me.copimine.endevent.diagnostics.EndRiftDiagnosticService;
 import me.copimine.endevent.diagnostics.EndRiftDiagnosticSnapshot;
@@ -2927,6 +2928,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, "&e/cmend debug status|dump|capture [seconds]|invariants|packets|objectives|hazards|perf|ai|trace <on|off|status>");
             return;
         }
+        if ("ai".equals(section) && args.length > 2
+                && "--json".equalsIgnoreCase(args[2])) {
+            handleStructuredAiDiagnosticsJson(sender);
+            return;
+        }
         if ("all".equals(section) || "packets".equals(section)) {
             sampleRuntimeDiagnostics();
             RuntimeDiagnosticsSnapshot diagnostics = runtimeDiagnosticsSnapshot;
@@ -3100,6 +3106,147 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 emitWave7StateDiagnostics(sender);
             }
         }
+    }
+
+    /**
+     * Machine-readable AI snapshot for local/staging probes.  The text
+     * diagnostics intentionally cap their entity samples; this endpoint does
+     * not, so a Wave 6 probe can verify every caster and its guard ownership.
+     */
+    private void handleStructuredAiDiagnosticsJson(CommandSender sender) {
+        Location anchor = coreCombatAnchorLocation();
+        LivingEntity diagnosticBoss = liveBoss();
+        int mobile = 0;
+        int aiEnabled = 0;
+        int targeted = 0;
+        int coreObjective = 0;
+        int outside = 0;
+        int onCore = 0;
+        int ritualCasters = 0;
+        int ritualCastersPassive = 0;
+        int ritualCastersTargeted = 0;
+        int ritualGuards = 0;
+        List<Map<String, Object>> casters = new ArrayList<>();
+        Set<UUID> liveGuardIds = new LinkedHashSet<>();
+        for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+            String kind = readString(entity, keyKind);
+            if (!(entity instanceof Mob mob) || (!EVENT_KIND_BOSS.equals(kind)
+                    && !isWaveCombatKind(kind)) || !isLiveOwnedEntity(entity.getUniqueId())) {
+                continue;
+            }
+            mobile++;
+            if (mob.hasAI()) {
+                aiEnabled++;
+            }
+            if (mob.getTarget() instanceof Player player && isCombatTarget(player)) {
+                targeted++;
+            }
+            if (isCurrentCollapseGuard(entity)) {
+                coreObjective++;
+            }
+            if (EVENT_KIND_RITUAL_GUARD.equals(kind)) {
+                ritualGuards++;
+                liveGuardIds.add(entity.getUniqueId());
+            }
+            if (anchor != null) {
+                double radius = boundedCombatRadius(config == null ? MAX_COMBAT_RADIUS_BLOCKS
+                        : EVENT_KIND_BOSS.equals(kind) ? config.bossRadius()
+                        : config.containmentRadius());
+                if (horizontalDistanceSquared(entity.getLocation(), anchor) > radius * radius
+                        || outsideCombatVertical(entity.getLocation(), anchor)) {
+                    outside++;
+                }
+                if (isCoreBlockPosition(entity.getLocation())) {
+                    onCore++;
+                }
+            }
+        }
+        for (UUID casterId : ritualCasterUuids.stream()
+                .sorted(Comparator.comparing(id -> id.toString())).toList()) {
+            Entity entity = ownedEntities.get(casterId);
+            if (!(entity instanceof Mob caster) || !isLiveOwnedEntity(casterId)
+                    || !isCurrentRitualCaster(entity)) {
+                continue;
+            }
+            ritualCasters++;
+            Set<UUID> guards = ritualGuardsByCaster.getOrDefault(casterId, Set.of());
+            List<UUID> liveGuards = guards.stream()
+                    .filter(this::isLiveOwnedEntity)
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+            int livingGuards = liveGuards.size();
+            RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
+                    livingGuards > 0, readRitualCasterAwakened(caster));
+            if (!mobHasAi(caster)) {
+                ritualCastersPassive++;
+            }
+            UUID targetId = caster.getTarget() == null ? null : caster.getTarget().getUniqueId();
+            if (caster.getTarget() instanceof Player player && isCombatTarget(player)) {
+                ritualCastersTargeted++;
+            }
+            Map<String, Object> record = new LinkedHashMap<>();
+            record.put("id", casterId);
+            record.put("slot", ritualCasterSlots.getOrDefault(casterId, -1));
+            int casterSlot = ritualCasterSlots.getOrDefault(casterId, -1);
+            record.put("role", casterSlot < 0 ? "UNKNOWN"
+                    : RitualCasterTacticsPolicy.roleForSlot(casterSlot).name());
+            record.put("state", tactics.name());
+            record.put("awakened", readRitualCasterAwakened(caster));
+            record.put("nativeAiEnabled", mobHasAi(caster));
+            record.put("aware", caster.isAware());
+            record.put("canTargetPlayers", RitualCasterTacticsPolicy.canTargetPlayers(tactics));
+            record.put("castsSphere", RitualCasterTacticsPolicy.castsSphere(tactics));
+            record.put("target", targetId);
+            record.put("guardCount", livingGuards);
+            record.put("guardIds", liveGuards);
+            casters.add(record);
+        }
+        Set<UUID> expectedGuardIds = casters.stream()
+                .flatMap(record -> ((List<?>) record.get("guardIds")).stream())
+                .map(UUID.class::cast)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<UUID, Integer> guardOwnerCounts = new LinkedHashMap<>();
+        for (Map<String, Object> record : casters) {
+            for (Object rawGuardId : (List<?>) record.get("guardIds")) {
+                UUID guardId = (UUID) rawGuardId;
+                guardOwnerCounts.merge(guardId, 1, Integer::sum);
+            }
+        }
+        boolean ownershipValid = casters.stream()
+                .allMatch(record -> {
+                    int guardCount = ((Number) record.get("guardCount")).intValue();
+                    String state = String.valueOf(record.get("state"));
+                    return "GUARDED_CASTING".equals(state)
+                            ? guardCount >= 1 && guardCount <= RitualSphereScalingPolicy.GUARDS_PER_CASTER
+                            : guardCount == 0;
+                })
+                && expectedGuardIds.size() == liveGuardIds.size()
+                && expectedGuardIds.equals(liveGuardIds)
+                && guardOwnerCounts.values().stream().allMatch(count -> count == 1);
+        Map<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("type", "END_RIFT_AI_DIAGNOSTICS");
+        snapshot.put("phase", phase);
+        snapshot.put("stage", bossPhase);
+        snapshot.put("activeWave", activeWave);
+        snapshot.put("mobile", mobile);
+        snapshot.put("aiEnabled", aiEnabled);
+        snapshot.put("targeted", targeted);
+        snapshot.put("coreObjective", coreObjective);
+        snapshot.put("outside", outside);
+        snapshot.put("onCore", onCore);
+        snapshot.put("bossCast", bossAbilityState);
+        snapshot.put("bossPresent", diagnosticBoss != null && isLiveOwnedEntity(diagnosticBoss.getUniqueId()));
+        snapshot.put("ritualCasters", ritualCasters);
+        snapshot.put("ritualCastersPassive", ritualCastersPassive);
+        snapshot.put("ritualCastersTargeted", ritualCastersTargeted);
+        snapshot.put("ritualGuards", ritualGuards);
+        snapshot.put("ritualGuardOwnershipValid", ownershipValid);
+        snapshot.put("casters", casters);
+        message(sender, EndRiftDiagnosticJson.toJson(snapshot));
+    }
+
+    private boolean mobHasAi(Mob mob) {
+        return mob != null && mob.hasAI();
     }
 
     private void handleStructuredDiagnosticsStatus(CommandSender sender) {
@@ -5010,10 +5157,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (args.length < 3) {
-            message(sender, "&e/cmend test ritual force <projectile|zone|reverse|swap> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <projectile|zone|reverse|swap> | controls clear | complete");
             return;
         }
         String action = args[2].toLowerCase(Locale.ROOT);
+        if ("caster".equals(action)) {
+            String requestedState = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "";
+            if (!Set.of("guarded", "exposed", "awakened").contains(requestedState)) {
+                message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened>");
+                return;
+            }
+            if (forceRitualCasterStateForTest(requestedState)) {
+                message(sender, "&aLOCAL_TEST_HOOK caster state=" + requestedState + ".");
+            } else {
+                message(sender, "&cLOCAL_TEST_HOOK could not set caster state=" + requestedState + ".");
+            }
+            return;
+        }
         if ("controls".equals(action)) {
             if (args.length < 4 || !"clear".equalsIgnoreCase(args[3])) {
                 message(sender, "&e/cmend test ritual controls clear");
@@ -5040,7 +5200,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!"force".equals(action) || args.length < 4) {
-            message(sender, "&e/cmend test ritual force <projectile|zone|reverse|swap> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <projectile|zone|reverse|swap> | controls clear | complete");
             return;
         }
         RitualCasterTacticsPolicy.Role role = switch (args[3].toLowerCase(Locale.ROOT)) {
@@ -5059,6 +5219,80 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         } else {
             message(sender, "&cLOCAL_TEST_HOOK could not force " + role.name() + ".");
         }
+    }
+
+    /**
+     * Local-only lifecycle hook for the Wave 6 acceptance probe.  It changes
+     * one real caster through the same PDC/AI state used by gameplay and
+     * removes only that caster's owned guards; it cannot run in production or
+     * through a player command.
+     */
+    private boolean forceRitualCasterStateForTest(String requestedState) {
+        if (requestedState == null || !ritualWaveActive() || ritualSphereState == null) {
+            return false;
+        }
+        Entity selected = ritualCasterUuids.stream()
+                .map(ownedEntities::get)
+                .filter(entity -> entity instanceof Mob && isLiveOwnedEntity(entity.getUniqueId()))
+                .sorted(Comparator.comparing(entity -> entity.getUniqueId().toString()))
+                .findFirst()
+                .orElse(null);
+        if (!(selected instanceof Mob caster)) {
+            return false;
+        }
+        UUID casterId = caster.getUniqueId();
+        Set<UUID> guards = new LinkedHashSet<>(ritualGuardsByCaster.getOrDefault(
+                casterId, Set.of()));
+        if ("guarded".equals(requestedState)) {
+            int livingGuards = (int) guards.stream().filter(this::isLiveOwnedEntity).count();
+            if (livingGuards != RitualSphereScalingPolicy.GUARDS_PER_CASTER) {
+                return false;
+            }
+            tagRitualCasterAwakened(caster, false);
+            caster.setTarget(null);
+            caster.setAI(false);
+            caster.setAware(false);
+        } else if ("exposed".equals(requestedState)) {
+            for (UUID guardId : guards) {
+                removeRitualEntity(guardId);
+                ritualGuardUuids.remove(guardId);
+                ritualGuardCasters.remove(guardId);
+            }
+            ritualGuardsByCaster.put(casterId, new LinkedHashSet<>());
+            tagRitualCasterAwakened(caster, false);
+            caster.setTarget(null);
+            caster.setAI(false);
+            caster.setAware(false);
+        } else if ("awakened".equals(requestedState)) {
+            int livingGuards = (int) guards.stream().filter(this::isLiveOwnedEntity).count();
+            if (livingGuards != 0) {
+                return false;
+            }
+            tagRitualCasterAwakened(caster, true);
+            caster.setAI(true);
+            caster.setAware(true);
+            Player target = ritualNearestTarget(caster.getLocation(),
+                    boundedCombatRadius(config.containmentRadius()));
+            caster.setTarget(target);
+        } else {
+            return false;
+        }
+        RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
+                ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
+                        .anyMatch(this::isLiveOwnedEntity), readRitualCasterAwakened(caster));
+        getLogger().info("WAVE6_RITUAL_CASTER_TEST_STATE event=" + eventId
+                + " generation=" + generation + " caster=" + casterId
+                + " slot=" + ritualCasterSlots.getOrDefault(casterId, -1)
+                + " state=" + tactics + " guards="
+                + ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
+                        .filter(this::isLiveOwnedEntity).count());
+        emitDiagnostic("RITUAL_CASTER", "TEST_STATE", "INFO", 6,
+                "local-test-caster-state", null, casterId,
+                "ritual-caster-test:" + generation + ":" + casterId,
+                Map.of("state", tactics.name(), "guardsAlive",
+                        ritualGuardsByCaster.getOrDefault(casterId, Set.of()).stream()
+                                .filter(this::isLiveOwnedEntity).count()));
+        return true;
     }
 
     /** Invoke one real core ability while preserving its production target gates. */
@@ -5714,7 +5948,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     double fraction = requestedPhase == BossPhase.AWAKENING
                             ? 1.0D : requestedPhase.upperExclusive() - 0.01D;
                     boss.setHealth(Math.min(boss.getMaxHealth() * fraction, boss.getHealth()));
-                    synchronizeBossPhase(boss);
+                    if (isTestBoss(boss)
+                            && config != null
+                            && ("local".equalsIgnoreCase(config.environment())
+                            || "staging".equalsIgnoreCase(config.environment()))) {
+                        BossPhase previous = bossPhase;
+                        bossPhase = requestedPhase;
+                        boss.getPersistentDataContainer().set(keyBossPhase,
+                                PersistentDataType.STRING, bossPhase.name());
+                        getLogger().info("TEST_BOSS_STAGE_TRANSITION event=" + eventId
+                                + " boss=" + boss.getUniqueId() + " from=" + previous
+                                + " to=" + bossPhase + " health=" + boss.getHealth()
+                                + " max=" + boss.getMaxHealth());
+                        sendCurrentBossPhaseVisualUpdate(boss, bossPhase, "TEST_PHASE");
+                    } else {
+                        synchronizeBossPhase(boss);
+                    }
                     message(sender, "&aBoss phase " + requestedPhase.name() + " вызвана.");
                 } else {
                     message(sender, "&e/cmend boss phase <awakening|hunt|rift|overload|rage|last_seal>");
@@ -10360,6 +10609,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 mob.setAware(false);
                 return;
             }
+            if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
+                int livingGuards = ritualGuardsByCaster.getOrDefault(
+                                entity.getUniqueId(), Set.of()).stream()
+                        .filter(this::isLiveOwnedEntity)
+                        .toList().size();
+                RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
+                        livingGuards > 0, readRitualCasterAwakened(entity));
+                if (!RitualCasterTacticsPolicy.nativeAiEnabled(tactics)) {
+                    mob.setTarget(null);
+                    mob.getPathfinder().stopPathfinding();
+                    mob.setAI(false);
+                    mob.setAware(false);
+                    mob.setVelocity(new Vector());
+                    return;
+                }
+            }
             boolean wasDisabled = !mob.hasAI();
             mob.setAI(true);
             mob.setAware(true);
@@ -14622,13 +14887,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
             attemptRitualPrisonerCapture(now);
-            if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
-                return;
-            }
+        }
+        // The caster/guard state machine is live from spawn time.  Prisoner
+        // capture gates the drain, not the initial guarded-casting pose or
+        // the per-caster guard ownership watchdog.
+        tickRitualGuardGroups(now);
+        if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
+            return;
         }
         ensureRitualPrisoner(now);
         applyRitualSphereDrain(now);
-        tickRitualGuardGroups(now);
         tickRitualZones(now);
         tickRitualControls(now);
         if (now >= ritualNextAbilityMillis) {

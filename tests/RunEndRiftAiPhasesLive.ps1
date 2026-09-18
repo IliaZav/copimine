@@ -20,6 +20,7 @@ $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 $process = $null
+$cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
 $config = Get-Content -LiteralPath $configPath -Raw
 if ($config -notmatch '(?m)^\s*schema-version:\s*4\s*$' -or
@@ -65,6 +66,39 @@ function Wait-Log {
   throw "Timed out waiting for '$Pattern'."
 }
 
+function Wait-Until {
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Condition,
+    [Parameter(Mandatory = $true)][string]$Description,
+    [int]$Seconds = $TimeoutSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $result = & $Condition
+      if ($result) { return $result }
+    } catch {
+      # A state query can race entity spawn/despawn.  The condition remains
+      # fail-closed and the last error is reported by the timeout.
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for condition: $Description"
+}
+
+function Get-AiJson {
+  $raw = (Invoke-LocalRcon 'cmend debug ai --json') -replace '\u00A7.', ''
+  try {
+    $snapshot = $raw | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "Structured AI diagnostics were not valid JSON: $raw"
+  }
+  if ($snapshot.type -ne 'END_RIFT_AI_DIAGNOSTICS') {
+    throw "Structured AI diagnostics had an unexpected type: $raw"
+  }
+  return $snapshot
+}
+
 function Get-Core([string]$Status) {
   $match = [Regex]::Match($Status, 'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
   if (-not $match.Success) { throw "Core is missing from status: $Status" }
@@ -72,47 +106,50 @@ function Get-Core([string]$Status) {
 }
 
 function Wait-Online {
-  for ($attempt = 0; $attempt -lt 80; $attempt++) {
-    if ((Invoke-LocalRcon 'list') -match [Regex]::Escape($BotName)) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "AI probe player did not join: $BotName"
+  Wait-Until -Description "AI probe player online: $BotName" -Seconds 45 -Condition {
+    return (Invoke-LocalRcon 'list') -match [Regex]::Escape($BotName)
+  } | Out-Null
 }
 
 function Assert-AiDiagnostics {
   param(
     [string]$Label,
     [int]$MinimumMobile = 1,
-    [switch]$AllowPassiveRitualCasters
+    [int]$ExpectedCasterCount = 0,
+    [string]$ExpectedCasterState = ''
   )
-  $raw = (Invoke-LocalRcon 'cmend debug ai') -replace '\u00A7.', ''
-  $match = [Regex]::Match($raw, 'AI_DIAGNOSTICS.*mobile=(\d+)\s+aiEnabled=(\d+)\s+targeted=(\d+)\s+coreObjective=(\d+)\s+outside=(\d+)\s+onCore=(\d+)\s+bossCast=([A-Z_]+)')
-  if (-not $match.Success) { throw "$Label did not expose AI diagnostics: $raw" }
-  $roleMatch = [Regex]::Match($raw, 'ritualCasters=(\d+)\s+ritualCastersPassive=(\d+)\s+ritualCastersTargeted=(\d+)\s+ritualGuards=(\d+)')
-  if (-not $roleMatch.Success) { throw "$Label did not expose role-aware AI diagnostics: $raw" }
-  $mobile = [int]$match.Groups[1].Value
-  $enabled = [int]$match.Groups[2].Value
-  $outside = [int]$match.Groups[5].Value
-  $onCore = [int]$match.Groups[6].Value
-  $casterCount = [int]$roleMatch.Groups[1].Value
-  $passiveCasters = [int]$roleMatch.Groups[2].Value
-  $casterTargets = [int]$roleMatch.Groups[3].Value
-  $ritualGuards = [int]$roleMatch.Groups[4].Value
+  $snapshot = Get-AiJson
+  $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
+  $mobile = [int]$snapshot.mobile
+  $enabled = [int]$snapshot.aiEnabled
+  $outside = [int]$snapshot.outside
+  $onCore = [int]$snapshot.onCore
+  $casterCount = [int]$snapshot.ritualCasters
+  $passiveCasters = @($casters | Where-Object { -not [bool]$_.nativeAiEnabled }).Count
+  $casterTargets = [int]$snapshot.ritualCastersTargeted
+  $ritualGuards = [int]$snapshot.ritualGuards
   $expectedEnabled = $mobile
-  if ($AllowPassiveRitualCasters) {
-    # Wave 6 casters are deliberately server-controlled: they keep their
-    # native mob AI disabled while the guards live, but still channel the
-    # Ritual Sphere from the event controller.  The typed diagnostics expose
-    # the complete role counts because AI_TARGETS is intentionally capped.
-    if (($casterCount -lt 1) -or ($ritualGuards -lt 1) -or ($passiveCasters -ne $casterCount) -or ($casterTargets -ne 0)) {
-      throw "$Label did not keep every Ritual Caster passive with target=none while its guards were alive: $raw"
+  if ($ExpectedCasterCount -gt 0) {
+    if ($casterCount -ne $ExpectedCasterCount -or $casters.Count -ne $ExpectedCasterCount) {
+      throw "$Label expected $ExpectedCasterCount complete caster records: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
     }
-    $expectedEnabled = $mobile - $casterCount
+    if (-not [bool]$snapshot.ritualGuardOwnershipValid) {
+      throw "$Label reported invalid caster/guard ownership: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+    }
+    if ($ExpectedCasterState -and @($casters | Where-Object { $_.state -ne $ExpectedCasterState }).Count -gt 0) {
+      throw "$Label did not report caster state ${ExpectedCasterState}: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+    }
+    if ($ExpectedCasterState -eq 'GUARDED_CASTING' -and
+        @($casters | Where-Object { [bool]$_.nativeAiEnabled -or [bool]$_.canTargetPlayers -or $null -ne $_.target }).Count -gt 0) {
+      throw "$Label guarded casters were not passive and target-free: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+    }
+    $expectedEnabled = $mobile - $passiveCasters
   }
   if ($mobile -lt $MinimumMobile -or $enabled -ne $expectedEnabled -or $outside -ne 0 -or $onCore -ne 0) {
-    throw "$Label violated bounded AI diagnostics: $raw"
+    throw "$Label violated bounded AI diagnostics: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
   }
-  Write-Output "LIVE_CURRENT_AI_DIAGNOSTICS label=$Label mobile=$mobile enabled=$enabled ritual_casters=$casterCount passive_casters=$passiveCasters caster_targets=$casterTargets guards=$ritualGuards expected_enabled=$expectedEnabled outside=$outside on_core=$onCore"
+  Write-Output "LIVE_CURRENT_AI_DIAGNOSTICS label=$Label mobile=$mobile enabled=$enabled ritual_casters=$casterCount passive_casters=$passiveCasters caster_targets=$casterTargets guards=$ritualGuards expected_enabled=$expectedEnabled ownership=$([bool]$snapshot.ritualGuardOwnershipValid) outside=$outside on_core=$onCore"
+  return $snapshot
 }
 
 function Start-ProbeBot([int[]]$Core) {
@@ -137,7 +174,6 @@ try {
   $null = Invoke-LocalRcon ("effect give $BotName minecraft:resistance 1000 4 true")
   $null = Invoke-LocalRcon ("effect give $BotName minecraft:regeneration 1000 4 true")
   $null = Invoke-LocalRcon ("tp $BotName $($core[0] + 6) $($core[1]) $($core[2]) 180 0")
-  Start-Sleep -Seconds 2
 
   foreach ($wave in 1..7) {
     $null = Invoke-LocalRcon 'cmend wave clear'
@@ -146,19 +182,28 @@ try {
     if ($response -match '(?i)refused|missing|event world') { throw "Wave $wave test refused: $response" }
     Wait-Log -Pattern ('WAVE_TEST_STARTED.*wave=' + $wave + '\b') -AfterOffset $offset -Seconds 15 | Out-Null
     if ($wave -eq 4) {
-      # Wave 4 deliberately telegraphs the physical obelisks before its
-      # pressure pack is released.  A fixed three-second sleep races the
-      # 70-tick emergence timeline and can sample READY_FOR_PLAYERS with no
-      # mobile entities even though the wave is healthy.  Wait for the
-      # production marker emitted when the one-shot pack is actually started.
       Wait-Log -Pattern 'END_RIFT_OBELISK_MOBS_STARTED' -AfterOffset $offset -Seconds 15 | Out-Null
-    } else {
-      Start-Sleep -Seconds 3
     }
     if ($wave -eq 6) {
-      Assert-AiDiagnostics -Label ("wave-$wave") -AllowPassiveRitualCasters
+      Wait-Until -Description 'Wave 6 guarded caster diagnostics' -Condition {
+        try {
+          $snapshot = Get-AiJson
+          $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
+          return $casters.Count -eq 4 -and [int]$snapshot.ritualGuards -eq 12 `
+            -and [bool]$snapshot.ritualGuardOwnershipValid `
+            -and @($casters | Where-Object { $_.state -ne 'GUARDED_CASTING' }).Count -eq 0
+        } catch {
+          return $false
+        }
+      } | Out-Null
+      Assert-AiDiagnostics -Label ("wave-$wave") -ExpectedCasterCount 4 `
+        -ExpectedCasterState 'GUARDED_CASTING' | Out-Null
+      Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=4 guards=12 passive=true target=none ownership=true'
     } else {
-      Assert-AiDiagnostics -Label ("wave-$wave")
+      Wait-Until -Description ("Wave $wave AI diagnostics") -Condition {
+        try { return [int](Get-AiJson).mobile -ge 1 } catch { return $false }
+      } | Out-Null
+      Assert-AiDiagnostics -Label ("wave-$wave") | Out-Null
     }
     $delta = Log-Tail $offset
     if ($delta -notmatch 'WAVE_AI_TARGET|WAVE_AI_PATH|WAVE_AI_TACTIC|WAVE_SKELETON_BEHAVIOR|END_RIFT_OBELISK_ACTIVE|WAVE_6_PAIR_SPAWNED|END_RIFT_CHAMBERS_ASSIGNED') {
@@ -173,12 +218,89 @@ try {
   if ($response -match '(?i)refused|missing|event world') { throw "Current AI test refused: $response" }
   Wait-Log -Pattern 'TEST_AI_STARTED' -AfterOffset $offset -Seconds 20 | Out-Null
   Wait-Log -Pattern 'BOSS_AI_TARGET|BOSS_BRAIN_DECISION|WAVE_AI_TARGET' -AfterOffset $offset -Seconds 20 | Out-Null
-  Assert-AiDiagnostics -Label 'boss-brain' -MinimumMobile 1
+  Wait-Until -Description 'test boss AI diagnostics' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      return [int]$snapshot.mobile -ge 1 -and [bool]$snapshot.bossPresent
+    } catch { return $false }
+  } | Out-Null
+  Assert-AiDiagnostics -Label 'boss-brain' -MinimumMobile 1 | Out-Null
   $aiText = (Invoke-LocalRcon 'cmend debug ai') -replace '\u00A7.', ''
   if ($aiText -notmatch 'AI_PROFILE.*stage=AWAKENING.*abilityState=NONE') {
     throw "Current boss profile was not exposed: $aiText"
   }
   Write-Output 'LIVE_CURRENT_BOSS_AI_PASS target_selection=1 brain_decision=1 profile=AWAKENING'
+
+  $null = Invoke-LocalRcon 'cmend wave clear'
+  $null = Invoke-LocalRcon 'cmend test wave 6'
+  Wait-Until -Description 'Wave 6 lifecycle fixture' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      return [int]$snapshot.ritualCasters -eq 4 -and [int]$snapshot.ritualGuards -eq 12
+    } catch { return $false }
+  } | Out-Null
+  $guardedResponse = Invoke-LocalRcon 'cmend test ritual caster guarded'
+  if ($guardedResponse -notmatch '(?i)state=guarded') {
+    throw "Guarded caster test hook was not acknowledged: $guardedResponse"
+  }
+  Wait-Until -Description 'guarded caster state' -Condition {
+    try { return @((Get-AiJson).casters | Where-Object { $_.state -eq 'GUARDED_CASTING' }).Count -eq 4 } catch { return $false }
+  } | Out-Null
+  Write-Output 'LIVE_W6_CASTER_GUARDED_PASS casters=4 guards=12 passive=true target=none ownership=true'
+
+  $exposedResponse = Invoke-LocalRcon 'cmend test ritual caster exposed'
+  if ($exposedResponse -notmatch '(?i)state=exposed') {
+    throw "Exposed caster test hook was not acknowledged: $exposedResponse"
+  }
+  Wait-Until -Description 'exposed caster state' -Condition {
+    try {
+      $casters = @((Get-AiJson).casters)
+      return @($casters | Where-Object { $_.state -eq 'EXPOSED_CASTING' -and [int]$_.guardCount -eq 0 `
+          -and -not [bool]$_.nativeAiEnabled -and $null -eq $_.target }).Count -eq 1
+    } catch { return $false }
+  } | Out-Null
+  Write-Output 'LIVE_W6_CASTER_EXPOSED_PASS caster_count=1 guards=0 passive=true target=none'
+
+  $awakenedResponse = Invoke-LocalRcon 'cmend test ritual caster awakened'
+  if ($awakenedResponse -notmatch '(?i)state=awakened') {
+    throw "Awakened caster test hook was not acknowledged: $awakenedResponse"
+  }
+  Wait-Until -Description 'awakened caster state' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      $casters = @($snapshot.casters)
+      return @($casters | Where-Object { $_.state -eq 'AWAKENED_ATTACKING' `
+          -and [bool]$_.nativeAiEnabled -and [bool]$_.canTargetPlayers }).Count -eq 1
+    } catch { return $false }
+  } | Out-Null
+  $mixedSnapshot = Assert-AiDiagnostics -Label 'wave-6-mixed-caster-state' -MinimumMobile 1 -ExpectedCasterCount 4
+  if (@($mixedSnapshot.casters | Where-Object { $_.state -eq 'AWAKENED_ATTACKING' }).Count -ne 1) {
+    throw "Mixed Wave 6 diagnostics did not retain exactly one awakened caster."
+  }
+  Write-Output 'LIVE_W6_CASTER_AWAKENED_PASS caster_count=1 native_ai=true target_allowed=true mixed_state=true'
+
+  $phaseCommands = @('awakening', 'hunt', 'rift', 'overload', 'rage', 'last_seal')
+  foreach ($phaseCommand in $phaseCommands) {
+    $expectedStage = $phaseCommand.ToUpperInvariant()
+    $phaseOffset = Log-Length
+    $phaseResponse = Invoke-LocalRcon ("cmend boss phase $phaseCommand")
+    if ($phaseResponse -notmatch '(?i)Boss phase') {
+      throw "Boss phase command was not acknowledged for ${phaseCommand}: $phaseResponse"
+    }
+    Wait-Until -Description ("boss phase $expectedStage") -Condition {
+      try { return (Get-AiJson).stage -eq $expectedStage } catch { return $false }
+    } | Out-Null
+    $phaseText = (Invoke-LocalRcon 'cmend debug ai') -replace '\u00A7.', ''
+    if ($phaseText -notmatch ("AI_PROFILE.*stage=" + [Regex]::Escape($expectedStage))) {
+      throw "Boss phase profile was not exposed for ${expectedStage}: $phaseText"
+    }
+    $phaseMarker = Wait-Log -Pattern ('TEST_BOSS_STAGE_TRANSITION.*to=' + $expectedStage) `
+      -AfterOffset $phaseOffset -Seconds 10
+    if ($phaseMarker -notmatch ('to=' + [Regex]::Escape($expectedStage))) {
+      throw "Boss phase transition marker was incomplete for ${expectedStage}: $phaseMarker"
+    }
+    Write-Output "LIVE_CURRENT_BOSS_PHASE_PASS phase=$expectedStage profile=true transition=true"
+  }
 
   foreach ($kind in @('wave', 'boss')) {
     $offset = Log-Length
@@ -188,13 +310,45 @@ try {
     if ($guard -notmatch 'outside=false') { throw "Teleport guard allowed an out-of-bounds ${kind}: $guard" }
     Write-Output "LIVE_CURRENT_TELEPORT_GUARD_PASS kind=$kind outside=false"
   }
-  Write-Output 'LIVE_CURRENT_AI_PASS waves=1,2,3,4,5,6,7 boss_phases=AWAKENING,HUNT,RIFT,OVERLOAD,RAGE,LAST_SEAL teleport_guards=2'
+  Write-Output 'LIVE_CURRENT_AI_PASS waves=1,2,3,4,5,6,7 boss_phases_verified=6 caster_lifecycle_verified=3 teleport_guards=2'
 }
 finally {
-  try { Invoke-LocalRcon 'cmend wave clear' | Out-Null } catch { }
-  try { Invoke-LocalRcon 'cmend boss kill cleanup' | Out-Null } catch { }
+  try {
+    Invoke-LocalRcon 'cmend wave clear' | Out-Null
+  } catch {
+    $cleanupFailures.Add('cmend wave clear: ' + $_.Exception.Message)
+  }
+  try {
+    Invoke-LocalRcon 'cmend boss kill cleanup' | Out-Null
+  } catch {
+    $cleanupFailures.Add('cmend boss kill cleanup: ' + $_.Exception.Message)
+  }
   if ($process -and -not $process.HasExited) {
-    try { $process.Kill() } catch { }
-    try { $process.WaitForExit(5000) | Out-Null } catch { }
+    try {
+      $process.Kill()
+    } catch {
+      $cleanupFailures.Add('AI probe bot kill: ' + $_.Exception.Message)
+    }
+    try {
+      $process.WaitForExit(5000) | Out-Null
+    } catch {
+      $cleanupFailures.Add('AI probe bot wait: ' + $_.Exception.Message)
+    }
+  }
+  try {
+    $status = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+    $snapshot = Get-AiJson
+    $objectives = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+    if ($status -notmatch 'event-mobs=\s*0' -or [int]$snapshot.mobile -ne 0 `
+        -or [bool]$snapshot.bossPresent -or [int]$snapshot.ritualCasters -ne 0 `
+        -or [int]$snapshot.ritualGuards -ne 0 -or $objectives -notmatch 'visuals=\s*0') {
+      throw "cleanup residue status=$status ai=$($snapshot | ConvertTo-Json -Depth 12 -Compress) objectives=$objectives"
+    }
+    Write-Output 'LIVE_CURRENT_CLEANUP_PASS event_mobs=0 mobile=0 boss=false casters=0 guards=0 visuals=0'
+  } catch {
+    $cleanupFailures.Add('cleanup zero-state query: ' + $_.Exception.Message)
+  }
+  if ($cleanupFailures.Count -gt 0) {
+    throw ('AI probe cleanup failed: ' + ($cleanupFailures -join ' | '))
   }
 }

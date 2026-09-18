@@ -41,6 +41,7 @@ $script:activeLiveStepId = $null
 $script:livePaperResult = 'NOT RUN'
 $script:diagnosticReportResult = 'NOT RUN'
 $script:runMetadata = [ordered]@{}
+$cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
 function Write-Utf8NoBom {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
@@ -235,6 +236,26 @@ function Wait-Log {
   throw "Timed out waiting for '$Pattern'."
 }
 
+function Wait-Until {
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Condition,
+    [Parameter(Mandatory = $true)][string]$Description,
+    [int]$Seconds = $TimeoutSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  $lastError = ''
+  while ((Get-Date) -lt $deadline) {
+    try {
+      if (& $Condition) { return }
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  $suffix = if ([string]::IsNullOrWhiteSpace($lastError)) { '' } else { " Last error: $lastError" }
+  throw "Timed out waiting for $Description.$suffix"
+}
+
 function Get-Core([string]$Status) {
   $match = [Regex]::Match(($Status -replace '\u00A7.', ''), 'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
   if (-not $match.Success) { throw "Core is missing from status: $Status" }
@@ -276,21 +297,23 @@ function Start-Bot {
 
 function Stop-Bots {
   foreach ($process in $botProcesses) {
-    if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
+    if ($process -and -not $process.HasExited) {
+      try { $process.Kill() } catch { $cleanupFailures.Add("bot-kill:$($_.Exception.Message)") }
+    }
   }
   foreach ($process in $botProcesses) {
-    if ($process) { try { $process.WaitForExit(5000) | Out-Null } catch { } }
+    if ($process) {
+      try { $process.WaitForExit(5000) | Out-Null } catch { $cleanupFailures.Add("bot-wait:$($_.Exception.Message)") }
+    }
   }
   $botProcesses.Clear()
 }
 
 function Wait-BotsOffline([string[]]$Names) {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  Wait-Until -Description ("boundary probe players offline: " + ($Names -join ', ')) -Seconds 90 -Condition {
     $list = Invoke-LocalRcon 'list'
-    if (@($Names | Where-Object { $list -match [Regex]::Escape($_) }).Count -eq 0) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Boundary probe players did not disconnect: $($Names -join ', ')"
+    return @($Names | Where-Object { $list -match [Regex]::Escape($_) }).Count -eq 0
+  } | Out-Null
 }
 
 function Configure-Bot {
@@ -336,19 +359,26 @@ function Teleport-Player {
 }
 
 function Wait-BotsOnline([string[]]$Names) {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  Wait-Until -Description ("boundary probe players online: " + ($Names -join ', ')) -Seconds 90 -Condition {
     $list = Invoke-LocalRcon 'list'
-    if (@($Names | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Boundary probe players did not join: $($Names -join ', ')"
+    return @($Names | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0
+  } | Out-Null
 }
 
 function Wait-BotLoginSettle {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Names,
+    [Parameter(Mandatory = $true)][int64]$AfterOffset
+  )
   # The local accounts are authenticated by AuthMe shortly after the network
   # join.  Configure persistent attributes only after that profile reload, or
   # an old account value can silently replace the deterministic probe setup.
-  Start-Sleep -Seconds 7
+  Wait-Until -Description ("AuthMe login for " + ($Names -join ', ')) -Seconds 45 -Condition {
+    $tail = Log-Tail $AfterOffset
+    return @($Names | Where-Object {
+        $tail -notmatch ('\[AuthMe\].*' + [Regex]::Escape($_) + '\s+logged in')
+      }).Count -eq 0
+  } | Out-Null
 }
 
 function Sync-BotsHeldItem {
@@ -356,7 +386,42 @@ function Sync-BotsHeldItem {
   # makes Paper re-evaluate the item attribute modifier. Signal the already
   # configured clients after every replacement instead of racing from spawn.
   $null = Invoke-LocalRcon 'say END_RIFT_BOUNDARY_SYNC_HELD_ITEM'
-  Start-Sleep -Milliseconds 500
+}
+
+function Wait-BotsHeldItemSynced([string[]]$Names) {
+  Wait-Until -Description ("held-item sync for " + ($Names -join ', ')) -Seconds 20 -Condition {
+    $missing = @($Names | Where-Object {
+        $path = Join-Path $runtimeRoot ($_ + '-wave6-wave7.log')
+        -not (Test-Path -LiteralPath $path -PathType Leaf) -or
+          (Get-Content -LiteralPath $path -Raw) -notmatch ('HELD_ITEM_SYNC ' + [Regex]::Escape($_) + '\s+slot=1->0')
+      })
+    return $missing.Count -eq 0
+  } | Out-Null
+}
+
+function Get-BotUuid([string]$Name) {
+  $path = Join-Path $runtimeRoot ($Name + '-wave6-wave7.log')
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return '' }
+  $matches = [Regex]::Matches((Get-Content -LiteralPath $path -Raw),
+    'PLAYER_JOIN\s+' + [Regex]::Escape($Name) + '\s+uuid=([0-9a-fA-F-]{36})')
+  if ($matches.Count -eq 0) { return '' }
+  return $matches[$matches.Count - 1].Groups[1].Value.ToLowerInvariant()
+}
+
+function Get-PositivePlayerDamageLedger([int64]$AfterOffset) {
+  $ledger = @{}
+  $pattern = 'WAVE_MOB_PLAYER_DAMAGE_APPLIED[^\r\n]*?attacker=([0-9a-fA-F-]{36})[^\r\n]*?delta=([0-9]+(?:\.[0-9]+)?)'
+  foreach ($match in [Regex]::Matches((Log-Tail $AfterOffset), $pattern)) {
+    $delta = [double]::Parse($match.Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture)
+    if ($delta -le 0.0D) { continue }
+    $uuid = $match.Groups[1].Value.ToLowerInvariant()
+    if (-not $ledger.ContainsKey($uuid)) {
+      $ledger[$uuid] = [ordered]@{ hits = 0; totalDelta = 0.0D }
+    }
+    $ledger[$uuid].hits = [int]$ledger[$uuid].hits + 1
+    $ledger[$uuid].totalDelta = [double]$ledger[$uuid].totalDelta + $delta
+  }
+  return ,$ledger
 }
 
 function Restart-Bots([string[]]$Names, [int[]]$Core) {
@@ -366,12 +431,13 @@ function Restart-Bots([string[]]$Names, [int[]]$Core) {
   # post-restart completion probe has a full client lifetime.
   Stop-Bots
   Wait-BotsOffline -Names $Names
+  $authOffset = Log-Length
   foreach ($name in $Names) { Start-Bot -Name $name -Core $Core }
   Wait-BotsOnline -Names $Names
-  Wait-BotLoginSettle
+  Wait-BotLoginSettle -Names $Names -AfterOffset $authOffset
   foreach ($name in $Names) { Configure-Bot -Name $name -Core $Core }
   Sync-BotsHeldItem
-  Start-Sleep -Seconds 2
+  Wait-BotsHeldItemSynced -Names $Names
 }
 
 function Assert-BarrierBlock([int[]]$Core, [int]$FloorY, [int64]$AfterOffset) {
@@ -385,9 +451,13 @@ function Assert-BarrierBlock([int[]]$Core, [int]$FloorY, [int64]$AfterOffset) {
   foreach ($point in $points) {
     $probe = 'END_RIFT_BARRIER_PROBE_PASS'
     $null = Invoke-LocalRcon ("execute if block $($point.X) $($point.Y) $($point.Z) minecraft:barrier run say $probe")
-    Start-Sleep -Milliseconds 150
-    if ((Log-Tail $AfterOffset) -match $probe) {
+    try {
+      Wait-Until -Description ("barrier probe at $($point.X),$($point.Y),$($point.Z)") -Seconds 3 -Condition {
+        return (Log-Tail $AfterOffset) -match $probe
+      } | Out-Null
       return "$($point.X),$($point.Y),$($point.Z)"
+    } catch {
+      # Probe the next deterministic cell when this candidate is not a barrier.
     }
   }
   throw 'Wave 7 created no probeable physical BARRIER cell.'
@@ -570,14 +640,16 @@ try {
   # PDC/journal recovery boundary without touching an official roster.
   $restartLogLengthBefore = Log-Length
   $restartMarkerBefore = [Regex]::Matches((Read-Log), 'END_RIFT_WAVE7_BARRIERS_REHYDRATED').Count
-  $null = Invoke-LocalRcon 'save-all'
-  Start-Sleep -Seconds 1
+  $saveResponse = Invoke-LocalRcon 'save-all'
+  if ($saveResponse -notmatch '(?i)saved') {
+    throw "Paper did not acknowledge save-all before restart: $saveResponse"
+  }
   # The first bot processes are intentionally stopped before the server
   # process.  Mineflayer does not reconnect after a clean Paper restart, so
   # leaving them alive would make the post-restart natural-completion check
   # observe a valid recovery with no player-side combat clients.
   Stop-Bots
-  try { $null = Invoke-LocalRcon 'stop' } catch { }
+  $null = Invoke-LocalRcon 'stop'
   Wait-Port -Port 25576 -Expected $false -Seconds 60
   Start-LocalMinecraft
   if ($combatTraceProbe) {
@@ -594,6 +666,7 @@ try {
       }
     }
   }
+  $restartAuthOffset = Log-Length
   foreach ($name in $names) { Start-Bot -Name $name -Core $core }
   Wait-BotsOnline -Names $names
   # Validate recovery before the fresh clients begin attacking.  A disposable
@@ -609,10 +682,18 @@ try {
   # The recovered Wave 7 room is already closed.  Keep the player's durable
   # position and let the server-side reconnect/containment path own placement;
   # a central admin teleport would be rejected by the very wall being tested.
-  Wait-BotLoginSettle
+  Wait-BotLoginSettle -Names $names -AfterOffset $restartAuthOffset
   foreach ($name in $names) { Configure-Bot -Name $name -Core $core -SkipTeleport }
   Sync-BotsHeldItem
-  Start-Sleep -Seconds 7
+  Wait-BotsHeldItemSynced -Names $names
+
+  $playerUuids = @{}
+  foreach ($name in $names) {
+    Wait-Until -Description ("bot UUID for $name") -Seconds 20 -Condition {
+      return -not [string]::IsNullOrWhiteSpace((Get-BotUuid $name))
+    } | Out-Null
+    $playerUuids[$name] = Get-BotUuid $name
+  }
 
   Start-LiveStep -Id 'W7-NATURAL-CLEANUP-01' -Description 'Allow recovered Wave 7 to complete naturally and verify server-owned cleanup.'
   $naturalOffset = Log-Length
@@ -622,6 +703,19 @@ try {
   if ($naturalStatus -notmatch 'event-mobs=\s*0') {
     throw "Natural Wave 7 completion left event mobs: $naturalStatus"
   }
+  $damageLedger = Get-PositivePlayerDamageLedger -AfterOffset $naturalOffset
+  $damageParts = [System.Collections.Generic.List[string]]::new()
+  foreach ($name in $names) {
+    $uuid = $playerUuids[$name]
+    if (-not $damageLedger.ContainsKey($uuid) -or [int]$damageLedger[$uuid].hits -lt 1) {
+      throw "Wave 7 natural completion did not record positive player damage for $name ($uuid)."
+    }
+    $damageParts.Add(("{0}={1}:hits={2}:delta={3}" -f $name, $uuid,
+        [int]$damageLedger[$uuid].hits,
+        ([double]$damageLedger[$uuid].totalDelta).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)))
+  }
+  Write-Output ("LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS players={0} positive_attackers={1} {2}" -f
+    $names.Count, $damageParts.Count, ($damageParts -join ' '))
   Write-Output 'LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS blocks_restored=true displays_removed=true transient_entities=0 phase_unchanged=true'
   Complete-LiveStep
 
@@ -630,7 +724,10 @@ try {
   $null = Invoke-LocalRcon 'cmend test wave 7'
   Wait-Log -AfterOffset $cleanupOffset -Pattern 'END_RIFT_WAVE7_BARRIERS_READY' -Seconds $TimeoutSeconds | Out-Null
   $null = Invoke-LocalRcon 'cmend wave clear'
-  Start-Sleep -Seconds 1
+  Wait-Until -Description 'Wave 7 command cleanup zero state' -Seconds 20 -Condition {
+    $candidate = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+    return $candidate -match 'event-mobs=\s*0' -and $candidate -match 'rift-obelisks=0/6'
+  } | Out-Null
   $status = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
   if ($status -notmatch 'event-mobs=\s*0' -or $status -notmatch 'rift-obelisks=0/6') {
     throw "Wave 7 command cleanup left transient state: $status"
@@ -651,28 +748,61 @@ finally {
   try {
     $diagnosticStatus = Invoke-LocalRcon 'cmend debug status'
     Record-DiagnosticStatus -StatusText $diagnosticStatus
-  } catch { }
-  try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
-  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
-  if ($combatTraceProbe) { try { $null = Invoke-LocalRcon 'cmend debug trace off' } catch { } }
+  } catch { $cleanupFailures.Add("diagnostic-status:$($_.Exception.Message)") }
+  try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { $cleanupFailures.Add("wave-clear:$($_.Exception.Message)") }
+  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { $cleanupFailures.Add("boss-cleanup:$($_.Exception.Message)") }
+  if ($combatTraceProbe) {
+    try { $null = Invoke-LocalRcon 'cmend debug trace off' } catch { $cleanupFailures.Add("trace-off:$($_.Exception.Message)") }
+  }
   if ($previousLocalMobSpawning -ne $null) {
-    try { Set-LocalArenaMobSpawning -Enabled ($previousLocalMobSpawning -eq 'true') } catch { }
+    try { Set-LocalArenaMobSpawning -Enabled ($previousLocalMobSpawning -eq 'true') } catch {
+      $cleanupFailures.Add("mob-spawning-restore:$($_.Exception.Message)")
+    }
   }
-  try { $null = Invoke-LocalRcon 'stop' } catch { }
-  try { Wait-Port -Port 25576 -Expected $false -Seconds 30 } catch { }
+  if (Test-PortOpen 25576) {
+    try {
+      $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+      $finalObjectives = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+      $finalAi = Invoke-LocalRcon 'cmend debug ai --json' | ConvertFrom-Json
+      $zeroState = $finalStatus -match 'event-mobs=\s*0' -and
+        $finalStatus -match 'rift-obelisks=0/6' -and
+        $finalObjectives -match 'visuals=0' -and
+        [int]$finalAi.mobile -eq 0 -and -not [bool]$finalAi.bossPresent
+      if (-not $zeroState) {
+        $cleanupFailures.Add("zero-state:status=$finalStatus objectives=$finalObjectives ai=$($finalAi | ConvertTo-Json -Compress)")
+      } else {
+        Write-Output 'LIVE_WAVE7_CLEANUP_ZERO_STATE_PASS event_mobs=0 mobile=0 boss=false visuals=0 barriers=0'
+      }
+    } catch { $cleanupFailures.Add("zero-state-query:$($_.Exception.Message)") }
+  }
+  try { $null = Invoke-LocalRcon 'stop' } catch { $cleanupFailures.Add("server-stop:$($_.Exception.Message)") }
+  try { Wait-Port -Port 25576 -Expected $false -Seconds 30 } catch { $cleanupFailures.Add("server-stop-wait:$($_.Exception.Message)") }
   foreach ($process in $processes) {
-    if ($process -and -not $process.HasExited) { try { $process.WaitForExit(10000) | Out-Null } catch { } }
+    if ($process -and -not $process.HasExited) {
+      try { $process.WaitForExit(10000) | Out-Null } catch {
+        $cleanupFailures.Add("server-process-wait:$($_.Exception.Message)")
+      }
+    }
   }
   foreach ($process in $processes) {
-    if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
+    if ($process -and -not $process.HasExited) {
+      try { $process.Kill() } catch { $cleanupFailures.Add("server-process-kill:$($_.Exception.Message)") }
+    }
   }
   foreach ($process in $processes) {
-    if ($process) { try { $process.WaitForExit(5000) | Out-Null } catch { } }
+    if ($process) {
+      try { $process.WaitForExit(5000) | Out-Null } catch {
+        $cleanupFailures.Add("server-process-final-wait:$($_.Exception.Message)")
+      }
+    }
   }
   if ($null -eq $previousWave7Autopilot) {
     Remove-Item Env:END_RIFT_BOT_WAVE7_AUTOPILOT -ErrorAction SilentlyContinue
   } else {
     $env:END_RIFT_BOT_WAVE7_AUTOPILOT = $previousWave7Autopilot
+  }
+  if ($cleanupFailures.Count -gt 0) {
+    $script:livePaperResult = 'FAIL'
   }
   try {
     $script:runMetadata['livePaperResult'] = $script:livePaperResult
@@ -712,8 +842,11 @@ finally {
     if ($script:livePaperResult -eq 'PASS') { $script:livePaperResult = 'FAIL' }
     $script:runMetadata['livePaperResult'] = $script:livePaperResult
     $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
-    try { Write-RunMetadata } catch { }
+    try { Write-RunMetadata } catch { $cleanupFailures.Add("metadata-write:$($_.Exception.Message)") }
     Write-Error $_
     throw
+  }
+  if ($cleanupFailures.Count -gt 0) {
+    throw ("Wave 7 fail-closed cleanup failed: " + ($cleanupFailures -join '; '))
   }
 }

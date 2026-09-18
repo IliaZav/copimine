@@ -24,6 +24,15 @@ public final class RitualCasterTacticsPolicy {
         return state == State.AWAKENED_ATTACKING;
     }
 
+    /**
+     * Native mob AI belongs to the caster only after the first accepted hit.
+     * Guarded and exposed casters are driven by the event controller while
+     * they hold their raised-arm channeling pose.
+     */
+    public static boolean nativeAiEnabled(State state) {
+        return state == State.AWAKENED_ATTACKING;
+    }
+
     public static boolean castsSphere(State state) {
         return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING;
     }

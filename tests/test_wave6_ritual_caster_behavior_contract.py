@@ -114,13 +114,18 @@ def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> No
 def test_wave6_live_ai_probe_allows_server_controlled_passive_casters() -> None:
     probe = read(ROOT / "tests/RunEndRiftAiPhasesLive.ps1")
     root = read(SRC / "CopiMineEndEvent.java")
-    assert "AllowPassiveRitualCasters" in probe
-    assert "ritualCasters=(\\d+)" in probe
-    assert "$expectedEnabled = $mobile - $casterCount" in probe
-    assert "enabled -ne $expectedEnabled" in probe
+    assert "cmend debug ai --json" in probe
+    assert "ConvertFrom-Json" in probe
+    assert "ritualGuardOwnershipValid" in probe
+    assert "LIVE_W6_CASTER_GUARDED_PASS" in probe
+    assert "LIVE_W6_CASTER_EXPOSED_PASS" in probe
+    assert "LIVE_W6_CASTER_AWAKENED_PASS" in probe
+    assert "nativeAiEnabled" in probe
+    assert "ExpectedCasterState" in probe
+    assert "AllowPassiveRitualCasters" not in probe
     assert "ritualCastersTargeted" in probe
-    assert "target=none" in probe
-    assert "-AllowPassiveRitualCasters" in probe
     assert "ritualCasters=" in root
     assert "ritualCastersPassive=" in root
     assert "ritualCastersTargeted=" in root
+    assert "handleStructuredAiDiagnosticsJson" in root
+    assert "WAVE6_RITUAL_CASTER_TEST_STATE" in root

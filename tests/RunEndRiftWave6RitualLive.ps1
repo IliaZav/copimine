@@ -41,6 +41,7 @@ $previousTrace = $null
 $previousBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
 $previousSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
 $names = @($FirstBotName, $SecondBotName, $ThirdBotName, $FourthBotName)
+$cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
 function Write-Evidence {
   param([Parameter(Mandatory = $true)][string]$Text)
@@ -152,6 +153,63 @@ function Wait-Log {
     Start-Sleep -Milliseconds 250
   }
   throw "Timed out waiting for '$Pattern'. See $paperLog"
+}
+
+function Wait-Until {
+  param(
+    [Parameter(Mandatory = $true)][scriptblock]$Condition,
+    [Parameter(Mandatory = $true)][string]$Description,
+    [int]$Seconds = $TimeoutSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $result = & $Condition
+      if ($result) { return $result }
+    } catch {
+      # Entity and RCON state can be between ticks. Retry the condition and
+      # report a hard failure only after the bounded deadline.
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for condition: $Description"
+}
+
+function Get-AiJson {
+  $raw = (Invoke-LocalRcon 'cmend debug ai --json') -replace '\u00A7.', ''
+  try {
+    $snapshot = $raw | ConvertFrom-Json -ErrorAction Stop
+  } catch {
+    throw "Wave 6 structured AI diagnostics were not valid JSON: $raw"
+  }
+  if ($snapshot.type -ne 'END_RIFT_AI_DIAGNOSTICS') {
+    throw "Wave 6 structured AI diagnostics had an unexpected type: $raw"
+  }
+  return $snapshot
+}
+
+function Assert-RitualCasterDiagnostics {
+  param(
+    [Parameter(Mandatory = $true)][string]$ExpectedState,
+    [Parameter(Mandatory = $true)][int]$ExpectedCasters,
+    [Parameter(Mandatory = $true)][int]$ExpectedGuards
+  )
+  $snapshot = Get-AiJson
+  $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
+  if ([int]$snapshot.ritualCasters -ne $ExpectedCasters -or $casters.Count -ne $ExpectedCasters `
+      -or [int]$snapshot.ritualGuards -ne $ExpectedGuards `
+      -or -not [bool]$snapshot.ritualGuardOwnershipValid) {
+    throw "Ritual caster ownership diagnostics failed: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+  }
+  if (@($casters | Where-Object { $_.state -ne $ExpectedState }).Count -gt 0) {
+    throw "Expected all ritual casters to be ${ExpectedState}: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+  }
+  $expectedPassive = @($casters | Where-Object { -not [bool]$_.nativeAiEnabled }).Count
+  $expectedEnabled = [int]$snapshot.mobile - $expectedPassive
+  if ([int]$snapshot.aiEnabled -ne $expectedEnabled) {
+    throw "Mixed AI ownership count was wrong: $($snapshot | ConvertTo-Json -Depth 12 -Compress)"
+  }
+  return $snapshot
 }
 
 function Wait-Log-MarkerIncrease {
@@ -287,40 +345,37 @@ function Start-Bot {
 
 function Stop-Bots {
   foreach ($process in $botProcesses) {
-    if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
+    if ($process -and -not $process.HasExited) {
+      try { $process.Kill() } catch { $cleanupFailures.Add('bot kill: ' + $_.Exception.Message) }
+    }
   }
   foreach ($process in $botProcesses) {
-    if ($process) { try { $process.WaitForExit(5000) | Out-Null } catch { } }
+    if ($process) {
+      try { $process.WaitForExit(5000) | Out-Null } catch { $cleanupFailures.Add('bot wait: ' + $_.Exception.Message) }
+    }
   }
   $botProcesses.Clear()
 }
 
 function Wait-BotsOnline {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  Wait-Until -Description ("Wave 6 probe players online: " + ($names -join ', ')) -Seconds 90 -Condition {
     $list = Invoke-LocalRcon 'list'
-    if (@($names | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Wave 6 probe players did not join: $($names -join ', ')"
+    return @($names | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0
+  } | Out-Null
 }
 
 function Wait-BotsOffline {
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+  Wait-Until -Description ("Wave 6 probe players offline: " + ($names -join ', ')) -Seconds 90 -Condition {
     $list = Invoke-LocalRcon 'list'
-    if (@($names | Where-Object { $list -match [Regex]::Escape($_) }).Count -eq 0) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Wave 6 probe players did not disconnect: $($names -join ', ')"
+    return @($names | Where-Object { $list -match [Regex]::Escape($_) }).Count -eq 0
+  } | Out-Null
 }
 
 function Wait-BotOnline {
   param([Parameter(Mandatory = $true)][string]$Name)
-  for ($attempt = 0; $attempt -lt 120; $attempt++) {
-    $list = Invoke-LocalRcon 'list'
-    if ($list -match [Regex]::Escape($Name)) { return }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Wave 6 probe player did not rejoin: $Name"
+  Wait-Until -Description "Wave 6 probe player online: $Name" -Seconds 90 -Condition {
+    return (Invoke-LocalRcon 'list') -match [Regex]::Escape($Name)
+  } | Out-Null
 }
 
 function Configure-Bots([int[]]$Core) {
@@ -361,8 +416,7 @@ function Restart-LocalMinecraftForWave6([int[]]$Core) {
   Stop-Bots
   Wait-BotsOffline
   $null = Invoke-LocalRcon 'save-all'
-  Start-Sleep -Seconds 1
-  try { $null = Invoke-LocalRcon 'stop' } catch { }
+  try { $null = Invoke-LocalRcon 'stop' } catch { $cleanupFailures.Add('restart stop: ' + $_.Exception.Message) }
   Wait-Port -Port 25576 -Expected $false -Seconds 90
   Start-LocalMinecraft
   for ($attempt = 0; $attempt -lt 20; $attempt++) {
@@ -542,10 +596,14 @@ try {
   foreach ($name in $names) { Set-BotMode -Name $name -Mode ACTIVE }
   Start-Sleep -Milliseconds 500
   foreach ($name in $names) { Set-BotMode -Name $name -Mode PASSIVE }
-  Start-Sleep -Seconds 1
   Configure-Bots -Core $core
-  Start-Sleep -Seconds 2
-  $preCaptureHealth = Get-PlayerHealth -Name $SecondBotName
+  $preCaptureHealth = Wait-Until -Description 'Wave 6 prisoner health query before capture' -Condition {
+    try {
+      $health = Get-PlayerHealth -Name $SecondBotName
+      if ($health -gt 1.0D) { return $health }
+    } catch { return $false }
+    return $false
+  }
   Write-Evidence "LIVE_WAVE6_PRE_CAPTURE_HEALTH player=$SecondBotName health=$preCaptureHealth"
 
   $script:waveOffset = Get-LogLength
@@ -555,13 +613,25 @@ try {
   if ($readyLog -match 'END_RIFT_RINGS_READY|WAVE_6_PAIR_SPAWNED') {
     throw 'Legacy Collapse Rings appeared in the live Wave 6 log.'
   }
-  Start-Sleep -Seconds 3
+  Wait-Until -Description 'Wave 6 per-caster guarded diagnostics' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      $casters = if ($null -eq $snapshot.casters) { @() } else { @($snapshot.casters) }
+      return $casters.Count -eq 4 -and [int]$snapshot.ritualGuards -eq 12 `
+        -and [bool]$snapshot.ritualGuardOwnershipValid `
+        -and @($casters | Where-Object { $_.state -ne 'GUARDED_CASTING' }).Count -eq 0
+    } catch {
+      return $false
+    }
+  } | Out-Null
+  Assert-RitualCasterDiagnostics -ExpectedState 'GUARDED_CASTING' -ExpectedCasters 4 -ExpectedGuards 12 | Out-Null
+  Write-Evidence 'LIVE_WAVE6_CASTER_GUARDED_PASS casters=4 guards=12 native_ai=false targets=0 ownership=true'
   $preCaptureTail = Get-LogTail -Offset $waveOffset
   # There must be no prisoner / not captured marker before the physical entry.
   if ($preCaptureTail -match 'WAVE6_RITUAL_PRISONER_CAPTURED') {
     throw 'Wave 6 captured a prisoner before either bot entered the ritual seal.'
   }
-  Write-Evidence 'LIVE_WAVE6_WAITING_FOR_PRISONER_PASS outside_seal_seconds=3 auto_capture=false'
+  Write-Evidence 'LIVE_WAVE6_WAITING_FOR_PRISONER_PASS outside_seal_verified=true auto_capture=false'
 
   # Bot A remains at the outer combat band.  Bot B alone crosses the visible
   # seal, while Bot A intentionally has the lexicographically smaller UUID.
@@ -581,6 +651,11 @@ try {
   Write-Evidence "LIVE_WAVE6_CAPTURE_ORDER_PASS prisoner=$SecondBotName prisoner_uuid=$secondUuid free_lower_uuid=$firstUuid participants=4 casters=4 guards=12"
 
   Restart-LocalMinecraftForWave6 -Core $core
+  Wait-Until -Description 'Wave 6 guarded caster state after restart' -Condition {
+    try { return [int](Get-AiJson).ritualGuards -eq 12 } catch { return $false }
+  } | Out-Null
+  Assert-RitualCasterDiagnostics -ExpectedState 'GUARDED_CASTING' -ExpectedCasters 4 -ExpectedGuards 12 | Out-Null
+  Write-Evidence 'LIVE_WAVE6_CASTER_RESTART_GUARDED_PASS casters=4 guards=12 native_ai=false ownership=true'
 
   $null = Invoke-LocalRcon ("attribute $SecondBotName minecraft:generic.max_health base set 5")
   $null = Invoke-LocalRcon ("effect clear $SecondBotName")
@@ -597,7 +672,10 @@ try {
   $nowMillis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
   $waitForNineteenFiveMillis = ($script:firstDrainAtMillis - 500L) - $nowMillis
   if ($waitForNineteenFiveMillis -gt 0L) {
-    Start-Sleep -Milliseconds ([int][Math]::Min($waitForNineteenFiveMillis, 300000L))
+    $nineteenFiveDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + $waitForNineteenFiveMillis
+    Wait-Until -Description 'Wave 6 19.5 second drain boundary' -Seconds 30 -Condition {
+      return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $nineteenFiveDeadline
+    } | Out-Null
   }
   Assert-HealthEqual -Name $SecondBotName -Expected $healthAtCapture `
     -Reason 'prisoner health changed before the 20 second drain boundary' | Out-Null
@@ -633,7 +711,10 @@ try {
   $nowMillis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
   $waitForSecondDrainMillis = ($secondDrainAtMillis - 500L) - $nowMillis
   if ($waitForSecondDrainMillis -gt 0L) {
-    Start-Sleep -Milliseconds ([int][Math]::Min($waitForSecondDrainMillis, 300000L))
+    $secondDrainDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + $waitForSecondDrainMillis
+    Wait-Until -Description 'Wave 6 second drain boundary' -Seconds 30 -Condition {
+      return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $secondDrainDeadline
+    } | Out-Null
   }
   $drainsBeforeSecondDeadline = Get-AppliedRitualDrainCount -Offset $captureOffset
   if ($drainsBeforeSecondDeadline -ne $appliedDrainsAfterFirst) {
@@ -650,7 +731,14 @@ try {
   Write-Evidence 'LIVE_WAVE6_DRAIN_FLOOR_PASS remaining=1 intensity_not_increased=true'
 
   Assert-ExternalDamageIgnored -ExpectedHealth 1.0D
-  Start-Sleep -Seconds 20
+  $drainCountAtFloor = Get-AppliedRitualDrainCount -Offset $captureOffset
+  $floorDeadline = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + 20000L
+  Wait-Until -Description 'Wave 6 no extra floor drain interval' -Seconds 25 -Condition {
+    return [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() -ge $floorDeadline
+  } | Out-Null
+  if ((Get-AppliedRitualDrainCount -Offset $captureOffset) -ne $drainCountAtFloor) {
+    throw 'An extra ritual drain was applied after the prisoner reached the 1 HP floor.'
+  }
   Assert-HealthEqual -Name $SecondBotName -Expected 1.0D `
     -Reason 'additional drain changed health below the 1 HP floor' | Out-Null
 
@@ -715,8 +803,11 @@ try {
   Set-BotMode -Name $zoneTargetName -Mode PASSIVE
   $zoneCenter = Parse-LoggedCenter -Text $zoneLog
   Teleport-Player -Name $zoneTargetName -X $zoneCenter[0] -Y $zoneCenter[1] -Z $zoneCenter[2]
-  Start-Sleep -Seconds 2
-  $zoneEffects = Get-PlayerEffects -Name $zoneTargetName
+  $zoneEffects = Wait-Until -Description 'Wave 6 zone effects on free target' -Condition {
+    $effects = Get-PlayerEffects -Name $zoneTargetName
+    if ($effects -match 'wither' -and $effects -match 'slowness') { return $effects }
+    return $false
+  }
   $prisonerEffects = Get-PlayerEffects -Name $SecondBotName
   # Expected active effects are WITHER and SLOWNESS.  POISON is explicitly
   # forbidden by the Ritual Sphere contract.
@@ -733,9 +824,7 @@ try {
   # then clear the local control state so the following swap can form its one
   # pair from the two free participants.
   Teleport-Player -Name $zoneTargetName -X ($core[0] + 6.0D) -Y $core[1] -Z ($core[2] + 0.5D)
-  Start-Sleep -Milliseconds 500
   $null = Invoke-LocalRcon 'cmend test ritual controls clear'
-  Start-Sleep -Milliseconds 500
   $reverseOffset = Get-LogLength
   $reverseResponse = Invoke-LocalRcon 'cmend test ritual force reverse'
   if ($reverseResponse -notmatch '(?i)forced\s+REVERSE_CASTER') {
@@ -775,13 +864,51 @@ try {
   Write-Evidence 'LIVE_WAVE6_ABILITY_ROLES_PASS projectile=server sphere zone=4x4 reverse=server control_swap=server'
   Write-Evidence 'LIVE_WAVE6_FREE_TARGET_CONTROL_PASS reverse=true swap=true prisoner_excluded=true reverse_swap_mutex=true'
 
+  $exposedResponse = Invoke-LocalRcon 'cmend test ritual caster exposed'
+  if ($exposedResponse -notmatch '(?i)state=exposed') {
+    throw "Wave 6 exposed-caster hook was not acknowledged: $exposedResponse"
+  }
+  Wait-Until -Description 'Wave 6 exposed caster state' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      $casters = @($snapshot.casters)
+      return $casters.Count -eq 4 -and [bool]$snapshot.ritualGuardOwnershipValid `
+        -and @($casters | Where-Object { $_.state -eq 'EXPOSED_CASTING' -and [int]$_.guardCount -eq 0 `
+          -and -not [bool]$_.nativeAiEnabled -and $null -eq $_.target }).Count -eq 1
+    } catch { return $false }
+  } | Out-Null
+  Write-Evidence 'LIVE_WAVE6_CASTER_EXPOSED_PASS caster_count=1 guards_removed=3 native_ai=false target=none ownership=true'
+
+  $awakenedResponse = Invoke-LocalRcon 'cmend test ritual caster awakened'
+  if ($awakenedResponse -notmatch '(?i)state=awakened') {
+    throw "Wave 6 awakened-caster hook was not acknowledged: $awakenedResponse"
+  }
+  Wait-Until -Description 'Wave 6 mixed awakened caster state' -Condition {
+    try {
+      $snapshot = Get-AiJson
+      $casters = @($snapshot.casters)
+      return $casters.Count -eq 4 -and [bool]$snapshot.ritualGuardOwnershipValid `
+        -and @($casters | Where-Object { $_.state -eq 'AWAKENED_ATTACKING' `
+          -and [bool]$_.nativeAiEnabled -and [bool]$_.canTargetPlayers }).Count -eq 1 `
+        -and @($casters | Where-Object { $_.state -eq 'GUARDED_CASTING' }).Count -ge 1
+    } catch { return $false }
+  } | Out-Null
+  Write-Evidence 'LIVE_WAVE6_CASTER_AWAKENED_PASS caster_count=1 native_ai=true target_allowed=true mixed_state=true ownership=true'
+
   $completionOffset = Get-LogLength
   $null = Invoke-LocalRcon 'cmend test ritual complete'
   $cleanupPattern = 'WAVE6_RITUAL_COMPLETE[^\r\n]*cleanup=server[^\r\n]*sphere=false[^\r\n]*zones=0[^\r\n]*controls=0[^\r\n]*beams=0[^\r\n]*projectiles=0[^\r\n]*prisoner_tag=cleared'
   $cleanupLog = Wait-Log -AfterOffset $completionOffset -Pattern $cleanupPattern -Seconds $TimeoutSeconds
-  Start-Sleep -Seconds 2
-  $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
-  $objectiveStatus = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+  $cleanupState = Wait-Until -Description 'Wave 6 server cleanup zero state' -Condition {
+    $status = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+    $objectives = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+    if ($status -match 'event-mobs=\s*0' -and $objectives -match 'visuals=\s*0') {
+      return @($status, $objectives)
+    }
+    return $false
+  }
+  $finalStatus = $cleanupState[0]
+  $objectiveStatus = $cleanupState[1]
   if ($finalStatus -notmatch 'event-mobs=\s*0') {
     # The accepted status form is event-mobs=0 after server cleanup.
     throw "Wave 6 completion left event mobs: $finalStatus"
@@ -792,37 +919,57 @@ try {
   Write-Evidence 'LIVE_WAVE6_COMPLETION_CLEANUP_PASS sphere=false beams=0 zones=0 controls=0 prisoner_released=true prisoner_tag_removed=true transient_entities=0'
 }
 finally {
-  try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
-  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
+  try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { $cleanupFailures.Add('wave clear: ' + $_.Exception.Message) }
+  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { $cleanupFailures.Add('boss cleanup: ' + $_.Exception.Message) }
   if ($null -ne $previousTrace -and $previousTrace -match '(?i)Combat Trace:\s*ON') {
-    try { $null = Invoke-LocalRcon 'cmend debug trace on' } catch { }
+    try { $null = Invoke-LocalRcon 'cmend debug trace on' } catch { $cleanupFailures.Add('trace restore on: ' + $_.Exception.Message) }
   } else {
-    try { $null = Invoke-LocalRcon 'cmend debug trace off' } catch { }
+    try { $null = Invoke-LocalRcon 'cmend debug trace off' } catch { $cleanupFailures.Add('trace restore off: ' + $_.Exception.Message) }
   }
   if ($null -ne $previousLocalMobSpawning) {
-    try { $null = Invoke-LocalRcon ("gamerule doMobSpawning $previousLocalMobSpawning") } catch { }
+    try { $null = Invoke-LocalRcon ("gamerule doMobSpawning $previousLocalMobSpawning") } catch { $cleanupFailures.Add('doMobSpawning restore: ' + $_.Exception.Message) }
   }
   if ($null -ne $previousNaturalRegeneration) {
-    try { $null = Invoke-LocalRcon ("gamerule naturalRegeneration $previousNaturalRegeneration") } catch { }
+    try { $null = Invoke-LocalRcon ("gamerule naturalRegeneration $previousNaturalRegeneration") } catch { $cleanupFailures.Add('naturalRegeneration restore: ' + $_.Exception.Message) }
   }
   Stop-Bots
   if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
-    try { $serverProcess.Kill() } catch { }
-  }
-  if ($serverStartedByProbe) {
-    try { $null = Invoke-LocalRcon 'stop' } catch { }
+    try { $serverProcess.Kill() } catch { $cleanupFailures.Add('server process kill: ' + $_.Exception.Message) }
   }
   if ($null -eq $previousBotPassword) {
-    Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue
+    if (Test-Path Env:END_RIFT_BOT_PASSWORD) {
+      try { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction Stop } catch { $cleanupFailures.Add('bot password env cleanup: ' + $_.Exception.Message) }
+    }
   } else {
     $env:END_RIFT_BOT_PASSWORD = $previousBotPassword
   }
   if ($null -eq $previousSkipRegister) {
-    Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue
+    if (Test-Path Env:END_RIFT_BOT_SKIP_REGISTER) {
+      try { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction Stop } catch { $cleanupFailures.Add('skip register env cleanup: ' + $_.Exception.Message) }
+    }
   } else {
     $env:END_RIFT_BOT_SKIP_REGISTER = $previousSkipRegister
   }
   if (Test-Path -LiteralPath $controlDirectory -PathType Container) {
-    Remove-Item -LiteralPath $controlDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    try { Remove-Item -LiteralPath $controlDirectory -Recurse -Force -ErrorAction Stop } catch { $cleanupFailures.Add('control directory cleanup: ' + $_.Exception.Message) }
+  }
+  try {
+    $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+    $finalObjectives = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+    $finalAi = Get-AiJson
+    if (($finalStatus -notmatch 'event-mobs=\s*0' -or $finalObjectives -notmatch 'visuals=\s*0' `
+        -or [int]$finalAi.mobile -ne 0 -or [bool]$finalAi.bossPresent `
+        -or [int]$finalAi.ritualCasters -ne 0 -or [int]$finalAi.ritualGuards -ne 0)) {
+      throw "cleanup residue status=$finalStatus objectives=$finalObjectives ai=$($finalAi | ConvertTo-Json -Depth 12 -Compress)"
+    }
+    Write-Evidence 'LIVE_WAVE6_CLEANUP_ZERO_STATE_PASS event_mobs=0 mobile=0 boss=false casters=0 guards=0 visuals=0'
+  } catch {
+    $cleanupFailures.Add('cleanup zero-state query: ' + $_.Exception.Message)
+  }
+  if ($serverStartedByProbe) {
+    try { $null = Invoke-LocalRcon 'stop' } catch { $cleanupFailures.Add('server stop: ' + $_.Exception.Message) }
+  }
+  if ($cleanupFailures.Count -gt 0) {
+    throw ('Wave 6 cleanup failed: ' + ($cleanupFailures -join ' | '))
   }
 }

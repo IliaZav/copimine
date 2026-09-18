@@ -854,7 +854,8 @@ bot._client.on('packet', (data, meta) => {
 
 bot.once('spawn', () => {
   joined = true
-  console.log(`PLAYER_JOIN ${username} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled} wave7_hold_position=${wave7HoldPosition}`)
+  const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'
+  console.log(`PLAYER_JOIN ${username} uuid=${playerUuid} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled} wave7_hold_position=${wave7HoldPosition}`)
   if (!skipRegister) bot.chat(`/register ${botPassword} ${botPassword}`)
   for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat(`/login ${botPassword}`), delay)
   // Mineflayer's physics plugin already acknowledges server teleports and

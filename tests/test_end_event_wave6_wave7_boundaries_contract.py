@@ -219,6 +219,16 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "attribute $name minecraft:generic.attack_damage base set 1" in configure_body
     assert "function Wait-BotLoginSettle" in live_script
     assert live_script.count("Wait-BotLoginSettle") >= 3
+    assert "function Wait-Until" in live_script
+    assert "Wait-BotLoginSettle -Names $Names -AfterOffset $authOffset" in live_script
+    assert "Wait-BotLoginSettle -Names $names -AfterOffset $restartAuthOffset" in live_script
+    assert "function Get-BotUuid" in live_script
+    assert "function Get-PositivePlayerDamageLedger" in live_script
+    assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS" in live_script
+    assert "LIVE_WAVE7_CLEANUP_ZERO_STATE_PASS" in live_script
+    assert "$cleanupFailures =" in live_script
+    assert "catch { }" not in live_script
+    assert "Start-Sleep -Seconds" not in live_script
     restart_start = live_script.index("Start-LocalMinecraft")
     restart_body = live_script[restart_start:]
     assert "Configure-Bot -Name $name -Core $core -SkipTeleport" in restart_body
@@ -484,6 +494,8 @@ def test_wave7_bot_serializes_aim_and_attack_against_navigation_race() -> None:
     assert "bot._client.write('arm_animation', { hand: 0 })" in bot
     assert "if (bot.quickBarSlot !== 0)" in bot
     assert "bot.lookAt(" not in bot
+    assert "const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'" in bot
+    assert "PLAYER_JOIN ${username} uuid=${playerUuid}" in bot
 
 
 def test_wave7_cleanup_reconciles_persisted_cells_even_when_live_maps_are_empty() -> None:

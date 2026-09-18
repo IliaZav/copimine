@@ -48,7 +48,8 @@ def test_wave6_live_probe_proves_physical_seal_capture_order() -> None:
         "FourthBotName",
         "Start-Bot",
         "Wait-BotsOnline",
-        "Start-Sleep -Seconds 3",
+        "Wait-Until",
+        "LIVE_WAVE6_CASTER_GUARDED_PASS",
         "WAVE6_RITUAL_PRISONER_CAPTURED",
         "WAVE6_RITUAL_PRISONER_CAPTURED",
         "-Name $SecondBotName",
@@ -166,6 +167,9 @@ def test_wave6_live_probe_requires_exact_hook_ack_and_positive_free_targets() ->
         "WAVE6_RITUAL_COMPLETE[^\\r\\n]*cleanup=server[^\\r\\n]*sphere=false",
         "$cleanupLog",
         "projectiles=0",
+        "LIVE_WAVE6_CASTER_EXPOSED_PASS",
+        "LIVE_WAVE6_CASTER_AWAKENED_PASS",
+        "LIVE_WAVE6_CLEANUP_ZERO_STATE_PASS",
     ):
         assert needle in script
 

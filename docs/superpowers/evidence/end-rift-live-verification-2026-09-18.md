@@ -8,7 +8,8 @@ This evidence record is deliberately split by execution layer.
 - `sourceImplementationSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `testedArtifactBuildSha`: `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`)
 - `reportCommitSha`: `02a42f6bf944ce52370aa205686b8e150877c9f7` (`docs(end-rift): record exact-head hitbox closure`)
-- `githubActionsHeadSha`: `042d351433cd8b2deb39142236b620a802b7a916`
+- `githubActionsHeadSha`: `a9de3e3091faf9cb348c93908403f850f2241cf8`
+- `githubActionsSourceImplementationSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `nativeMinecraftTestedSha`: `NOT VERIFIED`
 - repository: `IliaZav/copimine`
 - branch: `codex/end-rift-event`
@@ -17,6 +18,17 @@ This evidence record is deliberately split by execution layer.
 The artifact hash is separate from the Git source SHA. The final probe-only
 commits did not change the server plugin byte stream; the local start script
 verified the artifact hash before each live run.
+
+The current documentation head has green GitHub Actions runs:
+
+- push: [35309013913](https://github.com/IliaZav/copimine/actions/runs/35309013913)
+- pull request: [35309017715](https://github.com/IliaZav/copimine/actions/runs/35309017715)
+
+Both required jobs (`static-and-contract` and `java-plugins`) completed
+successfully. Their End Rift diagnostic artifact digests are
+`sha256:95ccc1092fa6656b3415bd1b1c7634e98f9b55ebc46a17e8e13b5eab3446db2d`
+and
+`sha256:2261384df51e5db63c363ad5e83352bedf809221897fa04539ea6afbfb010fa4`.
 
 ## Contract layer
 

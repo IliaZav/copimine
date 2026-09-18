@@ -34,7 +34,8 @@ HEAD. No production deployment was performed.
 | tested resource pack SHA-256 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 | Purpur SHA-256 | `30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c` |
 | report introduction commit | `02a42f6bf944ce52370aa205686b8e150877c9f7` |
-| GitHub Actions head | `042d351433cd8b2deb39142236b620a802b7a916` |
+| GitHub Actions head | `a9de3e3091faf9cb348c93908403f850f2241cf8` |
+| GitHub Actions source implementation | `042d351433cd8b2deb39142236b620a802b7a916` |
 | nativeMinecraftTestedSha | `NOT VERIFIED` |
 
 The commits after `74356366` in this closure sequence are documentation and
@@ -125,8 +126,8 @@ rewritten as a fresh 042 runtime capture.
 | AI phase/caster live probe | `PASS` | all waves, six boss phases, caster lifecycle, teleport guards, cleanup |
 | Wave 6 Paper live probe | `PASS` | detailed exact artifact run with restart/drain/roles/cleanup markers |
 | Wave 7 Paper live probe | `PASS` | two-player damage ledger, restart, natural/command cleanup, zero residue |
-| GitHub Actions push | `PASS` | [run 35305762545](https://github.com/IliaZav/copimine/actions/runs/35305762545) |
-| GitHub Actions pull request | `PASS` | [run 35305765238](https://github.com/IliaZav/copimine/actions/runs/35305765238) |
+| GitHub Actions push | `PASS` | [run 35309013913](https://github.com/IliaZav/copimine/actions/runs/35309013913); diagnostics digest `95ccc109...` |
+| GitHub Actions pull request | `PASS` | [run 35309017715](https://github.com/IliaZav/copimine/actions/runs/35309017715); diagnostics digest `2261384d...` |
 | Exact-head native Minecraft screenshot | `NOT VERIFIED` | Computer Use returned `apps=[]` |
 | Exact-head 15-second flight video | `NOT VERIFIED` | no controllable native Minecraft window |
 | Production deployment | `NOT PERFORMED` | deliberate release boundary |

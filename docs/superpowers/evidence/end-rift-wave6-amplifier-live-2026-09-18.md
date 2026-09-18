@@ -1,7 +1,7 @@
 # End Rift Wave 6 amplifier live evidence — 2026-09-18
 
 This evidence belongs to Git commit
-`e35224fd3ad7b9886d95f71873e7286ba19b2a1c` on branch
+`ff7b4423fdd4959f6c686194d5dc1699d4ff3659` on branch
 `codex/end-rift-event`. It is a Paper/Purpur local-staging result, not a
 native-client visual acceptance result.
 
@@ -11,7 +11,7 @@ native-client visual acceptance result.
 - resource pack: SHA-256
   `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9`
 - server plugin: SHA-256
-  `4d7386e47e8728538fbc185d14cec2a654d4c4f19e4ab59d1217bc6977c50e36`
+  `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad`
 - client mod: SHA-256
   `1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769`
 - probe evidence log: `local-runtime/wave6-amplifier-live-20260918103134126.log`
@@ -39,6 +39,17 @@ WAVE6_RITUAL_ZONE_TELEGRAPH amplifier_count=1 duration_ms=5150
 WAVE6_RITUAL_ABILITY amplifier_count=0 successful_drains=0 effective_projectiles=3 effective_intensity=0 cooldown_ms=11000
 WAVE6_RITUAL_ZONE_TELEGRAPH amplifier_count=0 duration_ms=5000
 ```
+
+After the plugin was rebuilt from the current head and the isolated server was
+restarted, the bootstrap cleanup was also observed:
+
+```text
+WAVE6_LEGACY_WAVE7_ARTIFACTS_PURGED reason=bootstrap-non-wave7 displays=0 blocks=0
+WAVE6_LEGACY_WAVE3_PORTALS_PURGED reason=bootstrap-non-wave7 displays=0
+```
+
+The post-restart `/cmend status` was `state=COLLECTING`, `wave=0`,
+`event-mobs=0`, `boss=none`, and `occupied=0`.
 
 Cleanup returned `event-mobs=0`, `boss=none`, and no transient objective
 visuals. The local drain-hold command is gated to the local/staging test

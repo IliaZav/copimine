@@ -14,9 +14,9 @@ visual release claim.
 | Repository | [IliaZav/copimine](https://github.com/IliaZav/copimine) |
 | Branch | `codex/end-rift-event` |
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
-| `sourceImplementationSha` | `e35224fd3ad7b9886d95f71873e7286ba19b2a1c` (`fix(end-rift): restore wave 6 visuals and amplifier runtime`) |
-| `testedArtifactBuildSha` | `4d7386e47e8728538fbc185d14cec2a654d4c4f19e4ab59d1217bc6977c50e36` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `e35224fd3ad7b9886d95f71873e7286ba19b2a1c` (functional source/artifact evidence commit) |
+| `sourceImplementationSha` | `ff7b4423fdd4959f6c686194d5dc1699d4ff3659` (`fix(end-rift): purge stale visuals during bootstrap`) |
+| `testedArtifactBuildSha` | `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
+| `reportCommitSha` | `ff7b4423fdd4959f6c686194d5dc1699d4ff3659` (functional source/artifact evidence commit) |
 | `githubActionsHeadSha` | `PENDING — pushed current head; verify the resulting workflow run before release` |
 | `githubActionsSourceImplementationSha` | `PENDING — current push` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
@@ -36,7 +36,7 @@ The project Python 3.13 environment
 reported:
 
 ```text
-615 passed, 58 warnings in 18.17s
+616 passed, 58 warnings in 16.79s
 ```
 
 The system Python 3.14 collection was not used as a project result because it
@@ -104,6 +104,18 @@ the unamplified path at `effective_projectiles=3`, `effective_intensity=0`,
 The Wave 6 start log removed one stale Wave 7 display
 (`displays=1 blocks=0`) and found no Wave 3 portal display (`displays=0`).
 After cleanup the server reported zero event mobs and zero transient visuals.
+
+After rebuilding the plugin and restarting the isolated server at the current
+head, the bootstrap path also emitted:
+
+```text
+WAVE6_LEGACY_WAVE7_ARTIFACTS_PURGED reason=bootstrap-non-wave7 displays=0 blocks=0
+WAVE6_LEGACY_WAVE3_PORTALS_PURGED reason=bootstrap-non-wave7 displays=0
+```
+
+The server then reported `phase=COLLECTING`, `wave=0`, `event-mobs=0`, and no
+active boss. This closes the stale-scene gap where a restart could otherwise
+leave old walls visible until Wave 6 started.
 
 The client texture root cause was also reproduced in the exact local client
 log: the old `EndermanEyesFeatureRendererMixin` descriptor expected

@@ -25,6 +25,11 @@ def test_probe_uses_structured_per_caster_state_and_proves_the_full_lifecycle() 
         "cmend test ritual caster guarded",
         "cmend test ritual caster exposed",
         "cmend test ritual caster awakened",
+        "controlDirectory",
+        "Set-ProbeBotMode",
+        "Set-ProbeBotMode -Mode PASSIVE",
+        "BOT_",
+        "PASSIVE",
     ):
         assert needle in probe
     source = (ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java").read_text(encoding="utf-8")

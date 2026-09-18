@@ -19,6 +19,9 @@ $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
+$controlDirectory = Join-Path $runtimeRoot 'ai-current-bot-control'
+$controlFile = Join-Path $controlDirectory ($BotName + '.mode')
+$botOutput = Join-Path $runtimeRoot 'ai-current-bot.log'
 $process = $null
 $cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
@@ -154,15 +157,30 @@ function Assert-AiDiagnostics {
 
 function Start-ProbeBot([int[]]$Core) {
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $out = Join-Path $runtimeRoot 'ai-current-bot.log'
   $err = Join-Path $runtimeRoot 'ai-current-bot.err.log'
   $args = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
     ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
-    ([string]($Core[2] + 0.5D)) + ' 20 900'
-  return Start-Process -FilePath $node -ArgumentList $args -WorkingDirectory $root -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru
+    ([string]($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
+  return Start-Process -FilePath $node -ArgumentList $args -WorkingDirectory $root -RedirectStandardOutput $botOutput -RedirectStandardError $err -WindowStyle Hidden -PassThru
+}
+
+function Set-ProbeBotMode([ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7')][string]$Mode) {
+  if (-not (Test-Path -LiteralPath $controlDirectory)) {
+    New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+  }
+  Set-Content -LiteralPath $controlFile -Value $Mode -NoNewline -Encoding ascii
+  Wait-Until -Description "AI probe bot mode $Mode" -Seconds 15 -Condition {
+    if (-not (Test-Path -LiteralPath $botOutput)) { return $false }
+    $botLog = Get-Content -LiteralPath $botOutput -Raw -ErrorAction SilentlyContinue
+    return $botLog -match ("BOT_" + [Regex]::Escape($Mode) + " " + [Regex]::Escape($BotName))
+  } | Out-Null
 }
 
 try {
+  if (-not (Test-Path -LiteralPath $controlDirectory)) {
+    New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+  }
+  Set-Content -LiteralPath $controlFile -Value 'ACTIVE' -NoNewline -Encoding ascii
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
   $status = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
@@ -212,6 +230,7 @@ try {
     Write-Output "LIVE_CURRENT_WAVE_AI_PASS wave=$wave decision_marker=1 bounded=1"
   }
 
+  Set-ProbeBotMode -Mode PASSIVE
   $null = Invoke-LocalRcon 'cmend wave clear'
   $offset = Log-Length
   $response = Invoke-LocalRcon 'cmend test ai'

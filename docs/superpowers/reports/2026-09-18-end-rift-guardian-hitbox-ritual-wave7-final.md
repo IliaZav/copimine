@@ -33,7 +33,7 @@ HEAD. No production deployment was performed.
 | tested client artifact SHA-256 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
 | tested resource pack SHA-256 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 | Purpur SHA-256 | `30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c` |
-| report introduction commit | `PENDING — recorded in the follow-up metadata commit` |
+| report introduction commit | `02a42f6bf944ce52370aa205686b8e150877c9f7` |
 | GitHub Actions head | `042d351433cd8b2deb39142236b620a802b7a916` |
 | nativeMinecraftTestedSha | `NOT VERIFIED` |
 
@@ -167,4 +167,3 @@ RELEASE`.
   changed.
 - Old untracked captures and diagnostics in the worktree are user-owned and
   were preserved; they were neither deleted nor relabeled.
-

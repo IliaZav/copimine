@@ -16,7 +16,7 @@ visual release claim.
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
 | `sourceImplementationSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
 | `testedArtifactBuildSha` | `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `PENDING — set to the report introduction commit in the follow-up metadata commit` |
+| `reportCommitSha` | `02a42f6bf944ce52370aa205686b8e150877c9f7` (`docs(end-rift): record exact-head hitbox closure`) |
 | `githubActionsHeadSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
@@ -139,7 +139,7 @@ The exact current head has both required workflows green:
 - [push run 35305762545](https://github.com/IliaZav/copimine/actions/runs/35305762545)
 - [pull-request run 35305765238](https://github.com/IliaZav/copimine/actions/runs/35305765238)
 
-Both runs report `completed / success` for
+Both runs report `completed / success` for the exact implementation head
 `042d351433cd8b2deb39142236b620a802b7a916`.
 
 ## Native visual gate

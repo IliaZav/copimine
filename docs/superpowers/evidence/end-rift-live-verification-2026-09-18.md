@@ -7,7 +7,7 @@ This evidence record is deliberately split by execution layer.
 
 - `sourceImplementationSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `testedArtifactBuildSha`: `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`)
-- `reportCommitSha`: `PENDING until the report-introduction commit is recorded`
+- `reportCommitSha`: `02a42f6bf944ce52370aa205686b8e150877c9f7` (`docs(end-rift): record exact-head hitbox closure`)
 - `githubActionsHeadSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `nativeMinecraftTestedSha`: `NOT VERIFIED`
 - repository: `IliaZav/copimine`

@@ -2,7 +2,7 @@
 
 This evidence was collected while validating the implementation now recorded
 at Git commit
-`2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` on branch
+`d13a0a84e5dfce575378447c112b5029a34bdc44` on branch
 `codex/end-rift-event`. The live amplifier run itself predates the final
 credential-removal-only commit, so the markers below are unchanged functional
 evidence from the same source line. It is a Paper/Purpur local-staging result,
@@ -16,7 +16,7 @@ not a native-client visual acceptance result.
 - server plugin: SHA-256
   `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad`
 - client mod: SHA-256
-  `1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769`
+  `81b9366bc6a8c5883464ee9df680f1404bbbc9157e35415e89018b8bc83880df`
 - probe evidence log: `local-runtime/wave6-amplifier-live-20260918103134126.log`
 
 ## Exact client profile runtime load
@@ -26,13 +26,20 @@ The requested client profile was synchronized at
 `CopiMineClient-0.1.1.jar` with the client hash above, and
 `CopiMineResourcePack.zip` with the resource-pack hash above. The pack is
 listed once in the profile's active resource-pack option. The fresh client
-runtime log is `local-runtime/client-direct-20260918111901.stdout.log`; it
+runtime log is `local-runtime/client-direct-20260918120300.stdout.log`; it
 records `copimineclient 0.1.1` and `file/CopiMineResourcePack.zip` in the
 active resource manager and no CopiMine/mixin/Rift Guardian error.
 
 This proves artifact installation and runtime loading only. The Computer Use
 bridge did not expose the native Minecraft window, so it does not prove that
 the model is visually correct in-game.
+
+The current client artifact includes the carrier recovery used by the Wave 6
+scene: `ItemDisplay` carriers with `CustomModelData=830017` are discovered
+even if bridge metadata is late, the `READY` pose is used as a safe fallback,
+and the vanilla flat-item renderer is suppressed for those carriers. This
+removes the tiny fallback item that previously hid the articulated tentacle
+rig; native visual acceptance is still a separate gate.
 
 ## Live markers
 

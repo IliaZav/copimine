@@ -14,17 +14,18 @@ visual release claim.
 | Repository | [IliaZav/copimine](https://github.com/IliaZav/copimine) |
 | Branch | `codex/end-rift-event` |
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
-| `sourceImplementationSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` (`fix(end-rift): remove hardcoded live probe credential`) |
+| `sourceImplementationSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` (`fix(end-rift): recover articulated tentacle carriers`) |
 | `testedArtifactBuildSha` | `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` (functional source/artifact evidence commit) |
-| `githubActionsHeadSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` |
-| `githubActionsSourceImplementationSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` |
+| `reportCommitSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` (functional source/artifact evidence commit) |
+| `githubActionsHeadSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` |
+| `githubActionsSourceImplementationSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
 
 The current source HEAD contains the Wave 6 amplifier policy, stale-scene
-cleanup, prisoner anchor/VFX corrections, and the client entity-renderer
-descriptor fix. The server plugin artifact is byte-identical to the recorded
+cleanup, prisoner anchor/VFX corrections, the client entity-renderer
+descriptor fix, and the articulated tentacle-carrier fallback. The server
+plugin artifact is byte-identical to the recorded
 `testedArtifactBuildSha`.
 
 ## Current exact-head results
@@ -132,7 +133,7 @@ profile was not changed. The profile now has exactly one
 
 ```text
 CopiMineClient-0.1.1.jar
-SHA-256 1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769
+SHA-256 81b9366bc6a8c5883464ee9df680f1404bbbc9157e35415e89018b8bc83880df
 ```
 
 The current resource pack is installed at
@@ -149,7 +150,16 @@ against the local server at `127.0.0.1:25566`. Its fresh
 `logs/latest.log` records both `copimineclient 0.1.1` and
 `file/CopiMineResourcePack.zip` in the active resource manager, and records
 no CopiMine/mixin/Rift Guardian error. The captured runtime log is
-`local-runtime/client-direct-20260918111901.stdout.log`.
+`local-runtime/client-direct-20260918120300.stdout.log`.
+
+The client-side tentacle fix now recognizes the real `ItemDisplay` carrier by
+`CustomModelData=830017` in addition to the bridge UUID, deduplicates both
+discovery paths, and renders the articulated rig even when bridge pose data
+arrives late. In that late-data case it uses the deterministic `READY` pose.
+`DisplayEntityRendererMixin` suppresses the vanilla flat-item fallback for the
+same carrier, which is the path that previously produced the tiny red square
+instead of the large tentacle model. The rig remains the intended roughly
+4.75-block display; its size is not being hidden by an arbitrary scale hack.
 
 This is runtime load evidence, not a visual acceptance claim. The same log
 contains unrelated malformed shield-model errors from another installed
@@ -203,17 +213,17 @@ The committed evidence summary is
 | Artifact | SHA-256 |
 | --- | --- |
 | `CopiMineEndEvent.jar` | `4d7386e47e8728538fbc185d14cec2a654d4c4f19e4ab59d1217bc6977c50e36` |
-| `CopiMineClient.jar` | `1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769` |
+| `CopiMineClient.jar` | `81b9366bc6a8c5883464ee9df680f1404bbbc9157e35415e89018b8bc83880df` |
 | `CopiMineResourcePack.zip` | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 | `Purpur server jar` | `30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c` |
-| `CopiMineMods.zip` | `e5c9c848df155ff0922bbfa82bafa94f50a164f1da49f671d548233da6dec239` |
+| `CopiMineMods.zip` | `d59e93a9423cf5e7ec414cfe759c776f986d06aab206046b0991f7604698a471` |
 
 The resource-pack generator’s recorded SHA-1 is
 `a04f7d1c93465cd0f79db6bad5c2b12c3f1ab6a6`.
 
 ## GitHub CI
 
-The current source head `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` has both
+The current source head `d13a0a84e5dfce575378447c112b5029a34bdc44` has both
 required workflows green:
 
 - [push run 35322355210](https://github.com/IliaZav/copimine/actions/runs/35322355210)
@@ -231,7 +241,7 @@ loaded, but the Computer Use bridge still exposed no native application window
 exact-head Minecraft screenshot or 15-second flight video can be honestly
 attached as current visual proof. Existing PNG/MP4 files under
 `artifacts/end-rift-v3-evidence/` are preserved, but are not relabeled as
-evidence for `2f8e8ed3`.
+evidence for `d13a0a84`.
 
 The exact operator procedure for the remaining native gate is committed at
 `docs/superpowers/evidence/end-rift-native-capture-procedure.md`. It covers

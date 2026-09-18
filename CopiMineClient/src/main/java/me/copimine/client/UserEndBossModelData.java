@@ -137,11 +137,11 @@ final class UserEndBossModelData {
                     unrotated.add(cube);
                 }
             }
-            replaceCuboids(part, unrotated, bone.pivot());
+            replaceCuboids(part, unrotated);
             for (int index = 0; index < rotated.size(); index++) {
                 ModelPart rotatedPart = part.getChild("source_cube_" + index);
                 Cube cube = rotated.get(index);
-                replaceCuboids(rotatedPart, List.of(cube), cube.pivot());
+                replaceCuboids(rotatedPart, List.of(cube));
             }
         }
     }
@@ -163,7 +163,7 @@ final class UserEndBossModelData {
         return findChildByName(root, sourceName);
     }
 
-    private static void replaceCuboids(ModelPart part, List<Cube> cubes, Point pivot) {
+    private static void replaceCuboids(ModelPart part, List<Cube> cubes) {
         Object partObject = part;
         if (part == null || !(partObject instanceof ModelPartAccessor)) {
             throw new IllegalStateException("Missing runtime cuboid part for supplied End Rift model");
@@ -181,52 +181,54 @@ final class UserEndBossModelData {
             if (!(cuboid instanceof ModelPartCuboidAccessor cuboidAccessor)) {
                 throw new IllegalStateException("Missing runtime cuboid accessor for supplied End Rift model");
             }
-            cuboidAccessor.copimine$setSides(createFaceQuads(cube, pivot));
+            ModelPart.Quad[] templateSides = cuboidAccessor.copimine$getSides();
+            cuboidAccessor.copimine$setSides(createFaceQuads(cube, templateSides));
             replacements.add(cuboid);
         }
         accessor.copimine$setCuboids(List.copyOf(replacements));
     }
 
-    private static ModelPart.Quad[] createFaceQuads(Cube cube, Point pivot) {
-        BedrockCoordinateTransform.Vec3 convertedOrigin = BedrockCoordinateTransform.sourceDelta(
-                cube.origin().x() - pivot.x(),
-                cube.origin().y() + cube.size().y() - pivot.y(),
-                cube.origin().z() - pivot.z());
-        Point origin = new Point((float) convertedOrigin.x(), (float) convertedOrigin.y(),
-                (float) convertedOrigin.z());
-        Point size = cube.size();
-        Point min = new Point(origin.x(), origin.y(), origin.z());
-        Point max = new Point(origin.x() + size.x(), origin.y() + size.y(), origin.z() + size.z());
-        ModelPart.Vertex v000 = vertex(min.x(), min.y(), min.z());
-        ModelPart.Vertex v100 = vertex(max.x(), min.y(), min.z());
-        ModelPart.Vertex v110 = vertex(max.x(), max.y(), min.z());
-        ModelPart.Vertex v010 = vertex(min.x(), max.y(), min.z());
-        ModelPart.Vertex v001 = vertex(min.x(), min.y(), max.z());
-        ModelPart.Vertex v101 = vertex(max.x(), min.y(), max.z());
-        ModelPart.Vertex v111 = vertex(max.x(), max.y(), max.z());
-        ModelPart.Vertex v011 = vertex(min.x(), max.y(), max.z());
+    /**
+     * Keep the exact vertex topology that vanilla produced for the cuboid and
+     * replace only its texture coordinates. Bedrock's six-face atlas is packed
+     * independently per face; rebuilding the quads from min/max vertices here
+     * changes face orientation after the Y-axis coordinate reflection and puts
+     * valid atlas islands on the wrong physical surfaces.
+     */
+    private static ModelPart.Quad[] createFaceQuads(Cube cube, ModelPart.Quad[] templateSides) {
+        if (templateSides == null || templateSides.length != 6) {
+            throw new IllegalStateException("Unexpected vanilla cuboid side count for supplied End Rift model: "
+                    + (templateSides == null ? "null" : templateSides.length));
+        }
         return new ModelPart.Quad[]{
-                face(new ModelPart.Vertex[]{v101, v001, v000, v100}, cube.face("down"), Direction.DOWN),
-                face(new ModelPart.Vertex[]{v110, v010, v011, v111}, cube.face("up"), Direction.UP),
-                face(new ModelPart.Vertex[]{v000, v001, v011, v010}, cube.face("west"), Direction.WEST),
-                face(new ModelPart.Vertex[]{v100, v000, v010, v110}, cube.face("north"), Direction.NORTH),
-                face(new ModelPart.Vertex[]{v101, v100, v110, v111}, cube.face("east"), Direction.EAST),
-                face(new ModelPart.Vertex[]{v001, v101, v111, v011}, cube.face("south"), Direction.SOUTH)
+                face(templateSides[0], cube.face("down"), Direction.DOWN),
+                face(templateSides[1], cube.face("up"), Direction.UP),
+                face(templateSides[2], cube.face("west"), Direction.WEST),
+                face(templateSides[3], cube.face("north"), Direction.NORTH),
+                face(templateSides[4], cube.face("east"), Direction.EAST),
+                face(templateSides[5], cube.face("south"), Direction.SOUTH)
         };
     }
 
-    private static ModelPart.Vertex vertex(float x, float y, float z) {
-        return new ModelPart.Vertex(x, y, z, 0.0F, 0.0F);
-    }
-
-    private static ModelPart.Quad face(ModelPart.Vertex[] vertices, Face uv, Direction direction) {
-        return new ModelPart.Quad(vertices,
+    private static ModelPart.Quad face(ModelPart.Quad template, Face uv, Direction direction) {
+        return remapFace(template,
                 uv.u() * UV_SCALE,
                 uv.v() * UV_SCALE,
                 (uv.u() + uv.width()) * UV_SCALE,
                 (uv.v() + uv.height()) * UV_SCALE,
-                TEXTURE_WIDTH,
-                TEXTURE_HEIGHT,
+                direction);
+    }
+
+    static ModelPart.Quad remapFace(ModelPart.Quad template,
+                                    float u1, float v1, float u2, float v2,
+                                    Direction direction) {
+        if (template == null) {
+            throw new IllegalArgumentException("template quad must not be null");
+        }
+        return new ModelPart.Quad(
+                template.vertices.clone(),
+                u1, v1, u2, v2,
+                TEXTURE_WIDTH, TEXTURE_HEIGHT,
                 false,
                 direction);
     }

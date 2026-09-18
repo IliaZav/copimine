@@ -16,7 +16,7 @@ visual release claim.
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
 | `sourceImplementationSha` | `74356366d22b8438903c76b4cb7eda5eed22242a` |
 | `testedArtifactBuildSha` | `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `PENDING — set after this evidence/document commit` |
+| `reportCommitSha` | `69b03e92` (`docs(end-rift): record exact-head live verification`) |
 | `githubActionsHeadSha` | `PENDING — verify after the current branch push` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |

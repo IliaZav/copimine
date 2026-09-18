@@ -339,6 +339,8 @@ function Configure-Bot {
   $null = Invoke-LocalRcon ("effect give $name minecraft:instant_health 1 10 true")
   $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 1000 4 true")
   $null = Invoke-LocalRcon ("minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword")
+  $null = Invoke-LocalRcon ("minecraft:item replace entity $name hotbar.1 with minecraft:bow")
+  $null = Invoke-LocalRcon ("give $name minecraft:arrow 64")
   $weaponState = Invoke-LocalRcon ("data get entity $name SelectedItem")
   if ($weaponState -notmatch 'minecraft:netherite_sword') {
     throw "Boundary probe weapon setup failed for $name`: $weaponState"

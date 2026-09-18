@@ -214,6 +214,8 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "[switch]$SkipTeleport" in configure_body
     assert "attribute $name minecraft:generic.knockback_resistance base set 1" in configure_body
     assert "minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword" in configure_body
+    assert "minecraft:item replace entity $name hotbar.1 with minecraft:bow" in configure_body
+    assert "give $name minecraft:arrow 64" in configure_body
     assert "data get entity $name SelectedItem" in configure_body
     assert "Boundary probe weapon setup failed" in configure_body
     assert "attribute $name minecraft:generic.attack_damage base set 1" in configure_body
@@ -492,6 +494,10 @@ def test_wave7_bot_serializes_aim_and_attack_against_navigation_race() -> None:
     assert "bot._client.write('use_entity', {" in bot
     assert "hand: 0" in bot
     assert "bot._client.write('arm_animation', { hand: 0 })" in bot
+    assert "fireRangedSkeleton" in bot
+    assert "bot.activateItem()" in bot
+    assert "bot.deactivateItem()" in bot
+    assert "PLAYER_RANGED_ATTACK ${username}" in bot
     assert "if (bot.quickBarSlot !== 0)" in bot
     assert "bot.lookAt(" not in bot
     assert "const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'" in bot

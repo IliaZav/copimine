@@ -611,6 +611,18 @@ function attackNearest() {
     .filter(sameWave7Chamber)
     .filter(entity => distance(entity.position, bot.entity.position) <= meleeAttackDistance)
     .sort((a, b) => distance(a.position, bot.entity.position) - distance(b.position, bot.entity.position))[0]
+  if (!target && wave7Autopilot) {
+    const rangedTarget = eventMobs()
+      .filter(sameWave7Chamber)
+      .filter(entity => entity.name === 'skeleton'
+        && distance(entity.position, bot.entity.position) > meleeAttackDistance
+        && distance(entity.position, bot.entity.position) <= 18)
+      .sort((a, b) => distance(a.position, bot.entity.position) - distance(b.position, bot.entity.position))[0]
+    if (rangedTarget) {
+      fireRangedSkeleton(rangedTarget)
+      return
+    }
+  }
   if (!target) {
     if (wave7Autopilot && wave7HoldPosition) {
       stopNavigation()
@@ -665,6 +677,63 @@ function attackNearest() {
     })
     .catch(error => console.error(`ATTACK_ERROR ${username} ${error.stack || error}`))
     .finally(() => { meleeActionInFlight = false })
+}
+
+function fireRangedSkeleton(target) {
+  if (!bot.entity || !target || meleeActionInFlight) return
+  stopNavigation()
+  meleeActionInFlight = true
+  let selectSlot
+  try {
+    if (typeof bot.setQuickBarSlot === 'function' && bot.quickBarSlot !== 1) {
+      selectSlot = bot.setQuickBarSlot(1)
+    }
+  } catch (error) {
+    meleeActionInFlight = false
+    console.error(`RANGED_ATTACK_ERROR ${username} ${error.stack || error}`)
+    return
+  }
+  const finish = () => {
+    let restoreSlot
+    try {
+      restoreSlot = typeof bot.setQuickBarSlot === 'function'
+        ? bot.setQuickBarSlot(0) : null
+    } catch (error) {
+      console.error(`RANGED_SLOT_ERROR ${username} ${error.stack || error}`)
+    }
+    Promise.resolve(restoreSlot)
+      .catch(error => console.error(`RANGED_SLOT_ERROR ${username} ${error.stack || error}`))
+      .finally(() => { meleeActionInFlight = false })
+  }
+  Promise.resolve(selectSlot)
+    .then(() => {
+      const finalTarget = bot.entities[target.id]
+      if (!finalTarget || distance(finalTarget.position, bot.entity.position) > 18) {
+        finish()
+        return
+      }
+      lookAtServer(finalTarget.position.offset(0, 1.2, 0))
+      bot.activateItem()
+      console.log(`PLAYER_RANGED_CHARGE ${username} target=${finalTarget.id} type=skeleton distance=${distance(finalTarget.position, bot.entity.position).toFixed(2)}`)
+      setTimeout(() => {
+        try {
+          const refreshed = bot.entities[target.id]
+          if (refreshed) lookAtServer(refreshed.position.offset(0, 1.2, 0))
+          bot.deactivateItem()
+          bot._client.write('arm_animation', { hand: 0 })
+          attackCount += 1
+          console.log(`PLAYER_RANGED_ATTACK ${username} count=${attackCount} target=${target.id} type=skeleton`)
+        } catch (error) {
+          console.error(`RANGED_ATTACK_ERROR ${username} ${error.stack || error}`)
+        } finally {
+          finish()
+        }
+      }, 1100)
+    })
+    .catch(error => {
+      console.error(`RANGED_ATTACK_ERROR ${username} ${error.stack || error}`)
+      finish()
+    })
 }
 
 function isRiftFireball(entity) {

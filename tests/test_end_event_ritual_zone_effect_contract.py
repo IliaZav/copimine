@@ -63,7 +63,10 @@ def test_zone_tick_routes_free_players_through_wither_slowness_policy() -> None:
 def test_zone_reverse_state_is_server_owned_and_cleared_on_reconciliation() -> None:
     source = SOURCE.read_text(encoding="utf-8")
     tick_body = method_body(source, "private void tickRitualZones(long now)")
-    reverse_body = method_body(source, "private boolean startRitualReverse(Player target, long now")
+    reverse_body = method_body(
+        source,
+        "private boolean startRitualReverse(Player target, long now, boolean zoneOwned,",
+    )
 
     assert "ritualControlPartners.containsKey" in tick_body
     assert "ritualZoneReverseRecipients" in tick_body

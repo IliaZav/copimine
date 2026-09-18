@@ -112,6 +112,7 @@ import me.copimine.endevent.domain.BossHitboxProfile;
 import me.copimine.endevent.domain.BossHitboxTransformPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterPolicy;
 import me.copimine.endevent.domain.RitualSphereEncounterSnapshot;
+import me.copimine.endevent.domain.RitualAmplifierPolicy;
 import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 import me.copimine.endevent.domain.RitualSphereProjectilePolicy;
 import me.copimine.endevent.domain.RitualSphereProjectileProvenancePolicy;
@@ -547,6 +548,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean testPortalVisualMode;
     /** Keeps the disposable Wave 1 wave-front probe alive without combat state. */
     private boolean testWaveFrontVisualMode;
+    /** Local-only acceptance hook; production never suppresses prisoner drains. */
+    private boolean ritualTestDrainHold;
     private long waveObjectiveStartedMillis;
     private boolean waveObjectiveComplete;
     private int waveObjectiveLastSecond = -1;
@@ -947,6 +950,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private NamespacedKey keyRitualProjectileOwner;
     private NamespacedKey keyRitualProjectileTarget;
     private NamespacedKey keyRitualProjectileExpiresTick;
+    private NamespacedKey keyRitualProjectileIntensity;
+    private NamespacedKey keyRitualProjectileDamageMultiplier;
     private NamespacedKey keyWaveCommander;
     private NamespacedKey keyCommanderAura;
     private NamespacedKey keyShardPassiveActive;
@@ -1046,6 +1051,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             keyRitualProjectileOwner = new NamespacedKey(this, "end_event_ritual_projectile_owner");
             keyRitualProjectileTarget = new NamespacedKey(this, "end_event_ritual_projectile_target");
             keyRitualProjectileExpiresTick = new NamespacedKey(this, "end_event_ritual_projectile_expires_tick");
+            keyRitualProjectileIntensity = new NamespacedKey(this, "end_event_ritual_projectile_intensity");
+            keyRitualProjectileDamageMultiplier = new NamespacedKey(this,
+                    "end_event_ritual_projectile_damage_multiplier");
             keyWaveCommander = new NamespacedKey(this, "end_event_wave_commander");
             keyCommanderAura = new NamespacedKey(this, "end_event_commander_aura");
             keyShardPassiveActive = new NamespacedKey(this, "end_event_shard_passive_active");
@@ -5157,7 +5165,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (args.length < 3) {
-            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <projectile|zone|reverse|swap> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | drain <hold|release|reset> | force <projectile|zone|reverse|swap> | controls clear | complete");
             return;
         }
         String action = args[2].toLowerCase(Locale.ROOT);
@@ -5172,6 +5180,35 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             } else {
                 message(sender, "&cLOCAL_TEST_HOOK could not set caster state=" + requestedState + ".");
             }
+            return;
+        }
+        if ("drain".equals(action)) {
+            String requested = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "";
+            if (!Set.of("hold", "release", "reset").contains(requested)) {
+                message(sender, "&e/cmend test ritual drain <hold|release|reset>");
+                return;
+            }
+            if (!ritualWaveActive() || ritualSphereState == null) {
+                message(sender, "&cLOCAL_TEST_HOOK ritual sphere is not active.");
+                return;
+            }
+            if ("hold".equals(requested)) {
+                ritualTestDrainHold = true;
+            } else if ("release".equals(requested)) {
+                ritualTestDrainHold = false;
+            } else if (RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
+                long now = System.currentTimeMillis();
+                ritualSphereState = new RitualSphereEncounterPolicy.State(
+                        ritualSphereState.generation(), ritualSphereState.prisoner(),
+                        ritualSphereState.profile(), ritualSphereState.successfulDrains(),
+                        ritualSphereState.intensity(), now);
+            } else {
+                message(sender, "&cLOCAL_TEST_HOOK cannot reset a waiting ritual sphere drain clock.");
+                return;
+            }
+            getLogger().info("WAVE6_RITUAL_TEST_DRAIN_CONTROL event=" + eventId
+                    + " generation=" + generation + " action=" + requested);
+            message(sender, "&aLOCAL_TEST_HOOK drain=" + requested + ".");
             return;
         }
         if ("controls".equals(action)) {
@@ -5200,7 +5237,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         if (!"force".equals(action) || args.length < 4) {
-            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | force <projectile|zone|reverse|swap> | controls clear | complete");
+            message(sender, "&e/cmend test ritual caster <guarded|exposed|awakened> | drain <hold|release|reset> | force <projectile|zone|reverse|swap> | controls clear | complete");
             return;
         }
         RitualCasterTacticsPolicy.Role role = switch (args[3].toLowerCase(Locale.ROOT)) {
@@ -5327,18 +5364,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case PROJECTILE_CASTER -> {
                 int before = activeEventArrowAges.size();
                 spawnRitualProjectileVolley(livingCaster, target,
-                        ritualSphereState.profile().projectilesPerVolley());
+                        RitualAmplifierPolicy.projectileCount(
+                                ritualSphereState.profile(), ritualChannelingAmplifierCount()),
+                        ritualChannelingAmplifierCount());
                 applied = activeEventArrowAges.size() > before;
             }
             case ZONE_CASTER -> {
                 int before = ritualZoneCenters.size();
-                startRitualZone(target, now);
+                startRitualZone(target, now, ritualChannelingAmplifierCount());
                 applied = ritualZoneCenters.size() > before;
             }
-            case REVERSE_CASTER -> applied = startRitualReverse(target, now, false);
+            case REVERSE_CASTER -> applied = startRitualReverse(
+                    target, now, false, ritualChannelingAmplifierCount());
             case CONTROL_SWAP_CASTER -> {
                 int before = ritualControlPartners.size();
-                startRitualControlSwap(now);
+                startRitualControlSwap(now, ritualChannelingAmplifierCount());
                 applied = ritualControlPartners.size() > before;
             }
             default -> applied = false;
@@ -7564,9 +7604,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         boolean miniBoss = EndRiftAiPolicy.MiniBossSpell.ARROW_SALVO.id().equals(spell);
         int successfulDrains = ritualSphereState == null
                 ? 0 : ritualSphereState.successfulDrains();
+        int launchIntensity = readInt(arrow, keyRitualProjectileIntensity, successfulDrains);
+        double launchDamageMultiplier = readDouble(arrow, keyRitualProjectileDamageMultiplier,
+                RitualSphereScalingPolicy.projectileDamageMultiplier(launchIntensity));
         double damage = ritualProjectile
                 ? RITUAL_PROJECTILE_BASE_DAMAGE
-                * RitualSphereScalingPolicy.projectileDamageMultiplier(successfulDrains)
+                * launchDamageMultiplier
                 : miniBoss ? SkeletonCombatPolicy.arrowProfile(true).damage()
                 : BOSS_PROJECTILE_DAMAGE;
         if (shooter != null && shooter.isValid() && !shooter.isDead()) {
@@ -10161,24 +10204,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Keep logical owner, intended recipient, and expiry separate from launch position. */
-    private boolean tagRitualProjectileTarget(Arrow arrow, LivingEntity caster, Player target) {
+    private boolean tagRitualProjectileTarget(Arrow arrow, LivingEntity caster, Player target,
+                                              int liveAmplifiers) {
         if (arrow == null || caster == null || target == null
                 || keyRitualProjectileOwner == null || keyRitualProjectileTarget == null
-                || keyRitualProjectileExpiresTick == null) {
+                || keyRitualProjectileExpiresTick == null
+                || keyRitualProjectileIntensity == null
+                || keyRitualProjectileDamageMultiplier == null) {
             return false;
         }
         PersistentDataContainer data = arrow.getPersistentDataContainer();
         if (data.has(keyRitualProjectileOwner, PersistentDataType.STRING)
                 || data.has(keyRitualProjectileTarget, PersistentDataType.STRING)
-                || data.has(keyRitualProjectileExpiresTick, PersistentDataType.LONG)) {
+                || data.has(keyRitualProjectileExpiresTick, PersistentDataType.LONG)
+                || data.has(keyRitualProjectileIntensity, PersistentDataType.INTEGER)
+                || data.has(keyRitualProjectileDamageMultiplier, PersistentDataType.DOUBLE)) {
             return false;
         }
+        int successfulDrains = ritualSphereState == null
+                ? 0 : ritualSphereState.successfulDrains();
+        int boundedAmplifiers = RitualAmplifierPolicy.boundedAmplifiers(liveAmplifiers);
         data.set(keyRitualProjectileOwner, PersistentDataType.STRING,
                 caster.getUniqueId().toString());
         data.set(keyRitualProjectileTarget, PersistentDataType.STRING,
                 target.getUniqueId().toString());
         data.set(keyRitualProjectileExpiresTick, PersistentDataType.LONG,
                 eventTickCounter + EVENT_ARROW_MAX_TICKS);
+        data.set(keyRitualProjectileIntensity, PersistentDataType.INTEGER,
+                RitualAmplifierPolicy.effectiveIntensity(successfulDrains, boundedAmplifiers));
+        data.set(keyRitualProjectileDamageMultiplier, PersistentDataType.DOUBLE,
+                RitualAmplifierPolicy.projectileDamageMultiplier(successfulDrains,
+                        boundedAmplifiers));
         return true;
     }
 
@@ -10207,6 +10263,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (keyRitualProjectileExpiresTick != null) {
             data.remove(keyRitualProjectileExpiresTick);
+        }
+        if (keyRitualProjectileIntensity != null) {
+            data.remove(keyRitualProjectileIntensity);
+        }
+        if (keyRitualProjectileDamageMultiplier != null) {
+            data.remove(keyRitualProjectileDamageMultiplier);
         }
     }
 
@@ -14279,6 +14341,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Map.of("objective", "RITUAL_SPHERE", "reasonCode", "INVALID_CONTEXT"));
             return false;
         }
+        // Wave 6 is a clean visual boundary.  Do not let a stale Wave 7
+        // separator or Wave 3 portal display survive into the ritual scene,
+        // including entities left by an older generation that was interrupted
+        // before its in-memory visual index was rebuilt.
+        clearRealitySplitBarriers("wave6-start");
+        clearLegacyWave7BarrierArtifacts("wave6-start");
+        clearLegacyWave3PortalArtifacts("wave6-start");
         if (ritualSphereStateRehydrated
                 && ritualSphereState != null
                 && ritualSphereState.generation() == generation
@@ -14354,8 +14423,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualCasterUuids.add(caster.getUniqueId());
             ritualCasterSlots.put(caster.getUniqueId(), casterSlot);
             ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
-            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Кастёр Сферы "
-                    + (casterSlot + 1) + ChatColor.DARK_PURPLE + " · Щит: ПОЛНЫЙ");
+            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель");
             caster.setCustomNameVisible(true);
             for (int guardSlot = 0; guardSlot < RitualSphereScalingPolicy.GUARDS_PER_CASTER;
                     guardSlot++) {
@@ -14506,9 +14574,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (core == null) {
             return null;
         }
-        Location preferred = core.clone().add(0.0D, 0.0D, 3.4D);
-        Location safe = safeRitualLocation(core, preferred);
-        return safe == null ? core.clone().add(0.0D, 0.0D, 3.4D) : safe;
+        // The prisoner is a player entity, so its feet must sit roughly one
+        // block above the floor while its body remains inside the sphere
+        // centred at core + RITUAL_SPHERE_HEIGHT_OFFSET.  The old Z=3.4
+        // placement put the player beside the visual seal instead of inside
+        // it and was also routed through the mob minimum-core-distance guard.
+        Location preferred = core.clone().add(0.0D,
+                Math.max(1.0D, RITUAL_SPHERE_HEIGHT_OFFSET - 2.0D), 0.0D);
+        double[][] offsets = {
+                {0.0D, 0.0D}, {0.75D, 0.0D}, {-0.75D, 0.0D},
+                {0.0D, 0.75D}, {0.0D, -0.75D}
+        };
+        for (double[] offset : offsets) {
+            Location candidate = preferred.clone().add(offset[0], 0.0D, offset[1]);
+            Block feet = candidate.getBlock();
+            Block head = feet.getRelative(BlockFace.UP);
+            Block floor = feet.getRelative(BlockFace.DOWN);
+            if (feet.isPassable() && head.isPassable() && floor.getType().isSolid()
+                    && !feet.isLiquid() && !head.isLiquid() && !floor.isLiquid()) {
+                return new Location(candidate.getWorld(), feet.getX() + 0.5D,
+                        feet.getY(), feet.getZ() + 0.5D);
+            }
+        }
+        return preferred;
     }
 
     private Location safeRitualLocation(Location core, Location preferred) {
@@ -14851,6 +14939,122 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    /**
+     * Remove orphaned Wave 7 wall displays and legacy physical wall cells
+     * before a Wave 6 scene is shown.  Current Wave 7 barriers are journaled,
+     * but older builds used persistent AMETHYST displays/blocks without a
+     * recoverable journal; the bounded deterministic wall geometry is the only
+     * fallback sweep allowed here.
+     */
+    private void clearLegacyWave7BarrierArtifacts(String reason) {
+        Set<String> legacyColumns = new LinkedHashSet<>();
+        Set<RealitySplitBarrierPolicy.Cell> legacyCells = new LinkedHashSet<>();
+        for (int chamberCount = 2; chamberCount <= 4; chamberCount++) {
+            for (RealitySplitBarrierPolicy.Cell cell
+                    : RealitySplitBarrierPolicy.cells(chamberCount)) {
+                legacyCells.add(cell);
+                if (cell.level() == 1) {
+                    legacyColumns.add(coreX + cell.xOffset() + ":" + (coreZ + cell.zOffset()));
+                }
+            }
+        }
+
+        int removedDisplays = 0;
+        for (World world : getServer().getWorlds()) {
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                String kind = readString(entity, keyKind);
+                int wave = readInt(entity, keyWave, 0);
+                int eventWave = readInt(entity, keyEventWave, 0);
+                boolean taggedLegacyDisplay = EVENT_KIND_DISPLAY.equals(kind)
+                        && (wave == 7 || eventWave == 7)
+                        && entity.getScoreboardTags().contains("copimine_end_event");
+                boolean orphanAmethystDisplay = entity instanceof BlockDisplay display
+                        && display.getBlock().getMaterial() == Material.AMETHYST_BLOCK
+                        && isArenaLocation(entity.getLocation())
+                        && legacyColumns.contains(entity.getLocation().getBlockX() + ":"
+                        + entity.getLocation().getBlockZ());
+                if (!taggedLegacyDisplay && !orphanAmethystDisplay) {
+                    continue;
+                }
+                unregisterOwnedEntity(entity.getUniqueId(), "legacy-wave7-display-" + reason);
+                if (entity.isValid()) {
+                    entity.remove();
+                    removedDisplays++;
+                }
+                waveObjectiveVisuals.remove(entity.getUniqueId());
+                realitySplitBarrierVisuals.values().remove(entity.getUniqueId());
+            }
+        }
+
+        int removedBlocks = 0;
+        World world = Bukkit.getWorld(worldName);
+        if (world != null && isConfigured()) {
+            int floorY = combatFloorY();
+            for (RealitySplitBarrierPolicy.Cell cell : legacyCells) {
+                int x = coreX + cell.xOffset();
+                int y = floorY + cell.level();
+                int z = coreZ + cell.zOffset();
+                Location location = new Location(world, x, y, z);
+                if (!isArenaLocation(location) || isGateLocation(location)
+                        || x == coreX && z == coreZ) {
+                    continue;
+                }
+                Block block = world.getBlockAt(x, y, z);
+                if (block.getType() == Material.AMETHYST_BLOCK
+                        || block.getType() == Material.BARRIER) {
+                    block.setType(Material.AIR, false);
+                    removedBlocks++;
+                }
+            }
+        }
+        realitySplitBarrierVisuals.clear();
+        getLogger().info("WAVE6_LEGACY_WAVE7_ARTIFACTS_PURGED event=" + eventId
+                + " generation=" + generation + " reason=" + reason
+                + " displays=" + removedDisplays + " blocks=" + removedBlocks);
+        emitDiagnostic("WAVE7_BARRIER", "LEGACY_PURGE", "INFO", 6,
+                reason == null ? "wave6-legacy-wall-purge" : reason, null, null,
+                "wave6:" + eventId + ":" + generation,
+                Map.of("removedDisplays", removedDisplays, "removedBlocks", removedBlocks,
+                        "columnsChecked", legacyColumns.size(), "bounded", true));
+    }
+
+    /** Remove every old Wave 3 portal visual from the Wave 6 scene. */
+    private void clearLegacyWave3PortalArtifacts(String reason) {
+        int removed = 0;
+        for (World world : getServer().getWorlds()) {
+            for (Entity entity : new ArrayList<>(world.getEntities())) {
+                String kind = readString(entity, keyKind);
+                int wave = readInt(entity, keyWave, 0);
+                int eventWave = readInt(entity, keyEventWave, 0);
+                if (!EVENT_KIND_DISPLAY.equals(kind)
+                        || wave != 3 && eventWave != 3
+                        || !entity.getScoreboardTags().contains("copimine_end_event")) {
+                    continue;
+                }
+                unregisterOwnedEntity(entity.getUniqueId(), "legacy-wave3-portal-" + reason);
+                if (entity.isValid()) {
+                    entity.remove();
+                    removed++;
+                }
+                waveObjectiveVisuals.remove(entity.getUniqueId());
+                waveObjectiveVisualTexts.remove(entity.getUniqueId());
+                wavePortalVisualLayers.remove(entity.getUniqueId());
+            }
+        }
+        wavePortals.remove(3);
+        wavePortalModelVisuals.remove(3);
+        portalCaptureStates.remove(3);
+        portalWaveKnockbackUntilMillis.clear();
+        cancelPortalVisualAnimation();
+        getLogger().info("WAVE6_LEGACY_WAVE3_PORTALS_PURGED event=" + eventId
+                + " generation=" + generation + " reason=" + reason
+                + " displays=" + removed);
+        emitDiagnostic("PORTAL", "LEGACY_PURGE", "INFO", 6,
+                reason == null ? "wave6-legacy-portal-purge" : reason, null, null,
+                "wave6:" + eventId + ":" + generation,
+                Map.of("removedDisplays", removed, "wave3PortalStateCleared", true));
+    }
+
     /** Remove the retired Collapse Rings controller before Wave 6 starts. */
     private void clearLegacyCollapseRingState(String reason) {
         clearWorldVfxBeamsByPrefix("wave6-pair-");
@@ -15046,6 +15250,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void applyRitualSphereDrain(long now) {
+        if (ritualTestDrainHold && testWaveFrontVisualMode && activeWave == 6) {
+            return;
+        }
         UUID prisonerId = ritualPrisonerId();
         if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState) || prisonerId == null
                 || !RitualSphereEncounterPolicy.drainDue(ritualSphereState, now)) {
@@ -15104,10 +15311,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     isLiveOwnedEntity(casterId), livingGuards);
             RitualCasterTacticsPolicy.State tactics = RitualCasterTacticsPolicy.state(
                     livingGuards > 0, readRitualCasterAwakened(caster));
-            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Кастёр Сферы "
-                    + (ritualCasterSlots.getOrDefault(casterId, 0) + 1)
-                    + ChatColor.DARK_PURPLE + " · Щит: " + ritualShieldName(shield)
-                    + " · " + ritualCasterTacticsName(tactics));
+            caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель");
             caster.setCustomNameVisible(true);
             if (!RitualCasterTacticsPolicy.canTargetPlayers(tactics)) {
                 caster.setTarget(null);
@@ -15316,6 +15520,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 channelingAmplifiers++;
             }
         }
+        channelingAmplifiers = RitualAmplifierPolicy.boundedAmplifiers(channelingAmplifiers);
+        int successfulDrains = ritualSphereState.successfulDrains();
+        int effectiveIntensity = RitualAmplifierPolicy.effectiveIntensity(
+                successfulDrains, channelingAmplifiers);
 
         LivingEntity casterEntity = null;
         RitualCasterTacticsPolicy.State tactics = null;
@@ -15356,18 +15564,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case PROJECTILE_CASTER -> {
                 int before = activeEventArrowAges.size();
                 spawnRitualProjectileVolley(casterEntity, target,
-                        ritualSphereState.profile().projectilesPerVolley());
+                        RitualAmplifierPolicy.projectileCount(
+                                ritualSphereState.profile(), channelingAmplifiers),
+                        channelingAmplifiers);
                 yield activeEventArrowAges.size() > before;
             }
             case ZONE_CASTER -> {
                 int before = ritualZoneCenters.size();
-                startRitualZone(target, now);
+                startRitualZone(target, now, channelingAmplifiers);
                 yield ritualZoneCenters.size() > before;
             }
-            case REVERSE_CASTER -> startRitualReverse(target, now, false);
+            case REVERSE_CASTER -> startRitualReverse(target, now, false, channelingAmplifiers);
             case CONTROL_SWAP_CASTER -> {
                 int before = ritualControlPartners.size();
-                startRitualControlSwap(now);
+                startRitualControlSwap(now, channelingAmplifiers);
                 yield ritualControlPartners.size() > before;
             }
             case AMPLIFIER -> false;
@@ -15376,15 +15586,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        long cooldown = RitualSphereScalingPolicy.majorCooldownMillis(
-                ritualSphereState.profile(), ritualSphereState.successfulDrains());
+        long cooldown = RitualAmplifierPolicy.majorCooldownMillis(
+                ritualSphereState.profile(), successfulDrains, channelingAmplifiers);
         ritualNextAbilityMillis = now + Math.max(RITUAL_ABILITY_TICK_MILLIS, cooldown);
         getLogger().info("WAVE6_RITUAL_ABILITY event=" + eventId + " caster="
                 + casterEntity.getUniqueId() + " slot=" + slot + " role=" + role
                 + " state=" + tactics + " source=NATURAL"
                 + " amplifier_count=" + channelingAmplifiers
-                + " effective_projectiles=" + ritualSphereState.profile().projectilesPerVolley()
-                + " effective_intensity=" + ritualSphereState.intensity()
+                + " successful_drains=" + successfulDrains
+                + " effective_projectiles=" + RitualAmplifierPolicy.projectileCount(
+                        ritualSphereState.profile(), channelingAmplifiers)
+                + " effective_intensity=" + effectiveIntensity
                 + " cooldown_ms=" + cooldown);
         emitDiagnostic("RITUAL_CASTER", "CAST", "INFO", 6, "unique-wave6-caster-ability",
                 null, casterEntity.getUniqueId(),
@@ -15392,9 +15604,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 Map.of("slot", slot, "role", role.name(), "cooldownMillis", cooldown,
                         "tactics", tactics.name(), "source", "NATURAL",
                         "amplifierCount", channelingAmplifiers,
-                        "effectiveProjectiles", ritualSphereState.profile().projectilesPerVolley(),
-                        "effectiveIntensity", ritualSphereState.intensity(),
+                        "effectiveProjectiles", RitualAmplifierPolicy.projectileCount(
+                                ritualSphereState.profile(), channelingAmplifiers),
+                        "effectiveIntensity", effectiveIntensity,
                         "intensity", ritualSphereState.intensity()));
+    }
+
+    private int ritualChannelingAmplifierCount() {
+        int amplifiers = 0;
+        for (UUID casterId : ritualCasterUuids) {
+            Entity entity = ownedEntities.get(casterId);
+            if (!(entity instanceof LivingEntity caster) || !isLiveOwnedEntity(casterId)) {
+                continue;
+            }
+            RitualCasterTacticsPolicy.State state = ritualCasterTacticsState(caster);
+            RitualCasterTacticsPolicy.Role role = RitualCasterTacticsPolicy.roleForSlot(
+                    ritualCasterSlots.getOrDefault(casterId, 99));
+            if (RitualCasterTacticsPolicy.contributesAmplification(state, role)) {
+                amplifiers++;
+            }
+        }
+        return RitualAmplifierPolicy.boundedAmplifiers(amplifiers);
     }
 
     private RitualCasterTacticsPolicy.State ritualCasterTacticsState(Entity caster) {
@@ -15440,6 +15670,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void spawnRitualProjectileVolley(LivingEntity caster, Player target, int count) {
+        spawnRitualProjectileVolley(caster, target, count, ritualChannelingAmplifierCount());
+    }
+
+    private void spawnRitualProjectileVolley(LivingEntity caster, Player target, int count,
+                                              int liveAmplifiers) {
         if (caster == null || target == null || count <= 0
                 || !ritualTargetAllowed(caster, target)) {
             return;
@@ -15449,7 +15684,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || caster.getWorld() == null || !sphereOrigin.getWorld().equals(caster.getWorld())) {
             return;
         }
-        spawnRitualSphereProjectileVolley(caster, sphereOrigin, target, Math.min(5, count));
+        spawnRitualSphereProjectileVolley(caster, sphereOrigin, target,
+                Math.min(RitualAmplifierPolicy.MAX_EFFECTIVE_PROJECTILES, count),
+                RitualAmplifierPolicy.boundedAmplifiers(liveAmplifiers));
     }
 
     /**
@@ -15458,7 +15695,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * does not delegate to the ordinary caster-origin arrow volley.
      */
     private void spawnRitualSphereProjectileVolley(LivingEntity caster, Location sphereOrigin,
-                                                    Player target, int count) {
+                                                     Player target, int count,
+                                                     int liveAmplifiers) {
         if (caster == null || sphereOrigin == null || target == null || count <= 0
                 || !ritualTargetAllowed(caster, target) || sphereOrigin.getWorld() == null
                 || target.getWorld() == null || !sphereOrigin.getWorld().equals(target.getWorld())
@@ -15513,7 +15751,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             tagRitualProjectile(arrow);
             tagArrowSpell(arrow, ARROW_SPELL_RITUAL_PROJECTILE);
             if (!tagRitualProjectileOrigin(arrow, sphereOrigin)
-                    || !tagRitualProjectileTarget(arrow, caster, target)) {
+                    || !tagRitualProjectileTarget(arrow, caster, target, liveAmplifiers)) {
                 cleanupEventArrow(arrow.getUniqueId());
                 continue;
             }
@@ -15566,6 +15804,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualZone(Player target, long now) {
+        startRitualZone(target, now, ritualChannelingAmplifierCount());
+    }
+
+    private void startRitualZone(Player target, long now, int liveAmplifiers) {
         if (target == null || ritualSphereState == null || !isFreeRitualTarget(target)) {
             return;
         }
@@ -15578,20 +15820,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         center.setY(combatFloorY() + 1.02D);
         center.setZ(Math.floor(center.getZ()) + 0.5D);
         UUID zoneId = target.getUniqueId();
+        int boundedAmplifiers = RitualAmplifierPolicy.boundedAmplifiers(liveAmplifiers);
+        long durationMillis = Math.round(RITUAL_ZONE_DURATION_MILLIS
+                * RitualAmplifierPolicy.effectDurationMultiplier(
+                        ritualSphereState.successfulDrains(), boundedAmplifiers));
         ritualZoneCenters.put(zoneId, center);
         ritualZoneTelegraphUntil.put(zoneId, now + RITUAL_ZONE_TELEGRAPH_MILLIS);
         ritualZoneExpiresAt.put(zoneId, now + RITUAL_ZONE_TELEGRAPH_MILLIS
-                + Math.round(RITUAL_ZONE_DURATION_MILLIS
-                * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains())));
+                + durationMillis);
         emitDiagnostic("RITUAL_ZONE", "START", "INFO", 6, "zone-telegraph",
                 target.getUniqueId(), null, "ritual-zone:" + generation + ":" + zoneId,
-                Map.of("zoneId", zoneId.toString(), "center", locationText(center),
+                        Map.of("zoneId", zoneId.toString(), "center", locationText(center),
                         "size", RITUAL_SPHERE_ZONE_SIZE,
+                        "amplifierCount", boundedAmplifiers,
                         "telegraphUntilMillis", ritualZoneTelegraphUntil.get(zoneId),
                         "expiresAtMillis", ritualZoneExpiresAt.get(zoneId)));
         getLogger().info("WAVE6_RITUAL_ZONE_TELEGRAPH event=" + eventId
                 + " zone=" + zoneId + " center=" + locationText(center)
-                + " size=" + RITUAL_SPHERE_ZONE_SIZE + " collision=server");
+                + " size=" + RITUAL_SPHERE_ZONE_SIZE + " collision=server"
+                + " amplifier_count=" + boundedAmplifiers + " duration_ms=" + durationMillis);
     }
 
     private void tickRitualZones(long now) {
@@ -15657,10 +15904,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualReverse(Player target, long now) {
-        startRitualReverse(target, now, false);
+        startRitualReverse(target, now, false, ritualChannelingAmplifierCount());
     }
 
     private boolean startRitualReverse(Player target, long now, boolean zoneOwned) {
+        return startRitualReverse(target, now, zoneOwned, ritualChannelingAmplifierCount());
+    }
+
+    private boolean startRitualReverse(Player target, long now, boolean zoneOwned,
+                                       int liveAmplifiers) {
         if (target == null || !isFreeRitualTarget(target)
                 || ritualControlPartners.containsKey(target.getUniqueId())
                 || ritualSphereState == null) {
@@ -15675,7 +15927,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             long previousExpiry = ritualReverseUntil.getOrDefault(playerId, 0L);
             long expires = now + Math.round(RITUAL_CONTROL_DURATION_MILLIS
-                    * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains()));
+                    * RitualAmplifierPolicy.effectDurationMultiplier(
+                            ritualSphereState.successfulDrains(), liveAmplifiers));
             ritualReverseUntil.put(playerId, expires);
             ritualControlExpiresAt.put(playerId, expires);
             if (previousExpiry <= now + 1_000L) {
@@ -15694,7 +15947,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         String instance = "reverse:" + eventId + ":" + generation + ":" + playerId;
         long expires = now + Math.round(RITUAL_CONTROL_DURATION_MILLIS
-                * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains()));
+                * RitualAmplifierPolicy.effectDurationMultiplier(
+                        ritualSphereState.successfulDrains(), liveAmplifiers));
         ritualControlInstances.put(playerId, instance);
         ritualReverseUntil.put(playerId, expires);
         ritualControlExpiresAt.put(playerId, expires);
@@ -15724,6 +15978,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void startRitualControlSwap(long now) {
+        startRitualControlSwap(now, ritualChannelingAmplifierCount());
+    }
+
+    private void startRitualControlSwap(long now, int liveAmplifiers) {
         if (ritualSphereState == null) {
             return;
         }
@@ -15749,7 +16007,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             String firstInstance = pairId + ":a";
             String secondInstance = pairId + ":b";
             long expires = now + Math.round(RITUAL_CONTROL_DURATION_MILLIS
-                    * RitualSphereScalingPolicy.effectDurationMultiplier(ritualSphereState.successfulDrains()));
+                    * RitualAmplifierPolicy.effectDurationMultiplier(
+                            ritualSphereState.successfulDrains(), liveAmplifiers));
             ritualControlInstances.put(first, firstInstance);
             ritualControlInstances.put(second, secondInstance);
             ritualControlPartners.put(first, second);
@@ -15764,10 +16023,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " generation=" + generation + " mode=SWAP action=START"
                     + " first=" + first + " second=" + second + " prisoner="
                     + ritualPrisonerId() + " control_id=" + pairId);
-            emitDiagnostic("RITUAL_CONTROL", "START", "INFO", 6, "paired-control-start",
+                    emitDiagnostic("RITUAL_CONTROL", "START", "INFO", 6, "paired-control-start",
                     first, null, "ritual-control:" + generation + ":" + pairId,
                     Map.of("mode", "SWAP", "pairId", pairId,
                             "first", first.toString(), "second", second.toString(),
+                            "amplifierCount", RitualAmplifierPolicy.boundedAmplifiers(liveAmplifiers),
                             "expiresAtMillis", expires));
             break;
         }
@@ -15971,6 +16231,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAlertUntil.clear();
         ritualCasterAwakened.clear();
         ritualSphereState = null;
+        ritualTestDrainHold = false;
         ritualPrisonerAnchor = null;
         ritualNextBeamRefreshMillis = 0L;
         ritualNextAbilityMillis = 0L;
@@ -16021,16 +16282,47 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!isEventParticleViewer(viewer, center)) {
                 continue;
             }
-            int points = Math.min(48, 24 + intensity * 2);
+            // Keep the sphere readable from every angle: two large crossing
+            // shells, a smaller spinning equator, and a dense core pulse.
+            // Every layer is capped so a large audience cannot turn the
+            // visual into an unbounded particle source.
+            int points = Math.min(64, 36 + intensity * 3);
             spawnPatternRing(viewer, center, new Vector(1.0D, 0.0D, 0.0D),
                     new Vector(0.0D, 1.0D, 0.0D), RITUAL_SPHERE_RADIUS_BLOCKS,
                     points, now * 0.002D, Particle.REVERSE_PORTAL);
             spawnPatternRing(viewer, center, new Vector(0.0D, 1.0D, 0.0D),
                     new Vector(0.0D, 0.0D, 1.0D), RITUAL_SPHERE_RADIUS_BLOCKS,
                     points, -now * 0.0015D, Particle.END_ROD);
-            viewer.spawnParticle(Particle.DUST, center, 5 + intensity,
+            spawnPatternRing(viewer, center, new Vector(1.0D, 0.0D, 0.0D),
+                    new Vector(0.0D, 0.0D, 1.0D), 1.35D,
+                    Math.min(48, 28 + intensity * 2), now * 0.0035D,
+                    Particle.PORTAL);
+            recordParticleEmission(24 + intensity * 4);
+            viewer.spawnParticle(Particle.DRAGON_BREATH, center, 14 + intensity * 3,
+                    0.42D, 0.52D, 0.42D, 0.02D);
+            viewer.spawnParticle(Particle.PORTAL, center, 8 + intensity * 2,
+                    0.28D, 0.42D, 0.28D, 0.03D);
+            viewer.spawnParticle(Particle.DUST, center, 8 + intensity * 2,
                     0.35D, 0.35D, 0.35D, 0.02D,
                     new Particle.DustOptions(Color.fromRGB(193, 73, 255), 1.2F));
+            UUID prisonerId = ritualPrisonerId();
+            Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
+            if (prisoner != null && prisoner.isOnline()
+                    && prisoner.getWorld().equals(center.getWorld())) {
+                Location prisonerCenter = prisoner.getLocation().clone().add(0.0D, 0.9D, 0.0D);
+                spawnPatternRing(viewer, prisonerCenter,
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 0.0D, 1.0D),
+                        0.72D, 24, -now * 0.004D, Particle.END_ROD);
+                spawnPatternRing(viewer, prisonerCenter,
+                        new Vector(1.0D, 0.0D, 0.0D), new Vector(0.0D, 1.0D, 0.0D),
+                        0.56D, 18, now * 0.003D, Particle.REVERSE_PORTAL);
+                recordParticleEmission(28);
+                viewer.spawnParticle(Particle.PORTAL, prisonerCenter, 20,
+                        0.24D, 0.48D, 0.24D, 0.025D);
+                viewer.spawnParticle(Particle.DUST, prisonerCenter, 8,
+                        0.18D, 0.42D, 0.18D, 0.01D,
+                        new Particle.DustOptions(Color.fromRGB(240, 236, 255), 1.0F));
+            }
         }
         for (Map.Entry<UUID, Location> zone : ritualZoneCenters.entrySet()) {
             Location zoneCenter = zone.getValue();
@@ -18540,6 +18832,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitPlayerKnockbackUntilMillis.clear();
         cancelWaveSpawnTask();
         clearRealitySplitBarriers("wave-objective-reset");
+        clearLegacyWave7BarrierArtifacts("wave-objective-reset");
+        clearLegacyWave3PortalArtifacts("wave-objective-reset");
         clearCurrentSafeZoneVisuals();
         for (UUID visualId : new HashSet<>(currentRingVisuals)) {
             Entity visual = unregisterOwnedEntity(visualId, "wave-objective-ring-clear");

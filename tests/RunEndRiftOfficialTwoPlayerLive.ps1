@@ -78,6 +78,56 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
   throw 'Refused: the probe is not pointed at isolated local ports.'
 }
 
+function Get-RitualScalingProfile {
+  param([Parameter(Mandatory = $true)][int]$Participants)
+
+  if ($Participants -le 4) {
+    $controlPairs = if ($Participants -eq 2) { 0 } else { 1 }
+    return [pscustomobject]@{
+      Casters = 4
+      Guards = 12
+      Projectiles = 1
+      Zones = 1
+      ControlPairs = $controlPairs
+    }
+  }
+  if ($Participants -le 8) {
+    return [pscustomobject]@{
+      Casters = 4
+      Guards = 12
+      Projectiles = 2
+      Zones = 1
+      ControlPairs = 1
+    }
+  }
+  if ($Participants -le 12) {
+    return [pscustomobject]@{
+      Casters = 5
+      Guards = 15
+      Projectiles = 3
+      Zones = 2
+      ControlPairs = 2
+    }
+  }
+  if ($Participants -le 16) {
+    return [pscustomobject]@{
+      Casters = 5
+      Guards = 15
+      Projectiles = 4
+      Zones = 2
+      ControlPairs = 2
+    }
+  }
+  return [pscustomobject]@{
+    Casters = 6
+    Guards = 18
+    Projectiles = 5
+    Zones = 3
+    ControlPairs = 3
+  }
+}
+$ritualProfile = Get-RitualScalingProfile -Participants $playerNames.Count
+
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
   $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
@@ -1182,8 +1232,14 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   $pads = Get-Pads
   $waveSixStartOffset = Wait-Transition -CompletedWave 5 -Pads $pads -AfterOffset $waveFiveTransitionOffset
   $ritualOffset = $waveSixStartOffset
+  $ritualPattern = 'WAVE6_RITUAL_SPHERE_READY.*casters=' + $ritualProfile.Casters `
+    + '.*guards=' + $ritualProfile.Guards `
+    + '.*projectiles=' + $ritualProfile.Projectiles `
+    + '.*zones=' + $ritualProfile.Zones `
+    + '.*control_pairs=' + $ritualProfile.ControlPairs `
+    + '.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server'
   $ritualReady = Wait-Log -AfterOffset $ritualOffset `
-    -Pattern 'WAVE6_RITUAL_SPHERE_READY.*casters=4.*guards=12.*projectiles=1.*zones=1.*control_pairs=0.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server' `
+    -Pattern $ritualPattern `
     -WaitSeconds 180 -Action {
       Teleport-PlayersIfOutsideCombatArea -Core $core
       Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
@@ -1191,8 +1247,12 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   if ($ritualReady -match 'END_RIFT_RINGS_READY|WAVE_6_PAIR_SPAWNED') {
     throw 'Legacy Collapse Rings appeared in the live Wave 6 log.'
   }
+  $ritualPrisonerName = $playerNames[0]
+  Teleport-PlayersToCombatRing -Core $core
+  Teleport-Player -Name $ritualPrisonerName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
   Wait-Log -AfterOffset $ritualOffset -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN.*applied=true.*damage=2(?:\.0+)?' -WaitSeconds 90 -Action {
     Teleport-PlayersIfOutsideCombatArea -Core $core
+    Teleport-Player -Name $ritualPrisonerName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
   } | Out-Null
   # The Ritual Sphere ready/drain and Wave 6 completion can share a tick.
   # Keep the ritual cursor so the completion marker remains observable.
@@ -1200,7 +1260,7 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
     Teleport-PlayersIfOutsideCombatArea -Core $core
     Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
   }
-  Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=6 objective=RITUAL_SPHERE casters=4 guards=12 prisoner_drain=2hp_floor=1"
+  Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=6 objective=RITUAL_SPHERE casters=$($ritualProfile.Casters) guards=$($ritualProfile.Guards) projectiles=$($ritualProfile.Projectiles) zones=$($ritualProfile.Zones) control_pairs=$($ritualProfile.ControlPairs) prisoner_drain=2hp_floor=1"
   if ($StopAfterWave -eq 6) { return }
 
   $pads = Get-Pads

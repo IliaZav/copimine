@@ -584,7 +584,7 @@ try {
   $null = Invoke-LocalRcon 'cmend test wave 6'
   Wait-Log -AfterOffset $wave6Offset -Pattern 'WAVE_TEST_STARTED.*wave=6\b' | Out-Null
   $ritualLog = Wait-Log -AfterOffset $wave6Offset `
-    -Pattern 'WAVE6_RITUAL_SPHERE_READY.*casters=4.*guards=12.*projectiles=1.*zones=1.*control_pairs=0.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server'
+    -Pattern 'WAVE6_RITUAL_SPHERE_READY.*casters=4.*guards=12.*projectiles=1.*zones=1.*control_pairs=1.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server'
   if ($ritualLog -match 'END_RIFT_RINGS_READY|WAVE_6_PAIR_SPAWNED') {
     throw 'Legacy Collapse Rings appeared in the live Wave 6 log.'
   }

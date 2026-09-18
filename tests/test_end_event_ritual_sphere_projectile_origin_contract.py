@@ -35,7 +35,10 @@ def test_policy_exposes_bounded_finite_direction_contract() -> None:
 
 def test_wave6_barrage_uses_a_dedicated_sphere_origin_path() -> None:
     source = read(SOURCE)
-    barrage = method_body(source, "private void spawnRitualProjectileVolley")
+    barrage = method_body(
+        source,
+        "private void spawnRitualProjectileVolley(LivingEntity caster, Player target, int count,",
+    )
 
     assert "Location sphereOrigin = ritualSphereCenter(coreCombatAnchorLocation());" in barrage
     assert "spawnRitualSphereProjectileVolley" in barrage
@@ -48,7 +51,7 @@ def test_wave6_barrage_uses_a_dedicated_sphere_origin_path() -> None:
         "RitualSphereProjectilePolicy.MAX_INITIAL_SPEED",
         "tagRitualProjectile(arrow)",
         "tagRitualProjectileOrigin(arrow, sphereOrigin)",
-        "tagRitualProjectileTarget(arrow, caster, target)",
+        "tagRitualProjectileTarget(arrow, caster, target, liveAmplifiers)",
         "arrow.setShooter(caster)",
         "arrow.setGravity(false)",
         "arrow.setDamage(0.0D)",

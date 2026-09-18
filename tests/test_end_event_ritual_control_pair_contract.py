@@ -34,7 +34,10 @@ def test_policy_exposes_explicit_exclusion_and_keeps_compatibility() -> None:
 
 def test_start_path_passes_the_current_prisoner_to_pairing() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    body = method_body(source, "private void startRitualControlSwap(long now)")
+    body = method_body(
+        source,
+        "private void startRitualControlSwap(long now, int liveAmplifiers)",
+    )
 
     assert "ritualFreeTargets(activeLivingPlayers())" in body
     assert "UUID prisonerId = ritualPrisonerId();" in body
@@ -44,7 +47,10 @@ def test_start_path_passes_the_current_prisoner_to_pairing() -> None:
 
 def test_pair_creation_and_teardown_keep_both_maps_in_sync() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    start_body = method_body(source, "private void startRitualControlSwap(long now)")
+    start_body = method_body(
+        source,
+        "private void startRitualControlSwap(long now, int liveAmplifiers)",
+    )
     teardown_body = method_body(source, "private void clearRitualControlPair(UUID first, UUID second, String reason)")
 
     for map_name, first, second in (

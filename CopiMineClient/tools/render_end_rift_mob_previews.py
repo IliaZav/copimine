@@ -334,7 +334,12 @@ def main() -> None:
         path = OUT / f"{spec.slug}.png"
         card.save(path, format="PNG", optimize=False)
         cards.append(card)
-        manifest.append({**asdict(spec), "preview": path.relative_to(ROOT.parent).as_posix()})
+        manifest.append({
+            **asdict(spec),
+            "preview": path.relative_to(ROOT.parent).as_posix(),
+            "STATIC_ASSEMBLED_PREVIEW_ONLY": True,
+            "NATIVE_MINECRAFT_RENDER_VERIFIED": False,
+        })
 
     columns, rows = 4, 4
     card_width, card_height = 420, 500

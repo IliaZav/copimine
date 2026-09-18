@@ -20,10 +20,14 @@ public final class RitualPrisonerHealthPolicyTest {
 
         check(RitualPrisonerHealthPolicy.drainDue(20_000L, 0L),
                 "drain must be due after twenty seconds");
+        check(RitualPrisonerHealthPolicy.drainDue(20_001L, 0L),
+                "drain must remain due immediately after the twenty-second boundary");
         check(!RitualPrisonerHealthPolicy.drainDue(19_999L, 0L),
                 "drain must not fire early");
         check(RitualPrisonerHealthPolicy.drainDue(60_000L, 40_000L),
                 "cadence must work for subsequent ticks");
+        check(!RitualPrisonerHealthPolicy.drainDue(39_999L, 20_000L),
+                "the next drain must not fire one millisecond before its boundary");
         check(RitualPrisonerHealthPolicy.safeExternalDamage(20.0D, 99.0D) == 0.0D,
                 "captured prisoner must ignore all non-ritual external damage");
         check(RitualPrisonerHealthPolicy.safeExternalDamage(5.0D, 1.0D) == 0.0D,

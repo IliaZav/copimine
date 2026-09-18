@@ -18,6 +18,9 @@ The preview renderer is deterministic and uses the checked-in runtime UV
 atlases. It is labelled `Static assembled previews from runtime UV atlases`;
 it must not be read as a native Minecraft screenshot.
 
+`STATIC_ASSEMBLED_PREVIEW_ONLY=true`
+`NATIVE_MINECRAFT_RENDER_VERIFIED=false`
+
 ## Role matrix
 
 | Family | Roles | Native gameplay envelope |
@@ -66,12 +69,12 @@ variant model/renderer classes.
 
 | Artifact | Bytes | SHA-256 |
 |---|---:|---|
-| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,450,203 | `4efe18fed6f7877e094575d636e8d5bc76bbb67cfe62e57b5a436122113fa298` |
-| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,450,203 | `4efe18fed6f7877e094575d636e8d5bc76bbb67cfe62e57b5a436122113fa298` |
-| `minecraft/server/plugins/CopiMineEndEvent.jar` | 786,613 | `1e14edeb9823c350c9bcf14a9d157dc2bd2cc599aa5f923561ed275b200b399a` |
+| `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,453,629 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
+| `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,453,629 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
+| `minecraft/server/plugins/CopiMineEndEvent.jar` | 845,440 | `11716255ebfae5626c7f534fe97bdda9820e0bc9e32f71f003415e798c887a02` |
 | `thirdparty/CopiMineMods.zip` | 21,651,501 | `8c582afbd4f19267bf8645ec304f5c83d9ecbe5465f1351818e095d2a1ed3b7d` |
 | `resourcepacks/build/CopiMineResourcePack.zip` | 24,150,260 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
-| `end-rift-mob-model-board-20260916.png` | 169,023 | `91f57a62157dbc411abba56059864bf5ee659b8a6f69c382f482659c00128a6a` |
+| `end-rift-mob-model-board-20260916.png` | 169,391 | `4bdad83ac846ed49ff4b9336f65d0aa022aa78498dfc75e1236efb589d31a7e7` |
 
 ## Native QA boundary
 

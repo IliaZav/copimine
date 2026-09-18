@@ -7,7 +7,9 @@ param(
   [ValidateRange(30, 300)]
   [int]$BotDurationSeconds = 120,
   [ValidateRange(10, 180)]
-  [int]$TimeoutSeconds = 60
+  [int]$TimeoutSeconds = 60,
+  [ValidateSet('PASS', 'NOT RECORDED')]
+  [string]$AutomatedGateResult = 'NOT RECORDED'
 )
 
 # Local-only runtime probe for the two objectives that need physical arena
@@ -183,6 +185,7 @@ $script:runMetadata = [ordered]@{
   serverVersion = 'Purpur local-runtime'
   javaVersion = $javaVersion
   diagnosticMode = 'VERBOSE'
+  automatedGateResult = $AutomatedGateResult
   nativeMinecraft = 'NOT VERIFIED'
   livePaperResult = 'RUNNING'
   ciResult = 'NOT RECORDED'

@@ -628,6 +628,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private long ritualLastContainmentLogMillis;
     private long ritualLastDamageLogMillis;
     private boolean wave6Complete;
+    /** Prevents objective bootstrap from replacing a valid post-restart ritual snapshot. */
+    private boolean ritualSphereStateRehydrated;
     private int waveSpawnWave;
     private int waveSpawnGroupIndex;
     private int waveSpawnEntityOffset;
@@ -1195,8 +1197,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         recoverPersistedBossHitbox();
         restorePersistedWaveSchedule();
         int persistedWave = waveForPhase(phase);
-        if (persistedWave == 0 && testWaveFrontVisualMode && activeWave == 7) {
-            persistedWave = 7;
+        if (persistedWave == 0 && testWaveFrontVisualMode
+                && (activeWave == 6 || activeWave == 7)) {
+            persistedWave = activeWave;
         }
         if (persistedWave == 6) {
             restorePersistedRitualSphereObjective();
@@ -1216,8 +1219,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         cleanupUnexpectedCombatEntitiesAfterRestart();
         int resumedWave = waveForPhase(phase);
-        if (resumedWave == 0 && testWaveFrontVisualMode && activeWave == 7) {
-            resumedWave = 7;
+        if (resumedWave == 0 && testWaveFrontVisualMode
+                && (activeWave == 6 || activeWave == 7)) {
+            resumedWave = activeWave;
         }
         if (resumedWave > 0) {
             activeWave = resumedWave;
@@ -1503,8 +1507,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Recreate the one bounded spawn group without duplicating surviving mobs. */
     private void restorePersistedWaveSchedule() {
         int wave = waveForPhase(phase);
-        if (wave == 0 && testWaveFrontVisualMode && activeWave == 7) {
-            wave = 7;
+        if (wave == 0 && testWaveFrontVisualMode
+                && (activeWave == 6 || activeWave == 7)) {
+            wave = activeWave;
         }
         if (wave <= 0 || config == null) {
             return;
@@ -1592,7 +1597,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      */
     private void cleanupUnexpectedCombatEntitiesAfterRestart() {
         boolean waveExpected = waveForPhase(phase) > 0
-                || testWaveFrontVisualMode && activeWave == 7;
+                || testWaveFrontVisualMode && (activeWave == 6 || activeWave == 7);
         boolean bossExpected = phase == EventPhase.BOSS_CINEMATIC
                 || isPersistedBossPhase(phase);
         if (waveExpected || bossExpected) {
@@ -1818,12 +1823,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         stateMachine = new EndEventStateMachine(phase);
         eventId = snapshot.eventId();
         generation = snapshot.generation();
+        boolean persistedDisposableWave6 = generation > 0L
+                && "6".equals(snapshot.objectiveProgress().get("test-wave"))
+                && Long.toString(generation).equals(
+                snapshot.objectiveProgress().get("test-wave-generation"));
         boolean persistedDisposableWave7 = generation > 0L
                 && "7".equals(snapshot.objectiveProgress().get("test-wave"))
                 && Long.toString(generation).equals(
                 snapshot.objectiveProgress().get("test-wave-generation"));
-        testWaveFrontVisualMode = persistedDisposableWave7;
-        activeWave = persistedDisposableWave7 ? 7 : 0;
+        testWaveFrontVisualMode = persistedDisposableWave6 || persistedDisposableWave7;
+        activeWave = persistedDisposableWave6 ? 6 : persistedDisposableWave7 ? 7 : 0;
         realitySplitChamberController.clear();
         currentCollapsedRings = 0;
         collapseRingEncounterState = null;
@@ -1849,7 +1858,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
         wave6Complete = false;
-        if (phase == EventPhase.WAVE_6) {
+        ritualSphereStateRehydrated = false;
+        if (phase == EventPhase.WAVE_6 || persistedDisposableWave6) {
             if (snapshot.objectiveProgress().keySet().stream()
                     .anyMatch(key -> key.startsWith("ritual-sphere."))) {
                 RitualSphereEncounterSnapshot.Data wave6 = RitualSphereEncounterSnapshot.decode(
@@ -1951,8 +1961,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private Map<String, String> objectiveProgressSnapshot() {
-        if (phase == EventPhase.WAVE_6) {
-            return RitualSphereEncounterSnapshot.encode(ritualSphereState);
+        if (phase == EventPhase.WAVE_6
+                || testWaveFrontVisualMode && activeWave == 6) {
+            Map<String, String> encoded = new LinkedHashMap<>(
+                    RitualSphereEncounterSnapshot.encode(ritualSphereState));
+            if (testWaveFrontVisualMode && activeWave == 6) {
+                encoded.put("test-wave", "6");
+                encoded.put("test-wave-generation", Long.toString(generation));
+            }
+            return Map.copyOf(encoded);
         }
         boolean waveSevenRuntime = phase == EventPhase.WAVE_7
                 || testWaveFrontVisualMode && activeWave == 7;
@@ -2146,17 +2163,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return cancelSessionTasks(false);
     }
 
-    private boolean cancelSessionTasks(boolean preserveWave7ForRestart) {
+    private boolean cancelSessionTasks(boolean preserveCombatForRestart) {
         boolean cleanupSucceeded = true;
         if (taskRegistry != null) {
             List<Integer> taskIds = taskRegistry.taskIds();
             emitCompletedTaskDiagnostics();
             for (Integer taskId : taskIds) {
                 emitDiagnostic("TASK", "CANCEL", "INFO", activeWave,
-                        preserveWave7ForRestart ? "server-stop" : "session-cancellation",
+                        preserveCombatForRestart ? "server-stop" : "session-cancellation",
                         null, null, "task:" + generation + ":" + taskId,
                         Map.of("taskId", taskId, "generation", generation,
-                                "preserveWave7", preserveWave7ForRestart));
+                                "preserveCombat", preserveCombatForRestart));
             }
         }
         cancelCreativeTestTask();
@@ -2164,12 +2181,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         cancelBossFinalStrike();
         cancelBossDefeatCinematic();
         clearArenaInferno();
-        if (preserveWave7ForRestart) {
-            // A plugin/server stop is not a gameplay reset.  Keep Wave 7's
-            // journaled barrier cells and the test-wave marker durable so the
-            // next bootstrap can rehydrate the same generation before any
-            // cleanup path runs.  Transient packet/animation state is safe to
-            // discard because it is rebuilt from the snapshot and journal.
+        if (preserveCombatForRestart) {
+            // A plugin/server stop is not a gameplay reset.  Keep active Wave
+            // 6/7 entities and their durable objective marker so the next
+            // bootstrap can rehydrate the same generation before any cleanup
+            // path runs.  Transient packet/animation state is safe to discard
+            // because it is rebuilt from the snapshot and journal.
             clearWorldVfx();
             cancelWaveFrontAnimation();
             cancelPortalVisualAnimation();
@@ -2521,9 +2538,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         pendingCombatTraces.clear();
         authoritativeCombatTraceEvents.clear();
         authoritativeEventMobDamage.clear();
+        boolean preserveWave6ForRestart = activeWave == 6
+                && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWave7ForRestart = activeWave == 7
                 && (phase == EventPhase.WAVE_7 || testWaveFrontVisualMode);
-        cancelSessionTasks(preserveWave7ForRestart);
+        cancelSessionTasks(preserveWave6ForRestart || preserveWave7ForRestart);
+        if (preserveWave6ForRestart) {
+            getLogger().info("END_RIFT_WAVE6_RESTART_PRESERVED event=" + eventId
+                    + " generation=" + generation + " test=" + testWaveFrontVisualMode
+                    + " casters=" + ritualCasterUuids.size()
+                    + " guards=" + ritualGuardUuids.size());
+        }
         if (preserveWave7ForRestart) {
             getLogger().info("END_RIFT_WAVE7_RESTART_PRESERVED event=" + eventId
                     + " generation=" + generation + " test=" + testWaveFrontVisualMode
@@ -13989,6 +14014,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Map.of("objective", "RITUAL_SPHERE", "reasonCode", "INVALID_CONTEXT"));
             return false;
         }
+        if (ritualSphereStateRehydrated
+                && ritualSphereState != null
+                && ritualSphereState.generation() == generation
+                && ritualSphereVisualUuid != null
+                && isLiveOwnedEntity(ritualSphereVisualUuid)) {
+            RitualSphereScalingPolicy.Profile recoveredProfile = ritualSphereState.profile();
+            int recoveredCasters = liveRitualCasterCount();
+            int recoveredGuards = liveRitualGuardCount();
+            if (recoveredCasters == recoveredProfile.casterCount()
+                    && recoveredGuards == recoveredProfile.guardCount()) {
+                String recoveredState = RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)
+                        ? "CAPTURED" : "WAITING_FOR_PRISONER";
+                waveObjectiveMobCount = recoveredCasters + recoveredGuards;
+                waveSpawnGroupIndex = waveSpawnSchedule.size();
+                waveSpawnEntityOffset = waveObjectiveMobCount;
+                wave6Complete = false;
+                getLogger().info("WAVE6_RITUAL_RESTART_CONTINUED event=" + eventId
+                        + " generation=" + generation + " state=" + recoveredState
+                        + " prisoner=" + ritualSphereState.prisoner()
+                        + " casters=" + recoveredCasters + " guards=" + recoveredGuards
+                        + " successful_drains=" + ritualSphereState.successfulDrains());
+                emitDiagnostic("OBJECTIVE", "CONTINUE", "INFO", 6,
+                        "ritual-sphere-restart-state-preserved", null, null,
+                        "ritual:" + eventId + ":" + generation,
+                        Map.of("state", recoveredState,
+                                "casters", recoveredCasters,
+                                "guards", recoveredGuards,
+                                "prisoner", String.valueOf(ritualSphereState.prisoner()),
+                                "successfulDrains", ritualSphereState.successfulDrains()));
+                return true;
+            }
+            ritualSphereStateRehydrated = false;
+        }
         clearRitualSphereObjective("new-start");
         cleanupLegacyWave6Entities();
         int participants = eventScalePlayers();
@@ -14447,7 +14505,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void restorePersistedRitualSphereObjective() {
-        if (phase != EventPhase.WAVE_6) {
+        if (phase != EventPhase.WAVE_6
+                && !(testWaveFrontVisualMode && activeWave == 6)) {
             return;
         }
         cleanupLegacyWave6Entities();
@@ -14483,6 +14542,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             teleportRitualPrisoner(prisoner, ritualPrisonerAnchor);
         }
         wave6Complete = false;
+        ritualSphereStateRehydrated = true;
         getLogger().info("WAVE6_RITUAL_REHYDRATED event=" + eventId
                 + " generation=" + generation + " prisoner=" + prisonerId
                 + " casters=" + liveRitualCasterCount()
@@ -14498,6 +14558,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     continue;
                 }
                 String kind = readString(entity, keyKind);
+                if (EVENT_KIND_DISPLAY.equals(kind)
+                        && entity.getUniqueId().equals(ritualSphereVisualUuid)) {
+                    // The sphere display is a current Wave 6 visual, not a
+                    // legacy entity.  It is re-indexed before this cleanup
+                    // runs during bootstrap and must survive the objective
+                    // continuation guard below.
+                    continue;
+                }
                 if (EVENT_KIND_RITUAL_CASTER.equals(kind)
                         || EVENT_KIND_RITUAL_GUARD.equals(kind)) {
                     continue;
@@ -14716,8 +14784,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         Player prisoner = Bukkit.getPlayer(prisonerId);
-        double currentHealth = prisoner == null ? RitualPrisonerHealthPolicy.MIN_HEALTH
-                : prisoner.getHealth();
+        // A clean restart can rehydrate the captured UUID before the player
+        // reconnects.  Do not consume the overdue drain with a synthetic
+        // one-heart health value: the saved deadline must remain available
+        // until the real participant is online again.
+        if (prisoner == null || !prisoner.isOnline() || prisoner.isDead()) {
+            return;
+        }
+        double currentHealth = prisoner.getHealth();
         RitualSphereEncounterPolicy.DrainTransition transition =
                 RitualSphereEncounterPolicy.advanceDrain(ritualSphereState, currentHealth, now);
         ritualSphereState = transition.state();
@@ -14733,7 +14807,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " applied=" + transition.applied() + " damage="
                 + transition.health().appliedDamage() + " remaining="
                 + transition.health().remainingHealth() + " intensity="
-                + ritualSphereState.intensity());
+                + ritualSphereState.intensity() + " drain_at=" + now);
         emitDiagnostic("RITUAL_PRISONER", "DRAIN", "INFO", 6,
                 "server-authoritative-prisoner-drain", prisonerId, null,
                 "prisoner:" + generation + ":" + prisonerId,
@@ -15591,6 +15665,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualNextPrisonerRepairMillis = 0L;
         ritualAbilityCursor = 0;
         wave6Complete = false;
+        ritualSphereStateRehydrated = false;
         emitDiagnostic("OBJECTIVE", completed ? "COMPLETE" : "CANCEL", "INFO", 6,
                 reason == null ? "ritual-objective-cleared" : reason, null, null,
                 "ritual:" + eventId + ":" + generation,

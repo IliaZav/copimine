@@ -6,6 +6,8 @@ param(
   [string]$SecondBotName = 'EndRiftWave6B',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$ThirdBotName = 'EndRiftWave6C',
+  [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
+  [string]$FourthBotName = 'EndRiftWave6D',
   [ValidateRange(90, 600)]
   [int]$BotDurationSeconds = 240,
   [ValidateRange(30, 300)]
@@ -38,7 +40,7 @@ $previousNaturalRegeneration = $null
 $previousTrace = $null
 $previousBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
 $previousSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
-$names = @($FirstBotName, $SecondBotName, $ThirdBotName)
+$names = @($FirstBotName, $SecondBotName, $ThirdBotName, $FourthBotName)
 
 function Write-Evidence {
   param([Parameter(Mandatory = $true)][string]$Text)
@@ -150,6 +152,31 @@ function Wait-Log {
     Start-Sleep -Milliseconds 250
   }
   throw "Timed out waiting for '$Pattern'. See $paperLog"
+}
+
+function Wait-Log-MarkerIncrease {
+  param(
+    [Parameter(Mandatory = $true)][string]$Pattern,
+    [Parameter(Mandatory = $true)][int]$BeforeCount,
+    [Parameter(Mandatory = $true)][int64]$BeforeLength,
+    [int]$Seconds = $TimeoutSeconds
+  )
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-Path -LiteralPath $paperLog -PathType Leaf) {
+      $current = Read-PaperLog
+      $count = [Regex]::Matches($current, $Pattern).Count
+      # Paper may rotate latest.log at a clean process boundary.  A marker in
+      # the new file is valid evidence even if its count is not greater than
+      # the previous file's count.
+      $rotated = $BeforeLength -gt 0L -and $current.Length -lt $BeforeLength
+      if ($count -gt $BeforeCount -or ($rotated -and $count -gt 0)) {
+        return $current
+      }
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for a new log marker matching '$Pattern'. See $paperLog"
 }
 
 function Get-AppliedRitualDrainCount {
@@ -286,6 +313,16 @@ function Wait-BotsOffline {
   throw "Wave 6 probe players did not disconnect: $($names -join ', ')"
 }
 
+function Wait-BotOnline {
+  param([Parameter(Mandatory = $true)][string]$Name)
+  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    $list = Invoke-LocalRcon 'list'
+    if ($list -match [Regex]::Escape($Name)) { return }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Wave 6 probe player did not rejoin: $Name"
+}
+
 function Configure-Bots([int[]]$Core) {
   foreach ($name in $names) {
     $null = Invoke-LocalRcon ("gamemode survival $name")
@@ -313,9 +350,85 @@ function Configure-Bots([int[]]$Core) {
   }
 }
 
+function Restart-LocalMinecraftForWave6([int[]]$Core) {
+  $restartLogLengthBefore = Get-LogLength
+  $restartMarkerBefore = [Regex]::Matches((Read-PaperLog), 'WAVE6_RITUAL_REHYDRATED').Count
+  $appliedDrainPattern = 'WAVE6_RITUAL_PRISONER_DRAIN[^\r\n]*applied=true[^\r\n]*drain_at=(\d+)'
+  $restartAppliedDrainBefore = [Regex]::Matches((Read-PaperLog), $appliedDrainPattern).Count
+  # Stop the clients before saving.  A short save delay while the probes are
+  # still ACTIVE can legitimately kill one ritual guard and turn a restart
+  # test into an entity-loss test unrelated to persistence.
+  Stop-Bots
+  Wait-BotsOffline
+  $null = Invoke-LocalRcon 'save-all'
+  Start-Sleep -Seconds 1
+  try { $null = Invoke-LocalRcon 'stop' } catch { }
+  Wait-Port -Port 25576 -Expected $false -Seconds 90
+  Start-LocalMinecraft
+  for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    try {
+      $null = Invoke-LocalRcon 'cmend debug trace on'
+      break
+    } catch {
+      if ($attempt -eq 19) { throw }
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  $restartLog = Wait-Log-MarkerIncrease -Pattern 'WAVE6_RITUAL_REHYDRATED[^\r\n]*casters=4[^\r\n]*guards=12' -BeforeCount $restartMarkerBefore -BeforeLength $restartLogLengthBefore -Seconds $TimeoutSeconds
+
+  # Rejoin the persisted prisoner first.  If free participants joined first,
+  # the normal replacement safety rule could legitimately transfer the
+  # prisoner role while the original account was still offline; that would
+  # turn a restart check into a different encounter.
+  Set-BotMode -Name $SecondBotName -Mode PASSIVE
+  Start-Bot -Name $SecondBotName -Core $Core
+  Wait-BotOnline -Name $SecondBotName
+  foreach ($name in @($FirstBotName, $ThirdBotName, $FourthBotName)) {
+    Set-BotMode -Name $name -Mode PASSIVE
+    Start-Bot -Name $name -Core $Core
+  }
+  Wait-BotsOnline
+  $restartStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
+  if ($restartStatus -notmatch 'wave=\s*6' -or $restartStatus -notmatch 'event-mobs=\s*16') {
+    throw "Wave 6 restart lost active ritual state: $restartStatus"
+  }
+  $restartObjective = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
+  $restartVisualMatch = [Regex]::Match($restartObjective, 'visuals=(\d+)')
+  if (-not $restartVisualMatch.Success -or [int]$restartVisualMatch.Groups[1].Value -lt 1) {
+    throw "Wave 6 restart lost the Ritual Sphere visual: $restartObjective"
+  }
+  $currentLog = Read-PaperLog
+  $captureCount = [Regex]::Matches($currentLog, 'WAVE6_RITUAL_PRISONER_CAPTURED').Count
+  $rotated = $restartLogLengthBefore -gt 0L -and $currentLog.Length -lt $restartLogLengthBefore
+  if (-not $rotated -and $captureCount -ne 1) {
+    throw "Wave 6 restart duplicated or lost capture marker: count=$captureCount"
+  }
+  if ($rotated) {
+    # The old capture record lives in the rotated file.  Keep the continuation
+    # offset at zero so the post-restart drain assertion reads the new file.
+    $script:captureOffset = 0L
+  } else {
+    $script:captureOffset = $script:waveOffset
+  }
+  $replayedOverdueDrain = $false
+  $nowAfterRestartMillis = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+  if ($script:firstDrainAtMillis -le $nowAfterRestartMillis) {
+    $restartDrainLog = Wait-Log-MarkerIncrease -Pattern $appliedDrainPattern `
+      -BeforeCount $restartAppliedDrainBefore -BeforeLength $restartLogLengthBefore -Seconds 30
+    $restartDrainMatches = [Regex]::Matches($restartDrainLog, $appliedDrainPattern)
+    if ($restartDrainMatches.Count -lt 1) {
+      throw 'Wave 6 restart did not replay the overdue captured-prisoner drain.'
+    }
+    $restartDrainMatch = $restartDrainMatches[$restartDrainMatches.Count - 1]
+    $script:firstDrainAtMillis = [long]$restartDrainMatch.Groups[1].Value + 20000L
+    $replayedOverdueDrain = $true
+  }
+  Write-Evidence "LIVE_WAVE6_RESTART_RECOVERY_PASS rehydrated=true phase=READY_FOR_PLAYERS wave=6 casters=4 guards=12 visual_displays=$($restartVisualMatch.Groups[1].Value) prisoner_preserved=true capture_replayed=false overdue_drain_replayed=$replayedOverdueDrain log_rotated=$rotated"
+}
+
 function Clear-LocalArenaAmbientMobs([int[]]$Core) {
   # Remove only ordinary hostile entities in the disposable local arena
-  # before the three probe clients join.  Event-owned mobs are recreated by
+  # before the four probe clients join.  Event-owned mobs are recreated by
   # the Wave 6 command immediately afterward; no production world is touched.
   $position = "$($Core[0] + 0.5D) $($Core[1]) $($Core[2] + 0.5D)"
   foreach ($mobType in @('minecraft:spider', 'minecraft:enderman', 'minecraft:skeleton')) {
@@ -378,8 +491,13 @@ New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
 
 $firstUuid = Get-OfflinePlayerUuid -Name $FirstBotName
 $secondUuid = Get-OfflinePlayerUuid -Name $SecondBotName
+$thirdUuid = Get-OfflinePlayerUuid -Name $ThirdBotName
+$fourthUuid = Get-OfflinePlayerUuid -Name $FourthBotName
 $firstUuidPattern = Get-UuidRegexPattern -Uuid $firstUuid
 $secondUuidPattern = Get-UuidRegexPattern -Uuid $secondUuid
+$thirdUuidPattern = Get-UuidRegexPattern -Uuid $thirdUuid
+$fourthUuidPattern = Get-UuidRegexPattern -Uuid $fourthUuid
+$freeUuidPattern = '(?:' + $firstUuidPattern + '|' + $thirdUuidPattern + '|' + $fourthUuidPattern + ')'
 $orderedUuids = @(
   [pscustomobject]@{ Name = $FirstBotName; Uuid = $firstUuid },
   [pscustomobject]@{ Name = $SecondBotName; Uuid = $secondUuid }
@@ -460,7 +578,9 @@ try {
   $captureCount = [Regex]::Matches((Get-LogTail -Offset $captureOffset),
     'WAVE6_RITUAL_PRISONER_CAPTURED').Count
   if ($captureCount -ne 1) { throw "Expected exactly one prisoner capture, got $captureCount." }
-  Write-Evidence "LIVE_WAVE6_CAPTURE_ORDER_PASS prisoner=$SecondBotName prisoner_uuid=$secondUuid free_lower_uuid=$firstUuid casters=4 guards=12"
+  Write-Evidence "LIVE_WAVE6_CAPTURE_ORDER_PASS prisoner=$SecondBotName prisoner_uuid=$secondUuid free_lower_uuid=$firstUuid participants=4 casters=4 guards=12"
+
+  Restart-LocalMinecraftForWave6 -Core $core
 
   $null = Invoke-LocalRcon ("attribute $SecondBotName minecraft:generic.max_health base set 5")
   $null = Invoke-LocalRcon ("effect clear $SecondBotName")
@@ -483,12 +603,22 @@ try {
     -Reason 'prisoner health changed before the 20 second drain boundary' | Out-Null
   Write-Evidence "LIVE_WAVE6_DRAIN_19_5S_PASS health=$healthAtCapture unchanged=true"
 
-  $firstDrainLog = Wait-Log -AfterOffset $captureOffset `
-    -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN[^\r\n]*applied=true[^\r\n]*damage=(?:1\.9+|2(?:\.0+)?)' -Seconds 10
+  $appliedDrainPattern = 'WAVE6_RITUAL_PRISONER_DRAIN[^\r\n]*applied=true[^\r\n]*damage=(?:1\.9+|2(?:\.0+)?)[^\r\n]*drain_at=(\d+)'
+  $appliedDrainCountBeforeFirst = [Regex]::Matches((Get-LogTail -Offset $captureOffset), $appliedDrainPattern).Count
+  $appliedDrainLengthBeforeFirst = Get-LogLength
+  $firstDrainLog = Wait-Log-MarkerIncrease -Pattern $appliedDrainPattern `
+    -BeforeCount $appliedDrainCountBeforeFirst -BeforeLength $appliedDrainLengthBeforeFirst -Seconds 30
+  $firstDrainMatches = [Regex]::Matches($firstDrainLog, $appliedDrainPattern)
+  if ($firstDrainMatches.Count -lt 1) {
+    throw 'The first post-restart ritual drain marker did not contain server drain_at.'
+  }
+  $firstDrainMatch = $firstDrainMatches[$firstDrainMatches.Count - 1]
+  $script:firstDrainAtMillis = [long]$firstDrainMatch.Groups[1].Value
   $healthAfterFirstDrain = Get-PlayerHealth -Name $SecondBotName
   if ([Math]::Abs($healthAfterFirstDrain - ($healthAtCapture - 2.0D)) -gt 0.01D) {
     throw "First ritual drain was not exactly 2 HP: before=$healthAtCapture after=$healthAfterFirstDrain"
   }
+  $appliedDrainsAfterFirst = Get-AppliedRitualDrainCount -Offset $script:captureOffset
   Write-Evidence "LIVE_WAVE6_DRAIN_20S_PASS health_before=$healthAtCapture health_after=$healthAfterFirstDrain damage=2"
 
   # Representative external damage is now applied in the interval after the
@@ -506,8 +636,8 @@ try {
     Start-Sleep -Milliseconds ([int][Math]::Min($waitForSecondDrainMillis, 300000L))
   }
   $drainsBeforeSecondDeadline = Get-AppliedRitualDrainCount -Offset $captureOffset
-  if ($drainsBeforeSecondDeadline -ne 1) {
-    throw "A second ritual drain appeared before its server deadline: count=$drainsBeforeSecondDeadline"
+  if ($drainsBeforeSecondDeadline -ne $appliedDrainsAfterFirst) {
+    throw "A second ritual drain appeared before its server deadline: before=$appliedDrainsAfterFirst after=$drainsBeforeSecondDeadline"
   }
   Assert-HealthEqual -Name $SecondBotName -Expected $healthAfterFirstDrain `
     -Reason 'prisoner health changed before the second 20 second drain boundary' | Out-Null
@@ -547,15 +677,12 @@ try {
       -not $projectileCasterMatch.Success) {
     throw "Projectile ability marker did not carry event, generation, and caster: $projectileAbilityLine"
   }
-  $thirdUuid = Get-OfflinePlayerUuid -Name $ThirdBotName
-  $thirdUuidPattern = Get-UuidRegexPattern -Uuid $thirdUuid
   $originPattern = 'WAVE6_RITUAL_PROJECTILE_ORIGIN_ASSERT[^\r\n]*event=' +
     [Regex]::Escape($projectileEventMatch.Groups[1].Value) +
     '[^\r\n]*generation=' + [Regex]::Escape($projectileGenerationMatch.Groups[1].Value) +
     '[^\r\n]*caster=' + [Regex]::Escape($projectileCasterMatch.Groups[1].Value) +
-    '[^\r\n]*target=(?:' +
-    $firstUuidPattern + '|' + $thirdUuidPattern +
-    ')[^\r\n]*sphere_origin=[^\r\n]*projectile_spawn=[^\r\n]*origin_distance=(?:0|0\.0+)[^\r\n]*passed=true'
+    '[^\r\n]*target=' + $freeUuidPattern +
+    '[^\r\n]*sphere_origin=[^\r\n]*projectile_spawn=[^\r\n]*origin_distance=(?:0|0\.0+)[^\r\n]*passed=true'
   $originLog = Wait-Log -AfterOffset $projectileOffset `
     -Pattern $originPattern -Seconds $TimeoutSeconds
   if ($originLog -match 'caster=[^\r\n]*sphere_origin=') {
@@ -577,7 +704,7 @@ try {
   $zoneMatch = [Regex]::Match($zoneLog,
     'WAVE6_RITUAL_ZONE_TELEGRAPH[^\r\n]*zone=([0-9a-fA-F-]{32,36})[^\r\n]*center=')
   if (-not $zoneMatch.Success) { throw "Zone target UUID was not recorded: $zoneLog" }
-  $freeNames = @($FirstBotName, $ThirdBotName)
+  $freeNames = @($FirstBotName, $ThirdBotName, $FourthBotName)
   $zoneTargetName = $null
   foreach ($freeName in $freeNames) {
     if ((Get-OfflinePlayerUuid -Name $freeName) -eq $zoneMatch.Groups[1].Value.Replace('-', '')) {
@@ -618,8 +745,7 @@ try {
   Wait-Log -AfterOffset $reverseOffset `
     -Pattern $reverseAbilityPattern -Seconds $TimeoutSeconds | Out-Null
   $reversePrisonerPattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=REVERSE[^\r\n]*action=START[^\r\n]*player=' + $secondUuidPattern
-  $reverseFreePattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=REVERSE[^\r\n]*action=START[^\r\n]*player=(?:' +
-    $firstUuidPattern + '|' + $thirdUuidPattern + ')'
+  $reverseFreePattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=REVERSE[^\r\n]*action=START[^\r\n]*player=' + $freeUuidPattern
   $reverseLog = Wait-Log -AfterOffset $reverseOffset `
     -Pattern $reverseFreePattern -Seconds $TimeoutSeconds
   if ($reverseLog -match $reversePrisonerPattern) {
@@ -635,12 +761,17 @@ try {
   $swapAbilityPattern = 'WAVE6_RITUAL_ABILITY[^\r\n]*role=CONTROL_SWAP_CASTER[^\r\n]*source=LOCAL_TEST_HOOK'
   Wait-Log -AfterOffset $swapOffset `
     -Pattern $swapAbilityPattern -Seconds $TimeoutSeconds | Out-Null
-  $swapFreePairPattern = '(?:WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*first=' +
-    $firstUuidPattern + '[^\r\n]*second=' + $thirdUuidPattern + '[^\r\n]*prisoner=' + $secondUuidPattern +
-    '|WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*first=' +
-    $thirdUuidPattern + '[^\r\n]*second=' + $firstUuidPattern + '[^\r\n]*prisoner=' + $secondUuidPattern + ')'
+  $swapFreePairPattern = 'WAVE6_RITUAL_CONTROL[^\r\n]*mode=SWAP[^\r\n]*action=START[^\r\n]*first=' +
+    $freeUuidPattern + '[^\r\n]*second=' + $freeUuidPattern + '[^\r\n]*prisoner=' + $secondUuidPattern
   $swapLog = Wait-Log -AfterOffset $swapOffset `
     -Pattern $swapFreePairPattern -Seconds $TimeoutSeconds
+  $swapLine = [Regex]::Matches($swapLog, $swapFreePairPattern) | Select-Object -Last 1
+  if ($null -eq $swapLine) { throw "Swap control marker was not captured: $swapLog" }
+  $swapText = $swapLine.Value
+  $swapIds = [Regex]::Match($swapText, 'first=([0-9a-fA-F-]{36,36})[^\r\n]*second=([0-9a-fA-F-]{36,36})[^\r\n]*prisoner=')
+  if (-not $swapIds.Success -or $swapIds.Groups[1].Value -eq $swapIds.Groups[2].Value) {
+    throw "Swap control selected an invalid pair: $swapText"
+  }
   Write-Evidence 'LIVE_WAVE6_ABILITY_ROLES_PASS projectile=server sphere zone=4x4 reverse=server control_swap=server'
   Write-Evidence 'LIVE_WAVE6_FREE_TARGET_CONTROL_PASS reverse=true swap=true prisoner_excluded=true reverse_swap_mutex=true'
 

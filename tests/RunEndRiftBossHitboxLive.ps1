@@ -62,10 +62,11 @@ $branch = (& git -C $root branch --show-current 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
   throw "Refused Git branch '$branch'."
 }
+$gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()
 
 New-Item -ItemType Directory -Path (Split-Path -Parent $EvidencePath) -Force | Out-Null
 Set-Content -LiteralPath $EvidencePath -Value @(
-  "END_RIFT_BOSS_HITBOX_LIVE_START time=$((Get-Date).ToString('o')) branch=$branch"
+  "END_RIFT_BOSS_HITBOX_LIVE_START time=$((Get-Date).ToString('o')) branch=$branch gitHead=$gitHead"
   "environment=$($properties['server-port'])/$($properties['rcon.port'])"
 ) -Encoding UTF8
 
@@ -283,6 +284,9 @@ $success = $false
 try {
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
+  # Remove only local probe arrows left by an interrupted run.  The live
+  # harness is isolated to local-runtime and never touches a production world.
+  $null = Invoke-LocalRcon 'minecraft:kill @e[type=minecraft:arrow]'
   $null = Invoke-LocalRcon 'cmend boss spawn official confirm'
   $null = Invoke-LocalRcon 'cmend boss freeze'
   Start-Sleep -Seconds 2
@@ -294,6 +298,31 @@ try {
   $debugStatus = Assert-CurrentHitboxStatus (Invoke-LocalRcon 'cmend debug bosshitbox status') $bossUuid
   Assert-ProxiesTagged $debugStatus $bossUuid
   Record ("LIVE_BOSS_HITBOX_PROFILE_PASS parts=$($debugStatus.Parts) proxies=$($debugStatus.Count) generation=$($debugStatus.Generation) tagged=true parent=$bossUuid bounded=true")
+
+  # Mutation proof at the live boundary: remove one known Interaction proxy
+  # from the running server, then use a real arrow to force the same runtime
+  # reconciliation path that combat uses.  The old UUID must disappear, the
+  # canonical count must return, and every recreated proxy must retain PDC.
+  $removedProxyId = $debugStatus.Ids[0]
+  $repairOffset = Log-Length
+  # Namespace the vanilla command so Essentials does not reinterpret the
+  # proxy UUID as a player name and report a false removal.
+  $null = Invoke-LocalRcon ("minecraft:kill $removedProxyId")
+  Start-Sleep -Milliseconds 250
+  $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~3 ~2.2 ~ {Motion:[-1.0d,0.0d,0.0d],NoGravity:1b,pickup:0b,damage:1.0d}")
+  $repairLog = Wait-Log -AfterOffset $repairOffset `
+    -Pattern ('BOSS_HITBOX_PROXY_RECREATED .*boss=' + [Regex]::Escape($bossUuid) + '.*generation=' + [Regex]::Escape([string]$debugStatus.Generation)) -Seconds 15
+  $repairedStatus = Assert-CurrentHitboxStatus (Invoke-LocalRcon 'cmend debug bosshitbox status') $bossUuid
+  Assert-ProxiesTagged $repairedStatus $bossUuid
+  if ($repairedStatus.Ids -contains $removedProxyId) {
+    throw "Removed boss proxy UUID was reused instead of recreated: $removedProxyId"
+  }
+  if (@($repairedStatus.Ids | Sort-Object -Unique).Count -ne $repairedStatus.Count) {
+    throw "Boss hitbox self-heal produced duplicate proxy UUIDs: $($repairedStatus.Ids -join ',')"
+  }
+  Record "LIVE_BOSS_HITBOX_PROXY_REMOVAL_CONFIRMED removed=$removedProxyId replacement_count=$($repairedStatus.Count) old_uuid_absent=true"
+  Record "LIVE_BOSS_HITBOX_SELF_HEAL_PASS recreated=true proxies=$($repairedStatus.Count) generation=$($repairedStatus.Generation) pdc=true"
+  Record "LIVE_BOSS_HITBOX_NO_DUPLICATE_PASS unique_proxy_ids=$(@($repairedStatus.Ids | Sort-Object -Unique).Count) proxy_count=$($repairedStatus.Count)"
 
   $position = Get-BossPosition $bossUuid
   $botX = $position[0] + 1.8D
@@ -346,10 +375,10 @@ try {
   }
   Record "LIVE_BOSS_HITBOX_MISS_PASS attacks=$($missAttacks.Count) accepted=0 before=$missBefore after=$missAfter carrier_ray_validated=true"
 
-  # Keep the arena chunk ticking while the projectile is in flight.  After
-  # the miss bot exits, an isolated arena with no players may unload and a
-  # command-summoned arrow will remain stationary instead of exercising the
-  # real ProjectileHitEvent path.
+  # Use a real server Arrow at the model-derived pelvis envelope.  The test
+  # boss is frozen and the command-owned arrow has no shooter, so the local
+  # administrative probe is accepted by the scheduled sweep and exercises
+  # the same server-side real-health transaction as a player projectile.
   # Arm the bot's bounded duration timer promptly.  It is switched to
   # spectator before the projectile is launched and aims twenty blocks above
   # the boss, so its single harmless packet cannot damage the probe target.
@@ -360,17 +389,9 @@ try {
   $null = Invoke-LocalRcon ("tp $anchorBotName $(Format-Coordinate $botX) $(Format-Coordinate $botY) $(Format-Coordinate $botZ) 90 0")
   Start-Sleep -Milliseconds 750
 
-  $position = Get-BossPosition $bossUuid
-  # The arena has a solid inner wall at +4 blocks on this axis.  Launch from
-  # the last open block instead of spawning the arrow inside that wall.  Keep
-  # it level so the test reaches the model-derived pelvis envelope before
-  # gravity can drop it into the arena floor.
-  $arrowX = Format-Coordinate ($position[0] + 3.0D)
-  $arrowY = Format-Coordinate ($position[1] + 2.2D)
-  $arrowZ = Format-Coordinate $position[2]
   $projectileOffset = Log-Length
   $projectileBefore = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))
-  $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~3 ~2.2 ~ {Motion:[-1.0d,0.0d,0.0d],NoGravity:1b,pickup:0b,damage:1.0d}")
+  $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~0.2 ~2.3 ~-0.1 {NoGravity:1b,pickup:0b,damage:1.0d}")
   Wait-Log -AfterOffset $projectileOffset -Pattern ('BOSS_DAMAGE_ACCEPTED .*boss=' + [Regex]::Escape($bossUuid) + '.*source=.*:') -Seconds 15 | Out-Null
   $projectileAccepted = Accepted-Lines $projectileOffset $bossUuid
   $projectileAfter = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))
@@ -383,8 +404,7 @@ try {
   Start-Sleep -Milliseconds 500
   $invulnerabilityOffset = Log-Length
   $invulnerabilityBefore = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))
-  $position = Get-BossPosition $bossUuid
-  $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~3 ~2.2 ~ {Motion:[-1.0d,0.0d,0.0d],NoGravity:1b,pickup:0b,damage:1.0d}")
+  $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~0.2 ~2.3 ~-0.1 {NoGravity:1b,pickup:0b,damage:1.0d}")
   Wait-Log -AfterOffset $invulnerabilityOffset -Pattern ('BOSS_DAMAGE_BLOCKED .*boss=' + [Regex]::Escape($bossUuid)) -Seconds 15 | Out-Null
   $invulnerabilityAfter = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))
   $invulnerabilityTail = Log-Tail $invulnerabilityOffset

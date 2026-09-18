@@ -867,8 +867,11 @@ bot.once('spawn', () => {
   pollControlMode()
   controlTimer = setInterval(pollControlMode, 100)
   // Keep a survival-like attack cadence while still reacting quickly enough
-  // to the tower-defense wave's moving attackers.
-  enterActiveMode(wave7AutopilotDefault)
+  // to the tower-defense wave's moving attackers.  A control file is an
+  // explicit live-probe command channel: pollControlMode() has already
+  // applied PASSIVE/ACTIVE from it, so do not overwrite PASSIVE here on the
+  // same tick.  Bots without a control channel retain the old active default.
+  if (!controlFile) enterActiveMode(wave7AutopilotDefault)
   healthTimer = setInterval(() => {
     if (previousHealth !== null && bot.health < previousHealth - 0.01) {
       console.log(`PLAYER_HURT ${username} before=${previousHealth.toFixed(2)} after=${bot.health.toFixed(2)}`)

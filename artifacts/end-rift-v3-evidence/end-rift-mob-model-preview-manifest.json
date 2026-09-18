@@ -9,7 +9,9 @@
     "animation": "END_RIFT_ENDERMAN",
     "hitbox": "0.6 x 2.9",
     "variant": "ORDINARY",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ordinary.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ordinary.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "enderman-elite",
@@ -21,7 +23,9 @@
     "animation": "END_RIFT_ELITE",
     "hitbox": "0.6 x 2.9",
     "variant": "ELITE",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-elite.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-elite.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "enderman-wave-guardian",
@@ -33,7 +37,9 @@
     "animation": "END_RIFT_WAVE_GUARDIAN",
     "hitbox": "0.6 x 2.9",
     "variant": "WAVE_GUARDIAN",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-wave-guardian.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-wave-guardian.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "enderman-ritual-guard",
@@ -45,7 +51,9 @@
     "animation": "END_RIFT_RITUAL_GUARD",
     "hitbox": "0.6 x 2.9",
     "variant": "RITUAL_GUARD",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ritual-guard.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ritual-guard.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "enderman-ritual-caster",
@@ -57,7 +65,9 @@
     "animation": "END_RIFT_RITUAL_CASTER",
     "hitbox": "0.6 x 2.9",
     "variant": "RITUAL_CASTER",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ritual-caster.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/enderman-ritual-caster.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "skeleton-ordinary",
@@ -69,7 +79,9 @@
     "animation": "END_RIFT_SKELETON",
     "hitbox": "0.6 x 1.99",
     "variant": "ORDINARY",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-ordinary.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-ordinary.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "skeleton-elite",
@@ -81,7 +93,9 @@
     "animation": "END_RIFT_ELITE_SKELETON",
     "hitbox": "0.6 x 1.99",
     "variant": "ELITE",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-elite.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-elite.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "skeleton-wave-guardian",
@@ -93,7 +107,9 @@
     "animation": "END_RIFT_WAVE_GUARDIAN_SKELETON",
     "hitbox": "0.6 x 1.99",
     "variant": "WAVE_GUARDIAN",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-wave-guardian.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-wave-guardian.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "skeleton-ritual-guard",
@@ -105,7 +121,9 @@
     "animation": "END_RIFT_RITUAL_GUARD_SKELETON",
     "hitbox": "0.6 x 1.99",
     "variant": "RITUAL_GUARD",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-ritual-guard.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/skeleton-ritual-guard.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "spider-ordinary",
@@ -117,7 +135,9 @@
     "animation": "END_RIFT_SPIDER",
     "hitbox": "1.4 x 0.9",
     "variant": "ORDINARY",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-ordinary.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-ordinary.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "spider-elite",
@@ -129,7 +149,9 @@
     "animation": "END_RIFT_ELITE_SPIDER",
     "hitbox": "1.4 x 0.9",
     "variant": "ELITE",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-elite.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-elite.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "spider-wave-guardian",
@@ -141,7 +163,9 @@
     "animation": "END_RIFT_WAVE_GUARDIAN_SPIDER",
     "hitbox": "1.4 x 0.9",
     "variant": "WAVE_GUARDIAN",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-wave-guardian.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-wave-guardian.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   },
   {
     "slug": "spider-ritual-guard",
@@ -153,6 +177,8 @@
     "animation": "END_RIFT_RITUAL_GUARD_SPIDER",
     "hitbox": "1.4 x 0.9",
     "variant": "RITUAL_GUARD",
-    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-ritual-guard.png"
+    "preview": "artifacts/end-rift-v3-evidence/model-previews/spider-ritual-guard.png",
+    "STATIC_ASSEMBLED_PREVIEW_ONLY": true,
+    "NATIVE_MINECRAFT_RENDER_VERIFIED": false
   }
 ]

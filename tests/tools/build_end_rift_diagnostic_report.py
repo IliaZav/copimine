@@ -304,6 +304,8 @@ def write_report(
     if report.diagnostic_events_dropped or report.write_failures:
         report.result = "INCOMPLETE EVIDENCE"
 
+    matrix = _verification_matrix(report, metadata)
+
     summary = {
         **report.summary(),
         "repository": metadata.get("repository", ""),
@@ -317,8 +319,10 @@ def write_report(
         "nativeMinecraft": metadata.get("nativeMinecraft", "NOT VERIFIED"),
         "livePaperResult": metadata.get("livePaperResult", "NOT RECORDED"),
         "diagnosticReportResult": metadata.get("diagnosticReportResult", "NOT RECORDED"),
+        "automatedGateResult": metadata.get("automatedGateResult", "NOT RECORDED"),
         "runDirectory": metadata.get("runDirectory", ""),
         "artifactHashes": dict(sorted(artifact_hashes.items())),
+        "verificationMatrix": matrix,
     }
     (run_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -328,6 +332,71 @@ def write_report(
         _render_markdown(report, metadata, artifact_hashes), encoding="utf-8"
     )
     return report
+
+
+def _verification_matrix(
+    report: DiagnosticReport,
+    metadata: Mapping[str, object],
+) -> list[dict[str, str]]:
+    """Build an evidence matrix without promoting an unrun layer to PASS.
+
+    The automated and live columns are intentionally independent.  A policy
+    test name is not a Paper runtime result, and a static preview is not a
+    native-client render.  ``testPlan`` is written by the live harness, so a
+    row is marked live only when that exact step or structured event exists in
+    this bundle.
+    """
+
+    plan_value = metadata.get("testPlan", [])
+    plan = {str(item) for item in plan_value} if isinstance(plan_value, (list, tuple, set)) else set()
+    automated = str(metadata.get("automatedGateResult", "NOT RECORDED")).upper()
+    live = str(metadata.get("livePaperResult", "NOT RECORDED")).upper()
+    native = str(metadata.get("nativeMinecraft", "NOT VERIFIED")).upper()
+    automated_pass = automated in {"PASS", "PASSED"}
+    live_pass = live in {"PASS", "PASSED"}
+    native_pass = native in {"PASS", "PASSED", "VERIFIED"}
+
+    rows = [
+        ("Seal capture", "RitualPrisonerCapturePolicyTest", {"W6-SEAL-01"}, {"RITUAL_PRISONER/CAPTURED"}, True),
+        ("20-second drain cadence", "RitualPrisonerHealthPolicyTest", {"W6-SEAL-01"}, {"RITUAL_PRISONER/DRAIN"}, True),
+        ("External-damage immunity", "RitualPrisonerHealthPolicyTest", set(), set(), True),
+        ("Target exclusion", "RitualTargetPolicyTest", set(), set(), True),
+        ("Sphere projectile origin", "RitualSphereProjectilePolicyTest", set(), set(), True),
+        ("Zone effects", "RitualZoneEffectPolicyTest", set(), set(), True),
+        ("Control swap", "RitualControlPairPolicyTest", set(), set(), True),
+        ("Amplifier roles", "RitualCasterTacticsPolicyTest", set(), set(), True),
+        ("Boss oriented OBB", "BossOrientedHitboxPolicyTest", set(), {"BOSS_HITBOX/SNAPSHOT"}, True),
+        ("Animated hitbox pose", "BossAnimationPosePolicyTest", set(), set(), True),
+        ("Finite projectile sweep", "BossProjectileSweepPolicyTest", set(), set(), True),
+        ("Proxy self-heal / dedupe", "BossHitboxProxyReconciliationPolicyTest", set(), set(), True),
+        ("UV and skeleton parity", "client/resourcepack gate", set(), set(), False),
+        ("Evidence portability and hashes", "test_end_rift_evidence_portability.py", set(), set(), False),
+        ("Wave 7 command cleanup", "RealitySplitBarrierRecoveryTest", {"W7-COMMAND-CLEANUP-01"}, {"WAVE7_BARRIER/CLEANUP"}, True),
+        ("Wave 7 natural cleanup", "RealitySplitBarrierRecoveryTest", {"W7-NATURAL-CLEANUP-01"}, {"WAVE7_BARRIER/RESTORE"}, True),
+        ("Wave 7 restart recovery", "RealitySplitBarrierRecoveryTest", {"W7-RESTART-01"}, {"RECOVERY/ENTITY_REHYDRATE"}, True),
+        ("Wave 6 restart recovery", "RitualSphereEncounterSnapshotTest", {"W6-RESTART-01"}, set(), True),
+        ("Second-run idempotency", "TransitionIdempotencyTest", {"W7-COMMAND-CLEANUP-02", "W6-SECOND-RUN-01"}, set(), True),
+    ]
+    result: list[dict[str, str]] = []
+    for area, automated_test, required_steps, required_events, native_required in rows:
+        automated_status = "PASS" if automated_pass else "NOT RECORDED"
+        live_observed = live_pass and (
+            bool(required_steps & plan)
+            or bool(required_events & set(report.event_counts))
+        )
+        live_status = "PASS" if live_observed else "NOT RUN IN THIS BUNDLE"
+        if not live_pass and (required_steps or required_events):
+            live_status = live or "NOT RUN"
+        native_status = "PASS" if native_pass and native_required else (
+            "NOT VERIFIED" if native_required else "NOT APPLICABLE (static/automated)"
+        )
+        result.append({
+            "area": area,
+            "automated": f"{automated_status} ({automated_test})",
+            "paperLive": live_status,
+            "nativeMinecraft": native_status,
+        })
+    return result
 
 
 def _render_markdown(
@@ -348,6 +417,7 @@ def _render_markdown(
         f"- Paper: `{metadata.get('serverVersion', 'unknown')}`",
         f"- Java: `{metadata.get('javaVersion', 'unknown')}`",
         f"- diagnostic mode: `{metadata.get('diagnosticMode', 'unknown')}`",
+        f"- automated gate: `{metadata.get('automatedGateResult', 'NOT RECORDED')}`",
         f"- diagnostic run directory: `{metadata.get('runDirectory', '')}`",
         "",
         "## Result Summary",
@@ -449,6 +519,17 @@ def _render_markdown(
         "## 19. Open Issues",
         "",
         "- native Minecraft visual/client behavior remains NOT VERIFIED unless native evidence is indexed for this exact SHA.",
+        "",
+        "## Verification Matrix",
+        "",
+        "Each layer is reported independently. `NOT RUN IN THIS BUNDLE` and `NOT VERIFIED` are intentional evidence states, not implicit passes.",
+        "",
+        "| Area | Automated/contract | Paper live | Native Minecraft |",
+        "|---|---|---|---|",
+        *(
+            f"| {row['area']} | {row['automated']} | {row['paperLive']} | {row['nativeMinecraft']} |"
+            for row in _verification_matrix(report, metadata)
+        ),
         "",
         "## 20. Evidence Index",
         "",

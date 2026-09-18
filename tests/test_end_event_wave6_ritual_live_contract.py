@@ -45,6 +45,7 @@ def test_wave6_live_probe_proves_physical_seal_capture_order() -> None:
         "FirstBotName",
         "SecondBotName",
         "ThirdBotName",
+        "FourthBotName",
         "Start-Bot",
         "Wait-BotsOnline",
         "Start-Sleep -Seconds 3",
@@ -109,11 +110,30 @@ def test_wave6_live_probe_anchors_drain_cadence_to_the_server_capture_marker() -
     script = read_script()
     assert "first_drain_at=" in script
     assert "UnixTimeMilliseconds" in script
+    assert "Stop-Bots" in script
+    assert "Wait-BotsOffline" in script
+    restart = script[script.index("function Restart-LocalMinecraftForWave6") :]
+    assert restart.index("Stop-Bots") < restart.index("save-all")
+    assert "Wait-Log-MarkerIncrease -Pattern $appliedDrainPattern" in script
+    assert "applied=true[^\\r\\n]*damage=" in script
+    assert "damage=(?:1\\.9+|2(?:\\.0+)?)[^\\r\\n]*drain_at=(\\d+)" in script
+    assert "$appliedDrainsAfterFirst = Get-AppliedRitualDrainCount" in script
+    assert "$drainsBeforeSecondDeadline -ne $appliedDrainsAfterFirst" in script
     drain_window = script.index("LIVE_WAVE6_DRAIN_19_5S_PASS")
     external_between_drains = script.index(
         "Assert-ExternalDamageIgnored -ExpectedHealth $healthAfterFirstDrain"
     )
     assert script.index("LIVE_WAVE6_DRAIN_20S_PASS") < external_between_drains
+
+
+def test_wave6_restart_does_not_consume_a_drain_while_the_prisoner_is_offline() -> None:
+    source = EVENT_SOURCE.read_text(encoding="utf-8")
+    drain_start = source.index("private void applyRitualSphereDrain")
+    drain_end = source.index("private void tickRitualGuardGroups", drain_start)
+    drain_body = source[drain_start:drain_end]
+    assert "prisoner == null || !prisoner.isOnline() || prisoner.isDead()" in drain_body
+    assert drain_body.index("prisoner == null") < drain_body.index("advanceDrain")
+    assert "drain_at=" in drain_body
 
 
 def test_wave6_completion_captures_log_offset_before_request() -> None:

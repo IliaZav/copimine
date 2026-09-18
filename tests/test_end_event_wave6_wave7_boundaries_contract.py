@@ -257,6 +257,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
     assert "wave7AutopilotDefault" in bot
     assert "enterActiveMode(wave7AutopilotDefault)" in bot
+    assert "if (!controlFile) enterActiveMode(wave7AutopilotDefault)" in bot
     assert "findWalkablePath" in bot
     assert "navigationPath" in bot
     assert "navigationRecoveryUntil" in bot
@@ -506,12 +507,29 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "testWaveFrontVisualMode && activeWave == 7" in root
     assert "END_RIFT_WAVE7_BARRIERS_REHYDRATED" in root
     assert "preserveWave7ForRestart" in root
-    assert "cancelSessionTasks(preserveWave7ForRestart)" in root
-    assert "cancelSessionTasks(boolean preserveWave7ForRestart)" in root
+    assert "cancelSessionTasks(preserveWave6ForRestart || preserveWave7ForRestart)" in root
+    assert "cancelSessionTasks(boolean preserveCombatForRestart)" in root
     roster_start = root.index("List<UUID> localChamberRoster")
     roster_end = root.index("if (test)", roster_start)
     roster_body = root[roster_start:roster_end]
     assert "Bukkit.getOnlinePlayers().stream().filter(this::isCombatTarget)" in roster_body
+
+
+def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    assert '"6".equals(snapshot.objectiveProgress().get("test-wave"))' in root
+    assert "persistedDisposableWave6" in root
+    assert "testWaveFrontVisualMode && activeWave == 6" in root
+    assert "RitualSphereEncounterSnapshot.encode(ritualSphereState)" in root
+    assert "restorePersistedRitualSphereObjective();" in root
+    assert "END_RIFT_WAVE6_RESTART_PRESERVED" in root
+    restore_start = root.index("private void restorePersistedRitualSphereObjective()")
+    restore_end = root.index("private void cleanupLegacyWave6Entities()", restore_start)
+    restore_body = root[restore_start:restore_end]
+    assert "testWaveFrontVisualMode && activeWave == 6" in restore_body
+    assert "WAVE6_RITUAL_REHYDRATED" in restore_body
+    assert "WAVE6_RITUAL_RESTART_CONTINUED" in root
+    assert "ritualSphereStateRehydrated" in root
 
 
 def test_wave7_mini_boss_weakness_does_not_zero_normal_weapon_damage() -> None:

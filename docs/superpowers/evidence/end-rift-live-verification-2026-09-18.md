@@ -142,6 +142,12 @@ current screenshot or video for this SHA. Existing native PNG/MP4 files are
 preserved but are not claimed as exact-head proof. Static model-board/UV
 evidence is also not a substitute for a native render.
 
+The exact manual/native capture procedure is committed at
+`docs/superpowers/evidence/end-rift-native-capture-procedure.md`. It is a
+runbook, not visual evidence: it does not change the current `NOT VERIFIED`
+result until fresh screenshots and the continuous flight recording are taken
+against the recorded source and artifact hashes.
+
 ## Release decision
 
 Server-side implementation and live Paper gates are evidenced as passed. This

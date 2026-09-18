@@ -151,6 +151,14 @@ can be honestly attached as current proof. Existing PNG/MP4 files under
 `artifacts/end-rift-v3-evidence/` are preserved, but are not relabeled as
 evidence for `042d3514`.
 
+The exact operator procedure for the remaining native gate is committed at
+`docs/superpowers/evidence/end-rift-native-capture-procedure.md`. It covers
+native-window identity, boss/model/hitbox captures, the Wave 6 Ritual Sphere,
+the Wave 7 physical barrier, the mob matrix, the continuous 15-second flight
+video, evidence hashing, and cleanup. Until that procedure produces fresh
+captures for this source/artifact identity, `nativeMinecraftTestedSha` remains
+`NOT VERIFIED`.
+
 This keeps the release gate open. Do not call the event visually released until
 the native client is reachable and a screenshot/video is captured against the
 same source/artifact identity recorded above.

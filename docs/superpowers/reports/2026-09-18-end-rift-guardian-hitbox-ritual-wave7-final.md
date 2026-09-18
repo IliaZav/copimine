@@ -159,6 +159,14 @@ use the same branch/artifact hashes above, then populate
 matrix. Until that happens the release verdict stays `NOT READY FOR FINAL
 RELEASE`.
 
+The reproducible operator runbook for that capture is
+`docs/superpowers/evidence/end-rift-native-capture-procedure.md`. It records
+the isolated-session startup, native-window refusal rule, exact boss and
+hitbox scenes, animation/phase matrix, Wave 6 and Wave 7 visual states, mob
+role matrix, 15-second flight path, hashes, publication, and cleanup. The
+runbook is intentionally committed while the native bridge is unavailable;
+its presence is not a visual pass.
+
 ## Publication and safety boundary
 
 - Changes are confined to `codex/end-rift-event`.

@@ -229,7 +229,9 @@ function Wait-Log-MarkerIncrease {
       # the previous file's count.
       $rotated = $BeforeLength -gt 0L -and $current.Length -lt $BeforeLength
       if ($count -gt $BeforeCount -or ($rotated -and $count -gt 0)) {
-        return $current
+        if ($rotated) { return $current }
+        if ($BeforeLength -ge $current.Length) { return '' }
+        return $current.Substring([int]$BeforeLength)
       }
     }
     Start-Sleep -Milliseconds 250
@@ -690,7 +692,7 @@ try {
   if ($firstDrainMatches.Count -lt 1) {
     throw 'The first post-restart ritual drain marker did not contain server drain_at.'
   }
-  $firstDrainMatch = $firstDrainMatches[$firstDrainMatches.Count - 1]
+  $firstDrainMatch = $firstDrainMatches[0]
   $script:firstDrainAtMillis = [long]$firstDrainMatch.Groups[1].Value
   $healthAfterFirstDrain = Get-PlayerHealth -Name $SecondBotName
   if ([Math]::Abs($healthAfterFirstDrain - ($healthAtCapture - 2.0D)) -gt 0.01D) {

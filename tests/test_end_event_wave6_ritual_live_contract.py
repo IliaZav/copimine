@@ -116,6 +116,14 @@ def test_wave6_live_probe_anchors_drain_cadence_to_the_server_capture_marker() -
     restart = script[script.index("function Restart-LocalMinecraftForWave6") :]
     assert restart.index("Stop-Bots") < restart.index("save-all")
     assert "Wait-Log-MarkerIncrease -Pattern $appliedDrainPattern" in script
+    marker_start = script.index("function Wait-Log-MarkerIncrease")
+    marker_end = script.index("function Get-AppliedRitualDrainCount", marker_start)
+    marker_body = script[marker_start:marker_end]
+    assert "return $current.Substring([int]$BeforeLength)" in marker_body
+    first_drain_start = script.index("$firstDrainMatches = [Regex]::Matches")
+    first_drain_end = script.index("$healthAfterFirstDrain", first_drain_start)
+    assert "$firstDrainMatch = $firstDrainMatches[0]" in script[first_drain_start:first_drain_end]
+    assert "$firstDrainMatches[$firstDrainMatches.Count - 1]" not in script[first_drain_start:first_drain_end]
     assert "applied=true[^\\r\\n]*damage=" in script
     assert "damage=(?:1\\.9+|2(?:\\.0+)?)[^\\r\\n]*drain_at=(\\d+)" in script
     assert "$appliedDrainsAfterFirst = Get-AppliedRitualDrainCount" in script

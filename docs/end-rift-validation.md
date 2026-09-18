@@ -16,8 +16,8 @@ visual release claim.
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
 | `sourceImplementationSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` (`fix(end-rift): recover articulated tentacle carriers`) |
 | `testedArtifactBuildSha` | `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` (functional source/artifact evidence commit) |
-| `githubActionsHeadSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` |
+| `reportCommitSha` | `a1311ee1ec980dd2575003cfb546168e4299853d` (validation-report update on the functional source/artifact commit) |
+| `githubActionsHeadSha` | `a1311ee1ec980dd2575003cfb546168e4299853d` |
 | `githubActionsSourceImplementationSha` | `d13a0a84e5dfce575378447c112b5029a34bdc44` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
@@ -223,11 +223,11 @@ The resource-pack generator’s recorded SHA-1 is
 
 ## GitHub CI
 
-The current source head `d13a0a84e5dfce575378447c112b5029a34bdc44` has both
-required workflows green:
+The current source/report head `a1311ee1ec980dd2575003cfb546168e4299853d`
+has both required workflows green:
 
-- [push run 35322355210](https://github.com/IliaZav/copimine/actions/runs/35322355210)
-- [pull-request run 35322359295](https://github.com/IliaZav/copimine/actions/runs/35322359295)
+- [push run 35327488935](https://github.com/IliaZav/copimine/actions/runs/35327488935)
+- [pull-request run 35327492996](https://github.com/IliaZav/copimine/actions/runs/35327492996)
 
 Both runs report `completed / success` and completed the
 `static-and-contract` and `java-plugins` jobs.

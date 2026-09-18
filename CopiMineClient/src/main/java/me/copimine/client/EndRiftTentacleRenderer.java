@@ -1,6 +1,9 @@
 package me.copimine.client;
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.component.type.CustomModelDataComponent;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
@@ -8,12 +11,15 @@ import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import me.copimine.client.mixin.ClientWorldAccessor;
 
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -66,6 +72,29 @@ public final class EndRiftTentacleRenderer {
         return EndRiftTentacleAnimator.poseFor(animationId, progress, deterministicSeed);
     }
 
+    /**
+     * Identifies the server-side ItemDisplay that carries a tentacle. The
+     * bridge visual binding is preferred when present, but the item component
+     * is authoritative enough to recover from a delayed or missed bind packet.
+     */
+    public static boolean isTentacleCarrier(DisplayEntity entity) {
+        if (!(entity instanceof DisplayEntity.ItemDisplayEntity itemDisplay)) {
+            return false;
+        }
+        if (entity.getUuid() != null
+                && EndRiftTentacleModel.VISUAL_ID.equals(
+                        ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString()))) {
+            return true;
+        }
+        ItemStack stack = itemDisplay.getItemStack();
+        if (stack == null || stack.isEmpty()) {
+            return false;
+        }
+        CustomModelDataComponent customModelData = stack.get(DataComponentTypes.CUSTOM_MODEL_DATA);
+        return customModelData != null
+                && EndRiftTentacleModel.isServerCustomModelData(customModelData.value());
+    }
+
     /** Draw all visible event tentacle carriers in one bounded world pass. */
     public static void render(WorldRenderContext context) {
         if (context == null || context.world() == null || context.camera() == null
@@ -85,30 +114,27 @@ public final class EndRiftTentacleRenderer {
 
         matrices.push();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-        // The bridge already knows the event-owned visual IDs. Iterate only
-        // that bounded set instead of scanning every loaded entity in the
-        // client world on every render pass.
-        for (String uuidValue : ClientBridgeProtocol.endEventVisualEntityIds()) {
-            UUID entityUuid;
-            try {
-                entityUuid = UUID.fromString(uuidValue);
-            } catch (IllegalArgumentException ignored) {
-                continue;
-            }
-            var lookupEntity = ((ClientWorldAccessor) context.world())
+        Set<UUID> candidateIds = candidateEntityIds((ClientWorld) context.world());
+        for (UUID entityUuid : candidateIds) {
+            Entity entity = ((ClientWorldAccessor) context.world())
                     .copimine$getEntityLookup().get(entityUuid);
-            Entity entity = lookupEntity instanceof Entity candidate ? candidate : null;
-            if (!(entity instanceof DisplayEntity.ItemDisplayEntity)
-                    || entity.isRemoved() || entity.getUuid() == null) {
+            if (!(entity instanceof DisplayEntity.ItemDisplayEntity display)
+                    || entity.isRemoved() || entity.getUuid() == null
+                    || !isTentacleCarrier(display)) {
                 continue;
             }
-            String uuid = entity.getUuid().toString();
-            if (!EndRiftTentacleModel.VISUAL_ID.equals(
-                    ClientBridgeProtocol.endEventVisualForEntity(uuid))) {
-                continue;
-            }
+            String uuid = entityUuid.toString();
             EndRiftTentaclePose.TentaclePose pose =
                     ClientBridgeProtocol.endEventTentaclePoseAt(uuid, nowMillis);
+            if (pose == null) {
+                String fallbackAnimation = ClientBridgeProtocol
+                        .endEventAnimationForEntity(uuid);
+                pose = poseForAt(EndRiftTentacleModel.VISUAL_ID,
+                        fallbackAnimation == null || fallbackAnimation.isBlank()
+                                ? "READY" : fallbackAnimation,
+                        nowMillis, 0L,
+                        entityUuid.getMostSignificantBits() ^ entityUuid.getLeastSignificantBits());
+            }
             if (pose == null || !pose.isFinite()) {
                 continue;
             }
@@ -120,7 +146,7 @@ public final class EndRiftTentacleRenderer {
             VertexConsumer buffer = consumers.getBuffer(RenderLayer.getEntityTranslucent(TEXTURE));
             matrices.push();
             matrices.translate(position.x, position.y, position.z);
-            Entity target = targetEntity(context, uuidValue);
+            Entity target = targetEntity(context, uuid);
             Vec3d targetPosition = target == null ? null : target.getLerpedPos(tickDelta);
             if (targetPosition != null && finite(targetPosition)) {
                 // The rig's authored forward axis is +Z. Rotate the whole
@@ -137,6 +163,25 @@ public final class EndRiftTentacleRenderer {
             matrices.pop();
         }
         matrices.pop();
+    }
+
+    private static Set<UUID> candidateEntityIds(ClientWorld world) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (String uuidValue : ClientBridgeProtocol.endEventVisualEntityIds()) {
+            try {
+                ids.add(UUID.fromString(uuidValue));
+            } catch (IllegalArgumentException ignored) {
+                // A malformed bridge entry must not prevent the item scan.
+            }
+        }
+        for (Entity entity : world.getEntities()) {
+            if (entity instanceof DisplayEntity.ItemDisplayEntity display
+                    && !entity.isRemoved() && entity.getUuid() != null
+                    && isTentacleCarrier(display)) {
+                ids.add(entity.getUuid());
+            }
+        }
+        return ids;
     }
 
     private static boolean finite(Vec3d value) {

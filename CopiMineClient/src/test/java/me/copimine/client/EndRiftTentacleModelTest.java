@@ -11,6 +11,8 @@ import net.minecraft.util.math.Vec3d;
 class EndRiftTentacleModelTest {
     @Test
     void exposesTheArtistBriefSkeletonAndEveryAnimation() {
+        assertTrue(EndRiftTentacleModel.isServerCustomModelData(830017));
+        assertTrue(!EndRiftTentacleModel.isServerCustomModelData(830018));
         assertTrue(EndRiftTentacleModel.REQUIRED_BONES.contains("grab_socket"));
         assertTrue(EndRiftTentacleModel.REQUIRED_BONES.contains("seg_04"));
         assertTrue(EndRiftTentacleModel.REQUIRED_BONES.contains("seg_05"));

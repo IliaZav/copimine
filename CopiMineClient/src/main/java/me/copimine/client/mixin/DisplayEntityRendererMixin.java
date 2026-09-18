@@ -1,7 +1,6 @@
 package me.copimine.client.mixin;
 
-import me.copimine.client.ClientBridgeProtocol;
-import me.copimine.client.EndRiftTentacleModel;
+import me.copimine.client.EndRiftTentacleRenderer;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
@@ -24,12 +23,7 @@ public abstract class DisplayEntityRendererMixin {
                                                           float tickDelta, MatrixStack matrices,
                                                           VertexConsumerProvider vertexConsumers,
                                                           int light, CallbackInfo ci) {
-        if (!(entity instanceof DisplayEntity.ItemDisplayEntity)
-                || entity.getUuid() == null) {
-            return;
-        }
-        String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
-        if (EndRiftTentacleModel.VISUAL_ID.equals(visual)) {
+        if (EndRiftTentacleRenderer.isTentacleCarrier(entity)) {
             ci.cancel();
         }
     }

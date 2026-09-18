@@ -1,92 +1,94 @@
 {
-  "available": true,
-  "filename": "CopiMineMods.zip",
-  "downloadUrl": "/downloads/CopiMineMods.zip",
-  "size": 21654180,
-  "sha1": "af706e0f46ff2cce5b75f818fbb575ac0cc9ba61",
-  "sha256": "e5c9c848df155ff0922bbfa82bafa94f50a164f1da49f671d548233da6dec239",
-  "modified": 1789717001,
-  "manifest": {
-    "schemaVersion": 2,
-    "name": "CopiMineMods",
-    "minecraftVersion": "1.21.1",
-    "loader": "Fabric",
-    "downloadPath": "/downloads/CopiMineMods.zip",
-    "files": [
-      {
-        "path": "mods/CopiMineClient-0.1.1.jar",
-        "component": "CopiMineClient",
-        "version": "0.1.1",
-        "license": "Proprietary",
-        "feature": "Клиентский мод CopiMine, визуалы и связка с сервером",
-        "required": true
-      },
-      {
-        "path": "mods/CustomSkinLoader_Fabric-14.26.1.jar",
-        "component": "CustomSkinLoader",
-        "version": "14.26.1",
-        "license": "GPL-3.0-only",
-        "source": "https://github.com/xfl03/MCCustomSkinLoader",
-        "feature": "Клиентские скины вместо TL Skin",
-        "required": false
-      },
-      {
-        "path": "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-        "component": "Emotecraft",
-        "version": "2.4.12+1.21.1-fabric",
-        "license": "GPL-3.0-or-later",
-        "source": "https://modrinth.com/project/pZ2wrerK",
-        "feature": "Анимации и эмоции",
-        "required": true
-      },
-      {
-        "path": "mods/fabric-api-0.116.12+1.21.1.jar",
-        "component": "Fabric API",
-        "version": "0.116.12+1.21.1",
-        "license": "Apache-2.0",
-        "source": "https://modrinth.com/project/P7dR8mSH",
-        "feature": "Базовая библиотека для CopiMineClient и клиентских модов",
-        "required": true
-      },
-      {
-        "path": "mods/voicechat-fabric-1.21.1-2.6.16.jar",
-        "component": "Simple Voice Chat",
-        "version": "2.6.16+1.21.1-fabric",
-        "license": "All Rights Reserved",
-        "source": "https://modrinth.com/mod/simple-voice-chat",
-        "feature": "Голосовой чат в игре",
-        "required": true
-      },
-      {
-        "path": "mods/iris-fabric-1.8.8+mc1.21.1.jar",
-        "component": "Iris",
-        "version": "1.8.8+mc1.21.1",
-        "license": "GPL-3.0-only",
-        "source": "https://modrinth.com/mod/iris",
-        "feature": "Поддержка шейдеров на клиенте",
-        "required": false
-      },
-      {
-        "path": "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
-        "component": "Sodium",
-        "version": "0.6.13+mc1.21.1",
-        "license": "LGPL-3.0-only",
-        "source": "https://modrinth.com/mod/sodium",
-        "feature": "Оптимизация производительности клиента",
-        "required": false
-      }
-    ],
-    "requiredExternal": [],
-    "installSteps": [
-      "Установите Fabric Loader для Minecraft 1.21.1.",
-      "Скопируйте все jar из папки mods архива CopiMineMods.zip в .minecraft/mods.",
-      "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
-    ],
-    "notes": [
-      "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
-      "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
-      "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
-      "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
-    ]
-  }
+    "available":  true,
+    "filename":  "CopiMineMods.zip",
+    "downloadUrl":  "/downloads/CopiMineMods.zip",
+    "size":  21655665,
+    "sha1":  "f87076692e0e4453d1c749a6b49873172315c42d",
+    "sha256":  "d59e93a9423cf5e7ec414cfe759c776f986d06aab206046b0991f7604698a471",
+    "modified":  1789721518,
+    "manifest":  {
+                     "schemaVersion":  2,
+                     "name":  "CopiMineMods",
+                     "minecraftVersion":  "1.21.1",
+                     "loader":  "Fabric",
+                     "downloadPath":  "/downloads/CopiMineMods.zip",
+                     "files":  [
+                                   {
+                                       "path":  "mods/CopiMineClient-0.1.1.jar",
+                                       "component":  "CopiMineClient",
+                                       "version":  "0.1.1",
+                                       "license":  "Proprietary",
+                                       "feature":  "Клиентский мод CopiMine, визуалы и связка с сервером",
+                                       "required":  true
+                                   },
+                                   {
+                                       "path":  "mods/CustomSkinLoader_Fabric-14.26.1.jar",
+                                       "component":  "CustomSkinLoader",
+                                       "version":  "14.26.1",
+                                       "license":  "GPL-3.0-only",
+                                       "source":  "https://github.com/xfl03/MCCustomSkinLoader",
+                                       "feature":  "Клиентские скины вместо TL Skin",
+                                       "required":  false
+                                   },
+                                   {
+                                       "path":  "mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
+                                       "component":  "Emotecraft",
+                                       "version":  "2.4.12+1.21.1-fabric",
+                                       "license":  "GPL-3.0-or-later",
+                                       "source":  "https://modrinth.com/project/pZ2wrerK",
+                                       "feature":  "Анимации и эмоции",
+                                       "required":  true
+                                   },
+                                   {
+                                       "path":  "mods/fabric-api-0.116.12+1.21.1.jar",
+                                       "component":  "Fabric API",
+                                       "version":  "0.116.12+1.21.1",
+                                       "license":  "Apache-2.0",
+                                       "source":  "https://modrinth.com/project/P7dR8mSH",
+                                       "feature":  "Базовая библиотека для CopiMineClient и клиентских модов",
+                                       "required":  true
+                                   },
+                                   {
+                                       "path":  "mods/voicechat-fabric-1.21.1-2.6.16.jar",
+                                       "component":  "Simple Voice Chat",
+                                       "version":  "2.6.16+1.21.1-fabric",
+                                       "license":  "All Rights Reserved",
+                                       "source":  "https://modrinth.com/mod/simple-voice-chat",
+                                       "feature":  "Голосовой чат в игре",
+                                       "required":  true
+                                   },
+                                   {
+                                       "path":  "mods/iris-fabric-1.8.8+mc1.21.1.jar",
+                                       "component":  "Iris",
+                                       "version":  "1.8.8+mc1.21.1",
+                                       "license":  "GPL-3.0-only",
+                                       "source":  "https://modrinth.com/mod/iris",
+                                       "feature":  "Поддержка шейдеров на клиенте",
+                                       "required":  false
+                                   },
+                                   {
+                                       "path":  "mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+                                       "component":  "Sodium",
+                                       "version":  "0.6.13+mc1.21.1",
+                                       "license":  "LGPL-3.0-only",
+                                       "source":  "https://modrinth.com/mod/sodium",
+                                       "feature":  "Оптимизация производительности клиента",
+                                       "required":  false
+                                   }
+                               ],
+                     "requiredExternal":  [
+
+                                          ],
+                     "installSteps":  [
+                                          "Установите Fabric Loader для Minecraft 1.21.1.",
+                                          "Скопируйте все jar из папки mods архива CopiMineMods.zip в .minecraft/mods.",
+                                          "Если у вас уже стоят другие версии Fabric API, Iris, Sodium или Voice Chat, замените их файлами из архива."
+                                      ],
+                     "notes":  [
+                                   "Архив уже содержит CopiMineClient, Emotecraft, Fabric API, Simple Voice Chat, Iris и Sodium.",
+                                   "Iris и Sodium лежат в архиве как готовый клиентский комплект, но не требуются для входа на сервер.",
+                                   "CoreProtect и Emotecraft Bukkit не входят в клиентский архив.",
+                                   "Скачивание идёт одним zip без внешних лаунчеров и отдельных ссылок."
+                               ]
+                 }
 }

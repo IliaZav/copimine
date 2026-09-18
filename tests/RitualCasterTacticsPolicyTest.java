@@ -26,6 +26,23 @@ public final class RitualCasterTacticsPolicyTest {
         check(RitualCasterTacticsPolicy.canTargetPlayers(
                         RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
                 "awakened casters must be allowed to attack");
+        check(RitualCasterTacticsPolicy.ownsRitualAbility(
+                        RitualCasterTacticsPolicy.State.GUARDED_CASTING),
+                "guarded casters must own their Ritual Sphere ability");
+        check(RitualCasterTacticsPolicy.ownsRitualAbility(
+                        RitualCasterTacticsPolicy.State.EXPOSED_CASTING),
+                "exposed casters must keep their Ritual Sphere ability until first accepted hit");
+        check(!RitualCasterTacticsPolicy.ownsRitualAbility(
+                        RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
+                "awakened casters must leave Ritual Sphere ability ownership");
+        check(RitualCasterTacticsPolicy.contributesAmplification(
+                        RitualCasterTacticsPolicy.State.GUARDED_CASTING,
+                        RitualCasterTacticsPolicy.Role.AMPLIFIER),
+                "guarded amplifiers must contribute to the ritual");
+        check(!RitualCasterTacticsPolicy.contributesAmplification(
+                        RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING,
+                        RitualCasterTacticsPolicy.Role.AMPLIFIER),
+                "awakened amplifiers must stop amplifying after leaving the channel");
 
         check(RitualCasterTacticsPolicy.roleForSlot(0)
                         == RitualCasterTacticsPolicy.Role.PROJECTILE_CASTER,

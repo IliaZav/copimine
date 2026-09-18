@@ -78,7 +78,7 @@ def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_a
     end = root.index("private void startRitualZone", start)
     body = root[start:end]
     assert "RitualCasterTacticsPolicy.Role role" in body
-    assert "RitualCasterTacticsPolicy.roleForSlot(slot)" in body
+    assert "RitualCasterTacticsPolicy.roleForSlot(" in body
     assert "RitualCasterTacticsPolicy.Role.AMPLIFIER" in body
     assert "switch (role)" in body
     for handler in (
@@ -96,6 +96,21 @@ def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_a
     ):
         assert removed not in body
     assert "RitualSphereEncounterPolicy.Ability.values()" not in body
+
+
+def test_wave6_scheduler_owns_abilities_during_channeling_and_marks_natural_source() -> None:
+    """A scheduler regression must not move ritual roles back to awakened AI."""
+
+    root = read(SRC / "CopiMineEndEvent.java")
+    start = root.index("private void castNextRitualAbility")
+    end = root.index("private void startRitualZone", start)
+    body = root[start:end]
+    assert "RitualCasterTacticsPolicy.ownsRitualAbility(" in body
+    assert "RitualCasterTacticsPolicy.Role.AMPLIFIER" in body
+    assert "source=NATURAL" in body
+    assert "amplifier_count=" in body
+    assert "effective_projectiles=" in body
+    assert "effective_intensity=" in body
 
 
 def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> None:

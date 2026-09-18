@@ -15294,63 +15294,107 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void castNextRitualAbility(long now) {
-        List<Entity> casters = ritualCasterUuids.stream()
+        List<LivingEntity> casters = ritualCasterUuids.stream()
                 .map(ownedEntities::get)
                 .filter(entity -> entity instanceof LivingEntity && isLiveOwnedEntity(entity.getUniqueId()))
-                .sorted(Comparator.comparing(entity -> entity.getUniqueId().toString()))
+                .map(entity -> (LivingEntity) entity)
+                .sorted(Comparator.comparingInt((LivingEntity entity) -> ritualCasterSlots
+                                .getOrDefault(entity.getUniqueId(), Integer.MAX_VALUE))
+                        .thenComparing(entity -> entity.getUniqueId().toString()))
                 .toList();
         if (casters.isEmpty() || ritualSphereState == null) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        Entity casterEntity = casters.get(Math.floorMod(ritualAbilityCursor++, casters.size()));
+
+        int channelingAmplifiers = 0;
+        for (LivingEntity caster : casters) {
+            RitualCasterTacticsPolicy.State state = ritualCasterTacticsState(caster);
+            RitualCasterTacticsPolicy.Role role = RitualCasterTacticsPolicy.roleForSlot(
+                    ritualCasterSlots.getOrDefault(caster.getUniqueId(), 99));
+            if (RitualCasterTacticsPolicy.contributesAmplification(state, role)) {
+                channelingAmplifiers++;
+            }
+        }
+
+        LivingEntity casterEntity = null;
+        RitualCasterTacticsPolicy.State tactics = null;
+        RitualCasterTacticsPolicy.Role role = null;
+        int selectedIndex = -1;
+        for (int offset = 0; offset < casters.size(); offset++) {
+            int index = Math.floorMod(ritualAbilityCursor + offset, casters.size());
+            LivingEntity candidate = casters.get(index);
+            RitualCasterTacticsPolicy.State candidateState = ritualCasterTacticsState(candidate);
+            RitualCasterTacticsPolicy.Role candidateRole = RitualCasterTacticsPolicy.roleForSlot(
+                    ritualCasterSlots.getOrDefault(candidate.getUniqueId(), 99));
+            if (candidateRole == RitualCasterTacticsPolicy.Role.AMPLIFIER
+                    || !RitualCasterTacticsPolicy.ownsRitualAbility(candidateState)) {
+                continue;
+            }
+            casterEntity = candidate;
+            tactics = candidateState;
+            role = candidateRole;
+            selectedIndex = index;
+            break;
+        }
+        if (casterEntity == null || tactics == null || role == null) {
+            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
+            return;
+        }
+        ritualAbilityCursor = selectedIndex + 1;
         int slot = ritualCasterSlots.getOrDefault(casterEntity.getUniqueId(), 99);
-        RitualCasterTacticsPolicy.State tactics = ritualCasterTacticsState(casterEntity);
-        if (RitualCasterTacticsPolicy.castsSphere(tactics)) {
-            castRitualSpherePulse((LivingEntity) casterEntity, tactics, now);
-            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
-            return;
-        }
-        if (!RitualCasterTacticsPolicy.canTargetPlayers(tactics)) {
-            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
-            return;
-        }
-        RitualCasterTacticsPolicy.Role role = RitualCasterTacticsPolicy.roleForSlot(slot);
-        if (role == RitualCasterTacticsPolicy.Role.AMPLIFIER) {
-            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
-            return;
-        }
-        if (role == RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER) {
-            startRitualControlSwap(now);
-        }
+        castRitualSpherePulse(casterEntity, tactics, now);
+
         Player target = ritualNearestTarget(casterEntity.getLocation(),
                 boundedCombatRadius(config.containmentRadius()));
         if (target == null && role != RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER) {
             ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
             return;
         }
-        switch (role) {
-            case PROJECTILE_CASTER -> spawnRitualProjectileVolley((LivingEntity) casterEntity, target,
-                    ritualSphereState.profile().projectilesPerVolley());
-            case ZONE_CASTER -> startRitualZone(target, now);
-            case REVERSE_CASTER -> startRitualReverse(target, now);
-            case CONTROL_SWAP_CASTER -> {
-                // The pair action was started above because it does not need a
-                // single target.  Keeping the branch explicit documents that
-                // this caster owns a different attack, not a shared volley.
+
+        boolean emitted = switch (role) {
+            case PROJECTILE_CASTER -> {
+                int before = activeEventArrowAges.size();
+                spawnRitualProjectileVolley(casterEntity, target,
+                        ritualSphereState.profile().projectilesPerVolley());
+                yield activeEventArrowAges.size() > before;
             }
+            case ZONE_CASTER -> {
+                int before = ritualZoneCenters.size();
+                startRitualZone(target, now);
+                yield ritualZoneCenters.size() > before;
+            }
+            case REVERSE_CASTER -> startRitualReverse(target, now, false);
+            case CONTROL_SWAP_CASTER -> {
+                int before = ritualControlPartners.size();
+                startRitualControlSwap(now);
+                yield ritualControlPartners.size() > before;
+            }
+            case AMPLIFIER -> false;
+        };
+        if (!emitted) {
+            ritualNextAbilityMillis = now + RITUAL_ABILITY_TICK_MILLIS;
+            return;
         }
         long cooldown = RitualSphereScalingPolicy.majorCooldownMillis(
                 ritualSphereState.profile(), ritualSphereState.successfulDrains());
         ritualNextAbilityMillis = now + Math.max(RITUAL_ABILITY_TICK_MILLIS, cooldown);
         getLogger().info("WAVE6_RITUAL_ABILITY event=" + eventId + " caster="
                 + casterEntity.getUniqueId() + " slot=" + slot + " role=" + role
-                + " cooldown_ms=" + cooldown + " intensity=" + ritualSphereState.intensity());
+                + " state=" + tactics + " source=NATURAL"
+                + " amplifier_count=" + channelingAmplifiers
+                + " effective_projectiles=" + ritualSphereState.profile().projectilesPerVolley()
+                + " effective_intensity=" + ritualSphereState.intensity()
+                + " cooldown_ms=" + cooldown);
         emitDiagnostic("RITUAL_CASTER", "CAST", "INFO", 6, "unique-wave6-caster-ability",
                 null, casterEntity.getUniqueId(),
                 "ritual-caster:" + generation + ":" + casterEntity.getUniqueId(),
                 Map.of("slot", slot, "role", role.name(), "cooldownMillis", cooldown,
-                        "tactics", tactics.name(), "intensity", ritualSphereState.intensity()));
+                        "tactics", tactics.name(), "source", "NATURAL",
+                        "amplifierCount", channelingAmplifiers,
+                        "effectiveProjectiles", ritualSphereState.profile().projectilesPerVolley(),
+                        "effectiveIntensity", ritualSphereState.intensity(),
+                        "intensity", ritualSphereState.intensity()));
     }
 
     private RitualCasterTacticsPolicy.State ritualCasterTacticsState(Entity caster) {

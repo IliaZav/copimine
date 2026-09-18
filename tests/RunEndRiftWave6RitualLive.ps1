@@ -659,6 +659,18 @@ try {
   Assert-RitualCasterDiagnostics -ExpectedState 'GUARDED_CASTING' -ExpectedCasters 4 -ExpectedGuards 12 | Out-Null
   Write-Evidence 'LIVE_WAVE6_CASTER_RESTART_GUARDED_PASS casters=4 guards=12 native_ai=false ownership=true'
 
+  # Natural channeling is the primary acceptance path.  The deterministic
+  # local force hooks below remain secondary diagnostics and are not allowed
+  # to be the first proof that a core ritual role can emit.
+  $naturalAbilityPatternBase = 'WAVE6_RITUAL_ABILITY[^\r\n]*role='
+  $naturalAbilityPatternSuffix = '[^\r\n]*state=(?:GUARDED_CASTING|EXPOSED_CASTING)[^\r\n]*source=NATURAL[^\r\n]*amplifier_count='
+  foreach ($naturalRole in @('PROJECTILE_CASTER', 'ZONE_CASTER', 'REVERSE_CASTER', 'CONTROL_SWAP_CASTER')) {
+    Wait-Log -AfterOffset $captureOffset `
+      -Pattern ($naturalAbilityPatternBase + $naturalRole + $naturalAbilityPatternSuffix) `
+      -Seconds $TimeoutSeconds | Out-Null
+  }
+  Write-Evidence 'LIVE_WAVE6_NATURAL_ABILITY_PASS guarded_or_exposed=true source=NATURAL roles=PROJECTILE_CASTER,ZONE_CASTER,REVERSE_CASTER,CONTROL_SWAP_CASTER force_hook=false'
+
   $null = Invoke-LocalRcon ("attribute $SecondBotName minecraft:generic.max_health base set 5")
   $null = Invoke-LocalRcon ("effect clear $SecondBotName")
   $null = Invoke-LocalRcon ("effect give $SecondBotName minecraft:resistance 1000 4 true")

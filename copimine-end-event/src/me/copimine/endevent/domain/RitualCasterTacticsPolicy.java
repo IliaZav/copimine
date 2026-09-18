@@ -37,6 +37,16 @@ public final class RitualCasterTacticsPolicy {
         return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING;
     }
 
+    /** The caster owns one of the sphere's four core abilities while channeling. */
+    public static boolean ownsRitualAbility(State state) {
+        return state == State.GUARDED_CASTING || state == State.EXPOSED_CASTING;
+    }
+
+    /** Amplifiers contribute only while they are still channeling the sphere. */
+    public static boolean contributesAmplification(State state, Role role) {
+        return role == Role.AMPLIFIER && ownsRitualAbility(state);
+    }
+
     public static boolean holdsRaisedArms(State state) {
         return castsSphere(state);
     }

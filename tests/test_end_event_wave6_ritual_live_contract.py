@@ -240,3 +240,21 @@ def test_wave6_live_probe_uses_a_local_only_force_hook_for_each_core_ability() -
         assert needle in source
 
     assert "production" in source.lower()
+
+
+def test_wave6_live_probe_accepts_natural_core_roles_before_force_hooks() -> None:
+    """The forced hooks are secondary; natural channeling must be observed first."""
+
+    script = read_script()
+    for role in (
+        "PROJECTILE_CASTER",
+        "ZONE_CASTER",
+        "REVERSE_CASTER",
+        "CONTROL_SWAP_CASTER",
+    ):
+        assert f"role={role}" in script
+    assert "source=NATURAL" in script
+    assert "LIVE_WAVE6_NATURAL_ABILITY_PASS" in script
+    assert script.index("LIVE_WAVE6_NATURAL_ABILITY_PASS") < script.index(
+        "cmend test ritual force projectile"
+    )

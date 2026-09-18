@@ -14,34 +14,38 @@ visual release claim.
 | Repository | [IliaZav/copimine](https://github.com/IliaZav/copimine) |
 | Branch | `codex/end-rift-event` |
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
-| `sourceImplementationSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
-| `testedArtifactBuildSha` | `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `02a42f6bf944ce52370aa205686b8e150877c9f7` (`docs(end-rift): record exact-head hitbox closure`) |
-| `githubActionsHeadSha` | `a9de3e3091faf9cb348c93908403f850f2241cf8` |
-| `githubActionsSourceImplementationSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
+| `sourceImplementationSha` | `e35224fd3ad7b9886d95f71873e7286ba19b2a1c` (`fix(end-rift): restore wave 6 visuals and amplifier runtime`) |
+| `testedArtifactBuildSha` | `4d7386e47e8728538fbc185d14cec2a654d4c4f19e4ab59d1217bc6977c50e36` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
+| `reportCommitSha` | `e35224fd3ad7b9886d95f71873e7286ba19b2a1c` (functional source/artifact evidence commit) |
+| `githubActionsHeadSha` | `PENDING — pushed current head; verify the resulting workflow run before release` |
+| `githubActionsSourceImplementationSha` | `PENDING — current push` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
 
-The current source HEAD contains the Wave 6 AI ownership changes and the Wave
-7 live probe fixes. The commits after the last code-changing live run are
-documentation/evidence-identity commits; the server plugin artifact remains
-byte-identical to the recorded `testedArtifactBuildSha`.
+The current source HEAD contains the Wave 6 amplifier policy, stale-scene
+cleanup, prisoner anchor/VFX corrections, and the client entity-renderer
+descriptor fix. The server plugin artifact is byte-identical to the recorded
+`testedArtifactBuildSha`.
 
 ## Current exact-head results
 
 ### Contract and static checks
 
-The declared project Python 3.13 environment
-`C:\Users\zavod\AppData\Local\Temp\copimine-end-rift-tests-20260916-py313\Scripts\python.exe`
+The project Python 3.13 environment
+`D:\Desktop\Copimine\copimine-main\.venv313\Scripts\python.exe`
 reported:
 
 ```text
-599 passed, 58 warnings in 13.10s
+615 passed, 58 warnings in 18.17s
 ```
 
 The system Python 3.14 collection was not used as a project result because it
 does not contain the declared `fastapi` dependency; it stopped at two web-test
 collection errors before running the suite.
+
+The current End Rift gate was also run with that same dependency-complete
+interpreter and completed with `242 passed, 53 warnings`, followed by all pure
+Java policy and persistence/recovery checks.
 
 ### AI and Wave 6 live gates
 
@@ -79,6 +83,33 @@ One shorter 180-second-client attempt is retained at
 waiting for the zone-effect observation and still passed its cleanup check.
 It is explicitly not counted as a pass or hidden. The longer exact-head rerun
 passed the same gate.
+
+The focused current-head amplifier run is recorded at
+`local-runtime/wave6-amplifier-live-20260918103134126.log`. It used nine real
+offline clients, reached the five-caster profile, captured the real prisoner,
+removed the amplifier's three guards, exposed the amplifier, and then removed
+the live Заклинатель by UUID. Its acceptance markers were:
+
+```text
+LIVE_WAVE6_AMPLIFIER_CASTER_READY role=AMPLIFIER state=GUARDED_CASTING guards=3
+LIVE_WAVE6_AMPLIFIER_EXPOSED_PASS guards=0 state=EXPOSED_CASTING
+LIVE_WAVE6_AMPLIFIER_LOSS_PASS removed=true before=1 after=0 caster_count=1
+LIVE_WAVE6_AMPLIFIER_PASS before=1 after=0 projectile_delta=1 cooldown_reduced=true duration_reduced_after_loss=true scheduler_turn_consumed=false
+```
+
+The same live log and server log show the amplifier overlay at
+`effective_projectiles=4`, `effective_intensity=1`, `cooldown_ms=10725`, then
+the unamplified path at `effective_projectiles=3`, `effective_intensity=0`,
+`cooldown_ms=11000`; the zone duration changes from `5150` ms to `5000` ms.
+The Wave 6 start log removed one stale Wave 7 display
+(`displays=1 blocks=0`) and found no Wave 3 portal display (`displays=0`).
+After cleanup the server reported zero event mobs and zero transient visuals.
+
+The client texture root cause was also reproduced in the exact local client
+log: the old `EndermanEyesFeatureRendererMixin` descriptor expected
+`LivingEntity` while the renderer callback supplies `Entity`, causing the
+resource-pack load to be removed. The mixin now targets `Entity`; the rebuilt
+client and staged modpack hashes are recorded below.
 
 ### Wave 7 live boundary gate
 
@@ -125,10 +156,11 @@ The committed evidence summary is
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `CopiMineEndEvent.jar` | `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` |
-| `CopiMineClient.jar` | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
+| `CopiMineEndEvent.jar` | `4d7386e47e8728538fbc185d14cec2a654d4c4f19e4ab59d1217bc6977c50e36` |
+| `CopiMineClient.jar` | `1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769` |
 | `CopiMineResourcePack.zip` | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 | `Purpur server jar` | `30403cf54f981f16e1403f172645e82d3e4a59ad6c9f1d8e98df99edb1f8ae4c` |
+| `CopiMineMods.zip` | `e5c9c848df155ff0922bbfa82bafa94f50a164f1da49f671d548233da6dec239` |
 
 The resource-pack generator’s recorded SHA-1 is
 `a04f7d1c93465cd0f79db6bad5c2b12c3f1ab6a6`.
@@ -180,3 +212,16 @@ boss-hitbox, Wave 6, and Wave 7 passes. The remaining release blocker is the
 exact-head native Minecraft screenshot/video matrix and its
 `nativeMinecraftTestedSha`. Only then may this document change from
 `INTERIM — RELEASE BLOCKED` to a release status.
+
+## Current local handoff
+
+The isolated Paper server is intentionally left running for manual native
+verification:
+
+```text
+same machine: 127.0.0.1:25566
+Radmin VPN:   26.29.99.140:25566
+resource pack: http://26.29.99.140:8092/CopiMineResourcePack.zip
+website:       http://127.0.0.1:8093
+state:         COLLECTING, event-mobs=0, boss=none, visuals=core overlay only
+```

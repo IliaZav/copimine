@@ -71,7 +71,7 @@ variant model/renderer classes.
 |---|---:|---|
 | `CopiMineClient/build/libs/CopiMineClient-0.1.1.jar` | 9,453,629 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
 | `thirdparty/client-mods/CopiMineClient-0.1.1.jar` | 9,453,629 | `c975da6b9cf42cffda2d047cb1686faa3fd84404b51ca12ff162c212aa66ffce` |
-| `minecraft/server/plugins/CopiMineEndEvent.jar` | 845,440 | `11716255ebfae5626c7f534fe97bdda9820e0bc9e32f71f003415e798c887a02` |
+| `minecraft/server/plugins/CopiMineEndEvent.jar` | 889,177 | `2607d993bcba3771705300f8f14ac28c30847866da3605ddc8da298bea4833a0` |
 | `thirdparty/CopiMineMods.zip` | 21,651,501 | `8c582afbd4f19267bf8645ec304f5c83d9ecbe5465f1351818e095d2a1ed3b7d` |
 | `resourcepacks/build/CopiMineResourcePack.zip` | 24,150,260 | `34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9` |
 | `end-rift-mob-model-board-20260916.png` | 169,391 | `4bdad83ac846ed49ff4b9336f65d0aa022aa78498dfc75e1236efb589d31a7e7` |

@@ -40,7 +40,7 @@ Message envelope:
 23. `status:string`
 
 Server -> Client:
-- `visual_start`
+  - `visual_start`
   - fields used now: `seq`, `effectId`, `shaderpack`, `durationMillis`, `intensity`, `fadeInMillis`, `fadeOutMillis`, `source`, `clearPolicy`
   - client tries built-in ZIP shaderpack switching first
   - if that fails, client falls back to local post-processing
@@ -48,6 +48,30 @@ Server -> Client:
 - `visual_stop`
 - `visual_clear_all`
 - `ping`
+- `END_EVENT:END_BOSS_BAR` (optional End Rift HUD snapshot)
+  - `seq`: event generation
+  - `sessionId`: event id
+  - `clientVersion`: boss binding instance id
+  - `intensity`: health progress from `0.0` to `1.0`
+  - `fadeInMillis`: rounded current boss health
+  - `fadeOutMillis`: rounded configured maximum health
+  - `mode`: UUID of the bound Rift Guardian
+  - `shaderpack` / `clearPolicy`: `PHASE|ABILITY_STATE`, for example `RIFT|EXECUTING`
+  - the client accepts the snapshot only when both the boss UUID and binding instance match;
+    a missing client mod keeps the normal server BossBar fallback
+- `END_EVENT:END_BOSS_PHASE` (optional UUID-bound boss model state)
+  - `mode`: `PHASE|ANIMATION`, for example `LAST_SEAL|FINAL_STRIKE`
+  - the client swaps the vanilla Enderman model only for the bound boss UUID;
+    every other Enderman keeps the vanilla renderer and texture
+  - canonical animation IDs are `IDLE_BREATH`, `RUN`, `MELEE_SWIPE`,
+    `CHEST_STRIKE`, `GROUND_SLAM`, `MARK_CONTROL`, `SUMMON_CHANNEL`, `HURT`,
+    `PHASE_TRANSITION`, `FINAL_STRIKE`, `DYING`, `TELEPORT_RIP`,
+    `CAST_CHARGE`, `CAST_RELEASE`, `CAST_IMPACT`, `RECOVERY` and the
+    spell-specific `SPELL_*` release poses
+  - the supplied artist names are aliases, not separate wire IDs:
+    `Running2`, `Swipe2`, `Hurt2`, `Dying2`, `udar_iz_grudi`,
+    `udar_po_zemle2`; an unknown value becomes an explicit `UNKNOWN` pose and
+    is logged instead of silently becoming idle
 
 Client -> Server:
 - `hello`

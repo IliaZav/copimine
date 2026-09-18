@@ -2,10 +2,10 @@
     "available":  true,
     "filename":  "CopiMineMods.zip",
     "downloadUrl":  "/downloads/CopiMineMods.zip",
-    "size":  16647034,
-    "sha1":  "d9d9a62d9b7392ecba152118fadc98a9880e468c",
-    "sha256":  "ac51d3825922a922a13c6f991d818941a7102ce3a925e14170e0001a1e14af69",
-    "modified":  1786267072,
+    "size":  21655665,
+    "sha1":  "f87076692e0e4453d1c749a6b49873172315c42d",
+    "sha256":  "d59e93a9423cf5e7ec414cfe759c776f986d06aab206046b0991f7604698a471",
+    "modified":  1789721518,
     "manifest":  {
                      "schemaVersion":  2,
                      "name":  "CopiMineMods",
@@ -14,9 +14,9 @@
                      "downloadPath":  "/downloads/CopiMineMods.zip",
                      "files":  [
                                    {
-                                       "path":  "mods/CopiMineClient-0.1.0.jar",
+                                       "path":  "mods/CopiMineClient-0.1.1.jar",
                                        "component":  "CopiMineClient",
-                                       "version":  "0.1.0",
+                                       "version":  "0.1.1",
                                        "license":  "Proprietary",
                                        "feature":  "Клиентский мод CopiMine, визуалы и связка с сервером",
                                        "required":  true
@@ -40,9 +40,9 @@
                                        "required":  true
                                    },
                                    {
-                                       "path":  "mods/fabric-api-0.116.11+1.21.1.jar",
+                                       "path":  "mods/fabric-api-0.116.12+1.21.1.jar",
                                        "component":  "Fabric API",
-                                       "version":  "0.116.11+1.21.1",
+                                       "version":  "0.116.12+1.21.1",
                                        "license":  "Apache-2.0",
                                        "source":  "https://modrinth.com/project/P7dR8mSH",
                                        "feature":  "Базовая библиотека для CopiMineClient и клиентских модов",

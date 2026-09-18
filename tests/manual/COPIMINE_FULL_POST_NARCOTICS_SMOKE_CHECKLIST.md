@@ -6,7 +6,7 @@
 - Проверить, что `AuthMe` не ломает whitelist, OP и обычный join flow.
 
 ## CopiMineClient
-- Установить `CopiMineClient-0.1.0.jar` в клиент.
+- Установить `CopiMineClient-0.1.1.jar` в клиент.
 - Зайти на сервер с модом и проверить `/copimineclient status`.
 - Проверить повторные `hello`-попытки и итоговый handshake.
 - Выполнить `/copimineclient visual test GREEN_NOISE 10`.

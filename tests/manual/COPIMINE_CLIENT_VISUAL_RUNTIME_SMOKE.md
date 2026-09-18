@@ -9,7 +9,7 @@
 6. Проверить, что в логах нет ошибок bridge/protocol.
 
 ## С CopiMineClient
-1. Положить `CopiMineClient-0.1.0.jar` в папку `mods`.
+1. Положить `CopiMineClient-0.1.1.jar` в папку `mods`.
 2. Запустить Minecraft `1.21.1` с Fabric.
 3. Выполнить `/copimineclient status` и убедиться, что есть `protocol=2`, `helloSent=yes`, `helloConfirmed=yes`.
 4. Выполнить `/cmclient check <игрок>` и увидеть готовый client route.

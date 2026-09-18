@@ -505,6 +505,33 @@ public final class NarcoticsDatabase {
     }
 
     /**
+     * Read the durable cauldron version after all writes already queued for
+     * that cauldron.  A missing row is reported as -1; deleted rows keep their
+     * tombstone version so a failed save cannot refund an ingredient that was
+     * already included in a newer snapshot.
+     */
+    public CompletableFuture<Long> currentBrewingStateVersion(BlockKey key) {
+        if (key == null) {
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid brewing state key."));
+        }
+        return enqueueBrewingWrite(key, () -> runAsyncResult(() -> tx(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT state_version
+                    FROM narcotics_brewing_states
+                    WHERE world_name=? AND x=? AND y=? AND z=?
+                    """)) {
+                statement.setString(1, key.world());
+                statement.setInt(2, key.x());
+                statement.setInt(3, key.y());
+                statement.setInt(4, key.z());
+                try (ResultSet result = statement.executeQuery()) {
+                    return result.next() ? result.getLong(1) : -1L;
+                }
+            }
+        })));
+    }
+
+    /**
      * Atomically close a finished brew and enqueue its product for the owner.
      * The physical inventory delivery is intentionally performed later on the
      * Bukkit thread; keeping the output row in the same transaction as the

@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.10'
       - name: Install backend test dependencies
         shell: pwsh
         run: |
@@ -40,6 +40,24 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check -r requirements-security.txt
           python -m pip_audit -r admin-web/requirements.txt --strict
+      - name: Prepare release fixtures required by contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
+          if ($LASTEXITCODE -ne 0) { throw 'Resource pack fixture build failed.' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned plugin fixture preparation failed.' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\thirdparty\grim-creative-patch\build-grim-creative-patch.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Grim Creative fixture build failed.' }
+      - name: Build client artifact required by contract tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+          $clientJar = Join-Path $env:GITHUB_WORKSPACE 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
+          if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw "CopiMineClient artifact was not created: $clientJar" }
       - name: Run Python contract tests
         shell: pwsh
         env:
@@ -56,6 +74,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'backend smoke test failed.' }
           python -m compileall -q admin-web/backend
           if ($LASTEXITCODE -ne 0) { throw 'backend compileall failed.' }
+      - name: Report Python contract failures
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $report = Join-Path $env:GITHUB_WORKSPACE 'test-results.xml'
+          if (-not (Test-Path -LiteralPath $report -PathType Leaf)) { exit 0 }
+          [xml]$xml = Get-Content -LiteralPath $report -Raw
+          $failed = @($xml.SelectNodes('//testcase[failure or error]'))
+          foreach ($case in $failed) {
+            $name = "$($case.classname)::$($case.name)"
+            $details = @($case.failure, $case.error) |
+              Where-Object { $_ -ne $null } |
+              ForEach-Object { $_.InnerText } |
+              Select-Object -First 1
+            $message = ($details -replace "`r?`n", ' ' -replace '\s+', ' ').Trim()
+            Write-Output "::error title=Python contract failure::$name $message"
+          }
       - name: Publish Python test report
         if: always()
         uses: actions/upload-artifact@v4
@@ -68,8 +104,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $status = @(git status --porcelain)
-          if ($status.Count -ne 0) {
-            $status | ForEach-Object { Write-Output "::error title=CI checkout is dirty::$_" }
+          # The contract job intentionally creates these two deterministic
+          # release fixtures before pytest: the JAR is tracked for release
+          # distribution and test-results.xml is uploaded as a CI artifact.
+          # Any other source mutation still fails the provenance gate.
+          $unexpected = @($status | Where-Object {
+            $_ -notmatch '^ M thirdparty/grim-creative-patch/build/GrimAC-2\.3\.74-40684fb-creative-fix\.jar$' -and
+            $_ -notmatch '^\?\? test-results\.xml$'
+          })
+          if ($unexpected.Count -ne 0) {
+            $unexpected | ForEach-Object { Write-Output "::error title=CI checkout is dirty::$_" }
             throw 'CI checkout is not clean.'
           }
           $sha = (git rev-parse HEAD).Trim()
@@ -82,11 +126,20 @@ jobs:
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
+      - name: Set up Python for release assets
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install resource-pack build dependency
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check 'Pillow==12.3.0' 'pytest==9.1.1'
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '21.0.10'
       - name: Set up Maven
         shell: pwsh
         run: |
@@ -147,6 +200,16 @@ jobs:
             </dependencies>
           </project>
           '@ | Set-Content -LiteralPath $dependencyPom -Encoding utf8
+          $snakeYamlJar = Join-Path $env:USERPROFILE '.m2\repository\org\yaml\snakeyaml\2.2\snakeyaml-2.2.jar'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $snakeYamlJar) | Out-Null
+          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar' -OutFile $snakeYamlJar -TimeoutSec 60
+          $snakeYamlSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $snakeYamlJar).Hash.ToLowerInvariant()
+          if ($snakeYamlSha256 -ne '1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b') { throw "SnakeYAML SHA256 mismatch: $snakeYamlSha256" }
+          $guavaJar = Join-Path $env:USERPROFILE '.m2\repository\com\google\guava\guava\32.1.2-jre\guava-32.1.2-jre.jar'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $guavaJar) | Out-Null
+          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/com/google/guava/guava/32.1.2-jre/guava-32.1.2-jre.jar' -OutFile $guavaJar -TimeoutSec 60
+          $guavaSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $guavaJar).Hash.ToLowerInvariant()
+          if ($guavaSha256 -ne 'bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce') { throw "Guava SHA256 mismatch: $guavaSha256" }
           mvn -q -B -f $dependencyPom dependency:go-offline
           if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
           "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -154,13 +217,70 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($dir in @('copimine-economy-core','copimine-election-core','copimine-artifacts','copimine-narcotics','copimine-world-core','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
+          foreach ($dir in @('copimine-world-core','copimine-artifacts','copimine-end-event','copimine-economy-core','copimine-election-core','copimine-narcotics','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
             & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
             if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
           }
+      - name: Build CopiMineClient release artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
+      - name: Build resource pack release artifact
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
+          if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
+          $pack = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.zip'
+          $sha = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.sha1'
+          if (-not (Test-Path -LiteralPath $pack -PathType Leaf)) { throw "Resource pack archive was not created: $pack" }
+          if (-not (Test-Path -LiteralPath $sha -PathType Leaf)) { throw "Resource-pack digest sidecar was not created: $sha" }
+          Write-Host "Resource pack fixture ready: $pack"
+      - name: Prepare pinned third-party plugin fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned third-party plugin fixtures failed verification.' }
       - name: Run all source and release-artifact validators
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           & .\tests\RunCopiMineValidators.ps1
           if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
+      - name: Run End Rift event gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $log = Join-Path $env:RUNNER_TEMP 'end-rift-event-gate.log'
+          $gateExitCode = 0
+          try {
+            & .\tests\RunEndRiftEventChecks.ps1 *>&1 | Tee-Object -FilePath $log
+            $gateExitCode = $LASTEXITCODE
+          } catch {
+            $gateExitCode = 1
+            Write-Host $_
+          }
+          if ($gateExitCode -ne 0) {
+            $detail = if (Test-Path -LiteralPath $log) {
+              ((Get-Content -LiteralPath $log -Tail 30) -join ' ') -replace '\s+', ' '
+            } else {
+              'The End Rift gate produced no captured output.'
+            }
+            if ($detail.Length -gt 4000) { $detail = $detail.Substring($detail.Length - 4000) }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=End Rift gate detail::$detail"
+            throw "End Rift event gate failed with exit code $gateExitCode."
+          }
+      - name: Upload End Rift gate diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: end-rift-event-gate-diagnostics
+          path: |
+            ${{ runner.temp }}/end-rift-event-gate.log
+            artifacts/end-rift-diagnostics/**
+            minecraft/server/plugins/CopiMineEndEvent/diagnostics/**
+          if-no-files-found: ignore

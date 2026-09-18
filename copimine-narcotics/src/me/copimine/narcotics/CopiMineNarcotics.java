@@ -546,7 +546,9 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
 
     @EventHandler(ignoreCancelled = true)
     public void onPrepareCraft(PrepareItemCraftEvent event) {
-        // Finished narcotics use vanilla crafting rules.
+        if (event != null && containsOfficialFinishedItem(event.getInventory())) {
+            event.getInventory().setResult(null);
+        }
     }
 
     @EventHandler(ignoreCancelled = true)

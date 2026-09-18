@@ -58,8 +58,8 @@ $ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir).Path
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $clientBuildScript = Join-Path $ProjectRoot "CopiMineClient\build-client.ps1"
-$clientJar = Join-Path $ProjectRoot "CopiMineClient\build\libs\CopiMineClient-0.1.0.jar"
-$thirdpartyClientJar = Join-Path $ProjectRoot "thirdparty\client-mods\CopiMineClient-0.1.0.jar"
+$clientJar = Join-Path $ProjectRoot "CopiMineClient\build\libs\CopiMineClient-0.1.1.jar"
+$thirdpartyClientJar = Join-Path $ProjectRoot "thirdparty\client-mods\CopiMineClient-0.1.1.jar"
 $buildModpackScript = Join-Path $ProjectRoot "scripts\thirdparty\build_modpack.ps1"
 $resourcepackScript = Join-Path $ProjectRoot "resourcepacks\build-resourcepack.py"
 $resourcepackZip = Join-Path $ProjectRoot "resourcepacks\build\CopiMineResourcePack.zip"
@@ -109,6 +109,7 @@ $pluginBuildScripts = @(
     (Join-Path $ProjectRoot 'copimine-artifacts\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-narcotics\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-world-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-end-event\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-admin-plugin\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'minecraft\server\plugins\AuthEffects\build-plugin.ps1')
 )
@@ -119,7 +120,8 @@ $firstPartyServerJars = @(
     'minecraft/server/plugins/CopiMineElectionCore.jar',
     'minecraft/server/plugins/CopiMineNarcotics.jar',
     'minecraft/server/plugins/CopiMineUltimateAdminPlus.jar',
-    'minecraft/server/plugins/CopiMineWorldCore.jar'
+    'minecraft/server/plugins/CopiMineWorldCore.jar',
+    'minecraft/server/plugins/CopiMineEndEvent.jar'
 )
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
@@ -208,10 +210,10 @@ function Get-RelativePathCompat {
 
 function Write-Checksums {
     $entries = @(
-        "thirdparty\client-mods\CopiMineClient-0.1.0.jar",
+        "thirdparty\client-mods\CopiMineClient-0.1.1.jar",
         "thirdparty\client-mods\CustomSkinLoader_Fabric-14.26.1.jar",
         "thirdparty\client-mods\emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-        "thirdparty\client-mods\fabric-api-0.116.11+1.21.1.jar",
+        "thirdparty\client-mods\fabric-api-0.116.12+1.21.1.jar",
         "thirdparty\client-mods\voicechat-fabric-1.21.1-2.6.16.jar",
         "thirdparty\client-mods\iris-fabric-1.8.8+mc1.21.1.jar",
         "thirdparty\client-mods\sodium-fabric-0.6.13+mc1.21.1.jar",
@@ -292,7 +294,7 @@ foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
     if ($thirdpartySha256.ContainsKey($relative)) {
         $artifact | Add-Member -NotePropertyName sha256 -NotePropertyValue $thirdpartySha256[$relative] -Force
     }
-    if ($artifact.path -eq "thirdparty/client-mods/CopiMineClient-0.1.0.jar") {
+    if ($artifact.path -eq "thirdparty/client-mods/CopiMineClient-0.1.1.jar") {
         $artifact.sha1 = $clientSha1
         $artifact.sha256 = $clientSha256
     }
@@ -332,7 +334,7 @@ $releaseManifest = [ordered]@{
         downloadUrl = $modpackDownloadUrl
     }
     clientMod = [ordered]@{
-        path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
+        path = "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
         sha1 = $clientSha1
         sha256 = $clientSha256
     }
@@ -370,7 +372,7 @@ $installerManifest = [ordered]@{
             sha256 = $modpackSha256
         }
         clientMod = [ordered]@{
-            path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
+            path = "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
             sha1 = $clientSha1
             sha256 = $clientSha256
         }
@@ -503,7 +505,7 @@ $generatedReleaseFiles = @(
     'thirdparty\CopiMineMods.zip',
     'thirdparty\CopiMineMods.sha1',
     'thirdparty\CopiMineMods.sha256',
-    'thirdparty\client-mods\CopiMineClient-0.1.0.jar',
+    'thirdparty\client-mods\CopiMineClient-0.1.1.jar',
     'thirdparty\checksums.txt',
     'thirdparty\thirdparty_manifest.json'
 )
@@ -519,6 +521,7 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\CopiMineNarcotics.jar',
     'minecraft\server\plugins\CopiMineUltimateAdminPlus.jar',
     'minecraft\server\plugins\CopiMineWorldCore.jar',
+    'minecraft\server\plugins\CopiMineEndEvent.jar',
     'minecraft\server\plugins\CoreProtect-CE-23.0.jar',
     'minecraft\server\plugins\emotecraft-2.4.12-bukkit.jar',
     'minecraft\server\plugins\EntityClearer.jar',

@@ -10,7 +10,6 @@ import java.time.format.DateTimeFormatter;
 
 public final class CopiMineClientLogger {
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    private static final Path LOG_PATH = FabricLoader.getInstance().getGameDir().resolve("logs").resolve("copimineclient.log");
     private static final Object LOCK = new Object();
 
     private CopiMineClientLogger() {
@@ -35,11 +34,21 @@ public final class CopiMineClientLogger {
     private static void write(String level, String message, Throwable error) {
         String line = "[" + TS.format(LocalDateTime.now()) + "] [" + level + "] " + String.valueOf(message == null ? "" : message);
         String trace = stackTrace(error);
+        Path logPath;
+        try {
+            // Unit tests exercise the packet state machine without booting
+            // Fabric. Resolve the game directory at call time so a malformed
+            // optional visual can be logged without crashing class loading.
+            logPath = FabricLoader.getInstance().getGameDir()
+                    .resolve("logs").resolve("copimineclient.log");
+        } catch (RuntimeException notRunningInsideFabric) {
+            return;
+        }
         synchronized (LOCK) {
             try {
-                Files.createDirectories(LOG_PATH.getParent());
+                Files.createDirectories(logPath.getParent());
                 Files.writeString(
-                        LOG_PATH,
+                        logPath,
                         trace.isEmpty()
                                 ? line + System.lineSeparator()
                                 : line + System.lineSeparator() + trace,

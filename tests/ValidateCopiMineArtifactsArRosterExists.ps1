@@ -19,18 +19,10 @@ foreach ($id in $requiredIds) {
   }
 }
 
-$requiredPrices = @(
-  "price_ar: 2500",
-  "price_ar: 2200",
-  "price_ar: 1300",
-  "price_ar: 1800",
-  "price_ar: 5000",
-  "price_ar: 9999"
-)
-
-foreach ($price in $requiredPrices) {
-  if ($content -notmatch [regex]::Escape($price)) {
-    throw "Missing AR artifact price marker: $price"
+foreach ($id in $requiredIds) {
+  $itemBlock = [regex]::Match($content, "(?ms)^\s*- id:\s*$([regex]::Escape($id))\s*$.*?(?=^\s*- id:|\z)")
+  if (-not $itemBlock.Success -or $itemBlock.Value -notmatch '(?m)^\s*price_ar:\s*[0-9]+\s*$') {
+    throw "Missing AR artifact price for roster item: $id"
   }
 }
 

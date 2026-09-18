@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import re
@@ -86,6 +87,77 @@ REQUIRED_SOURCE_FILES = [
     "assets/copimine/manifests/block_visuals_manifest.json",
     "assets/copimine/manifests/narcotics_items_manifest.json",
     "assets/copimine/manifests/narcotics_visuals_manifest.json",
+    "assets/copimine/models/block/end_event_core.json",
+    "assets/copimine/models/block/end_event_core_charged.json",
+    "assets/copimine/models/block/end_event_rune.json",
+    "assets/copimine/models/block/end_event_rune_occupied.json",
+    "assets/copimine/models/item/end_event_core.json",
+    "assets/copimine/models/item/end_event_core_charged.json",
+    "assets/copimine/models/item/end_event_pad.json",
+    "assets/copimine/models/item/end_event_pad_occupied.json",
+    "assets/copimine/models/block/end_event_wave_ring.json",
+    "assets/copimine/models/block/end_event_portal.json",
+    "assets/copimine/models/block/end_event_portal_inner.json",
+    "assets/copimine/models/block/end_event_portal_shard.json",
+    "assets/copimine/models/item/end_event_wave_ring.json",
+    "assets/copimine/models/item/end_event_portal.json",
+    "assets/copimine/models/item/end_event_portal_inner.json",
+    "assets/copimine/models/item/end_event_portal_shard.json",
+    "assets/copimine/models/item/end_event_rift_gate.json",
+    "assets/copimine/models/item/end_event_rift_obelisk_full.json",
+    "assets/copimine/models/item/end_event_rift_obelisk_damaged.json",
+    "assets/copimine/models/item/end_event_rift_obelisk_critical.json",
+    "assets/copimine/models/item/end_event_rift_fireball.json",
+    "assets/copimine/models/item/end_event_rift_obelisk_pulse.json",
+    "assets/copimine/models/item/end_event_rift_tentacle.json",
+    "assets/copimine/models/item/night_cloak.json",
+    "assets/copimine/animations/end_event_rift_tentacle.json",
+    "assets/copimine/textures/block/end_event_core.png",
+    "assets/copimine/textures/block/end_event_core_charged.png",
+    "assets/copimine/textures/block/end_event_rune.png",
+    "assets/copimine/textures/block/end_event_rune_occupied.png",
+    "assets/copimine/textures/item/end_event_core.png",
+    "assets/copimine/textures/item/end_event_core_charged.png",
+    "assets/copimine/textures/item/end_event_pad.png",
+    "assets/copimine/textures/item/end_event_pad_occupied.png",
+    "assets/copimine/textures/item/end_event_wave_ring.png",
+    "assets/copimine/textures/item/end_event_portal.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_full.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_damaged.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_critical.png",
+    "assets/copimine/textures/item/end_event_rift_fireball.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_full_hd.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_damaged_hd.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_critical_hd.png",
+    "assets/copimine/textures/item/end_event_rift_fireball_hd.png",
+    "assets/copimine/textures/item/end_event_rift_obelisk_pulse_hd.png",
+    "assets/copimine/textures/item/end_event_rift_tentacle_hd.png",
+    "assets/copimine/textures/item/night_cloak.png",
+    "assets/copimine/sounds.json",
+    "assets/copimine/sounds/end_rift/victory.ogg",
+    "assets/copimine/sounds/end_rift/ritual_wait.ogg",
+    "assets/copimine/sounds/end_rift/wave_1.ogg",
+    "assets/copimine/sounds/end_rift/wave_2.ogg",
+    "assets/copimine/sounds/end_rift/wave_3.ogg",
+    "assets/copimine/sounds/end_rift/wave_4.ogg",
+    "assets/copimine/sounds/end_rift/wave_5.ogg",
+    "assets/copimine/sounds/end_rift/wave_6.ogg",
+    "assets/copimine/sounds/end_rift/wave_7.ogg",
+    "assets/copimine/sounds/end_rift/intermission_1.ogg",
+    "assets/copimine/sounds/end_rift/intermission_2.ogg",
+    "assets/copimine/sounds/end_rift/intermission_3.ogg",
+    "assets/copimine/sounds/end_rift/intermission_5.ogg",
+    "assets/copimine/sounds/end_rift/intermission_6.ogg",
+    "assets/copimine/sounds/end_rift/core_restoration.ogg",
+    "assets/copimine/sounds/end_rift/pre_boss_cooldown.ogg",
+    "assets/copimine/sounds/end_rift/boss_cinematic.ogg",
+    "assets/copimine/sounds/end_rift/boss_awakening.ogg",
+    "assets/copimine/sounds/end_rift/boss_hunt.ogg",
+    "assets/copimine/sounds/end_rift/boss_rift.ogg",
+    "assets/copimine/sounds/end_rift/boss_overload.ogg",
+    "assets/copimine/sounds/end_rift/boss_rage.ogg",
+    "assets/copimine/sounds/end_rift/boss_last_seal.ogg",
+    "assets/copimine/sounds/end_rift/boss_finish.ogg",
     "assets/copimine/font/narcotics_overlay.json",
     "assets/copimine/font/logo.json",
     "assets/copimine/models/item/feta.json",
@@ -250,6 +322,14 @@ def validate_source_tree() -> None:
     forbidden = list((SRC / "assets" / "minecraft" / "textures" / "block").rglob("*")) if (SRC / "assets" / "minecraft" / "textures" / "block").exists() else []
     if forbidden:
         raise ValueError("Global vanilla block texture overrides are not allowed in this resource pack.")
+    forbidden_vanilla_overrides = [
+        SRC / "assets" / "minecraft" / "blockstates" / "crying_obsidian.json",
+        SRC / "assets" / "minecraft" / "blockstates" / "respawn_anchor.json",
+        SRC / "assets" / "minecraft" / "models" / "item" / "crying_obsidian.json",
+        SRC / "assets" / "minecraft" / "models" / "item" / "respawn_anchor.json",
+    ]
+    if any(path.exists() for path in forbidden_vanilla_overrides):
+        raise ValueError("Event overlays must not override vanilla crying_obsidian or respawn_anchor assets.")
 
     validate_catalog_mapping()
 
@@ -604,12 +684,22 @@ def pack_zip() -> tuple[Path, str]:
     return zip_path, sha1
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Build the CopiMine resource pack")
+    parser.add_argument(
+        "--skip-server-properties",
+        action="store_true",
+        help="Build the archive without changing the tracked server.properties file",
+    )
+    args = parser.parse_args(argv)
     build_stage()
     zip_path, sha1 = pack_zip()
-    update_server_properties_sha1(sha1)
+    if not args.skip_server_properties:
+        update_server_properties_sha1(sha1)
     print(f"Built {zip_path}")
     print(f"SHA1 {sha1}")
+    if args.skip_server_properties:
+        print("Skipped tracked server.properties update")
 
 
 if __name__ == "__main__":

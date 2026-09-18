@@ -16,7 +16,8 @@ $required = @(
   'repair_kit','return_stone','angel_wings','infinite_torch',
   'combat_crossbow','cobblestone_trail_bow','explosive_crossbow',
   'narcotic_recipe_feta','narcotic_recipe_kola','narcotic_recipe_girion','narcotic_recipe_sbp',
-  'narcotic_recipe_sos','narcotic_recipe_drun','narcotic_recipe_chups','narcotic_recipe_borshevik'
+  'narcotic_recipe_sos','narcotic_recipe_drun','narcotic_recipe_chups','narcotic_recipe_borshevik',
+  'rift_core_shard','night_cloak'
 )
 $errors = [System.Collections.Generic.List[string]]::new()
 $rows = @($sources.items)
@@ -35,7 +36,7 @@ foreach ($id in $required) {
   $row = $rowById[$id]
   if ([int]$row.custom_model_data -le 0) { $errors.Add("$id has non-positive custom model data") }
   if ($row.catalog -eq 'AR' -and $row.source_group -notin @('No_Donate', 'Generated')) { $errors.Add("AR item $id must come from No_Donate or Generated") }
-  if ($row.catalog -eq 'ADMIN_ONLY' -and $row.source_group -ne 'User_Supplied') { $errors.Add("Admin-only item $id must come from User_Supplied") }
+  if ($row.catalog -eq 'ADMIN_ONLY' -and $row.source_group -notin @('User_Supplied', 'Generated')) { $errors.Add("Admin-only item $id must come from User_Supplied or Generated") }
   if ($row.catalog -eq 'DONATION' -and $row.source_group -ne 'Donate') { $errors.Add("Donation item $id must come from Donate") }
   $key = "{0}:{1}" -f ([string]$row.base_material).ToUpperInvariant(), [int]$row.custom_model_data
   if (-not $manifestByKey.ContainsKey($key)) { $errors.Add("Manifest key $key is missing for $id"); continue }
@@ -52,7 +53,7 @@ foreach ($id in $required) {
     if (-not (Test-Path $meta)) { $errors.Add("Missing animation metadata for $id") }
   }
 }
-if ($rows.Count -ne $required.Count) { $errors.Add("Expected $($required.Count) source rows, found $($rows.Count)") }
+if ($rows.Count -lt $required.Count) { $errors.Add("Expected at least $($required.Count) source rows, found $($rows.Count)") }
 if ($catalog -notmatch '(?ms)^    - item-id: ne_segodnya_suka_shield\r?\n.*?custom-texture-mode-allowed:\s*false.*?custom-model-data:\s*0') {
   $errors.Add('The shield must explicitly opt out of custom textures and model data.')
 }

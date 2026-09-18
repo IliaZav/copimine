@@ -1,0 +1,262 @@
+package me.copimine.client;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class EndEventClientStateTest {
+    @Test
+    void acceptsBossBindingAndOneControlEffect() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L, "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
+        assertTrue(state.isBossBound("boss-uuid"));
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L, "control-1", 10_000L, "", "boss-id", "control-id"), 100L));
+        assertTrue(state.isReverseActive(101L));
+        assertFalse(state.isControlSwapActive(101L));
+        assertEquals("REVERSE", state.controlMode());
+        assertTrue(state.controlInstanceId().equals("control-1"));
+    }
+
+    @Test
+    void keepsControlSwapSeparateFromReverseAndRetainsServerPairMetadata() {
+        EndEventClientState state = new EndEventClientState();
+        String target = "123e4567-e89b-12d3-a456-426614174000";
+        String pair = "swap:event-1:7:pair";
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 7L,
+                "" + pair + ":a", 6_000L, target, "", pair), 100L));
+
+        assertFalse(state.isReverseActive(101L));
+        assertTrue(state.isControlSwapActive(101L));
+        assertEquals("SWAP", state.controlMode());
+        assertEquals(target, state.controlTargetUuid());
+        assertEquals(pair, state.controlPairId());
+        assertEquals(pair + ":a", state.controlInstanceId());
+    }
+
+    @Test
+    void expiredSwapClearsTargetAndPairWithoutLeakingIntoReverseMovement() {
+        EndEventClientState state = new EndEventClientState();
+        String pair = "swap:event-1:7:pair";
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 7L,
+                pair + ":b", 6_000L,
+                "123e4567-e89b-12d3-a456-426614174000", "", pair), 100L));
+
+        assertFalse(state.isControlSwapActive(6_100L));
+        assertFalse(state.isReverseActive(6_100L));
+        assertEquals("NONE", state.controlMode());
+        assertEquals("", state.controlTargetUuid());
+        assertEquals("", state.controlPairId());
+        assertEquals("", state.controlInstanceId());
+    }
+
+    @Test
+    void acceptsOnlyTheBoundBossBarAndKeepsHealthPhaseAndCastState() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "RIFT|EXECUTING", "control-id"),
+                0.736F, 1_840, 2_500, 200L));
+
+        EndEventClientState.BossBarState bar = state.bossBar();
+        assertTrue(state.hasActiveBossBar());
+        assertEquals("RIFT", bar.phaseId());
+        assertEquals("EXECUTING", bar.castState());
+        assertEquals(1_840, bar.health());
+        assertEquals(2_500, bar.maxHealth());
+        assertEquals(0.736F, bar.progress(), 0.0001F);
+
+        assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "other-binding", 1_000L, "other-boss", "LAST_SEAL|NONE", "control-id"),
+                1.0F, 2_500, 2_500, 300L));
+        assertTrue(state.hasActiveBossBar());
+    }
+
+    @Test
+    void keepsPhaseAndAnimationSeparateAndLetsAnExplicitIdleCueWin() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "LAST_SEAL|SPELL_VOID_BLAST", "control-id"), 110L));
+        assertEquals("LAST_SEAL", state.bossPhaseForEntity("boss-uuid"));
+        assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"));
+
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "LAST_SEAL|EXECUTING", "control-id"),
+                0.5F, 1_250, 2_500, 120L));
+        assertEquals("SPELL_VOID_BLAST", state.bossAnimationForEntity("boss-uuid"),
+                "a spell cue must not be replaced by a periodic bar snapshot");
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "LAST_SEAL|IDLE_BREATH", "control-id"), 130L));
+        assertEquals("IDLE_BREATH", state.bossAnimationForEntity("boss-uuid"));
+        assertEquals("EXECUTING", state.bossCastStateForEntity("boss-uuid"));
+    }
+
+    @Test
+    void restartsTheBossAnimationClockForEveryServerCue() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-1", 1L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 1_000L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "AWAKENING|CHEST_STRIKE", "control-id"), 1_100L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_100L));
+        assertEquals(450L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_550L));
+
+        assertTrue(state.apply(packet("END_BOSS_PHASE", "event-1", 1L,
+                "boss-bind", 1_200L, "boss-uuid", "AWAKENING|GROUND_SLAM", "control-id"), 1_700L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_700L));
+        assertEquals(50L, state.bossAnimationElapsedMillisForEntity("boss-uuid", 1_750L));
+        assertEquals(0L, state.bossAnimationElapsedMillisForEntity("unknown", 1_750L));
+    }
+
+    @Test
+    void staleBossBarCannotReplaceANewerGenerationSnapshot() {
+        EndEventClientState state = new EndEventClientState();
+        state.apply(packet("END_BOSS_BIND", "event-1", 2L,
+                "boss-bind", 0L, "boss-uuid", "boss-id", "control-id"), 100L);
+        assertTrue(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 2L,
+                "boss-bind", 1_000L, "boss-uuid", "AWAKENING|NONE", "control-id"),
+                1.0F, 2_500, 2_500, 110L));
+        assertFalse(state.applyBossBar(packet("END_BOSS_BAR", "event-1", 1L,
+                "boss-bind", 1_000L, "boss-uuid", "LAST_SEAL|NONE", "control-id"),
+                0.1F, 250, 2_500, 120L));
+        assertEquals("AWAKENING", state.bossBar().phaseId());
+    }
+
+    @Test
+    void staleStopCannotCancelNewerControlInstance() {
+        EndEventClientState state = new EndEventClientState();
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "old", 100L, "", "", ""), 100L);
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "new", 10_000L, "", "", ""), 250L);
+
+        assertFalse(state.apply(packet("END_CONTROL_STOP", "event-1", 1L, "old", 0L, "", "", ""), 300L));
+        assertTrue(state.isReverseActive(301L));
+        assertTrue(state.controlInstanceId().equals("new"));
+    }
+
+    @Test
+    void duplicateStartIsIdempotentAndDoesNotExtendTheOriginalDeadline() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "same", 10_000L, "", "", ""), 100L));
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "same", 10_000L, "", "", ""), 9_900L));
+
+        assertTrue(state.isReverseActive(10_099L));
+        assertFalse(state.isReverseActive(10_100L));
+    }
+
+    @Test
+    void secondConcurrentControlInstanceIsRejectedUntilTheFirstExpires() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "first", 10_000L, "", "", ""), 100L));
+        assertFalse(state.apply(packet("END_CONTROL_START", "event-1", 1L,
+                "second", 10_000L, "", "", ""), 200L));
+        assertTrue(state.controlInstanceId().equals("first"));
+    }
+
+    @Test
+    void generationAndEventChangesClearOldState() {
+        EndEventClientState state = new EndEventClientState();
+        state.apply(packet("END_BOSS_BIND", "event-1", 1L, "boss-bind", 0L, "boss-1", "", ""), 100L);
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "control-1", 100L, "", "", ""), 100L);
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-2", 1L, "boss-bind-2", 0L, "boss-2", "", ""), 200L));
+        assertFalse(state.isBossBound("boss-1"));
+        assertFalse(state.isReverseActive(201L));
+        assertTrue(state.isBossBound("boss-2"));
+    }
+
+    @Test
+    void delayedPacketFromPreviousEventCannotReplaceNewerEventGeneration() {
+        EndEventClientState state = new EndEventClientState();
+
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-a", 10L,
+                "bind-a", 0L, "boss-a", "", ""), 100L));
+        assertTrue(state.apply(packet("END_BOSS_BIND", "event-b", 11L,
+                "bind-b", 0L, "boss-b", "", ""), 200L));
+
+        assertFalse(state.apply(packet("END_BOSS_BIND", "event-a", 10L,
+                "bind-a-delayed", 0L, "boss-a", "", ""), 300L));
+        assertTrue(state.isBossBound("boss-b"));
+        assertFalse(state.isBossBound("boss-a"));
+    }
+
+    @Test
+    void expiryAndExplicitClearRemoveEffects() {
+        EndEventClientState state = new EndEventClientState();
+        state.apply(packet("END_CONTROL_START", "event-1", 1L, "control-1", 100L, "", "", ""), 100L);
+
+        assertTrue(state.isReverseActive(199L));
+        assertFalse(state.isReverseActive(200L));
+        state.clear();
+        assertFalse(state.isReverseActive(201L));
+        assertFalse(state.hasBossBinding());
+    }
+
+    @Test
+    void bindsEventMobVisualsByUuidAndIgnoresStaleUnbind() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-1", 0L,
+                "mob-uuid", "END_RIFT_SPIDER_V1", "control-id"), 100L));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SPIDER_V1"));
+
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "mob-2", 0L,
+                "mob-uuid", "END_RIFT_SKELETON_V1", "control-id"), 200L));
+        assertFalse(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-1", 0L,
+                "mob-uuid", "", "control-id"), 300L));
+        assertTrue(state.visualForEntity("mob-uuid").equals("END_RIFT_SKELETON_V1"));
+        assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "mob-2", 0L,
+                "mob-uuid", "", "control-id"), 400L));
+        assertTrue(state.visualForEntity("mob-uuid").isBlank());
+    }
+
+    @Test
+    void appliesServerTentacleAnimationOnlyToItsBoundGeneration() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 100L));
+        String target = "123e4567-e89b-12d3-a456-426614174000";
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 700L,
+                "tentacle-uuid", "GRAB_SUCCESS|t=44|health=DAMAGED|target=" + target, "control-id"), 110L));
+        assertEquals("GRAB_SUCCESS", state.entityAnimationForEntity("tentacle-uuid"));
+        assertEquals("DAMAGED", state.tentacleHealthStateForEntity("tentacle-uuid"));
+        assertEquals(target, state.tentacleTargetForEntity("tentacle-uuid"));
+        assertTrue(state.tentaclePoseForEntity("tentacle-uuid", 7L).isFinite());
+        EndEventClientState.TentacleAnimationSnapshot snapshot =
+                state.tentacleAnimationSnapshot("tentacle-uuid");
+        assertEquals(44L, snapshot.stateStartServerTick());
+        assertEquals(110L, snapshot.startedAtMillis());
+        assertEquals(700L, snapshot.durationMillis());
+        assertEquals("DAMAGED", snapshot.healthState());
+        assertEquals(target, snapshot.targetId());
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 20L,
+                "tentacle-uuid", "HOLD|health=CRITICAL", "control-id"), 120L));
+        assertEquals("HOLD", state.entityAnimationForEntity("tentacle-uuid"));
+        assertEquals("CRITICAL", state.tentacleHealthStateForEntity("tentacle-uuid"));
+        assertEquals("", state.tentacleTargetForEntity("tentacle-uuid"));
+        assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "", "control-id"), 130L));
+        assertTrue(state.entityAnimationForEntity("tentacle-uuid").isBlank());
+    }
+
+    private static EndEventPacket packet(String type, String eventId, long generation, String instance,
+                                         long duration, String subject, String payloadId, String controlId) {
+        boolean visual = type.endsWith("_BIND");
+        boolean phase = type.endsWith("_PHASE") || "END_BOSS_BAR".equals(type);
+        return new EndEventPacket(type, eventId, generation, instance, duration, subject,
+                visual ? payloadId : "", phase ? payloadId : "", controlId);
+    }
+}

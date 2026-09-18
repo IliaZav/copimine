@@ -23,6 +23,12 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_VISUAL_STOP = "visual_stop";
     public static final String TYPE_VISUAL_CLEAR_ALL = "visual_clear_all";
     public static final String TYPE_PING = "ping";
+    public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
+    public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
+    public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
+    public static final String TYPE_CONTROL_INPUT = "END_CONTROL_INPUT";
+    public static final String TYPE_END_WORLD_BEAM = "END_WORLD_BEAM";
+    public static final String TYPE_END_WORLD_VFX_CLEAR = "END_WORLD_VFX_CLEAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -56,6 +62,8 @@ public final class ClientBridgeProtocol {
     private static boolean lastReportedIrisShaderPackActive;
     private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
+    private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
+    private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
 
     private ClientBridgeProtocol() {
     }
@@ -68,6 +76,10 @@ public final class ClientBridgeProtocol {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
                 CopiMineClientLogger.warn("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
+                return;
+            }
+            if (payload.type().startsWith(TYPE_END_EVENT_PREFIX)) {
+                context.client().execute(() -> applyEndEventPayload(payload));
                 return;
             }
             CopiMineClientLogger.info("Received bridge payload: type=" + payload.type() + ", seq=" + payload.seq() + ", effect=" + payload.effectId() + ", shaderpack=" + payload.shaderpack());
@@ -116,6 +128,46 @@ public final class ClientBridgeProtocol {
                 }
             }
         });
+    }
+
+    private static void applyEndEventPayload(BridgePayload payload) {
+        try {
+            String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
+            long nowMillis = System.currentTimeMillis();
+            if (TYPE_END_WORLD_BEAM.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyBeam(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if (TYPE_END_WORLD_VFX_CLEAR.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyClear(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            EndEventPacket packet = EndEventPacket.fromBridgePayload(
+                    eventType, payload);
+            boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
+                    ? END_EVENT_STATE.applyBossBar(packet, payload.intensity(),
+                    payload.fadeInMillis(), payload.fadeOutMillis(), nowMillis)
+                    : END_EVENT_STATE.apply(packet, nowMillis);
+            if (applied) {
+                CopiMineClientLogger.info("End Rift client state applied: type=" + eventType + ", event=" + packet.eventId() + ", generation=" + packet.generation());
+            } else {
+                CopiMineClientLogger.warn("End Rift client state ignored packet: type=" + eventType + ", event=" + packet.eventId());
+            }
+        } catch (RuntimeException error) {
+            CopiMineClientLogger.warn("End Rift client packet rejected", error);
+        }
+    }
+
+    private static void logWorldVfxResult(String eventType, BridgePayload payload, boolean applied) {
+        if (applied) {
+            CopiMineClientLogger.info("End Rift world VFX applied: type=" + eventType
+                    + ", event=" + payload.sessionId() + ", generation=" + payload.seq());
+        } else {
+            CopiMineClientLogger.warn("End Rift world VFX ignored packet: type=" + eventType
+                    + ", event=" + payload.sessionId());
+        }
     }
 
     public static boolean sendHello() {
@@ -193,6 +245,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onJoin() {
+        clearEndEventState();
         connected = true;
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
@@ -210,6 +263,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
+        clearEndEventState();
         connected = false;
         helloAttempts = 0;
         helloSent = false;
@@ -227,6 +281,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickNetwork(MinecraftClient client) {
+        END_EVENT_WORLD_VFX.tick(System.currentTimeMillis());
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
@@ -278,6 +333,116 @@ public final class ClientBridgeProtocol {
 
     public static boolean isIrisShaderPackActive() {
         return irisShaderPackActive;
+    }
+
+    public static EndEventClientState endEventState() {
+        return END_EVENT_STATE;
+    }
+
+    public static boolean isReverseMovementActive() {
+        return END_EVENT_STATE.isReverseActive(System.currentTimeMillis());
+    }
+
+    public static boolean isControlSwapActive() {
+        return END_EVENT_STATE.isControlSwapActive(System.currentTimeMillis());
+    }
+
+    /** Send only the current keyboard sample; the server validates all identity and expiry fields. */
+    public static void sendControlInput(float forward, float sideways) {
+        if (!connected || !helloSent || !helloAcknowledged
+                || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!END_EVENT_STATE.isControlSwapActive(now)) {
+            return;
+        }
+        String eventId = END_EVENT_STATE.eventId();
+        String instanceId = END_EVENT_STATE.controlInstanceId();
+        String pairId = END_EVENT_STATE.controlPairId();
+        if (eventId.isBlank() || instanceId.isBlank() || pairId.isBlank()) {
+            return;
+        }
+        ClientPlayNetworking.send(BridgePayload.controlInput(
+                sessionId, END_EVENT_STATE.generation(), eventId, instanceId,
+                pairId, forward, sideways));
+    }
+
+    public static boolean isBoundEndBoss(String uuid) {
+        return END_EVENT_STATE.isBossBound(uuid);
+    }
+
+    public static String endEventVisualForEntity(String uuid) {
+        return END_EVENT_STATE.visualForEntity(uuid);
+    }
+
+    public static Set<String> endEventVisualEntityIds() {
+        return END_EVENT_STATE.eventVisualEntityIds();
+    }
+
+    public static String endEventAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.entityAnimationForEntity(uuid);
+    }
+
+    public static String endEventTentacleHealthForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleHealthStateForEntity(uuid);
+    }
+
+    public static String endEventTentacleTargetForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleTargetForEntity(uuid);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseForEntity(
+            String uuid, long elapsedTicks) {
+        return END_EVENT_STATE.tentaclePoseForEntity(uuid, elapsedTicks);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseAt(
+            String uuid, long nowMillis) {
+        return END_EVENT_STATE.tentaclePoseForEntityAt(uuid, nowMillis);
+    }
+
+    public static String bossPhaseForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseForEntity(uuid);
+    }
+
+    public static long bossPhaseTransitionMillisForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseTransitionMillisForEntity(uuid);
+    }
+
+    public static String bossAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.bossAnimationForEntity(uuid);
+    }
+
+    public static float bossAnimationElapsedTicksForEntity(String uuid, long nowMillis) {
+        long elapsedMillis = END_EVENT_STATE.bossAnimationElapsedMillisForEntity(uuid, nowMillis);
+        return elapsedMillis / 50.0F;
+    }
+
+    public static String bossCastStateForEntity(String uuid) {
+        return END_EVENT_STATE.bossCastStateForEntity(uuid);
+    }
+
+    public static EndEventClientState.BossBarState endBossBar() {
+        return END_EVENT_STATE.bossBar();
+    }
+
+    public static void clearEndEventState() {
+        END_EVENT_STATE.clear();
+        END_EVENT_WORLD_VFX.clear();
+    }
+
+    public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        END_EVENT_WORLD_VFX.render(context);
+    }
+
+    public static void renderEndEventTentacles(
+            net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        EndRiftTentacleRenderer.render(context);
+    }
+
+    public static EndEventWorldVfxManager endEventWorldVfx() {
+        return END_EVENT_WORLD_VFX;
     }
 
     private static Set<String> supportedEffects() {

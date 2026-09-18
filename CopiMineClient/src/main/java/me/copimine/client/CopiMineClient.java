@@ -12,10 +12,11 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientWorldEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.text.Text;
 
 public final class CopiMineClient implements ClientModInitializer {
-    public static final String CLIENT_VERSION = "0.1.0";
+    public static final String CLIENT_VERSION = "0.1.1";
 
     private final ClientConfig config = ClientConfig.load();
     private final ClientVisualManager visualManager = new ClientVisualManager(config);
@@ -37,11 +38,18 @@ public final class CopiMineClient implements ClientModInitializer {
         shaderRuntimeManager.initialize();
         visualManager.setShaderRuntimeManager(shaderRuntimeManager);
         ClientBridgeProtocol.registerNetworking(visualManager);
-        HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> visualManager.render(drawContext));
+        HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> {
+            visualManager.render(drawContext);
+        });
+        WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
+        WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventTentacles);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
-            if (client.player != null && client.player.isDead() && visualManager.hasActiveVisuals()) {
-                visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
+            if (client.player != null && client.player.isDead()) {
+                if (visualManager.hasActiveVisuals()) {
+                    visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "death");
+                }
+                ClientBridgeProtocol.clearEndEventState();
             }
             ClientBridgeProtocol.tickNetwork(client);
         });
@@ -50,7 +58,10 @@ public final class CopiMineClient implements ClientModInitializer {
             ClientBridgeProtocol.onDisconnect();
             visualManager.clearAll("disconnect");
         });
-        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change"));
+        ClientWorldEvents.AFTER_CLIENT_WORLD_CHANGE.register((client, world) -> {
+            visualManager.clearAll(ClientBridgeProtocol::sendVisualFinished, "world_change");
+            ClientBridgeProtocol.clearEndEventState();
+        });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> registerCommands(dispatcher));
         CopiMineClientLogger.info("CopiMineClient bootstrap finished");
     }
@@ -63,6 +74,12 @@ public final class CopiMineClient implements ClientModInitializer {
                                     context.getSource().sendFeedback(Text.literal(visualManager.statusLine()));
                                     context.getSource().sendFeedback(Text.literal(ClientBridgeProtocol.handshakeStatusLine()));
                                     context.getSource().sendFeedback(Text.literal("active=" + visualManager.activeSummary()));
+                                    EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "endEvent=" + (endEvent.eventId().isBlank() ? "-" : endEvent.eventId())
+                                                    + ", generation=" + endEvent.generation()
+                                                    + ", bossBound=" + endEvent.hasBossBinding()
+                                                    + ", reverse=" + ClientBridgeProtocol.isReverseMovementActive()));
                                     return 1;
                                 }))
                         .then(ClientCommandManager.literal("diagnose")
@@ -81,6 +98,31 @@ public final class CopiMineClient implements ClientModInitializer {
                                                     + ", channel=" + ClientBridgeProtocol.MOD_CHANNEL));
                                     return 1;
                                 }))
+                        .then(ClientCommandManager.literal("endrift")
+                        .then(ClientCommandManager.literal("textures")
+                                .executes(context -> {
+                                    context.getSource().sendFeedback(Text.literal("End Rift textures:"));
+                                    for (String line : EndEventTextureCatalog.diagnosticLines()) {
+                                        context.getSource().sendFeedback(Text.literal(" - " + line));
+                                    }
+                                    return 1;
+                                }))
+                        .then(ClientCommandManager.literal("selection")
+                                .executes(context -> {
+                                    EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
+                                    var lines = endEvent.selectionDiagnosticLines();
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "End Rift renderer selections: " + lines.size()));
+                                    if (lines.isEmpty()) {
+                                        context.getSource().sendFeedback(Text.literal(
+                                                " - no server-bound event visuals in client state"));
+                                    } else {
+                                        for (String line : lines) {
+                                            context.getSource().sendFeedback(Text.literal(" - " + line));
+                                        }
+                                    }
+                                    return 1;
+                                })))
                         .then(ClientCommandManager.literal("debug")
                                 .then(ClientCommandManager.literal("on").executes(context -> {
                                     config.setDebugOverlay(true);

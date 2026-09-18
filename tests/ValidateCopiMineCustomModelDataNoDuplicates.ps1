@@ -7,10 +7,11 @@ $dupes = [System.Collections.Generic.List[string]]::new()
 
 foreach ($item in $json.items) {
   $cmd = [string]$item.custom_model_data
-  if ($seen.ContainsKey($cmd)) {
-    $dupes.Add("$cmd => $($seen[$cmd]) and $($item.id)")
+  $key = "{0}:{1}" -f ([string]$item.base_material).ToUpperInvariant(), $cmd
+  if ($seen.ContainsKey($key)) {
+    $dupes.Add("$key => $($seen[$key]) and $($item.id)")
   } else {
-    $seen[$cmd] = $item.id
+    $seen[$key] = $item.id
   }
 }
 

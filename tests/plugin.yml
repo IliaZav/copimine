@@ -1,0 +1,5 @@
+name: EndRiftPacketUseEntityTrace
+version: 1.0.0
+main: local.endrift.trace.PacketUseEntityTracePlugin
+api-version: '1.21'
+depend: [ProtocolLib]

@@ -1073,7 +1073,7 @@ payload = {
     "root": str(root),
     "resourcePack": str(root / "resourcepacks" / "build" / "CopiMineResourcePack.zip"),
     "modPack": str(root / "thirdparty" / "CopiMineMods.zip"),
-    "clientMod": str(root / "thirdparty" / "client-mods" / "CopiMineClient-0.1.0.jar"),
+    "clientMod": str(root / "thirdparty" / "client-mods" / "CopiMineClient-0.1.1.jar"),
 }
 target.parent.mkdir(parents=True, exist_ok=True)
 target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -1127,7 +1127,7 @@ modpack = root / "thirdparty" / "CopiMineMods.zip"
 modpack_sha1_path = root / "thirdparty" / "CopiMineMods.sha1"
 modpack_sha256_path = root / "thirdparty" / "CopiMineMods.sha256"
 resource_pack = root / "resourcepacks" / "build" / "CopiMineResourcePack.zip"
-client_mod = root / "thirdparty" / "client-mods" / "CopiMineClient-0.1.0.jar"
+client_mod = root / "thirdparty" / "client-mods" / "CopiMineClient-0.1.1.jar"
 modpack_snapshot = root / "admin-web" / "frontend" / "assets" / "public-data" / "modpack_snapshot.json"
 
 for required in (modpack, modpack_sha1_path, modpack_sha256_path, resource_pack, client_mod, modpack_snapshot, server_properties_path):

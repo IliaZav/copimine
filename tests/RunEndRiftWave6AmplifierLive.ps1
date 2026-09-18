@@ -225,7 +225,9 @@ try {
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
 
-  $env:END_RIFT_BOT_PASSWORD = 'endrift-local'
+  # Generate an ephemeral AuthMe credential for this disposable probe.  Do
+  # not commit a reusable password into the live-runner source or its logs.
+  $env:END_RIFT_BOT_PASSWORD = [Guid]::NewGuid().ToString('N')
   if (-not (Test-Path Env:END_RIFT_BOT_SKIP_REGISTER)) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue }
   foreach ($name in $names) {
     $null = Invoke-LocalRcon ("whitelist add $name")

@@ -38,3 +38,9 @@ def test_amplifier_live_runner_keeps_drain_level_constant_during_comparison():
     assert "$exposedSnapshot = Get-AiJson" in source
     assert "minecraft:tp $Name $X $Y $Z" in source
     assert "Wait-RitualPrisonerCapture" in source
+
+
+def test_amplifier_live_runner_uses_an_ephemeral_authme_credential():
+    source = RUNNER.read_text(encoding="utf-8")
+    assert "[Guid]::NewGuid().ToString('N')" in source
+    assert "END_RIFT_BOT_PASSWORD = 'endrift-local'" not in source

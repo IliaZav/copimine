@@ -14,17 +14,17 @@ visual release claim.
 | Repository | [IliaZav/copimine](https://github.com/IliaZav/copimine) |
 | Branch | `codex/end-rift-event` |
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
-| `sourceImplementationSha` | `74356366d22b8438903c76b4cb7eda5eed22242a` |
+| `sourceImplementationSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
 | `testedArtifactBuildSha` | `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `69b03e92` (`docs(end-rift): record exact-head live verification`) |
-| `githubActionsHeadSha` | `PENDING — verify after the current branch push` |
+| `reportCommitSha` | `PENDING — set to the report introduction commit in the follow-up metadata commit` |
+| `githubActionsHeadSha` | `042d351433cd8b2deb39142236b620a802b7a916` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
 
-The source HEAD contains the Wave 6 AI ownership changes and the Wave 7 live
-probe fixes. The final two commits before this record changed only probe
-coverage/configuration; the server plugin artifact remains byte-identical to
-the recorded `testedArtifactBuildSha`.
+The current source HEAD contains the Wave 6 AI ownership changes and the Wave
+7 live probe fixes. The commits after the last code-changing live run are
+documentation/evidence-identity commits; the server plugin artifact remains
+byte-identical to the recorded `testedArtifactBuildSha`.
 
 ## Current exact-head results
 
@@ -98,6 +98,28 @@ projectile leak lists, empty Wave 7 restore mismatches, and the exact artifact
 hashes. Both real disposable players produced positive accepted damage before
 natural chamber completion.
 
+### Exact-head boss hitbox live gate
+
+The current HEAD was tested against isolated Paper after the server was
+started with `tests/StartEndRiftLocal.ps1`. The first attempt while RCON was
+stopped failed closed and was recorded as `NOT VERIFIED`; the rerun passed and
+the server was stopped through RCON afterwards. The passing raw log is
+`local-runtime/boss-hitbox-live-20260918-exact-042d3514.log` with SHA-256
+`200f19f5412becdb50e3270f1d26d041cd32afcd280057fbfecfc99664878115`.
+
+```text
+LIVE_BOSS_HITBOX_PROFILE_PASS parts=HEAD,CHEST,PELVIS,LEFT_UPPER_ARM,LEFT_FOREARM,RIGHT_UPPER_ARM,RIGHT_FOREARM,LEFT_LEG,LEFT_LEG,RIGHT_LEG,RIGHT_LEG proxies=11 generation=1162 tagged=true parent=aa22dbea-6b6c-4274-940b-6029e03a531b bounded=true
+LIVE_BOSS_HITBOX_SELF_HEAL_PASS recreated=true proxies=11 generation=1162 pdc=true
+LIVE_BOSS_HITBOX_MELEE_PASS attacks=1 accepted=1 before=5000 after=4995 single_authority=true
+LIVE_BOSS_HITBOX_MISS_PASS attacks=1 accepted=0 before=4995 after=4995 carrier_ray_validated=true
+LIVE_BOSS_HITBOX_PROJECTILE_PASS projectile_events=1 before=4995 after=4994 uuid_deduped=true
+LIVE_BOSS_HITBOX_INVULNERABILITY_PASS before=950 after=950 phase=last_seal accepted=0
+LIVE_BOSS_HITBOX_CLEANUP_IDEMPOTENT_PASS proxies=0 second_cleanup=true
+```
+
+The committed evidence summary is
+`docs/superpowers/evidence/end-rift-boss-hitbox-live-2026-09-18.md`.
+
 ## Artifact identity
 
 | Artifact | SHA-256 |
@@ -112,18 +134,22 @@ The resource-pack generator’s recorded SHA-1 is
 
 ## GitHub CI
 
-`githubActionsHeadSha` remains `PENDING` until the branch containing this
-record is pushed and the required `java-plugins` and `static-and-contract`
-checks are observed for that exact head. Earlier successful runs for older
-SHAs are historical and are not substituted for the current head.
+The exact current head has both required workflows green:
+
+- [push run 35305762545](https://github.com/IliaZav/copimine/actions/runs/35305762545)
+- [pull-request run 35305765238](https://github.com/IliaZav/copimine/actions/runs/35305765238)
+
+Both runs report `completed / success` for
+`042d351433cd8b2deb39142236b620a802b7a916`.
 
 ## Native visual gate
 
 `nativeMinecraftTestedSha=NOT VERIFIED`. The Computer Use bridge exposed no
-native application window (`apps=[]`) during the current task, so no exact-head
-Minecraft screenshot or 15-second flight video can be honestly attached as
-current proof. Existing PNG/MP4 files under `artifacts/end-rift-v3-evidence/`
-are preserved, but are not relabeled as evidence for `74356366`.
+native application window (`apps=[]`) and only browser surfaces during the
+current task, so no exact-head Minecraft screenshot or 15-second flight video
+can be honestly attached as current proof. Existing PNG/MP4 files under
+`artifacts/end-rift-v3-evidence/` are preserved, but are not relabeled as
+evidence for `042d3514`.
 
 This keeps the release gate open. Do not call the event visually released until
 the native client is reachable and a screenshot/video is captured against the
@@ -132,11 +158,7 @@ same source/artifact identity recorded above.
 ## Required handoff state
 
 The server-side remediation is evidenced by the exact-head contract, AI,
-Wave 6, and Wave 7 passes. The remaining release blockers are:
-
-1. verify current GitHub Actions results for the pushed head and fill
-   `githubActionsHeadSha`;
-2. obtain an exact-head native Minecraft screenshot/video and fill
-   `nativeMinecraftTestedSha`;
-3. only then change this document from `INTERIM — RELEASE BLOCKED` to a release
-   status.
+boss-hitbox, Wave 6, and Wave 7 passes. The remaining release blocker is the
+exact-head native Minecraft screenshot/video matrix and its
+`nativeMinecraftTestedSha`. Only then may this document change from
+`INTERIM — RELEASE BLOCKED` to a release status.

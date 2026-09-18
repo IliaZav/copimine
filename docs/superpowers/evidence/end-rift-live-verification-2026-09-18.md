@@ -5,10 +5,10 @@ This evidence record is deliberately split by execution layer.
 
 ## Provenance fields
 
-- `sourceImplementationSha`: `74356366d22b8438903c76b4cb7eda5eed22242a`
+- `sourceImplementationSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `testedArtifactBuildSha`: `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4` (SHA-256 of `CopiMineEndEvent.jar`)
-- `reportCommitSha`: `69b03e92` (`docs(end-rift): record exact-head live verification`)
-- `githubActionsHeadSha`: `PENDING until CI is observed for the pushed head`
+- `reportCommitSha`: `PENDING until the report-introduction commit is recorded`
+- `githubActionsHeadSha`: `042d351433cd8b2deb39142236b620a802b7a916`
 - `nativeMinecraftTestedSha`: `NOT VERIFIED`
 - repository: `IliaZav/copimine`
 - branch: `codex/end-rift-event`
@@ -108,6 +108,25 @@ Machine-readable result fields include `result=PASS`,
 `diagnosticEventsDropped=0`, `writeFailures=0`, empty entity/task/control/
 projectile leak arrays, and empty `wave7RestoreMismatches`.
 
+## Exact-head boss hitbox live probe
+
+The exact current HEAD was exercised by
+`tests/RunEndRiftBossHitboxLive.ps1` against isolated local Paper. The
+committed evidence summary is
+`docs/superpowers/evidence/end-rift-boss-hitbox-live-2026-09-18.md`; the
+ignored raw log has SHA-256
+`200f19f5412becdb50e3270f1d26d041cd32afcd280057fbfecfc99664878115`.
+
+```text
+LIVE_BOSS_HITBOX_PROFILE_PASS parts=HEAD,CHEST,PELVIS,LEFT_UPPER_ARM,LEFT_FOREARM,RIGHT_UPPER_ARM,RIGHT_FOREARM,LEFT_LEG,LEFT_LEG,RIGHT_LEG,RIGHT_LEG proxies=11 generation=1162 tagged=true parent=aa22dbea-6b6c-4274-940b-6029e03a531b bounded=true
+LIVE_BOSS_HITBOX_PROXY_REMOVAL_CONFIRMED old_uuid_absent=true replacement_count=11
+LIVE_BOSS_HITBOX_MELEE_PASS attacks=1 accepted=1 before=5000 after=4995 single_authority=true
+LIVE_BOSS_HITBOX_MISS_PASS attacks=1 accepted=0 before=4995 after=4995 carrier_ray_validated=true
+LIVE_BOSS_HITBOX_PROJECTILE_PASS projectile_events=1 before=4995 after=4994 uuid_deduped=true
+LIVE_BOSS_HITBOX_INVULNERABILITY_PASS before=950 after=950 phase=last_seal accepted=0
+LIVE_BOSS_HITBOX_CLEANUP_IDEMPOTENT_PASS proxies=0 second_cleanup=true
+```
+
 ## Artifact hashes
 
 - `CopiMineEndEvent.jar`: `82020e4b212e0b85d11d07098bc4301888a11a125bbe681e1ba84a95022efda4`
@@ -118,10 +137,10 @@ projectile leak arrays, and empty `wave7RestoreMismatches`.
 ## Native visual boundary
 
 Native exact-head Minecraft verification is `NOT VERIFIED`. The Computer Use
-bridge exposed `apps=[]`, so there is no honest current screenshot or video
-for this SHA. Existing native PNG/MP4 files are preserved but are not claimed
-as exact-head proof. Static model-board/UV evidence is also not a substitute
-for a native render.
+bridge exposed `apps=[]` and only browser surfaces, so there is no honest
+current screenshot or video for this SHA. Existing native PNG/MP4 files are
+preserved but are not claimed as exact-head proof. Static model-board/UV
+evidence is also not a substitute for a native render.
 
 ## Release decision
 

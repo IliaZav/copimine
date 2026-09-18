@@ -14,11 +14,11 @@ visual release claim.
 | Repository | [IliaZav/copimine](https://github.com/IliaZav/copimine) |
 | Branch | `codex/end-rift-event` |
 | Pull request | [#3](https://github.com/IliaZav/copimine/pull/3) |
-| `sourceImplementationSha` | `ff7b4423fdd4959f6c686194d5dc1699d4ff3659` (`fix(end-rift): purge stale visuals during bootstrap`) |
+| `sourceImplementationSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` (`fix(end-rift): remove hardcoded live probe credential`) |
 | `testedArtifactBuildSha` | `c33e6b704439ad10091d2142ef3522ecbe9067e17c0965f79c4f75516f3e4cad` (SHA-256 of `CopiMineEndEvent.jar`, not a Git SHA) |
-| `reportCommitSha` | `ff7b4423fdd4959f6c686194d5dc1699d4ff3659` (functional source/artifact evidence commit) |
-| `githubActionsHeadSha` | `PENDING — pushed current head; verify the resulting workflow run before release` |
-| `githubActionsSourceImplementationSha` | `PENDING — current push` |
+| `reportCommitSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` (functional source/artifact evidence commit) |
+| `githubActionsHeadSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` |
+| `githubActionsSourceImplementationSha` | `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` |
 | `nativeMinecraftTestedSha` | `NOT VERIFIED` |
 | Deployment | Isolated local Paper/PostgreSQL validation only; no production deployment |
 
@@ -123,6 +123,40 @@ log: the old `EndermanEyesFeatureRendererMixin` descriptor expected
 resource-pack load to be removed. The mixin now targets `Entity`; the rebuilt
 client and staged modpack hashes are recorded below.
 
+### Exact local client profile deployment and runtime load
+
+The requested client profile was synchronized at:
+`D:\.minecraft\versions\ServerRP_copy_1`. The root-level `D:\.minecraft`
+profile was not changed. The profile now has exactly one
+`CopiMineClient-*.jar` in its `mods` directory:
+
+```text
+CopiMineClient-0.1.1.jar
+SHA-256 1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769
+```
+
+The current resource pack is installed at
+`D:\.minecraft\versions\ServerRP_copy_1\resourcepacks\CopiMineResourcePack.zip`
+and is listed once, first in the profile's active `resourcePacks` option:
+
+```text
+SHA-256 34bbed01d468f5f45821ad82dc571012f6c9c5b581cabca18fd6d1112fc143c9
+```
+
+The old `options.txt` was preserved as
+`options.txt.bak-end-rift-20260918`. The current client was then launched
+against the local server at `127.0.0.1:25566`. Its fresh
+`logs/latest.log` records both `copimineclient 0.1.1` and
+`file/CopiMineResourcePack.zip` in the active resource manager, and records
+no CopiMine/mixin/Rift Guardian error. The captured runtime log is
+`local-runtime/client-direct-20260918111901.stdout.log`.
+
+This is runtime load evidence, not a visual acceptance claim. The same log
+contains unrelated malformed shield-model errors from another installed
+resource-pack/mod combination and a harmless ignored backup directory; neither
+mentions `copimineclient`, the Rift Guardian renderer, or the CopiMine entity
+assets.
+
 ### Wave 7 live boundary gate
 
 The latest exact-head report is
@@ -179,31 +213,25 @@ The resource-pack generator’s recorded SHA-1 is
 
 ## GitHub CI
 
-The recorded CI-evidence head `a9de3e3091faf9cb348c93908403f850f2241cf8`
-has both required workflows green. It is a documentation-only descendant of
-the code source `042d351433cd8b2deb39142236b620a802b7a916`; later report-only
-commits do not change the server/client/resource-pack hashes.
+The current source head `2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` has both
+required workflows green:
 
-- [push run 35309013913](https://github.com/IliaZav/copimine/actions/runs/35309013913)
-- [pull-request run 35309017715](https://github.com/IliaZav/copimine/actions/runs/35309017715)
+- [push run 35322355210](https://github.com/IliaZav/copimine/actions/runs/35322355210)
+- [pull-request run 35322359295](https://github.com/IliaZav/copimine/actions/runs/35322359295)
 
-Both runs report `completed / success` for `a9de3e30`. Each run completed the
-`static-and-contract` and `java-plugins` jobs. The push run published
-`end-rift-event-gate-diagnostics` with digest
-`sha256:95ccc1092fa6656b3415bd1b1c7634e98f9b55ebc46a17e8e13b5eab3446db2d`;
-the pull-request run published the corresponding digest
-`sha256:2261384df51e5db63c363ad5e83352bedf809221897fa04539ea6afbfb010fa4`.
-The four GitHub warnings are upstream Node.js 20/setup-java v4 deprecation
-notices; no required job failed.
+Both runs report `completed / success` and completed the
+`static-and-contract` and `java-plugins` jobs.
 
 ## Native visual gate
 
-`nativeMinecraftTestedSha=NOT VERIFIED`. The Computer Use bridge exposed no
-native application window (`apps=[]`) and only browser surfaces during the
-current task, so no exact-head Minecraft screenshot or 15-second flight video
-can be honestly attached as current proof. Existing PNG/MP4 files under
+`nativeMinecraftTestedSha=NOT VERIFIED`. The Minecraft process did launch and
+the fresh profile log proves that the current client JAR and resource pack
+loaded, but the Computer Use bridge still exposed no native application window
+(`apps=[]`) and only browser surfaces during the current task. Therefore no
+exact-head Minecraft screenshot or 15-second flight video can be honestly
+attached as current visual proof. Existing PNG/MP4 files under
 `artifacts/end-rift-v3-evidence/` are preserved, but are not relabeled as
-evidence for `042d3514`.
+evidence for `2f8e8ed3`.
 
 The exact operator procedure for the remaining native gate is committed at
 `docs/superpowers/evidence/end-rift-native-capture-procedure.md`. It covers

@@ -1,9 +1,12 @@
 # End Rift Wave 6 amplifier live evidence — 2026-09-18
 
-This evidence belongs to Git commit
-`ff7b4423fdd4959f6c686194d5dc1699d4ff3659` on branch
-`codex/end-rift-event`. It is a Paper/Purpur local-staging result, not a
-native-client visual acceptance result.
+This evidence was collected while validating the implementation now recorded
+at Git commit
+`2f8e8ed38775046b493eb7a6c0b95c0c627e1d2e` on branch
+`codex/end-rift-event`. The live amplifier run itself predates the final
+credential-removal-only commit, so the markers below are unchanged functional
+evidence from the same source line. It is a Paper/Purpur local-staging result,
+not a native-client visual acceptance result.
 
 ## Environment
 
@@ -15,6 +18,21 @@ native-client visual acceptance result.
 - client mod: SHA-256
   `1173a108fa03bb3bf7338b40d230612a98324feed80a7fc379ba75a28aac9769`
 - probe evidence log: `local-runtime/wave6-amplifier-live-20260918103134126.log`
+
+## Exact client profile runtime load
+
+The requested client profile was synchronized at
+`D:\.minecraft\versions\ServerRP_copy_1`. It contains one current
+`CopiMineClient-0.1.1.jar` with the client hash above, and
+`CopiMineResourcePack.zip` with the resource-pack hash above. The pack is
+listed once in the profile's active resource-pack option. The fresh client
+runtime log is `local-runtime/client-direct-20260918111901.stdout.log`; it
+records `copimineclient 0.1.1` and `file/CopiMineResourcePack.zip` in the
+active resource manager and no CopiMine/mixin/Rift Guardian error.
+
+This proves artifact installation and runtime loading only. The Computer Use
+bridge did not expose the native Minecraft window, so it does not prove that
+the model is visually correct in-game.
 
 ## Live markers
 

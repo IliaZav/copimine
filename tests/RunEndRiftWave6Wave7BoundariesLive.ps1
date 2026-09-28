@@ -1,5 +1,11 @@
 [CmdletBinding()]
 param(
+  [string]$ServerDir = '',
+  [ValidateRange(1, 65535)]
+  [int]$ServerPort = 25566,
+  [ValidateRange(1, 65535)]
+  [int]$RconPort = 25576,
+  [string]$RuntimeDataDir = '',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string]$FirstBotName = 'EndRiftBoundaryA',
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
@@ -15,19 +21,41 @@ param(
 # Local-only runtime probe for the two objectives that need physical arena
 # geometry. It uses disposable test waves, never edits the saved arena by
 # design, and verifies that Wave 7's one-block BARRIER collision cells are
-# removed by cleanup. AMETHYST_BLOCK remains the separate visual layer.
+# removed by cleanup. PURPLE_STAINED_GLASS is the separate visual layer.
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$localRuntimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
+$localPrefix = $localRuntimeRoot.TrimEnd('\') + '\'
+if ([string]::IsNullOrWhiteSpace($ServerDir)) {
+  $ServerDir = Join-Path $localRuntimeRoot 'end-rift-server'
+}
+$serverDir = (Resolve-Path $ServerDir).Path
+if (-not $serverDir.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Refused to probe a server outside this worktree local-runtime directory.'
+}
+if ([string]::IsNullOrWhiteSpace($RuntimeDataDir)) {
+  $RuntimeDataDir = Split-Path -Parent $serverDir
+}
+$runtimeRoot = (Resolve-Path $RuntimeDataDir).Path
+if (-not $runtimeRoot.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+  throw 'Refused runtime evidence paths outside this worktree local-runtime directory.'
+}
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $processes = [System.Collections.Generic.List[object]]::new()
 $botProcesses = [System.Collections.Generic.List[object]]::new()
+$controlDirectory = Join-Path $runtimeRoot 'wave6-wave7-controls'
+$previousBotControlDirectory = $env:END_RIFT_BOT_CONTROL_DIRECTORY
+New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+$env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
 $previousWave7Autopilot = $env:END_RIFT_BOT_WAVE7_AUTOPILOT
+$previousWave7HoldPosition = $env:END_RIFT_BOT_WAVE7_HOLD_POSITION
+$previousReflectionEnabled = $env:END_RIFT_REFLECT_ENABLED
+$previousReflectionDiagnostics = $env:END_RIFT_REFLECT_DIAGNOSTICS
 $combatTraceProbe = $env:END_RIFT_BOT_COMBAT_TRACE -eq '1'
 $previousLocalMobSpawning = $null
+$previousBotPort = $env:END_RIFT_BOT_PORT
 $diagnosticRoot = Join-Path $root 'artifacts\end-rift-diagnostics'
 $runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
@@ -192,7 +220,7 @@ $script:runMetadata = [ordered]@{
   ciResult = 'NOT RECORDED'
   runDirectory = $runDir
   eventId = ''
-  testPlan = @('W6-SEAL-01', 'W7-BARRIER-01', 'W7-RESTART-01', 'W7-NATURAL-CLEANUP-01', 'W7-COMMAND-CLEANUP-01')
+  testPlan = @('W6-SEAL-01', 'W7-BARRIER-01', 'W7-RESTART-01', 'W7-POST-RESTART-CLIENTS-01', 'W7-NATURAL-CLEANUP-01', 'W7-COMMAND-CLEANUP-01')
 }
 $diagnosticStartSequence = Get-HighestDiagnosticSequence
 Write-RunMetadata
@@ -208,7 +236,7 @@ Write-Utf8NoBom -Path (Join-Path $runDir 'evidence-index.json') -Text ((ConvertT
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
   $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript `
-    -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
+    -ServerDir $serverDir -RconPort $RconPort -CommandText $CommandText | Out-String
   if ($LASTEXITCODE -ne 0) { throw "Local RCON failed: $CommandText $result" }
   return $result.Trim()
 }
@@ -284,15 +312,34 @@ function Set-LocalArenaMobSpawning([bool]$Enabled) {
 function Start-Bot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $env:END_RIFT_BOT_PORT = [string]$ServerPort
+  # Wave 7 includes a Warden fight and a projectile reflection objective.
+  # Exercise both through the local clients' real survival interaction path.
+  $env:END_RIFT_REFLECT_ENABLED = '1'
+  $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   $output = Join-Path $runtimeRoot ($Name + '-wave6-wave7.log')
   $error = Join-Path $runtimeRoot ($Name + '-wave6-wave7.err.log')
   $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
     ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
-    ([string]($Core[2] + 0.5D)) + ' 20 250'
+    ([string]($Core[2] + 0.5D)) + ' 20 250 "' + $controlDirectory + '"'
   $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
     -RedirectStandardOutput $output -RedirectStandardError $error -WindowStyle Hidden -PassThru
   $processes.Add($process)
   $botProcesses.Add($process)
+}
+
+function Set-BotMode {
+  param(
+    [Parameter(Mandatory = $true)][string[]]$Names,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7')]
+    [string]$Mode
+  )
+  foreach ($name in $Names) {
+    $path = Join-Path $controlDirectory ($name + '.mode')
+    [System.IO.File]::WriteAllText($path, $Mode + [Environment]::NewLine,
+      [System.Text.UTF8Encoding]::new($false))
+  }
 }
 
 function Stop-Bots {
@@ -338,12 +385,13 @@ function Configure-Bot {
   # harness maximum without relying on that overflow edge case.
   $null = Invoke-LocalRcon ("effect give $name minecraft:instant_health 1 10 true")
   $null = Invoke-LocalRcon ("effect give $name minecraft:resistance 1000 4 true")
-  $null = Invoke-LocalRcon ("minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword")
+  $null = Invoke-LocalRcon ("minecraft:item replace entity $name hotbar.0 with minecraft:netherite_sword")
   $null = Invoke-LocalRcon ("minecraft:item replace entity $name hotbar.1 with minecraft:bow")
   $null = Invoke-LocalRcon ("give $name minecraft:arrow 64")
-  $weaponState = Invoke-LocalRcon ("data get entity $name SelectedItem")
-  if ($weaponState -notmatch 'minecraft:netherite_sword') {
-    throw "Boundary probe weapon setup failed for $name`: $weaponState"
+  $swordSlot = Invoke-LocalRcon ("data get entity $name Inventory[{Slot:0b}]")
+  $bowSlot = Invoke-LocalRcon ("data get entity $name Inventory[{Slot:1b}]")
+  if ($swordSlot -notmatch 'minecraft:netherite_sword' -or $bowSlot -notmatch 'minecraft:bow') {
+    throw "Boundary probe hotbar setup failed for $name`: slot0=$swordSlot slot1=$bowSlot"
   }
   if (-not $SkipTeleport) {
     $null = Invoke-LocalRcon ("tp $name $($core[0] + 6) $($core[1]) $($core[2] + 0.5)")
@@ -444,7 +492,8 @@ function Restart-Bots([string[]]$Names, [int[]]$Core) {
 
 function Assert-BarrierBlock([int[]]$Core, [int]$FloorY, [int64]$AfterOffset) {
   # With two chambers the physical separator is the east/west diameter. Probe
-  # its one-block staircase; there is no two-block-wide gameplay cross-section.
+  # its one-block staircase at both the base and the authored six-block top;
+  # there is no two-block-wide gameplay cross-section.
   $points = @(
     [pscustomobject]@{ X = $Core[0] + 5; Y = $FloorY + 1; Z = $Core[2] },
     [pscustomobject]@{ X = $Core[0] + 10; Y = $FloorY + 1; Z = $Core[2] },
@@ -452,10 +501,16 @@ function Assert-BarrierBlock([int[]]$Core, [int]$FloorY, [int64]$AfterOffset) {
   )
   foreach ($point in $points) {
     $probe = 'END_RIFT_BARRIER_PROBE_PASS'
+    $topY = $FloorY + 6
     $null = Invoke-LocalRcon ("execute if block $($point.X) $($point.Y) $($point.Z) minecraft:barrier run say $probe")
     try {
       Wait-Until -Description ("barrier probe at $($point.X),$($point.Y),$($point.Z)") -Seconds 3 -Condition {
         return (Log-Tail $AfterOffset) -match $probe
+      } | Out-Null
+      $topProbe = 'WAVE7_BARRIER_TOP_PROBE_PASS'
+      $null = Invoke-LocalRcon ("execute if block $($point.X) $topY $($point.Z) minecraft:barrier run say $topProbe")
+      Wait-Until -Description ("top barrier probe at $($point.X),$topY,$($point.Z)") -Seconds 3 -Condition {
+        return (Log-Tail $AfterOffset) -match $topProbe
       } | Out-Null
       return "$($point.X),$($point.Y),$($point.Z)"
     } catch {
@@ -516,7 +571,7 @@ function Start-LocalMinecraft {
     -WorkingDirectory $serverDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
     -WindowStyle Hidden -PassThru
   $processes.Add($process)
-  Wait-Port -Port 25576 -Expected $true -Seconds 90
+  Wait-Port -Port $RconPort -Expected $true -Seconds 90
 }
 
 function Wait-Log-MarkerIncrease {
@@ -549,19 +604,30 @@ if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
   throw "Refused Git branch '$branch'."
 }
 $properties = Get-Content -LiteralPath (Join-Path $serverDir 'server.properties') -Raw
-if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
-    $properties -notmatch '(?m)^rcon\.port=25576\s*$') {
+if ($properties -notmatch "(?m)^server-port=$ServerPort\s*$" -or
+    $properties -notmatch "(?m)^rcon\.port=$RconPort\s*$") {
   throw 'Refused: boundary probe requires isolated local ports.'
+}
+if ($ServerPort -eq $RconPort) {
+  throw 'Refused: Minecraft and RCON must use separate ports.'
 }
 
 try {
   Start-LiveStep -Id 'W6-SETUP-01' -Description 'Prepare isolated local arena, trace mode, and two real clients.'
   $core = Get-Core (Invoke-LocalRcon 'cmend status')
-  $floorY = $core[1]
+  # The status command exposes the Core block Y; barrier levels are anchored
+  # to the solid combat floor immediately below that block's top surface.
+  $floorY = $core[1] - 1
   # Keep each real client in the room assigned by the server's Wave 7
   # containment controller. This is a navigation bound only; damage,
   # chamber ownership and completion remain server-authoritative.
   $env:END_RIFT_BOT_WAVE7_AUTOPILOT = '1'
+  # Hold the assigned point. The Warden bot uses a real bow shot when a lunge
+  # leaves melee reach; the reflection bot tracks incoming shots in its room.
+  $env:END_RIFT_BOT_WAVE7_HOLD_POSITION = '1'
+  # Keep the Wave 6 seal probe stationary.  The clients still use real
+  # survival packets; navigation resumes explicitly before Wave 7 starts.
+  Set-BotMode -Names $names -Mode 'PASSIVE'
   $mobSpawning = Invoke-LocalRcon 'gamerule doMobSpawning'
   $mobSpawningMatch = [Regex]::Match($mobSpawning,
     '(?i)doMobSpawning(?:\s*=\s*|\s+is\s+currently\s+set\s+to:\s*)(true|false)')
@@ -579,24 +645,22 @@ try {
   Restart-Bots -Names $names -Core $core
   Complete-LiveStep
 
-  Start-LiveStep -Id 'W6-SEAL-01' -Description 'Capture one prisoner through the physical seal and observe the first authorized drain.'
+  Start-LiveStep -Id 'W6-SEAL-01' -Description 'Capture one prisoner through the physical seal and check the five-Caster roster.'
   $wave6Offset = Log-Length
   $null = Invoke-LocalRcon 'cmend test wave 6'
   Wait-Log -AfterOffset $wave6Offset -Pattern 'WAVE_TEST_STARTED.*wave=6\b' | Out-Null
   $ritualLog = Wait-Log -AfterOffset $wave6Offset `
-    -Pattern 'WAVE6_RITUAL_SPHERE_READY.*casters=4.*guards=12.*projectiles=1.*zones=1.*control_pairs=1.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server'
+    -Pattern 'WAVE6_RITUAL_SPHERE_READY.*casters=5.*guards=5.*projectiles=3.*zones=1.*authority=server'
   if ($ritualLog -match 'END_RIFT_RINGS_READY|WAVE_6_PAIR_SPAWNED') {
     throw 'Legacy Collapse Rings appeared in the live Wave 6 log.'
   }
   # The live objective starts in WAITING_FOR_PRISONER.  Put exactly one real
   # client on the visible seal and require the server-authored capture marker
-  # before waiting for the first drain; starting both clients at core+6 is an
+  # without any timed health change; starting both clients at core+6 is an
   # outside-seal state and must never be treated as a capture.
   Teleport-Player -Name $SecondBotName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
   $captureLog = Wait-Log -AfterOffset $wave6Offset `
-    -Pattern 'WAVE6_RITUAL_PRISONER_CAPTURED[^\r\n]*player=[0-9a-fA-F-]{32,36}[^\r\n]*first_drain_at=\d+'
-  $drainLog = Wait-Log -AfterOffset $wave6Offset `
-    -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN.*applied=true.*damage=(?:1\.9+|2(?:\.0+)?)' -Seconds 90
+    -Pattern 'WAVE6_RITUAL_PRISONER_CAPTURED[^\r\n]*player=[0-9a-fA-F-]{32,36}'
   $prisonerMatch = [Regex]::Match($captureLog, 'player=([0-9a-fA-F-]{32,36})')
   if (-not $prisonerMatch.Success) { throw "Ritual Sphere did not identify a prisoner: $ritualLog" }
   $wave6Objective = Invoke-LocalRcon 'cmend debug objectives'
@@ -604,10 +668,11 @@ try {
   if (-not $wave6Match.Success -or [int]$wave6Match.Groups[1].Value -lt 1) {
     throw "Wave 6 did not expose Ritual Sphere visuals: $wave6Objective"
   }
-  Write-Output "LIVE_WAVE6_RITUAL_SPHERE_PASS casters=4 guards=12 prisoner=$($prisonerMatch.Groups[1].Value) drain_interval_ms=20000 drain_hp=2 health_floor=1 visual_displays=$($wave6Match.Groups[1].Value) legacy_rings=false"
+  Write-Output "LIVE_WAVE6_RITUAL_SPHERE_PASS casters=5 guards=5 prisoner=$($prisonerMatch.Groups[1].Value) prisoner_drain=disabled visual_displays=$($wave6Match.Groups[1].Value) legacy_rings=false"
   Complete-LiveStep
 
   Start-LiveStep -Id 'W7-BARRIER-01' -Description 'Build the connected one-block Wave 7 barrier and probe a real collision cell.'
+  Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'
   $null = Invoke-LocalRcon 'cmend wave clear'
   Clear-LocalArenaAmbientMobs -Core $core
   Restart-Bots -Names $names -Core $core
@@ -615,7 +680,7 @@ try {
   $null = Invoke-LocalRcon 'cmend test wave 7'
   Wait-Log -AfterOffset $wave7Offset -Pattern 'WAVE_TEST_STARTED.*wave=7\b' | Out-Null
   $barrierLog = Wait-Log -AfterOffset $wave7Offset `
-    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=5.*material=barrier.*collision=true.*visible=true.*journaled=true'
+    -Pattern 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+).*height=6.*material=barrier.*collision=true.*visible=true.*journaled=true'
   $barrierMatch = [Regex]::Match($barrierLog, 'END_RIFT_WAVE7_BARRIERS_READY.*cells=(\d+)')
   if (-not $barrierMatch.Success -or [int]$barrierMatch.Groups[1].Value -le 0) {
     throw "Wave 7 barrier count was not positive: $barrierLog"
@@ -652,7 +717,7 @@ try {
   # observe a valid recovery with no player-side combat clients.
   Stop-Bots
   $null = Invoke-LocalRcon 'stop'
-  Wait-Port -Port 25576 -Expected $false -Seconds 60
+  Wait-Port -Port $RconPort -Expected $false -Seconds 60
   Start-LocalMinecraft
   if ($combatTraceProbe) {
     # A Paper restart recreates the plugin and its opt-in trace flag. Re-enable
@@ -681,6 +746,7 @@ try {
   $restartProbePoint = Assert-BarrierBlock -Core $core -FloorY $floorY -AfterOffset $restartProbeOffset
   Write-Output "LIVE_WAVE7_RESTART_RECOVERY_PASS rehydrated=true collision=true visible=true barrier=$restartProbePoint journal_replayed=true"
   Complete-LiveStep
+  Start-LiveStep -Id 'W7-POST-RESTART-CLIENTS-01' -Description 'Reconnect authenticated clients and restore the deterministic combat setup after Paper restart.'
   # The recovered Wave 7 room is already closed.  Keep the player's durable
   # position and let the server-side reconnect/containment path own placement;
   # a central admin teleport would be rejected by the very wall being tested.
@@ -696,6 +762,7 @@ try {
     } | Out-Null
     $playerUuids[$name] = Get-BotUuid $name
   }
+  Complete-LiveStep
 
   Start-LiveStep -Id 'W7-NATURAL-CLEANUP-01' -Description 'Allow recovered Wave 7 to complete naturally and verify server-owned cleanup.'
   $naturalOffset = Log-Length
@@ -707,14 +774,17 @@ try {
   }
   $damageLedger = Get-PositivePlayerDamageLedger -AfterOffset $naturalOffset
   $damageParts = [System.Collections.Generic.List[string]]::new()
+  # The reflection-only chamber does not require Warden damage; its three reflected seal hits
+  # are checked by END_RIFT_CHAMBERS_COMPLETE for this same two-player trial.
   foreach ($name in $names) {
     $uuid = $playerUuids[$name]
-    if (-not $damageLedger.ContainsKey($uuid) -or [int]$damageLedger[$uuid].hits -lt 1) {
-      throw "Wave 7 natural completion did not record positive player damage for $name ($uuid)."
-    }
+    if (-not $damageLedger.ContainsKey($uuid) -or [int]$damageLedger[$uuid].hits -lt 1) { continue }
     $damageParts.Add(("{0}={1}:hits={2}:delta={3}" -f $name, $uuid,
         [int]$damageLedger[$uuid].hits,
         ([double]$damageLedger[$uuid].totalDelta).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)))
+  }
+  if ($damageParts.Count -lt 1) {
+    throw 'Wave 7 natural completion did not record any positive authoritative Warden-to-player damage.'
   }
   Write-Output ("LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS players={0} positive_attackers={1} {2}" -f
     $names.Count, $damageParts.Count, ($damageParts -join ' '))
@@ -761,7 +831,7 @@ finally {
       $cleanupFailures.Add("mob-spawning-restore:$($_.Exception.Message)")
     }
   }
-  if (Test-PortOpen 25576) {
+  if (Test-PortOpen $RconPort) {
     try {
       $finalStatus = (Invoke-LocalRcon 'cmend status') -replace '\u00A7.', ''
       $finalObjectives = (Invoke-LocalRcon 'cmend debug objectives') -replace '\u00A7.', ''
@@ -778,7 +848,7 @@ finally {
     } catch { $cleanupFailures.Add("zero-state-query:$($_.Exception.Message)") }
   }
   try { $null = Invoke-LocalRcon 'stop' } catch { $cleanupFailures.Add("server-stop:$($_.Exception.Message)") }
-  try { Wait-Port -Port 25576 -Expected $false -Seconds 30 } catch { $cleanupFailures.Add("server-stop-wait:$($_.Exception.Message)") }
+  try { Wait-Port -Port $RconPort -Expected $false -Seconds 30 } catch { $cleanupFailures.Add("server-stop-wait:$($_.Exception.Message)") }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) {
       try { $process.WaitForExit(10000) | Out-Null } catch {
@@ -802,6 +872,31 @@ finally {
     Remove-Item Env:END_RIFT_BOT_WAVE7_AUTOPILOT -ErrorAction SilentlyContinue
   } else {
     $env:END_RIFT_BOT_WAVE7_AUTOPILOT = $previousWave7Autopilot
+  }
+  if ($null -eq $previousBotPort) {
+    Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_PORT = $previousBotPort
+  }
+  if ($null -eq $previousBotControlDirectory) {
+    Remove-Item Env:END_RIFT_BOT_CONTROL_DIRECTORY -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_CONTROL_DIRECTORY = $previousBotControlDirectory
+  }
+  if ($null -eq $previousReflectionEnabled) {
+    Remove-Item Env:END_RIFT_REFLECT_ENABLED -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_REFLECT_ENABLED = $previousReflectionEnabled
+  }
+  if ($null -eq $previousReflectionDiagnostics) {
+    Remove-Item Env:END_RIFT_REFLECT_DIAGNOSTICS -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_REFLECT_DIAGNOSTICS = $previousReflectionDiagnostics
+  }
+  if ($null -eq $previousWave7HoldPosition) {
+    Remove-Item Env:END_RIFT_BOT_WAVE7_HOLD_POSITION -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_WAVE7_HOLD_POSITION = $previousWave7HoldPosition
   }
   if ($cleanupFailures.Count -gt 0) {
     $script:livePaperResult = 'FAIL'

@@ -89,7 +89,9 @@ public final class EndEventStateMachine {
         map.put(EventPhase.WAVE_3, EnumSet.of(EventPhase.INTERMISSION_3));
         map.put(EventPhase.INTERMISSION_3, EnumSet.of(EventPhase.WAVE_4));
         map.put(EventPhase.WAVE_4, EnumSet.of(EventPhase.CORE_RESTORATION));
-        map.put(EventPhase.CORE_RESTORATION, EnumSet.of(EventPhase.WAVE_5,
+        map.put(EventPhase.CORE_RESTORATION, EnumSet.of(EventPhase.INTERMISSION_4,
+                EventPhase.READY_FOR_PLAYERS));
+        map.put(EventPhase.INTERMISSION_4, EnumSet.of(EventPhase.WAVE_5,
                 EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.WAVE_5, EnumSet.of(EventPhase.INTERMISSION_5));
         map.put(EventPhase.INTERMISSION_5, EnumSet.of(EventPhase.WAVE_6,
@@ -101,7 +103,7 @@ public final class EndEventStateMachine {
         map.put(EventPhase.WAVE_7, EnumSet.of(EventPhase.PRE_BOSS_COOLDOWN,
                 EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.PRE_BOSS_COOLDOWN, EnumSet.of(
-                EventPhase.BOSS_CINEMATIC, EventPhase.READY_FOR_PLAYERS));
+                EventPhase.BOSS_CINEMATIC, EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.BOSS_CINEMATIC, EnumSet.of(
                 EventPhase.BOSS_ACTIVE, EventPhase.READY_FOR_PLAYERS));
         map.put(EventPhase.BOSS_ACTIVE, EnumSet.of(

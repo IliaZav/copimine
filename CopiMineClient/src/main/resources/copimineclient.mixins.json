@@ -5,7 +5,9 @@
   "client": [
     "GameRendererAccessor",
     "ArmorFeatureRendererMixin",
-    "KeyboardInputReverseMovementMixin",
+    "KeyboardInputPrisonerMixin",
+    "KeyboardPrisonerModeMixin",
+    "ClientPlayerInteractionManagerPrisonerMixin",
     "EndermanEntityRendererMixin",
     "EndermanEyesFeatureRendererMixin",
     "LivingEntityRendererMixin",

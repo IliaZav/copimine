@@ -11,6 +11,7 @@ const { Vec3 } = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot'
 const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
 const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
 const username = process.argv[2] || 'MobCombatProbe'
+const tentacleTraceEnabled = process.env.END_RIFT_TENTACLE_TRACE === '1'
 const durationMs = Number(process.argv[3] || 30000)
 const arenaX = Number(process.argv[4])
 const arenaY = Number(process.argv[5])
@@ -105,6 +106,10 @@ let navigationRecoveryUntil = 0
 let navigationRecoveryDirection = 1
 let lastNavigationRecoveryLogAt = 0
 let previousHealth = null
+function logPlayerHurt(before, after) {
+  const traceTime = tentacleTraceEnabled ? ` at_ms=${Date.now()}` : ''
+  console.log(`PLAYER_HURT ${username} before=${before.toFixed(2)} after=${after.toFixed(2)}${traceTime}`)
+}
 let sampleCount = 0
 let movedEntities = new Map()
 let attackCount = 0
@@ -254,8 +259,13 @@ function isConfiguredArenaMob(entity) {
 }
 
 function isGuardianHitbox(entity) {
-  return entity && (String(entity.name || '').toLowerCase() === 'interaction'
-    || String(entity.displayName || '').toLowerCase() === 'interaction')
+  const name = String(entity?.name || '').toLowerCase()
+  const displayName = String(entity?.displayName || '').toLowerCase()
+  // Current tentacle health carriers are invisible scaled Giants. Keep the
+  // existing Interaction proxy path for guardian bosses and recognize the
+  // tentacle's actual server-side living hitbox as well.
+  return name === 'interaction' || displayName === 'interaction'
+    || name === 'giant' || displayName === 'giant'
 }
 
 function eventMobs() {
@@ -275,8 +285,11 @@ function eventMobs() {
     .filter(entity => entity && entity.uuid === configuredBossUuid)
     .filter(isConfiguredArenaMob)
   if (configuredBossUuid && visible.length > 0) return visible
+  const combatMobNames = wave7Autopilot
+    ? ['spider', 'enderman', 'skeleton', 'warden', 'ravager', 'vex']
+    : ['spider', 'enderman', 'skeleton']
   return Object.values(bot.entities)
-    .filter(entity => entity && ['spider', 'enderman', 'skeleton'].includes(entity.name))
+    .filter(entity => entity && combatMobNames.includes(entity.name))
     .filter(isConfiguredArenaMob)
     .filter(entity => bot.entity && distance(entity.position, bot.entity.position) <= 32)
 }
@@ -314,6 +327,18 @@ function sameWave7ChamberPoint(point) {
   const playerChamber = chamberForPoint(bot.entity.position)
   const targetChamber = chamberForPoint(point)
   return playerChamber >= 0 && playerChamber === targetChamber
+}
+
+function isGlowingWave7Seal(entity) {
+  if (!entity || entity.name !== 'end_crystal' || !sameWave7Chamber(entity)) return false
+  const flags = entity.metadata?.[0]
+  return Number.isInteger(flags) && (flags & 0x40) !== 0
+}
+
+function activeWave7ReflectionSeal() {
+  return Object.values(bot.entities)
+    .filter(isGlowingWave7Seal)
+    .sort((a, b) => distance(a.position, bot.entity.position) - distance(b.position, bot.entity.position))[0] || null
 }
 
 function isWave7NavigationPoint(point) {
@@ -612,14 +637,17 @@ function attackNearest() {
     .filter(entity => distance(entity.position, bot.entity.position) <= meleeAttackDistance)
     .sort((a, b) => distance(a.position, bot.entity.position) - distance(b.position, bot.entity.position))[0]
   if (!target && wave7Autopilot) {
+    // Keep the probe in its room through Warden lunges. At bow range it uses
+    // the real player projectile damage path instead of walking into the
+    // server's movement correction while the Warden is on cooldown.
     const rangedTarget = eventMobs()
       .filter(sameWave7Chamber)
-      .filter(entity => entity.name === 'skeleton'
+      .filter(entity => ['skeleton', 'warden'].includes(entity.name)
         && distance(entity.position, bot.entity.position) > meleeAttackDistance
         && distance(entity.position, bot.entity.position) <= 18)
       .sort((a, b) => distance(a.position, bot.entity.position) - distance(b.position, bot.entity.position))[0]
     if (rangedTarget) {
-      fireRangedSkeleton(rangedTarget)
+      fireRangedTarget(rangedTarget)
       return
     }
   }
@@ -679,7 +707,7 @@ function attackNearest() {
     .finally(() => { meleeActionInFlight = false })
 }
 
-function fireRangedSkeleton(target) {
+function fireRangedTarget(target) {
   if (!bot.entity || !target || meleeActionInFlight) return
   stopNavigation()
   meleeActionInFlight = true
@@ -714,7 +742,7 @@ function fireRangedSkeleton(target) {
       }
       lookAtServer(finalTarget.position.offset(0, 1.2, 0))
       bot.activateItem()
-      console.log(`PLAYER_RANGED_CHARGE ${username} target=${finalTarget.id} type=skeleton distance=${distance(finalTarget.position, bot.entity.position).toFixed(2)}`)
+      console.log(`PLAYER_RANGED_CHARGE ${username} target=${finalTarget.id} type=${finalTarget.name} distance=${distance(finalTarget.position, bot.entity.position).toFixed(2)}`)
       setTimeout(() => {
         try {
           const refreshed = bot.entities[target.id]
@@ -722,7 +750,7 @@ function fireRangedSkeleton(target) {
           bot.deactivateItem()
           bot._client.write('arm_animation', { hand: 0 })
           attackCount += 1
-          console.log(`PLAYER_RANGED_ATTACK ${username} count=${attackCount} target=${target.id} type=skeleton`)
+          console.log(`PLAYER_RANGED_ATTACK ${username} count=${attackCount} target=${target.id} type=${target.name}`)
         } catch (error) {
           console.error(`RANGED_ATTACK_ERROR ${username} ${error.stack || error}`)
         } finally {
@@ -805,6 +833,10 @@ async function reflectFireball(entity) {
   if (!uuid) return false
   const projectileKey = projectileIdentity(entity)
   if (reflectedProjectiles.has(projectileKey)) return false
+  if (!sameWave7Chamber(entity)) {
+    recordReflectionFailure(projectileKey, 'outside-wave7-chamber', entity)
+    return false
+  }
   const current = bot.entities[entity.id]
   if (!isCurrentProjectile(current, projectileKey)) {
     recordReflectionFailure(projectileKey, 'entity-replaced', current || entity)
@@ -819,13 +851,10 @@ async function reflectFireball(entity) {
     return false
   }
   try {
-    // The player must first acquire the projectile, then keep the return
-    // target in view when the attack packet is sent.  This is how a player
-    // sends an incoming fireball back toward the obelisk instead of merely
-    // punching it upward into empty air.
+    // Wave 7 fireballs can reach a stationary player within a few ticks.
+    // Aim and interact in one ordered packet burst so the projectile cannot
+    // expire or collide during an artificial client-side wait.
     const sourceAnchor = projectileOrigins.get(projectileKey)
-    await lookAtServer(current.position)
-    await new Promise(resolve => setTimeout(resolve, 75))
     const refreshed = bot.entities[entity.id]
     if (!isCurrentProjectile(refreshed, projectileKey)) {
       recordReflectionFailure(projectileKey, 'entity-replaced-after-look', refreshed || entity)
@@ -839,12 +868,15 @@ async function reflectFireball(entity) {
       recordReflectionFailure(projectileKey, 'too-far-after-look', refreshed)
       return false
     }
-    // The server's aim-cone check is defined from the player to the
-    // projectile, not from the player to its source display. The source is
-    // still useful for diagnostics, but using it as the final look direction
-    // rejects valid diagonal reflections when the three points are not
-    // perfectly collinear.
-    await lookAtServer(refreshed.position)
+    // Wave 7 counts a reflection only when the projectile crosses the active
+    // seal. Keep the projectile inside the server's 120-degree reflection
+    // cone while directing its reflected velocity toward that glowing seal.
+    const activeSeal = activeWave7ReflectionSeal()
+    if (!activeSeal?.position) {
+      recordReflectionFailure(projectileKey, 'active-seal-not-visible', refreshed)
+      return false
+    }
+    lookAtServer(activeSeal.position.offset(0, 1, 0))
     // Send the same serverbound attack interaction a vanilla player uses.
     // Do not call bot.attack here: Mineflayer's entity type filter can reject
     // LargeFireball before the packet is emitted.
@@ -865,7 +897,7 @@ async function reflectFireball(entity) {
     bot._client.write('arm_animation', { hand: 0 })
     reflectedProjectiles.add(projectileKey)
     reflectionCount += 1
-    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}`)
+    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} seal=${activeSeal.id} seal_pos=${formatPosition(activeSeal.position)} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}`)
     reflectionFailures.delete(projectileKey)
     return true
   } catch (error) {
@@ -925,6 +957,17 @@ bot.once('spawn', () => {
   joined = true
   const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'
   console.log(`PLAYER_JOIN ${username} uuid=${playerUuid} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled} wave7_hold_position=${wave7HoldPosition}`)
+  if (tentacleTraceEnabled) {
+    bot._client.on('entity_velocity', packet => {
+      const self = bot.entity
+      if (!self || Number(packet.entityId) !== Number(self.id)) return
+      // Mineflayer's entity plugin has already converted the packet to world
+      // velocity before this listener observes the same protocol event.
+      const velocity = self.velocity
+      const horizontal = Math.hypot(velocity.x, velocity.z)
+      console.log(`PLAYER_VELOCITY ${username} id=${self.id} x=${velocity.x.toFixed(3)} y=${velocity.y.toFixed(3)} z=${velocity.z.toFixed(3)} horizontal=${horizontal.toFixed(3)} at_ms=${Date.now()}`)
+    })
+  }
   if (!skipRegister) bot.chat(`/register ${botPassword} ${botPassword}`)
   for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat(`/login ${botPassword}`), delay)
   // Mineflayer's physics plugin already acknowledges server teleports and
@@ -944,7 +987,7 @@ bot.once('spawn', () => {
   if (!controlFile) enterActiveMode(wave7AutopilotDefault)
   healthTimer = setInterval(() => {
     if (previousHealth !== null && bot.health < previousHealth - 0.01) {
-      console.log(`PLAYER_HURT ${username} before=${previousHealth.toFixed(2)} after=${bot.health.toFixed(2)}`)
+      logPlayerHurt(previousHealth, bot.health)
     }
     previousHealth = bot.health
   }, 100)
@@ -992,7 +1035,7 @@ bot.on('message', message => {
 })
 bot.on('health', () => {
   if (previousHealth !== null && bot.health < previousHealth - 0.01) {
-    console.log(`PLAYER_HURT ${username} before=${previousHealth.toFixed(2)} after=${bot.health.toFixed(2)}`)
+    logPlayerHurt(previousHealth, bot.health)
   }
   previousHealth = bot.health
 })

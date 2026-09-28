@@ -83,9 +83,13 @@ public final class EndRiftEncounterCoordinatorTest {
         check(coordinator.phase() == EventPhase.CORE_RESTORATION,
                 "wave 4 must enter core restoration, not an intermission");
         check(coordinator.completeCoreRestoration("restore", "restore-complete").accepted(),
-                "core restoration must lead to wave 5");
-        check(coordinator.startCurrentWave(EndRiftObjective.Objective.BLACK_FOG).accepted(),
-                "wave 5 must start after restoration");
+                "core restoration must lead to the Wave 4 transition runes");
+        check(coordinator.phase() == EventPhase.INTERMISSION_4,
+                "Wave 4 must require its own rune intermission");
+        check(!coordinator.startCurrentWave(EndRiftObjective.Objective.BLACK_FOG).accepted(),
+                "Wave 5 must not start directly from the Wave 4 intermission");
+        check(coordinator.advanceIntermission("w5", "w5-start").accepted(),
+                "Wave 5 must start only after its transition-rune hold");
         BlackFogEncounter fog = (BlackFogEncounter) coordinator.encounter(EndRiftObjective.Objective.BLACK_FOG);
         for (int cycle = 1; cycle <= 3; cycle++) {
             check(fog.completeCycle(context.withObjective(EndRiftObjective.Objective.BLACK_FOG), cycle, true).accepted(),
@@ -108,10 +112,10 @@ public final class EndRiftEncounterCoordinatorTest {
                 "rejected pre-capture completion must keep wave 6 active");
         check(ritual.capture(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE),
                 List.of(new RitualSealCapturePolicy.Candidate(first, true, 0.0D, 0.0D)),
-                0.0D, 0.0D, 100_000L).accepted(),
+                0.0D, 0.0D).accepted(),
                 "wave 6 must capture a participant before caster completion");
         check(ritual.state() != null, "wave 6 capture must initialize ritual state");
-        for (int caster = 0; caster < 4; caster++) {
+        for (int caster = 0; caster < 5; caster++) {
             check(ritual.casterDefeated(context.withObjective(EndRiftObjective.Objective.RITUAL_SPHERE)).accepted(),
                     "ritual caster defeat must count");
         }
@@ -134,6 +138,10 @@ public final class EndRiftEncounterCoordinatorTest {
         EndEventStateMachine machine = new EndEventStateMachine(EventPhase.WAVE_6);
         check(!machine.transition(EventPhase.WAVE_6, EventPhase.PRE_BOSS_COOLDOWN,
                 "legacy bypass", "bad").success(), "W6 direct pre-boss bypass must be rejected");
+        EndEventStateMachine waveFour = new EndEventStateMachine(EventPhase.CORE_RESTORATION);
+        check(!waveFour.transition(EventPhase.CORE_RESTORATION, EventPhase.WAVE_5,
+                "skip runes", "w4-skip").success(),
+                "Wave 4 restoration must not bypass transition runes");
     }
 
     private static void testTransitionReplayDoesNotRepeatCoordinatorSideEffects() {

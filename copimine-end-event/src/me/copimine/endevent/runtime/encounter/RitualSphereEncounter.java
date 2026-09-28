@@ -12,7 +12,7 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
     private RitualSphereEncounterPolicy.State state;
 
     public RitualSphereEncounter() {
-        super(me.copimine.endevent.domain.EndRiftObjective.Objective.RITUAL_SPHERE, 6, 4);
+        super(me.copimine.endevent.domain.EndRiftObjective.Objective.RITUAL_SPHERE, 6, 5);
     }
 
     @Override
@@ -28,7 +28,7 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
     /** Capture exactly one eligible participant after physical seal entry. */
     public synchronized Result capture(EncounterContext context,
                                        List<RitualSealCapturePolicy.Candidate> candidates,
-                                       double sealX, double sealZ, long nowMillis) {
+                                       double sealX, double sealZ) {
         if (!accepts(context)) {
             return rejected("STALE_OR_NOT_STARTED");
         }
@@ -39,19 +39,8 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         if (prisoner == null || !context.isLivingParticipant(prisoner)) {
             return result(Status.IN_PROGRESS, "waiting for prisoner");
         }
-        state = RitualSphereEncounterPolicy.capture(state, prisoner, nowMillis);
+        state = RitualSphereEncounterPolicy.capture(state, prisoner);
         return result(Status.IN_PROGRESS, "prisoner captured");
-    }
-
-    public synchronized Result drain(EncounterContext context, double currentHealth, long nowMillis) {
-        if (!accepts(context) || state == null) {
-            return rejected("STALE_OR_NOT_STARTED");
-        }
-        RitualSphereEncounterPolicy.DrainTransition transition =
-                RitualSphereEncounterPolicy.advanceDrain(state, currentHealth, nowMillis);
-        state = transition.state();
-        return result(Status.IN_PROGRESS, transition.applied()
-                ? "prisoner drain applied" : "prisoner drain not due");
     }
 
     @Override

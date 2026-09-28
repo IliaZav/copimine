@@ -16,31 +16,23 @@ def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> Non
     objective = read(DOMAIN / "EndRiftObjective.java")
     root = read(SRC / "CopiMineEndEvent.java")
     scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
-    health = read(DOMAIN / "RitualPrisonerHealthPolicy.java")
     assert "  wave-6:\n    type: RITUAL_SPHERE" in config
     assert "case 6 -> Objective.RITUAL_SPHERE" in objective
     assert "WAVE6_RITUAL_SPHERE_READY" in root
     assert "startRitualSphereObjective(world, core);" in root
     assert "tickCurrentRitualSphereObjective(now);" in root
-    assert "RITUAL_SPHERE_ZONE_SIZE = 4" in root
     assert "RitualSphereEncounterSnapshot" in root
-    assert "DRAIN_INTERVAL_MILLIS = 20_000L" in health
-    assert "DRAIN_HEALTH = 2.0D" in health
-    assert "MIN_HEALTH = 1.0D" in health
+    assert "applyRitualSphereDrain" not in root
+    assert "onRitualPrisonerDamage" not in root
+    assert "TOTAL_CASTERS = 5" in read(DOMAIN / "RitualCasterProgressionPolicy.java")
     ritual_start = root.index("private boolean startRitualSphereObjective")
     ritual_end = root.index("private void restorePersistedRitualSphereObjective", ritual_start)
     ritual_body = root[ritual_start:ritual_end]
     assert "Location combatCore = coreCombatAnchorLocation();" in ritual_body
     assert "if (combatCore != null) {" in ritual_body
     assert "core = combatCore;" in ritual_body
-    for marker in (
-        "new Profile(count, 4, 12, 1, 1, count == 2 ? 0 : 1, 13)",
-        "new Profile(count, 4, 12, 2, 1, 1, 12)",
-        "new Profile(count, 5, 15, 3, 2, 2, 11)",
-        "new Profile(count, 5, 15, 4, 2, 2, 10)",
-        "new Profile(count, 6, 18, 5, 3, 3, 9)",
-    ):
-        assert marker in scaling
+    assert "casterCount != 5" in scaling
+    assert "MAX_PROJECTILES_PER_VOLLEY = 7" in scaling
 
 
 def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
@@ -152,7 +144,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     journal = read(SRC / "HazardMutationJournal.java")
     root = read(SRC / "CopiMineEndEvent.java")
     live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
-    assert "HEIGHT = 5" in policy
+    assert "HEIGHT = 6" in policy
     assert "MIN_RADIUS = 0.5D" in policy
     assert "MAX_RADIUS = 32.0D" in policy
     assert "MAX_CELLS = 1536" in policy
@@ -160,12 +152,15 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "WALL_HALF_WIDTH = 0" in policy
     assert "REALITY_SPLIT_BARRIER" in journal
     assert "spawnRealitySplitBarriers(world, core)" in root
+    assert "isRealitySplitBarrierPlacementLocation" in root
+    assert "!isRealitySplitBarrierPlacementLocation(location)" in root
+    assert "isRealitySplitBarrierPlacementLocation(event.getBlock().getLocation())" in root
     assert "restoreRealitySplitBarriersAfterBootstrap()" in root
     assert "clearRealitySplitBarriers(\"wave-objective-reset\")" in root
     assert "openRealitySplitBoundary(" in root
     assert "Material.BARRIER" in root
     assert "REALITY_SPLIT_WALL_MATERIAL = Material.BARRIER" in root
-    assert "value.setBlock(Material.AMETHYST_BLOCK.createBlockData())" in root
+    assert "value.setBlock(Material.PURPLE_STAINED_GLASS.createBlockData())" in root
     assert "isRealitySplitBarrierBlock" in root
     assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
     assert "journaled=true" in root
@@ -173,6 +168,9 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "minecraft:barrier" in live_script
     assert "wall_material=barrier" in live_script
     assert "LIVE_WAVE7_ONE_BLOCK_WALL_PASS" in live_script
+    assert "WAVE7_BARRIER_TOP_PROBE_PASS" in live_script
+    assert "$topY = $FloorY + 6" in live_script
+    assert "$floorY = $core[1] - 1" in live_script
     assert "LIVE_WAVE7_COMMAND_CLEANUP_PASS" in live_script
     assert "LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS" in live_script
     assert "LIVE_WAVE7_RESTART_RECOVERY_PASS" in live_script
@@ -182,9 +180,9 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "Wait-Log-MarkerIncrease" in live_script
     assert "BeforeLength" in live_script
     assert "restartLogLengthBefore" in live_script
-    assert "weapon.mainhand with minecraft:netherite_sword" in live_script
+    assert "hotbar.0 with minecraft:netherite_sword" in live_script
     assert "minecraft:instant_health 1 10 true" in live_script
-    assert " 20 250'" in live_script
+    assert " 20 250 \"' + $controlDirectory" in live_script
     assert "function Restart-Bots" in live_script
     assert "Wait-BotsOffline -Names $Names" in live_script
     assert "Restart-Bots -Names $names -Core $core" in live_script
@@ -213,11 +211,12 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     configure_body = live_script[configure_start:configure_end]
     assert "[switch]$SkipTeleport" in configure_body
     assert "attribute $name minecraft:generic.knockback_resistance base set 1" in configure_body
-    assert "minecraft:item replace entity $name weapon.mainhand with minecraft:netherite_sword" in configure_body
+    assert "minecraft:item replace entity $name hotbar.0 with minecraft:netherite_sword" in configure_body
     assert "minecraft:item replace entity $name hotbar.1 with minecraft:bow" in configure_body
     assert "give $name minecraft:arrow 64" in configure_body
-    assert "data get entity $name SelectedItem" in configure_body
-    assert "Boundary probe weapon setup failed" in configure_body
+    assert "Inventory[{Slot:0b}]" in configure_body
+    assert "Inventory[{Slot:1b}]" in configure_body
+    assert "Boundary probe hotbar setup failed" in configure_body
     assert "attribute $name minecraft:generic.attack_damage base set 1" in configure_body
     assert "function Wait-BotLoginSettle" in live_script
     assert live_script.count("Wait-BotLoginSettle") >= 3
@@ -228,6 +227,12 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "function Get-PositivePlayerDamageLedger" in live_script
     assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS" in live_script
     assert "LIVE_WAVE7_CLEANUP_ZERO_STATE_PASS" in live_script
+    assert "function Set-BotMode" in live_script
+    assert "END_RIFT_BOT_CONTROL_DIRECTORY" in live_script
+    wave6_control_start = live_script.index("Start-LiveStep -Id 'W6-SEAL-01'")
+    assert "Set-BotMode -Names $names -Mode 'PASSIVE'" in live_script[:wave6_control_start]
+    wave7_control_start = live_script.index("Start-LiveStep -Id 'W7-BARRIER-01'")
+    assert "Set-BotMode -Names $names -Mode 'ACTIVE_WAVE7'" in live_script[wave7_control_start:]
     assert "$cleanupFailures =" in live_script
     assert "catch { }" not in live_script
     assert "Start-Sleep -Seconds" not in live_script
@@ -304,18 +309,19 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "resolved.getZ() - center.getZ()" in resolved_location_body
 
 
-def test_wave6_boundary_harness_captures_a_real_prisoner_before_waiting_for_drain() -> None:
+def test_wave6_boundary_harness_captures_a_real_prisoner_without_a_health_drain_gate() -> None:
     live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
     wave6_start = live_script.index("$wave6Offset = Log-Length")
     wave7_start = live_script.index("$wave7Offset = Log-Length", wave6_start)
     wave6_body = live_script[wave6_start:wave7_start]
     capture = wave6_body.index("WAVE6_RITUAL_PRISONER_CAPTURED")
-    drain = wave6_body.index("WAVE6_RITUAL_PRISONER_DRAIN")
+    completion = wave6_body.index("LIVE_WAVE6_RITUAL_SPHERE_PASS")
     assert "Teleport-Player -Name $SecondBotName -X ($core[0] + 0.5D)" in wave6_body
     assert "-Z ($core[2] + 0.5D)" in wave6_body
     assert "Wait-Log -AfterOffset $wave6Offset" in wave6_body[:capture]
-    assert capture < drain
-    assert "first_drain_at" in wave6_body[:drain]
+    assert capture < completion
+    assert "WAVE6_RITUAL_PRISONER_DRAIN" not in wave6_body
+    assert "first_drain_at" not in wave6_body
     assert "$prisonerMatch = [Regex]::Match($captureLog" in wave6_body
     assert "$prisonerMatch = [Regex]::Match($ritualLog" not in wave6_body
 
@@ -325,7 +331,7 @@ def test_wave7_collision_and_visual_layers_are_separate() -> None:
     policy = read(DOMAIN / "RealitySplitBarrierPolicy.java")
     assert "WALL_HALF_WIDTH = 0" in policy
     assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
-    assert "value.setBlock(Material.AMETHYST_BLOCK.createBlockData())" in root
+    assert "value.setBlock(Material.PURPLE_STAINED_GLASS.createBlockData())" in root
     assert "world border" not in root.lower()
 
 
@@ -494,7 +500,7 @@ def test_wave7_bot_serializes_aim_and_attack_against_navigation_race() -> None:
     assert "bot._client.write('use_entity', {" in bot
     assert "hand: 0" in bot
     assert "bot._client.write('arm_animation', { hand: 0 })" in bot
-    assert "fireRangedSkeleton" in bot
+    assert "fireRangedTarget" in bot
     assert "bot.activateItem()" in bot
     assert "bot.deactivateItem()" in bot
     assert "PLAYER_RANGED_ATTACK ${username}" in bot

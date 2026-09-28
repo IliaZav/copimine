@@ -233,11 +233,13 @@ def test_current_boss_is_real_health_and_damage_is_explicit() -> None:
 def test_core_restoration_logs_normal_entry_before_the_deadline() -> None:
     root = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     assert re.search(
-        r"completedWave == 4[\s\S]*?CORE_RESTORATION[\s\S]*?"
+        r"completedWave == 4[\s\S]*?completeWavePhase\(4,[\s\S]*?"
         r"phaseDeadlineMillis = System\.currentTimeMillis\(\) \+ 6_000L;[\s\S]*?"
         r"END_RIFT_CORE_RESTORATION_STARTED",
         root,
     ), "normal Wave 4 entry must emit the restoration-start marker"
+    controller = read(RUNTIME / "EndRiftEncounterController.java")
+    assert "case 4 -> EventPhase.CORE_RESTORATION;" in controller
 
 
 def test_waves_have_current_runtime_policies() -> None:
@@ -343,29 +345,20 @@ def test_disposable_wave_natural_completion_restores_phase_without_advancing_eve
     assert "activeWave = 0;" in root
 
 
-def test_wave6_ritual_sphere_uses_server_owned_drain_and_exact_scaling() -> None:
+def test_wave6_ritual_sphere_uses_fixed_server_owned_roster_without_prisoner_drain() -> None:
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
-    health = read(DOMAIN / "RitualPrisonerHealthPolicy.java")
     snapshot = read(DOMAIN / "RitualSphereEncounterSnapshot.java")
     assert "case RITUAL_SPHERE ->" in source
     assert "startRitualSphereObjective(world, core);" in source
     assert "tickCurrentRitualSphereObjective(now);" in source
     assert "WAVE6_RITUAL_SPHERE_READY" in source
     assert "authority=server" in source
-    assert "DRAIN_INTERVAL_MILLIS = 20_000L" in health
-    assert "DRAIN_HEALTH = 2.0D" in health
-    assert "MIN_HEALTH = 1.0D" in health
-    assert "RITUAL_SPHERE_ZONE_SIZE = 4" in source
+    assert "applyRitualSphereDrain" not in source
+    assert "onRitualPrisonerDamage" not in source
     assert "RitualSphereEncounterSnapshot" in snapshot
-    for marker in (
-        "new Profile(count, 4, 12, 1, 1, count == 2 ? 0 : 1, 13)",
-        "new Profile(count, 4, 12, 2, 1, 1, 12)",
-        "new Profile(count, 5, 15, 3, 2, 2, 11)",
-        "new Profile(count, 5, 15, 4, 2, 2, 10)",
-        "new Profile(count, 6, 18, 5, 3, 3, 9)",
-    ):
-        assert marker in scaling
+    assert "casterCount != 5" in scaling
+    assert "MAX_PROJECTILES_PER_VOLLEY = 7" in scaling
 
 
 def test_wave6_ritual_sphere_visuals_keep_wave_ownership_and_rehydrate() -> None:
@@ -680,7 +673,7 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
         "end_rift_elite_spider.png",
         "end_rift_wave_guardian_spider.png",
         "end_rift_ritual_guard_spider.png",
-        "end_rift_ritual_caster.png",
+        "end_rift_user_enderman.png",
     ):
         assert name in mapping, name
     assert "end_rift_user_boss.png" in root
@@ -1702,17 +1695,21 @@ def test_official_probe_keeps_same_tick_objective_completion_markers() -> None:
     ), "Wave 6 must reuse the Ritual Sphere cursor because completion markers share a tick"
 
 
-def test_official_wave_bot_aims_at_the_projectile_for_reflection() -> None:
+def test_official_wave_bot_aims_toward_the_active_seal_inside_the_reflection_cone() -> None:
     bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
     assert "nearestWave4ObeliskDisplay" in bot
     assert "target=projectile" in bot
     assert "origin=${sourceAnchor ? 'known' : 'nearest'}" in bot
-    # Mineflayer's forced look path updates both the public entity rotation and
-    # its private last-sent rotation before the attack packet is emitted.
+    reflection = bot[
+        bot.index("async function reflectFireball") : bot.index("function scheduleFireballReflection")
+    ]
+    assert "const activeSeal = activeWave7ReflectionSeal()" in reflection
+    assert "lookAtServer(activeSeal.position.offset(0, 1, 0))" in reflection
+    assert "server's 120-degree reflection" in reflection
     assert "bot.look(yaw, pitch, true)" in bot
-    assert "await lookAtServer(current.position)" in bot
-    assert "await lookAtServer(refreshed.position)" in bot
-    assert "bot._client.write('use_entity'" in bot
+    assert reflection.index("lookAtServer(activeSeal.position.offset(0, 1, 0))") < reflection.index(
+        "bot._client.write('use_entity'"
+    )
 
 
 def test_official_wave_bot_uses_stable_projectile_identity() -> None:

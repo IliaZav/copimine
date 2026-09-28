@@ -61,6 +61,17 @@ public final class RealitySplitChamberSnapshotTest {
         check(disposableRestored.assignment().chamberByPlayer().equals(
                         disposable.assignment().chamberByPlayer()),
                 "a disposable solo assignment must be restorable after restart");
+
+        RealitySplitChamberController soloOfficial = new RealitySplitChamberController();
+        var soloAssignment = ChamberIsolationPolicy.assign(List.of(first));
+        Map<String, String> soloEncoded = RealitySplitChamberSnapshot.encode(
+                79L, soloAssignment, java.util.Set.of(), java.util.Set.of());
+        RealitySplitChamberSnapshot.Data soloDecoded =
+                RealitySplitChamberSnapshot.decode(soloEncoded, 79L);
+        soloOfficial.restore(79L, soloDecoded.assignment(),
+                soloDecoded.completedChambers(), soloDecoded.openPassages());
+        check(soloOfficial.assignment().chamberCount() == 1,
+                "an official solo run uses one appropriate trial room");
         System.out.println("RealitySplitChamberSnapshotTest OK");
     }
 

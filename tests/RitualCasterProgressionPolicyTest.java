@@ -16,6 +16,8 @@ public final class RitualCasterProgressionPolicyTest {
                 "the first death keeps Rift Barrage disabled");
         check(RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.GRAVITY_WELL),
                 "the first death leaves Gravity Well enabled");
+        check(!RitualCasterProgressionPolicy.mayComplete(1, false, true),
+                "Wave 6 cannot complete after one Caster death");
 
         Transition second = RitualCasterProgressionPolicy.afterCasterDeath(first.deathCount());
         check(second.disabledSpell() == MajorSpell.GRAVITY_WELL,
@@ -45,6 +47,10 @@ public final class RitualCasterProgressionPolicyTest {
         check(fifth.prisonBroken(), "the fifth death breaks the prison");
         check(!RitualCasterProgressionPolicy.isSpellEnabled(5, MajorSpell.SOUL_BRAND),
                 "the final death leaves no earlier major spell enabled");
+        check(!RitualCasterProgressionPolicy.mayComplete(5, true, false),
+                "Wave 6 waits for required cleanup after the prison breaks");
+        check(RitualCasterProgressionPolicy.mayComplete(5, true, true),
+                "Wave 6 completes only after all steps and cleanup finish");
 
         expectIllegalArgument(() -> RitualCasterProgressionPolicy.afterCasterDeath(-1));
         expectIllegalArgument(() -> RitualCasterProgressionPolicy.afterCasterDeath(5));

@@ -63,6 +63,14 @@ public final class RitualSpellControllerTest {
                 "clear is idempotent");
         check(controller.snapshot().spell() == null,
                 "clear removes the old spell identity");
+
+        check(controller.start(11L, Spell.GRAVITY_WELL, caster,
+                        true, true, true, true, 200L, 24L).accepted(),
+                "the Gravity Well can use its 1.2 second warning window");
+        check(controller.tick(11L, 223L).stage() == Stage.TELEGRAPH,
+                "Gravity Well remains telegraphed until its warning completes");
+        check(controller.tick(11L, 224L).stage() == Stage.EXECUTE,
+                "Gravity Well executes after 24 event ticks");
         System.out.println("RitualSpellControllerTest OK");
     }
 

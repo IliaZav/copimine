@@ -26,7 +26,9 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
     public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
     public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
-    public static final String TYPE_CONTROL_INPUT = "END_CONTROL_INPUT";
+    public static final String TYPE_PRISONER_ABILITY_REQUEST = "END_PRISONER_ABILITY_REQUEST";
+    public static final String TYPE_PRISONER_STATE = "END_PRISONER_STATE";
+    public static final String TYPE_PRISONER_CLEAR = "END_PRISONER_CLEAR";
     public static final String TYPE_END_WORLD_BEAM = "END_WORLD_BEAM";
     public static final String TYPE_END_WORLD_VFX_CLEAR = "END_WORLD_VFX_CLEAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
@@ -64,6 +66,7 @@ public final class ClientBridgeProtocol {
     private static ClientVisualManager registeredVisualManager;
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
+    private static final PrisonerHudController PRISONER_HUD = new PrisonerHudController();
 
     private ClientBridgeProtocol() {
     }
@@ -144,6 +147,27 @@ public final class ClientBridgeProtocol {
                 logWorldVfxResult(eventType, payload, applied);
                 return;
             }
+            if (TYPE_PRISONER_STATE.equals(eventType)) {
+                int deaths = Integer.parseInt(payload.mode());
+                long[] cooldowns = parsePrisonerCooldowns(payload.clearPolicy());
+                UUID prisoner = UUID.fromString(payload.clientVersion());
+                boolean applied = "PRISONER_V1".equals(payload.shaderpack())
+                        && PRISONER_HUD.applyState(payload.sessionId(), payload.seq(), prisoner,
+                        deaths, cooldowns, PrisonerTargetEligibility.parse(payload.status()), nowMillis);
+                if (applied) {
+                    CopiMineClientLogger.info("End Rift prisoner HUD state applied: event="
+                            + payload.sessionId() + ", generation=" + payload.seq());
+                }
+                return;
+            }
+            if (TYPE_PRISONER_CLEAR.equals(eventType)) {
+                boolean applied = PRISONER_HUD.clear(payload.sessionId(), payload.seq());
+                if (applied) {
+                    CopiMineClientLogger.info("End Rift prisoner input restored: event="
+                            + payload.sessionId() + ", generation=" + payload.seq());
+                }
+                return;
+            }
             EndEventPacket packet = EndEventPacket.fromBridgePayload(
                     eventType, payload);
             boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
@@ -168,6 +192,21 @@ public final class ClientBridgeProtocol {
             CopiMineClientLogger.warn("End Rift world VFX ignored packet: type=" + eventType
                     + ", event=" + payload.sessionId());
         }
+    }
+
+    private static long[] parsePrisonerCooldowns(String raw) {
+        if (raw == null || raw.length() > 64) {
+            throw new IllegalArgumentException("Prisoner cooldown field exceeds bound");
+        }
+        String[] parts = raw.split("\\|", -1);
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("Prisoner cooldown field must have four values");
+        }
+        long[] cooldowns = new long[4];
+        for (int index = 0; index < cooldowns.length; index++) {
+            cooldowns[index] = Long.parseLong(parts[index]);
+        }
+        return cooldowns;
     }
 
     public static boolean sendHello() {
@@ -339,33 +378,34 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE;
     }
 
-    public static boolean isReverseMovementActive() {
-        return END_EVENT_STATE.isReverseActive(System.currentTimeMillis());
+    public static PrisonerHudController prisonerHud() {
+        return PRISONER_HUD;
     }
 
-    public static boolean isControlSwapActive() {
-        return END_EVENT_STATE.isControlSwapActive(System.currentTimeMillis());
+    public static boolean isPrisonerModeActive() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client.player != null && PRISONER_HUD.activeFor(client.player.getUuid());
     }
 
-    /** Send only the current keyboard sample; the server validates all identity and expiry fields. */
-    public static void sendControlInput(float forward, float sideways) {
+    /** Send a single selected target only in response to an A/S/D/F key press. */
+    public static void sendPrisonerAbility(PrisonerHudController.Ability ability) {
         if (!connected || !helloSent || !helloAcknowledged
                 || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return;
         }
-        long now = System.currentTimeMillis();
-        if (!END_EVENT_STATE.isControlSwapActive(now)) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || ability == null
+                || !PRISONER_HUD.activeFor(client.player.getUuid())) {
             return;
         }
-        String eventId = END_EVENT_STATE.eventId();
-        String instanceId = END_EVENT_STATE.controlInstanceId();
-        String pairId = END_EVENT_STATE.controlPairId();
-        if (eventId.isBlank() || instanceId.isBlank() || pairId.isBlank()) {
+        PrisonerTargetSelector.Preview preview = PrisonerTargetSelector.preview(client);
+        String targetUuid = preview.targetUuidFor(ability);
+        if (targetUuid.isBlank()) {
             return;
         }
-        ClientPlayNetworking.send(BridgePayload.controlInput(
-                sessionId, END_EVENT_STATE.generation(), eventId, instanceId,
-                pairId, forward, sideways));
+        ClientPlayNetworking.send(BridgePayload.prisonerAbilityRequest(
+                sessionId, PRISONER_HUD.generation(), PRISONER_HUD.eventId(),
+                ability.name(), targetUuid));
     }
 
     public static boolean isBoundEndBoss(String uuid) {
@@ -430,6 +470,7 @@ public final class ClientBridgeProtocol {
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.clear();
+        PRISONER_HUD.clear();
     }
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {

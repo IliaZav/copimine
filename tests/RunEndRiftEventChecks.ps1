@@ -1,3 +1,10 @@
+param(
+  # Useful after the current process has already built every artifact: this
+  # preserves the exact verification suite without redundantly compiling all
+  # unrelated first-party plugins a second time.
+  [switch]$SkipBuilds
+)
+
 $ErrorActionPreference = 'Stop'
 
 # Current End Rift gate. This runner is deliberately local/staging-only and
@@ -16,6 +23,10 @@ if ($config -notmatch '(?m)^\s*schema-version:\s*4\s*$') {
 function Invoke-GateStep {
   param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][scriptblock]$Action)
   Write-Host "== $Label =="
+  # A managed-only scriptblock does not set LASTEXITCODE.  Reset the inherited
+  # native value so this gate is judged by its own exceptions rather than a
+  # command which ran before the gate.
+  $global:LASTEXITCODE = 0
   & $Action
   if ($LASTEXITCODE -ne 0) {
     throw "$Label failed with exit code $LASTEXITCODE"
@@ -40,34 +51,48 @@ $firstPartyBuilds = @(
   @{ Label = 'UltimateAdminPlus'; Directory = 'copimine-admin-plugin' },
   @{ Label = 'AuthEffects'; Directory = 'minecraft\server\plugins\AuthEffects' }
 )
-foreach ($build in $firstPartyBuilds) {
-  $buildPath = Join-Path $root $build.Directory
-  Invoke-GateStep ("$($build.Label) build") {
-    $buildArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-      (Join-Path $buildPath 'build-plugin.ps1'))
-    if ($build.SyncServerConfig) { $buildArgs += '-SyncServerConfig' }
-    & powershell @buildArgs
+if (-not $SkipBuilds) {
+  foreach ($build in $firstPartyBuilds) {
+    $buildPath = Join-Path $root $build.Directory
+    Invoke-GateStep ("$($build.Label) build") {
+      $buildArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        (Join-Path $buildPath 'build-plugin.ps1'))
+      if ($build.SyncServerConfig) { $buildArgs += '-SyncServerConfig' }
+      & powershell @buildArgs
+    }
   }
-}
-Invoke-GateStep 'CopiMineClient build' {
-  Push-Location (Join-Path $root 'CopiMineClient')
-  try {
-    & powershell -NoProfile -ExecutionPolicy Bypass -File '.\build-client.ps1'
-  } finally {
-    Pop-Location
+  Invoke-GateStep 'CopiMineClient build' {
+    Push-Location (Join-Path $root 'CopiMineClient')
+    try {
+      & powershell -NoProfile -ExecutionPolicy Bypass -File '.\build-client.ps1'
+    } finally {
+      Pop-Location
+    }
   }
-}
-Invoke-GateStep 'Resource pack build' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
-}
-Invoke-GateStep 'Authored boss pose generator parity' {
-  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'copimine-end-event\tools\GenerateBossAnimationPoses.ps1') -Check
+  Invoke-GateStep 'Resource pack build' {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'resourcepacks\build-resourcepack.ps1') -SkipServerProperties
+  }
+  Invoke-GateStep 'Authored boss pose generator parity' {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'copimine-end-event\tools\GenerateBossAnimationPoses.ps1') -Check
+  }
+} else {
+  Invoke-GateStep 'Prebuilt artifact presence' {
+    foreach ($artifact in @(
+      (Join-Path $root 'copimine-end-event\CopiMineEndEvent.jar'),
+      (Join-Path $root 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'),
+      (Join-Path $root 'resourcepacks\build\CopiMineResourcePack.zip')
+    )) {
+      if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
+        throw "Missing required prebuilt artifact: $artifact"
+      }
+    }
+  }
 }
 
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
-  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_boss_hitbox_reconciliation_contract.py' '.\tests\test_end_event_boss_projectile_segment_contract.py' '.\tests\test_end_event_model_uv_contract.py' '.\tests\test_end_event_skeleton_look_contract.py' '.\tests\test_end_event_wave6_ritual_live_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_end_rift_evidence_portability.py' '.\tests\test_end_rift_test_quality_contract.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_ai_phase_probe_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py' '.\tests\test_end_rift_diagnostic_report.py'
+  & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_boss_hitbox_reconciliation_contract.py' '.\tests\test_end_event_boss_projectile_segment_contract.py' '.\tests\test_end_event_model_uv_contract.py' '.\tests\test_end_event_skeleton_look_contract.py' '.\tests\test_end_event_wave6_ritual_live_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_end_rift_evidence_portability.py' '.\tests\test_end_rift_test_quality_contract.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_ai_phase_probe_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py' '.\tests\test_end_rift_diagnostic_report.py' '.\tests\test_end_rift_stage1_lifecycle_contract.py' '.\tests\test_end_rift_reality_split_trials_contract.py'
   } finally {
     Pop-Location
   }
@@ -81,11 +106,18 @@ $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterContext.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftEncounterController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftSession.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftEncounterCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitChamberController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\RealitySplitTrialSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TentacleController.java'),
-  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TransitionRuneController.java')
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\TransitionRuneController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\PreBossTransitionController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\BossStartGateway.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\RitualSpellController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\ritual\PrisonerAbilityController.java')
 )
 $runtimeSources += @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\encounter') -Filter '*.java' |
   ForEach-Object FullName)
@@ -117,32 +149,37 @@ $pureTests = @(
   'BossTargetPolicyTest',
   'BossVisualCuePolicyTest',
   'ChamberIsolationPolicyTest',
+  'ClientBindingReconnectPolicyTest',
   'ChamberScalingPolicyTest',
   'CollapseRingEncounterPolicyTest',
   'CollapseRingEncounterSnapshotTest',
   'RealitySplitBarrierPolicyTest',
   'RealitySplitBarrierRecoveryTest',
   'RealitySplitChamberControllerTest',
+  'RealitySplitTrialControllerTest',
+  'RealitySplitRuntimePolicyTest',
+  'RealitySplitTrialSnapshotTest',
   'RealitySplitChamberSnapshotTest',
   'RealitySplitPlayerTeleportPolicyTest',
   'RealitySplitPlayerKnockbackPolicyTest',
   'RealitySplitCombatSeparationPolicyTest',
   'RitualCasterShieldPolicyTest',
   'RitualCasterTacticsPolicyTest',
+  'RitualSpellControllerTest',
   'RitualCasterAiOwnershipPolicyTest',
-  'RitualControlPairPolicyTest',
   'RitualGuardAggroPolicyTest',
-  'RitualPrisonerHealthPolicyTest',
   'RitualSealCapturePolicyTest',
   'RitualPrisonerCapturePolicyTest',
   'RitualTargetPolicyTest',
   'RitualZoneEffectPolicyTest',
+  'RitualConversionTargetPolicyTest',
+  'PrisonerAbilityControllerTest',
+  'RitualCasterProgressionPolicyTest',
   'RitualSphereEncounterPolicyTest',
   'RitualSphereCaptureTransitionTest',
   'RitualSphereEncounterSnapshotTest',
   'RitualSphereAuthoritativeStateTest',
   'RitualSphereScalingPolicyTest',
-  'RitualAmplifierPolicyTest',
   'RitualSphereProjectilePolicyTest',
   'RitualSphereProjectileProvenancePolicyTest',
   'CombatMovementPolicyTest',
@@ -151,8 +188,11 @@ $pureTests = @(
   'CombatTraceRecordTest',
   'EndEventDomainTest',
   'EndEventStateMachineTest',
+  'EndRiftEncounterControllerTest',
   'TransitionIdempotencyTest',
   'EndRiftEncounterCoordinatorTest',
+  'PreBossTransitionControllerTest',
+  'PostWaveRecoveryPolicyTest',
   'EndRiftAiPolicyTest',
   'EventCombatScalingPolicyTest',
   'EventMobDamagePolicyTest',
@@ -165,6 +205,7 @@ $pureTests = @(
   'ResourceProgressFormatterTest',
   'RiftCarrierPolicyTest',
   'RiftFireballCollisionPolicyTest',
+  'RiftFireballReflectionPolicyTest',
   'RiftFireballScalingPolicyTest',
   'RiftFracturePolicyTest',
   'RiftObeliskScalingPolicyTest',
@@ -201,7 +242,10 @@ $pureSources = @($domainSources + $runtimeSources + $diagnosticSources + ($pureT
 }))
 
 Invoke-GateStep 'Current pure Java policies' {
-  & javac -encoding UTF-8 -d $testBuild @pureSources
+  $pureSourceList = Join-Path $testBuild 'pure-sources.args'
+  $pureSourceArguments = @($pureSources | ForEach-Object { '"' + $_.Replace('\', '/') + '"' })
+  Set-Content -LiteralPath $pureSourceList -Value $pureSourceArguments -Encoding ascii
+  & javac -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
   if ($LASTEXITCODE -ne 0) { throw 'Current pure Java compilation failed.' }
   foreach ($name in $pureTests) {
     Invoke-JavaTest -Classpath $testBuild -MainClass $name
@@ -244,6 +288,7 @@ $persistenceSources = @($persistenceTests | ForEach-Object {
   $path
 })
 $persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endevent\EventTaskRegistry.java'
+$persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterResourceScope.java'
 
 Invoke-GateStep 'Current persistence and recovery' {
   & javac -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources

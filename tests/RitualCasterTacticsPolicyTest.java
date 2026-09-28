@@ -2,6 +2,14 @@ import me.copimine.endevent.domain.RitualCasterTacticsPolicy;
 
 public final class RitualCasterTacticsPolicyTest {
     public static void main(String[] args) {
+        check("SOUL_BRAND_CASTER".equals(
+                        RitualCasterTacticsPolicy.roleForSlot(2).name()),
+                "caster slot 2 must own Soul Brand instead of reverse movement");
+        check("RIFT_CHAINS_CASTER".equals(
+                        RitualCasterTacticsPolicy.roleForSlot(3).name()),
+                "caster slot 3 must own Rift Chains instead of control swap");
+        check("FINAL_SEAL".equals(RitualCasterTacticsPolicy.roleForSlot(4).name()),
+                "caster slot 4 must be the final prison seal");
         check(RitualCasterTacticsPolicy.state(true, false)
                         == RitualCasterTacticsPolicy.State.GUARDED_CASTING,
                 "a living guard must keep the caster in guarded casting");
@@ -35,33 +43,33 @@ public final class RitualCasterTacticsPolicyTest {
         check(!RitualCasterTacticsPolicy.ownsRitualAbility(
                         RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING),
                 "awakened casters must leave Ritual Sphere ability ownership");
-        check(RitualCasterTacticsPolicy.contributesAmplification(
+        check(!RitualCasterTacticsPolicy.contributesAmplification(
                         RitualCasterTacticsPolicy.State.GUARDED_CASTING,
-                        RitualCasterTacticsPolicy.Role.AMPLIFIER),
-                "guarded amplifiers must contribute to the ritual");
+                        RitualCasterTacticsPolicy.Role.FINAL_SEAL),
+                "final seal must not amplify spell strength");
         check(!RitualCasterTacticsPolicy.contributesAmplification(
                         RitualCasterTacticsPolicy.State.AWAKENED_ATTACKING,
-                        RitualCasterTacticsPolicy.Role.AMPLIFIER),
-                "awakened amplifiers must stop amplifying after leaving the channel");
+                        RitualCasterTacticsPolicy.Role.FINAL_SEAL),
+                "final seal must never introduce an amplifier role");
 
         check(RitualCasterTacticsPolicy.roleForSlot(0)
-                        == RitualCasterTacticsPolicy.Role.PROJECTILE_CASTER,
-                "slot 0 owns sphere projectiles");
+                        == RitualCasterTacticsPolicy.Role.RIFT_BARRAGE_CASTER,
+                "slot 0 owns Rift Barrage");
         check(RitualCasterTacticsPolicy.roleForSlot(1)
-                        == RitualCasterTacticsPolicy.Role.ZONE_CASTER,
-                "slot 1 owns corrupted zones");
+                        == RitualCasterTacticsPolicy.Role.GRAVITY_WELL_CASTER,
+                "slot 1 owns Gravity Well");
         check(RitualCasterTacticsPolicy.roleForSlot(2)
-                        == RitualCasterTacticsPolicy.Role.REVERSE_CASTER,
-                "slot 2 owns reverse movement");
+                        == RitualCasterTacticsPolicy.Role.SOUL_BRAND_CASTER,
+                "slot 2 owns Soul Brand");
         check(RitualCasterTacticsPolicy.roleForSlot(3)
-                        == RitualCasterTacticsPolicy.Role.CONTROL_SWAP_CASTER,
-                "slot 3 owns control swap");
+                        == RitualCasterTacticsPolicy.Role.RIFT_CHAINS_CASTER,
+                "slot 3 owns Rift Chains");
         check(RitualCasterTacticsPolicy.roleForSlot(4)
-                        == RitualCasterTacticsPolicy.Role.AMPLIFIER,
-                "slot 4 must amplify the ritual rather than introduce a fifth spell");
+                        == RitualCasterTacticsPolicy.Role.FINAL_SEAL,
+                "slot 4 must hold the final prison seal");
         check(RitualCasterTacticsPolicy.roleForSlot(5)
-                        == RitualCasterTacticsPolicy.Role.AMPLIFIER,
-                "slot 5 must amplify the ritual rather than introduce a sixth spell");
+                        == RitualCasterTacticsPolicy.Role.FINAL_SEAL,
+                "out-of-range slots must not add another spell role");
         System.out.println("RitualCasterTacticsPolicyTest OK");
     }
 

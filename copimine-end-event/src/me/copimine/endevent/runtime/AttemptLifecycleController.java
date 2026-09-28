@@ -1,7 +1,9 @@
 package me.copimine.endevent.runtime;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -25,8 +27,7 @@ public final class AttemptLifecycleController {
 
     private long generation = Long.MIN_VALUE;
     private long pendingNextGeneration = Long.MIN_VALUE;
-    private final Set<UUID> roster = new LinkedHashSet<>();
-    private final Set<UUID> living = new LinkedHashSet<>();
+    private final Map<UUID, ParticipantStatus> participants = new LinkedHashMap<>();
     private boolean wiping;
     private long wipeCount;
 
@@ -34,31 +35,116 @@ public final class AttemptLifecycleController {
         if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
         this.generation = generation;
         this.pendingNextGeneration = Long.MIN_VALUE;
-        this.roster.clear();
-        if (roster != null) roster.stream().filter(value -> value != null).forEach(this.roster::add);
-        this.living.clear();
-        this.living.addAll(this.roster);
+        this.participants.clear();
+        if (roster != null) {
+            roster.stream().filter(value -> value != null).forEach(player ->
+                    this.participants.put(player, new ParticipantStatus(true, true, true, true, true)));
+        }
         this.wiping = false;
     }
 
     public synchronized long generation() { return generation; }
 
     public synchronized Set<UUID> roster() {
-        return Collections.unmodifiableSet(new LinkedHashSet<>(roster));
+        Set<UUID> result = new LinkedHashSet<>();
+        participants.forEach((player, status) -> {
+            if (status.registered() && status.active()) result.add(player);
+        });
+        return Collections.unmodifiableSet(result);
     }
 
     public synchronized Set<UUID> living() {
-        return Collections.unmodifiableSet(new LinkedHashSet<>(living));
+        Set<UUID> result = new LinkedHashSet<>();
+        participants.forEach((player, status) -> {
+            if (status.registered() && status.active() && status.alive()) result.add(player);
+        });
+        return Collections.unmodifiableSet(result);
+    }
+
+    /** The immutable state snapshot for one member of this generation's roster, or {@code null}. */
+    public synchronized ParticipantStatus status(UUID player) {
+        return participants.get(player);
+    }
+
+    public synchronized boolean isRegistered(UUID player, long expectedGeneration) {
+        ParticipantStatus status = owns(expectedGeneration) ? participants.get(player) : null;
+        return status != null && status.registered();
+    }
+
+    public synchronized boolean isObjectiveEligible(UUID player, long expectedGeneration) {
+        ParticipantStatus status = owns(expectedGeneration) ? participants.get(player) : null;
+        return status != null && status.registered() && status.active()
+                && status.online() && status.alive() && status.eligibleForObjective();
+    }
+
+    public synchronized boolean markOnline(UUID player, long expectedGeneration) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        participants.put(player, new ParticipantStatus(
+                current.registered(), current.active(), true, current.alive(), false));
+        return true;
+    }
+
+    public synchronized boolean markOffline(UUID player, long expectedGeneration) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        participants.put(player, new ParticipantStatus(
+                current.registered(), current.active(), false, current.alive(), false));
+        return true;
+    }
+
+    /** Recompute arena/objective eligibility without changing the death lifecycle. */
+    public synchronized boolean markObjectiveEligible(UUID player, long expectedGeneration,
+                                                       boolean eligible) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        boolean accepted = eligible && current.registered() && current.active()
+                && current.online() && current.alive();
+        participants.put(player, new ParticipantStatus(current.registered(), current.active(),
+                current.online(), current.alive(), accepted));
+        return accepted;
+    }
+
+    public synchronized boolean refreshObjectiveEligibility(UUID player, long expectedGeneration,
+                                                              boolean online, boolean eligible) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        boolean accepted = eligible && current.registered() && current.active()
+                && online && current.alive();
+        participants.put(player, new ParticipantStatus(current.registered(), current.active(),
+                online, current.alive(), accepted));
+        return accepted;
+    }
+
+    public synchronized boolean setActive(UUID player, long expectedGeneration, boolean active) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        participants.put(player, new ParticipantStatus(current.registered(), active,
+                current.online(), current.alive(), current.eligibleForObjective() && active));
+        return true;
     }
 
     public synchronized boolean markDead(UUID player, long expectedGeneration) {
-        if (!acceptsCallback(expectedGeneration) || player == null || !roster.contains(player)) return false;
-        return living.remove(player);
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null || !current.alive()) return false;
+        participants.put(player, new ParticipantStatus(current.registered(), current.active(),
+                current.online(), false, false));
+        return true;
     }
 
     public synchronized boolean markAlive(UUID player, long expectedGeneration) {
-        if (!acceptsCallback(expectedGeneration) || player == null || !roster.contains(player)) return false;
-        return living.add(player);
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null || !current.active()) return false;
+        participants.put(player, new ParticipantStatus(current.registered(), current.active(),
+                true, true, false));
+        return !current.alive();
     }
 
     public synchronized boolean owns(long expectedGeneration) {
@@ -79,7 +165,7 @@ public final class AttemptLifecycleController {
         if (wiping) {
             return new WipeResult(WipeStatus.ALREADY_IN_PROGRESS, generation, wipeCount, safeReason(reason));
         }
-        if (!living.isEmpty()) {
+        if (!living().isEmpty()) {
             return new WipeResult(WipeStatus.NO_LIVING_PLAYERS, generation, wipeCount, safeReason(reason));
         }
         pendingNextGeneration = nextGeneration(generation);
@@ -93,8 +179,7 @@ public final class AttemptLifecycleController {
         if (!wiping || !owns(expectedGeneration) || pendingNextGeneration <= 0L) return false;
         generation = pendingNextGeneration;
         pendingNextGeneration = Long.MIN_VALUE;
-        living.clear();
-        living.addAll(roster);
+        participants.replaceAll((player, ignored) -> new ParticipantStatus(true, true, true, true, true));
         wiping = false;
         wipeCount++;
         return true;
@@ -120,8 +205,7 @@ public final class AttemptLifecycleController {
     public synchronized void clear() {
         generation = Long.MIN_VALUE;
         pendingNextGeneration = Long.MIN_VALUE;
-        roster.clear();
-        living.clear();
+        participants.clear();
         wiping = false;
     }
 
@@ -134,6 +218,9 @@ public final class AttemptLifecycleController {
     }
 
     private static String safeReason(String reason) { return reason == null ? "" : reason.trim(); }
+
+    public record ParticipantStatus(boolean registered, boolean active, boolean online,
+                                    boolean alive, boolean eligibleForObjective) { }
 
     public record WipeResult(WipeStatus status, long nextGeneration, long wipeCount, String reason) { }
 }

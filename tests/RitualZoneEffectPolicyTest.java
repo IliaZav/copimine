@@ -2,25 +2,30 @@ import me.copimine.endevent.domain.RitualZoneEffectPolicy;
 
 public final class RitualZoneEffectPolicyTest {
     public static void main(String[] args) {
-        RitualZoneEffectPolicy.Result free = RitualZoneEffectPolicy.effect(false, true, false);
-        check(free.wither(), "free player inside an active corrupted zone must receive Wither");
-        check(free.slowness(), "free player inside an active corrupted zone must receive Slowness");
-        check(free.reverseMovement(),
-                "free player inside an active corrupted zone must receive reversed movement");
+        RitualZoneEffectPolicy.Result active = RitualZoneEffectPolicy.effect(true, true);
+        check(active.slowness(), "a player inside Gravity Well receives bounded Slowness");
+        check(active.pull(), "a player inside Gravity Well is pulled toward its center");
+        check(active.periodicDamage(), "Gravity Well damage is limited to its periodic pulse");
 
-        RitualZoneEffectPolicy.Result swapped = RitualZoneEffectPolicy.effect(false, true, true);
-        check(swapped.wither() && swapped.slowness(),
-                "control swap does not suppress the zone potion debuffs");
-        check(!swapped.reverseMovement(),
-                "reverse movement must not stack with A<->B control swap");
+        RitualZoneEffectPolicy.Result betweenPulses = RitualZoneEffectPolicy.effect(true, false);
+        check(betweenPulses.slowness() && betweenPulses.pull(),
+                "movement effects continue between damage pulses");
+        check(!betweenPulses.periodicDamage(), "damage does not occur every server tick");
 
-        RitualZoneEffectPolicy.Result prisoner = RitualZoneEffectPolicy.effect(true, true, false);
-        check(!prisoner.wither() && !prisoner.slowness() && !prisoner.reverseMovement(),
-                "captured prisoner must not receive corrupted-zone effects");
+        RitualZoneEffectPolicy.Result outside = RitualZoneEffectPolicy.effect(false, true);
+        check(!outside.slowness() && !outside.pull() && !outside.periodicDamage(),
+                "players outside the fixed Gravity Well radius are unaffected");
+        check(RitualZoneEffectPolicy.contains(0.0D, 0.0D, 4.0D, 0.0D, 4.0D),
+                "the 4 block radius edge is included");
+        check(!RitualZoneEffectPolicy.contains(0.0D, 0.0D, 4.01D, 0.0D, 4.0D),
+                "targets beyond the 4 block radius are excluded");
 
-        RitualZoneEffectPolicy.Result outside = RitualZoneEffectPolicy.effect(false, false, false);
-        check(!outside.wither() && !outside.slowness() && !outside.reverseMovement(),
-                "players outside an active corrupted zone must receive no zone effects");
+        RitualZoneEffectPolicy.Pull pull = RitualZoneEffectPolicy.pull(2.0D, 0.0D, 0.0D, 0.0D);
+        check(Math.abs(pull.x() + 0.12D) < 1.0E-9D && Math.abs(pull.z()) < 1.0E-9D,
+                "the horizontal pull magnitude is bounded to 0.12 blocks per update");
+        RitualZoneEffectPolicy.Pull atCenter = RitualZoneEffectPolicy.pull(0.0D, 0.0D, 0.0D, 0.0D);
+        check(atCenter.x() == 0.0D && atCenter.z() == 0.0D,
+                "the gravity well center does not generate an invalid pull vector");
 
         System.out.println("RitualZoneEffectPolicyTest OK");
     }

@@ -83,7 +83,7 @@ public final class EndEventDomainTest {
                 EventPhase.WAVE_1, EventPhase.INTERMISSION_1,
                 EventPhase.WAVE_2, EventPhase.INTERMISSION_2,
                 EventPhase.WAVE_3, EventPhase.INTERMISSION_3,
-                EventPhase.WAVE_4, EventPhase.CORE_RESTORATION,
+                EventPhase.WAVE_4, EventPhase.CORE_RESTORATION, EventPhase.INTERMISSION_4,
                 EventPhase.WAVE_5, EventPhase.INTERMISSION_5,
                 EventPhase.WAVE_6, EventPhase.INTERMISSION_6,
                 EventPhase.WAVE_7, EventPhase.PRE_BOSS_COOLDOWN,

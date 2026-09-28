@@ -5,7 +5,8 @@ import java.util.UUID;
 
 /** Selects a physically present eligible participant for the Wave 6 seal. */
 public final class RitualSealCapturePolicy {
-    public static final double CAPTURE_RADIUS_BLOCKS = 1.25D;
+    /** Keep the server capture boundary aligned with the visible ritual sphere. */
+    public static final double CAPTURE_RADIUS_BLOCKS = 2.35D;
 
     private RitualSealCapturePolicy() {
     }

@@ -58,6 +58,19 @@ public final class RitualSpellController {
                              boolean spellAvailable,
                              boolean validTarget,
                              long nowTick) {
+        return start(eventGeneration, requestedSpell, requestedCaster, waveActive,
+                casterAlive, spellAvailable, validTarget, nowTick, TELEGRAPH_TICKS);
+    }
+
+    public StartResult start(long eventGeneration,
+                             Spell requestedSpell,
+                             UUID requestedCaster,
+                             boolean waveActive,
+                             boolean casterAlive,
+                             boolean spellAvailable,
+                             boolean validTarget,
+                             long nowTick,
+                             long telegraphTicks) {
         if (eventGeneration != generation
                 || requestedSpell == null
                 || requestedCaster == null
@@ -65,13 +78,15 @@ public final class RitualSpellController {
                 || !casterAlive
                 || !spellAvailable
                 || !validTarget
+                || telegraphTicks < 1L
+                || telegraphTicks > 100L
                 || stage != Stage.IDLE) {
             return new StartResult(false, snapshot());
         }
         spell = requestedSpell;
         caster = requestedCaster;
         stage = Stage.TELEGRAPH;
-        deadlineTick = nowTick + TELEGRAPH_TICKS;
+        deadlineTick = nowTick + telegraphTicks;
         return new StartResult(true, snapshot());
     }
 

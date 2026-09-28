@@ -30,10 +30,9 @@ public final class RealitySplitChamberSnapshot {
     }
 
     /**
-     * Encode the disposable visual/runtime probe.  Its solo variant still
-     * owns two physical chambers, but only one operator UUID is available;
-     * that state is valid for a local probe and must not be accepted by the
-     * official event codec.
+     * Encode the disposable visual/runtime probe. Its solo variant keeps two
+     * physical chambers for boundary inspection, while an official solo run
+     * encodes the one trial room assigned by the live roster.
      */
     public static Map<String, String> encodeDisposable(long generation,
                                                         ChamberIsolationPolicy.Assignment assignment,
@@ -47,9 +46,9 @@ public final class RealitySplitChamberSnapshot {
                                               Set<Integer> completedChambers,
                                               Set<RealitySplitChamberController.Passage> openPassages,
                                               boolean allowSinglePlayer) {
-        if (generation <= 0L || assignment == null || assignment.chamberCount() < 2
+        if (generation <= 0L || assignment == null || assignment.chamberCount() < 1
                 || assignment.chamberCount() > ChamberIsolationPolicy.MAX_CHAMBERS
-                || (!allowSinglePlayer && assignment.chamberByPlayer().size() < 2)
+                || (!allowSinglePlayer && assignment.chamberByPlayer().isEmpty())
                 || (allowSinglePlayer && assignment.chamberByPlayer().isEmpty())) {
             throw new IllegalArgumentException("Wave 7 assignment is not encodable");
         }
@@ -98,9 +97,9 @@ public final class RealitySplitChamberSnapshot {
         }
         ChamberIsolationPolicy.Assignment assignment =
                 new ChamberIsolationPolicy.Assignment(chamberCount, players);
-        if ((!allowSinglePlayer && assignment.chamberByPlayer().size() < 2)
+        if ((!allowSinglePlayer && assignment.chamberByPlayer().isEmpty())
                 || (allowSinglePlayer && assignment.chamberByPlayer().isEmpty())) {
-            throw new IllegalArgumentException("Wave 7 snapshot has fewer than two players");
+            throw new IllegalArgumentException("Wave 7 snapshot has no players");
         }
         Set<Integer> completed = parseCompleted(required(encoded, COMPLETED), chamberCount);
         Set<RealitySplitChamberController.Passage> open = parsePassages(

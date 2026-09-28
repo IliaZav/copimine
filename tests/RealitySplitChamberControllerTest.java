@@ -10,6 +10,17 @@ public final class RealitySplitChamberControllerTest {
         UUID playerC = UUID.fromString("00000000-0000-0000-0000-000000000003");
         UUID playerD = UUID.fromString("00000000-0000-0000-0000-000000000004");
 
+        RealitySplitChamberController helpController = new RealitySplitChamberController();
+        helpController.begin(41L, List.of(playerA, playerB, playerC, playerD));
+        check(helpController.markChamberComplete(41L, 0),
+                "a cleared room should be recordable before the others finish");
+        check(helpController.openCompletedPassage(41L, 0, 1),
+                "clearing one room should open its adjacent route so its players can help");
+        check(helpController.allowsPlayerInChamber(41L, playerA, 1),
+                "players may enter a chamber reachable through an opened passage");
+        check(!helpController.allowsPlayerInChamber(41L, playerA, 2),
+                "a room beyond a still-closed passage remains isolated");
+
         RealitySplitChamberController controller = new RealitySplitChamberController();
         controller.begin(42L, List.of(playerA, playerB, playerC, playerD));
         for (int chamber = 0; chamber < 4; chamber++) {

@@ -8,8 +8,7 @@ public final class RitualSphereEncounterSnapshotTest {
         UUID prisoner = UUID.randomUUID();
         RitualSphereEncounterPolicy.State original = new RitualSphereEncounterPolicy.State(
                 9L, prisoner,
-                me.copimine.endevent.domain.RitualSphereScalingPolicy.forPlayers(13),
-                4, 4, 123_456L);
+                me.copimine.endevent.domain.RitualSphereScalingPolicy.forPlayers(13));
         Map<String, String> encoded = RitualSphereEncounterSnapshot.encode(original);
         RitualSphereEncounterPolicy.State restored = RitualSphereEncounterSnapshot
                 .decode(encoded, 9L).state();
@@ -17,9 +16,20 @@ public final class RitualSphereEncounterSnapshotTest {
         check(restored.generation() == 9L, "generation must round-trip");
         check(restored.prisoner().equals(prisoner), "prisoner must round-trip");
         check(restored.profile().participants() == 13, "participant count must round-trip");
-        check(restored.successfulDrains() == 4 && restored.intensity() == 4,
-                "drain intensity must round-trip");
-        check(restored.lastDrainMillis() == 123_456L, "drain timestamp must round-trip");
+        check(!RitualSphereEncounterSnapshot.decode(encoded, 9L).migratedLegacyState(),
+                "current state must not report legacy migration");
+
+        Map<String, String> oldSnapshot = new java.util.LinkedHashMap<>(encoded);
+        oldSnapshot.put("ritual-sphere.successful-drains", "not-a-number");
+        oldSnapshot.put("ritual-sphere.intensity", "also-not-a-number");
+        oldSnapshot.put("ritual-sphere.last-drain-millis", "ignored");
+        RitualSphereEncounterSnapshot.Data migrated = RitualSphereEncounterSnapshot.decode(oldSnapshot, 9L);
+        check(migrated.migratedLegacyState(), "obsolete drain data must be explicitly migrated");
+        check(migrated.state().prisoner().equals(prisoner), "migration preserves prisoner only");
+        check(migrated.state().profile().participants() == 13, "migration preserves encounter size");
+        check(RitualSphereEncounterSnapshot.encode(migrated.state()).keySet().stream()
+                        .noneMatch(key -> key.contains("drain") || key.endsWith("intensity")),
+                "migration must never write obsolete values again");
 
         RitualSphereEncounterPolicy.State waiting = RitualSphereEncounterPolicy.waiting(9L, 13);
         Map<String, String> waitingEncoded = RitualSphereEncounterSnapshot.encode(waiting);
@@ -27,10 +37,8 @@ public final class RitualSphereEncounterSnapshotTest {
                 .decode(waitingEncoded, 9L).state();
         check(waitingRestored != null && !RitualSphereEncounterPolicy.hasCaptured(waitingRestored),
                 "waiting state must round-trip without a prisoner");
-        check(waitingRestored.lastDrainMillis() < 0L,
-                "waiting snapshot must preserve the no-drain timestamp");
-        check(!RitualSphereEncounterPolicy.drainDue(waitingRestored, 120_000L),
-                "rehydrated waiting state must not make a drain due");
+        check(waitingRestored.profile().participants() == 13,
+                "waiting snapshot must preserve encounter scaling");
         check(RitualSphereEncounterSnapshot.decode(Map.of(), 9L).state() == null,
                 "missing state must decode as absent");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(encoded, 8L),
@@ -43,10 +51,10 @@ public final class RitualSphereEncounterSnapshotTest {
         invalidParticipants.put("ritual-sphere.participants", "1");
         expectFailure(() -> RitualSphereEncounterSnapshot.decode(invalidParticipants, 9L),
                 "participant count outside the live range must fail closed");
-        Map<String, String> invalidIntensity = new java.util.LinkedHashMap<>(encoded);
-        invalidIntensity.put("ritual-sphere.intensity", "0");
-        expectFailure(() -> RitualSphereEncounterSnapshot.decode(invalidIntensity, 9L),
-                "intensity must match successful drains");
+        Map<String, String> missingParticipantCount = new java.util.LinkedHashMap<>(encoded);
+        missingParticipantCount.remove("ritual-sphere.participants");
+        expectFailure(() -> RitualSphereEncounterSnapshot.decode(missingParticipantCount, 9L),
+                "incomplete current state must fail closed");
         System.out.println("RitualSphereEncounterSnapshotTest OK");
     }
 

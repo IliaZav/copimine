@@ -5,23 +5,16 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * Strict codec for the durable part of the Wave 6 Ritual Sphere state.
- *
- * <p>Entity UUIDs are deliberately not stored here: Bukkit persists those
- * entities and their PDC independently, while this map stores only the
- * encounter timer/intensity that must survive a plugin restart.</p>
- */
+/** Strict codec for the durable Wave 6 roster state. */
 public final class RitualSphereEncounterSnapshot {
     private static final String PREFIX = "ritual-sphere.";
     private static final String GENERATION = PREFIX + "generation";
     private static final String PRISONER = PREFIX + "prisoner";
     private static final String PARTICIPANTS = PREFIX + "participants";
-    private static final String DRAINS = PREFIX + "successful-drains";
-    private static final String INTENSITY = PREFIX + "intensity";
-    private static final String LAST_DRAIN = PREFIX + "last-drain-millis";
-    private static final Set<String> KNOWN_KEYS = Set.of(
-            GENERATION, PRISONER, PARTICIPANTS, DRAINS, INTENSITY, LAST_DRAIN);
+    private static final Set<String> CURRENT_KEYS = Set.of(GENERATION, PRISONER, PARTICIPANTS);
+    /** Previous releases wrote these values. They are accepted and discarded during migration. */
+    private static final Set<String> LEGACY_KEYS = Set.of(
+            PREFIX + "successful-drains", PREFIX + "intensity", PREFIX + "last-drain-millis");
 
     private RitualSphereEncounterSnapshot() {
     }
@@ -34,56 +27,42 @@ public final class RitualSphereEncounterSnapshot {
         encoded.put(GENERATION, Long.toString(state.generation()));
         encoded.put(PRISONER, state.prisoner() == null ? "" : state.prisoner().toString());
         encoded.put(PARTICIPANTS, Integer.toString(state.profile().participants()));
-        encoded.put(DRAINS, Integer.toString(state.successfulDrains()));
-        encoded.put(INTENSITY, Integer.toString(state.intensity()));
-        encoded.put(LAST_DRAIN, Long.toString(state.lastDrainMillis()));
         return Map.copyOf(encoded);
     }
 
     public static Data decode(Map<String, String> encoded, long expectedGeneration) {
         if (encoded == null || encoded.keySet().stream().noneMatch(key -> key.startsWith(PREFIX))) {
-            return new Data(null);
+            return new Data(null, false);
         }
         if (expectedGeneration <= 0L) {
             throw new IllegalArgumentException("Ritual Sphere snapshot requires a positive generation");
         }
         for (String key : encoded.keySet()) {
-            if (key != null && key.startsWith(PREFIX) && !KNOWN_KEYS.contains(key)) {
+            if (key != null && key.startsWith(PREFIX)
+                    && !CURRENT_KEYS.contains(key) && !LEGACY_KEYS.contains(key)) {
                 throw new IllegalArgumentException("Ritual Sphere snapshot has unknown key: " + key);
             }
         }
+        boolean migratedLegacyState = encoded.keySet().stream().anyMatch(LEGACY_KEYS::contains);
+        boolean hasCurrentState = encoded.keySet().stream().anyMatch(CURRENT_KEYS::contains);
+        if (!hasCurrentState) {
+            return new Data(null, migratedLegacyState);
+        }
+
         long generation = parseLong(required(encoded, GENERATION), GENERATION);
         if (generation != expectedGeneration) {
             throw new IllegalArgumentException("Ritual Sphere snapshot generation does not match event generation");
         }
         UUID prisoner = parseNullableUuid(required(encoded, PRISONER), PRISONER);
         int participants = parseInt(required(encoded, PARTICIPANTS), PARTICIPANTS);
-        int drains = parseInt(required(encoded, DRAINS), DRAINS);
-        int intensity = parseInt(required(encoded, INTENSITY), INTENSITY);
-        long lastDrain = parseLong(required(encoded, LAST_DRAIN), LAST_DRAIN);
         if (participants < RitualSphereScalingPolicy.MIN_PLAYERS
                 || participants > RitualSphereScalingPolicy.MAX_PLAYERS) {
             throw new IllegalArgumentException("Ritual Sphere snapshot participant count is outside 2-20");
         }
-        if (drains < 0 || drains > RitualSphereScalingPolicy.MAX_INTENSITY) {
-            throw new IllegalArgumentException("Ritual Sphere snapshot drain count is outside its bound");
-        }
-        if (intensity != RitualSphereScalingPolicy.intensityForSuccessfulDrains(drains)) {
-            throw new IllegalArgumentException("Ritual Sphere snapshot intensity does not match drains");
-        }
-        RitualSphereEncounterPolicy.State state;
-        if (prisoner == null) {
-            if (drains != 0 || intensity != 0 || lastDrain != -1L) {
-                throw new IllegalArgumentException(
-                        "waiting Ritual Sphere snapshot must not contain captured state");
-            }
-            state = RitualSphereEncounterPolicy.waiting(generation, participants);
-        } else {
-            state = new RitualSphereEncounterPolicy.State(
-                    generation, prisoner, RitualSphereScalingPolicy.forPlayers(participants),
-                    drains, intensity, lastDrain);
-        }
-        return new Data(state);
+        RitualSphereScalingPolicy.Profile profile = RitualSphereScalingPolicy.forPlayers(participants);
+        RitualSphereEncounterPolicy.State state = new RitualSphereEncounterPolicy.State(
+                generation, prisoner, profile);
+        return new Data(state, migratedLegacyState);
     }
 
     private static String required(Map<String, String> encoded, String key) {
@@ -94,19 +73,15 @@ public final class RitualSphereEncounterSnapshot {
         return value;
     }
 
-    private static UUID parseUuid(String value, String key) {
+    private static UUID parseNullableUuid(String value, String key) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
         try {
             return UUID.fromString(value.trim());
         } catch (RuntimeException error) {
             throw new IllegalArgumentException("Ritual Sphere snapshot has invalid UUID in " + key, error);
         }
-    }
-
-    private static UUID parseNullableUuid(String value, String key) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return parseUuid(value, key);
     }
 
     private static int parseInt(String value, String key) {
@@ -125,6 +100,9 @@ public final class RitualSphereEncounterSnapshot {
         }
     }
 
-    public record Data(RitualSphereEncounterPolicy.State state) {
+    public record Data(RitualSphereEncounterPolicy.State state, boolean migratedLegacyState) {
+        public Data(RitualSphereEncounterPolicy.State state) {
+            this(state, false);
+        }
     }
 }

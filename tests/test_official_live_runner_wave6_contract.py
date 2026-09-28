@@ -19,13 +19,12 @@ def test_official_runner_derives_wave6_ritual_profile_from_participant_count() -
     assert "$ritualProfile = Get-RitualScalingProfile -Participants $playerNames.Count" in source
     assert "projectiles=$($ritualProfile.Projectiles)" in source
     assert "zones=$($ritualProfile.Zones)" in source
-    assert "control_pairs=$($ritualProfile.ControlPairs)" in source
-    assert "if ($Participants -le 4)" in source
-    assert "if ($Participants -le 8)" in source
-    assert "if ($Participants -le 12)" in source
-    assert "if ($Participants -le 16)" in source
-    assert "Projectiles = 5" in source
-    assert "ControlPairs = 3" in source
+    assert "Casters = 5" in source
+    assert "Guards = $guards" in source
+    assert "Projectiles = $projectiles" in source
+    assert "Zones = $zones" in source
+    assert "MajorCooldownSeconds = $cooldown" in source
+    assert "ControlPairs" not in source
 
 
 def test_official_runner_drives_one_participant_through_the_ritual_seal() -> None:
@@ -35,7 +34,8 @@ def test_official_runner_drives_one_participant_through_the_ritual_seal() -> Non
 
     assert "$ritualPrisonerName = $playerNames[0]" in source
     assert "Teleport-Player -Name $ritualPrisonerName -X ($core[0] + 0.5D)" in source
-    assert "WAVE6_RITUAL_PRISONER_DRAIN" in source
+    assert "WAVE6_RITUAL_PRISONER_CAPTURED" in source
+    assert "WAVE6_RITUAL_PRISONER_DRAIN" not in source
 
 
 def test_four_player_wave6_wave7_boundary_runner_uses_current_control_profile() -> None:
@@ -44,6 +44,6 @@ def test_four_player_wave6_wave7_boundary_runner_uses_current_control_profile() 
     source = BOUNDARY_RUNNER.read_text(encoding="utf-8")
 
     assert "WAVE6_RITUAL_SPHERE_READY" in source
-    assert "projectiles=1" in source
-    assert "control_pairs=1" in source
-    assert "projectiles=1.*zones=1.*control_pairs=0" not in source
+    assert "casters=5.*guards=5.*projectiles=3.*zones=1.*authority=server" in source
+    assert "control_pairs" not in source
+    assert "drain_interval_ms" not in source

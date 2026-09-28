@@ -5,7 +5,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import me.copimine.endevent.domain.EndEventStateMachine;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
@@ -131,13 +130,22 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
             return rejected("WAVE_PHASE_REQUIRED");
         }
         EventPhase current = session.phase();
-        EventPhase next = nextPhaseFor(objective);
-        EndRiftSession.TransitionOutcome preview = session.previewTransition(
-                current, next, reason, idempotencyKey);
+        int wave = EndRiftEncounterController.waveNumber(objective);
+        EventPhase next = session.phaseAfterWave(wave);
+        EndRiftSession.TransitionOutcome preview = session.previewCompleteWave(
+                wave, reason, idempotencyKey);
         if (!preview.accepted()) return rejected(preview.code());
         WaveEncounter.Result completed = encounter.complete(session.context().withObjective(objective));
         if (!completed.accepted() || !completed.complete()) return fromEncounter(completed);
-        Result moved = transition(current, next, reason, idempotencyKey);
+        EndRiftSession.TransitionOutcome completion = session.completeWave(
+                wave, reason, idempotencyKey);
+        Result moved = completion.accepted()
+                ? accepted(completion.phase(), completion.code(), completion.reason())
+                : rejected(completion.code());
+        if (moved.accepted() && !"IDEMPOTENT_REPLAY".equals(moved.code())) {
+            session.updateObjectiveForPhase();
+            history.add(new Transition(current, completion.phase(), idempotencyKey));
+        }
         if (!moved.accepted()) {
             encounter.reset();
             return moved;
@@ -147,27 +155,24 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         return result;
     }
 
-    /** W4 has no transition-rune intermission; restoration is an explicit stage. */
+    /** Core restoration is followed by the canonical Wave 4 rune hold. */
     public synchronized Result completeCoreRestoration(String reason, String idempotencyKey) {
         if (closed || session.phase() != EventPhase.CORE_RESTORATION) {
             return rejected("CORE_RESTORATION_REQUIRED");
         }
-        return transition(EventPhase.CORE_RESTORATION, EventPhase.WAVE_5,
+        EndRiftSession.TransitionOutcome outcome = session.completeCoreRestoration(
                 reason, idempotencyKey);
+        if (!outcome.accepted()) return rejected(outcome.code());
+        session.updateObjectiveForPhase();
+        history.add(new Transition(EventPhase.CORE_RESTORATION, outcome.phase(), idempotencyKey));
+        return accepted(outcome.phase(), outcome.code(), outcome.reason());
     }
 
     /** Advance only from an intermission that belongs to the corresponding wave. */
     public synchronized Result advanceIntermission(String reason, String idempotencyKey) {
-        EndRiftObjective.Objective next = switch (session.phase()) {
-            case INTERMISSION_1 -> EndRiftObjective.Objective.RIFT_HUNT;
-            case INTERMISSION_2 -> EndRiftObjective.Objective.RIFT_GATES;
-            case INTERMISSION_3 -> EndRiftObjective.Objective.OBELISK_ASSAULT;
-            case INTERMISSION_5 -> EndRiftObjective.Objective.RITUAL_SPHERE;
-            case INTERMISSION_6 -> EndRiftObjective.Objective.REALITY_SPLIT;
-            default -> null;
-        };
-        if (next == null) return rejected("INTERMISSION_REQUIRED");
-        return startNextWave(next, reason, idempotencyKey);
+        int nextWave = EndRiftEncounterController.nextWaveNumberAfterIntermission(session.phase());
+        if (nextWave == 0) return rejected("INTERMISSION_REQUIRED");
+        return startNextWave(EndRiftObjective.objective(nextWave), reason, idempotencyKey);
     }
 
     public synchronized boolean accepts(String eventId, long generation) {
@@ -237,18 +242,6 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
                 result.progress(), result.required());
     }
 
-    private static EventPhase nextPhaseFor(EndRiftObjective.Objective objective) {
-        return switch (objective) {
-            case RIFT_CARRIERS -> EventPhase.INTERMISSION_1;
-            case RIFT_HUNT -> EventPhase.INTERMISSION_2;
-            case RIFT_GATES -> EventPhase.INTERMISSION_3;
-            case OBELISK_ASSAULT -> EventPhase.CORE_RESTORATION;
-            case BLACK_FOG -> EventPhase.INTERMISSION_5;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.INTERMISSION_6;
-            case REALITY_SPLIT -> EventPhase.PRE_BOSS_COOLDOWN;
-        };
-    }
-
     private Result accepted(EventPhase phase, String code, String reason) {
         return new Result(true, phase, code, reason, 0, 0);
     }
@@ -258,27 +251,13 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
     }
 
     public static EventPhase wavePhase(EndRiftObjective.Objective objective) {
-        return switch (objective) {
-            case RIFT_CARRIERS -> EventPhase.WAVE_1;
-            case RIFT_HUNT -> EventPhase.WAVE_2;
-            case RIFT_GATES -> EventPhase.WAVE_3;
-            case OBELISK_ASSAULT -> EventPhase.WAVE_4;
-            case BLACK_FOG -> EventPhase.WAVE_5;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.WAVE_6;
-            case REALITY_SPLIT -> EventPhase.WAVE_7;
-        };
+        return EndRiftEncounterController.wavePhase(
+                EndRiftEncounterController.waveNumber(objective));
     }
 
     private static EventPhase predecessorPhase(EndRiftObjective.Objective objective) {
-        return switch (objective) {
-            case RIFT_CARRIERS -> EventPhase.START_RITUAL;
-            case RIFT_HUNT -> EventPhase.INTERMISSION_1;
-            case RIFT_GATES -> EventPhase.INTERMISSION_2;
-            case OBELISK_ASSAULT -> EventPhase.INTERMISSION_3;
-            case BLACK_FOG -> EventPhase.CORE_RESTORATION;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> EventPhase.INTERMISSION_5;
-            case REALITY_SPLIT -> EventPhase.INTERMISSION_6;
-        };
+        return EndRiftEncounterController.predecessorPhase(
+                EndRiftEncounterController.waveNumber(objective));
     }
 
     private static EndRiftObjective.Objective objectiveForWavePhase(EventPhase phase) {

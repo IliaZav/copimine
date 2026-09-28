@@ -24,33 +24,22 @@ public final class RitualSphereCaptureTransitionTest {
         check(encounter.state() != null && !RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
                 "Wave 6 must start in an explicit waiting state before physical seal capture");
 
-        long capturedAt = 100_000L;
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 4.0D, 4.0D)
-        ), 0.0D, 0.0D, capturedAt).accepted(),
+        ), 0.0D, 0.0D).accepted(),
                 "an outside participant must leave the encounter waiting");
         check(encounter.state() != null && !RitualSphereEncounterPolicy.hasCaptured(encounter.state()),
                 "an outside participant must leave the authoritative state waiting");
-        check(!RitualSphereEncounterPolicy.drainDue(encounter.state(), capturedAt + 20_000L),
-                "a waiting encounter must not make a drain due");
-
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(prisoner, true, 1.25D, 0.0D)
-        ), 0.0D, 0.0D, capturedAt).accepted(),
+        ), 0.0D, 0.0D).accepted(),
                 "an eligible participant on the seal boundary must be captured");
         check(encounter.state() != null, "capture must create prisoner state");
         check(prisoner.equals(encounter.state().prisoner()),
                 "capture must persist the physically captured UUID");
-        check(encounter.state().lastDrainMillis() == capturedAt,
-                "the first drain clock must start at capture time");
-        check(!RitualSphereEncounterPolicy.drainDue(encounter.state(), capturedAt + 19_999L),
-                "the first drain must not happen before twenty seconds after capture");
-        check(RitualSphereEncounterPolicy.drainDue(encounter.state(), capturedAt + 20_000L),
-                "the first drain must happen at the twenty-second boundary after capture");
-
         check(encounter.capture(context, List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLowest, true, 0.0D, 0.0D)
-        ), 0.0D, 0.0D, capturedAt + 1_000L).accepted(),
+        ), 0.0D, 0.0D).accepted(),
                 "a repeated capture attempt must remain idempotently accepted");
         check(prisoner.equals(encounter.state().prisoner()),
                 "a second player must not replace the captured prisoner");

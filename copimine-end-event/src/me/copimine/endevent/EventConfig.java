@@ -617,7 +617,7 @@ public record EventConfig(
     private static Map<String, MusicTrack> readPhaseMusic(ConfigurationSection parent, int schemaVersion) {
         List<String> requiredKeys = new ArrayList<>(List.of(
                 "wave-1", "wave-2", "wave-3", "wave-4", "wave-5", "wave-6", "wave-7",
-                "intermission-1", "intermission-2", "intermission-3", "intermission-5",
+                "intermission-1", "intermission-2", "intermission-3", "intermission-4", "intermission-5",
                 "intermission-6", "core-restoration", "pre-boss-cooldown", "boss-cinematic",
                 "boss-awakening", "boss-hunt", "boss-rift", "boss-overload", "boss-rage",
                 "boss-last-seal", "boss-finish", "victory"));

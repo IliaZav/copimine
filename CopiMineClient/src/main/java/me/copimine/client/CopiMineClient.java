@@ -40,9 +40,11 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> {
             visualManager.render(drawContext);
+            PrisonerHudRenderer.render(drawContext);
         });
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventTentacles);
+        WorldRenderEvents.LAST.register(PrisonerTargetSelector::render);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             if (client.player != null && client.player.isDead()) {
@@ -79,7 +81,7 @@ public final class CopiMineClient implements ClientModInitializer {
                                             "endEvent=" + (endEvent.eventId().isBlank() ? "-" : endEvent.eventId())
                                                     + ", generation=" + endEvent.generation()
                                                     + ", bossBound=" + endEvent.hasBossBinding()
-                                                    + ", reverse=" + ClientBridgeProtocol.isReverseMovementActive()));
+                                                    + ", prisonerMode=" + ClientBridgeProtocol.isPrisonerModeActive()));
                                     return 1;
                                 }))
                         .then(ClientCommandManager.literal("diagnose")

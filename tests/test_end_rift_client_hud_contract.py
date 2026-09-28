@@ -4,6 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 HUD = ROOT / "CopiMineClient" / "src" / "main" / "java" / "me" / "copimine" / "client" / "EndRiftBossBarHud.java"
+CLIENT = ROOT / "CopiMineClient" / "src" / "main" / "java" / "me" / "copimine" / "client" / "CopiMineClient.java"
 
 
 def _constant(source: str, name: str) -> int:
@@ -42,3 +43,19 @@ def test_phase_markers_and_cast_status_have_separate_vertical_lanes():
     assert _constant(source, "HEIGHT") >= cast_offset + 14
     assert f"frameY + PHASE_LABEL_OFFSET" in source
     assert f"y + CAST_LABEL_OFFSET" in source
+
+
+def test_end_rift_health_command_is_nested_under_endrift_namespace():
+    source = CLIENT.read_text(encoding="utf-8")
+
+    # Keep the diagnostic command namespaced with the other End Rift probes;
+    # a misplaced closing parenthesis silently registers it at the root and
+    # makes the documented `/copimineclient endrift health` path invalid.
+    assert re.search(
+        r'return 1;\s*\}\)\)\s*\.then\(ClientCommandManager\.literal\("health"\)',
+        source,
+    )
+    assert re.search(
+        r'return 1;\s*\}\)\)\)\s*\.then\(ClientCommandManager\.literal\("debug"\)',
+        source,
+    )

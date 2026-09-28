@@ -17,6 +17,7 @@ public enum EventPhase {
     INTERMISSION_3,
     WAVE_4,
     CORE_RESTORATION,
+    INTERMISSION_4,
     WAVE_5,
     INTERMISSION_5,
     WAVE_6,

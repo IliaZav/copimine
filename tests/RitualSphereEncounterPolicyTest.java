@@ -5,41 +5,23 @@ import me.copimine.endevent.domain.RitualSphereScalingPolicy;
 public final class RitualSphereEncounterPolicyTest {
     public static void main(String[] args) {
         UUID prisoner = UUID.randomUUID();
-        RitualSphereEncounterPolicy.State initial = RitualSphereEncounterPolicy.initial(
-                7L, prisoner, 20, 1_000L);
+        RitualSphereEncounterPolicy.State initial = RitualSphereEncounterPolicy.waiting(7L, 20);
         check(initial.profile().casterCount() == 5, "20 players must use exactly five casters");
         check(initial.profile().guardCount() == 15, "large groups use three guards per caster");
-        check(!RitualSphereEncounterPolicy.drainDue(initial, 20_999L),
-                "drain must not happen before 20 seconds");
-
-        RitualSphereEncounterPolicy.DrainTransition first = RitualSphereEncounterPolicy.advanceDrain(
-                initial, 20.0D, 21_000L);
-        check(first.applied(), "first due drain must apply");
-        check(first.health().remainingHealth() == 18.0D, "drain must remove exactly two HP");
-        check(first.state().successfulDrains() == 1, "successful drain raises intensity once");
-        check(first.state().intensity() == 1, "intensity must track successful drains");
-
-        RitualSphereEncounterPolicy.State floor = first.state();
-        for (int index = 0; index < 20; index++) {
-            RitualSphereEncounterPolicy.DrainTransition next = RitualSphereEncounterPolicy.advanceDrain(
-                    floor, 1.0D, 41_000L + index * 20_000L);
-            floor = next.state();
-        }
-        check(floor.intensity() == 1, "floor drains must not raise intensity");
-        check(floor.successfulDrains() == 1, "floor drains must not count as successful");
-
-        check(RitualSphereEncounterPolicy.abilityEnabled(initial, 0, true),
-                "first caster owns the projectile ability");
-        check(!RitualSphereEncounterPolicy.abilityEnabled(initial, 0, false),
-                "dead caster disables its ability");
-        check(!RitualSphereEncounterPolicy.abilityEnabled(initial, 5, true),
-                "amplifier casters must not create a sixth spell type");
+        RitualSphereEncounterPolicy.State captured = RitualSphereEncounterPolicy.capture(initial, prisoner);
+        check(RitualSphereEncounterPolicy.hasCaptured(captured), "capture persists the prisoner");
+        check(captured.prisoner().equals(prisoner), "capture stores the selected prisoner");
+        check(RitualSphereEncounterPolicy.capture(captured, UUID.randomUUID()) == captured,
+                "repeat capture must not replace the current prisoner");
+        check(RitualSphereEncounterPolicy.reassignCapturedPrisoner(captured, prisoner) == captured,
+                "same-prisoner reassignment is idempotent");
+        check(!RitualSphereEncounterPolicy.hasCaptured(initial), "waiting has no prisoner");
         check(!RitualSphereEncounterPolicy.shouldComplete(1, 0),
                 "living caster keeps the ritual active");
         check(RitualSphereEncounterPolicy.shouldComplete(0, 0),
                 "ritual completes only when caster and guards are gone");
-        check(RitualSphereScalingPolicy.projectileDamageMultiplier(100) <= 1.20D,
-                "intensity scaling must stay bounded");
+        check(!RitualSphereEncounterPolicy.shouldComplete(0, 1),
+                "living guard keeps the ritual active");
         System.out.println("RitualSphereEncounterPolicyTest OK");
     }
 

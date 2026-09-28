@@ -48,6 +48,12 @@ public final class RitualCasterProgressionPolicy {
         };
     }
 
+    /** Cleanup is part of the objective and must finish before W6 is complete. */
+    public static boolean mayComplete(int deathCount, boolean prisonBroken,
+                                      boolean runtimeCleaned) {
+        return deathCount == TOTAL_CASTERS && prisonBroken && runtimeCleaned;
+    }
+
     public record Transition(int deathCount,
                              MajorSpell disabledSpell,
                              PrisonerAbility unlockedAbility,

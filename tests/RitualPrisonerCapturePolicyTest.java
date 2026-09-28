@@ -13,7 +13,7 @@ public final class RitualPrisonerCapturePolicyTest {
         // Regression: UUID/list order must not capture a player who is outside
         // the seal before checking the physically present eligible candidate.
         UUID selected = RitualSealCapturePolicy.select(List.of(
-                new RitualSealCapturePolicy.Candidate(outsideLower, true, 2.0D, 0.0D),
+                new RitualSealCapturePolicy.Candidate(outsideLower, true, 3.0D, 0.0D),
                 new RitualSealCapturePolicy.Candidate(inside, true, 0.75D, 0.0D),
                 new RitualSealCapturePolicy.Candidate(insideLater, true, 0.25D, 0.0D)
         ), 0.0D, 0.0D);
@@ -22,7 +22,7 @@ public final class RitualPrisonerCapturePolicyTest {
 
         UUID eligibleAfterInvalid = RitualSealCapturePolicy.select(List.of(
                 new RitualSealCapturePolicy.Candidate(outsideLower, false, 0.0D, 0.0D),
-                new RitualSealCapturePolicy.Candidate(inside, true, 0.0D, 1.25D)
+                new RitualSealCapturePolicy.Candidate(inside, true, 0.0D, 2.35D)
         ), 0.0D, 0.0D);
         check(inside.equals(eligibleAfterInvalid),
                 "ineligible occupants must not block an eligible boundary occupant");
@@ -30,11 +30,11 @@ public final class RitualPrisonerCapturePolicyTest {
         UUID boundary = UUID.fromString("00000000-0000-0000-0000-000000000004");
         UUID justOutside = UUID.fromString("00000000-0000-0000-0000-000000000005");
         check(boundary.equals(RitualSealCapturePolicy.select(List.of(
-                        new RitualSealCapturePolicy.Candidate(boundary, true, 1.25D, 0.0D)
+                        new RitualSealCapturePolicy.Candidate(boundary, true, 2.35D, 0.0D)
                 ), 0.0D, 0.0D)),
                 "the configured capture radius must be inclusive");
         check(RitualSealCapturePolicy.select(List.of(
-                        new RitualSealCapturePolicy.Candidate(justOutside, true, 1.250001D, 0.0D)
+                        new RitualSealCapturePolicy.Candidate(justOutside, true, 2.350001D, 0.0D)
                 ), 0.0D, 0.0D) == null,
                 "a candidate just beyond the capture radius must not be captured");
 

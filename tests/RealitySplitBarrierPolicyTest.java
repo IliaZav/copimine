@@ -7,8 +7,9 @@ public final class RealitySplitBarrierPolicyTest {
     public static void main(String[] args) {
         check(RealitySplitBarrierPolicy.cells(2).size() > 0,
                 "two-player Wave 7 must have a physical separator");
-        check(RealitySplitBarrierPolicy.HEIGHT >= 5,
-                "Wave 7 room walls must be visibly taller than a player jump");
+        check(RealitySplitBarrierPolicy.HEIGHT >= 5
+                        && RealitySplitBarrierPolicy.HEIGHT <= 6,
+                "Wave 7 room walls must be roughly five to six blocks high");
         check(RealitySplitBarrierPolicy.MIN_RADIUS <= 1.5D,
                 "Wave 7 walls must close the central Core bypass");
         check(RealitySplitBarrierPolicy.MAX_RADIUS >= 30.0D,

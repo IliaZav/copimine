@@ -98,9 +98,9 @@ public final class RealitySplitChamberController {
                          Set<Passage> restoredOpenPassages,
                          boolean allowSinglePlayer) {
         if (generation <= 0L || restoredAssignment == null
-                || restoredAssignment.chamberCount() < 2
+                || restoredAssignment.chamberCount() < 1
                 || restoredAssignment.chamberCount() > ChamberIsolationPolicy.MAX_CHAMBERS
-                || (!allowSinglePlayer && restoredAssignment.chamberByPlayer().size() < 2)
+                || (!allowSinglePlayer && restoredAssignment.chamberByPlayer().isEmpty())
                 || (allowSinglePlayer && restoredAssignment.chamberByPlayer().isEmpty())) {
             throw new IllegalArgumentException("Wave 7 assignment is not restorable");
         }
@@ -184,10 +184,9 @@ public final class RealitySplitChamberController {
                 && completedChambers.size() == assignment.chamberCount();
     }
 
-    /** Open only an edge whose two endpoints have already completed. */
+    /** Open a passage from a completed room so its players can help elsewhere. */
     public boolean openCompletedPassage(long generation, int firstChamber, int secondChamber) {
         if (!owns(generation) || !chamberComplete(generation, firstChamber)
-                || !chamberComplete(generation, secondChamber)
                 || RealitySplitBarrierPolicy.boundaryForPair(
                         firstChamber, secondChamber, assignment.chamberCount()) < 0) {
             return false;
@@ -208,6 +207,17 @@ public final class RealitySplitChamberController {
         if (!owns(generation) || source == null || target == null) return false;
         int sourceChamber = assignment.chamberByPlayer().getOrDefault(source, -1);
         int targetChamber = assignment.chamberByPlayer().getOrDefault(target, -1);
+        return connected(sourceChamber, targetChamber);
+    }
+
+    /**
+     * A participant may physically enter any room connected to their
+     * originally assigned chamber by completed-room passages. Their roster
+     * identity remains unchanged; only the open graph grants access.
+     */
+    public boolean allowsPlayerInChamber(long generation, UUID player, int targetChamber) {
+        if (!owns(generation) || player == null || !validChamber(targetChamber)) return false;
+        int sourceChamber = assignment.chamberByPlayer().getOrDefault(player, -1);
         return connected(sourceChamber, targetChamber);
     }
 

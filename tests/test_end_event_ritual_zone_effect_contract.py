@@ -1,33 +1,11 @@
-"""Source contracts for Wave 6 corrupted-zone effect routing.
-
-The pure policy test covers the decision table.  These source assertions keep
-the Bukkit adapter from bypassing that policy or turning the zone into a raw
-damage/Poison effect, while leaving player-visible behavior to a live probe.
-"""
+"""Contracts for the fixed, escapable server-owned Gravity Well."""
 
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-POLICY = (
-    ROOT
-    / "copimine-end-event"
-    / "src"
-    / "me"
-    / "copimine"
-    / "endevent"
-    / "domain"
-    / "RitualZoneEffectPolicy.java"
-)
-SOURCE = (
-    ROOT
-    / "copimine-end-event"
-    / "src"
-    / "me"
-    / "copimine"
-    / "endevent"
-    / "CopiMineEndEvent.java"
-)
+POLICY = ROOT / "copimine-end-event/src/me/copimine/endevent/domain/RitualZoneEffectPolicy.java"
+SOURCE = ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java"
 
 
 def method_body(source: str, signature: str) -> str:
@@ -38,49 +16,49 @@ def method_body(source: str, signature: str) -> str:
     return source[start:end]
 
 
-def test_policy_exposes_the_exact_zone_decision_table() -> None:
+def test_gravity_well_policy_uses_a_fixed_four_block_radius_and_bounded_pull() -> None:
     source = POLICY.read_text(encoding="utf-8")
+    assert "RADIUS_BLOCKS = 4.0D" in source
+    assert "PULL_PER_UPDATE = 0.12D" in source
+    assert "public static Result effect(boolean insideActiveZone, boolean damagePulseDue)" in source
+    assert "record Result(boolean slowness, boolean pull, boolean periodicDamage)" in source
+    assert "return new Pull(0.0D, 0.0D)" in source
 
-    assert "public static Result effect(boolean prisoner," in source
-    assert "boolean insideActiveZone," in source
-    assert "boolean controlSwapActive)" in source
-    assert "record Result(boolean wither, boolean slowness, boolean reverseMovement)" in source
 
-
-def test_zone_tick_routes_free_players_through_wither_slowness_policy() -> None:
+def test_zone_is_server_timed_telegraph_active_effect_and_periodic_damage() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    body = method_body(source, "private void tickRitualZones(long now)")
-
-    assert "ritualFreeTargets(activeLivingPlayers())" in body
-    assert "ritualZoneContains(center, player.getLocation())" in body
-    assert "RitualZoneEffectPolicy.effect(" in body
-    assert "PotionEffectType.WITHER" in body
-    assert "PotionEffectType.SLOWNESS" in body
-    assert "PotionEffectType.POISON" not in body
-    assert "player.damage(" not in body
-
-
-def test_zone_reverse_state_is_server_owned_and_cleared_on_reconciliation() -> None:
-    source = SOURCE.read_text(encoding="utf-8")
-    tick_body = method_body(source, "private void tickRitualZones(long now)")
-    reverse_body = method_body(
+    start = method_body(
         source,
-        "private boolean startRitualReverse(Player target, long now, boolean zoneOwned,",
+        "private void startRitualZone(Player target, Location selectedCenter,",
     )
+    tick = method_body(source, "private void tickRitualZones(long now)")
+    assert "RITUAL_ZONE_TELEGRAPH_MILLIS = 1_200L" in source
+    assert "RITUAL_ZONE_DURATION_MILLIS = 3_500L" in source
+    assert "ritualZoneTelegraphUntil.put(zoneId, now + warning)" in start
+    assert "ritualZoneExpiresAt.put(zoneId, now + warning + durationMillis)" in start
+    assert "RitualZoneEffectPolicy.effect(" in tick
+    assert "RitualZoneEffectPolicy.pull(" in tick
+    assert "player.damage(1.0D)" in tick
+    assert "ritualZoneNextDamageAtMillis.put(playerId, now + 1_000L)" in tick
 
-    assert "ritualControlPartners.containsKey" in tick_body
-    assert "ritualZoneReverseRecipients" in tick_body
-    assert "clearRitualZoneReverse" in tick_body
-    assert "ritualControlInstances.put" in reverse_body
-    assert "ritualReverseUntil.put" in reverse_body
-    assert 'sendEndControlPacket(target, "START"' in reverse_body
-    assert 'sendEndControlPacket(Bukkit.getPlayer(first), "STOP"' in source
-    assert 'sendEndControlPacket(Bukkit.getPlayer(second), "STOP"' in source
 
-
-def test_zone_cleanup_does_not_remove_general_potion_effects() -> None:
+def test_zone_effect_is_limited_to_active_players_inside_radius_and_cleans_up() -> None:
     source = SOURCE.read_text(encoding="utf-8")
-    tick_body = method_body(source, "private void tickRitualZones(long now)")
+    tick = method_body(source, "private void tickRitualZones(long now)")
+    expire = method_body(source, "private void expireRitualZones(long now)")
+    assert "ritualFreeTargets(activeLivingPlayers())" in tick
+    assert "if (!effects.slowness())" in tick
+    assert "ritualZoneNextDamageAtMillis.keySet().retainAll(affectedPlayers)" in tick
+    assert "RitualZoneEffectPolicy.contains(" in source
+    assert "if (now >= ritualZoneExpiresAt.getOrDefault(zoneId, 0L))" in expire
+    assert "ritualZoneCenters.remove(zoneId)" in expire
 
-    assert "removePotionEffect" not in tick_body
-    assert "clearRitualZoneReverse" in tick_body
+
+def test_gravity_well_has_no_reverse_movement_or_wither_damage_route() -> None:
+    policy = POLICY.read_text(encoding="utf-8")
+    source = SOURCE.read_text(encoding="utf-8")
+    assert "controlSwap" not in policy
+    assert "reverseMovement" not in policy
+    zone_tick = method_body(source, "private void tickRitualZones(long now)")
+    assert "PotionEffectType.WITHER" not in zone_tick
+    assert "RitualControlPair" not in source

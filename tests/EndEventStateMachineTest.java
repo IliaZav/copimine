@@ -17,6 +17,23 @@ public final class EndEventStateMachineTest {
         check(officialSequence.transition(EventPhase.INTERMISSION_5, EventPhase.WAVE_6,
                 "runes complete", "event:wave-six").success(),
                 "the fifth intermission must enter Wave 6");
+        EndEventStateMachine gateway = new EndEventStateMachine(EventPhase.PRE_BOSS_COOLDOWN);
+        check(gateway.transition(EventPhase.PRE_BOSS_COOLDOWN, EventPhase.BOSS_ACTIVE,
+                "forty-second gateway handoff", "event:boss-gateway").success(),
+                "the Stage 1 boss gateway must allow its single direct handoff after the cooldown");
+        EndEventStateMachine waveFour = new EndEventStateMachine(EventPhase.WAVE_4);
+        check(waveFour.transition(EventPhase.WAVE_4, EventPhase.CORE_RESTORATION,
+                "wave four complete", "event:restore-core").success(),
+                "Wave 4 must enter Core restoration first");
+        check(!waveFour.transition(EventPhase.CORE_RESTORATION, EventPhase.WAVE_5,
+                "bypass required runes", "event:skip-wave-four-runes").success(),
+                "Core restoration must not bypass Wave 4's transition rune hold");
+        check(waveFour.transition(EventPhase.CORE_RESTORATION, EventPhase.INTERMISSION_4,
+                "Core restored", "event:wave-four-runes").success(),
+                "Core restoration must enter the Wave 4 rune phase");
+        check(waveFour.transition(EventPhase.INTERMISSION_4, EventPhase.WAVE_5,
+                "runes held", "event:wave-five").success(),
+                "Wave 5 can start only after the Wave 4 rune phase");
         check(!machine.transition(EventPhase.WAVE_1, EventPhase.BOSS_ACTIVE,
                 "skip waves", "event:skip-waves").success(),
                 "an official attempt must not skip mandatory waves");

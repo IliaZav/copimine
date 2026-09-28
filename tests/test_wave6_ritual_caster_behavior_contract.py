@@ -31,23 +31,23 @@ def test_ritual_caster_policy_has_guarded_exposed_and_awakened_states() -> None:
     assert "castsSphere" in policy
 
 
-def test_wave6_caster_slots_use_core_roles_and_bounded_amplifiers() -> None:
+def test_wave6_caster_slots_use_four_spell_roles_and_a_final_seal() -> None:
     policy = read(DOMAIN / "RitualCasterTacticsPolicy.java")
     for role in (
-        "PROJECTILE_CASTER",
-        "ZONE_CASTER",
-        "REVERSE_CASTER",
-        "CONTROL_SWAP_CASTER",
-        "AMPLIFIER",
+        "RIFT_BARRAGE_CASTER",
+        "GRAVITY_WELL_CASTER",
+        "SOUL_BRAND_CASTER",
+        "RIFT_CHAINS_CASTER",
+        "FINAL_SEAL",
     ):
         assert role in policy
     assert "public static Role roleForSlot(int casterSlot)" in policy
     for mapping in (
-        "case 0 -> Role.PROJECTILE_CASTER",
-        "case 1 -> Role.ZONE_CASTER",
-        "case 2 -> Role.REVERSE_CASTER",
-        "case 3 -> Role.CONTROL_SWAP_CASTER",
-        "default -> Role.AMPLIFIER",
+        "case 0 -> Role.RIFT_BARRAGE_CASTER",
+        "case 1 -> Role.GRAVITY_WELL_CASTER",
+        "case 2 -> Role.SOUL_BRAND_CASTER",
+        "case 3 -> Role.RIFT_CHAINS_CASTER",
+        "default -> Role.FINAL_SEAL",
     ):
         assert mapping in policy
     assert "VOID_LANCE" not in policy
@@ -79,15 +79,15 @@ def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_a
     body = root[start:end]
     assert "RitualCasterTacticsPolicy.Role role" in body
     assert "RitualCasterTacticsPolicy.roleForSlot(" in body
-    assert "RitualCasterTacticsPolicy.Role.AMPLIFIER" in body
+    assert "RitualCasterTacticsPolicy.Role.FINAL_SEAL" in body
     assert "switch (role)" in body
     for handler in (
         "spawnRitualProjectileVolley",
         "startRitualZone",
-        "startRitualReverse",
-        "startRitualControlSwap",
     ):
         assert handler in body
+    assert "startRitualReverse" not in body
+    assert "startRitualControlSwap" not in body
     for removed in (
         "VOID_LANCE",
         "RIFT_SPIKES",
@@ -106,11 +106,12 @@ def test_wave6_scheduler_owns_abilities_during_channeling_and_marks_natural_sour
     end = root.index("private void startRitualZone", start)
     body = root[start:end]
     assert "RitualCasterTacticsPolicy.ownsRitualAbility(" in body
-    assert "RitualCasterTacticsPolicy.Role.AMPLIFIER" in body
-    assert "source=NATURAL" in body
-    assert "amplifier_count=" in body
-    assert "effective_projectiles=" in body
-    assert "effective_intensity=" in body
+    assert "RitualCasterTacticsPolicy.Role.FINAL_SEAL" in body
+    assert "source=NATURAL" not in body
+    assert "source=SHARED_SCHEDULER" in body
+    assert "cooldown_ms=" in body
+    assert "RitualCasterProgressionPolicy.isSpellEnabled(" in body
+    assert "RitualAmplifierPolicy" not in body
 
 
 def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> None:
@@ -119,7 +120,7 @@ def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> No
     selection = read(ROOT / "CopiMineClient/src/main/java/me/copimine/client/EndermanRendererSelection.java")
     model = read(ROOT / "CopiMineClient/src/main/java/me/copimine/client/RiftEventEndermanModel.java")
     assert "END_RIFT_RITUAL_CASTER_V1" in root
-    assert "end_rift_ritual_caster.png" in catalog
+    assert 'textures.put("END_RIFT_RITUAL_CASTER_V1", entityTexture("end_rift_user_enderman.png"))' in catalog
     assert "RITUAL_CASTER" in selection
     assert "caster" in model.lower()
     assert "leftArm.pitch" in model

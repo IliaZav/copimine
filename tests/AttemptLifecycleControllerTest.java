@@ -31,6 +31,45 @@ public final class AttemptLifecycleControllerTest {
                 "new attempt with living roster is protected");
         check(!controller.abortWipe(11L), "an idle generation cannot abort a wipe");
 
+        controller.begin(12L, Set.of(a, b));
+        AttemptLifecycleController.ParticipantStatus started = controller.status(a);
+        check(started != null && started.registered() && started.active()
+                        && started.online() && started.alive() && started.eligibleForObjective(),
+                "the authoritative roster records all required participant states");
+        check(controller.isRegistered(a, 12L) && !controller.isRegistered(UUID.randomUUID(), 12L),
+                "only frozen roster members are registered for the current generation");
+        check(controller.markOffline(a, 12L), "disconnect updates roster presence");
+        AttemptLifecycleController.ParticipantStatus disconnected = controller.status(a);
+        check(disconnected.registered() && disconnected.active() && !disconnected.online()
+                        && disconnected.alive() && !disconnected.eligibleForObjective(),
+                "disconnect preserves grace-period life while excluding objective eligibility");
+        check(!controller.markObjectiveEligible(a, 12L, true),
+                "offline roster members cannot become objective eligible");
+        check(controller.markOnline(a, 12L), "reconnect updates roster presence");
+        check(!controller.status(a).eligibleForObjective(),
+                "reconnected participants must be revalidated before using objectives");
+        check(controller.markObjectiveEligible(a, 12L, true),
+                "a validated living roster member can become objective eligible");
+        check(controller.isObjectiveEligible(a, 12L),
+                "objective eligibility is read from the authoritative roster state");
+        check(controller.markDead(a, 12L), "death updates the authoritative roster");
+        AttemptLifecycleController.ParticipantStatus dead = controller.status(a);
+        check(dead.registered() && dead.active() && dead.online() && !dead.alive()
+                        && !dead.eligibleForObjective(),
+                "dead participants remain registered but cannot satisfy objectives");
+        check(controller.markAlive(a, 12L), "respawn restores living roster state");
+        check(!controller.status(a).eligibleForObjective(),
+                "respawn eligibility is recalculated from current arena conditions");
+        check(controller.setActive(a, 12L, false), "expired members can be retired from the attempt");
+        check(!controller.markAlive(a, 12L) && !controller.status(a).active(),
+                "a retired member cannot rejoin after its reconnect grace expires");
+        check(controller.isRegistered(a, 12L),
+                "retiring a member preserves registration history for the generation");
+        check(!controller.roster().contains(a),
+                "retired members must not remain in the active encounter roster");
+        check(!controller.living().contains(a),
+                "retired members cannot keep an otherwise wiped attempt alive");
+
         controller.begin(20L, Set.of(a, b));
         controller.markDead(a, 20L);
         controller.markDead(b, 20L);

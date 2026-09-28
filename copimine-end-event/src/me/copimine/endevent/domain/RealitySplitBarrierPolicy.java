@@ -10,8 +10,8 @@ import java.util.Set;
  * blocks before placing the temporary collision barrier.
  */
 public final class RealitySplitBarrierPolicy {
-    /** Five solid levels stop a player from jumping over a room separator. */
-    public static final int HEIGHT = 5;
+    /** Trial room separators stay close to the requested five-to-six-block height. */
+    public static final int HEIGHT = 6;
     /** Start beside the Core so no walkable central gap connects rooms. */
     public static final double MIN_RADIUS = 0.5D;
     /**

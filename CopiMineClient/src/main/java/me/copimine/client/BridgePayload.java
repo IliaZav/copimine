@@ -221,18 +221,12 @@ public record BridgePayload(
         );
     }
 
-    /**
-     * Serialize one sampled keyboard input for a server-authoritative control
-     * swap.  The event protocol deliberately reuses the shared bridge
-     * envelope: event id is carried in {@code shaderpack}, forward/sideways
-     * values in {@code mode}/{@code clearPolicy}, pair id in {@code source},
-     * and the current per-player control instance in {@code status}.
-     */
-    public static BridgePayload controlInput(String sessionId, long generation,
-                                             String eventId, String instanceId,
-                                             String pairId, float forward, float sideways) {
+    /** Encode one server-validated prisoner ability press in the shared v2 envelope. */
+    public static BridgePayload prisonerAbilityRequest(String sessionId, long generation,
+                                                        String eventId, String abilityId,
+                                                        String targetUuid) {
         return new BridgePayload(
-                ClientBridgeProtocol.TYPE_CONTROL_INPUT,
+                ClientBridgeProtocol.TYPE_PRISONER_ABILITY_REQUEST,
                 ClientBridgeProtocol.PROTOCOL_VERSION,
                 Math.max(0L, generation),
                 System.currentTimeMillis(),
@@ -245,15 +239,15 @@ public record BridgePayload(
                 Set.of(),
                 "",
                 safe(eventId),
-                1_000,
+                1,
                 0.0F,
                 0,
                 0,
-                boundedControlInput(forward),
-                boundedControlInput(sideways),
-                safe(pairId),
+                safe(abilityId),
+                safe(targetUuid),
                 "",
-                safe(instanceId)
+                "",
+                ""
         );
     }
 
@@ -398,13 +392,6 @@ public record BridgePayload(
             return normalized.substring(0, 96);
         }
         return normalized;
-    }
-
-    private static String boundedControlInput(float value) {
-        if (!Float.isFinite(value)) {
-            return "0.0";
-        }
-        return Float.toString(Math.max(-1.0F, Math.min(1.0F, value)));
     }
 
     private static Set<String> normalizeEffects(Set<String> supportedEffects) {

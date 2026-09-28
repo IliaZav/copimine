@@ -44,7 +44,7 @@ public final class RitualCasterTacticsPolicy {
 
     /** Amplifiers contribute only while they are still channeling the sphere. */
     public static boolean contributesAmplification(State state, Role role) {
-        return role == Role.AMPLIFIER && ownsRitualAbility(state);
+        return false;
     }
 
     public static boolean holdsRaisedArms(State state) {
@@ -57,11 +57,11 @@ public final class RitualCasterTacticsPolicy {
             throw new IllegalArgumentException("caster slot must be non-negative");
         }
         return switch (casterSlot) {
-            case 0 -> Role.PROJECTILE_CASTER;
-            case 1 -> Role.ZONE_CASTER;
-            case 2 -> Role.REVERSE_CASTER;
-            case 3 -> Role.CONTROL_SWAP_CASTER;
-            default -> Role.AMPLIFIER;
+            case 0 -> Role.RIFT_BARRAGE_CASTER;
+            case 1 -> Role.GRAVITY_WELL_CASTER;
+            case 2 -> Role.SOUL_BRAND_CASTER;
+            case 3 -> Role.RIFT_CHAINS_CASTER;
+            default -> Role.FINAL_SEAL;
         };
     }
 
@@ -72,10 +72,10 @@ public final class RitualCasterTacticsPolicy {
     }
 
     public enum Role {
-        PROJECTILE_CASTER,
-        ZONE_CASTER,
-        REVERSE_CASTER,
-        CONTROL_SWAP_CASTER,
-        AMPLIFIER
+        RIFT_BARRAGE_CASTER,
+        GRAVITY_WELL_CASTER,
+        SOUL_BRAND_CASTER,
+        RIFT_CHAINS_CASTER,
+        FINAL_SEAL
     }
 }

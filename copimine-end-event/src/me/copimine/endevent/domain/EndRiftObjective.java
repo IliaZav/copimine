@@ -7,7 +7,7 @@ package me.copimine.endevent.domain;
  */
 public final class EndRiftObjective {
     public static final int MAX_WAVE = 7;
-    public static final int PRE_BOSS_SECONDS = 20;
+    public static final int PRE_BOSS_SECONDS = 40;
     public static final int REQUIRED_CARRIER_DELIVERIES = 3;
     public static final int REQUIRED_HUNT_CYCLES = 3;
     public static final int REQUIRED_GATES = 3;

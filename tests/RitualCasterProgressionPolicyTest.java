@@ -12,6 +12,10 @@ public final class RitualCasterProgressionPolicyTest {
         check(first.unlockedAbility() == PrisonerAbility.A_HEAL,
                 "the first death unlocks A / Heal");
         check(!first.prisonBroken(), "the first death does not break the prison");
+        check(!RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.RIFT_BARRAGE),
+                "the first death keeps Rift Barrage disabled");
+        check(RitualCasterProgressionPolicy.isSpellEnabled(1, MajorSpell.GRAVITY_WELL),
+                "the first death leaves Gravity Well enabled");
 
         Transition second = RitualCasterProgressionPolicy.afterCasterDeath(first.deathCount());
         check(second.disabledSpell() == MajorSpell.GRAVITY_WELL,
@@ -39,6 +43,8 @@ public final class RitualCasterProgressionPolicyTest {
         check(fifth.unlockedAbility() == PrisonerAbility.NONE,
                 "the final anchor unlocks no additional prisoner ability");
         check(fifth.prisonBroken(), "the fifth death breaks the prison");
+        check(!RitualCasterProgressionPolicy.isSpellEnabled(5, MajorSpell.SOUL_BRAND),
+                "the final death leaves no earlier major spell enabled");
 
         expectIllegalArgument(() -> RitualCasterProgressionPolicy.afterCasterDeath(-1));
         expectIllegalArgument(() -> RitualCasterProgressionPolicy.afterCasterDeath(5));

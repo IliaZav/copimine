@@ -34,6 +34,20 @@ public final class RitualCasterProgressionPolicy {
                 deaths == TOTAL_CASTERS);
     }
 
+    /** Whether a major spell remains available after the recorded deaths. */
+    public static boolean isSpellEnabled(int deathCount, MajorSpell spell) {
+        if (deathCount < 0 || deathCount > TOTAL_CASTERS || spell == null) {
+            throw new IllegalArgumentException("death count and major spell are required");
+        }
+        return switch (spell) {
+            case RIFT_BARRAGE -> deathCount < 1;
+            case GRAVITY_WELL -> deathCount < 2;
+            case SOUL_BRAND -> deathCount < 3;
+            case RIFT_CHAINS -> deathCount < 4;
+            case NONE -> false;
+        };
+    }
+
     public record Transition(int deathCount,
                              MajorSpell disabledSpell,
                              PrisonerAbility unlockedAbility,

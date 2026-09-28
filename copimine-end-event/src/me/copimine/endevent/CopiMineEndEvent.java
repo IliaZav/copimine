@@ -5293,7 +5293,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 casterId, Set.of()));
         if ("guarded".equals(requestedState)) {
             int livingGuards = (int) guards.stream().filter(this::isLiveOwnedEntity).count();
-            if (livingGuards != RitualSphereScalingPolicy.GUARDS_PER_CASTER) {
+            int guardsPerCaster = ritualSphereState == null
+                    ? RitualSphereScalingPolicy.GUARDS_PER_CASTER
+                    : ritualSphereState.profile().guardsPerCaster();
+            if (livingGuards != guardsPerCaster) {
                 return false;
             }
             tagRitualCasterAwakened(caster, false);
@@ -14436,23 +14439,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             ritualGuardsByCaster.put(caster.getUniqueId(), new LinkedHashSet<>());
             caster.setCustomName(ChatColor.LIGHT_PURPLE + "Заклинатель");
             caster.setCustomNameVisible(true);
-            for (int guardSlot = 0; guardSlot < RitualSphereScalingPolicy.GUARDS_PER_CASTER;
+            for (int guardSlot = 0; guardSlot < profile.guardsPerCaster();
                     guardSlot++) {
                 double guardAngle = casterAngle + guardSlot * Math.PI * 2.0D
-                        / RitualSphereScalingPolicy.GUARDS_PER_CASTER;
+                        / profile.guardsPerCaster();
+                int guardEntitySlot = profile.casterCount()
+                        + casterSlot * profile.guardsPerCaster() + guardSlot;
                 Location guardLocation = casterLocation.clone().add(
                         Math.cos(guardAngle) * 2.4D, 0.0D,
                         Math.sin(guardAngle) * 2.4D);
                 Entity guard = switch (guardSlot) {
                     case 0 -> spawnEnderman(world, core, 6, true, false, false,
-                            profile.casterCount() + casterSlot * 3 + guardSlot,
-                            profile.casterCount() + casterSlot * 3 + guardSlot);
+                            guardEntitySlot, guardEntitySlot);
                     case 1 -> spawnSkeleton(world, core, 6, true, false, false,
-                            profile.casterCount() + casterSlot * 3 + guardSlot,
-                            profile.casterCount() + casterSlot * 3 + guardSlot);
+                            guardEntitySlot, guardEntitySlot);
                     default -> spawnOwnedMob(world, core, EntityType.SPIDER, 6,
                             EVENT_KIND_ELITE, false,
-                            profile.casterCount() + casterSlot * 3 + guardSlot);
+                            guardEntitySlot);
                 };
                 if (!placeRitualEntity(guard, guardLocation, "GUARD", casterSlot, guardSlot)) {
                     complete = false;

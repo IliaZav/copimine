@@ -7,8 +7,8 @@ public final class RitualSphereEncounterPolicyTest {
         UUID prisoner = UUID.randomUUID();
         RitualSphereEncounterPolicy.State initial = RitualSphereEncounterPolicy.initial(
                 7L, prisoner, 20, 1_000L);
-        check(initial.profile().casterCount() == 6, "20 players must use six casters");
-        check(initial.profile().guardCount() == 18, "every caster must have three guards");
+        check(initial.profile().casterCount() == 5, "20 players must use exactly five casters");
+        check(initial.profile().guardCount() == 15, "large groups use three guards per caster");
         check(!RitualSphereEncounterPolicy.drainDue(initial, 20_999L),
                 "drain must not happen before 20 seconds");
 

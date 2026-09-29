@@ -230,6 +230,7 @@ try {
   $status = Invoke-LocalRcon 'cmend status'
   $core = Get-Core $status
   $spawnOffset = Log-Length
+  $temporaryOffset = $spawnOffset
   $botProcess = Start-Bot ([int]$core[0]) ([int]$core[1]) ([int]$core[2])
   Wait-BotOnline
   Start-Sleep -Milliseconds 750
@@ -300,50 +301,109 @@ try {
     throw "Real player attack did not lower tentacle health: $damageTail"
   }
   $damagedTentacleUuid = $damageMatch.Groups[1].Value
-  $damageLine = @($damageTail -split '\r?\n' |
-    Where-Object { $_ -match $damagePattern } | Select-Object -First 1)[0]
   Record "LIVE_TENTACLE_DAMAGE_PASS entity=$damagedTentacleUuid health_before=$($damageMatch.Groups[2].Value) health_after=$($damageMatch.Groups[3].Value) player_packet=true server_authoritative=true"
   Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
   Record 'LIVE_TENTACLE_PROBE_PASSIVE_AFTER_DAMAGE_PASS=true'
   $continuedAttackPattern = 'RIFT_TENTACLE_STATE .*entity=' +
     [Regex]::Escape($damagedTentacleUuid) + ' state=(GRAB_SUCCESS|HOLD|THROW)\b'
   $continuedAttackTail = Wait-Log $spawnOffset $continuedAttackPattern $TimeoutSeconds
-  $damageLineOffset = $continuedAttackTail.IndexOf($damageLine, [StringComparison]::Ordinal)
-  if ($damageLineOffset -lt 0) {
-    throw "Could not correlate damaged tentacle $damagedTentacleUuid to its original hit line."
+  $damageEventPattern = 'RIFT_TENTACLE_DAMAGE .*entity=' +
+    [Regex]::Escape($damagedTentacleUuid) + ' .*health_before=' +
+    [Regex]::Escape($damageMatch.Groups[2].Value) + ' .*health_after=' +
+    [Regex]::Escape($damageMatch.Groups[3].Value)
+  $damageEvent = [Regex]::Match($continuedAttackTail, $damageEventPattern)
+  if (-not $damageEvent.Success) {
+    throw "Could not correlate damaged tentacle $damagedTentacleUuid and its health delta in the continued log tail."
   }
   $continuedAttack = $null
   foreach ($candidate in [Regex]::Matches($continuedAttackTail, $continuedAttackPattern)) {
-    if ($candidate.Index -gt $damageLineOffset) { $continuedAttack = $candidate; break }
+    if ($candidate.Index -gt $damageEvent.Index) { $continuedAttack = $candidate; break }
   }
   if (-not $continuedAttack) {
     throw "Damaged tentacle $damagedTentacleUuid did not continue into its committed grab/hold/throw attack after the hit."
   }
   Record "LIVE_TENTACLE_HIT_ATTACK_CONTINUED_PASS entity=$damagedTentacleUuid damage_before=$($damageMatch.Groups[2].Value) damage_after=$($damageMatch.Groups[3].Value) next_state=$($continuedAttack.Groups[1].Value) same_entity=true hit_did_not_cancel_attack=true"
 
-  $temporaryOffset = Log-Length
-  try { $temporaryTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_SPAWN .*temporary=true' 20 } catch { $temporaryTail = '' }
-  if ($temporaryTail -notmatch 'temporary=true') {
-    throw 'No temporary under-player tentacle spawned during the live window.'
-  }
-  Record 'LIVE_TENTACLE_TEMPORARY_SPAWN_PASS temporary=true retry_or_direct_spawn=true'
-  $stateTail = Wait-Log $temporaryOffset 'RIFT_TENTACLE_STATE .*state=(TELEGRAPH_GRAB|GRAB_SUCCESS|HOLD|THROW)' $TimeoutSeconds
   $botLog = Wait-BotLog ('PLAYER_JOIN ' + [Regex]::Escape($BotName) + ' uuid=') $TimeoutSeconds
   $playerJoinMatch = [Regex]::Match($botLog,
     ('PLAYER_JOIN ' + [Regex]::Escape($BotName) + ' uuid=([0-9a-f-]+)'))
   if (-not $playerJoinMatch.Success) { throw "Disposable bot UUID was not recorded: $botLog" }
   $playerUuid = $playerJoinMatch.Groups[1].Value
   $throwPattern = 'RIFT_TENTACLE_THROW event=\S+ entity=([0-9a-f-]+) target=' +
-    [Regex]::Escape($playerUuid) + ' launch=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) horizontal=([0-9.]+)'
+    [Regex]::Escape($playerUuid) +
+    ' launch=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) horizontal=([0-9.]+)'
   $throwTail = Wait-Log $temporaryOffset $throwPattern $TimeoutSeconds
-  $throwLine = @($throwTail -split '\r?\n' |
-    Where-Object { $_ -match $throwPattern } | Select-Object -First 1)[0]
-  $throwMatch = [Regex]::Match($throwLine, $throwPattern)
-  if (-not $throwMatch.Success -or [double]$throwMatch.Groups[5].Value -lt 0.85D) {
-    throw "Tentacle launch was not long enough for $playerUuid`: $throwLine"
+  $velocityPattern = 'PLAYER_VELOCITY ' + [Regex]::Escape($BotName) +
+    ' id=\d+ x=(-?[0-9.]+) y=(-?[0-9.]+) z=(-?[0-9.]+) horizontal=([0-9.]+) at_ms=([0-9]+)'
+  $hurtPattern = 'PLAYER_HURT ' + [Regex]::Escape($BotName) +
+    ' before=([0-9.]+) after=([0-9.]+) at_ms=([0-9]+)'
+  $throwMatch = $null
+  $throwLine = ''
+  $throwEntityUuid = ''
+  $velocityMatch = $null
+  $hurtMatch = $null
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline -and -not $velocityMatch) {
+    $serverThrowTail = Log-Tail $temporaryOffset
+    $throwCandidates = [Regex]::Matches($serverThrowTail, $throwPattern)
+    $botLog = Get-Content -LiteralPath $botStdout -Raw
+    $candidateVelocities = [Regex]::Matches($botLog, $velocityPattern)
+    $candidateHurts = [Regex]::Matches($botLog, $hurtPattern)
+    foreach ($candidateVelocity in $candidateVelocities) {
+      $candidateVelocityAtMs = [long]$candidateVelocity.Groups[5].Value
+      if ([double]$candidateVelocity.Groups[4].Value -lt 0.85D) { continue }
+      foreach ($candidateThrow in $throwCandidates) {
+        if ([double]$candidateThrow.Groups[5].Value -lt 0.85D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$candidateThrow.Groups[2].Value) -gt 0.01D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[2].Value - [double]$candidateThrow.Groups[3].Value) -gt 0.01D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[3].Value - [double]$candidateThrow.Groups[4].Value) -gt 0.01D) { continue }
+        $lineStart = $serverThrowTail.LastIndexOf("`n", $candidateThrow.Index)
+        if ($lineStart -lt 0) { $lineStart = 0 } else { $lineStart++ }
+        $lineEnd = $serverThrowTail.IndexOf("`n", $candidateThrow.Index)
+        if ($lineEnd -lt 0) { $lineEnd = $serverThrowTail.Length }
+        $candidateThrowLine = $serverThrowTail.Substring($lineStart, $lineEnd - $lineStart).TrimEnd([char]13)
+        $candidateThrowClock = [Regex]::Match($candidateThrowLine, '\[(\d{2}):(\d{2}):(\d{2})\]')
+        if (-not $candidateThrowClock.Success) { continue }
+        $now = Get-Date
+        $candidateThrowTime = $now.Date.AddHours([int]$candidateThrowClock.Groups[1].Value).AddMinutes([int]$candidateThrowClock.Groups[2].Value).AddSeconds([int]$candidateThrowClock.Groups[3].Value)
+        if ($candidateThrowTime -gt $now.AddMinutes(1)) { $candidateThrowTime = $candidateThrowTime.AddDays(-1) }
+        $candidateThrowAtMs = ([DateTimeOffset]::new($candidateThrowTime)).ToUnixTimeMilliseconds()
+        if ([Math]::Abs($candidateVelocityAtMs - $candidateThrowAtMs) -gt 2500) { continue }
+        foreach ($candidateHurt in $candidateHurts) {
+          $candidateHurtAtMs = [long]$candidateHurt.Groups[3].Value
+          if ([double]$candidateHurt.Groups[2].Value -ge [double]$candidateHurt.Groups[1].Value -or
+              [Math]::Abs($candidateHurtAtMs - $candidateVelocityAtMs) -gt 500) { continue }
+          $throwMatch = $candidateThrow
+          $throwLine = $candidateThrowLine
+          $throwEntityUuid = $candidateThrow.Groups[1].Value
+          $velocityMatch = $candidateVelocity
+          $hurtMatch = $candidateHurt
+          break
+        }
+        if ($velocityMatch) { break }
+      }
+      if ($velocityMatch) { break }
+    }
+    if (-not $velocityMatch) { Start-Sleep -Milliseconds 250 }
   }
-  Record "LIVE_TENTACLE_THROW_PASS horizontal=$($throwMatch.Groups[5].Value) state_trace=true server_authoritative=true target=$playerUuid"
-  $throwEntityUuid = $throwMatch.Groups[1].Value
+  if (-not $throwMatch -or -not $velocityMatch -or -not $hurtMatch) {
+    throw "No matching client launch vector plus nearby unmasked HP delta for any server throw to $playerUuid`n$botLog"
+  }
+
+  $temporarySpawnPattern = 'RIFT_TENTACLE_SPAWN .*entity=' +
+    [Regex]::Escape($throwEntityUuid) + '.*temporary=true.*target=' + [Regex]::Escape($playerUuid)
+  $temporarySpawnMatch = [Regex]::Match($serverThrowTail, $temporarySpawnPattern)
+  if (-not $temporarySpawnMatch.Success -or $temporarySpawnMatch.Index -ge $throwMatch.Index) {
+    throw "Throwing tentacle $throwEntityUuid was not spawned for $playerUuid during this probe."
+  }
+  $temporaryStatePattern = 'RIFT_TENTACLE_STATE .*entity=' +
+    [Regex]::Escape($throwEntityUuid) + ' state=(TELEGRAPH_GRAB|GRAB_SUCCESS|HOLD|THROW)\b'
+  $stateMatch = [Regex]::Match($serverThrowTail, $temporaryStatePattern)
+  if (-not $stateMatch.Success -or $stateMatch.Index -le $temporarySpawnMatch.Index -or
+      $stateMatch.Index -ge $throwMatch.Index) {
+    throw "Throwing tentacle $throwEntityUuid did not enter a grab state between spawn and throw."
+  }
+
   $throwDamagePattern = 'RIFT_TENTACLE_THROW_DAMAGE event=\S+ entity=' +
     [Regex]::Escape($throwEntityUuid) + ' target=' + [Regex]::Escape($playerUuid) +
     ' base_damage=([0-9.]+) applied=([0-9.]+)'
@@ -355,45 +415,8 @@ try {
     throw "Expected exact five-heart release damage, got base=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value)."
   }
 
-  $throwClockMatch = [Regex]::Match($throwLine, '\[(\d{2}):(\d{2}):(\d{2})\]')
-  if (-not $throwClockMatch.Success) { throw "Server throw timestamp was not recorded: $throwLine" }
-  $now = Get-Date
-  $serverThrowTime = $now.Date.AddHours([int]$throwClockMatch.Groups[1].Value).AddMinutes([int]$throwClockMatch.Groups[2].Value).AddSeconds([int]$throwClockMatch.Groups[3].Value)
-  if ($serverThrowTime -gt $now.AddMinutes(1)) { $serverThrowTime = $serverThrowTime.AddDays(-1) }
-  $serverThrowAtMs = ([DateTimeOffset]::new($serverThrowTime)).ToUnixTimeMilliseconds()
-  $velocityPattern = 'PLAYER_VELOCITY ' + [Regex]::Escape($BotName) +
-    ' id=\d+ x=(-?[0-9.]+) y=(-?[0-9.]+) z=(-?[0-9.]+) horizontal=([0-9.]+) at_ms=([0-9]+)'
-  $hurtPattern = 'PLAYER_HURT ' + [Regex]::Escape($BotName) +
-    ' before=([0-9.]+) after=([0-9.]+) at_ms=([0-9]+)'
-  $velocityMatch = $null
-  $hurtMatch = $null
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  while ((Get-Date) -lt $deadline -and -not $velocityMatch) {
-    $botLog = Get-Content -LiteralPath $botStdout -Raw
-    $candidateVelocities = [Regex]::Matches($botLog, $velocityPattern)
-    $candidateHurts = [Regex]::Matches($botLog, $hurtPattern)
-    foreach ($candidateVelocity in $candidateVelocities) {
-      $candidateVelocityAtMs = [long]$candidateVelocity.Groups[5].Value
-      if ([Math]::Abs($candidateVelocityAtMs - $serverThrowAtMs) -gt 2500 -or
-          [Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$throwMatch.Groups[2].Value) -gt 0.01D -or
-          [Math]::Abs([double]$candidateVelocity.Groups[2].Value - [double]$throwMatch.Groups[3].Value) -gt 0.01D -or
-          [Math]::Abs([double]$candidateVelocity.Groups[3].Value - [double]$throwMatch.Groups[4].Value) -gt 0.01D -or
-          [double]$candidateVelocity.Groups[4].Value -lt 0.85D) { continue }
-      foreach ($candidateHurt in $candidateHurts) {
-        $candidateHurtAtMs = [long]$candidateHurt.Groups[3].Value
-        if ([double]$candidateHurt.Groups[2].Value -ge [double]$candidateHurt.Groups[1].Value -or
-            [Math]::Abs($candidateHurtAtMs - $candidateVelocityAtMs) -gt 500) { continue }
-        $velocityMatch = $candidateVelocity
-        $hurtMatch = $candidateHurt
-        break
-      }
-      if ($velocityMatch) { break }
-    }
-    if (-not $velocityMatch) { Start-Sleep -Milliseconds 250 }
-  }
-  if (-not $velocityMatch -or -not $hurtMatch) {
-    throw "No matching client launch vector plus nearby unmasked HP delta for server throw: $throwLine`n$botLog"
-  }
+  Record "LIVE_TENTACLE_TEMPORARY_SPAWN_PASS entity=$throwEntityUuid target=$playerUuid fresh_probe=true"
+  Record "LIVE_TENTACLE_THROW_PASS horizontal=$($throwMatch.Groups[5].Value) state_trace=true server_authoritative=true target=$playerUuid"
   Record "LIVE_TENTACLE_PLAYER_DAMAGE_PASS target=$playerUuid before=$($hurtMatch.Groups[1].Value) after=$($hurtMatch.Groups[2].Value) base_damage=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value) effects=cleared server_authoritative=true correlated_to_throw=true"
   Record "LIVE_TENTACLE_PLAYER_VELOCITY_PASS x=$($velocityMatch.Groups[1].Value) y=$($velocityMatch.Groups[2].Value) z=$($velocityMatch.Groups[3].Value) horizontal=$($velocityMatch.Groups[4].Value) at_ms=$($velocityMatch.Groups[5].Value) client_entity_velocity=true server_vector_match=true"
   # The same captured server log must also contain the following two player

@@ -25,7 +25,7 @@ def test_tentacle_live_harness_measures_unmasked_player_damage_and_impulse():
     assert "horizontal=" in bot
     assert "launch=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) horizontal=([0-9.]+)" in script
     assert "target=' +" in script
-    assert "[Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$throwMatch.Groups[2].Value)" in script
+    assert "[Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$candidateThrow.Groups[2].Value)" in script
     assert "[Math]::Abs($candidateHurtAtMs - $candidateVelocityAtMs) -gt 500" in script
 
 
@@ -50,6 +50,40 @@ def test_live_tentacle_probe_requires_the_damaged_entity_to_continue_its_attack(
     assert "$continuedAttackPattern = 'RIFT_TENTACLE_STATE .*entity=' +" in script
     assert "[Regex]::Escape($damagedTentacleUuid)" in script
     assert "state=(GRAB_SUCCESS|HOLD|THROW)" in script
+
+
+def test_hit_to_attack_order_uses_entity_health_evidence_not_exact_line_text():
+    script = HARNESS.read_text(encoding="utf-8")
+
+    assert "$damageEventPattern = 'RIFT_TENTACLE_DAMAGE .*entity=' +" in script
+    assert "[Regex]::Escape($damagedTentacleUuid)" in script
+    assert "$damageEvent = [Regex]::Match($continuedAttackTail, $damageEventPattern)" in script
+    assert "$candidate.Index -gt $damageEvent.Index" in script
+
+
+def test_temporary_tentacle_spawn_state_and_throw_share_a_successful_entity():
+    script = HARNESS.read_text(encoding="utf-8")
+    probe_start = script.index("$spawnOffset = Log-Length")
+    bot_start = script.index("$botProcess = Start-Bot", probe_start)
+    offset_alias = script.index("$temporaryOffset = $spawnOffset", probe_start)
+
+    assert probe_start < offset_alias < bot_start
+    assert "$throwTail = Wait-Log $temporaryOffset $throwPattern $TimeoutSeconds" in script
+    assert "$throwEntityUuid = $candidateThrow.Groups[1].Value" in script
+    assert "$temporarySpawnPattern = 'RIFT_TENTACLE_SPAWN .*entity=' +" in script
+    assert "[Regex]::Escape($throwEntityUuid)" in script
+    assert "$stateMatch = [Regex]::Match($serverThrowTail, $temporaryStatePattern)" in script
+    assert "$stateMatch.Index -ge $throwMatch.Index" in script
+
+
+def test_client_throw_correlation_checks_all_simultaneous_server_vectors():
+    script = HARNESS.read_text(encoding="utf-8")
+
+    assert "$serverThrowTail = Log-Tail $temporaryOffset" in script
+    assert "$throwCandidates = [Regex]::Matches($serverThrowTail, $throwPattern)" in script
+    assert "foreach ($candidateThrow in $throwCandidates)" in script
+    assert "$throwMatch = $candidateThrow" in script
+    assert "$candidateVelocity.Groups[1].Value - [double]$candidateThrow.Groups[2].Value" in script
 
 
 def test_tentacle_live_probe_uses_fresh_credentials_and_restores_environment():

@@ -92,6 +92,8 @@ music:
       sound: copimine:end_rift/intermission_3
       loop-seconds: 16
     intermission-4:
+      sound: copimine:end_rift/intermission_3
+      loop-seconds: 16
     intermission-5:
       sound: copimine:end_rift/intermission_5
       loop-seconds: 18

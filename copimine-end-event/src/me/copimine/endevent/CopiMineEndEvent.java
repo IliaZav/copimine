@@ -15649,6 +15649,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             startRitualSphereObjective(Bukkit.getWorld(worldName), coreCombatAnchorLocation());
             return;
         }
+        // The restart continuation path must be armed before comparing live
+        // entity counts. Missing casters are completed progression steps;
+        // startRitualSphereObjective can then resume from the survivors instead
+        // of clearing the durable prisoner state and spawning a fresh roster.
+        ritualSphereStateRehydrated = true;
         Location core = coreCombatAnchorLocation();
         if (core != null) {
             ritualPrisonerAnchor = ritualPrisonerLocation(core);

@@ -2295,6 +2295,18 @@ def test_local_texture_showroom_exposes_all_mob_variants_without_starting_combat
     assert "tickCurrentTentacles(boss);" in boss_tick
 
 
+def test_mob_visual_diagnostics_only_emit_wave_mobs_to_fit_one_rcon_response() -> None:
+    """Large showroom replies must not truncate elite mappings at the RCON packet boundary."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+
+    handler_start = source.index("private void handleTestVisuals(CommandSender sender, String[] args)")
+    handler_end = source.index("\n    private ", handler_start + 1)
+    handler = source[handler_start:handler_end]
+
+    assert "if (!(entity instanceof Mob) || !isWaveCombatKind(readString(entity, keyKind)))" in handler
+    assert '"MOB_VISUAL_TOTAL=" + reported' in handler
+
+
 def test_guardian_shield_orbit_uses_the_internal_teleport_permit() -> None:
     """The orbit is an event-owned animation and must not trip its own anti-escape guard."""
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")

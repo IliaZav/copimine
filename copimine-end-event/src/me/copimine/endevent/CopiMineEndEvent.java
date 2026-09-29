@@ -6336,6 +6336,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if ("mobs".equals(requested)) {
             int reported = 0;
             for (Entity entity : new ArrayList<>(ownedEntities.values())) {
+                if (!(entity instanceof Mob) || !isWaveCombatKind(readString(entity, keyKind))) {
+                    continue;
+                }
                 String visual = clientVisualId(entity);
                 if (visual.isBlank()) {
                     continue;

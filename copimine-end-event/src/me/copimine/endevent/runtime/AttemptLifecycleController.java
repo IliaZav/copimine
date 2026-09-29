@@ -163,7 +163,8 @@ public final class AttemptLifecycleController {
             return new WipeResult(WipeStatus.STALE_GENERATION, generation, wipeCount, safeReason(reason));
         }
         if (wiping) {
-            return new WipeResult(WipeStatus.ALREADY_IN_PROGRESS, generation, wipeCount, safeReason(reason));
+            return new WipeResult(WipeStatus.ALREADY_IN_PROGRESS, pendingNextGeneration,
+                    wipeCount, safeReason(reason));
         }
         if (!living().isEmpty()) {
             return new WipeResult(WipeStatus.NO_LIVING_PLAYERS, generation, wipeCount, safeReason(reason));

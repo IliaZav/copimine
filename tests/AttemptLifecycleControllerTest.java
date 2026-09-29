@@ -82,9 +82,11 @@ public final class AttemptLifecycleControllerTest {
                 "failed cleanup must retain the pending generation for retry");
         check(!controller.markAlive(a, 20L),
                 "callbacks must remain blocked after failed cleanup");
-        check(controller.performAttemptWipe(20L, "retry").status()
-                == AttemptLifecycleController.WipeStatus.ALREADY_IN_PROGRESS,
+        var retry = controller.performAttemptWipe(20L, "retry");
+        check(retry.status() == AttemptLifecycleController.WipeStatus.ALREADY_IN_PROGRESS,
                 "retry must not publish a new wipe while cleanup is still incomplete");
+        check(retry.nextGeneration() == 21L,
+                "an in-progress retry must preserve the pending next generation");
         check(controller.commitWipe(20L), "retry cleanup must be able to commit");
         check(controller.generation() == 21L, "retry must publish the next generation once");
         System.out.println("AttemptLifecycleControllerTest OK");

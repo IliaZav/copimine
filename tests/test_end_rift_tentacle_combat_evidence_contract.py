@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "tests" / "RunEndRiftTentacleLive.ps1"
 BOT = ROOT / "tests" / "LocalEndRiftMobCombatBot.js"
+END_EVENT = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+ANIMATION_POLICY = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "TentacleAnimationPolicy.java"
 
 
 def test_tentacle_live_harness_measures_unmasked_player_damage_and_impulse():
@@ -57,3 +59,15 @@ def test_tentacle_live_probe_uses_fresh_credentials_and_restores_environment():
         "END_RIFT_TENTACLE_TRACE",
     ):
         assert name in script
+
+
+def test_nonlethal_hits_preserve_attacks_and_only_flinch_idle_tentacles():
+    source = END_EVENT.read_text(encoding="utf-8")
+    policy = ANIMATION_POLICY.read_text(encoding="utf-8")
+    damage = source.split("private void applyTentacleGuardianDamage(", 1)[1]
+    damage = damage.split("private void updateTentacleGuardianHealthVisual(", 1)[0]
+
+    assert "TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())" in damage
+    assert "tentacleNextAttackTick.put" not in damage
+    assert "TentacleGuardianPolicy.nextAttackTickAfterRecovery(" in source
+    assert "canonical == State.READY || canonical == State.SHIELD_CHANNEL" in policy

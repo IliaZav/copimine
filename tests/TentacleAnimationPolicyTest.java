@@ -4,7 +4,9 @@ import me.copimine.endevent.domain.TentacleAnimationPolicy;
 public final class TentacleAnimationPolicyTest {
     public static void main(String[] args) {
         testAllArtistBriefStatesHaveBoundedDurations();
+        testAttackCuesStayInsideTheAuthoredAndArtistTiming();
         testGrabMarkersUseTheSpecifiedTimeline();
+        testPlayerHitsDoNotInterruptAttacksOrRestartHitRecovery();
         testTransitionsKeepTheServerSequenceDeterministic();
         testStaticShowroomStartsPermanentTentaclesInTheLoopingIdleState();
         System.out.println("TentacleAnimationPolicyTest OK");
@@ -45,6 +47,43 @@ public final class TentacleAnimationPolicyTest {
                 "throw must be a one-shot animation");
     }
 
+    private static void testAttackCuesStayInsideTheAuthoredAndArtistTiming() {
+        check(TentacleAnimationPolicy.durationTicks(TentacleAnimationPolicy.State.TELEGRAPH_GRAB) == 24,
+                "telegraph must match the 0.8-1.2 second artist brief");
+        check(TentacleAnimationPolicy.durationTicks(TentacleAnimationPolicy.State.GRAB_SUCCESS) == 16,
+                "grab success must match the 0.55-0.8 second artist brief");
+        check(TentacleAnimationPolicy.durationTicks(TentacleAnimationPolicy.State.THROW) == 14,
+                "throw must not outlast the 0.7 second artist brief");
+        check(TentacleAnimationPolicy.durationTicks(TentacleAnimationPolicy.State.MISS_RECOVERY) == 16,
+                "miss recovery must fit the 0.5-0.8 second artist brief");
+        check(TentacleAnimationPolicy.durationTicks(TentacleAnimationPolicy.State.DYING) == 24,
+                "death must fit the 0.8-1.2 second artist brief");
+    }
+
+    private static void testPlayerHitsDoNotInterruptAttacksOrRestartHitRecovery() {
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.TELEGRAPH_GRAB),
+                "a hit must not cancel the telegraphed grab");
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.GRAB_SUCCESS),
+                "a hit must not cancel the committed grab");
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.HOLD),
+                "a hit must not cancel a held player");
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.THROW),
+                "a hit must not cancel a committed throw");
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.HIT_RECOVERY),
+                "repeated hits must not restart the flinch timer");
+        check(!TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.RECOVERY),
+                "a hit must not restart the recovery timer");
+        check(TentacleAnimationPolicy.shouldEnterHitRecovery(
+                        TentacleAnimationPolicy.State.SHIELD_CHANNEL),
+                "an idle guardian can play one bounded hit reaction");
+    }
+
     private static void testGrabMarkersUseTheSpecifiedTimeline() {
         List<TentacleAnimationPolicy.Marker> sequence = TentacleAnimationPolicy.grabMarkers();
         check(sequence.equals(List.of(
@@ -55,13 +94,13 @@ public final class TentacleAnimationPolicyTest {
                         TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR)),
                 "grab markers must be ordered from contact to retract");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.GRAB_SUCCESS,
-                        TentacleAnimationPolicy.Marker.CONTACT) == 6,
+                        TentacleAnimationPolicy.Marker.CONTACT) == 10,
                 "contact must land at about 60 percent of grab success");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.GRAB_SUCCESS,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK) == 9,
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK) == 14,
                 "hold lock must land near the end of grab success");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.THROW,
-                        TentacleAnimationPolicy.Marker.THROW_RELEASE) == 8,
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE) == 9,
                 "throw release must land between 60 and 70 percent of throw");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.RECOVERY,
                         TentacleAnimationPolicy.Marker.RECOVERY_START) == 0,

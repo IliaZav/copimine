@@ -102,6 +102,17 @@ public final class TentacleGuardianPolicy {
         return spawnTick + 60L + Math.max(0, slot) * ATTACK_STAGGER_TICKS;
     }
 
+    /**
+     * Preserve a pending attack across a hit flinch. A normally completed
+     * attack has no pending tick and starts a fresh staggered interval.
+     */
+    public static long nextAttackTickAfterRecovery(long pendingAttackTick,
+                                                    long nowTick, int slot) {
+        return pendingAttackTick >= 0L ? pendingAttackTick
+                : nowTick + ATTACK_INTERVAL_TICKS
+                + Math.max(0, slot) * ATTACK_STAGGER_TICKS;
+    }
+
     public static boolean attackDue(long nowTick, long nextAttackTick,
                                     boolean busy) {
         return !busy && nextAttackTick >= 0L && nowTick >= nextAttackTick;

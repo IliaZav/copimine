@@ -26407,9 +26407,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                     setTentacleState(display, TentacleAnimationPolicy.State.SHIELD_CHANNEL, null);
                     tentacleNextAttackTick.put(display.getUniqueId(),
-                            eventTickCounter + tentacleAttackIntervalTicks()
-                                    + Math.max(0, state.slot())
-                                    * tentacleAttackStaggerTicks());
+                            TentacleGuardianPolicy.nextAttackTickAfterRecovery(
+                                    tentacleNextAttackTick.getOrDefault(
+                                            display.getUniqueId(), -1L),
+                                    eventTickCounter, state.slot()));
                     return;
                 }
                 case HIT_RECOVERY -> {
@@ -26618,9 +26619,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 after <= 0.0D ? Sound.BLOCK_RESPAWN_ANCHOR_DEPLETE
                         : Sound.BLOCK_AMETHYST_BLOCK_RESONATE,
                 SoundCategory.HOSTILE, 0.8F, after <= 0.0D ? 0.55F : 1.25F);
-        renderTentacleTransition(display, after <= 0.0D
-                ? TentacleAnimationPolicy.State.DYING
-                : TentacleAnimationPolicy.State.HIT_RECOVERY);
         getLogger().info("RIFT_TENTACLE_DAMAGE event=" + eventId
                 + " entity=" + display.getUniqueId() + " slot=" + slot
                 + " attacker=" + attacker.getUniqueId() + " damage="
@@ -26637,13 +26635,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             setTentacleState(display, TentacleAnimationPolicy.State.DYING, null);
             return;
         }
-        if (!temporary) {
-            tentacleNextAttackTick.put(display.getUniqueId(),
-                    eventTickCounter + tentacleAttackIntervalTicks()
-                            + Math.max(0, slot) * tentacleAttackStaggerTicks());
+        if (TentacleAnimationPolicy.shouldEnterHitRecovery(state.state())) {
+            setTentacleState(display, TentacleAnimationPolicy.State.HIT_RECOVERY,
+                    attacker.getUniqueId());
         }
-        setTentacleState(display, TentacleAnimationPolicy.State.HIT_RECOVERY,
-                attacker.getUniqueId());
     }
 
     private void updateTentacleGuardianHealthVisual(ItemDisplay display,

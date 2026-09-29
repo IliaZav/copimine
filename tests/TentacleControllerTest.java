@@ -29,16 +29,16 @@ public final class TentacleControllerTest {
         check(controller.state(temporary).kind() == TentacleAnimationPolicy.Kind.TEMPORARY,
                 "temporary attacks must retain the grab lifecycle kind");
         check(!controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.CONTACT, 115L),
+                        TentacleAnimationPolicy.Marker.CONTACT, 119L),
                 "contact marker must not fire before its state offset");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.CONTACT, 116L),
+                        TentacleAnimationPolicy.Marker.CONTACT, 120L),
                 "contact marker must use the active grab-success timeline");
         check(!controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 118L),
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 123L),
                 "hold lock must wait until the near-end marker");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 119L),
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 124L),
                 "server marker clock must be independent of client bone position");
         check(!controller.markerReached(permanent,
                         TentacleAnimationPolicy.Marker.THROW_RELEASE, 122L),
@@ -46,10 +46,10 @@ public final class TentacleControllerTest {
         check(controller.transition(generation, permanent, TentacleAnimationPolicy.State.THROW,
                         130L, null), "throw state must be accepted");
         check(!controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 137L),
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 138L),
                 "throw release must wait for its state offset");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 138L),
+                        TentacleAnimationPolicy.Marker.THROW_RELEASE, 139L),
                 "throw release must use the active throw timeline");
         check(!controller.markerReached(permanent,
                         TentacleAnimationPolicy.Marker.RECOVERY_START, 138L),

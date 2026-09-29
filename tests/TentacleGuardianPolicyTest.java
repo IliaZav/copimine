@@ -68,6 +68,14 @@ public final class TentacleGuardianPolicyTest {
                 "an attack must start at its scheduled tick");
         check(!TentacleGuardianPolicy.attackDue(first, first, true),
                 "a guardian already in an attack state must not double-start");
+        check(TentacleGuardianPolicy.nextAttackTickAfterRecovery(1200L, 1100L, 0) == 1200L,
+                "a hit flinch must preserve an already pending attack tick");
+        check(TentacleGuardianPolicy.nextAttackTickAfterRecovery(1090L, 1100L, 1) == 1090L,
+                "an attack that became due during a flinch must remain due after recovery");
+        check(TentacleGuardianPolicy.nextAttackTickAfterRecovery(-1L, 1100L, 1)
+                        == 1100L + TentacleGuardianPolicy.ATTACK_INTERVAL_TICKS
+                        + TentacleGuardianPolicy.ATTACK_STAGGER_TICKS,
+                "a completed attack with no pending tick must schedule its next staggered cycle");
         check(TentacleGuardianPolicy.canBeginAttack(TentacleAnimationPolicy.Kind.PERMANENT,
                         TentacleAnimationPolicy.State.SHIELD_CHANNEL),
                 "permanent guardians must leave shield channel for a bounded attack");

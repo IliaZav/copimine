@@ -58,13 +58,13 @@ public final class TentacleAnimationPolicy {
         return switch (canonical) {
             case READY -> 60;                // 3.0 seconds, looping
             case EMERGING -> 18;             // 0.9 seconds
-            case TELEGRAPH_GRAB -> 12;      // 0.60 seconds to react before the lunge
-            case GRAB_SUCCESS -> 10;        // 0.50 seconds to make contact and lock
-            case HOLD -> 25;                // 1.25 seconds, matches the authored clip
-            case THROW -> 18;               // 0.9 seconds, matches the authored clip
-            case MISS_RECOVERY -> 17;       // 0.85 seconds
+            case TELEGRAPH_GRAB -> 24;      // 1.20 seconds, matches the artist brief
+            case GRAB_SUCCESS -> 16;        // 0.80 seconds, near the authored 0.833-second clip
+            case HOLD -> 24;                // 1.20 seconds, near the authored 1.208-second clip
+            case THROW -> 14;               // 0.70 seconds, matches the artist brief
+            case MISS_RECOVERY -> 16;       // 0.80 seconds, matches the artist brief
             case HIT_RECOVERY -> 5;         // 0.25 seconds, matches the authored clip
-            case DYING -> 25;                // 1.25 seconds, matches the authored clip
+            case DYING -> 24;                // 1.20 seconds, near the authored 1.25-second clip
             case DEAD_RESPAWN -> 40;        // bounded hidden/respawn hold
             case RETRACT -> 18;             // 0.9 seconds, matches the authored clip
             case SPAWN_UNDER_PLAYER -> 9;   // 0.45 seconds
@@ -77,6 +77,15 @@ public final class TentacleAnimationPolicy {
         State canonical = canonical(state);
         return canonical == State.READY || canonical == State.HOLD
                 || canonical == State.SHIELD_CHANNEL;
+    }
+
+    /**
+     * Player damage may flinch an idle guardian, but must not replace an
+     * attack/recovery state or restart an existing hit reaction.
+     */
+    public static boolean shouldEnterHitRecovery(State current) {
+        State canonical = canonical(current);
+        return canonical == State.READY || canonical == State.SHIELD_CHANNEL;
     }
 
     public static List<Marker> grabMarkers() {
@@ -98,9 +107,9 @@ public final class TentacleAnimationPolicy {
         }
         State canonical = canonical(state);
         return switch (marker) {
-            case CONTACT -> canonical == State.GRAB_SUCCESS ? 6 : -1;
-            case HOLD_LOCK -> canonical == State.GRAB_SUCCESS ? 9 : -1;
-            case THROW_RELEASE -> canonical == State.THROW ? 8 : -1;
+            case CONTACT -> canonical == State.GRAB_SUCCESS ? 10 : -1;
+            case HOLD_LOCK -> canonical == State.GRAB_SUCCESS ? 14 : -1;
+            case THROW_RELEASE -> canonical == State.THROW ? 9 : -1;
             case RECOVERY_START -> canonical == State.RECOVERY ? 0 : -1;
             case HIDE_BELOW_FLOOR -> canonical == State.DYING ? 16
                     : canonical == State.RETRACT ? durationTicks(State.RETRACT) : -1;

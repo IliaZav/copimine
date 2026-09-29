@@ -232,6 +232,7 @@ foreach ($expected in $expectedVisuals) {
 
 $f2Script = Join-Path $scriptDirectory '07_CaptureViaMinecraftF2.ps1'
 $captures = New-Object System.Collections.Generic.List[object]
+$eliteFrames = New-Object System.Collections.Generic.List[object]
 function Save-F2([string]$Name) {
     $path = Join-Path $OutputDirectory ($Name + '.png')
     if (Test-Path -LiteralPath $path) { throw "Refused to overwrite existing F2 evidence: $path" }
@@ -285,16 +286,38 @@ try {
     foreach ($expected in $expectedVisuals) {
         $entityUuid = [string]$eliteEntities[$expected.Id]
         $entityPosition = Get-Vector (Invoke-Local "data get entity $entityUuid Pos")
-        $targetPosition = 'minecraft:execute in minecraft:overworld run minecraft:tp {0} {1} {2} {3} 180 0' -f $entityUuid, (Format-Coordinate $entityPosition.X), (Format-Coordinate $entityPosition.Y), (Format-Coordinate $entityPosition.Z)
         $null = Invoke-Local ('data merge entity {0} {{NoAI:1b,CustomNameVisible:0b}}' -f $entityUuid)
-        $null = Invoke-Local $targetPosition
-        Move-Camera $entityPosition.X $entityPosition.Y ($entityPosition.Z - $expected.CameraDistance) 0 $expected.Pitch
+        $radialX = $entityPosition.X - $coreX
+        $radialZ = $entityPosition.Z - $coreZ
+        $radialLength = [Math]::Sqrt(($radialX * $radialX) + ($radialZ * $radialZ))
+        if ($radialLength -lt 0.001) {
+            throw "Cannot choose an outside camera angle for elite visual $($expected.Id): target is at the core."
+        }
+        $cameraX = $entityPosition.X + (($radialX / $radialLength) * $expected.CameraDistance)
+        $cameraZ = $entityPosition.Z + (($radialZ / $radialLength) * $expected.CameraDistance)
+        $cameraYaw = [int][Math]::Round([Math]::Atan2($radialX, -$radialZ) * 180.0 / [Math]::PI)
+
+        # Owned event mobs reject external teleports. Frame the real mob in
+        # place and verify it stayed there while only the local camera moved.
+        Move-Camera $cameraX $entityPosition.Y $cameraZ $cameraYaw $expected.Pitch
+        $targetAfter = Get-Vector (Invoke-Local "data get entity $entityUuid Pos")
+        if ([Math]::Abs($targetAfter.X - $entityPosition.X) -gt 0.5 -or
+            [Math]::Abs($targetAfter.Y - $entityPosition.Y) -gt 0.5 -or
+            [Math]::Abs($targetAfter.Z - $entityPosition.Z) -gt 0.5) {
+            throw "Elite visual $($expected.Id) moved during camera framing; refusing a misleading capture."
+        }
         Save-F2 $expected.File
+        $eliteFrames.Add([pscustomobject]@{
+            visualId = $expected.Id
+            entityUuid = $entityUuid
+            target = [ordered]@{ x = $entityPosition.X; y = $entityPosition.Y; z = $entityPosition.Z }
+            camera = [ordered]@{ x = $cameraX; y = $entityPosition.Y; z = $cameraZ; yaw = $cameraYaw; pitch = $expected.Pitch }
+        })
     }
 
     # This records the two tentacles' READY pose. Dynamic attack/hit behavior
     # remains verified separately by the live gameplay probe and Java tests.
-    Move-Camera ($coreX + 10.0) $coreY $coreZ -90 0
+    Move-Camera ($coreX + 10.0) $coreY $coreZ 90 0
     Save-F2 'tentacles-ready'
 } finally {
     if ($hudToggled) {
@@ -336,6 +359,7 @@ $manifest = [ordered]@{
         eliteMappings = @($expectedVisuals | ForEach-Object {
             [ordered]@{ visualId = $_.Id; texture = $_.Texture; entityUuid = [string]$eliteEntities[$_.Id] }
         })
+        eliteFrames = @($eliteFrames.ToArray())
     }
     screenshots = @($captures.ToArray())
     visualReview = 'PENDING: inspect each original PNG in Minecraft rendering before marking visually verified.'

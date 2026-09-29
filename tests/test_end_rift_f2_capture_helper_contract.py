@@ -87,3 +87,21 @@ def test_f2_capture_helper_frames_targets_with_night_vision_and_restores_camera_
     assert "coreZ - 16.0" in script
     assert "CameraDistance" in script
     assert "NoAI:1b,CustomNameVisible:0b" in script
+
+
+def test_tentacle_capture_faces_from_the_east_camera_back_toward_the_core():
+    script = CAPTURE.read_text(encoding="utf-8")
+
+    assert "Move-Camera ($coreX + 10.0) $coreY $coreZ 90 0" in script
+
+
+def test_elite_capture_frames_each_mob_in_place_from_outside_its_radial_position():
+    script = CAPTURE.read_text(encoding="utf-8")
+
+    assert "$radialX = $entityPosition.X - $coreX" in script
+    assert "$radialZ = $entityPosition.Z - $coreZ" in script
+    assert "$cameraYaw = [int][Math]::Round([Math]::Atan2($radialX, -$radialZ)" in script
+    assert "Move-Camera $cameraX $entityPosition.Y $cameraZ $cameraYaw $expected.Pitch" in script
+    assert "$targetAfter = Get-Vector (Invoke-Local \"data get entity $entityUuid Pos\")" in script
+    assert "$targetPosition =" not in script
+    assert "$restoreEntityPosition =" not in script

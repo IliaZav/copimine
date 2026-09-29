@@ -89,6 +89,7 @@ resourcepacks/build/
 /CopiMineClient/run/
 CopiMineClient/net/
 thirdparty/_modpack_stage/
+/tools/end-rift-native-visual/config.json
 
 # Minecraft server runtime
 minecraft/server/**

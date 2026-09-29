@@ -292,15 +292,34 @@ try {
   }
   Record "LIVE_TENTACLE_PROFILE_PASS count=$($snapshot.tentacleCount) permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) segments=6 length=6.25 hitbox=1.9x6.25 visual=END_RIFT_TENTACLE_V1"
 
-  $damageTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_DAMAGE .*health_before=([0-9.]+).*health_after=([0-9.]+)' $TimeoutSeconds
-  $damageMatch = [Regex]::Match($damageTail, 'RIFT_TENTACLE_DAMAGE .*health_before=([0-9.]+).*health_after=([0-9.]+)')
+  $damagePattern = 'RIFT_TENTACLE_DAMAGE .*entity=([0-9a-f-]+).*health_before=([0-9.]+).*health_after=([0-9.]+)'
+  $damageTail = Wait-Log $spawnOffset $damagePattern $TimeoutSeconds
+  $damageMatch = [Regex]::Match($damageTail, $damagePattern)
   if (-not $damageMatch.Success -or
-      [double]$damageMatch.Groups[2].Value -ge [double]$damageMatch.Groups[1].Value) {
+      [double]$damageMatch.Groups[3].Value -ge [double]$damageMatch.Groups[2].Value) {
     throw "Real player attack did not lower tentacle health: $damageTail"
   }
-  Record "LIVE_TENTACLE_DAMAGE_PASS health_before=$($damageMatch.Groups[1].Value) health_after=$($damageMatch.Groups[2].Value) player_packet=true server_authoritative=true"
+  $damagedTentacleUuid = $damageMatch.Groups[1].Value
+  $damageLine = @($damageTail -split '\r?\n' |
+    Where-Object { $_ -match $damagePattern } | Select-Object -First 1)[0]
+  Record "LIVE_TENTACLE_DAMAGE_PASS entity=$damagedTentacleUuid health_before=$($damageMatch.Groups[2].Value) health_after=$($damageMatch.Groups[3].Value) player_packet=true server_authoritative=true"
   Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
   Record 'LIVE_TENTACLE_PROBE_PASSIVE_AFTER_DAMAGE_PASS=true'
+  $continuedAttackPattern = 'RIFT_TENTACLE_STATE .*entity=' +
+    [Regex]::Escape($damagedTentacleUuid) + ' state=(GRAB_SUCCESS|HOLD|THROW)\b'
+  $continuedAttackTail = Wait-Log $spawnOffset $continuedAttackPattern $TimeoutSeconds
+  $damageLineOffset = $continuedAttackTail.IndexOf($damageLine, [StringComparison]::Ordinal)
+  if ($damageLineOffset -lt 0) {
+    throw "Could not correlate damaged tentacle $damagedTentacleUuid to its original hit line."
+  }
+  $continuedAttack = $null
+  foreach ($candidate in [Regex]::Matches($continuedAttackTail, $continuedAttackPattern)) {
+    if ($candidate.Index -gt $damageLineOffset) { $continuedAttack = $candidate; break }
+  }
+  if (-not $continuedAttack) {
+    throw "Damaged tentacle $damagedTentacleUuid did not continue into its committed grab/hold/throw attack after the hit."
+  }
+  Record "LIVE_TENTACLE_HIT_ATTACK_CONTINUED_PASS entity=$damagedTentacleUuid damage_before=$($damageMatch.Groups[2].Value) damage_after=$($damageMatch.Groups[3].Value) next_state=$($continuedAttack.Groups[1].Value) same_entity=true hit_did_not_cancel_attack=true"
 
   $temporaryOffset = Log-Length
   try { $temporaryTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_SPAWN .*temporary=true' 20 } catch { $temporaryTail = '' }

@@ -41,6 +41,17 @@ def test_tentacle_live_evidence_pins_the_loaded_plugin_and_source_hashes():
     assert "$serverStarted = [datetime]$serverProcess.CreationDate" in script
 
 
+def test_live_tentacle_probe_requires_the_damaged_entity_to_continue_its_attack():
+    script = HARNESS.read_text(encoding="utf-8")
+
+    assert "LIVE_TENTACLE_HIT_ATTACK_CONTINUED_PASS" in script
+    assert "$damagedTentacleUuid" in script
+    assert "RIFT_TENTACLE_DAMAGE .*entity=" in script
+    assert "$continuedAttackPattern = 'RIFT_TENTACLE_STATE .*entity=' +" in script
+    assert "[Regex]::Escape($damagedTentacleUuid)" in script
+    assert "state=(GRAB_SUCCESS|HOLD|THROW)" in script
+
+
 def test_tentacle_live_probe_uses_fresh_credentials_and_restores_environment():
     script = HARNESS.read_text(encoding="utf-8")
 

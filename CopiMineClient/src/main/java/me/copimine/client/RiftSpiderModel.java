@@ -47,10 +47,10 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         this.riftCore = root.getChild("rift_core");
         this.riftShell = root.getChild("rift_shell");
         this.riftSpines = root.getChild("rift_spines");
-        this.eliteCarapace = root.getChild("elite_carapace");
-        this.guardianSpine = root.getChild("guardian_spine");
-        this.guardSeal = root.getChild("guard_seal");
-        this.ritualFocus = root.getChild("ritual_focus");
+        this.eliteCarapace = root.getChild("body1").getChild("elite_carapace");
+        this.guardianSpine = root.getChild("body1").getChild("guardian_spine");
+        this.guardSeal = root.getChild("head").getChild("guard_seal");
+        this.ritualFocus = root.getChild("head").getChild("ritual_focus");
         this.variant = variant;
         // The supplied 64x32 skin is painted for the spider's original body.
         // Extra opaque shells obscure that art on ordinary wave spiders.
@@ -81,6 +81,9 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         root.addChild("body1", cube(0, 12, -5.0F, -4.0F, -6.0F, 10.0F, 8.0F, 12.0F),
                 ModelTransform.pivot(0.0F, 15.0F, 9.0F));
 
+        ModelPartData head = root.getChild("head");
+        ModelPartData abdomen = root.getChild("body1");
+
         addLeg(root, "right_hind_leg", -4.0F, 15.0F, 2.0F, false);
         addLeg(root, "left_hind_leg", 4.0F, 15.0F, 2.0F, true);
         addLeg(root, "right_middle_hind_leg", -4.0F, 15.0F, 1.0F, false);
@@ -106,34 +109,38 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
                                 2.0F, 3.0F, 2.0F)),
                 ModelTransform.pivot(0.0F, 15.0F, 6.0F));
 
-        root.addChild("elite_carapace", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+        // SpiderEntityModel renders its named head/body/leg parts directly.
+        // Attach active role accents to those bones so they are actually
+        // traversed; compensate for the parent pivots to keep their authored
+        // world-space placement intact.
+        abdomen.addChild("elite_carapace", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(0, 16, -5.5F, -4.2F, -6.5F,
                                 11.0F, 2.2F, 13.0F),
                         new ModelUvBounds.Box(0, 21, -6.2F, -2.4F, -4.8F,
                                 1.6F, 2.2F, 8.0F),
                         new ModelUvBounds.Box(0, 21, 4.6F, -2.4F, -4.8F,
                                 1.6F, 2.2F, 8.0F)),
-                ModelTransform.pivot(0.0F, 15.0F, 7.0F));
-        root.addChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                ModelTransform.pivot(0.0F, 0.0F, -2.0F));
+        abdomen.addChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(24, 24, -1.0F, -7.0F, 5.8F,
                                 2.0F, 3.0F, 2.0F),
                         new ModelUvBounds.Box(24, 26, -1.2F, -4.6F, 6.0F,
                                 2.4F, 3.2F, 1.6F),
                         new ModelUvBounds.Box(32, 24, -1.4F, -2.0F, 6.1F,
                                 2.8F, 2.8F, 1.4F)),
-                ModelTransform.pivot(0.0F, 15.0F, 4.0F));
-        root.addChild("guard_seal", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                ModelTransform.pivot(0.0F, 0.0F, -5.0F));
+        head.addChild("guard_seal", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(38, 24, -2.4F, -5.4F, -8.15F,
                                 4.8F, 3.8F, 0.45F),
                         new ModelUvBounds.Box(38, 29, -1.1F, -6.6F, -8.25F,
                                 2.2F, 1.2F, 0.35F)),
-                ModelTransform.pivot(0.0F, 15.0F, -2.0F));
-        root.addChild("ritual_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                ModelTransform.pivot(0.0F, 0.0F, 1.0F));
+        head.addChild("ritual_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(46, 24, -1.5F, -1.5F, -8.6F,
                                 3.0F, 3.0F, 1.0F),
                         new ModelUvBounds.Box(54, 24, -0.6F, -2.5F, -8.45F,
                                 1.2F, 1.0F, 0.7F)),
-                ModelTransform.pivot(0.0F, 15.0F, 1.0F));
+                ModelTransform.pivot(0.0F, 0.0F, 4.0F));
 
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }

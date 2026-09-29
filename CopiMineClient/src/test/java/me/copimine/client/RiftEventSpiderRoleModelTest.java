@@ -15,10 +15,10 @@ class RiftEventSpiderRoleModelTest {
                 RiftSpiderModel.getTexturedModelData().createModel());
         ModelPart root = model.getPart();
 
-        assertNotNull(root.getChild("elite_carapace"));
-        assertNotNull(root.getChild("guardian_spine"));
-        assertNotNull(root.getChild("guard_seal"));
-        assertNotNull(root.getChild("ritual_focus"));
+        assertNotNull(root.getChild("body1").getChild("elite_carapace"));
+        assertNotNull(root.getChild("body1").getChild("guardian_spine"));
+        assertNotNull(root.getChild("head").getChild("guard_seal"));
+        assertNotNull(root.getChild("head").getChild("ritual_focus"));
     }
 
     @Test

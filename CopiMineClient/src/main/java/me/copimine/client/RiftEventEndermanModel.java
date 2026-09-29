@@ -63,8 +63,8 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         this.riftCore = root.getChild("rift_core");
         this.riftShell = root.getChild("rift_shell");
         this.variantCrest = root.getChild("variant_crest");
-        this.casterFocus = root.getChild("caster_focus");
         ModelPart body = root.getChild("body");
+        this.casterFocus = body.getChild("caster_focus");
         this.bodyShell = body.getChild("body_shell");
         this.chestRift = body.getChild("chest_rift");
         this.guardianMantle = body.getChild("guardian_mantle");
@@ -136,6 +136,8 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         root.addChild("left_leg", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         56, 0, -1.0F, 0.0F, -1.0F, 2.0F, 30.0F, 2.0F, true),
                 ModelTransform.pivot(2.0F, -5.0F, 0.0F));
+        ModelPartData head = root.getChild("head");
+        ModelPartData body = root.getChild("body");
         root.addChild("rift_core", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         0, 0, -2.5F, -5.0F, -3.0F, 5.0F, 5.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -8.0F, -2.25F));
@@ -145,14 +147,16 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         root.addChild("variant_crest", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         32, 0, -3.5F, -11.0F, -1.0F, 7.0F, elite ? 4.0F : 2.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -14.0F, 0.0F));
-        root.addChild("caster_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+        // EndermanEntityModel only traverses its standard head/body/limb
+        // parts. Attach the focus to the rendered torso and compensate for
+        // the torso pivot so its authored world position remains unchanged.
+        body.addChild("caster_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(40, 0, -2.0F, -1.0F, -3.2F,
                                 4.0F, 4.0F, 1.0F),
                         new ModelUvBounds.Box(40, 5, -1.0F, 3.0F, -2.7F,
                                 2.0F, 2.0F, 1.0F)),
-                ModelTransform.pivot(0.0F, -3.0F, 0.0F));
+                ModelTransform.pivot(0.0F, 11.0F, 0.0F));
 
-        ModelPartData head = root.getChild("head");
         head.addChild("horn_left", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         48, 0, -3.2F, -9.0F, -1.25F, 2.0F, 8.0F, 2.5F),
                 ModelTransform.of(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, -0.12F));
@@ -163,7 +167,6 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
                         50, 30, -3.0F, -0.4F, -4.15F, 6.0F, 1.3F, 0.45F),
                 ModelTransform.NONE);
 
-        ModelPartData body = root.getChild("body");
         body.addChild("body_shell", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         0, 8, -4.25F, -0.4F, -2.35F, 8.5F, 11.0F, 4.7F),
                 ModelTransform.NONE);

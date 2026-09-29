@@ -72,3 +72,19 @@
 - [x] Run focused behavior/contract tests and the isolated no-auth smoke; confirm evidence records `127.0.0.1` for both listeners and the showroom remains unchanged.
 - [x] Run `tests/RunEndRiftEventChecks.ps1 -SkipBuilds` and inspect the complete result.
 - [ ] Review the final scoped diff, commit Task 2, push both task commits to `codex/end-rift-event`, and verify the remote ref equals local HEAD.
+
+### Task 3: Close branch-review findings for visible role geometry and failure propagation
+
+**Files:**
+- Modify: `CopiMineClient/src/main/java/me/copimine/client/RiftEventSkeletonModel.java`
+- Modify: `CopiMineClient/src/main/java/me/copimine/client/RiftEventEndermanModel.java`
+- Modify: `CopiMineClient/src/main/java/me/copimine/client/RiftSpiderModel.java`
+- Modify: the corresponding client model tests
+- Modify: `tests/RunEndRiftEventChecks.ps1`
+- Create: `tests/test_end_rift_event_gate_contract.py`
+
+- [x] Add model hierarchy and gate-structure regressions; observe all three model checks and the gate check fail against the reviewed version.
+- [x] Parent visible skeleton, Enderman caster, and spider role details to parts traversed by their vanilla renderers, preserving their authored positions.
+- [x] Split pytest suites into separately checked gate steps so a later successful process cannot hide an earlier nonzero exit.
+- [ ] Run the complete local gate and client build/tests, inspect the scoped diff, commit and push the fixes to `codex/end-rift-event`.
+- [ ] Capture and review in-game screenshots for the requested mobs against the supplied archives; the current native desktop inventory reports no Minecraft app, so this remains an external visual gate.

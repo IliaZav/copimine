@@ -42,7 +42,7 @@ class RiftSpiderModelTest {
         assertFalse(ordinary.getPart().getChild("rift_core").visible);
         assertFalse(ordinary.getPart().getChild("rift_shell").visible);
         assertFalse(ordinary.getPart().getChild("rift_spines").visible);
-        assertTrue(elite.getPart().getChild("elite_carapace").visible);
+        assertTrue(elite.getPart().getChild("body1").getChild("elite_carapace").visible);
 
         RiftSpiderModel guardian = new RiftSpiderModel(
                 RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.WAVE_GUARDIAN).createModel(),
@@ -50,9 +50,40 @@ class RiftSpiderModelTest {
         RiftSpiderModel ritualGuard = new RiftSpiderModel(
                 RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.RITUAL_GUARD).createModel(),
                 RiftSpiderModel.Variant.RITUAL_GUARD);
-        assertTrue(guardian.getPart().getChild("guardian_spine").visible);
-        assertTrue(ritualGuard.getPart().getChild("guard_seal").visible);
-        assertTrue(ritualGuard.getPart().getChild("ritual_focus").visible);
+        assertTrue(guardian.getPart().getChild("body1").getChild("guardian_spine").visible);
+        assertTrue(ritualGuard.getPart().getChild("head").getChild("guard_seal").visible);
+        assertTrue(ritualGuard.getPart().getChild("head").getChild("ritual_focus").visible);
+    }
+
+    @Test
+    void roleAccentsAreAttachedToPartsVisitedByTheSpiderRenderer() {
+        ModelPart elite = RiftSpiderModel.getTexturedModelData(
+                RiftSpiderModel.Variant.ELITE).createModel();
+        ModelPart guardian = RiftSpiderModel.getTexturedModelData(
+                RiftSpiderModel.Variant.WAVE_GUARDIAN).createModel();
+        ModelPart ritualGuard = RiftSpiderModel.getTexturedModelData(
+                RiftSpiderModel.Variant.RITUAL_GUARD).createModel();
+
+        ModelPart abdomen = elite.getChild("body1");
+        assertFalse(abdomen.getChild("elite_carapace").isEmpty(),
+                "elite carapace is part of the rendered abdomen");
+        assertEquals(7.0F, abdomen.pivotZ + abdomen.getChild("elite_carapace").pivotZ,
+                0.0001F, "elite carapace retains its authored world depth");
+        ModelPart guardianAbdomen = guardian.getChild("body1");
+        assertFalse(guardianAbdomen.getChild("guardian_spine").isEmpty(),
+                "guardian spine is part of the rendered abdomen");
+        assertEquals(4.0F,
+                guardianAbdomen.pivotZ + guardianAbdomen.getChild("guardian_spine").pivotZ,
+                0.0001F, "guardian spine retains its authored world depth");
+        ModelPart head = ritualGuard.getChild("head");
+        assertFalse(head.getChild("guard_seal").isEmpty(),
+                "ritual seal is part of the rendered head");
+        assertFalse(head.getChild("ritual_focus").isEmpty(),
+                "ritual focus is part of the rendered head");
+        assertEquals(-2.0F, head.pivotZ + head.getChild("guard_seal").pivotZ,
+                0.0001F, "ritual seal retains its authored world depth");
+        assertEquals(1.0F, head.pivotZ + head.getChild("ritual_focus").pivotZ,
+                0.0001F, "ritual focus retains its authored world depth");
     }
 
     @Test

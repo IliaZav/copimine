@@ -65,12 +65,13 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         this.eliteHornRight = head.getChild("elite_horn_right");
         this.eliteShoulderLeft = root.getChild("left_arm").getChild("elite_shoulder_left");
         this.eliteShoulderRight = root.getChild("right_arm").getChild("elite_shoulder_right");
-        this.chestRift = root.getChild("body").getChild("chest_rift");
-        this.guardCrest = root.getChild("guard_crest");
-        this.guardChestSeal = root.getChild("guard_chest_seal");
-        this.guardianSpine = root.getChild("guardian_spine");
-        this.eliteMantle = root.getChild("elite_mantle");
-        this.eliteHornCrown = root.getChild("elite_horn_crown");
+        ModelPart body = root.getChild("body");
+        this.chestRift = body.getChild("chest_rift");
+        this.guardCrest = head.getChild("guard_crest");
+        this.guardChestSeal = body.getChild("guard_chest_seal");
+        this.guardianSpine = body.getChild("guardian_spine");
+        this.eliteMantle = body.getChild("elite_mantle");
+        this.eliteHornCrown = head.getChild("elite_horn_crown");
         this.variant = variant;
         boolean elite = isEliteVariant(variant);
         boolean guardian = variant == Variant.WAVE_GUARDIAN;
@@ -134,19 +135,22 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         body.addChild("chest_rift", cube(24, 17,
                         -0.5F, 3.0F, -2.35F, 1.0F, 6.0F, 0.5F),
                 ModelTransform.NONE);
-        root.addChild("guard_crest", cube(40, 16,
+        // BipedEntityModel renders through its head/body parts. Keep all
+        // decorative geometry beneath those rendered bones instead of as
+        // root siblings, which ModelPart traversal never draws here.
+        head.addChild("guard_crest", cube(40, 16,
                         -2.0F, -10.0F, -4.05F, 4.0F, 2.5F, 0.5F),
                 ModelTransform.NONE);
-        root.addChild("guard_chest_seal", cube(24, 17,
+        body.addChild("guard_chest_seal", cube(24, 17,
                         -1.5F, 8.0F, -2.55F, 3.0F, 3.0F, 0.5F),
                 ModelTransform.NONE);
-        root.addChild("guardian_spine", cube(40, 16,
+        body.addChild("guardian_spine", cube(40, 16,
                         -1.0F, 2.0F, 2.05F, 2.0F, 8.0F, 0.5F),
                 ModelTransform.NONE);
-        root.addChild("elite_mantle", cube(40, 16,
+        body.addChild("elite_mantle", cube(40, 16,
                         -3.5F, -0.5F, -2.0F, 7.0F, 2.0F, 4.0F),
                 ModelTransform.NONE);
-        root.addChild("elite_horn_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+        head.addChild("elite_horn_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         new ModelUvBounds.Box(40, 16, -3.0F, -10.0F, -1.0F,
                                 1.0F, 3.0F, 1.0F),
                         new ModelUvBounds.Box(48, 16, -0.5F, -11.0F, -1.0F,

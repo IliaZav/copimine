@@ -68,6 +68,21 @@ class RiftEventEndermanModelTest {
     }
 
     @Test
+    void ritualCasterFocusIsAttachedToTheRenderedBodyWithoutChangingItsPosition() {
+        ModelPart root = RiftEventEndermanModel.getTexturedModelData(
+                RiftEventEndermanModel.Variant.RITUAL_CASTER).createModel();
+        new RiftEventEndermanModel(root, RiftEventEndermanModel.Variant.RITUAL_CASTER);
+
+        ModelPart body = root.getChild("body");
+        ModelPart focus = body.getChild("caster_focus");
+        assertFalse(focus.isEmpty(), "caster focus has textured cuboids");
+        assertEquals(-3.0F, body.pivotY + focus.pivotY, 0.0001F,
+                "moving the focus under the body preserves its original world height");
+        org.junit.jupiter.api.Assertions.assertTrue(focus.visible,
+                "ritual caster focus remains enabled for the caster variant");
+    }
+
+    @Test
     void waveGuardianAndRitualGuardHaveDedicatedModelInstances() {
         RiftEventEndermanModelRenderer renderer = new RiftEventEndermanModelRenderer();
 

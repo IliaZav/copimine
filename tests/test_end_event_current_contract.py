@@ -190,6 +190,25 @@ def test_modpack_manifest_matches_the_staged_archive() -> None:
     assert archive_metadata["sha256"] == hashlib.sha256(archive_bytes).hexdigest()
 
 
+def test_modpack_builder_can_explicitly_sync_the_built_client_without_releasing() -> None:
+    builder = read(ROOT / "scripts" / "thirdparty" / "build_modpack.ps1")
+    assert "[switch]$SyncBuiltClient" in builder
+    assert "Sync-BuiltClientArtifact" in builder
+    assert "CopiMineClient\\build\\libs\\CopiMineClient-0.1.1.jar" in builder
+    assert "thirdparty\\client-mods\\CopiMineClient-0.1.1.jar" in builder
+    assert "Client JAR SHA-256 mismatch after staging synchronization" in builder
+    assert "Write-Utf8NoBomJson -LiteralPath $manifestPath" in builder
+    assert "$thirdpartyManifest.clientArchive.sha256 = $zipSha256" in builder
+
+
+def test_end_rift_gate_can_verify_fresh_prebuilt_artifacts_without_rebuilding() -> None:
+    gate = read(ROOT / "tests" / "RunEndRiftEventChecks.ps1")
+    assert "[switch]$SkipBuilds" in gate
+    assert "Prebuilt artifact presence" in gate
+    assert "Missing required prebuilt artifact" in gate
+    assert "$global:LASTEXITCODE = 0" in gate
+
+
 def test_current_domain_vocabulary_and_graph() -> None:
     objective = DOMAIN / "EndRiftObjective.java"
     phase = DOMAIN / "BossPhase.java"
@@ -199,7 +218,7 @@ def test_current_domain_vocabulary_and_graph() -> None:
     assert_contains(phase, *CURRENT_BOSS_PHASES, "forHealth")
     assert_contains(event_phase, *[
         "WAVE_1", "INTERMISSION_1", "WAVE_2", "INTERMISSION_2", "WAVE_3",
-        "INTERMISSION_3", "WAVE_4", "CORE_RESTORATION", "WAVE_5",
+        "INTERMISSION_3", "WAVE_4", "CORE_RESTORATION", "INTERMISSION_4", "WAVE_5",
         "INTERMISSION_5", "WAVE_6", "INTERMISSION_6", "WAVE_7",
         "PRE_BOSS_COOLDOWN", "BOSS_CINEMATIC", "BOSS_ACTIVE", "BOSS_FINISH",
         "VICTORY_PROCESSING", "UNLOCKED", "RECOVERY_REQUIRED",
@@ -374,6 +393,16 @@ def test_wave6_ritual_sphere_visuals_keep_wave_ownership_and_rehydrate() -> None
     assert "RITUAL_SPHERE_HEIGHT_OFFSET" in source
 
 
+def test_wave6_ritual_sphere_has_distinct_high_contrast_particle_layers() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void renderCurrentRitualSphere")
+    end = source.index("private void renderRitualZone", start)
+    body = source[start:end]
+    assert "Particle.ELECTRIC_SPARK" in body
+    assert "Particle.SOUL_FIRE_FLAME" in body
+    assert body.count("spawnPatternRing(viewer, center") >= 4
+
+
 def test_wave6_legacy_rings_are_not_rendered_or_ticked_live() -> None:
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     tick_start = source.index("private boolean tickCurrentObjective")
@@ -430,7 +459,7 @@ def test_spider_renderer_model_selection_does_not_mutate_shared_model_state() ->
     assert "model = (M)" not in mixin
 
 
-def test_end_rift_uses_the_vanilla_bossbar_until_custom_hud_is_reworked() -> None:
+def test_end_rift_keeps_native_bossbar_and_streams_uuid_bound_health_projection() -> None:
     client = read(CLIENT_JAVA / "CopiMineClient.java")
     mixins = read(CLIENT / "src" / "main" / "resources" / "copimineclient.mixins.json")
     server = read(PLUGIN_SRC / "CopiMineEndEvent.java")
@@ -439,11 +468,12 @@ def test_end_rift_uses_the_vanilla_bossbar_until_custom_hud_is_reworked() -> Non
     update_start = server.index("private void updateCurrentBossBar")
     update_end = server.index("private void finishBossCast", update_start)
     update_body = server[update_start:update_end]
-    assert "sendCurrentBossBarVisualUpdate" not in update_body
+    assert "sendCurrentBossBarVisualUpdate" in update_body
+    assert 'sendClientPacket(player, "END_BOSS_BAR"' in server
     bind_start = server.index("private void bindBossClient")
     bind_end = server.index("private void sendBossPhaseVisualUpdate", bind_start)
     bind_body = server[bind_start:bind_end]
-    assert "sendBossBarVisualUpdate" not in bind_body
+    assert "sendCurrentBossBarVisualUpdate" in bind_body
 
 
 def test_bound_guardian_does_not_render_the_vanilla_enderman_eyes_layer() -> None:
@@ -486,6 +516,207 @@ def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() ->
     assert body.index("if (!ensureRealitySplitChamberAssignment())") < body.index(
         'clearRealitySplitBarriers("wave7-rebuild")'
     )
+
+
+def test_wave7_visible_wall_has_one_display_for_each_collision_level() -> None:
+    """A stretched level-one display left visible gaps above the Core."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void spawnRealitySplitBarriers")
+    end = source.index("private boolean ensureRealitySplitChamberAssignment", start)
+    body = source[start:end]
+
+    assert "for (RealitySplitBarrierPolicy.Cell cell : visualCells)" in body
+    assert "visualColumns" in body
+    assert "floorY + cell.level()" in body
+    assert "new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,"
+    assert "RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,\n                                RealitySplitBarrierPolicy.VISUAL_CELL_SCALE" in body
+
+
+def test_wave7_final_seal_uses_the_core_top_as_the_boss_anchor() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    assert "private Location finalSealCoreAnchorLocation()" in source
+    anchor_start = source.index("private Location finalSealCoreAnchorLocation()")
+    anchor_end = source.index("private int combatLevelY()", anchor_start)
+    anchor = source[anchor_start:anchor_end]
+    assert "coreBlockTopLocation()" in anchor
+
+    pin_start = source.index("private boolean pinBossToFinalSealCore")
+    pin_end = source.index("private void updateBossHitbox", pin_start)
+    assert "finalSealCoreAnchorLocation()" in source[pin_start:pin_end]
+    assert "BOSS_LAST_SEAL_CORE_PIN_FAILED" in source[pin_start:pin_end]
+
+
+def test_wave7_final_seal_rebuilds_and_preserves_the_wall_when_boss_is_pinned() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    pin_start = source.index("private boolean pinBossToFinalSealCore")
+    pin_end = source.index("private void updateBossHitbox", pin_start)
+    pin = source[pin_start:pin_end]
+    assert "ensureFinalSealBarriersIntact()" in pin
+
+    cleanup_start = source.index("private void clearBossOnly")
+    cleanup_end = source.index("private void tickBoss", cleanup_start)
+    cleanup = source[cleanup_start:cleanup_end]
+    assert "if (!finalSealBarrierContext())" in cleanup
+    assert 'releaseFinalSealBarriers("boss-cleanup")' in cleanup
+
+    assert "private boolean ensureFinalSealBarriersIntact()" in source
+    assert "END_RIFT_FINAL_SEAL_BARRIERS_REBUILT" in source
+
+
+def test_wave6_casters_channel_before_prisoner_capture_with_layered_visuals() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    tick_start = source.index("private void tickCurrentRitualSphereObjective")
+    tick_end = source.index("/** Capture the first eligible participant", tick_start)
+    tick = source[tick_start:tick_end]
+    assert "renderRitualSphereChanneling(now);" in tick
+
+    render_start = source.index("private void renderRitualSphereChanneling")
+    render_end = source.index("private void attemptRitualPrisonerCapture", render_start)
+    render = source[render_start:render_end]
+    assert "castRitualSpherePulse" in render
+    assert "Particle.DRAGON_BREATH" in render
+    assert "Particle.REVERSE_PORTAL" in render
+    assert "Particle.END_ROD" in render
+    assert "spawnPatternRing" in render
+
+
+def test_temporary_tentacle_has_deterministic_ring_fallback() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private Location resolveTemporaryTentacleLocation")
+    end = source.index("private ItemDisplay spawnTentacle", start)
+    body = source[start:end]
+    assert "resolveTentacleRingFallback" in body
+    assert "TentacleGuardianLayoutPolicy.temporaryFallbackOffset" in source
+    assert "TentacleGuardianLayoutPolicy.permanentOffset" in source
+    assert "realitySplitBarrierCells" in body
+
+
+def test_wave7_final_seal_suspends_vanilla_enderman_teleport_ai() -> None:
+    """The plugin tick must own the boss position while it seals the Core."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    pin_start = source.index("private boolean pinBossToFinalSealCore")
+    pin_end = source.index("private void updateBossHitbox", pin_start)
+    pin = source[pin_start:pin_end]
+    assert "mob.setAI(false)" in pin
+    assert "mob.setAware(false)" in pin
+    assert "mob.setTarget(null)" in pin
+
+    tick_start = source.index("private void tickCurrentBoss")
+    tick_end = source.index("private boolean pinBossToFinalSealCore", tick_start)
+    tick = source[tick_start:tick_end]
+    assert "if (!finalSealPinned) {\n            enforceCombatLeash(boss" in tick
+
+    live_probe = read(ROOT / "tests" / "RunEndRiftBossHitboxLive.ps1")
+    assert "Get-CoreTopPosition" in live_probe
+    assert "LIVE_BOSS_LAST_SEAL_CORE_PIN_PASS" in live_probe
+    assert "coreDistance -gt 0.15D" in live_probe
+
+
+def test_tentacle_hitbox_covers_the_full_visible_rig() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    config = read(PLUGIN / "config.yml")
+    assert "hitbox-height: 6.25" in config
+    spawn_start = source.index("private ItemDisplay spawnTentacle")
+    spawn_end = source.index("private void updateTentacle", spawn_start)
+    spawn = source[spawn_start:spawn_end]
+    assert "location.getWorld().spawn(location.clone(), Giant.class" in spawn
+    assert "entity.setAI(false);" in spawn
+    assert "entity.setInvisible(true);" in spawn
+    assert "Attribute.GENERIC_SCALE" in spawn
+    assert "scale.setBaseValue(tentacleCarrierScale());" in spawn
+    assert "tentacleHitboxesByDisplay.put(display.getUniqueId(), hitbox.getUniqueId());" in spawn
+    assert "tentacleDisplaysByHitbox.put(hitbox.getUniqueId(), display.getUniqueId());" in spawn
+    size_start = source.index("private double tentacleHitboxHeight()")
+    size_end = source.index("private boolean tentacleGuardianShielded", size_start)
+    assert "DEFAULT_HITBOX_HEIGHT" in source[size_start:size_end]
+    carrier_scale_start = source.index("private double tentacleCarrierScale()")
+    carrier_scale_end = source.index("private ItemDisplay spawnTentacle", carrier_scale_start)
+    carrier_scale = source[carrier_scale_start:carrier_scale_end]
+    assert "TENTACLE_DISPLAY_HEIGHT / 12.0D" in carrier_scale
+    assert "TENTACLE_DISPLAY_WIDTH / 3.6D" in carrier_scale
+    assert "* 1.02D" in carrier_scale
+
+
+def test_temporary_tentacle_spawn_retries_from_a_safe_nearby_location() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    spawn_start = source.index("private ItemDisplay spawnTentacle")
+    spawn_end = source.index("private void updateTentacle", spawn_start)
+    spawn = source[spawn_start:spawn_end]
+    assert "resolveTemporaryTentacleLocation" in spawn
+
+    tick_start = source.index("private void tickCurrentTentacles")
+    tick_end = source.index("private void ensurePermanentTentacles", tick_start)
+    tick = source[tick_start:tick_end]
+    assert "ItemDisplay temporarySpawned" in tick
+    assert "spawned == 0 ? 10L : TENTACLE_TEMPORARY_INTERVAL_TICKS" in tick
+    assert "RIFT_TENTACLE_CAST_RETRY" in tick
+
+    assert "TentacleAnimationPolicy.State.TELEGRAPH_GRAB" in spawn
+    lifecycle_start = source.index("private void tickTentacle")
+    lifecycle_end = source.index("private Player playerForTentacle", lifecycle_start)
+    lifecycle = source[lifecycle_start:lifecycle_end]
+    assert "tentacleThrowLaunches.put" in lifecycle
+    assert "TentacleThrowPolicy.launch" in lifecycle
+
+    release_start = source.index("private void releaseTentaclePlayer")
+    release_end = source.index("private void setTentacleState", release_start)
+    release = source[release_start:release_end]
+    assert "tentacleThrowLaunches.remove" in release
+    assert "tentacleThrowLandingIsSafe" in release
+    assert "target.setVelocity(new Vector(launch.x(), launch.y(), launch.z()))" in release
+
+
+def test_local_visual_harness_uses_an_arena_player_when_frozen_roster_is_offline() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private boolean isActiveBossParticipant")
+    end = source.index("private void commitOfficialBossDefeat", start)
+    body = source[start:end]
+    assert "localOfflineRosterHarnessFallback(player)" in body
+    helper_start = source.index("private boolean localOfflineRosterHarnessFallback")
+    helper_end = source.index("private void commitOfficialBossDefeat", helper_start)
+    helper = source[helper_start:helper_end]
+    assert '"local".equalsIgnoreCase(config.environment())' in helper
+    assert "Bukkit.getOnlinePlayers().stream()" in helper
+    assert "isCombatTarget(player)" in helper
+
+
+def test_boss_spell_command_exposes_fireball() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    command_start = source.index('case "spell" ->')
+    command_end = source.index("private void handleClient", command_start)
+    command = source[command_start:command_end]
+    assert '"boss_fireball"' in command
+    assert 'case "boss_fireball" -> EndRiftAiPolicy.BossSpell.BOSS_FIREBALL' in command
+    assert "boss_fireball" in read(ROOT / "docs" / "END_RIFT_EVENT_GUIDE_RU.md")
+
+
+def test_forced_boss_spell_replaces_an_active_automatic_cast() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    cast_start = source.index("private boolean castCurrentBossSpell(LivingEntity boss, EndRiftAiPolicy.BossSpell spell,")
+    cast_end = source.index("private Player currentBrainTarget", cast_start)
+    cast = source[cast_start:cast_end]
+    assert "if (forced && bossAbilityState != BossAbilityState.NONE)" in cast
+    assert "cancelBossCastTask();" in cast
+    assert 'releaseBossHazardReservation("forced-spell-replaced")' in cast
+
+    telegraph_start = source.index("private boolean telegraphBossSpell")
+    telegraph_end = source.index("private int spellTelegraphTicks", telegraph_start)
+    telegraph = source[telegraph_start:telegraph_end]
+    assert "bossCastTask = holder[0];" in telegraph
+
+
+def test_boss_spell_flight_rejection_releases_the_reservation() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    flight_start = source.index("private boolean launchSpellFlight")
+    flight_end = source.index("/**", flight_start + 20)
+    flight = source[flight_start:flight_end]
+    assert "return false;" in flight
+    assert "BOSS_SPELL_FLIGHT_REJECTED" in flight
+    execute_start = source.index("private void executeBossSpell")
+    execute_end = source.index("private void voidBlast", execute_start)
+    execute = source[execute_start:execute_end]
+    assert "if (!launchSpellFlight(" in execute
+    assert "releaseBossHazardReservation(\"cast-flight-rejected\")" in execute
 
 
 def test_wave7_player_containment_covers_move_watchdog_join_and_respawn() -> None:
@@ -579,6 +810,8 @@ def test_client_uses_one_current_phase_and_animation_contract() -> None:
     state = CLIENT_JAVA / "EndEventClientState.java"
     renderer = CLIENT_JAVA / "RiftGuardianModelRenderer.java"
     model = CLIENT_JAVA / "RiftGuardianModel.java"
+    direct_renderer = CLIENT_JAVA / "ChameleonGuardianRenderer.java"
+    direct_geometry = CLIENT_JAVA / "ChameleonGuardianGeometry.java"
     animation_catalog = CLIENT_JAVA / "BossAnimationId.java"
     animator = CLIENT_JAVA / "EndRiftTentacleAnimator.java"
     state_text = read(state)
@@ -587,8 +820,10 @@ def test_client_uses_one_current_phase_and_animation_contract() -> None:
     assert_contains(renderer, *CURRENT_BOSS_PHASES, "keeping an explicit UNKNOWN pose")
     assert_contains(animation_catalog, "Running2", "Swipe2", "Hurt2", "Dying2",
                     "udar_iz_grudi", "udar_po_zemle2", "PHASE_TRANSITION")
-    assert_contains(model, "FINAL_STRIKE", "LAST_SEAL", "PHASE_SHIFT", "MELEE_SWIPE",
-                    "SPELL_RIFT_OBELISKS", "GROUND_SLAM")
+    assert_contains(model, "ChameleonGuardianRenderer", "UserEndBossAnimationPlayer.sample",
+                    "usesVanillaCuboidGuardianMesh")
+    assert_contains(direct_renderer, "emitAll", "faces(pose)", "texture")
+    assert_contains(direct_geometry, "GuardianPose", "absolute", "toTargetPoint")
     assert_contains(animator, "SHIELD_CHANNEL", "GRAB_SUCCESS", "HOLD", "THROW", "SPAWN_UNDER_PLAYER")
     assert '"HUNTER"' not in state_text
     assert '"DISTORTION"' not in state_text
@@ -613,14 +848,20 @@ def test_client_asset_dimensions_and_event_visuals() -> None:
         "end_event_rift_obelisk_damaged_hd.png",
         "end_event_rift_obelisk_critical_hd.png",
         "end_rift_tentacle_hd.png",
+        "end_rift_guardian_shield_hd.png",
     ]
     for name in required:
         path = entity / name
         assert path.is_file(), name
         width, height = png_size(path)
-        assert width >= 128 and height >= 128, f"{name}: {width}x{height}"
+        if name == "end_rift_tentacle_hd.png":
+            assert (width, height) == (64, 64), (
+                "the supplied Kagune texture must keep its original dimensions"
+            )
+        else:
+            assert width >= 128 and height >= 128, f"{name}: {width}x{height}"
     tentacle_width, tentacle_height = png_size(entity / "end_rift_tentacle_hd.png")
-    assert (tentacle_width, tentacle_height) == (512, 512)
+    assert (tentacle_width, tentacle_height) == (64, 64)
     for name in ("end_event_rift_fireball.png", "end_event_rift_obelisk_full.png",
                  "end_event_rift_obelisk_damaged.png", "end_event_rift_obelisk_critical.png"):
         assert (entity / name).is_file(), name
@@ -637,6 +878,7 @@ def test_client_asset_dimensions_and_event_visuals() -> None:
     assert "tentacleTargetForEntity" in state_text
     assert "targetYaw" in read(CLIENT_JAVA / "EndRiftTentacleRenderer.java")
     assert "targetSuffix" in read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    assert "END_RIFT_GUARDIAN_SHIELD_V1" in read(CLIENT_JAVA / "EndEventTextureCatalog.java")
 
 
 def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
@@ -662,18 +904,8 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
     mapping = mapping_match.group("body")
     for name in (
         "end_rift_user_enderman.png",
-        "end_rift_elite.png",
         "end_rift_user_spider.png",
-        "end_rift_wave_guardian_enderman.png",
-        "end_rift_skeleton.png",
-        "end_rift_elite_skeleton.png",
-        "end_rift_wave_guardian_skeleton.png",
-        "end_rift_ritual_guard_enderman.png",
-        "end_rift_ritual_guard_skeleton.png",
-        "end_rift_elite_spider.png",
-        "end_rift_wave_guardian_spider.png",
-        "end_rift_ritual_guard_spider.png",
-        "end_rift_user_enderman.png",
+        "end_rift_user_skeleton.png",
     ):
         assert name in mapping, name
     assert "end_rift_user_boss.png" in root
@@ -761,6 +993,7 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert png_size(entity / "end_rift_user_boss.png") == (128, 128)
     assert png_size(entity / "end_rift_user_enderman.png") == (64, 32)
     assert png_size(entity / "end_rift_user_spider.png") == (64, 32)
+    assert png_size(entity / "end_rift_user_skeleton.png") == (64, 32)
 
     animation_dir = CLIENT_ASSETS / "models" / "entity" / "end_rift_guardian" / "animations"
     for name in ("idle.json", "running.json", "swipe.json", "hurt.json", "dying.json",
@@ -774,10 +1007,10 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     renderer = read(CLIENT_JAVA / "RiftGuardianModelRenderer.java")
     catalog = read(CLIENT_JAVA / "EndEventTextureCatalog.java")
     state = read(CLIENT_JAVA / "EndEventClientState.java")
-    assert "applyExactFaceUv" in model
-    assert "ModelPart.Quad" in model
-    assert '"body".equals(sourceName)' in model
-    assert "UserEndBossAnimationPlayer.apply" in read(CLIENT_JAVA / "RiftGuardianModel.java")
+    assert "ChameleonGuardianGeometry" in model
+    assert "BedrockAssetValidator.validateGeometry" in model
+    assert "ChameleonGuardianRenderer.render" in read(CLIENT_JAVA / "RiftGuardianModel.java")
+    assert "UserEndBossAnimationPlayer.sample" in read(CLIENT_JAVA / "RiftGuardianModel.java")
     assert "bossAnimationElapsedMillisForEntity" in state
     assert "startedAtMillis" in state
     assert "bossAnimationElapsedTicksForEntity" in read(CLIENT_JAVA / "ClientBridgeProtocol.java")
@@ -788,6 +1021,8 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert "end_rift_user_boss.png" in renderer
     assert "end_rift_user_enderman.png" in catalog
     assert "end_rift_user_spider.png" in catalog
+    assert 'entityTexture("end_rift_user_skeleton.png")' in catalog
+    assert 'entityTexture("end_rift_skeleton.png")' not in catalog
 
 
 def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
@@ -802,16 +1037,21 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
         "me/copimine/client/RiftSpiderModelRenderer.class",
         "me/copimine/client/RiftEventSkeletonModel.class",
         "me/copimine/client/RiftEventSkeletonModelRenderer.class",
+        "me/copimine/client/EndRiftGuardianShieldModel.class",
+        "me/copimine/client/EndRiftGuardianShieldRenderer.class",
         "me/copimine/client/mixin/LivingEntityRendererMixin.class",
         "assets/copimineclient/models/entity/end_rift_guardian/geometry.json",
         "assets/copimineclient/textures/entity/end_rift_user_boss.png",
         "assets/copimineclient/textures/gui/end_rift_bossbar_frame.png",
         "assets/copimineclient/textures/entity/end_rift_user_enderman.png",
         "assets/copimineclient/textures/entity/end_rift_user_spider.png",
+        "assets/copimineclient/textures/entity/end_rift_user_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_elite.png",
         "assets/copimineclient/textures/entity/end_rift_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_ritual_caster.png",
+        "assets/copimineclient/textures/entity/end_rift_tentacle_hd.png",
+        "assets/copimineclient/textures/entity/end_rift_guardian_shield_hd.png",
         "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_iz_grudi.json",
         "assets/copimineclient/models/entity/end_rift_guardian/animations/udar_po_zemle.animation.json",
     }
@@ -846,17 +1086,23 @@ def test_tentacle_rig_asset_contract() -> None:
     model_path = PACK_ASSETS / "models" / "item" / "end_event_rift_tentacle.json"
     model = json.loads(read(model_path))
     rig = model["copimine_rig"]
-    assert rig["texture_size"] == [512, 512]
-    assert rig["forward_axis"] == "+Z"
-    assert rig["grab_socket"]["parent"] == "tip"
+    assert rig["texture_size"] == [8, 8]
+    assert rig["forward_axis"] == "+Y"
+    assert rig["grab_socket"]["parent"] == "3layer2"
     assert rig["grab_socket"]["geometry"] is False
-    assert len(rig["bones"]) >= 12
-    master = PACK / "art" / "end_rift_tentacle_atlas_master.png"
-    assert master.is_file()
-    assert png_size(master) == (1254, 1254)
-    generator = read(PACK / "generate_end_rift_tentacle_assets.py")
-    assert "MASTER_TEXTURE" in generator
-    assert "Image.Resampling.LANCZOS" in generator
+    expected_bones = ["1layer", "1layer2", "2layer", "2layer2", "3layer", "3layer2"]
+    assert rig["bones"] == expected_bones
+    assert len(model["elements"]) == 6
+    imported_path = (
+        ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
+        / "copimineclient" / "geometry" / "end_rift_tentacle.json"
+    )
+    assert "models" not in imported_path.parts
+    imported = json.loads(read(imported_path))
+    assert imported["format"] == "copimine:kagune-import-v1"
+    assert len(imported["animations"]) == 12
+    assert len(imported["elements"]) == 6
+    assert [group["name"] for group in imported["groups"]] == expected_bones
 
 
 def test_resource_pack_sound_catalog_is_current_and_complete() -> None:
@@ -961,6 +1207,8 @@ def test_spell_matrix_probe_keeps_bot_alive_for_full_matrix() -> None:
         r"\[ValidateRange\(240,\s*600\)\][\s\S]*?\[int\]\$BotDurationSeconds\s*=\s*300",
         probe,
     ), "spell matrix bot must outlive music, spell, and final-strike probes"
+    assert "Spell = 'boss_fireball'" in probe
+    assert "BOSS_FIREBALL_LAUNCH.*blocks=false.*fire=false" in probe
 
 
 def test_multiplayer_wrappers_allow_the_full_scaled_boss_run() -> None:
@@ -1016,6 +1264,24 @@ def test_multiplayer_wave1_delivery_moves_the_authoritative_picked_holder() -> N
     assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in body, (
         "delivery probe must teleport the player who actually picked up the charge, "
         "not whichever roster slot was scheduled for that delivery"
+    )
+
+
+def test_wave1_charge_requires_explicit_right_click_pickup_and_core_delivery() -> None:
+    source = read(
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+    )
+    assert "PlayerInteractEntityEvent" in source
+    assert "onCarrierChargeInteract" in source
+    assert "onCarrierChargeCoreDelivery" in source
+    tick_start = source.index("private void tickCurrentCarrierObjective")
+    tick_end = source.index("private void syncCurrentCarrierFields", tick_start)
+    tick_body = source[tick_start:tick_end]
+    assert "RiftCarrierPolicy.pickUp" not in tick_body, (
+        "walking near a dropped charge must not silently pick it up"
+    )
+    assert "RiftCarrierPolicy.deliver" not in tick_body, (
+        "walking near the Core must not silently load a carried charge"
     )
 
 
@@ -1243,21 +1509,20 @@ def test_official_probe_carries_wave_completion_cursor_into_transition() -> None
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(r"function Wait-Transition[\s\S]*?\[int64\]\$AfterOffset", probe)
     assert re.search(r"function Wait-WaveComplete[\s\S]*?return \$offset", probe)
-    for wave in (1, 2, 3, 5, 6):
+    for wave in (1, 2, 3, 4, 5, 6):
         assert re.search(
             rf"Wait-Transition\s+-CompletedWave\s+{wave}\s+-Pads\s+\$pads\s+-AfterOffset",
             probe,
         ), f"wave {wave} transition must reuse its completion cursor"
     assert re.search(
         r"function Wait-CoreRestoration[\s\S]*?END_RIFT_CORE_RESTORATION_STARTED"
-        r"[\s\S]*?END_RIFT_CORE_RESTORATION_COMPLETED"
-        r"[\s\S]*?END_RIFT_WAVE_STARTED.*wave=5",
+        r"[\s\S]*?END_RIFT_CORE_RESTORATION_COMPLETED.*INTERMISSION_4.*hold_ms=10000",
         probe,
-    ), "wave 4 must pass through the explicit core-restoration stage"
-    assert not re.search(
-        r"Wait-Transition\s+-CompletedWave\s+4\s+-Pads",
+    ), "wave 4 must pass through restoration before its required rune hold"
+    assert re.search(
+        r"Wait-Transition\s+-CompletedWave\s+4\s+-Pads\s+\$pads",
         probe,
-    ), "wave 4 must not use an intermission-rune transition"
+    ), "wave 4 must use the same 10-second transition-rune hold as other waves"
     assert re.search(r"Write-Evidence .*CURRENT_TRANSITION_PASS.*\| Out-Null[\s\S]*?return \[int64\]\$offset", probe)
 
 
@@ -1901,3 +2166,76 @@ def test_boss_shield_live_probe_covers_blocked_vulnerable_and_restored_states() 
     ), "restored shield probe must compare another real-health checkpoint"
     assert "BOSS_DAMAGE_ACCEPTED" in probe
     assert "cmend boss kill cleanup" in probe
+
+
+def test_local_texture_showroom_exposes_all_mob_variants_without_starting_combat() -> None:
+    """The operator needs one static local scene, not seven destructive wave probes."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+
+    assert '"showroom".equalsIgnoreCase(args[1])' in source
+    assert "spawnLocalTextureShowroom(sender);" in source
+
+    showroom_start = source.index("private void spawnLocalTextureShowroom(CommandSender sender)")
+    showroom_end = source.index("private void spawnShowroomMobVariants", showroom_start)
+    showroom = source[showroom_start:showroom_end]
+    for required in (
+        '"local".equalsIgnoreCase(config.environment())',
+        "clearBossOnly();",
+        "clearWaveEntities();",
+        "testCombatAiMode = true;",
+        "testBossMovementFrozen = true;",
+        "localTextureShowcase = true;",
+        "configureBoss(boss, true)",
+        "BossPhase.LAST_SEAL",
+        "spawnShowroomMobVariants(world, core);",
+    ):
+        assert required in showroom, f"showroom must include {required!r}"
+
+    variants_start = source.index("private void spawnShowroomMobVariants")
+    variants_end = source.index("private void freezeShowroomEntity", variants_start)
+    variants = source[variants_start:variants_end]
+    for client_variant in (
+        "EVENT_KIND_WAVE_MOB",
+        "EVENT_KIND_ELITE",
+        "EVENT_KIND_WAVE_GUARDIAN",
+        '"CASTER"',
+        '"GUARD"',
+        "EntityType.SPIDER",
+        "spawnSkeleton(world, core",
+    ):
+        assert client_variant in variants, f"showroom must spawn {client_variant}"
+    assert "freezeShowroomEntity" in variants
+
+    freeze_start = source.index("private void freezeShowroomEntity")
+    freeze_end = source.index("private void spawnOfficialBoss", freeze_start)
+    freeze = source[freeze_start:freeze_end]
+    assert "mob.setAI(false);" in freeze
+    assert "mob.setAware(false);" in freeze
+    assert "living.setInvulnerable(true);" in freeze
+
+    boss_tick_start = source.index("private void tickCurrentBoss(LivingEntity boss)")
+    boss_tick_end = source.index("private boolean pinBossToFinalSealCore", boss_tick_start)
+    boss_tick = source[boss_tick_start:boss_tick_end]
+    assert "if (localTextureShowcase)" in boss_tick
+    assert "tickCurrentTentacles(boss);" in boss_tick
+
+
+def test_guardian_shield_orbit_uses_the_internal_teleport_permit() -> None:
+    """The orbit is an event-owned animation and must not trip its own anti-escape guard."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private void updateGuardianShieldDisplay")
+    end = source.index("private void removeGuardianShieldDisplay", start)
+    update = source[start:end]
+
+    assert "teleportCombatEntity(display," in update
+    assert "display.teleport(" not in update
+
+
+def test_guardian_shield_orbit_interpolates_server_teleports() -> None:
+    """Transformation interpolation does not smooth Display entity teleport packets."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private ItemDisplay spawnGuardianShieldDisplay")
+    end = source.index("private void removeGuardianShieldDisplay", start)
+    shield = source[start:end]
+
+    assert "entity.setTeleportDuration(2);" in shield

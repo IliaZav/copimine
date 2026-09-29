@@ -1,21 +1,31 @@
 """Create the hand-authored pixel atlases used by the local End Rift client mod.
 
-These are native Minecraft UV sheets, not screenshots or concept thumbnails.  The
-script intentionally keeps every sheet opaque at its declared atlas size so the
-vanilla model UVs receive a readable surface on every face.  Palette, cracks and
-sigils are kept different per entity so a wave mob cannot be mistaken for the
-elite, guardian, spider, or skeleton.
+These are native Minecraft UV sheets, not screenshots or concept thumbnails.
+Mob sheets stay opaque so vanilla model UVs receive a readable surface on every
+face.  The dedicated shield sheet is deliberately translucent and silhouette-
+masked because its client renderer uses a shaped 3D plate instead of a square
+billboard.  Palette, cracks and sigils stay distinct between entity roles.
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from import_kagune_model import import_kagune_assets
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "main" / "resources" / "assets" / "copimineclient" / "textures" / "entity"
+WORKSPACE = ROOT.parent
+SERVER_ITEM_OUT = WORKSPACE / "resourcepacks" / "src" / "assets" / "copimine" / "textures" / "item"
+SUPPLIED_SKINS = ROOT / "src" / "main" / "asset-source" / "end-event-mobs"
+SUPPLIED_SKIN_SHA256 = {
+    "enderman-1.png": "a9a154f232919627451431e3f3874c9e850f23e531eae2cfe2a4a9cc16edf447",
+    "spider.png": "19c46ff4aa829e7101b25a50a55090cd1d8145c2f83b95d64c13a20f6b5c9abf",
+}
 
 
 def rgba(color: tuple[int, int, int]) -> tuple[int, int, int, int]:
@@ -71,6 +81,19 @@ def enderman_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
                        (min(start + 5, 63), 29)), mid)
     for x in (3, 12, 51):
         draw.rectangle((x, 27, min(x + 1, 63), 28), fill=rgba(accent))
+
+    # The actual 8x8x8 head cuboid (UV 0,0) samples its FRONT at x=8..15,
+    # y=8..15. The old eye marks above y=8 decorated the top of the head.
+    draw.rectangle((9, 11, 10, 12), fill=rgba(eye))
+    draw.rectangle((13, 11, 14, 12), fill=rgba(eye))
+    draw.line(((8, 9), (11, 8), (14, 9)), fill=rgba(mid), width=1)
+
+    # Armoured variants cover the vanilla body with body_shell (UV 0,8).
+    # Its FRONT is near x=5..13,y=13..24, while the slim chest_rift overlay
+    # reads x=19..20,y=9..14. Put the rift on those visible faces too.
+    angular(draw, ((8, 17), (9, 19), (8, 21)), accent)
+    draw.point((9, 19), fill=rgba(eye))
+    draw.rectangle((19, 10, 20, 12), fill=rgba(accent))
 
     # jaw_patch: dedicated lower island for the jaw plate at UV (50, 30). Keeping this
     # patch out of the horn island prevents the face from borrowing horn
@@ -158,6 +181,96 @@ def rift_guardian_phase_sheet(name: str, palette: list[tuple[int, int, int]], se
         OUT / name, format="PNG", optimize=False)
 
 
+def _heavy_plate(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int],
+                 index: int, narrow: bool = False) -> None:
+    """Paint one UV island as a black-violet chitin segment, never cyan glass."""
+    left, top, right, bottom = box
+    abyss = (9, 2, 17)
+    shell = (80, 7, 126)
+    violet = (96, 8, 150)
+    crack = (163, 20, 218)
+    rift = (228, 60, 255)
+    draw.rectangle(box, fill=rgba(shell), outline=rgba(abyss), width=4)
+    draw.rectangle((left, top, right, min(bottom, top + 9)), fill=rgba(abyss))
+    for row in range(top + 18, bottom - 5, 22):
+        draw.rectangle((left + 10, row, right - 12, min(bottom - 4, row + 5)),
+                       fill=rgba((32, 4, 58)))
+    draw.line((left + 5, top + 11, left + 5, bottom - 4), fill=rgba(violet), width=3)
+    draw.line((right - 5, top + 13, right - 5, bottom - 5), fill=rgba((50, 7, 80)), width=3)
+    width = max(1, right - left)
+    mid = left + width // 2
+    amplitude = max(3, width // (5 if narrow else 4))
+    points = [(mid, top + 12)]
+    for offset in range(19, max(20, bottom - top - 4), 15):
+        side = -amplitude if ((offset // 15) + index) % 2 == 0 else amplitude
+        points.append((mid + side, min(bottom - 3, top + offset)))
+    draw.line(points, fill=rgba(crack), width=3, joint="curve")
+    for point_index, (x, y) in enumerate(points[1::2]):
+        if point_index % 2 == index % 2:
+            draw.rectangle((x - 2, y - 2, x + 2, y + 2), fill=rgba(rift))
+
+
+def heavy_tentacle_sheet() -> None:
+    """Restore the exact texture, source UVs, mesh and clips from Kagune."""
+    import_kagune_assets()
+
+
+def guardian_shield_sheet() -> None:
+    """One translucent, shaped Rift shield atlas for the client shield mesh."""
+    image = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    outline = [(136, 20), (376, 20), (416, 79), (416, 256), (356, 413),
+               (256, 492), (156, 413), (96, 256), (96, 79)]
+    inset = [(148, 38), (364, 38), (398, 91), (398, 251), (345, 394),
+             (256, 470), (167, 394), (114, 251), (114, 91)]
+    face = [(164, 54), (348, 54), (379, 99), (379, 246), (332, 376),
+            (256, 450), (180, 376), (133, 246), (133, 99)]
+
+    # Layered alpha keeps each plate readable without becoming a black square.
+    draw.polygon(outline, fill=(17, 8, 52, 220))
+    draw.line(outline + [outline[0]], fill=(78, 42, 168, 224), width=5, joint="curve")
+    draw.polygon(inset, fill=(31, 12, 78, 190))
+    draw.line(inset + [inset[0]], fill=(136, 78, 220, 226), width=4, joint="curve")
+    draw.polygon(face, fill=(76, 35, 154, 158))
+
+    # A single broken-rune fracture gives the plate one clear front-facing mark.
+    fracture = [(250, 78), (283, 137), (244, 194), (270, 255),
+                (230, 319), (265, 373), (247, 438)]
+    draw.line(fracture, fill=(148, 74, 240, 232), width=9, joint="curve")
+    draw.line(fracture, fill=(205, 166, 255, 226), width=3, joint="curve")
+
+    # Tiny cyan-blue glints are secondary to the violet silhouette and crack.
+    for x, y in ((283, 137), (270, 255), (265, 373)):
+        draw.polygon([(x, y - 6), (x + 4, y), (x, y + 6), (x - 4, y)],
+                     fill=(79, 203, 255, 220))
+        draw.point((x, y), fill=(210, 250, 255, 238))
+    draw.line([(116, 95), (127, 107), (127, 137)], fill=(75, 93, 198, 205), width=3)
+    draw.line([(396, 95), (385, 107), (385, 137)], fill=(75, 93, 198, 205), width=3)
+    image.save(OUT / "end_rift_guardian_shield_hd.png", format="PNG", optimize=False)
+    SERVER_ITEM_OUT.mkdir(parents=True, exist_ok=True)
+    (SERVER_ITEM_OUT / "end_event_rift_guardian_shield_hd.png").write_bytes(
+        (OUT / "end_rift_guardian_shield_hd.png").read_bytes())
+
+
+def copy_supplied_user_skins() -> None:
+    """Restore the supplied Enderman and Spider skins byte-for-byte."""
+    for source_name, target_name in (
+        ("enderman-1.png", "end_rift_user_enderman.png"),
+        ("spider.png", "end_rift_user_spider.png"),
+    ):
+        source = SUPPLIED_SKINS / source_name
+        if not source.is_file():
+            raise FileNotFoundError(f"missing supplied End Rift skin: {source}")
+        source_bytes = source.read_bytes()
+        actual_hash = hashlib.sha256(source_bytes).hexdigest()
+        expected_hash = SUPPLIED_SKIN_SHA256[source_name]
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"supplied End Rift skin hash mismatch for {source_name}: {actual_hash}"
+            )
+        (OUT / target_name).write_bytes(source_bytes)
+
+
 def spider_sheet(name: str = "end_rift_spider.png", role: str = "ordinary") -> None:
     """Paint a clean 64x32 spider atlas for one gameplay role.
 
@@ -231,8 +344,7 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     draw.rectangle((5, 7, 11, 8), fill=rgba(bone_shadow))
     draw.point((7, 7), fill=rgba(bone_light))
 
-    # Torso: ribs are short bone strokes around one chest rift, not a tiled
-    # rectangle. The same rhythm survives on the front and side faces.
+    # Special-role skeletons retain their existing torso atlas location.
     draw.rectangle((16, 1, 27, 15), fill=rgba(shell))
     draw.rectangle((19, 2, 24, 14), fill=rgba(mid))
     for y, span in ((4, 2), (7, 3), (10, 2), (13, 1)):
@@ -273,6 +385,14 @@ def skeleton_sheet(name: str, palette: list[tuple[int, int, int]], seed: int,
     draw.rectangle((40, 16, 59, 23), fill=rgba(shell))
     angular(draw, ((41, 17), (45, 19), (49, 17), (54, 21), (58, 18)), bone)
     draw.rectangle((47, 20, 52, 22), fill=rgba(bone_shadow))
+
+    # RiftEventSkeletonModel's 7x7x7 skull samples its FRONT at x=7..13,
+    # y=7..13. The raised eye parts use UV 14,0. The old eye pixels at y=4
+    # landed on the skull top and left its face empty in the game.
+    draw.rectangle((8, 10, 9, 11), fill=rgba(eye))
+    draw.rectangle((12, 10, 13, 11), fill=rgba(eye))
+    draw.line(((8, 13), (12, 13)), fill=rgba(bone_shadow), width=1)
+    draw.rectangle((15, 1, 17, 2), fill=rgba(eye))
     image.save(OUT / name, format="PNG", optimize=False)
 
 
@@ -308,6 +428,9 @@ def ritual_caster_sheet() -> None:
         angular(draw, ((start + 2, 19), (start + 5, 23), (start + 3, 28)), mid)
     draw.rectangle((29, 18, 34, 23), fill=rgba(shell), outline=rgba(violet))
     draw.rectangle((31, 19, 32, 22), fill=rgba(rift))
+    draw.rectangle((9, 11, 10, 12), fill=rgba(rift))
+    draw.rectangle((13, 11, 14, 12), fill=rgba(rift))
+    draw.rectangle((19, 10, 20, 12), fill=rgba(rift))
     image.save(OUT / "end_rift_ritual_caster.png", format="PNG", optimize=False)
 
 
@@ -493,6 +616,9 @@ def main() -> None:
     spider_sheet("end_rift_elite_spider.png", "elite")
     spider_sheet("end_rift_wave_guardian_spider.png", "wave_guardian")
     spider_sheet("end_rift_ritual_guard_spider.png", "ritual_guard")
+    heavy_tentacle_sheet()
+    guardian_shield_sheet()
+    copy_supplied_user_skins()
     bossbar_frame()
 
 

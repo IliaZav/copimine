@@ -30,7 +30,7 @@ public final class TentacleController {
     public synchronized boolean register(long expectedGeneration, UUID entityId,
                                          boolean temporary, int slot, long startedTick) {
         return register(expectedGeneration, entityId,
-                temporary ? TentacleAnimationPolicy.Kind.UNDER_PLAYER
+                temporary ? TentacleAnimationPolicy.Kind.TEMPORARY
                         : TentacleAnimationPolicy.Kind.PERMANENT,
                 slot, startedTick);
     }
@@ -38,8 +38,16 @@ public final class TentacleController {
     public synchronized boolean register(long expectedGeneration, UUID entityId,
                                          TentacleAnimationPolicy.Kind kind, int slot,
                                          long startedTick) {
+        return register(expectedGeneration, entityId, kind, slot, startedTick,
+                TentacleAnimationPolicy.State.EMERGING);
+    }
+
+    public synchronized boolean register(long expectedGeneration, UUID entityId,
+                                         TentacleAnimationPolicy.Kind kind, int slot,
+                                         long startedTick,
+                                         TentacleAnimationPolicy.State initialState) {
         if (!owns(expectedGeneration) || entityId == null || slot < 0
-                || kind == null || states.containsKey(entityId)) {
+                || kind == null || initialState == null || states.containsKey(entityId)) {
             return false;
         }
         boolean temporary = kind != TentacleAnimationPolicy.Kind.PERMANENT;
@@ -48,7 +56,7 @@ public final class TentacleController {
             return false;
         }
         states.put(entityId, new VisualState(entityId, kind, slot,
-                TentacleAnimationPolicy.State.EMERGING, startedTick, null));
+                TentacleAnimationPolicy.canonical(initialState), startedTick, null));
         return true;
     }
 

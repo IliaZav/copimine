@@ -81,49 +81,19 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
 function Get-RitualScalingProfile {
   param([Parameter(Mandatory = $true)][int]$Participants)
 
-  if ($Participants -le 4) {
-    $controlPairs = if ($Participants -eq 2) { 0 } else { 1 }
-    return [pscustomobject]@{
-      Casters = 4
-      Guards = 12
-      Projectiles = 1
-      Zones = 1
-      ControlPairs = $controlPairs
-    }
-  }
-  if ($Participants -le 8) {
-    return [pscustomobject]@{
-      Casters = 4
-      Guards = 12
-      Projectiles = 2
-      Zones = 1
-      ControlPairs = 1
-    }
-  }
-  if ($Participants -le 12) {
-    return [pscustomobject]@{
-      Casters = 5
-      Guards = 15
-      Projectiles = 3
-      Zones = 2
-      ControlPairs = 2
-    }
-  }
-  if ($Participants -le 16) {
-    return [pscustomobject]@{
-      Casters = 5
-      Guards = 15
-      Projectiles = 4
-      Zones = 2
-      ControlPairs = 2
-    }
-  }
+  $count = [Math]::Max(2, [Math]::Min(20, $Participants))
+  $guards = if ($count -le 4) { 5 } elseif ($count -le 8) { 10 } else { 15 }
+  $projectiles = if ($count -le 2) { 3 } elseif ($count -eq 3) { 4 } `
+    elseif ($count -le 5) { 5 } elseif ($count -eq 6) { 6 } else { 7 }
+  $zones = if ($count -le 8) { 1 } elseif ($count -le 16) { 2 } else { 3 }
+  $cooldown = if ($count -le 4) { 13 } elseif ($count -le 8) { 12 } `
+    elseif ($count -le 12) { 11 } elseif ($count -le 16) { 10 } else { 9 }
   return [pscustomobject]@{
-    Casters = 6
-    Guards = 18
-    Projectiles = 5
-    Zones = 3
-    ControlPairs = 3
+    Casters = 5
+    Guards = $guards
+    Projectiles = $projectiles
+    Zones = $zones
+    MajorCooldownSeconds = $cooldown
   }
 }
 $ritualProfile = Get-RitualScalingProfile -Participants $playerNames.Count
@@ -910,7 +880,7 @@ function Wait-Transition {
   Teleport-PlayersToPads -Pads $Pads
   $next = $CompletedWave + 1
   Wait-Log -AfterOffset $offset -Pattern ('END_RIFT_WAVE_STARTED.*wave=' + $next + '\b') -WaitSeconds 120 -Action { Teleport-PlayersToPads -Pads $Pads } | Out-Null
-  Write-Evidence "CURRENT_TRANSITION_PASS completed_wave=$CompletedWave next_wave=$next pads=$($Pads.Count) hold_ms=5000" | Out-Null
+  Write-Evidence "CURRENT_TRANSITION_PASS completed_wave=$CompletedWave next_wave=$next pads=$($Pads.Count) hold_ms=10000" | Out-Null
   # The next objective's first marker may share the exact tick with
   # END_RIFT_WAVE_STARTED. Preserve the cursor from before the transition.
   return [int64]$offset
@@ -937,17 +907,11 @@ function Wait-WaveComplete {
 }
 
 function Wait-CoreRestoration {
-  param([int64]$AfterOffset, [int[]]$Core)
+  param([int64]$AfterOffset)
   Wait-Log -AfterOffset $AfterOffset -Pattern 'END_RIFT_CORE_RESTORATION_STARTED.*next_wave=5' -WaitSeconds 60 | Out-Null
-  Wait-Log -AfterOffset $AfterOffset -Pattern 'END_RIFT_CORE_RESTORATION_COMPLETED.*next_wave=5' -WaitSeconds 30 | Out-Null
-  Wait-Log -AfterOffset $AfterOffset -Pattern 'END_RIFT_WAVE_STARTED.*wave=5\b' -WaitSeconds 120 -Action {
-    Teleport-PlayersToCombatRing -Core $Core
-    Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
-  } | Out-Null
-  Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
-  Write-Evidence 'CURRENT_CORE_RESTORATION_PASS duration_ms=6000 next_wave=5' | Out-Null
-  # Restoration and Wave 5 start can share the same server tick. Keep the
-  # pre-restoration cursor so the first Black Fog marker cannot be skipped.
+  Wait-Log -AfterOffset $AfterOffset -Pattern 'END_RIFT_CORE_RESTORATION_COMPLETED.*next_phase=INTERMISSION_4.*hold_ms=10000' -WaitSeconds 30 | Out-Null
+  Write-Evidence 'CURRENT_CORE_RESTORATION_PASS duration_ms=6000 next_phase=INTERMISSION_4' | Out-Null
+  # The Wave 4 rune transition is a separate required 10-second hold.
   return [int64]$AfterOffset
 }
 
@@ -1203,7 +1167,9 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=4 objective=OBELISK_ASSAULT obelisks=$obeliskCount"
   if ($StopAfterWave -eq 4) { return }
 
-  $waveFiveStartOffset = Wait-CoreRestoration -AfterOffset $waveFourTransitionOffset -Core $core
+  $waveFourRestorationOffset = Wait-CoreRestoration -AfterOffset $waveFourTransitionOffset
+  $pads = Get-Pads
+  $waveFiveStartOffset = Wait-Transition -CompletedWave 4 -Pads $pads -AfterOffset $waveFourRestorationOffset
   $fogOffset = $waveFiveStartOffset
   for ($cycle = 1; $cycle -le 3; $cycle++) {
     Wait-Log -AfterOffset $fogOffset -Pattern ('END_RIFT_FOG_SAFE_START.*cycle=' + $cycle + '/3') -WaitSeconds 180 -Action {
@@ -1236,8 +1202,7 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
     + '.*guards=' + $ritualProfile.Guards `
     + '.*projectiles=' + $ritualProfile.Projectiles `
     + '.*zones=' + $ritualProfile.Zones `
-    + '.*control_pairs=' + $ritualProfile.ControlPairs `
-    + '.*drain_interval_ms=20000.*drain_hp=2.*health_floor=1.*authority=server'
+    + '.*authority=server'
   $ritualReady = Wait-Log -AfterOffset $ritualOffset `
     -Pattern $ritualPattern `
     -WaitSeconds 180 -Action {
@@ -1250,17 +1215,21 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   $ritualPrisonerName = $playerNames[0]
   Teleport-PlayersToCombatRing -Core $core
   Teleport-Player -Name $ritualPrisonerName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
-  Wait-Log -AfterOffset $ritualOffset -Pattern 'WAVE6_RITUAL_PRISONER_DRAIN.*applied=true.*damage=2(?:\.0+)?' -WaitSeconds 90 -Action {
+  $prisonerCapture = Wait-Log -AfterOffset $ritualOffset `
+    -Pattern 'WAVE6_RITUAL_PRISONER_CAPTURED[^\r\n]*player=[0-9a-fA-F-]{32,36}' -WaitSeconds 90 -Action {
     Teleport-PlayersIfOutsideCombatArea -Core $core
     Teleport-Player -Name $ritualPrisonerName -X ($core[0] + 0.5D) -Y $core[1] -Z ($core[2] + 0.5D)
-  } | Out-Null
+  }
+  if ($prisonerCapture -notmatch 'WAVE6_RITUAL_PRISONER_CAPTURED') {
+    throw 'Wave 6 did not capture the player who entered the Ritual Sphere.'
+  }
   # The Ritual Sphere ready/drain and Wave 6 completion can share a tick.
   # Keep the ritual cursor so the completion marker remains observable.
   $waveSixTransitionOffset = Wait-WaveComplete -Wave 6 -Core $core -Seconds 1200 -AfterOffset $ritualOffset -Action {
     Teleport-PlayersIfOutsideCombatArea -Core $core
     Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange
   }
-  Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=6 objective=RITUAL_SPHERE casters=$($ritualProfile.Casters) guards=$($ritualProfile.Guards) projectiles=$($ritualProfile.Projectiles) zones=$($ritualProfile.Zones) control_pairs=$($ritualProfile.ControlPairs) prisoner_drain=2hp_floor=1"
+  Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=6 objective=RITUAL_SPHERE casters=$($ritualProfile.Casters) guards=$($ritualProfile.Guards) projectiles=$($ritualProfile.Projectiles) zones=$($ritualProfile.Zones) prisoner_capture=true prisoner_drain=disabled"
   if ($StopAfterWave -eq 6) { return }
 
   $pads = Get-Pads
@@ -1280,11 +1249,9 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=7 objective=REALITY_SPLIT chambers=local"
   if ($StopAfterWave -eq 7) { return }
 
-  # The cinematic can be committed on the same tick as the Wave 7 completion.
-  # Reuse the pre-completion cursor so the official probe cannot miss the
-  # beginning of the boss transition.
+  # The 40-second timer and boss gateway share the Wave 7 completion cursor.
   $bossOffset = $waveSevenTransitionOffset
-  Wait-Log -AfterOffset $bossOffset -Pattern 'BOSS_CINEMATIC_STARTED' -WaitSeconds 180 | Out-Null
+  Wait-Log -AfterOffset $bossOffset -Pattern 'END_RIFT_BOSS_GATEWAY_HANDOFF.*elapsed_ms=40000.*duration_ms=40000.*single_fire=true' -WaitSeconds 180 | Out-Null
   Wait-Log -AfterOffset $bossOffset -Pattern 'BOSS_SPAWNED' -WaitSeconds 240 -Action { Teleport-PlayersToCombatRing -Core $core } | Out-Null
   foreach ($stage in @('HUNT', 'RIFT', 'OVERLOAD', 'RAGE', 'LAST_SEAL')) {
     $stageAction = if ($stage -eq 'LAST_SEAL') {

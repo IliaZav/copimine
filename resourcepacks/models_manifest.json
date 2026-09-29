@@ -409,6 +409,13 @@
       "texture": "copimine:item/end_event_portal"
     },
     {
+      "id": "end_event_ritual_sphere",
+      "custom_model_data": 830019,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_ritual_sphere",
+      "texture": "copimine:item/end_event_portal"
+    },
+    {
       "id": "end_event_rift_gate",
       "custom_model_data": 830018,
       "base_material": "paper",
@@ -456,6 +463,13 @@
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_tentacle",
       "texture": "copimine:item/end_event_rift_tentacle_hd"
+    },
+    {
+      "id": "end_event_rift_guardian_shield",
+      "custom_model_data": 830020,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_rift_guardian_shield",
+      "texture": "copimine:item/end_event_rift_guardian_shield_hd"
     }
   ]
 }

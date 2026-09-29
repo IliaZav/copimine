@@ -10,6 +10,8 @@ public final class RealitySplitBarrierPolicyTest {
         check(RealitySplitBarrierPolicy.HEIGHT >= 5
                         && RealitySplitBarrierPolicy.HEIGHT <= 6,
                 "Wave 7 room walls must be roughly five to six blocks high");
+        check(RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT >= 8,
+                "the later boss seal must retain its taller central containment");
         check(RealitySplitBarrierPolicy.MIN_RADIUS <= 1.5D,
                 "Wave 7 walls must close the central Core bypass");
         check(RealitySplitBarrierPolicy.MAX_RADIUS >= 30.0D,
@@ -17,6 +19,32 @@ public final class RealitySplitBarrierPolicyTest {
         check(RealitySplitBarrierPolicy.cells(4).size()
                         <= RealitySplitBarrierPolicy.MAX_CELLS,
                 "four-room separator must remain bounded");
+        check(RealitySplitBarrierPolicy.finalSealCells(4).stream()
+                        .anyMatch(cell -> cell.xOffset() == 0 && cell.zOffset() == 0
+                                && cell.level() == RealitySplitBarrierPolicy.FINAL_SEAL_FIRST_COVERED_LEVEL),
+                "final seal must cover the first block above the boss clearance");
+        check(RealitySplitBarrierPolicy.finalSealCells(4).stream()
+                        .noneMatch(cell -> cell.xOffset() == 0 && cell.zOffset() == 0
+                                && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS),
+                "final seal must leave the Core and boss feet clearance open");
+        check(RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS == 1,
+                "final seal must leave only the Core block below the boss open");
+        check(RealitySplitBarrierPolicy.finalSealCells(4).stream()
+                        .anyMatch(cell -> cell.xOffset() == 0 && cell.zOffset() == 0
+                                && cell.level() == 2),
+                "final seal must cover the first block above the boss standing level");
+        check(RealitySplitBarrierPolicy.finalSealCells(4).stream()
+                        .anyMatch(cell -> cell.xOffset() != 0 && cell.zOffset() != 0
+                                && cell.level() == RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT),
+                "the later boss seal must preserve the full-height radial containment");
+        long perimeterColumns = RealitySplitBarrierPolicy.finalSealCells(4).stream()
+                .filter(cell -> cell.level() == 1)
+                .count();
+        check(RealitySplitBarrierPolicy.finalSealCells(4).size()
+                        == perimeterColumns * RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT
+                                + RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT
+                                - RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS,
+                "final seal core cover must add exactly the clearance-safe central column");
         check(RealitySplitBarrierPolicy.WALL_HALF_WIDTH == 0,
                 "room separator must be one block wide");
         check(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE >= 0.99F,
@@ -28,7 +56,7 @@ public final class RealitySplitBarrierPolicyTest {
                                 * RealitySplitBarrierPolicy.HEIGHT,
                 "room separator must not expand into a multi-block wall");
         check(RealitySplitBarrierPolicy.cells(4).stream()
-                        .allMatch(cell -> cell.level() >= 1
+                .allMatch(cell -> cell.level() >= 1
                                 && cell.level() <= RealitySplitBarrierPolicy.HEIGHT),
                 "wall cells must use the configured height");
         check(RealitySplitBarrierPolicy.cells(4).stream()

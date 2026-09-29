@@ -1,6 +1,8 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.CopiMineClientLogger;
+import me.copimine.client.EndRiftBossWorldScalePolicy;
 import me.copimine.client.EndEventTextureCatalog;
 import me.copimine.client.EndermanRendererSelection;
 import me.copimine.client.RiftEventEndermanModelRenderer;
@@ -26,6 +28,11 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * LivingEntityRenderer owns the shared render method used by the event
@@ -43,6 +50,21 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     @Shadow
     public abstract M getModel();
 
+    /**
+     * Feature renderers (notably the skeleton held-item renderer) obtain the
+     * model through FeatureRendererContext.getModel(), outside the bytecode
+     * covered by the render-field redirect below. Return the same scoped
+     * model there so the bow is attached to the custom articulated hand.
+     */
+    @Inject(method = "getModel", at = @At("HEAD"), cancellable = true)
+    @SuppressWarnings("unchecked")
+    private void copimine$returnScopedEventModel(CallbackInfoReturnable<M> cir) {
+        EntityModel<?> active = copimine$activeModel;
+        if (active != null) {
+            cir.setReturnValue((M) active);
+        }
+    }
+
     @Unique
     private final RiftSpiderModelRenderer copimine$spiderRenderer = new RiftSpiderModelRenderer();
     @Unique
@@ -53,8 +75,10 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     private final RiftEventSkeletonModelRenderer copimine$skeletonRenderer = new RiftEventSkeletonModelRenderer();
     @Unique
     private EntityModel<?> copimine$activeModel;
+    @Unique
+    private static final Set<String> copimine$loggedGeometryVisuals = ConcurrentHashMap.newKeySet();
 
-    @Inject(method = "render(Lnet/minecraft/entity/LivingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"))
+    @Inject(method = "render(Lnet/minecraft/entity/LivingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"), cancellable = true)
     private void copimine$selectEventModel(LivingEntity entity, float yaw, float tickDelta,
                                                     MatrixStack matrices, VertexConsumerProvider vertexConsumers,
                                                     int light, CallbackInfo ci) {
@@ -62,6 +86,15 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         // vanilla field was not changed, so clearing this scoped selector is
         // sufficient to make the next invocation fail closed.
         copimine$activeModel = null;
+        if (entity != null && entity.getUuid() != null
+                && "END_RIFT_TENTACLE_HITBOX_V1".equals(
+                ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString()))) {
+            // This living entity exists so Jade, melee and projectile raycasts
+            // have a real health-bearing target. The ItemDisplay renders the
+            // tentacle mesh, so never draw the Giant hitbox model itself.
+            ci.cancel();
+            return;
+        }
         if (entity instanceof AbstractSkeletonEntity skeleton
                 && getModel() instanceof SkeletonEntityModel<?>) {
             copimine$selectSkeletonModel(skeleton);
@@ -83,11 +116,14 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         // through the Enderman/boss decision object: doing so reports the
         // wrong model and animation metadata even though the final geometry is
         // a spider.
-        if (!isEventSpiderVisual(visual)
-                || !EndEventTextureCatalog.isAvailable(texture)) {
+        EntityModel<?> model = copimine$spiderRenderer.modelFor(visual);
+        if (model == null) {
+            copimine$logGeometrySelection("spider", visual, null);
             return;
         }
-        copimine$activeModel = copimine$spiderRenderer.modelFor(visual);
+        EndEventTextureCatalog.logLookup("spider", texture);
+        copimine$activeModel = model;
+        copimine$logGeometrySelection("spider", visual, model);
     }
 
     @Redirect(
@@ -99,6 +135,21 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     private EntityModel<?> copimine$readScopedEventModel(LivingEntityRenderer<?, ?> renderer) {
         EntityModel<?> active = copimine$activeModel;
         return active == null ? renderer.getModel() : active;
+    }
+
+    @Inject(method = "scale(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/client/util/math/MatrixStack;F)V",
+            at = @At("HEAD"), cancellable = true)
+    private void copimine$scaleImportedGuardian(LivingEntity entity, MatrixStack matrices,
+                                                 float amount, CallbackInfo ci) {
+        if (entity instanceof EndermanEntity
+                && ClientBridgeProtocol.isBoundEndBoss(entity.getUuid().toString())) {
+            float scale = EndRiftBossWorldScalePolicy.renderScale();
+            // This cancellable HEAD hook replaces the vanilla scale method;
+            // applying an extra origin correction here lifts the imported
+            // feet off the server entity's floor position.
+            matrices.scale(scale, scale, scale);
+            ci.cancel();
+        }
     }
 
     @Inject(method = "render(Lnet/minecraft/entity/LivingEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("RETURN"))
@@ -146,6 +197,7 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         }
         if (customModel != null) {
             copimine$activeModel = customModel;
+            copimine$logGeometrySelection("enderman", selection.modelId(), customModel);
         }
     }
 
@@ -153,25 +205,28 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
     private void copimine$selectSkeletonModel(AbstractSkeletonEntity entity) {
         String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
         Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
-        if (!isEventSkeletonVisual(visual) || !EndEventTextureCatalog.isAvailable(texture)) {
+        EntityModel<?> model = copimine$skeletonRenderer.modelFor(visual);
+        if (model == null) {
+            copimine$logGeometrySelection("skeleton", visual, null);
             return;
         }
-        copimine$activeModel = copimine$skeletonRenderer.modelFor(visual);
+        EndEventTextureCatalog.logLookup("skeleton", texture);
+        copimine$activeModel = model;
+        copimine$logGeometrySelection("skeleton", visual, model);
     }
 
     @Unique
-    private static boolean isEventSpiderVisual(String visual) {
-        return "END_RIFT_SPIDER_V1".equals(visual)
-                || "END_RIFT_ELITE_SPIDER_V1".equals(visual)
-                || "END_RIFT_WAVE_GUARDIAN_SPIDER_V1".equals(visual)
-                || "END_RIFT_RITUAL_GUARD_SPIDER_V1".equals(visual);
-    }
-
-    @Unique
-    private static boolean isEventSkeletonVisual(String visual) {
-        return "END_RIFT_SKELETON_V1".equals(visual)
-                || "END_RIFT_ELITE_SKELETON_V1".equals(visual)
-                || "END_RIFT_WAVE_GUARDIAN_SKELETON_V1".equals(visual)
-                || "END_RIFT_RITUAL_GUARD_SKELETON_V1".equals(visual);
+    private static void copimine$logGeometrySelection(String entityType, String visual,
+                                                       EntityModel<?> model) {
+        String normalized = visual == null ? "" : visual.trim().toUpperCase(Locale.ROOT);
+        if (!normalized.startsWith("END_RIFT_")) {
+            return;
+        }
+        String key = entityType + "|" + normalized;
+        if (copimine$loggedGeometryVisuals.add(key)) {
+            CopiMineClientLogger.info("End Rift geometry " + (model == null ? "missing" : "selected")
+                    + " entityType=" + entityType + " visual=" + normalized
+                    + " model=" + (model == null ? "none" : model.getClass().getSimpleName()));
+        }
     }
 }

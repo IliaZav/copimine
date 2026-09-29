@@ -5,6 +5,7 @@ import me.copimine.endevent.runtime.TentacleController;
 public final class TentacleControllerTest {
     public static void main(String[] args) {
         long generation = 7L;
+        testExplicitInitialStateIsPreservedForStaticShowroom();
         TentacleController controller = new TentacleController();
         UUID permanent = UUID.randomUUID();
         UUID temporary = UUID.randomUUID();
@@ -25,16 +26,19 @@ public final class TentacleControllerTest {
         check(controller.state(permanent).state()
                         == TentacleAnimationPolicy.State.GRAB_SUCCESS,
                 "state must be stored for the bound entity");
-        check(controller.state(temporary).kind() == TentacleAnimationPolicy.Kind.UNDER_PLAYER,
-                "temporary registration must retain its under-player kind");
+        check(controller.state(temporary).kind() == TentacleAnimationPolicy.Kind.TEMPORARY,
+                "temporary attacks must retain the grab lifecycle kind");
         check(!controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.CONTACT, 117L),
+                        TentacleAnimationPolicy.Marker.CONTACT, 115L),
                 "contact marker must not fire before its state offset");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.CONTACT, 118L),
+                        TentacleAnimationPolicy.Marker.CONTACT, 116L),
                 "contact marker must use the active grab-success timeline");
+        check(!controller.markerReached(permanent,
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 118L),
+                "hold lock must wait until the near-end marker");
         check(controller.markerReached(permanent,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 122L),
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK, 119L),
                 "server marker clock must be independent of client bone position");
         check(!controller.markerReached(permanent,
                         TentacleAnimationPolicy.Marker.THROW_RELEASE, 122L),
@@ -56,6 +60,21 @@ public final class TentacleControllerTest {
         check(controller.count() == 0 && !controller.owns(generation),
                 "clear must remove all runtime state and generation ownership");
         System.out.println("TentacleControllerTest OK");
+    }
+
+    private static void testExplicitInitialStateIsPreservedForStaticShowroom() {
+        long generation = 11L;
+        UUID showroomTentacle = UUID.randomUUID();
+        TentacleController showroomController = new TentacleController();
+        showroomController.begin(generation);
+
+        check(showroomController.register(generation, showroomTentacle,
+                        TentacleAnimationPolicy.Kind.PERMANENT, 0, 200L,
+                        TentacleAnimationPolicy.State.READY),
+                "a static showroom permanent tentacle must register in its looping idle state");
+        check(showroomController.state(showroomTentacle).state()
+                        == TentacleAnimationPolicy.State.READY,
+                "controller registration must preserve the explicit showroom idle state");
     }
 
     private static void check(boolean condition, String message) {

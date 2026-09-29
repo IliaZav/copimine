@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
@@ -250,6 +251,49 @@ class EndEventClientStateTest {
         assertTrue(state.apply(packet("END_ENTITY_UNBIND", "event-1", 1L, "tentacle-1", 0L,
                 "tentacle-uuid", "", "control-id"), 130L));
         assertTrue(state.entityAnimationForEntity("tentacle-uuid").isBlank());
+    }
+
+    @Test
+    void repeatedTentacleBindKeepsTheCurrentIdleTimeline() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 100L));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 60_000L,
+                "tentacle-uuid", "READY", "control-id"), 100L));
+
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-1", 1L, "tentacle-1", 0L,
+                "tentacle-uuid", "END_RIFT_TENTACLE_V1", "control-id"), 1_100L));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-1", 1L, "tentacle-1", 60_000L,
+                "tentacle-uuid", "READY", "control-id"), 1_100L));
+
+        assertEquals(100L, state.tentacleAnimationSnapshot("tentacle-uuid").startedAtMillis(),
+                "a heartbeat rebind must not restart the authored four-second idle clip");
+    }
+
+    @Test
+    void showroomReadyIdleAdvancesEveryClientTickAndClosesItsFourSecondLoop() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-showroom", 1L,
+                "tentacle-showroom", 0L, "tentacle-showroom-uuid",
+                "END_RIFT_TENTACLE_V1", "control-id"), 100L));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-showroom", 1L,
+                "tentacle-showroom", 60_000L, "tentacle-showroom-uuid",
+                "READY", "control-id"), 100L));
+
+        assertEquals("READY", state.entityAnimationForEntity("tentacle-showroom-uuid"));
+        EndRiftTentaclePose.TentaclePose initial = state.tentaclePoseForEntityAt(
+                "tentacle-showroom-uuid", 100L);
+        EndRiftTentaclePose.TentaclePose previous = initial;
+        for (int tick = 1; tick <= 80; tick++) {
+            EndRiftTentaclePose.TentaclePose current = state.tentaclePoseForEntityAt(
+                    "tentacle-showroom-uuid", 100L + tick * 50L);
+            assertNotEquals(previous.seg_04().translationX(), current.seg_04().translationX(),
+                    0.00001F, "authored idle translation must advance on client tick " + tick);
+            previous = current;
+        }
+
+        assertEquals(initial.seg_04().translationX(), previous.seg_04().translationX(), 0.0001F);
+        assertEquals(initial.seg_04().roll(), previous.seg_04().roll(), 0.0001F);
     }
 
     private static EndEventPacket packet(String type, String eventId, long generation, String instance,

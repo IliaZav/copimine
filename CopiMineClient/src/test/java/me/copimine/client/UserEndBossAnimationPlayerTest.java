@@ -1,39 +1,32 @@
 package me.copimine.client;
 
-import net.minecraft.client.model.ModelPart;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UserEndBossAnimationPlayerTest {
     @Test
-    void appliesSuppliedBedrockRotationThroughTheSharedCoordinateContract() {
-        ModelPart root = RiftGuardianModel.getTexturedModelData().createModel();
-        ModelPart head = root.getChild("head");
-        float bindPitch = head.pitch;
-        root.traverse().forEach(ModelPart::resetTransform);
+    void samplesSuppliedIdleTracksAsNamedSourceBoneDeltas() {
+        ChameleonGuardianGeometry.GuardianPose pose =
+                UserEndBossAnimationPlayer.sample("IDLE_BREATH", 20.0F);
 
-        assertTrue(UserEndBossAnimationPlayer.apply(root, "IDLE_BREATH", 20.0F));
-
-        // The supplied idle clip is -2.5 degrees of Bedrock pitch at 1s.
-        // Target ModelPart pitch uses the reflected +2.5 degree value.
-        assertEquals(bindPitch + Math.toRadians(2.5D), head.pitch, 0.00001D);
+        assertTrue(pose.hasBoneDelta("head"));
+        assertTrue(pose.hasBoneDelta("body"));
+        assertTrue(pose.hasBoneDelta("left_hand"));
+        assertTrue(pose.hasBoneDelta("right_hand"));
+        assertFalse(pose.hasBoneDelta("right_leg_low"));
     }
 
     @Test
-    void appliesSuppliedBedrockPositionAsAUnitDeltaWithoutPointTranslation() {
-        ModelPart root = RiftGuardianModel.getTexturedModelData().createModel();
-        ModelPart head = root.getChild("head");
-        float bindPivotY = head.pivotY;
-        float bindPivotZ = head.pivotZ;
-        root.traverse().forEach(ModelPart::resetTransform);
+    void unknownClipSamplesTheIdentityPoseInsteadOfMutatingModelParts() {
+        assertEquals(ChameleonGuardianGeometry.GuardianPose.identity(),
+                UserEndBossAnimationPlayer.sample("NOT_A_SUPPLIED_CLIP", 20.0F));
+    }
 
-        assertTrue(UserEndBossAnimationPlayer.apply(root, "CHEST_STRIKE", 40.0F));
-
-        // At 2 seconds the chest clip positions the head by source +Z=5;
-        // the target delta keeps X/Z and does not add the model-origin Y.
-        assertEquals(bindPivotZ + 5.0F, head.pivotZ, 0.0001F);
-        assertEquals(bindPivotY, head.pivotY, 0.0001F);
+    @Test
+    void preservesTheSuppliedOneSecondHurtClip() {
+        assertEquals(1.0F, UserEndBossAnimationPlayer.clipLengthSeconds("HURT"), 0.0001F);
     }
 }

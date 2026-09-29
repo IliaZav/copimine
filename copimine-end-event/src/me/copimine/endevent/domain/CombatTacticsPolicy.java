@@ -59,7 +59,7 @@ public final class CombatTacticsPolicy {
             case AWAKENING -> new BossPlan(BossTactic.RING_ORBIT, 6.5D,
                     true, true, direction);
             case HUNT -> switch (Math.floorMod(cycle, 3)) {
-                case 1 -> new BossPlan(BossTactic.PHANTOM_FEINT, 7.5D,
+                case 1 -> new BossPlan(BossTactic.RING_ORBIT, 7.5D,
                         true, true, direction);
                 case 2 -> new BossPlan(BossTactic.CROSSCUT, 5.2D,
                         true, false, -direction);
@@ -67,7 +67,7 @@ public final class CombatTacticsPolicy {
                         true, false, direction);
             };
             case RIFT -> beat == 1
-                    ? new BossPlan(BossTactic.PHANTOM_FEINT, 7.0D,
+                    ? new BossPlan(BossTactic.FLANK, 7.0D,
                     true, true, -direction)
                     : new BossPlan(BossTactic.CROSSCUT, 6.0D,
                     true, true, direction);

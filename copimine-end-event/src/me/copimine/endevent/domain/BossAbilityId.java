@@ -10,7 +10,12 @@ public enum BossAbilityId {
     RIFT_ARROWS("rift_arrows", BossHazardBudget.MechanicKind.RIFT_ARROWS, false, true),
     SUMMON_SERVANTS("summon_servants", BossHazardBudget.MechanicKind.SUMMON_SERVANTS, false, false),
     ARENA_INFERNO("arena_inferno", BossHazardBudget.MechanicKind.ARENA_INFERNO, false, false),
-    FINAL_STRIKE("final_strike", BossHazardBudget.MechanicKind.FINAL_STRIKE, true, true),
+    BOSS_FIREBALL("boss_fireball", BossHazardBudget.MechanicKind.BOSS_FIREBALL, false, false),
+    // The boss is pinned inside the Core during LAST_SEAL.  Requiring a direct
+    // ray through the authored wall makes the long cast disappear even though
+    // the player is a valid target.  The server still validates target range,
+    // phase and hazard budget before committing the timeline.
+    FINAL_STRIKE("final_strike", BossHazardBudget.MechanicKind.FINAL_STRIKE, true, false),
     REPOSITION("reposition", BossHazardBudget.MechanicKind.REPOSITION, false, false),
     RECOVER("recover", BossHazardBudget.MechanicKind.RECOVER, false, false);
 

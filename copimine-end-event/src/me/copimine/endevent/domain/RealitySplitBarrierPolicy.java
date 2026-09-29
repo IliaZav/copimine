@@ -12,6 +12,13 @@ import java.util.Set;
 public final class RealitySplitBarrierPolicy {
     /** Trial room separators stay close to the requested five-to-six-block height. */
     public static final int HEIGHT = 6;
+    /** Later boss containment keeps its taller eight-block radial wall. */
+    public static final int FINAL_SEAL_HEIGHT = 8;
+    /** The Core block stays open; the level immediately above the boss is sealed. */
+    public static final int FINAL_SEAL_CORE_CLEARANCE_LEVELS = 1;
+    /** Every central level above the clearance is a required final-seal wall cell. */
+    public static final int FINAL_SEAL_FIRST_COVERED_LEVEL =
+            FINAL_SEAL_CORE_CLEARANCE_LEVELS + 1;
     /** Start beside the Core so no walkable central gap connects rooms. */
     public static final double MIN_RADIUS = 0.5D;
     /**
@@ -45,12 +52,39 @@ public final class RealitySplitBarrierPolicy {
     }
 
     /**
+     * Full containment used only after Wave 7 has entered the final seal.
+     *
+     * <p>The ordinary radial walls deliberately leave the Core column open so
+     * the Core remains usable during the room puzzle.  The final seal is a
+     * different geometry: the boss stands on the Core, while the blocks above
+     * the boss clearance must be closed so neither players nor the boss can
+     * escape vertically through the old central shaft.  Level one stays open
+     * at the centre for the Core block and the boss's feet; level two and above
+     * are sealed.</p>
+     */
+    public static List<Cell> finalSealCells(int chamberCount) {
+        Set<Cell> result = new LinkedHashSet<>(
+                cellsExcludingBoundaries(chamberCount, Set.of(), FINAL_SEAL_HEIGHT));
+        for (int level = FINAL_SEAL_FIRST_COVERED_LEVEL;
+                level <= FINAL_SEAL_HEIGHT; level++) {
+            result.add(new Cell(0, 0, level));
+        }
+        return List.copyOf(result);
+    }
+
+    /**
      * Return only the still-closed physical separators.  The open boundary
      * set is supplied by the persisted Wave 7 graph so a restart cannot
      * recreate a passage that players have already crossed.
      */
     public static List<Cell> cellsExcludingBoundaries(int chamberCount,
                                                        Set<Integer> openBoundaries) {
+        return cellsExcludingBoundaries(chamberCount, openBoundaries, HEIGHT);
+    }
+
+    private static List<Cell> cellsExcludingBoundaries(int chamberCount,
+                                                        Set<Integer> openBoundaries,
+                                                        int wallHeight) {
         int count = safeChamberCount(chamberCount);
         Set<Cell> result = new LinkedHashSet<>();
         Set<Integer> excluded = new LinkedHashSet<>();
@@ -65,12 +99,16 @@ public final class RealitySplitBarrierPolicy {
             if (excluded.contains(boundary)) {
                 continue;
             }
-            result.addAll(cellsForBoundary(boundary, count));
+            result.addAll(cellsForBoundary(boundary, count, wallHeight));
         }
         return List.copyOf(result);
     }
 
     public static List<Cell> cellsForBoundary(int boundary, int chamberCount) {
+        return cellsForBoundary(boundary, chamberCount, HEIGHT);
+    }
+
+    private static List<Cell> cellsForBoundary(int boundary, int chamberCount, int wallHeight) {
         int count = safeChamberCount(chamberCount);
         if (boundary < 0 || boundary >= boundaryCount(count)) {
             return List.of();
@@ -93,9 +131,10 @@ public final class RealitySplitBarrierPolicy {
                     // cardinal staircase.  It remains one block wide while
                     // making the union of collision cells continuous.
                     if (!hasPrevious) {
-                        addCellColumn(result, targetX, targetZ);
+                        addCellColumn(result, targetX, targetZ, wallHeight);
                     } else {
-                        addCardinalSegment(result, previousX, previousZ, targetX, targetZ);
+                        addCardinalSegment(result, previousX, previousZ, targetX, targetZ,
+                                wallHeight);
                     }
                 } else {
                     double perpendicularX = -Math.sin(angle) * sign;
@@ -105,7 +144,7 @@ public final class RealitySplitBarrierPolicy {
                                 + perpendicularX * width);
                         int z = (int) Math.round(Math.sin(angle) * radius * sign
                                 + perpendicularZ * width);
-                        addCellColumn(result, x, z);
+                        addCellColumn(result, x, z, wallHeight);
                     }
                 }
                 previousX = targetX;
@@ -118,7 +157,8 @@ public final class RealitySplitBarrierPolicy {
 
     private static void addCardinalSegment(Set<Cell> result,
                                            int startX, int startZ,
-                                           int targetX, int targetZ) {
+                                           int targetX, int targetZ,
+                                           int wallHeight) {
         int x = startX;
         int z = startZ;
         while (x != targetX || z != targetZ) {
@@ -129,12 +169,12 @@ public final class RealitySplitBarrierPolicy {
             } else {
                 z += Integer.signum(dz);
             }
-            addCellColumn(result, x, z);
+            addCellColumn(result, x, z, wallHeight);
         }
     }
 
-    private static void addCellColumn(Set<Cell> result, int x, int z) {
-        for (int level = 1; level <= HEIGHT; level++) {
+    private static void addCellColumn(Set<Cell> result, int x, int z, int wallHeight) {
+        for (int level = 1; level <= wallHeight; level++) {
             result.add(new Cell(x, z, level));
         }
     }

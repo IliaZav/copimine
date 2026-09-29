@@ -3,6 +3,19 @@ import me.copimine.endevent.domain.BossPhase;
 
 public final class TentacleScalingPolicyTest {
     public static void main(String[] args) {
+        check(TentacleScalingPolicy.DEFAULT_LOGICAL_LENGTH >= 6.0D,
+                "tentacle visual must be at least six blocks tall");
+        check(TentacleScalingPolicy.DEFAULT_HITBOX_HEIGHT
+                        == TentacleScalingPolicy.DEFAULT_LOGICAL_LENGTH,
+                "tentacle hitbox height must follow the visible rig length");
+        check(TentacleScalingPolicy.DEFAULT_HITBOX_WIDTH >= 1.8D,
+                "tentacle hitbox must be wide enough to hit the visible body");
+        check(TentacleScalingPolicy.DEFAULT_CLIENT_RENDER_SCALE == 1.0D,
+                "six-segment client rig must not apply a second scale multiplier");
+        check(TentacleScalingPolicy.MIN_SPAWN_SEPARATION >= 2.5D,
+                "tentacle roots must not overlap so every cast remains readable");
+        check(TentacleScalingPolicy.TEMPORARY_CAST_INTERVAL_TICKS <= 60L,
+                "cast tentacles must refill during the active late-phase fight");
         testPermanentGuardiansOnlyExistInTheLastSeal();
         check(TentacleScalingPolicy.permanentFor(2, BossPhase.LAST_SEAL) == 2,
                 "a duo must have two permanent tentacles in the last seal");
@@ -31,6 +44,8 @@ public final class TentacleScalingPolicyTest {
                 "temporary grab slots must cap at six");
         check(TentacleScalingPolicy.permanentFor(0, BossPhase.LAST_SEAL) == 0,
                 "empty roster must not spawn tentacles");
+        check(TentacleScalingPolicy.initialTemporaryAttemptTick(240L) == 240L,
+                "cast tentacles must be eligible on the first late-phase boss tick");
         System.out.println("TentacleScalingPolicyTest OK");
     }
 

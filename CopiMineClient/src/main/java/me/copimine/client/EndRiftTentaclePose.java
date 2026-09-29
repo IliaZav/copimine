@@ -52,6 +52,7 @@ public final class EndRiftTentaclePose {
             BoneTransform seg_03,
             BoneTransform seg_04,
             BoneTransform seg_05,
+            BoneTransform seg_06,
             BoneTransform tip,
             BoneTransform tip_claw_1,
             BoneTransform tip_claw_2,
@@ -67,6 +68,7 @@ public final class EndRiftTentaclePose {
             seg_03 = Objects.requireNonNull(seg_03, "seg_03");
             seg_04 = Objects.requireNonNull(seg_04, "seg_04");
             seg_05 = Objects.requireNonNull(seg_05, "seg_05");
+            seg_06 = Objects.requireNonNull(seg_06, "seg_06");
             tip = Objects.requireNonNull(tip, "tip");
             tip_claw_1 = Objects.requireNonNull(tip_claw_1, "tip_claw_1");
             tip_claw_2 = Objects.requireNonNull(tip_claw_2, "tip_claw_2");
@@ -77,9 +79,9 @@ public final class EndRiftTentaclePose {
 
         public static TentaclePose identity() {
             BoneTransform identity = BoneTransform.identity();
-            return new TentaclePose(identity, identity, identity, identity, identity,
+            return new TentaclePose(identity, identity, identity, identity, identity, identity,
                     identity, identity, identity, identity, identity, identity, identity,
-                    new Socket(0.0F, 4.75F, 0.0F), 1.0F);
+                    new Socket(0.0F, 6.3125F, 0.0F), 1.0F);
         }
 
         public BoneTransform transform(String bone) {
@@ -94,6 +96,7 @@ public final class EndRiftTentaclePose {
                 case "seg_03" -> seg_03;
                 case "seg_04" -> seg_04;
                 case "seg_05" -> seg_05;
+                case "seg_06" -> seg_06;
                 case "tip" -> tip;
                 case "tip_claw_1" -> tip_claw_1;
                 case "tip_claw_2" -> tip_claw_2;
@@ -107,7 +110,8 @@ public final class EndRiftTentaclePose {
         public boolean isFinite() {
             return root.isFinite() && base.isFinite() && seg_01.isFinite()
                     && seg_02.isFinite() && seg_03.isFinite() && seg_04.isFinite()
-                    && seg_05.isFinite() && tip.isFinite() && tip_claw_1.isFinite()
+                    && seg_05.isFinite() && seg_06.isFinite() && tip.isFinite()
+                    && tip_claw_1.isFinite()
                     && tip_claw_2.isFinite() && tip_claw_3.isFinite()
                     && tip_claw_4.isFinite() && grab_socket.isFinite()
                     && Float.isFinite(rigScale) && rigScale > 0.0F;
@@ -123,6 +127,59 @@ public final class EndRiftTentaclePose {
 
         public float socketZ() {
             return grab_socket.z();
+        }
+
+        /** Blend a render-only transition without changing server marker timing. */
+        public static TentaclePose lerp(TentaclePose from, TentaclePose to, float amount) {
+            TentaclePose start = from == null ? identity() : from;
+            TentaclePose end = to == null ? identity() : to;
+            float t = Float.isFinite(amount) ? Math.max(0.0F, Math.min(1.0F, amount)) : 1.0F;
+            return new TentaclePose(
+                    blend(start.root(), end.root(), t),
+                    blend(start.base(), end.base(), t),
+                    blend(start.seg_01(), end.seg_01(), t),
+                    blend(start.seg_02(), end.seg_02(), t),
+                    blend(start.seg_03(), end.seg_03(), t),
+                    blend(start.seg_04(), end.seg_04(), t),
+                    blend(start.seg_05(), end.seg_05(), t),
+                    blend(start.seg_06(), end.seg_06(), t),
+                    blend(start.tip(), end.tip(), t),
+                    blend(start.tip_claw_1(), end.tip_claw_1(), t),
+                    blend(start.tip_claw_2(), end.tip_claw_2(), t),
+                    blend(start.tip_claw_3(), end.tip_claw_3(), t),
+                    blend(start.tip_claw_4(), end.tip_claw_4(), t),
+                    new Socket(mix(start.socketX(), end.socketX(), t),
+                            mix(start.socketY(), end.socketY(), t),
+                            mix(start.socketZ(), end.socketZ(), t)),
+                    mix(start.rigScale(), end.rigScale(), t));
+        }
+
+        private static BoneTransform blend(BoneTransform from, BoneTransform to, float t) {
+            return new BoneTransform(
+                    mix(from.translationX(), to.translationX(), t),
+                    mix(from.translationY(), to.translationY(), t),
+                    mix(from.translationZ(), to.translationZ(), t),
+                    mixAngle(from.pitch(), to.pitch(), t),
+                    mixAngle(from.yaw(), to.yaw(), t),
+                    mixAngle(from.roll(), to.roll(), t),
+                    mix(from.scaleX(), to.scaleX(), t),
+                    mix(from.scaleY(), to.scaleY(), t),
+                    mix(from.scaleZ(), to.scaleZ(), t));
+        }
+
+        private static float mixAngle(float from, float to, float amount) {
+            float fullTurn = (float) (Math.PI * 2.0D);
+            float delta = (to - from) % fullTurn;
+            if (delta > Math.PI) {
+                delta -= fullTurn;
+            } else if (delta < -Math.PI) {
+                delta += fullTurn;
+            }
+            return from + delta * amount;
+        }
+
+        private static float mix(float from, float to, float amount) {
+            return from + (to - from) * amount;
         }
     }
 }

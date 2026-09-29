@@ -3,6 +3,7 @@ package me.copimine.client;
 import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelData;
 import net.minecraft.client.model.ModelPart;
+import net.minecraft.client.model.ModelPartBuilder;
 import net.minecraft.client.model.ModelPartData;
 import net.minecraft.client.model.ModelTransform;
 import net.minecraft.client.model.TexturedModelData;
@@ -76,11 +77,23 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         this.leftShin = root.getChild("left_leg").getChild("left_shin");
         this.rightShin = root.getChild("right_leg").getChild("right_shin");
         this.variant = variant;
+        boolean armored = variant == Variant.ELITE || variant == Variant.WAVE_GUARDIAN
+                || variant == Variant.RITUAL_GUARD;
+        this.riftCore.visible = false;
+        this.riftShell.visible = false;
+        this.variantCrest.visible = false;
         this.casterFocus.visible = variant == Variant.RITUAL_CASTER;
+        this.bodyShell.visible = armored;
+        this.chestRift.visible = variant != Variant.ORDINARY;
+        this.leftForearm.visible = armored;
+        this.rightForearm.visible = armored;
+        this.leftShin.visible = armored;
+        this.rightShin.visible = armored;
+        root.getChild("head").getChild("jaw_plate").visible = armored;
         this.guardianMantle.visible = variant == Variant.WAVE_GUARDIAN;
         this.guardianSpine.visible = variant == Variant.WAVE_GUARDIAN;
         this.guardSeal.visible = variant == Variant.RITUAL_GUARD;
-        this.hornLeft.visible = variant != Variant.ORDINARY && variant != Variant.RITUAL_CASTER;
+        this.hornLeft.visible = armored;
         this.hornRight.visible = hornLeft.visible;
     }
 
@@ -98,6 +111,31 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
                 || variant == Variant.RITUAL_GUARD;
         ModelData data = BipedEntityModel.getModelData(Dilation.NONE, -14.0F);
         ModelPartData root = data.getRoot();
+        // The supplied 64x32 enderman skin is laid out for the vanilla
+        // 30-pixel arms and legs. BipedEntityModel's human-length cuboids
+        // shrink the figure and sample unrelated atlas regions.
+        root.addChild("hat", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 16, -4.0F, -8.0F, -4.0F, 8.0F, 8.0F, 8.0F,
+                        new Dilation(-0.5F)),
+                ModelTransform.pivot(0.0F, -13.0F, 0.0F));
+        root.addChild("head", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        0, 0, -4.0F, -8.0F, -4.0F, 8.0F, 8.0F, 8.0F),
+                ModelTransform.pivot(0.0F, -13.0F, 0.0F));
+        root.addChild("body", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        32, 16, -4.0F, 0.0F, -2.0F, 8.0F, 12.0F, 4.0F),
+                ModelTransform.pivot(0.0F, -14.0F, 0.0F));
+        root.addChild("right_arm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        56, 0, -1.0F, -2.0F, -1.0F, 2.0F, 30.0F, 2.0F),
+                ModelTransform.pivot(-5.0F, -12.0F, 0.0F));
+        root.addChild("left_arm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        56, 0, -1.0F, -2.0F, -1.0F, 2.0F, 30.0F, 2.0F, true),
+                ModelTransform.pivot(5.0F, -12.0F, 0.0F));
+        root.addChild("right_leg", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        56, 0, -1.0F, 0.0F, -1.0F, 2.0F, 30.0F, 2.0F),
+                ModelTransform.pivot(-2.0F, -5.0F, 0.0F));
+        root.addChild("left_leg", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        56, 0, -1.0F, 0.0F, -1.0F, 2.0F, 30.0F, 2.0F, true),
+                ModelTransform.pivot(2.0F, -5.0F, 0.0F));
         root.addChild("rift_core", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         0, 0, -2.5F, -5.0F, -3.0F, 5.0F, 5.0F, 2.0F),
                 ModelTransform.pivot(0.0F, -8.0F, -2.25F));
@@ -147,20 +185,20 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
 
         ModelPartData leftArm = root.getChild("left_arm");
         leftArm.addChild("left_forearm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        0, 18, -2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F),
+                        0, 18, -1.25F, 18.0F, -1.25F, 2.5F, 8.0F, 2.5F),
                 ModelTransform.NONE);
         ModelPartData rightArm = root.getChild("right_arm");
         rightArm.addChild("right_forearm", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        0, 18, -2.25F, 5.2F, -2.35F, 4.5F, 7.2F, 4.7F, true),
+                        0, 18, -1.25F, 18.0F, -1.25F, 2.5F, 8.0F, 2.5F, true),
                 ModelTransform.NONE);
 
         ModelPartData leftLeg = root.getChild("left_leg");
         leftLeg.addChild("left_shin", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        18, 20, -2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F),
+                        18, 16, -1.2F, 17.0F, -1.2F, 2.4F, 10.0F, 2.4F),
                 ModelTransform.NONE);
         ModelPartData rightLeg = root.getChild("right_leg");
         rightLeg.addChild("right_shin", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        18, 20, -2.2F, 5.0F, -2.2F, 4.4F, 7.0F, 4.4F, true),
+                        18, 16, -1.2F, 17.0F, -1.2F, 2.4F, 10.0F, 2.4F, true),
                 ModelTransform.NONE);
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     }

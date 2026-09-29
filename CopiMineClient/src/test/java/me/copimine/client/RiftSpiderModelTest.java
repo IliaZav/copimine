@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RiftSpiderModelTest {
@@ -27,6 +28,31 @@ class RiftSpiderModelTest {
     void usesTheSuppliedSpiderTextureAtlasDimensions() {
         assertEquals(64, RiftSpiderModel.TEXTURE_WIDTH);
         assertEquals(32, RiftSpiderModel.TEXTURE_HEIGHT);
+    }
+
+    @Test
+    void ordinarySpiderShowsTheSuppliedSkinOnItsBaseBodyWithoutDuplicateShells() {
+        RiftSpiderModel ordinary = new RiftSpiderModel(
+                RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.ORDINARY).createModel(),
+                RiftSpiderModel.Variant.ORDINARY);
+        RiftSpiderModel elite = new RiftSpiderModel(
+                RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.ELITE).createModel(),
+                RiftSpiderModel.Variant.ELITE);
+
+        assertFalse(ordinary.getPart().getChild("rift_core").visible);
+        assertFalse(ordinary.getPart().getChild("rift_shell").visible);
+        assertFalse(ordinary.getPart().getChild("rift_spines").visible);
+        assertTrue(elite.getPart().getChild("elite_carapace").visible);
+
+        RiftSpiderModel guardian = new RiftSpiderModel(
+                RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.WAVE_GUARDIAN).createModel(),
+                RiftSpiderModel.Variant.WAVE_GUARDIAN);
+        RiftSpiderModel ritualGuard = new RiftSpiderModel(
+                RiftSpiderModel.getTexturedModelData(RiftSpiderModel.Variant.RITUAL_GUARD).createModel(),
+                RiftSpiderModel.Variant.RITUAL_GUARD);
+        assertTrue(guardian.getPart().getChild("guardian_spine").visible);
+        assertTrue(ritualGuard.getPart().getChild("guard_seal").visible);
+        assertTrue(ritualGuard.getPart().getChild("ritual_focus").visible);
     }
 
     @Test

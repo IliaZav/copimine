@@ -334,8 +334,10 @@ boss:
     respawn-delay-ticks: 800
     attack-interval-ticks: 220
     attack-stagger-ticks: 20
-    hitbox-width: 1.35
-    hitbox-height: 3.5
+    hitbox-width: 1.90
+    # Cover the full logical tentacle envelope. Interaction is anchored at its
+    # feet, so increasing height does not lift the hitbox above the visible rig.
+    hitbox-height: 6.25
   # This optional boss visual is restricted to the current RIFT band. Vanilla
   # fireball assets are never replaced globally.
   rift-obelisks:

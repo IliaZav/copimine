@@ -29,10 +29,48 @@ foreach ($line in Get-Content -LiteralPath $propertiesPath) {
 $expectedSha1 = (Get-FileHash -LiteralPath $pack -Algorithm SHA1).Hash.ToLowerInvariant()
 if ($properties['require-resource-pack'] -ne 'true') { throw 'Local server must require the event resource pack.' }
 $resourcePackUrl = $properties['resource-pack'] -replace '\\:', ':'
-if ($resourcePackUrl -ne "http://127.0.0.1:$ResourcePackPort/CopiMineResourcePack.zip") {
-  throw 'Local server resource-pack URL is not the isolated loopback URL.'
-}
 if ($properties['resource-pack-sha1'].ToLowerInvariant() -ne $expectedSha1) {
   throw "Local server resource-pack-sha1 does not match $expectedSha1."
 }
-Write-Output "Local resource-pack contract PASS sha1=$expectedSha1 url=$resourcePackUrl"
+$uri = $null
+$validUri = [Uri]::TryCreate($resourcePackUrl, [UriKind]::Absolute, [ref]$uri)
+if (-not $validUri -or $uri.Scheme -ne 'http' -or $uri.Port -ne $ResourcePackPort -or $uri.AbsolutePath -ne '/CopiMineResourcePack.zip') {
+  throw 'Local server resource-pack URL must use the expected HTTP endpoint and port.'
+}
+$hostAddresses = @()
+if ($uri.Host -eq 'localhost') {
+  $hostAddresses = @('127.0.0.1', '::1')
+} else {
+  $parsedAddress = $null
+  if ([Net.IPAddress]::TryParse($uri.Host, [ref]$parsedAddress)) {
+    $hostAddresses = @($parsedAddress.IPAddressToString)
+  } else {
+    $hostAddresses = @([Net.Dns]::GetHostAddresses($uri.Host) | ForEach-Object {
+      $_.IPAddressToString
+    })
+  }
+}
+$localAddresses = @('127.0.0.1', '::1') + @(
+  Get-NetIPAddress -AddressState Preferred -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty IPAddress
+)
+if (-not (@($hostAddresses | Where-Object { $localAddresses -contains $_ }).Count)) {
+  throw 'Resource-pack URL host is not a local address on this machine.'
+}
+Add-Type -AssemblyName System.Net.Http
+$client = [Net.Http.HttpClient]::new()
+try {
+  $bytes = $client.GetByteArrayAsync($uri).GetAwaiter().GetResult()
+} finally {
+  $client.Dispose()
+}
+$sha1Algorithm = [Security.Cryptography.SHA1]::Create()
+try {
+  $downloadSha1 = [BitConverter]::ToString($sha1Algorithm.ComputeHash($bytes)).Replace('-', '').ToLowerInvariant()
+} finally {
+  $sha1Algorithm.Dispose()
+}
+if ($downloadSha1 -ne $expectedSha1) {
+  throw "Resource-pack endpoint content hash mismatch. Expected=$expectedSha1 Actual=$downloadSha1"
+}
+Write-Output "Local resource-pack contract PASS sha1=$expectedSha1 bytes=$($bytes.Length) url=$resourcePackUrl"

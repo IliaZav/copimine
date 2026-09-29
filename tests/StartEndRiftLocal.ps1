@@ -124,8 +124,11 @@ if ([string]::IsNullOrWhiteSpace($ErrPath)) {
   $ErrPath = Join-Path $localLogRoot 'end-rift-paper-start.err.log'
 }
 $java = (Get-Command java -ErrorAction Stop).Source
+# Keep the isolated server below the desktop client's memory budget.  The
+# previous 6G maximum exhausted native memory as soon as a Fabric client
+# joined and the JVM failed allocating only a few more megabytes.
 $paper = Start-Process -FilePath $java `
-  -ArgumentList @('-Xms2G', '-Xmx6G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', 'purpur.jar', 'nogui') `
+  -ArgumentList @('-Xms1G', '-Xmx3G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', 'purpur.jar', 'nogui') `
   -WorkingDirectory $ServerDir `
   -RedirectStandardOutput $LogPath `
   -RedirectStandardError $ErrPath `

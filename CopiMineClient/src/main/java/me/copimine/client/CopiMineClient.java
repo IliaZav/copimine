@@ -45,6 +45,7 @@ public final class CopiMineClient implements ClientModInitializer {
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventTentacles);
         WorldRenderEvents.LAST.register(PrisonerTargetSelector::render);
+        WorldRenderEvents.LAST.register(EndRiftGuardianShieldRenderer::render);
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             visualManager.tick(ClientBridgeProtocol::sendVisualFinished);
             if (client.player != null && client.player.isDead()) {
@@ -124,8 +125,24 @@ public final class CopiMineClient implements ClientModInitializer {
                                         }
                                     }
                                     return 1;
-                                })))
-                        .then(ClientCommandManager.literal("debug")
+                                     }))
+                         .then(ClientCommandManager.literal("health")
+                                .executes(context -> {
+                                    EndEventClientState endEvent = ClientBridgeProtocol.endEventState();
+                                    EndEventClientState.BossBarState bar = endEvent.bossBar();
+                                    if (bar == null || !endEvent.hasActiveBossBar()) {
+                                        context.getSource().sendFeedback(Text.literal(
+                                                "End Rift boss health: no active server snapshot; native values are unchanged"));
+                                        return 1;
+                                    }
+                                    context.getSource().sendFeedback(Text.literal(
+                                            "End Rift boss health: boss=" + bar.bossUuid()
+                                                    + ", packet=" + bar.health() + "/" + bar.maxHealth()
+                                                    + ", progress=" + bar.progress()
+                                                    + ", projection=UUID-bound client maximum"));
+                                    return 1;
+                                 })))
+                         .then(ClientCommandManager.literal("debug")
                                 .then(ClientCommandManager.literal("on").executes(context -> {
                                     config.setDebugOverlay(true);
                                     context.getSource().sendFeedback(Text.literal("CopiMineClient: debug enabled"));

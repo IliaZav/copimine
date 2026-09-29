@@ -16,15 +16,17 @@ public final class TransitionRunePolicyTest {
         check(ready.missingPlayers().isEmpty(), "complete check must have no missing players");
 
         TransitionRunePolicy.HoldState started = TransitionRunePolicy.advance(
-                TransitionRunePolicy.HoldState.idle(), ready, 10_000L, 5_000L);
+                TransitionRunePolicy.HoldState.idle(), ready, 10_000L, 10_000L);
         check(started.startedAtMillis() == 10_000L && !started.complete(), "a full roster starts the hold");
-        check(!TransitionRunePolicy.advance(started, ready, 14_999L, 5_000L).complete(),
-                "four seconds and 999 milliseconds is not a five-second hold");
-        check(TransitionRunePolicy.advance(started, ready, 15_000L, 5_000L).complete(),
-                "the hold completes exactly at five seconds");
+        check(!TransitionRunePolicy.advance(started, ready, 14_999L, 10_000L).complete(),
+                "four seconds and 999 milliseconds is not enough to complete the hold");
+        check(!TransitionRunePolicy.advance(started, ready, 19_999L, 10_000L).complete(),
+                "nine seconds and 999 milliseconds is not a ten-second hold");
+        check(TransitionRunePolicy.advance(started, ready, 20_000L, 10_000L).complete(),
+                "the hold completes exactly at ten seconds");
 
         TransitionRunePolicy.Check missing = TransitionRunePolicy.evaluate(roster, List.of(occupied(alpha, "rune-a")));
-        TransitionRunePolicy.HoldState reset = TransitionRunePolicy.advance(started, missing, 12_000L, 5_000L);
+        TransitionRunePolicy.HoldState reset = TransitionRunePolicy.advance(started, missing, 12_000L, 10_000L);
         check(reset.startedAtMillis() == 0L && !reset.complete(), "a player leaving resets the hold immediately");
         check(reset.reason() == TransitionRunePolicy.Reason.MISSING_ROSTER_MEMBER,
                 "leave reason must be traceable");

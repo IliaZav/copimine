@@ -11,6 +11,11 @@ import java.util.UUID;
 
 /** Main-thread-owned client state for the optional End Rift boss/reverse-control visuals. */
 public final class EndEventClientState {
+    // Keep transitions soft without consuming most of the shortened grab
+    // lunge; a 300 ms blend visibly stalled the authored clip before it sped
+    // through the remaining pose.
+    private static final long TENTACLE_POSE_BLEND_MILLIS = 120L;
+
     private String eventId = "";
     private long generation;
     private String bossUuid = "";
@@ -191,10 +196,7 @@ public final class EndEventClientState {
         if (binding == null) {
             return EndRiftTentaclePose.TentaclePose.identity();
         }
-        long elapsedMillis = Math.max(0L, nowMillis - binding.startedAtMillis());
-        return EndRiftTentacleRenderer.poseForAt(
-                visualForEntity(uuid), binding.animationId(), elapsedMillis,
-                binding.durationMillis(), stableSeed(uuid));
+        return resolveTentaclePose(binding, visualForEntity(uuid), nowMillis, stableSeed(uuid));
     }
 
     /** IDs are used by the renderer only as a bounded lookup hint. */
@@ -390,9 +392,18 @@ public final class EndEventClientState {
         if (packet.subjectId().isBlank() || packet.instanceId().isBlank() || packet.visualId().isBlank()) {
             return false;
         }
+        EntityVisualBinding current = entityVisuals.get(packet.subjectId());
+        if (current != null
+                && Objects.equals(current.instanceId(), packet.instanceId())
+                && Objects.equals(current.visualId(), packet.visualId())) {
+            // Server bindings are also heartbeats. Replacing the animation
+            // snapshot here restarts looping client clips on every heartbeat.
+            return true;
+        }
         entityVisuals.put(packet.subjectId(), new EntityVisualBinding(packet.instanceId(), packet.visualId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
-                packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", ""));
+                packet.instanceId(), "READY", -1L, nowMillis, 60_000L, "FULL", "",
+                null, 0L, 0L));
         return true;
     }
 
@@ -426,10 +437,42 @@ public final class EndEventClientState {
         }
         long durationMillis = packet.durationMillis() > 0L
                 ? packet.durationMillis() : EndRiftTentacleAnimator.durationTicks(animation) * 50L;
+        boolean sameClip = tentacleVisual
+                ? EndRiftTentacleAnimator.sameClip(binding.animationId(), animation)
+                : Objects.equals(binding.animationId(), animation);
+        EndRiftTentaclePose.TentaclePose blendFrom = sameClip || !tentacleVisual
+                ? binding.blendFromPose()
+                : resolveTentaclePose(binding, visual.visualId(), nowMillis,
+                        stableSeed(packet.subjectId()));
         entityAnimations.put(packet.subjectId(), new EntityAnimationBinding(
-                packet.instanceId(), animation, cue.stateStartServerTick(), nowMillis,
-                durationMillis, cue.healthState(), cue.targetId()));
+                packet.instanceId(), animation,
+                sameClip ? binding.stateStartServerTick() : cue.stateStartServerTick(),
+                sameClip ? binding.startedAtMillis() : nowMillis,
+                sameClip ? binding.durationMillis() : durationMillis,
+                cue.healthState(), cue.targetId(), blendFrom,
+                sameClip ? binding.blendStartedAtMillis() : blendFrom == null ? 0L : nowMillis,
+                sameClip ? binding.blendDurationMillis()
+                        : blendFrom == null ? 0L : TENTACLE_POSE_BLEND_MILLIS));
         return true;
+    }
+
+    private static EndRiftTentaclePose.TentaclePose resolveTentaclePose(
+            EntityAnimationBinding binding, String visualId, long nowMillis, long seed) {
+        long elapsedMillis = Math.max(0L, nowMillis - binding.startedAtMillis());
+        EndRiftTentaclePose.TentaclePose current = EndRiftTentacleRenderer.poseForAt(
+                visualId, binding.animationId(), elapsedMillis,
+                binding.durationMillis(), seed);
+        if (binding.blendFromPose() == null || binding.blendDurationMillis() <= 0L) {
+            return current;
+        }
+        float linear = (float) ((nowMillis - binding.blendStartedAtMillis())
+                / (double) binding.blendDurationMillis());
+        if (!Float.isFinite(linear) || linear >= 1.0F) {
+            return current;
+        }
+        float t = Math.max(0.0F, linear);
+        float smooth = t * t * (3.0F - 2.0F * t);
+        return EndRiftTentaclePose.TentaclePose.lerp(binding.blendFromPose(), current, smooth);
     }
 
     private static AnimationCue parseAnimationCue(String raw, boolean tentacleVisual) {
@@ -622,7 +665,10 @@ public final class EndEventClientState {
     private record EntityAnimationBinding(String instanceId, String animationId,
                                           long stateStartServerTick,
                                           long startedAtMillis, long durationMillis,
-                                          String healthState, String targetId) {
+                                          String healthState, String targetId,
+                                          EndRiftTentaclePose.TentaclePose blendFromPose,
+                                          long blendStartedAtMillis,
+                                          long blendDurationMillis) {
     }
 
     private record AnimationCue(String animationId, long stateStartServerTick,

@@ -1,24 +1,24 @@
 package me.copimine.client;
 
 import net.minecraft.client.model.ModelData;
+import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.model.ModelPartBuilder;
 import net.minecraft.client.model.ModelPartData;
 import net.minecraft.client.model.ModelTransform;
 import net.minecraft.client.model.TexturedModelData;
 import net.minecraft.client.render.entity.model.SkeletonEntityModel;
+import net.minecraft.client.render.entity.model.BipedEntityModel;
 import net.minecraft.entity.mob.AbstractSkeletonEntity;
 import net.minecraft.util.math.MathHelper;
 
 /**
  * Articulated End Rift skeleton rig used by the ordinary and elite wave roles.
  *
- * <p>The supplied references have a very thin, long silhouette with a dark
- * shell, visible bone joints and a controlled rift accent. The rig therefore
- * uses overlapping segmented parts for the full silhouette: jaw, ribs, cuffs,
- * knees, shins and (for the elite) horns and shoulder plates. The entity is
- * still a normal skeleton, so the server hitbox remains the native skeleton
- * hitbox while every extra part is render-only.</p>
+ * <p>The supplied 64x32 End Rift atlas uses compact authored UV islands rather
+ * than the vanilla skin layout. Keep readable biped proportions, but map each
+ * part to those authored islands; splitting the limbs at their atlas seams
+ * preserves normal walk articulation without stretching the texture.</p>
  */
 public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSkeletonEntity> {
     private static final int TEXTURE_WIDTH = 64;
@@ -75,15 +75,19 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         boolean elite = isEliteVariant(variant);
         boolean guardian = variant == Variant.WAVE_GUARDIAN;
         boolean ritual = variant == Variant.RITUAL_GUARD;
+        boolean userSkin = usesSharedSkeletonAtlas(variant);
         this.eliteHornLeft.visible = elite;
         this.eliteHornRight.visible = elite;
-        this.eliteShoulderLeft.visible = elite;
-        this.eliteShoulderRight.visible = elite;
+        this.eliteShoulderLeft.visible = elite && !userSkin;
+        this.eliteShoulderRight.visible = elite && !userSkin;
         this.guardCrest.visible = guardian || ritual;
         this.guardChestSeal.visible = guardian || ritual;
         this.guardianSpine.visible = guardian;
-        this.eliteMantle.visible = elite;
-        this.eliteHornCrown.visible = elite;
+        this.chestRift.visible = !userSkin;
+        this.eliteMantle.visible = elite && !userSkin;
+        this.eliteHornCrown.visible = elite && !userSkin;
+        // Unused atlas islands are opaque; the vanilla hat layer would cover
+        // the skull with an unrelated patch.
         this.hat.visible = false;
     }
 
@@ -92,123 +96,111 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
     }
 
     public static TexturedModelData getTexturedModelData(Variant variant) {
-        boolean elite = isEliteVariant(variant);
-        ModelData data = new ModelData();
+        ModelData data = BipedEntityModel.getModelData(Dilation.NONE, 0.0F);
         ModelPartData root = data.getRoot();
-
-        ModelPartData head = root.addChild("head", cube(0, 0,
-                        -3.5F, -7.0F, -3.5F, 7.0F, 7.0F, 7.0F),
+        ModelPartData head = root.getChild("head");
+        ModelPartData body = root.getChild("body");
+        // Every skeleton visual currently resolves to end_rift_user_skeleton.png.
+        // Keep all role models on that atlas layout so guardian/ritual variants
+        // do not sample the stale purple atlas islands from their old skins.
+        boolean userSkin = usesSharedSkeletonAtlas(variant);
+        int bodyUvV = userSkin ? 16 : 0;
+        int leftHornU = userSkin ? 0 : 32;
+        int rightHornU = userSkin ? 0 : 48;
+        int hornV = userSkin ? 16 : 8;
+        // The supplied ordinary and elite skin share the (16, 16) torso island.
+        // Special-role atlases retain their already-authored (16, 0) location.
+        root.addChild("body", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        16, bodyUvV, -4.0F, 0.0F, -2.0F, 8.0F, 12.0F, 4.0F),
                 ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("hat", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        0, 0, -3.5F, -7.0F, -3.5F, 7.0F, 7.0F, 7.0F),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        head.addChild("jaw", cube(8, 0, -2.5F, -1.1F, -3.7F,
-                        5.0F, 1.1F, 0.55F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        head.addChild("eye_left", cube(14, 0, -2.45F, -4.35F, -3.65F,
-                        1.7F, 1.2F, 0.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        head.addChild("eye_right", cube(14, 0, 0.75F, -4.35F, -3.65F,
-                        1.7F, 1.2F, 0.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        head.addChild("elite_horn_left", cube(56, 0, -3.3F, -11.0F, -1.2F,
-                        1.8F, 4.0F, 2.0F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        head.addChild("elite_horn_right", cube(56, 0, 1.5F, -11.0F, -1.2F,
-                        1.8F, 4.0F, 2.0F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        ModelPartData body = root.addChild("body", cube(16, 0,
-                        -2.5F, 0.0F, -1.5F, 5.0F, elite ? 10.5F : 10.0F, 3.0F),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("collar", cube(22, 0, -2.8F, -0.6F, -1.8F,
-                        5.6F, 1.5F, 3.6F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("rib_left_upper", cube(28, 0, -2.35F, 3.0F, -1.8F,
-                        1.6F, 0.8F, 0.45F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("rib_right_upper", cube(28, 0, 0.75F, 3.0F, -1.8F,
-                        1.6F, 0.8F, 0.45F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("rib_left_lower", cube(28, 0, -2.25F, 5.0F, -1.82F,
-                        1.5F, 0.8F, 0.45F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("rib_right_lower", cube(28, 0, 0.65F, 5.0F, -1.82F,
-                        1.5F, 0.8F, 0.45F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("chest_rift", cube(32, 16, -0.8F, 2.3F, -2.0F,
-                        elite ? 1.6F : 1.35F, elite ? 4.3F : 3.8F, 0.35F),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        body.addChild("waist_bone", cube(36, 16, -2.0F, 8.0F, -1.7F,
-                        4.0F, 1.0F, 3.4F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        ModelPartData leftArm = root.addChild("left_arm", cube(40, 0,
-                        -2.0F, -1.0F, -1.5F, 4.0F, 9.0F, 3.0F),
-                ModelTransform.pivot(4.0F, 1.0F, 0.0F));
-        leftArm.addChild("left_forearm", cube(44, 0, -1.55F, -0.55F, -1.3F,
-                        3.1F, 12.0F, 2.6F), ModelTransform.pivot(0.0F, 8.4F, 0.0F));
-        leftArm.addChild("left_elbow_bone", cube(48, 0, -2.15F, 6.9F, -1.75F,
-                        4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftArm.addChild("left_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
-                        3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftArm.addChild("elite_shoulder_left", cube(40, 16, -2.8F, -1.8F, -2.15F,
-                        5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        ModelPartData rightArm = root.addChild("right_arm", cube(40, 0,
-                        -2.0F, -1.0F, -1.5F, 4.0F, 9.0F, 3.0F),
-                ModelTransform.pivot(-4.0F, 1.0F, 0.0F));
-        rightArm.addChild("right_forearm", cube(44, 0, -1.55F, -0.55F, -1.3F,
-                        3.1F, 12.0F, 2.6F), ModelTransform.pivot(0.0F, 8.4F, 0.0F));
-        rightArm.addChild("right_elbow_bone", cube(48, 0, -2.15F, 6.9F, -1.75F,
-                        4.3F, 1.2F, 3.5F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightArm.addChild("right_wrist_bone", cube(50, 0, -1.8F, 18.0F, -1.6F,
-                        3.6F, 1.4F, 3.2F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightArm.addChild("elite_shoulder_right", cube(40, 16, -2.8F, -1.8F, -2.15F,
-                        5.6F, 3.2F, 4.3F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        ModelPartData leftLeg = root.addChild("left_leg", cube(0, 16,
-                        -1.25F, 0.0F, -1.25F, 2.5F, 8.0F, 2.5F),
-                ModelTransform.pivot(1.35F, 10.0F, 0.0F));
-        leftLeg.addChild("left_knee_bone", cube(8, 16, -1.55F, 6.6F, -1.55F,
-                        3.1F, 1.4F, 3.1F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        leftLeg.addChild("left_lower_leg", cube(12, 16, -1.0F, -0.55F, -1.0F,
-                        2.0F, 13.0F, 2.0F), ModelTransform.pivot(0.0F, 7.5F, 0.0F));
-        leftLeg.addChild("left_ankle_bone", cube(16, 16, -1.35F, 18.5F, -1.35F,
-                        2.7F, 1.5F, 2.7F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        ModelPartData rightLeg = root.addChild("right_leg", cube(0, 16,
-                        -1.25F, 0.0F, -1.25F, 2.5F, 8.0F, 2.5F),
-                ModelTransform.pivot(-1.35F, 10.0F, 0.0F));
-        rightLeg.addChild("right_knee_bone", cube(8, 16, -1.55F, 6.6F, -1.55F,
-                        3.1F, 1.4F, 3.1F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        rightLeg.addChild("right_lower_leg", cube(12, 16, -1.0F, -0.55F, -1.0F,
-                        2.0F, 13.0F, 2.0F), ModelTransform.pivot(0.0F, 7.5F, 0.0F));
-        rightLeg.addChild("right_ankle_bone", cube(16, 16, -1.35F, 18.5F, -1.35F,
-                        2.7F, 1.5F, 2.7F), ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
-        root.addChild("guard_crest", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        new ModelUvBounds.Box(40, 20, -3.4F, -1.2F, -2.05F,
-                                6.8F, 1.6F, 0.45F),
-                        new ModelUvBounds.Box(40, 23, -2.4F, -2.6F, -1.95F,
-                                4.8F, 1.3F, 0.35F)),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("guard_chest_seal", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        48, 20, -1.8F, 1.8F, -2.0F, 3.6F, 4.4F, 0.35F),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        new ModelUvBounds.Box(52, 20, -1.0F, 1.0F, 1.65F,
-                                2.0F, 8.5F, 0.65F),
-                        new ModelUvBounds.Box(56, 20, -1.6F, 2.5F, 1.5F,
-                                3.2F, 1.0F, 0.8F),
-                        new ModelUvBounds.Box(56, 22, -1.6F, 5.0F, 1.5F,
-                                3.2F, 1.0F, 0.8F)),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-        root.addChild("elite_mantle", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        30, 24, -6.0F, -1.0F, -2.5F, 12.0F, 2.4F, 5.0F),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
+        body = root.getChild("body");
+        addBipedSkeletonArm(root, "left_arm", "left_forearm", true, userSkin);
+        addBipedSkeletonArm(root, "right_arm", "right_forearm", false, userSkin);
+        addBipedSkeletonLeg(root, "left_leg", "left_lower_leg", true, userSkin);
+        addBipedSkeletonLeg(root, "right_leg", "right_lower_leg", false, userSkin);
+        head.addChild("elite_horn_left", cube(leftHornU, hornV,
+                        -3.0F, -10.5F, -1.0F, 1.2F, 3.5F, 1.2F),
+                ModelTransform.NONE);
+        head.addChild("elite_horn_right", ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        rightHornU, hornV, 1.8F, -10.5F, -1.0F, 1.2F, 3.5F, 1.2F, true),
+                ModelTransform.NONE);
+        root.getChild("left_arm").addChild("elite_shoulder_left", cube(40, 16,
+                        -1.5F, -2.25F, -1.0F, 3.0F, 3.0F, 2.0F),
+                ModelTransform.NONE);
+        root.getChild("right_arm").addChild("elite_shoulder_right",
+                ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        50, 16, -1.5F, -2.25F, -1.0F, 3.0F, 3.0F, 2.0F, true),
+                ModelTransform.NONE);
+        body.addChild("chest_rift", cube(24, 17,
+                        -0.5F, 3.0F, -2.35F, 1.0F, 6.0F, 0.5F),
+                ModelTransform.NONE);
+        root.addChild("guard_crest", cube(40, 16,
+                        -2.0F, -10.0F, -4.05F, 4.0F, 2.5F, 0.5F),
+                ModelTransform.NONE);
+        root.addChild("guard_chest_seal", cube(24, 17,
+                        -1.5F, 8.0F, -2.55F, 3.0F, 3.0F, 0.5F),
+                ModelTransform.NONE);
+        root.addChild("guardian_spine", cube(40, 16,
+                        -1.0F, 2.0F, 2.05F, 2.0F, 8.0F, 0.5F),
+                ModelTransform.NONE);
+        root.addChild("elite_mantle", cube(40, 16,
+                        -3.5F, -0.5F, -2.0F, 7.0F, 2.0F, 4.0F),
+                ModelTransform.NONE);
         root.addChild("elite_horn_crown", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
-                        new ModelUvBounds.Box(48, 26, -3.2F, -11.0F, -1.2F,
-                                1.8F, 4.0F, 2.0F),
-                        new ModelUvBounds.Box(48, 26, 1.4F, -11.0F, -1.2F,
-                                1.8F, 4.0F, 2.0F)),
-                ModelTransform.pivot(0.0F, 0.0F, 0.0F));
-
+                        new ModelUvBounds.Box(40, 16, -3.0F, -10.0F, -1.0F,
+                                1.0F, 3.0F, 1.0F),
+                        new ModelUvBounds.Box(48, 16, -0.5F, -11.0F, -1.0F,
+                                1.0F, 2.0F, 1.0F),
+                        new ModelUvBounds.Box(56, 16, 2.0F, -10.0F, -1.0F,
+                                1.0F, 3.0F, 1.0F)),
+                ModelTransform.NONE);
         return TexturedModelData.of(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    }
+
+    private static void addBipedSkeletonArm(ModelPartData root, String name,
+                                             String forearmName, boolean mirrored,
+                                             boolean userSkin) {
+        // The supplied 64x32 skeleton atlases put both arm islands at U=40;
+        // U=0 belongs to a leg, which made cyan/elite archers' arms look
+        // transparent or like unfinished legs.
+        int uv = userSkin ? 40 : mirrored ? 48 : 32;
+        int upperV = userSkin ? 16 : 0;
+        // Each half is six pixels tall. Advance by six UV rows so the two
+        // halves cover the original twelve-pixel arm island without a gap.
+        int lowerV = upperV + 6;
+        ModelPartBuilder upper = ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                uv, upperV, -1.0F, -2.0F, -1.0F, 2.0F, 6.0F, 2.0F, mirrored);
+        ModelPartData arm = root.addChild(name, upper,
+                ModelTransform.pivot(mirrored ? 5.0F : -5.0F, 2.0F, 0.0F));
+        ModelPartBuilder lower = ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                uv, lowerV, -1.0F, -2.0F, -1.0F, 2.0F, 6.0F, 2.0F, mirrored);
+        arm.addChild(forearmName, lower, ModelTransform.pivot(0.0F, 6.0F, 0.0F));
+    }
+
+    private static void addBipedSkeletonLeg(ModelPartData root, String name,
+                                             String lowerLegName, boolean mirrored,
+                                             boolean userSkin) {
+        int uv = userSkin ? 0 : mirrored ? 8 : 0;
+        int upperV = 16;
+        int lowerV = upperV + 6;
+        ModelPartBuilder upper = ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                uv, upperV, -1.0F, 0.0F, -1.0F, 2.0F, 6.0F, 2.0F, mirrored);
+        ModelPartData leg = root.addChild(name, upper,
+                ModelTransform.pivot(mirrored ? 2.0F : -2.0F, 12.0F, 0.0F));
+        ModelPartBuilder lower = ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                uv, lowerV, -1.0F, 0.0F, -1.0F, 2.0F, 6.0F, 2.0F, mirrored);
+        leg.addChild(lowerLegName, lower, ModelTransform.pivot(0.0F, 6.0F, 0.0F));
     }
 
     private static boolean isEliteVariant(Variant variant) {
         return variant == Variant.ELITE || variant == Variant.WAVE_GUARDIAN
                 || variant == Variant.RITUAL_GUARD;
+    }
+
+    private static boolean usesSharedSkeletonAtlas(Variant variant) {
+        return switch (variant) {
+            case ORDINARY, ELITE, WAVE_GUARDIAN, RITUAL_GUARD -> true;
+        };
     }
 
     private static ModelPartBuilder cube(int u, int v, float x, float y, float z,

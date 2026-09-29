@@ -6,7 +6,25 @@ public final class TentacleAnimationPolicyTest {
         testAllArtistBriefStatesHaveBoundedDurations();
         testGrabMarkersUseTheSpecifiedTimeline();
         testTransitionsKeepTheServerSequenceDeterministic();
+        testStaticShowroomStartsPermanentTentaclesInTheLoopingIdleState();
         System.out.println("TentacleAnimationPolicyTest OK");
+    }
+
+    private static void testStaticShowroomStartsPermanentTentaclesInTheLoopingIdleState() {
+        TentacleAnimationPolicy.State showroomState = TentacleAnimationPolicy.initialSpawnState(
+                TentacleAnimationPolicy.Kind.PERMANENT, true);
+        check(showroomState == TentacleAnimationPolicy.State.READY,
+                "static showroom permanent tentacles must start on the authored idle clip");
+        check(TentacleAnimationPolicy.loops(showroomState),
+                "static showroom idle must keep looping while combat ticks are paused");
+        check(TentacleAnimationPolicy.initialSpawnState(
+                        TentacleAnimationPolicy.Kind.PERMANENT, false)
+                        == TentacleAnimationPolicy.State.EMERGING,
+                "live permanent guardians must keep their emergence animation");
+        check(TentacleAnimationPolicy.initialSpawnState(
+                        TentacleAnimationPolicy.Kind.TEMPORARY, true)
+                        == TentacleAnimationPolicy.State.EMERGING,
+                "a temporary tentacle must not inherit the permanent showroom idle state");
     }
 
     private static void testAllArtistBriefStatesHaveBoundedDurations() {
@@ -37,10 +55,10 @@ public final class TentacleAnimationPolicyTest {
                         TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR)),
                 "grab markers must be ordered from contact to retract");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.GRAB_SUCCESS,
-                        TentacleAnimationPolicy.Marker.CONTACT) == 8,
+                        TentacleAnimationPolicy.Marker.CONTACT) == 6,
                 "contact must land at about 60 percent of grab success");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.GRAB_SUCCESS,
-                        TentacleAnimationPolicy.Marker.HOLD_LOCK) == 12,
+                        TentacleAnimationPolicy.Marker.HOLD_LOCK) == 9,
                 "hold lock must land near the end of grab success");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.THROW,
                         TentacleAnimationPolicy.Marker.THROW_RELEASE) == 8,
@@ -49,7 +67,7 @@ public final class TentacleAnimationPolicyTest {
                         TentacleAnimationPolicy.Marker.RECOVERY_START) == 0,
                 "recovery starts at the recovery state boundary");
         check(TentacleAnimationPolicy.markerTick(TentacleAnimationPolicy.State.RETRACT,
-                        TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR) == 16,
+                        TentacleAnimationPolicy.Marker.HIDE_BELOW_FLOOR) == 18,
                 "temporary retraction hides at its end marker");
     }
 

@@ -54,6 +54,18 @@ public final class BossAiSimulationTest {
         check(noLosDecision.ability().ability() == BossAbilityId.REPOSITION,
                 "no line of sight must reject projectile and reposition");
 
+        BossPerceptionSnapshot finalSealNoLos = new BossPerceptionSnapshot(
+                BossPhase.LAST_SEAL, null, List.of(
+                new BossPerceptionSnapshot.PlayerObservation(A, true, 1.0, 8, false,
+                        false, 0, false, false, false, 0, 0, 0, 0, 0, 0, "")),
+                new BossPerceptionSnapshot.Position(0, 0, 0),
+                BossPerceptionSnapshot.HazardSnapshot.EMPTY, "", 1L, false);
+        BossBrain.Decision finalSealDecision = brain.decide(finalSealNoLos,
+                List.of(BossAbilityId.FINAL_STRIKE, BossAbilityId.BOSS_FIREBALL),
+                null, A, budget, 1L, 0);
+        check(finalSealDecision.ability().ability() == BossAbilityId.FINAL_STRIKE,
+                "the long final-seal spell must still be selectable when the pinned boss has no direct line of sight");
+
         BossHazardBudget hardBudget = new BossHazardBudget(BossHazardBudget.profileForPlayers(2));
         check(hardBudget.reserve(A, BossHazardBudget.MechanicKind.MAJOR_GRAB, 1L).accepted(),
                 "first hard control must reserve");

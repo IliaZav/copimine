@@ -268,14 +268,22 @@ def test_articulated_profile_envelopes_are_derived_from_bind_pose_geometry() -> 
         ), f"profile drift for body/{row['id']}: profile={expected} geometry={actual}"
 
 
-def test_client_importer_keeps_the_same_source_bones_and_exact_face_uv() -> None:
-    importer = read(CLIENT_JAVA / "UserEndBossModelData.java")
-    assert 'RESOURCE = "/assets/copimineclient/models/entity/end_rift_guardian/geometry.json"' in importer
-    assert 'case "right_hand" -> "right_arm"' in importer
-    assert 'case "left_hand" -> "left_arm"' in importer
-    assert 'case "body" -> "torso"' in importer
-    assert "applyExactFaceUv" in importer
-    assert "Missing parent for supplied End Rift bone" in importer
+def test_client_direct_renderer_keeps_the_same_source_bones_and_exact_face_uv() -> None:
+    model_data = read(CLIENT_JAVA / "UserEndBossModelData.java")
+    geometry = read(CLIENT_JAVA / "ChameleonGuardianGeometry.java")
+    renderer = read(CLIENT_JAVA / "ChameleonGuardianRenderer.java")
+    assert 'RESOURCE = "/assets/copimineclient/models/entity/end_rift_guardian/geometry.json"' in model_data
+    assert "BedrockAssetValidator.validateGeometry" in model_data
+    assert "ChameleonGuardianGeometry" in model_data
+    assert "signed UV rectangles" in model_data
+    # Source names and face rectangles are retained directly instead of being
+    # collapsed into a small vanilla ModelPart-name mapping.
+    assert "boneName" in geometry
+    assert "uv_size" in geometry
+    assert "appendFace" in geometry
+    assert "faces(pose)" in renderer
+    assert "emitAll" in renderer
+    assert "applyExactFaceUv" not in model_data
 
 
 def test_boss_hitbox_debug_command_and_live_probe_are_exposed() -> None:

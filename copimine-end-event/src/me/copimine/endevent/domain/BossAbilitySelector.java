@@ -72,10 +72,16 @@ public final class BossAbilitySelector {
         return switch (phase) {
             case AWAKENING -> ability == BossAbilityId.VOID_BLAST ? 3.0D : 1.0D;
             case HUNT -> ability == BossAbilityId.RIFT_ARROWS || ability == BossAbilityId.VOID_MARK ? 4.0D : 1.0D;
-            case RIFT -> ability == BossAbilityId.VOID_MARK || ability == BossAbilityId.SUMMON_SERVANTS ? 4.0D : 1.0D;
-            case OVERLOAD -> ability == BossAbilityId.ARENA_INFERNO ? 4.0D : 1.0D;
-            case RAGE -> ability == BossAbilityId.RIFT_ARROWS || ability == BossAbilityId.ARENA_INFERNO ? 4.0D : 1.0D;
-            case LAST_SEAL -> ability == BossAbilityId.FINAL_STRIKE ? 5.0D : 1.0D;
+            case RIFT -> ability == BossAbilityId.VOID_MARK
+                    || ability == BossAbilityId.SUMMON_SERVANTS
+                    || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
+            case OVERLOAD -> ability == BossAbilityId.ARENA_INFERNO
+                    || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
+            case RAGE -> ability == BossAbilityId.RIFT_ARROWS
+                    || ability == BossAbilityId.ARENA_INFERNO
+                    || ability == BossAbilityId.BOSS_FIREBALL ? 4.0D : 1.0D;
+            case LAST_SEAL -> ability == BossAbilityId.FINAL_STRIKE
+                    || ability == BossAbilityId.BOSS_FIREBALL ? 5.0D : 1.0D;
         };
     }
 
@@ -85,7 +91,9 @@ public final class BossAbilitySelector {
             case PUNISH_SPREAD -> ability == BossAbilityId.VOID_MARK || ability == BossAbilityId.RIFT_PROJECTILE ? 5.0D : 0.0D;
             case CREATE_SPACE -> ability == BossAbilityId.REPOSITION || ability == BossAbilityId.VOID_BLAST ? 6.0D : 0.0D;
             case FLANK -> ability == BossAbilityId.RIFT_PROJECTILE ? 3.0D : 0.0D;
-            case RANGED_PRESSURE -> ability == BossAbilityId.RIFT_ARROWS || ability == BossAbilityId.RIFT_PROJECTILE ? 5.0D : 0.0D;
+            case RANGED_PRESSURE -> ability == BossAbilityId.RIFT_ARROWS
+                    || ability == BossAbilityId.RIFT_PROJECTILE
+                    || ability == BossAbilityId.BOSS_FIREBALL ? 5.0D : 0.0D;
             case CONTROL, CHANNEL -> ability == BossAbilityId.VOID_MARK || ability == BossAbilityId.FINAL_STRIKE ? 5.0D : 0.0D;
             case SUMMON -> ability == BossAbilityId.SUMMON_SERVANTS ? 6.0D : 0.0D;
             case RECOVER -> ability == BossAbilityId.RECOVER || ability == BossAbilityId.REPOSITION ? 6.0D : 0.0D;

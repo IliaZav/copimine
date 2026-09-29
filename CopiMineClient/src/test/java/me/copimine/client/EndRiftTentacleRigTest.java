@@ -2,45 +2,48 @@ package me.copimine.client;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.lang.reflect.Field;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndRiftTentacleRigTest {
     @Test
-    void hierarchyIsUniqueAndSocketHasNoGeometry() {
-        assertEquals(512, EndRiftTentacleRig.TEXTURE_SIZE);
-        Set<String> names = new HashSet<>();
-        for (EndRiftTentacleRig.BoneDefinition definition : EndRiftTentacleRig.definitions()) {
-            assertTrue(names.add(definition.name()), definition.name());
-            if (definition.parent() != null) {
-                assertTrue(EndRiftTentacleRig.REQUIRED_BONES.contains(definition.parent()));
-            }
-        }
-        assertEquals(EndRiftTentacleRig.REQUIRED_BONES.size(), names.size());
-        EndRiftTentacleRig.BoneDefinition socket = EndRiftTentacleRig.definitions().stream()
-                .filter(definition -> "grab_socket".equals(definition.name()))
-                .findFirst().orElseThrow();
-        assertFalse(socket.hasGeometry());
-        assertEquals("tip", socket.parent());
+    void rigUsesTheSixArtistAuthoredBonesAndNoInventedClaws() {
+        assertEquals(8, EndRiftTentacleRig.TEXTURE_UV_WIDTH);
+        assertEquals(6, EndRiftTentacleRig.definitions().size());
+        assertEquals(EndRiftTentacleRig.REQUIRED_BONES, EndRiftTentacleRig.definitions().stream()
+                .map(EndRiftTentacleRig.BoneDefinition::name).toList());
+        assertTrue(EndRiftTentacleRig.REQUIRED_BONES.contains("3layer2"));
+        assertTrue(EndRiftTentacleRig.REQUIRED_BONES.stream()
+                .noneMatch(name -> name.startsWith("tip_claw")));
     }
 
     @Test
-    void dimensionsMatchTheArtistBrief() {
-        float height = EndRiftTentacleRig.definitions().stream()
-                .filter(definition -> definition.hasGeometry()
-                        && ("base".equals(definition.name())
-                        || definition.name().startsWith("seg_")
-                        || "tip".equals(definition.name())))
-                .map(EndRiftTentacleRig.BoneDefinition::length)
-                .reduce(0.0F, Float::sum);
-        assertTrue(height >= 4.5F && height <= 5.0F, "height=" + height);
-        EndRiftTentacleRig.BoneDefinition base = EndRiftTentacleRig.definitions().stream()
-                .filter(definition -> "base".equals(definition.name()))
-                .findFirst().orElseThrow();
-        assertTrue(base.width() >= 1.1F && base.width() <= 1.3F);
+    void importedGeometryStaysInsideTheSourceModelBounds() {
+        KaguneModelImporter.ImportedModel model = KaguneModelImporter.load();
+        assertEquals(6, model.elements().size());
+        assertEquals(6, model.bones().size());
+        assertEquals(64, model.textureWidth());
+        assertEquals(64, model.textureHeight());
+        assertEquals(8, model.textureUvWidth());
+        assertEquals(8, model.textureUvHeight());
+        assertEquals(7.8681F, model.bounds().height(), 0.002F);
+        assertEquals(2.475F, model.bounds().width(), 0.002F);
+        assertTrue(model.elements().stream().allMatch(element -> element.faces().size() == 6));
+    }
+
+    @Test
+    void renderRigKeepsTheThreeArtistAuthoredRootSectionsIndependent() throws Exception {
+        Field rootsField = EndRiftTentacleRig.RenderRig.class.getDeclaredField("roots");
+        rootsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<KaguneModelImporter.Bone> roots =
+                (List<KaguneModelImporter.Bone>) rootsField.get(EndRiftTentacleRig.createRenderRig());
+
+        assertEquals(List.of("1layer", "2layer", "3layer"),
+                roots.stream().map(KaguneModelImporter.Bone::name).toList(),
+                "render hierarchy must follow the three root sections in the supplied model");
     }
 }

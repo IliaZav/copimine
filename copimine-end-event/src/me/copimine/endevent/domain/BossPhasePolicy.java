@@ -53,19 +53,23 @@ public final class BossPhasePolicy {
             case RIFT -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
-                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
+                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
             case OVERLOAD -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
-                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS);
+                    EndRiftAiPolicy.BossSpell.SUMMON_SERVANTS,
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
             case RAGE -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_BLAST,
                     EndRiftAiPolicy.BossSpell.RIFT_PROJECTILE,
                     EndRiftAiPolicy.BossSpell.RIFT_ARROWS,
-                    EndRiftAiPolicy.BossSpell.ARENA_INFERNO);
+                    EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL);
             case LAST_SEAL -> List.of(
                     EndRiftAiPolicy.BossSpell.VOID_MARK,
                     EndRiftAiPolicy.BossSpell.ARENA_INFERNO,
+                    EndRiftAiPolicy.BossSpell.BOSS_FIREBALL,
                     EndRiftAiPolicy.BossSpell.FINAL_STRIKE);
         };
     }

@@ -439,7 +439,7 @@ public record EventConfig(
                 || attackIntervalTicks < 100 || attackIntervalTicks > 400
                 || attackStaggerTicks < 0 || attackStaggerTicks > 80
                 || !Double.isFinite(hitboxWidth) || hitboxWidth < 0.5D || hitboxWidth > 2.5D
-                || !Double.isFinite(hitboxHeight) || hitboxHeight < 1.5D || hitboxHeight > 5.0D) {
+                || !Double.isFinite(hitboxHeight) || hitboxHeight < 1.5D || hitboxHeight > 7.0D) {
             throw new IllegalStateException("boss.tentacle-guardians contains unsafe bounds");
         }
         return new TentacleGuardianTuning(section.getBoolean("enabled", true),

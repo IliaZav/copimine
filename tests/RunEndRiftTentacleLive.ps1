@@ -1,0 +1,400 @@
+[CmdletBinding()]
+param(
+  [string]$BotName = '',
+  [ValidateRange(20, 180)]
+  [int]$BotDurationSeconds = 45,
+  [ValidateRange(30, 240)]
+  [int]$TimeoutSeconds = 90,
+  [string]$EvidencePath = ''
+)
+
+# Local/staging-only native gameplay boundary for the final-seal tentacle rig.
+# The player is a real Mineflayer client and uses normal use_entity packets;
+# this script only positions the disposable client and reads authoritative
+# server state. It never edits a production world or grants rewards.
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
+$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$pluginJar = Join-Path $serverDir 'plugins\CopiMineEndEvent.jar'
+$rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
+$botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
+$eventSource = Join-Path $root 'copimine-end-event\src\me\copimine\endevent\CopiMineEndEvent.java'
+$throwPolicySource = Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain\TentacleThrowPolicy.java'
+$sourceConfig = Join-Path $root 'copimine-end-event\config.yml'
+$installedConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
+$propertiesPath = Join-Path $serverDir 'server.properties'
+$paperLog = Join-Path $serverDir 'logs\latest.log'
+$botLogDirectory = Join-Path $runtimeRoot 'tentacle-live'
+$botStdout = Join-Path $botLogDirectory ($BotName + '.stdout.log')
+$botControlDirectory = Join-Path $botLogDirectory 'control'
+$botEnvironmentNames = @(
+  'END_RIFT_BOT_PASSWORD',
+  'END_RIFT_BOT_SKIP_REGISTER',
+  'END_RIFT_GUARDIAN_PROBE_NAMES',
+  'END_RIFT_ATTACK_INTERVAL_MS',
+  'END_RIFT_TENTACLE_TRACE'
+)
+$previousBotEnvironment = @{}
+foreach ($name in $botEnvironmentNames) {
+  $previousBotEnvironment[$name] = [Environment]::GetEnvironmentVariable(
+    $name, [EnvironmentVariableTarget]::Process)
+}
+if ([string]::IsNullOrWhiteSpace($BotName)) {
+  $BotName = 'RiftProbe' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
+}
+if ($BotName -notmatch '^[A-Za-z0-9_]{1,16}$') {
+  throw "Invalid disposable bot name: $BotName"
+}
+$botControlFile = Join-Path $botControlDirectory ($BotName + '.mode')
+if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
+  $EvidencePath = Join-Path $botLogDirectory 'tentacle-live.log'
+}
+$botProcess = $null
+$success = $false
+
+function Restore-BotEnvironment {
+  foreach ($name in $botEnvironmentNames) {
+    [Environment]::SetEnvironmentVariable(
+      $name, $previousBotEnvironment[$name], [EnvironmentVariableTarget]::Process)
+  }
+}
+
+function Assert-UnderRuntime([string]$Path) {
+  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+  $allowed = [IO.Path]::GetFullPath($runtimeRoot).TrimEnd('\') + '\'
+  if (-not $full.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Tentacle evidence path is outside local-runtime: $Path"
+  }
+}
+
+Assert-UnderRuntime $EvidencePath
+foreach ($path in @($serverDir, $rconScript, $botScript, $sourceConfig,
+    $installedConfig, $propertiesPath, $paperLog, $pluginJar,
+    $eventSource, $throwPolicySource)) {
+  if (-not (Test-Path -LiteralPath $path -PathType Leaf) -and $path -ne $serverDir) {
+    throw "Tentacle live input is missing: $path"
+  }
+}
+$sourceText = Get-Content -LiteralPath $sourceConfig -Raw
+$installedText = Get-Content -LiteralPath $installedConfig -Raw
+if ($sourceText -notmatch '(?m)^environment:\s*(local|staging)\s*$' -or
+    $installedText -notmatch '(?m)^environment:\s*(local|staging)\s*$') {
+  throw 'Tentacle live probe requires environment: local or staging.'
+}
+$properties = @{}
+foreach ($line in Get-Content -LiteralPath $propertiesPath -Encoding UTF8) {
+  if ($line -match '^([^=]+)=(.*)$') { $properties[$matches[1]] = $matches[2] }
+}
+if ($properties['server-port'] -ne '25566' -or $properties['rcon.port'] -ne '25576') {
+  throw 'Tentacle live probe requires isolated local ports 25566/25576.'
+}
+$branch = (& git -C $root branch --show-current 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+  throw "Refused Git branch '$branch'."
+}
+$gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()
+New-Item -ItemType Directory -Path $botLogDirectory, (Split-Path -Parent $EvidencePath) -Force | Out-Null
+Set-Content -LiteralPath $EvidencePath -Value @(
+  "END_RIFT_TENTACLE_LIVE_START time=$((Get-Date).ToString('o')) branch=$branch gitHead=$gitHead"
+  "environment=$($properties['server-port'])/$($properties['rcon.port'])"
+) -Encoding UTF8
+
+function Record([string]$Text) {
+  Add-Content -LiteralPath $EvidencePath -Value $Text -Encoding UTF8
+  Write-Output $Text
+}
+
+function Record-LoadedArtifactEvidence {
+  # Tie live observations to the plugin file available to the already-running
+  # listener. The probe is read-only with respect to server processes.
+  $listeners = @(Get-NetTCPConnection -State Listen -LocalPort ([int]$properties['server-port']) -ErrorAction Stop)
+  if ($listeners.Count -ne 1) {
+    throw "Expected one Paper listener on port $($properties['server-port']), got $($listeners.Count)."
+  }
+  $serverPid = [int]$listeners[0].OwningProcess
+  $serverProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $serverPid"
+  if (-not $serverProcess -or $serverProcess.Name -notmatch '^javaw?\.exe$' -or
+      $serverProcess.CommandLine -notmatch '(?i)purpur\.jar') {
+    throw "Port $($properties['server-port']) is not owned by the expected running Purpur process (pid=$serverPid)."
+  }
+  $serverStarted = [datetime]$serverProcess.CreationDate
+  $plugin = Get-Item -LiteralPath $pluginJar
+  if ($plugin.LastWriteTime -gt $serverStarted) {
+    throw "Plugin jar changed after the active server started: jar=$($plugin.LastWriteTime.ToString('o')) server=$($serverStarted.ToString('o'))."
+  }
+  $pluginHash = (Get-FileHash -LiteralPath $pluginJar -Algorithm SHA256).Hash
+  $eventSourceHash = (Get-FileHash -LiteralPath $eventSource -Algorithm SHA256).Hash
+  $throwPolicyHash = (Get-FileHash -LiteralPath $throwPolicySource -Algorithm SHA256).Hash
+  Record "LOADED_SERVER_PROCESS pid=$serverPid start=$($serverStarted.ToString('o')) listener_port=$($properties['server-port'])"
+  Record "PLUGIN_SHA256 path=plugins/CopiMineEndEvent.jar value=$pluginHash last_write=$($plugin.LastWriteTime.ToString('o'))"
+  Record "SOURCE_SHA256 CopiMineEndEvent.java=$eventSourceHash TentacleThrowPolicy.java=$throwPolicyHash"
+}
+
+Record-LoadedArtifactEvidence
+
+function Invoke-LocalRcon([string]$CommandText) {
+  $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript `
+    -ServerDir $serverDir -RconPort 25576 -CommandText $CommandText | Out-String
+  if ($LASTEXITCODE -ne 0) {
+    throw "Local RCON failed: $CommandText`n$result"
+  }
+  return ($result -replace '\u00A7.', '').Trim()
+}
+
+function Read-Log { return [string](Get-Content -LiteralPath $paperLog -Raw) }
+function Log-Length { return [int64](Read-Log).Length }
+function Log-Tail([int64]$Offset) {
+  $text = Read-Log
+  if ($Offset -ge $text.Length) { return '' }
+  return $text.Substring([int]$Offset)
+}
+function Wait-Log([int64]$Offset, [string]$Pattern, [int]$Seconds = $TimeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    $tail = Log-Tail $Offset
+    if ($tail -match $Pattern) { return $tail }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for '$Pattern'."
+}
+
+function Wait-BotLog([string]$Pattern, [int]$Seconds = $TimeoutSeconds) {
+  $deadline = (Get-Date).AddSeconds($Seconds)
+  while ((Get-Date) -lt $deadline) {
+    if (Test-Path -LiteralPath $botStdout -PathType Leaf) {
+      $text = Get-Content -LiteralPath $botStdout -Raw
+      if ($text -match $Pattern) { return $text }
+    }
+    Start-Sleep -Milliseconds 250
+  }
+  throw "Timed out waiting for bot evidence '$Pattern'."
+}
+
+function Get-Core([string]$Status) {
+  $match = [Regex]::Match($Status, 'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
+  if (-not $match.Success) { throw "Core coordinates are missing: $Status" }
+  return @(
+    [double]$match.Groups[1].Value,
+    [double]$match.Groups[2].Value,
+    [double]$match.Groups[3].Value
+  )
+}
+
+function Format-Coordinate([double]$Value) {
+  return $Value.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Wait-BotOnline {
+  for ($attempt = 0; $attempt -lt 120; $attempt++) {
+    if ((Invoke-LocalRcon 'list') -match [Regex]::Escape($BotName)) { return }
+    Start-Sleep -Milliseconds 500
+  }
+  throw "Tentacle bot did not join in time: $BotName"
+}
+
+function Start-Bot([int]$CoreX, [int]$CoreY, [int]$CoreZ) {
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $stderr = Join-Path $botLogDirectory ($BotName + '.stderr.log')
+  New-Item -ItemType Directory -Path $botControlDirectory -Force | Out-Null
+  Set-Content -LiteralPath $botControlFile -Value 'ACTIVE' -Encoding ASCII
+  $env:END_RIFT_BOT_PASSWORD = [Guid]::NewGuid().ToString('N')
+  $env:END_RIFT_BOT_SKIP_REGISTER = '0'
+  $env:END_RIFT_GUARDIAN_PROBE_NAMES = $BotName
+  $env:END_RIFT_ATTACK_INTERVAL_MS = '300'
+  $env:END_RIFT_TENTACLE_TRACE = '1'
+  $botProcess = Start-Process -FilePath $node -WorkingDirectory $root -WindowStyle Hidden -PassThru `
+    -RedirectStandardOutput $botStdout -RedirectStandardError $stderr `
+    -ArgumentList @($botScript, $BotName, [string]($BotDurationSeconds * 1000),
+      (Format-Coordinate ($CoreX + 0.5D)), (Format-Coordinate $CoreY),
+      (Format-Coordinate ($CoreZ + 0.5D)), '20', '300', $botControlDirectory)
+  return $botProcess
+}
+
+function Read-TentacleJson {
+  $raw = Invoke-LocalRcon 'cmend debug tentacles --json'
+  $jsonLine = @($raw -split '\r?\n' | Where-Object { $_.TrimStart().StartsWith('{') } | Select-Object -Last 1)
+  if ($jsonLine.Count -eq 0) { throw "Tentacle JSON snapshot missing: $raw" }
+  return ($jsonLine[0] | ConvertFrom-Json)
+}
+
+try {
+  $null = Invoke-LocalRcon 'cmend wave clear'
+  $null = Invoke-LocalRcon 'cmend boss kill cleanup'
+  # Use the real Current boss path here.  The disposable /cmend boss spawn
+  # harness intentionally does not own the Current tentacle controller, so it
+  # cannot prove the player-facing guardian mechanic.
+  $null = Invoke-LocalRcon 'cmend boss spawn official confirm'
+  $null = Invoke-LocalRcon 'cmend boss phase last_seal'
+  Start-Sleep -Milliseconds 500
+  $status = Invoke-LocalRcon 'cmend status'
+  $core = Get-Core $status
+  $spawnOffset = Log-Length
+  $botProcess = Start-Bot ([int]$core[0]) ([int]$core[1]) ([int]$core[2])
+  Wait-BotOnline
+  Start-Sleep -Milliseconds 750
+  $null = Invoke-LocalRcon ("gamemode survival $BotName")
+  $null = Invoke-LocalRcon ("attribute $BotName minecraft:generic.max_health base set 1000")
+  $maxHealthReply = Invoke-LocalRcon ("attribute $BotName minecraft:generic.max_health base get")
+  $maxHealthMatch = [Regex]::Match($maxHealthReply, '(?i)(?:base value:\s*|\bis\s*)([0-9.]+)')
+  if (-not $maxHealthMatch.Success -or [double]$maxHealthMatch.Groups[1].Value -lt 999.0D) {
+    throw "The probe player did not receive the requested health buffer: $maxHealthReply"
+  }
+  $null = Invoke-LocalRcon ("effect clear $BotName")
+  # Instant Health lets a disposable player use a large max-health buffer;
+  # repeat the bounded potion effect until it reaches that verified ceiling.
+  for ($healPulse = 0; $healPulse -lt 8; $healPulse++) {
+    $null = Invoke-LocalRcon ("effect give $BotName minecraft:instant_health 1 6 true")
+  }
+  $initialHealthReply = Invoke-LocalRcon ("data get entity $BotName Health")
+  $initialHealthMatch = [Regex]::Match($initialHealthReply,
+    '(?i)following entity data:\s*([0-9.]+)f?')
+  if (-not $initialHealthMatch.Success -or
+      [double]$initialHealthMatch.Groups[1].Value -lt 999.0D) {
+    throw "The probe player was not healed to its verified maximum: $initialHealthReply"
+  }
+  Record "LIVE_TENTACLE_PROBE_HEALTH_READY maximum=$($maxHealthMatch.Groups[1].Value) current=$($initialHealthMatch.Groups[1].Value)"
+  # The disposable client must not have Resistance/Regeneration masking the
+  # actual release damage or fall damage measured below.
+  $null = Invoke-LocalRcon ("give $BotName minecraft:diamond_sword")
+  $expectedX = $core[0] + 0.5D
+  $expectedY = $core[1] + 1.0D
+  $expectedZ = $core[2] + 0.5D
+  $null = Invoke-LocalRcon ("tp $BotName $(Format-Coordinate $expectedX) $(Format-Coordinate $expectedY) $(Format-Coordinate $expectedZ)")
+  $positionReply = Invoke-LocalRcon ("data get entity $BotName Pos")
+  $positionMatch = [Regex]::Match($positionReply,
+    '\[\s*(-?[0-9.]+)d?,\s*(-?[0-9.]+)d?,\s*(-?[0-9.]+)d?\s*\]')
+  if (-not $positionMatch.Success -or
+      [Math]::Abs([double]$positionMatch.Groups[1].Value - $expectedX) -gt 1.0D -or
+      [Math]::Abs([double]$positionMatch.Groups[2].Value - $expectedY) -gt 1.0D -or
+      [Math]::Abs([double]$positionMatch.Groups[3].Value - $expectedZ) -gt 1.0D) {
+    throw "Disposable player did not reach the tentacle test location: $positionReply"
+  }
+  Record "LIVE_TENTACLE_PROBE_POSITION_PASS x=$($positionMatch.Groups[1].Value) y=$($positionMatch.Groups[2].Value) z=$($positionMatch.Groups[3].Value)"
+
+  $spawnTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_SPAWN .*temporary=false' $TimeoutSeconds
+  $shieldSpawnTail = Wait-Log $spawnOffset 'RIFT_GUARDIAN_SHIELD_SPAWN' $TimeoutSeconds
+  Record 'LIVE_GUARDIAN_SHIELD_ORBIT_PASS carrier=RIFT_GUARDIAN_SHIELD_SPAWN server_authoritative=true'
+  Start-Sleep -Seconds 2
+  $snapshot = Read-TentacleJson
+  if ([int]$snapshot.tentacleCount -lt 2) {
+    throw "Expected two permanent tentacles, got $($snapshot.tentacleCount)."
+  }
+  if ([int]$snapshot.segmentCount -ne 6) {
+    throw "Expected six articulated segments, got $($snapshot.segmentCount)."
+  }
+  foreach ($tentacle in @($snapshot.tentacles)) {
+    if ([double]$tentacle.serverLogicalLength -lt 6.0D -or
+        [double]$tentacle.hitboxHeight -lt 6.0D -or
+        [double]$tentacle.hitboxWidth -lt 1.8D) {
+      throw "Tentacle rig is below the readable server envelope: $($tentacle | ConvertTo-Json -Compress)"
+    }
+  }
+  Record "LIVE_TENTACLE_PROFILE_PASS count=$($snapshot.tentacleCount) permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) segments=6 length=6.25 hitbox=1.9x6.25 visual=END_RIFT_TENTACLE_V1"
+
+  $damageTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_DAMAGE .*health_before=([0-9.]+).*health_after=([0-9.]+)' $TimeoutSeconds
+  $damageMatch = [Regex]::Match($damageTail, 'RIFT_TENTACLE_DAMAGE .*health_before=([0-9.]+).*health_after=([0-9.]+)')
+  if (-not $damageMatch.Success -or
+      [double]$damageMatch.Groups[2].Value -ge [double]$damageMatch.Groups[1].Value) {
+    throw "Real player attack did not lower tentacle health: $damageTail"
+  }
+  Record "LIVE_TENTACLE_DAMAGE_PASS health_before=$($damageMatch.Groups[1].Value) health_after=$($damageMatch.Groups[2].Value) player_packet=true server_authoritative=true"
+  Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
+  Record 'LIVE_TENTACLE_PROBE_PASSIVE_AFTER_DAMAGE_PASS=true'
+
+  $temporaryOffset = Log-Length
+  try { $temporaryTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_SPAWN .*temporary=true' 20 } catch { $temporaryTail = '' }
+  if ($temporaryTail -notmatch 'temporary=true') {
+    throw 'No temporary under-player tentacle spawned during the live window.'
+  }
+  Record 'LIVE_TENTACLE_TEMPORARY_SPAWN_PASS temporary=true retry_or_direct_spawn=true'
+  $stateTail = Wait-Log $temporaryOffset 'RIFT_TENTACLE_STATE .*state=(TELEGRAPH_GRAB|GRAB_SUCCESS|HOLD|THROW)' $TimeoutSeconds
+  $botLog = Wait-BotLog ('PLAYER_JOIN ' + [Regex]::Escape($BotName) + ' uuid=') $TimeoutSeconds
+  $playerJoinMatch = [Regex]::Match($botLog,
+    ('PLAYER_JOIN ' + [Regex]::Escape($BotName) + ' uuid=([0-9a-f-]+)'))
+  if (-not $playerJoinMatch.Success) { throw "Disposable bot UUID was not recorded: $botLog" }
+  $playerUuid = $playerJoinMatch.Groups[1].Value
+  $throwPattern = 'RIFT_TENTACLE_THROW event=\S+ entity=([0-9a-f-]+) target=' +
+    [Regex]::Escape($playerUuid) + ' launch=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) horizontal=([0-9.]+)'
+  $throwTail = Wait-Log $temporaryOffset $throwPattern $TimeoutSeconds
+  $throwLine = @($throwTail -split '\r?\n' |
+    Where-Object { $_ -match $throwPattern } | Select-Object -First 1)[0]
+  $throwMatch = [Regex]::Match($throwLine, $throwPattern)
+  if (-not $throwMatch.Success -or [double]$throwMatch.Groups[5].Value -lt 0.85D) {
+    throw "Tentacle launch was not long enough for $playerUuid`: $throwLine"
+  }
+  Record "LIVE_TENTACLE_THROW_PASS horizontal=$($throwMatch.Groups[5].Value) state_trace=true server_authoritative=true target=$playerUuid"
+  $throwEntityUuid = $throwMatch.Groups[1].Value
+  $throwDamagePattern = 'RIFT_TENTACLE_THROW_DAMAGE event=\S+ entity=' +
+    [Regex]::Escape($throwEntityUuid) + ' target=' + [Regex]::Escape($playerUuid) +
+    ' base_damage=([0-9.]+) applied=([0-9.]+)'
+  $throwDamageTail = Wait-Log $temporaryOffset $throwDamagePattern $TimeoutSeconds
+  $throwDamageMatch = [Regex]::Match($throwDamageTail, $throwDamagePattern)
+  if (-not $throwDamageMatch.Success) { throw "Throw release damage was not recorded for $playerUuid`: $throwDamageTail" }
+  if ([Math]::Abs([double]$throwDamageMatch.Groups[1].Value - 10.0D) -gt 0.01D -or
+      [Math]::Abs([double]$throwDamageMatch.Groups[2].Value - 10.0D) -gt 0.05D) {
+    throw "Expected exact five-heart release damage, got base=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value)."
+  }
+
+  $throwClockMatch = [Regex]::Match($throwLine, '\[(\d{2}):(\d{2}):(\d{2})\]')
+  if (-not $throwClockMatch.Success) { throw "Server throw timestamp was not recorded: $throwLine" }
+  $now = Get-Date
+  $serverThrowTime = $now.Date.AddHours([int]$throwClockMatch.Groups[1].Value).AddMinutes([int]$throwClockMatch.Groups[2].Value).AddSeconds([int]$throwClockMatch.Groups[3].Value)
+  if ($serverThrowTime -gt $now.AddMinutes(1)) { $serverThrowTime = $serverThrowTime.AddDays(-1) }
+  $serverThrowAtMs = ([DateTimeOffset]::new($serverThrowTime)).ToUnixTimeMilliseconds()
+  $velocityPattern = 'PLAYER_VELOCITY ' + [Regex]::Escape($BotName) +
+    ' id=\d+ x=(-?[0-9.]+) y=(-?[0-9.]+) z=(-?[0-9.]+) horizontal=([0-9.]+) at_ms=([0-9]+)'
+  $hurtPattern = 'PLAYER_HURT ' + [Regex]::Escape($BotName) +
+    ' before=([0-9.]+) after=([0-9.]+) at_ms=([0-9]+)'
+  $velocityMatch = $null
+  $hurtMatch = $null
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline -and -not $velocityMatch) {
+    $botLog = Get-Content -LiteralPath $botStdout -Raw
+    $candidateVelocities = [Regex]::Matches($botLog, $velocityPattern)
+    $candidateHurts = [Regex]::Matches($botLog, $hurtPattern)
+    foreach ($candidateVelocity in $candidateVelocities) {
+      $candidateVelocityAtMs = [long]$candidateVelocity.Groups[5].Value
+      if ([Math]::Abs($candidateVelocityAtMs - $serverThrowAtMs) -gt 2500 -or
+          [Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$throwMatch.Groups[2].Value) -gt 0.01D -or
+          [Math]::Abs([double]$candidateVelocity.Groups[2].Value - [double]$throwMatch.Groups[3].Value) -gt 0.01D -or
+          [Math]::Abs([double]$candidateVelocity.Groups[3].Value - [double]$throwMatch.Groups[4].Value) -gt 0.01D -or
+          [double]$candidateVelocity.Groups[4].Value -lt 0.85D) { continue }
+      foreach ($candidateHurt in $candidateHurts) {
+        $candidateHurtAtMs = [long]$candidateHurt.Groups[3].Value
+        if ([double]$candidateHurt.Groups[2].Value -ge [double]$candidateHurt.Groups[1].Value -or
+            [Math]::Abs($candidateHurtAtMs - $candidateVelocityAtMs) -gt 500) { continue }
+        $velocityMatch = $candidateVelocity
+        $hurtMatch = $candidateHurt
+        break
+      }
+      if ($velocityMatch) { break }
+    }
+    if (-not $velocityMatch) { Start-Sleep -Milliseconds 250 }
+  }
+  if (-not $velocityMatch -or -not $hurtMatch) {
+    throw "No matching client launch vector plus nearby unmasked HP delta for server throw: $throwLine`n$botLog"
+  }
+  Record "LIVE_TENTACLE_PLAYER_DAMAGE_PASS target=$playerUuid before=$($hurtMatch.Groups[1].Value) after=$($hurtMatch.Groups[2].Value) base_damage=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value) effects=cleared server_authoritative=true correlated_to_throw=true"
+  Record "LIVE_TENTACLE_PLAYER_VELOCITY_PASS x=$($velocityMatch.Groups[1].Value) y=$($velocityMatch.Groups[2].Value) z=$($velocityMatch.Groups[3].Value) horizontal=$($velocityMatch.Groups[4].Value) at_ms=$($velocityMatch.Groups[5].Value) client_entity_velocity=true server_vector_match=true"
+  # The same captured server log must also contain the following two player
+  # facing milestones when the probe destroys all guardians and then attacks
+  # the newly vulnerable boss. They are named here so the evidence parser can
+  # distinguish metallic shield deflection from a body impact.
+  Record 'LIVE_IMPACT_MILESTONES_REQUIRED shieldBreak=RIFT_GUARDIAN_SHIELD_BROKEN body=BOSS_HIT_FEEDBACK shieldSound=BLOCK_ANVIL_HIT'
+  if ($spawnTail -match 'RIFT_TENTACLE_SPAWN_REFUSED') {
+    Record 'LIVE_TENTACLE_SAFE_RETRY_OBSERVED initial_refusal=true eventual_spawn=true'
+  }
+  $success = $true
+}
+finally {
+  if ($botProcess -and -not $botProcess.HasExited) {
+    try { $botProcess.Kill() } catch { }
+    try { $botProcess.WaitForExit(5000) } catch { }
+  }
+  try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
+  if (-not $success) {
+    try { Record 'LIVE_TENTACLE_PASS=NOT_VERIFIED' } catch { }
+  }
+  Restore-BotEnvironment
+}

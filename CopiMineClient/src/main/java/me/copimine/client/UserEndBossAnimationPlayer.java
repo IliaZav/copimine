@@ -4,8 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraft.client.model.ModelPart;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -37,48 +35,43 @@ final class UserEndBossAnimationPlayer {
         return clip == null ? 0.0F : clip.lengthSeconds();
     }
 
-    static boolean apply(ModelPart root, String animationId, float animationProgressTicks) {
+    /**
+     * Samples source-space deltas for the direct Chameleon renderer.  Values
+     * intentionally remain in the supplied Bedrock coordinate system; the
+     * geometry evaluator applies the source-to-Fabric basis exactly once at
+     * the absolute-pivot transform boundary.
+     */
+    static ChameleonGuardianGeometry.GuardianPose sample(String animationId, float animationProgressTicks) {
         Clip clip = CLIPS.get(canonical(animationId));
-        if (clip == null || root == null) {
-            return false;
+        if (clip == null) {
+            return ChameleonGuardianGeometry.GuardianPose.identity();
         }
         float seconds = Math.max(0.0F, animationProgressTicks / 20.0F);
         float time = clip.loop()
                 ? (float) (seconds % Math.max(clip.lengthSeconds(), 0.001F))
                 : Math.min(seconds, clip.lengthSeconds());
+        Map<String, ChameleonGuardianGeometry.BoneDelta> deltas = new HashMap<>();
         for (Map.Entry<String, BoneTrack> entry : clip.bones().entrySet()) {
-            ModelPart part = UserEndBossModelData.findBone(root, entry.getKey());
-            if (part == null) {
-                throw new IllegalStateException("End Rift animation bone closure failed animation="
-                        + animationId + " missing_bone=" + entry.getKey()
-                        + " source=" + UserEndBossModelData.RESOURCE);
-            }
             BoneTrack track = entry.getValue();
             Vector rotation = track.rotation().sample(time);
-            if (rotation != null) {
-                BedrockCoordinateTransform.Vec3 targetRotation =
-                        BedrockCoordinateTransform.sourceRotation(
-                                rotation.x(), rotation.y(), rotation.z()).toEulerXyzDegrees();
-                part.pitch += radians((float) targetRotation.x());
-                part.yaw += radians((float) targetRotation.y());
-                part.roll += radians((float) targetRotation.z());
-            }
             Vector position = track.position().sample(time);
-            if (position != null) {
-                BedrockCoordinateTransform.Vec3 targetDelta = BedrockCoordinateTransform.sourceDelta(
-                        position.x(), position.y(), position.z());
-                part.pivotX += (float) targetDelta.x();
-                part.pivotY += (float) targetDelta.y();
-                part.pivotZ += (float) targetDelta.z();
-            }
             Vector scale = track.scale().sample(time);
-            if (scale != null) {
-                part.xScale *= scale.x();
-                part.yScale *= scale.y();
-                part.zScale *= scale.z();
+            if (rotation == null && position == null && scale == null) {
+                continue;
             }
+            deltas.put(entry.getKey(), new ChameleonGuardianGeometry.BoneDelta(
+                    point(position, 0.0F, 0.0F, 0.0F),
+                    point(rotation, 0.0F, 0.0F, 0.0F),
+                    point(scale, 1.0F, 1.0F, 1.0F)));
         }
-        return true;
+        return ChameleonGuardianGeometry.GuardianPose.of(deltas);
+    }
+
+    private static ChameleonGuardianGeometry.Point point(Vector value,
+                                                          float fallbackX, float fallbackY, float fallbackZ) {
+        return value == null
+                ? new ChameleonGuardianGeometry.Point(fallbackX, fallbackY, fallbackZ)
+                : new ChameleonGuardianGeometry.Point(value.x(), value.y(), value.z());
     }
 
     private static Map<String, Clip> loadClips() {
@@ -225,10 +218,6 @@ final class UserEndBossAnimationPlayer {
             return "IDLE_BREATH";
         }
         return animationId.trim().toUpperCase(Locale.ROOT);
-    }
-
-    private static float radians(float degrees) {
-        return degrees * (float) (Math.PI / 180.0D);
     }
 
     private record Clip(float lengthSeconds, boolean loop, Map<String, BoneTrack> bones) {

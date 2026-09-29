@@ -3,7 +3,6 @@ package me.copimine.client.mixin;
 import me.copimine.client.ClientBridgeProtocol;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.render.entity.feature.EyesFeatureRenderer;
-import net.minecraft.client.render.entity.model.EntityModel;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.mob.EndermanEntity;
@@ -18,12 +17,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * their vanilla emissive eyes and the custom boss remains server-bound.
  */
 @Mixin(EyesFeatureRenderer.class)
-public abstract class EndermanEyesFeatureRendererMixin<T extends Entity, M extends EntityModel<T>> {
+public abstract class EndermanEyesFeatureRendererMixin {
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void copimine$hideVanillaGuardianEyes(MatrixStack matrices,
                                                    VertexConsumerProvider vertexConsumers,
                                                    int light,
-                                                   T entity,
+                                                   Entity entity,
                                                    float limbAngle,
                                                    float limbDistance,
                                                    float tickDelta,
@@ -31,9 +30,13 @@ public abstract class EndermanEyesFeatureRendererMixin<T extends Entity, M exten
                                                    float headYaw,
                                                    float headPitch,
                                                    CallbackInfo callback) {
-        if (entity instanceof EndermanEntity enderman
-                && ClientBridgeProtocol.isBoundEndBoss(enderman.getUuid().toString())) {
-            callback.cancel();
+        if (entity instanceof EndermanEntity enderman) {
+            String uuid = enderman.getUuid().toString();
+            String visual = ClientBridgeProtocol.endEventVisualForEntity(uuid);
+            if (ClientBridgeProtocol.isBoundEndBoss(uuid)
+                    || (visual != null && visual.startsWith("END_RIFT_"))) {
+                callback.cancel();
+            }
         }
     }
 }

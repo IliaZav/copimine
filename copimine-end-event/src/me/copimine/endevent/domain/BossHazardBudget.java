@@ -28,6 +28,7 @@ public final class BossHazardBudget {
         RIFT_ARROWS(1, false),
         ARENA_INFERNO(2, false),
         SUMMON_SERVANTS(1, false),
+        BOSS_FIREBALL(1, false),
         REPOSITION(0, false),
         RECOVER(0, false);
 

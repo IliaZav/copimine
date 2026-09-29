@@ -152,10 +152,12 @@ def test_wave_skeletons_use_a_dedicated_long_rig_and_scoped_renderer_swap() -> N
         "right_lower_leg",
         "elite_shoulder_left",
         "elite_shoulder_right",
-        "jaw",
         "chest_rift",
-        "left_knee_bone",
-        "left_ankle_bone",
+        "guard_crest",
+        "guard_chest_seal",
+        "guardian_spine",
+        "elite_mantle",
+        "elite_horn_crown",
     ):
         assert part in model, part
     assert "modelFor(boolean elite)" in renderer

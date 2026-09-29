@@ -81,6 +81,18 @@ VANILLA_ITEM_DISPLAY_TRANSFORMS = {
     },
 }
 
+# These materials receive a generated root model so the pack can append
+# CustomModelData overrides. Preserve the vanilla handheld parent so ordinary
+# Netherite equipment inherits Minecraft's own display transforms unchanged.
+VANILLA_HANDHELD_ITEM_PARENTS = {
+    "netherite_sword": "minecraft:item/handheld",
+    "netherite_pickaxe": "minecraft:item/handheld",
+    "netherite_axe": "minecraft:item/handheld",
+    "netherite_hoe": "minecraft:item/handheld",
+    "netherite_shovel": "minecraft:item/handheld",
+    "mace": "minecraft:item/handheld_mace",
+}
+
 REQUIRED_SOURCE_FILES = [
     "pack.mcmeta",
     "assets/minecraft/font/default.json",
@@ -476,7 +488,9 @@ def build_stage() -> None:
             parent = "minecraft:item/generated"
             textures = {"layer0": "minecraft:block/blue_stained_glass"}
         else:
-            parent = "minecraft:item/generated"
+            parent = VANILLA_HANDHELD_ITEM_PARENTS.get(
+                material, "minecraft:item/generated"
+            )
             textures = {"layer0": f"minecraft:item/{material}"}
         model_payload = {
             "parent": parent,

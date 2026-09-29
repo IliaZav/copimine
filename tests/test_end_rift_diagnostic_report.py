@@ -66,7 +66,7 @@ def test_report_accepts_one_terminal_and_one_remove() -> None:
     assert report.projectile_terminal_duplicates == []
 
 
-def test_report_flags_prisoner_health_change_without_drain() -> None:
+def test_report_does_not_treat_normal_prisoner_combat_damage_as_a_diagnostic_failure() -> None:
     rows = [
         event(1, "RITUAL_PRISONER", "SNAPSHOT", "prisoner:1:u1", fields={"health": 20.0}),
         event(2, "RITUAL_PRISONER", "SNAPSHOT", "prisoner:1:u1", fields={"health": 19.0}),
@@ -74,10 +74,10 @@ def test_report_flags_prisoner_health_change_without_drain() -> None:
 
     report = analyze_rows(rows)
 
-    assert "PRISONER_HEALTH_CHANGED_OUTSIDE_DRAIN" in report.invariant_failures
+    assert "PRISONER_HEALTH_CHANGED_OUTSIDE_DRAIN" not in report.invariant_failures
 
 
-def test_report_accepts_prisoner_health_change_caused_by_drain() -> None:
+def test_report_ignores_obsolete_drain_event_for_health_accounting() -> None:
     rows = [
         event(1, "RITUAL_PRISONER", "SNAPSHOT", "prisoner:1:u1", fields={"health": 20.0}),
         event(

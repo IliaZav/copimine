@@ -146,6 +146,24 @@ function Get-BossPosition([string]$Uuid) {
   )
 }
 
+function Get-CoreTopPosition([string]$Status) {
+  $plain = Plain $Status
+  $match = [Regex]::Match($plain,
+      'core=\S+\s+(-?\d+),(-?\d+),(-?\d+)')
+  if (-not $match.Success) { throw "Core coordinates are missing: $plain" }
+  $coreX = [double]$match.Groups[1].Value
+  $coreY = [double]$match.Groups[2].Value
+  $coreZ = [double]$match.Groups[3].Value
+  $coreTopX = $coreX + 0.5D
+  $coreTopY = $coreY + 1.0D
+  $coreTopZ = $coreZ + 0.5D
+  return @(
+    $coreTopX,
+    $coreTopY,
+    $coreTopZ
+  )
+}
+
 function Format-Coordinate([double]$Value) {
   return $Value.ToString('0.###', [Globalization.CultureInfo]::InvariantCulture)
 }
@@ -402,6 +420,17 @@ try {
 
   $null = Invoke-LocalRcon 'cmend boss phase last_seal'
   Start-Sleep -Milliseconds 500
+  $lastSealStatus = Plain (Invoke-LocalRcon 'cmend status')
+  $coreTop = Get-CoreTopPosition $lastSealStatus
+  $lastSealBossPosition = Get-BossPosition $bossUuid
+  $dx = [double]($lastSealBossPosition[0]) - [double]($coreTop[0])
+  $dy = [double]($lastSealBossPosition[1]) - [double]($coreTop[1])
+  $dz = [double]($lastSealBossPosition[2]) - [double]($coreTop[2])
+  $coreDistance = [Math]::Sqrt(($dx * $dx) + ($dy * $dy) + ($dz * $dz))
+  if ($coreDistance -gt 0.15D) {
+    throw "Last Seal boss is not standing on the Core: boss=$($lastSealBossPosition -join ',') core=$($coreTop -join ',') distance=$coreDistance"
+  }
+  Record ("LIVE_BOSS_LAST_SEAL_CORE_PIN_PASS boss_position=$($lastSealBossPosition -join ',') core_top=$($coreTop -join ',') distance=$('{0:0.###}' -f $coreDistance) vanilla_ai_suspended=true leash_skipped=true")
   $invulnerabilityOffset = Log-Length
   $invulnerabilityBefore = Get-BossHealth (Plain (Invoke-LocalRcon 'cmend status'))
   $null = Invoke-LocalRcon ("execute as $bossUuid at @s run summon arrow ~0.2 ~2.3 ~-0.1 {NoGravity:1b,pickup:0b,damage:1.0d}")

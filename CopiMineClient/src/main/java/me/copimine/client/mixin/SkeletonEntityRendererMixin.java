@@ -17,10 +17,6 @@ import java.util.Set;
 /** Event skeletons receive a texture only after a server UUID binding. */
 @Mixin(SkeletonEntityRenderer.class)
 public abstract class SkeletonEntityRendererMixin {
-    private static final Identifier COPIMINE_SKELETON_TEXTURE = Identifier.of(
-            "copimineclient", "textures/entity/end_rift_skeleton.png");
-    private static final Identifier COPIMINE_ELITE_SKELETON_TEXTURE = Identifier.of(
-            "copimineclient", "textures/entity/end_rift_elite_skeleton.png");
     private static final Set<String> LOGGED_TEXTURE_BINDINGS = new HashSet<>();
 
     @Inject(method = "getTexture", at = @At("HEAD"), cancellable = true)
@@ -30,11 +26,7 @@ public abstract class SkeletonEntityRendererMixin {
             return;
         }
         String visual = ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString());
-        Identifier texture = switch (visual) {
-            case "END_RIFT_ELITE_SKELETON_V1" -> COPIMINE_ELITE_SKELETON_TEXTURE;
-            case "END_RIFT_SKELETON_V1" -> COPIMINE_SKELETON_TEXTURE;
-            default -> EndEventTextureCatalog.textureForVisual(visual);
-        };
+        Identifier texture = EndEventTextureCatalog.textureForVisual(visual);
         boolean resourcePresent = texture != null && EndEventTextureCatalog.isAvailable(texture);
         EndEventTextureCatalog.logLookup("mob:" + visual, texture);
         // Keep this diagnostic set bounded by visual state rather than by

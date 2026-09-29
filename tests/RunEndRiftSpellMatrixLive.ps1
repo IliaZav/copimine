@@ -109,6 +109,21 @@ function Assert-BossSpell {
   Write-Output "LIVE_SPELL_PASS spell=$Spell telegraph=1 flight=1 cast=1 impact=1"
 }
 
+function Assert-BossFireball {
+  param([Parameter(Mandatory = $true)][int64]$PreviousLength)
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_SPELL_TELEGRAPH.*spell=boss_fireball' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_SPELL_FLIGHT.*spell=boss_fireball' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_SPELL_CAST.*spell=boss_fireball' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'BOSS_FIREBALL_LAUNCH.*blocks=false.*fire=false' -TimeoutSeconds 8 | Out-Null
+  Wait-LogMarker -PreviousLength $PreviousLength `
+    -Pattern 'SPELL_IMPACT_VISUAL spell=boss_fireball' -TimeoutSeconds 8 | Out-Null
+  Write-Output 'LIVE_SPELL_PASS spell=boss_fireball telegraph=1 flight=1 cast=1 impact=1 blocks=false fire=false'
+}
+
 function Wait-BossCastRecovery {
   # The production hazard ledger intentionally remains reserved during the
   # short post-impact recovery window.  A forced spell matrix must wait for
@@ -243,6 +258,7 @@ try {
     @{ Phase = 'hunt'; Spell = 'rift_arrows' },
     @{ Phase = 'hunt'; Spell = 'void_mark' },
     @{ Phase = 'rift'; Spell = 'summon_servants' },
+    @{ Phase = 'rift'; Spell = 'boss_fireball' },
     @{ Phase = 'rage'; Spell = 'arena_inferno' },
     @{ Phase = 'last_seal'; Spell = 'final_strike' }
   )) {
@@ -255,6 +271,8 @@ try {
     }
     if ($spell -eq 'final_strike') {
       Assert-FinalStrike -PreviousLength $before
+    } elseif ($spell -eq 'boss_fireball') {
+      Assert-BossFireball -PreviousLength $before
     } else {
       Assert-BossSpell -Spell $spell -PreviousLength $before
     }

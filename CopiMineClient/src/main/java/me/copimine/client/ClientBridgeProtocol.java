@@ -467,6 +467,20 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.bossBar();
     }
 
+    /**
+     * Return the server-authoritative maximum only for the currently bound
+     * End Rift boss.  Every ordinary entity keeps Minecraft's native value.
+     */
+    public static double projectedBossMaxHealth(String entityUuid, double nativeMaxHealth) {
+        return EndRiftBossHealthProjection.resolveMaxHealth(
+                entityUuid, nativeMaxHealth, END_EVENT_STATE.bossUuid(), END_EVENT_STATE.bossBar());
+    }
+
+    public static boolean isBossHealthProjected(String entityUuid) {
+        return EndRiftBossHealthProjection.isProjected(
+                entityUuid, END_EVENT_STATE.bossUuid(), END_EVENT_STATE.bossBar());
+    }
+
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.clear();

@@ -5,9 +5,11 @@ import net.minecraft.client.world.ClientWorld;
 import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.CustomModelDataComponent;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.DisplayEntity;
@@ -17,7 +19,9 @@ import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import me.copimine.client.mixin.ClientWorldAccessor;
 
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -25,14 +29,14 @@ import java.util.UUID;
 /**
  * Dedicated renderer for the event-owned tentacle carrier displays. The
  * carrier remains a real server entity for visibility and lifecycle, while
- * the model is rendered as a cached, articulated five-segment rig with four
- * independently animated claws.
+ * the supplied Kagune mesh is rendered with its six imported pieces, UVs,
+ * hierarchy, and animation clips.
  */
 public final class EndRiftTentacleRenderer {
     private static final Identifier TEXTURE = Identifier.of(
             "copimineclient", "textures/entity/end_rift_tentacle_hd.png");
     private static final EndRiftTentacleRig.RenderRig RIG = EndRiftTentacleRig.createRenderRig();
-    private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
+    private static final Map<UUID, FacingState> FACING_BY_ENTITY = new HashMap<>();
 
     private EndRiftTentacleRenderer() {
     }
@@ -60,7 +64,13 @@ public final class EndRiftTentacleRenderer {
             return EndRiftTentaclePose.TentaclePose.identity();
         }
         int durationTicks = EndRiftTentacleAnimator.durationTicks(animationId);
-        long safeDurationMillis = durationMillis > 0L ? durationMillis : durationTicks * 50L;
+        // Looping clips use their authored length, not the server carrier's
+        // lifetime/state timeout (READY bindings can be 60 seconds long).
+        // Using that unrelated timeout stretched the supplied idle keyframes
+        // until they appeared frozen and then snapped back to frame zero.
+        long safeDurationMillis = EndRiftTentacleAnimator.loops(animationId)
+                ? EndRiftTentacleAnimator.loopDurationMillis(animationId)
+                : durationMillis > 0L ? durationMillis : durationTicks * 50L;
         float progress;
         if (EndRiftTentacleAnimator.loops(animationId)) {
             long elapsed = Math.max(0L, elapsedMillis);
@@ -95,6 +105,14 @@ public final class EndRiftTentacleRenderer {
                 && EndRiftTentacleModel.isServerCustomModelData(customModelData.value());
     }
 
+    /** Whether the vanilla carrier is safe to hide for this entity. */
+    public static boolean isCustomRenderEligible(DisplayEntity entity) {
+        // CustomModelData is authoritative on the carrier itself. Waiting for
+        // the optional bridge bind left a vanilla square visible and made the
+        // articulated tentacle appear missing during reconnects.
+        return isTentacleCarrier(entity);
+    }
+
     /** Draw all visible event tentacle carriers in one bounded world pass. */
     public static void render(WorldRenderContext context) {
         if (context == null || context.world() == null || context.camera() == null
@@ -115,6 +133,7 @@ public final class EndRiftTentacleRenderer {
         matrices.push();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         Set<UUID> candidateIds = candidateEntityIds((ClientWorld) context.world());
+        FACING_BY_ENTITY.keySet().retainAll(candidateIds);
         for (UUID entityUuid : candidateIds) {
             Entity entity = ((ClientWorldAccessor) context.world())
                     .copimine$getEntityLookup().get(entityUuid);
@@ -142,24 +161,25 @@ public final class EndRiftTentacleRenderer {
             if (position == null || !finite(position)) {
                 continue;
             }
-            String healthState = ClientBridgeProtocol.endEventTentacleHealthForEntity(uuid);
+            String animation = ClientBridgeProtocol.endEventAnimationForEntity(uuid);
+            boolean hurtFlash = showsHurtFlash(animation);
             VertexConsumer buffer = consumers.getBuffer(RenderLayer.getEntityTranslucent(TEXTURE));
             matrices.push();
             matrices.translate(position.x, position.y, position.z);
             Entity target = targetEntity(context, uuid);
             Vec3d targetPosition = target == null ? null : target.getLerpedPos(tickDelta);
-            if (targetPosition != null && finite(targetPosition)) {
-                // The rig's authored forward axis is +Z. Rotate the whole
-                // articulated chain toward the server-selected target; all
-                // bone animation remains local and the server still owns the
-                // actual hit/lock decision.
-                matrices.multiply(RotationAxis.POSITIVE_Y.rotation(
-                        targetYaw(position, targetPosition)));
-            }
-            matrices.scale(pose.rigScale() / 16.0F,
-                    pose.rigScale() / 16.0F, pose.rigScale() / 16.0F);
-            RIG.render(matrices, buffer, pose, FULL_BRIGHT_LIGHT, 0,
-                    tintForHealthState(healthState));
+            float facingYaw = facingYaw(entityUuid, animation, position, targetPosition, nowMillis);
+            matrices.multiply(RotationAxis.POSITIVE_Y.rotation(facingYaw));
+            matrices.scale(EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()),
+                    EndRiftTentacleWorldScalePolicy.rendererLengthScaleForRig(pose.rigScale()),
+                    EndRiftTentacleWorldScalePolicy.rendererScaleForRig(pose.rigScale()));
+            int packedLight = WorldRenderer.getLightmapCoordinates(
+                    (ClientWorld) context.world(), entity.getBlockPos());
+            // The hit-recovery phase lasts only for the hurt animation. Use
+            // Minecraft's hurt overlay for that window; health thresholds
+            // persist between hits and must not tint the rig indefinitely.
+            RIG.render(matrices, buffer, pose, packedLight,
+                    OverlayTexture.getUv(0.0F, hurtFlash), 0xFFFFFFFF);
             matrices.pop();
         }
         matrices.pop();
@@ -209,13 +229,26 @@ public final class EndRiftTentacleRenderer {
         return (float) Math.atan2(target.x - origin.x, target.z - origin.z);
     }
 
-    private static int tintForHealthState(String healthState) {
-        return switch (normalize(healthState)) {
-            case "DAMAGED" -> 0xFFE1B8FF;
-            case "CRITICAL" -> 0xFFFF78D8;
-            case "DEAD" -> 0x986A5A8F;
-            default -> 0xFFFFFFFF;
-        };
+    static boolean showsHurtFlash(String animation) {
+        return "HIT_RECOVERY".equalsIgnoreCase(normalize(animation));
+    }
+
+    private static float facingYaw(UUID entityUuid, String animation, Vec3d origin,
+                                   Vec3d target, long nowMillis) {
+        FacingState previous = FACING_BY_ENTITY.get(entityUuid);
+        float currentYaw = previous == null ? 0.0F : previous.yaw();
+        long elapsedMillis = previous == null ? 0L : Math.max(0L, nowMillis - previous.updatedAtMillis());
+        if (EndRiftTentacleFacingPolicy.tracksTarget(animation)
+                && target != null && finite(origin) && finite(target)) {
+            float targetYaw = targetYaw(origin, target);
+            currentYaw = previous == null ? targetYaw
+                    : EndRiftTentacleFacingPolicy.advanceYaw(currentYaw, targetYaw, elapsedMillis);
+        }
+        FACING_BY_ENTITY.put(entityUuid, new FacingState(currentYaw, nowMillis));
+        return currentYaw;
+    }
+
+    private record FacingState(float yaw, long updatedAtMillis) {
     }
 
     private static String normalize(String value) {

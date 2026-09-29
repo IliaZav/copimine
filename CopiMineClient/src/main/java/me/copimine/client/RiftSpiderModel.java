@@ -52,7 +52,14 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         this.guardSeal = root.getChild("guard_seal");
         this.ritualFocus = root.getChild("ritual_focus");
         this.variant = variant;
-        this.eliteCarapace.visible = variant != Variant.ORDINARY;
+        // The supplied 64x32 skin is painted for the spider's original body.
+        // Extra opaque shells obscure that art on ordinary wave spiders.
+        this.riftCore.visible = false;
+        this.riftShell.visible = false;
+        // Keep the supplied skin unobstructed on ordinary spiders. Role
+        // details appear only on the variants that are authored to use them.
+        this.riftSpines.visible = false;
+        this.eliteCarapace.visible = variant == Variant.ELITE;
         this.guardianSpine.visible = variant == Variant.WAVE_GUARDIAN;
         this.guardSeal.visible = variant == Variant.RITUAL_GUARD;
         this.ritualFocus.visible = variant == Variant.RITUAL_GUARD;
@@ -83,9 +90,9 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         addLeg(root, "right_front_leg", -4.0F, 15.0F, -1.0F, false);
         addLeg(root, "left_front_leg", 4.0F, 15.0F, -1.0F, true);
 
-        // The user supplied archive has no spider mesh. These additional
-        // solid parts make the adapted event silhouette visible while still
-        // using the supplied spider texture atlas.
+        // The user supplied archive has no spider mesh. These optional
+        // elite parts add a ritual silhouette without covering the ordinary
+        // spider's source-painted body.
         root.addChild("rift_core", cube(32, 16, -3.0F, -3.0F, -3.0F, 6.0F, 6.0F, 6.0F),
                 ModelTransform.pivot(0.0F, 15.0F, 3.0F));
         root.addChild("rift_shell", cube(0, 16, -4.5F, -3.0F, -5.0F, 9.0F, 5.0F, 10.0F),

@@ -1,5 +1,6 @@
 package me.copimine.client;
 
+import net.minecraft.client.model.Dilation;
 import net.minecraft.client.model.ModelPartBuilder;
 
 /** Validates and builds the standard cuboid UV footprint used by the models. */
@@ -57,6 +58,19 @@ public final class ModelUvBounds {
         }
         return append(builder, atlasWidth, atlasHeight, u, v,
                 x, y, z, width, height, depth);
+    }
+
+    public static ModelPartBuilder cuboid(int atlasWidth, int atlasHeight,
+                                          int u, int v,
+                                          float x, float y, float z,
+                                          float width, float height, float depth,
+                                          Dilation dilation) {
+        requireStandardBoxFits(atlasWidth, atlasHeight, u, v, width, height, depth);
+        if (dilation == null) {
+            throw new IllegalArgumentException("cuboid dilation is required");
+        }
+        return ModelPartBuilder.create().uv(u, v).cuboid(
+                x, y, z, width, height, depth, dilation);
     }
 
     /** Appends one checked cuboid to a builder, preserving any prior cuboids. */

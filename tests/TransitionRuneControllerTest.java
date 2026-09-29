@@ -11,18 +11,20 @@ public final class TransitionRuneControllerTest {
         Set<UUID> roster = Set.of(alpha, bravo);
         List<TransitionRunePolicy.RuneOccupancy> ready = List.of(
                 occupancy(alpha, "a"), occupancy(bravo, "b"));
-        TransitionRuneController controller = new TransitionRuneController(5_000L);
+        TransitionRuneController controller = new TransitionRuneController(10_000L);
 
         TransitionRuneController.Observation start = controller.observe(roster, ready, 100L);
         check(start.renderState() == TransitionRuneController.RenderState.CHARGING,
                 "a full roster must visually enter charging state");
         check(!start.justCompleted(), "hold cannot complete at its start");
 
-        TransitionRuneController.Observation complete = controller.observe(roster, ready, 5_100L);
+        TransitionRuneController.Observation beforeComplete = controller.observe(roster, ready, 10_099L);
+        check(!beforeComplete.justCompleted(), "nine seconds and 999 milliseconds must not complete the hold");
+        TransitionRuneController.Observation complete = controller.observe(roster, ready, 10_100L);
         check(complete.renderState() == TransitionRuneController.RenderState.COMPLETE,
-                "five-second hold must show completion");
+                "ten-second hold must show completion");
         check(complete.justCompleted(), "completion notification fires exactly once");
-        check(!controller.observe(roster, ready, 5_200L).justCompleted(),
+        check(!controller.observe(roster, ready, 10_200L).justCompleted(),
                 "repeated ticks after completion must not complete twice");
 
         controller.reset();

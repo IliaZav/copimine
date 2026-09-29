@@ -244,9 +244,6 @@ def analyze_rows(rows: Iterable[Mapping[str, object]]) -> DiagnosticReport:
     if wave7_restore_mismatches:
         invariant_failures.add("WAVE7_CLEANUP_RESIDUE")
 
-    if _prisoner_health_changed_outside_drain(ordered):
-        invariant_failures.add("PRISONER_HEALTH_CHANGED_OUTSIDE_DRAIN")
-
     leaks = (
         projectile_leaks
         + entity_leaks
@@ -358,13 +355,13 @@ def _verification_matrix(
 
     rows = [
         ("Seal capture", "RitualPrisonerCapturePolicyTest", {"W6-SEAL-01"}, {"RITUAL_PRISONER/CAPTURED"}, True),
-        ("20-second drain cadence", "RitualPrisonerHealthPolicyTest", {"W6-SEAL-01"}, {"RITUAL_PRISONER/DRAIN"}, True),
-        ("External-damage immunity", "RitualPrisonerHealthPolicyTest", set(), set(), True),
+        ("Prisoner ability cooldowns", "PrisonerAbilityControllerTest", set(), {"RITUAL_PRISONER/ABILITY"}, True),
+        ("Caster death unlock progression", "RitualCasterProgressionPolicyTest", set(), {"RITUAL_CASTER/PROGRESSION"}, True),
+        ("Turncoat target eligibility", "RitualConversionTargetPolicyTest", set(), {"RITUAL_PRISONER/ABILITY"}, True),
         ("Target exclusion", "RitualTargetPolicyTest", set(), set(), True),
         ("Sphere projectile origin", "RitualSphereProjectilePolicyTest", set(), set(), True),
         ("Zone effects", "RitualZoneEffectPolicyTest", set(), set(), True),
-        ("Control swap", "RitualControlPairPolicyTest", set(), set(), True),
-        ("Amplifier roles", "RitualCasterTacticsPolicyTest", set(), set(), True),
+        ("Shared major spell lifecycle", "RitualSpellControllerTest", set(), {"RITUAL_CASTER/TELEGRAPH"}, True),
         ("Boss oriented OBB", "BossOrientedHitboxPolicyTest", set(), {"BOSS_HITBOX/SNAPSHOT"}, True),
         ("Animated hitbox pose", "BossAnimationPosePolicyTest", set(), set(), True),
         ("Finite projectile sweep", "BossProjectileSweepPolicyTest", set(), set(), True),
@@ -656,34 +653,6 @@ def _wave7_coordinates(rows: Iterable[Mapping[str, object]], action: str) -> set
             continue
         result.add(f"{x},{y},{z}")
     return result
-
-
-def _prisoner_health_changed_outside_drain(rows: Iterable[Mapping[str, object]]) -> bool:
-    last_health: dict[str, float] = {}
-    authorized_next_snapshot: set[str] = set()
-    for row in rows:
-        if row.get("category") != "RITUAL_PRISONER":
-            continue
-        correlation = str(row.get("correlationId", ""))
-        fields = row.get("fields")
-        fields_map = fields if isinstance(fields, Mapping) else {}
-        if row.get("action") == "DRAIN":
-            after = fields_map.get("healthAfter")
-            if isinstance(after, (int, float)) and not isinstance(after, bool):
-                last_health[correlation] = float(after)
-                authorized_next_snapshot.add(correlation)
-            continue
-        if row.get("action") != "SNAPSHOT":
-            continue
-        health = fields_map.get("health")
-        if not isinstance(health, (int, float)) or isinstance(health, bool):
-            continue
-        if correlation in last_health and float(health) < last_health[correlation] - 1e-9:
-            if correlation not in authorized_next_snapshot:
-                return True
-        authorized_next_snapshot.discard(correlation)
-        last_health[correlation] = float(health)
-    return False
 
 
 def _nonnegative_int(value: object, field_name: str = "value") -> int:

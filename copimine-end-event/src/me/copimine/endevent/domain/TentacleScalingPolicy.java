@@ -4,8 +4,23 @@ package me.copimine.endevent.domain;
 public final class TentacleScalingPolicy {
     public static final int MAX_PERMANENT = 8;
     public static final int MAX_TEMPORARY = 6;
+    /** Canonical server/client combat dimensions for the articulated rig. */
+    public static final double DEFAULT_LOGICAL_LENGTH = 6.25D;
+    public static final double DEFAULT_HITBOX_WIDTH = 1.90D;
+    public static final double DEFAULT_HITBOX_HEIGHT = DEFAULT_LOGICAL_LENGTH;
+    /** Server item carriers retain a 6.25-block culling/fallback envelope. */
+    public static final double DEFAULT_CLIENT_RENDER_SCALE = 1.0D;
+    /** Minimum horizontal gap between two visible tentacle roots. */
+    public static final double MIN_SPAWN_SEPARATION = 2.75D;
+    /** Cast visuals refill in two-second steps instead of appearing once per phase. */
+    public static final long TEMPORARY_CAST_INTERVAL_TICKS = 40L;
 
     private TentacleScalingPolicy() {
+    }
+
+    /** Cast visuals may attempt on the first eligible boss tick, not after a hidden cooldown. */
+    public static long initialTemporaryAttemptTick(long currentTick) {
+        return Math.max(0L, currentTick);
     }
 
     public static int permanentFor(int players, BossPhase stage) {

@@ -1,5 +1,6 @@
 package me.copimine.client.mixin;
 
+import me.copimine.client.EndRiftGuardianShieldRenderer;
 import me.copimine.client.EndRiftTentacleRenderer;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -23,7 +24,8 @@ public abstract class DisplayEntityRendererMixin {
                                                           float tickDelta, MatrixStack matrices,
                                                           VertexConsumerProvider vertexConsumers,
                                                           int light, CallbackInfo ci) {
-        if (EndRiftTentacleRenderer.isTentacleCarrier(entity)) {
+        if (EndRiftTentacleRenderer.isCustomRenderEligible(entity)
+                || EndRiftGuardianShieldRenderer.isCustomRenderEligible(entity)) {
             ci.cancel();
         }
     }

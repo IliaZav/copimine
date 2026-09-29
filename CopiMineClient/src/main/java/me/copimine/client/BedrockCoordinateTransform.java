@@ -9,13 +9,15 @@ package me.copimine.client;
  * at the lower/minimum corner.  Fabric's {@code ModelPart} uses X right, Y
  * down, Z toward the model front, and child pivots expressed relative to the
  * parent.  The conversion therefore uses the fixed basis
- * {@code B = diag(1,-1,1)} and point translation {@code t=(0,24,0)}.  The
- * translation is only for model-space points; animation vectors never receive
- * it.  Since det(B) is -1, face winding/mirroring must be handled explicitly
- * by the mesh importer.</p>
+ * {@code B = diag(1,-1,1)} and no arbitrary point translation.  The supplied
+ * guardian geometry uses its feet at source Y=0, so translating points by 24
+ * model units would place the complete model below the entity floor.  The
+ * translation is therefore {@code t=(0,0,0)} and animation vectors never
+ * receive it.  Since det(B) is -1, face winding/mirroring must be handled
+ * explicitly by the mesh importer.</p>
  */
 public final class BedrockCoordinateTransform {
-    private static final double MODEL_ORIGIN_Y = 24.0D;
+    private static final double MODEL_ORIGIN_Y = 0.0D;
     private static final Matrix3 BASIS = new Matrix3(
             1.0D, 0.0D, 0.0D,
             0.0D, -1.0D, 0.0D,

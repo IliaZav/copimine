@@ -58,16 +58,16 @@ public final class TentacleAnimationPolicy {
         return switch (canonical) {
             case READY -> 60;                // 3.0 seconds, looping
             case EMERGING -> 18;             // 0.9 seconds
-            case TELEGRAPH_GRAB -> 20;      // 1.0 second
-            case GRAB_SUCCESS -> 14;        // 0.7 seconds
-            case HOLD -> 20;                // 1.0 second loop
-            case THROW -> 12;               // 0.6 seconds
-            case MISS_RECOVERY -> 14;       // 0.7 seconds
-            case HIT_RECOVERY -> 7;         // 0.35 seconds
-            case DYING -> 20;                // 1.0 second
+            case TELEGRAPH_GRAB -> 12;      // 0.60 seconds to react before the lunge
+            case GRAB_SUCCESS -> 10;        // 0.50 seconds to make contact and lock
+            case HOLD -> 25;                // 1.25 seconds, matches the authored clip
+            case THROW -> 18;               // 0.9 seconds, matches the authored clip
+            case MISS_RECOVERY -> 17;       // 0.85 seconds
+            case HIT_RECOVERY -> 5;         // 0.25 seconds, matches the authored clip
+            case DYING -> 25;                // 1.25 seconds, matches the authored clip
             case DEAD_RESPAWN -> 40;        // bounded hidden/respawn hold
-            case RETRACT -> 16;             // 0.8 seconds
-            case SPAWN_UNDER_PLAYER -> 7;   // 0.35 seconds
+            case RETRACT -> 18;             // 0.9 seconds, matches the authored clip
+            case SPAWN_UNDER_PLAYER -> 9;   // 0.45 seconds
             case SHIELD_CHANNEL -> 40;      // 2.0 seconds, looping
             case RECOVERY -> 16;            // 0.8 seconds
         };
@@ -83,6 +83,14 @@ public final class TentacleAnimationPolicy {
         return GRAB_MARKERS;
     }
 
+    /** A static local showroom must show the permanent rig's looping idle pose. */
+    public static State initialSpawnState(Kind kind, boolean staticShowroom) {
+        if (kind == null) {
+            return State.READY;
+        }
+        return staticShowroom && kind == Kind.PERMANENT ? State.READY : State.EMERGING;
+    }
+
     /** Marker offset in the animation that owns the marker. */
     public static int markerTick(State state, Marker marker) {
         if (state == null || marker == null) {
@@ -90,8 +98,8 @@ public final class TentacleAnimationPolicy {
         }
         State canonical = canonical(state);
         return switch (marker) {
-            case CONTACT -> canonical == State.GRAB_SUCCESS ? 8 : -1;
-            case HOLD_LOCK -> canonical == State.GRAB_SUCCESS ? 12 : -1;
+            case CONTACT -> canonical == State.GRAB_SUCCESS ? 6 : -1;
+            case HOLD_LOCK -> canonical == State.GRAB_SUCCESS ? 9 : -1;
             case THROW_RELEASE -> canonical == State.THROW ? 8 : -1;
             case RECOVERY_START -> canonical == State.RECOVERY ? 0 : -1;
             case HIDE_BELOW_FLOOR -> canonical == State.DYING ? 16

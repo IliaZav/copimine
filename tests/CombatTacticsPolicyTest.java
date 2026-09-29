@@ -6,6 +6,7 @@ import me.copimine.endevent.domain.EndRiftObjective;
 public final class CombatTacticsPolicyTest {
     public static void main(String[] args) {
         testBossTacticsChangeByPhaseAndCycle();
+        testOrdinaryPursuitPlansDoNotRequestAFeintTeleport();
         testBossNeverReceivesCoreCollapsePlan();
         testObjectiveRolesAreDistinctAndDeterministic();
         testWaveManeuversAreBoundedAndRepeatable();
@@ -34,6 +35,17 @@ public final class CombatTacticsPolicyTest {
         check(plan.preferOuterRing(), "a Core-standing target must force an outer-ring plan");
         check(plan.preferredDistance() >= CombatTacticsPolicy.MIN_BOSS_DISTANCE,
                 "outer-ring plan must stay outside the Core safety distance");
+    }
+
+    private static void testOrdinaryPursuitPlansDoNotRequestAFeintTeleport() {
+        for (BossPhase phase : new BossPhase[]{BossPhase.HUNT, BossPhase.RIFT}) {
+            for (int cycle = 0; cycle < 6; cycle++) {
+                CombatTacticsPolicy.BossPlan plan = CombatTacticsPolicy.bossPlan(
+                        phase, cycle, 8.0D, false);
+                check(plan.tactic() != CombatTacticsPolicy.BossTactic.PHANTOM_FEINT,
+                        "ordinary " + phase + " pursuit must stay grounded: cycle=" + cycle);
+            }
+        }
     }
 
     private static void testObjectiveRolesAreDistinctAndDeterministic() {

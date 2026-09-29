@@ -10,8 +10,14 @@ class BedrockCoordinateTransformTest {
         BedrockCoordinateTransform.Vec3 target = BedrockCoordinateTransform.sourcePoint(2.0, 7.0, -3.0);
 
         assertEquals(2.0, target.x(), 0.000001);
-        assertEquals(17.0, target.y(), 0.000001);
+        assertEquals(-7.0, target.y(), 0.000001);
         assertEquals(-3.0, target.z(), 0.000001);
+    }
+
+    @Test
+    void modelFeetRemainAtEntityOriginWithoutAnArbitraryVerticalOffset() {
+        assertEquals(0.0, BedrockCoordinateTransform.sourcePoint(0.0, 0.0, 0.0).y(), 0.000001);
+        assertEquals(-80.0, BedrockCoordinateTransform.sourcePoint(0.0, 80.0, 0.0).y(), 0.000001);
     }
 
     @Test

@@ -75,6 +75,7 @@ public final class EndRiftAiPolicyTest {
             "Шквал Стрел Разлома",
             "Призыв слуг Разлома",
             "Пламя Разлома",
+            "Огненный шар Разлома",
             "Приговор Разлома"
         };
         EndRiftAiPolicy.BossSpell[] spells = EndRiftAiPolicy.BossSpell.values();

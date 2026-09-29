@@ -145,6 +145,7 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     live_script = read(ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1")
     assert "HEIGHT = 6" in policy
+    assert "FINAL_SEAL_HEIGHT = 8" in policy
     assert "MIN_RADIUS = 0.5D" in policy
     assert "MAX_RADIUS = 32.0D" in policy
     assert "MAX_CELLS = 1536" in policy

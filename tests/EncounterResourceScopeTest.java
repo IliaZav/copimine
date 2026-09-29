@@ -1,18 +1,16 @@
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 import me.copimine.endevent.runtime.EncounterResourceScope;
 
 public final class EncounterResourceScopeTest {
     public static void main(String[] args) {
         List<String> order = new ArrayList<>();
-        EncounterResourceScope scope = new EncounterResourceScope(3L, null);
-        AtomicInteger firstCloserAttempts = new AtomicInteger();
+        EncounterResourceScope scope = new EncounterResourceScope(3L, "WAVE_6:wave-6", null);
+        check(scope.owner().equals("WAVE_6:wave-6"),
+                "resource scopes expose the phase and wave that own their resources");
         scope.registerCloser(() -> {
             order.add("first");
-            if (firstCloserAttempts.incrementAndGet() == 1) {
-                throw new IllegalStateException("first closer failed");
-            }
+            throw new IllegalStateException("first closer failed");
         });
         scope.registerCloser(() -> order.add("second"));
 
@@ -21,13 +19,9 @@ public final class EncounterResourceScopeTest {
         check(result.failures().size() == 1, "one closer failure must be recorded");
         check(order.equals(List.of("second", "first")),
                 "all closers must run in reverse registration order");
-        check(!scope.closed(), "scope remains retryable after a cleanup failure");
-        check(scope.closeResources().success(), "a repeated close must retry failed cleanup");
-        check(scope.closed(), "scope closes after every failed cleanup action succeeds");
-        check(order.equals(List.of("second", "first", "first")),
-                "successful cleanup actions must not run again during retry");
-        check(scope.closeResources().success() && order.size() == 3,
-                "closing a successful scope remains idempotent");
+        check(scope.closed(), "scope must be closed after cleanup attempt");
+        check(scope.closeResources().failures().size() == 1,
+                "repeated close must preserve the auditable failure result");
 
         EncounterResourceScope throwingScope = new EncounterResourceScope(4L, null);
         throwingScope.registerCloser(() -> { throw new IllegalArgumentException("boom"); });
@@ -36,7 +30,6 @@ public final class EncounterResourceScopeTest {
         } catch (EncounterResourceScope.CleanupException expected) {
             check(expected.result().failures().size() == 1,
                     "close must expose the same cleanup failure result");
-            check(!throwingScope.closed(), "a failed close stays retryable");
             System.out.println("EncounterResourceScopeTest OK");
             return;
         }

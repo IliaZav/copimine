@@ -11,6 +11,8 @@
     "EndermanEntityRendererMixin",
     "EndermanEyesFeatureRendererMixin",
     "LivingEntityRendererMixin",
+    "EntityBoundingBoxMixin",
+    "LivingEntityHealthProjectionMixin",
     "DisplayEntityRendererMixin",
     "ClientWorldAccessor",
     "ModelPartAccessor",

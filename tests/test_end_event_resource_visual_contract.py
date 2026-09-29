@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -85,27 +86,17 @@ def test_end_rift_vanilla_models_use_only_supported_element_rotation_angles():
                 )
 
 
-def test_guardian_texture_uses_the_reference_purple_white_palette():
-    """The boss atlas must not leak the source export's vivid accent islands."""
+def test_guardian_texture_is_the_supplied_artist_atlas():
+    """Keep the exact 128x128 atlas shipped in the user's boss archive.
+
+    The vivid islands are intentional UV content. Recolouring them merely hid
+    an importer bug and changed the artist-owned atlas instead of fixing face
+    orientation.
+    """
     assert BOSS_TEXTURE.is_file()
-    with Image.open(BOSS_TEXTURE).convert("RGBA") as image:
+    with Image.open(BOSS_TEXTURE) as image:
         assert image.size == (128, 128)
-        opaque = {
-            pixel[:3]
-            for pixel in image.getdata()
-            if pixel[3] > 0
-        }
-    vivid_non_purple = {
-        rgb
-        for rgb in opaque
-        if max(rgb) - min(rgb) > 60
-        and not (
-            rgb[2] > rgb[0] + 20
-            and rgb[2] > rgb[1] + 10
-            and rgb[1] < 120
-        )
-    }
-    assert not vivid_non_purple, (
-        "guardian texture contains saturated non-reference colours: "
-        f"{sorted(vivid_non_purple)}"
+        assert image.getbbox() is not None
+    assert hashlib.sha256(BOSS_TEXTURE.read_bytes()).hexdigest() == (
+        "f298ed322335c5439c19dddb8014aa0960b83f3fb27d692580a75e051516c45d"
     )

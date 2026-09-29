@@ -1,3 +1,5 @@
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +11,9 @@ import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.ObeliskScalingPolicy;
 import me.copimine.endevent.domain.RitualSealCapturePolicy;
 import me.copimine.endevent.runtime.EncounterContext;
+import me.copimine.endevent.runtime.EndRiftEncounterController;
 import me.copimine.endevent.runtime.EndRiftEncounterCoordinator;
+import me.copimine.endevent.runtime.EndRiftSession;
 import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
 import me.copimine.endevent.runtime.encounter.ObeliskAssaultEncounter;
 import me.copimine.endevent.runtime.encounter.RealitySplitEncounter;
@@ -28,7 +32,82 @@ public final class EndRiftEncounterCoordinatorTest {
         testWaveCompletionPreflightsTransitionAndIsReplaySafe();
         testGenerationFenceAndCleanup();
         testCleanupFailurePropagatesAndRemainsVisible();
+        testCoordinatorCanShareTheLiveLifecycleController();
+        testLiveRitualAdapterRestoresPersistedPrisoner();
         System.out.println("EndRiftEncounterCoordinatorTest OK");
+    }
+
+    private static void testCoordinatorCanShareTheLiveLifecycleController() {
+        UUID player = UUID.randomUUID();
+        Set<UUID> players = Set.of(player);
+        EncounterContext context = new EncounterContext("shared-live-controller", 21L, "CopiMine",
+                0, 64, 0, new EncounterContext.ArenaBounds(-5, 0, -5, 5, 80, 5),
+                players, players, EndRiftObjective.Objective.RIFT_CARRIERS);
+        EndRiftEncounterController controller = new EndRiftEncounterController(
+                context, EventPhase.WAVE_1);
+        try {
+            Constructor<?> sessionConstructor = EndRiftSession.class.getConstructor(
+                    EndRiftEncounterController.class);
+            EndRiftSession session = (EndRiftSession) sessionConstructor.newInstance(controller);
+            Constructor<?> coordinatorConstructor = EndRiftEncounterCoordinator.class.getConstructor(
+                    EndRiftSession.class);
+            EndRiftEncounterCoordinator coordinator = (EndRiftEncounterCoordinator)
+                    coordinatorConstructor.newInstance(session);
+
+            check(coordinator.startCurrentWave(EndRiftObjective.Objective.RIFT_CARRIERS,
+                    context).accepted(), "shared coordinator must start the live wave adapter");
+            Method tickCurrentWave = EndRiftEncounterCoordinator.class.getMethod(
+                    "tickCurrentWave", EncounterContext.class, boolean.class);
+            EndRiftEncounterCoordinator.Result reported =
+                    (EndRiftEncounterCoordinator.Result) tickCurrentWave.invoke(
+                            coordinator, context, true);
+            check(reported.accepted() && reported.progress() == reported.required(),
+                    "live Bukkit completion must be reported through the active wave adapter");
+            Method completeObjective = EndRiftEncounterCoordinator.class.getMethod(
+                    "completeCurrentWaveObjective", EndRiftObjective.Objective.class);
+            WaveEncounter.Result completed = (WaveEncounter.Result) completeObjective.invoke(
+                    coordinator, EndRiftObjective.Objective.RIFT_CARRIERS);
+            check(completed.accepted() && completed.complete(),
+                    "live wave adapter must confirm its terminal result");
+            check(controller.phase() == EventPhase.WAVE_1,
+                    "wave result reporting must not move the global lifecycle phase");
+            check(coordinator.completeWave(EndRiftObjective.Objective.RIFT_CARRIERS,
+                    "complete shared phase", "shared-wave-complete").accepted(),
+                    "shared coordinator must complete through the same lifecycle");
+            check(controller.phase() == EventPhase.INTERMISSION_1,
+                    "live controller must observe coordinator phase changes");
+            check(session.phase() == controller.phase() && coordinator.phase() == controller.phase(),
+                    "session, coordinator and live controller must share one global phase");
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("coordinator must wrap the existing live controller session", error);
+        }
+    }
+
+    private static void testLiveRitualAdapterRestoresPersistedPrisoner() {
+        UUID player = UUID.randomUUID();
+        Set<UUID> players = Set.of(player);
+        EncounterContext context = new EncounterContext("shared-live-ritual", 22L, "CopiMine",
+                0, 64, 0, new EncounterContext.ArenaBounds(-5, 0, -5, 5, 80, 5),
+                players, players, EndRiftObjective.Objective.RITUAL_SPHERE);
+        EndRiftEncounterCoordinator coordinator = new EndRiftEncounterCoordinator(
+                context, EventPhase.WAVE_6);
+        check(coordinator.startCurrentWave(EndRiftObjective.Objective.RITUAL_SPHERE,
+                context).accepted(), "live ritual adapter must start");
+        check(coordinator.tickCurrentWave(context, true).accepted(),
+                "live Wave 6 runtime result must be recorded before persisted prisoner restore");
+        WaveEncounter.Result beforeRestore = coordinator.completeCurrentWaveObjective(
+                EndRiftObjective.Objective.RITUAL_SPHERE);
+        check(!beforeRestore.accepted() && "PRISONER_CAPTURE_REQUIRED".equals(beforeRestore.reason()),
+                "resumed Wave 6 must keep the prisoner gate closed until restoration");
+
+        WaveEncounter.Result restored = coordinator.restoreCurrentRitualPrisoner(context, player);
+        check(restored.accepted(), "coordinator must restore the persisted live prisoner");
+        check(!coordinator.restoreCurrentRitualPrisoner(context, UUID.randomUUID()).accepted(),
+                "coordinator must refuse a prisoner outside the active participant snapshot");
+        WaveEncounter.Result completed = coordinator.completeCurrentWaveObjective(
+                EndRiftObjective.Objective.RITUAL_SPHERE);
+        check(completed.accepted() && completed.complete(),
+                "resumed Wave 6 must complete after its persisted prisoner is restored");
     }
 
     private static void testCanonicalSevenWaveLifecycle() {
@@ -278,11 +357,16 @@ public final class EndRiftEncounterCoordinatorTest {
 
         @Override public EndRiftObjective.Objective objective() { return objective; }
         @Override public int wave() { return 1; }
+        @Override public int progress() { return startResult.progress(); }
+        @Override public int required() { return startResult.required(); }
         @Override public boolean started() { return false; }
         @Override public boolean completed() { return false; }
         @Override public long generation() { return 0L; }
         @Override public Result start(EncounterContext context) { return startResult; }
         @Override public Result tick(EncounterContext context) { return startResult; }
+        @Override public Result reportRuntimeResult(EncounterContext context, boolean complete) {
+            return startResult;
+        }
         @Override public Result complete(EncounterContext context) { return startResult; }
         @Override public void reset() { }
     }

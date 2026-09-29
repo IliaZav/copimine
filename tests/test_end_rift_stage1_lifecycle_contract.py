@@ -88,6 +88,49 @@ def test_lifecycle_authority_is_shared_by_live_facade_and_pure_session():
     assert "new EndEventStateMachine" not in event
 
 
+def test_live_official_wave_lifecycle_uses_the_shared_wave_coordinator():
+    event = read(PLUGIN / "CopiMineEndEvent.java")
+    coordinator = PLUGIN / "runtime" / "EndRiftEncounterCoordinator.java"
+
+    assert "EndRiftEncounterCoordinator encounterCoordinator" in event
+    assert "new EndRiftEncounterCoordinator(new EndRiftSession(encounterController))" in event
+    start = event[event.index("private boolean startCanonicalObjective"):
+                  event.index("private void startWaveObjective")]
+    tick = event[event.index("private boolean tickCurrentObjective"):
+                 event.index("private boolean tickWaveObjective")]
+    report = event[event.index("private boolean reportCurrentWaveResult"):
+                   event.index("private boolean tickWaveObjective")]
+    complete = event[event.index("private boolean completeWavePhase"):
+                      event.index("private boolean completeCoreRestorationPhase")]
+
+    assert "encounterCoordinator.startCurrentWave" in start
+    assert "reportCurrentWaveResult(objectiveWave, objectiveComplete)" in tick
+    assert "encounterCoordinator.tickCurrentWave" in report
+    assert "encounterCoordinator.completeCurrentWaveObjective" in complete
+    assert "EndRiftSession(EndRiftEncounterController encounterController)" in read(
+        PLUGIN / "runtime" / "EndRiftSession.java")
+    assert coordinator.exists()
+
+
+def test_resumed_wave_six_restores_its_persisted_prisoner_from_the_live_tick():
+    event = read(PLUGIN / "CopiMineEndEvent.java")
+    coordinator = read(PLUGIN / "runtime" / "EndRiftEncounterCoordinator.java")
+    tick = event[event.index("private void tickCurrentRitualSphereObjective"):
+                 event.index("private void renderRitualSphereChanneling")]
+    capture = event[event.index("private void attemptRitualPrisonerCapture"):
+                    event.index("private void synchronizePersistedRitualPrisonerCapture")]
+    restore = event[event.index("private void synchronizePersistedRitualPrisonerCapture"):
+                    event.index("private void ensureRitualPrisoner")]
+
+    captured_gate = tick.index("if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {\n            return;")
+    restore_call = tick.index("synchronizePersistedRitualPrisonerCapture();")
+    prisoner_tick = tick.index("ensureRitualPrisoner(now)")
+    assert captured_gate < restore_call < prisoner_tick
+    assert "synchronizePersistedRitualPrisonerCapture()" not in capture
+    assert "encounterCoordinator.restoreCurrentRitualPrisoner(context, prisonerId)" in restore
+    assert "restoreCapturedPrisoner" in coordinator
+
+
 def test_one_generation_roster_owns_participant_presence_and_objective_eligibility():
     lifecycle = read(PLUGIN / "runtime" / "AttemptLifecycleController.java")
     event = read(PLUGIN / "CopiMineEndEvent.java")

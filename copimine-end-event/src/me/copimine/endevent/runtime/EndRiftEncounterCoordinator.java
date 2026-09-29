@@ -5,6 +5,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import me.copimine.endevent.domain.EndRiftObjective;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.runtime.encounter.BlackFogEncounter;
@@ -42,7 +43,18 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
     public EndRiftEncounterCoordinator(EncounterContext context, EventPhase initialPhase,
                                        AutoCloseable resourceScope,
                                        Map<EndRiftObjective.Objective, WaveEncounter> overrides) {
-        this.session = new EndRiftSession(context, initialPhase, resourceScope);
+        this(new EndRiftSession(context, initialPhase, resourceScope), overrides);
+    }
+
+    /** Build wave adapters around the same session used by the live lifecycle controller. */
+    public EndRiftEncounterCoordinator(EndRiftSession session) {
+        this(session, Map.of());
+    }
+
+    public EndRiftEncounterCoordinator(EndRiftSession session,
+                                       Map<EndRiftObjective.Objective, WaveEncounter> overrides) {
+        if (session == null) throw new IllegalArgumentException("session is required");
+        this.session = session;
         register(new RiftCarriersEncounter());
         register(new RiftHuntEncounter());
         register(new RiftGatesEncounter());
@@ -103,17 +115,90 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     /** Start a wave after an adapter has already committed the phase transition. */
     public synchronized Result startCurrentWave(EndRiftObjective.Objective objective) {
+        return startCurrentWave(objective, session.context());
+    }
+
+    /** Start the live adapter after the shared lifecycle already entered its wave phase. */
+    public synchronized Result startCurrentWave(EndRiftObjective.Objective objective,
+                                                 EncounterContext liveContext) {
         if (closed || objective == null || session.phase() != wavePhase(objective)) {
             return rejected("WAVE_PHASE_REQUIRED");
         }
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejected("STALE_OR_MISSING_CONTEXT");
+        }
         WaveEncounter encounter = encounters.get(objective);
-        return fromEncounter(encounter.start(session.context().withObjective(objective)));
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        if (encounter.generation() != 0L && encounter.generation() != liveContext.generation()) {
+            encounter.reset();
+        }
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        return fromEncounter(encounter.start(objectiveContext));
+    }
+
+    /** Restore Wave 6's durable prisoner identity through the active adapter. */
+    public synchronized WaveEncounter.Result restoreCurrentRitualPrisoner(
+            EncounterContext liveContext, UUID prisoner) {
+        EndRiftObjective.Objective objective = EndRiftObjective.Objective.RITUAL_SPHERE;
+        if (closed || session.phase() != EventPhase.WAVE_6) {
+            return rejectedWave("WAVE_PHASE_REQUIRED");
+        }
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejectedWave("STALE_OR_MISSING_CONTEXT");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (!(encounter instanceof RitualSphereEncounter ritual)) {
+            return rejectedWave("UNKNOWN_OBJECTIVE");
+        }
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        return ritual.restoreCapturedPrisoner(objectiveContext, prisoner);
     }
 
     public synchronized Result tickCurrentWave() {
         EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
         if (objective == null) return rejected("NOT_IN_WAVE");
         return fromEncounter(encounters.get(objective).tick(session.context().withObjective(objective)));
+    }
+
+    /**
+     * Tick the active adapter and admit the result produced by its live Bukkit
+     * objective. Only the shared lifecycle controller can commit a phase change.
+     */
+    public synchronized Result tickCurrentWave(EncounterContext liveContext,
+                                               boolean objectiveComplete) {
+        if (closed) return rejected("COORDINATOR_CLOSED");
+        EndRiftObjective.Objective objective = objectiveForWavePhase(session.phase());
+        if (objective == null) return rejected("NOT_IN_WAVE");
+        if (liveContext == null || !session.accepts(liveContext.eventId(), liveContext.generation())) {
+            return rejected("STALE_OR_MISSING_CONTEXT");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejected("UNKNOWN_OBJECTIVE");
+        EncounterContext objectiveContext = liveContext.withObjective(objective);
+        session.replaceContext(objectiveContext);
+        WaveEncounter.Result tick = encounter.tick(objectiveContext);
+        if (!tick.accepted()) return fromEncounter(tick, session.phase());
+        return fromEncounter(encounter.reportRuntimeResult(objectiveContext, objectiveComplete),
+                session.phase());
+    }
+
+    /** Validate and store a terminal wave result without advancing global phase. */
+    public synchronized WaveEncounter.Result completeCurrentWaveObjective(
+            EndRiftObjective.Objective objective) {
+        if (closed || objective == null || session.phase() != wavePhase(objective)) {
+            return rejectedWave("WAVE_PHASE_REQUIRED");
+        }
+        WaveEncounter encounter = encounters.get(objective);
+        if (encounter == null) return rejectedWave("UNKNOWN_OBJECTIVE");
+        if (encounter.completed()) {
+            return new WaveEncounter.Result(WaveEncounter.Status.COMPLETE,
+                    encounter.progress(), encounter.required(), "objective already complete");
+        }
+        EncounterContext context = session.context();
+        if (context == null) return rejectedWave("CONTEXT_REQUIRED");
+        return encounter.complete(context.withObjective(objective));
     }
 
     /** Complete an objective and enter its only legal following stage. */
@@ -135,7 +220,7 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
         EndRiftSession.TransitionOutcome preview = session.previewCompleteWave(
                 wave, reason, idempotencyKey);
         if (!preview.accepted()) return rejected(preview.code());
-        WaveEncounter.Result completed = encounter.complete(session.context().withObjective(objective));
+        WaveEncounter.Result completed = completeCurrentWaveObjective(objective);
         if (!completed.accepted() || !completed.complete()) return fromEncounter(completed);
         EndRiftSession.TransitionOutcome completion = session.completeWave(
                 wave, reason, idempotencyKey);
@@ -248,6 +333,10 @@ public final class EndRiftEncounterCoordinator implements AutoCloseable {
 
     private Result rejected(String reason) {
         return new Result(false, session.phase(), reason, "", 0, 0);
+    }
+
+    private static WaveEncounter.Result rejectedWave(String reason) {
+        return new WaveEncounter.Result(WaveEncounter.Status.REJECTED, 0, 0, reason);
     }
 
     public static EventPhase wavePhase(EndRiftObjective.Objective objective) {

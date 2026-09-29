@@ -43,6 +43,23 @@ public final class RitualSphereEncounter extends AbstractWaveEncounter {
         return result(Status.IN_PROGRESS, "prisoner captured");
     }
 
+    /** Restore the authoritative prisoner identity after a persisted live wave resumes. */
+    public synchronized Result restoreCapturedPrisoner(EncounterContext context, UUID prisoner) {
+        if (!accepts(context)) {
+            return rejected("STALE_OR_NOT_STARTED");
+        }
+        if (!context.isLivingParticipant(prisoner)) {
+            return rejected("PRISONER_NOT_LIVING_PARTICIPANT");
+        }
+        if (RitualSphereEncounterPolicy.hasCaptured(state)) {
+            return prisoner.equals(state.prisoner())
+                    ? result(Status.IN_PROGRESS, "prisoner already captured")
+                    : rejected("PRISONER_ALREADY_CAPTURED");
+        }
+        state = RitualSphereEncounterPolicy.capture(state, prisoner);
+        return result(Status.IN_PROGRESS, "persisted prisoner restored");
+    }
+
     @Override
     public synchronized Result complete(EncounterContext context) {
         if (!accepts(context)) {

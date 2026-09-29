@@ -113,8 +113,10 @@ import me.copimine.endevent.domain.TransitionRunePolicy;
 import me.copimine.endevent.runtime.BossStartGateway;
 import me.copimine.endevent.runtime.ritual.RitualSpellController;
 import me.copimine.endevent.runtime.ritual.PrisonerAbilityController;
+import me.copimine.endevent.runtime.encounter.RitualSphereEncounter;
 import me.copimine.endevent.runtime.EncounterContext;
 import me.copimine.endevent.runtime.EndRiftEncounterController;
+import me.copimine.endevent.runtime.EndRiftEncounterCoordinator;
 import me.copimine.endevent.runtime.EndRiftSession;
 import me.copimine.endevent.runtime.PreBossTransitionController;
 import me.copimine.endevent.runtime.PostWaveRecoveryService;
@@ -793,6 +795,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private EventSnapshot loadedSnapshot;
     private EndRiftEncounterController encounterController =
             new EndRiftEncounterController("", 0L, EventPhase.UNCONFIGURED);
+    private final EndRiftEncounterCoordinator encounterCoordinator =
+            new EndRiftEncounterCoordinator(new EndRiftSession(encounterController));
     private EventTaskRegistry taskRegistry;
     private EncounterResourceScope encounterResourceScope;
     private ExecutorService stateExecutor;
@@ -2320,9 +2324,24 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                       String idempotencyKey, boolean persist) {
         EventPhase current = encounterController.phase();
         EventPhase requested = EndRiftEncounterController.phaseAfterWave(completedWave);
+        if (isOfficialCurrentAttempt()) {
+            me.copimine.endevent.runtime.encounter.WaveEncounter.Result objectiveResult =
+                    encounterCoordinator.completeCurrentWaveObjective(
+                            EndRiftObjective.objective(completedWave));
+            if (!objectiveResult.accepted() || !objectiveResult.complete()) {
+                getLogger().warning("End Rift wave adapter refused completion wave=" + completedWave
+                        + " status=" + objectiveResult.status()
+                        + " reason=" + objectiveResult.reason());
+                return false;
+            }
+        }
         var result = encounterController.completeWave(eventId, generation,
                 completedWave, reason, idempotencyKey);
-        return publishLifecycleTransition(current, requested, reason, persist, result);
+        boolean published = publishLifecycleTransition(current, requested, reason, persist, result);
+        if (result.success()) {
+            encounterCoordinator.resetEncounter(EndRiftObjective.objective(completedWave));
+        }
+        return published;
     }
 
     private boolean completeCoreRestorationPhase(String reason, String idempotencyKey) {
@@ -2984,6 +3003,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             "cleanupBoundary", "PLUGIN_DISABLE"));
             endRiftDiagnostics.closeAndFlush();
             endRiftDiagnostics = null;
+        }
+        try {
+            encounterCoordinator.close();
+        } catch (RuntimeException error) {
+            getLogger().log(Level.WARNING, "End Rift wave adapter cleanup failed", error);
         }
     }
 
@@ -15333,6 +15357,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !EndRiftObjective.isNumberedWave(wave)) {
             return false;
         }
+        if (isOfficialCurrentAttempt()) {
+            EncounterContext context = currentEncounterContext();
+            if (context == null) {
+                getLogger().warning("End Rift wave adapter refused start wave=" + wave
+                        + " reason=encounter-context-unavailable");
+                return false;
+            }
+            EndRiftEncounterCoordinator.Result started = encounterCoordinator.startCurrentWave(
+                    EndRiftObjective.objective(wave), context);
+            if (!started.accepted()) {
+                getLogger().warning("End Rift wave adapter refused start wave=" + wave
+                        + " reason=" + started.code());
+                return false;
+            }
+        }
         waveObjectiveStartedMillis = System.currentTimeMillis();
         waveObjectiveLastSecond = -1;
         waveObjectiveComplete = false;
@@ -15452,9 +15491,31 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         renderWaveObjective(now);
         boolean allGroupsSpawned = waveSpawnGroupIndex >= waveSpawnSchedule.size();
         boolean noMobs = countLiveWaveEntitiesForWave(activeWave) == 0;
-        if (allGroupsSpawned && noMobs && currentObjectiveProgressComplete(objectiveWave)) {
-            waveObjectiveComplete = true;
+        boolean objectiveComplete = allGroupsSpawned && noMobs
+                && currentObjectiveProgressComplete(objectiveWave);
+        return reportCurrentWaveResult(objectiveWave, objectiveComplete);
+    }
+
+    /** Admit the real Bukkit objective result through the generation-owned wave adapter. */
+    private boolean reportCurrentWaveResult(int wave, boolean objectiveComplete) {
+        if (!isOfficialCurrentAttempt()) {
+            waveObjectiveComplete = objectiveComplete;
+            return objectiveComplete;
         }
+        EncounterContext context = currentEncounterContext();
+        if (context == null) {
+            waveObjectiveComplete = false;
+            return false;
+        }
+        EndRiftEncounterCoordinator.Result result = encounterCoordinator.tickCurrentWave(
+                context.withObjective(EndRiftObjective.objective(wave)), objectiveComplete);
+        if (!result.accepted()) {
+            waveObjectiveComplete = false;
+            getLogger().warning("End Rift wave adapter refused live result wave=" + wave
+                    + " reason=" + result.code());
+            return false;
+        }
+        waveObjectiveComplete = objectiveComplete && result.progress() >= result.required();
         return waveObjectiveComplete;
     }
 
@@ -15464,7 +15525,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
         if (activeWave == 4) {
-            return tickWave4ObeliskAssault();
+            return reportCurrentWaveResult(activeWave, tickWave4ObeliskAssault());
         }
         return tickCurrentObjective();
     }
@@ -16663,6 +16724,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
             return;
         }
+        // The event state survives a restart, while the newly started adapter
+        // begins in WAITING. Reconcile the persisted prisoner on every captured
+        // tick so an offline participant can be restored when they return.
+        synchronizePersistedRitualPrisonerCapture();
         ensureRitualPrisoner(now);
         if (now >= ritualNextPrisonerStateRefreshMillis) {
             ritualNextPrisonerStateRefreshMillis = now + 500L;
@@ -16753,8 +16818,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Capture the first eligible participant physically inside the visible seal. */
     private void attemptRitualPrisonerCapture(long now) {
         if (ritualSphereVisualUuid == null
-                || !isLiveOwnedEntity(ritualSphereVisualUuid)
-                || RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {
+                || !isLiveOwnedEntity(ritualSphereVisualUuid)) {
             return;
         }
         Location core = coreCombatAnchorLocation();
@@ -16787,6 +16851,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (prisoner == null) {
             return;
         }
+        if (isOfficialCurrentAttempt()) {
+            EncounterContext context = currentEncounterContext();
+            if (context == null
+                    || !(encounterCoordinator.encounter(EndRiftObjective.Objective.RITUAL_SPHERE)
+                    instanceof RitualSphereEncounter ritualEncounter)) {
+                getLogger().warning("End Rift Wave 6 adapter refused prisoner capture"
+                        + " reason=encounter-context-unavailable");
+                return;
+            }
+            me.copimine.endevent.runtime.encounter.WaveEncounter.Result capture =
+                    ritualEncounter.capture(context.withObjective(
+                                    EndRiftObjective.Objective.RITUAL_SPHERE), candidates,
+                            core.getX(), core.getZ());
+            if (!capture.accepted()) {
+                getLogger().warning("End Rift Wave 6 adapter refused prisoner capture reason="
+                        + capture.reason());
+                return;
+            }
+        }
         if (ritualSphereState == null) {
             ritualSphereState = RitualSphereEncounterPolicy.waiting(
                     generation, eventScalePlayers());
@@ -16811,6 +16894,22 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         "captureRadius", RitualSealCapturePolicy.CAPTURE_RADIUS_BLOCKS,
                         "health", prisoner.getHealth()));
         saveStateAsync();
+    }
+
+    /** Reconcile the pure wave gate with a persisted prisoner restored by the live adapter. */
+    private void synchronizePersistedRitualPrisonerCapture() {
+        if (!isOfficialCurrentAttempt()) return;
+        UUID prisonerId = ritualPrisonerId();
+        Player prisoner = prisonerId == null ? null : Bukkit.getPlayer(prisonerId);
+        if (prisoner == null || !isActiveArenaParticipant(prisoner)) return;
+        EncounterContext context = currentEncounterContext();
+        if (context == null) return;
+        me.copimine.endevent.runtime.encounter.WaveEncounter.Result restored =
+                encounterCoordinator.restoreCurrentRitualPrisoner(context, prisonerId);
+        if (!restored.accepted()) {
+            getLogger().warning("End Rift Wave 6 adapter could not restore prisoner reason="
+                    + restored.reason());
+        }
     }
 
     private void ensureRitualPrisoner(long now) {

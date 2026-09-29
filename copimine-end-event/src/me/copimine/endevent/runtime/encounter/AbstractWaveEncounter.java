@@ -54,6 +54,15 @@ abstract class AbstractWaveEncounter implements WaveEncounter {
     }
 
     @Override
+    public synchronized Result reportRuntimeResult(EncounterContext context,
+                                                   boolean objectiveComplete) {
+        if (!accepts(context)) return rejected("STALE_OR_NOT_STARTED");
+        if (objectiveComplete) progress = required;
+        return result(progress >= required ? Status.COMPLETE : Status.IN_PROGRESS,
+                objectiveComplete ? "live objective complete" : "live objective active");
+    }
+
+    @Override
     public synchronized Result complete(EncounterContext context) {
         if (!accepts(context)) return rejected("STALE_OR_NOT_STARTED");
         if (progress < required) return result(Status.IN_PROGRESS, "required progress missing");

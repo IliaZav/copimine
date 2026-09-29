@@ -7,11 +7,15 @@ import me.copimine.endevent.runtime.EncounterContext;
 public interface WaveEncounter {
     EndRiftObjective.Objective objective();
     int wave();
+    int progress();
+    int required();
     boolean started();
     boolean completed();
     long generation();
     Result start(EncounterContext context);
     Result tick(EncounterContext context);
+    /** Accept the terminal result from the live Bukkit objective adapter. */
+    Result reportRuntimeResult(EncounterContext context, boolean objectiveComplete);
     Result complete(EncounterContext context);
     void reset();
 

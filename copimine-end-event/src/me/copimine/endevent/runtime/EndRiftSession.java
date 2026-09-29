@@ -17,6 +17,21 @@ public final class EndRiftSession implements AutoCloseable {
         this.resourceScope = resourceScope;
     }
 
+    /** Wrap the live controller without creating a second phase state machine. */
+    public EndRiftSession(EndRiftEncounterController encounterController) {
+        this(encounterController, null);
+    }
+
+    /** Wrap the live controller and optionally share its generation-owned cleanup boundary. */
+    public EndRiftSession(EndRiftEncounterController encounterController,
+                          AutoCloseable resourceScope) {
+        if (encounterController == null) {
+            throw new IllegalArgumentException("encounter controller is required");
+        }
+        this.encounterController = encounterController;
+        this.resourceScope = resourceScope;
+    }
+
     public synchronized EncounterContext context() { return encounterController.context(); }
     public synchronized EventPhase phase() { return encounterController.phase(); }
     public synchronized long generation() { return encounterController.generation(); }

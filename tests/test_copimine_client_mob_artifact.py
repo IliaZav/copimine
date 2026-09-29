@@ -29,6 +29,9 @@ MOB_TEXTURES = (
     "end_rift_user_skeleton.png",
     "end_rift_user_enderman.png",
     "end_rift_user_spider.png",
+    "end_rift_elite.png",
+    "end_rift_elite_skeleton.png",
+    "end_rift_elite_spider.png",
 )
 PROFILE_JAR_ENV = "COPIMINE_PROFILE_CLIENT_JAR"
 
@@ -67,6 +70,13 @@ def assert_current_mob_payload(artifact: str, payload: bytes) -> None:
     assert b"end_rift_skeleton.png" not in catalog, (
         f"{artifact} still binds the generated-palette skeleton atlas to the ordinary skeleton"
     )
+    for visual_id, texture in (
+        ("END_RIFT_ELITE_V1", "end_rift_elite.png"),
+        ("END_RIFT_ELITE_SKELETON_V1", "end_rift_elite_skeleton.png"),
+        ("END_RIFT_ELITE_SPIDER_V1", "end_rift_elite_spider.png"),
+    ):
+        assert visual_id.encode("ascii") in catalog, f"{artifact} is missing {visual_id}"
+        assert texture.encode("ascii") in catalog, f"{artifact} does not bind {texture}"
 
     for filename in MOB_TEXTURES:
         source = SOURCE_TEXTURES / filename

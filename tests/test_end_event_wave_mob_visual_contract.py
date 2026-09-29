@@ -1,9 +1,9 @@
 """Visual contracts for the wave skeleton, elite and ritual caster assets.
 
-These checks are intentionally small and deterministic.  The PNGs are Minecraft
-UV sheets, not presentation renders, so a valid sheet must be opaque, compact,
-and use the same dark-purple family with deliberate bone accents as the
-supplied wave-mob references.
+These checks are intentionally small and deterministic. Most generated PNGs
+are opaque Minecraft UV sheets in the project palette; the three elite sheets
+are preserved byte-for-byte from the supplied archive and keep its transparency
+and authored colors.
 """
 
 from __future__ import annotations
@@ -39,7 +39,6 @@ def _texture_colors(path: Path) -> tuple[set[int], set[tuple[int, int, int]]]:
 def test_wave_skeleton_atlases_are_opaque_and_reference_purple() -> None:
     for name in (
         "end_rift_skeleton.png",
-        "end_rift_elite_skeleton.png",
         "end_rift_wave_guardian_skeleton.png",
         "end_rift_ritual_guard_skeleton.png",
     ):
@@ -62,11 +61,9 @@ def test_wave_skeleton_atlases_are_opaque_and_reference_purple() -> None:
 def test_other_wave_mob_atlases_keep_the_same_clean_surface_contract() -> None:
     for name in (
         "end_rift_enderman.png",
-        "end_rift_elite.png",
         "end_rift_spider.png",
         "end_rift_wave_guardian_enderman.png",
         "end_rift_ritual_guard_enderman.png",
-        "end_rift_elite_spider.png",
         "end_rift_wave_guardian_spider.png",
         "end_rift_ritual_guard_spider.png",
     ):
@@ -97,6 +94,22 @@ def test_ritual_caster_atlas_is_opaque_and_has_a_controlled_channel_accent() -> 
         or (red >= 180 and green >= 170 and blue >= 180)
         for red, green, blue in colors
     )
+
+
+def test_elite_mob_atlases_are_the_exact_supplied_archive_files() -> None:
+    import hashlib
+
+    expected = {
+        "end_rift_elite.png": "5923111b4ac459daee04aeeea4930dcac4b1156ed3d94bbaaa4b89b987fc6bdc",
+        "end_rift_elite_skeleton.png": "df29a577e2cc5896507044db37349216c2401311e458576ecbb2e0fe8ce65514",
+        "end_rift_elite_spider.png": "40ab699e7dc46d50a26728679539b30ced556269b795b06ed7bf498dd1b4d052",
+    }
+    for name, expected_hash in expected.items():
+        path = ENTITY / name
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected_hash, name
+        with Image.open(path).convert("RGBA") as image:
+            assert image.size == (64, 32), name
+            assert set(image.getchannel("A").getdata()) <= {0, 255}, name
 
 
 def test_every_runtime_mob_role_has_a_native_uv_sheet() -> None:

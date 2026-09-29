@@ -23,6 +23,12 @@ class SuppliedEndRiftAssetsTest {
                 "19C46FF4AA829E7101B25A50A55090CD1D8145C2F83B95D64C13A20F6B5C9ABF");
         assertSha256("/assets/copimineclient/textures/entity/end_rift_user_skeleton.png",
                 "4744A2C76285B1FA06F6FA64BFF5573BEA88D63AE7050912B138B830B573EE80");
+        assertSha256("/assets/copimineclient/textures/entity/end_rift_elite.png",
+                "5923111B4AC459DAEE04AEEEA4930DCAC4B1156ED3D94BBAAA4B89B987FC6BDC");
+        assertSha256("/assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
+                "DF29A577E2CC5896507044DB37349216C2401311E458576ECBB2E0FE8CE65514");
+        assertSha256("/assets/copimineclient/textures/entity/end_rift_elite_spider.png",
+                "40AB699E7DC46D50A26728679539B30CED556269B795B06ED7BF498DD1B4D052");
         assertSha256("/assets/copimineclient/textures/entity/end_rift_tentacle_hd.png",
                 "5817936653025968ABDD07003EBA29E4820B09B33EBAC4708E463F3B8B4F6BBC");
     }

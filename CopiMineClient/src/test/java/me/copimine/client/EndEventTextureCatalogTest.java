@@ -21,22 +21,27 @@ class EndEventTextureCatalogTest {
 
     @Test
     void everyMobRoleUsesTheMatchingAuthoredRuntimeSkin() {
-        for (String visual : new String[] {"END_RIFT_ENDERMAN_V1", "END_RIFT_ELITE_V1",
+        for (String visual : new String[] {"END_RIFT_ENDERMAN_V1",
                 "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1", "END_RIFT_RITUAL_GUARD_ENDERMAN_V1",
                 "END_RIFT_RITUAL_CASTER_V1"}) {
             assertTexture(visual, "end_rift_user_enderman.png");
         }
-        for (String visual : new String[] {"END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1",
+        for (String visual : new String[] {"END_RIFT_SPIDER_V1",
                 "END_RIFT_WAVE_GUARDIAN_SPIDER_V1", "END_RIFT_RITUAL_GUARD_SPIDER_V1"}) {
             assertTexture(visual, "end_rift_user_spider.png");
         }
-        // Every skeleton role uses the preserved user supplied atlas; role
-        // geometry and equipment carry the visual distinction.
-        for (String visual : new String[] {"END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1",
+        for (String visual : new String[] {"END_RIFT_SKELETON_V1",
                 "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", "END_RIFT_RITUAL_GUARD_SKELETON_V1"}) {
             assertTexture(visual, "end_rift_user_skeleton.png");
         }
         assertTexture("END_RIFT_GUARDIAN_SHIELD_V1", "end_rift_guardian_shield_hd.png");
+    }
+
+    @Test
+    void eliteMobsUseTheirDedicatedArchiveAtlases() {
+        assertTexture("END_RIFT_ELITE_V1", "end_rift_elite.png");
+        assertTexture("END_RIFT_ELITE_SKELETON_V1", "end_rift_elite_skeleton.png");
+        assertTexture("END_RIFT_ELITE_SPIDER_V1", "end_rift_elite_spider.png");
     }
 
     @Test

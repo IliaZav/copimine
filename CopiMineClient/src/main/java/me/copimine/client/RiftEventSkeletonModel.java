@@ -100,9 +100,9 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         ModelPartData root = data.getRoot();
         ModelPartData head = root.getChild("head");
         ModelPartData body = root.getChild("body");
-        // Every skeleton visual currently resolves to end_rift_user_skeleton.png.
-        // Keep all role models on that atlas layout so guardian/ritual variants
-        // do not sample the stale purple atlas islands from their old skins.
+        // Ordinary and elite skeletons use their respective supplied 64x32
+        // atlases, which share the classic torso/limb UV layout. Guardian and
+        // ritual variants keep their separate authored UV islands.
         boolean userSkin = usesSharedSkeletonAtlas(variant);
         int bodyUvV = userSkin ? 16 : 0;
         int leftHornU = userSkin ? 0 : 32;

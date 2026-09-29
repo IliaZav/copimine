@@ -1,9 +1,10 @@
 """Validate every End Rift wave-mob texture as a native, assembled UV input.
 
-The validator deliberately checks the things that caused the old screenshots to
-look broken: the declared atlas size, fully opaque texels, and a restrained
-palette.  It does not pretend to prove the live Minecraft renderer; the Java
-model tests and the native runtime capture are separate evidence layers.
+The validator checks the declared atlas size, expected alpha layout, and a
+restrained palette. The exact supplied elite atlases intentionally preserve
+their transparent UV gaps and authored colors. It does not prove the live
+Minecraft renderer; Java model tests and native runtime capture are separate
+evidence layers.
 """
 
 from __future__ import annotations
@@ -29,6 +30,11 @@ EXPECTED_MOB_ATLASES = {
     "end_rift_wave_guardian_skeleton.png": (64, 32),
     "end_rift_ritual_guard_skeleton.png": (64, 32),
 }
+TRANSPARENT_SUPPLIED_ATLASES = {
+    "end_rift_elite.png",
+    "end_rift_elite_skeleton.png",
+    "end_rift_elite_spider.png",
+}
 
 
 def validate_atlases(directory: Path) -> dict[str, list[str]]:
@@ -45,10 +51,13 @@ def validate_atlases(directory: Path) -> dict[str, list[str]]:
                 if image.size != expected_size:
                     issues.append(f"size={image.size}, expected={expected_size}")
                 alpha = {pixel[3] for pixel in image.getdata()}
-                if alpha != {255}:
-                    issues.append(f"alpha={sorted(alpha)}")
+                expected_alpha = {0, 255} if name in TRANSPARENT_SUPPLIED_ATLASES else {255}
+                if alpha != expected_alpha:
+                    issues.append(f"alpha={sorted(alpha)}, expected={sorted(expected_alpha)}")
                 colours = {pixel[:3] for pixel in image.getdata()}
-                maximum = 16 if "skeleton" in name else 14
+                maximum = 18 if name == "end_rift_elite_spider.png" else (
+                    16 if "skeleton" in name else 14
+                )
                 if len(colours) > maximum:
                     issues.append(f"palette={len(colours)}, max={maximum}")
         except (OSError, ValueError) as exc:

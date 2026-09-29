@@ -26,6 +26,12 @@ SUPPLIED_SKIN_SHA256 = {
     "enderman-1.png": "a9a154f232919627451431e3f3874c9e850f23e531eae2cfe2a4a9cc16edf447",
     "spider.png": "19c46ff4aa829e7101b25a50a55090cd1d8145c2f83b95d64c13a20f6b5c9abf",
 }
+SUPPLIED_ELITE_MOB_ATLASES = ROOT / "src" / "main" / "asset-source" / "elite-end-event-mobs"
+SUPPLIED_ELITE_MOB_ATLAS_SHA256 = {
+    "enderman_elite.png": "5923111b4ac459daee04aeeea4930dcac4b1156ed3d94bbaaa4b89b987fc6bdc",
+    "skeleton_elite.png": "df29a577e2cc5896507044db37349216c2401311e458576ecbb2e0fe8ce65514",
+    "spider_elite.png": "40ab699e7dc46d50a26728679539b30ced556269b795b06ed7bf498dd1b4d052",
+}
 
 
 def rgba(color: tuple[int, int, int]) -> tuple[int, int, int, int]:
@@ -271,6 +277,26 @@ def copy_supplied_user_skins() -> None:
         (OUT / target_name).write_bytes(source_bytes)
 
 
+def copy_supplied_elite_mob_atlases() -> None:
+    """Copy the archive-authored elite UV atlases without changing any bytes."""
+    for source_name, target_name in (
+        ("enderman_elite.png", "end_rift_elite.png"),
+        ("skeleton_elite.png", "end_rift_elite_skeleton.png"),
+        ("spider_elite.png", "end_rift_elite_spider.png"),
+    ):
+        source = SUPPLIED_ELITE_MOB_ATLASES / source_name
+        if not source.is_file():
+            raise FileNotFoundError(f"missing supplied elite mob atlas: {source}")
+        source_bytes = source.read_bytes()
+        actual_hash = hashlib.sha256(source_bytes).hexdigest()
+        expected_hash = SUPPLIED_ELITE_MOB_ATLAS_SHA256[source_name]
+        if actual_hash != expected_hash:
+            raise ValueError(
+                f"supplied elite mob atlas hash mismatch for {source_name}: {actual_hash}"
+            )
+        (OUT / target_name).write_bytes(source_bytes)
+
+
 def spider_sheet(name: str = "end_rift_spider.png", role: str = "ordinary") -> None:
     """Paint a clean 64x32 spider atlas for one gameplay role.
 
@@ -507,13 +533,6 @@ def main() -> None:
         (174, 0, 255),
     )
     enderman_sheet(
-        "end_rift_elite.png",
-        [(8, 2, 14), (18, 3, 27), (30, 6, 45), (48, 9, 67), (76, 14, 103), (116, 20, 151)],
-        29,
-        (156, 0, 255),
-        (214, 24, 255),
-    )
-    enderman_sheet(
         "end_rift_guardian.png",
         [(39, 8, 21), (76, 13, 27), (124, 20, 34), (181, 40, 48), (236, 105, 54), (248, 207, 83)],
         43,
@@ -577,13 +596,6 @@ def main() -> None:
         (136, 0, 255),
         (174, 0, 255),
     )
-    skeleton_sheet(
-        "end_rift_elite_skeleton.png",
-        [(8, 2, 14), (18, 3, 27), (30, 6, 45), (48, 9, 67), (76, 14, 103), (116, 20, 151)],
-        239,
-        (156, 0, 255),
-        (214, 24, 255),
-    )
     ritual_caster_sheet()
     enderman_sheet(
         "end_rift_wave_guardian_enderman.png",
@@ -613,12 +625,12 @@ def main() -> None:
         (204, 74, 228),
         (238, 70, 255),
     )
-    spider_sheet("end_rift_elite_spider.png", "elite")
     spider_sheet("end_rift_wave_guardian_spider.png", "wave_guardian")
     spider_sheet("end_rift_ritual_guard_spider.png", "ritual_guard")
     heavy_tentacle_sheet()
     guardian_shield_sheet()
     copy_supplied_user_skins()
+    copy_supplied_elite_mob_atlases()
     bossbar_frame()
 
 

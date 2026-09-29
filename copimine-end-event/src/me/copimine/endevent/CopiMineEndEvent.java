@@ -6354,14 +6354,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private String clientVisualResourcePath(String visualId) {
         return switch (visualId) {
             case CLIENT_VISUAL_ENDERMAN -> "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
-            case CLIENT_VISUAL_ELITE, CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN,
+            case CLIENT_VISUAL_ELITE -> "assets/copimineclient/textures/entity/end_rift_elite.png";
+            case CLIENT_VISUAL_WAVE_GUARDIAN_ENDERMAN,
                     CLIENT_VISUAL_RITUAL_GUARD_ENDERMAN, CLIENT_VISUAL_RITUAL_CASTER ->
                     "assets/copimineclient/textures/entity/end_rift_user_enderman.png";
             case CLIENT_VISUAL_SPIDER -> "assets/copimineclient/textures/entity/end_rift_user_spider.png";
-            case CLIENT_VISUAL_ELITE_SPIDER, CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER,
+            case CLIENT_VISUAL_ELITE_SPIDER -> "assets/copimineclient/textures/entity/end_rift_elite_spider.png";
+            case CLIENT_VISUAL_WAVE_GUARDIAN_SPIDER,
                     CLIENT_VISUAL_RITUAL_GUARD_SPIDER ->
                     "assets/copimineclient/textures/entity/end_rift_user_spider.png";
-            case CLIENT_VISUAL_SKELETON, CLIENT_VISUAL_ELITE_SKELETON,
+            case CLIENT_VISUAL_ELITE_SKELETON ->
+                    "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png";
+            case CLIENT_VISUAL_SKELETON,
                     CLIENT_VISUAL_WAVE_GUARDIAN_SKELETON, CLIENT_VISUAL_RITUAL_GUARD_SKELETON ->
                     "assets/copimineclient/textures/entity/end_rift_user_skeleton.png";
             // These visuals are ItemDisplays.  Their model and texture are

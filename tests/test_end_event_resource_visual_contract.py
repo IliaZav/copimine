@@ -314,7 +314,6 @@ def test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands():
                    if alpha == 255 and red >= 105 and green < 90 and blue >= 125)
 
     for name in (
-        "end_rift_elite.png",
         "end_rift_wave_guardian_enderman.png",
         "end_rift_ritual_guard_enderman.png",
         "end_rift_ritual_caster.png",
@@ -328,7 +327,6 @@ def test_generated_mob_faces_put_eyes_on_the_visible_front_uv_islands():
 
     for name in (
         "end_rift_skeleton.png",
-        "end_rift_elite_skeleton.png",
         "end_rift_wave_guardian_skeleton.png",
         "end_rift_ritual_guard_skeleton.png",
     ):
@@ -348,7 +346,6 @@ def test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_rea
 
     for name in (
         "end_rift_skeleton.png",
-        "end_rift_elite_skeleton.png",
         "end_rift_wave_guardian_skeleton.png",
         "end_rift_ritual_guard_skeleton.png",
     ):
@@ -363,6 +360,23 @@ def test_archived_skeleton_is_preserved_and_authored_rift_atlases_are_render_rea
                        if red >= 150 and green >= 130 and blue >= 160) >= 8, name
             assert not any(green > red * 1.5 and blue > red * 1.5
                            for red, green, blue, _ in image.getdata()), name
+
+
+def test_elite_mob_atlases_match_the_supplied_archive_exactly():
+    expected = {
+        "end_rift_elite.png": "5923111b4ac459daee04aeeea4930dcac4b1156ed3d94bbaaa4b89b987fc6bdc",
+        "end_rift_elite_skeleton.png": "df29a577e2cc5896507044db37349216c2401311e458576ecbb2e0fe8ce65514",
+        "end_rift_elite_spider.png": "40ab699e7dc46d50a26728679539b30ced556269b795b06ed7bf498dd1b4d052",
+    }
+    for name, expected_hash in expected.items():
+        path = CLIENT_ENTITY_TEXTURES / name
+        assert path.is_file(), name
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == expected_hash, name
+        with Image.open(path).convert("RGBA") as image:
+            assert image.size == (64, 32), name
+            alpha = set(image.getchannel("A").getdata())
+            assert alpha <= {0, 255}, (name, alpha)
+            assert 0 in alpha and 255 in alpha, name
 
 
 def test_runtime_kagune_import_is_generated_from_the_supplied_blockbench_file():

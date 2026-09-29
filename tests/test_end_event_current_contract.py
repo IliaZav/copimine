@@ -906,8 +906,17 @@ def test_server_visual_diagnostics_report_the_actual_client_catalog() -> None:
         "end_rift_user_enderman.png",
         "end_rift_user_spider.png",
         "end_rift_user_skeleton.png",
+        "end_rift_elite.png",
+        "end_rift_elite_spider.png",
+        "end_rift_elite_skeleton.png",
     ):
         assert name in mapping, name
+    assert 'case CLIENT_VISUAL_ELITE -> "assets/copimineclient/textures/entity/end_rift_elite.png";' in mapping
+    assert 'case CLIENT_VISUAL_ELITE_SPIDER -> "assets/copimineclient/textures/entity/end_rift_elite_spider.png";' in mapping
+    assert re.search(
+        r'case CLIENT_VISUAL_ELITE_SKELETON\s*->\s*"assets/copimineclient/textures/entity/end_rift_elite_skeleton.png";',
+        mapping,
+    )
     assert "end_rift_user_boss.png" in root
 
     # ItemDisplay visuals are resolved by the server resource pack, not by
@@ -1022,6 +1031,9 @@ def test_supplied_boss_geometry_and_animation_assets_are_runtime_bound() -> None
     assert "end_rift_user_enderman.png" in catalog
     assert "end_rift_user_spider.png" in catalog
     assert 'entityTexture("end_rift_user_skeleton.png")' in catalog
+    assert 'textures.put("END_RIFT_ELITE_V1", entityTexture("end_rift_elite.png"));' in catalog
+    assert 'textures.put("END_RIFT_ELITE_SPIDER_V1", entityTexture("end_rift_elite_spider.png"));' in catalog
+    assert 'textures.put("END_RIFT_ELITE_SKELETON_V1", entityTexture("end_rift_elite_skeleton.png"));' in catalog
     assert 'entityTexture("end_rift_skeleton.png")' not in catalog
 
 
@@ -1047,6 +1059,7 @@ def test_distributed_client_jar_contains_the_current_boss_assets() -> None:
         "assets/copimineclient/textures/entity/end_rift_user_spider.png",
         "assets/copimineclient/textures/entity/end_rift_user_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_elite.png",
+        "assets/copimineclient/textures/entity/end_rift_elite_spider.png",
         "assets/copimineclient/textures/entity/end_rift_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_elite_skeleton.png",
         "assets/copimineclient/textures/entity/end_rift_ritual_caster.png",

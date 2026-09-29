@@ -71,7 +71,7 @@
 - [x] Enforce both configured and actual Minecraft/RCON loopback binding, pin every local bot probe to its checked endpoint, and restore inherited bot endpoint variables.
 - [x] Run focused behavior/contract tests and the isolated no-auth smoke; confirm evidence records `127.0.0.1` for both listeners and the showroom remains unchanged.
 - [x] Run `tests/RunEndRiftEventChecks.ps1 -SkipBuilds` and inspect the complete result.
-- [ ] Review the final scoped diff, commit Task 2, push both task commits to `codex/end-rift-event`, and verify the remote ref equals local HEAD.
+- [x] Review the final scoped diff, commit Task 2, push both task commits to `codex/end-rift-event`, and verify the remote ref equals local HEAD.
 
 ### Task 3: Close branch-review findings for visible role geometry and failure propagation
 
@@ -86,5 +86,7 @@
 - [x] Add model hierarchy and gate-structure regressions; observe all three model checks and the gate check fail against the reviewed version.
 - [x] Parent visible skeleton, Enderman caster, and spider role details to parts traversed by their vanilla renderers, preserving their authored positions.
 - [x] Split pytest suites into separately checked gate steps so a later successful process cannot hide an earlier nonzero exit.
-- [ ] Run the complete local gate and client build/tests, inspect the scoped diff, commit and push the fixes to `codex/end-rift-event`.
+- [x] Run the complete local gate and client build/tests, inspect the scoped diff, commit and push the fixes to `codex/end-rift-event` (`412adb30f36e7cd9f3e5603eaa9b40ba6496dc55`; remote ref verified equal).
 - [ ] Capture and review in-game screenshots for the requested mobs against the supplied archives; the current native desktop inventory reports no Minecraft app, so this remains an external visual gate.
+
+**Review status:** The fresh whole-branch reviewer stopped because its workspace credits were exhausted. Its confirmed model-rendering findings plus the same issue found during manual spider-model inspection were fixed. The scoped diff passed manual review; this does not count as a completed whole-branch review.

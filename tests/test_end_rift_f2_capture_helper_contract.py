@@ -29,6 +29,7 @@ def test_f2_capture_helper_requires_a_live_camera_and_recreates_the_showroom():
     assert "Invoke-EndRiftRcon" in script
     assert "list" in script
     assert "CameraPlayer" in script
+    assert r"\u00A7." in script
     assert "Set CameraPlayer in the local visual config" in script
     assert "Configured CameraPlayer is not connected" in script
     assert "cmend test showroom" in script
@@ -67,3 +68,22 @@ def test_f2_capture_helper_captures_named_elites_and_hashes_the_original_pngs():
     assert "Get-FileHash" in script
     assert "SHA256" in script
     assert "manifest.json" in script
+
+
+def test_f2_capture_helper_frames_targets_with_night_vision_and_restores_camera_state():
+    script = CAPTURE.read_text(encoding="utf-8")
+
+    assert "time query daytime" in script
+    assert "time set midnight" in script
+    assert "time set $originalDayTime" in script
+    assert "minecraft:night_vision" in script
+    assert "InitialPerspective" in script
+    assert "HudVisibleAtStart" in script
+    assert "f5ToFirstPerson" in script
+    assert "viewTogglesApplied" in script
+    assert "finally" in script
+    assert "-Chord 'F5'" in script
+    assert "-Chord 'F1'" in script
+    assert "coreZ - 16.0" in script
+    assert "CameraDistance" in script
+    assert "NoAI:1b,CustomNameVisible:0b" in script

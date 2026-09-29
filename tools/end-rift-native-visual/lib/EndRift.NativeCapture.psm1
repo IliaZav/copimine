@@ -320,6 +320,7 @@ function Send-WindowKeyChord {
         'F1' = [byte]0x70
         'F2' = [byte]0x71
         'F3' = [byte]0x72
+        'F5' = [byte]0x74
         'B'  = [byte]0x42
         'ESC' = [byte]0x1B
     }
@@ -342,6 +343,7 @@ function Send-WindowKeyChord {
             'F1'  { '{F1}' }
             'F2'  { '{F2}' }
             'F3'  { '{F3}' }
+            'F5'  { '{F5}' }
             'ESC' { '{ESC}' }
             'B'   { 'b' }
         }

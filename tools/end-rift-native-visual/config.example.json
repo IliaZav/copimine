@@ -7,6 +7,8 @@
   "ServerAddress": "127.0.0.1:25566",
   "MinecraftTitleRegex": "(?i)(minecraft|1\\.21\\.1)",
   "CameraPlayer": "",
+  "InitialPerspective": "third-person-back",
+  "HudVisibleAtStart": true,
   "EvidenceRoot": "artifacts\\end-rift-native-visual",
   "ClientGameDirectory": "D:\\.minecraft\\versions\\ServerRP_copy_1",
   "ClientJarPath": "D:\\.minecraft\\versions\\ServerRP_copy_1\\mods\\CopiMineClient-0.1.1.jar",

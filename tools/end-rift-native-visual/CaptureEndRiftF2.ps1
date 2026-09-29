@@ -114,7 +114,7 @@ function Invoke-Local([string]$Command) {
 }
 
 function ConvertTo-Plain([string]$Text) {
-    return [Regex]::Replace($Text, '§.', '')
+    return [Regex]::Replace($Text, '\u00A7.', '')
 }
 
 $listReply = ConvertTo-Plain (Invoke-Local 'list')
@@ -179,10 +179,11 @@ function Move-Camera([double]$X, [double]$Y, [double]$Z, [int]$Yaw, [int]$Pitch)
     $command = 'minecraft:execute in minecraft:overworld run minecraft:tp {0} {1} {2} {3} {4} {5}' -f $cameraPlayer,
         (Format-Coordinate $X), (Format-Coordinate $Y), (Format-Coordinate $Z), $Yaw, $Pitch
     $null = Invoke-Local $command
+    Start-Sleep -Milliseconds 350
     $position = Get-Vector (Invoke-Local "data get entity $cameraPlayer Pos")
-    if ([Math]::Abs($position.X - $X) -gt 1.5 -or
-        [Math]::Abs($position.Y - $Y) -gt 1.5 -or
-        [Math]::Abs($position.Z - $Z) -gt 1.5) {
+    if ([Math]::Abs($position.X - $X) -gt 1.0 -or
+        [Math]::Abs($position.Y - $Y) -gt 1.0 -or
+        [Math]::Abs($position.Z - $Z) -gt 1.0) {
         throw "Camera teleport did not reach the requested position: $($position | ConvertTo-Json -Compress)"
     }
     Start-Sleep -Milliseconds 1800
@@ -197,11 +198,26 @@ $coreX = [double]$coreMatch.Groups[1].Value
 $coreY = [double]$coreMatch.Groups[2].Value
 $coreZ = [double]$coreMatch.Groups[3].Value
 
+$initialPerspective = [string]$c.InitialPerspective
+$perspectiveIndex = @{
+    'first-person' = 0
+    'third-person-back' = 1
+    'third-person-front' = 2
+}
+if (-not $perspectiveIndex.ContainsKey($initialPerspective)) {
+    throw "InitialPerspective must be first-person, third-person-back, or third-person-front."
+}
+if ($null -eq $c.HudVisibleAtStart) {
+    throw 'HudVisibleAtStart must describe whether the Minecraft HUD is visible before capture.'
+}
+$hudVisibleAtStart = [bool]$c.HudVisibleAtStart
+$f5ToFirstPerson = (3 - [int]$perspectiveIndex[$initialPerspective]) % 3
+
 $visualReply = ConvertTo-Plain (Invoke-Local 'cmend test visuals mobs')
 $expectedVisuals = @(
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_V1'; Texture = 'end_rift_elite.png'; File = 'elite-enderman' },
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SKELETON_V1'; Texture = 'end_rift_elite_skeleton.png'; File = 'elite-skeleton' },
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SPIDER_V1'; Texture = 'end_rift_elite_spider.png'; File = 'elite-spider' }
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_V1'; Texture = 'end_rift_elite.png'; File = 'elite-enderman'; CameraDistance = 5.5; Pitch = 1 },
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SKELETON_V1'; Texture = 'end_rift_elite_skeleton.png'; File = 'elite-skeleton'; CameraDistance = 4.8; Pitch = 8 },
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SPIDER_V1'; Texture = 'end_rift_elite_spider.png'; File = 'elite-spider'; CameraDistance = 3.8; Pitch = 14 }
 )
 $eliteEntities = @{}
 foreach ($expected in $expectedVisuals) {
@@ -237,22 +253,64 @@ function Save-F2([string]$Name) {
     Write-Output "F2_CAPTURE name=$Name bytes=$($file.Length) sha256=$hash"
 }
 
-# A wide establishing frame, followed by close frames aimed at the actual
-# UUID-bound elite entities. All source PNGs are produced by Minecraft F2.
-Move-Camera ($coreX) ($coreY + 3.0) ($coreZ - 40.0) 0 8
-Save-F2 'showroom-overview'
-foreach ($expected in $expectedVisuals) {
-    $entityUuid = [string]$eliteEntities[$expected.Id]
-    $entityPosition = Get-Vector (Invoke-Local "data get entity $entityUuid Pos")
-    Move-Camera $entityPosition.X ($entityPosition.Y + 0.5) ($entityPosition.Z - 7.0) 0 8
-    Save-F2 $expected.File
-}
+$dayTimeReply = ConvertTo-Plain (Invoke-Local 'minecraft:time query daytime')
+$dayTimeMatch = [Regex]::Match($dayTimeReply, '(?i)\b(?:time is|daytime is)\s+([0-9]+)\b')
+if (-not $dayTimeMatch.Success) { throw "Could not read the local server's current daytime: $dayTimeReply" }
+$originalDayTime = [int]$dayTimeMatch.Groups[1].Value
+$timeChanged = $false
+$nightVisionApplied = $false
+$hudToggled = $false
+$viewTogglesApplied = 0
 
-# The two articulated tentacles are placed north and south of the core. This
-# frame records their current READY pose; dynamic attack/hit behavior is
-# verified independently by the live gameplay probe and Java state tests.
-Move-Camera ($coreX + 10.0) ($coreY + 2.0) ($coreZ) 90 8
-Save-F2 'tentacles-ready'
+try {
+    $null = Invoke-Local 'minecraft:time set midnight'
+    $timeChanged = $true
+    $null = Invoke-Local "minecraft:effect give $cameraPlayer minecraft:night_vision 300 0 true"
+    $nightVisionApplied = $true
+
+    for ($i = 0; $i -lt $f5ToFirstPerson; $i++) {
+        Send-WindowKeyChord -Window $window -Chord 'F5'
+        $viewTogglesApplied++
+    }
+    if ($hudVisibleAtStart) {
+        Send-WindowKeyChord -Window $window -Chord 'F1'
+        $hudToggled = $true
+    }
+
+    # Keep the overview inside the arena. The player stands at floor level;
+    # teleporting above it lets gravity move the camera before RCON can verify it.
+    Move-Camera $coreX $coreY ($coreZ - 16.0) 0 0
+    Save-F2 'showroom-overview'
+
+    foreach ($expected in $expectedVisuals) {
+        $entityUuid = [string]$eliteEntities[$expected.Id]
+        $entityPosition = Get-Vector (Invoke-Local "data get entity $entityUuid Pos")
+        $targetPosition = 'minecraft:execute in minecraft:overworld run minecraft:tp {0} {1} {2} {3} 180 0' -f $entityUuid, (Format-Coordinate $entityPosition.X), (Format-Coordinate $entityPosition.Y), (Format-Coordinate $entityPosition.Z)
+        $null = Invoke-Local ('data merge entity {0} {{NoAI:1b,CustomNameVisible:0b}}' -f $entityUuid)
+        $null = Invoke-Local $targetPosition
+        Move-Camera $entityPosition.X $entityPosition.Y ($entityPosition.Z - $expected.CameraDistance) 0 $expected.Pitch
+        Save-F2 $expected.File
+    }
+
+    # This records the two tentacles' READY pose. Dynamic attack/hit behavior
+    # remains verified separately by the live gameplay probe and Java tests.
+    Move-Camera ($coreX + 10.0) $coreY $coreZ -90 0
+    Save-F2 'tentacles-ready'
+} finally {
+    if ($hudToggled) {
+        try { Send-WindowKeyChord -Window $window -Chord 'F1' } catch { Write-Warning "Could not restore Minecraft HUD state: $_" }
+    }
+    $restoreViewToggles = (3 - ($viewTogglesApplied % 3)) % 3
+    for ($i = 0; $i -lt $restoreViewToggles; $i++) {
+        try { Send-WindowKeyChord -Window $window -Chord 'F5' } catch { Write-Warning "Could not restore Minecraft perspective: $_"; break }
+    }
+    if ($nightVisionApplied) {
+        try { $null = Invoke-Local "minecraft:effect clear $cameraPlayer minecraft:night_vision" } catch { Write-Warning "Could not clear temporary Night Vision: $_" }
+    }
+    if ($timeChanged) {
+        try { $null = Invoke-Local "minecraft:time set $originalDayTime" } catch { Write-Warning "Could not restore the local world's time: $_" }
+    }
+}
 
 $manifestPath = Join-Path $OutputDirectory 'manifest.json'
 $manifest = [ordered]@{

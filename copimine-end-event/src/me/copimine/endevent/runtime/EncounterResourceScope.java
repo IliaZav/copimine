@@ -26,6 +26,7 @@ public final class EncounterResourceScope implements AutoCloseable {
     private final Map<UUID, Runnable> entityCleanups = new LinkedHashMap<>();
     private final List<Runnable> closers = new ArrayList<>();
     private CleanupResult lastCleanupResult = CleanupResult.successful();
+    private boolean closing;
     private boolean closed;
 
     public EncounterResourceScope(long generation, EventTaskRegistry tasks) {
@@ -50,10 +51,12 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized boolean closed() { return closed; }
 
+    public synchronized boolean closing() { return closing; }
+
     public synchronized CleanupResult lastCleanupResult() { return lastCleanupResult; }
 
     public synchronized <T extends BukkitTask> T registerTask(T task) {
-        if (closed) {
+        if (closing || closed) {
             if (task != null) task.cancel();
             return task;
         }
@@ -66,7 +69,7 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized void registerEntity(Entity entity) {
         if (entity == null) return;
-        if (closed) {
+        if (closing || closed) {
             if (entity.isValid() && !entity.isDead()) entity.remove();
             return;
         }
@@ -80,7 +83,7 @@ public final class EncounterResourceScope implements AutoCloseable {
     /** Register an event-specific cleanup action for an entity this scope owns. */
     public synchronized void registerEntity(UUID entityId, Runnable cleanup) {
         if (entityId == null) return;
-        if (closed) {
+        if (closing || closed) {
             if (cleanup != null) cleanup.run();
             else removeEntity(entityId);
             return;
@@ -92,7 +95,7 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized void registerCloser(Runnable closer) {
         if (closer == null) return;
-        if (closed) {
+        if (closing || closed) {
             closer.run();
         } else {
             closers.add(closer);
@@ -105,45 +108,52 @@ public final class EncounterResourceScope implements AutoCloseable {
      */
     public synchronized CleanupResult closeResources() {
         if (closed) return lastCleanupResult;
-        closed = true;
+        closing = true;
         List<CleanupFailure> failures = new ArrayList<>();
         for (BukkitTask task : Set.copyOf(ownedTasks)) {
+            boolean taskCleanupSucceeded = true;
             if (task != null && !task.isCancelled()) {
                 try {
                     task.cancel();
                 } catch (RuntimeException error) {
                     failures.add(new CleanupFailure("task", String.valueOf(task.getTaskId()), error));
+                    taskCleanupSucceeded = false;
                 }
             }
-            if (tasks != null) {
+            if (tasks != null && taskCleanupSucceeded) {
                 try {
                     tasks.unregister(task);
                 } catch (RuntimeException error) {
                     failures.add(new CleanupFailure("task-registry", String.valueOf(task.getTaskId()), error));
+                    taskCleanupSucceeded = false;
                 }
             }
+            if (taskCleanupSucceeded) ownedTasks.remove(task);
         }
-        ownedTasks.clear();
         for (UUID entityId : Set.copyOf(entityIds)) {
             try {
                 Runnable cleanup = entityCleanups.get(entityId);
                 if (cleanup != null) cleanup.run();
                 else removeEntity(entityId);
+                entityIds.remove(entityId);
+                entityCleanups.remove(entityId);
             } catch (RuntimeException error) {
                 failures.add(new CleanupFailure("entity", String.valueOf(entityId), error));
             }
         }
-        entityIds.clear();
-        entityCleanups.clear();
         for (int index = closers.size() - 1; index >= 0; index--) {
             try {
                 closers.get(index).run();
+                closers.remove(index);
             } catch (RuntimeException error) {
                 failures.add(new CleanupFailure("closer", "index=" + index, error));
             }
         }
-        closers.clear();
         lastCleanupResult = new CleanupResult(failures);
+        if (lastCleanupResult.success()) {
+            closing = false;
+            closed = true;
+        }
         return lastCleanupResult;
     }
 

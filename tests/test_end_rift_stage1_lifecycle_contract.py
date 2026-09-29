@@ -166,6 +166,26 @@ def test_wave6_unlock_and_prison_release_use_hud_and_world_state_without_titles(
     assert ".sendTitle(" not in prison_release
 
 
+def test_failed_attempt_wipe_cleanup_retries_before_generation_commit():
+    event = read(PLUGIN / "CopiMineEndEvent.java")
+    wipe_start = event.index("private void wipeOfficialAttemptIfAllDead")
+    wipe_end = event.index("@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)", wipe_start)
+    wipe = event[wipe_start:wipe_end]
+    scope_start = event.index("private boolean closeEncounterResourceScope")
+    scope_end = event.index("private boolean rotateEncounterResourceScope", scope_start)
+    close_scope = event[scope_start:scope_end]
+
+    assert "AttemptLifecycleController.WipeStatus.ALREADY_IN_PROGRESS" in wipe
+    assert "if (result.status() != AttemptLifecycleController.WipeStatus.ACCEPTED && !retrying)" in wipe
+    assert "scheduleAttemptWipeCleanupRetry(staleGeneration)" in wipe
+    assert wipe.index("cleanupSucceeded = cancelSessionTasks()") < wipe.index("generation = result.nextGeneration()")
+    assert "|| !attemptLifecycle.wiping()" in event
+    assert "wipeOfficialAttemptIfAllDead(\"cleanup retry\")" in event
+    assert "private static final int MAX_ATTEMPT_WIPE_CLEANUP_RETRIES = 5;" in event
+    assert close_scope.index("if (result.success())") < close_scope.index("encounterResourceScope = null")
+    assert "!encounterResourceScope.closing()" in event
+
+
 def test_live_boundary_probe_can_use_a_separate_local_server_copy():
     script = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
     assert "[string]$ServerDir" in script

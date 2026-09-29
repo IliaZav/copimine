@@ -410,6 +410,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final int MAX_POTION_AMPLIFIER = 3;
     private static final int BOSS_SPAWN_DELAY_TICKS = 200;
     private static final int BOSS_CINEMATIC_DURATION_TICKS = BOSS_SPAWN_DELAY_TICKS;
+    private static final long ATTEMPT_WIPE_CLEANUP_RETRY_TICKS = 20L;
+    private static final int MAX_ATTEMPT_WIPE_CLEANUP_RETRIES = 5;
     private static final long TRANSITION_RUNE_HOLD_MILLIS = 10_000L;
     // Paper's native hurt window is bounded for event-owned combat entities.
     // The window is released only after our authoritative real-health
@@ -789,6 +791,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private BukkitTask waveFrontVisualTask;
     private BukkitTask portalVisualTask;
     private BukkitTask diagnosticsWatchdogTask;
+    private BukkitTask attemptWipeCleanupRetryTask;
+    private int attemptWipeCleanupRetries;
     private boolean victoryGatePending;
     private boolean bootstrapped;
     private WaveTransitionDiagnostics diagnostics;
@@ -2361,7 +2365,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             cleanupSucceeded = closeEncounterResourceScope("session cancellation");
         }
         if (taskRegistry != null) {
-            taskRegistry.cancelAll();
+            try {
+                taskRegistry.cancelAll();
+            } catch (RuntimeException error) {
+                cleanupSucceeded = false;
+                recoveryReason = "END_RIFT_TASK_CLEANUP_FAILED";
+                getLogger().log(Level.SEVERE, "END_RIFT_TASK_CLEANUP_FAILED event=" + eventId
+                        + " generation=" + generation, error);
+            }
         }
         cancelArenaBoundaryPreview();
         cancelGateSelectionPreview();
@@ -2394,10 +2405,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Close the current generation scope while keeping failure visible to the owner. */
     private boolean closeEncounterResourceScope(String reason) {
         EncounterResourceScope scope = encounterResourceScope;
-        encounterResourceScope = null;
         if (scope == null) return true;
         EncounterResourceScope.CleanupResult result = scope.closeResources();
-        if (result.success()) return true;
+        if (result.success()) {
+            if (encounterResourceScope == scope) encounterResourceScope = null;
+            return true;
+        }
         recoveryReason = "END_RIFT_RESOURCE_CLEANUP_FAILED:" + (reason == null ? "unknown" : reason);
         getLogger().log(Level.SEVERE, "END_RIFT_RESOURCE_CLEANUP_FAILED event=" + eventId
                 + " generation=" + generation + " reason=" + reason
@@ -2413,6 +2426,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (taskRegistry == null || generation <= 0L) return true;
         String owner = resourceScopeOwner(nextPhase);
         if (encounterResourceScope != null && !encounterResourceScope.closed()
+                && !encounterResourceScope.closing()
                 && encounterResourceScope.owner().equals(owner)) {
             return true;
         }
@@ -2734,6 +2748,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         pendingCombatTraces.clear();
         authoritativeCombatTraceEvents.clear();
         authoritativeEventMobDamage.clear();
+        if (attemptWipeCleanupRetryTask != null) {
+            attemptWipeCleanupRetryTask.cancel();
+            attemptWipeCleanupRetryTask = null;
+        }
         boolean preserveWave6ForRestart = activeWave == 6
                 && (phase == EventPhase.WAVE_6 || testWaveFrontVisualMode);
         boolean preserveWave7ForRestart = activeWave == 7
@@ -28242,22 +28260,55 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long staleGeneration = generation;
         AttemptLifecycleController.WipeResult result = attemptLifecycle.performAttemptWipe(
                 staleGeneration, reason);
-        if (result.status() != AttemptLifecycleController.WipeStatus.ACCEPTED) {
+        boolean retrying = result.status()
+                == AttemptLifecycleController.WipeStatus.ALREADY_IN_PROGRESS;
+        if (result.status() != AttemptLifecycleController.WipeStatus.ACCEPTED && !retrying) {
             return;
         }
-        getLogger().warning("ATTEMPT_WIPE_ACCEPTED event=" + eventId
-                + " generation=" + staleGeneration + " next_generation="
-                + result.nextGeneration() + " reason=" + result.reason()
-                + " wipe_count=" + result.wipeCount());
-        if (!cancelSessionTasks()) {
+        if (retrying && attemptWipeCleanupRetryTask != null
+                && !attemptWipeCleanupRetryTask.isCancelled()) {
+            return;
+        }
+        if (retrying) {
+            attemptWipeCleanupRetryTask = null;
+            getLogger().warning("ATTEMPT_WIPE_CLEANUP_RETRY event=" + eventId
+                    + " generation=" + staleGeneration
+                    + " retry=" + attemptWipeCleanupRetries + "/"
+                    + MAX_ATTEMPT_WIPE_CLEANUP_RETRIES);
+        } else {
+            attemptWipeCleanupRetries = 0;
+            getLogger().warning("ATTEMPT_WIPE_ACCEPTED event=" + eventId
+                    + " generation=" + staleGeneration + " next_generation="
+                    + result.nextGeneration() + " reason=" + result.reason()
+                    + " wipe_count=" + result.wipeCount());
+        }
+        boolean cleanupSucceeded;
+        try {
+            cleanupSucceeded = cancelSessionTasks();
+        } catch (RuntimeException error) {
+            cleanupSucceeded = false;
+            getLogger().log(Level.SEVERE, "ATTEMPT_WIPE_CLEANUP_EXCEPTION event=" + eventId
+                    + " generation=" + staleGeneration, error);
+        }
+        if (!cleanupSucceeded) {
             attemptLifecycle.abortWipe(staleGeneration);
             recoveryReason = "END_RIFT_ATTEMPT_WIPE_CLEANUP_FAILED";
             getLogger().severe("ATTEMPT_WIPE_FROZEN event=" + eventId
                     + " generation=" + staleGeneration
                     + " reason=resource cleanup failed; retry cleanup before commit");
+            if (attemptWipeCleanupRetries < MAX_ATTEMPT_WIPE_CLEANUP_RETRIES) {
+                attemptWipeCleanupRetries++;
+                scheduleAttemptWipeCleanupRetry(staleGeneration);
+            } else {
+                getLogger().severe("ATTEMPT_WIPE_RECOVERY_REQUIRED event=" + eventId
+                        + " generation=" + staleGeneration
+                        + " retries=" + attemptWipeCleanupRetries);
+            }
             saveStateSync();
             return;
         }
+        attemptWipeCleanupRetries = 0;
+        attemptWipeCleanupRetryTask = null;
         removeTransitionRuneVisuals();
         cleanupOwnedEntities(eventId, staleGeneration);
         clearClientEffects();
@@ -28305,6 +28356,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 "all roster players died; transient Current state wiped");
         rebuildPersistedVisuals();
         saveStateSync();
+    }
+
+    private void scheduleAttemptWipeCleanupRetry(long expectedGeneration) {
+        if (attemptWipeCleanupRetryTask != null && !attemptWipeCleanupRetryTask.isCancelled()) {
+            return;
+        }
+        try {
+            attemptWipeCleanupRetryTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+                attemptWipeCleanupRetryTask = null;
+                if (generation != expectedGeneration || !attemptLifecycle.wiping()
+                        || !attemptLifecycle.owns(expectedGeneration)) {
+                    return;
+                }
+                wipeOfficialAttemptIfAllDead("cleanup retry");
+            }, ATTEMPT_WIPE_CLEANUP_RETRY_TICKS);
+        } catch (RuntimeException error) {
+            attemptWipeCleanupRetryTask = null;
+            getLogger().log(Level.SEVERE, "ATTEMPT_WIPE_RETRY_SCHEDULE_FAILED event=" + eventId
+                    + " generation=" + expectedGeneration, error);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)

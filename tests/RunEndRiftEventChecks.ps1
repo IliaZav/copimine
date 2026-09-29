@@ -89,6 +89,10 @@ if (-not $SkipBuilds) {
   }
 }
 
+Invoke-GateStep 'Local probe AuthMe mode behavior' {
+  & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'EndRiftLocalAuthModeTest.ps1')
+}
+
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {

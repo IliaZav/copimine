@@ -21,6 +21,7 @@ param(
 # Only local event state is prepared; no world reset or production endpoint is
 # allowed.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
@@ -43,6 +44,7 @@ $oldWave7Chambers = [Environment]::GetEnvironmentVariable('END_RIFT_WAVE7_CHAMBE
 $oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIAN_PROBE_NAMES', 'Process')
 $oldAttackInterval = [Environment]::GetEnvironmentVariable('END_RIFT_ATTACK_INTERVAL_MS', 'Process')
 $oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
+$oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
 $oldBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
   $originalRequiredPlayers = 0
   $originalCore = $null
@@ -1050,19 +1052,29 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # normal boss path resume once the shield is legitimately removed.
   $env:END_RIFT_GUARDIAN_PROBE_NAMES = $playerNames -join ','
   $env:END_RIFT_ATTACK_INTERVAL_MS = '200'
-  Prepare-AuthMeAccounts
   $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  # Keep the disposable local probe credential out of source literals that
-  # the repository secret scanner treats as hardcoded passwords.
-  $env:END_RIFT_BOT_PASSWORD = [string]::Concat('end', 'rift', '-', 'local')
+  $authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+  if ($authMeEnabled) {
+    Write-Evidence 'LOCAL_AUTH_MODE authme=enabled'
+    $env:END_RIFT_BOT_SKIP_AUTH = '0'
+    Prepare-AuthMeAccounts
+    # Keep the disposable local probe credential out of source literals that
+    # the repository secret scanner treats as hardcoded passwords.
+    $env:END_RIFT_BOT_PASSWORD = [string]::Concat('end', 'rift', '-', 'local')
+  } else {
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
+  }
   foreach ($name in $playerNames) {
     Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
     $authOffset = Get-LogLength
     Start-PlayerBot -Name $name -Core $core
-    # Wait for the real AuthMe completion marker before launching the next
-    # client.  This keeps the disposable multi-player probe concurrent during
-    # gameplay while removing only the connection-time database bottleneck.
-    Wait-PlayerAuthenticated -Name $name -AfterOffset $authOffset
+    if ($authMeEnabled) {
+      # Wait for the real AuthMe completion marker before launching the next
+      # client.  This keeps the disposable multi-player probe concurrent during
+      # gameplay while removing only the connection-time database bottleneck.
+      Wait-PlayerAuthenticated -Name $name -AfterOffset $authOffset
+    }
     Start-Sleep -Milliseconds 250
   }
   Wait-PlayersOnline
@@ -1281,6 +1293,7 @@ finally {
   if ($null -eq $oldGuardianProbeNames) { Remove-Item Env:END_RIFT_GUARDIAN_PROBE_NAMES -ErrorAction SilentlyContinue } else { $env:END_RIFT_GUARDIAN_PROBE_NAMES = $oldGuardianProbeNames }
   if ($null -eq $oldAttackInterval) { Remove-Item Env:END_RIFT_ATTACK_INTERVAL_MS -ErrorAction SilentlyContinue } else { $env:END_RIFT_ATTACK_INTERVAL_MS = $oldAttackInterval }
   if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
+  if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
   if ($null -eq $oldBotPassword) { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PASSWORD = $oldBotPassword }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }

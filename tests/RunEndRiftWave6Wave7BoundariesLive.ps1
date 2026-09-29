@@ -23,6 +23,7 @@ param(
 # design, and verifies that Wave 7's one-block BARRIER collision cells are
 # removed by cleanup. PURPLE_STAINED_GLASS is the separate visual layer.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $localPrefix = $localRuntimeRoot.TrimEnd('\') + '\'
@@ -56,6 +57,9 @@ $previousReflectionDiagnostics = $env:END_RIFT_REFLECT_DIAGNOSTICS
 $combatTraceProbe = $env:END_RIFT_BOT_COMBAT_TRACE -eq '1'
 $previousLocalMobSpawning = $null
 $previousBotPort = $env:END_RIFT_BOT_PORT
+$previousSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
+$previousSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
+$script:authMeEnabled = $true
 $diagnosticRoot = Join-Path $root 'artifacts\end-rift-diagnostics'
 $runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
@@ -420,6 +424,7 @@ function Wait-BotLoginSettle {
     [Parameter(Mandatory = $true)][string[]]$Names,
     [Parameter(Mandatory = $true)][int64]$AfterOffset
   )
+  if (-not $script:authMeEnabled) { return }
   # The local accounts are authenticated by AuthMe shortly after the network
   # join.  Configure persistent attributes only after that profile reload, or
   # an old account value can silently replace the deterministic probe setup.
@@ -613,6 +618,15 @@ if ($ServerPort -eq $RconPort) {
 }
 
 try {
+  $script:authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+  if ($script:authMeEnabled) {
+    $env:END_RIFT_BOT_SKIP_AUTH = '0'
+    Write-Output 'LOCAL_AUTH_MODE authme=enabled'
+  } else {
+    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    Write-Output 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
+  }
   Start-LiveStep -Id 'W6-SETUP-01' -Description 'Prepare isolated local arena, trace mode, and two real clients.'
   $core = Get-Core (Invoke-LocalRcon 'cmend status')
   # The status command exposes the Core block Y; barrier levels are anchored
@@ -877,6 +891,16 @@ finally {
     Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue
   } else {
     $env:END_RIFT_BOT_PORT = $previousBotPort
+  }
+  if ($null -eq $previousSkipAuth) {
+    Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_SKIP_AUTH = $previousSkipAuth
+  }
+  if ($null -eq $previousSkipRegister) {
+    Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_SKIP_REGISTER = $previousSkipRegister
   }
   if ($null -eq $previousBotControlDirectory) {
     Remove-Item Env:END_RIFT_BOT_CONTROL_DIRECTORY -ErrorAction SilentlyContinue

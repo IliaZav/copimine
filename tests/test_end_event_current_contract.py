@@ -1647,7 +1647,27 @@ def test_official_probe_uses_disposable_pre_registered_accounts() -> None:
         r"authme register \$name endrift-local",
         probe,
     ), "official probe must prepare disposable AuthMe accounts before connecting"
-    assert "END_RIFT_BOT_SKIP_REGISTER" in bot and "if (!skipRegister)" in bot
+    assert "END_RIFT_BOT_SKIP_REGISTER" in bot and "if (!skipAuth && !skipRegister)" in bot
+    assert "END_RIFT_BOT_SKIP_AUTH" in bot and "if (!skipAuth)" in bot
+    assert "BOT_AUTH_MODE ${username} commands=${skipAuth ? 'skipped' : 'enabled'}" in bot
+
+
+def test_live_probes_clear_inherited_skip_auth_when_authme_is_enabled() -> None:
+    for name in (
+        "RunEndRiftOfficialTwoPlayerLive.ps1",
+        "RunEndRiftVisualFivePlayerLive.ps1",
+        "RunEndRiftWave6Wave7BoundariesLive.ps1",
+    ):
+        probe = read(ROOT / "tests" / name)
+        enabled_branch = re.search(
+            r"if\s*\(\$?(?:script:)?authMeEnabled\)\s*\{([\s\S]*?)\}\s*else",
+            probe,
+        )
+        assert enabled_branch is not None, f"{name} must have an explicit AuthMe-enabled branch"
+        assert re.search(
+            r"\$env:END_RIFT_BOT_SKIP_AUTH\s*=\s*'0'",
+            enabled_branch.group(1),
+        ), f"{name} must clear inherited no-auth mode when AuthMe is enabled"
 
 
 def test_official_probe_does_not_flood_rcon_while_waiting_for_wave_one_charge() -> None:

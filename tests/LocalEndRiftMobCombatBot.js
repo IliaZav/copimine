@@ -21,6 +21,7 @@ const configuredAttackIntervalMs = Number(
   process.argv[8] || process.env.END_RIFT_ATTACK_INTERVAL_MS || 400,
 )
 const skipRegister = process.env.END_RIFT_BOT_SKIP_REGISTER === '1'
+const skipAuth = process.env.END_RIFT_BOT_SKIP_AUTH === '1'
 const botPassword = process.env.END_RIFT_BOT_PASSWORD || 'endrift-local'
 const configuredBossUuid = process.env.END_RIFT_BOSS_UUID || ''
 const reflectEnabled = process.env.END_RIFT_REFLECT_ENABLED === '1'
@@ -957,6 +958,7 @@ bot.once('spawn', () => {
   joined = true
   const playerUuid = bot.entity?.uuid || bot.uuid || bot._client?.uuid || 'unknown'
   console.log(`PLAYER_JOIN ${username} uuid=${playerUuid} reflect_enabled=${reflectEnabled} reflect_targets=${obeliskTargets.length} guardian_probe=${guardianProbeEnabled} wave7_hold_position=${wave7HoldPosition}`)
+  console.log(`BOT_AUTH_MODE ${username} commands=${skipAuth ? 'skipped' : 'enabled'}`)
   if (tentacleTraceEnabled) {
     bot._client.on('entity_velocity', packet => {
       const self = bot.entity
@@ -968,8 +970,10 @@ bot.once('spawn', () => {
       console.log(`PLAYER_VELOCITY ${username} id=${self.id} x=${velocity.x.toFixed(3)} y=${velocity.y.toFixed(3)} z=${velocity.z.toFixed(3)} horizontal=${horizontal.toFixed(3)} at_ms=${Date.now()}`)
     })
   }
-  if (!skipRegister) bot.chat(`/register ${botPassword} ${botPassword}`)
-  for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat(`/login ${botPassword}`), delay)
+  if (!skipAuth && !skipRegister) bot.chat(`/register ${botPassword} ${botPassword}`)
+  if (!skipAuth) {
+    for (const delay of [1000, 3000, 6000]) setTimeout(() => bot.chat(`/login ${botPassword}`), delay)
+  }
   // Mineflayer's physics plugin already acknowledges server teleports and
   // sends the matching position packet.  A second 100 ms position loop fights
   // that controller, produces invalid-packet spam after RCON sweeps, and can

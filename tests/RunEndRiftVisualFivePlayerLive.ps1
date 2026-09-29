@@ -14,6 +14,7 @@ param(
 # for the server/client contract; native camera screenshots remain a separate
 # manual check.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
@@ -27,6 +28,8 @@ $botLogDirectory = Join-Path $evidenceDirectory 'bots'
 $controlDirectory = Join-Path $botLogDirectory 'control'
 $evidencePath = Join-Path $evidenceDirectory 'run.log'
 $processes = @()
+$oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
+$oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
 $playerNames = @($ViewerName, 'EndRiftVisualB', 'EndRiftVisualC', 'EndRiftVisualD', 'EndRiftVisualE')
 
 function Assert-LocalOnly {
@@ -176,6 +179,15 @@ foreach ($name in $playerNames) {
 
 $viewerProcess = $null
 try {
+  $authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+  if ($authMeEnabled) {
+    Write-Evidence 'LOCAL_AUTH_MODE authme=enabled'
+    $env:END_RIFT_BOT_SKIP_AUTH = '0'
+  } else {
+    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
+  }
   $baselineStatus = Invoke-LocalRcon 'cmend status'
   $baselinePlain = $baselineStatus -replace '\u00A7.', ''
   $baselineParticipantMatch = [Regex]::Match($baselinePlain, '(?m)participants=(\d+)')
@@ -189,7 +201,7 @@ try {
   $joinOffset = Get-LogLength
   foreach ($name in $playerNames) { Start-VisualBot -Name $name -Core $core }
   Wait-PlayersOnline
-  Wait-PlayersAuthenticated -AfterOffset $joinOffset
+  if ($authMeEnabled) { Wait-PlayersAuthenticated -AfterOffset $joinOffset }
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon "gamemode survival $name"
     $null = Invoke-LocalRcon "minecraft:tp $name $($core[0] + 0.5) $($core[1]) $($core[2] + 0.5)"
@@ -290,6 +302,8 @@ try {
   Write-Evidence 'NATIVE_CLIENT_SCREENSHOT=NOT_VERIFIED'
   Write-Evidence 'CURRENT_VISUAL_FIVE_PLAYER_PASS clients=5 wave_front=true portals=true obelisk=true boss_cues=true music_tracks=24 cleanup_requested=true'
 } finally {
+  if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
+  if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
   try { $null = Invoke-LocalRcon "gamemode survival $ViewerName" } catch { }

@@ -1,97 +1,99 @@
 {
-  "schemaVersion": 1,
-  "generatedFor": "CopiMine release hardening",
-  "clientArchive": {
-    "path": "thirdparty/CopiMineMods.zip",
-    "sha1": "f87076692e0e4453d1c749a6b49873172315c42d",
-    "downloadPath": "/downloads/CopiMineMods.zip",
-    "sha256": "d59e93a9423cf5e7ec414cfe759c776f986d06aab206046b0991f7604698a471"
-  },
-  "requiredExternal": [],
-  "artifacts": {
-    "clientMods": [
-      {
-        "name": "CopiMineClient",
-        "version": "0.1.1",
-        "path": "thirdparty/client-mods/CopiMineClient-0.1.1.jar",
-        "sha1": "071c6604931529bb7fd8c98aba178e429a30c1e8",
-        "license": "Proprietary",
-        "sha256": "99f2cff5f6b87c9a2fa1a9d795234d1c3e9087218cc9429a7fa21d772659579f"
-      },
-      {
-        "name": "CustomSkinLoader",
-        "version": "14.26.1+1.21.1-fabric",
-        "path": "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar",
-        "sha1": "fcfc6bbee1535be771b4d6b3124281236b1f4475",
-        "license": "GPL-3.0-only",
-        "source": "https://github.com/xfl03/MCCustomSkinLoader",
-        "sha256": "733af00a53a9d66719f09f5cb3d630c4bb22ce043b2c66700a234c578f65c621"
-      },
-      {
-        "name": "Emotecraft",
-        "version": "2.4.12+1.21.1-fabric",
-        "path": "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-        "sha1": "9be2a237e27f20d2d00f0036a8be53d7d66c5df5",
-        "license": "GPL-3.0-or-later",
-        "source": "https://modrinth.com/project/pZ2wrerK",
-        "sha256": "633a77711f650dbf0bd071a43c086b7946d6e117b28ac1a414d038ea7b339f7c"
-      },
-      {
-        "name": "Fabric API",
-        "version": "0.116.12+1.21.1",
-        "path": "thirdparty/client-mods/fabric-api-0.116.12+1.21.1.jar",
-        "sha1": "90cd4212da24365fae24c0090234b053094b218b",
-        "license": "Apache-2.0",
-        "source": "https://modrinth.com/project/P7dR8mSH",
-        "sha256": "b872f8c6de3a49cb2f01482830552b4e9fa246ca2274e99f393caefa4a121ff2"
-      },
-      {
-        "name": "Simple Voice Chat",
-        "version": "2.6.16+1.21.1-fabric",
-        "path": "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar",
-        "sha1": "01cf165c232282eadd8256cad6a78e7caa67deb1",
-        "license": "All Rights Reserved",
-        "source": "https://modrinth.com/mod/simple-voice-chat",
-        "sha256": "a58e91a12533fee9c569c890443f415dc39226893ed7b0c7b45e58ef4c21096d"
-      },
-      {
-        "name": "Iris",
-        "version": "1.8.8+mc1.21.1",
-        "path": "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar",
-        "sha1": "4e0df4011503b4b36ba69877ea7247c1a47fea00",
-        "license": "GPL-3.0-only",
-        "source": "https://modrinth.com/mod/iris",
-        "sha256": "b5ad39a6cb113ca0a1765f06689f9f4b29ccd0c81247de90b06c42f5da1092f5"
-      },
-      {
-        "name": "Sodium",
-        "version": "0.6.13+mc1.21.1",
-        "path": "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar",
-        "sha1": "928a2598178c3a58b0638bab842f467d2e49251a",
-        "license": "LGPL-3.0-only",
-        "source": "https://modrinth.com/mod/sodium",
-        "sha256": "e04599514d88e41765f710eeba59e3814909833396bc11b977f48fc2e7e50353"
-      }
-    ],
-    "serverPlugins": [
-      {
-        "name": "CoreProtect Community Edition",
-        "version": "23.0",
-        "path": "thirdparty/server-plugins/CoreProtect-CE-23.0.jar",
-        "sha1": "50d90f470c26dcbe276554cda15204e14bb99bda",
-        "license": "Artistic-2.0",
-        "source": "https://github.com/PlayPro/CoreProtect",
-        "sha256": "402075d0eca6c3748d67d5b580bc5faf78b1b5ba91446ac15ccc7c7225457a81"
-      },
-      {
-        "name": "Emotecraft",
-        "version": "2.4.12+1.21.1-bukkit",
-        "path": "thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar",
-        "sha1": "fa6abee428393a207aa7cf970d267b97ed9a3e20",
-        "license": "GPL-3.0-or-later",
-        "source": "https://modrinth.com/project/pZ2wrerK",
-        "sha256": "b8defd7f557262db50b9d0c411544d09ced5bb7f10703e1ffa05f4b38c851e23"
-      }
-    ]
-  }
+    "schemaVersion":  1,
+    "generatedFor":  "CopiMine release hardening",
+    "clientArchive":  {
+                          "path":  "thirdparty/CopiMineMods.zip",
+                          "sha1":  "37373c72fe678bbe3a1142360a05a559e97fb732",
+                          "downloadPath":  "/downloads/CopiMineMods.zip",
+                          "sha256":  "b08d6583a0ad346b53bbc0b2074260f5ade2b010e9ab05b82780ddb8934d1b4e"
+                      },
+    "requiredExternal":  [
+
+                         ],
+    "artifacts":  {
+                      "clientMods":  [
+                                         {
+                                             "name":  "CopiMineClient",
+                                             "version":  "0.1.1",
+                                             "path":  "thirdparty/client-mods/CopiMineClient-0.1.1.jar",
+                                             "sha1":  "640041ca9bb7ad1ca53a3b19086311262328e45f",
+                                             "license":  "Proprietary",
+                                             "sha256":  "a8eecabba528a585620df01b2b4169cbd11cf71b7e5cfa82fd216a42bab74087"
+                                         },
+                                         {
+                                             "name":  "CustomSkinLoader",
+                                             "version":  "14.26.1+1.21.1-fabric",
+                                             "path":  "thirdparty/client-mods/CustomSkinLoader_Fabric-14.26.1.jar",
+                                             "sha1":  "fcfc6bbee1535be771b4d6b3124281236b1f4475",
+                                             "license":  "GPL-3.0-only",
+                                             "source":  "https://github.com/xfl03/MCCustomSkinLoader",
+                                             "sha256":  "733af00a53a9d66719f09f5cb3d630c4bb22ce043b2c66700a234c578f65c621"
+                                         },
+                                         {
+                                             "name":  "Emotecraft",
+                                             "version":  "2.4.12+1.21.1-fabric",
+                                             "path":  "thirdparty/client-mods/emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
+                                             "sha1":  "9be2a237e27f20d2d00f0036a8be53d7d66c5df5",
+                                             "license":  "GPL-3.0-or-later",
+                                             "source":  "https://modrinth.com/project/pZ2wrerK",
+                                             "sha256":  "633a77711f650dbf0bd071a43c086b7946d6e117b28ac1a414d038ea7b339f7c"
+                                         },
+                                         {
+                                             "name":  "Fabric API",
+                                             "version":  "0.116.12+1.21.1",
+                                             "path":  "thirdparty/client-mods/fabric-api-0.116.12+1.21.1.jar",
+                                             "sha1":  "90cd4212da24365fae24c0090234b053094b218b",
+                                             "license":  "Apache-2.0",
+                                             "source":  "https://modrinth.com/project/P7dR8mSH",
+                                             "sha256":  "b872f8c6de3a49cb2f01482830552b4e9fa246ca2274e99f393caefa4a121ff2"
+                                         },
+                                         {
+                                             "name":  "Simple Voice Chat",
+                                             "version":  "2.6.16+1.21.1-fabric",
+                                             "path":  "thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar",
+                                             "sha1":  "01cf165c232282eadd8256cad6a78e7caa67deb1",
+                                             "license":  "All Rights Reserved",
+                                             "source":  "https://modrinth.com/mod/simple-voice-chat",
+                                             "sha256":  "a58e91a12533fee9c569c890443f415dc39226893ed7b0c7b45e58ef4c21096d"
+                                         },
+                                         {
+                                             "name":  "Iris",
+                                             "version":  "1.8.8+mc1.21.1",
+                                             "path":  "thirdparty/client-mods/iris-fabric-1.8.8+mc1.21.1.jar",
+                                             "sha1":  "4e0df4011503b4b36ba69877ea7247c1a47fea00",
+                                             "license":  "GPL-3.0-only",
+                                             "source":  "https://modrinth.com/mod/iris",
+                                             "sha256":  "b5ad39a6cb113ca0a1765f06689f9f4b29ccd0c81247de90b06c42f5da1092f5"
+                                         },
+                                         {
+                                             "name":  "Sodium",
+                                             "version":  "0.6.13+mc1.21.1",
+                                             "path":  "thirdparty/client-mods/sodium-fabric-0.6.13+mc1.21.1.jar",
+                                             "sha1":  "928a2598178c3a58b0638bab842f467d2e49251a",
+                                             "license":  "LGPL-3.0-only",
+                                             "source":  "https://modrinth.com/mod/sodium",
+                                             "sha256":  "e04599514d88e41765f710eeba59e3814909833396bc11b977f48fc2e7e50353"
+                                         }
+                                     ],
+                      "serverPlugins":  [
+                                            {
+                                                "name":  "CoreProtect Community Edition",
+                                                "version":  "23.0",
+                                                "path":  "thirdparty/server-plugins/CoreProtect-CE-23.0.jar",
+                                                "sha1":  "50d90f470c26dcbe276554cda15204e14bb99bda",
+                                                "license":  "Artistic-2.0",
+                                                "source":  "https://github.com/PlayPro/CoreProtect",
+                                                "sha256":  "402075d0eca6c3748d67d5b580bc5faf78b1b5ba91446ac15ccc7c7225457a81"
+                                            },
+                                            {
+                                                "name":  "Emotecraft",
+                                                "version":  "2.4.12+1.21.1-bukkit",
+                                                "path":  "thirdparty/server-plugins/emotecraft-2.4.12-bukkit.jar",
+                                                "sha1":  "fa6abee428393a207aa7cf970d267b97ed9a3e20",
+                                                "license":  "GPL-3.0-or-later",
+                                                "source":  "https://modrinth.com/project/pZ2wrerK",
+                                                "sha256":  "b8defd7f557262db50b9d0c411544d09ced5bb7f10703e1ffa05f4b38c851e23"
+                                            }
+                                        ]
+                  }
 }

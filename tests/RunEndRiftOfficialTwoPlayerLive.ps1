@@ -45,6 +45,8 @@ $oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIA
 $oldAttackInterval = [Environment]::GetEnvironmentVariable('END_RIFT_ATTACK_INTERVAL_MS', 'Process')
 $oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
 $oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
+$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
+$oldBotPort = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PORT', 'Process')
 $oldBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
   $originalRequiredPlayers = 0
   $originalCore = $null
@@ -79,6 +81,7 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
     $properties -notmatch '(?m)^rcon\.port=25576\s*$') {
   throw 'Refused: the probe is not pointed at isolated local ports.'
 }
+Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
 
 function Get-RitualScalingProfile {
   param([Parameter(Mandatory = $true)][int]$Participants)
@@ -808,6 +811,8 @@ function Set-PlayerBotMode {
 function Start-PlayerBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $env:END_RIFT_BOT_HOST = '127.0.0.1'
+  $env:END_RIFT_BOT_PORT = '25566'
   $out = Join-Path $botLogDirectory ($Name + '.log')
   $err = Join-Path $botLogDirectory ($Name + '.err.log')
   $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
@@ -1294,6 +1299,8 @@ finally {
   if ($null -eq $oldAttackInterval) { Remove-Item Env:END_RIFT_ATTACK_INTERVAL_MS -ErrorAction SilentlyContinue } else { $env:END_RIFT_ATTACK_INTERVAL_MS = $oldAttackInterval }
   if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
   if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
+  if ($null -eq $oldBotHost) { Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_HOST = $oldBotHost }
+  if ($null -eq $oldBotPort) { Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PORT = $oldBotPort }
   if ($null -eq $oldBotPassword) { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PASSWORD = $oldBotPassword }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }

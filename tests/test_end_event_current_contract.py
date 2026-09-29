@@ -1670,6 +1670,48 @@ def test_live_probes_clear_inherited_skip_auth_when_authme_is_enabled() -> None:
         ), f"{name} must clear inherited no-auth mode when AuthMe is enabled"
 
 
+def test_live_probes_pin_minecraft_and_rcon_to_local_loopback() -> None:
+    expected = {
+        "RunEndRiftOfficialTwoPlayerLive.ps1": "25566",
+        "RunEndRiftVisualFivePlayerLive.ps1": "25566",
+        "RunEndRiftWave6Wave7BoundariesLive.ps1": "$ServerPort",
+    }
+    for name, port in expected.items():
+        probe = read(ROOT / "tests" / name)
+        assert "$env:END_RIFT_BOT_HOST = '127.0.0.1'" in probe, (
+            f"{name} must not inherit an arbitrary Mineflayer destination"
+        )
+        assert f"$env:END_RIFT_BOT_PORT = '{port}'" in probe or (
+            port == "$ServerPort" and "$env:END_RIFT_BOT_PORT = [string]$ServerPort" in probe
+        ), f"{name} must pin bots to its checked local Minecraft port"
+        assert f"$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')" in probe or (
+            f"$previousBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')" in probe
+        ), f"{name} must save the caller's bot host"
+        host_restore_var = "previousBotHost" if "previousBotHost" in probe else "oldBotHost"
+        assert re.search(
+            rf"\$env:END_RIFT_BOT_HOST\s*=\s*\${host_restore_var}", probe
+        ), f"{name} must restore the caller's bot host"
+        port_restore_var = "previousBotPort" if "previousBotPort" in probe else "oldBotPort"
+        assert re.search(
+            rf"\$env:END_RIFT_BOT_PORT\s*=\s*\${port_restore_var}", probe
+        ), f"{name} must restore the caller's bot port"
+        assert "Assert-EndRiftLocalServerBind" in probe, (
+            f"{name} must validate both configured and active Minecraft/RCON loopback listeners"
+        )
+
+
+def test_no_auth_smoke_reports_the_listener_addresses_it_validates() -> None:
+    smoke = read(ROOT / "tests" / "RunEndRiftLocalNoAuthSmoke.ps1")
+    assert re.search(r"return\s+\$activeBindings", smoke), (
+        "the local-only guard must return validated socket addresses to the evidence writer"
+    )
+    assert re.search(r"\$activeBindings\s*=\s*Assert-LocalOnly", smoke), (
+        "the smoke must capture listener evidence outside the guard function scope"
+    )
+    assert re.search(r"minecraft_bind=\$\(\$activeBindings\.MinecraftListenerAddresses", smoke)
+    assert re.search(r"rcon_bind=\$\(\$activeBindings\.RconListenerAddresses", smoke)
+
+
 def test_official_probe_does_not_flood_rcon_while_waiting_for_wave_one_charge() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     wait_block = re.search(r"function\s+Wait-CarrierDelivery[\s\S]*?throw\s+\"Timed out waiting for Wave 1", probe)

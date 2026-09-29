@@ -71,8 +71,8 @@ function Assert-LocalOnly {
     throw 'Refused a non-local or non-current End Rift configuration.'
   }
   $properties = Get-Content -LiteralPath $serverPropertiesPath -Raw
-  $serverPropertiesLines = Get-Content -LiteralPath $serverPropertiesPath
-  Test-EndRiftLocalServerBind -ServerPropertiesLines $serverPropertiesLines | Out-Null
+  $activeBindings = Assert-EndRiftLocalServerBind `
+    -ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort
   if ($properties -notmatch '(?m)^online-mode=false\s*$' -or
       $properties -notmatch ("(?m)^server-port=" + $ServerPort + '\s*$') -or
       $properties -notmatch ("(?m)^rcon\.port=" + $RconPort + '\s*$')) {
@@ -82,6 +82,7 @@ function Assert-LocalOnly {
   if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
     throw "No-auth smoke refused Git branch '$branch'."
   }
+  return $activeBindings
 }
 
 function Get-Core {
@@ -142,9 +143,9 @@ Set-Content -LiteralPath $evidencePath -Value "END_RIFT_LOCAL_NO_AUTH_SMOKE_STAR
 New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
 
 try {
-  Assert-LocalOnly
+  $activeBindings = Assert-LocalOnly
   $branch = (& git -C $root branch --show-current).Trim()
-  Write-Evidence "LOCAL_ONLY_PASS branch=$branch server=local-runtime/end-rift-server minecraft_port=$ServerPort rcon_port=$RconPort"
+  Write-Evidence "LOCAL_ONLY_PASS branch=$branch server=local-runtime/end-rift-server minecraft_port=$ServerPort minecraft_bind=$($activeBindings.MinecraftListenerAddresses -join ',') rcon_port=$RconPort rcon_bind=$($activeBindings.RconListenerAddresses -join ',')"
   $pluginList = Invoke-LocalRcon 'plugins'
   if (Test-EndRiftLocalAuthMeEnabled -PluginListOutput $pluginList) {
     throw 'Refused: this live smoke specifically requires AuthMe to be disabled on the local test server.'

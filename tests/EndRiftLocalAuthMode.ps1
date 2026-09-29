@@ -43,11 +43,79 @@ function Test-EndRiftLocalServerBind {
     [string[]]$ServerPropertiesLines
   )
 
-  $serverIpAssignments = @(
-    $ServerPropertiesLines | Where-Object { $_ -match '^server-ip=' }
-  )
-  if ($serverIpAssignments.Count -ne 1 -or $serverIpAssignments[0] -cne 'server-ip=127.0.0.1') {
-    throw 'The local no-auth smoke requires exactly one explicit server-ip=127.0.0.1 setting.'
+  foreach ($property in @('server-ip', 'rcon.ip')) {
+    $assignments = @(
+      $ServerPropertiesLines | Where-Object { $_ -match ('^' + [Regex]::Escape($property) + '=') }
+    )
+    if ($assignments.Count -ne 1 -or $assignments[0] -cne ($property + '=127.0.0.1')) {
+      throw "The local probes require exactly one explicit $property=127.0.0.1 setting."
+    }
   }
   return $true
+}
+
+function Test-EndRiftLocalListenerAddresses {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
+    [string[]]$MinecraftListenerAddresses,
+    [Parameter(Mandatory = $true)]
+    [AllowEmptyCollection()]
+    [string[]]$RconListenerAddresses
+  )
+
+  foreach ($listener in @(
+      @{ Name = 'Minecraft'; Addresses = $MinecraftListenerAddresses },
+      @{ Name = 'RCON'; Addresses = $RconListenerAddresses }
+    )) {
+    if ($listener.Addresses.Count -eq 0) {
+      throw "No active local $($listener.Name) listener was found."
+    }
+    foreach ($address in $listener.Addresses) {
+      $parsedAddress = $null
+      if (-not [System.Net.IPAddress]::TryParse($address, [ref]$parsedAddress) -or
+          -not [System.Net.IPAddress]::IsLoopback($parsedAddress)) {
+        throw "$($listener.Name) listener is not bound to loopback: $address"
+      }
+    }
+  }
+  return $true
+}
+
+function Assert-EndRiftLocalServerBind {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$ServerDir,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 65535)]
+    [int]$ServerPort,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 65535)]
+    [int]$RconPort
+  )
+
+  $propertiesPath = Join-Path $ServerDir 'server.properties'
+  if (-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) {
+    throw "Local server.properties is missing: $propertiesPath"
+  }
+  $propertiesLines = Get-Content -LiteralPath $propertiesPath
+  Test-EndRiftLocalServerBind -ServerPropertiesLines $propertiesLines | Out-Null
+
+  $minecraftListeners = @(
+    Get-NetTCPConnection -LocalPort $ServerPort -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty LocalAddress -Unique
+  )
+  $rconListeners = @(
+    Get-NetTCPConnection -LocalPort $RconPort -State Listen -ErrorAction SilentlyContinue |
+      Select-Object -ExpandProperty LocalAddress -Unique
+  )
+  Test-EndRiftLocalListenerAddresses `
+    -MinecraftListenerAddresses $minecraftListeners `
+    -RconListenerAddresses $rconListeners | Out-Null
+  return [pscustomobject]@{
+    MinecraftListenerAddresses = $minecraftListeners
+    RconListenerAddresses = $rconListeners
+  }
 }

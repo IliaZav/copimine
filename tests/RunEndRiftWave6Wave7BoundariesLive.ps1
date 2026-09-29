@@ -57,6 +57,7 @@ $previousReflectionDiagnostics = $env:END_RIFT_REFLECT_DIAGNOSTICS
 $combatTraceProbe = $env:END_RIFT_BOT_COMBAT_TRACE -eq '1'
 $previousLocalMobSpawning = $null
 $previousBotPort = $env:END_RIFT_BOT_PORT
+$previousBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
 $previousSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
 $previousSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
 $script:authMeEnabled = $true
@@ -316,6 +317,7 @@ function Set-LocalArenaMobSpawning([bool]$Enabled) {
 function Start-Bot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $env:END_RIFT_BOT_HOST = '127.0.0.1'
   $env:END_RIFT_BOT_PORT = [string]$ServerPort
   # Wave 7 includes a Warden fight and a projectile reflection objective.
   # Exercise both through the local clients' real survival interaction path.
@@ -613,6 +615,7 @@ if ($properties -notmatch "(?m)^server-port=$ServerPort\s*$" -or
     $properties -notmatch "(?m)^rcon\.port=$RconPort\s*$") {
   throw 'Refused: boundary probe requires isolated local ports.'
 }
+Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort | Out-Null
 if ($ServerPort -eq $RconPort) {
   throw 'Refused: Minecraft and RCON must use separate ports.'
 }
@@ -891,6 +894,11 @@ finally {
     Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue
   } else {
     $env:END_RIFT_BOT_PORT = $previousBotPort
+  }
+  if ($null -eq $previousBotHost) {
+    Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue
+  } else {
+    $env:END_RIFT_BOT_HOST = $previousBotHost
   }
   if ($null -eq $previousSkipAuth) {
     Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue

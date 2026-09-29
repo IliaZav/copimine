@@ -1,10 +1,10 @@
-﻿END_RIFT_LOCAL_NO_AUTH_SMOKE_START time=2026-09-29T14:12:25.0746225+03:00
-LOCAL_ONLY_PASS branch=codex/end-rift-event server=local-runtime/end-rift-server minecraft_port=25566 rcon_port=25576
+﻿END_RIFT_LOCAL_NO_AUTH_SMOKE_START time=2026-09-29T14:45:27.9648867+03:00
+LOCAL_ONLY_PASS branch=codex/end-rift-event server=local-runtime/end-rift-server minecraft_port=25566 minecraft_bind=127.0.0.1 rcon_port=25576 rcon_bind=127.0.0.1
 LOCAL_AUTH_MODE authme=disabled rcon_plugin_list=true
 SHOWROOM_BASELINE_PASS state=COLLECTING participants=6 wave=0 event_mobs=16 boss=53e38db5-3c68-4f07-aa8d-c2e33827b4b0
-BOT_AUTH_MODE_PASS player=NoAuth4a019430A joined=true commands=skipped
-BOT_AUTH_MODE_PASS player=NoAuth4a019430B joined=true commands=skipped
-NO_AUTH_PLAYER_JOIN_PASS players=NoAuth4a019430A,NoAuth4a019430B online_list_confirmed=true
+BOT_AUTH_MODE_PASS player=NoAuth21553268A joined=true commands=skipped
+BOT_AUTH_MODE_PASS player=NoAuth21553268B joined=true commands=skipped
+NO_AUTH_PLAYER_JOIN_PASS players=NoAuth21553268A,NoAuth21553268B online_list_confirmed=true
 NO_AUTH_CLIENT_CLEANUP_PASS players_offline=true
 SHOWROOM_PRESERVED_PASS state=COLLECTING participants=6 wave=0 event_mobs=16 boss=53e38db5-3c68-4f07-aa8d-c2e33827b4b0
 END_RIFT_LOCAL_NO_AUTH_SMOKE_PASS

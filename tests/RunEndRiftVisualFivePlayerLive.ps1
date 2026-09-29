@@ -30,6 +30,8 @@ $evidencePath = Join-Path $evidenceDirectory 'run.log'
 $processes = @()
 $oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
 $oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
+$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
+$oldBotPort = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PORT', 'Process')
 $playerNames = @($ViewerName, 'EndRiftVisualB', 'EndRiftVisualC', 'EndRiftVisualD', 'EndRiftVisualE')
 
 function Assert-LocalOnly {
@@ -50,10 +52,7 @@ function Assert-LocalOnly {
       $properties -notmatch '(?m)^rcon\.port=25576\s*$') {
     throw 'Visual probe requires isolated local Paper ports 25566 and 25576.'
   }
-  if ($properties -notmatch '(?m)^server-ip=\s*$' -and
-      $properties -notmatch '(?m)^server-ip=127\.0\.0\.1\s*$') {
-    throw 'Visual probe requires a blank or loopback server-ip.'
-  }
+  Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
   $branch = (& git -C $root branch --show-current 2>$null).Trim()
   if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
     throw "Visual probe refused Git branch '$branch'."
@@ -146,6 +145,8 @@ function Start-VisualBot {
     [Parameter(Mandatory = $true)][int[]]$Core
   )
   $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $env:END_RIFT_BOT_HOST = '127.0.0.1'
+  $env:END_RIFT_BOT_PORT = '25566'
   $outputPath = Join-Path $botLogDirectory ($Name + '.log')
   $errorPath = Join-Path $botLogDirectory ($Name + '.err.log')
   $durationMs = ($BotDurationSeconds + 30) * 1000
@@ -304,6 +305,8 @@ try {
 } finally {
   if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
   if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
+  if ($null -eq $oldBotHost) { Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_HOST = $oldBotHost }
+  if ($null -eq $oldBotPort) { Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PORT = $oldBotPort }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
   try { $null = Invoke-LocalRcon "gamemode survival $ViewerName" } catch { }

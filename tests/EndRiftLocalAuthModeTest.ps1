@@ -69,7 +69,7 @@ foreach ($case in $invalidCases) {
 $bindCases = @(
   @{
     Label = 'explicit IPv4 loopback bind accepted'
-    Lines = @('online-mode=false', 'server-ip=127.0.0.1', 'server-port=25566')
+    Lines = @('online-mode=false', 'server-ip=127.0.0.1', 'rcon.ip=127.0.0.1', 'server-port=25566', 'rcon.port=25576')
     ShouldThrow = $false
   },
   @{
@@ -89,7 +89,22 @@ $bindCases = @(
   },
   @{
     Label = 'duplicate server-ip entries rejected'
-    Lines = @('server-ip=127.0.0.1', 'server-ip=', 'server-port=25566')
+    Lines = @('server-ip=127.0.0.1', 'server-ip=', 'rcon.ip=127.0.0.1', 'server-port=25566', 'rcon.port=25576')
+    ShouldThrow = $true
+  },
+  @{
+    Label = 'missing RCON bind rejected'
+    Lines = @('server-ip=127.0.0.1', 'server-port=25566', 'rcon.port=25576')
+    ShouldThrow = $true
+  },
+  @{
+    Label = 'wildcard RCON bind rejected'
+    Lines = @('server-ip=127.0.0.1', 'rcon.ip=0.0.0.0', 'server-port=25566', 'rcon.port=25576')
+    ShouldThrow = $true
+  },
+  @{
+    Label = 'duplicate RCON bind entries rejected'
+    Lines = @('server-ip=127.0.0.1', 'rcon.ip=127.0.0.1', 'rcon.ip=', 'server-port=25566', 'rcon.port=25576')
     ShouldThrow = $true
   }
 )
@@ -98,6 +113,54 @@ foreach ($case in $bindCases) {
   $threw = $false
   try {
     $null = Test-EndRiftLocalServerBind -ServerPropertiesLines $case.Lines
+  } catch {
+    $threw = $true
+  }
+  if ($threw -ne $case.ShouldThrow) {
+    throw "$($case.Label): expected ShouldThrow=$($case.ShouldThrow), got $threw"
+  }
+  Write-Output "PASS $($case.Label)"
+}
+
+$listenerCases = @(
+  @{
+    Label = 'Minecraft and RCON IPv4 loopback listeners accepted'
+    Minecraft = @('127.0.0.1')
+    Rcon = @('127.0.0.1')
+    ShouldThrow = $false
+  },
+  @{
+    Label = 'IPv6 loopback listeners accepted'
+    Minecraft = @('::1')
+    Rcon = @('::1')
+    ShouldThrow = $false
+  },
+  @{
+    Label = 'wildcard Minecraft listener rejected'
+    Minecraft = @('0.0.0.0')
+    Rcon = @('127.0.0.1')
+    ShouldThrow = $true
+  },
+  @{
+    Label = 'external RCON listener rejected'
+    Minecraft = @('127.0.0.1')
+    Rcon = @('192.0.2.10')
+    ShouldThrow = $true
+  },
+  @{
+    Label = 'missing active listener rejected'
+    Minecraft = @()
+    Rcon = @('127.0.0.1')
+    ShouldThrow = $true
+  }
+)
+
+foreach ($case in $listenerCases) {
+  $threw = $false
+  try {
+    $null = Test-EndRiftLocalListenerAddresses `
+      -MinecraftListenerAddresses $case.Minecraft `
+      -RconListenerAddresses $case.Rcon
   } catch {
     $threw = $true
   }

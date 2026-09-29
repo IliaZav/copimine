@@ -70,6 +70,18 @@ public final class AttemptLifecycleControllerTest {
         check(!controller.living().contains(a),
                 "retired members cannot keep an otherwise wiped attempt alive");
 
+        controller.begin(30L, Set.of(a, b));
+        check(controller.markDead(a, 30L), "transition-rune setup can observe a dead roster member");
+        check(controller.markOffline(b, 30L), "transition-rune setup can observe an offline roster member");
+        check(controller.activeLivingOnlineRoster().isEmpty(),
+                "dead and offline members must not block the transition-rune hold");
+        check(controller.markAlive(a, 30L), "a revived roster member is active and online again");
+        check(controller.activeLivingOnlineRoster().equals(Set.of(a)),
+                "only active, alive, online members belong to the transition-rune hold roster");
+        check(controller.markOnline(b, 30L), "an offline roster member can reconnect");
+        check(controller.activeLivingOnlineRoster().equals(Set.of(a, b)),
+                "the transition hold roster includes members once they are alive and online");
+
         controller.begin(20L, Set.of(a, b));
         controller.markDead(a, 20L);
         controller.markDead(b, 20L);

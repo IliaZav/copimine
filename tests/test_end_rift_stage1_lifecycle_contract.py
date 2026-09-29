@@ -106,6 +106,8 @@ def test_one_generation_roster_owns_participant_presence_and_objective_eligibili
     assert "refreshObjectiveEligibility" in arena_check
     assert "attemptLifecycle.status(entry.getValue())" in rune_tick
     assert "attemptLifecycle.isObjectiveEligible(entry.getValue(), generation)" in rune_tick
+    assert "attemptLifecycle.activeLivingOnlineRoster()" in rune_tick
+    assert "Set<UUID> roster = attemptLifecycle.owns(generation)" in rune_tick
     assert "authoritativeAttemptRoster()" in boss_context
     roster_helper = event[event.index("private Set<UUID> authoritativeAttemptRoster"):
                            event.index("private boolean isOfficialCurrentAttempt")]

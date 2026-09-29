@@ -61,6 +61,21 @@ public final class AttemptLifecycleController {
         return Collections.unmodifiableSet(result);
     }
 
+    /**
+     * The participants currently required to complete a live transition hold.
+     * Reward membership remains frozen separately; absent or dead members must
+     * not be expected to stand on a rune they cannot reach.
+     */
+    public synchronized Set<UUID> activeLivingOnlineRoster() {
+        Set<UUID> result = new LinkedHashSet<>();
+        participants.forEach((player, status) -> {
+            if (status.registered() && status.active() && status.online() && status.alive()) {
+                result.add(player);
+            }
+        });
+        return Collections.unmodifiableSet(result);
+    }
+
     /** The immutable state snapshot for one member of this generation's roster, or {@code null}. */
     public synchronized ParticipantStatus status(UUID player) {
         return participants.get(player);

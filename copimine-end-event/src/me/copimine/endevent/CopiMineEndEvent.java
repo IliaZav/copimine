@@ -13564,9 +13564,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /**
      * Current intermissions are an actual transition-rune hold, not an unattended
-     * timer. A generous watchdog prevents a disconnected roster from leaving
-     * the event in an unbounded half-state; the normal path completes only
-     * after every frozen player has held a unique rune for ten seconds.
+     * timer. A generous watchdog prevents an unattended intermission from
+     * remaining open indefinitely; the normal path completes only
+     * after every active, living, online attempt member has held a unique rune
+     * for ten seconds. Reward membership stays frozen for post-event payouts.
      */
     private void tickCurrentIntermission() {
         if (!isTransitionRunePhase(phase)) {
@@ -13604,7 +13605,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             forcePhase(EventPhase.RECOVERY_REQUIRED, "transition rune setup failed");
             return;
         }
-        Set<UUID> roster = authoritativeAttemptRoster();
+        Set<UUID> roster = attemptLifecycle.owns(generation)
+                ? attemptLifecycle.activeLivingOnlineRoster() : Set.of();
         List<TransitionRunePolicy.RuneOccupancy> occupancies = new ArrayList<>();
         for (Map.Entry<String, UUID> entry : padOccupants.entrySet()) {
             Player player = Bukkit.getPlayer(entry.getValue());
@@ -17328,35 +17330,37 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         SoundCategory.HOSTILE, 0.65F, 1.45F);
             }
         } else if (snapshot.spell() == RitualSpellController.Spell.RIFT_CHAINS) {
-            tickRitualChains(now);
+            tickRitualChains(target);
         }
     }
 
-    private void tickRitualChains(long now) {
-        Location sphere = ritualSphereCenter(coreCombatAnchorLocation());
-        if (sphere == null || sphere.getWorld() == null) {
+    private void tickRitualChains(Player target) {
+        if (target == null || !target.isOnline() || target.isDead() || target.getHealth() <= 0.0D
+                || !isFreeRitualTarget(target)) {
+            ritualSpellActiveUntilTick = eventTickCounter;
             return;
         }
-        for (Player player : ritualFreeTargets(activeLivingPlayers())) {
-            if (!player.getWorld().equals(sphere.getWorld())) {
-                continue;
-            }
-            Vector towardSphere = sphere.toVector().subtract(player.getLocation().toVector());
-            towardSphere.setY(0.0D);
-            if (towardSphere.lengthSquared() > 0.25D) {
-                towardSphere.normalize().multiply(0.12D);
-                Vector velocity = player.getVelocity().add(towardSphere);
-                velocity.setX(Math.max(-0.45D, Math.min(0.45D, velocity.getX())));
-                velocity.setZ(Math.max(-0.45D, Math.min(0.45D, velocity.getZ())));
-                player.setVelocity(velocity);
-            }
-            player.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 15, 1,
-                    false, true, true));
-            if (eventTickCounter % 10L == 0L) {
-                player.getWorld().spawnParticle(Particle.END_ROD,
-                        player.getLocation().add(0.0D, 1.0D, 0.0D), 5,
-                        0.25D, 0.5D, 0.25D, 0.01D);
-            }
+        Location sphere = ritualSphereCenter(coreCombatAnchorLocation());
+        if (sphere == null || sphere.getWorld() == null || target.getWorld() == null
+                || !target.getWorld().equals(sphere.getWorld())) {
+            ritualSpellActiveUntilTick = eventTickCounter;
+            return;
+        }
+        Vector towardSphere = sphere.toVector().subtract(target.getLocation().toVector());
+        towardSphere.setY(0.0D);
+        if (towardSphere.lengthSquared() > 0.25D) {
+            towardSphere.normalize().multiply(0.12D);
+            Vector velocity = target.getVelocity().add(towardSphere);
+            velocity.setX(Math.max(-0.45D, Math.min(0.45D, velocity.getX())));
+            velocity.setZ(Math.max(-0.45D, Math.min(0.45D, velocity.getZ())));
+            target.setVelocity(velocity);
+        }
+        target.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 15, 1,
+                false, true, true));
+        if (eventTickCounter % 10L == 0L) {
+            target.getWorld().spawnParticle(Particle.END_ROD,
+                    target.getLocation().add(0.0D, 1.0D, 0.0D), 5,
+                    0.25D, 0.5D, 0.25D, 0.01D);
         }
     }
 

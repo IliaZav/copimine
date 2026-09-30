@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "status": "VISUALLY_INSPECTED_STATIC_SHOWROOM",
+  "branch": "codex/end-rift-event",
+  "gitHead": "8cb34195b27cddededd45711168270fcbba1054e",
+  "server": {
+    "endpoint": "127.0.0.1:25566",
+    "environment": "local",
+    "serverJarSha256": "23c12bc19949f7f5eef057dfa731e95973346d6b3d252dbfbaa4f67b6097bca1"
+  },
+  "client": {
+    "minecraft": "1.21.1",
+    "clientJarSha256": "66b3af1949b753f22843485a5e2a35d6b3460831fdcd7d885eaa27ee75ad2256"
+  },
+  "scene": {
+    "setup": "cmend test showroom",
+    "phase": "static local End Rift showroom",
+    "eliteMappings": [
+      {
+        "visualId": "END_RIFT_ELITE_V1",
+        "texture": "end_rift_elite.png"
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SKELETON_V1",
+        "texture": "end_rift_elite_skeleton.png"
+      },
+      {
+        "visualId": "END_RIFT_ELITE_SPIDER_V1",
+        "texture": "end_rift_elite_spider.png"
+      }
+    ]
+  },
+  "screenshots": [
+    {
+      "name": "showroom-overview",
+      "file": "showroom-overview.png",
+      "bytes": 955528,
+      "sha256": "8722c254c7341695abe1896e2dccd4cdf658888852632e060865d4fd971c059c",
+      "capturedAt": "2026-09-30T02:39:05.414915Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-enderman",
+      "file": "elite-enderman.png",
+      "bytes": 1201476,
+      "sha256": "baca890351d5705db74b14078fb8b0422da7c3d4bbb83b25569c89879bf4bec5",
+      "capturedAt": "2026-09-30T02:39:10.666795Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-skeleton",
+      "file": "elite-skeleton.png",
+      "bytes": 1078339,
+      "sha256": "3f5d976e858c30050343b3b3bb22563aa25c40bfb255bf40c815f13cd5d11267",
+      "capturedAt": "2026-09-30T02:39:15.6956594Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "elite-spider",
+      "file": "elite-spider.png",
+      "bytes": 1098753,
+      "sha256": "5b8a58bef7e6a94cea53ad92a241e3449f053fae48f35db8ade5f617e0daa7af",
+      "capturedAt": "2026-09-30T02:39:20.794008Z",
+      "method": "Minecraft F2"
+    },
+    {
+      "name": "tentacles-ready",
+      "file": "tentacles-ready.png",
+      "bytes": 1078665,
+      "sha256": "d3b4c5436f67dfbcb3f9b6fb1edf3378fe50bcc427404a301675a1fee063c90e",
+      "capturedAt": "2026-09-30T02:39:24.7410194Z",
+      "method": "Minecraft F2"
+    }
+  ],
+  "visualReview": "PASS: opened all five original Minecraft F2 images; elite textures are visible and tentacles are in the READY pose. Dynamic attack/death animation and the full seven-wave lifecycle are not evaluated by this static capture."
+}

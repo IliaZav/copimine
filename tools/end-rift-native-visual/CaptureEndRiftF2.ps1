@@ -2,7 +2,8 @@
 param(
     [string]$Config = '',
     [string]$OutputDirectory,
-    [ValidateRange(1, 30)][int]$TimeoutSeconds = 10
+    [ValidateRange(1, 30)][int]$TimeoutSeconds = 10,
+    [ValidateRange(0, 30)][int]$PostCaptureSettleSeconds = 8
 )
 
 # Reproducible, local-only End Rift showroom capture. This deliberately requires
@@ -215,9 +216,9 @@ $f5ToFirstPerson = (3 - [int]$perspectiveIndex[$initialPerspective]) % 3
 
 $visualReply = ConvertTo-Plain (Invoke-Local 'cmend test visuals mobs')
 $expectedVisuals = @(
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_V1'; Texture = 'end_rift_elite.png'; File = 'elite-enderman'; CameraDistance = 5.5; Pitch = 1 },
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SKELETON_V1'; Texture = 'end_rift_elite_skeleton.png'; File = 'elite-skeleton'; CameraDistance = 4.8; Pitch = 8 },
-    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SPIDER_V1'; Texture = 'end_rift_elite_spider.png'; File = 'elite-spider'; CameraDistance = 3.8; Pitch = 14 }
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_V1'; Texture = 'end_rift_elite.png'; File = 'elite-enderman'; CameraDistance = 3.2; Pitch = 1 },
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SKELETON_V1'; Texture = 'end_rift_elite_skeleton.png'; File = 'elite-skeleton'; CameraDistance = 2.8; Pitch = 8 },
+    [pscustomobject]@{ Id = 'END_RIFT_ELITE_SPIDER_V1'; Texture = 'end_rift_elite_spider.png'; File = 'elite-spider'; CameraDistance = 2.4; Pitch = 14 }
 )
 $eliteEntities = @{}
 foreach ($expected in $expectedVisuals) {
@@ -252,6 +253,9 @@ function Save-F2([string]$Name) {
         method = 'Minecraft F2'
     })
     Write-Output "F2_CAPTURE name=$Name bytes=$($file.Length) sha256=$hash"
+    if ($PostCaptureSettleSeconds -gt 0) {
+        Start-Sleep -Seconds $PostCaptureSettleSeconds
+    }
 }
 
 $dayTimeReply = ConvertTo-Plain (Invoke-Local 'minecraft:time query daytime')

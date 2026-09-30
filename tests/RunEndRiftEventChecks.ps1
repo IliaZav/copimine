@@ -102,6 +102,22 @@ Invoke-GateStep 'Current Python contract' {
   }
 }
 
+Invoke-GateStep 'Live bot reflection target' {
+  Push-Location $root
+  try {
+    & node --test '.\tests\LocalEndRiftReflectionTarget.test.js'
+    if ($LASTEXITCODE -ne 0) {
+      throw "Live bot reflection target tests failed with exit code $LASTEXITCODE"
+    }
+    & node --check '.\tests\LocalEndRiftMobCombatBot.js'
+    if ($LASTEXITCODE -ne 0) {
+      throw "Live bot syntax check failed with exit code $LASTEXITCODE"
+    }
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Ritual restart contract' {
   Push-Location $root
   try {

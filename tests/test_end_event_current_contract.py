@@ -2046,12 +2046,28 @@ def test_official_wave_bot_aims_toward_the_active_seal_inside_the_reflection_con
         bot.index("async function reflectFireball") : bot.index("function scheduleFireballReflection")
     ]
     assert "const activeSeal = activeWave7ReflectionSeal()" in reflection
-    assert "lookAtServer(activeSeal.position.offset(0, 1, 0))" in reflection
+    assert "selectReflectionAimTarget({" in reflection
+    assert "lookAtServer(aimTarget.position)" in reflection
+    assert "activeSeal.position.offset(0, 1, 0)" in read(ROOT / "tests" / "EndRiftReflectionTarget.js")
     assert "server's 120-degree reflection" in reflection
     assert "bot.look(yaw, pitch, true)" in bot
-    assert reflection.index("lookAtServer(activeSeal.position.offset(0, 1, 0))") < reflection.index(
+    assert reflection.index("lookAtServer(aimTarget.position)") < reflection.index(
         "bot._client.write('use_entity'"
     )
+
+
+def test_official_wave_bot_preserves_wave7_seal_and_wave4_source_aims() -> None:
+    bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
+    target_selector = read(ROOT / "tests" / "EndRiftReflectionTarget.js")
+    reflection = bot[
+        bot.index("async function reflectFireball") : bot.index("function scheduleFireballReflection")
+    ]
+
+    assert "const sourceAnchor = projectileOrigins.get(projectileKey)" in reflection
+    assert "wave7Autopilot,\n      activeSeal,\n      sourceAnchor," in reflection
+    assert "const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)" in bot
+    assert "if (sourceObelisk?.position) projectileOrigins.set(projectileKey, sourceObelisk.position)" in bot
+    assert "if (wave7Autopilot || !sourceAnchor) return null" in target_selector
 
 
 def test_official_wave_bot_uses_stable_projectile_identity() -> None:

@@ -7,6 +7,7 @@ const path = require('path')
 const fs = require('fs')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
 const { Vec3 } = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'vec3'))
+const { selectReflectionAimTarget } = require('./EndRiftReflectionTarget')
 
 const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
 const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
@@ -983,14 +984,23 @@ async function reflectFireball(entity) {
       return false
     }
     // Wave 7 counts a reflection only when the projectile crosses the active
-    // seal. Keep the projectile inside the server's 120-degree reflection
-    // cone while directing its reflected velocity toward that glowing seal.
+    // seal inside the server's 120-degree reflection cone. Wave 4 instead
+    // damages the obelisk that launched the projectile.
+    // Keep the stricter Wave 7 seal requirement when that room-local mode is
+    // active so an unrelated nearby obelisk can never replace a missing seal.
     const activeSeal = activeWave7ReflectionSeal()
-    if (!activeSeal?.position) {
-      recordReflectionFailure(projectileKey, 'active-seal-not-visible', refreshed)
+    const aimTarget = selectReflectionAimTarget({
+      wave7Autopilot,
+      activeSeal,
+      sourceAnchor,
+    })
+    if (!aimTarget?.position) {
+      recordReflectionFailure(projectileKey,
+        wave7Autopilot ? 'active-seal-not-visible' : 'reflection-target-not-visible',
+        refreshed)
       return false
     }
-    lookAtServer(activeSeal.position.offset(0, 1, 0))
+    lookAtServer(aimTarget.position)
     // Send the same serverbound attack interaction a vanilla player uses.
     // Do not call bot.attack here: Mineflayer's entity type filter can reject
     // LargeFireball before the packet is emitted.
@@ -1011,7 +1021,7 @@ async function reflectFireball(entity) {
     bot._client.write('arm_animation', { hand: 0 })
     reflectedProjectiles.add(projectileKey)
     reflectionCount += 1
-    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} seal=${activeSeal.id} seal_pos=${formatPosition(activeSeal.position)} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}`)
+    console.log(`PLAYER_REFLECT ${username} count=${reflectionCount} entity=${target.id} uuid=${target.uuid || 'unknown'} seal=${activeSeal?.id || 'none'} seal_pos=${formatPosition(activeSeal?.position)} aim=${aimTarget.kind} target=projectile origin=${sourceAnchor ? 'known' : 'nearest'} distance=${distance(target.position, bot.entity.position).toFixed(2)} projectile_pos=${formatPosition(target.position)} player_pos=${formatPosition(bot.entity.position)}`)
     reflectionFailures.delete(projectileKey)
     return true
   } catch (error) {
@@ -1053,8 +1063,8 @@ function scanRiftFireballs() {
     if (!isRiftFireball(entity)) continue
     const projectileKey = projectileIdentity(entity)
     if (entity.position) {
-      projectileOrigins.set(projectileKey,
-        nearestWave4ObeliskDisplay(entity.position)?.position || entity.position)
+      const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)
+      if (sourceObelisk?.position) projectileOrigins.set(projectileKey, sourceObelisk.position)
     }
     scheduleFireballReflection(entity)
   }
@@ -1113,8 +1123,10 @@ bot.once('spawn', () => {
 bot.on('entitySpawn', entity => {
   scheduleFireballReflection(entity)
   if (isRiftFireball(entity) && entity.position) {
-    projectileOrigins.set(projectileIdentity(entity),
-      nearestWave4ObeliskDisplay(entity.position)?.position || entity.position)
+    const sourceObelisk = nearestWave4ObeliskDisplay(entity.position)
+    if (sourceObelisk?.position) {
+      projectileOrigins.set(projectileIdentity(entity), sourceObelisk.position)
+    }
   }
   if (entity?.name === 'item' && entity.position) {
     console.log(`ENTITY_ITEM_SPAWN ${username} id=${entity.id} uuid=${entity.uuid || 'unknown'} pos=${formatPosition(entity.position)} name=${entity.displayName || ''}`)

@@ -215,10 +215,12 @@ def test_live_wave_seven_clients_can_fight_and_reflect_in_their_assigned_room():
     assert "fireRangedTarget(rangedTarget)" in bot
     assert "function isGlowingWave7Seal(entity)" in bot
     assert "const activeSeal = activeWave7ReflectionSeal()" in bot
-    assert "lookAtServer(activeSeal.position.offset(0, 1, 0))" in bot
+    assert "selectReflectionAimTarget({" in bot
+    assert "lookAtServer(aimTarget.position)" in bot
+    assert "activeSeal.position.offset(0, 1, 0)" in (ROOT / "tests" / "EndRiftReflectionTarget.js").read_text(encoding="utf-8")
     reflection = section(bot, "async function reflectFireball", "function scheduleFireballReflection")
     assert "setTimeout(resolve, 75)" not in reflection
-    assert reflection.index("lookAtServer(activeSeal.position.offset(0, 1, 0))") < reflection.index("bot._client.write('use_entity'")
+    assert reflection.index("lookAtServer(aimTarget.position)") < reflection.index("bot._client.write('use_entity'")
     navigation = section(bot, "function navigateWave7", "function sampleMobs")
     assert "if (wave7Autopilot && wave7HoldPosition)" in navigation
     assert "if (navigationTarget) navigateWave7(navigationTarget)" in bot

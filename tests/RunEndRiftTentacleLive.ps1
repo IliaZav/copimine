@@ -5,7 +5,14 @@ param(
   [int]$BotDurationSeconds = 45,
   [ValidateRange(30, 240)]
   [int]$TimeoutSeconds = 90,
-  [string]$EvidencePath = ''
+  [ValidateRange(0, 60)]
+  [int]$VisualHoldSeconds = 0,
+  [string]$EvidencePath = '',
+  [string[]]$ProtectedViewerNames = @(),
+  [ValidateSet('survival', 'adventure', 'creative', 'spectator')]
+  [string]$ProtectedViewerGameMode = 'spectator',
+  [ValidateSet('survival', 'adventure', 'creative', 'spectator')]
+  [string]$RestoreViewerGameMode = 'survival'
 )
 
 # Local/staging-only native gameplay boundary for the final-seal tentacle rig.
@@ -28,9 +35,13 @@ $paperLog = Join-Path $serverDir 'logs\latest.log'
 $botLogDirectory = Join-Path $runtimeRoot 'tentacle-live'
 $botStdout = Join-Path $botLogDirectory ($BotName + '.stdout.log')
 $botControlDirectory = Join-Path $botLogDirectory 'control'
+$botTargetFile = Join-Path $botControlDirectory ($BotName + '.targets.json')
 $botEnvironmentNames = @(
-  'END_RIFT_BOT_PASSWORD',
   'END_RIFT_BOT_SKIP_REGISTER',
+  'END_RIFT_BOT_SKIP_AUTH',
+  'END_RIFT_TENTACLE_PROBE_NAMES',
+  'END_RIFT_TENTACLE_PROBE_TARGETS_FILE',
+  'END_RIFT_TENTACLE_PROBE_MAX_ATTACKS',
   'END_RIFT_GUARDIAN_PROBE_NAMES',
   'END_RIFT_ATTACK_INTERVAL_MS',
   'END_RIFT_TENTACLE_TRACE'
@@ -52,6 +63,7 @@ if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
 }
 $botProcess = $null
 $success = $false
+$protectedViewers = [System.Collections.Generic.List[string]]::new()
 
 function Restore-BotEnvironment {
   foreach ($name in $botEnvironmentNames) {
@@ -149,6 +161,21 @@ function Log-Tail([int64]$Offset) {
   if ($Offset -ge $text.Length) { return '' }
   return $text.Substring([int]$Offset)
 }
+function Get-LogLineAt([string]$Text, [int]$Index) {
+  $lineStart = $Text.LastIndexOf("`n", $Index)
+  if ($lineStart -lt 0) { $lineStart = 0 } else { $lineStart++ }
+  $lineEnd = $Text.IndexOf("`n", $Index)
+  if ($lineEnd -lt 0) { $lineEnd = $Text.Length }
+  return $Text.Substring($lineStart, $lineEnd - $lineStart).TrimEnd([char]13)
+}
+function Get-LogLineEpochMilliseconds([string]$Line, [DateTime]$ReferenceTime) {
+  $clock = [Regex]::Match($Line, '\[(\d{2}):(\d{2}):(\d{2})\]')
+  if (-not $clock.Success) { return $null }
+  $timestamp = $ReferenceTime.Date.AddHours([int]$clock.Groups[1].Value).
+    AddMinutes([int]$clock.Groups[2].Value).AddSeconds([int]$clock.Groups[3].Value)
+  if ($timestamp -gt $ReferenceTime.AddMinutes(1)) { $timestamp = $timestamp.AddDays(-1) }
+  return [long]([DateTimeOffset]::new($timestamp)).ToUnixTimeMilliseconds()
+}
 function Wait-Log([int64]$Offset, [string]$Pattern, [int]$Seconds = $TimeoutSeconds) {
   $deadline = (Get-Date).AddSeconds($Seconds)
   while ((Get-Date) -lt $deadline) {
@@ -193,21 +220,48 @@ function Wait-BotOnline {
   throw "Tentacle bot did not join in time: $BotName"
 }
 
+function Assert-ProtectedViewers([string]$Stage) {
+  if ($protectedViewers.Count -eq 0) { return }
+  $expectedGameType = switch ($ProtectedViewerGameMode) {
+    'survival' { 0 }
+    'creative' { 1 }
+    'adventure' { 2 }
+    'spectator' { 3 }
+  }
+  foreach ($viewer in $protectedViewers) {
+    $modeReply = Invoke-LocalRcon "data get entity $viewer playerGameType"
+    $modeMatch = [Regex]::Match($modeReply, '(?i)entity data:\s*([0-3])\s*$')
+    if (-not $modeMatch.Success -or [int]$modeMatch.Groups[1].Value -ne $expectedGameType) {
+      $null = Invoke-LocalRcon "gamemode $ProtectedViewerGameMode $viewer"
+      $modeReply = Invoke-LocalRcon "data get entity $viewer playerGameType"
+      $modeMatch = [Regex]::Match($modeReply, '(?i)entity data:\s*([0-3])\s*$')
+    }
+    if (-not $modeMatch.Success -or [int]$modeMatch.Groups[1].Value -ne $expectedGameType) {
+      throw "Protected viewer '$viewer' is not in $ProtectedViewerGameMode at stage '$Stage': $modeReply"
+    }
+    Record "LIVE_VIEWER_PROTECTION_VERIFIED name=$viewer gamemode=$ProtectedViewerGameMode playerGameType=$expectedGameType stage=$Stage"
+  }
+}
+
 function Start-Bot([int]$CoreX, [int]$CoreY, [int]$CoreZ) {
   $node = (Get-Command node.exe -ErrorAction Stop).Source
   $stderr = Join-Path $botLogDirectory ($BotName + '.stderr.log')
   New-Item -ItemType Directory -Path $botControlDirectory -Force | Out-Null
-  Set-Content -LiteralPath $botControlFile -Value 'ACTIVE' -Encoding ASCII
-  $env:END_RIFT_BOT_PASSWORD = [Guid]::NewGuid().ToString('N')
-  $env:END_RIFT_BOT_SKIP_REGISTER = '0'
-  $env:END_RIFT_GUARDIAN_PROBE_NAMES = $BotName
-  $env:END_RIFT_ATTACK_INTERVAL_MS = '300'
+  Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
+  Set-Content -LiteralPath $botTargetFile -Value '[]' -Encoding ASCII
+  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+  $env:END_RIFT_BOT_SKIP_AUTH = '1'
+  $env:END_RIFT_TENTACLE_PROBE_NAMES = $BotName
+  $env:END_RIFT_TENTACLE_PROBE_TARGETS_FILE = $botTargetFile
+  $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
+  $env:END_RIFT_ATTACK_INTERVAL_MS = '1000'
+  $env:END_RIFT_TENTACLE_PROBE_MAX_ATTACKS = '8'
   $env:END_RIFT_TENTACLE_TRACE = '1'
   $botProcess = Start-Process -FilePath $node -WorkingDirectory $root -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $botStdout -RedirectStandardError $stderr `
     -ArgumentList @($botScript, $BotName, [string]($BotDurationSeconds * 1000),
       (Format-Coordinate ($CoreX + 0.5D)), (Format-Coordinate $CoreY),
-      (Format-Coordinate ($CoreZ + 0.5D)), '20', '300', $botControlDirectory)
+      (Format-Coordinate ($CoreZ + 0.5D)), '20', '1000', $botControlDirectory)
   return $botProcess
 }
 
@@ -221,19 +275,32 @@ function Read-TentacleJson {
 try {
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
-  # Use the real Current boss path here.  The disposable /cmend boss spawn
-  # harness intentionally does not own the Current tentacle controller, so it
-  # cannot prove the player-facing guardian mechanic.
-  $null = Invoke-LocalRcon 'cmend boss spawn official confirm'
-  $null = Invoke-LocalRcon 'cmend boss phase last_seal'
-  Start-Sleep -Milliseconds 500
-  $status = Invoke-LocalRcon 'cmend status'
-  $core = Get-Core $status
-  $spawnOffset = Log-Length
-  $temporaryOffset = $spawnOffset
+  if ($ProtectedViewerNames.Count -gt 0) {
+    $onlineReply = Invoke-LocalRcon 'list'
+    foreach ($viewer in $ProtectedViewerNames | Select-Object -Unique) {
+      if ($viewer -notmatch '^[A-Za-z0-9_]{1,16}$') {
+        throw "Invalid protected viewer name: $viewer"
+      }
+      if ($onlineReply -notmatch "(?<![A-Za-z0-9_])$([Regex]::Escape($viewer))(?![A-Za-z0-9_])") {
+        Record "LIVE_VIEWER_PROTECTION_SKIPPED name=$viewer reason=not_online"
+        continue
+      }
+      $protectReply = Invoke-LocalRcon "gamemode $ProtectedViewerGameMode $viewer"
+      if ($protectReply -match '(?i)(no player|not found|usage:|error)') {
+        throw "Could not protect connected viewer '$viewer': $protectReply"
+      }
+      $protectedViewers.Add($viewer)
+      Assert-ProtectedViewers 'before-boss'
+      Record "LIVE_VIEWER_PROTECTED name=$viewer gamemode=$ProtectedViewerGameMode verified=true"
+    }
+  }
+  # Register the disposable client as an in-arena survival participant before
+  # the official boss exists. The production participant scaling then keeps
+  # its permanent guardians, and no pre-probe hit can confuse the health base.
+  $preBossStatus = Invoke-LocalRcon 'cmend status'
+  $core = Get-Core $preBossStatus
   $botProcess = Start-Bot ([int]$core[0]) ([int]$core[1]) ([int]$core[2])
   Wait-BotOnline
-  Start-Sleep -Milliseconds 750
   $null = Invoke-LocalRcon ("gamemode survival $BotName")
   $null = Invoke-LocalRcon ("attribute $BotName minecraft:generic.max_health base set 1000")
   $maxHealthReply = Invoke-LocalRcon ("attribute $BotName minecraft:generic.max_health base get")
@@ -273,6 +340,29 @@ try {
   }
   Record "LIVE_TENTACLE_PROBE_POSITION_PASS x=$($positionMatch.Groups[1].Value) y=$($positionMatch.Groups[2].Value) z=$($positionMatch.Groups[3].Value)"
 
+  # Boss creation and the requested phase can spawn permanent tentacles before
+  # the first command returns. Start the log cursor before either transition.
+  $spawnOffset = Log-Length
+  $temporaryOffset = $spawnOffset
+  # Use the real Current boss path here. The disposable /cmend boss spawn
+  # harness intentionally does not own the Current tentacle controller.
+  $spawnReply = Invoke-LocalRcon 'cmend boss spawn official confirm'
+  if ($spawnReply -notmatch '(?i)Rift Guardian') {
+    throw "Official boss harness did not spawn: $spawnReply"
+  }
+  $phaseReply = Invoke-LocalRcon 'cmend boss phase last_seal'
+  if ($phaseReply -notmatch '(?i)LAST_SEAL') {
+    throw "Official boss harness did not enter LAST_SEAL: $phaseReply"
+  }
+  Assert-ProtectedViewers 'last-seal'
+  Start-Sleep -Milliseconds 500
+  $status = Invoke-LocalRcon 'cmend status'
+  if ($status -notmatch 'state=.{0,8}BOSS_ACTIVE' -or
+      $status -notmatch 'bossPhase=.{0,8}LAST_SEAL') {
+    throw "Official boss harness is not active in LAST_SEAL: $status"
+  }
+  $core = Get-Core $status
+
   $spawnTail = Wait-Log $spawnOffset 'RIFT_TENTACLE_SPAWN .*temporary=false' $TimeoutSeconds
   $shieldSpawnTail = Wait-Log $spawnOffset 'RIFT_GUARDIAN_SHIELD_SPAWN' $TimeoutSeconds
   Record 'LIVE_GUARDIAN_SHIELD_ORBIT_PASS carrier=RIFT_GUARDIAN_SHIELD_SPAWN server_authoritative=true'
@@ -284,6 +374,13 @@ try {
   if ([int]$snapshot.segmentCount -ne 6) {
     throw "Expected six articulated segments, got $($snapshot.segmentCount)."
   }
+  $probeHitboxes = @($snapshot.tentacles |
+    Where-Object { -not $_.temporary -and
+      -not [string]::IsNullOrWhiteSpace([string]$_.hitboxUuid) })
+  if ([int]$snapshot.permanentCount -lt 2 -or [int]$snapshot.temporaryCount -lt 1 -or
+      $probeHitboxes.Count -lt 2) {
+    throw "The stable permanent and active attacking tentacle hitboxes were not available to the targeted probe: $($snapshot | ConvertTo-Json -Compress -Depth 6)"
+  }
   foreach ($tentacle in @($snapshot.tentacles)) {
     if ([double]$tentacle.serverLogicalLength -lt 6.0D -or
         [double]$tentacle.hitboxHeight -lt 6.0D -or
@@ -292,6 +389,10 @@ try {
     }
   }
   Record "LIVE_TENTACLE_PROFILE_PASS count=$($snapshot.tentacleCount) permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) segments=6 length=6.25 hitbox=1.9x6.25 visual=END_RIFT_TENTACLE_V1"
+  $probeHitboxIds = @($probeHitboxes | ForEach-Object { [string]$_.hitboxUuid })
+  Set-Content -LiteralPath $botTargetFile -Value (ConvertTo-Json -InputObject $probeHitboxIds -Compress) -Encoding ASCII
+  Set-Content -LiteralPath $botControlFile -Value 'ACTIVE' -Encoding ASCII
+  Record "LIVE_TENTACLE_TARGETS_PASS permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) total=$($probeHitboxIds.Count) target=server-diagnostic-permanent-hitboxes temporary_excluded_for_stability=true max_attacks=8"
 
   $damagePattern = 'RIFT_TENTACLE_DAMAGE .*entity=([0-9a-f-]+).*health_before=([0-9.]+).*health_after=([0-9.]+)'
   $damageTail = Wait-Log $spawnOffset $damagePattern $TimeoutSeconds
@@ -329,9 +430,12 @@ try {
     ('PLAYER_JOIN ' + [Regex]::Escape($BotName) + ' uuid=([0-9a-f-]+)'))
   if (-not $playerJoinMatch.Success) { throw "Disposable bot UUID was not recorded: $botLog" }
   $playerUuid = $playerJoinMatch.Groups[1].Value
-  $throwPattern = 'RIFT_TENTACLE_THROW event=\S+ entity=([0-9a-f-]+) target=' +
-    [Regex]::Escape($playerUuid) +
+  $throwPattern = 'RIFT_TENTACLE_THROW event=\S+ entity=' +
+    [Regex]::Escape($damagedTentacleUuid) + ' target=' + [Regex]::Escape($playerUuid) +
     ' launch=(-?[0-9.]+),(-?[0-9.]+),(-?[0-9.]+) horizontal=([0-9.]+)'
+  $throwDamagePattern = 'RIFT_TENTACLE_THROW_DAMAGE event=\S+ entity=' +
+    [Regex]::Escape($damagedTentacleUuid) + ' target=' + [Regex]::Escape($playerUuid) +
+    ' base_damage=([0-9.]+) applied=([0-9.]+) health_before=([0-9.]+) health_after=([0-9.]+)'
   $throwTail = Wait-Log $temporaryOffset $throwPattern $TimeoutSeconds
   $velocityPattern = 'PLAYER_VELOCITY ' + [Regex]::Escape($BotName) +
     ' id=\d+ x=(-?[0-9.]+) y=(-?[0-9.]+) z=(-?[0-9.]+) horizontal=([0-9.]+) at_ms=([0-9]+)'
@@ -340,12 +444,14 @@ try {
   $throwMatch = $null
   $throwLine = ''
   $throwEntityUuid = ''
+  $throwDamageMatch = $null
   $velocityMatch = $null
   $hurtMatch = $null
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline -and -not $velocityMatch) {
     $serverThrowTail = Log-Tail $temporaryOffset
     $throwCandidates = [Regex]::Matches($serverThrowTail, $throwPattern)
+    $throwDamageCandidates = [Regex]::Matches($serverThrowTail, $throwDamagePattern)
     $botLog = Get-Content -LiteralPath $botStdout -Raw
     $candidateVelocities = [Regex]::Matches($botLog, $velocityPattern)
     $candidateHurts = [Regex]::Matches($botLog, $hurtPattern)
@@ -353,29 +459,40 @@ try {
       $candidateVelocityAtMs = [long]$candidateVelocity.Groups[5].Value
       if ([double]$candidateVelocity.Groups[4].Value -lt 0.85D) { continue }
       foreach ($candidateThrow in $throwCandidates) {
-        if ([double]$candidateThrow.Groups[5].Value -lt 0.85D -or
-            [Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$candidateThrow.Groups[2].Value) -gt 0.01D -or
-            [Math]::Abs([double]$candidateVelocity.Groups[2].Value - [double]$candidateThrow.Groups[3].Value) -gt 0.01D -or
-            [Math]::Abs([double]$candidateVelocity.Groups[3].Value - [double]$candidateThrow.Groups[4].Value) -gt 0.01D) { continue }
-        $lineStart = $serverThrowTail.LastIndexOf("`n", $candidateThrow.Index)
-        if ($lineStart -lt 0) { $lineStart = 0 } else { $lineStart++ }
-        $lineEnd = $serverThrowTail.IndexOf("`n", $candidateThrow.Index)
-        if ($lineEnd -lt 0) { $lineEnd = $serverThrowTail.Length }
-        $candidateThrowLine = $serverThrowTail.Substring($lineStart, $lineEnd - $lineStart).TrimEnd([char]13)
-        $candidateThrowClock = [Regex]::Match($candidateThrowLine, '\[(\d{2}):(\d{2}):(\d{2})\]')
-        if (-not $candidateThrowClock.Success) { continue }
+        if ($candidateThrow.Index -le $damageEvent.Index -or
+            [double]$candidateThrow.Groups[4].Value -lt 0.85D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[1].Value - [double]$candidateThrow.Groups[1].Value) -gt 0.01D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[2].Value - [double]$candidateThrow.Groups[2].Value) -gt 0.01D -or
+            [Math]::Abs([double]$candidateVelocity.Groups[3].Value - [double]$candidateThrow.Groups[3].Value) -gt 0.01D) { continue }
+        $candidateThrowLine = Get-LogLineAt $serverThrowTail $candidateThrow.Index
         $now = Get-Date
-        $candidateThrowTime = $now.Date.AddHours([int]$candidateThrowClock.Groups[1].Value).AddMinutes([int]$candidateThrowClock.Groups[2].Value).AddSeconds([int]$candidateThrowClock.Groups[3].Value)
-        if ($candidateThrowTime -gt $now.AddMinutes(1)) { $candidateThrowTime = $candidateThrowTime.AddDays(-1) }
-        $candidateThrowAtMs = ([DateTimeOffset]::new($candidateThrowTime)).ToUnixTimeMilliseconds()
+        $candidateThrowAtMs = Get-LogLineEpochMilliseconds $candidateThrowLine $now
+        if ($null -eq $candidateThrowAtMs) { continue }
         if ([Math]::Abs($candidateVelocityAtMs - $candidateThrowAtMs) -gt 2500) { continue }
+        $candidateThrowDamageMatch = $null
+        foreach ($candidateThrowDamage in $throwDamageCandidates) {
+          if ($candidateThrowDamage.Index -le $damageEvent.Index -or
+              $candidateThrowDamage.Index -ge $candidateThrow.Index -or
+              [Math]::Abs([double]$candidateThrowDamage.Groups[2].Value - 10.0D) -gt 0.05D) { continue }
+          $candidateThrowDamageLine = Get-LogLineAt $serverThrowTail $candidateThrowDamage.Index
+          $candidateThrowDamageAtMs = Get-LogLineEpochMilliseconds $candidateThrowDamageLine $now
+          if ($null -eq $candidateThrowDamageAtMs -or
+              [Math]::Abs([long]$candidateThrowDamageAtMs - [long]$candidateThrowAtMs) -gt 2500) { continue }
+          if (-not $candidateThrowDamageMatch -or
+              $candidateThrowDamage.Index -gt $candidateThrowDamageMatch.Index) {
+            $candidateThrowDamageMatch = $candidateThrowDamage
+          }
+        }
+        if (-not $candidateThrowDamageMatch) { continue }
         foreach ($candidateHurt in $candidateHurts) {
           $candidateHurtAtMs = [long]$candidateHurt.Groups[3].Value
-          if ([double]$candidateHurt.Groups[2].Value -ge [double]$candidateHurt.Groups[1].Value -or
+          $clientDamage = [double]$candidateHurt.Groups[1].Value - [double]$candidateHurt.Groups[2].Value
+          if ([Math]::Abs($clientDamage - [double]$candidateThrowDamageMatch.Groups[2].Value) -gt 0.05D -or
               [Math]::Abs($candidateHurtAtMs - $candidateVelocityAtMs) -gt 500) { continue }
           $throwMatch = $candidateThrow
           $throwLine = $candidateThrowLine
-          $throwEntityUuid = $candidateThrow.Groups[1].Value
+          $throwEntityUuid = $damagedTentacleUuid
+          $throwDamageMatch = $candidateThrowDamageMatch
           $velocityMatch = $candidateVelocity
           $hurtMatch = $candidateHurt
           break
@@ -390,33 +507,31 @@ try {
     throw "No matching client launch vector plus nearby unmasked HP delta for any server throw to $playerUuid`n$botLog"
   }
 
-  $temporarySpawnPattern = 'RIFT_TENTACLE_SPAWN .*entity=' +
-    [Regex]::Escape($throwEntityUuid) + '.*temporary=true.*target=' + [Regex]::Escape($playerUuid)
-  $temporarySpawnMatch = [Regex]::Match($serverThrowTail, $temporarySpawnPattern)
-  if (-not $temporarySpawnMatch.Success -or $temporarySpawnMatch.Index -ge $throwMatch.Index) {
-    throw "Throwing tentacle $throwEntityUuid was not spawned for $playerUuid during this probe."
+  $throwStatePattern = 'RIFT_TENTACLE_STATE .*entity=' +
+    [Regex]::Escape($damagedTentacleUuid) + ' state=THROW\b'
+  $throwStateMatch = $null
+  foreach ($candidateThrowState in [Regex]::Matches($serverThrowTail, $throwStatePattern)) {
+    if ($candidateThrowState.Index -gt $damageEvent.Index -and
+        $candidateThrowState.Index -lt $throwMatch.Index) {
+      $throwStateMatch = $candidateThrowState
+    }
   }
-  $temporaryStatePattern = 'RIFT_TENTACLE_STATE .*entity=' +
-    [Regex]::Escape($throwEntityUuid) + ' state=(TELEGRAPH_GRAB|GRAB_SUCCESS|HOLD|THROW)\b'
-  $stateMatch = [Regex]::Match($serverThrowTail, $temporaryStatePattern)
-  if (-not $stateMatch.Success -or $stateMatch.Index -le $temporarySpawnMatch.Index -or
-      $stateMatch.Index -ge $throwMatch.Index) {
-    throw "Throwing tentacle $throwEntityUuid did not enter a grab state between spawn and throw."
+  if (-not $throwStateMatch -or -not $throwStateMatch.Success -or
+      $throwStateMatch.Index -le $damageEvent.Index -or
+      $throwStateMatch.Index -ge $throwMatch.Index) {
+    throw "Damaged tentacle $damagedTentacleUuid did not reach THROW after the hit and before its throw event."
   }
 
-  $throwDamagePattern = 'RIFT_TENTACLE_THROW_DAMAGE event=\S+ entity=' +
-    [Regex]::Escape($throwEntityUuid) + ' target=' + [Regex]::Escape($playerUuid) +
-    ' base_damage=([0-9.]+) applied=([0-9.]+)'
-  $throwDamageTail = Wait-Log $temporaryOffset $throwDamagePattern $TimeoutSeconds
-  $throwDamageMatch = [Regex]::Match($throwDamageTail, $throwDamagePattern)
-  if (-not $throwDamageMatch.Success) { throw "Throw release damage was not recorded for $playerUuid`: $throwDamageTail" }
+  if (-not $throwDamageMatch -or -not $throwDamageMatch.Success) {
+    throw "No accepted throw damage transaction matched the same entity, player, and timestamp for $playerUuid."
+  }
   if ([Math]::Abs([double]$throwDamageMatch.Groups[1].Value - 10.0D) -gt 0.01D -or
       [Math]::Abs([double]$throwDamageMatch.Groups[2].Value - 10.0D) -gt 0.05D) {
     throw "Expected exact five-heart release damage, got base=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value)."
   }
 
-  Record "LIVE_TENTACLE_TEMPORARY_SPAWN_PASS entity=$throwEntityUuid target=$playerUuid fresh_probe=true"
-  Record "LIVE_TENTACLE_THROW_PASS horizontal=$($throwMatch.Groups[5].Value) state_trace=true server_authoritative=true target=$playerUuid"
+  Record "LIVE_TENTACLE_HIT_FOLLOWUP_THROW_PASS entity=$throwEntityUuid target=$playerUuid same_entity=true fresh_probe=true"
+  Record "LIVE_TENTACLE_THROW_PASS horizontal=$($throwMatch.Groups[4].Value) state_trace=true server_authoritative=true target=$playerUuid"
   Record "LIVE_TENTACLE_PLAYER_DAMAGE_PASS target=$playerUuid before=$($hurtMatch.Groups[1].Value) after=$($hurtMatch.Groups[2].Value) base_damage=$($throwDamageMatch.Groups[1].Value) applied=$($throwDamageMatch.Groups[2].Value) effects=cleared server_authoritative=true correlated_to_throw=true"
   Record "LIVE_TENTACLE_PLAYER_VELOCITY_PASS x=$($velocityMatch.Groups[1].Value) y=$($velocityMatch.Groups[2].Value) z=$($velocityMatch.Groups[3].Value) horizontal=$($velocityMatch.Groups[4].Value) at_ms=$($velocityMatch.Groups[5].Value) client_entity_velocity=true server_vector_match=true"
   # The same captured server log must also contain the following two player
@@ -427,6 +542,12 @@ try {
   if ($spawnTail -match 'RIFT_TENTACLE_SPAWN_REFUSED') {
     Record 'LIVE_TENTACLE_SAFE_RETRY_OBSERVED initial_refusal=true eventual_spawn=true'
   }
+  if ($VisualHoldSeconds -gt 0) {
+    Record "LIVE_VISUAL_HOLD_START seconds=$VisualHoldSeconds"
+    Start-Sleep -Seconds $VisualHoldSeconds
+    Record "LIVE_VISUAL_HOLD_END seconds=$VisualHoldSeconds"
+  }
+  Record 'LIVE_TENTACLE_PASS=VERIFIED'
   $success = $true
 }
 finally {
@@ -435,6 +556,17 @@ finally {
     try { $botProcess.WaitForExit(5000) } catch { }
   }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
+  foreach ($viewer in $protectedViewers) {
+    try {
+      $restoreReply = Invoke-LocalRcon "gamemode $RestoreViewerGameMode $viewer"
+      if ($restoreReply -match '(?i)(no player|not found|usage:|error)') {
+        throw "Could not restore viewer '$viewer': $restoreReply"
+      }
+      Record "LIVE_VIEWER_RESTORED name=$viewer gamemode=$RestoreViewerGameMode"
+    } catch {
+      try { Record "LIVE_VIEWER_RESTORE_FAILED name=$viewer error=$($_.Exception.Message)" } catch { }
+    }
+  }
   if (-not $success) {
     try { Record 'LIVE_TENTACLE_PASS=NOT_VERIFIED' } catch { }
   }

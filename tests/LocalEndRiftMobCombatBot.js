@@ -58,6 +58,18 @@ const guardianProbeNames = new Set(
     .filter(Boolean),
 )
 const guardianProbeEnabled = guardianProbeNames.has(username)
+const tentacleProbeNames = new Set(
+  String(process.env.END_RIFT_TENTACLE_PROBE_NAMES || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean),
+)
+const tentacleProbeEnabled = tentacleProbeNames.has(username)
+const tentacleProbeTargetFile = process.env.END_RIFT_TENTACLE_PROBE_TARGETS_FILE || ''
+const configuredTentacleProbeMaxAttacks = Number(process.env.END_RIFT_TENTACLE_PROBE_MAX_ATTACKS || 4)
+const tentacleProbeMaxAttacks = Number.isFinite(configuredTentacleProbeMaxAttacks)
+  ? Math.max(1, Math.min(8, Math.floor(configuredTentacleProbeMaxAttacks)))
+  : 4
 const reflectTargetDistance = 6.5
 // The server validates survival interaction reach against the target hitbox,
 // not the target's centre point.  Keep a small margin so a moving elite is
@@ -106,6 +118,7 @@ let lastNavigationProgressAt = 0
 let navigationRecoveryUntil = 0
 let navigationRecoveryDirection = 1
 let lastNavigationRecoveryLogAt = 0
+let tentacleProbeAttackAttempts = 0
 let previousHealth = null
 function logPlayerHurt(before, after) {
   const traceTime = tentacleTraceEnabled ? ` at_ms=${Date.now()}` : ''
@@ -269,8 +282,39 @@ function isGuardianHitbox(entity) {
     || name === 'giant' || displayName === 'giant'
 }
 
+function isTentacleHealthCarrier(entity) {
+  const name = String(entity?.name || '').toLowerCase()
+  const displayName = String(entity?.displayName || '').toLowerCase()
+  return name === 'giant' || displayName === 'giant'
+}
+
+function readTentacleProbeTargetIds() {
+  if (!tentacleProbeTargetFile) return new Set()
+  try {
+    const values = JSON.parse(fs.readFileSync(tentacleProbeTargetFile, 'utf8'))
+    if (!Array.isArray(values)) return new Set()
+    return new Set(values
+      .filter(value => typeof value === 'string' && value.trim())
+      .map(value => value.trim().toLowerCase()))
+  } catch (_) {
+    return new Set()
+  }
+}
+
 function eventMobs() {
   const entities = Object.values(bot.entities)
+  if (tentacleProbeEnabled) {
+    // A boss Interaction proxy and temporary grab carrier can sit closer to
+    // the probe than a permanent guardian. Only server-diagnosed target UUIDs
+    // may be attacked in this dedicated combat check.
+    const targetIds = readTentacleProbeTargetIds()
+    if (targetIds.size === 0) return []
+    return entities
+      .filter(isTentacleHealthCarrier)
+      .filter(entity => targetIds.has(String(entity.uuid || '').toLowerCase()))
+      .filter(isConfiguredArenaMob)
+      .filter(entity => bot.entity && distance(entity.position, bot.entity.position) <= 32)
+  }
   if (guardianProbeEnabled) {
     const guardians = entities
       .filter(isGuardianHitbox)
@@ -633,6 +677,7 @@ function sampleMobs() {
 function attackNearest() {
   if (!bot.entity) return
   if (meleeActionInFlight) return
+  if (tentacleProbeEnabled && tentacleProbeAttackAttempts >= tentacleProbeMaxAttacks) return
   const target = eventMobs()
     .filter(sameWave7Chamber)
     .filter(entity => distance(entity.position, bot.entity.position) <= meleeAttackDistance)
@@ -702,7 +747,11 @@ function attackNearest() {
       })
       bot._client.write('arm_animation', { hand: 0 })
       attackCount += 1
-      console.log(`PLAYER_ATTACK ${username} count=${attackCount} target=${finalTarget.id} uuid=${finalTarget.uuid || 'unknown'} type=${finalTarget.name} distance=${distance(finalTarget.position, bot.entity.position).toFixed(2)}`)
+      if (tentacleProbeEnabled) tentacleProbeAttackAttempts += 1
+      const probeAttempt = tentacleProbeEnabled
+        ? ` probe_attempt=${tentacleProbeAttackAttempts}/${tentacleProbeMaxAttacks}`
+        : ''
+      console.log(`PLAYER_ATTACK ${username} count=${attackCount}${probeAttempt} target=${finalTarget.id} uuid=${finalTarget.uuid || 'unknown'} type=${finalTarget.name} distance=${distance(finalTarget.position, bot.entity.position).toFixed(2)}`)
     })
     .catch(error => console.error(`ATTACK_ERROR ${username} ${error.stack || error}`))
     .finally(() => { meleeActionInFlight = false })

@@ -7974,17 +7974,46 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (display == null) {
             return;
         }
+        boolean localDiagnostics = config != null
+                && "local".equalsIgnoreCase(config.environment());
+        Player attacker = event.getDamager() instanceof Player player ? player : null;
+        boolean attackerActive = attacker != null && isActiveBossParticipant(attacker);
+        boolean damageWindowOpen = tentacleDamageWindowOpen();
+        TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
+        boolean phaseAllowed = state != null && (state.temporary()
+                ? bossPhase == BossPhase.RAGE || bossPhase == BossPhase.LAST_SEAL
+                : bossPhase == BossPhase.LAST_SEAL);
+        if (localDiagnostics) {
+            getLogger().info("RIFT_TENTACLE_DAMAGE_ATTEMPT entity=" + display.getUniqueId()
+                    + " hitbox=" + event.getEntity().getUniqueId()
+                    + " attacker=" + (attacker == null ? "non-player" : attacker.getUniqueId())
+                    + " cancelled_before=" + event.isCancelled()
+                    + " attacker_active=" + attackerActive
+                    + " window_open=" + damageWindowOpen
+                    + " tentacle_state=" + (state == null ? "none" : state.state().name())
+                    + " temporary=" + (state != null && state.temporary())
+                    + " phase_allowed=" + phaseAllowed
+                    + " boss_phase=" + bossPhase + " event_phase=" + phase);
+        }
         // The health carrier is event-owned even when the attacker is invalid.
         // Cancel first so vanilla damage cannot bypass the slot health ledger.
         event.setCancelled(true);
-        TentacleController.VisualState state = tentacleController.state(display.getUniqueId());
-        if (!(event.getDamager() instanceof Player attacker)
-                || !isActiveBossParticipant(attacker)
-                || !tentacleDamageWindowOpen()
-                || state == null
-                || (state.temporary()
-                ? bossPhase != BossPhase.RAGE && bossPhase != BossPhase.LAST_SEAL
-                : bossPhase != BossPhase.LAST_SEAL)) {
+        String rejection = attacker == null ? "damager-not-player"
+                : !attackerActive ? "attacker-not-active-participant"
+                : !damageWindowOpen ? "damage-window-closed"
+                : state == null ? "tentacle-state-missing"
+                : !phaseAllowed ? "boss-phase-not-allowed" : null;
+        if (rejection != null) {
+            if (localDiagnostics) {
+                getLogger().info("RIFT_TENTACLE_DAMAGE_IGNORED entity=" + display.getUniqueId()
+                        + " hitbox=" + event.getEntity().getUniqueId()
+                        + " attacker_active=" + attackerActive
+                        + " window_open=" + damageWindowOpen
+                        + " tentacle_state=" + (state == null ? "none" : state.state().name())
+                        + " phase_allowed=" + phaseAllowed
+                        + " boss_phase=" + bossPhase + " event_phase=" + phase
+                        + " reason=" + rejection);
+            }
             return;
         }
         applyTentacleGuardianDamage(display, Math.max(0.0D,
@@ -11777,6 +11806,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 mob.getPathfinder().stopPathfinding();
                 mob.setAI(false);
                 mob.setAware(false);
+                return;
+            }
+            if (EVENT_KIND_BOSS.equals(kind) && isOfficialBoss(mob)
+                    && BossFinalSealAnchorPolicy.shouldPin(bossPhase)) {
+                // LAST_SEAL movement is owned by the event controller. The
+                // combat-AI invariant must not re-enable vanilla Enderman AI
+                // after the phase controller pins the boss to the core.
+                mob.setTarget(null);
+                mob.getPathfinder().stopPathfinding();
+                mob.setAI(false);
+                mob.setAware(false);
+                mob.setVelocity(new Vector());
                 return;
             }
             if (EVENT_KIND_RITUAL_CASTER.equals(kind)) {
@@ -26710,6 +26751,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     : TentacleThrowPolicy.launchTowardArenaEdge(arenaCenter.getX(), arenaCenter.getZ(),
                             display.getLocation().getX(), display.getLocation().getZ());
         }
+        TentacleThrowPolicy.Launch requestedLaunch = launch;
+        launch = safeTentacleThrowLaunch(display, target, requestedLaunch);
+        if (launch == null) {
+            getLogger().warning("RIFT_TENTACLE_THROW_REJECTED event=" + eventId
+                    + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
+                    + " reason=unsafe-landing launch=" + String.format(Locale.ROOT,
+                    "%.3f,%.3f,%.3f", requestedLaunch.x(), requestedLaunch.y(), requestedLaunch.z()));
+            target.setVelocity(new Vector(0.0D, Math.min(0.40D, requestedLaunch.y()), 0.0D));
+            target.setFallDistance(0.0F);
+            return;
+        }
         boolean localTestBossShowroom = config != null
                 && "local".equalsIgnoreCase(config.environment())
                 && localTextureShowcase && testCombatAiMode && isTestBoss(liveBoss());
@@ -26730,17 +26782,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " applied=" + String.format(Locale.ROOT, "%.3f", healthBefore - healthAfter)
                     + " health_before=" + String.format(Locale.ROOT, "%.3f", healthBefore)
                     + " health_after=" + String.format(Locale.ROOT, "%.3f", healthAfter));
-        }
-        TentacleThrowPolicy.Launch requestedLaunch = launch;
-        launch = safeTentacleThrowLaunch(display, target, requestedLaunch);
-        if (launch == null) {
-            getLogger().warning("RIFT_TENTACLE_THROW_REJECTED event=" + eventId
-                    + " entity=" + display.getUniqueId() + " target=" + target.getUniqueId()
-                    + " reason=unsafe-landing launch=" + String.format(Locale.ROOT,
-                    "%.3f,%.3f,%.3f", requestedLaunch.x(), requestedLaunch.y(), requestedLaunch.z()));
-            target.setVelocity(new Vector(0.0D, Math.min(0.40D, requestedLaunch.y()), 0.0D));
-            target.setFallDistance(0.0F);
-            return;
         }
         target.setVelocity(new Vector(launch.x(), launch.y(), launch.z()));
         target.setFallDistance(0.0F);

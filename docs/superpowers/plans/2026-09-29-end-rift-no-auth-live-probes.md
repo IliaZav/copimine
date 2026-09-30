@@ -87,6 +87,8 @@
 - [x] Parent visible skeleton, Enderman caster, and spider role details to parts traversed by their vanilla renderers, preserving their authored positions.
 - [x] Split pytest suites into separately checked gate steps so a later successful process cannot hide an earlier nonzero exit.
 - [x] Run the complete local gate and client build/tests, inspect the scoped diff, commit and push the fixes to `codex/end-rift-event` (`412adb30f36e7cd9f3e5603eaa9b40ba6496dc55`; remote ref verified equal).
-- [ ] Capture and review in-game screenshots for the requested mobs against the supplied archives; the current native desktop inventory reports no Minecraft app, so this remains an external visual gate.
+- [x] Capture and review in-game Minecraft F2 screenshots for the requested mobs against the supplied archives (`artifacts/end-rift-native-visual/20260930-user-authorized-reconnect-f2/`); verified archive/source/runtime/build/installed-atlas SHA-256 equality and pushed the evidence in `52faec2f`.
 
 **Review status:** The fresh whole-branch reviewer stopped because its workspace credits were exhausted. Its confirmed model-rendering findings plus the same issue found during manual spider-model inspection were fixed. The scoped diff passed manual review; this does not count as a completed whole-branch review.
+
+**Visual gate update (2026-09-30):** The Minecraft client reconnected to the isolated `127.0.0.1:25566` server with AuthMe absent from that local server's active plugin list. Five original F2 PNGs were inspected at 1920x1080; all manifest byte counts and SHA-256 values matched. Enderman, Skeleton, and Spider atlases matched the supplied archive byte-for-byte. Evidence commit `52faec2f` is present on `origin/codex/end-rift-event`.

@@ -31,12 +31,43 @@ dependencies {
 
     testImplementation platform("org.junit:junit-bom:5.11.4")
     testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+def kaguneImporterScript = file("tools/import_kagune_model.py")
+def suppliedKaguneModel = file("src/main/asset-source/end-rift-tentacle/kagune.bbmodel")
+tasks.register("importKaguneModel", Exec) {
+    group = "build setup"
+    description = "Imports the supplied Kagune mesh, UVs, clips, and original texture."
+    inputs.files(suppliedKaguneModel, kaguneImporterScript)
+    outputs.files(
+            file("src/main/resources/assets/copimineclient/geometry/end_rift_tentacle.json"),
+            file("src/main/resources/assets/copimineclient/textures/entity/end_rift_tentacle_hd.png"),
+            file("../resourcepacks/src/assets/copimine/textures/item/end_event_rift_tentacle_hd.png"),
+            file("../resourcepacks/src/assets/copimine/models/item/end_event_rift_tentacle.json"))
+    commandLine(System.getenv("PYTHON") ?: "python", kaguneImporterScript.absolutePath)
 }
 
 processResources {
     inputs.property "version", project.version
     filesMatching("fabric.mod.json") {
         expand "version": project.version
+    }
+    // Git checkouts may expose ordinary text resources with different line
+    // endings. The supplied Chameleon guardian JSON, however, is an exact
+    // authored asset: rewriting its line endings changes the animation and
+    // geometry bytes embedded in the client JAR. Leave that source package
+    // byte-for-byte untouched and normalize only unrelated JSON resources.
+    doLast {
+        fileTree(destinationDir).matching {
+            include "**/*.json"
+            exclude "assets/copimineclient/models/entity/end_rift_guardian/**"
+        }.files.each { resource ->
+            def normalized = resource.getText("UTF-8")
+                    .replace("\r\n", "\n")
+                    .replace("\r", "\n")
+            resource.setText(normalized, "UTF-8")
+        }
     }
 }
 
@@ -91,6 +122,7 @@ tasks.register("validateShaderpacks") {
 
 tasks.named("processResources") {
     dependsOn(tasks.named("validateShaderpacks"))
+    dependsOn(tasks.named("importKaguneModel"))
 }
 
 tasks.named("check") {
@@ -110,4 +142,14 @@ java {
     withSourcesJar()
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+}
+
+tasks.named("sourcesJar") {
+    dependsOn(tasks.named("importKaguneModel"))
+}
+
+// Keep the local visual verification client bounded so it can run alongside
+// the isolated Paper/PostgreSQL harness on a developer workstation.
+tasks.named("runClient").configure {
+    jvmArgs "-Xms512m", "-Xmx3G", "-XX:MaxMetaspaceSize=512m"
 }

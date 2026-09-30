@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-09-30T10:06:36.0389051+03:00",
+  "instructions": [
+    "Open every PNG with image-capable review, not only as a filename.",
+    "Change each check to PASS, FAIL, or NOT_VERIFIED and explain every FAIL.",
+    "A contact sheet is useful for overview but does not replace opening suspicious full-resolution images.",
+    "Do not change verdict to PASS while any required check is FAIL, NOT_REVIEWED, or NOT_VERIFIED."
+  ],
+  "images": [
+    {
+      "file": "elite-enderman.png",
+      "sha256": "4d62e77f6c80d3bbd9fda678176ca72ec97e738aba0a4c9955276857f53b0c56",
+      "checks": {
+        "capture_not_blank": "PASS",
+        "expected_scene_present": "PASS",
+        "no_floating_geometry": "NOT_VERIFIED",
+        "no_vanilla_model_leak": "NOT_VERIFIED",
+        "scale_plausible": "NOT_VERIFIED",
+        "texture_not_missing": "PASS"
+      },
+      "verdict": "NOT_VERIFIED",
+      "notes": "Original F2 shows the mapped elite texture at the checked camera position; the per-target texture mapping and exact source hashes are verified separately. Crosshair tooltip and client minimap remain visible; complete silhouette and scale review is not verified. Exact archive-to-source-to-runtime SHA-256 chain: see texture-provenance.json."
+    },
+    {
+      "file": "elite-skeleton.png",
+      "sha256": "013a2d15fa0bd9f2fa5889cfc556161940c45f8e9267977f12e7b441ba1ca978",
+      "checks": {
+        "capture_not_blank": "PASS",
+        "expected_scene_present": "PASS",
+        "no_floating_geometry": "NOT_VERIFIED",
+        "no_vanilla_model_leak": "NOT_VERIFIED",
+        "scale_plausible": "NOT_VERIFIED",
+        "texture_not_missing": "PASS"
+      },
+      "verdict": "NOT_VERIFIED",
+      "notes": "Original F2 shows the mapped elite texture at the checked camera position; the per-target texture mapping and exact source hashes are verified separately. Crosshair tooltip and client minimap remain visible; complete silhouette and scale review is not verified. Exact archive-to-source-to-runtime SHA-256 chain: see texture-provenance.json."
+    },
+    {
+      "file": "elite-spider.png",
+      "sha256": "6c65e82ce8caa25690dcdcb81d5a21a8feb8055e861b2082008be5e7ff5fda1e",
+      "checks": {
+        "capture_not_blank": "PASS",
+        "expected_scene_present": "PASS",
+        "no_floating_geometry": "NOT_VERIFIED",
+        "no_vanilla_model_leak": "NOT_VERIFIED",
+        "scale_plausible": "NOT_VERIFIED",
+        "texture_not_missing": "PASS"
+      },
+      "verdict": "NOT_VERIFIED",
+      "notes": "Original F2 shows the mapped elite texture at the checked camera position; the per-target texture mapping and exact source hashes are verified separately. Crosshair tooltip and client minimap remain visible; complete silhouette and scale review is not verified. Exact archive-to-source-to-runtime SHA-256 chain: see texture-provenance.json."
+    },
+    {
+      "file": "showroom-overview.png",
+      "sha256": "d4d2c5190f3514848ba8d208bb185812f068f331f44a14fc8fe34c135458ee3d",
+      "checks": {
+        "capture_not_blank": "PASS",
+        "expected_scene_present": "PASS",
+        "no_floating_geometry": "NOT_VERIFIED",
+        "no_vanilla_model_leak": "NOT_VERIFIED",
+        "scale_plausible": "NOT_VERIFIED",
+        "texture_not_missing": "PASS"
+      },
+      "verdict": "NOT_VERIFIED",
+      "notes": "Original F2 shows the complete static local showroom and both ready tentacles. Client minimap and event overlays remain visible; full model silhouette and scale review is not verified."
+    },
+    {
+      "file": "tentacles-ready.png",
+      "sha256": "78d71159862878293afc12b2ab2094fe31fa45115c688d7d2b8fb50adca43263",
+      "checks": {
+        "capture_not_blank": "PASS",
+        "expected_scene_present": "PASS",
+        "no_floating_geometry": "NOT_VERIFIED",
+        "no_vanilla_model_leak": "NOT_VERIFIED",
+        "scale_plausible": "NOT_VERIFIED",
+        "tentacle_animation_visible": "NOT_VERIFIED",
+        "tentacle_segments_connected": "PASS",
+        "tentacles_correct_scale": "NOT_VERIFIED",
+        "tentacles_visible": "PASS",
+        "texture_not_missing": "PASS"
+      },
+      "verdict": "NOT_VERIFIED",
+      "notes": "Original F2 shows both ready tentacles in the local static showroom. This frame does not verify their attack, hurt, or death animation. Client minimap and event overlays remain visible."
+    }
+  ],
+  "overall": "NOT_VERIFIED"
+}

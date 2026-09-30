@@ -8,7 +8,8 @@ $expectedJars = @(
   'CopiMineUltimateAdminPlus.jar',
   'CopiMineArtifacts.jar',
   'CopiMineNarcotics.jar',
-  'CopiMineWorldCore.jar'
+  'CopiMineWorldCore.jar',
+  'CopiMineEndEvent.jar'
 )
 $pluginDir = Join-Path $root 'minecraft\server\plugins'
 foreach ($jar in $expectedJars) {
@@ -29,6 +30,7 @@ $sourceFiles = @(
   'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java',
   'copimine-narcotics\src\me\copimine\narcotics\CopiMineNarcotics.java',
   'copimine-world-core\src\me\copimine\worldcore\CopiMineWorldCore.java',
+  'copimine-end-event\src\me\copimine\endevent\CopiMineEndEvent.java',
   'minecraft\server\plugins\AuthEffects\src\main\java\me\serverrp\autheffects\AuthEffectsPlugin.java'
 )
 foreach ($rel in $sourceFiles) {

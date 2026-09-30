@@ -86,7 +86,8 @@ $allowedCommands = @(
   'cmclient',
   'cmnarcotics',
   'setprice',
-  'cmcredit'
+  'cmcredit',
+  'cmend'
 )
 
 $forbiddenCommands = @(

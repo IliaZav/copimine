@@ -25,6 +25,7 @@ $expectedCopiMineJars = @(
   'CopiMineArtifacts.jar',
   'CopiMineEconomyCore.jar',
   'CopiMineElectionCore.jar',
+  'CopiMineEndEvent.jar',
   'CopiMineNarcotics.jar',
   'CopiMineUltimateAdminPlus.jar',
   'CopiMineWorldCore.jar'

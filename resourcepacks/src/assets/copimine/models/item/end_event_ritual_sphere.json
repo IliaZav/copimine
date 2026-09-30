@@ -1,0 +1,51 @@
+{
+  "parent": "minecraft:item/generated",
+  "ambientocclusion": false,
+  "textures": {
+    "core": "copimine:item/rift_core_shard",
+    "particle": "copimine:item/rift_core_shard"
+  },
+  "elements": [
+    {
+      "from": [5, 1, 5],
+      "to": [11, 15, 11],
+      "shade": false,
+      "faces": {
+        "down": {"texture": "#core"},
+        "up": {"texture": "#core"},
+        "north": {"texture": "#core"},
+        "south": {"texture": "#core"},
+        "west": {"texture": "#core"},
+        "east": {"texture": "#core"}
+      }
+    },
+    {
+      "from": [3, 4, 3],
+      "to": [13, 12, 13],
+      "rotation": {"origin": [8, 8, 8], "axis": "y", "angle": 22.5, "rescale": true},
+      "shade": false,
+      "faces": {
+        "down": {"texture": "#core"},
+        "up": {"texture": "#core"},
+        "north": {"texture": "#core"},
+        "south": {"texture": "#core"},
+        "west": {"texture": "#core"},
+        "east": {"texture": "#core"}
+      }
+    },
+    {
+      "from": [4, 3, 4],
+      "to": [12, 13, 12],
+      "rotation": {"origin": [8, 8, 8], "axis": "x", "angle": -22.5, "rescale": true},
+      "shade": false,
+      "faces": {
+        "down": {"texture": "#core"},
+        "up": {"texture": "#core"},
+        "north": {"texture": "#core"},
+        "south": {"texture": "#core"},
+        "west": {"texture": "#core"},
+        "east": {"texture": "#core"}
+      }
+    }
+  ]
+}

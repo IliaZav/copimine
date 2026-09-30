@@ -31,7 +31,11 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.util.Vector;
+
+import me.copimine.worldcore.api.WorldAccessResult;
+import me.copimine.worldcore.api.WorldAccessService;
 
 import java.util.ArrayList;
 import java.io.File;
@@ -70,12 +74,15 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
     private final Set<UUID> redirectInFlight = ConcurrentHashMap.newKeySet();
     private final Set<UUID> evacuationQueued = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<EvacuationRequest> evacuationQueue = new ConcurrentLinkedQueue<>();
+    private WorldAccessService worldAccessService;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         reloadConfig();
         reloadLocalConfig();
+        worldAccessService = new WorldAccessServiceImpl();
+        getServer().getServicesManager().register(WorldAccessService.class, worldAccessService, this, ServicePriority.Normal);
         savedBordersFile = new File(getDataFolder(), "border-snapshots.yml");
         loadSavedBorders();
         PluginCommand command = getCommand("cmworld");
@@ -90,6 +97,8 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
 
     @Override
     public void onDisable() {
+        getServer().getServicesManager().unregister(WorldAccessService.class, this);
+        worldAccessService = null;
         restoreSavedBorders();
         warnedOutside.clear();
         blockedWorldWarnings.clear();
@@ -255,8 +264,13 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
             return true;
         }
         if ("open".equalsIgnoreCase(args[1])) {
-            OperationResult result = setWorldState(isNether, true);
-            sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            if (!isNether) {
+                WorldAccessResult result = worldAccessService.setEndEnabled(true, sender.getName(), "cmworld:end:open");
+                sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            } else {
+                OperationResult result = setWorldState(true, true);
+                sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            }
             return true;
         }
         if ("close".equalsIgnoreCase(args[1])) {
@@ -265,8 +279,13 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
                 sender.sendMessage(color("&eВ мире есть игроки. Повтори: &f/cmworld " + args[0] + " close confirm"));
                 return true;
             }
-            OperationResult result = setWorldState(isNether, false);
-            sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            if (!isNether) {
+                WorldAccessResult result = worldAccessService.setEndEnabled(false, sender.getName(), "cmworld:end:close");
+                sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            } else {
+                OperationResult result = setWorldState(true, false);
+                sender.sendMessage(color((result.success() ? "&a" : "&c") + result.message()));
+            }
             return true;
         }
         sendHelp(sender);
@@ -288,6 +307,33 @@ public final class CopiMineWorldCore extends JavaPlugin implements Listener, Com
         } catch (Exception error) {
             getLogger().log(java.util.logging.Level.WARNING, "WorldCore failed to change world state", error);
             return new OperationResult(false, "Не удалось изменить состояние мира.");
+        }
+    }
+
+    private final class WorldAccessServiceImpl implements WorldAccessService {
+        @Override
+        public WorldAccessResult setEndEnabled(boolean enabled, String actor, String idempotencyKey) {
+            if (idempotencyKey == null || idempotencyKey.isBlank()) {
+                return new WorldAccessResult(false, false, "IDEMPOTENCY_KEY_REQUIRED", "Не указан ключ операции.");
+            }
+            if (endAccess != null && endAccess.enabled() == enabled) {
+                return new WorldAccessResult(true, false, enabled ? "ALREADY_OPEN" : "ALREADY_CLOSED",
+                        "Энд уже " + (enabled ? "открыт." : "закрыт."));
+            }
+            OperationResult result = setWorldState(false, enabled);
+            return new WorldAccessResult(result.success(), result.success(),
+                    result.success() ? (enabled ? "OPENED" : "CLOSED") : "FAILED",
+                    result.message());
+        }
+
+        @Override
+        public boolean isEndEnabled() {
+            return endAccess != null && endAccess.enabled();
+        }
+
+        @Override
+        public boolean isEndWorld(World world) {
+            return matchesAccessWorld(endAccess, world);
         }
     }
 

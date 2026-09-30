@@ -35,12 +35,12 @@ stage_jar() {
 
 CLIENT_SHA256="$(stage_jar "$CLIENT_JAR" "$CLIENT_DIR" "https://cdn.modrinth.com/data/pZ2wrerK/versions/daqt5qcK/emotecraft-for-MC1.21.1-2.4.12-fabric.jar" "emotecraft-for-MC1.21.1-2.4.12-fabric.jar" "633a77711f650dbf0bd071a43c086b7946d6e117b28ac1a414d038ea7b339f7c")"
 SERVER_SHA256="$(stage_jar "$SERVER_JAR" "$SERVER_DIR" "https://cdn.modrinth.com/data/pZ2wrerK/versions/DVp3FUqR/emotecraft-2.4.12-bukkit.jar" "emotecraft-2.4.12-bukkit.jar" "b8defd7f557262db50b9d0c411544d09ced5bb7f10703e1ffa05f4b38c851e23")"
-FABRIC_SHA256="$(stage_jar "$FABRIC_API_JAR" "$CLIENT_DIR" "https://cdn.modrinth.com/data/P7dR8mSH/versions/IpaMcBLh/fabric-api-0.116.11%2B1.21.1.jar" "fabric-api-0.116.11+1.21.1.jar" "b791de6f6dce9c58d4ea2af6c713bbcc6dc64d0a5995a8bad6f225ee58cf17d2")"
+FABRIC_SHA256="$(stage_jar "$FABRIC_API_JAR" "$CLIENT_DIR" "https://cdn.modrinth.com/data/P7dR8mSH/versions/Lwt6YYHL/fabric-api-0.116.12%2B1.21.1.jar" "fabric-api-0.116.12+1.21.1.jar" "b872f8c6de3a49cb2f01482830552b4e9fa246ca2274e99f393caefa4a121ff2")"
 
 echo "Emotecraft/Fabric API staged:"
 echo "  client: $CLIENT_DIR/emotecraft-for-MC1.21.1-2.4.12-fabric.jar sha256=$CLIENT_SHA256"
 echo "  server: $SERVER_DIR/emotecraft-2.4.12-bukkit.jar sha256=$SERVER_SHA256"
-echo "  fabric-api: $CLIENT_DIR/fabric-api-0.116.11+1.21.1.jar sha256=$FABRIC_SHA256"
+echo "  fabric-api: $CLIENT_DIR/fabric-api-0.116.12+1.21.1.jar sha256=$FABRIC_SHA256"
 echo "Official source:"
 echo "  https://modrinth.com/project/pZ2wrerK"
 echo "  https://modrinth.com/project/P7dR8mSH"

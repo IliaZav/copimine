@@ -213,13 +213,19 @@ function Wait-CarrierDelivery {
   $activeCarrier = $null
   $activeCarrierLocation = $null
   $teleportedCarrier = $null
+  $configuredPickupCharge = $null
+  $configuredHolderCharge = $null
+  $activeHolder = $null
   $deliveredPattern = 'END_RIFT_CARRIER_DELIVERED.*charge=' + $DeliveryNumber + '/3'
   while ((Get-Date) -lt $deadline) {
     $tail = Get-LogTail -Offset $AfterOffset
     # A larger roster can pick a replacement charge before the first one is
     # delivered.  The objective's delivery counter is authoritative; do not
     # keep waiting on a stale UUID after the server has advanced.
-    if ($tail -match $deliveredPattern) { return $tail }
+    if ($tail -match $deliveredPattern) {
+      Set-PlayerBotMode -Mode 'ACTIVE'
+      return $tail
+    }
 
     $carrierMatches = [Regex]::Matches($tail,
       'END_RIFT_CARRIER_SELECTED[^\r\n]*entity=([0-9a-fA-F-]{36})[^\r\n]*location=[^\s]+\s+-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?')
@@ -231,9 +237,20 @@ function Wait-CarrierDelivery {
       $match = $carrierMatches[$carrierMatches.Count - 1]
       $candidate = $match.Groups[1].Value
       if ($candidate -ne $activeCarrier) {
+        $hadDroppedCharge = $null -ne $activeCharge
         $activeCarrier = $candidate
         $activeCarrierLocation = Parse-LoggedLocation $match.Value
         $teleportedCarrier = $null
+        if ($hadDroppedCharge) {
+          # The old charge expired and the server selected another carrier.
+          # Resume real attacks before following this new mob.
+          $activeCharge = $null
+          $activeChargeLocation = $null
+          $configuredPickupCharge = $null
+          $configuredHolderCharge = $null
+          $activeHolder = $null
+          Set-PlayerBotMode -Mode 'ACTIVE'
+        }
       }
     }
 
@@ -245,7 +262,33 @@ function Wait-CarrierDelivery {
         $SeenCharges[$candidate] = $true
         $activeCharge = $candidate
         $activeChargeLocation = Parse-LoggedLocation $match.Value
+        $activeHolder = $null
         break
+      }
+    }
+
+    if ($null -ne $activeCharge) {
+      $chargeCreatedPattern = 'END_RIFT_CARRIER_CHARGE_CREATED[^\r\n]*charge=' +
+        [Regex]::Escape($activeCharge) + '[^\r\n]*'
+      $chargeCreatedMatch = [Regex]::Match($tail, $chargeCreatedPattern)
+      $timeoutPattern = 'END_RIFT_CARRIER_TIMEOUT_(?:TRANSFER|REPLACEMENT)[^\r\n]*delivered=' +
+        ($DeliveryNumber - 1) + '\b'
+      $timeoutMatch = [Regex]::Match($tail, $timeoutPattern)
+      if ($chargeCreatedMatch.Success -and $timeoutMatch.Success -and
+          $timeoutMatch.Index -gt $chargeCreatedMatch.Index) {
+        # A timeout transfer changes the selected carrier without emitting a
+        # second CARRIER_SELECTED marker. Drop the stale item target and resume
+        # normal attacks so the next carrier can produce a fresh charge.
+        $activeCharge = $null
+        $activeChargeLocation = $null
+        $activeCarrier = $null
+        $activeCarrierLocation = $null
+        $teleportedCarrier = $null
+        $configuredPickupCharge = $null
+        $configuredHolderCharge = $null
+        $activeHolder = $null
+        Set-PlayerBotMode -Mode 'ACTIVE'
+        Write-Evidence "CURRENT_WAVE1_CHARGE_TIMEOUT_RECOVERED delivery=$DeliveryNumber"
       }
     }
 
@@ -266,16 +309,30 @@ function Wait-CarrierDelivery {
       if (-not $pickedHolderMatch.Success) {
         throw "Pickup marker for charge $activeCharge did not contain an authoritative player name."
       }
+      $holderName = $pickedHolderMatch.Groups[1].Value
+      if ($holderName -notin $playerNames) {
+        throw 'Wave 1 charge was picked up by a non-probe participant; refusing to move that player.'
+      }
       # Every charge can be picked up by a different participant.  Move only
       # the authoritative holder for this charge; never stack the whole roster
       # on the core and never leave later holders outside the delivery radius.
-      Teleport-Player $pickedHolderMatch.Groups[1].Value `
-        ($Core[0] + 0.5D) ($Core[1] + 1.0D) ($Core[2] + 0.5D)
-      $activeCharge = $null
-      $activeChargeLocation = $null
+      if ($configuredHolderCharge -ne $activeCharge -or $activeHolder -ne $holderName) {
+        Set-PlayerBotMode -Mode 'PASSIVE'
+        Set-PlayerBotModeForName -Name $holderName -Mode 'CORE_DELIVER'
+        Teleport-Player $holderName `
+          ($Core[0] + 0.5D) ($Core[1] + 1.0D) ($Core[2] + 0.5D)
+        $configuredHolderCharge = $activeCharge
+        $activeHolder = $holderName
+      }
     } elseif ($null -ne $activeCharge) {
-      if ($null -ne $activeChargeLocation) {
+      if ($null -ne $activeChargeLocation -and $configuredPickupCharge -ne $activeCharge) {
+        # Proximity pickup is intentionally disabled in Wave 1. Keep other
+        # probes still, move one disposable client beside the charge, then
+        # have that client send the explicit right-click-air interaction.
+        Set-PlayerBotMode -Mode 'PASSIVE'
+        Set-PlayerBotModeForName -Name $PickupPlayer -Mode 'CARRIER_PICKUP'
         Teleport-Player $PickupPlayer $activeChargeLocation[0] $activeChargeLocation[1] $activeChargeLocation[2]
+        $configuredPickupCharge = $activeCharge
       }
     } elseif ($null -ne $activeCarrier) {
       # The carrier is a live mob until a bot kills it.  First move one
@@ -799,13 +856,26 @@ function Get-ObeliskTargets {
 function Set-PlayerBotMode {
   param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7')]
+    [ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7', 'CARRIER_PICKUP', 'CORE_DELIVER')]
     [string]$Mode
   )
   foreach ($name in $playerNames) {
-    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) `
-      -Value $Mode -NoNewline -Encoding ASCII
+    Set-PlayerBotModeForName -Name $name -Mode $Mode
   }
+}
+
+function Set-PlayerBotModeForName {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7', 'CARRIER_PICKUP', 'CORE_DELIVER')]
+    [string]$Mode
+  )
+  if ($Name -notin $playerNames) {
+    throw 'Wave 1 interaction mode is restricted to disposable local probe players.'
+  }
+  Set-Content -LiteralPath (Join-Path $controlDirectory ($Name + '.mode')) `
+    -Value $Mode -NoNewline -Encoding ASCII
 }
 
 function Start-PlayerBot {

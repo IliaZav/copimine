@@ -9717,7 +9717,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Also support right-clicking the item while aiming at air or a block. */
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onCarrierChargePlayerInteract(PlayerInteractEvent event) {
         if (event == null || event.getHand() != EquipmentSlot.HAND
                 || (event.getAction() != Action.RIGHT_CLICK_AIR

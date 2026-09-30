@@ -1244,15 +1244,16 @@ def test_multiplayer_wrappers_allow_the_full_scaled_boss_run() -> None:
 
 def test_multiplayer_wave1_delivery_moves_only_each_authoritative_holder() -> None:
     driver = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
-    pickup_branch = re.search(
-        r"# Every charge can be picked up by a different participant\.[\s\S]*?"
-        r"Teleport-Player \$pickedHolderMatch\.Groups\[1\]\.Value[\s\S]*?"
-        r"\$activeCharge = \$null",
-    driver,
+    wait_block = re.search(
+        r"function\s+Wait-CarrierDelivery[\s\S]*?"
+        r"throw\s+\"Timed out waiting for Wave 1",
+        driver,
     )
-    assert pickup_branch, "Wave 1 delivery branch must teleport every charge holder"
-    branch = pickup_branch.group(0)
-    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in branch, (
+    assert wait_block, "Wave 1 delivery wait block is missing"
+    body = wait_block.group(0)
+    assert "$holderName = $pickedHolderMatch.Groups[1].Value" in body
+    assert "Set-PlayerBotModeForName -Name $holderName -Mode 'CORE_DELIVER'" in body
+    assert "Teleport-Player $holderName" in body, (
         "multi-player delivery must move only the authoritative charge holder so "
         "later participants are delivered without stacking the roster"
     )
@@ -1274,7 +1275,8 @@ def test_multiplayer_wave1_delivery_moves_the_authoritative_picked_holder() -> N
     assert "player_name=([A-Za-z0-9_]{1,16})" in body, (
         "delivery probe must read the player name from the authoritative pickup marker"
     )
-    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in body, (
+    assert "Set-PlayerBotModeForName -Name $holderName -Mode 'CORE_DELIVER'" in body
+    assert "Teleport-Player $holderName" in body, (
         "delivery probe must teleport the player who actually picked up the charge, "
         "not whichever roster slot was scheduled for that delivery"
     )
@@ -1315,7 +1317,7 @@ def test_wave1_harness_resolves_named_players_without_unsupported_uuid_selectors
     assert "@a[uuid=" not in driver
     assert "@e[uuid=" not in driver
     assert "player_name=([A-Za-z0-9_]{1,16})" in driver
-    assert "Teleport-Player $pickedHolderMatch.Groups[1].Value" in driver
+    assert "Teleport-Player $holderName" in driver
 
 
 def test_multiplayer_wave3_capture_does_not_stack_the_roster_on_each_portal() -> None:
@@ -2195,7 +2197,8 @@ def test_official_probe_handles_a_carrier_picked_up_before_position_read() -> No
         r"function\s+Wait-CarrierDelivery[\s\S]*?"
         r"END_RIFT_CARRIER_PICKED_UP[\s\S]*?"
         r"pickedHolderMatch[\s\S]*?"
-        r"Teleport-Player\s+\$pickedHolderMatch\.Groups\[1\]\.Value",
+        r"Set-PlayerBotModeForName\s+-Name\s+\$holderName\s+-Mode\s+'CORE_DELIVER'[\s\S]*?"
+        r"Teleport-Player\s+\$holderName",
         probe,
     ), "delivery confirmation must parse and move the authoritative holder after any pickup"
     wait_block = re.search(

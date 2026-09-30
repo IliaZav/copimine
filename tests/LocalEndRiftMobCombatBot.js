@@ -107,6 +107,9 @@ let reflectionScanTimer = null
 let lastControlMode = ''
 let wave7Autopilot = false
 let navigationTimer = null
+let objectiveInteractionTimer = null
+let objectiveInteractionMode = ''
+let objectiveInteractionInFlight = false
 let navigationTargetId = null
 let meleeActionInFlight = false
 let lastNavigationLogAt = 0
@@ -210,6 +213,7 @@ function logReflectionGiveUp(projectileKey) {
 }
 
 function enterPassiveMode () {
+  stopObjectiveInteraction()
   if (attackTimer !== null) {
     clearInterval(attackTimer)
     attackTimer = null
@@ -225,11 +229,68 @@ function enterPassiveMode () {
 }
 
 function enterActiveMode (roomLocal = false) {
+  stopObjectiveInteraction()
   wave7Autopilot = roomLocal
   if (attackTimer === null) {
     attackTimer = setInterval(attackNearest, attackIntervalMs)
   }
   console.log(`BOT_ACTIVE ${username} wave7_autopilot=${wave7Autopilot}`)
+}
+
+function stopObjectiveInteraction () {
+  if (objectiveInteractionTimer !== null) {
+    clearInterval(objectiveInteractionTimer)
+    objectiveInteractionTimer = null
+  }
+  objectiveInteractionMode = ''
+  objectiveInteractionInFlight = false
+}
+
+function interactWaveOneObjective () {
+  if (!bot.entity || objectiveInteractionInFlight) return
+  if (objectiveInteractionMode === 'CARRIER_PICKUP') {
+    objectiveInteractionInFlight = true
+    try {
+      // Wave 1 deliberately prevents vanilla pickup, so use an explicit
+      // right-click-air packet; the server handles its pre-cancelled event
+      // only when this probe is within reach of the current charge.
+      bot.activateItem()
+      console.log(`CARRIER_PICKUP_USE_ITEM ${username}`)
+    } catch (error) {
+      console.error(`CARRIER_PICKUP_USE_ITEM_ERROR ${username} ${error.stack || error}`)
+    } finally {
+      objectiveInteractionInFlight = false
+    }
+    return
+  }
+  if (objectiveInteractionMode !== 'CORE_DELIVER') return
+
+  const coreBlock = bot.blockAt(new Vec3(Math.floor(arenaX), Math.floor(arenaY), Math.floor(arenaZ)))
+  if (!coreBlock || coreBlock.name === 'air') {
+    console.log(`CORE_DELIVERY_BLOCK_UNAVAILABLE ${username}`)
+    return
+  }
+  objectiveInteractionInFlight = true
+  Promise.resolve(bot.activateBlock(coreBlock))
+    .then(() => console.log(`CORE_DELIVERY_INTERACT ${username} block=${coreBlock.name}`))
+    .catch(error => console.error(`CORE_DELIVERY_INTERACT_ERROR ${username} ${error.stack || error}`))
+    .finally(() => { objectiveInteractionInFlight = false })
+}
+
+function enterWaveOneInteractionMode (mode) {
+  if (!['CARRIER_PICKUP', 'CORE_DELIVER'].includes(mode)) return
+  if (attackTimer !== null) {
+    clearInterval(attackTimer)
+    attackTimer = null
+  }
+  stopNavigation()
+  if (typeof bot.clearControlStates === 'function') bot.clearControlStates()
+  stopObjectiveInteraction()
+  wave7Autopilot = false
+  objectiveInteractionMode = mode
+  objectiveInteractionTimer = setInterval(interactWaveOneObjective, 900)
+  interactWaveOneObjective()
+  console.log(`BOT_OBJECTIVE_INTERACTION ${username} mode=${mode}`)
 }
 
 function pollControlMode () {
@@ -240,10 +301,13 @@ function pollControlMode () {
   } catch (_) {
     return
   }
-  if (!['PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7'].includes(requestedMode) || requestedMode === lastControlMode) return
+  if (!['PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7', 'CARRIER_PICKUP', 'CORE_DELIVER'].includes(requestedMode)
+      || requestedMode === lastControlMode) return
   lastControlMode = requestedMode
   if (requestedMode === 'PASSIVE') enterPassiveMode()
-  else enterActiveMode(requestedMode === 'ACTIVE_WAVE7')
+  else if (requestedMode === 'CARRIER_PICKUP' || requestedMode === 'CORE_DELIVER') {
+    enterWaveOneInteractionMode(requestedMode)
+  } else enterActiveMode(requestedMode === 'ACTIVE_WAVE7')
 }
 
 function distance(a, b) {
@@ -1052,6 +1116,9 @@ bot.on('entitySpawn', entity => {
     projectileOrigins.set(projectileIdentity(entity),
       nearestWave4ObeliskDisplay(entity.position)?.position || entity.position)
   }
+  if (entity?.name === 'item' && entity.position) {
+    console.log(`ENTITY_ITEM_SPAWN ${username} id=${entity.id} uuid=${entity.uuid || 'unknown'} pos=${formatPosition(entity.position)} name=${entity.displayName || ''}`)
+  }
   if (isFireballEntity(entity) || entity?.name === 'unknown') {
     console.log(`ENTITY_PROJECTILE ${username} id=${entity?.id} name=${entity?.name} type=${entity?.type} entityType=${entity?.entityType} display=${entity?.displayName}`)
   }
@@ -1097,7 +1164,7 @@ bot.on('error', error => {
   process.exitCode = 1
 })
 bot.on('end', () => {
-  for (const timer of [sampleTimer, attackTimer, healthTimer, controlTimer, navigationTimer]) if (timer !== null) clearInterval(timer)
+  for (const timer of [sampleTimer, attackTimer, healthTimer, controlTimer, navigationTimer, objectiveInteractionTimer]) if (timer !== null) clearInterval(timer)
   if (heldItemSyncReturnTimer !== null) clearTimeout(heldItemSyncReturnTimer)
   if (reflectionScanTimer !== null) clearInterval(reflectionScanTimer)
   for (const timer of reflectionTimers) clearTimeout(timer)

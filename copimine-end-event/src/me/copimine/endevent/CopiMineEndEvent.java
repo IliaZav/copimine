@@ -10265,10 +10265,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             tickWave4ObeliskAssault();
         }
         if (testWaveFrontVisualMode && activeWave >= 1 && activeWave <= 7
-                && !isCombatPhase()) {
+                && !testWaveInspectionMode) {
             // Disposable waves deliberately leave the durable phase in
-            // READY_FOR_PLAYERS. Run their objective completion on the same
-            // controller, but never advance the official event state.
+            // READY_FOR_PLAYERS. Their mobs also enable the AI harness flag,
+            // which makes isCombatPhase() true; that flag must not suppress
+            // the canonical objective tick. Static inspections remain visual.
             tickWaveCompletion();
         } else {
             switch (phase) {

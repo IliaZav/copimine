@@ -4,3 +4,8 @@
 # Supplied Chameleon geometry/animations have byte-exact hash contracts.
 # Windows checkout must preserve them instead of converting LF to CRLF.
 CopiMineClient/src/main/resources/assets/copimineclient/models/entity/end_rift_guardian/** -text
+
+# Existing deterministic importer emits these generated JSON files as LF.
+# Preserve their committed bytes so a Windows build does not dirty source.
+CopiMineClient/src/main/resources/assets/copimineclient/geometry/end_rift_tentacle.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_rift_tentacle.json -text

@@ -45,7 +45,7 @@
   },
   "automated": {
     "registered_wave_gate": {
-      "python_passed": 434,
+      "python_passed": 435,
       "pure_java_suites": 124,
       "persistence_recovery_suites": 8,
       "exit_code": 0
@@ -57,7 +57,7 @@
       "exit_code": 0
     },
     "clean_checkout_pytest": {
-      "passed": 842,
+      "passed": 843,
       "skipped": 1,
       "warnings": 88,
       "exit_code": 0
@@ -195,5 +195,34 @@
       "path": "artifacts/end-rift-waves/20261004/recovery-runtime-bytecode.log",
       "sha256": "a4a982762974bbfbc61b0c26574e78f952aba924f6f1787a9cca77a788584d2b"
     }
-  ]
+  ],
+  "ci_metadata_followup": {
+    "new_remote_ci": "pending push",
+    "first_remote_ci": "0db92d1b: failed clean generated JSON status and stale pack SHA1",
+    "checkout_regression": "1 failed / 1 passed before; 2 passed after",
+    "validators": {
+      "failed": 0,
+      "passed": 659,
+      "total": 659,
+      "skipped": 0
+    },
+    "clean_client_rebuild": "passed; git status clean after build",
+    "fixes": [
+      "Exact -text rules for two generated JSON files; model bytes unchanged",
+      "server.properties SHA1 synchronized to the real freshly built resource pack"
+    ]
+  },
+  "latest_runtime_installation": {
+    "native_visual_verified": false,
+    "pack_http_verified": true,
+    "client_launched": false,
+    "pack_sha256": "2c6183d436e5e0d89d7247e3e28c89e0604eb79f292b51e638c4ea65e8d8f0d2",
+    "server_startup": "READY; Paper PID 3764; RCON status READY_FOR_PLAYERS",
+    "first_party_plugins": 8,
+    "profile": "ServerRP_copy_1",
+    "receipt_path": "D:\\Desktop\\Copimine\\copimine-main\\.worktrees\\end-rift-event\\artifacts\\end-rift-waves\\20261004\\runtime-update-20261004-203651/installation.json",
+    "client_sha256": "14646f60225436edcbd88093046075e91db15f19ca9c05937199298f04ce0435",
+    "server_address": "127.0.0.1:25566",
+    "bots": "EndRiftTarget1..4; startup and health configuration being checked"
+  }
 }

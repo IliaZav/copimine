@@ -9,6 +9,40 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
     @Test
+    void keepsRitualCasterPhasesInsteadOfMappingThemToUnknownBossAnimations() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-ritual", 4L, "caster-bind", 0L,
+                "caster-uuid", "END_RIFT_RITUAL_CASTER_V1", ""), 100L));
+        for (String phase : new String[]{"RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE", "RITUAL_COMBAT"}) {
+            assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-ritual", 4L, "caster-bind", 1000L,
+                    "caster-uuid", phase, ""), 200L));
+            assertEquals(phase, state.entityAnimationForEntity("caster-uuid"));
+        }
+        assertTrue(state.apply(packet("END_ENTITY_PHASE", "event-ritual", 4L, "caster-bind", 1000L,
+                "caster-uuid", "HURT", ""), 300L));
+        assertEquals("HURT", state.entityAnimationForEntity("caster-uuid"),
+                "accepted damage feedback must still reach a caster");
+        assertFalse(state.apply(packet("END_ENTITY_PHASE", "event-ritual", 3L, "caster-bind", 1000L,
+                "caster-uuid", "RITUAL_CHANNEL", ""), 400L));
+        assertEquals("HURT", state.entityAnimationForEntity("caster-uuid"));
+    }
+
+    @Test
+    void ritualPoseIsAcceptedOnlyForTheBoundCasterVariantAndKnownPhase() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-ritual", 4L, "guard-bind", 0L,
+                "guard-uuid", "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", ""), 100L));
+        assertFalse(state.apply(packet("END_ENTITY_PHASE", "event-ritual", 4L, "guard-bind", 1000L,
+                "guard-uuid", "RITUAL_CHANNEL", ""), 200L));
+        assertEquals("READY", state.entityAnimationForEntity("guard-uuid"));
+        assertTrue(state.apply(packet("END_ENTITY_BIND", "event-ritual", 4L, "caster-bind", 0L,
+                "caster-uuid", "END_RIFT_RITUAL_CASTER_V1", ""), 100L));
+        assertFalse(state.apply(packet("END_ENTITY_PHASE", "event-ritual", 4L, "caster-bind", 1000L,
+                "caster-uuid", "RITUAL_INVALID", ""), 200L));
+        assertEquals("READY", state.entityAnimationForEntity("caster-uuid"));
+    }
+
+    @Test
     void acceptsBossBindingAndOneControlEffect() {
         EndEventClientState state = new EndEventClientState();
 

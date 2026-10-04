@@ -17,18 +17,31 @@ public final class RitualSphereScalingPolicy {
                 : count <= 5 ? 5
                 : count == 6 ? 6 : 7;
         if (count <= 4) {
-            return new Profile(count, 5, 5, projectiles, 1, 13);
+            return new Profile(count, 5, 5, projectiles, 1, 8);
         }
         if (count <= 8) {
-            return new Profile(count, 5, 10, projectiles, 1, 12);
+            return new Profile(count, 5, 10, projectiles, 1, 7);
         }
         if (count <= 12) {
-            return new Profile(count, 5, 15, projectiles, 2, 11);
+            return new Profile(count, 5, 15, projectiles, 2, 6);
         }
         if (count <= 16) {
-            return new Profile(count, 5, 15, projectiles, 2, 10);
+            return new Profile(count, 5, 15, projectiles, 2, 6);
         }
-        return new Profile(count, 5, 15, projectiles, 3, 9);
+        return new Profile(count, 5, 15, projectiles, 3, 5);
+    }
+
+    /** Bounded ordinary pressure that complements, but never advances, caster progression. */
+    public static WaveMechanicsPolicy.WaveCounts pressureMobsForPlayers(int players) {
+        int count = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, players));
+        int activePressure = PressureBudgetController.profileForPlayers(count).activePressure();
+        int total = Math.max(2, Math.min(8, activePressure / 4));
+        int elites = count >= 16 ? 2 : count >= 6 ? 1 : 0;
+        elites = Math.min(elites, total - 1);
+        int common = total - elites;
+        int endermen = (common + 1) / 2;
+        int spiders = common - endermen;
+        return new WaveMechanicsPolicy.WaveCounts(endermen, spiders, 0, elites, 0);
     }
 
     public record Profile(int participants, int casterCount, int guardCount,
@@ -48,7 +61,7 @@ public final class RitualSphereScalingPolicy {
             }
             if (projectilesPerVolley < 3 || projectilesPerVolley > MAX_PROJECTILES_PER_VOLLEY
                     || simultaneousZones < 1 || simultaneousZones > 3
-                    || majorCooldownSeconds < 9 || majorCooldownSeconds > 13) {
+                    || majorCooldownSeconds < 5 || majorCooldownSeconds > 8) {
                 throw new IllegalArgumentException("invalid ritual scaling profile");
             }
         }

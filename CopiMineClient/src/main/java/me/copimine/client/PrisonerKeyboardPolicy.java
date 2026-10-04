@@ -13,4 +13,18 @@ public final class PrisonerKeyboardPolicy {
                                                 int action) {
         return prisonerModeActive && !screenOpen && !exemptKey && action != RELEASE_ACTION;
     }
+
+    public static PrisonerHudController.Ability abilityForKeyPress(boolean prisonerModeActive,
+            boolean screenOpen, boolean exemptKey, int key, int action) {
+        if (!shouldCaptureKeyEvent(prisonerModeActive, screenOpen, exemptKey, action) || action != 1) {
+            return null;
+        }
+        return switch (key) {
+            case 'Q' -> PrisonerHudController.Ability.HEAL;
+            case 'W' -> PrisonerHudController.Ability.BATTLE_SURGE;
+            case 'E' -> PrisonerHudController.Ability.GUARDIAN_LINK;
+            case 'R' -> PrisonerHudController.Ability.TURNCOAT;
+            default -> null;
+        };
+    }
 }

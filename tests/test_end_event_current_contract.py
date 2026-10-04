@@ -393,14 +393,17 @@ def test_wave6_ritual_sphere_visuals_keep_wave_ownership_and_rehydrate() -> None
     assert "RITUAL_SPHERE_HEIGHT_OFFSET" in source
 
 
-def test_wave6_ritual_sphere_has_distinct_high_contrast_particle_layers() -> None:
+def test_wave6_ritual_sphere_has_bounded_exterior_cracks_and_a_clear_interior() -> None:
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
     start = source.index("private void renderCurrentRitualSphere")
     end = source.index("private void renderRitualZone", start)
     body = source[start:end]
-    assert "Particle.ELECTRIC_SPARK" in body
-    assert "Particle.SOUL_FIRE_FLAME" in body
-    assert body.count("spawnPatternRing(viewer, center") >= 4
+    assert "isInsideRitualSphereViewer(viewer, center)" in body
+    assert "crack < intensity" in body
+    assert "RITUAL_SPHERE_RADIUS_BLOCKS" in body
+    assert "spawnPatternSegment" in body
+    assert "viewer.spawnParticle(Particle.DRAGON_BREATH, center" not in body
+    assert "viewer.spawnParticle(Particle.ELECTRIC_SPARK, center" not in body
 
 
 def test_wave6_legacy_rings_are_not_rendered_or_ticked_live() -> None:
@@ -508,7 +511,7 @@ def test_leaving_visual_audience_clears_player_scoped_client_state() -> None:
 
 def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() -> None:
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
-    start = source.index("private void spawnRealitySplitBarriers")
+    start = source.index("private boolean spawnRealitySplitBarriers")
     end = source.index("/** Remove one completed adjacent room boundary", start)
     body = source[start:end]
 
@@ -521,7 +524,7 @@ def test_wave7_barriers_validate_or_repair_chambers_before_clearing_visuals() ->
 def test_wave7_visible_wall_has_one_display_for_each_collision_level() -> None:
     """A stretched level-one display left visible gaps above the Core."""
     source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
-    start = source.index("private void spawnRealitySplitBarriers")
+    start = source.index("private boolean spawnRealitySplitBarriers")
     end = source.index("private boolean ensureRealitySplitChamberAssignment", start)
     body = source[start:end]
 
@@ -530,6 +533,22 @@ def test_wave7_visible_wall_has_one_display_for_each_collision_level() -> None:
     assert "floorY + cell.level()" in body
     assert "new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,"
     assert "RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,\n                                RealitySplitBarrierPolicy.VISUAL_CELL_SCALE" in body
+
+
+def test_wave7_trial_start_failure_identifies_the_failed_component() -> None:
+    """A generic room-spawn failure must not hide whether its root or an objective failed."""
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    start = source.index("private boolean ensureRealitySplitTrialRoom")
+    end = source.index("private Entity spawnRealitySplitTrialEntity", start)
+    body = re.sub(r"\s+", " ", source[start:end])
+
+    assert 'logRealitySplitTrialComponentFailure(state, "root", -1, "no-safe-location", null)' in body
+    assert 'logRealitySplitTrialComponentFailure(state, "root", -1, "entity-spawn-failed", spawn)' in body
+    assert 'logRealitySplitTrialComponentFailure(state, "reflection-seal", seal, "no-safe-location", null)' in body
+    assert 'logRealitySplitTrialComponentFailure(state, "reflection-seal", seal, "entity-spawn-failed", location)' in body
+    assert 'logRealitySplitTrialComponentFailure(state, "juggernaut-anchor", anchor, "no-safe-location", null)' in body
+    assert 'logRealitySplitTrialComponentFailure(state, "juggernaut-anchor", anchor, "entity-spawn-failed", location)' in body
+    assert 'END_RIFT_WAVE7_TRIAL_COMPONENT_FAILED' in source
 
 
 def test_wave7_final_seal_uses_the_core_top_as_the_boss_anchor() -> None:
@@ -574,10 +593,11 @@ def test_wave6_casters_channel_before_prisoner_capture_with_layered_visuals() ->
     render_end = source.index("private void attemptRitualPrisonerCapture", render_start)
     render = source[render_start:render_end]
     assert "castRitualSpherePulse" in render
-    assert "Particle.DRAGON_BREATH" in render
-    assert "Particle.REVERSE_PORTAL" in render
-    assert "Particle.END_ROD" in render
-    assert "spawnPatternRing" in render
+    assert "Color.fromRGB(178, 54, 255)" in render
+    assert "Color.fromRGB(55, 214, 255)" in render
+    assert render.count("spawnPatternRing") == 3
+    assert "isInsideRitualSphereViewer(viewer, center)" in render
+    assert "viewer.spawnParticle" not in render, "no central clouds around the prisoner's camera"
 
 
 def test_temporary_tentacle_has_deterministic_ring_fallback() -> None:
@@ -857,6 +877,10 @@ def test_client_asset_dimensions_and_event_visuals() -> None:
         if name == "end_rift_tentacle_hd.png":
             assert (width, height) == (64, 64), (
                 "the supplied Kagune texture must keep its original dimensions"
+            )
+        elif name == "end_rift_guardian_shield_hd.png":
+            assert (width, height) == (32, 32), (
+                "the requested shared boss/caster shield must use a native 32x32 pixel atlas"
             )
         else:
             assert width >= 128 and height >= 128, f"{name}: {width}x{height}"
@@ -1297,6 +1321,50 @@ def test_wave1_charge_requires_explicit_right_click_pickup_and_core_delivery() -
     )
     assert "RiftCarrierPolicy.deliver" not in tick_body, (
         "walking near the Core must not silently load a carried charge"
+    )
+
+
+def test_wave1_selected_carrier_has_bounded_glow_that_clears_on_reset() -> None:
+    source = read(
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+    )
+    sync_start = source.index("private void syncCurrentCarrierFields")
+    sync_end = source.index("private void releaseCurrentCarrierHolder", sync_start)
+    sync_body = source[sync_start:sync_end]
+    assert re.search(r"\w+\.setGlowing\(true\)", sync_body), (
+        "the active carrier needs an entity-bound glow; its public name alone is easy to miss"
+    )
+    assert "clearCarrierHighlight(previousCarrier)" in sync_body, (
+        "a carrier highlight must be removed when ownership moves to another entity"
+    )
+
+    clear_start = source.index("private void clearWaveObjectiveState")
+    clear_end = source.index("private void", clear_start + 1)
+    clear_body = source[clear_start:clear_end]
+    assert "clearCurrentCarrierHighlight();" in clear_body, (
+        "clearing a wave must remove its selected carrier highlight before resetting state"
+    )
+    assert re.search(r"\w+\.setGlowing\(false\)", source), (
+        "the adapter must explicitly disarm the entity glow rather than relying on stale state"
+    )
+
+
+def test_wave1_test_carrier_death_drops_charge_at_the_death_location() -> None:
+    source = read(
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "CopiMineEndEvent.java"
+    )
+    death_start = source.index("public void onOwnedEntityDeath")
+    death_end = source.index("private ", death_start)
+    death_body = source[death_start:death_end]
+    wave_one_start = death_body.index("activeWave == 1")
+    wave_one_start = death_body.rfind("if (", 0, wave_one_start)
+    wave_six_start = death_body.index("activeWave == 6", wave_one_start)
+    wave_one_death = death_body[wave_one_start:wave_six_start]
+    assert "isOfficialAttempt() || testWaveFrontVisualMode" in wave_one_death, (
+        "sandbox carrier deaths must use the same charge transition as official wave gameplay"
+    )
+    assert "spawnCurrentCarrierCharge(entity.getLocation())" in wave_one_death, (
+        "a dead carrier's charge must be anchored to the actual death location"
     )
 
 

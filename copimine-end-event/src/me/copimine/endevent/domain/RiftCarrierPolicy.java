@@ -41,6 +41,15 @@ public final class RiftCarrierPolicy {
                 safeNow(nowTick) + CHARGE_TIMEOUT_TICKS, Phase.CHARGE_DROPPED);
     }
 
+    /** Replace only the lost presentation entity, preserving the gameplay deadline. */
+    public static State replaceMissingCharge(State state, long generation, UUID charge) {
+        if (!valid(state, generation) || charge == null
+                || (state.phase() != Phase.CHARGE_DROPPED
+                && state.phase() != Phase.CHARGE_CARRIED)) return state;
+        return new State(state.generation(), state.delivered(), null, charge, state.holder(),
+                state.deadlineTick(), state.phase());
+    }
+
     public static State pickUp(State state, long generation, UUID player,
                                UUID charge, long nowTick) {
         if (!valid(state, generation) || player == null || charge == null

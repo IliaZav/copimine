@@ -75,6 +75,9 @@ if (-not $SkipBuilds) {
   Invoke-GateStep 'Authored boss pose generator parity' {
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'copimine-end-event\tools\GenerateBossAnimationPoses.ps1') -Check
   }
+  Invoke-GateStep 'Modpack stages source-built client' {
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'scripts\thirdparty\build_modpack.ps1') -SyncBuiltClient
+  }
 } else {
   Invoke-GateStep 'Prebuilt artifact presence' {
     foreach ($artifact in @(
@@ -97,6 +100,13 @@ Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
   & python -m pytest -q '.\tests\test_end_event_current_contract.py' '.\tests\test_end_event_boss_hitbox_contract.py' '.\tests\test_end_event_boss_oriented_hitbox_contract.py' '.\tests\test_end_event_boss_animation_pose_contract.py' '.\tests\test_end_event_boss_hitbox_reconciliation_contract.py' '.\tests\test_end_event_boss_projectile_segment_contract.py' '.\tests\test_end_event_model_uv_contract.py' '.\tests\test_end_event_skeleton_look_contract.py' '.\tests\test_end_event_wave6_ritual_live_contract.py' '.\tests\test_end_event_core_visual_contract.py' '.\tests\test_end_event_resource_visual_contract.py' '.\tests\test_end_event_wave3_knockback_contract.py' '.\tests\test_end_event_wave6_wave7_boundaries_contract.py' '.\tests\test_end_event_wave_mob_visual_contract.py' '.\tests\test_end_rift_model_evidence_portability.py' '.\tests\test_end_rift_evidence_portability.py' '.\tests\test_end_rift_test_quality_contract.py' '.\tests\test_wave6_ritual_caster_behavior_contract.py' '.\tests\test_end_rift_ai_phase_probe_contract.py' '.\tests\test_end_rift_multiplayer_probe_contract.py' '.\tests\test_end_rift_recovery_contract.py' '.\tests\test_end_event_ritual_projectile_provenance_contract.py' '.\tests\test_end_event_ritual_sphere_projectile_origin_contract.py' '.\tests\test_end_event_ritual_prisoner_health_contract.py' '.\tests\test_end_event_ritual_control_pair_contract.py' '.\tests\test_end_event_ritual_zone_effect_contract.py' '.\tests\test_end_event_ritual_sphere_authoritative_state_contract.py' '.\tests\test_end_event_ritual_chains_target_contract.py' '.\tests\test_end_rift_diagnostic_report.py' '.\tests\test_end_rift_stage1_lifecycle_contract.py' '.\tests\test_end_rift_reality_split_trials_contract.py' '.\tests\test_end_rift_event_gate_contract.py'
+  if ($LASTEXITCODE -ne 0) { throw "Current Python contract failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_end_rift_wave_adapter_contract.py' '.\tests\test_end_rift_wave_probe_adapters.py'
+  if ($LASTEXITCODE -ne 0) { throw "Wave adapter regression tests failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_end_rift_prisoner_client_boundaries.py' '.\tests\test_end_rift_portal_presentation_contract.py' '.\tests\test_end_rift_wave6_visual_mechanics.py' '.\tests\test_end_rift_barrier_coverage.py' '.\tests\test_end_rift_fog_effect_cleanup.py' '.\tests\test_end_rift_server_tick_transitions.py'
+  if ($LASTEXITCODE -ne 0) { throw "Wave presentation regression tests failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py'
+  if ($LASTEXITCODE -ne 0) { throw "Additional wave gameplay regression tests failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
   }
@@ -161,7 +171,10 @@ $pureTests = @(
   'CreativeTestAdmissionPolicyTest',
   'BossAiSimulationTest',
   'BossCastTimelineTest',
+  'BlackFogDamagePolicyTest',
+  'BlackFogSafeZonePolicyTest',
   'BlackFogTimingPolicyTest',
+  'BlackFogEffectLeasePolicyTest',
   'CollapseRingGeometryPolicyTest',
   'BossDefeatCinematicPolicyTest',
   'BossHitboxDedupePolicyTest',
@@ -183,12 +196,14 @@ $pureTests = @(
   'CollapseRingEncounterPolicyTest',
   'CollapseRingEncounterSnapshotTest',
   'RealitySplitBarrierPolicyTest',
+  'RealitySplitBarrierCoverageTest',
   'RealitySplitBarrierRecoveryTest',
   'RealitySplitChamberControllerTest',
   'RealitySplitTrialControllerTest',
   'RealitySplitRuntimePolicyTest',
   'RealitySplitTrialSnapshotTest',
   'RealitySplitChamberSnapshotTest',
+  'SandboxWaveSessionSnapshotTest',
   'RealitySplitPlayerTeleportPolicyTest',
   'RealitySplitPlayerKnockbackPolicyTest',
   'RealitySplitCombatSeparationPolicyTest',
@@ -196,7 +211,9 @@ $pureTests = @(
   'RitualCasterTacticsPolicyTest',
   'RitualSpellControllerTest',
   'RitualCasterAiOwnershipPolicyTest',
+  'RitualGuardAbilityPolicyTest',
   'RitualGuardAggroPolicyTest',
+  'RitualGuardStatsPolicyTest',
   'RitualSealCapturePolicyTest',
   'RitualPrisonerCapturePolicyTest',
   'RitualTargetPolicyTest',
@@ -233,6 +250,12 @@ $pureTests = @(
   'PressureBudgetControllerTest',
   'ResourceProgressFormatterTest',
   'RiftCarrierPolicyTest',
+  'VisualRefreshDeadlineTest',
+  'RitualShieldOrbitPolicyTest',
+  'RitualCasterHandPolicyTest',
+  'RitualSpellVisualPolicyTest',
+  'RitualSpherePresentationPolicyTest',
+  'PortalPresentationPolicyTest',
   'RiftFireballCollisionPolicyTest',
   'RiftFireballReflectionPolicyTest',
   'RiftFireballScalingPolicyTest',
@@ -249,6 +272,7 @@ $pureTests = @(
   'TentacleGuardianPolicyTest',
   'TentacleScalingPolicyTest',
   'TransitionRuneControllerTest',
+  'PreBossTickSnapshotPolicyTest',
   'TransitionRunePolicyTest',
   'Wave3PortalPolicyTest',
   'WaveCommanderPolicyTest',
@@ -310,6 +334,7 @@ $persistenceTests = @(
   'LegacyEndRiftSnapshotDecoderTest',
   'EncounterResourceScopeTest',
   'EventTaskRegistryTest'
+  'PostWaveRecoveryServiceTest'
 )
 $persistenceSources = @($persistenceTests | ForEach-Object {
   $path = Join-Path $root ("tests\{0}.java" -f $_)

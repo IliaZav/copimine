@@ -13,6 +13,11 @@ public final class BlackFogTimingPolicyTest {
                 "combat windows must keep their staged timings");
         check(BlackFogTimingPolicy.complete(3), "three cycles must complete the objective");
         check(!BlackFogTimingPolicy.complete(2), "two cycles must not complete the objective");
+        check(BlackFogTimingPolicy.hasRemainingCycles(0)
+                        && BlackFogTimingPolicy.hasRemainingCycles(2)
+                        && !BlackFogTimingPolicy.hasRemainingCycles(3)
+                        && !BlackFogTimingPolicy.hasRemainingCycles(-1),
+                "completed or invalid fog cycles must not start another safe-zone cycle");
         System.out.println("BlackFogTimingPolicyTest OK");
     }
 

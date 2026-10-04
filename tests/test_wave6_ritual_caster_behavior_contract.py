@@ -72,15 +72,21 @@ def test_wave6_caster_runtime_keeps_casters_passive_until_guard_death_and_first_
     assert "event.getFinalDamage()" in root
 
 
-def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_ability() -> None:
+def test_wave6_spell_dispatch_uses_accumulated_unlocks_independently_of_caster_slot() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     start = root.index("private void castNextRitualAbility")
     end = root.index("private void startRitualZone", start)
     body = root[start:end]
     assert "RitualCasterTacticsPolicy.Role role" in body
     assert "RitualCasterTacticsPolicy.roleForSlot(" in body
-    assert "RitualCasterTacticsPolicy.Role.FINAL_SEAL" in body
-    assert "switch (role)" in body
+    # Roles identify the surviving caster in logs. The sphere retains spells
+    # unlocked by deaths, even if the original role's caster was the first to die.
+    assert "RitualCasterProgressionPolicy.availableSpells(ritualCasterDeathCount)" in body
+    assert "availableSpells.isEmpty()" in body
+    assert "availableSpells.get(Math.floorMod(ritualSpellCursor, availableSpells.size()))" in body
+    assert "ritualSpellForMajor(" in body
+    assert "ritualSpellForRole(candidateRole)" not in body
+    assert "candidateRole == RitualCasterTacticsPolicy.Role.FINAL_SEAL" not in body
     for handler in (
         "spawnRitualProjectileVolley",
         "startRitualZone",
@@ -98,20 +104,24 @@ def test_wave6_caster_attack_dispatch_is_explicit_and_not_a_shared_slot_modulo_a
     assert "RitualSphereEncounterPolicy.Ability.values()" not in body
 
 
-def test_wave6_scheduler_owns_abilities_during_channeling_and_marks_natural_source() -> None:
-    """A scheduler regression must not move ritual roles back to awakened AI."""
+def test_wave6_scheduler_retains_unlocked_spells_and_uses_only_live_owners() -> None:
+    """The shared sphere scheduler survives original-role deaths and caster awakening."""
 
     root = read(SRC / "CopiMineEndEvent.java")
     start = root.index("private void castNextRitualAbility")
     end = root.index("private void startRitualZone", start)
     body = root[start:end]
-    assert "RitualCasterTacticsPolicy.ownsRitualAbility(" in body
-    assert "RitualCasterTacticsPolicy.Role.FINAL_SEAL" in body
+    assert "isLiveOwnedEntity(entity.getUniqueId())" in body
+    assert "ritualSpellForMajor(" in body
+    assert "RitualCasterTacticsPolicy.ownsRitualAbility(" not in body
+    assert "wave6PrisonBroken" in body
+    assert "scheduler.stage() != RitualSpellController.Stage.IDLE" in body
     assert "source=NATURAL" not in body
     assert "source=SHARED_SCHEDULER" in body
     assert "cooldown_ms=" in body
     assert "RitualCasterProgressionPolicy.isSpellEnabled(" in body
     assert "RitualAmplifierPolicy" not in body
+    assert "ritualGuardAbilityGuard != null" in body
 
 
 def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> None:
@@ -125,6 +135,74 @@ def test_wave6_caster_visual_binding_has_a_dedicated_raised_arms_variant() -> No
     assert "caster" in model.lower()
     assert "leftArm.pitch" in model
     assert "rightArm.pitch" in model
+
+
+def test_wave6_caster_pose_tracks_channel_windup_release_and_server_facing() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    guard_tick = root[root.index("private void tickRitualGuardGroups"):
+                      root.index("private String ritualShieldName")]
+    execute_tick = root[root.index("private void tickRitualSpellController"):
+                        root.index("private void tickActiveRitualSpell")]
+    model = read(ROOT / "CopiMineClient/src/main/java/me/copimine/client/RiftEventEndermanModel.java")
+
+    assert "enderman.setScreaming(" in guard_tick
+    assert "faceRitualCaster(" in guard_tick
+    assert "faceRitualCaster(" in execute_tick
+    assert "livingCaster.swingMainHand()" in execute_tick
+    assert "if (isChannelingPhase(phase, entity.isAngry())) {\n                applyChannelingPose(pulse);" in model
+    assert 'case "RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE" -> true' in model
+    assert 'case "RITUAL_COMBAT" -> false' in model
+    assert "sendRitualCasterPhase(" in guard_tick
+    # -70 degrees left the long hands below shoulder level. The real model
+    # regression also checks their raised geometry and pose reset numerically.
+    assert "leftArm.pitch = -2.62F" in model
+    assert "rightArm.pitch = -2.62F" in model
+    assert "} else {\n                leftArm.pitch += pulse * 0.02F;" in model
+
+
+def test_wave6_pressure_pack_is_bounded_and_never_gates_ritual_progression() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    objective_tick = root[root.index("private boolean tickCurrentObjective"):
+                          root.index("private boolean reportCurrentWaveResult")]
+    ritual_tick = root[root.index("private void tickCurrentRitualSphereObjective"):
+                       root.index("private void renderRitualSphereChanneling")]
+    scaling = read(DOMAIN / "RitualSphereScalingPolicy.java")
+
+    assert "boolean noMobs = activeWave == 6 || countLiveWaveEntitiesForWave(activeWave) == 0;" in objective_tick
+    assert "clearRitualPressureMobs(" in ritual_tick
+    assert "Math.min(8, activePressure / 4)" in scaling
+    assert "spawnWave6PressurePack(world, core, players, sandbox)" in root
+    assert "initializeWaveGameplay(wave, world, core, roster, true, combatMode, false)" in root
+    assert "initializeWaveGameplay(wave, world, core, authoritativeAttemptRoster(), false, false, false)" in root
+
+
+def test_wave6_guards_have_tuned_once_health_and_one_shared_cancellable_ability() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    assert "private void tickRitualGuardAbilities" in root
+    spawn = root[root.index("private boolean startRitualSphereObjective"):
+                 root.index("private boolean placeRitualEntity")]
+    group_tick = root[root.index("private void tickRitualGuardGroups"):
+                      root.index("private void faceRitualCaster")]
+    ability_tick = root[root.index("private void tickRitualGuardAbilities"):
+                        root.index("private String ritualShieldName")]
+    clear = root[root.index("private void clearRitualSphereObjective"):
+                 root.index("private void removeRitualEntity")]
+
+    assert "configureRitualGuardHealth(living)" in spawn
+    assert "keyRitualGuardHealthConfigured" in root
+    assert "RitualGuardStatsPolicy.maximumHealth(" in root
+    assert "tickRitualGuardAbilities(now)" in group_tick
+    assert "RitualGuardAbilityPolicy.forGuardSlot(" in ability_tick
+    assert "RitualGuardAbilityPolicy.mayCommit(" in ability_tick
+    assert "RitualGuardAbilityPolicy.hits(" in ability_tick
+    assert "clearRitualGuardAbilityState(" in clear
+    assert "PotionEffectType.SLOWNESS" in ability_tick
+    cast_validity = root[root.index("private boolean isRitualGuardAbilityCastValid"):
+                         root.index("private void renderRitualGuardAbilityTelegraph")]
+    assert "ritualGuardAbilityGeneration != generation" in cast_validity
+    assert "isCurrentRitualGuard(mob)" in cast_validity
+    assert "target.isOnline()" in cast_validity
+    assert "target.isDead()" in cast_validity
 
 
 def test_wave6_live_ai_probe_allows_server_controlled_passive_casters() -> None:

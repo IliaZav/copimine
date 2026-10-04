@@ -37,8 +37,8 @@ def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> Non
 
 def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
-    start = root.index("private boolean startCanonicalObjective")
-    end = root.index("private void startWaveObjective", start)
+    start = root.index("private WaveObjectiveStartResult startCanonicalObjective")
+    end = root.index("private WaveObjectiveStartResult startWaveObjective", start)
     start_body = root[start:end]
     assert "case COLLAPSE_RINGS -> getLogger().warning(\"WAVE6_LEGACY_COLLAPSE_RING_REFUSED" in start_body
     assert "case RITUAL_SPHERE ->" in start_body
@@ -93,18 +93,20 @@ def test_wave6_ritual_spawn_failure_is_transactional_and_diagnostic() -> None:
 def test_wave6_failed_start_cannot_emit_started_marker_or_advance_objective() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
 
-    assert "private boolean startCanonicalObjective" in root
+    assert "private WaveObjectiveStartResult startCanonicalObjective" in root
     assert "private boolean startRitualSphereObjective" in root
 
-    canonical_start = root.index("private boolean startCanonicalObjective")
-    canonical_end = root.index("private void startWaveObjective", canonical_start)
+    canonical_start = root.index("private WaveObjectiveStartResult startCanonicalObjective")
+    canonical_end = root.index("private WaveObjectiveStartResult startWaveObjective", canonical_start)
     canonical_body = root[canonical_start:canonical_end]
     marker = 'getLogger().info("WAVE_OBJECTIVE_STARTED'
     failure_guard = "if (!started) {"
     assert "started = startRitualSphereObjective(world, core);" in canonical_body
     assert failure_guard in canonical_body
     assert canonical_body.index(failure_guard) < canonical_body.index(marker)
-    assert "return false;" in canonical_body[canonical_body.index(failure_guard):canonical_body.index(marker)]
+    assert "return WaveObjectiveStartResult.rejected(" in canonical_body[
+        canonical_body.index(failure_guard):canonical_body.index(marker)
+    ]
 
     ritual_start = root.index("private boolean startRitualSphereObjective")
     ritual_end = root.index("private Location ritualSphereCenter", ritual_start)
@@ -131,12 +133,11 @@ def test_wave6_failed_start_cannot_emit_started_marker_or_advance_objective() ->
     retry_start = tick_body.index("if (waveObjectiveStartedMillis <= 0L)")
     now_offset = tick_body.index("long now = System.currentTimeMillis();", retry_start)
     retry_body = tick_body[retry_start:now_offset]
-    start_call = "startCanonicalObjective(objectiveWave, world, core)"
-    assert start_call in retry_body
-    assert "return false;" in retry_body
-    assert retry_body.index("return false;") > retry_body.index(
-        start_call
-    )
+    compact_retry = "".join(retry_body.split())
+    start_call = "startCanonicalObjective(objectiveWave,world,core)"
+    assert start_call in compact_retry
+    assert "if(!objectiveStart.started()){returnfalse;}" in compact_retry
+    assert compact_retry.index("returnfalse;") > compact_retry.index(start_call)
 
 
 def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
@@ -165,7 +166,10 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "isRealitySplitBarrierBlock" in root
     assert ".setType(REALITY_SPLIT_WALL_MATERIAL, false)" in root
     assert "journaled=true" in root
-    assert "localChamberRoster" in root
+    initializer_start = root.index("private boolean initializeWaveGameplay(")
+    initializer = root[initializer_start:root.index("\n    private ", initializer_start + 10)]
+    assert "realitySplitChamberController.begin(generation," in initializer
+    assert "new ArrayList<>(roster)" in initializer
     assert "minecraft:barrier" in live_script
     assert "wall_material=barrier" in live_script
     assert "LIVE_WAVE7_ONE_BLOCK_WALL_PASS" in live_script
@@ -534,10 +538,20 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "preserveWave7ForRestart" in root
     assert "cancelSessionTasks(preserveWave6ForRestart || preserveWave7ForRestart)" in root
     assert "cancelSessionTasks(boolean preserveCombatForRestart)" in root
-    roster_start = root.index("List<UUID> localChamberRoster")
-    roster_end = root.index("if (test)", roster_start)
-    roster_body = root[roster_start:roster_end]
-    assert "Bukkit.getOnlinePlayers().stream().filter(this::isCombatTarget)" in roster_body
+    sandbox_start = root.index("private boolean spawnTestWave(")
+    sandbox_end = root.index("private void spawnWaveForObjective(", sandbox_start)
+    sandbox_body = root[sandbox_start:sandbox_end]
+    assert "Bukkit.getOnlinePlayers().stream()" in sandbox_body
+    assert ".filter(player -> isPhysicallyEligibleWaveParticipant(player, wave == 6 && !combatMode))" in sandbox_body
+    # Creative eligibility belongs only to the Wave 6 capture inspector.
+    eligibility = root[root.index("private boolean isPhysicallyEligibleWaveParticipant(Player player, boolean captureTestRoster)"):
+                       root.index("private boolean isCreativeTestTarget")]
+    assert "player.getGameMode() != GameMode.SPECTATOR" in eligibility
+    assert "player.getGameMode() != GameMode.CREATIVE || captureTestRoster" in eligibility
+    assert "isArenaLocation(player.getLocation())" in eligibility
+    assert "SandboxWaveSessionSnapshot.decode" in root
+    assert "sandboxWaveRoster = sandboxSession.roster()" in root
+    assert "wave7.assignment().chamberByPlayer().keySet()" in root
 
 
 def test_disposable_wave6_restart_state_preserves_the_ritual_snapshot() -> None:

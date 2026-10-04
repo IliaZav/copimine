@@ -21,8 +21,13 @@ public final class RitualZoneEffectPolicyTest {
                 "targets beyond the 4 block radius are excluded");
 
         RitualZoneEffectPolicy.Pull pull = RitualZoneEffectPolicy.pull(2.0D, 0.0D, 0.0D, 0.0D);
-        check(Math.abs(pull.x() + 0.12D) < 1.0E-9D && Math.abs(pull.z()) < 1.0E-9D,
-                "the horizontal pull magnitude is bounded to 0.12 blocks per update");
+        check(Math.abs(pull.x() + 0.30D) < 1.0E-9D && Math.abs(pull.z()) < 1.0E-9D,
+                "the strengthened horizontal pull is bounded to 0.30 blocks per update");
+        var diagonal = RitualZoneEffectPolicy.pull(2.0D, 2.0D, 0.0D, 0.0D);
+        check(Math.abs(Math.hypot(diagonal.x(), diagonal.z()) - 0.30D) < 1.0E-9D,
+                "diagonal attraction does not exceed the same total magnitude");
+        check(RitualZoneEffectPolicy.pull(Double.NaN, 0.0D, 0.0D, 0.0D).x() == 0.0D,
+                "non-finite positions cannot generate a client velocity");
         RitualZoneEffectPolicy.Pull atCenter = RitualZoneEffectPolicy.pull(0.0D, 0.0D, 0.0D, 0.0D);
         check(atCenter.x() == 0.0D && atCenter.z() == 0.0D,
                 "the gravity well center does not generate an invalid pull vector");

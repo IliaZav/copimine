@@ -59,14 +59,36 @@ public final class RealitySplitBarrierPolicyTest {
                 .allMatch(cell -> cell.level() >= 1
                                 && cell.level() <= RealitySplitBarrierPolicy.HEIGHT),
                 "wall cells must use the configured height");
+        for (int level = 1; level <= RealitySplitBarrierPolicy.HEIGHT; level++) {
+            int requiredLevel = level;
+            check(RealitySplitBarrierPolicy.cells(4).stream()
+                            .anyMatch(cell -> cell.xOffset() == 0 && cell.zOffset() == 0
+                                    && cell.level() == requiredLevel),
+                    "closed Wave 7 walls must physically join above the Core at every height");
+        }
+        check(RealitySplitBarrierPolicy.cellsExcludingBoundaries(4, Set.of(0, 1, 2, 3)).isEmpty(),
+                "opening every Wave 7 passage must remove the central join as well");
+        check(RealitySplitBarrierPolicy.cellsForClosedBoundary(0, 4, Set.of(1, 2, 3)).stream()
+                        .filter(cell -> cell.xOffset() == 0 && cell.zOffset() == 0).count()
+                        == RealitySplitBarrierPolicy.HEIGHT,
+                "the central join must remain owned by each still-closed boundary");
+        check(RealitySplitBarrierPolicy.cellsForClosedBoundary(0, 4, Set.of(0, 1, 2, 3)).isEmpty(),
+                "opening a boundary must release its ownership of the Core join");
         check(RealitySplitBarrierPolicy.cells(4).stream()
-                        .allMatch(cell -> Math.hypot(cell.xOffset(), cell.zOffset())
+                        .allMatch(cell -> cell.xOffset() == 0 && cell.zOffset() == 0
+                                || Math.hypot(cell.xOffset(), cell.zOffset())
                                 > RealitySplitBarrierPolicy.MIN_RADIUS),
-                "barriers must not touch the Core");
+                "only the explicit above-floor join may occupy the Core column");
         check(RealitySplitBarrierPolicy.cells(4).stream()
                         .allMatch(cell -> Math.hypot(cell.xOffset(), cell.zOffset())
-                                < RealitySplitBarrierPolicy.MAX_RADIUS),
+                                <= RealitySplitBarrierPolicy.MAX_RADIUS),
                 "barriers must stay inside the arena");
+        for (int boundary = 0; boundary < 4; boundary++) {
+            check(RealitySplitBarrierPolicy.cellsForBoundary(boundary, 4).stream()
+                            .anyMatch(cell -> Math.abs(cell.xOffset()) >= 20
+                                    || Math.abs(cell.zOffset()) >= 20),
+                    "each closed separator must reach the configured outer arena boundary");
+        }
         check(RealitySplitBarrierPolicy.boundaryForPair(0, 1, 4) >= 0,
                 "adjacent completed rooms must map to a gate");
         check(RealitySplitBarrierPolicy.boundaryForPair(0, 2, 4) < 0,
@@ -74,8 +96,9 @@ public final class RealitySplitBarrierPolicyTest {
         check(RealitySplitBarrierPolicy.boundaryForPair(0, 1, 2) == 0,
                 "two rooms use one diameter gate");
         check(RealitySplitBarrierPolicy.cellsForBoundary(0, 2).size()
+                        + RealitySplitBarrierPolicy.HEIGHT
                         == RealitySplitBarrierPolicy.cells(2).size(),
-                "the two-room diameter must be one complete boundary");
+                "the two-room diameter and its central join must form one complete separator");
         check(!sectorsConnectWhileEveryBoundaryIsClosed(4, 0, 1),
                 "four Wave 7 rooms must not leak through the Core or arena edge");
         System.out.println("RealitySplitBarrierPolicyTest OK");
@@ -89,9 +112,6 @@ public final class RealitySplitBarrierPolicyTest {
                 blocked.add(cell.xOffset() + ":" + cell.zOffset());
             }
         }
-        // The Core itself is a solid block, so an actual player cannot use its
-        // cell to cross a radial barrier.
-        blocked.add("0:0");
         int[] start = chamberPoint(firstChamber, chamberCount);
         int[] goal = chamberPoint(secondChamber, chamberCount);
         ArrayDeque<int[]> frontier = new ArrayDeque<>();
@@ -103,13 +123,21 @@ public final class RealitySplitBarrierPolicyTest {
             if (point[0] == goal[0] && point[1] == goal[1]) {
                 return true;
             }
-            for (int[] direction : new int[][] {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}) {
+            for (int[] direction : new int[][] {
+                    {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+                    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
+            }) {
                 int nextX = point[0] + direction[0];
                 int nextZ = point[1] + direction[1];
                 if (Math.abs(nextX) > 20 || Math.abs(nextZ) > 20) {
                     continue;
                 }
                 String key = nextX + ":" + nextZ;
+                if (direction[0] != 0 && direction[1] != 0
+                        && (blocked.contains((point[0] + direction[0]) + ":" + point[1])
+                        || blocked.contains(point[0] + ":" + (point[1] + direction[1])))) {
+                    continue;
+                }
                 if (!blocked.contains(key) && seen.add(key)) {
                     frontier.addLast(new int[] {nextX, nextZ});
                 }

@@ -13,6 +13,30 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class RiftEventEndermanModelTest {
     @Test
+    void casterPoseUsesServerChannelPhaseEvenWhenVanillaAngerIsNotSet() {
+        org.junit.jupiter.api.Assertions.assertTrue(RiftEventEndermanModel.isChannelingPhase("RITUAL_CHANNEL", false));
+        org.junit.jupiter.api.Assertions.assertTrue(RiftEventEndermanModel.isChannelingPhase("RITUAL_WINDUP", false));
+        org.junit.jupiter.api.Assertions.assertTrue(RiftEventEndermanModel.isChannelingPhase("RITUAL_RELEASE", false));
+        org.junit.jupiter.api.Assertions.assertFalse(RiftEventEndermanModel.isChannelingPhase("RITUAL_COMBAT", true));
+        org.junit.jupiter.api.Assertions.assertFalse(RiftEventEndermanModel.isChannelingPhase("READY", false));
+    }
+    @Test
+    void channelingHandsAreAboveTheShouldersAndResetBeforeTheNextPose() {
+        var model = new RiftEventEndermanModel(RiftEventEndermanModel.getTexturedModelData(
+                RiftEventEndermanModel.Variant.RITUAL_CASTER).createModel(), RiftEventEndermanModel.Variant.RITUAL_CASTER);
+        for (float pulse : new float[]{-1, 0, 1}) {
+            model.applyChannelingPose(pulse);
+            for (String name : java.util.List.of("left_arm", "right_arm")) {
+                var arm = model.getPart().getChild(name);
+                org.junit.jupiter.api.Assertions.assertTrue(Math.cos(arm.pitch) < -0.8,
+                        "30-pixel caster hands must point above the shoulder, not forward/down");
+            }
+        }
+        model.getPart().traverse().forEach(ModelPart::resetTransform);
+        assertEquals(0, model.getPart().getChild("left_arm").pitch, 1e-6);
+        assertEquals(0, model.getPart().getChild("right_arm").pitch, 1e-6);
+    }
+    @Test
     void suppliedOrdinarySkinUsesVanillaEndermanProportionsWithoutBlockyOverlays() {
         ModelPart expected = EndermanEntityModel.getTexturedModelData().createModel();
         RiftEventEndermanModel ordinary = new RiftEventEndermanModel(

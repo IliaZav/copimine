@@ -7,10 +7,9 @@ import net.minecraft.util.Identifier;
 
 /** Compact four-icon prisoner HUD driven only by server cooldown/unlock snapshots. */
 public final class PrisonerHudRenderer {
-    private static final int ICON_SIZE = 32;
-    private static final int SLOT_WIDTH = 40;
-    private static final int SLOT_HEIGHT = 44;
-    private static final int GAP = 4;
+    private static final int ICON_SIZE = PrisonerHudLayout.ICON_SIZE;
+    private static final int SLOT_WIDTH = PrisonerHudLayout.SLOT_WIDTH;
+    private static final int SLOT_HEIGHT = PrisonerHudLayout.SLOT_HEIGHT;
     private static final Identifier[] ICONS = {
             icon("end_rift_prisoner_heal.png"),
             icon("end_rift_prisoner_surge.png"),
@@ -24,23 +23,34 @@ public final class PrisonerHudRenderer {
 
     public static void render(DrawContext context) {
         MinecraftClient client = MinecraftClient.getInstance();
-        if (context == null || client.player == null || client.currentScreen != null
+        if (context == null || client.player == null || client.currentScreen != null || client.options.hudHidden
                 || !ClientBridgeProtocol.prisonerHud().activeFor(client.player.getUuid())) {
             return;
         }
         long now = System.currentTimeMillis();
         PrisonerTargetSelector.Preview target = PrisonerTargetSelector.preview(client);
-        int totalWidth = SLOT_WIDTH * 4 + GAP * 3;
-        int left = (context.getScaledWindowWidth() - totalWidth) / 2;
-        int top = context.getScaledWindowHeight() - SLOT_HEIGHT - 14;
-        context.fill(left - 3, top - 3, left + totalWidth + 3,
-                top + SLOT_HEIGHT + 3, 0xB7080C16);
+        if (target.entity() != null) {
+            String label = client.textRenderer.trimToWidth(
+                    "Цель: " + target.entity().getDisplayName().getString(),
+                    Math.max(0, context.getScaledWindowWidth() - 24));
+            int color = target.ally() ? 0xFF35E1F5 : 0xFFAC5DFF;
+            context.drawCenteredTextWithShadow(client.textRenderer, Text.literal(label),
+                    context.getScaledWindowWidth() / 2,
+                    context.getScaledWindowHeight() / 2 + 16, color);
+        }
+        PrisonerHudLayout.Layout layout = PrisonerHudLayout.compute(
+                context.getScaledWindowWidth(), context.getScaledWindowHeight(),
+                Math.max(client.player.getMaxHealth(), client.player.getHealth()),
+                client.player.getAbsorptionAmount());
+        if (!layout.visible()) return;
+        PrisonerHudLayout.Rect panel = layout.bounds();
+        context.fill(panel.left(), panel.top(), panel.right(), panel.bottom(), 0xB7080C16);
         for (PrisonerHudController.Ability ability : PrisonerHudController.Ability.values()) {
             int index = ability.ordinal();
-            int slotX = left + index * (SLOT_WIDTH + GAP);
+            PrisonerHudLayout.Rect slot = layout.slots().get(index);
             PrisonerHudController.AbilityState state = ClientBridgeProtocol.prisonerHud()
                     .state(ability, client.player.getUuid(), now, target.targetIdFor(ability));
-            drawSlot(context, client, ability, index, slotX, top, state);
+            drawSlot(context, client, ability, index, slot.left(), slot.top(), state);
         }
     }
 

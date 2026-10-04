@@ -51,7 +51,15 @@ Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
 $sources = Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Object -ExpandProperty FullName
 if (-not $sources) { throw "No Java sources found under $srcRoot." }
-javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
+# Keep javac below Windows' native command-line limit in nested worktrees.
+# The dependency list and all source paths are still passed unchanged.
+$compileArgsPath = Join-Path $pluginDir 'build\javac.args'
+$compileArgs = @('-encoding', 'UTF-8', '-cp',
+  ('"' + (($cp -join [IO.Path]::PathSeparator) -replace '\\', '/') + '"'),
+  '-d', ('"' + ($classes -replace '\\', '/') + '"'))
+$compileArgs += @($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' })
+[IO.File]::WriteAllLines($compileArgsPath, $compileArgs, [Text.UTF8Encoding]::new($false))
+& javac ("@" + $compileArgsPath)
 if ($LASTEXITCODE -ne 0) { throw "javac failed for CopiMineEndEvent." }
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $classes 'config.yml') -Force

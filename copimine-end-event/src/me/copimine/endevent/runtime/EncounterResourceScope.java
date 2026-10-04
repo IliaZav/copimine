@@ -23,10 +23,12 @@ public final class EncounterResourceScope implements AutoCloseable {
     private final EventTaskRegistry tasks;
     private final Set<BukkitTask> ownedTasks = new LinkedHashSet<>();
     private final Set<UUID> entityIds = new LinkedHashSet<>();
-    private final Map<UUID, Runnable> entityCleanups = new LinkedHashMap<>();
+    private final Map<UUID, List<Runnable>> entityCleanups = new LinkedHashMap<>();
     private final List<Runnable> closers = new ArrayList<>();
     private CleanupResult lastCleanupResult = CleanupResult.successful();
     private boolean closed;
+    private boolean closing;
+    private List<CleanupFailure> closingFailures;
 
     public EncounterResourceScope(long generation, EventTaskRegistry tasks) {
         this(generation, "generation-" + generation, tasks);
@@ -54,7 +56,11 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized <T extends BukkitTask> T registerTask(T task) {
         if (closed) {
-            if (task != null) task.cancel();
+            if (task != null) {
+                ownedTasks.add(task);
+                if (closing) cleanupTask(task, closingFailures);
+                else closeResources();
+            }
             return task;
         }
         if (task == null) {
@@ -66,11 +72,7 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized void registerEntity(Entity entity) {
         if (entity == null) return;
-        if (closed) {
-            if (entity.isValid() && !entity.isDead()) entity.remove();
-            return;
-        }
-        entityIds.add(entity.getUniqueId());
+        registerEntity(entity.getUniqueId());
     }
 
     public synchronized void registerEntity(UUID entityId) {
@@ -80,22 +82,24 @@ public final class EncounterResourceScope implements AutoCloseable {
     /** Register an event-specific cleanup action for an entity this scope owns. */
     public synchronized void registerEntity(UUID entityId, Runnable cleanup) {
         if (entityId == null) return;
-        if (closed) {
-            if (cleanup != null) cleanup.run();
-            else removeEntity(entityId);
-            return;
+        entityIds.add(entityId);
+        if (cleanup != null) {
+            List<Runnable> actions = entityCleanups.computeIfAbsent(entityId,
+                    ignored -> new ArrayList<>());
+            if (actions.stream().noneMatch(existing -> existing == cleanup)) {
+                actions.add(cleanup);
+            }
         }
-        if (entityIds.add(entityId) && cleanup != null) {
-            entityCleanups.put(entityId, cleanup);
+        if (closed && !closing) {
+            closeResources();
         }
     }
 
     public synchronized void registerCloser(Runnable closer) {
         if (closer == null) return;
-        if (closed) {
-            closer.run();
-        } else {
-            closers.add(closer);
+        closers.add(closer);
+        if (closed && !closing) {
+            closeResources();
         }
     }
 
@@ -104,50 +108,107 @@ public final class EncounterResourceScope implements AutoCloseable {
      * operations are attempted even when one of them fails.
      */
     public synchronized CleanupResult closeResources() {
-        if (closed) return lastCleanupResult;
         closed = true;
+        if (closing) return lastCleanupResult;
+        closing = true;
         List<CleanupFailure> failures = new ArrayList<>();
-        for (BukkitTask task : Set.copyOf(ownedTasks)) {
-            if (task != null && !task.isCancelled()) {
+        closingFailures = failures;
+        try {
+            for (BukkitTask task : Set.copyOf(ownedTasks)) {
+                if (task == null) {
+                    ownedTasks.remove(null);
+                    continue;
+                }
+                cleanupTask(task, failures);
+            }
+
+            for (UUID entityId : Set.copyOf(entityIds)) {
+                List<Runnable> cleanups = entityCleanups.get(entityId);
+                if (cleanups == null || cleanups.isEmpty()) {
+                    try {
+                        removeEntity(entityId);
+                        entityIds.remove(entityId);
+                        entityCleanups.remove(entityId);
+                    } catch (RuntimeException error) {
+                        failures.add(new CleanupFailure("entity", String.valueOf(entityId), error));
+                    }
+                    continue;
+                }
+                for (int index = cleanups.size() - 1; index >= 0; index--) {
+                    Runnable cleanup = cleanups.get(index);
+                    try {
+                        cleanup.run();
+                        cleanups.remove(index);
+                    } catch (RuntimeException error) {
+                        failures.add(new CleanupFailure("entity", String.valueOf(entityId), error));
+                    }
+                }
+                // Failed callbacks may still need the live entity on retry.
+                if (!cleanups.isEmpty()) continue;
                 try {
-                    task.cancel();
+                    removeEntity(entityId);
+                    entityIds.remove(entityId);
+                    entityCleanups.remove(entityId);
                 } catch (RuntimeException error) {
-                    failures.add(new CleanupFailure("task", String.valueOf(task.getTaskId()), error));
+                    failures.add(new CleanupFailure("entity", String.valueOf(entityId), error));
                 }
             }
-            if (tasks != null) {
+
+            for (int index = closers.size() - 1; index >= 0; index--) {
+                Runnable closer = closers.get(index);
                 try {
-                    tasks.unregister(task);
+                    closer.run();
+                    closers.remove(index);
                 } catch (RuntimeException error) {
-                    failures.add(new CleanupFailure("task-registry", String.valueOf(task.getTaskId()), error));
+                    failures.add(new CleanupFailure("closer", "index=" + index, error));
                 }
             }
+            if (failures.isEmpty() && hasPendingResources()) {
+                failures.add(new CleanupFailure("scope", ownerKey,
+                        new IllegalStateException("resources were registered while cleanup was running")));
+            }
+            lastCleanupResult = new CleanupResult(failures);
+            return lastCleanupResult;
+        } finally {
+            closingFailures = null;
+            closing = false;
         }
-        ownedTasks.clear();
-        for (UUID entityId : Set.copyOf(entityIds)) {
+    }
+
+    private void cleanupTask(BukkitTask task, List<CleanupFailure> failures) {
+        String taskId = taskId(task);
+        boolean cleaned = true;
+        try {
+            if (!task.isCancelled()) task.cancel();
+        } catch (RuntimeException error) {
+            failures.add(new CleanupFailure("task", taskId, error));
+            cleaned = false;
+        }
+        if (tasks != null) {
             try {
-                Runnable cleanup = entityCleanups.get(entityId);
-                if (cleanup != null) cleanup.run();
-                else removeEntity(entityId);
+                tasks.unregister(task);
             } catch (RuntimeException error) {
-                failures.add(new CleanupFailure("entity", String.valueOf(entityId), error));
+                failures.add(new CleanupFailure("task-registry", taskId, error));
+                cleaned = false;
             }
         }
-        entityIds.clear();
-        entityCleanups.clear();
-        for (int index = closers.size() - 1; index >= 0; index--) {
-            try {
-                closers.get(index).run();
-            } catch (RuntimeException error) {
-                failures.add(new CleanupFailure("closer", "index=" + index, error));
-            }
+        if (cleaned) ownedTasks.remove(task);
+    }
+
+    private boolean hasPendingResources() {
+        return !ownedTasks.isEmpty() || !entityIds.isEmpty() || !closers.isEmpty();
+    }
+
+    private static String taskId(BukkitTask task) {
+        try {
+            return String.valueOf(task.getTaskId());
+        } catch (RuntimeException ignored) {
+            return "unknown";
         }
-        closers.clear();
-        lastCleanupResult = new CleanupResult(failures);
-        return lastCleanupResult;
     }
 
     private static void removeEntity(UUID entityId) {
+        if (Bukkit.getServer() == null) return;
         Entity entity = Bukkit.getEntity(entityId);
         if (entity != null && entity.isValid() && !entity.isDead()) entity.remove();
     }

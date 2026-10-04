@@ -60,6 +60,34 @@ public final class PreBossTransitionControllerTest {
                         == PreBossTransitionController.Status.ALREADY_STARTED,
                 "a failed gateway call is not replayed implicitly");
         check(failedCalls[0] == 1, "a failing gateway is still attempted exactly once");
+
+        PreBossTransitionController serverTicks = new PreBossTransitionController();
+        serverTicks.startServerTicks(context, 0L);
+        int[] tickCalls = {0};
+        BossStartGateway tickSpy = ignored -> tickCalls[0]++;
+        check(serverTicks.tickServerTicks(context, 799L, tickSpy).status()
+                        == PreBossTransitionController.Status.WAITING,
+                "799 actual server ticks must not hand off, regardless of wall-clock delay");
+        check(serverTicks.elapsedServerTicks(799L) == 799L, "persisted progress is server ticks");
+        check(serverTicks.tickServerTicks(context, 800L, tickSpy).status()
+                        == PreBossTransitionController.Status.HANDOFF_STARTED,
+                "handoff fires after exactly eight hundred server ticks");
+        serverTicks.tickServerTicks(context, 805L, tickSpy);
+        check(tickCalls[0] == 1, "server tick handoff is single fire");
+
+        PreBossTransitionController resumed = new PreBossTransitionController();
+        resumed.restoreServerTicks(context, 5L, 300L);
+        resumed.restoreServerTicks(context, 10L, 0L);
+        check(resumed.tickServerTicks(context, 504L, tickSpy).status()
+                        == PreBossTransitionController.Status.WAITING,
+                "a restart resumes the saved progress, without counting offline wall time");
+        check(resumed.tickServerTicks(context, 505L, tickSpy).status()
+                        == PreBossTransitionController.Status.HANDOFF_STARTED,
+                "the remaining five hundred server ticks complete the same interval");
+        resumed.reset();
+        check(resumed.tickServerTicks(context, 1000L, tickSpy).status()
+                        == PreBossTransitionController.Status.NOT_STARTED,
+                "reset retires the old timer and its handoff");
         System.out.println("PreBossTransitionControllerTest OK");
     }
 

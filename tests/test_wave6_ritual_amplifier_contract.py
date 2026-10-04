@@ -22,14 +22,14 @@ def test_volley_size_is_participant_profile_owned_not_amplifier_owned() -> None:
     assert "count == 6 ? 6 : 7" in scaling
 
 
-def test_caster_deaths_disable_fixed_spells_and_unlock_fixed_abilities() -> None:
+def test_caster_deaths_add_fixed_spells_and_unlock_qwer_abilities() -> None:
     source = PROGRESSION.read_text(encoding="utf-8")
     assert "case 1 -> MajorSpell.RIFT_BARRAGE" in source
     assert "case 2 -> MajorSpell.GRAVITY_WELL" in source
     assert "case 3 -> MajorSpell.SOUL_BRAND" in source
     assert "case 4 -> MajorSpell.RIFT_CHAINS" in source
-    assert "case 1 -> PrisonerAbility.A_HEAL" in source
-    assert "case 2 -> PrisonerAbility.S_BATTLE_SURGE" in source
-    assert "case 3 -> PrisonerAbility.D_GUARDIAN_LINK" in source
-    assert "case 4 -> PrisonerAbility.F_TURNCOAT" in source
+    assert "case 1 -> PrisonerAbility.Q_HEAL" in source
+    assert "case 2 -> PrisonerAbility.W_BATTLE_SURGE" in source
+    assert "case 3 -> PrisonerAbility.E_GUARDIAN_LINK" in source
+    assert "case 4 -> PrisonerAbility.R_TURNCOAT" in source
     assert "deaths == TOTAL_CASTERS" in source

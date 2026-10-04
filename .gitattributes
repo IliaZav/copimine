@@ -1,2 +1,6 @@
 *.sh text eol=lf
 *.bash text eol=lf
+
+# Supplied Chameleon geometry/animations have byte-exact hash contracts.
+# Windows checkout must preserve them instead of converting LF to CRLF.
+CopiMineClient/src/main/resources/assets/copimineclient/models/entity/end_rift_guardian/** -text

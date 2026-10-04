@@ -1,17 +1,22 @@
 package me.copimine.client;
 
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Vec3d;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,6 +33,11 @@ import java.util.Objects;
 public final class EndEventWorldVfxManager {
     static final int MAX_ACTIVE_BEAMS = 64;
     private static final int MAX_KEY_LENGTH = 96;
+    // Server instance = UUID + ':' + positive long generation + ':world:'
+    // + a sanitized key of at most 64 characters (at most 127 in total).
+    private static final int MAX_INSTANCE_LENGTH = 128;
+    private static final int MAX_RETIRED_EVENTS = 64;
+    private static final int MAX_INSTANCE_VERSIONS = 256;
     private static final int MAX_DIMENSION_LENGTH = 48;
     private static final long MAX_BEAM_LIFETIME_MILLIS = 2_000L;
     private static final float MIN_WIDTH = 0.02F;
@@ -35,8 +45,15 @@ public final class EndEventWorldVfxManager {
     private static final double MAX_COORDINATE = 30_000_000.0D;
 
     private final Map<String, Beam> beams = new LinkedHashMap<>();
+    private record InstanceVersion(long timestampMillis, boolean cleared) { }
+    private final Map<String, InstanceVersion> instanceVersions = new LinkedHashMap<>();
     private String eventId = "";
     private long generation;
+    private long clearedGeneration;
+    private long lastEnvelopeTimestamp;
+    private long resumedAtTimestamp;
+    private boolean locallyCleared;
+    private final LinkedHashSet<String> retiredEvents = new LinkedHashSet<>();
 
     /**
      * Apply one server-authored beam packet.  The wire format is:
@@ -48,11 +65,8 @@ public final class EndEventWorldVfxManager {
      * </pre>
      */
     public synchronized boolean applyBeam(BridgePayload payload, long nowMillis) {
-        if (payload == null || nowMillis < 0L
+        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
                 || !Objects.equals(payload.type(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_BEAM")) {
-            return false;
-        }
-        if (!acceptEnvelope(payload.sessionId(), payload.seq())) {
             return false;
         }
         String[] startParts = split(payload.mode(), 3);
@@ -75,32 +89,56 @@ public final class EndEventWorldVfxManager {
         width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width));
         long lifetime = Math.max(1L, Math.min(MAX_BEAM_LIFETIME_MILLIS,
                 payload.durationMillis()));
-        if (payload.clientVersion().isBlank() || payload.clientVersion().length() > MAX_KEY_LENGTH) {
+        if (payload.clientVersion().isBlank() || payload.clientVersion().length() > MAX_INSTANCE_LENGTH) {
             return false;
         }
+        if (!acceptEnvelope(payload.sessionId(), payload.seq())) return false;
+        if (payload.timestampMillis() < resumedAtTimestamp) return false;
+        InstanceVersion version = instanceVersions.get(payload.clientVersion());
+        if (version != null && payload.timestampMillis() <= version.timestampMillis()) return false;
+        if (!reserveInstanceVersion(payload.clientVersion())) return false;
         if (beams.size() >= MAX_ACTIVE_BEAMS && !beams.containsKey(payload.clientVersion())) {
             return false;
         }
+        Beam previous = beams.get(payload.clientVersion());
+        long started = previous == null || previous.expiresAtMillis() <= nowMillis
+                ? nowMillis : previous.startedAtMillis();
         beams.put(payload.clientVersion(), new Beam(
                 payload.clientVersion(), startParts[0], start, end, color, width,
-                nowMillis, nowMillis + lifetime));
+                started, nowMillis + lifetime));
+        instanceVersions.put(payload.clientVersion(), new InstanceVersion(payload.timestampMillis(), false));
+        lastEnvelopeTimestamp = Math.max(lastEnvelopeTimestamp, payload.timestampMillis());
         return true;
     }
 
     /** Remove one server-owned beam instance after event/phase cleanup. */
     public synchronized boolean applyClear(BridgePayload payload, long nowMillis) {
-        if (payload == null || nowMillis < 0L
+        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
                 || !Objects.equals(payload.type(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_VFX_CLEAR")) {
             return false;
         }
-        if (!acceptEnvelope(payload.sessionId(), payload.seq())) {
-            return false;
-        }
         String instance = payload.clientVersion();
-        if (instance.isBlank()) {
+        if (instance.isBlank() || instance.length() > MAX_INSTANCE_LENGTH
+                || !Objects.equals(payload.sessionId(), eventId)
+                || payload.seq() != generation) {
             return false;
         }
+        InstanceVersion version = instanceVersions.get(instance);
+        if (version != null && (payload.timestampMillis() < version.timestampMillis()
+                || version.cleared() && payload.timestampMillis() == version.timestampMillis())) return false;
+        if (!reserveInstanceVersion(instance)) return false;
+        instanceVersions.put(instance, new InstanceVersion(payload.timestampMillis(), true));
+        lastEnvelopeTimestamp = Math.max(lastEnvelopeTimestamp, payload.timestampMillis());
         return beams.remove(instance) != null;
+    }
+
+    private boolean reserveInstanceVersion(String instance) {
+        if (instanceVersions.containsKey(instance) || instanceVersions.size() < MAX_INSTANCE_VERSIONS) return true;
+        // Do not evict a clear fence and thereby re-admit queued packets. A new generation or transport resets it.
+        beams.clear();
+        clearedGeneration = Math.max(clearedGeneration, generation);
+        locallyCleared = false;
+        return false;
     }
 
     /** Expire short-lived entries; called on the client tick thread. */
@@ -116,11 +154,35 @@ public final class EndEventWorldVfxManager {
         }
     }
 
-    /** Clear all event geometry on disconnect, world change or local reset. */
+    /** Terminal local clear retains the fence against already queued packets. */
     public synchronized void clear() {
         beams.clear();
+        locallyCleared = locallyCleared || generation > clearedGeneration;
+        clearedGeneration = Math.max(clearedGeneration, generation);
+    }
+
+    public synchronized boolean resumeAfterLocalExit(String expectedEventId, long expectedGeneration, long timestamp) {
+        if (!locallyCleared || !Objects.equals(expectedEventId, eventId) || expectedGeneration != generation
+                || timestamp <= lastEnvelopeTimestamp) return false;
+        clearedGeneration = 0L;
+        locallyCleared = false;
+        resumedAtTimestamp = timestamp;
+        lastEnvelopeTimestamp = timestamp;
+        instanceVersions.clear();
+        return true;
+    }
+
+    /** A new network connection has no packets from the previous connection. */
+    public synchronized void reset() {
+        beams.clear();
+        instanceVersions.clear();
         eventId = "";
         generation = 0L;
+        clearedGeneration = 0L;
+        lastEnvelopeTimestamp = 0L;
+        resumedAtTimestamp = 0L;
+        locallyCleared = false;
+        retiredEvents.clear();
     }
 
     /** Clear all geometry for the current event without retaining stale ids. */
@@ -131,6 +193,9 @@ public final class EndEventWorldVfxManager {
             return;
         }
         beams.clear();
+        generation = expectedGeneration;
+        clearedGeneration = Math.max(clearedGeneration, expectedGeneration);
+        locallyCleared = false;
     }
 
     public synchronized int activeBeamCount() {
@@ -141,7 +206,7 @@ public final class EndEventWorldVfxManager {
         List<BeamSnapshot> result = new ArrayList<>();
         for (Beam beam : beams.values()) {
             result.add(new BeamSnapshot(beam.instanceId(), beam.dimension(), beam.start(),
-                    beam.end(), beam.color(), beam.width(), beam.expiresAtMillis()));
+                    beam.end(), beam.color(), beam.width(), beam.startedAtMillis(), beam.expiresAtMillis()));
         }
         return Collections.unmodifiableList(result);
     }
@@ -166,32 +231,126 @@ public final class EndEventWorldVfxManager {
         }
         MatrixStack matrices = context.matrixStack();
         VertexConsumerProvider consumers = context.consumers();
-        VertexConsumer buffer = consumers.getBuffer(RenderLayer.getLines());
         Vec3d cameraPos = camera.getPos();
         matrices.push();
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         MatrixStack.Entry entry = matrices.peek();
-        for (Beam beam : beams.values()) {
-            if (!dimension.equals(beam.dimension())) {
-                continue;
-            }
-            drawRibbon(buffer, entry, beam, nowMillis);
+        try {
+            RitualSpellPresentationPolicy.drawWorldPasses(snapshots(), dimension, nowMillis, pass -> {
+                RenderLayer layer = switch (pass.kind()) {
+                    case RIBBON -> RenderLayer.getLines();
+                    case RITUAL -> RenderLayer.getLightning();
+                    case GLYPH -> RenderLayer.getEntityTranslucentEmissive(spellTexture(pass.spell()));
+                };
+                // The consumer is used only within this pass. A layer switch can end its buffer.
+                VertexConsumer buffer = consumers.getBuffer(layer);
+                return beam -> {
+                    switch (pass.kind()) {
+                        case RIBBON -> drawRibbon(buffer, entry, beam, nowMillis);
+                        case RITUAL -> drawRitualBeam(buffer, entry, beam, nowMillis);
+                        case GLYPH -> drawSpellGlyph(buffer, matrices, camera, beam, nowMillis);
+                    }
+                };
+            });
+        } finally {
+            matrices.pop();
         }
-        matrices.pop();
+    }
+
+    /** Target-only screen packets share the world manager's lifetime, generation and cleanup fences. */
+    public void renderHud(DrawContext context) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (context == null || client.player == null || client.world == null || client.player.isDead()
+                || client.currentScreen != null || client.options.hudHidden) return;
+        long now = System.currentTimeMillis();
+        var beam = RitualSpellPresentationPolicy.screenCue(snapshots(),
+                client.world.getRegistryKey().getValue().getPath(), now);
+        if (beam == null) return;
+        var cue = RitualSpellPresentationPolicy.parse(beam.instanceId());
+        var prisonerLayout = PrisonerHudLayout.compute(context.getScaledWindowWidth(), context.getScaledWindowHeight(),
+                Math.max(client.player.getMaxHealth(), client.player.getHealth()), client.player.getAbsorptionAmount());
+        List<PrisonerHudLayout.Rect> reserved = new ArrayList<>();
+        reserved.add(prisonerLayout.vanillaHud());
+        if (ClientBridgeProtocol.prisonerHud().activeFor(client.player.getUuid())) reserved.add(prisonerLayout.bounds());
+        var layout = RitualSpellPresentationPolicy.screenLayout(
+                context.getScaledWindowWidth(), context.getScaledWindowHeight(), reserved);
+        if (!layout.visible()) return;
+        int alpha = RitualSpellPresentationPolicy.screenAlpha(cue.stage(), beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        for (var edge : layout.edgeCues()) {
+            context.fill(edge.left(), edge.top(), edge.right(), edge.bottom(), (alpha << 24) | beam.color());
+        }
+        var panel = layout.panel();
+        int labelAlpha = Math.min(255, alpha * 7);
+        context.fill(panel.left(), panel.top(), panel.right(), panel.top() + 1,
+                (labelAlpha << 24) | beam.color());
+        context.setShaderColor(((beam.color() >> 16) & 255) / 255F,
+                ((beam.color() >> 8) & 255) / 255F, (beam.color() & 255) / 255F, labelAlpha / 255F);
+        try {
+            context.drawTexture(spellTexture(cue.spell()), panel.left() + 2, panel.top() + 3,
+                    20, 20, 0, 0, 256, 256, 256, 256);
+        } finally {
+            context.setShaderColor(1, 1, 1, 1);
+        }
+        String title = (cue.stage() == RitualSpellPresentationPolicy.Stage.WARNING ? "Готовится: " : "Активно: ")
+                + cue.spell().title();
+        title = client.textRenderer.trimToWidth(title, panel.right() - panel.left() - 30);
+        context.drawTextWithShadow(client.textRenderer, title, panel.left() + 27, panel.top() + 9,
+                (labelAlpha << 24) | 0xF1E8FF);
+    }
+
+    private static Identifier spellTexture(RitualSpellPresentationPolicy.Spell spell) {
+        return Identifier.of("copimineclient", spell.texture());
+    }
+
+    private static void drawSpellGlyph(VertexConsumer buffer, MatrixStack matrices, Camera camera,
+                                       BeamSnapshot beam, long now) {
+        var cue = RitualSpellPresentationPolicy.parse(beam.instanceId());
+        if (!RitualSpellPresentationPolicy.glyphVisibleFrom(cue, camera.getPos().squaredDistanceTo(beam.start()))) return;
+        int alpha = RitualSpellPresentationPolicy.glyphAlpha(cue, beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        boolean billboard = cue.spell().orientation() == RitualSpellPresentationPolicy.Orientation.BILLBOARD;
+        matrices.push();
+        try {
+            matrices.translate(beam.start().x, beam.start().y, beam.start().z);
+            if (billboard) matrices.multiply(camera.getRotation());
+            for (var point : RitualSpellPresentationPolicy.glyphQuad(cue)) {
+                buffer.vertex(matrices.peek(), point.x(), point.y(), point.z())
+                        .color((alpha << 24) | beam.color()).texture(point.u(), point.v())
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(matrices.peek(), 0, billboard ? 0 : 1, billboard ? 1 : 0);
+            }
+        } finally {
+            matrices.pop();
+        }
     }
 
     private boolean acceptEnvelope(String incomingEventId, long incomingGeneration) {
-        if (incomingEventId == null || incomingEventId.isBlank() || incomingGeneration <= 0L) {
+        if (incomingEventId == null || incomingEventId.isBlank()
+                || incomingEventId.length() > 128 || incomingGeneration <= 0L
+                || retiredEvents.contains(incomingEventId)) {
             return false;
+        }
+        if (!eventId.isBlank() && !Objects.equals(eventId, incomingEventId)) {
+            // Fail closed at the bounded session-history cap. Reset only when
+            // the transport changes; evicting old ids could admit old packets.
+            if (retiredEvents.size() >= MAX_RETIRED_EVENTS) return false;
+            retiredEvents.add(eventId);
+            clearedGeneration = 0L;
+            generation = 0L;
         }
         if (eventId.isBlank() || !Objects.equals(eventId, incomingEventId)
                 || incomingGeneration > generation) {
             beams.clear();
+            instanceVersions.clear();
+            lastEnvelopeTimestamp = 0L;
+            resumedAtTimestamp = 0L;
+            locallyCleared = false;
             eventId = incomingEventId;
             generation = incomingGeneration;
             return true;
         }
-        return incomingGeneration >= generation;
+        return incomingGeneration >= generation && incomingGeneration > clearedGeneration;
     }
 
     private static String[] split(String raw, int expectedParts) {
@@ -263,7 +422,7 @@ public final class EndEventWorldVfxManager {
     }
 
     private static void drawRibbon(VertexConsumer buffer, MatrixStack.Entry entry,
-                                   Beam beam, long nowMillis) {
+                                   BeamSnapshot beam, long nowMillis) {
         Vec3d delta = beam.end().subtract(beam.start());
         double length = delta.length();
         if (!Double.isFinite(length) || length < 0.01D) {
@@ -310,6 +469,25 @@ public final class EndEventWorldVfxManager {
         }
     }
 
+    private static void drawRitualBeam(VertexConsumer buffer, MatrixStack.Entry entry, BeamSnapshot beam, long nowMillis) {
+        long age = Math.max(0L, nowMillis - beam.startedAtMillis());
+        long remaining = Math.max(0L, beam.expiresAtMillis() - nowMillis);
+        float fade = Math.min(1.0F, age / 120.0F) * Math.min(1.0F, remaining / 180.0F);
+        int red = (beam.color() >> 16) & 255, green = (beam.color() >> 8) & 255, blue = beam.color() & 255;
+        for (RitualBeamMesh.Quad quad : RitualBeamMesh.quads(beam.start(), beam.end(), beam.width(), age)) {
+            float white = switch (quad.layer()) { case GLOW -> 0; case BODY -> .20F; case CORE -> .78F; case FLOW -> .50F; };
+            int alpha = scaleAlpha(switch (quad.layer()) { case GLOW -> 40; case BODY -> 95; case CORE -> 220; case FLOW -> 190; }, fade);
+            int r = Math.round(red + (255 - red) * white);
+            int g = Math.round(green + (255 - green) * white);
+            int b = Math.round(blue + (255 - blue) * white);
+            for (RitualBeamMesh.Vertex vertex : List.of(quad.a(), quad.b(), quad.c(), quad.d())) {
+                Vec3d point = vertex.position();
+                buffer.vertex(entry, (float) point.x, (float) point.y, (float) point.z)
+                        .color(r, g, b, alpha);
+            }
+        }
+    }
+
     private static void drawFadedLine(VertexConsumer buffer, MatrixStack.Entry entry,
                                       Vec3d start, Vec3d end, int red, int green,
                                       int blue, int alpha) {
@@ -351,7 +529,7 @@ public final class EndEventWorldVfxManager {
     }
 
     public record BeamSnapshot(String instanceId, String dimension, Vec3d start,
-                               Vec3d end, int color, float width, long expiresAtMillis) {
+                               Vec3d end, int color, float width, long startedAtMillis, long expiresAtMillis) {
     }
 
     private record Beam(String instanceId, String dimension, Vec3d start, Vec3d end,

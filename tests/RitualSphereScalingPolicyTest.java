@@ -6,23 +6,31 @@ public final class RitualSphereScalingPolicyTest {
                 "solo Wave 6 must still spawn exactly five ritual casters");
         check(RitualSphereScalingPolicy.forPlayers(20).casterCount() == 5,
                 "large-party Wave 6 must still spawn exactly five ritual casters");
-        checkProfile(2, 5, 5, 3, 1, 13);
-        checkProfile(3, 5, 5, 4, 1, 13);
-        checkProfile(4, 5, 5, 5, 1, 13);
-        checkProfile(5, 5, 10, 5, 1, 12);
-        checkProfile(8, 5, 10, 7, 1, 12);
-        checkProfile(9, 5, 15, 7, 2, 11);
-        checkProfile(12, 5, 15, 7, 2, 11);
-        checkProfile(13, 5, 15, 7, 2, 10);
-        checkProfile(16, 5, 15, 7, 2, 10);
-        checkProfile(17, 5, 15, 7, 3, 9);
-        checkProfile(20, 5, 15, 7, 3, 9);
+        checkProfile(2, 5, 5, 3, 1, 8);
+        checkProfile(3, 5, 5, 4, 1, 8);
+        checkProfile(4, 5, 5, 5, 1, 8);
+        checkProfile(5, 5, 10, 5, 1, 7);
+        checkProfile(8, 5, 10, 7, 1, 7);
+        checkProfile(9, 5, 15, 7, 2, 6);
+        checkProfile(12, 5, 15, 7, 2, 6);
+        checkProfile(13, 5, 15, 7, 2, 6);
+        checkProfile(16, 5, 15, 7, 2, 6);
+        checkProfile(17, 5, 15, 7, 3, 5);
+        checkProfile(20, 5, 15, 7, 3, 5);
         RitualSphereScalingPolicy.Profile capped = RitualSphereScalingPolicy.forPlayers(999);
         check(capped.participants() == 20, "participants must be capped at twenty");
         check(capped.guardCount() == capped.casterCount() * 3,
                 "large-party caster groups must use the three-guard cap");
         check(RitualSphereScalingPolicy.forPlayers(2).projectilesPerVolley() == 3,
                 "solo and duo preserve the reduced guard pressure while retaining three projectiles");
+        check(RitualSphereScalingPolicy.pressureMobsForPlayers(2).total() == 2,
+                "duo ritual needs a bounded ordinary combat pack");
+        check(RitualSphereScalingPolicy.pressureMobsForPlayers(6).total() == 4,
+                "six-player ritual pressure grows independently from caster count");
+        check(RitualSphereScalingPolicy.pressureMobsForPlayers(20).total() == 7,
+                "full ritual pressure remains bounded");
+        check(RitualSphereScalingPolicy.pressureMobsForPlayers(20).eliteEndermen() == 2,
+                "large parties receive a visible but capped elite role");
         System.out.println("RitualSphereScalingPolicyTest OK");
     }
 

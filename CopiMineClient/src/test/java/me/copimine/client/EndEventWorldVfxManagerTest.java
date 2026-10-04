@@ -6,9 +6,117 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
+    @Test
+    void spellTargetFeedbackFollowsServerStageClearExpiryAndRespawnFences() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        String warning = "event-1:2:world:wave6-spell-screen-GRAVITY_WELL-warning";
+        String active = "event-1:2:world:wave6-spell-screen-GRAVITY_WELL-active";
+        BridgePayload warningPacket = at(beam("event-1", 2, warning,
+                "overworld|wave6-spell-screen-GRAVITY_WELL-warning|1,64,2", "1,64.1,2|4EE6FF", .1F, 650), 100);
+        BridgePayload activePacket = at(beam("event-1", 2, active,
+                "overworld|wave6-spell-screen-GRAVITY_WELL-active|1,64,2", "1,64.1,2|4EE6FF", .1F, 650), 300);
+        assertTrue(manager.applyBeam(warningPacket, 100));
+        assertEquals(warning, RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 200).instanceId());
+        assertTrue(manager.applyClear(at(clear("event-1", 2, warning), 300), 300));
+        assertTrue(manager.applyBeam(activePacket, 300));
+        assertEquals(active, RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 400).instanceId());
+        assertFalse(manager.applyBeam(warningPacket, 400));
+        manager.tick(1300);
+        assertTrue(manager.snapshots().isEmpty());
+        assertNull(RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 1300));
+
+        assertTrue(manager.applyBeam(at(activePacket, 1400), 1400));
+        manager.clear();
+        assertNull(RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 1500));
+        assertFalse(manager.applyBeam(at(activePacket, 1500), 1500));
+        assertTrue(manager.resumeAfterLocalExit("event-1", 2, 1600));
+        assertFalse(manager.applyBeam(at(activePacket, 1500), 1700));
+        assertTrue(manager.applyBeam(at(activePacket, 1700), 1700));
+        assertNotNull(RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 1800));
+        assertTrue(manager.applyClear(at(clear("event-1", 2, active), 1900), 1900));
+        assertNull(RitualSpellPresentationPolicy.screenCue(manager.snapshots(), "overworld", 1950));
+        assertFalse(manager.applyBeam(at(activePacket, 1700), 2000));
+        manager.clearEvent("event-1", 2);
+        assertFalse(manager.applyBeam(at(activePacket, 2100), 2100));
+    }
+
+    @Test
+    void serverResumeRestoresSameGenerationAfterRespawnWithoutAdmittingQueuedPackets() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        BridgePayload original = at(beam("event-1", 2L, "channel", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650), 100L);
+        assertTrue(manager.applyBeam(original, 100L));
+        manager.clear();
+        assertFalse(manager.resumeAfterLocalExit("event-1", 3L, 300L));
+        assertFalse(manager.resumeAfterLocalExit("other", 2L, 300L));
+        assertFalse(manager.resumeAfterLocalExit("event-1", 2L, 90L));
+        assertTrue(manager.resumeAfterLocalExit("event-1", 2L, 300L));
+        assertFalse(manager.applyBeam(at(original, 200L), 400L));
+        assertTrue(manager.applyBeam(at(original, 400L), 400L));
+        manager.clearEvent("event-1", 2L);
+        assertFalse(manager.resumeAfterLocalExit("event-1", 2L, 500L));
+    }
+    @Test
+    void reorderedInstanceClearCannotReviveAnOldBeamOrEraseANewerCast() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        BridgePayload old = at(beam("event-1", 1L, "channel", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650), 100L);
+        assertTrue(manager.applyBeam(old, 100L));
+        assertTrue(manager.applyClear(at(clear("event-1", 1L, "channel"), 200L), 200L));
+        assertFalse(manager.applyBeam(old, 300L));
+        assertEquals(0, manager.activeBeamCount());
+        BridgePayload newer = at(old, 400L);
+        assertTrue(manager.applyBeam(newer, 400L));
+        assertFalse(manager.applyClear(at(clear("event-1", 1L, "channel"), 200L), 500L));
+        assertEquals(1, manager.activeBeamCount());
+        assertFalse(manager.applyBeam(old, 600L));
+    }
+
+    private static BridgePayload at(BridgePayload p, long timestamp) {
+        return new BridgePayload(p.type(), p.protocol(), p.seq(), timestamp, p.sessionId(), p.clientVersion(),
+                p.clientVisuals(), p.clientOverlay(), p.clientShaderLike(), p.trueIrisShader(), p.supportedEffects(),
+                p.effectId(), p.shaderpack(), p.durationMillis(), p.intensity(), p.fadeInMillis(), p.fadeOutMillis(),
+                p.mode(), p.clearPolicy(), p.source(), p.reason(), p.status());
+    }
+    @Test
+    void acceptsActualServerCasterInstanceIncludingEventAndGenerationPrefix() {
+        String event = "502d1dbc-9d7b-4420-9f93-b2ec2d226d96";
+        String key = "wave6-ritual-" + "a48a9934-2524-4e43-8010-268985749333";
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        for (long generation : new long[]{1245L, Long.MAX_VALUE}) {
+            String instance = event + ":" + generation + ":world:" + key;
+            assertTrue(manager.applyBeam(beam(event, generation, instance,
+                    "overworld|" + key + "|8.500,70.900,-32.500",
+                    "8.500,71.200,-38.500|D04BFF", 0.10F, 650), 100L));
+            assertEquals(instance, manager.snapshots().get(0).instanceId());
+            assertTrue(manager.applyClear(clear(event, generation, instance), 200L));
+        }
+        assertFalse(manager.applyBeam(beam(event, Long.MAX_VALUE, "x".repeat(129),
+                "overworld|" + key + "|8,70,-32", "8,71,-38|D04BFF", 0.10F, 650), 300L));
+    }
+
+    @Test
+    void localClearKeepsGenerationFenceUntilConnectionReset() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        BridgePayload current = beam("event-1", 2L, "current", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650);
+        assertTrue(manager.applyBeam(current, 100L));
+        manager.clear();
+        assertFalse(manager.applyBeam(current, 200L));
+        assertTrue(manager.applyBeam(beam("event-1", 3L, "new", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650), 300L));
+        assertTrue(manager.applyBeam(beam("event-2", 1L, "next", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650), 400L));
+        assertFalse(manager.applyBeam(current, 500L));
+        assertEquals("next", manager.snapshots().get(0).instanceId());
+        manager.reset();
+        assertTrue(manager.applyBeam(current, 600L));
+    }
     @Test
     void acceptsBoundedBeamAndExpiresIt() {
         EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
@@ -21,6 +129,18 @@ class EndEventWorldVfxManagerTest {
         assertEquals(0.12F, manager.snapshots().get(0).width(), 0.0001F);
         manager.tick(2_000L);
         assertEquals(0, manager.activeBeamCount());
+    }
+
+    @Test
+    void refreshingAContinuousChannelDoesNotRestartItsFadeAndFlow() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        BridgePayload channel = beam("event-1", 1L, "channel", "overworld|caster|1,64,2",
+                "4,65,6|4EE6FF", 0.1F, 650);
+        assertTrue(manager.applyBeam(channel, 100L));
+        assertTrue(manager.applyBeam(at(channel, 2L), 600L));
+        assertEquals(100L, manager.snapshots().get(0).startedAtMillis());
+        assertEquals(1_600L, manager.snapshots().get(0).expiresAtMillis());
+        assertEquals(1, manager.activeBeamCount());
     }
 
     @Test
@@ -42,8 +162,8 @@ class EndEventWorldVfxManagerTest {
         }
         assertFalse(manager.applyBeam(beam("event-1", 1L, "beam-over-cap",
                 "overworld|overflow|1,64,2", "4,65,6|4EE6FF", 0.12F, 1_000), 100L));
-        assertTrue(manager.applyBeam(beam("event-1", 1L, "beam-0",
-                "overworld|key-0|2,64,2", "5,65,6|69DAFF", 0.20F, 1_000), 200L));
+        assertTrue(manager.applyBeam(at(beam("event-1", 1L, "beam-0",
+                "overworld|key-0|2,64,2", "5,65,6|69DAFF", 0.20F, 1_000), 2L), 200L));
         assertEquals(EndEventWorldVfxManager.MAX_ACTIVE_BEAMS, manager.activeBeamCount());
     }
 

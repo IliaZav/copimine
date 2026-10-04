@@ -1,7 +1,7 @@
 package me.copimine.endevent.domain;
 
 /**
- * Deterministic timing for the three Wave 4 black-fog cycles.
+ * Deterministic timing for the three Wave 5 black-fog cycles.
  *
  * <p>The Bukkit controller owns the wall clock.  This class only owns the
  * contract so a change to the warning window cannot silently shorten the
@@ -31,5 +31,9 @@ public final class BlackFogTimingPolicy {
 
     public static boolean complete(int completedCycles) {
         return completedCycles >= CYCLE_COUNT;
+    }
+
+    public static boolean hasRemainingCycles(int completedCycles) {
+        return completedCycles >= 0 && completedCycles < CYCLE_COUNT;
     }
 }

@@ -3,7 +3,7 @@ package me.copimine.endevent.domain;
 /** Pure bounded movement and damage rules for the Wave 6 Gravity Well. */
 public final class RitualZoneEffectPolicy {
     public static final double RADIUS_BLOCKS = 4.0D;
-    public static final double PULL_PER_UPDATE = 0.12D;
+    public static final double PULL_PER_UPDATE = 0.30D;
 
     private RitualZoneEffectPolicy() {
     }

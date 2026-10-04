@@ -94,8 +94,8 @@ def test_live_official_wave_lifecycle_uses_the_shared_wave_coordinator():
 
     assert "EndRiftEncounterCoordinator encounterCoordinator" in event
     assert "new EndRiftEncounterCoordinator(new EndRiftSession(encounterController))" in event
-    start = event[event.index("private boolean startCanonicalObjective"):
-                  event.index("private void startWaveObjective")]
+    start = event[event.index("private WaveObjectiveStartResult startCanonicalObjective"):
+                  event.index("private WaveObjectiveStartResult startWaveObjective")]
     tick = event[event.index("private boolean tickCurrentObjective"):
                  event.index("private boolean tickWaveObjective")]
     report = event[event.index("private boolean reportCurrentWaveResult"):
@@ -122,10 +122,11 @@ def test_resumed_wave_six_restores_its_persisted_prisoner_from_the_live_tick():
     restore = event[event.index("private void synchronizePersistedRitualPrisonerCapture"):
                     event.index("private void ensureRitualPrisoner")]
 
-    captured_gate = tick.index("if (!RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {\n            return;")
+    captured_gate = tick.index("if (!ritualMajorSpellsReady()) {\n            return;")
     restore_call = tick.index("synchronizePersistedRitualPrisonerCapture();")
     prisoner_tick = tick.index("ensureRitualPrisoner(now)")
     assert captured_gate < restore_call < prisoner_tick
+    assert "if (RitualSphereEncounterPolicy.hasCaptured(ritualSphereState)) {" in tick[captured_gate:restore_call]
     assert "synchronizePersistedRitualPrisonerCapture()" not in capture
     assert "encounterCoordinator.restoreCurrentRitualPrisoner(context, prisonerId)" in restore
     assert "restoreCapturedPrisoner" in coordinator
@@ -179,15 +180,17 @@ def test_phase_boundaries_close_the_previous_wave_scope_and_own_transient_entiti
 
 def test_official_wave_flow_does_not_start_a_wave_front_animation():
     event = read(PLUGIN / "CopiMineEndEvent.java")
-    live_start = event[event.index("private void spawnWaveForObjectiveInternal"):event.index("private int plannedWaveCountForDiagnostics")]
+    live_start_start = event.index("private boolean spawnWaveForObjectiveInternal")
+    live_start_end = event.index("\n    private ", live_start_start + len("private boolean spawnWaveForObjectiveInternal"))
+    live_start = event[live_start_start:live_start_end]
     assert "startWaveFrontAnimation" not in live_start
     assert "testWaveFrontVisualMode && activeWave >= 1" in event
 
 
 def test_wave_objective_and_spell_names_are_not_sent_as_routine_system_titles():
     event = read(PLUGIN / "CopiMineEndEvent.java")
-    objective_start = event.index("private boolean startCanonicalObjective")
-    objective_end = event.index("private void startWaveObjective", objective_start)
+    objective_start = event.index("private WaveObjectiveStartResult startCanonicalObjective")
+    objective_end = event.index("private WaveObjectiveStartResult startWaveObjective", objective_start)
     fog_start = event.index("private void tickBlackFogObjective")
     fog_end = event.index("private void applyBlackFogEffects", fog_start)
     wave_intermission_start = event.index("private void tickCurrentIntermission")

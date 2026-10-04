@@ -24,6 +24,8 @@ MODEL_CLASSES = (
     "me/copimine/client/RiftEventSkeletonModel.class",
     "me/copimine/client/RiftEventEndermanModel.class",
     "me/copimine/client/RiftSpiderModel.class",
+    "me/copimine/client/RitualSphereRenderer.class",
+    "me/copimine/client/RitualSphereMesh.class",
 )
 MOB_TEXTURES = (
     "end_rift_user_skeleton.png",
@@ -32,6 +34,8 @@ MOB_TEXTURES = (
     "end_rift_elite.png",
     "end_rift_elite_skeleton.png",
     "end_rift_elite_spider.png",
+    "end_event_ritual_shell.png",
+    "end_event_ritual_membrane.png",
 )
 PROFILE_JAR_ENV = "COPIMINE_PROFILE_CLIENT_JAR"
 

@@ -14,6 +14,14 @@ public final class RiftCarrierPolicyTest {
         check(state.phase() == RiftCarrierPolicy.Phase.CHARGE_DROPPED,
                 "carrier death must create a dropped charge");
         check(state.delivered() == 0, "carrier death must not count as delivery");
+        UUID recreatedCharge = UUID.randomUUID();
+        RiftCarrierPolicy.State restored = RiftCarrierPolicy.replaceMissingCharge(
+                state, generation, recreatedCharge);
+        check(restored.phase() == state.phase() && recreatedCharge.equals(restored.charge())
+                        && restored.deadlineTick() == state.deadlineTick() && restored.delivered() == 0,
+                "lost dropped charge must reconstruct without resetting its timeout or delivery");
+        check(RiftCarrierPolicy.replaceMissingCharge(restored, generation + 1, charge) == restored,
+                "stale generation cannot replace the live charge");
         check(RiftCarrierPolicy.pickUp(state, generation, player, charge, 299L).holder() != null,
                 "a participant may pick up the charge before timeout");
         state = RiftCarrierPolicy.pickUp(state, generation, player, charge, 120L);

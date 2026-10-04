@@ -1,6 +1,9 @@
 import hashlib
 import json
+import math
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from PIL import Image
@@ -26,7 +29,7 @@ CLIENT_ENTITY_TEXTURES = (
     ROOT / "CopiMineClient" / "src" / "main" / "resources" / "assets"
     / "copimineclient" / "textures" / "entity"
 )
-SUPPLIED_SKINS = ROOT / "artifacts" / "source-inspect" / "end-event" / "chameleon" / "models" / "enderboss" / "skins"
+SUPPLIED_SKINS = ROOT / "CopiMineClient" / "src" / "main" / "asset-source" / "end-event-mobs"
 KAGUNE_SOURCE_MODEL = (
     ROOT / "CopiMineClient" / "src" / "main" / "asset-source"
     / "end-rift-tentacle" / "kagune.bbmodel"
@@ -69,20 +72,57 @@ def test_wave_three_portal_models_resolve_to_the_event_texture():
         assert _texture_path(model["textures"]["rift"]).is_file()
 
 
+def test_wave_six_ritual_membrane_is_packaged_with_real_transparency():
+    client = CLIENT_ENTITY_TEXTURES / "end_event_ritual_membrane.png"
+    server = COPIMINE / "textures" / "item" / "end_event_ritual_membrane.png"
+    assert client.read_bytes() == server.read_bytes()
+    with Image.open(client) as image:
+        assert image.mode == "RGBA" and min(image.size) >= 512
+        lo, hi = image.getchannel("A").getextrema()
+        assert lo == 0 and hi > 100, "material requires real transparency and readable energy veins"
+    shield = _read_json("copimine/models/item/end_event_ritual_caster_shield.json")
+    assert shield["parent"] == "copimine:item/end_event_rift_guardian_shield"
+    inherited = _read_json("copimine/models/item/end_event_rift_guardian_shield.json")
+    assert inherited["elements"], "Wave 6 must inherit the actual boss shield geometry"
+    assert inherited["textures"]["shield"] == "copimine:item/end_event_rift_guardian_shield_hd"
+    assert (CLIENT_ENTITY_TEXTURES / "end_rift_guardian_shield_hd.png").read_bytes() == (
+        _texture_path(inherited["textures"]["shield"]).read_bytes()
+    ), "the client and pack must use the same boss shield atlas"
+
+
 def test_wave_six_ritual_sphere_has_a_dedicated_visible_paper_model():
-    """The Wave 6 sphere must be a faceted transparent crystal, not a flat card."""
+    """The Wave 6 sphere must be an actual transparent 3D shell, not shard cuboids."""
     model = _read_json("copimine/models/item/end_event_ritual_sphere.json")
     assert model.get("parent") == "minecraft:item/generated"
-    assert model["textures"]["core"] == "copimine:item/rift_core_shard"
-    texture = _texture_path(model["textures"]["core"])
-    assert texture.is_file()
-    with Image.open(texture).convert("RGBA") as image:
-        alpha = image.getchannel("A")
-        assert alpha.getbbox() is not None
-        assert any(value == 0 for value in alpha.getdata())
-        assert any(0 < value < 255 for value in alpha.getdata())
-    assert len(model.get("elements", ())) >= 3, "the sphere must have readable 3D facets"
-    assert all(len(element.get("faces", {})) == 6 for element in model["elements"])
+    assert model.get("render_type") == "minecraft:translucent"
+    assert model["textures"]["shell"] == "copimine:item/end_event_ritual_shell"
+    with Image.open(_texture_path(model["textures"]["shell"])) as image:
+        assert image.mode == "RGBA", "shell must retain real transparency"
+        histogram = image.getchannel("A").histogram()
+        assert histogram[0] / sum(histogram) >= 0.5, "at least half the outer shell is empty"
+    client_shell = CLIENT_ENTITY_TEXTURES / "end_event_ritual_shell.png"
+    assert client_shell.read_bytes() == _texture_path(model["textures"]["shell"]).read_bytes()
+    assert "rift_core_shard" not in json.dumps(model)
+    elements = model.get("elements", ())
+    assert len(elements) == 192, "the shell must use the bounded spherical voxel mesh"
+    centers = []
+    occupied = set()
+    for element in elements:
+        lower, upper = element["from"], element["to"]
+        assert [high - low for low, high in zip(lower, upper)] == [2, 2, 2]
+        assert all(0 <= low < high <= 16 for low, high in zip(lower, upper))
+        assert len(element.get("faces", {})) == 6
+        cell = tuple(lower)
+        assert cell not in occupied
+        occupied.add(cell)
+        center = tuple((low + high) / 2 - 8 for low, high in zip(lower, upper))
+        radius = math.sqrt(sum(axis * axis for axis in center))
+        assert 5.2 <= radius <= 7.8
+        centers.append(center)
+    assert all(max(abs(center[axis]) for center in centers) == 7 for axis in range(3))
+
+    generator = ROOT / "resourcepacks" / "tools" / "generate_ritual_sphere_model.py"
+    subprocess.run([sys.executable, str(generator), "--check"], check=True, capture_output=True)
 
     source = (ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"
               / "CopiMineEndEvent.java").read_text(encoding="utf-8")
@@ -90,7 +130,8 @@ def test_wave_six_ritual_sphere_has_a_dedicated_visible_paper_model():
     end = source.index("private void tagRitualPrisoner", start)
     body = source[start:end]
     assert "RITUAL_SPHERE_DISPLAY_SCALE" in body
-    assert "setBillboard(Display.Billboard.CENTER)" in body
+    assert "setBillboard(Display.Billboard.FIXED)" in body, "3D shell must not rotate to face each viewer"
+    assert "new Vector3f()" in body, "display is centred on the server sphere anchor"
 
 
 def test_wave_six_ritual_sphere_uses_a_unique_custom_model_data_entry():
@@ -183,7 +224,7 @@ def test_heavy_tentacle_is_opaque_and_guardian_shield_blends_as_translucent_viol
                for element in fallback_model["elements"])
 
     shield = Image.open(CLIENT_ENTITY_TEXTURES / "end_rift_guardian_shield_hd.png").convert("RGBA")
-    assert shield.size == (512, 512)
+    assert shield.size == (32, 32), "user-requested Minecraft pixel atlas"
     shield_alpha = shield.getchannel("A")
     assert shield_alpha.getbbox() is not None
     assert any(0 < alpha < 255 for alpha in shield_alpha.getdata()), (
@@ -198,7 +239,7 @@ def test_heavy_tentacle_is_opaque_and_guardian_shield_blends_as_translucent_viol
 
     server_shield = COPIMINE / "textures" / "item" / "end_event_rift_guardian_shield_hd.png"
     with Image.open(server_shield).convert("RGBA") as fallback:
-        assert fallback.width == fallback.height and fallback.width >= 512
+        assert fallback.size == (32, 32)
         fallback_alpha = fallback.getchannel("A")
         assert fallback_alpha.getbbox() is not None
         assert fallback_alpha.getextrema()[0] == 0
@@ -231,23 +272,23 @@ def test_client_and_server_use_the_same_transparent_guardian_shield_silhouette()
     client_path = CLIENT_ENTITY_TEXTURES / "end_rift_guardian_shield_hd.png"
     server_path = (COPIMINE / "textures" / "item" / "end_event_rift_guardian_shield_hd.png")
     with Image.open(client_path).convert("RGBA") as client, Image.open(server_path).convert("RGBA") as server:
-        assert client.size == server.size == (512, 512)
+        assert client.size == server.size == (32, 32)
         assert list(client.getdata()) == list(server.getdata()), (
             "the native client renderer and resource-pack fallback must share one shield atlas"
         )
         alpha = client.getchannel("A")
         assert alpha.getpixel((0, 0)) == 0
-        assert alpha.getpixel((511, 0)) == 0
-        assert alpha.getpixel((0, 511)) == 0
-        assert alpha.getpixel((511, 511)) == 0
+        assert alpha.getpixel((31, 0)) == 0
+        assert alpha.getpixel((0, 31)) == 0
+        assert alpha.getpixel((31, 31)) == 0
         bounds = alpha.getbbox()
         assert bounds is not None
         assert bounds[0] > 0 and bounds[1] > 0
-        assert bounds[2] < 512 and bounds[3] < 512
+        assert bounds[2] < 32 and bounds[3] < 32
         assert bounds[2] - bounds[0] < bounds[3] - bounds[1], (
             "the shield texture must be a tall shaped plate, not a square card"
         )
-        assert 96 <= alpha.getpixel((256, 256)) <= 224
+        assert 96 <= alpha.getpixel((16, 16)) <= 224
         pixels = list(client.getdata())
         assert any(a > 0 and r < 100 and g < 100 and b > r * 1.5
                    for r, g, b, a in pixels), "the shield needs a dark-violet bevel"
@@ -261,31 +302,59 @@ def test_client_and_server_use_the_same_transparent_guardian_shield_silhouette()
                    for r, g, b, a in pixels), "the shield needs small cyan fracture glints"
         assert max(a for _, _, _, a in pixels) < 255, "the shield must remain translucent"
 
-        left, top, right, bottom = alpha.getbbox()
-        inner_left = left + (right - left) // 8
-        inner_right = right - (right - left) // 8
-        inner_width = inner_right - inner_left
-        dark_counts = []
-        for y in range(top + 56, bottom - 56):
-            dark_counts.append(sum(
-                1 for x in range(inner_left, inner_right)
-                if (lambda pixel: pixel[3] > 120 and pixel[0] < 48
-                    and pixel[1] < 20 and pixel[2] < 75)(client.getpixel((x, y)))
-            ))
-        assert max(dark_counts) < inner_width // 3, (
+        assert not _shield_has_horizontal_face_cut(client), (
             "the shield atlas must not contain a horizontal black cut through its face"
         )
 
 
+def _shield_has_horizontal_face_cut(image):
+    """Measure each tapered row's face, excluding its two-texel metal rim."""
+    bounds = image.getchannel("A").getbbox()
+    if bounds is None:
+        return True
+    left, top, right, bottom = bounds
+    end_margin = max(2, round((bottom - top) * 0.14))
+    for y in range(top + end_margin, bottom - end_margin):
+        row = [x for x in range(left, right) if image.getpixel((x, y))[3] > 120]
+        if len(row) < 5:
+            continue
+        rim = max(2, (row[-1] - row[0] + 1) // 8)
+        face_left, face_right = row[0] + rim, row[-1] + 1 - rim
+        face_width = face_right - face_left
+        if face_width < 3:
+            continue
+        dark = sum(1 for x in range(face_left, face_right)
+                   if (lambda p: p[3] > 120 and p[0] < 48 and p[1] < 20 and p[2] < 75)(image.getpixel((x, y))))
+        if dark >= max(1, face_width // 3):
+            return True
+    return False
+
+
+def test_32px_shield_cut_detector_rejects_face_stripe_but_preserves_metal_rim():
+    atlas = Image.new("RGBA", (32, 32), (0, 0, 0, 0))
+    for y in range(3, 29):
+        for x in range(7, 25):
+            atlas.putpixel((x, y), (90, 55, 180, 200))
+        for x in (7, 8, 23, 24):
+            atlas.putpixel((x, y), (24, 10, 55, 200))
+    assert not _shield_has_horizontal_face_cut(atlas), "a dark two-pixel rim is intentional"
+    for x in range(9, 23):
+        atlas.putpixel((x, 15), (24, 10, 55, 200))
+    assert _shield_has_horizontal_face_cut(atlas), "a real black face stripe still fails validation"
+
+
 def test_archived_mob_skins_are_byte_exact_client_inputs():
-    for source_name, client_name in (
-        ("enderman-1.png", "end_rift_user_enderman.png"),
-        ("spider.png", "end_rift_user_spider.png"),
+    for source_name, client_name, expected_sha256 in (
+        ("enderman-1.png", "end_rift_user_enderman.png",
+         "a9a154f232919627451431e3f3874c9e850f23e531eae2cfe2a4a9cc16edf447"),
+        ("spider.png", "end_rift_user_spider.png",
+         "19c46ff4aa829e7101b25a50a55090cd1d8145c2f83b95d64c13a20f6b5c9abf"),
     ):
         source = SUPPLIED_SKINS / source_name
         target = CLIENT_ENTITY_TEXTURES / client_name
         assert source.is_file() and target.is_file()
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == hashlib.sha256(source.read_bytes()).hexdigest()
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == expected_sha256
+        assert target.read_bytes() == source.read_bytes()
 
 
 def test_configured_tentacle_hitbox_covers_the_full_authored_rig_length():

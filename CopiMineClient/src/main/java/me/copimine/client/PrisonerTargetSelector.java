@@ -11,10 +11,13 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.util.hit.EntityHitResult;
+import net.minecraft.util.hit.HitResult;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.RaycastContext;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /** Local crosshair target preview; it sends nothing until an ability key is pressed. */
@@ -25,26 +28,59 @@ public final class PrisonerTargetSelector {
     public static Preview preview(MinecraftClient client) {
         PrisonerHudController hud = ClientBridgeProtocol.prisonerHud();
         if (client == null || client.player == null || client.world == null
-                || !hud.activeFor(client.player.getUuid())
-                || !(client.crosshairTarget instanceof EntityHitResult hit)) {
+                || !client.player.isAlive() || client.player.isSpectator()
+                || client.player.getWorld() != client.world || client.currentScreen != null
+                || !hud.activeFor(client.player.getUuid())) {
             return Preview.NONE;
         }
-        Entity target = hit.getEntity();
-        if (!(target instanceof LivingEntity living) || target == client.player
-                || !target.isAlive() || target.getWorld() != client.world) {
+        Camera camera = client.gameRenderer.getCamera();
+        if (camera == null || !camera.isReady() || camera.getFocusedEntity() != client.player) {
             return Preview.NONE;
         }
-        UUID targetId = target.getUuid();
-        double distance = client.player.distanceTo(target);
-        boolean ally = target instanceof PlayerEntity player && player != client.player
-                && hud.isTargetAllowed(PrisonerHudController.Ability.HEAL, targetId)
-                && PrisonerTargetRangePolicy.allows(PrisonerHudController.Ability.HEAL, distance);
-        boolean hostile = target instanceof MobEntity
-                && hud.isTargetAllowed(PrisonerHudController.Ability.TURNCOAT, targetId)
-                && PrisonerTargetRangePolicy.allows(
-                        PrisonerHudController.Ability.TURNCOAT, distance);
-        if (!ally && !hostile) return Preview.NONE;
-        return new Preview(target, ally, hostile);
+        Vec3d origin = camera.getPos();
+        Vec3d direction = new Vec3d(camera.getHorizontalPlane()).normalize();
+        // Account for third-person camera offset; feet-to-target limits still stay 24/28.
+        double rayLength = PrisonerTargetRangePolicy.TURNCOAT_TARGET_RANGE
+                + Math.min(8.0D, origin.distanceTo(client.player.getEyePos()));
+        Vec3d end = origin.add(direction.multiply(rayLength));
+        HitResult blockHit = client.world.raycast(new RaycastContext(origin, end,
+                RaycastContext.ShapeType.COLLIDER, RaycastContext.FluidHandling.NONE, client.player));
+        double colliderDistance = blockHit.getType() == HitResult.Type.MISS
+                ? rayLength : origin.distanceTo(blockHit.getPos());
+        List<PrisonerTargetRayPolicy.Candidate<Entity>> candidates = new ArrayList<>();
+        Box rayBounds = new Box(origin, end).expand(1.0D);
+        for (Entity target : client.world.getOtherEntities(client.player, rayBounds)) {
+            if (!(target instanceof LivingEntity) || !target.isAlive() || target.isSpectator()
+                    || target.getWorld() != client.world) continue;
+            candidates.add(new PrisonerTargetRayPolicy.Candidate<>(target, target.getUuid(),
+                    target.getBoundingBox(), client.player.getPos().distanceTo(target.getPos()),
+                    target instanceof PlayerEntity, target instanceof MobEntity));
+        }
+        PrisonerTargetRayPolicy.Selection<Entity> selection = PrisonerTargetRayPolicy.select(
+                origin, direction, rayLength, colliderDistance, candidates, hud::isTargetAllowed);
+        return selection == null ? Preview.NONE
+                : new Preview(selection.target(), selection.ally(), selection.hostile());
+    }
+
+    /** Native outline hooks use a fresh ray and never mutate glowing flags or retain an entity. */
+    public static int outlineColor(MinecraftClient client, Entity renderedEntity) {
+        if (client == null || client.player == null || client.world == null
+                || !(renderedEntity instanceof LivingEntity) || !renderedEntity.isAlive()
+                || renderedEntity.isSpectator() || renderedEntity.getWorld() != client.world) {
+            return 0;
+        }
+        PrisonerHudController hud = ClientBridgeProtocol.prisonerHud();
+        if (!hud.activeFor(client.player.getUuid())) return 0;
+        UUID renderedId = renderedEntity.getUuid();
+        boolean supportEligible = renderedEntity instanceof PlayerEntity
+                && hud.isTargetAllowed(PrisonerHudController.Ability.HEAL, renderedId);
+        boolean hostileEligible = renderedEntity instanceof MobEntity
+                && hud.isTargetAllowed(PrisonerHudController.Ability.TURNCOAT, renderedId);
+        if (!supportEligible && !hostileEligible) return 0;
+        Preview hovered = preview(client);
+        if (hovered.entity() != renderedEntity) return 0;
+        return PrisonerTargetHighlightPolicy.colorFor(hud, client.player.getUuid(),
+                hovered.entity().getUuid(), renderedId, hovered.ally(), hovered.hostile());
     }
 
     public static void render(WorldRenderContext context) {

@@ -161,7 +161,8 @@ public final class EndRiftGuardianShieldRenderer {
         return ids;
     }
 
-    private static void renderShieldMesh(MatrixStack matrices, VertexConsumer buffer) {
+    /** Shared plate geometry for Wave 6; carrier motion and ownership remain with its caller. */
+    public static void renderShieldMesh(MatrixStack matrices, VertexConsumer buffer) {
         MatrixStack.Entry entry = matrices.peek();
         List<EndRiftGuardianShieldModel.Quad> front = EndRiftGuardianShieldModel.frontQuads();
         for (EndRiftGuardianShieldModel.Quad quad : front) {

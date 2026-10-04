@@ -91,8 +91,8 @@ function Get-RitualScalingProfile {
   $projectiles = if ($count -le 2) { 3 } elseif ($count -eq 3) { 4 } `
     elseif ($count -le 5) { 5 } elseif ($count -eq 6) { 6 } else { 7 }
   $zones = if ($count -le 8) { 1 } elseif ($count -le 16) { 2 } else { 3 }
-  $cooldown = if ($count -le 4) { 13 } elseif ($count -le 8) { 12 } `
-    elseif ($count -le 12) { 11 } elseif ($count -le 16) { 10 } else { 9 }
+  $cooldown = if ($count -le 4) { 8 } elseif ($count -le 8) { 7 } `
+    elseif ($count -le 12) { 6 } elseif ($count -le 16) { 6 } else { 5 }
   return [pscustomobject]@{
     Casters = 5
     Guards = $guards
@@ -599,7 +599,7 @@ function Teleport-PlayersToNearestWaveMobIfOutOfMeleeRange {
     $playerPosition = Get-PlayerPosition -Name $name
     if ($null -eq $playerPosition) { continue }
     $targetCandidates = @()
-    foreach ($entityType in @('enderman', 'skeleton', 'spider')) {
+    foreach ($entityType in @('enderman', 'skeleton', 'spider', 'warden', 'ravager', 'vex')) {
       $targetText = Invoke-LocalRcon (
         "execute positioned $(Format-Coordinate $playerPosition[0]) $(Format-Coordinate $playerPosition[1]) $(Format-Coordinate $playerPosition[2]) run data get entity @e[tag=copimine_end_event,type=$entityType,sort=nearest,limit=1,distance=..32] Pos")
       $match = [Regex]::Match([string]$targetText,
@@ -1037,11 +1037,11 @@ function Teleport-PlayersToNearestChamberMob {
     if ($playerChamber -lt 0) { continue }
     # Wave 7 can leave one official elite/guardian alive.  Its custom name is
     # not a reliable protocol type, so query every LivingEntity type used by
-    # the current wave and choose the nearest same-chamber target.  Restricting
-    # this helper to endermen made a valid skeleton/spider guardian invisible
-    # to the disposable positioning aid and could make the official probe hang.
+    # the chamber autopilot and choose the nearest same-chamber target. Leaving
+    # Warden, Ravager or Vex out can strand a client behind the closed chamber
+    # boundary while the matching trial stays alive.
     $targetCandidates = @()
-    foreach ($entityType in @('enderman', 'skeleton', 'spider')) {
+    foreach ($entityType in @('enderman', 'skeleton', 'spider', 'warden', 'ravager', 'vex')) {
       $targetText = Invoke-LocalRcon ("execute positioned $(Format-Coordinate $playerPosition[0]) $(Format-Coordinate $playerPosition[1]) $(Format-Coordinate $playerPosition[2]) run data get entity @e[tag=copimine_end_event,type=$entityType,sort=nearest,limit=1,distance=..24] Pos")
       $targetPosition = Parse-Position $targetText
       if ($null -eq $targetPosition) { continue }

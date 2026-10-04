@@ -34,6 +34,21 @@ public final class TransitionRuneControllerTest {
         check(controller.holdState().startedAtMillis() == 0L,
                 "missing player after reset leaves no hold timestamp");
 
+        controller.reset();
+        controller.observeServerTicks(roster, ready, 0L);
+        check(!controller.observeServerTicks(roster, ready, 199L).justCompleted(),
+                "wall-clock lag cannot shorten the two-hundred-server-tick hold");
+        check(controller.observeServerTicks(roster, ready, 200L).justCompleted(),
+                "the hold completes exactly after two hundred server ticks, including tick zero");
+        controller.reset();
+        controller.observeServerTicks(roster, ready, 400L);
+        controller.reset(); // A move event observes leaving and returning between two objective polls.
+        controller.observeServerTicks(roster, ready, 595L);
+        check(!controller.observeServerTicks(roster, ready, 600L).justCompleted(),
+                "a leave-and-return event starts a fresh continuous hold");
+        check(controller.observeServerTicks(roster, ready, 795L).justCompleted(),
+                "a fresh hold can complete after its own two hundred ticks");
+
         System.out.println("TransitionRuneControllerTest OK");
     }
 

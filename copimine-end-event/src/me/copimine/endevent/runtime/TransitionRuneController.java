@@ -36,6 +36,12 @@ public final class TransitionRuneController {
         this.holdMillis = Math.max(1L, holdMillis);
     }
 
+    public Observation observeServerTicks(Set<UUID> roster,
+                                          Collection<TransitionRunePolicy.RuneOccupancy> occupancies,
+                                          long serverTick) {
+        return observe(roster, occupancies, me.copimine.endevent.domain.ServerTickClock.millis(serverTick));
+    }
+
     public Observation observe(Set<UUID> roster,
                                Collection<TransitionRunePolicy.RuneOccupancy> occupancies,
                                long nowMillis) {

@@ -13,7 +13,7 @@ def section(source: str, start: str, end: str) -> str:
 
 def test_wave_seven_uses_generation_scoped_trial_completion_not_generic_mob_clear():
     source = EVENT.read_text(encoding="utf-8")
-    start_wave = section(source, "private void spawnWaveForObjectiveInternal", "private WaveMechanicsPolicy.WaveCounts ritualWaveCounts")
+    start_wave = section(source, "private boolean spawnWaveForObjectiveInternal", "private WaveMechanicsPolicy.WaveCounts ritualWaveCounts")
     chamber_tick = section(source, "private void tickCurrentChamberObjective", "private int countLiveWaveEntitiesForChamber")
 
     assert "private final RealitySplitTrialController realitySplitTrialController" in source
@@ -89,7 +89,7 @@ def test_wave7_reflection_seals_are_elevated_clear_of_the_hostile_fireball_lane(
         "private Location realitySplitTrialObjectiveLocation",
     )
 
-    assert "realitySplitReflectionSealLocation(core,state.chamber(),seal)" in re.sub(
+    assert "realitySplitReflectionSealLocation(state.chamber(),seal)" in re.sub(
         r"\s+", "", room
     )
     assert "REALITY_SPLIT_REFLECTION_SEAL_LIFT_BLOCKS" in seal_location
@@ -131,6 +131,34 @@ def test_wave7_chamber_completion_log_reports_the_count_required_by_the_live_gat
     assert '" chambers=" + realitySplitChamberController.assignment().chamberCount()' in completion
 
 
+def test_wave7_barrier_plan_is_a_required_start_resource_and_final_seal_core_stays_clear():
+    source = EVENT.read_text(encoding="utf-8")
+    canonical = section(
+        source,
+        "private WaveObjectiveStartResult startCanonicalObjective",
+        "private WaveObjectiveStartResult startWaveObjective",
+    )
+    barriers = section(
+        source,
+        "private boolean spawnRealitySplitBarriers",
+        "private void openRealitySplitBoundary",
+    )
+    policy = (
+        ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"
+        / "domain" / "RealitySplitBarrierPolicy.java"
+    ).read_text(encoding="utf-8")
+
+    assert "started = spawnRealitySplitBarriers(world, core);" in canonical
+    assert 'if (!clearRealitySplitBarriers("wave7-rebuild"))' in barriers
+    assert "coreClearance = finalSealBarrierContext()" in barriers
+    assert "return false;" in barriers
+    assert "return true;" in barriers
+    assert "cellsForClosedBoundary(" in barriers
+    assert "centralJoin" in policy
+    assert "excluded.size() < boundaryCount(count)" in policy
+    assert "result.addAll(centralJoin)" in policy
+
+
 def test_disposable_wave_seven_restores_trial_runtime_without_changing_event_phase():
     source = EVENT.read_text(encoding="utf-8")
     policy = (
@@ -144,10 +172,10 @@ def test_disposable_wave_seven_restores_trial_runtime_without_changing_event_pha
     assert "allowsRuntime(activeWave,phase,testWaveFrontVisualMode)" in compact
     assert "if (isRealitySplitTrialRuntimeActive())" in source
     assert "phase = EventPhase.WAVE_7" not in section(
-        source, "private boolean isRealitySplitTrialRuntimeActive", "private void startRealitySplitTrials"
+        source, "private boolean isRealitySplitTrialRuntimeActive", "private boolean startRealitySplitTrials"
     )
     for method in (
-        "private void startRealitySplitTrials",
+        "private boolean startRealitySplitTrials",
         "private void finishRealitySplitTrial",
         "private void tickRealitySplitTrialRuntimes",
         "private boolean isCurrentRealitySplitTrialTarget",
@@ -169,6 +197,34 @@ def test_wave_seven_trial_objectives_search_the_chamber_not_two_blocks_from_core
     assert "MIN_WAVE_CORE_DISTANCE_BLOCKS, chamber, null)" in objective
     assert "boundedCombatRadius(config.arenaRadius())" in objective
     assert "findSafeCombatLocation(anchor, preferred, 2.0D" not in objective
+
+
+def test_wave7_objective_locations_use_playable_feet_anchor_not_core_top():
+    source = EVENT.read_text(encoding="utf-8")
+    room = section(
+        source,
+        "private boolean ensureRealitySplitTrialRoom",
+        "private void logRealitySplitTrialComponentFailure",
+    )
+    reflection = section(
+        source,
+        "private Location realitySplitReflectionSealLocation",
+        "private Location realitySplitTrialObjectiveLocation",
+    )
+    juggernaut = section(
+        source,
+        "private Location realitySplitTrialObjectiveLocation",
+        "private Entity findRealitySplitTrialEntity",
+    )
+
+    assert "realitySplitReflectionSealLocation(state.chamber(),seal)" in re.sub(
+        r"\s+", "", room
+    )
+    assert "realitySplitTrialObjectiveLocation(state.chamber(),anchor," in re.sub(
+        r"\s+", "", room
+    )
+    assert "Location anchor = coreCombatAnchorLocation();" in reflection
+    assert "Location anchor = coreCombatAnchorLocation();" in juggernaut
 
 
 def test_disposable_local_wave_seven_uses_assigned_players_instead_of_stale_reward_roster():

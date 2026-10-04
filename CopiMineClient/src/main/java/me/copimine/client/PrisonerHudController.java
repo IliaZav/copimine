@@ -6,6 +6,8 @@ import java.util.UUID;
 public final class PrisonerHudController {
     private String eventId = "";
     private long generation;
+    private boolean terminal;
+    private long lastServerTimestamp;
     private UUID prisoner;
     private int casterDeaths;
     private final long[] cooldownUntilMillis = new long[4];
@@ -18,12 +20,21 @@ public final class PrisonerHudController {
                                            long[] remainingCooldownsMillis,
                                            PrisonerTargetEligibility incomingTargetEligibility,
                                            long receivedAtMillis) {
+        return applyState(incomingEventId, incomingGeneration, incomingPrisoner, incomingCasterDeaths,
+                remainingCooldownsMillis, incomingTargetEligibility, receivedAtMillis, receivedAtMillis);
+    }
+
+    public synchronized boolean applyState(String incomingEventId, long incomingGeneration,
+                                           UUID incomingPrisoner, int incomingCasterDeaths,
+                                           long[] remainingCooldownsMillis,
+                                           PrisonerTargetEligibility incomingTargetEligibility,
+                                           long receivedAtMillis, long serverTimestamp) {
         if (incomingEventId == null || incomingEventId.isBlank() || incomingEventId.length() > 128
                 || incomingGeneration <= 0L || incomingPrisoner == null
                 || incomingCasterDeaths < 0 || incomingCasterDeaths > 5
                 || remainingCooldownsMillis == null || remainingCooldownsMillis.length != 4
                 || incomingTargetEligibility == null
-                || receivedAtMillis < 0L) {
+                || receivedAtMillis < 0L || serverTimestamp < 0L) {
             return false;
         }
         for (long remaining : remainingCooldownsMillis) {
@@ -38,8 +49,14 @@ public final class PrisonerHudController {
                 && !eventId.equals(incomingEventId)) {
             return false;
         }
+        if (terminal && incomingGeneration == generation) {
+            return false;
+        }
+        if (incomingGeneration == generation && serverTimestamp < lastServerTimestamp) return false;
         eventId = incomingEventId;
         generation = incomingGeneration;
+        terminal = false;
+        lastServerTimestamp = serverTimestamp;
         prisoner = incomingPrisoner;
         casterDeaths = incomingCasterDeaths;
         targetEligibility = incomingTargetEligibility;
@@ -50,11 +67,29 @@ public final class PrisonerHudController {
     }
 
     public synchronized boolean clear(String incomingEventId, long incomingGeneration) {
+        return clear(incomingEventId, incomingGeneration, lastServerTimestamp);
+    }
+
+    public synchronized boolean clear(String incomingEventId, long incomingGeneration, long serverTimestamp) {
         if (incomingGeneration <= 0L || eventId.isBlank()
-                || !eventId.equals(incomingEventId) || incomingGeneration < generation) {
+                || !eventId.equals(incomingEventId) || incomingGeneration != generation
+                || serverTimestamp < lastServerTimestamp) {
             return false;
         }
-        reset();
+        // Retain the terminated identity until a new generation or connection.
+        // Late semantic state from this prison must not restore input or HUD.
+        terminal = true;
+        lastServerTimestamp = serverTimestamp;
+        clearPresentation();
+        return true;
+    }
+
+    /** Only a new server-owned prisoner session can reopen this terminated identity. */
+    public synchronized boolean resumeSession(String expectedEventId, long expectedGeneration, long timestamp) {
+        if (!terminal || !eventId.equals(expectedEventId) || expectedGeneration != generation
+                || timestamp <= lastServerTimestamp) return false;
+        lastServerTimestamp = timestamp;
+        terminal = false;
         return true;
     }
 
@@ -106,12 +141,20 @@ public final class PrisonerHudController {
     }
 
     public synchronized void clear() {
-        reset();
+        // Death/world change ends this prison within the same connection.
+        terminal = true;
+        clearPresentation();
     }
 
-    private void reset() {
+    public synchronized void reset() {
         eventId = "";
         generation = 0L;
+        lastServerTimestamp = 0L;
+        terminal = false;
+        clearPresentation();
+    }
+
+    private void clearPresentation() {
         prisoner = null;
         casterDeaths = 0;
         targetEligibility = PrisonerTargetEligibility.empty();
@@ -119,10 +162,10 @@ public final class PrisonerHudController {
     }
 
     public enum Ability {
-        HEAL(1, "A"),
-        BATTLE_SURGE(2, "S"),
-        GUARDIAN_LINK(3, "D"),
-        TURNCOAT(4, "F");
+        HEAL(1, "Q"),
+        BATTLE_SURGE(2, "W"),
+        GUARDIAN_LINK(3, "E"),
+        TURNCOAT(4, "R");
 
         private final int unlockDeathCount;
         private final String keyLabel;

@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Routes A/S/D/F to prisoner abilities and swallows other gameplay keys while captured. */
+/** Routes Q/W/E/R to prisoner abilities and swallows other gameplay keys while captured. */
 @Mixin(Keyboard.class)
 public abstract class KeyboardPrisonerModeMixin {
     @Inject(method = "onKey", at = @At("HEAD"), cancellable = true)
@@ -19,29 +19,22 @@ public abstract class KeyboardPrisonerModeMixin {
                                            int action, int modifiers, CallbackInfo ci) {
         MinecraftClient client = MinecraftClient.getInstance();
         boolean exemptKey = key == GLFW.GLFW_KEY_ESCAPE
+                // Inspection keys remain available while gameplay controls are frozen.
+                || key == GLFW.GLFW_KEY_F1 || key == GLFW.GLFW_KEY_F2 || key == GLFW.GLFW_KEY_F5
                 || client.options.chatKey.matchesKey(key, scancode)
                 || client.options.commandKey.matchesKey(key, scancode);
+        boolean prisonerModeActive = ClientBridgeProtocol.isPrisonerModeActive();
+        boolean screenOpen = client.currentScreen != null;
         if (!PrisonerKeyboardPolicy.shouldCaptureKeyEvent(
-                ClientBridgeProtocol.isPrisonerModeActive(), client.currentScreen != null,
+                prisonerModeActive, screenOpen,
                 exemptKey, action)) {
             return;
         }
-        if (action == GLFW.GLFW_PRESS) {
-            PrisonerHudController.Ability ability = abilityForKey(key);
-            if (ability != null) {
-                ClientBridgeProtocol.sendPrisonerAbility(ability);
-            }
+        PrisonerHudController.Ability ability = PrisonerKeyboardPolicy.abilityForKeyPress(
+                prisonerModeActive, screenOpen, exemptKey, key, action);
+        if (ability != null) {
+            ClientBridgeProtocol.sendPrisonerAbility(ability);
         }
         ci.cancel();
-    }
-
-    private static PrisonerHudController.Ability abilityForKey(int key) {
-        return switch (key) {
-            case GLFW.GLFW_KEY_A -> PrisonerHudController.Ability.HEAL;
-            case GLFW.GLFW_KEY_S -> PrisonerHudController.Ability.BATTLE_SURGE;
-            case GLFW.GLFW_KEY_D -> PrisonerHudController.Ability.GUARDIAN_LINK;
-            case GLFW.GLFW_KEY_F -> PrisonerHudController.Ability.TURNCOAT;
-            default -> null;
-        };
     }
 }

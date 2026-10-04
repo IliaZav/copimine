@@ -19,7 +19,7 @@ def method_body(source: str, signature: str) -> str:
 def test_gravity_well_policy_uses_a_fixed_four_block_radius_and_bounded_pull() -> None:
     source = POLICY.read_text(encoding="utf-8")
     assert "RADIUS_BLOCKS = 4.0D" in source
-    assert "PULL_PER_UPDATE = 0.12D" in source
+    assert "PULL_PER_UPDATE = 0.30D" in source
     assert "public static Result effect(boolean insideActiveZone, boolean damagePulseDue)" in source
     assert "record Result(boolean slowness, boolean pull, boolean periodicDamage)" in source
     assert "return new Pull(0.0D, 0.0D)" in source
@@ -46,7 +46,7 @@ def test_zone_effect_is_limited_to_active_players_inside_radius_and_cleans_up() 
     source = SOURCE.read_text(encoding="utf-8")
     tick = method_body(source, "private void tickRitualZones(long now)")
     expire = method_body(source, "private void expireRitualZones(long now)")
-    assert "ritualFreeTargets(activeLivingPlayers())" in tick
+    assert "ritualFreeTargets(activeWaveParticipants())" in tick
     assert "if (!effects.slowness())" in tick
     assert "ritualZoneNextDamageAtMillis.keySet().retainAll(affectedPlayers)" in tick
     assert "RitualZoneEffectPolicy.contains(" in source
@@ -62,3 +62,16 @@ def test_gravity_well_has_no_reverse_movement_or_wither_damage_route() -> None:
     zone_tick = method_body(source, "private void tickRitualZones(long now)")
     assert "PotionEffectType.WITHER" not in zone_tick
     assert "RitualControlPair" not in source
+
+
+def test_caster_death_retires_the_active_spell_world_effects():
+    source = SOURCE.read_text(encoding="utf-8")
+    death = method_body(source, "private void handleRitualCasterDeath(")
+    assert "cancelActiveRitualSpellEffects(activeSpell.spell())" in death
+    cleanup = method_body(source, "private void cancelActiveRitualSpellEffects(")
+    for zone_state in ("ritualZoneCenters", "ritualZoneTelegraphUntil", "ritualZoneExpiresAt",
+                       "ritualZoneNextDamageAtMillis"):
+        assert zone_state + ".clear()" in cleanup
+    assert "ARROW_SPELL_RITUAL_PROJECTILE.equals" in cleanup
+    assert "cleanupEventArrow(arrow)" in cleanup
+    assert "clearActiveEventArrows()" not in cleanup

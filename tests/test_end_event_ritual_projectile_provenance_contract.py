@@ -49,7 +49,13 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     )
     assert "isRitualProjectile(arrow)" in recipients_body
     assert "isRitualProjectileSpell(readString(arrow, keyArrowSpell))" in recipients_body
-    assert "ritualFreeTargets(activeLivingPlayers())" in recipients_body
+    assert "ritualFreeTargets(activeWaveParticipants())" in recipients_body
+    participants_body = method_body(source, "private List<Player> activeWaveParticipants()")
+    assert "Bukkit.getOnlinePlayers().stream()" in participants_body
+    assert ".filter(this::isActiveArenaParticipant)" in participants_body
+    eligibility_body = method_body(source, "private boolean isActiveArenaParticipant(Player player)")
+    assert "attemptLifecycle.status(player.getUniqueId())" in eligibility_body
+    assert "attemptLifecycle.refreshObjectiveEligibility" in eligibility_body
     assert "List.of()" in recipients_body
     assert "isCurrentRitualCaster" not in recipients_body
     assert "isCurrentRitualGuard" not in recipients_body
@@ -102,3 +108,11 @@ def test_marked_arrow_direct_damage_does_not_require_a_live_skeleton_shooter() -
     custom_body = method_body(source, "public void onCustomEventArrowDamage")
     assert "if (isRitualProjectile(arrow))" in custom_body
     assert "onEventSkeletonArrowDamage(event)" in custom_body
+
+
+def test_sphere_barrage_requires_live_caster_and_still_enabled_spell():
+    check = method_body(read_source(), "private boolean ritualSphereProjectileProvenanceAllowed(")
+    assert "!isLiveOwnedEntity(owner)" in check
+    assert "ritualCasterUuids.contains(owner)" in check
+    assert "RitualCasterProgressionPolicy.isSpellEnabled" in check
+    assert "MajorSpell.RIFT_BARRAGE" in check

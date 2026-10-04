@@ -66,6 +66,7 @@ public final class ClientBridgeProtocol {
     private static ClientVisualManager registeredVisualManager;
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
+    private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
     private static final PrisonerHudController PRISONER_HUD = new PrisonerHudController();
 
     private ClientBridgeProtocol() {
@@ -137,6 +138,15 @@ public final class ClientBridgeProtocol {
         try {
             String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
             long nowMillis = System.currentTimeMillis();
+            if ("END_PRESENTATION_RESUME".equals(eventType)) {
+                MinecraftClient client = MinecraftClient.getInstance();
+                if (!"PRESENTATION_RESUME_V1".equals(payload.shaderpack()) || client.player == null
+                        || client.player.isDead() || client.world == null
+                        || !client.world.getRegistryKey().getValue().getPath().equals(payload.mode())) return;
+                END_EVENT_WORLD_VFX.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                END_EVENT_BLACK_FOG.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                return;
+            }
             if (TYPE_END_WORLD_BEAM.equals(eventType)) {
                 boolean applied = END_EVENT_WORLD_VFX.applyBeam(payload, nowMillis);
                 logWorldVfxResult(eventType, payload, applied);
@@ -147,13 +157,19 @@ public final class ClientBridgeProtocol {
                 logWorldVfxResult(eventType, payload, applied);
                 return;
             }
+            if ("END_FOG_STATE".equals(eventType)) {
+                boolean applied = END_EVENT_BLACK_FOG.apply(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
             if (TYPE_PRISONER_STATE.equals(eventType)) {
                 int deaths = Integer.parseInt(payload.mode());
                 long[] cooldowns = parsePrisonerCooldowns(payload.clearPolicy());
                 UUID prisoner = UUID.fromString(payload.clientVersion());
                 boolean applied = "PRISONER_V1".equals(payload.shaderpack())
                         && PRISONER_HUD.applyState(payload.sessionId(), payload.seq(), prisoner,
-                        deaths, cooldowns, PrisonerTargetEligibility.parse(payload.status()), nowMillis);
+                        deaths, cooldowns, PrisonerTargetEligibility.parse(payload.status()), nowMillis,
+                        payload.timestampMillis());
                 if (applied) {
                     CopiMineClientLogger.info("End Rift prisoner HUD state applied: event="
                             + payload.sessionId() + ", generation=" + payload.seq());
@@ -161,10 +177,20 @@ public final class ClientBridgeProtocol {
                 return;
             }
             if (TYPE_PRISONER_CLEAR.equals(eventType)) {
-                boolean applied = PRISONER_HUD.clear(payload.sessionId(), payload.seq());
+                boolean applied = PRISONER_HUD.clear(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 if (applied) {
                     CopiMineClientLogger.info("End Rift prisoner input restored: event="
                             + payload.sessionId() + ", generation=" + payload.seq());
+                }
+                return;
+            }
+            if ("END_PRISONER_RESUME".equals(eventType)) {
+                MinecraftClient client = MinecraftClient.getInstance();
+                if ("PRISONER_SESSION_V1".equals(payload.shaderpack()) && client.player != null
+                        && !client.player.isDead() && client.world != null
+                        && client.world.getRegistryKey().getValue().getPath().equals(payload.mode())
+                        && client.player.getUuidAsString().equals(payload.clientVersion())) {
+                    PRISONER_HUD.resumeSession(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 }
                 return;
             }
@@ -284,7 +310,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onJoin() {
-        clearEndEventState();
+        resetEndEventConnection();
         connected = true;
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
@@ -302,7 +328,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
-        clearEndEventState();
+        resetEndEventConnection();
         connected = false;
         helloAttempts = 0;
         helloSent = false;
@@ -320,12 +346,13 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickNetwork(MinecraftClient client) {
-        END_EVENT_WORLD_VFX.tick(System.currentTimeMillis());
+        long now = System.currentTimeMillis();
+        END_EVENT_WORLD_VFX.tick(now);
+        END_EVENT_BLACK_FOG.tick(now);
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
         }
-        long now = System.currentTimeMillis();
         irisShaderPackActive = detectIrisShaderPackInUse();
         if (irisShaderPackActive != lastReportedIrisShaderPackActive) {
             sendCapabilitiesUpdate();
@@ -387,7 +414,7 @@ public final class ClientBridgeProtocol {
         return client.player != null && PRISONER_HUD.activeFor(client.player.getUuid());
     }
 
-    /** Send a single selected target only in response to an A/S/D/F key press. */
+    /** Send a single selected target only in response to a Q/W/E/R key press. */
     public static void sendPrisonerAbility(PrisonerHudController.Ability ability) {
         if (!connected || !helloSent || !helloAcknowledged
                 || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
@@ -484,7 +511,23 @@ public final class ClientBridgeProtocol {
     public static void clearEndEventState() {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.clear();
+        END_EVENT_BLACK_FOG.clear();
         PRISONER_HUD.clear();
+    }
+
+    private static void resetEndEventConnection() {
+        END_EVENT_STATE.clear();
+        END_EVENT_WORLD_VFX.reset();
+        END_EVENT_BLACK_FOG.reset();
+        PRISONER_HUD.reset();
+    }
+
+    public static float endEventBlackFogEndBlocks(String dimension, long nowMillis) {
+        return END_EVENT_BLACK_FOG.fogEndBlocks(dimension, nowMillis);
+    }
+
+    public static EndEventBlackFogManager endEventBlackFog() {
+        return END_EVENT_BLACK_FOG;
     }
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {

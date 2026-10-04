@@ -38,7 +38,13 @@ if ([string]::IsNullOrWhiteSpace($RuntimeDataDir)) {
   $RuntimeDataDir = Split-Path -Parent $serverDir
 }
 $runtimeRoot = (Resolve-Path $RuntimeDataDir).Path
-if (-not $runtimeRoot.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+# RuntimeDataDir defaults to localRuntimeRoot itself; both it and its children are isolated.
+$runtimeRootIsLocalRoot = [string]::Equals(
+  $runtimeRoot.TrimEnd('\\'),
+  $localRuntimeRoot.TrimEnd('\\'),
+  [StringComparison]::OrdinalIgnoreCase)
+if (-not $runtimeRootIsLocalRoot -and
+    -not $runtimeRoot.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
   throw 'Refused runtime evidence paths outside this worktree local-runtime directory.'
 }
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'

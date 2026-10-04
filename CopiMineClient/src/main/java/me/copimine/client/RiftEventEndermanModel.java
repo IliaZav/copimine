@@ -225,15 +225,35 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
         guardianSpine.yScale = 1.0F + pulse * 0.08F;
         guardSeal.yaw = pulse * 0.12F;
         if (variant == Variant.RITUAL_CASTER) {
-            // The server owns the cast/aggro state; this dedicated model pose
-            // keeps the passive caster readable even while its AI is frozen.
-            leftArm.pitch = -1.22F + pulse * 0.035F;
-            rightArm.pitch = -1.22F - pulse * 0.035F;
-            leftArm.roll = -0.12F;
-            rightArm.roll = 0.12F;
+            // No-AI casters cannot rely on vanilla anger to keep their pose.
+            // Use the phase carried by their server-owned entity binding.
+            String phase = ClientBridgeProtocol.endEventAnimationForEntity(entity.getUuidAsString());
+            if (isChannelingPhase(phase, entity.isAngry())) {
+                applyChannelingPose(pulse);
+            } else {
+                leftArm.pitch += pulse * 0.02F;
+                rightArm.pitch -= pulse * 0.02F;
+                leftArm.roll = 0.0F;
+                rightArm.roll = 0.0F;
+            }
             casterFocus.yaw = pulse * 0.14F;
             casterFocus.pitch = pulse * 0.08F;
         }
+    }
+
+    void applyChannelingPose(float pulse) {
+        leftArm.pitch = -2.62F + pulse * 0.035F;
+        rightArm.pitch = -2.62F - pulse * 0.035F;
+        leftArm.roll = -0.18F;
+        rightArm.roll = 0.18F;
+    }
+
+    static boolean isChannelingPhase(String phase, boolean vanillaAngry) {
+        return switch (phase == null ? "" : phase) {
+            case "RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE" -> true;
+            case "RITUAL_COMBAT" -> false;
+            default -> vanillaAngry;
+        };
     }
 
     public boolean isElite() {

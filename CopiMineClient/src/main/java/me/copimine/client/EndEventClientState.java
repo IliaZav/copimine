@@ -430,7 +430,11 @@ public final class EndEventClientState {
             return false;
         }
         boolean tentacleVisual = EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId());
-        AnimationCue cue = parseAnimationCue(packet.phaseId(), tentacleVisual);
+        String phase = packet.phaseId().split("\\|", -1)[0].trim().toUpperCase(Locale.ROOT);
+        boolean ritualPhase = phase.startsWith("RITUAL_");
+        if (ritualPhase && (!"END_RIFT_RITUAL_CASTER_V1".equals(visual.visualId())
+                || !knownRitualCasterPhase(phase))) return false;
+        AnimationCue cue = parseAnimationCue(packet.phaseId(), tentacleVisual, ritualPhase);
         String animation = cue.animationId();
         if (tentacleVisual && !EndRiftTentacleModel.supportsAnimation(animation)) {
             return false;
@@ -475,10 +479,17 @@ public final class EndEventClientState {
         return EndRiftTentaclePose.TentaclePose.lerp(binding.blendFromPose(), current, smooth);
     }
 
-    private static AnimationCue parseAnimationCue(String raw, boolean tentacleVisual) {
+    private static boolean knownRitualCasterPhase(String phase) {
+        return switch (phase) {
+            case "RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE", "RITUAL_COMBAT" -> true;
+            default -> false;
+        };
+    }
+
+    private static AnimationCue parseAnimationCue(String raw, boolean tentacleVisual, boolean ritualPhase) {
         String value = raw == null ? "" : raw.trim();
         String[] parts = value.split("\\|", -1);
-        String animation = tentacleVisual
+        String animation = ritualPhase ? parts[0].trim().toUpperCase(Locale.ROOT) : tentacleVisual
                 ? normalizeTentacleAnimation(parts.length == 0 ? value : parts[0])
                 : normalizeAnimation(parts.length == 0 ? value : parts[0]);
         long stateStartServerTick = -1L;

@@ -79,12 +79,19 @@ public final class RealitySplitBarrierPolicy {
      */
     public static List<Cell> cellsExcludingBoundaries(int chamberCount,
                                                        Set<Integer> openBoundaries) {
-        return cellsExcludingBoundaries(chamberCount, openBoundaries, HEIGHT);
+        return cellsExcludingBoundaries(chamberCount, openBoundaries, HEIGHT, true);
     }
 
     private static List<Cell> cellsExcludingBoundaries(int chamberCount,
                                                         Set<Integer> openBoundaries,
                                                         int wallHeight) {
+        return cellsExcludingBoundaries(chamberCount, openBoundaries, wallHeight, false);
+    }
+
+    private static List<Cell> cellsExcludingBoundaries(int chamberCount,
+                                                        Set<Integer> openBoundaries,
+                                                        int wallHeight,
+                                                        boolean includeCoreJoin) {
         int count = safeChamberCount(chamberCount);
         Set<Cell> result = new LinkedHashSet<>();
         Set<Integer> excluded = new LinkedHashSet<>();
@@ -95,17 +102,55 @@ public final class RealitySplitBarrierPolicy {
                 }
             }
         }
+        Set<Cell> centralJoin = includeCoreJoin
+                && excluded.size() < boundaryCount(count)
+                ? centralJoin(wallHeight) : Set.of();
         for (int boundary = 0; boundary < boundaryCount(count); boundary++) {
             if (excluded.contains(boundary)) {
                 continue;
             }
             result.addAll(cellsForBoundary(boundary, count, wallHeight));
         }
+        result.addAll(centralJoin);
         return List.copyOf(result);
+    }
+
+    private static Set<Cell> centralJoin(int wallHeight) {
+        Set<Cell> result = new LinkedHashSet<>();
+        for (int level = 1; level <= wallHeight; level++) {
+            result.add(new Cell(0, 0, level));
+        }
+        return result;
     }
 
     public static List<Cell> cellsForBoundary(int boundary, int chamberCount) {
         return cellsForBoundary(boundary, chamberCount, HEIGHT);
+    }
+
+    /** Cells owned by one still-closed Wave 7 boundary, including its shared Core junction. */
+    public static List<Cell> cellsForClosedBoundary(int boundary, int chamberCount,
+                                                    Set<Integer> openBoundaries) {
+        int count = safeChamberCount(chamberCount);
+        int boundaryCount = boundaryCount(count);
+        if (boundary < 0 || boundary >= boundaryCount) {
+            return List.of();
+        }
+        Set<Integer> excluded = new LinkedHashSet<>();
+        if (openBoundaries != null) {
+            for (Integer open : openBoundaries) {
+                if (open != null && open >= 0 && open < boundaryCount) {
+                    excluded.add(open);
+                }
+            }
+        }
+        if (excluded.contains(boundary)) {
+            return List.of();
+        }
+        Set<Cell> result = new LinkedHashSet<>(cellsForBoundary(boundary, count));
+        if (excluded.size() < boundaryCount) {
+            result.addAll(centralJoin(HEIGHT));
+        }
+        return List.copyOf(result);
     }
 
     private static List<Cell> cellsForBoundary(int boundary, int chamberCount, int wallHeight) {

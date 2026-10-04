@@ -2,6 +2,7 @@ package me.copimine.client.mixin;
 
 import me.copimine.client.EndRiftGuardianShieldRenderer;
 import me.copimine.client.EndRiftTentacleRenderer;
+import me.copimine.client.RitualSphereRenderer;
 import net.minecraft.entity.decoration.DisplayEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.math.MatrixStack;
@@ -25,7 +26,8 @@ public abstract class DisplayEntityRendererMixin {
                                                           VertexConsumerProvider vertexConsumers,
                                                           int light, CallbackInfo ci) {
         if (EndRiftTentacleRenderer.isCustomRenderEligible(entity)
-                || EndRiftGuardianShieldRenderer.isCustomRenderEligible(entity)) {
+                || EndRiftGuardianShieldRenderer.isCustomRenderEligible(entity)
+                || RitualSphereRenderer.isCustomRenderEligible(entity)) {
             ci.cancel();
         }
     }

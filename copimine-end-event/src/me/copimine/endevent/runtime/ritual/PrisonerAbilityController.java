@@ -16,24 +16,28 @@ public final class PrisonerAbilityController {
 
     private long generation;
     private UUID prisoner;
+    private boolean active;
     private final Map<Ability, Long> cooldowns = new EnumMap<>(Ability.class);
 
     public synchronized void start(long eventGeneration, UUID prisonerId) {
         if (eventGeneration <= 0L || prisonerId == null) {
             throw new IllegalArgumentException("active generation and prisoner are required");
         }
+        if (generation != eventGeneration || !prisonerId.equals(prisoner)) {
+            cooldowns.clear();
+        }
         generation = eventGeneration;
         prisoner = prisonerId;
-        cooldowns.clear();
+        active = true;
     }
 
     public synchronized void end(long eventGeneration) {
         if (eventGeneration != generation) {
             return;
         }
-        generation = 0L;
-        prisoner = null;
-        cooldowns.clear();
+        // Keep this identity's deadlines in memory across disconnect/reconnect.
+        // A different prisoner or generation starts a fresh session in start().
+        active = false;
     }
 
     public synchronized Decision request(long eventGeneration,
@@ -58,7 +62,7 @@ public final class PrisonerAbilityController {
                                        int casterDeaths,
                                        long nowMillis,
                                        boolean hasValidTarget) {
-        if (ability == null || casterDeaths < 0 || casterDeaths > 5 || nowMillis < 0L) {
+        if (!active || ability == null || casterDeaths < 0 || casterDeaths > 5 || nowMillis < 0L) {
             return HudState.LOCKED;
         }
         if (!isUnlocked(casterDeaths, ability)) {
@@ -71,11 +75,11 @@ public final class PrisonerAbilityController {
     }
 
     public synchronized long cooldownUntil(Ability ability) {
-        return ability == null ? 0L : cooldowns.getOrDefault(ability, 0L);
+        return !active || ability == null ? 0L : cooldowns.getOrDefault(ability, 0L);
     }
 
     public synchronized Snapshot snapshot(int casterDeaths) {
-        return new Snapshot(generation, prisoner, boundedDeaths(casterDeaths),
+        return new Snapshot(active ? generation : 0L, active ? prisoner : null, boundedDeaths(casterDeaths),
                 cooldownUntil(Ability.HEAL), cooldownUntil(Ability.BATTLE_SURGE),
                 cooldownUntil(Ability.GUARDIAN_LINK), cooldownUntil(Ability.TURNCOAT));
     }
@@ -87,7 +91,7 @@ public final class PrisonerAbilityController {
                                int casterDeaths,
                                long nowMillis,
                                boolean targetAllowed) {
-        if (generation <= 0L || prisoner == null) {
+        if (!active || generation <= 0L || prisoner == null) {
             return Rejection.INACTIVE_SESSION;
         }
         if (eventGeneration != generation) {

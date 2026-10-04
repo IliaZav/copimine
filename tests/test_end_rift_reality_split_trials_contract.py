@@ -168,7 +168,8 @@ def test_disposable_wave_seven_restores_trial_runtime_without_changing_event_pha
     compact = re.sub(r"\s+", "", source)
 
     assert "phase == EventPhase.WAVE_7" in policy
-    assert "disposableTestWave && phase == EventPhase.COLLECTING" in policy
+    assert "disposableTestWave && (phase == EventPhase.COLLECTING" in policy
+    assert "|| phase == EventPhase.READY_FOR_PLAYERS)" in policy
     assert "allowsRuntime(activeWave,phase,testWaveFrontVisualMode)" in compact
     assert "if (isRealitySplitTrialRuntimeActive())" in source
     assert "phase = EventPhase.WAVE_7" not in section(

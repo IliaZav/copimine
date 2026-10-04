@@ -9,6 +9,7 @@ public final class RealitySplitRuntimePolicy {
                                          boolean disposableTestWave) {
         if (activeWave != 7 || phase == null) return false;
         return phase == EventPhase.WAVE_7
-                || disposableTestWave && phase == EventPhase.COLLECTING;
+                || disposableTestWave && (phase == EventPhase.COLLECTING
+                || phase == EventPhase.READY_FOR_PLAYERS);
     }
 }

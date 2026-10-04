@@ -23287,6 +23287,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             "entityType", entity.getType().name(), "kind", kind));
             return;
         }
+        // Sunlight must not defeat numbered-wave guards or finish a trial.
+        // Apply this on spawn and reindex without clearing actual fire damage,
+        // healing the mob, or changing natural mobs / the Guardian boss.
+        if (entity instanceof Skeleton skeleton && isWaveCombatKind(kind)
+                && EndRiftObjective.isNumberedWave(wave)) {
+            skeleton.setShouldBurnInDay(false);
+        }
         if (previous == entity) {
             return;
         }

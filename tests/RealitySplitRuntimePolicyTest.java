@@ -7,6 +7,16 @@ public final class RealitySplitRuntimePolicyTest {
                 "official Wave 7 runs its trial runtime");
         check(RealitySplitRuntimePolicy.allowsRuntime(7, EventPhase.COLLECTING, true),
                 "a disposable Wave 7 test recovers trials without changing the event phase");
+        check(RealitySplitRuntimePolicy.allowsRuntime(7, EventPhase.READY_FOR_PLAYERS, true),
+                "a configured ready event must run sandbox trials after building their walls");
+        check(!RealitySplitRuntimePolicy.allowsRuntime(7, EventPhase.READY_FOR_PLAYERS, false),
+                "ready phase alone must not activate official Wave 7 trials");
+        for (EventPhase phase : EventPhase.values()) {
+            if (phase == EventPhase.WAVE_7 || phase == EventPhase.COLLECTING
+                    || phase == EventPhase.READY_FOR_PLAYERS) continue;
+            check(!RealitySplitRuntimePolicy.allowsRuntime(7, phase, true),
+                    "sandbox flag must preserve the inactive/recovery/boss boundary: " + phase);
+        }
         check(!RealitySplitRuntimePolicy.allowsRuntime(6, EventPhase.COLLECTING, true),
                 "a disposable Wave 6 does not run Wave 7 trials");
         check(!RealitySplitRuntimePolicy.allowsRuntime(7, EventPhase.COLLECTING, false),

@@ -77,3 +77,14 @@ Resume in this order:
 - [x] Чистый изолированный checkout: fresh server/client/pack builds, byte parity client/pack и server classes, registered gate 434 Python/124 pure Java/8 persistence suites; portability fixes без ослабления checks. Последний полный pytest рабочего каталога: 851 passed, 1 skipped.
 - [x] Сформировать коммит проверенного кода `ebd8760a5ba157fdc85ffd7113b808443cb2e15d` и отдельный checkpoint отчёта для GitHub. Source identity, exact artifact hashes и clean pytest 842 passed/1 skipped записаны в `WAVES_CODE_VERIFICATION_20261004.json`. Сторонние boss/native harness изменения сохранены вне коммитов. Remote CI имеет отдельный результат после push.
 - [ ] Выполнить оставшийся нативный acceptance matrix после разрешённого пользователем этапа установки/запуска. Предыдущие F2, unit tests и CodeRabbit этот пункт не закрывают.
+
+## Текущий серверный этап — 2026-10-04
+
+Пользователь прямо разрешил запуск сервера и установку актуальных plugins/mod/resource pack, затем подключение тестовых игроков с увеличенным здоровьем и записью эффектов. Это отменяет прежнюю отсрочку установки сервера; нативная визуальная проверка имеет отдельный статус.
+
+- [x] Установить восемь свежих собственных plugin JARs, точный client JAR и pack в ServerRP_copy_1; проверить профиль и реальный HTTP download по хешам. Сохранить пользовательские packs, мир, official phase и unrelated dirty files.
+- [x] Запустить изолированный Paper и четыре passive protocol players с 1000 HP; включить TRACE и отдельные health/effect/velocity/sound logs. Не подменять этим реальные screenshots.
+- [x] Воспроизвести live sunlight death guards, добавить RED/GREEN регистрацию/reindex regression, исправить общий W1–7 путь и подтвердить сохранение HP/Fire на сервере.
+- [x] Воспроизвести W7 READY_FOR_PLAYERS runtime rejection после создания стен, исправить единственную admission policy с отрицательными phase tests, подтвердить четыре настоящих trials и реальный collision block.
+- [x] Повторить registered gate (450 Python / 124 Java / 8 persistence suites), полный pytest (867 PASS / 1 SKIP), diff checks и CodeRabbit (0 issues нового patch).
+- [ ] Пройти полный native acceptance matrix обоих adapters и всех семи волн. Код, protocol bots, server logs и старые F2 не закрывают этот критерий.

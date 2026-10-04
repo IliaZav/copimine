@@ -45,13 +45,13 @@
   },
   "automated": {
     "registered_wave_gate": {
-      "python_passed": 435,
+      "python_passed": 450,
       "pure_java_suites": 124,
       "persistence_recovery_suites": 8,
       "exit_code": 0
     },
     "working_repository_pytest": {
-      "passed": 851,
+      "passed": 867,
       "skipped": 1,
       "warnings": 88,
       "exit_code": 0
@@ -93,7 +93,7 @@
     "disposition": "saveData continue-after-failure suggestion not applied: actual Purpur catches ordinary save exceptions internally; unexpected propagated errors retain rollback and RECOVERY_REQUIRED. Void API does not prove disk persistence."
   },
   "native_minecraft": {
-    "new_build_installed": false,
+    "new_build_installed": true,
     "client_launched": false,
     "new_visual_verification_performed": false,
     "user_F2_reviewed": 28,
@@ -109,7 +109,8 @@
       "W7 actual collision and each genuine trial",
       "death/quit/reconnect/restart/repeated attempts/stale packets",
       "two-player and five-to-six-player performance captures"
-    ]
+    ],
+    "installation_authorized_by": "User explicitly requested current server/plugins/mod/resource pack and durable test players"
   },
   "security_managed_scan": "not completed on latest immutable source snapshot; no security-clean claim",
   "excluded_existing_changes": [
@@ -217,12 +218,58 @@
     "pack_http_verified": true,
     "client_launched": false,
     "pack_sha256": "2c6183d436e5e0d89d7247e3e28c89e0604eb79f292b51e638c4ea65e8d8f0d2",
-    "server_startup": "READY; Paper PID 3764; RCON status READY_FOR_PLAYERS",
+    "server_startup": "READY; Paper PID 26744; exact latest server artifact verified",
     "first_party_plugins": 8,
     "profile": "ServerRP_copy_1",
     "receipt_path": "D:\\Desktop\\Copimine\\copimine-main\\.worktrees\\end-rift-event\\artifacts\\end-rift-waves\\20261004\\runtime-update-20261004-203651/installation.json",
     "client_sha256": "14646f60225436edcbd88093046075e91db15f19ca9c05937199298f04ce0435",
     "server_address": "127.0.0.1:25566",
-    "bots": "EndRiftTarget1..4; startup and health configuration being checked"
+    "bots": "EndRiftTarget1..4; survival; max health 1000 HP; physics and damage enabled; dedicated JSONL logs",
+    "server_sha256": "8697fe82dc4a0ca84dfdb678bed5edd77a55b5fcb0500b68ae5b5a2445e9c4aa"
+  },
+  "initial_artifact_checkpoint": "Source commit ebd8760a; installed_runtime_artifacts records the runtime before the first authorized installation",
+  "latest_live_followup": {
+    "base_commit": "d1666605642f4424bd9b336fb5643b7d11e72e15",
+    "source_fixes": [
+      "Owned numbered-wave skeleton native daylight flag applied on spawn/reindex without health/fire-hazard mutation",
+      "READY_FOR_PLAYERS sandbox Wave 7 trial runtime allowed; all other phase guards retained"
+    ],
+    "server_pid": 26744,
+    "receipt_path": "D:\\Desktop\\Copimine\\copimine-main\\.worktrees\\end-rift-event\\artifacts\\end-rift-waves\\20261004\\runtime-update-20261004-203651/installation.json",
+    "main_java_sha256": "97775abac71237ee077a6fa69a166dfaa5f0085df81bbb6a78ac89f099fab3a9",
+    "green": {
+      "registered_python": 450,
+      "wave7_policy": "all enum phases tested; passed",
+      "persistence_suites": 8,
+      "diff_check": "passed",
+      "daylight_scenarios": 15,
+      "working_pytest_passed": 867,
+      "coderabbit_issues": 0,
+      "pure_java_suites": 124,
+      "working_pytest_skipped": 1,
+      "focused_daylight_guard_boundary_tests": 41
+    },
+    "remote_ci_previous_commit": {
+      "pr_run": 37221368195,
+      "conclusion": "success",
+      "sha": "d1666605642f4424bd9b336fb5643b7d11e72e15",
+      "push_run": 37221363275
+    },
+    "runtime_policy_sha256": "e1b266371a204b343abeb398afc0f652a6fe08a25076dd26190f55d07f1358c5",
+    "remote_ci_new_followup": "pending push; assess separately",
+    "red": {
+      "wave7": "Java readiness assertion failed; Paper start rejected after building 941 wall cells",
+      "daylight": "10 failed / 4 passed"
+    },
+    "native_visual_verified": false,
+    "live_server_proof": [
+      "Five guards retain initial HP and Fire=-1 after multiple minutes",
+      "Single guard death changes only its caster group; protected caster HP 40 remains, exposed 40 to 39",
+      "Only damaged exposed caster wakes and castsSphere becomes false",
+      "Guard bolt hit 3.5 and WEB_SNARE projectile launch; WEB hit/slow still unverified",
+      "Captured protocol player feet Y approximately 73.4; core Y 68; NoGravity=1; one controller",
+      "W7 four actual trial roles active; 941 barrier cells and visual cells; real BARRIER checked; wall block restored on wave change",
+      "W4 pressure mobs target players and obelisks launch projectiles in steady runtime"
+    ]
   }
 }

@@ -4,6 +4,8 @@ package me.copimine.endevent.domain;
 public final class PortalCapturePolicy {
     public static final long CAPTURE_MILLIS = 5_000L;
     public static final long GRACE_MILLIS = 450L;
+    public static final double CAPTURE_RADIUS_BLOCKS = 2.5D;
+    public static final double CAPTURE_HEIGHT_TOLERANCE = 1.5D;
     /** Progress milliseconds lost per millisecond outside the capture ring. */
     public static final double DEFAULT_DECAY_RATE = 0.50D;
 
@@ -12,6 +14,12 @@ public final class PortalCapturePolicy {
 
     public static PortalState initial() {
         return new PortalState(false, 0L, -1L, -1L);
+    }
+
+    public static boolean contains(double x, double y, double z) {
+        return Double.isFinite(x) && Double.isFinite(y) && Double.isFinite(z)
+                && x * x + z * z <= CAPTURE_RADIUS_BLOCKS * CAPTURE_RADIUS_BLOCKS
+                && Math.abs(y) <= CAPTURE_HEIGHT_TOLERANCE;
     }
 
     public static PortalState tick(PortalState state, boolean occupied, long nowMillis) {

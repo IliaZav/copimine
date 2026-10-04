@@ -1,33 +1,493 @@
 {
   "parent": "minecraft:block/block",
   "ambientocclusion": false,
+  "gui_light": "front",
   "textures": {
-    "particle": "copimine:item/end_event_portal",
-    "rift": "copimine:item/end_event_portal"
+    "particle": "copimine:item/end_event_rift_structure_stone",
+    "rift": "copimine:item/end_event_rift_membrane"
   },
   "elements": [
     {
-      "from": [3.50, 2.50, 2.20],
-      "to": [12.50, 11.50, 2.85],
+      "name": "void_membrane_0",
+      "from": [
+        0.5,
+        -1.8,
+        7.5
+      ],
+      "to": [
+        2.6,
+        19,
+        8.5
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            0.0,
+            2.4,
+            2.24,
+            7.946667
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            0.0,
+            2.4,
+            2.24,
+            7.946667
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
       }
     },
     {
-      "from": [5.00, 4.00, 2.85],
-      "to": [11.00, 10.00, 3.20],
+      "name": "void_membrane_1",
+      "from": [
+        2.6,
+        -4.3,
+        7.5
+      ],
+      "to": [
+        4.8,
+        24,
+        8.5
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            2.24,
+            1.066667,
+            4.586667,
+            8.613333
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            2.24,
+            1.066667,
+            4.586667,
+            8.613333
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
+      }
+    },
+    {
+      "name": "void_membrane_2",
+      "from": [
+        4.8,
+        -5.3,
+        7.5
+      ],
+      "to": [
+        7.0,
+        26.8,
+        8.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            4.586667,
+            0.32,
+            6.933333,
+            8.88
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            4.586667,
+            0.32,
+            6.933333,
+            8.88
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
+      }
+    },
+    {
+      "name": "void_membrane_3",
+      "from": [
+        7.0,
+        -5.8,
+        7.5
+      ],
+      "to": [
+        9.2,
+        28,
+        8.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            6.933333,
+            0.0,
+            9.28,
+            9.013333
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            6.933333,
+            0.0,
+            9.28,
+            9.013333
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
+      }
+    },
+    {
+      "name": "void_membrane_4",
+      "from": [
+        9.2,
+        -5.0,
+        7.5
+      ],
+      "to": [
+        11.4,
+        26.0,
+        8.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            9.28,
+            0.533333,
+            11.626667,
+            8.8
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            9.28,
+            0.533333,
+            11.626667,
+            8.8
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
+      }
+    },
+    {
+      "name": "void_membrane_5",
+      "from": [
+        11.4,
+        -3.5,
+        7.5
+      ],
+      "to": [
+        13.6,
+        23.3,
+        8.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            11.626667,
+            1.253333,
+            13.973333,
+            8.4
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            11.626667,
+            1.253333,
+            13.973333,
+            8.4
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
+      }
+    },
+    {
+      "name": "void_membrane_6",
+      "from": [
+        13.6,
+        -0.8,
+        7.5
+      ],
+      "to": [
+        15.5,
+        18.5,
+        8.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "north": {
+          "uv": [
+            13.973333,
+            2.533333,
+            16.0,
+            7.68
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            13.973333,
+            2.533333,
+            16.0,
+            7.68
+          ],
+          "texture": "#rift"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        }
       }
     }
   ]

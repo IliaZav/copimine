@@ -41,6 +41,45 @@ function Get-LocalSha256 {
   }
 }
 
+function Sync-LocalResourcePack {
+  $sourcePackDir = Join-Path $worktreeRoot 'resourcepacks\build'
+  $sourcePack = Join-Path $sourcePackDir 'CopiMineResourcePack.zip'
+  if (-not (Test-Path -LiteralPath $sourcePack -PathType Leaf)) {
+    throw "Current local resource pack is missing: $sourcePack"
+  }
+  $propertiesText = [IO.File]::ReadAllText($propertiesPath)
+  if ($propertiesText -notmatch '(?m)^resource-pack-sha1=.*$') {
+    throw 'Local server.properties is missing resource-pack-sha1.'
+  }
+  $targetPackDir = Join-Path $ServerDir 'resourcepacks\build'
+  New-Item -ItemType Directory -Path $targetPackDir -Force | Out-Null
+  $targetPack = Join-Path $targetPackDir 'CopiMineResourcePack.zip'
+  $nextPack = $targetPack + '.next'
+  Copy-Item -LiteralPath $sourcePack -Destination $nextPack -Force
+  $sha256 = Get-LocalSha256 -LiteralPath $sourcePack
+  if ((Get-LocalSha256 -LiteralPath $nextPack) -ne $sha256) {
+    throw 'Local HTTP resource-pack copy failed SHA-256 verification.'
+  }
+  if (Test-Path -LiteralPath $targetPack -PathType Leaf) {
+    [IO.File]::Replace($nextPack, $targetPack, [NullString]::Value)
+  } else {
+    [IO.File]::Move($nextPack, $targetPack)
+  }
+  $sha1Hasher = [Security.Cryptography.SHA1]::Create()
+  $sha1Stream = [IO.File]::OpenRead($targetPack)
+  try {
+    $sha1 = ([BitConverter]::ToString($sha1Hasher.ComputeHash($sha1Stream)) -replace '-', '').ToLowerInvariant()
+  } finally {
+    $sha1Stream.Dispose()
+    $sha1Hasher.Dispose()
+  }
+  [IO.File]::WriteAllText((Join-Path $targetPackDir 'CopiMineResourcePack.sha1'), $sha1 + "`n")
+  [IO.File]::WriteAllText((Join-Path $targetPackDir 'CopiMineResourcePack.sha256'), $sha256 + "`n")
+  $propertiesText = [regex]::Replace($propertiesText, '(?m)^resource-pack-sha1=[^\r\n]*', 'resource-pack-sha1=' + $sha1)
+  [IO.File]::WriteAllText($propertiesPath, $propertiesText, [Text.UTF8Encoding]::new($false))
+  Write-Output "Verified local HTTP resource pack SHA1=$sha1 SHA256=$sha256"
+}
+
 if ((-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) -or (-not (Test-Path -LiteralPath $eventConfigPath -PathType Leaf))) {
   throw 'Local End Rift server.properties or plugin config is missing.'
 }
@@ -108,6 +147,10 @@ foreach ($port in @(25566, 25576)) {
   }
 }
 
+# The HTTP process serves this runtime copy, not the repository build file.
+# Synchronize its bytes and the declared digest together before Paper boots.
+Sync-LocalResourcePack
+
 if (Test-Path -LiteralPath $envPath -PathType Leaf) {
   foreach ($line in Get-Content -LiteralPath $envPath) {
     if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
@@ -124,11 +167,11 @@ if ([string]::IsNullOrWhiteSpace($ErrPath)) {
   $ErrPath = Join-Path $localLogRoot 'end-rift-paper-start.err.log'
 }
 $java = (Get-Command java -ErrorAction Stop).Source
-# Keep the isolated server below the desktop client's memory budget.  The
-# previous 6G maximum exhausted native memory as soon as a Fabric client
-# joined and the JVM failed allocating only a few more megabytes.
+# Leave headroom for Fabric's native buffers on this desktop. With a 1G
+# initial heap the 3G server also exhausted Windows commit during client
+# connection; the local probe does not need that much committed idle heap.
 $paper = Start-Process -FilePath $java `
-  -ArgumentList @('-Xms1G', '-Xmx3G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', 'purpur.jar', 'nogui') `
+  -ArgumentList @('-Xms256M', '-Xmx2G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', 'purpur.jar', 'nogui') `
   -WorkingDirectory $ServerDir `
   -RedirectStandardOutput $LogPath `
   -RedirectStandardError $ErrPath `

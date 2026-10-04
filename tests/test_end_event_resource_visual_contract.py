@@ -68,8 +68,23 @@ def test_wave_three_portal_models_resolve_to_the_event_texture():
 
     for model_name in ("end_event_portal", "end_event_portal_inner", "end_event_portal_shard"):
         model = _read_json(f"copimine/models/block/{model_name}.json")
-        assert model["textures"]["rift"] == "copimine:item/end_event_portal"
-        assert _texture_path(model["textures"]["rift"]).is_file()
+        if model_name == 'end_event_portal_shard':
+            assert model['textures']['frame'] == 'copimine:item/end_event_rift_structure_stone'
+            assert model['textures']['energy'] == 'copimine:item/end_event_rift_structure_energy'
+        else:
+            expected = "copimine:item/end_event_portal" if model_name == "end_event_portal" else "copimine:item/end_event_rift_membrane"
+            assert model["textures"]["rift"] == expected
+        for texture in model['textures'].values():
+            if texture.startswith('copimine:'):
+                assert _texture_path(texture).is_file()
+            else:
+                assert model_name == 'end_event_portal' and texture == 'minecraft:block/obsidian'
+    membrane = _texture_path("copimine:item/end_event_rift_membrane")
+    with Image.open(membrane) as image:
+        assert image.size == (32, 1024) and image.mode == 'RGBA'
+        assert image.getchannel('A').getextrema()[0] == 0
+    animation = json.loads(Path(str(membrane) + '.mcmeta').read_text(encoding='utf-8'))['animation']
+    assert animation['width'] == 32 and animation['height'] == 128 and animation['frames'] == list(range(8))
 
 
 def test_wave_six_ritual_membrane_is_packaged_with_real_transparency():

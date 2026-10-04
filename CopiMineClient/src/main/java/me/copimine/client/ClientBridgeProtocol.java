@@ -67,6 +67,7 @@ public final class ClientBridgeProtocol {
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
     private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
+    private static final EndEventPlayerVisualManager END_EVENT_PLAYER_VISUALS = new EndEventPlayerVisualManager();
     private static final PrisonerHudController PRISONER_HUD = new PrisonerHudController();
 
     private ClientBridgeProtocol() {
@@ -125,6 +126,7 @@ public final class ClientBridgeProtocol {
                 });
                 case TYPE_VISUAL_CLEAR_ALL -> context.client().execute(() -> {
                     manager.clearAll("server_clear");
+                    END_EVENT_PLAYER_VISUALS.clear();
                     CopiMineClientLogger.info("Visual clear-all received");
                     sendVisualAck(payload.seq(), "", "CLEARED");
                 });
@@ -145,6 +147,8 @@ public final class ClientBridgeProtocol {
                         || !client.world.getRegistryKey().getValue().getPath().equals(payload.mode())) return;
                 END_EVENT_WORLD_VFX.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
                 END_EVENT_BLACK_FOG.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                END_EVENT_PLAYER_VISUALS.resumeAfterLocalExit(payload.sessionId(), payload.seq(),
+                        payload.timestampMillis(), payload.mode());
                 return;
             }
             if (TYPE_END_WORLD_BEAM.equals(eventType)) {
@@ -159,6 +163,11 @@ public final class ClientBridgeProtocol {
             }
             if ("END_FOG_STATE".equals(eventType)) {
                 boolean applied = END_EVENT_BLACK_FOG.apply(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if ("END_PLAYER_STATE".equals(eventType)) {
+                boolean applied = END_EVENT_PLAYER_VISUALS.apply(payload, nowMillis);
                 logWorldVfxResult(eventType, payload, applied);
                 return;
             }
@@ -349,6 +358,7 @@ public final class ClientBridgeProtocol {
         long now = System.currentTimeMillis();
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
+        END_EVENT_PLAYER_VISUALS.tick(now);
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
@@ -451,6 +461,10 @@ public final class ClientBridgeProtocol {
         return END_EVENT_STATE.entityAnimationForEntity(uuid);
     }
 
+    public static String endEventWavePoseForEntity(String uuid) {
+        return END_EVENT_STATE.wavePoseForEntity(uuid, System.currentTimeMillis());
+    }
+
     public static String endEventTentacleHealthForEntity(String uuid) {
         return END_EVENT_STATE.tentacleHealthStateForEntity(uuid);
     }
@@ -512,6 +526,7 @@ public final class ClientBridgeProtocol {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.clear();
         END_EVENT_BLACK_FOG.clear();
+        END_EVENT_PLAYER_VISUALS.clear();
         PRISONER_HUD.clear();
     }
 
@@ -519,6 +534,7 @@ public final class ClientBridgeProtocol {
         END_EVENT_STATE.clear();
         END_EVENT_WORLD_VFX.reset();
         END_EVENT_BLACK_FOG.reset();
+        END_EVENT_PLAYER_VISUALS.reset();
         PRISONER_HUD.reset();
     }
 
@@ -528,6 +544,10 @@ public final class ClientBridgeProtocol {
 
     public static EndEventBlackFogManager endEventBlackFog() {
         return END_EVENT_BLACK_FOG;
+    }
+
+    public static EndEventPlayerVisualManager endEventPlayerVisuals() {
+        return END_EVENT_PLAYER_VISUALS;
     }
 
     public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {

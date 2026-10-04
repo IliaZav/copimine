@@ -103,9 +103,15 @@ public final class EndEventWorldVfxManager {
         Beam previous = beams.get(payload.clientVersion());
         long started = previous == null || previous.expiresAtMillis() <= nowMillis
                 ? nowMillis : previous.startedAtMillis();
+        boolean interpolate = startParts[1].equals("wave1-carrier-objective")
+                && previous != null && previous.expiresAtMillis() > nowMillis
+                && previous.dimension().equals(startParts[0])
+                && previous.start().squaredDistanceTo(start) <= 16
+                && previous.end().squaredDistanceTo(end) <= 16;
         beams.put(payload.clientVersion(), new Beam(
                 payload.clientVersion(), startParts[0], start, end, color, width,
-                started, nowMillis + lifetime));
+                started, nowMillis + lifetime, interpolate ? previous.sampleStart(nowMillis) : start,
+                interpolate ? previous.sampleEnd(nowMillis) : end, nowMillis));
         instanceVersions.put(payload.clientVersion(), new InstanceVersion(payload.timestampMillis(), false));
         lastEnvelopeTimestamp = Math.max(lastEnvelopeTimestamp, payload.timestampMillis());
         return true;
@@ -203,10 +209,14 @@ public final class EndEventWorldVfxManager {
     }
 
     public synchronized List<BeamSnapshot> snapshots() {
+        return snapshots(Long.MAX_VALUE);
+    }
+
+    public synchronized List<BeamSnapshot> snapshots(long nowMillis) {
         List<BeamSnapshot> result = new ArrayList<>();
         for (Beam beam : beams.values()) {
-            result.add(new BeamSnapshot(beam.instanceId(), beam.dimension(), beam.start(),
-                    beam.end(), beam.color(), beam.width(), beam.startedAtMillis(), beam.expiresAtMillis()));
+            result.add(new BeamSnapshot(beam.instanceId(), beam.dimension(), beam.sampleStart(nowMillis),
+                    beam.sampleEnd(nowMillis), beam.color(), beam.width(), beam.startedAtMillis(), beam.expiresAtMillis()));
         }
         return Collections.unmodifiableList(result);
     }
@@ -236,11 +246,12 @@ public final class EndEventWorldVfxManager {
         matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
         MatrixStack.Entry entry = matrices.peek();
         try {
-            RitualSpellPresentationPolicy.drawWorldPasses(snapshots(), dimension, nowMillis, pass -> {
+            RitualSpellPresentationPolicy.drawWorldPasses(snapshots(nowMillis), dimension, nowMillis, pass -> {
                 RenderLayer layer = switch (pass.kind()) {
                     case RIBBON -> RenderLayer.getLines();
                     case RITUAL -> RenderLayer.getLightning();
                     case GLYPH -> RenderLayer.getEntityTranslucentEmissive(spellTexture(pass.spell()));
+                    case WAVE -> RenderLayer.getEntityTranslucentEmissive(Identifier.of("copimineclient", "textures/entity/wave_combat_glyphs.png"));
                 };
                 // The consumer is used only within this pass. A layer switch can end its buffer.
                 VertexConsumer buffer = consumers.getBuffer(layer);
@@ -249,6 +260,7 @@ public final class EndEventWorldVfxManager {
                         case RIBBON -> drawRibbon(buffer, entry, beam, nowMillis);
                         case RITUAL -> drawRitualBeam(buffer, entry, beam, nowMillis);
                         case GLYPH -> drawSpellGlyph(buffer, matrices, camera, beam, nowMillis);
+                        case WAVE -> drawWaveCombatGlyph(buffer, matrices, camera, beam, nowMillis);
                     }
                 };
             });
@@ -301,6 +313,56 @@ public final class EndEventWorldVfxManager {
 
     private static Identifier spellTexture(RitualSpellPresentationPolicy.Spell spell) {
         return Identifier.of("copimineclient", spell.texture());
+    }
+
+    private static void drawWaveCombatGlyph(VertexConsumer buffer, MatrixStack matrices, Camera camera,
+                                             BeamSnapshot beam, long now) {
+        var cue = WaveCombatPresentationPolicy.parse(beam.instanceId());
+        if (cue == null || !WaveCombatPresentationPolicy.visible(cue, camera.getPos().squaredDistanceTo(beam.start()))) return;
+        int alpha = WaveCombatPresentationPolicy.alpha(cue, beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        Vec3d delta = beam.end().subtract(beam.start());
+        float width = (float) WaveCombatPresentationPolicy.laneHalfWidth(beam.width());
+        float length = (float) WaveCombatPresentationPolicy.laneLength(Math.sqrt(delta.x*delta.x+delta.z*delta.z));
+        boolean billboard = cue.shape() == WaveCombatPresentationPolicy.Shape.BILLBOARD;
+        if (cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR) {
+            width = cue.ability().equals("pulse") ? length > .01F ? Math.min(5,length) : 5 : 2.1F;
+            length = width*2;
+        }
+        matrices.push();
+        try {
+            Vec3d origin = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR && !cue.ability().equals("pulse")
+                    ? beam.end() : beam.start();
+            matrices.translate(origin.x, origin.y + (billboard ? .3 : .06), origin.z);
+            if (billboard) matrices.multiply(camera.getRotation());
+            else if (cue.shape() == WaveCombatPresentationPolicy.Shape.LANE)
+                matrices.multiply(net.minecraft.util.math.RotationAxis.POSITIVE_Y.rotation((float)Math.atan2(delta.x,delta.z)));
+            float near = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR ? -length/2 : 0;
+            float far = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR ? length/2 : Math.max(.5F,length);
+            float[][] points = billboard ? new float[][]{{-.55F,-.55F,0},{.55F,-.55F,0},{.55F,.55F,0},{-.55F,.55F,0}}
+                    : new float[][]{{-width,0,near},{-width,0,far},{width,0,far},{width,0,near}};
+            float u0=cue.tile()/8F, u1=(cue.tile()+1)/8F;
+            float[][] uv={{u0,1},{u0,0},{u1,0},{u1,1}};
+            for(int i=0;i<4;i++) {
+                buffer.vertex(matrices.peek(),points[i][0],points[i][1],points[i][2])
+                        .color((alpha<<24)|beam.color()).texture(uv[i][0],uv[i][1])
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(matrices.peek(),0,billboard?0:1,billboard?1:0);
+            }
+        } finally { matrices.pop(); }
+        float impactWidth = WaveCombatPresentationPolicy.impactHalfWidth(cue);
+        if (impactWidth > 0 && cue.shape() == WaveCombatPresentationPolicy.Shape.LANE) {
+            matrices.push();
+            try {
+                matrices.translate(beam.end().x, beam.end().y + .07, beam.end().z);
+                float[][] corners={{-impactWidth,0,-impactWidth},{-impactWidth,0,impactWidth},
+                        {impactWidth,0,impactWidth},{impactWidth,0,-impactWidth}};
+                float[][] uv={{0,1},{0,0},{.125F,0},{.125F,1}};
+                for (int i=0;i<4;i++) buffer.vertex(matrices.peek(),corners[i][0],0,corners[i][2])
+                        .color((alpha<<24)|beam.color()).texture(uv[i][0],uv[i][1])
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0).normal(matrices.peek(),0,1,0);
+            } finally { matrices.pop(); }
+        }
     }
 
     private static void drawSpellGlyph(VertexConsumer buffer, MatrixStack matrices, Camera camera,
@@ -533,6 +595,10 @@ public final class EndEventWorldVfxManager {
     }
 
     private record Beam(String instanceId, String dimension, Vec3d start, Vec3d end,
-                        int color, float width, long startedAtMillis, long expiresAtMillis) {
+                        int color, float width, long startedAtMillis, long expiresAtMillis,
+                        Vec3d previousStart, Vec3d previousEnd, long updatedAtMillis) {
+        double fraction(long now) { return Math.max(0, Math.min(1, (now - updatedAtMillis) / 150.0)); }
+        Vec3d sampleStart(long now) { return previousStart.lerp(start, fraction(now)); }
+        Vec3d sampleEnd(long now) { return previousEnd.lerp(end, fraction(now)); }
     }
 }

@@ -495,13 +495,18 @@ def test_real_wave_and_miniboss_target_adapters_exclude_the_captive(tmp_path):
     declarations += '''
     void impactGate(LivingEntity miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell,
                     long callbackGeneration) {
+        WaveCombatCoordinator.Lease lease = null;
     ''' + impact_guard + 'executions++;\n}\n'
     fixture = tmp_path / 'FreeTargetProbe.java'
     fixture.write_text(r'''
 import java.util.*;
+import me.copimine.endevent.runtime.WaveCombatCoordinator;
 public class FreeTargetProbe {
     int activeWave=6, waveTargetCursor, executions; Object ritualSphereState=new Object(), keyWave=new Object();
     Registry taskRegistry=new Registry();
+    long generation=1, eventTickCounter=1;
+    UUID waveTwoMarkedPlayerUuid;
+    WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
     static class Registry { boolean owns(long generation){return generation==1;} }
     static class Location { }
     boolean wave6PrisonBroken, localTextureShowcase;
@@ -523,7 +528,7 @@ public class FreeTargetProbe {
         static Player getPlayer(UUID id){return players.stream().filter(p->p.id.equals(id)).findFirst().orElse(null);}
     }
     static class EndRiftAiPolicy {
-        enum MiniBossSpell { ECHO_PULSE }
+        enum MiniBossSpell { ECHO_PULSE; String id(){return "echo_pulse";} }
         record TargetChoice(UUID target) { }
         static TargetChoice chooseFairTarget(List<UUID> ids,UUID current,List<UUID> recent,int cursor){
             return new TargetChoice(current!=null && ids.contains(current) ? current : ids.get(0));
@@ -543,6 +548,10 @@ public class FreeTargetProbe {
     boolean isMiniBossCombatPhase(){return true;}
     boolean isLiveOwnedEntity(UUID id){return true;}
     boolean isMiniBossCombatEntity(LivingEntity e){return true;}
+    boolean usesWaveCombatCoordination(Entity e){return false;}
+    boolean isFogFrozenCombatEntity(Entity e){return false;}
+    void cancelWaveCombatAttack(UUID owner,WaveCombatCoordinator.Lease lease,long generation){}
+    void playWaveAbilitySound(LivingEntity caster,String spell,String stage){}
     List<Player> activeWaveParticipants(){return Bukkit.players;}
     int randomSeconds(int a,int b){return a;}
     void telegraphMiniBossSpell(LivingEntity e,Player p,EndRiftAiPolicy.MiniBossSpell spell){selected=p;}
@@ -561,10 +570,10 @@ public class FreeTargetProbe {
             check(f.isWaveTargetAllowed(mob,free),"ordinary W6 pressure must retain free targets");
             free.room=false; check(!f.isWaveTargetAllowed(mob,free),"cross-room protection remains authoritative"); free.room=true;
         } else f.selection(mob,free);
-        f.executeMiniBossSpell(mob,captive,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
+        f.executeMiniBossSpell(mob,captive,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1,null);
         f.impactGate(mob,captive,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
         check(f.executions==0,"windup/flight callbacks must refuse a target captured after selection");
-        f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
+        f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1,null);
         f.impactGate(mob,free,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
         check(f.executions==2,"eligible free targets retain spell execution");
         f.wave6PrisonBroken=true;
@@ -579,7 +588,8 @@ public class FreeTargetProbe {
         System.out.println("FreeTargetProbe OK");
     }
 ''' + declarations + '\n}', encoding='utf-8')
-    compile_result = subprocess.run(['javac', '-J-Xmx128m', '-encoding', 'UTF-8', str(fixture)],
+    compile_result = subprocess.run(['javac', '-J-Xmx128m', '-encoding', 'UTF-8', '-d', str(tmp_path), str(fixture),
+                                    str(ROOT / 'copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java')],
                                     capture_output=True, text=True, timeout=30)
     assert compile_result.returncode == 0, compile_result.stderr
     for scenario in ('ordinary', 'miniboss'):

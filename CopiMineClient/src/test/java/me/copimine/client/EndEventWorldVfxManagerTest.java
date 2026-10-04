@@ -12,6 +12,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
     @Test
+    void carrierBeamInterpolatesSmallMovesAndSnapsOnGenerationChangeOrTeleport() {
+        var manager=new EndEventWorldVfxManager();
+        String id="event-1:2:world:wave1-carrier-objective";
+        var first=at(beam("event-1",2,id,"overworld|wave1-carrier-objective|0,64,0",
+                "4,65,6|4EE6FF",.1F,650),100);
+        assertTrue(manager.applyBeam(first,100));
+        var moved=at(beam("event-1",2,id,"overworld|wave1-carrier-objective|2,64,0",
+                "4,65,6|4EE6FF",.1F,650),350);
+        assertTrue(manager.applyBeam(moved,350));
+        assertEquals(0,manager.snapshots(350).getFirst().start().x,0.001);
+        assertEquals(1,manager.snapshots(425).getFirst().start().x,0.001);
+        assertEquals(2,manager.snapshots(500).getFirst().start().x,0.001);
+        assertTrue(manager.applyBeam(at(beam("event-1",2,id,"overworld|wave1-carrier-objective|20,64,0",
+                "4,65,6|4EE6FF",.1F,650),600),600));
+        assertEquals(20,manager.snapshots(600).getFirst().start().x,0.001);
+        assertTrue(manager.applyBeam(at(beam("event-1",3,"event-1:3:world:wave1-carrier-objective",
+                "overworld|wave1-carrier-objective|1,64,0","4,65,6|4EE6FF",.1F,650),700),700));
+        assertEquals(1,manager.snapshots(700).getFirst().start().x,0.001);
+        manager.clear();
+        assertTrue(manager.snapshots(800).isEmpty());
+    }
+    @Test
     void spellTargetFeedbackFollowsServerStageClearExpiryAndRespawnFences() {
         EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
         String warning = "event-1:2:world:wave6-spell-screen-GRAVITY_WELL-warning";

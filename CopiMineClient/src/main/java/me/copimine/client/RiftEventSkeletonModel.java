@@ -217,6 +217,8 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
     public void setAngles(AbstractSkeletonEntity entity, float limbAngle, float limbDistance,
                           float animationProgress, float headYaw, float headPitch) {
         root.traverse().forEach(ModelPart::resetTransform);
+        String wavePose = ClientBridgeProtocol.endEventWavePoseForEntity(entity.getUuidAsString());
+        if ("WAVE_FROZEN".equals(wavePose)) { limbAngle=0; limbDistance=0; animationProgress=0; }
         super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);
 
         float pulse = MathHelper.sin(animationProgress * 0.14F);
@@ -235,6 +237,11 @@ public final class RiftEventSkeletonModel extends SkeletonEntityModel<AbstractSk
         guardianSpine.yScale = 1.0F + pulse * 0.08F;
         eliteMantle.roll = pulse * 0.025F;
         eliteHornCrown.pitch = pulse * 0.04F;
+        if ("WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose)) {
+            leftArm.pitch=-1.45F; rightArm.pitch=-1.45F;
+        } else if ("WAVE_RECOVER".equals(wavePose)) {
+            leftArm.pitch=.2F; rightArm.pitch=.2F; head.pitch+=.15F;
+        }
     }
 
     public boolean isElite() {

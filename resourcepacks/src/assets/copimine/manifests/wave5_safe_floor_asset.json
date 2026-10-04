@@ -1,0 +1,28 @@
+{
+  "source": "resourcepacks/tools/generate_wave5_safe_tile.py",
+  "license": "Original CopiMine procedural artwork and geometry; no third-party source",
+  "custom_model_data": 830027,
+  "base_material": "paper",
+  "item_none_origin": [
+    8,
+    8,
+    8
+  ],
+  "world_scale": [
+    1,
+    1,
+    1
+  ],
+  "translation_blocks": [
+    0,
+    0.015,
+    0
+  ],
+  "anchor": "combatFloorY()+1, cell center",
+  "height_blocks": 0.021875,
+  "native_visual_acceptance": "NOT VERIFIED: current installed Minecraft captures required",
+  "sha256": {
+    "src/assets/copimine/models/item/end_event_safe_floor.json": "afab487bd36f0b1af3694745a4db9eb8297cd1cccdba6293fcea4dd2f36e48d7",
+    "src/assets/copimine/textures/item/end_event_safe_floor.png": "6303b89a2ad67f829fc04570f3436e65497eea6957dddde1348139018778e6f9"
+  }
+}

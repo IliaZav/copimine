@@ -149,9 +149,36 @@ public final class EndRiftAiPolicy {
     /** Stable one-spell assignment for an elite's lifetime and objective. */
     public static MiniBossSpell miniBossSpell(EndRiftObjective.Objective objective,
                                               int eliteSlot) {
-        MiniBossSpell[] spells = MiniBossSpell.values();
-        int safeObjective = objective == null ? 0 : objective.ordinal();
-        return spells[Math.floorMod(safeObjective + eliteSlot, spells.length)];
+        return miniBossSpell(objective, "ENDERMAN", eliteSlot);
+    }
+
+    /** Role and objective own the repertoire; no ordinal rotation across unrelated spells. */
+    public static MiniBossSpell miniBossSpell(EndRiftObjective.Objective objective,
+                                              String role, int slot) {
+        var safe = objective == null ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
+        if (safe == EndRiftObjective.Objective.COLLAPSE_RINGS
+                || safe == EndRiftObjective.Objective.RITUAL_SPHERE
+                || safe == EndRiftObjective.Objective.REALITY_SPLIT) {
+            MiniBossSpell[] existing = MiniBossSpell.values();
+            return existing[Math.floorMod(safe.ordinal() + slot, existing.length)];
+        }
+        String job = role == null ? "" : role.trim().toUpperCase(java.util.Locale.ROOT);
+        if (safe == EndRiftObjective.Objective.RIFT_CARRIERS) {
+            return Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.RIFT_STEP;
+        }
+        if (job.equals("SKELETON")) return MiniBossSpell.ARROW_SALVO;
+        if (job.equals("CHANNELER")) return MiniBossSpell.VOID_SNARE;
+        if (job.equals("BRUTE")) return MiniBossSpell.ECHO_PULSE;
+        if (job.equals("STALKER")) return MiniBossSpell.RIFT_STEP;
+        return switch (safe) {
+            case RIFT_CARRIERS -> MiniBossSpell.ECHO_PULSE;
+            case RIFT_HUNT -> Math.floorMod(slot, 3) == 0 ? MiniBossSpell.VOID_SNARE : MiniBossSpell.RIFT_STEP;
+            case RIFT_GATES -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
+            case OBELISK_ASSAULT -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
+            case BLACK_FOG -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.VOID_SNARE : MiniBossSpell.RIFT_STEP;
+            case COLLAPSE_RINGS, RITUAL_SPHERE -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
+            case REALITY_SPLIT -> MiniBossSpell.RIFT_STEP;
+        };
     }
 
     public static NarcoticEffect randomNarcoticEffect(long seed) {

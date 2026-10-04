@@ -10,7 +10,7 @@ public final class RitualSpellPresentationPolicy {
     public enum Channel { GLYPH, SCREEN }
     public enum Stage { WARNING, ACTIVE }
     public enum Orientation { HORIZONTAL, BILLBOARD }
-    public enum PassKind { RIBBON, RITUAL, GLYPH }
+    public enum PassKind { RIBBON, RITUAL, GLYPH, WAVE }
 
     public enum Spell {
         RIFT_BARRAGE(4.7F, Orientation.HORIZONTAL, "barrage", "Разломный обстрел"),
@@ -91,6 +91,7 @@ public final class RitualSpellPresentationPolicy {
         List<WorldPass> passes = new ArrayList<>();
         passes.add(new WorldPass(PassKind.RIBBON, null));
         passes.add(new WorldPass(PassKind.RITUAL, null));
+        passes.add(new WorldPass(PassKind.WAVE, null));
         for (Spell spell : Spell.values()) passes.add(new WorldPass(PassKind.GLYPH, spell));
         for (WorldPass pass : passes) {
             Consumer<EndEventWorldVfxManager.BeamSnapshot> draw = null;
@@ -103,9 +104,11 @@ public final class RitualSpellPresentationPolicy {
     }
 
     private static WorldPass worldPass(String instance) {
+        if (WaveCombatPresentationPolicy.parse(instance) != null) return new WorldPass(PassKind.WAVE, null);
         Cue cue = parse(instance);
         if (cue != null) return cue.channel() == Channel.GLYPH ? new WorldPass(PassKind.GLYPH, cue.spell()) : null;
         String key = worldKey(instance);
+        if (key != null && key.startsWith("wave-ai-")) return null;
         // Malformed reserved presentation keys must not become beams or screen effects.
         if (key != null && (key.startsWith("wave6-spell-glyph-") || key.startsWith("wave6-spell-screen-"))) return null;
         if (key != null && (key.startsWith("wave6-ritual-") || key.startsWith("wave6-spell-"))) {

@@ -9,3 +9,17 @@ CopiMineClient/src/main/resources/assets/copimineclient/models/entity/end_rift_g
 # Preserve their committed bytes so a Windows build does not dirty source.
 CopiMineClient/src/main/resources/assets/copimineclient/geometry/end_rift_tentacle.json -text
 resourcepacks/src/assets/copimine/models/item/end_event_rift_tentacle.json -text
+
+# Wave structure generators and manifests have byte-exact reproduction tests.
+resourcepacks/src/assets/copimine/models/item/end_event_rift_gate.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_layout_gate.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_carrier_charge.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_safe_floor.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_rift_obelisk_full.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_rift_obelisk_damaged.json -text
+resourcepacks/src/assets/copimine/models/item/end_event_rift_obelisk_critical.json -text
+resourcepacks/src/assets/copimine/models/block/end_event_portal_inner.json -text
+resourcepacks/src/assets/copimine/models/block/end_event_portal_shard.json -text
+resourcepacks/src/assets/copimine/textures/item/end_event_rift_membrane.png.mcmeta -text
+resourcepacks/src/assets/copimine/manifests/waves_3_4_structure_assets.json -text
+resourcepacks/src/assets/copimine/manifests/wave5_safe_floor_asset.json -text

@@ -210,6 +210,8 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
     public void setAngles(EndermanEntity entity, float limbAngle, float limbDistance,
                           float animationProgress, float headYaw, float headPitch) {
         root.traverse().forEach(ModelPart::resetTransform);
+        String wavePose = ClientBridgeProtocol.endEventWavePoseForEntity(entity.getUuidAsString());
+        if ("WAVE_FROZEN".equals(wavePose)) { limbAngle = 0; limbDistance = 0; animationProgress = 0; }
         super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);
 
         float pulse = MathHelper.sin(animationProgress * 0.16F);
@@ -238,6 +240,12 @@ public final class RiftEventEndermanModel extends EndermanEntityModel<EndermanEn
             }
             casterFocus.yaw = pulse * 0.14F;
             casterFocus.pitch = pulse * 0.08F;
+        }
+        if ("WAVE_WINDUP".equals(wavePose) || "WAVE_FROZEN".equals(wavePose)) {
+            leftArm.pitch = -1.25F; rightArm.pitch = -1.25F;
+            leftArm.roll = -.25F; rightArm.roll = .25F;
+        } else if ("WAVE_RECOVER".equals(wavePose)) {
+            leftArm.pitch = .25F; rightArm.pitch = .25F; head.pitch += .18F;
         }
     }
 

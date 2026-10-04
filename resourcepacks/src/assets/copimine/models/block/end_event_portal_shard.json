@@ -1,61 +1,1275 @@
 {
   "parent": "minecraft:block/block",
   "ambientocclusion": false,
+  "gui_light": "front",
   "textures": {
-    "particle": "copimine:item/end_event_portal",
-    "rift": "copimine:item/end_event_portal"
+    "particle": "copimine:item/end_event_rift_structure_stone",
+    "frame": "copimine:item/end_event_rift_structure_stone",
+    "energy": "copimine:item/end_event_rift_structure_energy"
   },
   "elements": [
     {
-      "from": [3.00, 2.75, 2.95],
-      "to": [6.25, 3.55, 3.30],
-      "rotation": {"origin": [4.60, 3.15, 3.10], "axis": "z", "angle": -22.5, "rescale": true},
+      "name": "detached_fragment_0",
+      "from": [
+        -6,
+        18.5,
+        1.5
+      ],
+      "to": [
+        -3,
+        22,
+        4.5
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -4.5,
+          20.25,
+          3.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
       }
     },
     {
-      "from": [9.75, 2.75, 2.95],
-      "to": [13.00, 3.55, 3.30],
-      "rotation": {"origin": [11.40, 3.15, 3.10], "axis": "z", "angle": 22.5, "rescale": true},
+      "name": "fragment_cut_0",
+      "from": [
+        -5.75,
+        18.7,
+        1.42
+      ],
+      "to": [
+        -3.25,
+        19.0,
+        1.475
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -4.5,
+          20.25,
+          3.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
       }
     },
     {
-      "from": [3.00, 10.45, 2.95],
-      "to": [6.25, 11.25, 3.30],
-      "rotation": {"origin": [4.60, 10.85, 3.10], "axis": "z", "angle": 22.5, "rescale": true},
+      "name": "detached_fragment_1",
+      "from": [
+        -2.5,
+        25.5,
+        11.5
+      ],
+      "to": [
+        1,
+        29,
+        14.5
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.96,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.96,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.96,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.96,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.96
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -0.75,
+          27.25,
+          13.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
       }
     },
     {
-      "from": [9.75, 10.45, 2.95],
-      "to": [13.00, 11.25, 3.30],
-      "rotation": {"origin": [11.40, 10.85, 3.10], "axis": "z", "angle": -22.5, "rescale": true},
+      "name": "fragment_cut_1",
+      "from": [
+        -2.25,
+        25.7,
+        11.42
+      ],
+      "to": [
+        0.75,
+        26.0,
+        11.475
+      ],
       "faces": {
-        "down": {"texture": "#rift"},
-        "up": {"texture": "#rift"},
-        "north": {"texture": "#rift"},
-        "south": {"texture": "#rift"},
-        "west": {"texture": "#rift"},
-        "east": {"texture": "#rift"}
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -0.75,
+          27.25,
+          13.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_2",
+      "from": [
+        5.0,
+        28,
+        1
+      ],
+      "to": [
+        7,
+        31,
+        3
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.12
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.12
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          6.0,
+          29.5,
+          2.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_2",
+      "from": [
+        5.25,
+        28.2,
+        0.92
+      ],
+      "to": [
+        6.75,
+        28.5,
+        0.975
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          6.0,
+          29.5,
+          2.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_3",
+      "from": [
+        11,
+        28.5,
+        12
+      ],
+      "to": [
+        13,
+        31.5,
+        14
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.12
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.12
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          12.0,
+          30.0,
+          13.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_3",
+      "from": [
+        11.25,
+        28.7,
+        11.92
+      ],
+      "to": [
+        12.75,
+        29.0,
+        11.975
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          12.0,
+          30.0,
+          13.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_4",
+      "from": [
+        19.5,
+        19,
+        11.5
+      ],
+      "to": [
+        22.5,
+        23,
+        14.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            2.24
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            2.24
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            2.24
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            2.24
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          21.0,
+          21.0,
+          13.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_4",
+      "from": [
+        19.75,
+        19.2,
+        11.42
+      ],
+      "to": [
+        22.25,
+        19.5,
+        11.475
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          21.0,
+          21.0,
+          13.0
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_5",
+      "from": [
+        22.5,
+        10,
+        1.5
+      ],
+      "to": [
+        24.5,
+        13,
+        4.5
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          23.5,
+          11.5,
+          3.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_5",
+      "from": [
+        22.75,
+        10.2,
+        1.42
+      ],
+      "to": [
+        24.25,
+        10.5,
+        1.475
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          23.5,
+          11.5,
+          3.0
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_6",
+      "from": [
+        -8.5,
+        5,
+        11
+      ],
+      "to": [
+        -6.5,
+        8,
+        14
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.12,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -7.5,
+          6.5,
+          12.5
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_6",
+      "from": [
+        -8.25,
+        5.2,
+        10.92
+      ],
+      "to": [
+        -6.75,
+        5.5,
+        10.975
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            0.84,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          -7.5,
+          6.5,
+          12.5
+        ],
+        "axis": "z",
+        "angle": -22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "detached_fragment_7",
+      "from": [
+        17,
+        -3.5,
+        1
+      ],
+      "to": [
+        20,
+        -0.5,
+        4
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.68,
+            1.68
+          ],
+          "texture": "#frame"
+        }
+      },
+      "rotation": {
+        "origin": [
+          18.5,
+          -2.0,
+          2.5
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
+      }
+    },
+    {
+      "name": "fragment_cut_7",
+      "from": [
+        17.25,
+        -3.3,
+        0.92
+      ],
+      "to": [
+        19.75,
+        -3.0,
+        0.975
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.0308
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.4,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            0.0308,
+            0.168
+          ],
+          "texture": "#energy"
+        }
+      },
+      "rotation": {
+        "origin": [
+          18.5,
+          -2.0,
+          2.5
+        ],
+        "axis": "z",
+        "angle": 22.5,
+        "rescale": false
       }
     }
   ]

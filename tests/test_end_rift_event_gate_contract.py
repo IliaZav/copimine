@@ -28,7 +28,7 @@ def test_each_python_contract_suite_has_its_own_checked_gate_step() -> None:
 
     current_gate = source[current_start:restart_start]
     restart_gate = source[restart_start:build_start]
-    assert current_gate.count("& python -m pytest") == 4
+    assert current_gate.count("& python -m pytest") == 5
     first_pytest = current_gate.index("& python -m pytest")
     second_pytest = current_gate.index("& python -m pytest", first_pytest + 1)
     first_exit_check = current_gate.index("if ($LASTEXITCODE -ne 0)", first_pytest)
@@ -41,4 +41,7 @@ def test_each_python_contract_suite_has_its_own_checked_gate_step() -> None:
     fourth_pytest = current_gate.index("& python -m pytest", third_pytest + 1)
     fourth_exit_check = current_gate.index("if ($LASTEXITCODE -ne 0)", fourth_pytest)
     assert third_exit_check < fourth_pytest < fourth_exit_check
+    fifth_pytest = current_gate.index("& python -m pytest", fourth_pytest + 1)
+    fifth_exit_check = current_gate.index("if ($LASTEXITCODE -ne 0)", fifth_pytest)
+    assert fourth_exit_check < fifth_pytest < fifth_exit_check
     assert restart_gate.count("& python -m pytest") == 1

@@ -33,4 +33,19 @@ public final class PortalPresentationPolicy {
     }
 
     public record Frame(double progress, int gaugeSegments, double scale, int brightness, boolean visible) {}
+
+    public enum Layer { FRAME, INNER, SHARD }
+    public record Placement(float scale, float translateY) { }
+
+    /** Authored bounds are X[-8,24], Y[-8,32]; NONE subtracts (8,8,8). */
+    public static Placement placement(Frame frame, boolean completed, Layer layer) {
+        double factor = completed ? frame.scale() : switch (layer) {
+            case FRAME -> 1.0D;
+            case INNER -> frame.scale();
+            case SHARD -> 1.0D - frame.progress() * .25D;
+        };
+        float scale = (float) (2.24D * Math.max(0.0D, factor));
+        // Contract energy about the membrane's centre; the solid frame stays grounded.
+        return new Placement(scale, 2.8F - scale * .25F);
+    }
 }

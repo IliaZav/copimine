@@ -165,6 +165,8 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         // Display entities reuse the same model instance. Reset the added
         // parts before vanilla applies its deterministic spider leg pose.
         root.traverse().forEach(ModelPart::resetTransform);
+        String wavePose = ClientBridgeProtocol.endEventWavePoseForEntity(entity.getUuidAsString());
+        if ("WAVE_FROZEN".equals(wavePose)) { limbAngle=0; limbDistance=0; animationProgress=0; }
         super.setAngles(entity, limbAngle, limbDistance, animationProgress, headYaw, headPitch);
 
         float pulse = MathHelper.sin(animationProgress * 0.16F);
@@ -181,6 +183,8 @@ public final class RiftSpiderModel extends SpiderEntityModel<SpiderEntity> {
         guardianSpine.yaw = pulse * 0.11F;
         guardSeal.yaw = pulse * 0.12F;
         ritualFocus.yScale = 1.0F + pulse * 0.16F;
+        if ("WAVE_WINDUP".equals(wavePose)) root.getChild("head").pitch = -.3F;
+        if ("WAVE_RECOVER".equals(wavePose)) root.getChild("head").pitch = .2F;
     }
 
     public Variant variant() {

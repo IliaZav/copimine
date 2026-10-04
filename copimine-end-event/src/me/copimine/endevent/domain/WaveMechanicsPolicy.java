@@ -47,6 +47,14 @@ public final class WaveMechanicsPolicy {
         return 3;
     }
 
+    /** The introduction uses melee pressure even with a stale ranged composition. */
+    public static WaveCounts compositionForWave(int wave, WaveCounts requested) {
+        if (requested == null) return new WaveCounts(0, 0, 0, 0, 0);
+        if (wave != 1) return requested;
+        return new WaveCounts(requested.endermen(), requested.spiders() + requested.skeletons(), 0,
+                requested.eliteEndermen() + requested.eliteSkeletons(), 0);
+    }
+
     private static int largestOrdinaryBucket(int[] counts) {
         int selected = -1;
         for (int index = 0; index < 3; index++) {

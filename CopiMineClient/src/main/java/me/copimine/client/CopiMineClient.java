@@ -41,6 +41,7 @@ public final class CopiMineClient implements ClientModInitializer {
         HudRenderCallback.EVENT.register((drawContext, ignoredTickCounter) -> {
             visualManager.render(drawContext);
             ClientBridgeProtocol.endEventWorldVfx().renderHud(drawContext);
+            EndEventPlayerVisualRenderer.render(drawContext);
             PrisonerHudRenderer.render(drawContext);
         });
         WorldRenderEvents.LAST.register(ClientBridgeProtocol::renderEndEventWorldVfx);

@@ -17,6 +17,15 @@ public final class WaveMechanicsPolicyTest {
         WaveMechanicsPolicy.WaveCounts empty =
                 WaveMechanicsPolicy.clampToPressure(null, 20);
         check(empty.total() == 0, "null composition must fail closed");
+        var intro = WaveMechanicsPolicy.compositionForWave(1, requested);
+        check(intro.skeletons() == 0 && intro.eliteSkeletons() == 0,
+                "the canonical introduction cannot create projectile mobs from stale config");
+        check(intro.total() == requested.total() && intro.spiders() == 30 && intro.eliteEndermen() == 14,
+                "intro replacement retains melee pressure and elite tiers");
+        for (int wave = 2; wave <= 7; wave++) {
+            check(WaveMechanicsPolicy.compositionForWave(wave, requested).equals(requested),
+                    "composition adaptation must not change later waves");
+        }
         check(WaveMechanicsPolicy.gateCount() == EndRiftObjective.GATE_COUNT
                         && WaveMechanicsPolicy.gateCount() == 3,
                 "Wave 3 must always use exactly three current gates");

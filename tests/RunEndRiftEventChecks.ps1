@@ -107,6 +107,8 @@ Invoke-GateStep 'Current Python contract' {
   if ($LASTEXITCODE -ne 0) { throw "Wave presentation regression tests failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py' '.\tests\test_end_rift_wave_daylight_runtime.py'
   if ($LASTEXITCODE -ne 0) { throw "Additional wave gameplay regression tests failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py'
+  if ($LASTEXITCODE -ne 0) { throw "Waves 1-5 gameplay and authored assets failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
   }
@@ -142,6 +144,7 @@ New-Item -ItemType Directory -Path $testBuild -Force | Out-Null
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
   ForEach-Object FullName)
 $runtimeSources = @(
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterContext.java'),
@@ -163,6 +166,8 @@ $runtimeSources += @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\c
 $diagnosticSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\diagnostics') -Filter '*.java' |
   ForEach-Object FullName)
 $pureTests = @(
+  'WaveCombatCoordinatorTest',
+  'WaveStructurePlacementTest',
   'AbyssAnchorPolicyTest',
   'AttemptLifecycleControllerTest',
   'BossDamagePolicyTest',

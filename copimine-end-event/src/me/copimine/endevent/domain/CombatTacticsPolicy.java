@@ -84,9 +84,13 @@ public final class CombatTacticsPolicy {
     public static MobTactic tacticFor(EndRiftObjective.Objective objective,
                                       String role, int slot) {
         String normalized = role == null ? "" : role.trim().toUpperCase(Locale.ROOT);
-        if ("COMMANDER".equals(normalized) || "ELITE".equals(normalized)) {
+        if ((objective == EndRiftObjective.Objective.COLLAPSE_RINGS
+                || objective == EndRiftObjective.Objective.RITUAL_SPHERE
+                || objective == EndRiftObjective.Objective.REALITY_SPLIT)
+                && ("COMMANDER".equals(normalized) || "ELITE".equals(normalized))) {
             return MobTactic.ELITE_HUNTER;
         }
+        // Elite is a strength tier, not an objective. Keep the wave's job.
         if ("CARRIER_ESCORT".equals(normalized)) {
             return MobTactic.CARRIER_ESCORT;
         }

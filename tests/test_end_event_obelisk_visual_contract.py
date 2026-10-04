@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 
@@ -25,7 +26,13 @@ def test_obelisk_uses_one_coherent_scaled_visual_instead_of_stacking_full_models
 
 
 def test_obelisk_visual_resource_is_a_single_complete_model():
-    model = read(ROOT / "resourcepacks/src/assets/copimine/models/item/end_event_rift_obelisk_full.json")
-    assert '"elements": [' in model
-    assert '"from": [1, 0, 1]' in model
-    assert '"to": [15, 16, 15]' in model
+    # Verify the complete unit model rather than depending on one obsolete
+    # cuboid's formatting. ItemDisplay NONE centres a unit model at (8,8,8).
+    model = json.loads(read(ROOT / "resourcepacks/src/assets/copimine/models/item/end_event_rift_obelisk_full.json"))
+    elements = model["elements"]
+    assert len(elements) >= 5
+    assert min(element["from"][1] for element in elements) == 0
+    assert max(element["to"][1] for element in elements) == 16
+    for axis in (0, 2):
+        assert min(element["from"][axis] for element in elements) == 0
+        assert max(element["to"][axis] for element in elements) == 16

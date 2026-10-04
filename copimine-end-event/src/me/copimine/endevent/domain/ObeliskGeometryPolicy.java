@@ -12,6 +12,7 @@ public final class ObeliskGeometryPolicy {
     public static final int VISUAL_DISPLAY_KEY = 0;
     public static final int VISUAL_DISPLAY_COUNT = 1;
     public static final float VISUAL_FULL_HEIGHT_BLOCKS = 5.0F;
+    public static final float VISUAL_WIDTH_BLOCKS = 3.25F;
 
     private ObeliskGeometryPolicy() {
     }
@@ -94,6 +95,11 @@ public final class ObeliskGeometryPolicy {
     public static float visualHeightBlocks(int highestLayer) {
         int visibleLayers = Math.max(1, Math.min(HEIGHT, highestLayer + 1));
         return visibleLayers;
+    }
+
+    /** ItemDisplay NONE centres the authored unit model at (8,8,8). */
+    public static float visualCenterY(int highestLayer) {
+        return visualHeightBlocks(highestLayer) / 2.0F;
     }
 
     private static void addSquare(List<Cell> cells, int x, int y, int z, int layer) {

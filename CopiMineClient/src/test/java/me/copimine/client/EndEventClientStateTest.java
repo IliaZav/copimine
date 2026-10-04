@@ -9,6 +9,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventClientStateTest {
     @Test
+    void wavePosesRemainBoundToTheirActorAndExpireAfterRecovery() {
+        var state=new EndEventClientState();
+        assertTrue(state.apply(packet("END_ENTITY_BIND","waves",9,"actor",0,"mob","END_RIFT_ELITE_V1",""),100));
+        assertTrue(state.apply(packet("END_ENTITY_PHASE","waves",9,"actor",1200,"mob","WAVE_WINDUP",""),200));
+        assertEquals("WAVE_WINDUP",state.entityAnimationForEntity("mob"));
+        assertEquals("WAVE_WINDUP",state.wavePoseForEntity("mob",1399));
+        assertEquals("WAVE_COMBAT",state.wavePoseForEntity("mob",1400));
+        assertEquals("WAVE_COMBAT",state.wavePoseForEntity("mob",199));
+        assertFalse(state.apply(packet("END_ENTITY_PHASE","waves",8,"actor",1200,"mob","WAVE_FROZEN",""),201));
+        assertFalse(state.apply(packet("END_ENTITY_PHASE","waves",9,"actor",1200,"mob","WAVE_INVALID",""),202));
+        assertTrue(state.apply(packet("END_ENTITY_BIND","waves",9,"boss",0,"boss-mob","END_RIFT_GUARDIAN_V1",""),203));
+        assertFalse(state.apply(packet("END_ENTITY_PHASE","waves",9,"boss",1200,"boss-mob","WAVE_FROZEN",""),204));
+    }
+    @Test
     void keepsRitualCasterPhasesInsteadOfMappingThemToUnknownBossAnimations() {
         EndEventClientState state = new EndEventClientState();
         assertTrue(state.apply(packet("END_ENTITY_BIND", "event-ritual", 4L, "caster-bind", 0L,

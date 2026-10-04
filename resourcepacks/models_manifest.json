@@ -399,14 +399,15 @@
       "custom_model_data": 830008,
       "base_material": "paper",
       "model": "copimine:item/end_event_portal_inner",
-      "texture": "copimine:item/end_event_portal"
+      "texture": "copimine:item/end_event_rift_membrane",
+      "animation": {"frametime": 3, "interpolate": false}
     },
     {
       "id": "end_event_portal_shard",
       "custom_model_data": 830009,
       "base_material": "paper",
       "model": "copimine:item/end_event_portal_shard",
-      "texture": "copimine:item/end_event_portal"
+      "texture": "copimine:item/end_event_rift_structure_energy"
     },
     {
       "id": "end_event_ritual_sphere",
@@ -420,7 +421,7 @@
       "custom_model_data": 830018,
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_gate",
-      "texture": "copimine:item/end_event_portal"
+      "texture": "copimine:item/end_event_rift_structure_stone"
     },
     {
       "id": "end_event_rift_obelisk_full",
@@ -470,6 +471,27 @@
       "base_material": "paper",
       "model": "copimine:item/end_event_ritual_caster_shield",
       "texture": "copimine:item/end_event_rift_guardian_shield_hd"
+    },
+    {
+      "id": "end_event_safe_floor",
+      "custom_model_data": 830027,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_safe_floor",
+      "texture": "copimine:item/end_event_safe_floor"
+    },
+    {
+      "id": "end_event_layout_gate",
+      "custom_model_data": 830028,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_layout_gate",
+      "texture": "copimine:item/end_event_portal"
+    },
+    {
+      "id": "end_event_carrier_charge",
+      "custom_model_data": 830029,
+      "base_material": "paper",
+      "model": "copimine:item/end_event_carrier_charge",
+      "texture": "copimine:item/end_event_carrier_charge"
     },
     {
       "id": "end_event_rift_guardian_shield",

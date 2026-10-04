@@ -3,9 +3,9 @@
     "generatedFor":  "CopiMine release hardening",
     "clientArchive":  {
                           "path":  "thirdparty/CopiMineMods.zip",
-                          "sha1":  "fce986f7fd82989eca2818ca72cec3ce1adba321",
+                          "sha1":  "2a6b3fab0e1a1f9c5de509e22412697de021a42b",
                           "downloadPath":  "/downloads/CopiMineMods.zip",
-                          "sha256":  "0acb8e45dece4171468f895d43902f1b4f986e65903875a98173ae5b34026197"
+                          "sha256":  "52f34b9a2e56e597c27774f464395353cd8b5cdc6dd20e4615f3b814ef293455"
                       },
     "requiredExternal":  [
 
@@ -16,9 +16,9 @@
                                              "name":  "CopiMineClient",
                                              "version":  "0.1.1",
                                              "path":  "thirdparty/client-mods/CopiMineClient-0.1.1.jar",
-                                             "sha1":  "050e7b26c8873e8ee9fdae20598027d5ef042cf7",
+                                             "sha1":  "7ac5bd882a354162ddee9f676e8d013e69de01d5",
                                              "license":  "Proprietary",
-                                             "sha256":  "14646f60225436edcbd88093046075e91db15f19ca9c05937199298f04ce0435"
+                                             "sha256":  "174c5f566d96d0bc9dce06b22f517953f24df6275ef30fd028c248cb867758be"
                                          },
                                          {
                                              "name":  "CustomSkinLoader",

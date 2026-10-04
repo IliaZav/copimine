@@ -432,9 +432,11 @@ public final class EndEventClientState {
         boolean tentacleVisual = EndRiftTentacleModel.VISUAL_ID.equals(visual.visualId());
         String phase = packet.phaseId().split("\\|", -1)[0].trim().toUpperCase(Locale.ROOT);
         boolean ritualPhase = phase.startsWith("RITUAL_");
+        boolean wavePhase = phase.startsWith("WAVE_");
+        if (wavePhase && (!knownWavePose(phase) || !wavePoseVisual(visual.visualId()))) return false;
         if (ritualPhase && (!"END_RIFT_RITUAL_CASTER_V1".equals(visual.visualId())
                 || !knownRitualCasterPhase(phase))) return false;
-        AnimationCue cue = parseAnimationCue(packet.phaseId(), tentacleVisual, ritualPhase);
+        AnimationCue cue = parseAnimationCue(packet.phaseId(), tentacleVisual, ritualPhase || wavePhase);
         String animation = cue.animationId();
         if (tentacleVisual && !EndRiftTentacleModel.supportsAnimation(animation)) {
             return false;
@@ -484,6 +486,25 @@ public final class EndEventClientState {
             case "RITUAL_CHANNEL", "RITUAL_WINDUP", "RITUAL_RELEASE", "RITUAL_COMBAT" -> true;
             default -> false;
         };
+    }
+
+    private static boolean knownWavePose(String phase) {
+        return Set.of("WAVE_COMBAT", "WAVE_WINDUP", "WAVE_RELEASE", "WAVE_RECOVER", "WAVE_FROZEN").contains(phase);
+    }
+
+    private static boolean wavePoseVisual(String visual) {
+        return Set.of("END_RIFT_ENDERMAN_V1", "END_RIFT_ELITE_V1", "END_RIFT_SKELETON_V1", "END_RIFT_ELITE_SKELETON_V1",
+                "END_RIFT_SPIDER_V1", "END_RIFT_ELITE_SPIDER_V1", "END_RIFT_WAVE_GUARDIAN_ENDERMAN_V1",
+                "END_RIFT_WAVE_GUARDIAN_SKELETON_V1", "END_RIFT_WAVE_GUARDIAN_SPIDER_V1",
+                "END_RIFT_RITUAL_GUARD_ENDERMAN_V1", "END_RIFT_RITUAL_GUARD_SKELETON_V1", "END_RIFT_RITUAL_GUARD_SPIDER_V1").contains(visual);
+    }
+
+    /** Wave preparation/recovery is a short lease, not an indefinite animation binding. */
+    public synchronized String wavePoseForEntity(String uuid, long nowMillis) {
+        EntityAnimationBinding binding = entityAnimations.get(uuid);
+        if (binding == null || !knownWavePose(binding.animationId())) return "";
+        return nowMillis < binding.startedAtMillis() || nowMillis - binding.startedAtMillis() >= binding.durationMillis()
+                ? "WAVE_COMBAT" : binding.animationId();
     }
 
     private static AnimationCue parseAnimationCue(String raw, boolean tentacleVisual, boolean ritualPhase) {

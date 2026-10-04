@@ -1,0 +1,199 @@
+{
+  "verification_date": "2026-10-04",
+  "repository": "IliaZav/copimine",
+  "branch": "codex/end-rift-event",
+  "base_commit": "b8df913666ade6d1e7dbff441c1b6b9f24fc2291",
+  "source_commit": "ebd8760a5ba157fdc85ffd7113b808443cb2e15d",
+  "source_tree": "2ac1c3d08cd255064849b5760f7d622ebbccf797",
+  "scope": "Waves 1-7; shared requested shield texture compatibility; no Guardian/Kagune gameplay redesign",
+  "source_files_changed": 141,
+  "artifacts": {
+    "server": {
+      "path": "copimine-end-event/CopiMineEndEvent.jar",
+      "sha256": "81be3d949df2abefdb8686b6f82e8be8704aea9552c81e7cc212b520ca9f529b",
+      "size": 1064899
+    },
+    "client": {
+      "path": "CopiMineClient/build/libs/CopiMineClient-0.1.1.jar",
+      "sha256": "14646f60225436edcbd88093046075e91db15f19ca9c05937199298f04ce0435",
+      "size": 12898154
+    },
+    "resource_pack": {
+      "path": "resourcepacks/build/CopiMineResourcePack.zip",
+      "sha256": "2c6183d436e5e0d89d7247e3e28c89e0604eb79f292b51e638c4ea65e8d8f0d2",
+      "size": 27560610
+    },
+    "modpack": {
+      "path": "thirdparty/CopiMineMods.zip",
+      "sha256": "0acb8e45dece4171468f895d43902f1b4f986e65903875a98173ae5b34026197",
+      "size": 25085658
+    }
+  },
+  "installed_runtime_artifacts": {
+    "server": {
+      "path": "D:\\Desktop\\Copimine\\copimine-main\\.worktrees\\end-rift-event\\local-runtime\\end-rift-server\\plugins\\CopiMineEndEvent.jar",
+      "sha256": "ef760ab15e521165df9d9e8701c1f07f84a9cce752bb5437facc39c72e9b64d2"
+    },
+    "client": {
+      "path": "D:\\.minecraft\\versions\\ServerRP_copy_1\\mods\\CopiMineClient-0.1.1.jar",
+      "sha256": "bf054afca1dc8901480b6243bbf2bc0cf1df87d952aecf09cbb2cf7e0e90050e"
+    },
+    "pack:CopiMineResourcePack.zip": {
+      "path": "D:\\.minecraft\\versions\\ServerRP_copy_1\\resourcepacks\\CopiMineResourcePack.zip",
+      "sha256": "827bf3475a924cac97176bd6fed92f31e421ee2d8d45428cab3702fe808f417d"
+    }
+  },
+  "automated": {
+    "registered_wave_gate": {
+      "python_passed": 434,
+      "pure_java_suites": 124,
+      "persistence_recovery_suites": 8,
+      "exit_code": 0
+    },
+    "working_repository_pytest": {
+      "passed": 851,
+      "skipped": 1,
+      "warnings": 88,
+      "exit_code": 0
+    },
+    "clean_checkout_pytest": {
+      "passed": 842,
+      "skipped": 1,
+      "warnings": 88,
+      "exit_code": 0
+    },
+    "client_fabric": {
+      "tests": 216,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "optional_skip": "COPIMINE_PROFILE_CLIENT_JAR live-profile audit was not enabled",
+    "diff_check": "passed",
+    "supplied_geometry_animation_checks": "preserved; eight byte-exact JSON; two Fabric tests passed"
+  },
+  "clean_checkout": {
+    "git_status_before_checks": "clean",
+    "windows_autocrlf": true,
+    "project_cache_at_first_build": "empty",
+    "global_dependency_caches": "reused",
+    "gradle_distribution": "hash-pinned copy",
+    "unmodified_compile_fixture_jars": "reused",
+    "client_jar_byte_identical": true,
+    "resource_pack_byte_identical": true,
+    "server_class_entries_byte_identical": true,
+    "server_jar_difference": "Only config.yml and plugin.yml LF/CRLF; normalized bytes identical",
+    "initial_failures": "Missing unstaged generator; nonportable local source archive/private properties input; unrelated boss test hunk. Fixed without weakening validations.",
+    "native_memory_retries": "Cold Gradle and one parallel javac failed Windows native allocation. Bounded sequential retries passed; user processes untouched."
+  },
+  "coderabbit": {
+    "client_issues": 0,
+    "server_issues": 1,
+    "server_severity": "major",
+    "disposition": "saveData continue-after-failure suggestion not applied: actual Purpur catches ordinary save exceptions internally; unexpected propagated errors retain rollback and RECOVERY_REQUIRED. Void API does not prove disk persistence."
+  },
+  "native_minecraft": {
+    "new_build_installed": false,
+    "client_launched": false,
+    "new_visual_verification_performed": false,
+    "user_F2_reviewed": 28,
+    "user_F2_date_range": "2026-10-04 14:18-14:21",
+    "user_F2_build": "previous installed artifacts",
+    "deferred_by": "User explicitly requested code first and no Minecraft launch",
+    "remaining": [
+      "natural official W1-7 and each sandbox wave",
+      "W6 capture/combat and inside/observer views",
+      "caster palms/purple beams/guard abilities/shields/impact audio",
+      "QWER input/ally-enemy outlines/HUD scales/spell screen cues",
+      "W5 three fog/combat cycles and shader compatibility",
+      "W7 actual collision and each genuine trial",
+      "death/quit/reconnect/restart/repeated attempts/stale packets",
+      "two-player and five-to-six-player performance captures"
+    ]
+  },
+  "security_managed_scan": "not completed on latest immutable source snapshot; no security-clean claim",
+  "excluded_existing_changes": [
+    "tests/LocalEndRiftMobCombatBot.js",
+    "boss-related hunks in tests/RunEndRiftOfficialTwoPlayerLive.ps1",
+    "boss-related hunk in tests/test_end_event_current_contract.py",
+    "tests/test_official_live_runner_boss_target_contract.py",
+    "tests/test_end_rift_native_visual_harness_contract.py",
+    "tools/end-rift-native-visual/",
+    "unrelated runtime/generated artifacts"
+  ],
+  "remote_ci_at_report_creation": "not started; assess current GitHub Actions separately",
+  "verification_logs": [
+    {
+      "path": "artifacts/end-rift-waves/20261004/guard-tactics-followup-red.log",
+      "sha256": "f129a1179a82f6227a3d8835a50137357378aaeed37ce5c39f2d24446b240b95"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/guard-tactics-followup-green.log",
+      "sha256": "b827da1e282582c3f140c51697e5ac43524d56c9317d24bd046119784f4fe76d"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/supplied-checkout-followup-red.log",
+      "sha256": "312d896fd0ebd53c20aa3caad1d9f28f4e1748e4dbda3080bcaaa9ca8c7718bb"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/supplied-checkout-followup-green.log",
+      "sha256": "88cc14068cf549aa4579a6c4d6836ababcff4d3fd0e8109cd7e4b4e035a328bd"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/portable-wave-fixtures-green.log",
+      "sha256": "3ec93cf8eb4ebf03620ebf721c6971a8e4e192725cb235e930180f74f499ab0e"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/pytest-repository-portable-final.log",
+      "sha256": "75c6af7101e52bd38873d57ed47404166bd40a5491631c6791148ad4988e3de9"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/clean-checkout-gate-portable-final.log",
+      "sha256": "fb5ac997495039ab810f5ed8dadbcff5a64e93deb287ebb1f5bf7d43554eb0b9"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/clean-checkout-pytest-sequential-final.log",
+      "sha256": "5d23ebe84b871b5d86560e6b584108ce97c936871a9ed57e7bf868c5f995bfdc"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/build-server-guard-followup.log",
+      "sha256": "3db54cfed155b2a44a16b726c7c7ec1582cd6bb427e9ac3a580787454b625280"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/clean-checkout-server-build.log",
+      "sha256": "a56320dd4888dcb36db18476b8bf544aac86ae0bdde829defafca9bca6cfed8f"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/build-client-canonical-json-final.log",
+      "sha256": "8ea483633db7d07a926f98fb4b8fd4de0a8e32cf2964a58aba5ac35e43663fd2"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/clean-checkout-client-final.log",
+      "sha256": "d025c836390229a8b24cd786622320da2b08da1528c13ab7c5f9bd3956d6d8c9"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/build-pack-guard-followup.log",
+      "sha256": "8e46485e7a70ac8d056b421c71dca0ebc327829b4a2d368f8335680c22932ebf"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/clean-checkout-pack-build.log",
+      "sha256": "69fce4260e75e933433f24fba68f998d216b1a10d8aa4d181632f15d7c04dd20"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/modpack-guard-followup.log",
+      "sha256": "6e9aaa861d686942452a8569e12ed5b33746bc18560010b581a9c157d0aa3091"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/coderabbit-client-guard-followup.ndjson",
+      "sha256": "fbaec5ba44e8fd3881a5f3960d85129e3bd8b8f3fd5785cdc106913a016cb616"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/coderabbit-server-guard-followup.ndjson",
+      "sha256": "fb26f1b8c3c6483e569e12c374832e0de21cfb8ea765050d3a497bcd29987866"
+    },
+    {
+      "path": "artifacts/end-rift-waves/20261004/recovery-runtime-bytecode.log",
+      "sha256": "a4a982762974bbfbc61b0c26574e78f952aba924f6f1787a9cca77a788584d2b"
+    }
+  ]
+}

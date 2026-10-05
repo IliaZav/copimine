@@ -103,7 +103,8 @@ public final class EndEventWorldVfxManager {
         Beam previous = beams.get(payload.clientVersion());
         long started = previous == null || previous.expiresAtMillis() <= nowMillis
                 ? nowMillis : previous.startedAtMillis();
-        boolean interpolate = startParts[1].equals("wave1-carrier-objective")
+        boolean interpolate = (startParts[1].equals("wave1-carrier-objective")
+                || startParts[1].startsWith("wave6-ritual-"))
                 && previous != null && previous.expiresAtMillis() > nowMillis
                 && previous.dimension().equals(startParts[0])
                 && previous.start().squaredDistanceTo(start) <= 16
@@ -249,6 +250,8 @@ public final class EndEventWorldVfxManager {
             RitualSpellPresentationPolicy.drawWorldPasses(snapshots(nowMillis), dimension, nowMillis, pass -> {
                 RenderLayer layer = switch (pass.kind()) {
                     case RIBBON -> RenderLayer.getLines();
+                    case CHANNEL -> RenderLayer.getEntityTranslucentEmissive(
+                            Identifier.ofVanilla("textures/entity/end_crystal/end_crystal_beam.png"));
                     case RITUAL -> RenderLayer.getLightning();
                     case GLYPH -> RenderLayer.getEntityTranslucentEmissive(spellTexture(pass.spell()));
                     case WAVE -> RenderLayer.getEntityTranslucentEmissive(Identifier.of("copimineclient", "textures/entity/wave_combat_glyphs.png"));
@@ -258,6 +261,7 @@ public final class EndEventWorldVfxManager {
                 return beam -> {
                     switch (pass.kind()) {
                         case RIBBON -> drawRibbon(buffer, entry, beam, nowMillis);
+                        case CHANNEL -> drawRitualBeam(buffer, entry, beam, nowMillis, true);
                         case RITUAL -> drawRitualBeam(buffer, entry, beam, nowMillis);
                         case GLYPH -> drawSpellGlyph(buffer, matrices, camera, beam, nowMillis);
                         case WAVE -> drawWaveCombatGlyph(buffer, matrices, camera, beam, nowMillis);
@@ -532,6 +536,11 @@ public final class EndEventWorldVfxManager {
     }
 
     private static void drawRitualBeam(VertexConsumer buffer, MatrixStack.Entry entry, BeamSnapshot beam, long nowMillis) {
+        drawRitualBeam(buffer, entry, beam, nowMillis, false);
+    }
+
+    private static void drawRitualBeam(VertexConsumer buffer, MatrixStack.Entry entry, BeamSnapshot beam,
+                                       long nowMillis, boolean textured) {
         long age = Math.max(0L, nowMillis - beam.startedAtMillis());
         long remaining = Math.max(0L, beam.expiresAtMillis() - nowMillis);
         float fade = Math.min(1.0F, age / 120.0F) * Math.min(1.0F, remaining / 180.0F);
@@ -542,10 +551,15 @@ public final class EndEventWorldVfxManager {
             int r = Math.round(red + (255 - red) * white);
             int g = Math.round(green + (255 - green) * white);
             int b = Math.round(blue + (255 - blue) * white);
+            Vec3d normal = quad.b().position().subtract(quad.a().position())
+                    .crossProduct(quad.d().position().subtract(quad.a().position())).normalize();
             for (RitualBeamMesh.Vertex vertex : List.of(quad.a(), quad.b(), quad.c(), quad.d())) {
                 Vec3d point = vertex.position();
                 buffer.vertex(entry, (float) point.x, (float) point.y, (float) point.z)
                         .color(r, g, b, alpha);
+                if (textured) buffer.texture(vertex.u(), vertex.v())
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(entry, (float) normal.x, (float) normal.y, (float) normal.z);
             }
         }
     }

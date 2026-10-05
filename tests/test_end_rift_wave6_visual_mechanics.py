@@ -513,7 +513,9 @@ public class FreeTargetProbe {
     Map<UUID,Entity> ownedEntities=new HashMap<>();
     Map<UUID,EndRiftAiPolicy.MiniBossSpell> miniBossSpells=new HashMap<>();
     Map<UUID,Long> nextMiniBossSpellMillis=new HashMap<>();
+    Map<UUID,Object> waveLeashReturns=new HashMap<>();
     Config config=new Config(); Player selected;
+    void launchWaveMobDash(LivingEntity caster,Player target,Location mark,long generation,WaveCombatCoordinator.Lease lease){executions++;}
     record Config() { Config miniBossTuning(){return this;} int spellMinSeconds(){return 1;} int spellMaxSeconds(){return 1;} }
     static class Entity { UUID id=UUID.randomUUID(); int wave=6; UUID getUniqueId(){return id;}
         boolean isValid(){return true;} boolean isDead(){return false;} }
@@ -528,7 +530,7 @@ public class FreeTargetProbe {
         static Player getPlayer(UUID id){return players.stream().filter(p->p.id.equals(id)).findFirst().orElse(null);}
     }
     static class EndRiftAiPolicy {
-        enum MiniBossSpell { ECHO_PULSE; String id(){return "echo_pulse";} }
+        enum MiniBossSpell { ECHO_PULSE, RIFT_STEP; String id(){return name().toLowerCase();} }
         record TargetChoice(UUID target) { }
         static TargetChoice chooseFairTarget(List<UUID> ids,UUID current,List<UUID> recent,int cursor){
             return new TargetChoice(current!=null && ids.contains(current) ? current : ids.get(0));
@@ -576,6 +578,11 @@ public class FreeTargetProbe {
         f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1,null);
         f.impactGate(mob,free,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
         check(f.executions==2,"eligible free targets retain spell execution");
+        f.executions=0;
+        f.executeMiniBossSpell(mob,captive,new Location(),EndRiftAiPolicy.MiniBossSpell.RIFT_STEP,1,null);
+        check(f.executions==0,"physical dash launch must reject the captive");
+        f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.RIFT_STEP,1,null);
+        check(f.executions==1,"eligible free target retains physical dash execution");
         f.wave6PrisonBroken=true;
         check(f.isWaveTargetAllowed(mob,captive),"released W6 players remain combat targets");
         f.selection(mob,captive);

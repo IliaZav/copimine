@@ -90,7 +90,7 @@ class RitualSpellPresentationPolicyTest {
                 "event:9:world:wave6-spell-glyph-GRAVITY_WELL-active",
                 "event:9:world:wave6-spell-glyph-SOUL_BRAND-active"), drawn);
         assertEquals(RitualSpellPresentationPolicy.PassKind.RIBBON, acquired.get(0).kind());
-        assertEquals(RitualSpellPresentationPolicy.PassKind.RITUAL, acquired.get(1).kind());
+        assertEquals("CHANNEL", acquired.get(1).kind().name(), "caster channel requires a textured beam pass");
         assertEquals(4, acquired.size());
     }
 

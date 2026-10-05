@@ -96,6 +96,16 @@ Invoke-GateStep 'Local probe AuthMe mode behavior' {
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'EndRiftLocalAuthModeTest.ps1')
 }
 
+Invoke-GateStep 'Wave navigation and physical passage regression' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
+    if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {
@@ -166,6 +176,7 @@ $runtimeSources += @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\c
 $diagnosticSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\diagnostics') -Filter '*.java' |
   ForEach-Object FullName)
 $pureTests = @(
+  'Wave7AdmissionPolicyTest',
   'WaveCombatCoordinatorTest',
   'WaveStructurePlacementTest',
   'AbyssAnchorPolicyTest',

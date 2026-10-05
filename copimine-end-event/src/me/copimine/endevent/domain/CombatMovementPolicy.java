@@ -26,6 +26,16 @@ public final class CombatMovementPolicy {
                 ? reserved : configuredRadius * 0.5D;
     }
 
+    /** Project a return destination inward along this mob's own radial direction. */
+    public static Step leashReturnOffset(double x, double z, double radius) {
+        if (!finite(x) || !finite(z) || !finite(radius) || radius <= 0.0D) return Step.ZERO;
+        double distance = Math.hypot(x, z);
+        if (distance < 0.001D) return Step.ZERO;
+        double inner = Math.max(radius * 0.5D, radius - 1.25D);
+        double scale = Math.min(1.0D, inner / distance);
+        return new Step(x * scale, 0.0D, z * scale);
+    }
+
     /**
      * Return one horizontal step toward a target.  The step never contains a
      * vertical component and is capped so it cannot become a teleport during a

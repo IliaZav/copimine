@@ -12,6 +12,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
     @Test
+    void casterHandLinksInterpolateButCleanupRejectsQueuedPackets() {
+        var manager = new EndEventWorldVfxManager();
+        String key = "wave6-ritual-caster-hand-0";
+        String id = "event-1:2:world:" + key;
+        var first = at(beam("event-1", 2, id, "overworld|" + key + "|0,64,0",
+                "4,69,6|BE75FF", .14F, 650), 100);
+        var moved = at(beam("event-1", 2, id, "overworld|" + key + "|2,64,0",
+                "4,69,6|BE75FF", .14F, 650), 350);
+        assertTrue(manager.applyBeam(first, 100));
+        assertTrue(manager.applyBeam(moved, 350));
+        assertEquals(0, manager.snapshots(350).getFirst().start().x, .001);
+        assertEquals(1, manager.snapshots(425).getFirst().start().x, .001);
+        assertTrue(manager.applyClear(at(clear("event-1", 2, id), 450), 450));
+        assertTrue(manager.snapshots(500).isEmpty());
+        assertFalse(manager.applyBeam(moved, 500));
+        assertTrue(manager.applyBeam(at(beam("event-1", 3, "event-1:3:world:" + key,
+                "overworld|" + key + "|3,64,0", "4,69,6|BE75FF", .14F, 650), 600), 600));
+        assertEquals(3, manager.snapshots(600).getFirst().start().x, .001);
+    }
+    @Test
     void carrierBeamInterpolatesSmallMovesAndSnapsOnGenerationChangeOrTeleport() {
         var manager=new EndEventWorldVfxManager();
         String id="event-1:2:world:wave1-carrier-objective";

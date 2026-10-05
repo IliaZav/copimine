@@ -104,32 +104,41 @@ public final class RealitySplitChamberController {
                 || (allowSinglePlayer && restoredAssignment.chamberByPlayer().isEmpty())) {
             throw new IllegalArgumentException("Wave 7 assignment is not restorable");
         }
-        this.generation = generation;
-        this.assignment = restoredAssignment;
-        this.chamberByEntity.clear();
-        this.completedChambers.clear();
-        this.openBoundaries.clear();
+        // Recovery validates the entire checkpoint before publishing anything.
+        // A malformed passage must not erase the live generation's actor index
+        // or completion receipts while its caller enters the recovery path.
+        Set<Integer> validatedCompleted = new LinkedHashSet<>();
+        Set<Passage> validatedPassages = new LinkedHashSet<>();
+        int restoredCount = restoredAssignment.chamberCount();
         if (restoredCompletedChambers != null) {
             for (Integer chamber : restoredCompletedChambers) {
-                if (!validChamber(chamber == null ? -1 : chamber)) {
+                if (chamber == null || chamber < 0 || chamber >= restoredCount) {
                     throw new IllegalArgumentException("Wave 7 completion has invalid chamber");
                 }
-                this.completedChambers.add(chamber);
+                validatedCompleted.add(chamber);
             }
         }
         if (restoredOpenPassages != null) {
             for (Passage passage : restoredOpenPassages) {
-                if (passage == null || !validChamber(passage.firstChamber())
-                        || !validChamber(passage.secondChamber())
+                if (passage == null || passage.firstChamber() < 0
+                        || passage.firstChamber() >= restoredCount
+                        || passage.secondChamber() < 0 || passage.secondChamber() >= restoredCount
                         || passage.firstChamber() == passage.secondChamber()
                         || RealitySplitBarrierPolicy.boundaryForPair(
                                 passage.firstChamber(), passage.secondChamber(),
                                 restoredAssignment.chamberCount()) < 0) {
                     throw new IllegalArgumentException("Wave 7 passage is invalid");
                 }
-                this.openBoundaries.add(new Passage(passage.firstChamber(), passage.secondChamber()));
+                validatedPassages.add(new Passage(passage.firstChamber(), passage.secondChamber()));
             }
         }
+        this.generation = generation;
+        this.assignment = restoredAssignment;
+        this.chamberByEntity.clear();
+        this.completedChambers.clear();
+        this.completedChambers.addAll(validatedCompleted);
+        this.openBoundaries.clear();
+        this.openBoundaries.addAll(validatedPassages);
     }
 
     public boolean assignEntity(long generation, UUID entity, int chamber) {
@@ -186,14 +195,18 @@ public final class RealitySplitChamberController {
 
     /** Open a passage from a completed room so its players can help elsewhere. */
     public boolean openCompletedPassage(long generation, int firstChamber, int secondChamber) {
-        if (!owns(generation) || !chamberComplete(generation, firstChamber)
-                || RealitySplitBarrierPolicy.boundaryForPair(
-                        firstChamber, secondChamber, assignment.chamberCount()) < 0) {
-            return false;
-        }
+        if (!canOpenCompletedPassage(generation, firstChamber, secondChamber)) return false;
         int before = openBoundaries.size();
         openBoundary(generation, firstChamber, secondChamber);
         return openBoundaries.size() > before;
+    }
+
+    /** Preflight only; the adapter must restore the physical wall before committing. */
+    public boolean canOpenCompletedPassage(long generation, int firstChamber, int secondChamber) {
+        return owns(generation) && chamberComplete(generation, firstChamber)
+                && RealitySplitBarrierPolicy.boundaryForPair(
+                        firstChamber, secondChamber, assignment.chamberCount()) >= 0
+                && !boundaryOpen(firstChamber, secondChamber);
     }
 
     public boolean allowsMobTarget(long generation, UUID entity, UUID target) {

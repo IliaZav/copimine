@@ -141,7 +141,7 @@ def test_wave7_barrier_plan_is_a_required_start_resource_and_final_seal_core_sta
     barriers = section(
         source,
         "private boolean spawnRealitySplitBarriers",
-        "private void openRealitySplitBoundary",
+        "private boolean openRealitySplitBoundary",
     )
     policy = (
         ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent"

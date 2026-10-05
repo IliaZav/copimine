@@ -7,6 +7,7 @@ public final class CombatMovementPolicyTest {
         testInvalidInputsProduceNoMovement();
         testArenaBoundsRejectUnsafePositions();
         testContainmentRadiusLeavesNativeMovementMargin();
+        testReturnKeepsEachMobsRadialPosition();
         System.out.println("CombatMovementPolicyTest OK");
     }
 
@@ -64,5 +65,19 @@ public final class CombatMovementPolicyTest {
         if (!condition) {
             throw new AssertionError(message);
         }
+    }
+
+    private static void testReturnKeepsEachMobsRadialPosition() {
+        var east = CombatMovementPolicy.leashReturnOffset(19.15, 0, 19);
+        var west = CombatMovementPolicy.leashReturnOffset(-19.15, 0, 19);
+        var diagonal = CombatMovementPolicy.leashReturnOffset(20, 20, 19);
+        check(east.x() > 0 && west.x() < 0 && east.z() == 0 && west.z() == 0,
+                "opposite mobs must return on their own side, not one global cell");
+        check(Math.abs(east.horizontalLength() - 17.75) < .0001,
+                "return must reserve an inward hysteresis margin");
+        check(Math.abs(diagonal.x() - diagonal.z()) < .0001 && diagonal.horizontalLength() < 19,
+                "diagonal return must preserve direction and stay inside containment");
+        check(CombatMovementPolicy.leashReturnOffset(Double.NaN, 1, 19).equals(CombatMovementPolicy.Step.ZERO),
+                "invalid radial input must fail closed");
     }
 }

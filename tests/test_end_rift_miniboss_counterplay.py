@@ -60,3 +60,43 @@ public class SnareCounterplay {
 def test_snare_has_real_avoidance_window(snare_probe,x,eligible,los,hit):
     result=subprocess.run(['java','-cp',str(snare_probe),'SnareCounterplay',str(x),str(eligible).lower(),str(los).lower(),str(hit).lower()],capture_output=True,text=True)
     assert result.returncode==0,result.stdout+result.stderr
+
+
+def test_dash_impact_cannot_teleport_or_damage_a_distant_dodging_player(tmp_path):
+    source=(ROOT/'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
+    adapter=declaration(source,'private void miniBossCommittedStep(')
+    fixture=tmp_path/'DashContactProbe.java'
+    fixture.write_text('''
+import java.util.*;
+import java.util.logging.Logger;
+public class DashContactProbe {
+  static final double MIN_WAVE_CORE_DISTANCE_BLOCKS=1, WAVE_MOB_DAMAGE_REDUCTION=0;
+  int teleports;
+  static class Location {double x;Location(double x){this.x=x;}}
+  static class LivingEntity {Location p=new Location(0);UUID getUniqueId(){return new UUID(0,1);}
+    Location getLocation(){return p;}boolean hasLineOfSight(Player t){return true;}}
+  static class Player extends LivingEntity {double health=20;void damage(double n,LivingEntity c){health-=n;}}
+  static class Config {Config miniBossTuning(){return this;}double containmentRadius(){return 20;}double riftStepDamage(){return 4;}}
+  static class WaveDamagePolicy {static double minimumCombatDamage(double n,double r){return n;}}
+  Config config=new Config();
+  Logger getLogger(){return Logger.getLogger("DashContactProbe");}
+  boolean isMiniBossTargetAllowed(LivingEntity c,Player t){return true;}
+  Location coreCombatAnchorLocation(){return new Location(0);}
+  int realitySplitChamberId(LivingEntity c){return -1;}
+  Location findSafeCombatLocation(Location a,Location p,double r,double m,int room,LivingEntity c){return p;}
+  boolean teleportCombatEntity(LivingEntity c,Location p){teleports++;c.p=p;return true;}
+  double horizontalDistanceSquared(Location a,Location b){return Math.pow(a.x-b.x,2);}
+  public static void main(String[] args){
+    var p=new DashContactProbe();var caster=new LivingEntity();var target=new Player();target.p=new Location(8);
+    p.miniBossCommittedStep(caster,target,new Location(8));
+    if(p.teleports!=0||target.health!=20)throw new AssertionError("dash teleported or hit without actual contact");
+    target.p=new Location(1);p.miniBossCommittedStep(caster,target,new Location(1));
+    if(target.health!=16)throw new AssertionError("dash contact does not damage");
+    target.p=new Location(0);p.miniBossCommittedStep(caster,target,new Location(8));
+    if(target.health!=16)throw new AssertionError("dodging the locked lane still caused damage");
+  }
+'''+adapter+'\n}',encoding='utf-8')
+    result=subprocess.run(['javac','-J-Xmx128m','-d',str(tmp_path),str(fixture)],capture_output=True,text=True)
+    assert result.returncode==0,result.stdout+result.stderr
+    result=subprocess.run(['java','-Xmx128m','-cp',str(tmp_path),'DashContactProbe'],capture_output=True,text=True)
+    assert result.returncode==0,result.stdout+result.stderr

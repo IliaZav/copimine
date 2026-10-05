@@ -58,14 +58,26 @@ public final class RealitySplitChamberControllerTest {
                 "spawn evidence must remain chamber-local");
 
         boolean rejectedDiagonalRestore = false;
+        var beforeAssignment = controller.assignment();
+        var beforeCompleted = controller.completedChambers();
+        var beforePassages = controller.openPassages();
+        check(controller.assignEntity(42L, mob, 2), "live actor indexed before recovery");
         try {
-            controller.restore(42L, controller.assignment(), Set.of(),
+            controller.restore(99L, controller.assignment(), Set.of(),
                     Set.of(new RealitySplitChamberController.Passage(0, 2)));
         } catch (IllegalArgumentException expected) {
             rejectedDiagonalRestore = true;
         }
         check(rejectedDiagonalRestore,
                 "a restored Wave 7 graph must reject a diagonal passage");
+        check(controller.owns(42L) && !controller.owns(99L),
+                "failed recovery must not publish a new generation");
+        check(controller.assignment().equals(beforeAssignment)
+                        && controller.completedChambers().equals(beforeCompleted)
+                        && controller.openPassages().equals(beforePassages),
+                "failed recovery must preserve claims, outcomes and valid passages");
+        check(controller.chamberOfEntity(42L, mob) == 2,
+                "failed recovery must retain the original owned actor index");
 
         controller.openAllBoundariesAfterObjective(42L);
         for (int first = 0; first < 4; first++) {

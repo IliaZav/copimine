@@ -27,12 +27,14 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 | AuthMe permitted local diagnostic names, but AuthEffects still cancelled movement and combat | Optional AuthMe `isUnrestricted(Player)` compatibility; no exemption cached as a login; `test_autheffects_authme_exemptions.py` | Production-method regression failed before repair. Revocation, missing/failing optional API and genuine-login fallback pass. Four local targets actually teleported into the arena and accepted damage | Protocol targets only; native client not launched | Implemented in this compatibility checkpoint |
 | Rejected Wave 7 trial restore erased current outcomes and published a foreign generation | Validate all trial states before replacing live state; explicit legacy room identities; `RealitySplitTrialControllerTest` | Observed failing final-room, missing and null-state regression; repaired Java tests and registered gate pass | Native interrupted-recovery matrix pending | This checkpoint |
 | Foreign trial schema/layout and conflicting room/trial completions were silently accepted or disabled plugin startup | Versioned legacy codec and recoverable startup helper; `Wave7TrialMigrationTest`, `test_wave7_checkpoint_recovery.py` | Actual decoder/adapter RED observed; GREEN covers valid legacy, unsupported layout/schema, malformed and conflicting receipts; registered in End Rift gate | Live four-room sandbox restored generation 1275 after clean server restart, then changed to Wave 6 without invariant failures. Native acceptance pending | This checkpoint |
+| Cancelled Paper player death released controls and could wipe the last living participant | Cancelled-event registration plus defensive entry guard before every side effect; `test_end_rift_cancelled_death_adapter.py` extracts the production callback and uses the real lifecycle controller | Actual RED assertion observed before repair; cancelled callback retains roster, prisoner, bridge and rune state; committed-death cleanup remains covered; registered in End Rift gate | Native cancellation/death matrix pending | This checkpoint |
 
 ## Current checkpoint verification
 
 - Navigation/rendering checkpoint: [a841e57c](https://github.com/IliaZav/copimine/commit/a841e57cad25a13acbc16203042458f10b7a25fc), with successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37262812455) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37262816935) for that exact SHA.
 - AuthEffects compatibility: [9eb4a759](https://github.com/IliaZav/copimine/commit/9eb4a759881dd2b014b3cd75b89d34a0e560a84e), successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37265005808) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37265010650) for that exact SHA.
-- Full Python suite after the final checkpoint receipt fix: **954 passed,
+- Wave 7 checkpoint recovery: [e6affcdc](https://github.com/IliaZav/copimine/commit/e6affcdcf9897ffd81ba726c5e7753a2aba58f7f), successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37266815952) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37266819724) for that exact SHA.
+- Full Python suite after the cancelled-death fix: **955 passed,
   1 skipped**, Python 3.13. AuthEffects and End Event rebuilt against pinned Paper.
 - Full client build: **249 tests, zero failures**. Server plugin build passed.
 - End Rift gate passed after the final source changes; all **659 repository
@@ -51,18 +53,22 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   follow-up completed with **zero findings**. This compatibility diff is outside
   the sealed security scan above.
 - CodeRabbit reviewed the seven-file initial trial-checkpoint diff with **zero
-  issues**. The three-file follow-up (completion-receipt consistency and gate
-  registration) returned `rate_limit`, reporting 34 minutes until reset. That
-  follow-up has executed RED/GREEN tests and build/gate coverage, but its
-  CodeRabbit review is **BLOCKED**, not a completed clean review. Retry after
-  the allowance resets or connect the authorized repository to its organization
-  plan through the CodeRabbit dashboard.
+  issues**. Its follow-up initially returned `rate_limit` (34 minutes, then
+  one minute until reset). After the allowance reset, the immutable four-file
+  range `2b3318f7..1c7ae3ee` completed with **zero issues**, covering receipt
+  consistency, gate registration, and cancelled-player-death source/regression.
 - Codex Security scan `ee2605a8-cdf2-42f4-bb31-35ca2a98423b` reviewed the full
   immutable seven-file range `6887fe93..12575704`, including that follow-up,
   and completed with **zero reportable findings**. Three production files were
   reviewed sequentially in the parent; no independent worker was used. Measured
   tool usage: 1,118,630 total tokens, including 1,094,400 cached input tokens
   and 4,735 output tokens. This is a scoped source review, not native acceptance.
+- Codex Security scan `60f2939c-9c99-448c-bb59-5d9b9b4a4867` reviewed the
+  immutable cancelled-death range `12575704..1c7ae3ee`, one production file and
+  two regression/gate files, with **zero reportable findings**. The bounded
+  review ran sequentially in the parent. Measured usage: 454,169 total tokens,
+  including 433,280 cached input and 2,419 output tokens. Inventory retention
+  and future return changes are outside this scan.
 - Native Minecraft acceptance for this checkpoint remains **NOT VERIFIED**.
   Compilation, source security review, protocol bots and hashes do not prove
   visual quality or complete gameplay acceptance.
@@ -78,6 +84,12 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   death/return/grace, observed W1–6 combat profiles, private owner Echo actor and
   finite copied loadout, bounded Marksman help, Archmage authored attacks,
   versioned durable receipts and restart recovery.
+- Task B source trace: ordinary respawn currently returns a roster player to
+  combat after two ticks; the last committed death still wipes immediately.
+  Both conflict with the required bed/explicit-return/grace contract. First-party
+  Artifacts donation-loss journaling and Election/Admin official-item restore
+  queues must be coordinated with per-death retention to prevent queued copies.
+  The cancellation guard does not implement inventory retention or return grace.
 - Then execute the remaining V3 prompts in order; preserve the user's confirmed
   Wave 5 freeze schedule and Wave 6 owned guard groups / QWER accumulating spells.
 - Review each actual checkpoint diff with CodeRabbit and the requested security

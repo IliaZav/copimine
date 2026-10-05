@@ -24,10 +24,13 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 | Rift Step teleported to the target and could send a recovery cue after generation change | Eight-tick locked physical dash, swept collision, contact check, generation-fenced recovery; `test_wave_dash_runtime.py`, `test_end_rift_miniboss_counterplay.py` | Teleport/contact and stale-recovery regressions failed before repair; bounded step, wall, dodge, target death and generation cases passed | Pending native telegraph/dodge/recovery verification | Implemented checkpoint |
 | Requested Wave 6 beam is the vanilla End Crystal textured beam | Fixed vanilla texture on authored beam mesh; full brightness, purple tint, hand-endpoint interpolation and increased width | Renderer routing/interpolation/clear regressions; 249 client tests and full client build passed | User screenshot is the reference. New renderer has not been observed in Minecraft | Implemented checkpoint |
 | Wave 1 carrier only had glow and name | One full-bright authored 3D charge marker above the carrier; moving interpolation and ownership cleanup; `test_wave_carrier_marker_adapter.py` | Actual adapter single-marker/follow/death/idempotent-cleanup tests passed | Corrected marker readability pending native observation | Implemented checkpoint |
+| AuthMe permitted local diagnostic names, but AuthEffects still cancelled movement and combat | Optional AuthMe `isUnrestricted(Player)` compatibility; no exemption cached as a login; `test_autheffects_authme_exemptions.py` | Production-method regression failed before repair. Revocation, missing/failing optional API and genuine-login fallback pass. Four local targets actually teleported into the arena and accepted damage | Protocol targets only; native client not launched | Implemented in this compatibility checkpoint |
 
 ## Current checkpoint verification
 
-- Full Python suite after review fixes: **952 passed, 1 skipped**, Python 3.13.
+- Navigation/rendering checkpoint: [a841e57c](https://github.com/IliaZav/copimine/commit/a841e57cad25a13acbc16203042458f10b7a25fc), with successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37262812455) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37262816935) for that exact SHA.
+- Full Python suite after AuthEffects compatibility review fixes: **953 passed,
+  1 skipped**, Python 3.13. AuthEffects rebuilt against the pinned Paper API.
 - Full client build: **249 tests, zero failures**. Server plugin build passed.
 - End Rift gate passed after the final source changes; all **659 repository
   validators passed**, with zero failures and zero skips.
@@ -40,6 +43,10 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   the parent performed the sequential fallback. The later two small follow-up
   changes are outside that sealed security range and were separately reviewed
   by CodeRabbit and the executed regression/build gates.
+- CodeRabbit separately reviewed the two-file AuthEffects compatibility diff.
+  Its optional-provider failure finding was reproduced before repair; the
+  follow-up completed with **zero findings**. This compatibility diff is outside
+  the sealed security scan above.
 - Native Minecraft acceptance for this checkpoint remains **NOT VERIFIED**.
   Compilation, source security review, protocol bots and hashes do not prove
   visual quality or complete gameplay acceptance.
@@ -55,8 +62,14 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 - Review each actual checkpoint diff with CodeRabbit and the requested security
   review, run builds and relevant full gates, commit and push without force,
   verify exact remote SHA and Actions results.
-- Install and verify current plugin/client/pack hashes before claiming runtime
-  verification. The currently running runtime predates the uncommitted Wave 7 work.
+- Installed local runtime at `127.0.0.1:25566`: all **30** plugin JARs match
+  current source artifacts. Current client JAR and HTTP pack hashes verified.
+  Four named local protocol targets have 1,000 health each; Wave 1 started with
+  nine active mobs, all nine acquired players. Actual damage and hurt feedback
+  packets were observed. These receipts prove server mechanics, not rendering.
+- The local AuthMe fixture permits only `EndRiftTarget1..4`; its configuration
+  and backup are private runtime artifacts and are not committed. Exemptions
+  remain controlled by AuthMe and are immediately revocable.
 - Native acceptance is incomplete: camera/animation/effect matrix, two-player
   and five/six-player gameplay, death/return/restart/repeat matrix, and measured
   performance before/after remain mandatory. Bots and logs cannot prove rendering.
@@ -65,6 +78,8 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 
 - `artifacts/end-rift-waves/20261004/`: full Python/client/gate/validator logs,
   CodeRabbit receipts and `waves1-5-runtime-20261004-234831` installation/live logs.
-- `artifacts/end-rift-waves/20261005/`: Wave 7 red/green regression receipts.
+- `artifacts/end-rift-waves/20261005/`: Wave 7 and AuthEffects red/green
+  regressions, full suites, review receipts, and `navigation-runtime/` installed
+  identities / HTTP verification / protocol-target logs.
 - Private local artifacts, worlds, player inventories/skins/profiles and secrets
   must not be committed or uploaded as review inputs.

@@ -54,6 +54,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private final Map<UUID, Long> ownSlownessAppliedAtMillis = new ConcurrentHashMap<>();
     private volatile Method authApiGetter;
     private volatile Method authApiIsAuthenticated;
+    private volatile Method authApiIsUnrestricted;
     private volatile Object authApi;
     private volatile boolean authApiAvailable;
     private volatile boolean authApiUsesPlayerArgument;
@@ -304,6 +305,13 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
                 authApiIsAuthenticated = apiClass.getMethod("isAuthenticated", String.class);
                 authApiUsesPlayerArgument = false;
             }
+            try {
+                // AuthMe explicitly allows configured NPC/mod identities without
+                // registering them. Its own provider remains the authority.
+                authApiIsUnrestricted = apiClass.getMethod("isUnrestricted", Player.class);
+            } catch (NoSuchMethodException optionalExemptionApiMissing) {
+                authApiIsUnrestricted = null;
+            }
             authApi = authApiGetter.invoke(null);
             authApiAvailable = authApi != null;
             getLogger().info("AuthEffects will verify authentication through AuthMeApi ("
@@ -311,6 +319,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         } catch (ReflectiveOperationException | LinkageError error) {
             authApiGetter = null;
             authApiIsAuthenticated = null;
+            authApiIsUnrestricted = null;
             authApi = null;
             authApiAvailable = false;
             authApiUsesPlayerArgument = false;
@@ -331,6 +340,19 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         }
         if (!authApiAvailable || authApiIsAuthenticated == null || authApi == null) {
             return false;
+        }
+        // Do not cache an exemption as a login: an AuthMe configuration
+        // reload must revoke it on the next check without a reconnect.
+        if (authApiIsUnrestricted != null) {
+            try {
+                if (Boolean.TRUE.equals(authApiIsUnrestricted.invoke(authApi, player))) {
+                    return true;
+                }
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                // This optional capability must not disable the primary login
+                // check. Its failure grants no exemption by itself.
+                getLogger().fine("AuthMe exemption lookup failed for " + player.getName());
+            }
         }
         try {
             Object result = authApiUsesPlayerArgument

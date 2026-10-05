@@ -116,6 +116,16 @@ Invoke-GateStep 'Participant inventory retention and first-party recovery' {
   }
 }
 
+Invoke-GateStep 'Official combat profiles and authoritative damage observations' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_event_combat_profile.py' '.\tests\test_event_combat_profile_listener.py' '.\tests\test_event_combat_profile_main.py'
+    if ($LASTEXITCODE -ne 0) { throw "Combat profile regressions failed with exit code $LASTEXITCODE" }
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {

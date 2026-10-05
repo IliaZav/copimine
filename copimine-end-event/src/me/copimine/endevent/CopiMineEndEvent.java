@@ -838,6 +838,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final AttemptLifecycleController attemptLifecycle = new AttemptLifecycleController();
     private me.copimine.endevent.runtime.EventDeathProtectionListener deathProtectionListener;
     private me.copimine.endevent.runtime.DeathDropForwardingIntegration deathDropIntegration;
+    private final me.copimine.endevent.runtime.EventCombatProfileService combatProfiles =
+            new me.copimine.endevent.runtime.EventCombatProfileService();
+    private me.copimine.endevent.runtime.EventCombatProfileListener combatProfileListener;
+    private long lastCombatProfileSaveTick;
+    private long lastCombatProfileSaveRevision;
     private final TransitionRuneController transitionRuneController =
             new TransitionRuneController(TRANSITION_RUNE_HOLD_MILLIS);
     private final PreBossTransitionController preBossTransitionController = new PreBossTransitionController();
@@ -1271,6 +1276,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 deathProtectionListener, getLogger());
         Bukkit.getPluginManager().registerEvents(deathDropIntegration, this);
         deathDropIntegration.install();
+        combatProfileListener = new me.copimine.endevent.runtime.EventCombatProfileListener(
+                combatProfiles, this::combatProfileContext, this::isCombatProfileTarget);
+        Bukkit.getPluginManager().registerEvents(combatProfileListener, this);
         Bukkit.getPluginManager().registerEvents(this, this);
     }
 
@@ -1291,6 +1299,73 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // marked a legitimately registered participant dead for this event.
         return officialRewardRoster.contains(player.getUniqueId()) && status != null
                 && status.registered() && status.active();
+    }
+
+    private me.copimine.endevent.runtime.EventCombatProfileService.Context combatProfileContext(Player player) {
+        if (player == null || !bootstrapped || testWaveFrontVisualMode || testCombatAiMode
+                || testWaveInspectionMode || !isOfficialCurrentAttempt() || activeWave < 1 || activeWave > 6
+                || phase != EventPhase.valueOf("WAVE_" + activeWave)
+                || !officialRewardRoster.contains(player.getUniqueId())
+                || !attemptLifecycle.acceptsCallback(generation)
+                || !attemptLifecycle.isObjectiveEligible(player.getUniqueId(), generation)
+                || !isCombatTarget(player) || player.isDead()
+                || player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE
+                || player.getName().matches("EndRiftTarget[1-4]") || player.getMaxHealth() >= 1000D) return null;
+        return new me.copimine.endevent.runtime.EventCombatProfileService.Context(
+                eventId, generation, player.getUniqueId(), Integer.toUnsignedLong(Bukkit.getCurrentTick()),
+                activeWave, true, false, false,
+                activeWave == 5 && blackFogPhase == BlackFogPhase.FOG,
+                activeWave == 6 && player.getUniqueId().equals(ritualPrisonerId()));
+    }
+
+    private boolean isCombatProfileTarget(Entity entity) {
+        return entity instanceof LivingEntity && entity.isValid() && !entity.isDead()
+                && ownedEntities.get(entity.getUniqueId()) == entity
+                && readEntityGeneration(entity) == generation && readInt(entity, keyWave, 0) == activeWave
+                && isWaveCombatKind(readString(entity, keyKind));
+    }
+
+    private void tickEventCombatProfiles() {
+        if (combatProfileListener == null || !isOfficialCurrentAttempt()) return;
+        // Flush late final hits even if their mob death already ended the wave.
+        if (isOfficialAttemptActive() && combatProfiles.hasProfiles()
+                && combatProfiles.revision() != lastCombatProfileSaveRevision
+                && eventTickCounter - lastCombatProfileSaveTick >= 200L) {
+            lastCombatProfileSaveTick = eventTickCounter;
+            lastCombatProfileSaveRevision = combatProfiles.revision();
+            saveStateAsync(); // plain immutable snapshot before the existing I/O worker
+        }
+        if (activeWave < 1 || activeWave > 6) return;
+        // Reuse event ownership; never search all world entities or request paths/LOS.
+        List<LivingEntity> targets = ownedEntities.values().stream().filter(this::isCombatProfileTarget)
+                .map(entity -> (LivingEntity) entity).limit(96L).toList();
+        for (UUID owner : officialRewardRoster) {
+            Player player = Bukkit.getPlayer(owner);
+            if (player == null) { combatProfileListener.forget(owner); continue; }
+            if (combatProfileContext(player) == null) { combatProfileListener.forget(owner); continue; }
+            Location position = player.getLocation();
+            LivingEntity nearest = null;
+            double best = Double.POSITIVE_INFINITY;
+            for (LivingEntity target : targets) {
+                if (!player.getWorld().equals(target.getWorld())) continue;
+                double distance = position.distanceSquared(target.getLocation());
+                if (distance < best) { best = distance; nearest = target; }
+            }
+            combatProfileListener.sample(player, nearest);
+        }
+    }
+
+    private void restoreCombatProfiles(Map<String, String> progress) {
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
+        lastCombatProfileSaveTick = eventTickCounter;
+        if (eventId == null || eventId.isBlank() || generation <= 0 || officialRewardRoster.isEmpty()
+                || !isOfficialAttemptActive() || testWaveFrontVisualMode || testCombatAiMode) return;
+        if (combatProfiles.restore(progress, eventId, generation, Set.copyOf(officialRewardRoster))) return;
+        // Legacy/mid-event installs have no earlier observations. They cannot claim full coverage.
+        combatProfiles.beginAttempt(eventId, generation, generation, Set.copyOf(officialRewardRoster), false);
+        getLogger().info("END_RIFT_COMBAT_PROFILE_PARTIAL event=" + eventId
+                + " generation=" + generation + " reason=missing-or-incompatible-checkpoint");
     }
 
     private void tryBootstrap() {
@@ -2325,6 +2400,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 getLogger().log(Level.SEVERE, "End Rift pre-boss tick snapshot refused", error);
             }
         }
+        restoreCombatProfiles(snapshot.objectiveProgress());
     }
 
     /** Refuse incompatible Wave 7 state without disabling the recovery commands. */
@@ -2404,6 +2480,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private Map<String, String> objectiveProgressSnapshot() {
         Map<String, String> encoded = new LinkedHashMap<>(waveObjectiveProgressSnapshot());
+        encoded.putAll(combatProfiles.encode());
         if (phase == EventPhase.PRE_BOSS_COOLDOWN) {
             long elapsedTicks = preBossTransitionController.elapsedServerTicks(eventTickCounter);
             encoded.putAll(me.copimine.endevent.domain.PreBossTickSnapshotPolicy.encode(
@@ -2890,6 +2967,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void discardUncommittedRoster() {
         officialRewardRoster.clear();
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
     }
 
     private void discardUncommittedRewardStatuses() {
@@ -3182,6 +3261,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (stateStore != null) {
             saveStateSync();
         }
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
         if (stateExecutor != null) {
             stateExecutor.shutdown();
             try {
@@ -7361,6 +7442,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         resourceContributors.clear();
         participantUuids.clear();
         officialRewardRoster.clear();
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
         nightCloakRolls.clear();
@@ -7528,6 +7611,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         resourceContributors.clear();
         participantUuids.clear();
         officialRewardRoster.clear();
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
         nightCloakRolls.clear();
@@ -7572,6 +7657,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         coreCharged = false;
         participantUuids.clear();
         officialRewardRoster.clear();
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
         rewardStatuses.clear();
         nightCloakRolls.clear();
         nightCloakRequestsInFlight.clear();
@@ -9088,6 +9175,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!result.applied()) {
             return;
         }
+        var profileContext = isCombatProfileTarget(victim) ? combatProfileContext(attacker) : null;
         if (isCurrentRitualCaster(victim)) {
             markRitualCasterAwakened(victim, attacker);
         }
@@ -9099,6 +9187,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 attacker.getLocation().getZ() - victim.getLocation().getZ()));
         victim.playHurtAnimation(hurtYaw);
         victim.setHealth(result.remainingHealth());
+        if (combatProfileListener != null)
+            combatProfileListener.recordAcceptedHit(event, attacker, profileContext);
         authoritativeCombatTraceEvents.put(event, Boolean.TRUE);
         getLogger().fine("WAVE_MOB_REAL_HEALTH_DAMAGE event=" + eventId
                 + " mob=" + victim.getType() + ":" + victim.getUniqueId()
@@ -10324,6 +10414,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lastMainThreadWave = activeWave;
         lastMainThreadGeneration = generation;
         eventTickCounter += 5L;
+        tickEventCombatProfiles();
         sampleRuntimeDiagnostics();
         emitDiagnosticSnapshot();
         tickOfflineRosterGrace();
@@ -10657,6 +10748,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
+        combatProfiles.beginAttempt(eventId, generation, generation, Set.copyOf(officialRewardRoster), true);
+        if (combatProfileListener != null) combatProfileListener.clear();
+        lastCombatProfileSaveTick = eventTickCounter;
         realitySplitChamberController.clear();
         realitySplitTrialController.clear();
         clearCombatAiState();
@@ -10670,6 +10764,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!transition(EventPhase.WAVE_1, "start ritual hold complete; official roster frozen",
                 eventId + ":roster:" + generation, false)) {
             officialRewardRoster.clear();
+            combatProfiles.clear();
+            if (combatProfileListener != null) combatProfileListener.clear();
             attemptLifecycle.clear();
             activeWave = 0;
             forcePhase(EventPhase.READY_FOR_PLAYERS, "roster transition rejected");
@@ -10677,6 +10773,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!saveStateSync()) {
             officialRewardRoster.clear();
+            combatProfiles.clear();
+            if (combatProfileListener != null) combatProfileListener.clear();
             rewardStatuses.clear();
             nightCloakRolls.clear();
             attemptLifecycle.clear();
@@ -32439,6 +32537,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     public void onPlayerQuit(PlayerQuitEvent event) {
         releaseBlackFogEffects(event.getPlayer());
         UUID uuid = event.getPlayer().getUniqueId();
+        if (combatProfileListener != null) combatProfileListener.forget(uuid);
         cancelWaveCombatTarget(uuid);
         resetTransitionRuneHoldForParticipant(uuid);
         restoreRitualPrisonerGravity(event.getPlayer());
@@ -32473,6 +32572,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (event.isCancelled()) return;
         releaseBlackFogEffects(event.getEntity());
         UUID uuid = event.getEntity().getUniqueId();
+        if (combatProfileListener != null) combatProfileListener.forget(uuid);
         cancelWaveCombatTarget(uuid);
         resetTransitionRuneHoldForParticipant(uuid);
         restoreRitualPrisonerGravity(event.getEntity());
@@ -32649,6 +32749,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitTrialController.clear();
         offlineRosterGraceUntilMillis.clear();
         officialRewardRoster.clear();
+        combatProfiles.clear();
+        if (combatProfileListener != null) combatProfileListener.clear();
         rewardStatuses.clear();
         rewardRequestsInFlight.clear();
         nightCloakRolls.clear();

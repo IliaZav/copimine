@@ -26,6 +26,9 @@ public class CancelledDeathProbe {
     Object keyRitualPrisoner=new Object();
     UUID prisoner;
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
+    int forgottenProfileAnchors;
+    class ProfileListener {void forget(UUID id){forgottenProfileAnchors++;}}
+    ProfileListener combatProfileListener=new ProfileListener();
     Set<UUID> officialRewardRoster=new HashSet<>(),clientBindingReadyPlayers=new HashSet<>();
     Map<UUID,Long> offlineRosterGraceUntilMillis=new HashMap<>();
     Map<String,UUID> padOccupants=new HashMap<>(),runeVisualOccupants=new HashMap<>();
@@ -67,7 +70,7 @@ public class CancelledDeathProbe {
         probe.runeVisualOccupants.put("rune",id);
         probe.attemptLifecycle.begin(43,Set.of(id));
         probe.onPlayerDeath(new PlayerDeathEvent(player,true));
-        require(probe.effectsReleased==0 && probe.wipes==0 && probe.overlayChanges==0,
+        require(probe.effectsReleased==0 && probe.wipes==0 && probe.overlayChanges==0 && probe.forgottenProfileAnchors==0,
                 "cancelled death must not clear wave controls, effects or trigger a wipe");
         require(probe.attemptLifecycle.living().contains(id) && probe.attemptLifecycle.owns(43),
                 "cancelled lethal callback cannot remove the last living participant");
@@ -75,7 +78,7 @@ public class CancelledDeathProbe {
                 && probe.padOccupants.containsValue(id) && probe.runeVisualOccupants.containsValue(id),
                 "cancelled death retains bridge, return grace and occupied runes");
         probe.onPlayerDeath(new PlayerDeathEvent(player,false));
-        require(probe.effectsReleased>0 && probe.wipes==1 && probe.attemptLifecycle.living().isEmpty(),
+        require(probe.effectsReleased>0 && probe.wipes==1 && probe.attemptLifecycle.living().isEmpty() && probe.forgottenProfileAnchors==1,
                 "a committed death must still follow the real death cleanup path");
         require(!probe.clientBindingReadyPlayers.contains(id) && probe.padOccupants.isEmpty()
                 && probe.runeVisualOccupants.isEmpty(),"normal death releases client and rune state");

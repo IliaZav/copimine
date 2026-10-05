@@ -17,15 +17,23 @@ def daylight_probe(tmp_path_factory):
             depth += (source[end] == "{") - (source[end] == "}")
             end += 1
         return source[start:end]
-    methods = declaration("private void registerOwnedEntity(Entity entity)") + "\n" + declaration("private boolean isWaveCombatKind(String kind)")
+    methods = (declaration("private void registerOwnedEntity(Entity entity)") + "\n"
+               + declaration("private boolean isWaveCombatKind(String kind)") + "\n"
+               + declaration("private void rememberWave7ProjectileIncarnations(Entity entity, int wave)"))
     directory = tmp_path_factory.mktemp("wave-daylight")
     fixture = directory / "WaveDaylightProbe.java"
     fixture.write_text(r'''
 import java.util.*;
+import me.copimine.endevent.runtime.AttemptLifecycleController;
 public class WaveDaylightProbe {
     Object keyKind=new Object(), keyWave=new Object();
     Map<UUID,Entity> ownedEntities=new HashMap<>();
     long generation=1; String eventId="event"; Scope encounterResourceScope;
+    AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
+    Map<UUID,Map<UUID,Long>> wave7ProjectileIncarnations=new LinkedHashMap<>();
+    Set<UUID> officialRewardRoster=Set.of();
+    boolean isOfficialWave7ReturnContext(){return false;}
+    boolean isOfficialEntity(Entity entity){return true;}
     static final String EVENT_KIND_WAVE_MOB="WAVE_MOB", EVENT_KIND_ELITE="ELITE",
         EVENT_KIND_WAVE_GUARDIAN="WAVE_GUARDIAN", EVENT_KIND_REALITY_SPLIT_TRIAL="REALITY_SPLIT_TRIAL",
         EVENT_KIND_RITUAL_CASTER="RITUAL_CASTER", EVENT_KIND_RITUAL_GUARD="RITUAL_GUARD";
@@ -36,6 +44,7 @@ public class WaveDaylightProbe {
         Type getType(){return Type.SKELETON;}
     }
     enum Type { SKELETON }
+    static class Projectile extends Entity {Projectile(){super("PROJECTILE",7);}}
     static class Skeleton extends Entity {
         boolean daylight=true; int fireTicks=27; double health=43;
         Skeleton(String kind,int wave){super(kind,wave);}
@@ -62,13 +71,15 @@ public class WaveDaylightProbe {
         probe.registerOwnedEntity(skeleton);
         check(skeleton.daylight!=protectedWave,"numbered-wave skeleton sunlight must not kill a guard or advance its objective");
         check(skeleton.fireTicks==27&&skeleton.health==43,"actual fire hazards and current combat health must remain unchanged");
+        check(probe.wave7ProjectileIncarnations.isEmpty(),"living skeleton registration must not fabricate projectile receipts");
         skeleton.daylight=true;
         probe.registerOwnedEntity(skeleton);
         check(skeleton.daylight!=protectedWave,"idempotent reindex must restore the daylight rule without resetting health");
         probe.registerOwnedEntity(null);
     }
 ''' + methods + "\n}\n", encoding="utf-8")
-    result = subprocess.run(["javac", "-d", str(directory), str(fixture)], capture_output=True, text=True)
+    lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
+    result = subprocess.run(["javac", "-d", str(directory), str(lifecycle), str(fixture)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory
 

@@ -81,6 +81,8 @@ public final class WaveProbeAdapterHarness {
     Set<Object> realitySplitBarrierCells = Set.of();
     Chambers realitySplitChamberController = new Chambers();
     Trials realitySplitTrialController = new Trials();
+    static final class Lifecycle {boolean hasWave7Returns(long generation){return false;}}
+    Lifecycle attemptLifecycle = new Lifecycle();
     static final Logger LOGGER = Logger.getLogger("detached-wave-probe");
     static { LOGGER.setLevel(Level.OFF); }
     Logger getLogger() { return LOGGER; }

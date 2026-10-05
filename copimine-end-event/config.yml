@@ -32,6 +32,10 @@ arena:
   boss-radius: 20.0
   containment-radius: 20.0
 
+wave7:
+  # Original return window; respawn and reconnect never reset it. Maximum 120.
+  return-grace-seconds: 120
+
 mobs:
   spider:
     health-bonus: 14.0

@@ -179,6 +179,69 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 
 ## Remaining acceptance
 
+### Wave 7 return source candidate after `21dfe8fe`
+
+- The real bed callback and last-player wipe each have recorded RED failures.
+  The source candidate preserves normal bed/fallback respawn, excludes pending
+  owners from containment/objectives, and offers explicit owner-only return.
+  Entrance position derives from the configured arena/world and combat floor;
+  bounded loaded-chunk probes validate support, full standing clearance, fluids,
+  temporary hazards and world border. No test-world return coordinates are used.
+- The existing lifecycle controls 40-tick staging and incarnation fences.
+  Offense cancels protection before dispatch; pending/staging/outside owners
+  cannot damage trial actors through vanilla fallback. Death/quit cancels locked
+  legacy trial attacks and stops their motion without recreating actor HP.
+  Projectiles and directional effects reject an old victim incarnation.
+- Last admitted-player loss starts the original bounded 120-second monotonic
+  window. Physical respawn and repeated quit/join do not restart it. Expiry
+  cleans the attempt and enters recovery without success/rewards. Strict current
+  claim/generation rights and the original deadline survive checkpoint restore;
+  malformed, missing, foreign or backwards-clock rights fail closed.
+- Source candidate evidence after teleport/gateway fixes: **976 passed, 1 skipped**, Python 3.13; affected
+  End Event build passed with the five existing removal warnings; registered
+  End Rift gate passed, including the new return tests. Unrelated dirty source
+  files remain excluded. Candidate review/publication and actual-server
+  bed/return/restart evidence are pending. Native verification is pending.
+- Initial immutable CodeRabbit review: **1 major issue**, concerning the
+  pre-admission chamber teleport. Actual source execution also reproduced the
+  outside/bed teleport guard and the pre-boss timer bypassing all-dead grace.
+  Exact owner/destination permits now cover internal entrance/room/rollback
+  moves and are cleared on cancellation or exception. Pending owners can stay
+  outside the arena, but cannot use an ordinary teleport to enter combat.
+  The gateway waits for admitted living arena participants while preserving
+  its original elapsed 800-tick timer and single-fire behavior. Focused checks
+  passed **28 tests**. The six-file immutable follow-up review raised **1 minor
+  issue** in a test that reused an already-cancelled event. It is corrected with
+  a fresh staging event; no production-code issue was raised by that follow-up.
+  The final two-file test/document follow-up completed with **0 issues**.
+- Codex Security completed immutable public-source range `742f3544..50b4e445`
+  (scan `f0e8b49a-bb9b-4305-a045-b1f56b795647`): seven production/config files
+  reviewed, zero confirmed reportable vulnerabilities. Coverage is explicitly
+  partial: candidate real-server/native and performance evidence are missing.
+  The inherited `combatLevelY` fallback reads blocks before the new resolver's
+  loaded-chunk gate, and `return enter` has no independent retry throttle after
+  offense cancellation. These remain bounded source/performance follow-ups;
+  the scan does not establish an exploit or prove an end-to-end no-load claim.
+  No private data was supplied. This review covers this lifecycle slice only.
+- Final automated source evidence: **976 passed, 1 skipped**, End Event build,
+  registered End Rift gate, **659 validators** and `git diff --check` passed.
+  After the final test-only review correction, all three teleport/handoff
+  regressions were re-executed and passed. Client/assets are unchanged in this
+  checkpoint; the prior verified client has 249 passing tests. Publication and
+  current-candidate live return/restart proof remain pending.
+- Named Echo actor pause, copied finite supplies, completed-owner private exit,
+  ordinary helper admission and per-private-claim abandonment are NOT finished
+  by this lifecycle slice. The explicitly identified legacy actors are still
+  active; no legacy room receipt is relabelled as a named new trial.
+
+The prior official profile checkpoint was committed/pushed as
+`21dfe8fe16c5b719080cd265b34b1a07b2b74e82`. Its exact SHA passed both
+[PR verification](https://github.com/IliaZav/copimine/actions/runs/37365347162)
+and [push verification](https://github.com/IliaZav/copimine/actions/runs/37365341547).
+The currently running local process still uses that profile checkpoint, not the
+unpublished return candidate. Its four synthetic targets were freshly observed
+alive at 1,000 HP; source tests are not real-server return proof.
+
 - Ruling: retain explicitly identified `legacy-four-trials` runtime until the
   new actor/admission/presentation adapters are connected. The named policy is
   tested groundwork, not replacement gameplay. Renaming legacy actors would
@@ -192,12 +255,13 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   the configured arena bounds/world, without fixed test-world coordinates.
   Validate actual ground/collision with bounded local probes; ordinary bed
   respawn and explicit generation-bound return remain mandatory.
-- Task B source trace: ordinary respawn currently returns a roster player to
-  combat after two ticks; the last committed death still wipes immediately.
-  Both conflict with the required bed/explicit-return/grace contract. First-party
+- Task B baseline trace: ordinary respawn returned a roster player to combat
+  after two ticks; the last committed death wiped immediately. The new source
+  candidate repairs both paths and their shared watchdog, as described above.
+  Actual-server/native proof and the named actor integration remain pending. First-party
   Per-death retention and Artifacts/Election/Admin queue coordination are now
   implemented and tested, including installed ClearLag deferred-drop handling.
-  Bed/explicit return, all-dead grace and durable restart rights remain open.
+  Full Task B/H acceptance remains open.
 - Then execute the remaining V3 prompts in order; preserve the user's confirmed
   Wave 5 freeze schedule and Wave 6 owned guard groups / QWER accumulating spells.
 - Review each actual checkpoint diff with CodeRabbit and the requested security

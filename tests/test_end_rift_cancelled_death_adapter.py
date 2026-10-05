@@ -51,6 +51,7 @@ public class CancelledDeathProbe {
     void endRitualPrisonerAbilitySessionForPlayer(UUID id,String reason){effectsReleased++;}
     UUID ritualPrisonerId(){return prisoner;}
     boolean isOfficialAttemptActive(){return true;}
+    boolean isOfficialWave7ReturnContext(){return false;} void saveStateAsync(){}
     void wipeOfficialAttemptIfAllDead(String reason){wipes++;}
     Logger getLogger(){return Logger.getAnonymousLogger();}
     void cancelShardChannel(UUID id){effectsReleased++;}

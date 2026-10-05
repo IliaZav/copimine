@@ -38,6 +38,10 @@ public class CombatProfileMainProbe {
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
     PreBoss preBossTransitionController=new PreBoss();
+    static class Chambers {Assignment assignment(){return new Assignment();}}
+    static class Assignment {Map<UUID,Integer> chamberByPlayer(){return Map.of();}}
+    Chambers realitySplitChamberController=new Chambers();
+    boolean isOfficialWave7ReturnContext(){return false;} long wave7ReturnGraceMillis(){return 120_000L;}
     boolean isOfficialCurrentAttempt(){return isOfficialAttemptActive()&&!testWaveFrontVisualMode&&!testCombatAiMode;}
     boolean isCombatTarget(Player player){return player!=null&&player.isOnline()&&!player.isDead();}
     UUID ritualPrisonerId(){return prisoner;}

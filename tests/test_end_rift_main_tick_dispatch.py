@@ -35,7 +35,7 @@ public class MainTickWaveDispatch {
           testWave4ObeliskMode, testWaveInspectionMode, endUnlocked;
   long lastMainThreadTickAtMillis, lastMainThreadGeneration, generation = 5,
        eventTickCounter, nextVictoryRetryMillis;
-  String lastMainThreadPhase; int lastMainThreadWave, activeWave, objectives, bosses, profileTicks;
+  String lastMainThreadPhase; int lastMainThreadWave, activeWave, objectives, bosses, profileTicks, returnTicks;
   EventPhase phase = EventPhase.READY_FOR_PLAYERS; Object boss;
   boolean isEnabled() { return enabled; }
   Object liveBoss() { return boss; }
@@ -43,6 +43,7 @@ public class MainTickWaveDispatch {
   void tickWaveCompletion() { objectives++; }
   void tickBoss() { bosses++; }
   void tickEventCombatProfiles() { profileTicks++; }
+  void tickWave7Returns() { returnTicks++; }
   public static void main(String[] args) {
     var p = new MainTickWaveDispatch();
     p.activeWave = Integer.parseInt(args[0]);
@@ -57,6 +58,8 @@ public class MainTickWaveDispatch {
       throw new AssertionError("objectives=" + p.objectives + " bosses=" + p.bosses);
     if (p.profileTicks != (p.bootstrapped ? 1 : 0))
       throw new AssertionError("profile collector must share the existing five-tick loop and boot fence");
+    if (p.returnTicks != (p.bootstrapped ? 1 : 0))
+      throw new AssertionError("return staging must share the existing five-tick loop and boot fence");
   }
 ''' + "\n".join("void " + name + "() { }" for name in ordinary) + "\n"
                     + method(source, "void tick()") + "\n" + method(source, "boolean isCombatPhase()")

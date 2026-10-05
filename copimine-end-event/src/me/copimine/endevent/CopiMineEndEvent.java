@@ -852,6 +852,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final BossStartGateway bossStartGateway = this::commitPreBossHandoffAndStart;
     private final RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
     private final RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
+    private final Map<UUID, Location> wave7ReturnStagingLocations = new LinkedHashMap<>();
+    private final Map<UUID, Long> wave7ReturnActionNextTicks = new LinkedHashMap<>();
+    private final Map<UUID, Map<UUID, Long>> wave7ProjectileIncarnations = new LinkedHashMap<>();
+    private long lastWave7ParticipationSaveTick = Long.MIN_VALUE;
     private final Set<UUID> realitySplitTrialEntityUuids = new LinkedHashSet<>();
     private final Map<UUID, RealitySplitTrialRuntimeState> realitySplitTrialRuntimeStates = new LinkedHashMap<>();
     private final Map<Integer, Long> realitySplitTrialNextFireballTick = new LinkedHashMap<>();
@@ -1279,6 +1283,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         combatProfileListener = new me.copimine.endevent.runtime.EventCombatProfileListener(
                 combatProfiles, this::combatProfileContext, this::isCombatProfileTarget);
         Bukkit.getPluginManager().registerEvents(combatProfileListener, this);
+        Bukkit.getPluginManager().registerEvents(new me.copimine.endevent.runtime.Wave7ReturnProtectionListener(
+                player -> isOfficialWave7ReturnContext() && attemptLifecycle.isReturnProtected(
+                        player.getUniqueId(), generation, eventTickCounter), this::cancelWave7ReturnForOffense), this);
         Bukkit.getPluginManager().registerEvents(this, this);
     }
 
@@ -2401,6 +2408,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         restoreCombatProfiles(snapshot.objectiveProgress());
+        restoreWave7ReturnParticipation(snapshot);
     }
 
     /** Refuse incompatible Wave 7 state without disabling the recovery commands. */
@@ -2481,6 +2489,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private Map<String, String> objectiveProgressSnapshot() {
         Map<String, String> encoded = new LinkedHashMap<>(waveObjectiveProgressSnapshot());
         encoded.putAll(combatProfiles.encode());
+        if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) {
+            encoded.putAll(attemptLifecycle.encodeWave7Returns(eventId,
+                    realitySplitChamberController.assignment().chamberByPlayer(),
+                    System.nanoTime(), System.currentTimeMillis(), wave7ReturnGraceMillis()));
+        }
         if (phase == EventPhase.PRE_BOSS_COOLDOWN) {
             long elapsedTicks = preBossTransitionController.elapsedServerTicks(eventTickCounter);
             encoded.putAll(me.copimine.endevent.domain.PreBossTickSnapshotPolicy.encode(
@@ -3731,6 +3744,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return true;
         }
         String group = args[0].toLowerCase(Locale.ROOT);
+        if ("return".equals(group)) {
+            handleWave7Return(sender, args);
+            return true;
+        }
         if ("test".equals(group)) {
             if (validTest(sender)) {
                 handleTest(sender, args);
@@ -10417,6 +10434,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickEventCombatProfiles();
         sampleRuntimeDiagnostics();
         emitDiagnosticSnapshot();
+        tickWave7Returns();
         tickOfflineRosterGrace();
         updatePadOccupancy();
         renderRitualZoneVisuals(System.currentTimeMillis());
@@ -14752,6 +14770,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             forcePhase(EventPhase.RECOVERY_REQUIRED, "pre-boss encounter context unavailable");
             return;
         }
+        // Keep the existing timer, but do not consume its one-shot gateway
+        // while every Wave 7 owner is still awaiting explicit return.
+        if (attemptLifecycle.hasWave7Returns(generation) && context.livingPlayerCount() == 0) {
+            return;
+        }
         if (!preBossTransitionController.isStartedFor(context)) {
             preBossTransitionController.restoreServerTicks(context, eventTickCounter, restoredPreBossElapsedTicks);
             phaseDeadlineMillis = 0L;
@@ -14843,6 +14866,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         spawnOfficialBoss(null);
+        attemptLifecycle.endWave7Returns(generation);
         if (liveBoss() == null) {
             forcePhase(EventPhase.RECOVERY_REQUIRED, "pre-boss gateway could not create the boss");
             return;
@@ -15485,6 +15509,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean initializeWaveGameplay(int wave, World world, Location core,
                                            Set<UUID> roster, boolean sandbox, boolean combatMode,
                                            boolean inspectionMode) {
+        if (wave == 7 && !sandbox && attemptLifecycle.hasWave7Returns(generation)
+                && realitySplitChamberController.owns(generation) && realitySplitTrialController.owns(generation)) {
+            getLogger().info("WAVE7_REPEATED_INITIALIZATION_IGNORED event=" + eventId + " generation=" + generation);
+            return true;
+        }
         if (world == null || core == null || !EndRiftObjective.isNumberedWave(wave)
                 || roster == null || roster.isEmpty() && !(sandbox && inspectionMode)) {
             getLogger().warning("END_RIFT_WAVE_SPAWN_REFUSED event=" + eventId + " wave=" + wave
@@ -15530,6 +15559,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (wave == 7) {
             realitySplitChamberController.begin(generation,
                     new ArrayList<>(roster));
+            if (!sandbox && (!attemptLifecycle.enableWave7Returns(generation) || !saveStateSync())) {
+                getLogger().severe("WAVE7_RETURN_RIGHTS_START_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=missing-participation-or-durable-claims");
+                return false;
+            }
             realitySplitTrialController.begin(generation,
                     realitySplitChamberController.assignment());
             realitySplitOrphanedSinceMillis.clear();
@@ -19005,6 +19039,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (arrow == null) {
             return false;
         }
+        if (!wave7ProjectileMayHit(arrow, player)) return false;
         if (isRitualProjectile(arrow)) {
             return isFreeRitualTarget(player)
                     && (!ARROW_SPELL_RITUAL_GUARD_WEB.equals(readString(arrow, keyArrowSpell))
@@ -19021,8 +19056,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !isRitualProjectile(arrow)) {
             return List.of();
         }
-        return isRitualProjectile(arrow)
+        List<Player> candidates = isRitualProjectile(arrow)
                 ? ritualFreeTargets(activeWaveParticipants()) : activeWaveParticipants();
+        return candidates.stream().filter(player -> wave7ProjectileMayHit(arrow, player)).toList();
     }
 
     private Player ritualNearestTarget(Location origin, double radius) {
@@ -20917,6 +20953,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void recoverRealitySplitOrphanRooms(long now) {
+        // Temporary death/return claims must not open unfinished rooms to substitutes.
+        if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) return;
         if (now <= 0L || !realitySplitChamberController.owns(generation)
                 || !realitySplitTrialController.owns(generation)) return;
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
@@ -21024,6 +21062,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         state.direction = horizontalDirection(warden.getLocation(), target.getLocation());
+        lockRealitySplitTrialAction(state, target);
         state.attackPattern = state.attackCount++ % 3;
         state.action = 1;
         state.phaseUntilTick = eventTickCounter + REALITY_SPLIT_ACTION_TELEGRAPH_TICKS;
@@ -21135,6 +21174,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         state.direction = horizontalDirection(juggernaut.getLocation(), target.getLocation());
+        lockRealitySplitTrialAction(state, target);
         state.action = 1;
         state.phaseUntilTick = eventTickCounter + 18L;
         state.hitPlayers.clear();
@@ -21199,7 +21239,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         moveRealitySplitHunterTowardTarget(hunter, target);
         if (eventTickCounter < state.nextActionTick) return;
-        state.target = target.getUniqueId();
+        lockRealitySplitTrialAction(state, target);
         state.action = 3;
         state.phaseUntilTick = eventTickCounter + 26L;
         state.previousLocation = hunter.getLocation().clone();
@@ -21248,7 +21288,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         Location current = attacker.getLocation();
         for (Player player : realitySplitTrialTargets(attacker)) {
             if (!isCurrentRealitySplitTrialTarget(attacker, player)
-                    || state.hitPlayers.contains(player.getUniqueId())) continue;
+                    || state.hitPlayers.contains(player.getUniqueId())
+                    || isOfficialWave7ReturnContext() && !attemptLifecycle.incarnationMatches(
+                    player.getUniqueId(), generation, state.launchIncarnations.getOrDefault(player.getUniqueId(), 0L))) continue;
             boolean hit;
             if (swept) {
                 hit = distanceSquaredToSegment(player.getLocation().toVector(),
@@ -21316,6 +21358,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         state.nextActionTick = eventTickCounter + Math.max(1L, delay);
         state.hitPlayers.clear();
         state.previousLocation = null;
+        state.target = null;
+        state.launchIncarnations = Map.of();
+    }
+
+    private void lockRealitySplitTrialAction(RealitySplitTrialRuntimeState state, Player target) {
+        state.target = target.getUniqueId();
+        Map<UUID, Long> launch = new LinkedHashMap<>();
+        if (isOfficialWave7ReturnContext()) {
+            for (UUID owner : officialRewardRoster) {
+                long incarnation = attemptLifecycle.incarnation(owner, generation);
+                if (incarnation > 0L) launch.put(owner, incarnation);
+            }
+        }
+        state.launchIncarnations = Map.copyOf(launch);
     }
 
     private Vector horizontalDirection(Location from, Location to) {
@@ -21975,8 +22031,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void cancelWaveCombatTarget(UUID target) {
+        if (target == null) return;
         WaveCombatCoordinator.Lease lease = waveCombatCoordinator.currentLease(generation, eventTickCounter);
         if (lease != null && lease.target().equals(target)) cancelWaveCombatAttack(lease.owner(), lease, generation);
+        if (!isOfficialWave7ReturnContext()) return;
+        for (var entry : realitySplitTrialRuntimeStates.entrySet()) {
+            RealitySplitTrialRuntimeState state = entry.getValue();
+            if (state.action == 0 || !target.equals(state.target)) continue;
+            finishTrialAttack(state, 20L);
+            if (ownedEntities.get(entry.getKey()) instanceof Mob mob) {
+                mob.setVelocity(new Vector());
+                mob.removePotionEffect(PotionEffectType.INVISIBILITY);
+                mob.setCustomNameVisible(true);
+            }
+        }
     }
 
     private void playWaveAbilitySound(LivingEntity actor, String spell, String stage) {
@@ -22859,6 +22927,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         return officialRewardRoster.contains(player.getUniqueId())
+                && (!isOfficialWave7ReturnContext()
+                || attemptLifecycle.isCombatAdmitted(player.getUniqueId(), generation))
                 || testWaveFrontVisualMode;
     }
 
@@ -23119,6 +23189,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ChamberIsolationPolicy.Assignment assignment =
                 realitySplitChamberController.assignment();
         if (!assignment.chamberByPlayer().containsKey(playerId)) {
+            return;
+        }
+        if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)
+                && !attemptLifecycle.isCombatAdmitted(playerId, generation)) {
+            // Bed/pending owners retain ordinary movement outside the arena.
+            // Only the exact internal return permit may relocate them inside
+            // before completeReturn commits their combat admission.
+            if (isArenaLocation(event.getTo())) {
+                event.setCancelled(true);
+                getLogger().info("WAVE7_PENDING_TELEPORT_BLOCKED event=" + eventId
+                        + " generation=" + generation + " player=" + playerId);
+            }
             return;
         }
         Location anchor = coreCombatAnchorLocation();
@@ -24225,6 +24307,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         ownedEntities.put(entity.getUniqueId(), entity);
+        rememberWave7ProjectileIncarnations(entity, wave);
         boolean persistentLayout = isPersistentLayoutEntity(entity, kind, wave);
         if (isScopedTransientEncounterEntity(entity, kind, wave, persistentLayout)
                 && encounterResourceScope != null
@@ -24326,6 +24409,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveLeashReturns.remove(entityId);
         waveDashGenerations.remove(entityId);
         waveChannelerObelisks.remove(entityId);
+        wave7ProjectileIncarnations.remove(entityId);
         Entity entity = ownedEntities.remove(entityId);
         if (entity != null) {
             String kindValue = keyKind == null ? null : readString(entity, keyKind);
@@ -31648,6 +31732,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         private long nextActionTick;
         private long phaseUntilTick;
         private UUID target;
+        private Map<UUID, Long> launchIncarnations = Map.of();
         private Vector direction = new Vector(0.0D, 0.0D, 1.0D);
         private Location previousLocation;
         private final Set<UUID> hitPlayers = new LinkedHashSet<>();
@@ -32493,6 +32578,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && officialRewardRoster.contains(playerUuid)) {
             attemptLifecycle.markOnline(playerUuid, generation);
             attemptLifecycle.markAlive(playerUuid, generation);
+            offerWave7Return(player);
             AttemptLifecycleController.ParticipantStatus rosterStatus = attemptLifecycle.status(playerUuid);
             if (rosterStatus != null && rosterStatus.active() && rosterStatus.online()
                     && rosterStatus.alive()) {
@@ -32551,11 +32637,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (isOfficialAttemptActive() && attemptLifecycle.owns(generation)
                 && officialRewardRoster.contains(uuid)) {
             attemptLifecycle.markOffline(uuid, generation);
+            if (isOfficialWave7ReturnContext()) {
+                wipeOfficialAttemptIfAllDead("Wave 7 participant disconnected");
+                saveStateAsync();
+            } else {
             long deadline = System.currentTimeMillis() + OFFLINE_RECONNECT_GRACE_MILLIS;
             offlineRosterGraceUntilMillis.put(uuid, deadline);
             getLogger().info("ATTEMPT_ROSTER_OFFLINE_GRACE event=" + eventId
                     + " player=" + uuid + " generation=" + generation
                     + " grace_ms=" + OFFLINE_RECONNECT_GRACE_MILLIS);
+            }
         }
         clientBindingReadyPlayers.remove(uuid);
         cancelShardChannel(uuid);
@@ -32590,6 +32681,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " player=" + uuid + " generation=" + generation
                     + " living=" + attemptLifecycle.living().size());
             wipeOfficialAttemptIfAllDead("all official roster players died");
+            if (isOfficialWave7ReturnContext()) saveStateAsync();
         }
         clientBindingReadyPlayers.remove(uuid);
         cancelShardChannel(uuid);
@@ -32607,6 +32699,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         UUID playerUuid = player.getUniqueId();
         offlineRosterGraceUntilMillis.remove(playerUuid);
         long respawnGeneration = generation;
+        boolean preserveNormalWave7Respawn = isOfficialWave7ReturnContext();
         boolean rosterPlayer = isOfficialAttemptActive()
                 && attemptLifecycle.owns(respawnGeneration)
                 && officialRewardRoster.contains(playerUuid)
@@ -32619,8 +32712,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         // Rebind after the respawn packet has put the player back in the world;
         // this also restores the custom boss bar instead of leaving the vanilla
         // fallback visible after a death during a fight.
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (rosterPlayer && taskRegistry != null && taskRegistry.owns(respawnGeneration)
+        BukkitTask respawnBinding = Bukkit.getScheduler().runTaskLater(this, () -> {
+            if (generation != respawnGeneration || !player.isOnline() || player.isDead()
+                    || taskRegistry == null || !taskRegistry.owns(respawnGeneration)) return;
+            if (rosterPlayer && !preserveNormalWave7Respawn
+                    && taskRegistry != null && taskRegistry.owns(respawnGeneration)
                     && isOfficialAttemptActive() && player.isOnline() && !player.isDead()) {
                 if (activeWave == chamberWaveNumber()
                         && realitySplitChamberController.owns(respawnGeneration)
@@ -32632,11 +32728,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
             }
             refreshClientBindingsForPlayer(player);
+            offerWave7Return(player);
         }, 2L);
+        registerEncounterTask(respawnBinding);
     }
 
     /** Expire disconnected roster entries deterministically after the reconnect grace. */
     private void tickOfflineRosterGrace() {
+        if (isOfficialWave7ReturnContext()) {
+            wipeOfficialAttemptIfAllDead("Wave 7 admitted roster remains absent");
+            return;
+        }
         if (!isOfficialAttemptActive() || !attemptLifecycle.owns(generation)
                 || offlineRosterGraceUntilMillis.isEmpty()) {
             return;
@@ -32663,8 +32765,244 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         wipeOfficialAttemptIfAllDead("official roster offline grace expired");
     }
 
+    private boolean isOfficialWave7ReturnContext() {
+        return (phase == EventPhase.WAVE_7 || phase == EventPhase.PRE_BOSS_COOLDOWN && activeWave == 7)
+                && isOfficialAttemptActive() && !testWaveFrontVisualMode && !testCombatAiMode;
+    }
+
+    private long wave7ReturnGraceMillis() {
+        return Math.max(1L, Math.min(120L, getConfig().getLong("wave7.return-grace-seconds", 120L))) * 1000L;
+    }
+
+    private void rememberWave7ProjectileIncarnations(Entity entity, int wave) {
+        if (wave != 7 || !(entity instanceof Projectile) || !isOfficialEntity(entity)
+                || !isOfficialWave7ReturnContext() || !attemptLifecycle.hasWave7Returns(generation)) return;
+        Map<UUID, Long> incarnations = new LinkedHashMap<>();
+        for (UUID owner : officialRewardRoster) {
+            long incarnation = attemptLifecycle.incarnation(owner, generation);
+            if (incarnation > 0L) incarnations.put(owner, incarnation);
+        }
+        while (wave7ProjectileIncarnations.size() >= 256) {
+            wave7ProjectileIncarnations.remove(wave7ProjectileIncarnations.keySet().iterator().next());
+        }
+        wave7ProjectileIncarnations.putIfAbsent(entity.getUniqueId(), Map.copyOf(incarnations));
+    }
+
+    private boolean wave7ProjectileMayHit(Entity projectile, Player player) {
+        if (!(projectile instanceof Projectile) || !isOfficialEntity(projectile)
+                || readInt(projectile, keyWave, 0) != 7) return true;
+        Map<UUID, Long> launch = wave7ProjectileIncarnations.get(projectile.getUniqueId());
+        return player != null && isOfficialWave7ReturnContext() && launch != null
+                && ownedBySession(projectile, eventId, generation)
+                && attemptLifecycle.isCombatAdmitted(player.getUniqueId(), generation)
+                && attemptLifecycle.incarnationMatches(player.getUniqueId(), generation,
+                launch.getOrDefault(player.getUniqueId(), 0L));
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+    public void onWave7OldProjectileDamage(EntityDamageByEntityEvent event) {
+        if (event.getEntity() instanceof Player player && event.getDamager() instanceof Projectile projectile
+                && !wave7ProjectileMayHit(projectile, player)) event.setCancelled(true);
+    }
+
+    /** Block vanilla fallback too, before the real-health HIGHEST transaction. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = false)
+    public void onWave7PendingOwnerDamage(EntityDamageByEntityEvent event) {
+        if (!isOfficialWave7ReturnContext() || !isChamberWaveEntity(event.getEntity())
+                || !ownedEntities.containsKey(event.getEntity().getUniqueId())) return;
+        Player attacker = playerDamageAttacker(event.getDamager());
+        if (attacker != null && (!attemptLifecycle.isCombatAdmitted(attacker.getUniqueId(), generation)
+                || !isCombatTarget(attacker))) event.setCancelled(true);
+    }
+
+    private void restoreWave7ReturnParticipation(EventSnapshot snapshot) {
+        attemptLifecycle.clear();
+        wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear();
+        if (!isOfficialWave7ReturnContext()) return;
+        if (!realitySplitChamberController.owns(generation)
+                || !attemptLifecycle.restoreWave7Returns(snapshot.objectiveProgress(), eventId, generation,
+                realitySplitChamberController.assignment().chamberByPlayer(), officialRewardRoster,
+                System.nanoTime(), System.currentTimeMillis(), wave7ReturnGraceMillis())) {
+            recoveryReason = "INVALID_OR_MISSING_WAVE7_PARTICIPATION";
+            phase = EventPhase.RECOVERY_REQUIRED;
+            activeWave = 0; finalSealBarrierHold = false;
+            realitySplitChamberController.clear(); realitySplitTrialController.clear();
+            encounterController.restore(eventId, generation, phase, null);
+            getLogger().severe("WAVE7_PARTICIPATION_RESTORE_REFUSED event=" + eventId
+                    + " generation=" + generation + " action=recovery-no-return-grant");
+        }
+    }
+
+    private void offerWave7Return(Player player) {
+        if (player == null || !isOfficialWave7ReturnContext()
+                || !attemptLifecycle.isReturnPending(player.getUniqueId(), generation)) return;
+        player.sendMessage(Component.text("[Вернуться к входу Разлома]", NamedTextColor.AQUA)
+                .clickEvent(net.kyori.adventure.text.event.ClickEvent.runCommand("/cmend return")));
+        message(player, "&7Возрождение остаётся у кровати. Возврат в своё испытание: &b/cmend return&7.");
+    }
+
+    private Location resolveWave7ReturnEntrance() {
+        World world = Bukkit.getWorld(worldName);
+        if (world == null) return null;
+        try {
+            var bounds = new me.copimine.endevent.domain.ArenaEntranceLocator.Bounds(worldName,
+                    arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ);
+            return me.copimine.endevent.runtime.ArenaEntranceResolver.find(world, bounds, combatLevelY(),
+                    this::isTemporaryMovementHazard).orElse(null);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    /** Permit only the destination already validated by this return transaction. */
+    private boolean teleportWave7Return(Player player, Location destination) {
+        if (player == null || destination == null) return false;
+        UUID owner = player.getUniqueId();
+        issueRealitySplitPlayerTeleportPermit(owner, destination);
+        try {
+            return player.teleport(destination);
+        } finally {
+            clearRealitySplitPlayerTeleportPermit(owner, destination);
+        }
+    }
+
+    /** Public command routing still requires the exact active, original participation entitlement. */
+    private void handleWave7Return(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            message(sender, "&cВозврат доступен самому зарегистрированному участнику."); return;
+        }
+        UUID owner = player.getUniqueId();
+        if (!isOfficialWave7ReturnContext() || !officialRewardRoster.contains(owner)
+                || !attemptLifecycle.isReturnPending(owner, generation)
+                || !player.isOnline() || player.isDead() || player.getHealth() <= 0.0D
+                || player.isInsideVehicle()
+                || player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE
+                || !realitySplitChamberController.owns(generation)
+                || !realitySplitChamberController.assignment().chamberByPlayer().containsKey(owner)) {
+            message(sender, "&cНет действующего права на личный возврат в эту попытку."); return;
+        }
+        if (args.length > 2 || args.length == 2 && !"enter".equalsIgnoreCase(args[1])) {
+            message(sender, "&e/cmend return — к входу; /cmend return enter — начать возврат у входа."); return;
+        }
+        if (args.length == 1) {
+            if (eventTickCounter < wave7ReturnActionNextTicks.getOrDefault(owner, 0L)) {
+                message(sender, "&7Подождите секунду перед повторным переносом к входу."); return;
+            }
+            wave7ReturnActionNextTicks.put(owner, eventTickCounter + 20L);
+        }
+        AttemptLifecycleController.ReturnWindowStatus window = attemptLifecycle.observeWave7ReturnWindow(
+                generation, System.nanoTime(), System.currentTimeMillis(), wave7ReturnGraceMillis());
+        if (window == AttemptLifecycleController.ReturnWindowStatus.EXPIRED) {
+            wipeOfficialAttemptIfAllDead("return interaction after grace expired");
+            message(sender, "&cВремя возврата закончилось. Попытка завершена без награды."); return;
+        }
+        Location entrance = resolveWave7ReturnEntrance();
+        if (entrance == null) {
+            message(sender, "&cУ границы арены нет безопасного загруженного входа. Возврат не начат."); return;
+        }
+        if (args.length == 1) {
+            if (!me.copimine.endevent.runtime.ArenaEntranceResolver.safe(entrance, this::isTemporaryMovementHazard)
+                    || !teleportWave7Return(player, entrance)) {
+                message(sender, "&cНе удалось безопасно перенести вас к входу."); return;
+            }
+            player.setVelocity(new Vector()); player.setFallDistance(0F);
+            player.sendMessage(Component.text("[Начать возврат в своё испытание]", NamedTextColor.GREEN)
+                    .clickEvent(net.kyori.adventure.text.event.ClickEvent.runCommand("/cmend return enter")));
+            message(sender, "&7У входа: &b/cmend return enter&7. Возврат займёт 2 секунды; оставайтесь у входа.");
+            return;
+        }
+        if (!player.getWorld().equals(entrance.getWorld())
+                || player.getLocation().distanceSquared(entrance) > 1.44D
+                || !me.copimine.endevent.runtime.ArenaEntranceResolver.safe(entrance, this::isTemporaryMovementHazard)) {
+            message(sender, "&cНачните возврат рядом с безопасным входом: /cmend return."); return;
+        }
+        var token = attemptLifecycle.beginReturn(owner, generation, eventTickCounter, 40L);
+        if (token == null) return;
+        wave7ReturnStagingLocations.put(owner, entrance.clone());
+        if (!saveStateSync()) {
+            attemptLifecycle.cancelReturn(token); wave7ReturnStagingLocations.remove(owner);
+            message(sender, "&cПраво возврата не удалось сохранить. Защита отменена."); return;
+        }
+        player.playSound(entrance, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE, .6F, 1.4F);
+        getLogger().info("WAVE7_OWNER_RETURN_STAGING event=" + eventId + " generation=" + generation
+                + " owner=" + owner + " incarnation=" + token.incarnation() + " ticks=40");
+    }
+
+    private void cancelWave7ReturnForOffense(Player player) {
+        var token = attemptLifecycle.stagingReturns(generation).get(player.getUniqueId());
+        if (token == null || !attemptLifecycle.cancelReturn(token)) return;
+        wave7ReturnStagingLocations.remove(player.getUniqueId());
+        message(player, "&cАтака отменяет подготовку и защиту возврата. Начните возврат снова у входа.");
+        saveStateAsync();
+    }
+
+    /** Reuses the existing five-tick loop; no per-player tasks, chunk loads or global scans. */
+    private void tickWave7Returns() {
+        if (!isOfficialWave7ReturnContext() || !attemptLifecycle.hasWave7Returns(generation)) {
+            wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear();
+            wave7ProjectileIncarnations.clear(); return;
+        }
+        // Bound crash-checkpoint age without resetting an open all-dead deadline.
+        if (lastWave7ParticipationSaveTick == Long.MIN_VALUE
+                || eventTickCounter - lastWave7ParticipationSaveTick >= 200L) {
+            lastWave7ParticipationSaveTick = eventTickCounter;
+            saveStateAsync();
+        }
+        var staged = attemptLifecycle.stagingReturns(generation);
+        wave7ReturnStagingLocations.keySet().removeIf(owner -> !staged.containsKey(owner));
+        for (var entry : staged.entrySet()) {
+            UUID owner = entry.getKey(); var token = entry.getValue(); Player player = Bukkit.getPlayer(owner);
+            Location entrance = wave7ReturnStagingLocations.get(owner);
+            if (player == null || !player.isOnline() || player.isDead() || player.getHealth() <= 0D
+                    || player.getGameMode() != GameMode.SURVIVAL && player.getGameMode() != GameMode.ADVENTURE
+                    || entrance == null || !player.getWorld().equals(entrance.getWorld())
+                    || player.getLocation().distanceSquared(entrance) > 1.44D
+                    || !me.copimine.endevent.runtime.ArenaEntranceResolver.safe(entrance, this::isTemporaryMovementHazard)) {
+                attemptLifecycle.cancelReturn(token); wave7ReturnStagingLocations.remove(owner); saveStateAsync(); continue;
+            }
+            player.sendActionBar(Component.text("Возврат в своё испытание… не двигайтесь и не атакуйте", NamedTextColor.AQUA));
+            if (!attemptLifecycle.returnReady(token, eventTickCounter)) continue;
+            var assignment = realitySplitChamberController.assignment();
+            int claim = assignment.chamberByPlayer().getOrDefault(owner, -1);
+            Location anchor = coreCombatAnchorLocation();
+            Location destination = anchor == null || claim < 0 ? null : findSafeCombatLocation(anchor,
+                    realitySplitChamberCenter(anchor, claim, assignment.chamberCount()),
+                    boundedCombatRadius(config.arenaRadius()) - 1D, MIN_WAVE_CORE_DISTANCE_BLOCKS, claim, player);
+            var window = attemptLifecycle.observeWave7ReturnWindow(generation, System.nanoTime(),
+                    System.currentTimeMillis(), wave7ReturnGraceMillis());
+            if (window == AttemptLifecycleController.ReturnWindowStatus.EXPIRED || destination == null
+                    || !isRealitySplitDestinationAllowed(owner, destination, assignment)
+                    || !isSafeCombatParticipantLocation(destination, player)) {
+                attemptLifecycle.cancelReturn(token); wave7ReturnStagingLocations.remove(owner);
+                message(player, "&cВозврат отменён: время истекло или место в своей комнате небезопасно."); saveStateAsync(); continue;
+            }
+            boolean moved = teleportWave7Return(player, destination);
+            boolean admitted = moved && attemptLifecycle.completeReturn(token, eventTickCounter, System.nanoTime());
+            wave7ReturnStagingLocations.remove(owner);
+            if (!admitted) {
+                attemptLifecycle.cancelReturn(token);
+                if (moved && me.copimine.endevent.runtime.ArenaEntranceResolver.safe(entrance, this::isTemporaryMovementHazard))
+                    teleportWave7Return(player, entrance);
+                message(player, "&cВозврат не подтверждён. Право на бой не выдано."); saveStateAsync(); continue;
+            }
+            player.setVelocity(new Vector()); player.setFallDistance(0F);
+            if (!saveStateSync()) {
+                cancelSessionTasks(); cleanupOwnedEntities(eventId, generation); clearClientEffects();
+                attemptLifecycle.clear(); wave7ReturnStagingLocations.clear();
+                recoveryReason = "WAVE7_RETURN_COMMIT_SAVE_FAILED";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason); return;
+            }
+            refreshClientBindingsForPlayer(player);
+            player.playSound(destination, Sound.BLOCK_RESPAWN_ANCHOR_SET_SPAWN, .65F, 1.2F);
+            message(player, "&aВы вернулись в своё испытание. Защита снята; бой продолжается.");
+            getLogger().info("WAVE7_OWNER_RETURN_ADMITTED event=" + eventId + " generation=" + generation
+                    + " owner=" + owner + " incarnation=" + token.incarnation() + " claim=" + claim);
+        }
+    }
+
     /** Return a respawned roster member to the current encounter's safe floor. */
     private void teleportRespawnedOfficialParticipant(Player player, long expectedGeneration) {
+        if (isOfficialWave7ReturnContext()) return;
         if (player == null || !attemptLifecycle.owns(expectedGeneration)
                 || !officialRewardRoster.contains(player.getUniqueId())) {
             return;
@@ -32716,6 +33054,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isOfficialAttemptActive() || officialRewardRoster.isEmpty()
                 || !attemptLifecycle.owns(generation) || !attemptLifecycle.living().isEmpty()) {
             return;
+        }
+        boolean wave7ReturnFailure = isOfficialWave7ReturnContext();
+        if (wave7ReturnFailure) {
+            AttemptLifecycleController.ReturnWindowStatus window = attemptLifecycle.observeWave7ReturnWindow(
+                    generation, System.nanoTime(), System.currentTimeMillis(), wave7ReturnGraceMillis());
+            if (window == AttemptLifecycleController.ReturnWindowStatus.STARTED) {
+                getLogger().warning("WAVE7_ALL_DEAD_RETURN_GRACE event=" + eventId
+                        + " generation=" + generation + " grace_ms=" + wave7ReturnGraceMillis());
+                if (!saveStateSync()) {
+                    recoveryReason = "WAVE7_RETURN_GRACE_SAVE_FAILED";
+                    forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                    return;
+                }
+            }
+            if (window != AttemptLifecycleController.ReturnWindowStatus.EXPIRED) return;
         }
         long staleGeneration = generation;
         AttemptLifecycleController.WipeResult result = attemptLifecycle.performAttemptWipe(
@@ -32770,7 +33123,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         pads.clear();
         boolean runesReady = false;
         World world = Bukkit.getWorld(worldName);
-        if (coreCharged && world != null) {
+        if (!wave7ReturnFailure && coreCharged && world != null) {
             try {
                 calculateAndPlacePads(world);
                 runesReady = pads.size() == requiredPlayers;
@@ -32781,8 +33134,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         phaseDeadlineMillis = 0L;
         transitionRuneWave = 0;
         transitionRuneDeadlineMillis = 0L;
-        forcePhase(runesReady ? EventPhase.READY_FOR_PLAYERS : EventPhase.COLLECTING,
-                "all roster players died; transient Current state wiped");
+        if (wave7ReturnFailure) {
+            recoveryReason = "WAVE7_RETURN_GRACE_EXPIRED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, "Wave 7 return grace expired; no success or reward");
+        } else {
+            forcePhase(runesReady ? EventPhase.READY_FOR_PLAYERS : EventPhase.COLLECTING,
+                    "all roster players died; transient Current state wiped");
+        }
         rebuildPersistedVisuals();
         saveStateSync();
     }
@@ -34582,11 +34940,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return List.of();
         }
         if (args.length == 1) {
-            return List.of("status", "debug", "recovery", "core", "arena", "gate", "door", "portalroom", "resources", "ritual", "wave", "boss", "client", "test", "cleanup", "reset", "unlock").stream()
+            return List.of("status", "return", "debug", "recovery", "core", "arena", "gate", "door", "portalroom", "resources", "ritual", "wave", "boss", "client", "test", "cleanup", "reset", "unlock").stream()
                     .filter(value -> value.startsWith(args[0].toLowerCase(Locale.ROOT))).toList();
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
+                case "return" -> List.of("enter");
                 case "debug" -> List.of("status", "dump", "capture", "invariants", "packets", "objectives", "hazards", "perf", "ai", "trace", "bosshitbox", "bosshp");
                 case "core" -> List.of("set", "setat", "info", "rebuild", "remove");
                 case "arena" -> List.of("pos1", "pos2", "info", "clear", "border", "boundary");

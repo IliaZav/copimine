@@ -836,6 +836,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> clientBindingReadyPlayers = new HashSet<>();
     private final CoreInteractionGuard coreInteractionGuard = new CoreInteractionGuard();
     private final AttemptLifecycleController attemptLifecycle = new AttemptLifecycleController();
+    private me.copimine.endevent.runtime.EventDeathProtectionListener deathProtectionListener;
+    private me.copimine.endevent.runtime.DeathDropForwardingIntegration deathDropIntegration;
     private final TransitionRuneController transitionRuneController =
             new TransitionRuneController(TRANSITION_RUNE_HOLD_MILLIS);
     private final PreBossTransitionController preBossTransitionController = new PreBossTransitionController();
@@ -1262,7 +1264,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             command.setExecutor(this);
             command.setTabCompleter(this);
         }
+        deathProtectionListener = new me.copimine.endevent.runtime.EventDeathProtectionListener(
+                this::isEligibleParticipantDeath, getLogger());
+        Bukkit.getPluginManager().registerEvents(deathProtectionListener, this);
+        deathDropIntegration = new me.copimine.endevent.runtime.DeathDropForwardingIntegration(
+                deathProtectionListener, getLogger());
+        Bukkit.getPluginManager().registerEvents(deathDropIntegration, this);
+        deathDropIntegration.install();
         Bukkit.getPluginManager().registerEvents(this, this);
+    }
+
+    /** Optional first-party death integration; bound to this exact lethal event. */
+    public boolean protectsParticipantDeath(PlayerDeathEvent event) {
+        return isEnabled() && deathProtectionListener != null && deathProtectionListener.protects(event);
+    }
+
+    private boolean isEligibleParticipantDeath(PlayerDeathEvent event) {
+        if (event == null || event.isCancelled() || !bootstrapped || eventId == null
+                || eventId.isBlank() || !isOfficialAttemptActive() || testWaveFrontVisualMode
+                || testCombatAiMode || !attemptLifecycle.acceptsCallback(generation)) return false;
+        Player player = event.getEntity();
+        if (player == null || (player.getGameMode() != GameMode.SURVIVAL
+                && player.getGameMode() != GameMode.ADVENTURE)) return false;
+        AttemptLifecycleController.ParticipantStatus status = attemptLifecycle.status(player.getUniqueId());
+        // Do not require alive=true: another lethal listener may already have
+        // marked a legitimately registered participant dead for this event.
+        return officialRewardRoster.contains(player.getUniqueId()) && status != null
+                && status.registered() && status.active();
     }
 
     private void tryBootstrap() {
@@ -3104,6 +3132,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     @Override
     public void onDisable() {
+        if (deathDropIntegration != null) deathDropIntegration.close();
+        if (deathProtectionListener != null) deathProtectionListener.clear();
         releaseAllBlackFogEffects();
         clearShardPassiveEffects();
         clearClientEffects();

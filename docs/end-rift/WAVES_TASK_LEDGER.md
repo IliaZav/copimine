@@ -28,14 +28,18 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 | Rejected Wave 7 trial restore erased current outcomes and published a foreign generation | Validate all trial states before replacing live state; explicit legacy room identities; `RealitySplitTrialControllerTest` | Observed failing final-room, missing and null-state regression; repaired Java tests and registered gate pass | Native interrupted-recovery matrix pending | This checkpoint |
 | Foreign trial schema/layout and conflicting room/trial completions were silently accepted or disabled plugin startup | Versioned legacy codec and recoverable startup helper; `Wave7TrialMigrationTest`, `test_wave7_checkpoint_recovery.py` | Actual decoder/adapter RED observed; GREEN covers valid legacy, unsupported layout/schema, malformed and conflicting receipts; registered in End Rift gate | Live four-room sandbox restored generation 1275 after clean server restart, then changed to Wave 6 without invariant failures. Native acceptance pending | This checkpoint |
 | Cancelled Paper player death released controls and could wipe the last living participant | Cancelled-event registration plus defensive entry guard before every side effect; `test_end_rift_cancelled_death_adapter.py` extracts the production callback and uses the real lifecycle controller | Actual RED assertion observed before repair; cancelled callback retains roster, prisoner, bridge and rune state; committed-death cleanup remains covered; registered in End Rift gate | Native cancellation/death matrix pending | This checkpoint |
+| Participant inventory could remain in slots while inventory-origin death drops were emitted | Per-lethal-event ownership receipt, current slot descriptors, bounded identity/quantity subtraction; `EventDeathProtectionListener`, `test_end_rift_inventory_listener.py`, `test_end_rift_death_eligibility.py` | Source-executing regression covers W1–7, last participant/two same-tick deaths, stale/withdrawn/cancelled/test/foreign membership, shared slot handles, independent rewards, current quantities, XP and cleanup | Actual isolated-server same-tick deaths preserve both synthetic 41-slot NBT inventories without ground copies; no native rendering claim | Inventory checkpoint; CI pending publication |
+| Artifacts donation-loss journal and Election/Admin recovery queues could create another entitlement before keepInventory was applied | Exact-event optional protection query in all three existing death callbacks; `test_end_rift_death_item_integrations.py` | All three actual baseline callbacks failed the no-extra-copy assertion; repaired callbacks pass with missing/disabled/throwing optional provider and ordinary/cancelled controls | Custom-item recovery integration is tested in source; full native item/return matrix remains pending | Inventory checkpoint |
+| Installed ClearLag copied HIGH death drops, cleared the event and emitted the copy one tick later, bypassing HIGHEST removal | Reversible `DeathDropForwardingIntegration` hides only owned quantities from known ClearLag callbacks, restores the event view in finally, preserves ordinary/independent drops; registration rollback and disable/re-enable coverage | Actual deferred-copy RED observed; repaired callback, partial merged remainder, original exception, idempotent registration and teardown regressions pass | Real installed ClearLag reproduced retained inventory plus ground copies before repair. Fixed official rune-started attempts passed NBT and positive ordinary-drop controls twice | Inventory checkpoint |
 
 ## Current checkpoint verification
 
 - Navigation/rendering checkpoint: [a841e57c](https://github.com/IliaZav/copimine/commit/a841e57cad25a13acbc16203042458f10b7a25fc), with successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37262812455) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37262816935) for that exact SHA.
 - AuthEffects compatibility: [9eb4a759](https://github.com/IliaZav/copimine/commit/9eb4a759881dd2b014b3cd75b89d34a0e560a84e), successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37265005808) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37265010650) for that exact SHA.
 - Wave 7 checkpoint recovery: [e6affcdc](https://github.com/IliaZav/copimine/commit/e6affcdcf9897ffd81ba726c5e7753a2aba58f7f), successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37266815952) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37266819724) for that exact SHA.
-- Full Python suite after the cancelled-death fix: **955 passed,
-  1 skipped**, Python 3.13. AuthEffects and End Event rebuilt against pinned Paper.
+- Full Python suite after the inventory/ClearLag repair: **961 passed,
+  1 skipped**, Python 3.13. End Event, Artifacts, ElectionCore and AdminPlus
+  rebuilt against pinned Paper; installed copies match their source JAR hashes.
 - Full client build: **249 tests, zero failures**. Server plugin build passed.
 - End Rift gate passed after the final source changes; all **659 repository
   validators passed**, with zero failures and zero skips.
@@ -73,6 +77,50 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   Compilation, source security review, protocol bots and hashes do not prove
   visual quality or complete gameplay acceptance.
 
+### Inventory checkpoint evidence
+
+- Production retention preserves current storage, armor and offhand slots;
+  it does not restore an entry backup, refill supplies, change gameplay world
+  gamerules, or change XP policy. Independent reward drops remain separate.
+- The installed ClearLag 1.12.1 `onPlayerDeath` callback was traced in bytecode:
+  HIGH priority copies drops and clears the event, then schedules the copied
+  list one tick later. Actual baseline server logging showed capture=40,
+  HIGHEST drops=0, with retained synthetic items also physically dropped.
+  The repair leaves ClearLag's JAR and configuration unchanged and guards its
+  existing registered callbacks through public Bukkit registration APIs.
+- Two successful isolated-server probes used the real occupied-rune official
+  Wave 1 path, two participants killed in one command/tick, vanilla
+  keepInventory=false, 36 occupied storage slots, four armor slots and offhand.
+  Both current 41-slot NBT inventories stayed identical, including damage,
+  names and curses; 40 eligible drops per death were removed and zero retained
+  copies remained on the ground. Three previously removed apples were not
+  restored. The outsider control lost its inventory and produced detectable
+  ordinary drops. Probe finally restored the prior local gamerule=true.
+- Intermediate fixture repeats exposed invalid controls: an outside death
+  location let drops fall toward lava, and same-location respawn picked up
+  the ordinary control before scanning. The reusable fixture now kills on
+  solid arena floor and respawns the outsider away from the drop. Failed
+  controls were not recorded as passes.
+- Source gameplay never toggles keepInventory globally. The destructive
+  synthetic fixture refuses to run with any account other than the four
+  dedicated local targets online and requires explicit opt-in when changing
+  its isolated world's prior rule for the test.
+- CodeRabbit reviewed `916cb1f3..8461a6c3` with zero issues, then the actual
+  ClearLag integration and fixture range `8461a6c3..9c3a013f` with zero issues.
+  The final fixture-only separated-respawn range `9c3a013f..a05c7b9b` also
+  completed with zero issues.
+- Codex Security scan `6c3833cb-b05b-4b07-a9dd-1ac136adb0c8` completed the
+  immutable `916cb1f3..53294942` range with zero reportable findings: all six
+  production files and eight regression/gate/fixture files reviewed sequentially
+  in the parent. Tool-reported usage: 1,319,212 total tokens, including
+  1,256,192 cached input and 8,014 output tokens. Later fixture coordinates
+  are outside that sealed range; production Java is identical. Unknown
+  third-party emitters or future ClearLag changes require compatibility review.
+- Full Python, four plugin builds, End Rift gate, all 659 validators and
+  `git diff --check` passed. Client source is unchanged from the prior 249-test
+  client build. Native rendering, full item/rejoin/restart/return matrix and
+  the rest of W7 Task B remain open.
+
 ## Remaining acceptance
 
 - Ruling: retain explicitly identified `legacy-four-trials` runtime until the
@@ -80,16 +128,16 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   tested groundwork, not replacement gameplay. Renaming legacy actors would
   falsely reinterpret persisted outcomes; Task A integration and Tasks B–H
   remain open. A foreign layout currently requires explicit recovery.
-- Finish Wave 7 tasks A–H: named runtime trials, current-inventory retention,
+- Finish Wave 7 tasks A–H: named runtime trials, remaining inventory lifecycle,
   death/return/grace, observed W1–6 combat profiles, private owner Echo actor and
   finite copied loadout, bounded Marksman help, Archmage authored attacks,
   versioned durable receipts and restart recovery.
 - Task B source trace: ordinary respawn currently returns a roster player to
   combat after two ticks; the last committed death still wipes immediately.
   Both conflict with the required bed/explicit-return/grace contract. First-party
-  Artifacts donation-loss journaling and Election/Admin official-item restore
-  queues must be coordinated with per-death retention to prevent queued copies.
-  The cancellation guard does not implement inventory retention or return grace.
+  Per-death retention and Artifacts/Election/Admin queue coordination are now
+  implemented and tested, including installed ClearLag deferred-drop handling.
+  Bed/explicit return, all-dead grace and durable restart rights remain open.
 - Then execute the remaining V3 prompts in order; preserve the user's confirmed
   Wave 5 freeze schedule and Wave 6 owned guard groups / QWER accumulating spells.
 - Review each actual checkpoint diff with CodeRabbit and the requested security
@@ -119,5 +167,9 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 - `artifacts/end-rift-waves/20261005/`: Wave 7 and AuthEffects red/green
   regressions, full suites, review receipts, and `navigation-runtime/` installed
   identities / HTTP verification / protocol-target logs.
+- `artifacts/end-rift-waves/20261005/inventory-runtime/`: private synthetic
+  before/after NBT and RCON proofs; successful `items-fixed/` and
+  `items-fixed-safe-repeat/`; baseline/trace/fixed server logs. Retained data
+  belongs only to dedicated diagnostic names and must not be uploaded.
 - Private local artifacts, worlds, player inventories/skins/profiles and secrets
   must not be committed or uploaded as review inputs.

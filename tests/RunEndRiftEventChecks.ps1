@@ -106,6 +106,16 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
   }
 }
 
+Invoke-GateStep 'Participant inventory retention and first-party recovery' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_end_rift_death_eligibility.py' '.\tests\test_end_rift_inventory_listener.py' '.\tests\test_end_rift_death_item_integrations.py' '.\tests\test_end_rift_death_forwarding_integration.py'
+    if ($LASTEXITCODE -ne 0) { throw "Death inventory regressions failed with exit code $LASTEXITCODE" }
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Current Python contract' {
   Push-Location $root
   try {

@@ -921,11 +921,13 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onOfficialDeath(PlayerDeathEvent event) {
+        if (event.isCancelled()) return;
         // With keepInventory enabled Bukkit may leave the physical stack in
         // the inventory while also exposing it in the death event.  Collapse
         // legacy stacks before queuing any recovery copy, otherwise respawn
         // reconciliation can preserve both the inventory and queued copies.
         deduplicatePresidentMandates(event.getEntity());
+        if (isEndRiftDeathProtected(event)) return;
         List<ItemStack> keep = new ArrayList<>();
         event.getDrops().removeIf(stack -> {
             // Application books are temporary workflow items, not durable
@@ -960,6 +962,19 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
     public void onOfficialDamage(EntityDamageEvent event) {
         if (event.getEntity() instanceof org.bukkit.entity.Item item && isElectionOwnedItem(item.getItemStack())) {
             event.setCancelled(true);
+        }
+    }
+
+    private boolean isEndRiftDeathProtected(PlayerDeathEvent event) {
+        if (event == null || event.isCancelled()) return false;
+        Plugin provider = Bukkit.getPluginManager().getPlugin("CopiMineEndEvent");
+        if (provider == null || !provider.isEnabled()) return false;
+        try {
+            return Boolean.TRUE.equals(provider.getClass()
+                    .getMethod("protectsParticipantDeath", PlayerDeathEvent.class)
+                    .invoke(provider, event));
+        } catch (ReflectiveOperationException | LinkageError unavailable) {
+            return false;
         }
     }
 

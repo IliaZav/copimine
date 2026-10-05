@@ -2400,7 +2400,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return;
       }
 
-      if (!var1.getKeepInventory()) {
+      if (!var1.getKeepInventory() && !this.isEndRiftDeathProtected(var1)) {
          LinkedHashMap var3 = new LinkedHashMap();
 
          for (ItemStack var5 : var1.getDrops()) {
@@ -2450,6 +2450,19 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          // terminal, not reclaimable losses: never mint a replacement for an
          // item that was intentionally exhausted.
          this.markDonationInstanceBroken(var2, "durability-break-after-event");
+      }
+   }
+
+   private boolean isEndRiftDeathProtected(PlayerDeathEvent event) {
+      if (event == null || event.isCancelled()) return false;
+      Plugin provider = Bukkit.getPluginManager().getPlugin("CopiMineEndEvent");
+      if (provider == null || !provider.isEnabled()) return false;
+      try {
+         return Boolean.TRUE.equals(provider.getClass()
+            .getMethod("protectsParticipantDeath", PlayerDeathEvent.class)
+            .invoke(provider, event));
+      } catch (ReflectiveOperationException | LinkageError unavailable) {
+         return false;
       }
    }
 

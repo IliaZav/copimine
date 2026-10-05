@@ -865,8 +865,9 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
     }
 
-    @EventHandler(priority=EventPriority.HIGHEST)
+    @EventHandler(priority=EventPriority.HIGHEST, ignoreCancelled=true)
     public void onOfficialItemDeath(PlayerDeathEvent e){
+        if(e.isCancelled() || isEndRiftDeathProtected(e)) return;
         Player p=e.getEntity();
         List<ItemStack> keep=new ArrayList<>();
         Iterator<ItemStack> iter=e.getDrops().iterator();
@@ -890,6 +891,19 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     @EventHandler(priority=EventPriority.MONITOR)
     public void onOfficialItemRespawn(PlayerRespawnEvent e){
         Bukkit.getScheduler().runTaskLater(this,()->restorePendingOfficialItems(e.getPlayer(),"respawn"),20L);
+    }
+
+    private boolean isEndRiftDeathProtected(PlayerDeathEvent event) {
+        if (event == null || event.isCancelled()) return false;
+        Plugin provider = Bukkit.getPluginManager().getPlugin("CopiMineEndEvent");
+        if (provider == null || !provider.isEnabled()) return false;
+        try {
+            return Boolean.TRUE.equals(provider.getClass()
+                    .getMethod("protectsParticipantDeath", PlayerDeathEvent.class)
+                    .invoke(provider, event));
+        } catch (ReflectiveOperationException | LinkageError unavailable) {
+            return false;
+        }
     }
 
     @EventHandler(priority=EventPriority.HIGHEST)

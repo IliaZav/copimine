@@ -2228,40 +2228,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " action=wait-for-runtime-rebuild");
             }
         } else if (phase == EventPhase.WAVE_7 || persistedDisposableWave7 || persistedFinalSeal) {
-            RealitySplitChamberSnapshot.Data wave7 = persistedDisposableWave7
-                    ? RealitySplitChamberSnapshot.decodeDisposable(snapshot.objectiveProgress(), generation)
-                    : RealitySplitChamberSnapshot.decode(snapshot.objectiveProgress(), generation);
-            if (wave7.assignment() != null) {
-                if (persistedDisposableWave7) {
-                    if (sandboxWaveRoster.isEmpty()) {
-                        sandboxWaveRoster = Set.copyOf(wave7.assignment().chamberByPlayer().keySet());
-                    }
-                    realitySplitChamberController.restoreDisposable(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
-                } else {
-                    realitySplitChamberController.restore(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
-                }
-                RealitySplitTrialSnapshot.Data trialSnapshot = RealitySplitTrialSnapshot.decode(
-                        snapshot.objectiveProgress(), generation);
-                if (!trialSnapshot.trials().isEmpty()) {
-                    realitySplitTrialController.restore(generation, wave7.assignment(),
-                            trialSnapshot.trials());
-                } else {
-                    realitySplitTrialController.begin(generation, wave7.assignment());
-                    for (int completed : wave7.completedChambers()) {
-                        realitySplitTrialController.restoreCompleted(generation, completed);
-                    }
-                }
-                getLogger().info("END_RIFT_WAVE7_SNAPSHOT_RESTORED event=" + eventId
-                        + " generation=" + generation + " test=" + persistedDisposableWave7
-                        + " players=" + wave7.assignment().chamberByPlayer().size()
-                        + " chambers=" + wave7.assignment().chamberCount());
-            } else if (persistedDisposableWave7) {
-                getLogger().warning("END_RIFT_WAVE7_SNAPSHOT_MISSING_ASSIGNMENT event=" + eventId
-                        + " generation=" + generation + " keys="
-                        + snapshot.objectiveProgress().keySet());
-            }
+            restoreWave7Checkpoint(snapshot, persistedDisposableWave7);
         }
         worldName = snapshot.worldName();
         coreX = snapshot.coreX();
@@ -2329,6 +2296,68 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 encounterController.restore(eventId, generation, phase, null);
                 getLogger().log(Level.SEVERE, "End Rift pre-boss tick snapshot refused", error);
             }
+        }
+    }
+
+    /** Refuse incompatible Wave 7 state without disabling the recovery commands. */
+    private void restoreWave7Checkpoint(EventSnapshot snapshot, boolean persistedDisposableWave7) {
+        try {
+            RealitySplitChamberSnapshot.Data wave7 = persistedDisposableWave7
+                    ? RealitySplitChamberSnapshot.decodeDisposable(snapshot.objectiveProgress(), generation)
+                    : RealitySplitChamberSnapshot.decode(snapshot.objectiveProgress(), generation);
+            RealitySplitTrialSnapshot.Data trialSnapshot = RealitySplitTrialSnapshot.decode(
+                    snapshot.objectiveProgress(), generation);
+            if (wave7.assignment() != null) {
+                if (!trialSnapshot.trials().isEmpty()) {
+                    Set<Integer> completedTrials = new LinkedHashSet<>();
+                    for (RealitySplitTrialController.TrialState trial : trialSnapshot.trials().values()) {
+                        if (trial.stage() == RealitySplitTrialController.Stage.COMPLETE) {
+                            completedTrials.add(trial.chamber());
+                        }
+                    }
+                    if (!completedTrials.equals(wave7.completedChambers())) {
+                        throw new IllegalArgumentException("WAVE7_COMPLETION_RECEIPTS_DISAGREE");
+                    }
+                }
+                if (persistedDisposableWave7) {
+                    if (sandboxWaveRoster.isEmpty()) {
+                        sandboxWaveRoster = Set.copyOf(wave7.assignment().chamberByPlayer().keySet());
+                    }
+                    realitySplitChamberController.restoreDisposable(wave7.generation(), wave7.assignment(),
+                            wave7.completedChambers(), wave7.openPassages());
+                } else {
+                    realitySplitChamberController.restore(wave7.generation(), wave7.assignment(),
+                            wave7.completedChambers(), wave7.openPassages());
+                }
+                if (!trialSnapshot.trials().isEmpty()) {
+                    realitySplitTrialController.restore(generation, wave7.assignment(),
+                            trialSnapshot.trials());
+                } else {
+                    realitySplitTrialController.begin(generation, wave7.assignment());
+                    for (int completed : wave7.completedChambers()) {
+                        realitySplitTrialController.restoreCompleted(generation, completed);
+                    }
+                }
+                getLogger().info("END_RIFT_WAVE7_SNAPSHOT_RESTORED event=" + eventId
+                        + " generation=" + generation + " test=" + persistedDisposableWave7
+                        + " players=" + wave7.assignment().chamberByPlayer().size()
+                        + " chambers=" + wave7.assignment().chamberCount());
+            } else if (persistedDisposableWave7) {
+                getLogger().warning("END_RIFT_WAVE7_SNAPSHOT_MISSING_ASSIGNMENT event=" + eventId
+                        + " generation=" + generation + " keys="
+                        + snapshot.objectiveProgress().keySet());
+            }
+        } catch (IllegalArgumentException error) {
+            realitySplitChamberController.clear();
+            realitySplitTrialController.clear();
+            activeWave = 0;
+            testWaveFrontVisualMode = false;
+            finalSealBarrierHold = false;
+            phase = EventPhase.RECOVERY_REQUIRED;
+            recoveryReason = "INVALID_WAVE7_CHECKPOINT:" + error.getMessage();
+            encounterController.restore(eventId, generation, phase, null);
+            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_CHECKPOINT_RECOVERY_REQUIRED event="
+                    + eventId + " generation=" + generation + " test=" + persistedDisposableWave7, error);
         }
     }
 

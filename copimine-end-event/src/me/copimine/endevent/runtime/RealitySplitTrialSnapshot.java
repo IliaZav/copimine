@@ -6,6 +6,10 @@ import java.util.Map;
 /** Strict codec for the generation-scoped progress of Wave 7 trials. */
 public final class RealitySplitTrialSnapshot {
     private static final String PREFIX = "reality-split-trial.";
+    private static final String SCHEMA = PREFIX + "schema";
+    private static final String LAYOUT = PREFIX + "layout";
+    private static final int LEGACY_SCHEMA = 1;
+    private static final String LEGACY_LAYOUT = "legacy-four-trials";
     private static final String GENERATION = PREFIX + "generation";
     private static final String TRIAL_PREFIX = PREFIX + "room.";
 
@@ -19,6 +23,8 @@ public final class RealitySplitTrialSnapshot {
             throw new IllegalArgumentException("Wave 7 trial snapshot is empty or invalid");
         }
         Map<String, String> encoded = new LinkedHashMap<>();
+        encoded.put(SCHEMA, Integer.toString(LEGACY_SCHEMA));
+        encoded.put(LAYOUT, LEGACY_LAYOUT);
         encoded.put(GENERATION, Long.toString(generation));
         for (Map.Entry<Integer, RealitySplitTrialController.TrialState> entry
                 : trials.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
@@ -37,6 +43,14 @@ public final class RealitySplitTrialSnapshot {
     public static Data decode(Map<String, String> encoded, long expectedGeneration) {
         if (encoded == null || encoded.keySet().stream().noneMatch(key -> key.startsWith(PREFIX))) {
             return new Data(Long.MIN_VALUE, Map.of());
+        }
+        // An entirely unversioned snapshot belongs to the old runtime. Never
+        // reinterpret it as Echo/Marksman/Archmage merely by renaming an enum.
+        if (encoded.containsKey(SCHEMA) || encoded.containsKey(LAYOUT)) {
+            if (parseInt(encoded.get(SCHEMA), SCHEMA) != LEGACY_SCHEMA
+                    || !LEGACY_LAYOUT.equals(encoded.get(LAYOUT))) {
+                throw new IllegalArgumentException("UNSUPPORTED_WAVE7_TRIAL_LAYOUT_OR_SCHEMA");
+            }
         }
         long generation = parseLong(encoded.get(GENERATION), GENERATION);
         if (expectedGeneration <= 0L || generation != expectedGeneration) {

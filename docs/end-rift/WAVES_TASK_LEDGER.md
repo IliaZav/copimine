@@ -25,12 +25,15 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
 | Requested Wave 6 beam is the vanilla End Crystal textured beam | Fixed vanilla texture on authored beam mesh; full brightness, purple tint, hand-endpoint interpolation and increased width | Renderer routing/interpolation/clear regressions; 249 client tests and full client build passed | User screenshot is the reference. New renderer has not been observed in Minecraft | Implemented checkpoint |
 | Wave 1 carrier only had glow and name | One full-bright authored 3D charge marker above the carrier; moving interpolation and ownership cleanup; `test_wave_carrier_marker_adapter.py` | Actual adapter single-marker/follow/death/idempotent-cleanup tests passed | Corrected marker readability pending native observation | Implemented checkpoint |
 | AuthMe permitted local diagnostic names, but AuthEffects still cancelled movement and combat | Optional AuthMe `isUnrestricted(Player)` compatibility; no exemption cached as a login; `test_autheffects_authme_exemptions.py` | Production-method regression failed before repair. Revocation, missing/failing optional API and genuine-login fallback pass. Four local targets actually teleported into the arena and accepted damage | Protocol targets only; native client not launched | Implemented in this compatibility checkpoint |
+| Rejected Wave 7 trial restore erased current outcomes and published a foreign generation | Validate all trial states before replacing live state; explicit legacy room identities; `RealitySplitTrialControllerTest` | Observed failing final-room, missing and null-state regression; repaired Java tests and registered gate pass | Native interrupted-recovery matrix pending | This checkpoint |
+| Foreign trial schema/layout and conflicting room/trial completions were silently accepted or disabled plugin startup | Versioned legacy codec and recoverable startup helper; `Wave7TrialMigrationTest`, `test_wave7_checkpoint_recovery.py` | Actual decoder/adapter RED observed; GREEN covers valid legacy, unsupported layout/schema, malformed and conflicting receipts; registered in End Rift gate | Live four-room sandbox restored generation 1275 after clean server restart, then changed to Wave 6 without invariant failures. Native acceptance pending | This checkpoint |
 
 ## Current checkpoint verification
 
 - Navigation/rendering checkpoint: [a841e57c](https://github.com/IliaZav/copimine/commit/a841e57cad25a13acbc16203042458f10b7a25fc), with successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37262812455) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37262816935) for that exact SHA.
-- Full Python suite after AuthEffects compatibility review fixes: **953 passed,
-  1 skipped**, Python 3.13. AuthEffects rebuilt against the pinned Paper API.
+- AuthEffects compatibility: [9eb4a759](https://github.com/IliaZav/copimine/commit/9eb4a759881dd2b014b3cd75b89d34a0e560a84e), successful [push Actions](https://github.com/IliaZav/copimine/actions/runs/37265005808) and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37265010650) for that exact SHA.
+- Full Python suite after the final checkpoint receipt fix: **954 passed,
+  1 skipped**, Python 3.13. AuthEffects and End Event rebuilt against pinned Paper.
 - Full client build: **249 tests, zero failures**. Server plugin build passed.
 - End Rift gate passed after the final source changes; all **659 repository
   validators passed**, with zero failures and zero skips.
@@ -47,12 +50,30 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   Its optional-provider failure finding was reproduced before repair; the
   follow-up completed with **zero findings**. This compatibility diff is outside
   the sealed security scan above.
+- CodeRabbit reviewed the seven-file initial trial-checkpoint diff with **zero
+  issues**. The three-file follow-up (completion-receipt consistency and gate
+  registration) returned `rate_limit`, reporting 34 minutes until reset. That
+  follow-up has executed RED/GREEN tests and build/gate coverage, but its
+  CodeRabbit review is **BLOCKED**, not a completed clean review. Retry after
+  the allowance resets or connect the authorized repository to its organization
+  plan through the CodeRabbit dashboard.
+- Codex Security scan `ee2605a8-cdf2-42f4-bb31-35ca2a98423b` reviewed the full
+  immutable seven-file range `6887fe93..12575704`, including that follow-up,
+  and completed with **zero reportable findings**. Three production files were
+  reviewed sequentially in the parent; no independent worker was used. Measured
+  tool usage: 1,118,630 total tokens, including 1,094,400 cached input tokens
+  and 4,735 output tokens. This is a scoped source review, not native acceptance.
 - Native Minecraft acceptance for this checkpoint remains **NOT VERIFIED**.
   Compilation, source security review, protocol bots and hashes do not prove
   visual quality or complete gameplay acceptance.
 
 ## Remaining acceptance
 
+- Ruling: retain explicitly identified `legacy-four-trials` runtime until the
+  new actor/admission/presentation adapters are connected. The named policy is
+  tested groundwork, not replacement gameplay. Renaming legacy actors would
+  falsely reinterpret persisted outcomes; Task A integration and Tasks B–H
+  remain open. A foreign layout currently requires explicit recovery.
 - Finish Wave 7 tasks A–H: named runtime trials, current-inventory retention,
   death/return/grace, observed W1–6 combat profiles, private owner Echo actor and
   finite copied loadout, bounded Marksman help, Archmage authored attacks,
@@ -67,6 +88,11 @@ Minecraft behavior. Unconnected policy code does not count as implemented gamepl
   Four named local protocol targets have 1,000 health each; Wave 1 started with
   nine active mobs, all nine acquired players. Actual damage and hurt feedback
   packets were observed. These receipts prove server mechanics, not rendering.
+- Live Wave 6 capture placed its prisoner at approximately Y=73.4 over the
+  floor at Y=68. Owned guard web/bolt/slam releases and actual gravity/barrage
+  scheduler cycles after caster deaths were logged. After the final restart,
+  Wave 6 combat runs with five casters, five guards and ordinary pressure mobs;
+  all four diagnostic accounts rejoined and were healed to 1,000 health.
 - The local AuthMe fixture permits only `EndRiftTarget1..4`; its configuration
   and backup are private runtime artifacts and are not committed. Exemptions
   remain controlled by AuthMe and are immediately revocable.

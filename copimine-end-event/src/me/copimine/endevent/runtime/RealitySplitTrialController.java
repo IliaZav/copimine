@@ -23,7 +23,10 @@ public final class RealitySplitTrialController {
         COMPLETE
     }
 
-    private static final Trial[] ROOM_TRIALS = Trial.values();
+    // Stable legacy identities. Enum ordering must never migrate saved rooms.
+    private static final Trial[] ROOM_TRIALS = {
+            Trial.WARDEN, Trial.RIFT_REFLECTION, Trial.JUGGERNAUT, Trial.RIFT_HUNTER
+    };
     private static final int REQUIRED_SEALS = 3;
     private static final int REQUIRED_ANCHORS = 3;
 
@@ -52,10 +55,14 @@ public final class RealitySplitTrialController {
     public synchronized void restore(long generation,
                                      ChamberIsolationPolicy.Assignment assignment,
                                      Map<Integer, TrialState> restoredTrials) {
-        begin(generation, assignment);
+        if (generation <= 0L || assignment == null || assignment.chamberCount() < 1
+                || assignment.chamberCount() > ROOM_TRIALS.length) {
+            throw new IllegalArgumentException("invalid Wave 7 trial generation or assignment");
+        }
         if (restoredTrials == null || restoredTrials.size() != assignment.chamberCount()) {
             throw new IllegalArgumentException("every Wave 7 chamber needs one trial state");
         }
+        Map<Integer, TrialState> validated = new LinkedHashMap<>();
         for (int chamber = 0; chamber < assignment.chamberCount(); chamber++) {
             TrialState state = restoredTrials.get(chamber);
             if (state == null || state.chamber() != chamber
@@ -65,8 +72,13 @@ public final class RealitySplitTrialController {
                     || !validStage(state)) {
                 throw new IllegalArgumentException("Wave 7 trial snapshot is inconsistent");
             }
-            trials.put(chamber, state);
+            validated.put(chamber, state);
         }
+        // Publish only after validating the whole replacement, including the
+        // final room. Failed recovery must not erase current outcomes.
+        this.generation = generation;
+        trials.clear();
+        trials.putAll(validated);
     }
 
     public synchronized boolean owns(long expectedGeneration) {

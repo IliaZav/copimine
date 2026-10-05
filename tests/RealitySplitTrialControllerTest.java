@@ -75,6 +75,31 @@ public final class RealitySplitTrialControllerTest {
                         && sixPlayerAssignment.playersIn(3).size() == 1,
                 "six players are distributed 2/2/1/1 across the four trials");
         check(fullParty.defeatHunter(44L, 3).complete(), "Hunter death completes its room");
+        var previousTrials = fullParty.snapshot();
+        var invalidTrials = new java.util.LinkedHashMap<>(previousTrials);
+        invalidTrials.put(3, new RealitySplitTrialController.TrialState(3,
+                RealitySplitTrialController.Trial.WARDEN,
+                RealitySplitTrialController.Stage.ACTIVE, 0, 1));
+        boolean invalidRestoreRejected = false;
+        try {
+            fullParty.restore(99L, ChamberIsolationPolicy.assign(List.of(players)), invalidTrials);
+        } catch (IllegalArgumentException expected) {
+            invalidRestoreRejected = true;
+        }
+        check(invalidRestoreRejected, "foreign trial identity must be rejected");
+        check(fullParty.owns(44L) && !fullParty.owns(99L),
+                "rejected trial restore must not publish a new generation");
+        check(fullParty.snapshot().equals(previousTrials),
+                "rejected trial restore must preserve earlier completed rooms and progress");
+        for (var rejected : java.util.Arrays.<java.util.Map<Integer,
+                RealitySplitTrialController.TrialState>>asList(null, java.util.Map.of())) {
+            try {
+                fullParty.restore(100L, ChamberIsolationPolicy.assign(List.of(players)), rejected);
+                throw new AssertionError("missing trial states must be rejected");
+            } catch (IllegalArgumentException expected) { }
+            check(fullParty.owns(44L) && fullParty.snapshot().equals(previousTrials),
+                    "incomplete restore must preserve live trial state");
+        }
         fullParty.clear();
         check(!fullParty.owns(44L) && fullParty.activeTrialCount() == 0,
                 "clear removes all trial state and is safe to repeat");

@@ -101,6 +101,8 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
   try {
     & python -m pytest -q '.\tests\test_wave_navigation_adapter.py' '.\tests\test_wave7_passage_commit.py' '.\tests\test_wave7_checkpoint_recovery.py' '.\tests\test_end_rift_cancelled_death_adapter.py' '.\tests\test_wave_carrier_marker_adapter.py' '.\tests\test_wave_dash_runtime.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
+    & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
   } finally {
     Pop-Location
   }
@@ -111,7 +113,7 @@ Invoke-GateStep 'Wave 7 bed return, collision, grace and incarnation regressions
   try {
     & python -m pytest -q '.\tests\test_wave7_arena_entrance.py' '.\tests\test_wave7_arena_entrance_resolver.py' '.\tests\test_wave7_return_lifecycle.py' '.\tests\test_wave7_bed_respawn_adapter.py' '.\tests\test_wave7_all_dead_return_adapter.py' '.\tests\test_wave7_return_admission_adapter.py' '.\tests\test_wave7_return_protection_listener.py' '.\tests\test_wave7_stale_trial_attack.py' '.\tests\test_wave7_pending_offense_adapter.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 7 return lifecycle checks failed.' }
-    & python -m pytest -q '.\tests\test_wave7_return_teleport_adapter.py' '.\tests\test_wave7_return_preboss_adapter.py'
+    & python -m pytest -q '.\tests\test_wave7_return_teleport_adapter.py' '.\tests\test_wave7_return_preboss_adapter.py' '.\tests\test_wave7_return_command_limits.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave 7 return regressions failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location

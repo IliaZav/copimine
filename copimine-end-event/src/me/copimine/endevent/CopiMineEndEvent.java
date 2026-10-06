@@ -854,6 +854,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
     private final Map<UUID, Location> wave7ReturnStagingLocations = new LinkedHashMap<>();
     private final Map<UUID, Long> wave7ReturnActionNextTicks = new LinkedHashMap<>();
+    private final Map<UUID, Long> wave7ReturnEnterNextTicks = new LinkedHashMap<>();
     private final Map<UUID, Map<UUID, Long>> wave7ProjectileIncarnations = new LinkedHashMap<>();
     private long lastWave7ParticipationSaveTick = Long.MIN_VALUE;
     private final Set<UUID> realitySplitTrialEntityUuids = new LinkedHashSet<>();
@@ -30078,6 +30079,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         EventConfig.RiftObeliskTuning tuning = config.riftObeliskTuning();
         ObeliskScalingPolicy.Profile profile = ObeliskScalingPolicy.profileForPlayers(
                 currentWaveScalePlayers);
+        int fireCap = Math.min(profile.fireballCap(), tuning.maxActiveFireballs());
+        ObeliskFireDirectorPolicy.SpecialCandidate nextSpecial = selectWave4Special(fireCap);
         boolean allActive = !activeWave4Obelisks.isEmpty()
                 && activeWave4Obelisks.values().stream()
                 .allMatch(state -> state.stage() == ObeliskStage.ACTIVE);
@@ -30099,8 +30102,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (eventTickCounter % 10L == 0L) {
                 renderObeliskActive(state);
             }
-            tickWave4Pulse(state, tuning);
-            if (eventTickCounter >= state.nextFireTick()) {
+            // Continue the exact in-flight owner before selecting a new action.
+            // Expired tokens cannot keep an old cast alive or erase a new lease.
+            if (state.fireLease != null
+                    && !waveCombatCoordinator.valid(state.fireLease, generation, eventTickCounter)) {
+                state.fireLease = null;
+                state.fireAim = null;
+                clearWaveCombatCue(state.id());
+            }
+            if (state.pulseLease != null || nextSpecial != null
+                    && nextSpecial.kind() == ObeliskFireDirectorPolicy.SpecialKind.PULSE
+                    && nextSpecial.obeliskId().equals(state.id())) {
+                tickWave4Pulse(state, tuning);
+            }
+            if (eventTickCounter >= state.nextFireTick()
+                    && (waveCombatCoordinator.valid(state.fireLease, generation, eventTickCounter)
+                    || nextSpecial != null && nextSpecial.kind() == ObeliskFireDirectorPolicy.SpecialKind.FIRE
+                    && nextSpecial.obeliskId().equals(state.id()))) {
                 fireCandidates.add(state);
             }
         }
@@ -30117,7 +30135,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " planned=" + profile.mobCount());
         }
         renderWave4ChannelerBeams();
-        int fireCap = Math.min(profile.fireballCap(), tuning.maxActiveFireballs());
         List<ObeliskFireDirectorPolicy.Candidate> candidates = fireCandidates.stream()
                 .map(state -> new ObeliskFireDirectorPolicy.Candidate(
                         state.id(), eventTickCounter >= state.nextFireTick(),
@@ -30144,6 +30161,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         waveObjectiveComplete = currentWave4ObeliskAssaultComplete
                 && activeWave4Obelisks.isEmpty();
         return waveObjectiveComplete;
+    }
+
+    /** Fair arbitration inside the existing bounded, tracked obelisk set. */
+    private ObeliskFireDirectorPolicy.SpecialCandidate selectWave4Special(int fireCap) {
+        if (waveCombatCoordinator.busy(generation, eventTickCounter)) return null;
+        boolean mayFire = activeWave4FireballCount() < fireCap;
+        List<ObeliskFireDirectorPolicy.SpecialCandidate> due = new ArrayList<>();
+        for (Wave4ObeliskRuntimeState state : activeWave4Obelisks.values()) {
+            if (state.stage() != ObeliskStage.ACTIVE || state.health() <= 0) continue;
+            due.add(new ObeliskFireDirectorPolicy.SpecialCandidate(state.id(),
+                    ObeliskFireDirectorPolicy.SpecialKind.PULSE, state.nextPulseTick() - 20L));
+            if (mayFire) due.add(new ObeliskFireDirectorPolicy.SpecialCandidate(state.id(),
+                    ObeliskFireDirectorPolicy.SpecialKind.FIRE, state.nextFireTick()));
+        }
+        return ObeliskFireDirectorPolicy.selectSpecial(due, eventTickCounter).orElse(null);
     }
 
     private void advanceObeliskEmergence(Wave4ObeliskRuntimeState state) {
@@ -32817,7 +32849,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void restoreWave7ReturnParticipation(EventSnapshot snapshot) {
         attemptLifecycle.clear();
-        wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear();
+        wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear(); wave7ReturnEnterNextTicks.clear();
         if (!isOfficialWave7ReturnContext()) return;
         if (!realitySplitChamberController.owns(generation)
                 || !attemptLifecycle.restoreWave7Returns(snapshot.objectiveProgress(), eventId, generation,
@@ -32847,7 +32879,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             var bounds = new me.copimine.endevent.domain.ArenaEntranceLocator.Bounds(worldName,
                     arenaMinX, arenaMinY, arenaMinZ, arenaMaxX, arenaMaxY, arenaMaxZ);
-            return me.copimine.endevent.runtime.ArenaEntranceResolver.find(world, bounds, combatLevelY(),
+            // Removed transition pads leave only the persisted feet-level reference.
+            // Candidate safety is loaded-chunk-only; do not run the inherited floor
+            // block scan before that boundary when pads are absent.
+            int preferredFeetY = pads.isEmpty() ? coreY : combatLevelY();
+            return me.copimine.endevent.runtime.ArenaEntranceResolver.find(world, bounds, preferredFeetY,
                     this::isTemporaryMovementHazard).orElse(null);
         } catch (IllegalArgumentException error) {
             return null;
@@ -32889,6 +32925,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 message(sender, "&7Подождите секунду перед повторным переносом к входу."); return;
             }
             wave7ReturnActionNextTicks.put(owner, eventTickCounter + 20L);
+        } else {
+            // Cancellation by offense returns PENDING immediately. Keep the
+            // durable staging write bounded independently from entrance travel,
+            // so travelling here still permits starting the countdown at once.
+            if (eventTickCounter < wave7ReturnEnterNextTicks.getOrDefault(owner, 0L)) {
+                message(sender, "&7Подождите секунду перед повторной подготовкой возврата."); return;
+            }
+            wave7ReturnEnterNextTicks.put(owner, eventTickCounter + 20L);
         }
         AttemptLifecycleController.ReturnWindowStatus window = attemptLifecycle.observeWave7ReturnWindow(
                 generation, System.nanoTime(), System.currentTimeMillis(), wave7ReturnGraceMillis());
@@ -32939,7 +32983,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Reuses the existing five-tick loop; no per-player tasks, chunk loads or global scans. */
     private void tickWave7Returns() {
         if (!isOfficialWave7ReturnContext() || !attemptLifecycle.hasWave7Returns(generation)) {
-            wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear();
+            wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear(); wave7ReturnEnterNextTicks.clear();
             wave7ProjectileIncarnations.clear(); return;
         }
         // Bound crash-checkpoint age without resetting an open all-dead deadline.

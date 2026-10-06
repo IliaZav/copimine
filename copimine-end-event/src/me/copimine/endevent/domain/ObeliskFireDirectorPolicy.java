@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -42,6 +43,21 @@ public final class ObeliskFireDirectorPolicy {
     public record Candidate(UUID obeliskId, boolean ready, boolean charging,
                             boolean firing, boolean alive, UUID recentTarget,
                             long lastFireTick) {
+    }
+
+    public enum SpecialKind { FIRE, PULSE }
+
+    public record SpecialCandidate(UUID obeliskId, SpecialKind kind, long readyTick) { }
+
+    /** Oldest due action wins the existing single reservation; map order cannot monopolize it. */
+    public static Optional<SpecialCandidate> selectSpecial(List<SpecialCandidate> candidates, long nowTick) {
+        if (candidates == null || nowTick < 0L) return Optional.empty();
+        return candidates.stream()
+                .filter(candidate -> candidate != null && candidate.obeliskId() != null
+                        && candidate.kind() != null && candidate.readyTick() <= nowTick)
+                .min(Comparator.comparingLong(SpecialCandidate::readyTick)
+                        .thenComparing(candidate -> candidate.obeliskId().toString())
+                        .thenComparing(SpecialCandidate::kind));
     }
 
     public static List<Candidate> selectReady(List<Candidate> candidates,

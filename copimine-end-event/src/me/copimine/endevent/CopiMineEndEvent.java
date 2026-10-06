@@ -1428,7 +1428,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         } else if (phase != EventPhase.UNCONFIGURED
                 && EndEventStateMachine.recoveryPhase(phase) != phase
-                && !(testWaveFrontVisualMode && activeWave == 7)) {
+                && !(testWaveFrontVisualMode && activeWave == 7)
+                && !canResumeWave7ParticipationAfterRestart()) {
             recoverTransientSession();
         } else if (phase == EventPhase.RECOVERY_REQUIRED) {
             getLogger().severe("End Rift state requires recovery; no gameplay session will start until an admin resets/rebuilds it.");
@@ -1457,6 +1458,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 this, this::tickWaveMobContainment, 1L, 1L);
         playEventMusic(musicForPhase());
         getLogger().info("CopiMineEndEvent services ready; phase=" + phase + " event=" + eventId);
+    }
+
+    /** A strict restored participation receipt is the official Wave 7 restart exception. */
+    private boolean canResumeWave7ParticipationAfterRestart() {
+        // applySnapshot validates the room/trial and return codecs before bootstrap.
+        // Keep their original generation and absolute grace deadline. Owners remain
+        // PENDING until explicit return; an expired grace is handled by the existing
+        // all-dead watchdog after reindexing, without recreating admission rights.
+        return isOfficialWave7ReturnContext()
+                && attemptLifecycle.hasWave7Returns(generation)
+                && realitySplitChamberController.owns(generation)
+                && realitySplitTrialController.owns(generation)
+                && attemptLifecycle.roster().equals(
+                realitySplitChamberController.assignment().chamberByPlayer().keySet());
     }
 
     /**

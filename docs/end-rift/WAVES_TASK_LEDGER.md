@@ -238,9 +238,9 @@ The prior official profile checkpoint was committed/pushed as
 `21dfe8fe16c5b719080cd265b34b1a07b2b74e82`. Its exact SHA passed both
 [PR verification](https://github.com/IliaZav/copimine/actions/runs/37365347162)
 and [push verification](https://github.com/IliaZav/copimine/actions/runs/37365341547).
-The currently running local process still uses that profile checkpoint, not the
-unpublished return candidate. Its four synthetic targets were freshly observed
-alive at 1,000 HP; source tests are not real-server return proof.
+That was the installed profile checkpoint when the preceding evidence was
+recorded. On 2026-10-06 the runtime was updated to the published return/attack
+checkpoint described below; current-candidate evidence must be read separately.
 
 - Ruling: retain explicitly identified `legacy-four-trials` runtime until the
   new actor/admission/presentation adapters are connected. The named policy is
@@ -285,6 +285,47 @@ alive at 1,000 HP; source tests are not real-server return proof.
   and five/six-player gameplay, death/return/restart/repeat matrix, and measured
   performance before/after remain mandatory. Bots and logs cannot prove rendering.
 
+## 2026-10-06 official route and return bootstrap follow-up
+
+- Published source [2dc65e15](https://github.com/IliaZav/copimine/commit/2dc65e155094c76f42df21f98d8135e4a350eb61)
+  repairs Wave 4 special-attack starvation and bounds return-enter retries.
+  Both exact-SHA workflows passed:
+  [push](https://github.com/IliaZav/copimine/actions/runs/37397165081),
+  [PR](https://github.com/IliaZav/copimine/actions/runs/37397171383).
+  CodeRabbit completed the immutable six-file slice with zero issues. Its
+  completed Codex Security diff review reported no confirmed vulnerability,
+  with explicit actual-runtime/performance coverage gaps.
+- At that source, all 30 installed plugin JARs matched canonical artifacts;
+  actual HTTP pack and active-profile client hashes were verified. The End
+  Event JAR was `59c72504d15cfae93afff92925c095f3b4d4ee38e6036afb2d324eee35b67a96`.
+- A fresh two-client official attempt actually completed Waves 1–6. All four
+  Wave 4 towers fired and pulsed, reflected hits destroyed all four, and the
+  normal transition ran. Wave 5 completed all three scheduled fog cycles.
+  Wave 6 created five casters/five owned guards and captured a participant.
+  It required two manual guard approaches after the diagnostic client kept
+  hitting a shielded caster; no objective or damage outcome was forced.
+  Elevated health/buffs/position aids make this a server-mechanics receipt,
+  not balance or native AI/rendering acceptance.
+- Both original owners used the actual public return commands after death.
+  Normal fallback respawn stayed outside combat; arena-derived entrance and
+  40-tick staging returned each to the original claim in the same generation.
+  Complete saved synthetic Inventory NBT matched before/after a further
+  passive death/return, with no new ground items in the targeted death-site
+  query. Earlier truncated RCON inventory text is not full inventory proof.
+- Actual all-dead cold restart FAILED: valid Wave 7 codecs restored, but
+  bootstrap's test-only exception let generic transient recovery erase the
+  official participation. [Bootstrap repair](WAVE7_RETURN_BOOTSTRAP_REPAIR.md)
+  adds a validated official participation exception. Its production-adapter
+  RED reproduced that call; four focused tests, full Python **979 passed,
+  1 skipped**, End Event build, registered gate and diff hygiene passed.
+  Publication/review and corrected actual-server restart remain pending at
+  this evidence checkpoint. The built JAR is
+  `0cde587605e715d82708bd54b18e3e3e3a047a64bc0416d165520ccb69242cf8`.
+- New named actors and Tasks A–H remain unfinished. This run used explicit
+  legacy trials. Native footage, valid/destroyed-bed and quit/reconnect
+  matrices, actor HP/supply restart receipts and measured performance deltas
+  remain open; no NATIVE_VERIFIED status was added.
+
 ## Evidence locations
 
 - `artifacts/end-rift-waves/20261004/`: full Python/client/gate/validator logs,
@@ -300,5 +341,8 @@ alive at 1,000 HP; source tests are not real-server return proof.
   diagnostic admission proof and the third valid same-tick inventory probe.
   `profile-runtime-resumed/`: current launch, plugin identities, HTTP probe,
   and four separate target health/effect/packet journals.
+- `artifacts/end-rift-waves/20261006/`: installed-identity and official-route
+  receipts, complete synthetic return-inventory fingerprints, the failed
+  cold restart, bootstrap RED/GREEN, full Python/build/registered-gate logs.
 - Private local artifacts, worlds, player inventories/skins/profiles and secrets
   must not be committed or uploaded as review inputs.

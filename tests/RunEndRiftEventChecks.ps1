@@ -113,7 +113,7 @@ Invoke-GateStep 'Wave 7 bed return, collision, grace and incarnation regressions
   try {
     & python -m pytest -q '.\tests\test_wave7_arena_entrance.py' '.\tests\test_wave7_arena_entrance_resolver.py' '.\tests\test_wave7_return_lifecycle.py' '.\tests\test_wave7_bed_respawn_adapter.py' '.\tests\test_wave7_all_dead_return_adapter.py' '.\tests\test_wave7_return_admission_adapter.py' '.\tests\test_wave7_return_protection_listener.py' '.\tests\test_wave7_stale_trial_attack.py' '.\tests\test_wave7_pending_offense_adapter.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 7 return lifecycle checks failed.' }
-    & python -m pytest -q '.\tests\test_wave7_return_teleport_adapter.py' '.\tests\test_wave7_return_preboss_adapter.py' '.\tests\test_wave7_return_command_limits.py'
+    & python -m pytest -q '.\tests\test_wave7_return_teleport_adapter.py' '.\tests\test_wave7_return_preboss_adapter.py' '.\tests\test_wave7_return_command_limits.py' '.\tests\test_wave7_return_bootstrap.py'
     if ($LASTEXITCODE -ne 0) { throw "Wave 7 return regressions failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location

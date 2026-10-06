@@ -353,11 +353,51 @@ checkpoint described below; current-candidate evidence must be read separately.
   JAR is `ebbcda991763175851e0ee80bc85e155563da92e1f5493695da83a63b3651c181`.
   The sealed Codex Security diff review found no confirmed vulnerability, with
   explicit native/chunk-pose, concrete persistence/listener composition and
-  positive post-restart admission gaps. Publication remains pending at this
-  receipt. The new JAR has not yet been verified as the running isolated
-  server's installation.
+  positive post-restart admission gaps. The source was published as
+  [36775775](https://github.com/IliaZav/copimine/commit/36775775d769e0c87dd1fc4943dbaf8c7e403fab);
+  its exact-SHA [push workflow](https://github.com/IliaZav/copimine/actions/runs/37508182423)
+  and [PR workflow](https://github.com/IliaZav/copimine/actions/runs/37508189497)
+  completed successfully. The isolated server installation was hash-verified
+  and restored to COLLECTING with zero online players before the next changes.
 - New named actors, native acceptance and the full original Waves 1–7 goal
   remain unfinished. No legacy completion is relabelled as a new Echo duel.
+
+## 2026-10-06 Echo presentation integration (V3 Task D)
+
+- [Presentation plan](WAVE7_ECHO_PRESENTATION_PLAN.md) and
+  [implementation/native acceptance record](WAVE7_ECHO_PRESENTATION_ACCEPTANCE.md)
+  belong to [PR 3](https://github.com/IliaZav/copimine/pull/3). The current
+  named trial runtime remains legacy; no Reflection outcome is an Echo win.
+- Ruling: use the existing bridge and one unregistered vanilla player view,
+  with a local authorized carrier probe before activating duels. This keeps
+  HP/selection on one native actor. Cost if wrong: Task D parity and exact
+  hitbox/body agreement remain blocked and the adapter must be corrected
+  before live personal-duel admission.
+- Ruling: fixed local presentation gear can demonstrate use poses but cannot
+  establish finite supplies, healing, projectiles, critical hits or duel
+  resume. Cost if wrong: misleading combat acceptance; those gates stay open
+  for the authoritative Task E adapter and native proof.
+- Actual hello capability normalization RED, remove-before-bind/stale identity
+  cases and native-navigation boundary RED are recorded. The carrier adapter
+  removes only this actor's goals and preserves native navigation awareness;
+  ordinary event mobs and natural mobs retain their existing controllers.
+- Corrected source passed 994 Python tests (one skip), 265 client JUnit tests,
+  server/client builds and the registered End Rift gate. Independent review
+  reproduced render-dependent gait; native-tick projection fixes it and its
+  regression covers skipped/repeated draws. The one CodeRabbit minor issue
+  was fixed before native carrier insertion; the corrected immutable range
+  completed CodeRabbit with zero issues. A correction-only independent follow-up
+  failed due workspace credits; the parent traced/tested the corrections.
+- Codex Security sealed the original immutable public range with zero confirmed
+  vulnerabilities and partial native/deployment coverage. Later corrections are
+  explicitly outside that seal; no whole-repository approval is implied.
+- Local Paper is restored at `127.0.0.1:25566`, COLLECTING/generation 1315,
+  zero online players. All 30 installed plugins match their source JARs; current
+  client and pack match the selected profile, and actual HTTP pack bytes match
+  advertised SHA-1. Exact current hashes, review boundaries and manual commands
+  are in the acceptance record. Native captures and Task D acceptance remain
+  **BLOCKED**; complete Echo combat, new trial activation and Waves 1–7 goal
+  remain unfinished. Publication/CI for this checkpoint are pending below.
 
 ## Evidence locations
 

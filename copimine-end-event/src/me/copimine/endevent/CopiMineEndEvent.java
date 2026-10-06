@@ -25,6 +25,8 @@ import java.util.Random;
 import java.util.Set;
 import java.util.SplittableRandom;
 import java.util.UUID;
+import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
+import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -230,6 +232,7 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.LargeFireball;
 import org.bukkit.entity.Mob;
+import org.bukkit.entity.Husk;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Skeleton;
@@ -744,6 +747,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<UUID> ritualPrisonerTeleportPermits = new LinkedHashSet<>();
     private final PrisonerAbilityController prisonerAbilityController = new PrisonerAbilityController();
     private final Map<UUID, String> clientBridgeSessions = new HashMap<>();
+    private static final String ECHO_PROBE_KIND = "WAVE7_ECHO_PROBE";
+    private final Set<UUID> echoPresentationCapablePlayers = new HashSet<>();
+    private EchoPresentationProbe echoPresentationProbe;
+    private long echoPresentationEpoch;
     private final Map<UUID, Long> ritualBattleSurgeUntilMillis = new HashMap<>();
     private final Map<UUID, PotionEffect> ritualPreviousSpeedEffects = new HashMap<>();
     private final Map<UUID, Long> ritualGuardianLinkUntilMillis = new HashMap<>();
@@ -2338,6 +2345,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ritualCasterAwakened.clear();
         prisonerAbilityController.end(generation);
         clientBridgeSessions.clear();
+        echoPresentationCapablePlayers.clear();
         ritualPrisonerAnchor = null;
         ritualSphereVisualUuid = null;
         wave6Complete = false;
@@ -2830,6 +2838,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private boolean cancelSessionTasks(boolean preserveCombatForRestart) {
         boolean cleanupSucceeded = true;
+        cleanupSucceeded &= clearEchoPresentationProbe();
         if (taskRegistry != null) {
             List<Integer> taskIds = taskRegistry.taskIds();
             emitCompletedTaskDiagnostics();
@@ -6225,9 +6234,124 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return args != null && args.length > index && "confirm".equalsIgnoreCase(args[index]);
     }
 
+    /** No copied player inventory, official roster, profile observations or trial outcome. */
+    private void handleTestEchoPresentation(CommandSender sender, String[] args) {
+        if (config == null || !"local".equalsIgnoreCase(config.environment())) {
+            message(sender, "&cEcho presentation probe доступен только в local environment."); return;
+        }
+        String requested = args.length > 2 ? args[2].toUpperCase(Locale.ROOT) : "";
+        if ("STOP".equals(requested)) {
+            message(sender, clearEchoPresentationProbe() ? "&aEcho probe остановлен." : "&cОчистка Echo probe требует повторной попытки.");
+            return;
+        }
+        if (!bootstrapped || isOfficialAttemptActive() || activeWave != 0
+                || testCombatAiMode || testWaveFrontVisualMode || creativeTestTask != null
+                || phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
+            message(sender, "&cСначала закончи активный encounter; Echo probe не заменяет его."); return;
+        }
+        if ("START".equals(requested)) {
+            Player owner = args.length > 3 ? Bukkit.getPlayerExact(args[3])
+                    : sender instanceof Player player ? player : null;
+            if (owner == null || !owner.isOnline() || owner.isDead()
+                    || !owner.getWorld().getName().equals(worldName)
+                    || !echoPresentationCapablePlayers.contains(owner.getUniqueId())) {
+                message(sender, "&cНужен живой игрок арены с актуальным CopiMineClient: /cmend test echo start [player]."); return;
+            }
+            Location anchor = coreCombatAnchorLocation();
+            Location preferred = owner.getLocation().clone().add(
+                    owner.getLocation().getDirection().setY(0).multiply(4));
+            Location spawn = findSafeCombatLocation(anchor, preferred, waveMovementRadius(),
+                    MIN_WAVE_CORE_DISTANCE_BLOCKS, -1, owner);
+            if (spawn == null || spawn.distanceSquared(owner.getLocation()) > 100 || !clearEchoPresentationProbe()) {
+                message(sender, "&cНе найден безопасный пол рядом с игроком либо не завершена очистка."); return;
+            }
+            Set<UUID> viewers = owner.getWorld().getPlayers().stream()
+                    .filter(player -> echoPresentationCapablePlayers.contains(player.getUniqueId())
+                            && player.getLocation().distanceSquared(spawn) <= 64 * 64)
+                    .limit(8).map(Player::getUniqueId).collect(Collectors.toCollection(LinkedHashSet::new));
+            viewers.add(owner.getUniqueId());
+            Husk carrier = spawn.getWorld().spawn(spawn, Husk.class,
+                    probeCarrier -> probeCarrier.setPersistent(false));
+            tag(carrier, ECHO_PROBE_KIND, 7, false);
+            try {
+                echoPresentationEpoch = Math.max(echoPresentationEpoch + 1, System.currentTimeMillis());
+                echoPresentationProbe = new EchoPresentationProbe(carrier, owner, UUID.fromString(eventId),
+                        generation, echoPresentationEpoch, eventTickCounter, (type, frame) -> {
+                    if (frame.generation() != generation || !frame.event().toString().equals(eventId)) return;
+                    for (UUID viewerId : viewers) {
+                        Player viewer = Bukkit.getPlayer(viewerId);
+                        if (viewer == null || !viewer.isOnline()) continue;
+                        sendClientPacket(viewer, type, frame.duel().toString(), 2_000,
+                                frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
+                                frame.fields(), frame.dimension());
+                    }
+                });
+            } catch (RuntimeException error) {
+                carrier.remove(); unregisterOwnedEntity(carrier.getUniqueId(), "echo-probe-start-failed");
+                getLogger().log(Level.WARNING, "Echo presentation probe could not start", error);
+                message(sender, "&cEcho probe не запущен; смотри серверный журнал."); return;
+            }
+            getLogger().info("ECHO_PRESENTATION_PROBE_START event=" + eventId + " generation=" + generation
+                    + " viewers=" + viewers.size() + " native_parity=UNVERIFIED");
+            message(sender, "&aEcho probe запущен. &e/cmend test echo <idle|walk|sprint|crouch|jump|swing|bow|crossbow|shield|eat|hurt|death|stop>");
+            return;
+        }
+        EchoPresentationProbeState.Action action;
+        try { action = EchoPresentationProbeState.Action.valueOf(requested); }
+        catch (IllegalArgumentException ignored) {
+            message(sender, "&e/cmend test echo start [player] | stop | idle | walk | sprint | crouch | jump | swing | bow | crossbow | shield | eat | hurt | death"); return;
+        }
+        if (echoPresentationProbe == null || !echoPresentationProbe.action(action, eventTickCounter)) {
+            message(sender, "&cСначала запусти живой Echo probe."); return;
+        }
+        message(sender, "&aEcho presentation action: " + action.name());
+    }
+
+    private void tickEchoPresentationProbe() {
+        if (echoPresentationProbe == null) return;
+        Player owner = Bukkit.getPlayer(echoPresentationProbe.owner());
+        boolean retained = echoPresentationProbe.tick(owner, parseUuidOrNull(eventId), generation,
+                eventTickCounter, echoPresentationCapablePlayers.contains(echoPresentationProbe.owner()));
+        if (!retained) {
+            unregisterOwnedEntity(echoPresentationProbe.carrier().getUniqueId(), "echo-probe-closed");
+            echoPresentationProbe = null;
+        }
+    }
+
+    private boolean clearEchoPresentationProbe() {
+        if (echoPresentationProbe == null) return true;
+        try {
+            echoPresentationProbe.close(eventTickCounter);
+            unregisterOwnedEntity(echoPresentationProbe.carrier().getUniqueId(), "echo-probe-cleanup");
+            echoPresentationProbe = null;
+            return true;
+        } catch (RuntimeException error) {
+            getLogger().log(Level.WARNING, "Echo presentation probe cleanup will be retried", error);
+            return false;
+        }
+    }
+
+    private boolean suppressEchoProbeDrops(EntityDeathEvent event) {
+        if (!ECHO_PROBE_KIND.equals(readString(event.getEntity(), keyKind))) return false;
+        event.getDrops().clear(); event.setDroppedExp(0);
+        return true;
+    }
+
+    private void updateEchoPresentationCapability(Player player, int protocol, String session,
+                                                   String clientVersion, boolean capable) {
+        if (protocol != 2 || clientVersion.isBlank()
+                || !Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) return;
+        if (capable) echoPresentationCapablePlayers.add(player.getUniqueId());
+        else echoPresentationCapablePlayers.remove(player.getUniqueId());
+    }
+
     private void handleTest(CommandSender sender, String[] args) {
         if (args.length < 2) {
             message(sender, "&e/cmend test showroom | run creative | wave <1-7> | scene clear | diagnostics fail [wave] | ai | boss | teleport <wave|boss> | visuals <mobs|boss> | music <phase> [player]");
+            return;
+        }
+        if ("echo".equalsIgnoreCase(args[1])) {
+            handleTestEchoPresentation(sender, args);
             return;
         }
         if ("run".equalsIgnoreCase(args[1])) {
@@ -10451,6 +10575,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         sampleRuntimeDiagnostics();
         emitDiagnosticSnapshot();
         tickWave7Returns();
+        tickEchoPresentationProbe();
         tickOfflineRosterGrace();
         updatePadOccupancy();
         renderRitualZoneVisuals(System.currentTimeMillis());
@@ -32058,6 +32183,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!ownedEntities.containsKey(entity.getUniqueId())) {
             return;
         }
+        if (suppressEchoProbeDrops(event)) return;
         if (!lootIssuedEntityUuids.add(entity.getUniqueId())) {
             return;
         }
@@ -32718,6 +32844,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         releaseCurrentHuntTarget(uuid, "disconnect");
         endRitualPrisonerAbilitySessionForPlayer(uuid, "disconnect");
         clientBridgeSessions.remove(uuid);
+        echoPresentationCapablePlayers.remove(uuid);
+        if (echoPresentationProbe != null && echoPresentationProbe.owner().equals(uuid))
+            clearEchoPresentationProbe();
         if (Objects.equals(ritualPrisonerId(), uuid)) {
             event.getPlayer().getPersistentDataContainer().remove(keyRitualPrisoner);
         }
@@ -34734,8 +34863,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (effectCount < 0 || effectCount > 64) {
                 return;
             }
+            boolean supportsEchoPresentation = false;
             for (int index = 0; index < effectCount; index++) {
-                readBridgeUtf(input, 96);
+                supportsEchoPresentation |= "ECHO_PRESENTATION_V1".equals(readBridgeUtf(input, 96));
             }
             String effectId = readBridgeUtf(input, 64);
             String eventIdFromPacket = readBridgeUtf(input, 128);
@@ -34751,9 +34881,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
             if ("hello".equals(type)) {
                 registerClientBridgeSession(player, protocol, session, clientVersion);
+                updateEchoPresentationCapability(player, protocol, session, clientVersion,
+                        supportsEchoPresentation && clientVisuals);
                 if (Objects.equals(ritualPrisonerId(), player.getUniqueId())) {
                     sendRitualPrisonerState(player);
                 }
+                return;
+            }
+            if ("capabilities_update".equals(type)) {
+                updateEchoPresentationCapability(player, protocol, session, clientVersion,
+                        supportsEchoPresentation && clientVisuals);
                 return;
             }
             if (!"END_PRISONER_ABILITY_REQUEST".equals(type)

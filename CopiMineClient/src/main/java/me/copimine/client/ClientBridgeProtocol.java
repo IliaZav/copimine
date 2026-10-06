@@ -140,6 +140,11 @@ public final class ClientBridgeProtocol {
         try {
             String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
             long nowMillis = System.currentTimeMillis();
+            if (eventType.equals("END_ECHO_BIND") || eventType.equals("END_ECHO_STATE")
+                    || eventType.equals("END_ECHO_REMOVE")) {
+                EchoVanillaRenderer.apply(payload, nowMillis);
+                return;
+            }
             if ("END_PRESENTATION_RESUME".equals(eventType)) {
                 MinecraftClient client = MinecraftClient.getInstance();
                 if (!"PRESENTATION_RESUME_V1".equals(payload.shaderpack()) || client.player == null
@@ -359,6 +364,7 @@ public final class ClientBridgeProtocol {
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
         END_EVENT_PLAYER_VISUALS.tick(now);
+        EchoVanillaRenderer.tick(client, now);
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
@@ -527,6 +533,7 @@ public final class ClientBridgeProtocol {
         END_EVENT_WORLD_VFX.clear();
         END_EVENT_BLACK_FOG.clear();
         END_EVENT_PLAYER_VISUALS.clear();
+        EchoVanillaRenderer.clear();
         PRISONER_HUD.clear();
     }
 
@@ -535,6 +542,7 @@ public final class ClientBridgeProtocol {
         END_EVENT_WORLD_VFX.reset();
         END_EVENT_BLACK_FOG.reset();
         END_EVENT_PLAYER_VISUALS.reset();
+        EchoVanillaRenderer.reset();
         PRISONER_HUD.reset();
     }
 
@@ -565,6 +573,7 @@ public final class ClientBridgeProtocol {
 
     private static Set<String> supportedEffects() {
         Set<String> supported = new LinkedHashSet<>();
+        supported.add("ECHO_PRESENTATION_V1");
         for (String effectId : SUPPORTED_EFFECTS) {
             supported.add(effectId.toUpperCase(Locale.ROOT));
         }

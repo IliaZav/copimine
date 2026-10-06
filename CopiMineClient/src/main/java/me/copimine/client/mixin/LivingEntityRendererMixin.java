@@ -1,6 +1,7 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.EchoVanillaRenderer;
 import me.copimine.client.CopiMineClientLogger;
 import me.copimine.client.EndRiftBossWorldScalePolicy;
 import me.copimine.client.EndEventTextureCatalog;
@@ -86,6 +87,10 @@ public abstract class LivingEntityRendererMixin<T extends LivingEntity, M extend
         // vanilla field was not changed, so clearing this scoped selector is
         // sufficient to make the next invocation fail closed.
         copimine$activeModel = null;
+        if (entity != null && EchoVanillaRenderer.render(entity, yaw, tickDelta, matrices, vertexConsumers, light)) {
+            ci.cancel();
+            return;
+        }
         if (entity != null && entity.getUuid() != null
                 && "END_RIFT_TENTACLE_HITBOX_V1".equals(
                 ClientBridgeProtocol.endEventVisualForEntity(entity.getUuid().toString()))) {

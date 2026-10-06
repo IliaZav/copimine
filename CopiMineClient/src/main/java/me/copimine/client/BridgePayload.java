@@ -398,6 +398,10 @@ public record BridgePayload(
         Set<String> normalized = new LinkedHashSet<>();
         if (supportedEffects != null) {
             for (String effectId : supportedEffects) {
+                if ("ECHO_PRESENTATION_V1".equalsIgnoreCase(effectId)) {
+                    normalized.add("ECHO_PRESENTATION_V1");
+                    continue;
+                }
                 String effect = normalizeEffectId(effectId);
                 if (!effect.isBlank()) {
                     normalized.add(effect);

@@ -13,6 +13,8 @@
     "EndermanEntityRendererMixin",
     "EndermanEyesFeatureRendererMixin",
     "LivingEntityRendererMixin",
+    "EchoPlayerRendererMixin",
+    "EchoCarrierUnloadMixin",
     "EndEventBlackFogMixin",
     "EntityBoundingBoxMixin",
     "LivingEntityHealthProjectionMixin",

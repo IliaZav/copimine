@@ -96,6 +96,15 @@ Invoke-GateStep 'Local probe AuthMe mode behavior' {
   & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'EndRiftLocalAuthModeTest.ps1')
 }
 
+Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
+  Push-Location $root
+  try {
+    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' -q
+  } finally {
+    Pop-Location
+  }
+}
+
 Invoke-GateStep 'Wave navigation and physical passage regression' {
   Push-Location $root
   try {

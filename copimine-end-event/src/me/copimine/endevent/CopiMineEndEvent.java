@@ -14326,11 +14326,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     chamberCount)) {
                 continue;
             }
-            Block feet = candidate.getBlock();
-            Block head = feet.getRelative(BlockFace.UP);
-            Block floor = feet.getRelative(BlockFace.DOWN);
-            Location resolved = new Location(candidate.getWorld(), feet.getX() + 0.5D,
-                    feet.getY(), feet.getZ() + 0.5D);
+            Location resolved = new Location(candidate.getWorld(), candidate.getBlockX() + 0.5D,
+                    candidate.getBlockY(), candidate.getBlockZ() + 0.5D);
             // The live entity is placed at the centre of the selected block,
             // not at the original fractional candidate.  Re-check the room
             // after that quantisation or a point near the sector/radius edge
@@ -14341,6 +14338,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     chamberCount)) {
                 continue;
             }
+            if (occupant instanceof Player && isOfficialWave7ReturnContext()
+                    && !isLoadedWave7ReturnCandidate(resolved, occupant)) {
+                continue;
+            }
+            Block feet = resolved.getBlock();
+            Block head = feet.getRelative(BlockFace.UP);
+            Block floor = feet.getRelative(BlockFace.DOWN);
             boolean footprintSafe = occupant == null
                     || isSafeCombatOccupantLocation(resolved, occupant);
             String id = "candidate-" + attempt;
@@ -14371,6 +14375,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     Set.of("COBWEB", "POWDER_SNOW", "SWEET_BERRY_BUSH", "FIRE", "SOUL_FIRE"));
         }
         return selected == null ? null : candidateLocations.get(selected.id());
+    }
+
+    /** Validate the whole standing clearance before any return candidate block read. */
+    private boolean isLoadedWave7ReturnCandidate(Location candidate, Entity occupant) {
+        if (candidate == null || candidate.getWorld() == null || occupant == null
+                || !candidate.getWorld().equals(occupant.getWorld())
+                || !Double.isFinite(candidate.getX()) || !Double.isFinite(candidate.getY())
+                || !Double.isFinite(candidate.getZ())) return false;
+        double width = occupant.getWidth(), height = occupant.getHeight();
+        if (!Double.isFinite(width) || !Double.isFinite(height) || width <= 0D || width > 4D
+                || height <= 0D || height > 8D) return false;
+        World world = candidate.getWorld();
+        if (candidate.getY() - 1D < world.getMinHeight()
+                || candidate.getY() + height > world.getMaxHeight()) return false;
+        double halfWidth = width * .5D + .35D;
+        int minX = (int) Math.floor(candidate.getX() - halfWidth + .000001D);
+        int maxX = (int) Math.ceil(candidate.getX() + halfWidth - .000001D) - 1;
+        int minZ = (int) Math.floor(candidate.getZ() - halfWidth + .000001D);
+        int maxZ = (int) Math.ceil(candidate.getZ() + halfWidth - .000001D) - 1;
+        for (int x = minX >> 4; x <= maxX >> 4; x++) {
+            for (int z = minZ >> 4; z <= maxZ >> 4; z++) {
+                if (!world.isChunkLoaded(x, z)) return false;
+            }
+        }
+        for (double x : new double[]{candidate.getX() - halfWidth, candidate.getX() + halfWidth}) {
+            for (double z : new double[]{candidate.getZ() - halfWidth, candidate.getZ() + halfWidth}) {
+                if (!world.getWorldBorder().isInside(new Location(world, x, candidate.getY(), z))) return false;
+            }
+        }
+        return true;
     }
 
     private boolean isFireBlock(Block block) {
@@ -22952,7 +22986,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean isRealitySplitDestinationAllowed(
             UUID playerId, Location target,
             ChamberIsolationPolicy.Assignment assignment) {
-        Location anchor = coreCombatAnchorLocation();
+        return isRealitySplitDestinationAllowed(playerId, target, assignment, coreCombatAnchorLocation());
+    }
+
+    /** Return admission already has a physically validated floor reference. */
+    private boolean isRealitySplitDestinationAllowed(
+            UUID playerId, Location target,
+            ChamberIsolationPolicy.Assignment assignment, Location anchor) {
         if (playerId == null || target == null || target.getWorld() == null
                 || anchor == null || anchor.getWorld() == null
                 || !anchor.getWorld().equals(target.getWorld())
@@ -33023,14 +33063,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!attemptLifecycle.returnReady(token, eventTickCounter)) continue;
             var assignment = realitySplitChamberController.assignment();
             int claim = assignment.chamberByPlayer().getOrDefault(owner, -1);
-            Location anchor = coreCombatAnchorLocation();
-            Location destination = anchor == null || claim < 0 ? null : findSafeCombatLocation(anchor,
+            // Entrance safety already established the actual feet level. Reuse
+            // it here instead of rescanning the Core neighbourhood at admission.
+            Location anchor = new Location(entrance.getWorld(), coreX + .5D,
+                    entrance.getY(), coreZ + .5D);
+            Location destination = claim < 0 ? null : findSafeCombatLocation(anchor,
                     realitySplitChamberCenter(anchor, claim, assignment.chamberCount()),
                     boundedCombatRadius(config.arenaRadius()) - 1D, MIN_WAVE_CORE_DISTANCE_BLOCKS, claim, player);
             var window = attemptLifecycle.observeWave7ReturnWindow(generation, System.nanoTime(),
                     System.currentTimeMillis(), wave7ReturnGraceMillis());
             if (window == AttemptLifecycleController.ReturnWindowStatus.EXPIRED || destination == null
-                    || !isRealitySplitDestinationAllowed(owner, destination, assignment)
+                    || !isRealitySplitDestinationAllowed(owner, destination, assignment, anchor)
                     || !isSafeCombatParticipantLocation(destination, player)) {
                 attemptLifecycle.cancelReturn(token); wave7ReturnStagingLocations.remove(owner);
                 message(player, "&cВозврат отменён: время истекло или место в своей комнате небезопасно."); saveStateAsync(); continue;

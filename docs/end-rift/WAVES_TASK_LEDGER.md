@@ -326,6 +326,39 @@ checkpoint described below; current-candidate evidence must be read separately.
   matrices, actor HP/supply restart receipts and measured performance deltas
   remain open; no NATIVE_VERIFIED status was added.
 
+## 2026-10-06 corrected bootstrap receipts and return chunk boundary
+
+- Bootstrap source [9864eb2c](https://github.com/IliaZav/copimine/commit/9864eb2cc3f36872437ef965e5ddc67d077c2395)
+  passed its exact-SHA [push workflow](https://github.com/IliaZav/copimine/actions/runs/37473004728)
+  and [PR workflow](https://github.com/IliaZav/copimine/actions/runs/37473013516).
+  Its immutable five-file CodeRabbit review raised zero issues; sealed Codex
+  Security review found no confirmed vulnerability with partial runtime/native
+  coverage. These reviews do not cover subsequent source changes.
+- [Actual-server acceptance record](WAVE7_RETURN_RUNTIME_ACCEPTANCE.md) separates
+  two official Waves 1–6 and owner death/return receipts from the incomplete
+  post-restart admission matrix. The second cold run preserved the exact event,
+  generation, claims, original all-dead deadline and one owned legacy Warden.
+  Fresh minimal clients remained in CONFIGURATION at the mandatory pack offer,
+  so post-restart owner admission, beds and quit/reconnect remain unverified.
+  No pack-loaded acknowledgement bypass or relaxed server requirement was used.
+- [Return chunk-boundary repair](WAVE7_RETURN_CHUNK_BOUNDARY_REPAIR.md), V3 B/H:
+  production-adapter RED caught candidate block reads before chunk checks and
+  both inherited Core floor samples in staged admission. Repaired search checks
+  the full player clearance before block reads; staged room validation reuses
+  the verified entrance height. Two source-executing cases and the first
+  integrated **26-case** focused run passed. The full Python run passed **981
+  tests, 1 skipped**, and the End Event build and registered End Rift gate passed.
+  The immutable six-file CodeRabbit slice completed with **zero issues**; its
+  clean public snapshot also passed both new regressions. The built End Event
+  JAR is `ebbcda991763175851e0ee80bc85e155563da92e1f5493695da83a63b3651c181`.
+  The sealed Codex Security diff review found no confirmed vulnerability, with
+  explicit native/chunk-pose, concrete persistence/listener composition and
+  positive post-restart admission gaps. Publication remains pending at this
+  receipt. The new JAR has not yet been verified as the running isolated
+  server's installation.
+- New named actors, native acceptance and the full original Waves 1–7 goal
+  remain unfinished. No legacy completion is relabelled as a new Echo duel.
+
 ## Evidence locations
 
 - `artifacts/end-rift-waves/20261004/`: full Python/client/gate/validator logs,

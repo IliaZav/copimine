@@ -6345,6 +6345,26 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEchoProbeShieldBlock(EntityDamageByEntityEvent event) {
+        if (event.isCancelled() || echoPresentationProbe == null
+                || !echoPresentationProbe.carrier().getUniqueId().equals(event.getEntity().getUniqueId())
+                || !event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING)) return;
+        double blocked = -event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
+        if (!(blocked > 0)) return;
+        boolean axe = event.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                && event.getDamager() instanceof LivingEntity attacker && attacker.getEquipment() != null
+                && attacker.getEquipment().getItemInMainHand().getType().name().endsWith("_AXE");
+        Player owner = Bukkit.getPlayer(echoPresentationProbe.owner());
+        try {
+            echoPresentationProbe.acceptedShieldBlock(event, owner, parseUuidOrNull(eventId), generation,
+                    eventTickCounter, echoPresentationCapablePlayers.contains(echoPresentationProbe.owner()), blocked, axe);
+        } catch (RuntimeException error) {
+            getLogger().log(Level.WARNING, "Echo native shield observation failed; closing local probe", error);
+            clearEchoPresentationProbe();
+        }
+    }
+
     private void updateEchoPresentationCapability(Player player, int protocol, String session,
                                                    String clientVersion, boolean capable) {
         if (protocol != 2 || clientVersion.isBlank()

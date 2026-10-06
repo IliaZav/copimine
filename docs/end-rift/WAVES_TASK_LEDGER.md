@@ -464,6 +464,35 @@ checkpoint described below; current-candidate evidence must be read separately.
 
 ## Evidence locations
 
+### 2026-10-06 Echo native shield follow-up
+
+- The copied-loadout checkpoint was published as
+  [2e279e5f](https://github.com/IliaZav/copimine/commit/2e279e5fe83376292948896d9a0cd5d100664c7e).
+  Its exact-SHA [push Actions](https://github.com/IliaZav/copimine/actions/runs/37528502907)
+  and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37528508871)
+  completed successfully. These results do not prove later source changes.
+- The [native shield follow-up](WAVE7_ECHO_SHIELD_ACCEPTANCE.md) traces absent
+  native blocking, carrier-specific missing shield wear/axe disable and wear
+  lost by equipment projection. Regressions reproduce those defects and a stale
+  hit against a later shield raise. The existing loop/actor receives native hand
+  use, accepted-only finite durability and a 100-tick axe-disable window.
+- AUTOMATED_PASS for the follow-up: full Python **1028 passed, 1 skipped**;
+  registered Echo gate **47 passed**; pinned Paper build, full End Rift gate,
+  all **659** validators and diff hygiene pass. The optional profile check is
+  separate from a real rendered client session. CodeRabbit range
+  `4cb440d6..868c59ed` includes current carrier/no-raid/shield corrections and
+  completes with **0 issues**. New code is outside the earlier security seal.
+- This is still a disposable local probe, not the finished owner-only duel.
+  Native client acceptance and full Task E remain open. Publication and exact
+  own-SHA Actions are pending until recorded after pushing.
+- Empty isolated server is running at `127.0.0.1:25566` with source-built End
+  Event SHA-256 `23aa8d5b6bcdd7c463a4fad675e0b4e3f5059bbb5f2cc0cc7d76a8557b870d48`;
+  all **30** installed plugin JARs match canonical files. Selected-profile byte
+  verification independently passes **1** test. Client/pack are unchanged and
+  served pack SHA-1 remains `d33363385a6ad31577e87c2669a8e5e9b6a46a95`.
+  No Minecraft window is running, no client is launched and native shield
+  gameplay/screenshots remain NOT PERFORMED.
+
 - `artifacts/end-rift-waves/20261004/`: full Python/client/gate/validator logs,
   CodeRabbit receipts and `waves1-5-runtime-20261004-234831` installation/live logs.
 - `artifacts/end-rift-waves/20261005/`: Wave 7 and AuthEffects red/green

@@ -40,6 +40,21 @@ public final class EchoReplicaInventory {
         return new EchoReplicaInventory(EchoLoadoutState.restore(encoded,event,attempt,duel,owner,minimumRevision));
     }
     public EchoLoadoutState state() { return state; }
+    /** Persist an observed native durability outcome; never repair or refill a replica. */
+    public boolean recordNativeWear(int slot, ItemStack result, long expectedRevision) {
+        if (slot < 0 || slot >= 42 || result == null || state.revision() != expectedRevision) return false;
+        Item before = state.item(slot);
+        if (!before.usable() || before.maximumDamage() == 0) return false;
+        int damage;
+        if (result.getType().isAir() || result.getAmount() == 0) damage = before.maximumDamage();
+        else {
+            if (!result.getType().name().equals(before.material()) || result.getAmount() != 1
+                    || !(result.getItemMeta() instanceof Damageable nativeMeta)) return false;
+            damage = nativeMeta.getDamage();
+            if (damage < before.damage() || damage >= before.maximumDamage()) return false;
+        }
+        return damage == before.damage() || state.damage(slot, damage - before.damage(), expectedRevision);
+    }
     private static Item describe(ItemStack stack) {
         if (stack==null || stack.getType().isAir() || stack.getAmount()==0) return Item.empty();
         Material material=stack.getType(); ItemMeta meta=stack.getItemMeta();

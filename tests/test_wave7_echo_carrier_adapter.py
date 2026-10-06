@@ -64,8 +64,13 @@ public interface Pathfinder {void stopPathfinding();boolean moveTo(org.bukkit.Lo
 public interface MobGoals {void removeAllGoals(org.bukkit.entity.Mob mob);}''',
     }
     stubs.update(item_api_sources())
+    stubs["org/bukkit/inventory/EquipmentSlot.java"] = "package org.bukkit.inventory;public enum EquipmentSlot {HAND,OFF_HAND}"
     stubs["org/bukkit/entity/Pillager.java"] = stubs["org/bukkit/entity/Pillager.java"].replace(
-        "void swingMainHand();", "void swingMainHand();boolean addPotionEffect(org.bukkit.potion.PotionEffect effect);")
+        "void swingMainHand();", "void swingMainHand();boolean addPotionEffect(org.bukkit.potion.PotionEffect effect);"
+        "void startUsingItem(org.bukkit.inventory.EquipmentSlot hand);void clearActiveItem();"
+        "boolean hasActiveItem();org.bukkit.inventory.EquipmentSlot getActiveItemHand();"
+        "void damageItemStack(org.bukkit.inventory.EquipmentSlot hand,int amount);")
+    stubs["org/bukkit/Sound.java"] = "package org.bukkit;public enum Sound {ENTITY_GENERIC_EAT,ENTITY_PLAYER_BURP,ITEM_SHIELD_BLOCK,ITEM_SHIELD_BREAK}"
     boundary_sources = []
     for name, source in stubs.items():
         path = directory / name
@@ -81,8 +86,8 @@ import com.destroystokyo.paper.entity.ai.MobGoals;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
 public class EchoCarrierChecks {
-    static boolean aware,goals=true,removed,online=true;static int moves,effects;static double health=20;
-    static ItemStack mainItem;
+    static boolean aware,goals=true,removed,online=true,ownerAlive=true;static int moves,effects;static double health=20;
+    static ItemStack mainItem,offItem;static org.bukkit.inventory.EquipmentSlot activeHand;static int wearCalls,raiseCalls;
     static UUID OWNER=new UUID(0,2),ACTOR=new UUID(0,3),EVENT=new UUID(0,1);
     static Object value(Class<?> type){
         if(!type.isPrimitive())return null;if(type==boolean.class)return false;if(type==int.class)return 0;
@@ -103,7 +108,10 @@ public class EchoCarrierChecks {
         // Test-only injection avoids Bukkit.setServer's ServiceLoader startup log.
         var serverField=Bukkit.class.getDeclaredField("server");serverField.setAccessible(true);
         serverField.set(null,fixtureServer);
-        EntityEquipment gear=proxy(EntityEquipment.class,(p,m,a)->{if(m.getName().equals("setItemInMainHand"))mainItem=(ItemStack)a[0];return value(m.getReturnType());});
+        EntityEquipment gear=proxy(EntityEquipment.class,(p,m,a)->switch(m.getName()){
+            case "setItemInMainHand"->{mainItem=(ItemStack)a[0];yield null;}
+            case "setItemInOffHand"->{offItem=(ItemStack)a[0];yield null;}
+            case "getItemInMainHand"->mainItem;case "getItemInOffHand"->offItem;default->value(m.getReturnType());});
         Pathfinder path=proxy(Pathfinder.class,(p,m,a)->{
             if(m.getName().equals("moveTo")){if(aware&&!goals)moves++;return aware&&!goals;}
             return value(m.getReturnType());});
@@ -113,20 +121,32 @@ public class EchoCarrierChecks {
             case "getVelocity"->new org.bukkit.util.Vector();case "getHealth"->health;
             case "setAware"->{aware=(Boolean)a[0];yield null;}
             case "setHealth"->{health=(Double)a[0];yield null;}
+            case "startUsingItem"->{activeHand=(org.bukkit.inventory.EquipmentSlot)a[0];raiseCalls++;yield null;}
+            case "clearActiveItem"->{activeHand=null;yield null;}
+            case "hasActiveItem"->activeHand!=null;case "getActiveItemHand"->activeHand;
+            case "damageItemStack"->{
+                wearCalls++;boolean main=a[0]==org.bukkit.inventory.EquipmentSlot.HAND;
+                ItemStack current=main?mainItem:offItem;
+                if(!args[0].equals("copy-shield-unbreaking"))current.meta.damage+=(Integer)a[1];
+                if(current.meta.damage>=current.getType().getMaxDurability()){
+                    if(main)mainItem=new ItemStack(Material.AIR);else offItem=new ItemStack(Material.AIR);
+                }yield null;
+            }
             case "isDead"->health<=0;case "isValid"->!removed;case "isOnGround"->true;
             case "remove"->{removed=true;yield null;}default->value(m.getReturnType());});
         // Actual effect outcome is observed, not an assertion that a mock exists.
         Pillager originalCarrier=carrier;
         carrier=proxy(Pillager.class,(p,m,a)->{if(m.getName().equals("addPotionEffect")){effects++;return true;}return m.invoke(originalCarrier,a);});
         ItemStack[] storage=new ItemStack[36];storage[0]=new ItemStack(Material.BOW);storage[1]=new ItemStack(Material.ARROW,2);
-        if(args[0].equals("copy-main-shield"))storage[0]=new ItemStack(Material.SHIELD);
+        boolean mainShield=args[0].equals("copy-main-shield")||args[0].equals("copy-native-main-shield")||args[0].equals("copy-shield-main-hit");
+        if(mainShield)storage[0]=new ItemStack(Material.SHIELD);
         var inventory=proxy(PlayerInventory.class,(p,m,a)->switch(m.getName()){
             case "getStorageContents"->storage;case "getHeldItemSlot"->0;
-            case "getItemInOffHand"->new ItemStack(args[0].equals("copy-main-shield")?Material.AIR:Material.SHIELD);
+            case "getItemInOffHand"->new ItemStack(mainShield?Material.AIR:Material.SHIELD);
             default->value(m.getReturnType());});
         Player owner=proxy(Player.class,(p,m,a)->switch(m.getName()){
             case "getUniqueId"->OWNER;case "getWorld"->world;case "getEyeLocation"->location.clone().add(4,1.6,0);
-            case "isOnline"->online;case "getInventory"->inventory;default->value(m.getReturnType());});
+            case "isOnline"->online;case "isDead"->!ownerAlive;case "getInventory"->inventory;default->value(m.getReturnType());});
         List<String> packets=new ArrayList<>();
         List<EchoPresentationProbeState.Frame> frames=new ArrayList<>();
         var sender=(java.util.function.BiConsumer<String,EchoPresentationProbeState.Frame>)(type,frame)->{packets.add(type);frames.add(frame);};
@@ -173,7 +193,59 @@ public class EchoCarrierChecks {
         }else if(args[0].equals("copy-main-shield")){
             if(!probe.action(EchoPresentationProbeState.Action.SHIELD,105)||mainItem.getType()!=Material.SHIELD
                 ||!frames.get(frames.size()-1).hand().equals("MAIN"))throw new AssertionError("main-hand shield moved/animated as offhand");
+        }else if(args[0].equals("copy-native-shield")||args[0].equals("copy-native-main-shield")){
+            probe.action(EchoPresentationProbeState.Action.SHIELD,105);
+            var expected=args[0].equals("copy-native-main-shield")?org.bukkit.inventory.EquipmentSlot.HAND:org.bukkit.inventory.EquipmentSlot.OFF_HAND;
+            if(activeHand!=expected)throw new AssertionError("shield pose never activated native blocking hand: "+activeHand);
+            probe.action(EchoPresentationProbeState.Action.IDLE,110);
+            if(activeHand!=null)throw new AssertionError("replaced shield use still blocks");
+            probe.action(EchoPresentationProbeState.Action.SHIELD,115);probe.close(116);
+            if(activeHand!=null)throw new AssertionError("cleanup retained native shield use");
+        }else if(args[0].equals("copy-native-stale")){
+            probe.action(EchoPresentationProbeState.Action.SHIELD,105);
+            if(activeHand==null)throw new AssertionError("native use was not started before stale cleanup");
+            probe.tick(owner,EVENT,8,110,true);
+            if(activeHand!=null||!removed)throw new AssertionError("generation change retained native shield use");
+        }else if(args[0].startsWith("copy-shield-")){
+            probe.action(EchoPresentationProbeState.Action.SHIELD,105);
+            Object receipt=new Object();double blocked=args[0].equals("copy-shield-break")?400:4.9;
+            boolean applied=blocked(probe,receipt,owner,EVENT,7,110,true,blocked,args[0].equals("copy-shield-axe"));
+            if(!applied)throw new AssertionError("accepted native shield block has no finite wear/disable adapter");
+            if(args[0].equals("copy-shield-break")){
+                if(offItem.getType()!=Material.AIR||activeHand!=null||probe.action(EchoPresentationProbeState.Action.SHIELD,115))
+                    throw new AssertionError("broken native shield respawned");
+            }else if(args[0].equals("copy-shield-axe")){
+                if(activeHand!=null||probe.action(EchoPresentationProbeState.Action.SHIELD,209)
+                    ||!probe.action(EchoPresentationProbeState.Action.SHIELD,210))throw new AssertionError("axe disable must last 100 ticks");
+            }else if(args[0].equals("copy-shield-unbreaking")){
+                probe.action(EchoPresentationProbeState.Action.IDLE,111);probe.action(EchoPresentationProbeState.Action.SHIELD,112);
+                if(offItem.meta.damage!=0)throw new AssertionError("native Unbreaking outcome replaced by raw wear");
+            }else if(args[0].equals("copy-shield-main-hit")){
+                probe.action(EchoPresentationProbeState.Action.IDLE,111);probe.action(EchoPresentationProbeState.Action.SHIELD,112);
+                if(mainItem.meta.damage!=5||activeHand!=org.bukkit.inventory.EquipmentSlot.HAND)throw new AssertionError("main-hand finite shield wear/hand lost");
+            }else if(args[0].equals("copy-shield-hit")){
+                if(offItem.meta.damage!=5||raiseCalls!=1||health!=20)throw new AssertionError("shield wear/timing changed or adapter applied health damage");
+                if(blocked(probe,receipt,owner,EVENT,7,110,true,4.9,false)||wearCalls!=1)throw new AssertionError("same accepted block consumed twice");
+                if(!blocked(probe,new Object(),owner,EVENT,7,110,true,4.9,false)||offItem.meta.damage!=10)throw new AssertionError("second distinct hit in same tick lost");
+                if(blocked(probe,new Object(),owner,EVENT,8,115,true,4.9,false)||offItem.meta.damage!=10)throw new AssertionError("stale generation wore shield");
+                if(blocked(probe,new Object(),owner,EVENT,7,115,false,4.9,false)||offItem.meta.damage!=10)throw new AssertionError("revoked capability wore shield");
+                online=false;if(blocked(probe,new Object(),owner,EVENT,7,115,true,4.9,false))throw new AssertionError("quit owner still wore shield");online=true;
+                ownerAlive=false;if(blocked(probe,new Object(),owner,EVENT,7,115,true,4.9,false))throw new AssertionError("dead owner still wore shield");ownerAlive=true;
+                Player foreign=proxy(Player.class,(p,m,a)->m.getName().equals("getUniqueId")?new UUID(0,99):m.invoke(owner,a));
+                if(blocked(probe,new Object(),foreign,EVENT,7,115,true,4.9,false))throw new AssertionError("foreign owner shield transaction accepted");
+                if(blocked(probe,new Object(),owner,EVENT,7,115,true,0,false)
+                    ||blocked(probe,new Object(),owner,EVENT,7,115,true,Double.NaN,false))throw new AssertionError("unblocked/invalid hit wore shield");
+                probe.action(EchoPresentationProbeState.Action.IDLE,116);probe.action(EchoPresentationProbeState.Action.SHIELD,117);
+                if(offItem.meta.damage!=10)throw new AssertionError("equipment projection repaired native shield wear");
+                if(blocked(probe,new Object(),owner,EVENT,7,115,true,4.9,false)||offItem.meta.damage!=10)throw new AssertionError("stale hit from before new shield raise wore current use");
+            }else throw new AssertionError(args[0]);
         }else throw new AssertionError(args[0]);
+    }
+    static boolean blocked(EchoPresentationProbe probe,Object receipt,Player owner,UUID event,long generation,long tick,
+                           boolean capable,double amount,boolean axe)throws Exception{
+        try{return (Boolean)EchoPresentationProbe.class.getMethod("acceptedShieldBlock",Object.class,Player.class,UUID.class,
+            long.class,long.class,boolean.class,double.class,boolean.class).invoke(probe,receipt,owner,event,generation,tick,capable,amount,axe);}
+        catch(NoSuchMethodException absent){return false;}
     }
 }
 ''', encoding="utf-8")
@@ -187,7 +259,7 @@ public class EchoCarrierChecks {
     return classpath
 
 
-@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield"])
+@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield", "copy-native-shield", "copy-native-main-shield", "copy-native-stale", "copy-shield-hit", "copy-shield-main-hit", "copy-shield-unbreaking", "copy-shield-break", "copy-shield-axe"])
 def test_native_carrier_adapter(carrier_probe, scenario):
     result = subprocess.run(["java", "-cp", carrier_probe, "EchoCarrierChecks", scenario],
                             capture_output=True, text=True)

@@ -1,6 +1,7 @@
 package me.copimine.endevent.runtime.wave7;
 
 import java.util.UUID;
+import java.util.IdentityHashMap;
 import java.util.function.BiConsumer;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind;
@@ -12,6 +13,7 @@ import org.bukkit.entity.Pillager;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Pose;
 import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -28,6 +30,10 @@ public final class EchoPresentationProbe {
     private int pendingFoodSlot = -1;
     private long pendingFoodTick, pendingFoodRevision;
     private long nextPathTick;
+    private int activeShieldSlot = -1;
+    private EquipmentSlot activeShieldHand;
+    private long shieldDisabledUntil, shieldReceiptTick = -1, shieldRaisedTick = -1;
+    private final IdentityHashMap<Object, Boolean> shieldReceipts = new IdentityHashMap<>();
     private boolean closed;
 
     public EchoPresentationProbe(Pillager carrier, Player player, UUID event, long generation,
@@ -68,11 +74,22 @@ public final class EchoPresentationProbe {
     public boolean action(EchoPresentationProbeState.Action action, long tick) {
         String shieldHand = replica != null && replica.state().item(40).kind() != Kind.SHIELD ? "MAIN" : "OFF";
         if (closed || !carrier.isValid() || carrier.isDead() || action == null || !available(action)
+                || action == EchoPresentationProbeState.Action.SHIELD && tick < shieldDisabledUntil
                 || !state.begin(action, tick, shieldHand)) return false;
         pendingFoodSlot = -1;
+        carrier.clearActiveItem();
+        activeShieldSlot = -1; activeShieldHand = null;
         carrier.getPathfinder().stopPathfinding(); nextPathTick = tick;
         carrier.setPose(action == EchoPresentationProbeState.Action.CROUCH ? Pose.SNEAKING : Pose.STANDING, true);
         equip(action);
+        if (action == EchoPresentationProbeState.Action.SHIELD) {
+            // Direction, projectile piercing and the native raise delay belong
+            // to Minecraft's blocking path, not the presentation packet.
+            activeShieldHand = "MAIN".equals(shieldHand) ? EquipmentSlot.HAND : EquipmentSlot.OFF_HAND;
+            activeShieldSlot = replica == null ? -1 : activeShieldHand == EquipmentSlot.HAND ? replica.state().find(Kind.SHIELD) : 40;
+            shieldRaisedTick = tick;
+            carrier.startUsingItem(activeShieldHand);
+        }
         if (replica != null && action == EchoPresentationProbeState.Action.EAT) {
             pendingFoodSlot = replica.state().find(Kind.GOLDEN_APPLE);
             pendingFoodTick = tick; pendingFoodRevision = replica.state().revision();
@@ -94,7 +111,8 @@ public final class EchoPresentationProbe {
 
     public boolean tick(Player player, UUID event, long generation, long tick, boolean capable) {
         boolean sameWorld = player != null && player.getWorld().equals(carrier.getWorld());
-        if (!state.active(event, generation, tick, player != null && player.isOnline(),
+        if (!owner.equals(player == null ? null : player.getUniqueId())
+                || !state.active(event, generation, tick, player != null && player.isOnline(),
                 player != null && !player.isDead(), sameWorld, capable)) { close(tick); return false; }
         if (carrier.isDead()) state.died(tick);
         else if (!carrier.isValid()) { close(tick); return false; }
@@ -133,10 +151,48 @@ public final class EchoPresentationProbe {
         return true;
     }
 
+    /** Observe one accepted native block. Minecraft alone decides direction and HP mitigation. */
+    public boolean acceptedShieldBlock(Object receipt, Player player, UUID event, long generation,
+                                        long tick, boolean capable, double blockedAmount, boolean axe) {
+        if (closed || replica == null || receipt == null || !Double.isFinite(blockedAmount)
+                || blockedAmount <= 0 || blockedAmount > 1_000_000 || tick < shieldReceiptTick || tick < shieldRaisedTick
+                || player == null || !owner.equals(player.getUniqueId()) || carrier.isDead() || !carrier.isValid()
+                || !state.active(event, generation, tick, player.isOnline(), !player.isDead(),
+                        player.getWorld().equals(carrier.getWorld()), capable)
+                || state.action() != EchoPresentationProbeState.Action.SHIELD || activeShieldSlot < 0
+                || !carrier.hasActiveItem() || carrier.getActiveItemHand() != activeShieldHand) return false;
+        if (tick != shieldReceiptTick) { shieldReceipts.clear(); shieldReceiptTick = tick; }
+        if (shieldReceipts.containsKey(receipt) || shieldReceipts.size() >= 32) return false;
+        shieldReceipts.put(receipt, Boolean.TRUE);
+        if (blockedAmount >= 3.0) {
+            long revision = replica.state().revision();
+            // Carrier mobs have no native Player.hurtCurrentlyUsedShield override.
+            // Damage the equipped replica through Paper: native Unbreaking and
+            // break notifications run once; record its outcome, not the raw request.
+            carrier.damageItemStack(activeShieldHand, 1 + (int) Math.floor(blockedAmount));
+            ItemStack outcome = activeShieldHand == EquipmentSlot.HAND
+                    ? carrier.getEquipment().getItemInMainHand() : carrier.getEquipment().getItemInOffHand();
+            if (!replica.recordNativeWear(activeShieldSlot, outcome, revision)) {
+                close(tick); return false;
+            }
+        }
+        boolean broken = replica.state().item(activeShieldSlot).kind() != Kind.SHIELD;
+        carrier.getWorld().playSound(carrier.getLocation(), broken ? Sound.ITEM_SHIELD_BREAK : Sound.ITEM_SHIELD_BLOCK, 0.65f, 1.0f);
+        if (axe) shieldDisabledUntil = tick + 100;
+        if (broken || axe) {
+            carrier.clearActiveItem(); activeShieldSlot = -1; activeShieldHand = null;
+            state.begin(EchoPresentationProbeState.Action.IDLE, tick); equip(EchoPresentationProbeState.Action.IDLE);
+            send.accept("END_ECHO_STATE", state.nextFrame(tick));
+        }
+        return true;
+    }
+
     /** Keep the carrier reference if a native cleanup throws so the caller can retry. */
     public void close(long tick) {
         if (closed) return;
         pendingFoodSlot = -1;
+        carrier.clearActiveItem();
+        activeShieldSlot = -1; activeShieldHand = null; shieldReceipts.clear();
         send.accept("END_ECHO_REMOVE", state.nextFrame(tick));
         carrier.remove(); state.close(); closed = true;
     }

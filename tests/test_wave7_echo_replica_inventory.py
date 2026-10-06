@@ -59,6 +59,7 @@ public interface PlayerInventory {ItemStack[] getStorageContents();int getHeldIt
         "org/bukkit/inventory/EntityEquipment.java": '''package org.bukkit.inventory;
 public interface EntityEquipment {void setBoots(ItemStack i);void setLeggings(ItemStack i);void setChestplate(ItemStack i);void setHelmet(ItemStack i);
 void setItemInMainHand(ItemStack i);void setItemInOffHand(ItemStack i);
+ItemStack getItemInMainHand();ItemStack getItemInOffHand();
 void setHelmetDropChance(float v);void setChestplateDropChance(float v);void setLeggingsDropChance(float v);void setBootsDropChance(float v);
 void setItemInMainHandDropChance(float v);void setItemInOffHandDropChance(float v);}''',
     }
@@ -90,7 +91,7 @@ public class EchoReplicaChecks {
         public ItemStack getHelmet(){return null;}public ItemStack getItemInOffHand(){return off;}
     }
     static EchoReplicaInventory capture(Inventory source){return EchoReplicaInventory.capture(source,new UUID(0,1),7,new UUID(0,3),new UUID(0,2));}
-    public static void main(String[] args){
+    public static void main(String[] args)throws Exception{
         var source=new Inventory();var sword=new ItemStack(Material.IRON_SWORD);sword.meta.damage=123;sword.meta.name="Synthetic fixture";
         sword.meta.enchantments.put(new org.bukkit.enchantments.Enchantment(NamespacedKey.fromString("minecraft:sharpness")),3);
         source.slots[0]=sword;source.slots[1]=new ItemStack(Material.GOLDEN_APPLE,5);source.slots[2]=new ItemStack(Material.ARROW,2);
@@ -130,6 +131,26 @@ public class EchoReplicaChecks {
             check(restored.stack(0).meta.damage==17&&restored.stack(41).getAmount()==1,"restored native gear repaired/refilled");
             var forged=new HashMap<>(replica.state().encode());forged.put("slot.0.maximum","9999");
             try{EchoReplicaInventory.restore(forged,new UUID(0,1),7,new UUID(0,3),new UUID(0,2),2);throw new AssertionError("forged native durability");}catch(IllegalArgumentException expected){}
+        }else if(args[0].equals("native-wear")){
+            var replica=capture(source);var result=replica.stack(40);result.meta.damage=5;
+            boolean applied=false;
+            try{applied=(Boolean)EchoReplicaInventory.class.getMethod("recordNativeWear",int.class,ItemStack.class,long.class).invoke(replica,40,result,0L);}
+            catch(NoSuchMethodException absent){}
+            check(applied&&replica.stack(40).meta.damage==5,"native shield wear never reaches finite loadout");
+            var restore=EchoReplicaInventory.restore(replica.state().encode(),new UUID(0,1),7,new UUID(0,3),new UUID(0,2),1);
+            check(restore.stack(40).meta.damage==5&&source.off.meta.damage==0,"native wear restored/repaired or changed original");
+            check(!(Boolean)EchoReplicaInventory.class.getMethod("recordNativeWear",int.class,ItemStack.class,long.class).invoke(replica,40,result,0L),"stale native wear receipt accepted");
+            check((Boolean)EchoReplicaInventory.class.getMethod("recordNativeWear",int.class,ItemStack.class,long.class).invoke(replica,40,new ItemStack(Material.AIR),1L),"native break rejected");
+            check(replica.stack(40).getType()==Material.AIR&&replica.state().find(EchoLoadoutState.Kind.SHIELD)<0,"broken shield respawned");
+        }else if(args[0].equals("native-wear-invalid")){
+            var replica=capture(source);var method=EchoReplicaInventory.class.getMethod("recordNativeWear",int.class,ItemStack.class,long.class);
+            check((Boolean)method.invoke(replica,40,replica.stack(40),0L)&&replica.state().revision()==0,"native Unbreaking zero outcome must remain zero wear");
+            var wrong=replica.stack(0);wrong.meta.damage=8;
+            check(!(Boolean)method.invoke(replica,40,wrong,0L),"wrong native material rewrote replica shield");
+            var regressed=replica.stack(40);regressed.meta.damage=5;check((Boolean)method.invoke(replica,40,regressed,0L),"initial native wear");
+            regressed.meta.damage=2;check(!(Boolean)method.invoke(replica,40,regressed,1L)&&replica.stack(40).meta.damage==5,"native outcome repaired consumed wear");
+            var oversized=replica.stack(40);oversized.meta.damage=9999;
+            check(!(Boolean)method.invoke(replica,40,oversized,1L)&&replica.state().revision()==1,"invalid native wear advanced state");
         }else throw new AssertionError(args[0]);
     }
 }
@@ -141,7 +162,7 @@ public class EchoReplicaChecks {
     return directory
 
 
-@pytest.mark.parametrize("scenario", ["copy", "custom", "custom-stack", "restore"])
+@pytest.mark.parametrize("scenario", ["copy", "custom", "custom-stack", "restore", "native-wear", "native-wear-invalid"])
 def test_native_replica_inventory(replica_checks, scenario):
     result = subprocess.run(["java", "-cp", str(replica_checks), "EchoReplicaChecks", scenario],
                             capture_output=True, text=True)

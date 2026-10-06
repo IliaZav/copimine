@@ -232,7 +232,7 @@ import org.bukkit.entity.Item;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.LargeFireball;
 import org.bukkit.entity.Mob;
-import org.bukkit.entity.Husk;
+import org.bukkit.entity.Pillager;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Skeleton;
@@ -6234,7 +6234,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return args != null && args.length > index && "confirm".equalsIgnoreCase(args[index]);
     }
 
-    /** No copied player inventory, official roster, profile observations or trial outcome. */
+    /** Disposable local presentation/item-use probe; no official roster, profile or trial outcome. */
     private void handleTestEchoPresentation(CommandSender sender, String[] args) {
         if (config == null || !"local".equalsIgnoreCase(config.environment())) {
             message(sender, "&cEcho presentation probe доступен только в local environment."); return;
@@ -6249,13 +6249,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
             message(sender, "&cСначала закончи активный encounter; Echo probe не заменяет его."); return;
         }
-        if ("START".equals(requested)) {
+        if ("START".equals(requested) || "LOADOUT".equals(requested)) {
             Player owner = args.length > 3 ? Bukkit.getPlayerExact(args[3])
                     : sender instanceof Player player ? player : null;
             if (owner == null || !owner.isOnline() || owner.isDead()
                     || !owner.getWorld().getName().equals(worldName)
                     || !echoPresentationCapablePlayers.contains(owner.getUniqueId())) {
-                message(sender, "&cНужен живой игрок арены с актуальным CopiMineClient: /cmend test echo start [player]."); return;
+                message(sender, "&cНужен живой игрок арены с актуальным CopiMineClient: /cmend test echo start|loadout [player]."); return;
             }
             Location anchor = coreCombatAnchorLocation();
             Location preferred = owner.getLocation().clone().add(
@@ -6270,8 +6270,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             && player.getLocation().distanceSquared(spawn) <= 64 * 64)
                     .limit(8).map(Player::getUniqueId).collect(Collectors.toCollection(LinkedHashSet::new));
             viewers.add(owner.getUniqueId());
-            Husk carrier = spawn.getWorld().spawn(spawn, Husk.class,
-                    probeCarrier -> probeCarrier.setPersistent(false));
+            // Undead carriers reject vanilla golden-apple regeneration.
+            Pillager carrier = spawn.getWorld().spawn(spawn, Pillager.class, probeCarrier -> {
+                probeCarrier.setPersistent(false);
+                probeCarrier.setCanJoinRaid(false);
+                probeCarrier.getAttribute(Attribute.GENERIC_MAX_HEALTH).setBaseValue(20.0);
+                probeCarrier.setHealth(20.0);
+            });
             tag(carrier, ECHO_PROBE_KIND, 7, false);
             try {
                 echoPresentationEpoch = Math.max(echoPresentationEpoch + 1, System.currentTimeMillis());
@@ -6285,24 +6290,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 frame.actor().toString(), "END_RIFT_ECHO_V1", 0, 0, 0,
                                 frame.fields(), frame.dimension());
                     }
-                });
+                }, "LOADOUT".equals(requested));
             } catch (RuntimeException error) {
                 carrier.remove(); unregisterOwnedEntity(carrier.getUniqueId(), "echo-probe-start-failed");
                 getLogger().log(Level.WARNING, "Echo presentation probe could not start", error);
                 message(sender, "&cEcho probe не запущен; смотри серверный журнал."); return;
             }
             getLogger().info("ECHO_PRESENTATION_PROBE_START event=" + eventId + " generation=" + generation
-                    + " viewers=" + viewers.size() + " native_parity=UNVERIFIED");
+                    + " viewers=" + viewers.size() + " copied_loadout=" + "LOADOUT".equals(requested) + " native_parity=UNVERIFIED");
             message(sender, "&aEcho probe запущен. &e/cmend test echo <idle|walk|sprint|crouch|jump|swing|bow|crossbow|shield|eat|hurt|death|stop>");
             return;
         }
         EchoPresentationProbeState.Action action;
         try { action = EchoPresentationProbeState.Action.valueOf(requested); }
         catch (IllegalArgumentException ignored) {
-            message(sender, "&e/cmend test echo start [player] | stop | idle | walk | sprint | crouch | jump | swing | bow | crossbow | shield | eat | hurt | death"); return;
+            message(sender, "&e/cmend test echo start|loadout [player] | stop | idle | walk | sprint | crouch | jump | swing | bow | crossbow | shield | eat | hurt | death"); return;
         }
-        if (echoPresentationProbe == null || !echoPresentationProbe.action(action, eventTickCounter)) {
+        if (echoPresentationProbe == null) {
             message(sender, "&cСначала запусти живой Echo probe."); return;
+        }
+        if (!echoPresentationProbe.action(action, eventTickCounter)) {
+            message(sender, "&cДействие недоступно: предмет отсутствует, расходники закончились либо актёр завершён."); return;
         }
         message(sender, "&aEcho presentation action: " + action.name());
     }

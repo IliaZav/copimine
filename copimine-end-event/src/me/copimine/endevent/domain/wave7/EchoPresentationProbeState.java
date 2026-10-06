@@ -22,6 +22,7 @@ public final class EchoPresentationProbeState {
     private Action action = Action.IDLE;
     private long actionTick, sequence, swingSerial, hurtSerial, deathTick = -1;
     private int equipmentVersion;
+    private String shieldHand = "OFF";
     private boolean closed;
 
     public EchoPresentationProbeState(UUID event, long generation, long epoch, UUID duel, UUID actor,
@@ -37,8 +38,13 @@ public final class EchoPresentationProbeState {
     }
 
     public boolean begin(Action requested, long tick) {
-        if (closed || deathTick >= 0 || requested == null || tick < actionTick) return false;
+        return begin(requested, tick, "OFF");
+    }
+    public boolean begin(Action requested, long tick, String requestedShieldHand) {
+        if (closed || deathTick >= 0 || requested == null || tick < actionTick
+                || !"MAIN".equals(requestedShieldHand) && !"OFF".equals(requestedShieldHand)) return false;
         action = requested; actionTick = tick; equipmentVersion++;
+        shieldHand = requestedShieldHand;
         if (requested == Action.SWING) swingSerial++;
         return true;
     }
@@ -63,7 +69,7 @@ public final class EchoPresentationProbeState {
         };
         long elapsed = Math.max(0, tick - actionTick);
         if (duration != 0 && elapsed >= duration) duration = 0;
-        String hand = duration == 0 ? "NONE" : action == Action.SHIELD ? "OFF" : "MAIN";
+        String hand = duration == 0 ? "NONE" : action == Action.SHIELD ? shieldHand : "MAIN";
         return new Frame(event, generation, epoch, duel, actor, owner, dimension, ++sequence,
                 action == Action.CROUCH && deathTick < 0 ? "CROUCHING" : "STANDING",
                 action == Action.SPRINT && deathTick < 0, hand,

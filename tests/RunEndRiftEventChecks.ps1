@@ -99,7 +99,7 @@ Invoke-GateStep 'Local probe AuthMe mode behavior' {
 Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
   Push-Location $root
   try {
-    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' -q
+    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' 'tests/test_wave7_echo_loadout.py' 'tests/test_wave7_echo_replica_inventory.py' 'tests/test_wave7_echo_native_effect_carrier.py' -q
   } finally {
     Pop-Location
   }

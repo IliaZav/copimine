@@ -417,7 +417,50 @@ checkpoint described below; current-candidate evidence must be read separately.
 - This data-only correction changes neither Echo gameplay nor the installed
   local pack bytes. The scoped security seal of the original presentation
   range does not include this subsequent correction. Its actual remote SHA
-  and CI remain a separate publication gate.
+  and CI remain a separate publication gate. Correction published as
+  [bd2b4033](https://github.com/IliaZav/copimine/commit/bd2b4033b0da6a7c789a86200689351932e1732f);
+  both exact-SHA [push Actions](https://github.com/IliaZav/copimine/actions/runs/37522882444)
+  and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37522890042)
+  completed successfully.
+
+## 2026-10-06 Task E copied loadout and finite use checkpoint
+
+- Extends [Task E plan](WAVE7_ECHO_LOADOUT_PLAN.md) under the V3 Wave 7
+  contract; full acceptance, supported-item gaps, review boundaries and installed
+  identities are in [the acceptance record](WAVE7_ECHO_LOADOUT_ACCEPTANCE.md).
+- Actual copied carrier regressions reproduced fixed gear replacing the owner's
+  bow, missing completed golden-apple effects, interrupted-use supply behavior
+  and a main-hand shield being moved/animated as offhand. Production adapter
+  regressions pass after optional copied-mode integration and correct hand state.
+- IMPLEMENTED: 41 immutable safe source descriptors, exactly two EXTRA ordinary
+  apples, initially repaired supported replicas, current finite quantities/wear,
+  identity/revision-bound codec and fresh allowlisted Paper equipment. Original
+  player inventory and privileged item metadata are never transferred or mutated.
+  Existing local test gates now accept `echo loadout`; accepted completed use
+  consumes one replica apple before native effects, with cancellation/duplicate
+  guards. The five-tick loop observes a minimum 32-tick use normally at tick35.
+- AUTOMATED_PASS: 27 focused cases; full Python 3.13 **1011 passed, 1 skipped**;
+  final pinned Paper build, registered End Rift gate, all 659 repository
+  validators (zero failures/skips), and diff hygiene pass.
+  No client/pack source or bytes changed. Local installed JAR matches the new
+  build, all 30 installed plugins match canonical JARs; actual HTTP pack bytes
+  match advertised SHA-1. Ownerless startup refuses.
+- Scoped Codex Security completed with zero confirmed vulnerabilities and partial
+  native/configuration/persistence coverage; immutable range and one corrected
+  supporting-test filename are documented. CodeRabbit completed the original
+  11-file range with one minor custom-stack capture issue. Actual adapter RED
+  reproduced it; bounded blocked-item mapping fixes it without enabling custom
+  hooks or changing original items. Two-file follow-up completed with zero
+  issues. A further real server reproduction found Husk regeneration immunity;
+  a 20-HP non-undead carrier now accepts native effects and cannot join raids.
+  Actual species health/absorption readback is documented; it is server effect
+  compatibility, not full client/probe acceptance. Carrier-only CodeRabbit
+  failed with a 17-minute rate limit, and that correction is outside the earlier
+  security seal. Publication and own-SHA Actions remain pending at this receipt.
+- NATIVE_VERIFIED: none for this checkpoint. Full owner-bound duel, actual
+  melee/projectiles/shield mitigation/criticals, first-party custom-item adapters,
+  durable HP/cooldown/supply resume, named official trials and V3 Tasks E-H remain
+  unfinished. A disposable restarted probe is not a resumed personal duel.
 
 ## Evidence locations
 

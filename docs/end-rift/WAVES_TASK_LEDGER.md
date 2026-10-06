@@ -397,7 +397,27 @@ checkpoint described below; current-candidate evidence must be read separately.
   advertised SHA-1. Exact current hashes, review boundaries and manual commands
   are in the acceptance record. Native captures and Task D acceptance remain
   **BLOCKED**; complete Echo combat, new trial activation and Waves 1–7 goal
-  remain unfinished. Publication/CI for this checkpoint are pending below.
+  remain unfinished. Source was published as
+  [efe8ce06](https://github.com/IliaZav/copimine/commit/efe8ce06c140982f122e24fb61d0f2ff721f5a2c).
+  Its [push Actions](https://github.com/IliaZav/copimine/actions/runs/37520716887)
+  and [PR Actions](https://github.com/IliaZav/copimine/actions/runs/37520725864)
+  **failed** three pack validators: the newly built archive/sidecar used
+  `d33363385a6ad31577e87c2669a8e5e9b6a46a95`, while the committed canonical
+  `server.properties` still declared the older `62e04ec32fa9da329b1fcd8db33de4eb66e71d35`.
+  This differs from the already-correct isolated runtime properties.
+
+## 2026-10-06 pack digest publication correction
+
+- Reproduced the actual canonical-properties validator failure locally. Only
+  the declared resource-pack SHA-1 is synchronized with the existing built
+  archive; no asset, ZIP builder or validation requirement was changed.
+- All **659** repository validators pass after correction. CodeRabbit reviewed
+  the immutable one-field public diff with **zero issues**; its review input
+  omitted unrelated/private configuration values.
+- This data-only correction changes neither Echo gameplay nor the installed
+  local pack bytes. The scoped security seal of the original presentation
+  range does not include this subsequent correction. Its actual remote SHA
+  and CI remain a separate publication gate.
 
 ## Evidence locations
 

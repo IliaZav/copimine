@@ -49,7 +49,9 @@ public class WaveDashProbe {
   Location coreCombatAnchorLocation(){return new Location(0,68,0);}double waveMovementRadius(){return 19;}
   boolean isLiveOwnedEntity(UUID id){return true;}boolean isMiniBossCombatPhase(){return true;}
   boolean isMiniBossTargetAllowed(LivingEntity caster,Player target){return caster.valid&&target.valid;}
-  boolean isFogFrozenCombatEntity(LivingEntity caster){return false;}int realitySplitChamberId(LivingEntity caster){return 0;}
+  boolean isFogFrozenCombatEntity(LivingEntity caster){return false;}
+  boolean isWaveFogAiHeld(LivingEntity caster){return false;}
+  int realitySplitChamberId(LivingEntity caster){return 0;}
   boolean isSafeCombatStep(Location anchor,Location p,double r,double min,int room,LivingEntity caster){return p.x<=wall&&p.x<=19;}
   void miniBossCommittedStep(LivingEntity caster,Player target,Location mark){impacts++;}
   void renderWaveCombatCue(LivingEntity caster,Location p,String spell,String stage){if(stage.equals("recover"))recoverCues++;}

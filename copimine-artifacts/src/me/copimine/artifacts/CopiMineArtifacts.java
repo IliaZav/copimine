@@ -73,6 +73,7 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Registry;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.Tag;
@@ -12767,7 +12768,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       if (meta == null || item == null || !this.isDamageMaterial(item.material()) || this.attackDamageKey == null) {
          return false;
       }
-      Collection<AttributeModifier> modifiers = meta.getAttributeModifiers(Attribute.GENERIC_ATTACK_DAMAGE);
+      Attribute attackDamage = compatibleAttribute("attack_damage");
+      Collection<AttributeModifier> modifiers = meta.getAttributeModifiers(attackDamage);
       double target = this.isArSwordCatalogItem(item)
          ? AR_SWORD_ATTACK_DAMAGE
          : "NALOGOVAYA_KOSA".equalsIgnoreCase(item.effect()) ? 12.0 : 10.0;
@@ -12782,14 +12784,14 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             if (!correctModifierPresent && delta > 0.0 && Math.abs(modifier.getAmount() - delta) < 0.000001D) {
                correctModifierPresent = true;
             } else {
-               meta.removeAttributeModifier(Attribute.GENERIC_ATTACK_DAMAGE, modifier);
+               meta.removeAttributeModifier(attackDamage, modifier);
                changed = true;
             }
          }
       }
       if (!correctModifierPresent && delta > 0.0) {
          meta.addAttributeModifier(
-            Attribute.GENERIC_ATTACK_DAMAGE,
+            attackDamage,
             new AttributeModifier(this.attackDamageKey, delta, AttributeModifier.Operation.ADD_NUMBER, EquipmentSlotGroup.MAINHAND)
          );
          changed = true;
@@ -15591,8 +15593,17 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void healPlayerCapped(Player var1, double var2) {
       if (var1 != null && !(var2 <= 0.0)) {
-         var1.setHealth(Math.min(var1.getAttribute(Attribute.GENERIC_MAX_HEALTH).getValue(), var1.getHealth() + var2));
+         var1.setHealth(Math.min(var1.getAttribute(compatibleAttribute("max_health")).getValue(), var1.getHealth() + var2));
       }
+   }
+
+   private static Attribute compatibleAttribute(String modernKey) {
+      Attribute attribute = Registry.ATTRIBUTE.get(NamespacedKey.minecraft(modernKey));
+      if (attribute == null) {
+         attribute = Registry.ATTRIBUTE.get(NamespacedKey.minecraft("generic." + modernKey));
+      }
+      if (attribute == null) throw new IllegalStateException("Required Minecraft attribute is unavailable: " + modernKey);
+      return attribute;
    }
 
    private void tryRareArTheft(Player attacker, LivingEntity target) {

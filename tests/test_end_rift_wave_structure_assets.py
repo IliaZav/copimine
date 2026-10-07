@@ -173,6 +173,8 @@ def test_wave1_charge_has_a_compact_cyan_model_separate_from_portal_shards():
     assert max(high[i] - low[i] for i in range(3)) <= 12
     assert len(charge["elements"]) >= 3
     assert charge["textures"]["energy"] == "copimine:item/end_event_carrier_charge"
+    assert charge.get("display", {}).get("ground", {}).get("scale") == [1.0, 1.0, 1.0], \
+        "the interactable charge must not inherit vanilla's miniature dropped-item scale"
     with Image.open(ASSETS / "textures/item/end_event_carrier_charge.png") as image:
         colors = [image.getpixel((x, y)) for x in range(32) for y in range(32)]
         assert any(b > 220 and g > 190 and r < 100 for r, g, b, _ in colors)

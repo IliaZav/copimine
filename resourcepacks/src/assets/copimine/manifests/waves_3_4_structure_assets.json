@@ -59,7 +59,7 @@
   },
   "sha256": {
     "src/assets/copimine/models/item/end_event_rift_gate.json": "4901c5b89f92c082606c9292ebcad8f391c9b0fdca6d5c104c4080d54ece9cc8",
-    "src/assets/copimine/models/item/end_event_carrier_charge.json": "5cc89b8ccf352782617ed639c1b28b634f9aa32dcf487ffc885a4e08fb2f5be0",
+    "src/assets/copimine/models/item/end_event_carrier_charge.json": "e8a5084551c60af6cdff30bdf8204937372a14743d7d3941430401c74a082171",
     "src/assets/copimine/textures/item/end_event_carrier_charge.png": "79bd99c2e659b3cef93fb4b64bd1c7b477ccb93e629575c501ef443284711101",
     "src/assets/copimine/models/block/end_event_portal_inner.json": "f28e777fa49830f274440d961b2ffd95ff2da6c3463919a3eee96b54c7cbcb75",
     "src/assets/copimine/models/block/end_event_portal_shard.json": "74b0fbf95bf16f1c12cae83ca60ec0548401f3fcf4520a858a78fd45f1aba7f5",

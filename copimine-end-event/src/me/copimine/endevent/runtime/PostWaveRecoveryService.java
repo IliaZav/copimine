@@ -7,7 +7,7 @@ import java.util.Set;
 import me.copimine.endevent.domain.PostWaveRecoveryPolicy;
 import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
-import org.bukkit.attribute.Attribute;
+import me.copimine.endevent.runtime.compat.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;

@@ -4,6 +4,13 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaveCombatPresentationPolicyTest {
+    @Test void ObeliskShotWarningIsLocalToTheCrownWithoutAFlightPath() {
+        var warning=WaveCombatPresentationPolicy.parse("event:2:world:wave-ai-01234567-charge-reflect");
+        assertEquals(WaveCombatPresentationPolicy.Shape.BILLBOARD,warning.shape());
+        var release=WaveCombatPresentationPolicy.parse("event:2:world:wave-ai-01234567-release-reflect");
+        assertEquals(WaveCombatPresentationPolicy.Shape.BILLBOARD,release.shape());
+        assertTrue(WaveCombatPresentationPolicy.visible(warning,9));
+    }
     @Test void onlyAuthoredWaveKeysProduceTexturedCues() {
         var cue=WaveCombatPresentationPolicy.parse("event:12:world:wave-ai-ab12cd34-charge-salvo");
         assertNotNull(cue);

@@ -53,19 +53,31 @@ public final class PortalCapturePolicy {
             if (lastOccupied >= 0L && lastOccupied == state.lastUpdateMillis()) {
                 progress = saturatingAdd(progress, elapsed);
             } else if (lastOccupied >= 0L && nowMillis - lastOccupied > GRACE_MILLIS) {
-                progress = decay(progress, nowMillis - lastOccupied - GRACE_MILLIS, decayRate);
+                progress = decay(progress, state, nowMillis, decayRate);
             }
             lastOccupied = nowMillis;
         } else if (lastOccupied >= 0L && nowMillis - lastOccupied > GRACE_MILLIS) {
-            progress = decay(progress, nowMillis - lastOccupied - GRACE_MILLIS, decayRate);
+            progress = decay(progress, state, nowMillis, decayRate);
         }
         boolean completed = progress >= CAPTURE_MILLIS;
         return new PortalState(completed, Math.min(progress, CAPTURE_MILLIS), lastOccupied, nowMillis);
     }
 
-    private static long decay(long progress, long excessGap, double decayRate) {
-        double rawLoss = excessGap * decayRate;
-        long loss = rawLoss >= Long.MAX_VALUE ? Long.MAX_VALUE : (long) Math.ceil(rawLoss);
+    /** Only the part of this sample after grace is new loss; earlier samples already paid it. */
+    private static long decayElapsed(PortalState state, long nowMillis) {
+        long graceEnd = saturatingAdd(state.lastOccupiedMillis(), GRACE_MILLIS);
+        return Math.max(0L, nowMillis - Math.max(state.lastUpdateMillis(), graceEnd));
+    }
+
+    private static long decay(long progress, PortalState state, long nowMillis, double decayRate) {
+        long graceEnd = saturatingAdd(state.lastOccupiedMillis(), GRACE_MILLIS);
+        long priorGap = Math.max(0L, state.lastUpdateMillis() - graceEnd);
+        long currentGap = priorGap + decayElapsed(state, nowMillis);
+        // Difference of cumulative rounded loss retains fractional credit
+        // across samples. Rounding every interval would double a .5/ms rate.
+        long before = (long) Math.ceil(priorGap * decayRate);
+        long after = (long) Math.ceil(currentGap * decayRate);
+        long loss = Math.max(0L, after - before);
         return Math.max(0L, progress - loss);
     }
 

@@ -128,6 +128,7 @@ public final class Waves24MechanicsHarness {
     }
     void sendWorldBeamPacket(Player player, String key, Location from, Location to, int color, float width) {}
     void clearWorldVfxBeamsByPrefix(String key) {}
+    void playWaveFeedback(String cue,Location point) {}
     void clearWaveCombatCue(UUID owner) {}
     void renderWave4ObeliskCue(Wave4ObeliskRuntimeState state, String stage, String ability, Location mark, double radius) {}
     void spawnEventParticle(Object... values) {
@@ -359,6 +360,18 @@ public final class Waves24MechanicsHarness {
                 }
                 check(h.clientClears == 3, "each completed hunt cycle must clear client presentation once");
             }
+            case "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena" -> {
+                h.selectAt(start); long deadline = h.waveTwoMarkDeadlineMillis;
+                if (scenario.endsWith("death")) player.dead = true;
+                if (scenario.endsWith("disconnect")) player.online = false;
+                if (scenario.endsWith("arena")) player.wave = false;
+                Bukkit.now = deadline; h.tickCurrentHuntObjective(deadline);
+                check(h.currentHuntCycles == 0, "invalid target must not be credited by expiry before roster validation");
+                check(h.waveTwoMarkedPlayerUuid == null, "invalid mark must clear even at the exact deadline");
+                Player second = new Player(); Bukkit.players.add(second);
+                Bukkit.now = deadline + 1_000L; h.tickCurrentHuntObjective(Bukkit.now);
+                check(second.id.equals(h.waveTwoMarkedPlayerUuid), "replacement must get its own full hunt window");
+            }
             case "wave-roster-launch" -> {
                 var state = new Wave4ObeliskRuntimeState();
                 check(!h.launchWave4Fireball(state), "projectile cannot launch before its warning");
@@ -452,7 +465,8 @@ public final class Waves24MechanicsHarness {
 @pytest.mark.parametrize("scenario", [
     "initial-delay", "full-window", "scaled-full-window", "leaving-roster", "cleanup", "foreign-glow", "reveal-effects-cleanup",
     "infinite-glow-preserved", "infinite-reveal-preserved", "stronger-glow-cleanup",
-    "death", "disconnect", "replacement", "three-cycles", "wave-roster-launch", "charge-disconnect", "charge-generation",
+    "death", "disconnect", "replacement", "three-cycles", "invalid-at-deadline-death", "invalid-at-deadline-disconnect", "invalid-at-deadline-arena",
+    "wave-roster-launch", "charge-disconnect", "charge-generation",
     "boss-only-excluded", "wave-reflection", "sandbox-outsider-reflection", "boss-reflection-preserved", "wave7-reflection-boundary",
     "wave-reflected-hit", "stale-hit",
 ])

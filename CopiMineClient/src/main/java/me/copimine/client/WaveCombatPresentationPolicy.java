@@ -25,7 +25,7 @@ public final class WaveCombatPresentationPolicy {
         };
         if (stage.equals("recover")) tile = 6;
         Shape shape = stage.equals("recover") || stage.equals("frozen") || stage.equals("release") || ability.equals("reflect")
-                ? Shape.BILLBOARD : ability.equals("dash") || ability.equals("salvo") || ability.equals("reflect")
+                ? Shape.BILLBOARD : ability.equals("dash") || ability.equals("salvo")
                 ? Shape.LANE : ability.equals("web") ? Shape.BILLBOARD : Shape.FLOOR;
         return new Cue(stage, ability, tile, shape);
     }

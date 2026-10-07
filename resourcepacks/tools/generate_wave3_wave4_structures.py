@@ -204,7 +204,11 @@ def carrier_charge():
         cuboid("white_energy_inset", [7.5, 5.1, 7.5], [8.5, 10.9, 8.5], "energy",
                world_scale=(1, 1, 1)),
     ]
-    return structure(elements, frame=STONE, energy="copimine:item/end_event_carrier_charge")
+    model = structure(elements, frame=STONE, energy="copimine:item/end_event_carrier_charge")
+    # Item entities use ground, while the selected carrier crest uses NONE.
+    # Keep the interactive drop readable without changing the crest transform.
+    model["display"] = {"ground": {"rotation": [0, 0, 0], "translation": [0, 2, 0], "scale": [1.0, 1.0, 1.0]}}
+    return model
 
 
 def charge_texture():

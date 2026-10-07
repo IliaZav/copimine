@@ -54,8 +54,9 @@ public class WaveLeashProbe {
   }
   class Player extends Entity { }
   class Pathfinder { boolean moveTo(Location point,double speed){requests++;return pathWorks;} void stopPathfinding(){} }
-  boolean closed, safeFloor=true, core;
+  boolean closed, safeFloor=true, core, fogHeld;
   boolean isFogFrozenCombatEntity(Entity entity){return false;}
+  boolean isWaveFogAiHeld(Entity entity){return fogHeld;}
   Controller waveCombatCoordinator=new Controller();
   void clearWaveCombatCue(UUID id){} void finishWaveMobDash(Entity mob,long expected){}
   class Controller {
@@ -89,6 +90,11 @@ public class WaveLeashProbe {
     if(p.requests!=1)throw new AssertionError("edge return did not request a walking path");
     p.enforceCombatLeash(edge,anchor,19,"WAVE_AI_LEASH");
     if(p.requests!=1)throw new AssertionError("watchdog recomputed the return path every tick");
+    p.fogHeld=true;
+    var held=p.new Mob();held.position=new Location(19.5,68,0);
+    p.enforceCombatLeash(held,anchor,19,"WAVE_AI_LEASH");
+    if(p.requests!=1 || p.teleports!=0)throw new AssertionError("leash stole the independently held fog AI");
+    p.fogHeld=false;
     p.closed=true;p.safeFloor=false;
     var jumping=p.new Mob();jumping.ground=false;jumping.position=new Location(5,69.1,0);
     p.enforceCombatLeash(jumping,anchor,19,"WAVE_AI_LEASH");

@@ -363,6 +363,7 @@ public final class ClientBridgeProtocol {
         long now = System.currentTimeMillis();
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
+        WaveMusicMix.tick(client, now);
         END_EVENT_PLAYER_VISUALS.tick(now);
         EchoVanillaRenderer.tick(client, now);
         tickHelloRetry(client);

@@ -497,6 +497,14 @@ def test_real_wave_and_miniboss_target_adapters_exclude_the_captive(tmp_path):
                     long callbackGeneration) {
         WaveCombatCoordinator.Lease lease = null;
     ''' + impact_guard + 'executions++;\n}\n'
+    telegraph = method('private void telegraphMiniBossSpell(')
+    windup_guard = telegraph[telegraph.index('            if (taskRegistry'):telegraph.index('            ticks[0] +=')]
+    declarations += '''
+    void windupGate(LivingEntity miniBoss, Player target, EndRiftAiPolicy.MiniBossSpell spell) {
+        long callbackGeneration=generation; UUID miniBossId=miniBoss.getUniqueId();
+        boolean coordinated=false; WaveCombatCoordinator.Lease lease=null;
+        Holder[] holder={new Holder()};
+    ''' + windup_guard + 'executions++;\n}\n'
     fixture = tmp_path / 'FreeTargetProbe.java'
     fixture.write_text(r'''
 import java.util.*;
@@ -509,7 +517,8 @@ public class FreeTargetProbe {
     WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
     static class Registry { boolean owns(long generation){return generation==1;} }
     static class Location { }
-    boolean wave6PrisonBroken, localTextureShowcase;
+    boolean wave6PrisonBroken, localTextureShowcase, fogHeld;
+    static class Holder { void cancel(){} }
     Map<UUID,Entity> ownedEntities=new HashMap<>();
     Map<UUID,EndRiftAiPolicy.MiniBossSpell> miniBossSpells=new HashMap<>();
     Map<UUID,Long> nextMiniBossSpellMillis=new HashMap<>();
@@ -552,6 +561,7 @@ public class FreeTargetProbe {
     boolean isMiniBossCombatEntity(LivingEntity e){return true;}
     boolean usesWaveCombatCoordination(Entity e){return false;}
     boolean isFogFrozenCombatEntity(Entity e){return false;}
+    boolean isWaveFogAiHeld(Entity e){return fogHeld;}
     void cancelWaveCombatAttack(UUID owner,WaveCombatCoordinator.Lease lease,long generation){}
     void playWaveAbilitySound(LivingEntity caster,String spell,String stage){}
     List<Player> activeWaveParticipants(){return Bukkit.players;}
@@ -567,6 +577,17 @@ public class FreeTargetProbe {
         var f=new FreeTargetProbe(); var captive=new Player(1,false); var free=new Player(2,true);
         Bukkit.players=List.of(captive,free); var mob=new Mob(); mob.target=captive;
         f.ownedEntities.put(mob.id,mob); f.miniBossSpells.put(mob.id,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE);
+        f.activeWave=5; mob.wave=5; f.fogHeld=true;
+        f.tickMiniBosses();
+        check(f.selected==null,"an independently held elite must not select a spell target after fog");
+        f.windupGate(mob,free,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE);
+        f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1,null);
+        f.impactGate(mob,free,EndRiftAiPolicy.MiniBossSpell.ECHO_PULSE,1);
+        f.executeMiniBossSpell(mob,free,new Location(),EndRiftAiPolicy.MiniBossSpell.RIFT_STEP,1,null);
+        check(f.executions==0,"pending windup, release, impact and dash must respect the resumed AI hold");
+        f.fogHeld=false; f.nextMiniBossSpellMillis.clear(); f.tickMiniBosses();
+        check(f.selected==captive||f.selected==free,"releasing the independent hold must resume elite spell selection");
+        f.selected=null; f.activeWave=6; mob.wave=6; f.nextMiniBossSpellMillis.clear();
         if(args[0].equals("ordinary")) {
             check(!f.isWaveTargetAllowed(mob,captive),"ordinary W6 pressure must not target the captive");
             check(f.isWaveTargetAllowed(mob,free),"ordinary W6 pressure must retain free targets");

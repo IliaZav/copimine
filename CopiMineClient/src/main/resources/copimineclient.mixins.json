@@ -16,6 +16,7 @@
     "EchoPlayerRendererMixin",
     "EchoCarrierUnloadMixin",
     "EndEventBlackFogMixin",
+    "WaveMusicMixMixin",
     "EntityBoundingBoxMixin",
     "LivingEntityHealthProjectionMixin",
     "DisplayEntityRendererMixin",

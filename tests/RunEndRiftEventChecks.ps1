@@ -113,6 +113,8 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
+    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
+    if ($LASTEXITCODE -ne 0) { throw 'Waves 1-5 timing, objective and AI ownership regressions failed.' }
   } finally {
     Pop-Location
   }

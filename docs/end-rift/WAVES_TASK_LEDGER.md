@@ -2,11 +2,20 @@
 
 Repository: https://github.com/IliaZav/copimine/tree/codex/end-rift-event
 
-Current task pack: `END_RIFT_WAVES_CODEX_V3.zip`. Implementation starts with
-`01_WAVE7_IMPLEMENTATION_EN.md`, including shared prerequisites. The current
+Current task pack: `END_RIFT_WAVES_CODEX_V3.zip`. The user's 2026-10-07 priority
+is Waves 1–5 plus an isolated migration to Minecraft 26.3; subsequent direct
+steering requires further native testing on 26.3 and preparation of the user's
+Copimine Fabric profile. The prior
+Wave 7 continuation is parked. The current
 user report additionally requires repairing unstable wave navigation, using
 the screenshot's End Crystal beam texture for caster-to-sphere links, and
 making the Wave 1 carrier readable. Boss and Kagune redesign remain excluded.
+
+The current checkpoint and exact implementation/automated/native boundaries
+are recorded in [WAVES_1_5_CHECKPOINT_20261007.md](WAVES_1_5_CHECKPOINT_20261007.md).
+Wave 4 must not draw the future projectile trajectory; it keeps local charge
+feedback at the obelisk. The 26.3 candidate does not yet constitute a complete
+client or third-party runtime migration.
 
 Evidence classifications: IMPLEMENTED means source exists; AUTOMATED_PASS
 means a named executed check passed; NATIVE_VERIFIED requires observed native

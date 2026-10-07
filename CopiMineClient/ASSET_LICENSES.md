@@ -8,6 +8,13 @@ Client overlay textures in `src/main/resources/assets/copimineclient/textures/vi
 
 Utility textures such as `noise.png`, `vignette.png`, and `scanlines.png` are local CopiMine helper assets for fallback rendering.
 
+End Rift entity assets under `src/main/resources/assets/copimineclient/models/entity/end_rift_guardian`
+and `src/main/resources/assets/copimineclient/textures/entity/end_rift_user_*.png` are imported from
+the project owner's supplied `end event.rar`/`models.rar` package.  The Bedrock geometry is adapted
+at client startup into the Fabric `ModelPart` tree; the original animation clips are kept as JSON
+resources and sampled by `UserEndBossAnimationPlayer`.  The original source files remain outside
+the repository; the imported resource hashes are recorded in the release verification report.
+
 Bundled ZIP shaderpacks in `src/main/resources/assets/copimineclient/shaderpacks` are local project assets supplied by the project owner for CopiMineClient runtime testing and bundled distribution:
 - `acid_shaders.zip`
 - `crucify.zip`

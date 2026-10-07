@@ -1,0 +1,100 @@
+{
+  "status": "CAPTURED_AND_VISUALLY_REVIEWED",
+  "capturedAt": "2026-09-30T00:36:04.2632253Z",
+  "branch": "codex/end-rift-event",
+  "gitHead": "92cd68dd5be5877ff7d740c72a8f8b71a252404d",
+  "server": {
+    "address": "127.0.0.1:25566",
+    "environment": "local",
+    "serverJarSha256": "23c12bc19949f7f5eef057dfa731e95973346d6b3d252dbfbaa4f67b6097bca1"
+  },
+  "client": {
+    "gameDirectory": "D:\\.minecraft\\versions\\ServerRP_copy_1",
+    "clientJarSha256": "66b3af1949b753f22843485a5e2a35d6b3460831fdcd7d885eaa27ee75ad2256"
+  },
+  "player": "SudoKillDash9",
+  "target": {
+    "visualId": "END_RIFT_TENTACLE_V1",
+    "slot": 1,
+    "world": "CopiMine",
+    "root": {
+      "x": 8.5,
+      "y": 68.0,
+      "z": -29.5
+    },
+    "animationId": "READY"
+  },
+  "screenshots": [
+    {
+      "file": "tentacle-front.png",
+      "bytes": 884431,
+      "sha256": "60e9fe061b300e8420447d2f766321e86f11ba434adc14f008c1eedac85ebb40",
+      "view": "front",
+      "description": "Front, facing the event core",
+      "camera": {
+        "x": 8.5,
+        "y": 68.0,
+        "z": -35.5,
+        "yaw": 0,
+        "pitch": -14
+      },
+      "capturedAt": "2026-09-30T00:35:25.6926376Z"
+    },
+    {
+      "file": "tentacle-side.png",
+      "bytes": 1071477,
+      "sha256": "316359680f6759a6b85e40510b83da71e098a491665f627bd26f11e79e7a61fd",
+      "view": "side",
+      "description": "Side view",
+      "camera": {
+        "x": 14.5,
+        "y": 68.0,
+        "z": -29.5,
+        "yaw": 90,
+        "pitch": -14
+      },
+      "capturedAt": "2026-09-30T00:35:28.552749Z"
+    },
+    {
+      "file": "tentacle-back.png",
+      "bytes": 1069280,
+      "sha256": "74f06926e27792f1432e39fae56572d6b45086fccfbc55000c30f830b1ef483b",
+      "view": "back",
+      "description": "Back view",
+      "camera": {
+        "x": 8.5,
+        "y": 68.0,
+        "z": -23.5,
+        "yaw": 180,
+        "pitch": -14
+      },
+      "capturedAt": "2026-09-30T00:35:31.3459386Z"
+    }
+  ],
+  "visualReview": {
+    "status": "PASS_STATIC_RIG_ORIENTATION",
+    "reviewedAt": "2026-09-30T00:38:31.8457603Z",
+    "method": "Inspected all three original 1920x1080 Minecraft F2 captures. Verified each SHA-256 against its capture record and confirmed the camera was restored after the capture.",
+    "checks": [
+      {
+        "file": "tentacle-front.png",
+        "view": "front",
+        "result": "PASS",
+        "observation": "Front view from the core side shows the READY tentacle from its base through the curved upper segments."
+      },
+      {
+        "file": "tentacle-side.png",
+        "view": "side",
+        "result": "PASS",
+        "observation": "Side profile shows the tentacle silhouette and its full bend."
+      },
+      {
+        "file": "tentacle-back.png",
+        "view": "back",
+        "result": "PASS_WITH_OVERLAY",
+        "observation": "Rear silhouette is visible; the arena contains red event beam/X effects crossing other parts of the frame."
+      }
+    ],
+    "scopeLimitations": "These three images verify static READY pose, framing, and facing from front, side, and back. The separate live probe contains grab, hold, throw, and recovery images plus hit-continuation evidence. No death animation is shown in these captures."
+  }
+}

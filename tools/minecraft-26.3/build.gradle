@@ -1,0 +1,89 @@
+import groovy.json.JsonSlurper
+
+plugins { id 'java' }
+
+def profile = new JsonSlurper().parse(file('profile.lock.json'))
+def checkout = file('../..').canonicalFile
+layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/plugins')
+
+if (JavaVersion.current().majorVersion.toInteger() < profile.minimumJava) {
+    throw new GradleException("Minecraft ${profile.minecraftVersion} requires Java ${profile.minimumJava} or later")
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.papermc.io/repository/maven-public/' }
+    maven { url = 'https://repo.extendedclip.com/releases/' }
+}
+
+def modules = [
+    economyCore: ['copimine-economy-core', 'CopiMineEconomyCore'],
+    worldCore: ['copimine-world-core', 'CopiMineWorldCore'],
+    admin: ['copimine-admin-plugin', 'CopiMineUltimateAdminPlus'],
+    artifacts: ['copimine-artifacts', 'CopiMineArtifacts'],
+    electionCore: ['copimine-election-core', 'CopiMineElectionCore'],
+    narcotics: ['copimine-narcotics', 'CopiMineNarcotics'],
+    endEvent: ['copimine-end-event', 'CopiMineEndEvent'],
+    authEffects: ['minecraft/server/plugins/AuthEffects', 'AuthEffects']
+]
+
+modules.each { name, module ->
+    sourceSets.create(name) {
+        java.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/java' : '/src')))
+        resources.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/resources' : '')))
+        resources.include('plugin.yml', 'config.yml')
+    }
+    dependencies.add("${name}CompileOnly", "io.papermc.paper:paper-api:${profile.paper.api}")
+    tasks.named(sourceSets[name].processResourcesTaskName) {
+        filteringCharset = 'UTF-8'
+        filesMatching('plugin.yml') {
+            filter { line -> line.startsWith('api-version:') ? "api-version: '${profile.minecraftVersion}'" : line }
+        }
+    }
+    tasks.register("${name}Jar", Jar) {
+        dependsOn(sourceSets[name].classesTaskName)
+        from(sourceSets[name].output)
+        archiveFileName = "${module[1]}-${profile.minecraftVersion}.jar"
+        destinationDirectory = layout.buildDirectory.dir('jars')
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+        manifest.attributes('CopiMine-Minecraft-Target': profile.minecraftVersion,
+                'CopiMine-Paper-API': profile.paper.api)
+    }
+}
+
+dependencies {
+    adminCompileOnly sourceSets.economyCore.output
+    adminCompileOnly 'me.clip:placeholderapi:2.12.3'
+    // Compile against the public voice API only. This does not approve the
+    // installed 1.21.1 runtime plugin for 26.3.
+    adminCompileOnly files(new File(checkout, 'thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar'))
+    artifactsCompileOnly sourceSets.economyCore.output
+    electionCoreCompileOnly sourceSets.economyCore.output
+    endEventCompileOnly sourceSets.worldCore.output
+    endEventCompileOnly sourceSets.artifacts.output
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = profile.minimumJava
+}
+
+tasks.register('migrationPlugins') {
+    group = 'build'
+    description = 'Compile all eight first-party plugins against the pinned 26.3 API in isolated output directories.'
+    dependsOn(modules.keySet().collect { "${it}Jar" })
+}
+
+tasks.register('verifyPaperApi') {
+    doLast {
+        def artifact = configurations.endEventCompileClasspath.resolvedConfiguration.resolvedArtifacts.find {
+            it.moduleVersion.id.group == 'io.papermc.paper' && it.name == 'paper-api'
+        }
+        if (artifact == null) throw new GradleException('Pinned Paper API was not resolved')
+        def actual = java.security.MessageDigest.getInstance('SHA-256').digest(artifact.file.bytes).encodeHex().toString()
+        if (actual != profile.paper.apiSha256) throw new GradleException('Paper API SHA-256 mismatch')
+        logger.lifecycle("Verified Paper API ${profile.paper.api}: ${actual}")
+    }
+}
+tasks.named('migrationPlugins') { dependsOn('verifyPaperApi') }

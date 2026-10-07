@@ -73,8 +73,15 @@ class ArtifactRuntimeRegressionContractTest(unittest.TestCase):
         self.assertIn("finishAngelWingsFlight", source)
         self.assertIn("onQuit", source)
         self.assertIn("keyAngelWingsCooldownUntil", source)
-        for retired in ("AngelSeal", "ANGEL_SEAL", "PlayerDeathEvent event"):
+        for retired in ("AngelSeal", "ANGEL_SEAL"):
             self.assertNotIn(retired, source)
+        # Check the actual death cleanup instead of banning an unrelated
+        # optional-provider argument name throughout the entire class.
+        death_start = source.index("public void onPlayerDeath(PlayerDeathEvent")
+        death = source[death_start : source.index("@EventHandler", death_start)]
+        self.assertIn("cancelAngelWingsFlight(player)", death)
+        self.assertNotIn("keyAngelWingsCooldownUntil", death)
+        self.assertNotIn("setAllowFlight(true)", death)
 
     def test_adminplus_does_not_queue_artifacts_again_on_the_same_death(self) -> None:
         admin = (ROOT / "copimine-admin-plugin" / "src" / "me" / "copimine" / "ultimateplus" / "CopiMineUltimateAdminPlus.java").read_text(encoding="utf-8")

@@ -1,0 +1,634 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "textures": {
+    "particle": "copimine:item/end_event_rift_structure_stone",
+    "frame": "copimine:item/end_event_rift_structure_stone",
+    "energy": "copimine:item/end_event_rift_structure_energy",
+    "rift": "copimine:item/end_event_rift_obelisk_critical_hd"
+  },
+  "elements": [
+    {
+      "name": "foundation",
+      "from": [
+        0,
+        0,
+        0
+      ],
+      "to": [
+        16,
+        1.0,
+        16
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            13.0
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            13.0
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            13.0,
+            1.25
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "lower_step",
+      "from": [
+        1,
+        1.0,
+        1
+      ],
+      "to": [
+        15,
+        2.0,
+        15
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            11.375
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            11.375
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            11.375,
+            1.25
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "inset_plinth",
+      "from": [
+        2,
+        2.0,
+        2
+      ],
+      "to": [
+        14,
+        3.0,
+        14
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            9.75
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            9.75
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            1.25
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            9.75,
+            1.25
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "lower_core",
+      "from": [
+        4,
+        3,
+        4
+      ],
+      "to": [
+        12,
+        5.5,
+        12
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            6.5
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            6.5
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            3.125
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            3.125
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            3.125
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            3.125
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "crown_socket",
+      "from": [
+        5,
+        15,
+        5
+      ],
+      "to": [
+        11,
+        16,
+        11
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            4.875
+          ],
+          "texture": "#energy"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            4.875
+          ],
+          "texture": "#energy"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.25
+          ],
+          "texture": "#energy"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.25
+          ],
+          "texture": "#energy"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.25
+          ],
+          "texture": "#energy"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.25
+          ],
+          "texture": "#energy"
+        }
+      }
+    },
+    {
+      "name": "northwest_buttress",
+      "from": [
+        2,
+        3,
+        2
+      ],
+      "to": [
+        4,
+        12.4,
+        4
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            1.625
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            1.625
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            11.75
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            11.75
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            11.75
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            1.625,
+            11.75
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "exposed_core_fragment",
+      "from": [
+        4,
+        5.5,
+        4
+      ],
+      "to": [
+        7.3,
+        10,
+        12
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            2.6812,
+            6.5
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            2.6812,
+            6.5
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            2.6812,
+            5.625
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            2.6812,
+            5.625
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            5.625
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            6.5,
+            5.625
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "critical_crown_fragment",
+      "from": [
+        5,
+        12.4,
+        5
+      ],
+      "to": [
+        8.1,
+        13.7,
+        11
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            2.5187,
+            4.875
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            2.5187,
+            4.875
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            2.5187,
+            1.625
+          ],
+          "texture": "#frame"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            2.5187,
+            1.625
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.625
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            4.875,
+            1.625
+          ],
+          "texture": "#frame"
+        }
+      }
+    },
+    {
+      "name": "health_seal_north",
+      "from": [
+        4.2,
+        5.7,
+        3.9
+      ],
+      "to": [
+        7.0,
+        7.52,
+        3.96
+      ],
+      "faces": {
+        "down": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#frame"
+        },
+        "up": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#frame"
+        },
+        "north": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#rift"
+        },
+        "south": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#frame"
+        },
+        "west": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#frame"
+        },
+        "east": {
+          "uv": [
+            0,
+            0,
+            16,
+            16
+          ],
+          "texture": "#frame"
+        }
+      }
+    }
+  ]
+}

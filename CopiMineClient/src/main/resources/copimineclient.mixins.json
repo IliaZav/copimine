@@ -4,7 +4,27 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "GameRendererAccessor",
-    "ArmorFeatureRendererMixin"
+    "ArmorFeatureRendererMixin",
+    "KeyboardInputPrisonerMixin",
+    "KeyboardPrisonerModeMixin",
+    "PrisonerTargetOutlineMixin",
+    "PrisonerTargetOutlineColorMixin",
+    "ClientPlayerInteractionManagerPrisonerMixin",
+    "EndermanEntityRendererMixin",
+    "EndermanEyesFeatureRendererMixin",
+    "LivingEntityRendererMixin",
+    "EchoPlayerRendererMixin",
+    "EchoCarrierUnloadMixin",
+    "EndEventBlackFogMixin",
+    "WaveMusicMixMixin",
+    "EntityBoundingBoxMixin",
+    "LivingEntityHealthProjectionMixin",
+    "DisplayEntityRendererMixin",
+    "ClientWorldAccessor",
+    "ModelPartAccessor",
+    "ModelPartCuboidAccessor",
+    "SpiderEntityRendererMixin",
+    "SkeletonEntityRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

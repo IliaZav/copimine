@@ -23,6 +23,14 @@ public final class ClientBridgeProtocol {
     public static final String TYPE_VISUAL_STOP = "visual_stop";
     public static final String TYPE_VISUAL_CLEAR_ALL = "visual_clear_all";
     public static final String TYPE_PING = "ping";
+    public static final String TYPE_END_EVENT_PREFIX = "END_EVENT:";
+    public static final String TYPE_END_BOSS_PHASE = "END_BOSS_PHASE";
+    public static final String TYPE_END_BOSS_BAR = "END_BOSS_BAR";
+    public static final String TYPE_PRISONER_ABILITY_REQUEST = "END_PRISONER_ABILITY_REQUEST";
+    public static final String TYPE_PRISONER_STATE = "END_PRISONER_STATE";
+    public static final String TYPE_PRISONER_CLEAR = "END_PRISONER_CLEAR";
+    public static final String TYPE_END_WORLD_BEAM = "END_WORLD_BEAM";
+    public static final String TYPE_END_WORLD_VFX_CLEAR = "END_WORLD_VFX_CLEAR";
     public static final Set<String> SUPPORTED_EFFECTS = Set.of(
             "DESATURATE",
             "COLOR_CONVOLVE",
@@ -56,6 +64,11 @@ public final class ClientBridgeProtocol {
     private static boolean lastReportedIrisShaderPackActive;
     private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
+    private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
+    private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
+    private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
+    private static final EndEventPlayerVisualManager END_EVENT_PLAYER_VISUALS = new EndEventPlayerVisualManager();
+    private static final PrisonerHudController PRISONER_HUD = new PrisonerHudController();
 
     private ClientBridgeProtocol() {
     }
@@ -68,6 +81,10 @@ public final class ClientBridgeProtocol {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
                 CopiMineClientLogger.warn("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
+                return;
+            }
+            if (payload.type().startsWith(TYPE_END_EVENT_PREFIX)) {
+                context.client().execute(() -> applyEndEventPayload(payload));
                 return;
             }
             CopiMineClientLogger.info("Received bridge payload: type=" + payload.type() + ", seq=" + payload.seq() + ", effect=" + payload.effectId() + ", shaderpack=" + payload.shaderpack());
@@ -109,6 +126,7 @@ public final class ClientBridgeProtocol {
                 });
                 case TYPE_VISUAL_CLEAR_ALL -> context.client().execute(() -> {
                     manager.clearAll("server_clear");
+                    END_EVENT_PLAYER_VISUALS.clear();
                     CopiMineClientLogger.info("Visual clear-all received");
                     sendVisualAck(payload.seq(), "", "CLEARED");
                 });
@@ -116,6 +134,119 @@ public final class ClientBridgeProtocol {
                 }
             }
         });
+    }
+
+    private static void applyEndEventPayload(BridgePayload payload) {
+        try {
+            String eventType = payload.type().substring(TYPE_END_EVENT_PREFIX.length());
+            long nowMillis = System.currentTimeMillis();
+            if (eventType.equals("END_ECHO_BIND") || eventType.equals("END_ECHO_STATE")
+                    || eventType.equals("END_ECHO_REMOVE")) {
+                EchoVanillaRenderer.apply(payload, nowMillis);
+                return;
+            }
+            if ("END_PRESENTATION_RESUME".equals(eventType)) {
+                MinecraftClient client = MinecraftClient.getInstance();
+                if (!"PRESENTATION_RESUME_V1".equals(payload.shaderpack()) || client.player == null
+                        || client.player.isDead() || client.world == null
+                        || !client.world.getRegistryKey().getValue().getPath().equals(payload.mode())) return;
+                END_EVENT_WORLD_VFX.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                END_EVENT_BLACK_FOG.resumeAfterLocalExit(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                END_EVENT_PLAYER_VISUALS.resumeAfterLocalExit(payload.sessionId(), payload.seq(),
+                        payload.timestampMillis(), payload.mode());
+                return;
+            }
+            if (TYPE_END_WORLD_BEAM.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyBeam(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if (TYPE_END_WORLD_VFX_CLEAR.equals(eventType)) {
+                boolean applied = END_EVENT_WORLD_VFX.applyClear(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if ("END_FOG_STATE".equals(eventType)) {
+                boolean applied = END_EVENT_BLACK_FOG.apply(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if ("END_PLAYER_STATE".equals(eventType)) {
+                boolean applied = END_EVENT_PLAYER_VISUALS.apply(payload, nowMillis);
+                logWorldVfxResult(eventType, payload, applied);
+                return;
+            }
+            if (TYPE_PRISONER_STATE.equals(eventType)) {
+                int deaths = Integer.parseInt(payload.mode());
+                long[] cooldowns = parsePrisonerCooldowns(payload.clearPolicy());
+                UUID prisoner = UUID.fromString(payload.clientVersion());
+                boolean applied = "PRISONER_V1".equals(payload.shaderpack())
+                        && PRISONER_HUD.applyState(payload.sessionId(), payload.seq(), prisoner,
+                        deaths, cooldowns, PrisonerTargetEligibility.parse(payload.status()), nowMillis,
+                        payload.timestampMillis());
+                if (applied) {
+                    CopiMineClientLogger.info("End Rift prisoner HUD state applied: event="
+                            + payload.sessionId() + ", generation=" + payload.seq());
+                }
+                return;
+            }
+            if (TYPE_PRISONER_CLEAR.equals(eventType)) {
+                boolean applied = PRISONER_HUD.clear(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                if (applied) {
+                    CopiMineClientLogger.info("End Rift prisoner input restored: event="
+                            + payload.sessionId() + ", generation=" + payload.seq());
+                }
+                return;
+            }
+            if ("END_PRISONER_RESUME".equals(eventType)) {
+                MinecraftClient client = MinecraftClient.getInstance();
+                if ("PRISONER_SESSION_V1".equals(payload.shaderpack()) && client.player != null
+                        && !client.player.isDead() && client.world != null
+                        && client.world.getRegistryKey().getValue().getPath().equals(payload.mode())
+                        && client.player.getUuidAsString().equals(payload.clientVersion())) {
+                    PRISONER_HUD.resumeSession(payload.sessionId(), payload.seq(), payload.timestampMillis());
+                }
+                return;
+            }
+            EndEventPacket packet = EndEventPacket.fromBridgePayload(
+                    eventType, payload);
+            boolean applied = TYPE_END_BOSS_BAR.equals(eventType)
+                    ? END_EVENT_STATE.applyBossBar(packet, payload.intensity(),
+                    payload.fadeInMillis(), payload.fadeOutMillis(), nowMillis)
+                    : END_EVENT_STATE.apply(packet, nowMillis);
+            if (applied) {
+                CopiMineClientLogger.info("End Rift client state applied: type=" + eventType + ", event=" + packet.eventId() + ", generation=" + packet.generation());
+            } else {
+                CopiMineClientLogger.warn("End Rift client state ignored packet: type=" + eventType + ", event=" + packet.eventId());
+            }
+        } catch (RuntimeException error) {
+            CopiMineClientLogger.warn("End Rift client packet rejected", error);
+        }
+    }
+
+    private static void logWorldVfxResult(String eventType, BridgePayload payload, boolean applied) {
+        if (applied) {
+            CopiMineClientLogger.info("End Rift world VFX applied: type=" + eventType
+                    + ", event=" + payload.sessionId() + ", generation=" + payload.seq());
+        } else {
+            CopiMineClientLogger.warn("End Rift world VFX ignored packet: type=" + eventType
+                    + ", event=" + payload.sessionId());
+        }
+    }
+
+    private static long[] parsePrisonerCooldowns(String raw) {
+        if (raw == null || raw.length() > 64) {
+            throw new IllegalArgumentException("Prisoner cooldown field exceeds bound");
+        }
+        String[] parts = raw.split("\\|", -1);
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("Prisoner cooldown field must have four values");
+        }
+        long[] cooldowns = new long[4];
+        for (int index = 0; index < cooldowns.length; index++) {
+            cooldowns[index] = Long.parseLong(parts[index]);
+        }
+        return cooldowns;
     }
 
     public static boolean sendHello() {
@@ -193,6 +324,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onJoin() {
+        resetEndEventConnection();
         connected = true;
         sessionId = UUID.randomUUID().toString();
         helloAttempts = 0;
@@ -210,6 +342,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
+        resetEndEventConnection();
         connected = false;
         helloAttempts = 0;
         helloSent = false;
@@ -227,11 +360,16 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickNetwork(MinecraftClient client) {
+        long now = System.currentTimeMillis();
+        END_EVENT_WORLD_VFX.tick(now);
+        END_EVENT_BLACK_FOG.tick(now);
+        WaveMusicMix.tick(client, now);
+        END_EVENT_PLAYER_VISUALS.tick(now);
+        EchoVanillaRenderer.tick(client, now);
         tickHelloRetry(client);
         if (!connected || client.getNetworkHandler() == null || !helloAcknowledged) {
             return;
         }
-        long now = System.currentTimeMillis();
         irisShaderPackActive = detectIrisShaderPackInUse();
         if (irisShaderPackActive != lastReportedIrisShaderPackActive) {
             sendCapabilitiesUpdate();
@@ -280,8 +418,163 @@ public final class ClientBridgeProtocol {
         return irisShaderPackActive;
     }
 
+    public static EndEventClientState endEventState() {
+        return END_EVENT_STATE;
+    }
+
+    public static PrisonerHudController prisonerHud() {
+        return PRISONER_HUD;
+    }
+
+    public static boolean isPrisonerModeActive() {
+        MinecraftClient client = MinecraftClient.getInstance();
+        return client.player != null && PRISONER_HUD.activeFor(client.player.getUuid());
+    }
+
+    /** Send a single selected target only in response to a Q/W/E/R key press. */
+    public static void sendPrisonerAbility(PrisonerHudController.Ability ability) {
+        if (!connected || !helloSent || !helloAcknowledged
+                || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+            return;
+        }
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (client.player == null || ability == null
+                || !PRISONER_HUD.activeFor(client.player.getUuid())) {
+            return;
+        }
+        PrisonerTargetSelector.Preview preview = PrisonerTargetSelector.preview(client);
+        String targetUuid = preview.targetUuidFor(ability);
+        if (targetUuid.isBlank()) {
+            return;
+        }
+        ClientPlayNetworking.send(BridgePayload.prisonerAbilityRequest(
+                sessionId, PRISONER_HUD.generation(), PRISONER_HUD.eventId(),
+                ability.name(), targetUuid));
+    }
+
+    public static boolean isBoundEndBoss(String uuid) {
+        return END_EVENT_STATE.isBossBound(uuid);
+    }
+
+    public static String endEventVisualForEntity(String uuid) {
+        return END_EVENT_STATE.visualForEntity(uuid);
+    }
+
+    public static Set<String> endEventVisualEntityIds() {
+        return END_EVENT_STATE.eventVisualEntityIds();
+    }
+
+    public static String endEventAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.entityAnimationForEntity(uuid);
+    }
+
+    public static String endEventWavePoseForEntity(String uuid) {
+        return END_EVENT_STATE.wavePoseForEntity(uuid, System.currentTimeMillis());
+    }
+
+    public static String endEventTentacleHealthForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleHealthStateForEntity(uuid);
+    }
+
+    public static String endEventTentacleTargetForEntity(String uuid) {
+        return END_EVENT_STATE.tentacleTargetForEntity(uuid);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseForEntity(
+            String uuid, long elapsedTicks) {
+        return END_EVENT_STATE.tentaclePoseForEntity(uuid, elapsedTicks);
+    }
+
+    public static EndRiftTentaclePose.TentaclePose endEventTentaclePoseAt(
+            String uuid, long nowMillis) {
+        return END_EVENT_STATE.tentaclePoseForEntityAt(uuid, nowMillis);
+    }
+
+    public static String bossPhaseForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseForEntity(uuid);
+    }
+
+    public static long bossPhaseTransitionMillisForEntity(String uuid) {
+        return END_EVENT_STATE.bossPhaseTransitionMillisForEntity(uuid);
+    }
+
+    public static String bossAnimationForEntity(String uuid) {
+        return END_EVENT_STATE.bossAnimationForEntity(uuid);
+    }
+
+    public static float bossAnimationElapsedTicksForEntity(String uuid, long nowMillis) {
+        long elapsedMillis = END_EVENT_STATE.bossAnimationElapsedMillisForEntity(uuid, nowMillis);
+        return elapsedMillis / 50.0F;
+    }
+
+    public static String bossCastStateForEntity(String uuid) {
+        return END_EVENT_STATE.bossCastStateForEntity(uuid);
+    }
+
+    public static EndEventClientState.BossBarState endBossBar() {
+        return END_EVENT_STATE.bossBar();
+    }
+
+    /**
+     * Return the server-authoritative maximum only for the currently bound
+     * End Rift boss.  Every ordinary entity keeps Minecraft's native value.
+     */
+    public static double projectedBossMaxHealth(String entityUuid, double nativeMaxHealth) {
+        return EndRiftBossHealthProjection.resolveMaxHealth(
+                entityUuid, nativeMaxHealth, END_EVENT_STATE.bossUuid(), END_EVENT_STATE.bossBar());
+    }
+
+    public static boolean isBossHealthProjected(String entityUuid) {
+        return EndRiftBossHealthProjection.isProjected(
+                entityUuid, END_EVENT_STATE.bossUuid(), END_EVENT_STATE.bossBar());
+    }
+
+    public static void clearEndEventState() {
+        END_EVENT_STATE.clear();
+        END_EVENT_WORLD_VFX.clear();
+        END_EVENT_BLACK_FOG.clear();
+        END_EVENT_PLAYER_VISUALS.clear();
+        EchoVanillaRenderer.clear();
+        PRISONER_HUD.clear();
+    }
+
+    private static void resetEndEventConnection() {
+        END_EVENT_STATE.clear();
+        END_EVENT_WORLD_VFX.reset();
+        END_EVENT_BLACK_FOG.reset();
+        END_EVENT_PLAYER_VISUALS.reset();
+        EchoVanillaRenderer.reset();
+        PRISONER_HUD.reset();
+    }
+
+    public static float endEventBlackFogEndBlocks(String dimension, long nowMillis) {
+        return END_EVENT_BLACK_FOG.fogEndBlocks(dimension, nowMillis);
+    }
+
+    public static EndEventBlackFogManager endEventBlackFog() {
+        return END_EVENT_BLACK_FOG;
+    }
+
+    public static EndEventPlayerVisualManager endEventPlayerVisuals() {
+        return END_EVENT_PLAYER_VISUALS;
+    }
+
+    public static void renderEndEventWorldVfx(net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        END_EVENT_WORLD_VFX.render(context);
+    }
+
+    public static void renderEndEventTentacles(
+            net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext context) {
+        EndRiftTentacleRenderer.render(context);
+    }
+
+    public static EndEventWorldVfxManager endEventWorldVfx() {
+        return END_EVENT_WORLD_VFX;
+    }
+
     private static Set<String> supportedEffects() {
         Set<String> supported = new LinkedHashSet<>();
+        supported.add("ECHO_PRESENTATION_V1");
         for (String effectId : SUPPORTED_EFFECTS) {
             supported.add(effectId.toUpperCase(Locale.ROOT));
         }

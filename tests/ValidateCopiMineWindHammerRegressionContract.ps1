@@ -20,7 +20,6 @@ foreach ($marker in @(
   ('name: "' + $windHammerName + '"'),
   'effect: WIND_HAMMER',
   'cooldown_seconds: 300',
-  $windHammerLore,
   'getNearbyEntities(center, 10.0D, 10.0D, 10.0D)',
   'setVelocity(player.getVelocity().setY(1.9D)',
   'setFreezeTicks(Math.max(living.getFreezeTicks(), 100))',

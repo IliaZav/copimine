@@ -1,0 +1,618 @@
+package me.copimine.client;
+
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.RenderLayer;
+import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.Vec3d;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Main-thread-owned world VFX for the End Rift event.
+ *
+ * The server sends endpoints and a short lifetime.  This manager only draws
+ * the received geometry; it never decides damage, targets, phases or hits.
+ * Entries are intentionally few, short-lived and generation-scoped so a
+ * stale packet cannot leave a beam behind after a reset or world change.
+ */
+public final class EndEventWorldVfxManager {
+    static final int MAX_ACTIVE_BEAMS = 64;
+    private static final int MAX_KEY_LENGTH = 96;
+    // Server instance = UUID + ':' + positive long generation + ':world:'
+    // + a sanitized key of at most 64 characters (at most 127 in total).
+    private static final int MAX_INSTANCE_LENGTH = 128;
+    private static final int MAX_RETIRED_EVENTS = 64;
+    private static final int MAX_INSTANCE_VERSIONS = 256;
+    private static final int MAX_DIMENSION_LENGTH = 48;
+    private static final long MAX_BEAM_LIFETIME_MILLIS = 2_000L;
+    private static final float MIN_WIDTH = 0.02F;
+    private static final float MAX_WIDTH = 0.45F;
+    private static final double MAX_COORDINATE = 30_000_000.0D;
+
+    private final Map<String, Beam> beams = new LinkedHashMap<>();
+    private record InstanceVersion(long timestampMillis, boolean cleared) { }
+    private final Map<String, InstanceVersion> instanceVersions = new LinkedHashMap<>();
+    private String eventId = "";
+    private long generation;
+    private long clearedGeneration;
+    private long lastEnvelopeTimestamp;
+    private long resumedAtTimestamp;
+    private boolean locallyCleared;
+    private final LinkedHashSet<String> retiredEvents = new LinkedHashSet<>();
+
+    /**
+     * Apply one server-authored beam packet.  The wire format is:
+     *
+     * <pre>
+     * mode        = dimension|beam-key|x,y,z
+     * clearPolicy = x,y,z|RRGGBB
+     * intensity   = line width in blocks
+     * </pre>
+     */
+    public synchronized boolean applyBeam(BridgePayload payload, long nowMillis) {
+        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
+                || !Objects.equals(payload.type(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_BEAM")) {
+            return false;
+        }
+        String[] startParts = split(payload.mode(), 3);
+        String[] endParts = split(payload.clearPolicy(), 2);
+        if (startParts == null || endParts == null
+                || !validDimension(startParts[0])
+                || !validKey(startParts[1])) {
+            return false;
+        }
+        Vec3d start = parsePoint(startParts[2]);
+        Vec3d end = parsePoint(endParts[0]);
+        int color = parseColor(endParts[1]);
+        if (start == null || end == null || color < 0) {
+            return false;
+        }
+        float width = payload.intensity();
+        if (!Float.isFinite(width)) {
+            return false;
+        }
+        width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, width));
+        long lifetime = Math.max(1L, Math.min(MAX_BEAM_LIFETIME_MILLIS,
+                payload.durationMillis()));
+        if (payload.clientVersion().isBlank() || payload.clientVersion().length() > MAX_INSTANCE_LENGTH) {
+            return false;
+        }
+        if (!acceptEnvelope(payload.sessionId(), payload.seq())) return false;
+        if (payload.timestampMillis() < resumedAtTimestamp) return false;
+        InstanceVersion version = instanceVersions.get(payload.clientVersion());
+        if (version != null && payload.timestampMillis() <= version.timestampMillis()) return false;
+        if (!reserveInstanceVersion(payload.clientVersion())) return false;
+        if (beams.size() >= MAX_ACTIVE_BEAMS && !beams.containsKey(payload.clientVersion())) {
+            return false;
+        }
+        Beam previous = beams.get(payload.clientVersion());
+        long started = previous == null || previous.expiresAtMillis() <= nowMillis
+                ? nowMillis : previous.startedAtMillis();
+        boolean interpolate = (startParts[1].equals("wave1-carrier-objective")
+                || startParts[1].startsWith("wave6-ritual-"))
+                && previous != null && previous.expiresAtMillis() > nowMillis
+                && previous.dimension().equals(startParts[0])
+                && previous.start().squaredDistanceTo(start) <= 16
+                && previous.end().squaredDistanceTo(end) <= 16;
+        beams.put(payload.clientVersion(), new Beam(
+                payload.clientVersion(), startParts[0], start, end, color, width,
+                started, nowMillis + lifetime, interpolate ? previous.sampleStart(nowMillis) : start,
+                interpolate ? previous.sampleEnd(nowMillis) : end, nowMillis));
+        instanceVersions.put(payload.clientVersion(), new InstanceVersion(payload.timestampMillis(), false));
+        lastEnvelopeTimestamp = Math.max(lastEnvelopeTimestamp, payload.timestampMillis());
+        return true;
+    }
+
+    /** Remove one server-owned beam instance after event/phase cleanup. */
+    public synchronized boolean applyClear(BridgePayload payload, long nowMillis) {
+        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
+                || !Objects.equals(payload.type(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_VFX_CLEAR")) {
+            return false;
+        }
+        String instance = payload.clientVersion();
+        if (instance.isBlank() || instance.length() > MAX_INSTANCE_LENGTH
+                || !Objects.equals(payload.sessionId(), eventId)
+                || payload.seq() != generation) {
+            return false;
+        }
+        InstanceVersion version = instanceVersions.get(instance);
+        if (version != null && (payload.timestampMillis() < version.timestampMillis()
+                || version.cleared() && payload.timestampMillis() == version.timestampMillis())) return false;
+        if (!reserveInstanceVersion(instance)) return false;
+        instanceVersions.put(instance, new InstanceVersion(payload.timestampMillis(), true));
+        lastEnvelopeTimestamp = Math.max(lastEnvelopeTimestamp, payload.timestampMillis());
+        return beams.remove(instance) != null;
+    }
+
+    private boolean reserveInstanceVersion(String instance) {
+        if (instanceVersions.containsKey(instance) || instanceVersions.size() < MAX_INSTANCE_VERSIONS) return true;
+        // Do not evict a clear fence and thereby re-admit queued packets. A new generation or transport resets it.
+        beams.clear();
+        clearedGeneration = Math.max(clearedGeneration, generation);
+        locallyCleared = false;
+        return false;
+    }
+
+    /** Expire short-lived entries; called on the client tick thread. */
+    public synchronized void tick(long nowMillis) {
+        if (nowMillis < 0L) {
+            return;
+        }
+        Iterator<Map.Entry<String, Beam>> iterator = beams.entrySet().iterator();
+        while (iterator.hasNext()) {
+            if (iterator.next().getValue().expiresAtMillis() <= nowMillis) {
+                iterator.remove();
+            }
+        }
+    }
+
+    /** Terminal local clear retains the fence against already queued packets. */
+    public synchronized void clear() {
+        beams.clear();
+        locallyCleared = locallyCleared || generation > clearedGeneration;
+        clearedGeneration = Math.max(clearedGeneration, generation);
+    }
+
+    public synchronized boolean resumeAfterLocalExit(String expectedEventId, long expectedGeneration, long timestamp) {
+        if (!locallyCleared || !Objects.equals(expectedEventId, eventId) || expectedGeneration != generation
+                || timestamp <= lastEnvelopeTimestamp) return false;
+        clearedGeneration = 0L;
+        locallyCleared = false;
+        resumedAtTimestamp = timestamp;
+        lastEnvelopeTimestamp = timestamp;
+        instanceVersions.clear();
+        return true;
+    }
+
+    /** A new network connection has no packets from the previous connection. */
+    public synchronized void reset() {
+        beams.clear();
+        instanceVersions.clear();
+        eventId = "";
+        generation = 0L;
+        clearedGeneration = 0L;
+        lastEnvelopeTimestamp = 0L;
+        resumedAtTimestamp = 0L;
+        locallyCleared = false;
+        retiredEvents.clear();
+    }
+
+    /** Clear all geometry for the current event without retaining stale ids. */
+    public synchronized void clearEvent(String expectedEventId, long expectedGeneration) {
+        if (expectedEventId == null || expectedEventId.isBlank()
+                || !Objects.equals(eventId, expectedEventId)
+                || expectedGeneration < generation) {
+            return;
+        }
+        beams.clear();
+        generation = expectedGeneration;
+        clearedGeneration = Math.max(clearedGeneration, expectedGeneration);
+        locallyCleared = false;
+    }
+
+    public synchronized int activeBeamCount() {
+        return beams.size();
+    }
+
+    public synchronized List<BeamSnapshot> snapshots() {
+        return snapshots(Long.MAX_VALUE);
+    }
+
+    public synchronized List<BeamSnapshot> snapshots(long nowMillis) {
+        List<BeamSnapshot> result = new ArrayList<>();
+        for (Beam beam : beams.values()) {
+            result.add(new BeamSnapshot(beam.instanceId(), beam.dimension(), beam.sampleStart(nowMillis),
+                    beam.sampleEnd(nowMillis), beam.color(), beam.width(), beam.startedAtMillis(), beam.expiresAtMillis()));
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    /** Render continuous world-space ribbons; no dense particle line is used. */
+    public synchronized void render(WorldRenderContext context) {
+        if (context == null || context.world() == null || beams.isEmpty()) {
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        tick(nowMillis);
+        if (beams.isEmpty() || context.consumers() == null || context.matrixStack() == null) {
+            return;
+        }
+        String dimension = dimensionId(context);
+        if (dimension.isBlank()) {
+            return;
+        }
+        Camera camera = context.camera();
+        if (camera == null || camera.getPos() == null) {
+            return;
+        }
+        MatrixStack matrices = context.matrixStack();
+        VertexConsumerProvider consumers = context.consumers();
+        Vec3d cameraPos = camera.getPos();
+        matrices.push();
+        matrices.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
+        MatrixStack.Entry entry = matrices.peek();
+        try {
+            RitualSpellPresentationPolicy.drawWorldPasses(snapshots(nowMillis), dimension, nowMillis, pass -> {
+                RenderLayer layer = switch (pass.kind()) {
+                    case RIBBON -> RenderLayer.getLines();
+                    case CHANNEL -> RenderLayer.getEntityTranslucentEmissive(
+                            Identifier.ofVanilla("textures/entity/end_crystal/end_crystal_beam.png"));
+                    case RITUAL -> RenderLayer.getLightning();
+                    case GLYPH -> RenderLayer.getEntityTranslucentEmissive(spellTexture(pass.spell()));
+                    case WAVE -> RenderLayer.getEntityTranslucentEmissive(Identifier.of("copimineclient", "textures/entity/wave_combat_glyphs.png"));
+                };
+                // The consumer is used only within this pass. A layer switch can end its buffer.
+                VertexConsumer buffer = consumers.getBuffer(layer);
+                return beam -> {
+                    switch (pass.kind()) {
+                        case RIBBON -> drawRibbon(buffer, entry, beam, nowMillis);
+                        case CHANNEL -> drawRitualBeam(buffer, entry, beam, nowMillis, true);
+                        case RITUAL -> drawRitualBeam(buffer, entry, beam, nowMillis);
+                        case GLYPH -> drawSpellGlyph(buffer, matrices, camera, beam, nowMillis);
+                        case WAVE -> drawWaveCombatGlyph(buffer, matrices, camera, beam, nowMillis);
+                    }
+                };
+            });
+        } finally {
+            matrices.pop();
+        }
+    }
+
+    /** Target-only screen packets share the world manager's lifetime, generation and cleanup fences. */
+    public void renderHud(DrawContext context) {
+        MinecraftClient client = MinecraftClient.getInstance();
+        if (context == null || client.player == null || client.world == null || client.player.isDead()
+                || client.currentScreen != null || client.options.hudHidden) return;
+        long now = System.currentTimeMillis();
+        var beam = RitualSpellPresentationPolicy.screenCue(snapshots(),
+                client.world.getRegistryKey().getValue().getPath(), now);
+        if (beam == null) return;
+        var cue = RitualSpellPresentationPolicy.parse(beam.instanceId());
+        var prisonerLayout = PrisonerHudLayout.compute(context.getScaledWindowWidth(), context.getScaledWindowHeight(),
+                Math.max(client.player.getMaxHealth(), client.player.getHealth()), client.player.getAbsorptionAmount());
+        List<PrisonerHudLayout.Rect> reserved = new ArrayList<>();
+        reserved.add(prisonerLayout.vanillaHud());
+        if (ClientBridgeProtocol.prisonerHud().activeFor(client.player.getUuid())) reserved.add(prisonerLayout.bounds());
+        var layout = RitualSpellPresentationPolicy.screenLayout(
+                context.getScaledWindowWidth(), context.getScaledWindowHeight(), reserved);
+        if (!layout.visible()) return;
+        int alpha = RitualSpellPresentationPolicy.screenAlpha(cue.stage(), beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        for (var edge : layout.edgeCues()) {
+            context.fill(edge.left(), edge.top(), edge.right(), edge.bottom(), (alpha << 24) | beam.color());
+        }
+        var panel = layout.panel();
+        int labelAlpha = Math.min(255, alpha * 7);
+        context.fill(panel.left(), panel.top(), panel.right(), panel.top() + 1,
+                (labelAlpha << 24) | beam.color());
+        context.setShaderColor(((beam.color() >> 16) & 255) / 255F,
+                ((beam.color() >> 8) & 255) / 255F, (beam.color() & 255) / 255F, labelAlpha / 255F);
+        try {
+            context.drawTexture(spellTexture(cue.spell()), panel.left() + 2, panel.top() + 3,
+                    20, 20, 0, 0, 256, 256, 256, 256);
+        } finally {
+            context.setShaderColor(1, 1, 1, 1);
+        }
+        String title = (cue.stage() == RitualSpellPresentationPolicy.Stage.WARNING ? "Готовится: " : "Активно: ")
+                + cue.spell().title();
+        title = client.textRenderer.trimToWidth(title, panel.right() - panel.left() - 30);
+        context.drawTextWithShadow(client.textRenderer, title, panel.left() + 27, panel.top() + 9,
+                (labelAlpha << 24) | 0xF1E8FF);
+    }
+
+    private static Identifier spellTexture(RitualSpellPresentationPolicy.Spell spell) {
+        return Identifier.of("copimineclient", spell.texture());
+    }
+
+    private static void drawWaveCombatGlyph(VertexConsumer buffer, MatrixStack matrices, Camera camera,
+                                             BeamSnapshot beam, long now) {
+        var cue = WaveCombatPresentationPolicy.parse(beam.instanceId());
+        if (cue == null || !WaveCombatPresentationPolicy.visible(cue, camera.getPos().squaredDistanceTo(beam.start()))) return;
+        int alpha = WaveCombatPresentationPolicy.alpha(cue, beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        Vec3d delta = beam.end().subtract(beam.start());
+        float width = (float) WaveCombatPresentationPolicy.laneHalfWidth(beam.width());
+        float length = (float) WaveCombatPresentationPolicy.laneLength(Math.sqrt(delta.x*delta.x+delta.z*delta.z));
+        boolean billboard = cue.shape() == WaveCombatPresentationPolicy.Shape.BILLBOARD;
+        if (cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR) {
+            width = cue.ability().equals("pulse") ? length > .01F ? Math.min(5,length) : 5 : 2.1F;
+            length = width*2;
+        }
+        matrices.push();
+        try {
+            Vec3d origin = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR && !cue.ability().equals("pulse")
+                    ? beam.end() : beam.start();
+            matrices.translate(origin.x, origin.y + (billboard ? .3 : .06), origin.z);
+            if (billboard) matrices.multiply(camera.getRotation());
+            else if (cue.shape() == WaveCombatPresentationPolicy.Shape.LANE)
+                matrices.multiply(net.minecraft.util.math.RotationAxis.POSITIVE_Y.rotation((float)Math.atan2(delta.x,delta.z)));
+            float near = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR ? -length/2 : 0;
+            float far = cue.shape() == WaveCombatPresentationPolicy.Shape.FLOOR ? length/2 : Math.max(.5F,length);
+            float[][] points = billboard ? new float[][]{{-.55F,-.55F,0},{.55F,-.55F,0},{.55F,.55F,0},{-.55F,.55F,0}}
+                    : new float[][]{{-width,0,near},{-width,0,far},{width,0,far},{width,0,near}};
+            float u0=cue.tile()/8F, u1=(cue.tile()+1)/8F;
+            float[][] uv={{u0,1},{u0,0},{u1,0},{u1,1}};
+            for(int i=0;i<4;i++) {
+                buffer.vertex(matrices.peek(),points[i][0],points[i][1],points[i][2])
+                        .color((alpha<<24)|beam.color()).texture(uv[i][0],uv[i][1])
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(matrices.peek(),0,billboard?0:1,billboard?1:0);
+            }
+        } finally { matrices.pop(); }
+        float impactWidth = WaveCombatPresentationPolicy.impactHalfWidth(cue);
+        if (impactWidth > 0 && cue.shape() == WaveCombatPresentationPolicy.Shape.LANE) {
+            matrices.push();
+            try {
+                matrices.translate(beam.end().x, beam.end().y + .07, beam.end().z);
+                float[][] corners={{-impactWidth,0,-impactWidth},{-impactWidth,0,impactWidth},
+                        {impactWidth,0,impactWidth},{impactWidth,0,-impactWidth}};
+                float[][] uv={{0,1},{0,0},{.125F,0},{.125F,1}};
+                for (int i=0;i<4;i++) buffer.vertex(matrices.peek(),corners[i][0],0,corners[i][2])
+                        .color((alpha<<24)|beam.color()).texture(uv[i][0],uv[i][1])
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0).normal(matrices.peek(),0,1,0);
+            } finally { matrices.pop(); }
+        }
+    }
+
+    private static void drawSpellGlyph(VertexConsumer buffer, MatrixStack matrices, Camera camera,
+                                       BeamSnapshot beam, long now) {
+        var cue = RitualSpellPresentationPolicy.parse(beam.instanceId());
+        if (!RitualSpellPresentationPolicy.glyphVisibleFrom(cue, camera.getPos().squaredDistanceTo(beam.start()))) return;
+        int alpha = RitualSpellPresentationPolicy.glyphAlpha(cue, beam.startedAtMillis(), beam.expiresAtMillis(), now);
+        if (alpha == 0) return;
+        boolean billboard = cue.spell().orientation() == RitualSpellPresentationPolicy.Orientation.BILLBOARD;
+        matrices.push();
+        try {
+            matrices.translate(beam.start().x, beam.start().y, beam.start().z);
+            if (billboard) matrices.multiply(camera.getRotation());
+            for (var point : RitualSpellPresentationPolicy.glyphQuad(cue)) {
+                buffer.vertex(matrices.peek(), point.x(), point.y(), point.z())
+                        .color((alpha << 24) | beam.color()).texture(point.u(), point.v())
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(matrices.peek(), 0, billboard ? 0 : 1, billboard ? 1 : 0);
+            }
+        } finally {
+            matrices.pop();
+        }
+    }
+
+    private boolean acceptEnvelope(String incomingEventId, long incomingGeneration) {
+        if (incomingEventId == null || incomingEventId.isBlank()
+                || incomingEventId.length() > 128 || incomingGeneration <= 0L
+                || retiredEvents.contains(incomingEventId)) {
+            return false;
+        }
+        if (!eventId.isBlank() && !Objects.equals(eventId, incomingEventId)) {
+            // Fail closed at the bounded session-history cap. Reset only when
+            // the transport changes; evicting old ids could admit old packets.
+            if (retiredEvents.size() >= MAX_RETIRED_EVENTS) return false;
+            retiredEvents.add(eventId);
+            clearedGeneration = 0L;
+            generation = 0L;
+        }
+        if (eventId.isBlank() || !Objects.equals(eventId, incomingEventId)
+                || incomingGeneration > generation) {
+            beams.clear();
+            instanceVersions.clear();
+            lastEnvelopeTimestamp = 0L;
+            resumedAtTimestamp = 0L;
+            locallyCleared = false;
+            eventId = incomingEventId;
+            generation = incomingGeneration;
+            return true;
+        }
+        return incomingGeneration >= generation && incomingGeneration > clearedGeneration;
+    }
+
+    private static String[] split(String raw, int expectedParts) {
+        if (raw == null || raw.length() > MAX_KEY_LENGTH + 160) {
+            return null;
+        }
+        String[] parts = raw.split("\\|", -1);
+        if (parts.length != expectedParts) {
+            return null;
+        }
+        for (String part : parts) {
+            if (part == null || part.isBlank()) {
+                return null;
+            }
+        }
+        return parts;
+    }
+
+    private static boolean validDimension(String dimension) {
+        return dimension != null && !dimension.isBlank()
+                && dimension.length() <= MAX_DIMENSION_LENGTH
+                && dimension.matches("[a-z0-9_:-]+");
+    }
+
+    private static boolean validKey(String key) {
+        return key != null && !key.isBlank() && key.length() <= MAX_KEY_LENGTH
+                && key.matches("[A-Za-z0-9_-]+");
+    }
+
+    private static Vec3d parsePoint(String raw) {
+        if (raw == null || raw.length() > 96) {
+            return null;
+        }
+        String[] values = raw.split(",", -1);
+        if (values.length != 3) {
+            return null;
+        }
+        try {
+            double x = Double.parseDouble(values[0]);
+            double y = Double.parseDouble(values[1]);
+            double z = Double.parseDouble(values[2]);
+            if (!finiteCoordinate(x) || !finiteCoordinate(y) || !finiteCoordinate(z)) {
+                return null;
+            }
+            return new Vec3d(x, y, z);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean finiteCoordinate(double value) {
+        return Double.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
+    }
+
+    private static int parseColor(String raw) {
+        if (raw == null || !raw.matches("[0-9A-Fa-f]{6}")) {
+            return -1;
+        }
+        try {
+            return Integer.parseInt(raw, 16);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    private static String dimensionId(WorldRenderContext context) {
+        String path = context.world().getRegistryKey().getValue().getPath();
+        return path == null ? "" : path.toLowerCase(Locale.ROOT);
+    }
+
+    private static void drawRibbon(VertexConsumer buffer, MatrixStack.Entry entry,
+                                   BeamSnapshot beam, long nowMillis) {
+        Vec3d delta = beam.end().subtract(beam.start());
+        double length = delta.length();
+        if (!Double.isFinite(length) || length < 0.01D) {
+            return;
+        }
+        Vec3d direction = delta.multiply(1.0D / length);
+        Vec3d reference = Math.abs(direction.y) < 0.92D
+                ? new Vec3d(0.0D, 1.0D, 0.0D)
+                : new Vec3d(1.0D, 0.0D, 0.0D);
+        Vec3d side = direction.crossProduct(reference).normalize().multiply(beam.width());
+        Vec3d other = direction.crossProduct(side.normalize()).normalize().multiply(beam.width() * 0.72D);
+        int red = (beam.color() >> 16) & 0xFF;
+        int green = (beam.color() >> 8) & 0xFF;
+        int blue = beam.color() & 0xFF;
+        long ageMillis = Math.max(0L, nowMillis - beam.startedAtMillis());
+        long remainingMillis = Math.max(0L, beam.expiresAtMillis() - nowMillis);
+        float fadeIn = Math.min(1.0F, ageMillis / 120.0F);
+        float fadeOut = Math.min(1.0F, remainingMillis / 180.0F);
+        float alphaScale = Math.max(0.08F, fadeIn * fadeOut);
+        drawFadedLine(buffer, entry, beam.start(), beam.end(), red, green, blue,
+                scaleAlpha(235, alphaScale));
+        drawFadedLine(buffer, entry, beam.start().add(side), beam.end().add(side),
+                red, green, blue, scaleAlpha(150, alphaScale * 0.9F));
+        drawFadedLine(buffer, entry, beam.start().subtract(side), beam.end().subtract(side),
+                red, green, blue, scaleAlpha(150, alphaScale * 0.9F));
+        drawFadedLine(buffer, entry, beam.start().add(other), beam.end().add(other),
+                red, green, blue, scaleAlpha(120, alphaScale * 0.8F));
+        drawFadedLine(buffer, entry, beam.start().subtract(other), beam.end().subtract(other),
+                red, green, blue, scaleAlpha(120, alphaScale * 0.8F));
+
+        // A narrow bright pulse travels along the continuous ribbon.  This is
+        // a procedural flow cue, not a chain of particle points, and remains
+        // bounded to one extra line per active beam.
+        double flowPhase = Math.floorMod(nowMillis - beam.startedAtMillis(), 900L) / 900.0D;
+        double flowCenter = flowPhase * length;
+        double flowHalf = Math.min(0.55D, Math.max(0.12D, length * 0.14D));
+        double flowStart = Math.max(0.0D, flowCenter - flowHalf);
+        double flowEnd = Math.min(length, flowCenter + flowHalf);
+        if (flowEnd - flowStart > 0.01D) {
+            Vec3d flowFrom = beam.start().add(direction.multiply(flowStart));
+            Vec3d flowTo = beam.start().add(direction.multiply(flowEnd));
+            drawLine(buffer, entry, flowFrom, flowTo, 225, 255, 255,
+                    scaleAlpha(245, alphaScale));
+        }
+    }
+
+    private static void drawRitualBeam(VertexConsumer buffer, MatrixStack.Entry entry, BeamSnapshot beam, long nowMillis) {
+        drawRitualBeam(buffer, entry, beam, nowMillis, false);
+    }
+
+    private static void drawRitualBeam(VertexConsumer buffer, MatrixStack.Entry entry, BeamSnapshot beam,
+                                       long nowMillis, boolean textured) {
+        long age = Math.max(0L, nowMillis - beam.startedAtMillis());
+        long remaining = Math.max(0L, beam.expiresAtMillis() - nowMillis);
+        float fade = Math.min(1.0F, age / 120.0F) * Math.min(1.0F, remaining / 180.0F);
+        int red = (beam.color() >> 16) & 255, green = (beam.color() >> 8) & 255, blue = beam.color() & 255;
+        for (RitualBeamMesh.Quad quad : RitualBeamMesh.quads(beam.start(), beam.end(), beam.width(), age)) {
+            float white = switch (quad.layer()) { case GLOW -> 0; case BODY -> .20F; case CORE -> .78F; case FLOW -> .50F; };
+            int alpha = scaleAlpha(switch (quad.layer()) { case GLOW -> 40; case BODY -> 95; case CORE -> 220; case FLOW -> 190; }, fade);
+            int r = Math.round(red + (255 - red) * white);
+            int g = Math.round(green + (255 - green) * white);
+            int b = Math.round(blue + (255 - blue) * white);
+            Vec3d normal = quad.b().position().subtract(quad.a().position())
+                    .crossProduct(quad.d().position().subtract(quad.a().position())).normalize();
+            for (RitualBeamMesh.Vertex vertex : List.of(quad.a(), quad.b(), quad.c(), quad.d())) {
+                Vec3d point = vertex.position();
+                buffer.vertex(entry, (float) point.x, (float) point.y, (float) point.z)
+                        .color(r, g, b, alpha);
+                if (textured) buffer.texture(vertex.u(), vertex.v())
+                        .overlay(OverlayTexture.DEFAULT_UV).light(0x00F000F0)
+                        .normal(entry, (float) normal.x, (float) normal.y, (float) normal.z);
+            }
+        }
+    }
+
+    private static void drawFadedLine(VertexConsumer buffer, MatrixStack.Entry entry,
+                                      Vec3d start, Vec3d end, int red, int green,
+                                      int blue, int alpha) {
+        Vec3d delta = end.subtract(start);
+        double length = delta.length();
+        if (!Double.isFinite(length) || length < 0.01D) {
+            return;
+        }
+        if (length < 0.20D) {
+            drawLine(buffer, entry, start, end, red, green, blue, alpha);
+            return;
+        }
+        Vec3d direction = delta.multiply(1.0D / length);
+        double edge = Math.min(0.32D, length * 0.16D);
+        Vec3d innerStart = start.add(direction.multiply(edge));
+        Vec3d innerEnd = end.subtract(direction.multiply(edge));
+        drawLine(buffer, entry, start, innerStart, red, green, blue,
+                scaleAlpha(alpha, 0.12F));
+        drawLine(buffer, entry, innerStart, innerEnd, red, green, blue, alpha);
+        drawLine(buffer, entry, innerEnd, end, red, green, blue,
+                scaleAlpha(alpha, 0.12F));
+    }
+
+    private static int scaleAlpha(int alpha, float scale) {
+        if (!Float.isFinite(scale)) {
+            return 0;
+        }
+        return Math.max(0, Math.min(255, Math.round(alpha * Math.max(0.0F, Math.min(1.0F, scale)))));
+    }
+
+    private static void drawLine(VertexConsumer buffer, MatrixStack.Entry entry,
+                                 Vec3d start, Vec3d end, int red, int green, int blue, int alpha) {
+        buffer.vertex(entry, (float) start.x, (float) start.y, (float) start.z)
+                .color(red, green, blue, Math.max(0, Math.min(255, alpha)))
+                .normal(entry, 0.0F, 1.0F, 0.0F);
+        buffer.vertex(entry, (float) end.x, (float) end.y, (float) end.z)
+                .color(red, green, blue, Math.max(0, Math.min(255, alpha)))
+                .normal(entry, 0.0F, 1.0F, 0.0F);
+    }
+
+    public record BeamSnapshot(String instanceId, String dimension, Vec3d start,
+                               Vec3d end, int color, float width, long startedAtMillis, long expiresAtMillis) {
+    }
+
+    private record Beam(String instanceId, String dimension, Vec3d start, Vec3d end,
+                        int color, float width, long startedAtMillis, long expiresAtMillis,
+                        Vec3d previousStart, Vec3d previousEnd, long updatedAtMillis) {
+        double fraction(long now) { return Math.max(0, Math.min(1, (now - updatedAtMillis) / 150.0)); }
+        Vec3d sampleStart(long now) { return previousStart.lerp(start, fraction(now)); }
+        Vec3d sampleEnd(long now) { return previousEnd.lerp(end, fraction(now)); }
+    }
+}

@@ -1,0 +1,31 @@
+End Rift gate-model continuation probe
+Date: 2026-09-14
+Environment: local Paper staging only (25566/RCON 25576)
+
+Resource-pack served by staging HTTP:
+  SHA-1   A04F7D1C93465CD0F79DB6BAD5C2B12C3F1AB6A6
+  SHA-256 34BBED01D468F5F45821AD82DC571012F6C9C5B581CABCA18FD6D1112FC143C9
+
+The gate was configured at CopiMine 29,68,-40 .. CopiMine 29,71,-38.
+Preview created a server-owned ItemDisplay with:
+  model=end_event_rift_gate
+  custom_model_data=830018
+  origin=CopiMine:29.50,68.00,-39.50
+  size=1x4x3
+  collision=real_gate_blocks
+
+The in-game RCON data query returned:
+  id=minecraft:paper
+  minecraft:custom_model_data=830018
+  custom_name=end_event_rift_gate
+
+Lifecycle:
+  preview -> model present
+  open 2 -> OPENED, model absent after all 12 blocks opened
+  close 2 -> RESTORED, model present during/after closing
+  gate delete confirm -> gate=UNSET, event-mobs=0, boss=none
+
+Server log markers:
+  END_EVENT_GATE_MODEL_READY ... custom_model_data=830018 ... size=1x4x3 collision=real_gate_blocks
+  END_EVENT_GATE_MODEL_CLEARED ... removed=1
+  END_EVENT_GATE_MODEL_READY ... custom_model_data=830018 ... size=1x4x3 collision=real_gate_blocks

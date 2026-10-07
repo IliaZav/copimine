@@ -54,8 +54,10 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
     private final Map<UUID, Long> ownSlownessAppliedAtMillis = new ConcurrentHashMap<>();
     private volatile Method authApiGetter;
     private volatile Method authApiIsAuthenticated;
+    private volatile Method authApiIsUnrestricted;
     private volatile Object authApi;
     private volatile boolean authApiAvailable;
+    private volatile boolean authApiUsesPlayerArgument;
     private volatile boolean loginHookRegistered;
     private volatile boolean logoutHookRegistered;
 
@@ -283,7 +285,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             command = command.substring(colon + 1);
         }
         return switch (command.toLowerCase(Locale.ROOT)) {
-            case "login", "l", "register", "reg", "changepassword", "cp" -> true;
+            case "login", "l", "register", "reg", "changepassword", "cp", "captcha" -> true;
             default -> false;
         };
     }
@@ -294,15 +296,33 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             ClassLoader authMeLoader = authMe == null ? getClassLoader() : authMe.getClass().getClassLoader();
             Class<?> apiClass = Class.forName("fr.xephi.authme.api.v3.AuthMeApi", false, authMeLoader);
             authApiGetter = apiClass.getMethod("getInstance");
-            authApiIsAuthenticated = apiClass.getMethod("isAuthenticated", String.class);
+            try {
+                authApiIsAuthenticated = apiClass.getMethod("isAuthenticated", Player.class);
+                authApiUsesPlayerArgument = true;
+            } catch (NoSuchMethodException currentAuthMeSignatureMissing) {
+                // Keep compatibility with older AuthMe builds exposing the
+                // legacy String-based API.
+                authApiIsAuthenticated = apiClass.getMethod("isAuthenticated", String.class);
+                authApiUsesPlayerArgument = false;
+            }
+            try {
+                // AuthMe explicitly allows configured NPC/mod identities without
+                // registering them. Its own provider remains the authority.
+                authApiIsUnrestricted = apiClass.getMethod("isUnrestricted", Player.class);
+            } catch (NoSuchMethodException optionalExemptionApiMissing) {
+                authApiIsUnrestricted = null;
+            }
             authApi = authApiGetter.invoke(null);
             authApiAvailable = authApi != null;
-            getLogger().info("AuthEffects will verify authentication through AuthMeApi.");
+            getLogger().info("AuthEffects will verify authentication through AuthMeApi ("
+                    + (authApiUsesPlayerArgument ? "Player" : "String") + " signature).");
         } catch (ReflectiveOperationException | LinkageError error) {
             authApiGetter = null;
             authApiIsAuthenticated = null;
+            authApiIsUnrestricted = null;
             authApi = null;
             authApiAvailable = false;
+            authApiUsesPlayerArgument = false;
             getLogger().warning("AuthMeApi is not available; authentication state will be learned from AuthMe events only.");
         }
     }
@@ -312,19 +332,38 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return false;
         }
         UUID uuid = player.getUniqueId();
+        // AuthMe's API can briefly lag behind its LoginEvent. Keep the
+        // event-confirmed state authoritative for this session so the next
+        // sync tick does not reapply the login lock.
+        if (authenticated.contains(uuid)) {
+            return true;
+        }
         if (!authApiAvailable || authApiIsAuthenticated == null || authApi == null) {
-            return authenticated.contains(uuid);
+            return false;
+        }
+        // Do not cache an exemption as a login: an AuthMe configuration
+        // reload must revoke it on the next check without a reconnect.
+        if (authApiIsUnrestricted != null) {
+            try {
+                if (Boolean.TRUE.equals(authApiIsUnrestricted.invoke(authApi, player))) {
+                    return true;
+                }
+            } catch (ReflectiveOperationException | RuntimeException error) {
+                // This optional capability must not disable the primary login
+                // check. Its failure grants no exemption by itself.
+                getLogger().fine("AuthMe exemption lookup failed for " + player.getName());
+            }
         }
         try {
-            Object result = authApiIsAuthenticated.invoke(authApi, player.getName());
+            Object result = authApiUsesPlayerArgument
+                    ? authApiIsAuthenticated.invoke(authApi, player)
+                    : authApiIsAuthenticated.invoke(authApi, player.getName());
             if (Boolean.TRUE.equals(result)) {
                 authenticated.add(uuid);
                 return true;
             }
-            authenticated.remove(uuid);
             return false;
         } catch (ReflectiveOperationException | RuntimeException error) {
-            authenticated.remove(uuid);
             getLogger().fine("AuthMe authentication lookup failed for " + player.getName() + ": " + error.getMessage());
             return false;
         }
@@ -382,7 +421,7 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         boolean firstApplication = ownSlowness.add(uuid);
         if (firstApplication) {
             PotionEffect existing = player.getPotionEffect(PotionEffectType.SLOWNESS);
-            if (existing != null) {
+            if (existing != null && !isAuthLockEffect(existing)) {
                 previousSlowness.putIfAbsent(uuid, existing);
                 previousSlownessCapturedAtMillis.putIfAbsent(uuid, System.currentTimeMillis());
             }
@@ -416,13 +455,20 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
             return;
         }
         UUID uuid = player.getUniqueId();
-        if (!ownSlowness.remove(uuid)) {
-            return;
-        }
+        boolean tracked = ownSlowness.remove(uuid);
         PotionEffect current = player.getPotionEffect(PotionEffectType.SLOWNESS);
         Long appliedAt = ownSlownessAppliedAtMillis.remove(uuid);
-        if (current != null && appliedAt != null && current.getAmplifier() == SLOWNESS_AMPLIFIER
-                && isOurSlownessDuration(current.getDuration(), appliedAt)) {
+        if (!tracked && !isAuthLockEffect(current)) {
+            previousSlowness.remove(uuid);
+            previousSlownessCapturedAtMillis.remove(uuid);
+            return;
+        }
+        boolean trackedAuthLock = current != null
+                && appliedAt != null
+                && current.getAmplifier() == SLOWNESS_AMPLIFIER
+                && isOurSlownessDuration(current.getDuration(), appliedAt);
+        boolean staleAuthLock = isAuthLockEffect(current) && appliedAt == null;
+        if (trackedAuthLock || staleAuthLock) {
             player.removePotionEffect(PotionEffectType.SLOWNESS);
         }
         PotionEffect previous = previousSlowness.remove(uuid);
@@ -451,6 +497,15 @@ public final class AuthEffectsPlugin extends JavaPlugin implements Listener {
         // Allow scheduler jitter, but do not remove an unrelated slowness
         // effect that happens to share our amplifier.
         return Math.abs(durationTicks - expected) <= 40L;
+    }
+
+    private boolean isAuthLockEffect(PotionEffect effect) {
+        return effect != null
+                && PotionEffectType.SLOWNESS.equals(effect.getType())
+                && effect.getAmplifier() == SLOWNESS_AMPLIFIER
+                && !effect.isAmbient()
+                && !effect.hasParticles()
+                && effect.hasIcon();
     }
 
     private void playSuccessEffect(Player player) {

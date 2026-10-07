@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "minecraftVersion": "26.3",
+  "status": "migration-candidate",
+  "verifiedAt": "2026-10-07",
+  "minimumJava": 25,
+  "minecraftManifest": {
+    "url": "https://piston-meta.mojang.com/v1/packages/702fe59163c6ee6578607daa85811d9bc9c7cc40/26.3.json",
+    "sha1": "702fe59163c6ee6578607daa85811d9bc9c7cc40"
+  },
+  "minecraftClient": {
+    "url": "https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar",
+    "sha1": "e877b6a07acd633fb3bb475002175cec036e7b87"
+  },
+  "paper": {
+    "build": 159,
+    "channel": "BETA",
+    "api": "26.3.build.159-beta",
+    "apiSha256": "7ab1b5133b5702acb78a120440e21eb924a181b99b1fd2785cfa649932ffe54f",
+    "url": "https://fill-data.papermc.io/v1/objects/2224a0b2b6b096ff4c429ad926e97977213e4f633e90cb3a49b5eeb82f94bab0/paper-26.3-159.jar",
+    "sha256": "2224a0b2b6b096ff4c429ad926e97977213e4f633e90cb3a49b5eeb82f94bab0"
+  },
+  "gradle": {
+    "version": "9.8.0",
+    "url": "https://services.gradle.org/distributions/gradle-9.8.0-bin.zip",
+    "sha256": "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c"
+  },
+  "fabric": {
+    "loader": "0.19.5",
+    "loom": "1.17.21",
+    "api": "0.162.0+26.3",
+    "namespace": "official",
+    "clientPortComplete": false
+  }
+}

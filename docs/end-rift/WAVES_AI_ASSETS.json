@@ -1,0 +1,32 @@
+{
+  "asset_type": "original_authored_effect_atlas",
+  "author": "CopiMine project",
+  "source_url": null,
+  "license": "Original project artwork; no third-party asset incorporated",
+  "original_filename": "wave_combat_glyphs.png",
+  "sha256": "079455399ffdac6122f37ffc24d3e8af798509d6ebe18c362577c567e7606f61",
+  "dimensions": [
+    1024,
+    128
+  ],
+  "tile_size": [
+    128,
+    128
+  ],
+  "tiles": [
+    "dash",
+    "snare",
+    "pulse",
+    "salvo",
+    "web",
+    "freeze",
+    "recover",
+    "reflect"
+  ],
+  "generator": "resourcepacks/tools/generate_wave_combat_glyphs.py",
+  "outputs": [
+    "CopiMineClient/src/main/resources/assets/copimineclient/textures/entity/wave_combat_glyphs.png",
+    "resourcepacks/src/assets/copimine/textures/item/wave_combat_glyphs.png"
+  ],
+  "audio": "Vanilla Minecraft Sound events only, layered by charge/release/impact; no external SFX"
+}

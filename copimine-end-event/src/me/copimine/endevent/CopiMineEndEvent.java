@@ -27,6 +27,8 @@ import java.util.SplittableRandom;
 import java.util.UUID;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.runtime.wave7.EchoPresentationProbe;
+import me.copimine.endevent.runtime.wave7.EchoCombatAdmissionListener;
+import me.copimine.endevent.domain.wave7.EchoCombatAdmission;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -750,6 +752,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private static final String ECHO_PROBE_KIND = "WAVE7_ECHO_PROBE";
     private final Set<UUID> echoPresentationCapablePlayers = new HashSet<>();
     private EchoPresentationProbe echoPresentationProbe;
+    private EchoCombatAdmissionListener echoCombatAdmissionListener;
+    private EchoCombatAdmission.Pair echoProbeCombatPair;
+    private boolean echoProbeCombatClosing;
     private long echoPresentationEpoch;
     private final Map<UUID, Long> ritualBattleSurgeUntilMillis = new HashMap<>();
     private final Map<UUID, PotionEffect> ritualPreviousSpeedEffects = new HashMap<>();
@@ -1291,6 +1296,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         combatProfileListener = new me.copimine.endevent.runtime.EventCombatProfileListener(
                 combatProfiles, this::combatProfileContext, this::isCombatProfileTarget);
         Bukkit.getPluginManager().registerEvents(combatProfileListener, this);
+        echoCombatAdmissionListener = new EchoCombatAdmissionListener(this::currentEchoCombatContext);
+        Bukkit.getPluginManager().registerEvents(echoCombatAdmissionListener, this);
         Bukkit.getPluginManager().registerEvents(new me.copimine.endevent.runtime.Wave7ReturnProtectionListener(
                 player -> isOfficialWave7ReturnContext() && attemptLifecycle.isReturnProtected(
                         player.getUniqueId(), generation, eventTickCounter), this::cancelWave7ReturnForOffense), this);
@@ -6244,9 +6251,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             message(sender, clearEchoPresentationProbe() ? "&aEcho probe остановлен." : "&cОчистка Echo probe требует повторной попытки.");
             return;
         }
-        if (!bootstrapped || isOfficialAttemptActive() || activeWave != 0
-                || testCombatAiMode || testWaveFrontVisualMode || creativeTestTask != null
-                || phase != EventPhase.COLLECTING && phase != EventPhase.READY_FOR_PLAYERS) {
+        if (!mayRunEchoPresentationProbe()) {
             message(sender, "&cСначала закончи активный encounter; Echo probe не заменяет его."); return;
         }
         if ("START".equals(requested) || "LOADOUT".equals(requested)) {
@@ -6291,6 +6296,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 frame.fields(), frame.dimension());
                     }
                 }, "LOADOUT".equals(requested));
+                echoProbeCombatPair = new EchoCombatAdmission.Pair(UUID.fromString(eventId), generation,
+                        echoPresentationProbe.epoch(), echoPresentationProbe.duel(), owner.getUniqueId(),
+                        carrier.getUniqueId(), carrier.getWorld().getUID());
+                echoProbeCombatClosing = false;
             } catch (RuntimeException error) {
                 carrier.remove(); unregisterOwnedEntity(carrier.getUniqueId(), "echo-probe-start-failed");
                 getLogger().log(Level.WARNING, "Echo presentation probe could not start", error);
@@ -6316,22 +6325,60 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickEchoPresentationProbe() {
-        if (echoPresentationProbe == null) return;
+        if (echoPresentationProbe == null) {
+            tickEchoCombatSources(); return;
+        }
+        if (!mayRunEchoPresentationProbe()) {
+            clearEchoPresentationProbe(); return;
+        }
         Player owner = Bukkit.getPlayer(echoPresentationProbe.owner());
         boolean retained = echoPresentationProbe.tick(owner, parseUuidOrNull(eventId), generation,
                 eventTickCounter, echoPresentationCapablePlayers.contains(echoPresentationProbe.owner()));
         if (!retained) {
             unregisterOwnedEntity(echoPresentationProbe.carrier().getUniqueId(), "echo-probe-closed");
             echoPresentationProbe = null;
+            echoProbeCombatPair = null;
+        }
+        tickEchoCombatSources();
+    }
+
+    private EchoCombatAdmission.Context currentEchoCombatContext() {
+        if (echoPresentationProbe == null || echoProbeCombatPair == null) return null;
+        Player owner = Bukkit.getPlayer(echoPresentationProbe.owner());
+        boolean active = !echoProbeCombatClosing && mayRunEchoPresentationProbe() && echoPresentationProbe.activeForCombat(
+                owner, parseUuidOrNull(eventId), generation, eventTickCounter,
+                echoPresentationCapablePlayers.contains(echoPresentationProbe.owner()));
+        return new EchoCombatAdmission.Context(echoProbeCombatPair, eventTickCounter, active);
+    }
+
+    private boolean mayRunEchoPresentationProbe() {
+        return bootstrapped && !isOfficialAttemptActive() && activeWave == 0
+                && !testCombatAiMode && !testWaveFrontVisualMode && creativeTestTask == null
+                && (phase == EventPhase.COLLECTING || phase == EventPhase.READY_FOR_PLAYERS);
+    }
+
+    private void tickEchoCombatSources() {
+        if (echoCombatAdmissionListener == null) return;
+        try {
+            echoCombatAdmissionListener.tick();
+        } catch (RuntimeException error) {
+            echoProbeCombatClosing = true;
+            getLogger().log(Level.WARNING, "Echo source cleanup failed; closing local probe with retry handles", error);
+            clearEchoPresentationProbe();
         }
     }
 
     private boolean clearEchoPresentationProbe() {
-        if (echoPresentationProbe == null) return true;
+        echoProbeCombatClosing = true;
         try {
-            echoPresentationProbe.close(eventTickCounter);
-            unregisterOwnedEntity(echoPresentationProbe.carrier().getUniqueId(), "echo-probe-cleanup");
+            if (echoCombatAdmissionListener != null) echoCombatAdmissionListener.clear();
+            if (echoPresentationProbe != null) {
+                echoPresentationProbe.close(eventTickCounter);
+                unregisterOwnedEntity(echoPresentationProbe.carrier().getUniqueId(), "echo-probe-cleanup");
+            }
             echoPresentationProbe = null;
+            echoProbeCombatPair = null;
+            echoProbeCombatClosing = false;
             return true;
         } catch (RuntimeException error) {
             getLogger().log(Level.WARNING, "Echo presentation probe cleanup will be retried", error);
@@ -10835,6 +10882,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (phase != EventPhase.READY_FOR_PLAYERS || padOccupants.size() != requiredPlayers) {
             return;
         }
+        if (!clearEchoPresentationProbe()) return;
         phaseDeadlineMillis = System.currentTimeMillis() + config.startRitualTimeoutSeconds() * 1000L;
         transitionRuneController.reset();
         transitionRuneRenderStates.clear();

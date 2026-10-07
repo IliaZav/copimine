@@ -76,6 +76,15 @@ public final class EchoPresentationProbe {
 
     public UUID owner() { return owner; }
     public Pillager carrier() { return carrier; }
+    public UUID duel() { return state.duel(); }
+    public long epoch() { return state.epoch(); }
+
+    public boolean activeForCombat(Player player, UUID event, long generation, long tick, boolean capable) {
+        return !closed && player != null && owner.equals(player.getUniqueId())
+                && carrier.isValid() && !carrier.isDead()
+                && state.active(event, generation, tick, player.isOnline(), !player.isDead(),
+                        player.getWorld().equals(carrier.getWorld()), capable);
+    }
 
     public boolean action(EchoPresentationProbeState.Action action, long tick) {
         String shieldHand = replica != null && replica.state().item(40).kind() != Kind.SHIELD ? "MAIN" : "OFF";

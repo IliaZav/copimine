@@ -49,6 +49,8 @@ public final class EchoPresentationProbeState {
         return true;
     }
     public Action action() { return action; }
+    public UUID duel() { return duel; }
+    public long epoch() { return epoch; }
     public void acceptedHurt() { if (!closed && deathTick < 0) hurtSerial++; }
     public void died(long tick) { if (deathTick < 0) { deathTick = tick; action = Action.DEATH; } }
     public void close() { closed = true; }

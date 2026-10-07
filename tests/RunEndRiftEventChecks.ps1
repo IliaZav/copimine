@@ -99,7 +99,8 @@ Invoke-GateStep 'Local probe AuthMe mode behavior' {
 Invoke-GateStep 'Wave 7 Echo presentation and no-loot probe' {
   Push-Location $root
   try {
-    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' 'tests/test_wave7_echo_loadout.py' 'tests/test_wave7_echo_replica_inventory.py' 'tests/test_wave7_echo_native_effect_carrier.py' 'tests/test_wave7_echo_shield_damage_hook.py' 'tests/test_wave7_echo_native_armor.py' 'tests/test_wave7_echo_armor_damage_hook.py' -q
+    & python -m pytest 'tests/test_wave7_echo_presentation_probe.py' 'tests/test_wave7_echo_carrier_adapter.py' 'tests/test_wave7_echo_player_equipment_adapter.py' 'tests/test_wave7_echo_loadout.py' 'tests/test_wave7_echo_replica_inventory.py' 'tests/test_wave7_echo_native_effect_carrier.py' 'tests/test_wave7_echo_shield_damage_hook.py' 'tests/test_wave7_echo_native_armor.py' 'tests/test_wave7_echo_armor_damage_hook.py' 'tests/test_wave7_echo_combat_admission.py' 'tests/test_wave7_echo_admission_lifecycle.py' -q
+    if ($LASTEXITCODE -ne 0) { throw 'Wave 7 Echo regression failed.' }
   } finally {
     Pop-Location
   }

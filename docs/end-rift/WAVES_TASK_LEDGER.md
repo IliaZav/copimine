@@ -462,6 +462,51 @@ checkpoint described below; current-candidate evidence must be read separately.
   durable HP/cooldown/supply resume, named official trials and V3 Tasks E-H remain
   unfinished. A disposable restarted probe is not a resumed personal duel.
 
+## Wave 7 Task C/E: exact pair and scoped indirect effects
+
+- Baseline [a44d6671](https://github.com/IliaZav/copimine/commit/a44d66715742cd7eeffe5ec1f86d509dc8a0f796)
+  is actually published; [push CI](https://github.com/IliaZav/copimine/actions/runs/37572636680)
+  and [PR CI](https://github.com/IliaZav/copimine/actions/runs/37572641383)
+  both completed success, including both jobs without failed steps.
+- Root cause: local armor/shield observation checks the owner's current session
+  but never authorizes the damaging source. Chamber permission cannot identify
+  a stable owner/own-replica hostile pair.
+- IMPLEMENTED: immutable actual presentation identity, one admission rule for
+  direct damage/Thorns/pets/targets/fire/projectiles/splash/clouds; strict launch
+  receipts, bounded 64+16 handles and 1,200-tick TTL; no persistence/pickup of
+  replica attacks; idempotent retry cleanup in the existing five-tick loop.
+- Actual permissive baseline RED: 38 failed/11 passed. Later source-chain/self-
+  potion RED: 3 failed/3 passed; unload/world-change RED: 2 failed. Initial focus:
+  99 passed; registered Echo group 139 passed; pinned plugin build passed.
+- Final full Python3.13: 1125 passed/1 skipped/88 existing warnings; complete
+  End Rift gate and 659/659 validators passed after the review repair. Exact
+  new-SHA publication/CI receipts belong to PR #3 after push. Initial Python3.14 full-suite command lacked
+  FastAPI and stopped with two collection errors; its log remains evidence.
+- CodeRabbit `e313fc01..19dee9cb` reviewed 12 owned public files: 1 issue,
+  completed/exit0. Initial unsupported CLI parameter failed before review;
+  corrected command completed. Reported minor is regraded important: local
+  pair could survive the official rune-start transition.
+- Final: fixed official ritual/probe coexistence — five actual method cases
+  RED to GREEN; common start/tick/admission eligibility and cleanup before
+  ritual mutation. Failed cleanup preserves phase/deadline/controllers and
+  retry handles. Focus 104 passed; final Echo group 144 passed. This fix
+  follows the immutable review and is not labelled a second CodeRabbit review.
+- Final build/installed End Event SHA256:
+  `2037380c0b9d4474e50b60d1edb41d428f427ce1b5261dbb7893df4bebcccbca`.
+  Isolated PID35560 on127.0.0.1:25566, Done32.044s; actual COLLECTING state,
+  zero players/event mobs; all30current canonical plugin hashes match.
+  Selected-profile check1passed; client/HTTP pack unchanged. Ownerless local
+  command refuses correctly; this is not a native gameplay acceptance run.
+- NATIVE_VERIFIED: none for this patch. Full official duel privacy/geometry/
+  body collision/action/persistence and multi-owner Minecraft remain open.
+- Ruling: apply the source rule to the existing local slice before autonomous
+  attacks; do not activate an incomplete official Echo trial. Costs a later
+  controller binding, avoids claiming a finished duel from a guarded probe.
+- Ruling: preserve native environmental damage; no claim that unattributed
+  external plugin health/effect writes are isolated. First-party custom-item
+  adapters remain required before broader acceptance.
+- [Plan](WAVE7_ECHO_ADMISSION_PLAN.md), [acceptance and exact manual matrix](WAVE7_ECHO_ADMISSION_ACCEPTANCE.md).
+
 ## Evidence locations
 
 ### 2026-10-06 Echo native shield follow-up

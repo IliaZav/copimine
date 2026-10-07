@@ -182,7 +182,25 @@ public class EchoCarrierChecks {
                 java.util.function.BiConsumer.class,boolean.class).newInstance(carrier,owner,EVENT,7L,10L,100L,sender,true);}
             catch(NoSuchMethodException missing){probe=new EchoPresentationProbe(carrier,owner,EVENT,7,10,100,sender);}
         }else probe=new EchoPresentationProbe(carrier,owner,EVENT,7,10,100,sender);
-        if(args[0].equals("walk")){
+        if(args[0].startsWith("admission-")){
+            boolean capable=true;long checkGeneration=7,checkTick=105;Player checkedOwner=owner;
+            switch(args[0]){
+                case "admission-live":break;
+                case "admission-owner-dead":ownerAlive=false;break;
+                case "admission-owner-quit":online=false;break;
+                case "admission-capability":capable=false;break;
+                case "admission-generation":checkGeneration=8;break;
+                case "admission-expiry":checkTick=6100;break;
+                case "admission-actor-dead":health=0;break;
+                case "admission-null-owner":checkedOwner=null;break;
+                case "admission-closed":probe.close(104);break;
+                default:throw new AssertionError(args[0]);
+            }
+            boolean accepted=probe.activeForCombat(checkedOwner,EVENT,checkGeneration,checkTick,capable);
+            if(accepted!=args[0].equals("admission-live"))throw new AssertionError("actual carrier liveness admitted stale/closed context: "+args[0]);
+            if(!probe.duel().equals(frames.get(0).duel())||probe.epoch()!=frames.get(0).epoch())
+                throw new AssertionError("combat pair diverged from actual presentation identity");
+        }else if(args[0].equals("walk")){
             probe.action(EchoPresentationProbeState.Action.WALK,105);
             probe.tick(owner,EVENT,7,105,true);probe.tick(owner,EVENT,7,110,true);
             if(moves!=1)throw new AssertionError("native navigation requires aware carrier with removed goals; moves="+moves);
@@ -336,7 +354,7 @@ public class EchoCarrierChecks {
     return classpath
 
 
-@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-eat-other-wear", "copy-eat-supply-changed", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield", "copy-native-shield", "copy-native-main-shield", "copy-native-stale", "copy-shield-hit", "copy-shield-main-hit", "copy-shield-unbreaking", "copy-shield-break", "copy-shield-axe", "copy-shield-overflow", "copy-armor-hit", "copy-armor-break", "copy-armor-unbreaking", "copy-armor-food", "copy-armor-overflow"])
+@pytest.mark.parametrize("scenario", ["walk", "death", "generation", "copy-gear", "copy-eat", "copy-eat-other-wear", "copy-eat-supply-changed", "copy-cancel", "copy-stale", "copy-quit", "copy-main-shield", "copy-native-shield", "copy-native-main-shield", "copy-native-stale", "copy-shield-hit", "copy-shield-main-hit", "copy-shield-unbreaking", "copy-shield-break", "copy-shield-axe", "copy-shield-overflow", "copy-armor-hit", "copy-armor-break", "copy-armor-unbreaking", "copy-armor-food", "copy-armor-overflow", "admission-live", "admission-owner-dead", "admission-owner-quit", "admission-capability", "admission-generation", "admission-expiry", "admission-actor-dead", "admission-null-owner", "admission-closed"])
 def test_native_carrier_adapter(carrier_probe, scenario):
     result = subprocess.run(["java", "-cp", carrier_probe, "EchoCarrierChecks", scenario],
                             capture_output=True, text=True)

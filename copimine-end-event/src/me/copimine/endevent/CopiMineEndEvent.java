@@ -6365,6 +6365,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEchoProbeArmorDamage(EntityDamageEvent event) {
+        if (event.isCancelled() || echoPresentationProbe == null
+                || !echoPresentationProbe.carrier().getUniqueId().equals(event.getEntity().getUniqueId())) return;
+        // Native wear runs before armor, resistance and absorption mitigation;
+        // fully absorbed damage may still wear armor. Blocking/hard-hat offsets
+        // are the only accepted-event modifiers in the normal equipment input.
+        double armorAmount = event.getDamage();
+        if (event.isApplicable(EntityDamageEvent.DamageModifier.BLOCKING))
+            armorAmount += event.getDamage(EntityDamageEvent.DamageModifier.BLOCKING);
+        if (event.isApplicable(EntityDamageEvent.DamageModifier.HARD_HAT))
+            armorAmount += event.getDamage(EntityDamageEvent.DamageModifier.HARD_HAT);
+        Player owner = Bukkit.getPlayer(echoPresentationProbe.owner());
+        try {
+            echoPresentationProbe.acceptedArmorDamage(event, owner, parseUuidOrNull(eventId), generation,
+                    eventTickCounter, echoPresentationCapablePlayers.contains(echoPresentationProbe.owner()),
+                    event.getDamageSource(), event.getOriginalDamage(EntityDamageEvent.DamageModifier.BASE),
+                    Math.max(0, armorAmount));
+        } catch (RuntimeException error) {
+            getLogger().log(Level.WARNING, "Echo native armor observation failed; closing local probe", error);
+            clearEchoPresentationProbe();
+        }
+    }
+
     private void updateEchoPresentationCapability(Player player, int protocol, String session,
                                                    String clientVersion, boolean capable) {
         if (protocol != 2 || clientVersion.isBlank()

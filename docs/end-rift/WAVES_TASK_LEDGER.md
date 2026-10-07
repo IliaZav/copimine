@@ -493,6 +493,42 @@ checkpoint described below; current-candidate evidence must be read separately.
   No Minecraft window is running, no client is launched and native shield
   gameplay/screenshots remain NOT PERFORMED.
 
+## Wave 7 Task E: finite native armor and food-use isolation
+
+- The shield checkpoint was published as
+  [2870a8eb](https://github.com/IliaZav/copimine/commit/2870a8ebd90cd73f21a2ced8c4af4633f1b2a93d).
+  Actual [push CI](https://github.com/IliaZav/copimine/actions/runs/37531671716)
+  and [PR CI](https://github.com/IliaZav/copimine/actions/runs/37531677997)
+  for that SHA succeeded. It remains a disposable probe, not the full duel.
+- [Native armor checkpoint](WAVE7_ECHO_ARMOR_ACCEPTANCE.md), V3 Task E:
+  non-player carrier's empty native armor/helmet dispatch; equipment projection
+  losing wear; whole-loadout revision cancelling food after unrelated wear;
+  receipt overflow silently ignoring wear. Real RED regressions reproduce each.
+  The existing carrier/loop now invokes cached native equipment handling and
+  persists finite outcomes, scopes food completion to its slot, and cleans the
+  disposable scene on receipt overflow. No new encounter engine or HP multiplier.
+- AUTOMATED_PASS: production-adapter focus **48 passed**; final full Python
+  **1046 passed, 1 skipped**, 88 existing warnings in 91.91 seconds; registered
+  Echo group **65 passed**; pinned server build, complete End Rift gate, final
+  **659** validators (zero failures/skips) and diff hygiene pass. Selected
+  installed-profile check separately passes **1** test. Client/pack unchanged.
+- Private pinned server bridge receipt: **7 passed**, seven temporary owned
+  actors removed, zero remaining; no fake owner/client/pack acknowledgements.
+  Initial GENERIC fixture failed because that native type bypasses armor; actual
+  native tag tracing corrected the fixture, and its failed receipt is retained.
+- NATIVE_VERIFIED in real Minecraft: **none**. Code-first client boundary is
+  retained. Full personal duel isolation/persona/combat/persistence, named
+  official trials, client parity and the remainder of Waves 1–7 remain open.
+  CodeRabbit public immutable diff `d13cbc14..a5e30bdb` completes with **0 issues**
+  over nine task files. Later factual document receipt updates are outside that
+  immutable document revision; production code is unchanged. No new Codex
+  Security seal is claimed. Publication/own-SHA CI follow after commit/push.
+- Diagnostic plugin removed; clean isolated server is ready at
+  `127.0.0.1:25566`, PID 35176, COLLECTING, no players/active wave/event mobs.
+  All **30** installed plugins match canonical files. Current End Event SHA-256
+  `2d768f6f44f4a705a5f09fc7681df307670df9f67bd755af23db29f608cb379b`.
+  Actual HTTP pack SHA-1 remains `d33363385a6ad31577e87c2669a8e5e9b6a46a95`.
+
 - `artifacts/end-rift-waves/20261004/`: full Python/client/gate/validator logs,
   CodeRabbit receipts and `waves1-5-runtime-20261004-234831` installation/live logs.
 - `artifacts/end-rift-waves/20261005/`: Wave 7 and AuthEffects red/green

@@ -5,10 +5,12 @@ import java.util.IdentityHashMap;
 import java.util.function.BiConsumer;
 import me.copimine.endevent.domain.wave7.EchoPresentationProbeState;
 import me.copimine.endevent.domain.wave7.EchoLoadoutState.Kind;
+import me.copimine.endevent.domain.wave7.EchoLoadoutState.Item;
 import org.bukkit.Location;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.damage.DamageSource;
 import org.bukkit.entity.Pillager;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Pose;
@@ -28,12 +30,16 @@ public final class EchoPresentationProbe {
     private final BiConsumer<String, EchoPresentationProbeState.Frame> send;
     private final EchoReplicaInventory replica;
     private int pendingFoodSlot = -1;
-    private long pendingFoodTick, pendingFoodRevision;
+    private long pendingFoodTick;
+    private Item pendingFoodItem;
     private long nextPathTick;
     private int activeShieldSlot = -1;
     private EquipmentSlot activeShieldHand;
     private long shieldDisabledUntil, shieldReceiptTick = -1, shieldRaisedTick = -1;
     private final IdentityHashMap<Object, Boolean> shieldReceipts = new IdentityHashMap<>();
+    private final IdentityHashMap<Object, Boolean> armorReceipts = new IdentityHashMap<>();
+    private long armorReceiptTick = -1;
+    private EchoNativeArmorWear nativeArmor;
     private boolean closed;
 
     public EchoPresentationProbe(Pillager carrier, Player player, UUID event, long generation,
@@ -92,7 +98,7 @@ public final class EchoPresentationProbe {
         }
         if (replica != null && action == EchoPresentationProbeState.Action.EAT) {
             pendingFoodSlot = replica.state().find(Kind.GOLDEN_APPLE);
-            pendingFoodTick = tick; pendingFoodRevision = replica.state().revision();
+            pendingFoodTick = tick; pendingFoodItem = replica.state().item(pendingFoodSlot);
             carrier.getWorld().playSound(carrier.getLocation(), Sound.ENTITY_GENERIC_EAT, 0.55f, 1.0f);
         }
         switch (action) {
@@ -123,7 +129,11 @@ public final class EchoPresentationProbe {
             if (pendingFoodSlot >= 0 && state.action() == EchoPresentationProbeState.Action.EAT
                     && tick - pendingFoodTick >= 32) {
                 int slot = pendingFoodSlot; pendingFoodSlot = -1;
-                if (replica.state().consume(slot, 1, pendingFoodRevision)) {
+                // Unrelated native armor/shield wear must not cancel eating.
+                // Quantities only decrease, so a changed food slot invalidates
+                // this use while another slot's revision is harmless.
+                if (replica.state().item(slot).equals(pendingFoodItem)
+                        && replica.state().consume(slot, 1, replica.state().revision())) {
                     // Ordinary golden apple: vanilla 1.21.1 effects, not instant direct health.
                     carrier.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 100, 1));
                     carrier.addPotionEffect(new PotionEffect(PotionEffectType.ABSORPTION, 2400, 0));
@@ -162,7 +172,8 @@ public final class EchoPresentationProbe {
                 || state.action() != EchoPresentationProbeState.Action.SHIELD || activeShieldSlot < 0
                 || !carrier.hasActiveItem() || carrier.getActiveItemHand() != activeShieldHand) return false;
         if (tick != shieldReceiptTick) { shieldReceipts.clear(); shieldReceiptTick = tick; }
-        if (shieldReceipts.containsKey(receipt) || shieldReceipts.size() >= 32) return false;
+        if (shieldReceipts.containsKey(receipt)) return false;
+        if (shieldReceipts.size() >= 32) { close(tick); return false; }
         shieldReceipts.put(receipt, Boolean.TRUE);
         if (blockedAmount >= 3.0) {
             long revision = replica.state().revision();
@@ -187,12 +198,40 @@ public final class EchoPresentationProbe {
         return true;
     }
 
+    /** Supply the Player-only native equipment dispatch omitted by this carrier. */
+    public boolean acceptedArmorDamage(Object receipt, Player player, UUID event, long generation,
+                                       long tick, boolean capable, DamageSource source,
+                                       double originalAmount, double armorAmount) {
+        if (closed || replica == null || receipt == null || source == null || tick < armorReceiptTick
+                || !Double.isFinite(originalAmount) || originalAmount < 0 || originalAmount > 1_000_000
+                || !Double.isFinite(armorAmount) || armorAmount < 0 || armorAmount > 1_000_000
+                || player == null || !owner.equals(player.getUniqueId()) || carrier.isDead() || !carrier.isValid()
+                || !state.active(event, generation, tick, player.isOnline(), !player.isDead(),
+                        player.getWorld().equals(carrier.getWorld()), capable)) return false;
+        if (tick != armorReceiptTick) { armorReceipts.clear(); armorReceiptTick = tick; }
+        if (armorReceipts.containsKey(receipt)) return false;
+        if (armorReceipts.size() >= 32) { close(tick); return false; }
+        armorReceipts.put(receipt, Boolean.TRUE);
+        if (nativeArmor == null) nativeArmor = new EchoNativeArmorWear(carrier);
+        nativeArmor.wear(source, originalAmount, armorAmount);
+        EntityEquipment gear = carrier.getEquipment();
+        ItemStack[] outcomes = {gear.getBoots(), gear.getLeggings(), gear.getChestplate(), gear.getHelmet()};
+        for (int index = 0; index < outcomes.length; index++) {
+            int slot = 36 + index;
+            if (replica.state().item(slot).kind() == Kind.ARMOR
+                    && !replica.recordNativeWear(slot, outcomes[index], replica.state().revision())) {
+                close(tick); return false;
+            }
+        }
+        return true;
+    }
+
     /** Keep the carrier reference if a native cleanup throws so the caller can retry. */
     public void close(long tick) {
         if (closed) return;
         pendingFoodSlot = -1;
         carrier.clearActiveItem();
-        activeShieldSlot = -1; activeShieldHand = null; shieldReceipts.clear();
+        activeShieldSlot = -1; activeShieldHand = null; shieldReceipts.clear(); armorReceipts.clear();
         send.accept("END_ECHO_REMOVE", state.nextFrame(tick));
         carrier.remove(); state.close(); closed = true;
     }

@@ -3,7 +3,25 @@ import groovy.json.JsonSlurper
 plugins { id 'java' }
 
 def profile = new JsonSlurper().parse(file('profile.lock.json'))
+def serverPluginLock = new JsonSlurper().parse(file('server-plugins.lock.json'))
 def checkout = file('../..').canonicalFile
+def voiceChatPlugin = serverPluginLock.modules.find { it.pluginName == 'voicechat' }
+if (voiceChatPlugin == null || voiceChatPlugin.filename != 'voicechat-bukkit-2.6.24.jar') {
+    throw new GradleException('Pinned Paper Voice Chat API candidate is missing from the server lock')
+}
+def voiceChatApiCandidate = new File(checkout, "build/minecraft-26.3/server-plugins/${voiceChatPlugin.filename}")
+def verifyVoiceChatApi = tasks.register('verifyVoiceChatApi') {
+    doLast {
+        if (!voiceChatApiCandidate.isFile() || voiceChatApiCandidate.length() != voiceChatPlugin.size) {
+            throw new GradleException('Pinned Paper Voice Chat API candidate is missing or has the wrong size')
+        }
+        def voiceChatApiSha512 = java.security.MessageDigest.getInstance('SHA-512')
+                .digest(voiceChatApiCandidate.bytes).encodeHex().toString()
+        if (voiceChatApiSha512 != voiceChatPlugin.sha512) {
+            throw new GradleException('Pinned Paper Voice Chat API candidate differs from the server lock')
+        }
+    }
+}
 layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/plugins')
 
 if (JavaVersion.current().majorVersion.toInteger() < profile.minimumJava) {
@@ -33,6 +51,9 @@ modules.each { name, module ->
         resources.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/resources' : '')))
         resources.include('plugin.yml', 'config.yml')
     }
+    if (name == 'endEvent') {
+        sourceSets[name].java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
+    }
     dependencies.add("${name}CompileOnly", "io.papermc.paper:paper-api:${profile.paper.api}")
     tasks.named(sourceSets[name].processResourcesTaskName) {
         filteringCharset = 'UTF-8'
@@ -55,9 +76,7 @@ modules.each { name, module ->
 dependencies {
     adminCompileOnly sourceSets.economyCore.output
     adminCompileOnly 'me.clip:placeholderapi:2.12.3'
-    // Compile against the public voice API only. This does not approve the
-    // installed 1.21.1 runtime plugin for 26.3.
-    adminCompileOnly files(new File(checkout, 'thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar'))
+    adminCompileOnly files(voiceChatApiCandidate)
     artifactsCompileOnly sourceSets.economyCore.output
     electionCoreCompileOnly sourceSets.economyCore.output
     endEventCompileOnly sourceSets.worldCore.output
@@ -74,6 +93,7 @@ tasks.register('migrationPlugins') {
     description = 'Compile all eight first-party plugins against the pinned 26.3 API in isolated output directories.'
     dependsOn(modules.keySet().collect { "${it}Jar" })
 }
+tasks.named('compileAdminJava') { dependsOn(verifyVoiceChatApi) }
 
 tasks.register('verifyPaperApi') {
     doLast {

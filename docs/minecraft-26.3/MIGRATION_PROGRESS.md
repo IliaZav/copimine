@@ -566,3 +566,12 @@
 - Установленный профиль `D:\.minecraft\versions\CopiMine` прошёл только read-only `-ValidateOnly`. Computer Use вернул `apps: []`; реальный вход игроком, проверка в клиенте, resource-pack визуальная проверка и F2 evidence не получены. `nativeVerified=false` сохраняется.
 - Первый свежий CodeRabbit review пяти файлов нашёл одно minor замечание: историческое описание старого JAR звучало как текущий статус. Формулировка исправлена на прошедшее время; итоговый fresh review после исправления завершился `0 issues`.
 - На момент записи исходные refs `origin` и `gitlab` должны быть сверены повторно после commit. Документированный итог ещё не был закоммичен или отправлен. Волны 1–7 и Rift Guardian остаются отложены.
+
+## Итог 2026-10-11 — исходный commit afcc75cd и его CI
+
+- Уточнён provenance: полный pytest после runtime upgrade и security/review evidence относились к рабочему дереву на базе `9f6a7c08`, где были staged точные изменения `replaceSha256` и тест. Эти lock/test изменения теперь зафиксированы в исходном commit `afcc75cd3fed0eb305650a9970c02c6174c71102`; run не следует приписывать чистому commit `9f6a7c08`.
+- `afcc75cd` отправлен в обе ветки `codex/minecraft-26-3-migration-candidate-20261010`. Повторный `git ls-remote` подтвердил одинаковый полный SHA в `origin` и `gitlab`.
+- GitHub push run [38117821447](https://github.com/IliaZav/copimine/actions/runs/38117821447) и PR run [38117823735](https://github.com/IliaZav/copimine/actions/runs/38117823735) прошли успешно на этом exact SHA; все три jobs — PostgreSQL, static/contract и Java plugins — `success`.
+- GitLab push pipeline [2935306765](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2935306765) и MR pipeline [2935306782](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2935306782) не создали jobs и завершились failed из-за account-level ошибки `Identity verification is required in order to run CI jobs`. GitLab acceptance не пройдена.
+- CodeRabbit final review завершился `0 issues`; Codex Security scan `7b4f3c1a-4570-4fd9-a1e7-9762072901f2` — `0 findings`, complete coverage bounded source diff. Local independent reviewer не нашёл actionable findings; Code Review connector подтвердил GitHub CI check statuses.
+- Paper остаётся запущен на `127.0.0.1:25568` для ручного теста. Listener не публичный; offline-mode/AuthMe/AuthEffects-настройки применены только к loopback runtime. Native login, визуальная проверка и F2 evidence не сделаны: `apps: []`. `nativeVerified=false`; gameplay stages не начинались.

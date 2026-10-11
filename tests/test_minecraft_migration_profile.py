@@ -36,7 +36,8 @@ def test_gitlab_and_github_share_the_pinned_java_plugin_release_gate():
     assert release_gate.is_file()
     assert 'RunJavaPluginCi.ps1' in gitlab
     assert 'RunJavaPluginCi.ps1' in github
-    assert "21.0.12.1" in gitlab and "21.0.12.1" in github and "21.0.12.1" in release_gate_source
+    assert "21.0.12.1" in gitlab and "21.0.12.1" in release_gate_source
+    assert github.count("java-version: '21.0.12+101.0.LTS'") == 3
     assert "25.0.4.1" in github and "25.0.4.1" in gitlab
     assert "python-3.13.16-amd64.exe" in gitlab and "3.13.16" in github
     assert 'Python 3\\.13\\.16' in release_gate_source
@@ -144,7 +145,8 @@ def test_java_plugin_build_scripts_prefer_the_isolated_maven_repository():
 def test_new_setup_java_action_reference_is_immutable():
     github=(ROOT/'.github/workflows/ci.yml').read_text(encoding='utf-8')
 
-    assert 'actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961' in github
+    assert github.count('actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961') == 4
+    assert 'actions/setup-java@v4' not in github
 
 
 def test_atomic_text_write_keeps_existing_profile_options_on_replacement_failure(tmp_path):

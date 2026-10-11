@@ -452,6 +452,9 @@ def test_artifact_orphan_reconciliation_pages_past_bad_rows_and_keeps_retrying_t
     assert "recoveryState.resolved(" in reconciliation
     assert "recoveryState.isScanComplete()" in reconciliation
     assert "recoveryState.beginNextScan(System.currentTimeMillis(), 60_000L)" in reconciliation
+    reliability_validator = (ROOT / "tests/ValidateCopiMineArtifactsShopReliability.ps1").read_text(encoding="utf-8")
+    assert "'beginNextScan(System.currentTimeMillis(), 60_000L)'" in reliability_validator
+    assert "'beginNextScan(60_000L)'" not in reliability_validator
     assert "completedScanPolls < 6" in reconciliation
     purchase_flow = artifacts.split("private void executePurchase(", 1)[1].split("private void persistPaidPurchase(", 1)[0]
     assert purchase_flow.index("activeArtifactShopPurchases.begin(var6)") < purchase_flow.index('"artifact-purchase-" + var6')

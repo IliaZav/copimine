@@ -56,7 +56,7 @@ foreach ($marker in @(
     'ArtifactRevenuePayoutPolicy.purchasePersistenceLockKey(purchaseId)',
     'lockArtifactPurchasePersistence(var4, var2.purchaseId())',
     'SET LOCAL lock_timeout = ''5s''',
-    'beginNextScan(60_000L)',
+    'beginNextScan(System.currentTimeMillis(), 60_000L)',
     'completedScanPolls < 6',
     'runTaskTimerAsynchronously(this, 20L, 200L)'
 )) {

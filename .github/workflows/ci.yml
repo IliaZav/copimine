@@ -111,7 +111,7 @@ jobs:
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
-          java-version: '25.0.4.1'
+          java-version: '25.0.4+101.0.LTS'
       - name: Build and verify pinned Minecraft 26.3 candidates
         shell: pwsh
         run: |
@@ -121,6 +121,32 @@ jobs:
             -GrimPatchJavaHome $env:COPIMINE_JAVA_21_HOME `
             -PythonExe python
           if ($LASTEXITCODE -ne 0) { throw 'Pinned Minecraft 26.3 candidate preparation failed.' }
+      - name: Verify required Minecraft 26.3 event test inputs exist
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $requiredRelativePaths = @(
+            'build/minecraft-26.3/CopiMineResourcePack-26.3.zip',
+            'build/minecraft-26.3/toolchain/minecraft-26.3-client.jar'
+          )
+          $missingInputs = @(
+            foreach ($relativePath in $requiredRelativePaths) {
+              $absolutePath = Join-Path $env:GITHUB_WORKSPACE $relativePath
+              if (-not (Test-Path -LiteralPath $absolutePath -PathType Leaf)) { $relativePath }
+            }
+          )
+          if ($missingInputs.Count -gt 0) {
+            throw ('Required Minecraft 26.3 event test inputs are missing: ' + ($missingInputs -join ', '))
+          }
+      - name: Upload verified inputs for Java plugin event regressions
+        uses: actions/upload-artifact@v4
+        with:
+          name: minecraft-26.3-event-test-inputs
+          path: |
+            build/minecraft-26.3/CopiMineResourcePack-26.3.zip
+            build/minecraft-26.3/toolchain/minecraft-26.3-client.jar
+          if-no-files-found: error
+          retention-days: 1
       - name: Restore Java 21 for contract checks
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -253,6 +279,8 @@ jobs:
   java-plugins:
     runs-on: windows-latest
     timeout-minutes: 60
+    needs:
+      - static-and-contract
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
@@ -284,6 +312,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '21.0.12+101.0.LTS'
+      - name: Download verified Minecraft 26.3 event test inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: minecraft-26.3-event-test-inputs
+          path: build/minecraft-26.3
       - name: Run shared Java plugin release gate
         shell: pwsh
         run: |

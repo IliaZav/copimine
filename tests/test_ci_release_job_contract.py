@@ -792,3 +792,49 @@ def test_windows_powershell_cabinet_validator_source_is_ansi_independent() -> No
         "Windows PowerShell 5.1 reads UTF-8 scripts without a BOM using the system ANSI code page; "
         "keep this validator's source ASCII-only and encode expected Unicode text as UTF-8 base64."
     )
+
+
+def test_github_java_plugin_gate_downloads_verified_minecraft_26_3_test_inputs() -> None:
+    workflow = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    jobs = workflow["jobs"]
+    static_steps = jobs["static-and-contract"]["steps"]
+    java_job = jobs["java-plugins"]
+
+    candidate_build = next(
+        step for step in static_steps
+        if step.get("name") == "Build and verify pinned Minecraft 26.3 candidates"
+    )
+    candidate_upload = next(
+        step for step in static_steps
+        if step.get("name") == "Upload verified inputs for Java plugin event regressions"
+    )
+    input_validation = next(
+        step for step in static_steps
+        if step.get("name") == "Verify required Minecraft 26.3 event test inputs exist"
+    )
+    assert java_job["needs"] == ["static-and-contract"]
+    assert candidate_upload["uses"] == "actions/upload-artifact@v4"
+    assert input_validation["shell"] == "pwsh"
+    assert "Test-Path -LiteralPath" in input_validation["run"]
+    assert "build/minecraft-26.3/CopiMineResourcePack-26.3.zip" in input_validation["run"]
+    assert "build/minecraft-26.3/toolchain/minecraft-26.3-client.jar" in input_validation["run"]
+    assert static_steps.index(candidate_build) < static_steps.index(input_validation)
+    assert static_steps.index(input_validation) < static_steps.index(candidate_upload)
+    assert static_steps.index(candidate_build) < static_steps.index(candidate_upload)
+    assert candidate_upload["with"]["name"] == "minecraft-26.3-event-test-inputs"
+    assert "build/minecraft-26.3/CopiMineResourcePack-26.3.zip" in candidate_upload["with"]["path"]
+    assert "build/minecraft-26.3/toolchain/minecraft-26.3-client.jar" in candidate_upload["with"]["path"]
+    assert candidate_upload["with"]["if-no-files-found"] == "error"
+
+    candidate_download = next(
+        step for step in java_job["steps"]
+        if step.get("name") == "Download verified Minecraft 26.3 event test inputs"
+    )
+    assert candidate_download["uses"] == "actions/download-artifact@v4"
+    assert candidate_download["with"]["name"] == "minecraft-26.3-event-test-inputs"
+    assert candidate_download["with"]["path"] == "build/minecraft-26.3"
+    shared_gate = next(
+        step for step in java_job["steps"]
+        if step.get("name") == "Run shared Java plugin release gate"
+    )
+    assert java_job["steps"].index(candidate_download) < java_job["steps"].index(shared_gate)

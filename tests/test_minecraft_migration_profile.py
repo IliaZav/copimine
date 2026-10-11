@@ -38,7 +38,10 @@ def test_gitlab_and_github_share_the_pinned_java_plugin_release_gate():
     assert 'RunJavaPluginCi.ps1' in github
     assert "21.0.12.1" in gitlab and "21.0.12.1" in release_gate_source
     assert github.count("java-version: '21.0.12+101.0.LTS'") == 3
-    assert "25.0.4.1" in github and "25.0.4.1" in gitlab
+    assert "java-version: '25.0.4+101.0.LTS'" in github
+    assert "java-version: '25.0.4+1'" not in github
+    assert "java-version: '25.0.4.1'" not in github
+    assert "25.0.4.1" in gitlab
     assert "python-3.13.16-amd64.exe" in gitlab and "3.13.16" in github
     assert 'Python 3\\.13\\.16' in release_gate_source
     assert 'm2-repository' in release_gate_source

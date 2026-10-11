@@ -249,7 +249,7 @@ def test_dangling_plugin_temp_symlink_is_rejected_before_backup_or_copy(tmp_path
     except (OSError,NotImplementedError) as error:
         pytest.skip('symlink creation is unavailable on this Windows host: '+str(error))
 
-    with pytest.raises(ValueError,match='temporary|symlink|link'):
+    with pytest.raises(ValueError,match='Unrecognized staging file|temporary|symlink|link'):
         mod.install_records(tmp_path,server,[r],stage,lambda port,host:False)
 
     assert (plugins/'old.jar').read_bytes()==old

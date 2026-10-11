@@ -6,16 +6,32 @@ $scripts = @(
   'copimine-election-core\build-plugin.ps1',
   'copimine-admin-plugin\build-plugin.ps1',
   'copimine-artifacts\build-plugin.ps1',
+  'copimine-end-event\build-plugin.ps1',
   'copimine-narcotics\build-plugin.ps1',
-  'copimine-world-core\build-plugin.ps1'
+  'copimine-world-core\build-plugin.ps1',
+  'minecraft\server\plugins\AuthEffects\build-plugin.ps1'
 )
 $errors = [System.Collections.Generic.List[string]]::new()
 
 foreach ($relativePath in $scripts) {
   $text = Get-Content -LiteralPath (Join-Path $root $relativePath) -Raw -Encoding UTF8
-  foreach ($marker in @('$mavenRepo', 'net\kyori', 'net\md-5', 'org\joml', 'PAPER_COMPILE_DEPS')) {
+  foreach ($marker in @('$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)', 'net\kyori', 'net\md-5', 'org\joml', 'PAPER_COMPILE_DEPS')) {
     if (-not $text.Contains($marker)) {
       $errors.Add("$relativePath must include Paper compile dependency marker: $marker")
+    }
+  }
+  $lockedClasspathBranch = $text.IndexOf('if ($env:PAPER_COMPILE_DEPS)', [StringComparison]::Ordinal)
+  $lockedClasspathUse = $text.IndexOf('$cp += $env:PAPER_COMPILE_DEPS', [StringComparison]::Ordinal)
+  $fallbackClasspathBranch = if ($lockedClasspathBranch -ge 0) { $text.IndexOf('} else {', $lockedClasspathBranch, [StringComparison]::Ordinal) } else { -1 }
+  if ($lockedClasspathBranch -lt 0 -or $lockedClasspathUse -lt $lockedClasspathBranch) {
+    $errors.Add("$relativePath must consume the verified PAPER_COMPILE_DEPS classpath")
+  }
+  foreach ($ambientMarker in @("Get-ChildItem -Path `$groupPath", "Get-ChildItem -Path (Join-Path `$serverDir 'libraries')", 'Get-ChildItem -Path $serverLibraries')) {
+    $ambientIndex = $text.IndexOf($ambientMarker, [StringComparison]::Ordinal)
+    if ($ambientIndex -ge 0) {
+      if ($fallbackClasspathBranch -lt 0 -or $ambientIndex -lt $fallbackClasspathBranch) {
+        $errors.Add("$relativePath must keep ambient compile libraries out of the locked CI branch")
+      }
     }
   }
 }

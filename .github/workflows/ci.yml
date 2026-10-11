@@ -2,31 +2,72 @@ name: CopiMine verification
 
 on:
   push:
-    branches: [main, 'codex/**', 'agent/**']
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  static-and-contract:
-    runs-on: windows-latest
-    timeout-minutes: 30
+  migration-postgres-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: copimine_migration_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: migration-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d copimine_migration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      COPIMINE_TEST_POSTGRES_DSN: postgresql://postgres:migration-test-only@127.0.0.1:5432/copimine_migration_test
+      COPIMINE_TEST_POSTGRES_ALLOW_PRIVATE_NETWORK: "1"
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify exact source SHA
+        shell: bash
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13.16'
+      - name: Run PostgreSQL migration contract against ephemeral service
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check 'pytest==9.1.1' 'psycopg[binary]==3.2.3'
+          python -m pytest -q -rs \
+            tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_candidate_duplicate_migration_preserves_and_archives_real_postgres_rows \
+            tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_election_core_removes_legacy_candidate_uuid_key_before_canonical_inserts
+
+  static-and-contract:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.13.16'
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21.0.10'
+          java-version: '21.0.12.1'
       - name: Install backend test dependencies
         shell: pwsh
         run: |
@@ -40,6 +81,9 @@ jobs:
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check -r requirements-security.txt
           python -m pip_audit -r admin-web/requirements.txt --strict
+          if ($LASTEXITCODE -ne 0) { throw 'Dependency vulnerability gate failed.' }
+          python -m pip_audit -r requirements-security.txt --strict
+          if ($LASTEXITCODE -ne 0) { throw 'Migration acceptance signing dependency audit failed.' }
       - name: Prepare release fixtures required by contract tests
         shell: pwsh
         run: |
@@ -58,13 +102,37 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
           $clientJar = Join-Path $env:GITHUB_WORKSPACE 'CopiMineClient\build\libs\CopiMineClient-0.1.1.jar'
           if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw "CopiMineClient artifact was not created: $clientJar" }
+      - name: Record Java 21 for the pinned Grim patch build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          "COPIMINE_JAVA_21_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Set up Java 25 for Minecraft 26.3 migration artifacts
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '25.0.4.1'
+      - name: Build and verify pinned Minecraft 26.3 candidates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\PrepareMigrationCandidates.ps1 `
+            -BuildJavaHome $env:JAVA_HOME `
+            -GrimPatchJavaHome $env:COPIMINE_JAVA_21_HOME `
+            -PythonExe python
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Minecraft 26.3 candidate preparation failed.' }
+      - name: Restore Java 21 for contract checks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21.0.12.1'
       - name: Run Python contract tests
         shell: pwsh
         env:
           PYTHONIOENCODING: utf-8
         run: |
           $ErrorActionPreference = 'Stop'
-          python -m pytest -q tests --junitxml="$env:GITHUB_WORKSPACE\test-results.xml"
+          python -m pytest -q -rs tests --junitxml="$env:GITHUB_WORKSPACE\test-results.xml"
           if ($LASTEXITCODE -ne 0) { throw 'pytest contract suite failed.' }
           python admin-web/scripts/security_selftest.py
           if ($LASTEXITCODE -ne 0) { throw 'security self-test failed.' }
@@ -99,11 +167,14 @@ jobs:
           name: python-test-results
           path: test-results.xml
           if-no-files-found: error
-      - name: Verify clean release provenance
+      - name: Verify exact CI checkout
         shell: pwsh
+        env:
+          MIGRATION_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           $ErrorActionPreference = 'Stop'
           $status = @(git status --porcelain)
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub source checkout status could not be verified.' }
           # The contract job intentionally creates these two deterministic
           # release fixtures before pytest: the JAR is tracked for release
           # distribution and test-results.xml is uploaded as a CI artifact.
@@ -118,169 +189,118 @@ jobs:
           }
           $sha = (git rev-parse HEAD).Trim()
           Write-Host "Verifying source SHA $sha"
-          if ($sha.Length -ne 40) { throw 'Unexpected source SHA length.' }
+          if ($sha -notmatch '^[0-9a-f]{40}$' -or $sha -ne $env:MIGRATION_CI_HEAD_SHA) {
+            throw "Checkout does not match the exact GitHub CI source SHA: $sha"
+          }
+
+      - name: Require evidence when migration locks claim acceptance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python .\scripts\minecraft\validate_native_acceptance.py --root $env:GITHUB_WORKSPACE --require-evidence-for-accepted-locks
+          if ($LASTEXITCODE -ne 0) { throw 'Migration locks claim acceptance without signed native Minecraft evidence.' }
+      - name: Verify migration acceptance source provenance
+        if: >-
+          hashFiles('artifacts/minecraft-26.3/native-acceptance/**') != ''
+        shell: pwsh
+        env:
+          MIGRATION_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (git rev-parse HEAD).Trim()
+          $parentRecord = ((git rev-list --parents -n 1 $sha).Trim() -split '\s+')
+          if ($LASTEXITCODE -ne 0 -or $parentRecord.Count -ne 2) {
+            throw 'Native acceptance evidence must be committed directly after its tested source commit.'
+          }
+          $migrationSourceCommit = $parentRecord[1]
+          if ($migrationSourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Evidence parent is not a full Git SHA.' }
+          git diff --quiet $migrationSourceCommit $sha -- . ':(exclude)artifacts/minecraft-26.3/native-acceptance/**'
+          if ($LASTEXITCODE -ne 0) {
+            throw 'The commit after the tested source may change only signed native-acceptance evidence.'
+          }
+          "MIGRATION_SOURCE_COMMIT=$migrationSourceCommit" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Require native Minecraft 26.3 acceptance evidence
+        if: >-
+          hashFiles('artifacts/minecraft-26.3/native-acceptance/**') != ''
+        shell: pwsh
+        env:
+          MIGRATION_ACCEPTANCE_PUBLIC_KEY: ${{ vars.MIGRATION_ACCEPTANCE_PUBLIC_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $verifiedAcceptanceArchive = Join-Path $env:GITHUB_WORKSPACE 'ci-verified-native-acceptance.zip'
+          if (Test-Path -LiteralPath $verifiedAcceptanceArchive) { throw 'Reserved verified acceptance archive path must be absent before validation.' }
+          python .\scripts\minecraft\validate_native_acceptance.py --root $env:GITHUB_WORKSPACE --expected-source-commit $env:MIGRATION_SOURCE_COMMIT --verified-output $verifiedAcceptanceArchive
+          if ($LASTEXITCODE -ne 0) { throw 'Signed native Minecraft acceptance evidence is absent or does not match the trusted key, built candidates, and locked profile.' }
+      - name: Upload CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minecraft-26-3-ci-diagnostics
+          path: |
+            test-results.xml
+            artifacts/end-rift-diagnostics/
+          if-no-files-found: ignore
+      - name: Upload verified Minecraft 26.3 acceptance evidence
+        if: >-
+          success() &&
+          hashFiles('artifacts/minecraft-26.3/native-acceptance/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: minecraft-26-3-native-acceptance
+          path: ci-verified-native-acceptance.zip
+          if-no-files-found: error
 
   java-plugins:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout exact source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Verify exact CI checkout
+        shell: pwsh
+        env:
+          CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sha = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $sha -ne $env:CI_SOURCE_SHA) {
+            throw "Java plugin job checked out $sha instead of the exact source SHA $env:CI_SOURCE_SHA"
+          }
       - name: Set up Python for release assets
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-      - name: Install resource-pack build dependency
+          python-version: '3.13.16'
+      - name: Install release-asset build dependencies
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           python -m pip install --disable-pip-version-check 'Pillow==12.3.0' 'pytest==9.1.1'
-      - name: Set up Java
+          if ($LASTEXITCODE -ne 0) { throw 'Release-asset Python dependencies failed to install.' }
+      - name: Set up pinned Java 21 for plugin releases
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21.0.10'
-      - name: Set up Maven
+          java-version: '21.0.12.1'
+      - name: Run shared Java plugin release gate
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $version = '3.9.9'
-          $archive = Join-Path $env:RUNNER_TEMP "apache-maven-$version-bin.zip"
-          $root = Join-Path $env:RUNNER_TEMP "apache-maven-$version"
-          $uri = "https://archive.apache.org/dist/maven/maven-3/$version/binaries/apache-maven-$version-bin.zip"
-          $expectedSha512 = '8beac8d11ef208f1e2a8df0682b9448a9a363d2ad13ca74af43705549e72e74c9378823bf689287801cbbfc2f6ea9596201d19ccacfdfb682ee8a2ff4c4418ba'
-          Invoke-WebRequest -Uri $uri -OutFile $archive
-          $actualSha512 = (Get-FileHash -Algorithm SHA512 -LiteralPath $archive).Hash.ToLowerInvariant()
-          if ($actualSha512 -ne $expectedSha512) { throw "Maven SHA512 mismatch. Expected=$expectedSha512 Actual=$actualSha512" }
-          if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
-          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP -Force
-          $mavenBin = Join-Path $root 'bin'
-          if (-not (Test-Path -LiteralPath (Join-Path $mavenBin 'mvn.cmd'))) { throw 'Maven installation is incomplete.' }
-          $mavenBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      - name: Prepare pinned Paper API and compile dependencies
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $paperBase = 'https://repo.papermc.io/repository/maven-public/io/papermc/paper/paper-api/1.21.1-R0.1-SNAPSHOT'
-          $paperBuild = '1.21.1-R0.1-20250328.161643-128'
-          $paperJar = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.jar"
-          $paperPom = Join-Path $env:RUNNER_TEMP "paper-api-$paperBuild.pom"
-          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.jar" -OutFile $paperJar
-          Invoke-WebRequest -Uri "$paperBase/paper-api-$paperBuild.pom" -OutFile $paperPom
-          $paperJarSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperJar).Hash.ToLowerInvariant()
-          if ($paperJarSha256 -ne 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0') { throw "Paper API JAR SHA256 mismatch: $paperJarSha256" }
-          $paperPomSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $paperPom).Hash.ToLowerInvariant()
-          if ($paperPomSha256 -ne 'c80905a70192b4d1d9fd5d2ab7cf7879b928c71d5c0bf3715f8806dc338d4c46') { throw "Paper API POM SHA256 mismatch: $paperPomSha256" }
-          $placeholderJar = Join-Path $env:RUNNER_TEMP 'PlaceholderAPI-2.12.3.jar'
-          Invoke-WebRequest -Uri 'https://github.com/PlaceholderAPI/PlaceholderAPI/releases/download/2.12.3/PlaceholderAPI-2.12.3.jar' -OutFile $placeholderJar
-          $placeholderSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $placeholderJar).Hash.ToLowerInvariant()
-          if ($placeholderSha256 -ne 'fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437') { throw "PlaceholderAPI SHA256 mismatch: $placeholderSha256" }
-          $pluginDir = Join-Path $env:GITHUB_WORKSPACE 'minecraft/server/plugins'
-          New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
-          Copy-Item -LiteralPath $placeholderJar -Destination (Join-Path $pluginDir 'PlaceholderAPI-2.12.3.jar') -Force
-          $dependencyPom = Join-Path $env:RUNNER_TEMP 'copimine-paper-compile-dependencies.pom'
-          @'
-          <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-            <modelVersion>4.0.0</modelVersion>
-            <groupId>copimine</groupId>
-            <artifactId>paper-compile-dependencies</artifactId>
-            <version>1.0.0</version>
-            <repositories>
-              <repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository>
-            </repositories>
-            <dependencies>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-api</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-minimessage</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-gson</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-legacy</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-serializer-plain</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.kyori</groupId><artifactId>adventure-text-logger-slf4j</artifactId><version>4.17.0</version></dependency>
-              <dependency><groupId>net.md-5</groupId><artifactId>bungeecord-chat</artifactId><version>1.20-R0.2-deprecated+build.18</version></dependency>
-              <dependency><groupId>org.joml</groupId><artifactId>joml</artifactId><version>1.10.5</version></dependency>
-            </dependencies>
-          </project>
-          '@ | Set-Content -LiteralPath $dependencyPom -Encoding utf8
-          $snakeYamlJar = Join-Path $env:USERPROFILE '.m2\repository\org\yaml\snakeyaml\2.2\snakeyaml-2.2.jar'
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $snakeYamlJar) | Out-Null
-          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar' -OutFile $snakeYamlJar -TimeoutSec 60
-          $snakeYamlSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $snakeYamlJar).Hash.ToLowerInvariant()
-          if ($snakeYamlSha256 -ne '1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b') { throw "SnakeYAML SHA256 mismatch: $snakeYamlSha256" }
-          $guavaJar = Join-Path $env:USERPROFILE '.m2\repository\com\google\guava\guava\32.1.2-jre\guava-32.1.2-jre.jar'
-          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $guavaJar) | Out-Null
-          Invoke-WebRequest -Uri 'https://repo.papermc.io/repository/maven-public/com/google/guava/guava/32.1.2-jre/guava-32.1.2-jre.jar' -OutFile $guavaJar -TimeoutSec 60
-          $guavaSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $guavaJar).Hash.ToLowerInvariant()
-          if ($guavaSha256 -ne 'bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce') { throw "Guava SHA256 mismatch: $guavaSha256" }
-          mvn -q -B -f $dependencyPom dependency:go-offline
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to download Paper compile dependencies.' }
-          "PAPER_API_JAR=$paperJar" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Compile first-party plugins
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($dir in @('copimine-world-core','copimine-artifacts','copimine-end-event','copimine-economy-core','copimine-election-core','copimine-narcotics','copimine-admin-plugin','minecraft/server/plugins/AuthEffects')) {
-            & powershell -ExecutionPolicy Bypass -File (Join-Path $dir 'build-plugin.ps1')
-            if ($LASTEXITCODE -ne 0) { throw "Build failed: $dir" }
-          }
-      - name: Build CopiMineClient release artifact
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & powershell -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
-      - name: Build resource pack release artifact
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & powershell -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
-          if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
-          $pack = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.zip'
-          $sha = Join-Path $env:GITHUB_WORKSPACE 'resourcepacks\build\CopiMineResourcePack.sha1'
-          if (-not (Test-Path -LiteralPath $pack -PathType Leaf)) { throw "Resource pack archive was not created: $pack" }
-          if (-not (Test-Path -LiteralPath $sha -PathType Leaf)) { throw "Resource-pack digest sidecar was not created: $sha" }
-          Write-Host "Resource pack fixture ready: $pack"
-      - name: Prepare pinned third-party plugin fixtures
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned third-party plugin fixtures failed verification.' }
-      - name: Run all source and release-artifact validators
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          & .\tests\RunCopiMineValidators.ps1
-          if ($LASTEXITCODE -ne 0) { throw 'CopiMine validators failed.' }
-      - name: Run End Rift event gate
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $log = Join-Path $env:RUNNER_TEMP 'end-rift-event-gate.log'
-          $gateExitCode = 0
-          try {
-            & .\tests\RunEndRiftEventChecks.ps1 *>&1 | Tee-Object -FilePath $log
-            $gateExitCode = $LASTEXITCODE
-          } catch {
-            $gateExitCode = 1
-            Write-Host $_
-          }
-          if ($gateExitCode -ne 0) {
-            $detail = if (Test-Path -LiteralPath $log) {
-              ((Get-Content -LiteralPath $log -Tail 30) -join ' ') -replace '\s+', ' '
-            } else {
-              'The End Rift gate produced no captured output.'
-            }
-            if ($detail.Length -gt 4000) { $detail = $detail.Substring($detail.Length - 4000) }
-            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error title=End Rift gate detail::$detail"
-            throw "End Rift event gate failed with exit code $gateExitCode."
-          }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\RunJavaPluginCi.ps1 `
+            -JavaHome $env:JAVA_HOME `
+            -WorkspaceRoot $env:GITHUB_WORKSPACE `
+            -TemporaryDirectory $env:RUNNER_TEMP `
+            -PythonExe python
+          if ($LASTEXITCODE -ne 0) { throw 'Shared Java plugin release gate failed.' }
       - name: Upload End Rift gate diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: end-rift-event-gate-diagnostics
           path: |
-            ${{ runner.temp }}/end-rift-event-gate.log
+            artifacts/end-rift-diagnostics/java-plugin-ci/**
             artifacts/end-rift-diagnostics/**
             minecraft/server/plugins/CopiMineEndEvent/diagnostics/**
           if-no-files-found: ignore

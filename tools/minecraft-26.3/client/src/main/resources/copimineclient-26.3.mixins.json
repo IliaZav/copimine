@@ -1,0 +1,35 @@
+{
+  "required": true,
+  "package": "me.copimine.client.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ArmorFeatureRendererMixin",
+    "EquipmentLayerRendererTextureMixin",
+    "CustomDataReadAccessMixin",
+    "KeyboardInputPrisonerMixin",
+    "KeyboardPrisonerModeMixin",
+    "PrisonerTargetOutlineMixin",
+    "PrisonerTargetOutlineColorMixin",
+    "ClientPlayerInteractionManagerPrisonerMixin",
+    "EndRiftBossBarHudMixin",
+    "EndermanEntityRendererMixin",
+    "EndermanEyesFeatureRendererMixin",
+    "LivingEntityRendererMixin",
+    "LivingEntityRenderStateMixin",
+    "EchoPlayerRendererMixin",
+    "EchoCarrierUnloadMixin",
+    "EndEventBlackFogMixin",
+    "WaveMusicMixMixin",
+    "EntityBoundingBoxMixin",
+    "LivingEntityHealthProjectionMixin",
+    "DisplayEntityRendererMixin",
+    "DisplayEntityRenderStateMixin",
+    "ClientWorldAccessor",
+    "SpiderEntityRendererMixin",
+    "SkeletonEntityRendererMixin",
+    "GameRendererPostProcessMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

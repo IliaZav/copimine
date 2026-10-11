@@ -13,9 +13,14 @@ $jar = Join-Path $pluginDir 'CopiMineEndEvent.jar'
 $serverJar = Join-Path $serverDir 'plugins\CopiMineEndEvent.jar'
 $serverDataDir = Join-Path $serverDir 'plugins\CopiMineEndEvent'
 
+$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY) {
+  $env:COPIMINE_MAVEN_REPOSITORY
+} else {
+  Join-Path $env:USERPROFILE '.m2\repository'
+}
 $paperApi = $env:PAPER_API_JAR
 if (-not $paperApi) {
-  $paperApi = Get-ChildItem -Path "$env:USERPROFILE\.m2\repository" -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
+  $paperApi = Get-ChildItem -Path $mavenRepo -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 -ExpandProperty FullName
 }
@@ -24,13 +29,6 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
-$mavenRepo = Join-Path $env:USERPROFILE '.m2\repository'
-foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
-  $groupPath = Join-Path $mavenRepo $group
-  if (Test-Path $groupPath) {
-    $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
-  }
-}
 foreach ($dependency in @(
   (Join-Path $releaseRoot 'copimine-world-core\CopiMineWorldCore.jar'),
   (Join-Path $releaseRoot 'copimine-artifacts\CopiMineArtifacts.jar')
@@ -42,9 +40,16 @@ foreach ($dependency in @(
 }
 if ($env:PAPER_COMPILE_DEPS) {
   $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
-}
-if (Test-Path (Join-Path $serverDir 'libraries')) {
-  $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+} else {
+  foreach ($group in @('net\kyori', 'net\md-5', 'org\joml', 'org\jetbrains', 'com\google\guava')) {
+    $groupPath = Join-Path $mavenRepo $group
+    if (Test-Path $groupPath) {
+      $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
+    }
+  }
+  if (Test-Path (Join-Path $serverDir 'libraries')) {
+    $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+  }
 }
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
@@ -54,7 +59,7 @@ if (-not $sources) { throw "No Java sources found under $srcRoot." }
 # Keep javac below Windows' native command-line limit in nested worktrees.
 # The dependency list and all source paths are still passed unchanged.
 $compileArgsPath = Join-Path $pluginDir 'build\javac.args'
-$compileArgs = @('-encoding', 'UTF-8', '-cp',
+$compileArgs = @('-proc:none', '-encoding', 'UTF-8', '-cp',
   ('"' + (($cp -join [IO.Path]::PathSeparator) -replace '\\', '/') + '"'),
   '-d', ('"' + ($classes -replace '\\', '/') + '"'))
 $compileArgs += @($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"' })

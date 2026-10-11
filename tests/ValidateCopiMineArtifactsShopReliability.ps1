@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $sourcePath = Join-Path $root 'copimine-artifacts\src\me\copimine\artifacts\CopiMineArtifacts.java'
 $source = Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
+$economySourcePath = Join-Path $root 'copimine-economy-core\src\me\copimine\economycore\CopiMineEconomyCore.java'
+$economySource = Get-Content -LiteralPath $economySourcePath -Raw -Encoding UTF8
 $errors = [System.Collections.Generic.List[string]]::new()
 
 if ($source -notmatch [regex]::Escape('VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')) {
@@ -42,10 +44,44 @@ if (-not $delivery.Success -or $delivery.Value -notmatch '(?s)if \(!var1\.isOnli
     $errors.Add('A player disconnecting after a successful charge must be moved to pending delivery before any physical inventory write is attempted.')
 }
 
-foreach ($marker in @('reconcileOrphanedShopTransfers(', 'readOrphanedShopTransfers(', 'artifact-purchase-', 'artifact-orphan-refund-', 'AR_SHOP_PURCHASE')) {
+foreach ($marker in @(
+    'scheduleOrphanedShopTransferReconciliation(',
+    'readOrphanedShopTransfers(',
+    'recordFetchedPage(fetchedCursors, 128)',
+    'pendingSnapshot().entrySet()',
+    'artifact-purchase-',
+    'ArtifactShopPurchaseRecoveryGuard.refundIdempotencyKey(',
+    'AR_SHOP_PURCHASE_RECOVERY_REFUND',
+    'ArtifactRevenuePayoutPolicy.isWithinOrphanRefundGracePeriod(transfer.createdAt(), this.now())',
+    'ArtifactRevenuePayoutPolicy.purchasePersistenceLockKey(purchaseId)',
+    'lockArtifactPurchasePersistence(var4, var2.purchaseId())',
+    'SET LOCAL lock_timeout = ''5s''',
+    'beginNextScan(60_000L)',
+    'completedScanPolls < 6',
+    'runTaskTimerAsynchronously(this, 20L, 200L)'
+)) {
     if ($source -notmatch [regex]::Escape($marker)) {
-        $errors.Add("A startup reconciliation path must reverse a completed shop transfer that has no persisted artifact order after an interruption (missing: $marker).")
+        $errors.Add("Orphaned shop-transfer recovery must page by a durable cursor, retry transient refunds, and reverse an unpersisted purchase after interruption (missing: $marker).")
     }
+}
+if ($source -match 'attempts\s*>\s*60') {
+    $errors.Add('Orphaned shop-transfer recovery must keep retrying after its first bounded scan instead of stopping after five minutes.')
+}
+$reconciliation = [regex]::Match($source, '(?s)private void scheduleOrphanedShopTransferReconciliation\(\) \{.*?(?=\r?\n\s*private boolean refundOrSkipOrphanedShopTransfer)')
+$disableCancellation = [regex]::Match($reconciliation.Value, '(?s)if \(!CopiMineArtifacts\.this\.isEnabled\(\)\) \{.*?\bcancel\s*\(\)')
+$cancellationCount = [regex]::Matches($reconciliation.Value, '\bcancel\s*\(').Count
+if (-not $reconciliation.Success -or -not $disableCancellation.Success -or $cancellationCount -ne 1) {
+    $errors.Add('A completed orphan-transfer scan must leave the scheduled worker alive for later periodic scans.')
+}
+$refundRecovery = [regex]::Match($source, '(?s)private boolean refundOrSkipOrphanedShopTransfer\(.*?\{.*?(?=\r?\n\s*private boolean hasPersistedArtifactShopPurchase)')
+$inFlightCheckIndex = $refundRecovery.Value.IndexOf('isPurchaseInFlight(purchaseId)', [StringComparison]::Ordinal)
+$persistedLookupIndex = $refundRecovery.Value.IndexOf('hasPersistedArtifactShopPurchase(idempotencyKey)', [StringComparison]::Ordinal)
+if (-not $refundRecovery.Success -or $inFlightCheckIndex -lt 0 -or $persistedLookupIndex -lt 0 -or $inFlightCheckIndex -ge $persistedLookupIndex) {
+    $errors.Add('Recovery must check the purchase in-flight guard before reading persisted purchase state.')
+}
+$rollingCursorPredicate = 'AND (t.created_at > ? OR (t.created_at = ? AND (? = '''' OR t.tx_id > ?)))'
+if (-not $economySource.Contains($rollingCursorPredicate)) {
+    $errors.Add('Periodic orphan-transfer scans must honor the timestamp cursor when replaying a window with an empty transaction id.')
 }
 
 if ($errors.Count -gt 0) {

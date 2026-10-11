@@ -23,7 +23,7 @@ RequireRx $text 'onBook[\s\S]*requireElectionStatus\([^;]+APPLICATIONS_OPEN' 'Ap
 Require $text 'hasActiveApplication' 'Duplicate active application guard is missing.'
 Require $sql 'ux_cmv7_applications_active_once' 'PostgreSQL active application uniqueness index is missing.'
 RequireRx $text 'reviewApplication[\s\S]*ULTRA7_APPLICATION_' 'Application review must write audit rows.'
-RequireRx $text 'promoteApplicationCandidate[\s\S]*SELECT COUNT\(\*\) FROM candidates WHERE election_id=\? AND uuid=\?' 'Application promotion must be idempotent.'
+RequireRx $text 'promoteApplicationCandidate[\s\S]*SELECT COUNT\(\*\) FROM candidates WHERE election_id=\? AND player_uuid=\?' 'Application promotion must be idempotent against the canonical ElectionCore candidate schema.'
 RequireRx $text 'promoteApplicationCandidate[\s\S]*INSERT INTO candidates' 'Approved application must be able to create a candidate.'
 RequireRx $text 'reviewApplication[\s\S]*REJECTED' 'Rejected application status must exist and not promote by itself.'
 Require $text 'openApplicationsReview' 'Applications review GUI is missing.'

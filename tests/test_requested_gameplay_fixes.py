@@ -589,11 +589,26 @@ def test_adminplus_leaves_official_ar_as_a_vanilla_item():
         assert f"public void {method}" not in admin
 
 
-def test_shop_revenue_starts_pending_and_waits_for_the_async_credit_worker():
+def test_shop_direct_transfer_is_recorded_as_settled_without_a_second_credit():
     artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
     persist = between(artifacts, "private void persistPaidPurchase", "private void deliverPurchase")
-    assert 'var8.setString(10, "PENDING")' in persist
-    assert 'var8.setString(10, "CREDITED")' not in persist
+    payout_worker = between(artifacts, "private void processRevenuePayout", "private Map<String, Object> readRevenuePayoutRow")
+    assert 'var8.setString(10, "CREDITED")' in persist
+    assert 'var8.setString(11, var3.txId())' in persist
+    assert "creditAccount(" not in payout_worker
+    assert 'markRevenuePayoutCredited(var1, bankTransactionId)' in payout_worker
+    assert 'String reason = amount <= 0L ? "amount_invalid" : "bank_tx_missing"' in payout_worker
+    assert 'this.markRevenuePayoutReview(var1, reason)' in payout_worker
+
+
+def test_shop_ambiguous_database_failure_waits_for_reconciliation_before_refund():
+    artifacts = read("copimine-artifacts/src/me/copimine/artifacts/CopiMineArtifacts.java")
+    purchase_flow = between(artifacts, "this.persistPaidPurchase(var1, var7, var10);", "private void persistPaidPurchase")
+    assert "shouldRefundAfterPersistenceFailure" in purchase_flow
+    assert "isWithinOrphanRefundGracePeriod" in artifacts
+    assert "Покупка ожидает проверки" in purchase_flow
+    assert "lockArtifactPurchasePersistence(var4, var2.purchaseId())" in artifacts
+    assert "SET LOCAL lock_timeout = '5s'" in artifacts
 
 
 def test_atm_label_is_above_the_block_model():

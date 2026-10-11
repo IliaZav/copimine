@@ -1,0 +1,238 @@
+stages:
+  - migration
+
+workflow:
+  rules:
+    # Acceptance evidence is bound to one source SHA, so validate migration
+    # commits on their branch pipeline, never on a synthetic MR merge commit.
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^codex\/minecraft-26-3-migration(-candidate-[0-9]{8})?$/'
+      when: never
+    - if: '$CI_COMMIT_BRANCH =~ /^codex\/minecraft-26-3-migration(-candidate-[0-9]{8})?$/'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+    - when: never
+
+variables:
+  PYTHONIOENCODING: "utf-8"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+migration-postgres-contract:
+  stage: migration
+  image: python:3.13-slim
+  tags:
+    - saas-linux-small-amd64
+  timeout: 10 minutes
+  services:
+    - name: postgres:16
+      alias: postgres
+  variables:
+    POSTGRES_DB: copimine_migration_test
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: migration-test-only
+    COPIMINE_TEST_POSTGRES_DSN: postgresql://postgres:migration-test-only@postgres:5432/copimine_migration_test
+    COPIMINE_TEST_POSTGRES_ALLOW_PRIVATE_NETWORK: "1"
+  before_script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends git
+    - rm -rf /var/lib/apt/lists/*
+  script:
+    - test "$(git rev-parse HEAD)" = "$CI_COMMIT_SHA"
+    - python -m pip install --no-cache-dir --disable-pip-version-check 'pytest==9.1.1' 'psycopg[binary]==3.2.3'
+    - python -m pytest -q -rs tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_candidate_duplicate_migration_preserves_and_archives_real_postgres_rows tests/test_minecraft_26_3_custom_plugin_database_contracts.py::test_election_core_removes_legacy_candidate_uuid_key_before_canonical_inserts --junitxml=test-results-postgres.xml
+  artifacts:
+    when: always
+    expire_in: 30 days
+    reports:
+      junit: test-results-postgres.xml
+
+minecraft-26-3-migration:
+  stage: migration
+  tags:
+    - saas-windows-medium-amd64
+  timeout: 60 minutes
+  script:
+    - |
+      $ErrorActionPreference = 'Stop'
+      $ProgressPreference = 'SilentlyContinue'
+      . (Join-Path $env:CI_PROJECT_DIR 'scripts/minecraft/DownloadPinnedArtifact.ps1')
+      Write-Host "GitLab migration validation for commit $env:CI_COMMIT_SHA"
+      $checkoutSha = (git rev-parse HEAD).Trim()
+      if ($LASTEXITCODE -ne 0 -or $checkoutSha -ne $env:CI_COMMIT_SHA) {
+        throw "GitLab checkout SHA does not match CI_COMMIT_SHA: $checkoutSha"
+      }
+      $nativeAcceptanceDirectory = Join-Path $env:CI_PROJECT_DIR 'artifacts/minecraft-26.3/native-acceptance'
+      $nativeAcceptanceFiles = @()
+      if (Test-Path -LiteralPath $nativeAcceptanceDirectory -PathType Container) {
+        $nativeAcceptanceFiles = @(Get-ChildItem -LiteralPath $nativeAcceptanceDirectory -File -Recurse)
+      }
+      $migrationAcceptanceRequired = $nativeAcceptanceFiles.Count -gt 0
+      $initialStatus = @(git status --porcelain --untracked-files=all)
+      if ($LASTEXITCODE -ne 0) { throw 'GitLab source checkout status could not be verified.' }
+      if ($initialStatus.Count -ne 0) {
+        $initialStatus | ForEach-Object { Write-Host "Unexpected dirty checkout path: $_" }
+        throw 'GitLab source checkout is not clean before release artifact preparation.'
+      }
+      $verifiedAcceptanceArchive = Join-Path $env:CI_PROJECT_DIR 'ci-verified-native-acceptance.zip'
+      if (Test-Path -LiteralPath $verifiedAcceptanceArchive) {
+        throw 'Reserved verified acceptance archive path must be absent from the clean source checkout.'
+      }
+      if ($migrationAcceptanceRequired) {
+        $parentRecord = ((git rev-list --parents -n 1 $checkoutSha).Trim() -split '\s+')
+        if ($LASTEXITCODE -ne 0 -or $parentRecord.Count -ne 2) {
+          throw 'Native acceptance evidence must be committed directly after its tested source commit.'
+        }
+        $migrationSourceCommit = $parentRecord[1]
+        if ($migrationSourceCommit -notmatch '^[0-9a-f]{40}$') { throw 'Evidence parent is not a full Git SHA.' }
+        git diff --quiet $migrationSourceCommit $checkoutSha -- . ':(exclude)artifacts/minecraft-26.3/native-acceptance/**'
+        if ($LASTEXITCODE -ne 0) {
+          throw 'The commit after the tested source may change only signed native-acceptance evidence.'
+        }
+        if ($env:MIGRATION_ACCEPTANCE_PUBLIC_KEY -cnotmatch '^[0-9a-f]{64}$') {
+          throw 'Configure MIGRATION_ACCEPTANCE_PUBLIC_KEY as a GitLab project or group CI/CD variable for this migration ref.'
+        }
+      }
+      Write-Host "Verifying clean GitLab source SHA $checkoutSha"
+
+      if ($env:CI_JOB_ID -notmatch '^\d+$') { throw 'GitLab did not provide a valid CI_JOB_ID for temporary output isolation.' }
+      $ciTemporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) "copimine-migration-$env:CI_JOB_ID"
+      $projectRootFull = [IO.Path]::GetFullPath($env:CI_PROJECT_DIR).TrimEnd([char[]]@('\', '/'))
+      $ciTemporaryDirectoryFull = [IO.Path]::GetFullPath($ciTemporaryDirectory).TrimEnd([char[]]@('\', '/'))
+      $projectRootPrefix = $projectRootFull + [IO.Path]::DirectorySeparatorChar
+      if ($ciTemporaryDirectoryFull.Equals($projectRootFull, [StringComparison]::OrdinalIgnoreCase) -or
+          $ciTemporaryDirectoryFull.StartsWith($projectRootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'CI temporary directory must be outside the source checkout.'
+      }
+      if (Test-Path -LiteralPath $ciTemporaryDirectoryFull) {
+        throw "GitLab CI temporary directory already exists: $ciTemporaryDirectoryFull"
+      }
+      New-Item -ItemType Directory -Path $ciTemporaryDirectoryFull -Force | Out-Null
+
+      $pythonVersion = '3.13.16'
+      $pythonRoot = Join-Path $ciTemporaryDirectory "python-3.13.16"
+      New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+      $pythonInstaller = Join-Path $ciTemporaryDirectory 'python-3.13.16-amd64.exe'
+      Save-PinnedArtifact -Uri 'https://www.python.org/ftp/python/3.13.16/python-3.13.16-amd64.exe' -Destination $pythonInstaller -Algorithm SHA256 -ExpectedHash 'fb4f9f5d438b2396da0086dc70b935c530cb578e37adc6d354f7ad2037fee83b' -ExpectedSize 29935584 -MaximumBytes 29935584
+      & $pythonInstaller /quiet 'InstallAllUsers=0' 'Include_launcher=0' 'Include_test=0' 'PrependPath=0' 'Shortcuts=0' "TargetDir=$pythonRoot"
+      if ($LASTEXITCODE -ne 0) { throw "Python $pythonVersion installation failed with exit code $LASTEXITCODE" }
+      $pythonCommand = Join-Path $pythonRoot 'python.exe'
+      if (-not (Test-Path -LiteralPath $pythonCommand -PathType Leaf)) {
+        $defaultPython = Join-Path $env:LOCALAPPDATA 'Programs/Python/Python313/python.exe'
+        if (Test-Path -LiteralPath $defaultPython -PathType Leaf) {
+          $pythonCommand = $defaultPython
+        } else {
+          $pythonCommand = (Get-Command python -ErrorAction Stop).Source
+        }
+      }
+      $pythonVersionText = & $pythonCommand --version 2>&1 | Out-String
+      if ($LASTEXITCODE -ne 0 -or $pythonVersionText -notmatch ('Python ' + [regex]::Escape($pythonVersion) + '(?:\s|$)')) {
+        throw "Python $pythonVersion is required for migration validation; found: $pythonVersionText"
+      }
+      Write-Host "Migration Python: $($pythonVersionText.Trim())"
+      & $pythonCommand -m pip install --disable-pip-version-check -r admin-web/requirements.txt 'pytest==9.1.1' 'Pillow==12.3.0'
+      if ($LASTEXITCODE -ne 0) { throw 'Python test dependencies failed to install.' }
+      & $pythonCommand -m pip install --disable-pip-version-check -r requirements-security.txt
+      if ($LASTEXITCODE -ne 0) { throw 'Security test dependencies failed to install.' }
+      & $pythonCommand .\scripts\minecraft\validate_native_acceptance.py --root $env:CI_PROJECT_DIR --require-evidence-for-accepted-locks
+      if ($LASTEXITCODE -ne 0) { throw 'Migration locks claim acceptance without signed native Minecraft evidence.' }
+
+      function Install-PinnedJdk([int] $Major, [string] $Version, [string] $Url, [string] $Sha256, [long] $Size) {
+        $javaRoot = Join-Path $ciTemporaryDirectory "copimine-temurin-$Major"
+        $archive = Join-Path $ciTemporaryDirectory "copimine-temurin-$Major.zip"
+        Save-PinnedArtifact -Uri $Url -Destination $archive -Algorithm SHA256 -ExpectedHash $Sha256 -ExpectedSize $Size -MaximumBytes $Size
+        if (Test-Path -LiteralPath $javaRoot) { throw "Temurin extraction target already exists: $javaRoot" }
+        New-Item -ItemType Directory -Path $javaRoot -Force | Out-Null
+        Expand-Archive -LiteralPath $archive -DestinationPath $javaRoot -Force
+        $javaFiles = @(Get-ChildItem -LiteralPath $javaRoot -Filter java.exe -File -Recurse | Where-Object { $_.Directory.Name -eq 'bin' })
+        if ($javaFiles.Count -ne 1) { throw "Expected one Temurin $Major java.exe after extraction; found $($javaFiles.Count)." }
+        $java = $javaFiles[0].FullName
+        $versionOutput = (& $java --version | Out-String)
+        if ($LASTEXITCODE -ne 0 -or $versionOutput -notmatch ('(?m)^openjdk ' + [regex]::Escape($Version) + '(?:\s|$)')) {
+          throw "Temurin $Major did not report pinned version ${Version}: $versionOutput"
+        }
+        return Split-Path -Parent (Split-Path -Parent $java)
+      }
+
+      $java21 = Install-PinnedJdk 21 '21.0.12.1' `
+        'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip' `
+        'f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e' 205073461
+      $java25 = Install-PinnedJdk 25 '25.0.4.1' `
+        'https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_x64_windows_hotspot_25.0.4.1_1.zip' `
+        '00c847d804f4a78e9f04f2683faf14fed898535b177b7fc704486cb0284e9283' 141167264
+      Write-Host "Grim patch Java: $java21"
+      Write-Host "Minecraft 26.3 build Java: $java25"
+
+      $env:JAVA_HOME = $java21
+      $env:PATH = (Join-Path $java21 'bin') + [IO.Path]::PathSeparator + $env:PATH
+      $javaVersionText = & (Join-Path $java21 'bin\java.exe') --version | Out-String
+      if ($LASTEXITCODE -ne 0 -or $javaVersionText -notmatch '(?m)^openjdk 21\.0\.12\.1(?:\s|$)') {
+        throw "Pinned Java 21 fixture toolchain is not active: $javaVersionText"
+      }
+
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\resourcepacks\build-resourcepack.ps1 -SkipServerProperties
+      if ($LASTEXITCODE -ne 0) { throw 'Resource pack fixture build failed.' }
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\PrepareCopiMinePluginFixtures.ps1
+      if ($LASTEXITCODE -ne 0) { throw 'Pinned plugin fixture preparation failed.' }
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\thirdparty\grim-creative-patch\build-grim-creative-patch.ps1
+      if ($LASTEXITCODE -ne 0) { throw 'Grim Creative fixture build failed.' }
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\CopiMineClient\build-client.ps1
+      if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient contract artifact build failed.' }
+
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\PrepareMigrationCandidates.ps1 `
+        -BuildJavaHome $java25 `
+        -GrimPatchJavaHome $java21 `
+        -PythonExe $pythonCommand
+      if ($LASTEXITCODE -ne 0) { throw 'Pinned Minecraft 26.3 candidate preparation failed.' }
+
+      & $pythonCommand -m pip_audit -r admin-web/requirements.txt --strict
+      if ($LASTEXITCODE -ne 0) { throw 'Dependency vulnerability gate failed.' }
+      & $pythonCommand -m pip_audit -r requirements-security.txt --strict
+      if ($LASTEXITCODE -ne 0) { throw 'Migration acceptance signing dependency audit failed.' }
+      & $pythonCommand -m pytest -q -rs tests --junitxml="$env:CI_PROJECT_DIR\test-results.xml"
+      if ($LASTEXITCODE -ne 0) { throw 'Python contract suite failed.' }
+      & $pythonCommand .\admin-web\scripts\security_selftest.py
+      if ($LASTEXITCODE -ne 0) { throw 'Security self-test failed.' }
+      & $pythonCommand .\admin-web\scripts\backend_security_regression_test.py
+      if ($LASTEXITCODE -ne 0) { throw 'Backend security regression failed.' }
+      & $pythonCommand .\admin-web\scripts\backend_smoketest.py
+      if ($LASTEXITCODE -ne 0) { throw 'Backend smoke test failed.' }
+      & $pythonCommand -m compileall -q admin-web/backend
+      if ($LASTEXITCODE -ne 0) { throw 'Backend compileall failed.' }
+      & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\RunJavaPluginCi.ps1 `
+        -JavaHome $java21 `
+        -WorkspaceRoot $env:CI_PROJECT_DIR `
+        -TemporaryDirectory $ciTemporaryDirectory `
+        -PythonExe $pythonCommand
+      if ($LASTEXITCODE -ne 0) { throw 'Shared Java plugin release gate failed.' }
+
+      if ($migrationAcceptanceRequired) {
+        & $pythonCommand .\scripts\minecraft\validate_native_acceptance.py --root $env:CI_PROJECT_DIR --expected-source-commit $migrationSourceCommit --verified-output $verifiedAcceptanceArchive
+        if ($LASTEXITCODE -ne 0) { throw 'Native Minecraft acceptance evidence is absent or does not match built candidates and the locked profile.' }
+        if (-not (Test-Path -LiteralPath $verifiedAcceptanceArchive -PathType Leaf)) {
+          throw 'Native acceptance validation succeeded without creating its required CI archive.'
+        }
+      }
+
+      $postBuildStatus = @(git status --porcelain --untracked-files=all)
+      if ($LASTEXITCODE -ne 0) { throw 'GitLab post-build source checkout status could not be verified.' }
+      $unexpectedPostBuildStatus = @($postBuildStatus | Where-Object {
+        $_ -notmatch '^ M thirdparty/grim-creative-patch/build/GrimAC-2\.3\.74-40684fb-creative-fix\.jar$' -and
+        $_ -notmatch '^\?\? test-results\.xml$' -and
+        $_ -notmatch '^\?\? ci-verified-native-acceptance\.zip$' -and
+        $_ -notmatch '^\?\? artifacts/end-rift-diagnostics/'
+      })
+      if ($unexpectedPostBuildStatus.Count -ne 0) {
+        $unexpectedPostBuildStatus | ForEach-Object { Write-Host "Unexpected post-build checkout path: $_" }
+        throw 'GitLab source checkout was modified outside the release fixture and diagnostic allowlist.'
+      }
+
+  artifacts:
+    when: on_success
+    expire_in: 30 days
+    paths:
+      - ci-verified-native-acceptance.zip
+      - artifacts/end-rift-diagnostics/
+    reports:
+      junit: test-results.xml

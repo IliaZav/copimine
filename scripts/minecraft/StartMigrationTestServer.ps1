@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$JavaHome,
+    [string]$PostgresBin,
     [switch]$ValidateOnly,
     [switch]$FullPluginSet
 )
@@ -17,22 +18,20 @@ if (-not [string]::Equals($runtime, $expectedRuntime, [StringComparison]::Ordina
     throw 'Migration server path resolved outside its owned local runtime.'
 }
 
-$mutex = [System.Threading.Mutex]::new($false, 'Local\CopiMineMinecraft263RuntimeLifecycleLock')
+$runtimeMutexKey = [IO.Path]::GetFullPath($runtime).ToLowerInvariant()
+$runtimeMutexHasher = [Security.Cryptography.SHA256]::Create()
+try {
+    $runtimeMutexHash = [BitConverter]::ToString($runtimeMutexHasher.ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($runtimeMutexKey))).Replace('-', '').ToLowerInvariant()
+}
+finally { $runtimeMutexHasher.Dispose() }
+$runtimeMutexName = 'Local\CopiMineMinecraft263RuntimeLifecycleLock-' + $runtimeMutexHash
+$mutex = [System.Threading.Mutex]::new($false, $runtimeMutexName)
 $mutexHeld = $false
 $previousDatabaseEnvironment = [ordered]@{}
 $previousCopimineEnvFile = [Environment]::GetEnvironmentVariable('COPIMINE_ENV_FILE', [EnvironmentVariableTarget]::Process)
 try {
-    $databaseEnvironmentFile = Join-Path $runtime 'migration-test.env'
-    if (-not (Test-Path -LiteralPath $databaseEnvironmentFile -PathType Leaf)) {
-        throw 'The isolated migration-test.env database configuration is missing.'
-    }
-    $databaseEnvironmentItem = Get-Item -LiteralPath $databaseEnvironmentFile -Force
-    if ($databaseEnvironmentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        throw 'The isolated database environment file cannot be a symlink or reparse point.'
-    }
-    $env:COPIMINE_ENV_FILE = $databaseEnvironmentFile
     $previousDatabaseEnvironment = Clear-MigrationDatabaseOverrides
-
     try {
         $mutexHeld = $mutex.WaitOne(0)
     }
@@ -43,6 +42,37 @@ try {
         throw 'Migration runtime lifecycle lock is held by plugin installation or another server start.'
     }
 
+    $databaseEnvironmentFile = Join-Path $runtime 'migration-isolated-postgres.env'
+    $requiredDatabaseSettings = @(
+        'POSTGRES_HOST=127.0.0.1',
+        'POSTGRES_PORT=55434',
+        'POSTGRES_DB=copimine_migration_test',
+        'POSTGRES_SCHEMA=copimine_migration_26_3_candidate',
+        'POSTGRES_USER=copimine_migration_test'
+    )
+    if ($ValidateOnly) {
+        # Validation must not start PostgreSQL, initialize a cluster, or create credentials.
+        # Check only the already-provisioned environment file before validating the profile.
+    } else {
+        $postgresInitializer = Join-Path $root 'scripts/minecraft/InitializeMigrationPostgres.ps1'
+        if (-not (Test-Path -LiteralPath $postgresInitializer -PathType Leaf)) {
+            throw 'The isolated migration PostgreSQL initializer is missing.'
+        }
+        $databaseSetupArguments = @{ RuntimeDirectory = $runtime }
+        if (-not [string]::IsNullOrWhiteSpace($PostgresBin)) {
+            $databaseSetupArguments.PostgresBin = $PostgresBin
+        }
+        $databaseSetupOutput = @(& $postgresInitializer @databaseSetupArguments)
+        $databaseReadyMessage = @($databaseSetupOutput | Where-Object { [string]$_ -like 'Isolated migration PostgreSQL ready:*' })
+        if ($databaseReadyMessage.Count -ne 1 -or [string]$databaseSetupOutput[-1] -ne $databaseEnvironmentFile) {
+            throw 'The isolated PostgreSQL setup did not return its expected private environment file.'
+        }
+        Write-Output ([string]$databaseReadyMessage[0])
+        $databaseEnvironmentFile = [string]$databaseSetupOutput[-1]
+    }
+    $null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings
+    $env:COPIMINE_ENV_FILE = $databaseEnvironmentFile
+
     $propertiesPath = Join-Path $runtime 'server.properties'
     if (-not (Test-Path -LiteralPath $propertiesPath -PathType Leaf)) {
         throw 'Migration server.properties is missing.'
@@ -52,11 +82,13 @@ try {
     $pluginInstaller = Join-Path $root 'scripts/minecraft/install_migration_server_plugins.py'
     $authMeJars = @(Get-ChildItem -LiteralPath (Join-Path $runtime 'plugins') -Filter '*.jar' -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '(?i)^AuthMe.*\.jar$' })
-    if ($FullPluginSet -and $authMeJars.Count -ne 1) {
-        throw 'AuthMe is required for -FullPluginSet. Install the full locked candidate runtime without -unauthenticated-test-runtime first.'
+    $authEffectsJars = @(Get-ChildItem -LiteralPath (Join-Path $runtime 'plugins') -Filter '*.jar' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '(?i)^AuthEffects.*\.jar$' })
+    if ($FullPluginSet -and ($authMeJars.Count -ne 1 -or $authEffectsJars.Count -ne 1)) {
+        throw 'AuthMe and AuthEffects are required for -FullPluginSet. Install the full locked candidate runtime without -unauthenticated-test-runtime first.'
     }
-    if (-not $FullPluginSet -and $authMeJars.Count -gt 0) {
-        throw 'AuthMe is still active. Run the unauthenticated local-test plugin installer first.'
+    if (-not $FullPluginSet -and ($authMeJars.Count -gt 0 -or $authEffectsJars.Count -gt 0)) {
+        throw 'AuthMe or AuthEffects is still active. Run the unauthenticated local-test plugin installer first.'
     }
     $startupSettingsArguments = @('--startup-settings-json')
     if (-not $FullPluginSet) { $startupSettingsArguments += '--unauthenticated-test-runtime' }
@@ -152,24 +184,27 @@ try {
 
     if ($ValidateOnly) {
         if ($FullPluginSet) {
-            Write-Output "Validated full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe enabled; loopback-only."
+            Write-Output "Validated full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe and AuthEffects enabled; loopback-only."
         }
         else {
-            Write-Output "Validated loopback-only Minecraft 26.3 test server on 127.0.0.1:$serverPort with AuthMe disabled."
+            Write-Output "Validated loopback-only Minecraft 26.3 test server on 127.0.0.1:$serverPort with AuthMe and AuthEffects disabled."
         }
         return
     }
 
     if ($FullPluginSet) {
-        Write-Output "Starting the full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe enabled. This server remains loopback-only."
+        Write-Output "Starting the full locked-plugin Minecraft 26.3 candidate server on 127.0.0.1:$serverPort with AuthMe and AuthEffects enabled. This server remains loopback-only."
     }
     else {
-        Write-Output "Starting Minecraft 26.3 test server on 127.0.0.1:$serverPort. Licensed and offline clients can join from this PC."
+        Write-Output "Starting Minecraft 26.3 test server on 127.0.0.1:$serverPort with AuthMe and AuthEffects disabled. Licensed and offline clients can join from this PC."
     }
     Write-Output 'Keep this console open; press Ctrl+C to stop the server.'
     $javaArguments = @(
-        '-Xms256M'
+        '-Xms128M'
         '-Xmx2G'
+        '-XX:HeapBaseMinAddress=4g'
+        '-XX:MinHeapFreeRatio=20'
+        '-XX:MaxHeapFreeRatio=40'
         '-XX:+UseG1GC'
         '-Dfile.encoding=UTF-8'
         '-jar'

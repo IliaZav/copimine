@@ -51,9 +51,6 @@ modules.each { name, module ->
         resources.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/resources' : '')))
         resources.include('plugin.yml', 'config.yml')
     }
-    if (name == 'endEvent') {
-        sourceSets[name].java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
-    }
     dependencies.add("${name}CompileOnly", "io.papermc.paper:paper-api:${profile.paper.api}")
     tasks.named(sourceSets[name].processResourcesTaskName) {
         filteringCharset = 'UTF-8'

@@ -8,13 +8,13 @@ libraries:
   - org.postgresql:postgresql:42.7.5
 depend:
   - CopiMineEconomyCore
+  - CopiMineElectionCore
 softdepend:
   - PlaceholderAPI
   - LuckPerms
   - Essentials
   - voicechat
   - CopiMineWorldCore
-  - CopiMineElectionCore
 commands:
   cmultra:
     description: "Панель управления сервером"

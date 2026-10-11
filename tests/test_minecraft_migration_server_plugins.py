@@ -740,6 +740,20 @@ def test_validate_only_does_not_move_or_create_anything(tmp_path):
     assert not (server/'plugins/new.jar').exists()
     assert not (server/'migration-backups').exists()
 
+
+def test_validate_only_cli_does_not_claim_installed_plugin_inventory(capsys, tmp_path, monkeypatch):
+    mod=load()
+    monkeypatch.setattr(mod, 'load_install_records', lambda root: [{'pluginName': 'Example'}])
+    monkeypatch.setattr(mod, 'select_runtime_records', lambda records, unauthenticated_test_mode: records)
+    monkeypatch.setattr(mod, 'install_records', lambda *args, **kwargs: {})
+
+    mod.main(tmp_path, ['--validate-only'])
+
+    output=capsys.readouterr().out
+    assert 'Validated install plan for 1 plugin candidates' in output
+    assert 'installed runtime inventory was not confirmed' in output
+    assert 'Validated 1 plugins' not in output
+
 def test_grim263_patch_changes_only_inventory_class_when_built():
     original=ROOT/'build/minecraft-26.3/server-plugins/grimac-bukkit-2.3.74-f5bbe9c.jar'
     patched=original.with_name('GrimAC-2.3.74-f5bbe9c-creative-fix.jar')
@@ -839,6 +853,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         '86820193e67f166d79128d224e4ab9abf7dafce2c6efaad21b4dc6134bfaf4d7',
         'e2335f9462f61c0f255a87cc3609520099f3836843f46aee6dd0a910dad636bd',
         'd63ed7c3c3d810a5ecb8ea8f497ecb24004cf195381e410bfbb8d182094842c0',
+        '93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea',
     ]
 
     built=ROOT/candidate['buildArtifact']
@@ -884,6 +899,12 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
         assert len(backups)==1, 'test-only AuthMe disablement must preserve exactly one locked backup'
         assert backups[0].is_file() and not backups[0].is_symlink(), 'pinned AuthMe backup must be a regular file, not a symlink'
         assert hashlib.sha256(backups[0].read_bytes()).hexdigest()==disabled_authme['sha256']
+        disabled_auth_effects=expected.pop('AuthEffects')
+        auth_effects_lock=next(row for row in lock['unchangedBaseline'] if row['pluginName']=='AuthEffects')
+        auth_effects_backup_filename=auth_effects_lock['candidate']['filename']
+        auth_effects_backups=list((server/'migration-backups/plugins').rglob(auth_effects_backup_filename))
+        assert len(auth_effects_backups)==1, 'test-only AuthEffects disablement must preserve exactly one locked backup'
+        assert hashlib.sha256(auth_effects_backups[0].read_bytes()).hexdigest()==disabled_auth_effects['sha256']
     else:
         assert receipt.get('authenticationMode')=='AuthMe-6.0.1', 'runtime receipt must declare a recognized authentication mode'
     actual_files={path.name for path in runtime.glob('*.jar')}
@@ -1055,11 +1076,11 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
             'sha256':'49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d','size':1_501_521,
         },
         'GSit':{
-            'version':'3.7.0','versionId':'gnY5Flgo','projectId':'GOHbQGyX',
+            'version':'3.7.0',
             'filename':'GSit-3.7.0.jar',
-            'url':'https://cdn.modrinth.com/data/GOHbQGyX/versions/gnY5Flgo/GSit-3.7.0.jar',
-            'sha512':'7813fe99d2fde47e3a40538c09b87b88b6101c27fb4f3305e0fd9bf806809c37e4e67c726f96596caca79785cdd7aa8d8ae724b211535775db21e602f57993d5',
-            'sha256':'143d38509f49c40b214887ad3c682c8db7fdd81c610787d0186d65f51256f4d2','size':811_798,
+            'url':'https://hangarcdn.papermc.io/plugins/Gecolay/GSit/versions/3.7.0/PAPER/GSit-3.7.0.jar',
+            'sha512':'5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad',
+            'sha256':'57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea','size':811_798,
         },
         'Vault':{
             'version':'2.20.3','versionId':'qZgRzoYs','projectId':'ayRaM8J7',
@@ -1073,14 +1094,19 @@ def test_remaining_official_server_plugins_have_verified_26_3_release_candidates
         baseline=baselines[plugin_name]
         candidate=candidates[plugin_name]
         assert candidate['version']==metadata['version']
-        assert candidate['versionId']==metadata['versionId']
-        assert candidate['projectId']==metadata['projectId']
+        if plugin_name == 'GSit':
+            assert candidate['source']=='https://hangar.papermc.io/Gecolay/GSit/versions/3.7.0'
+            assert 'versionId' not in candidate and 'projectId' not in candidate
+            assert '143d38509f49c40b214887ad3c682c8db7fdd81c610787d0186d65f51256f4d2' in candidate['replaceSha256']
+        else:
+            assert candidate['versionId']==metadata['versionId']
+            assert candidate['projectId']==metadata['projectId']
         assert candidate['filename']==metadata['filename']
         assert candidate['url']==metadata['url']
         assert candidate['sha512']==metadata['sha512']
         assert candidate['sha256']==metadata['sha256']
         assert candidate['size']==metadata['size']
-        assert candidate['replaceSha256']==[baseline['sha256']]
+        assert baseline['sha256'] in candidate['replaceSha256']
         assert '26.3' in candidate['gameVersions']
         assert candidate['compatibilityStatus']=='requires-runtime-validation'
         assert candidate['nativeVerified'] is lock['nativeVerified']
@@ -1173,10 +1199,11 @@ def test_prepare_runtime_stages_locked_paper_loopback_config_and_unaccepted_eula
     assert (runtime/'plugins').is_dir()
 
 
-def test_unauthenticated_local_test_mode_omits_only_authme():
+def test_unauthenticated_local_test_mode_omits_authme_and_dependent_auth_effects():
     mod=load()
     records=[
         {'pluginName':'AuthMe','filename':'AuthMe-6.0.1-Paper.jar'},
+        {'pluginName':'AuthEffects','filename':'AuthEffects.jar','depends':['AuthMe']},
         {'pluginName':'CoreProtect','filename':'CoreProtect-26.3.jar'},
     ]
 
@@ -1186,25 +1213,98 @@ def test_unauthenticated_local_test_mode_omits_only_authme():
     assert mod.select_runtime_records(records,unauthenticated_test_mode=False)==records
 
 
-def test_unauthenticated_local_test_mode_moves_only_pinned_authme_to_backup(tmp_path):
+def test_unauthenticated_local_test_mode_moves_pinned_auth_plugins_to_backup(tmp_path):
     mod=load();server,stage,record,old,new=fixture(tmp_path)
     authme=jar('AuthMe','6.0.1')
     authme_path=server/'plugins/AuthMe-6.0.1-Paper.jar'
     authme_path.write_bytes(authme)
+    auth_effects=jar('AuthEffects','1.0.0')
+    auth_effects_path=server/'plugins/AuthEffects.jar'
+    auth_effects_path.write_bytes(auth_effects)
     authme_lock=tmp_path/'tools/minecraft-26.3/server-plugins.lock.json'
     authme_lock.parent.mkdir(parents=True,exist_ok=True)
     authme_lock.write_text(json.dumps({'modules':[{
         'pluginName':'AuthMe','sha256':hashlib.sha256(authme).hexdigest(),'replaceSha256':[],
+    }],'unchangedBaseline':[{
+        'pluginName':'AuthEffects','sha256':'0'*64,
+        'candidate':{'sha256':hashlib.sha256(auth_effects).hexdigest()},
     }]}),encoding='utf-8')
 
     receipt=mod.install_records(tmp_path,server,[record],stage,lambda port,host:False,
                                 unauthenticated_test_mode=True)
 
     assert not authme_path.exists()
+    assert not auth_effects_path.exists()
     backup_files=list((server/'migration-backups/plugins').glob('*/AuthMe-6.0.1-Paper.jar'))
     assert len(backup_files)==1 and backup_files[0].read_bytes()==authme
+    auth_effects_backups=list((server/'migration-backups/plugins').glob('*/AuthEffects.jar'))
+    assert len(auth_effects_backups)==1 and auth_effects_backups[0].read_bytes()==auth_effects
     assert (server/'plugins/new.jar').read_bytes()==new
     assert receipt['authenticationMode']=='disabled-for-local-testing'
+
+def test_unauthenticated_local_test_mode_preserves_locked_authme_candidate_when_not_installed(tmp_path):
+    mod=load();server,stage,record,old,new=fixture(tmp_path)
+    authme=jar('AuthMe','6.0.1')
+    staged_authme=stage/'AuthMe-6.0.1-Paper.jar'
+    staged_authme.write_bytes(authme)
+    auth_effects=jar('AuthEffects','26.3')
+    staged_auth_effects=stage/'AuthEffects-26.3.jar'
+    staged_auth_effects.write_bytes(auth_effects)
+    authme_lock=tmp_path/'tools/minecraft-26.3/server-plugins.lock.json'
+    authme_lock.parent.mkdir(parents=True,exist_ok=True)
+    authme_lock.write_text(json.dumps({'modules':[{
+        'pluginName':'AuthMe','filename':staged_authme.name,
+        'sha256':hashlib.sha256(authme).hexdigest(),'replaceSha256':[],
+    }],'unchangedBaseline':[{
+        'pluginName':'AuthEffects','filename':'AuthEffects.jar','sha256':'1'*64,
+        'candidate':{'filename':staged_auth_effects.name,'runtimeFilename':'AuthEffects.jar',
+                     'sha256':hashlib.sha256(auth_effects).hexdigest()},
+    }]}),encoding='utf-8')
+
+    receipt=mod.install_records(tmp_path,server,[record],stage,lambda port,host:False,
+                                unauthenticated_test_mode=True)
+
+    assert not (server/'plugins'/staged_authme.name).exists()
+    backups=list((server/'migration-backups/plugins').glob('*/AuthMe-6.0.1-Paper.jar'))
+    assert len(backups)==1 and backups[0].read_bytes()==authme
+    assert hashlib.sha256(backups[0].read_bytes()).hexdigest()==hashlib.sha256(authme).hexdigest()
+    auth_effects_backups=list((server/'migration-backups/plugins').glob('*/AuthEffects-26.3.jar'))
+    assert len(auth_effects_backups)==1 and auth_effects_backups[0].read_bytes()==auth_effects
+    assert (server/'plugins/new.jar').read_bytes()==new
+    assert receipt['authenticationMode']=='disabled-for-local-testing'
+
+    second_receipt=mod.install_records(tmp_path,server,[record],stage,lambda port,host:False,
+                                       unauthenticated_test_mode=True)
+    repeated_backups=list((server/'migration-backups/plugins').glob('*/AuthMe-6.0.1-Paper.jar'))
+    assert len(repeated_backups)==1
+    repeated_effects_backups=list((server/'migration-backups/plugins').glob('*/AuthEffects-26.3.jar'))
+    assert len(repeated_effects_backups)==1
+    assert second_receipt['authenticationMode']=='disabled-for-local-testing'
+
+
+def test_unauthenticated_local_test_mode_refuses_unrecognized_auth_effects(tmp_path):
+    mod=load();server,stage,record,old,new=fixture(tmp_path)
+    auth_effects=jar('AuthEffects','1.0.0')
+    auth_effects_path=server/'plugins/AuthEffects.jar'
+    auth_effects_path.write_bytes(auth_effects)
+    authme=jar('AuthMe','6.0.1')
+    staged_authme=stage/'AuthMe-6.0.1-Paper.jar'
+    staged_authme.write_bytes(authme)
+    authme_lock=tmp_path/'tools/minecraft-26.3/server-plugins.lock.json'
+    authme_lock.parent.mkdir(parents=True,exist_ok=True)
+    authme_lock.write_text(json.dumps({'modules':[{
+        'pluginName':'AuthMe','filename':staged_authme.name,
+        'sha256':hashlib.sha256(authme).hexdigest(),'replaceSha256':[],
+    }],'unchangedBaseline':[{'pluginName':'AuthEffects','sha256':'0'*64,
+                              'candidate':{'sha256':'1'*64}}]}),encoding='utf-8')
+
+    with pytest.raises(ValueError,match='unrecognized AuthEffects'):
+        mod.install_records(tmp_path,server,[record],stage,lambda port,host:False,
+                            unauthenticated_test_mode=True)
+
+    assert auth_effects_path.read_bytes()==auth_effects
+    assert not (server/'plugins/new.jar').exists()
+    assert not (server/'migration-backups/plugins').exists()
 
 
 def test_prepare_runtime_never_replaces_unowned_directory_or_accepts_eula(tmp_path):
@@ -1237,8 +1337,188 @@ def test_prepare_runtime_is_idempotent_and_preserves_operator_eula_choice(tmp_pa
     assert eula.read_text(encoding='utf-8')=='eula=true\n'
 
 
-def test_prepare_runtime_migrates_owned_older_paper_and_preserves_data_and_configs(tmp_path,capsys):
+def test_paper_upgrade_refuses_to_copy_a_live_migration_database(tmp_path,monkeypatch):
+    mod=load();_,old_filename=write_bootstrap_fixture(tmp_path)
+    _,error=invoke_runtime_prepare(mod,tmp_path)
+    assert error is None, f'initial --prepare-runtime should complete successfully, got {error}'
+
+    runtime=tmp_path/'local-runtime/end-rift-server-26.3'
+    database_file=runtime/'postgres-data/base/1/1'
+    database_file.parent.mkdir(parents=True)
+    database_file.write_bytes(b'live PostgreSQL data must not be copied during a Paper upgrade')
+    new_content=b'pinned Paper 26.3 build 169 fixture'
+    new_filename='paper-26.3-169.jar'
+    new_sha=hashlib.sha256(new_content).hexdigest()
+    profile=tmp_path/'tools/minecraft-26.3/profile.lock.json'
+    profile.write_text(json.dumps({'minecraftVersion':'26.3','paper':{
+        'build':169,'channel':'BETA','url':f'https://fill-data.papermc.io/v1/objects/{new_sha}/{new_filename}',
+        'size':len(new_content),'sha256':new_sha,
+    }}),encoding='utf-8')
+    candidate=tmp_path/'build/minecraft-26.3/server'/new_filename
+    candidate.write_bytes(new_content)
+    paper=mod._locked_paper(tmp_path)
+    observed_ports=[]
+    def database_is_listening(port,host):
+        observed_ports.append((port,host))
+        return port==55434 and host=='127.0.0.1'
+    monkeypatch.setattr(mod,'port_open',database_is_listening)
+
+    with pytest.raises(ValueError,match='PostgreSQL.*running'):
+        mod._upgrade_owned_runtime(runtime,runtime.parent,paper,candidate)
+
+    assert (55434,'127.0.0.1') in observed_ports
+    assert (runtime/old_filename).is_file()
+    assert database_file.read_bytes()==b'live PostgreSQL data must not be copied during a Paper upgrade'
+    assert not (runtime.parent/'migration-backups').exists()
+
+
+def test_paper_upgrade_refuses_to_copy_a_live_migration_database_on_its_configured_port(tmp_path,monkeypatch):
+    mod=load();_,old_filename=write_bootstrap_fixture(tmp_path)
+    _,error=invoke_runtime_prepare(mod,tmp_path)
+    assert error is None, f'initial --prepare-runtime should complete successfully, got {error}'
+
+    runtime=tmp_path/'local-runtime/end-rift-server-26.3'
+    database_file=runtime/'postgres-data/base/1/1'
+    database_file.parent.mkdir(parents=True)
+    database_file.write_bytes(b'live PostgreSQL data must not be copied during a Paper upgrade')
+    (runtime/'migration-isolated-postgres.env').write_text(
+        'POSTGRES_HOST=127.0.0.1\nPOSTGRES_PORT=55435\n',encoding='utf-8')
+    new_content=b'pinned Paper 26.3 build 169 fixture'
+    new_filename='paper-26.3-169.jar'
+    new_sha=hashlib.sha256(new_content).hexdigest()
+    profile=tmp_path/'tools/minecraft-26.3/profile.lock.json'
+    profile.write_text(json.dumps({'minecraftVersion':'26.3','paper':{
+        'build':169,'channel':'BETA','url':f'https://fill-data.papermc.io/v1/objects/{new_sha}/{new_filename}',
+        'size':len(new_content),'sha256':new_sha,
+    }}),encoding='utf-8')
+    candidate=tmp_path/'build/minecraft-26.3/server'/new_filename
+    candidate.write_bytes(new_content)
+    paper=mod._locked_paper(tmp_path)
+    observed_ports=[]
+    def database_is_listening(port,host):
+        observed_ports.append((port,host))
+        return port==55435 and host=='::1'
+    monkeypatch.setattr(mod,'port_open',database_is_listening)
+
+    with pytest.raises(ValueError,match='PostgreSQL.*running'):
+        mod._upgrade_owned_runtime(runtime,runtime.parent,paper,candidate)
+
+    assert (55435,'::1') in observed_ports
+    assert (runtime/old_filename).is_file()
+    assert database_file.read_bytes()==b'live PostgreSQL data must not be copied during a Paper upgrade'
+    assert not (runtime.parent/'migration-backups').exists()
+
+
+def test_paper_upgrade_refuses_to_copy_when_live_postgres_has_no_ipv4_listener(tmp_path,monkeypatch):
+    mod=load();_,old_filename=write_bootstrap_fixture(tmp_path)
+    _,error=invoke_runtime_prepare(mod,tmp_path)
+    assert error is None, f'initial --prepare-runtime should complete successfully, got {error}'
+
+    runtime=tmp_path/'local-runtime/end-rift-server-26.3'
+    data=runtime/'postgres-data'
+    database_file=data/'base/1/1'
+    database_file.parent.mkdir(parents=True)
+    database_file.write_bytes(b'live PostgreSQL data must not be copied during a Paper upgrade')
+    pid=42424
+    (data/'postmaster.pid').write_text(f'{pid}\n{data}\n1\n55436\n',encoding='utf-8')
+    new_content=b'pinned Paper 26.3 build 169 fixture'
+    new_filename='paper-26.3-169.jar'
+    new_sha=hashlib.sha256(new_content).hexdigest()
+    profile=tmp_path/'tools/minecraft-26.3/profile.lock.json'
+    profile.write_text(json.dumps({'minecraftVersion':'26.3','paper':{
+        'build':169,'channel':'BETA','url':f'https://fill-data.papermc.io/v1/objects/{new_sha}/{new_filename}',
+        'size':len(new_content),'sha256':new_sha,
+    }}),encoding='utf-8')
+    candidate=tmp_path/'build/minecraft-26.3/server'/new_filename
+    candidate.write_bytes(new_content)
+    paper=mod._locked_paper(tmp_path)
+    observed_pids=[]
+    def postgres_process_is_running(observed_pid):
+        observed_pids.append(observed_pid)
+        return observed_pid==pid
+    monkeypatch.setattr(mod,'_process_id_is_running',postgres_process_is_running,raising=False)
+    monkeypatch.setattr(mod,'port_open',lambda _port,_host: False)
+
+    with pytest.raises(ValueError,match='PostgreSQL.*running') as error:
+        mod._upgrade_owned_runtime(runtime,runtime.parent,paper,candidate)
+
+    assert observed_pids==[pid]
+    assert 'postmaster.pid' in str(error.value)
+    assert 'only then move the stale postmaster.pid aside' in str(error.value)
+    assert (runtime/old_filename).is_file()
+    assert database_file.read_bytes()==b'live PostgreSQL data must not be copied during a Paper upgrade'
+    assert not (runtime.parent/'migration-backups').exists()
+
+
+def test_process_id_liveness_probe_tracks_a_real_process(tmp_path):
+    mod=load()
+    process=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'])
+    try:
+        assert mod._process_id_is_running(process.pid)
+    finally:
+        process.terminate()
+        process.wait(timeout=5)
+
+    assert not mod._process_id_is_running(process.pid)
+
+
+def test_runtime_upgrade_preserves_private_migration_credential_acl(tmp_path):
+    if os.name!='nt':pytest.skip('Windows file ACL behavior is required for this regression.')
+    windows_root=Path(os.environ.get('SystemRoot',r'C:\Windows'))
+    powershell=windows_root/'System32/WindowsPowerShell/v1.0/powershell.exe'
+    if not powershell.is_file():pytest.skip('Windows PowerShell is required to exercise migration credential ACLs.')
+    mod=load()
+    source=tmp_path/'runtime';source.mkdir()
+    destination=tmp_path/'upgrade';destination.mkdir()
+    credential=source/'migration-isolated-postgres.env'
+    environment_module=ROOT/'scripts/minecraft/MigrationDatabaseEnvironment.psm1'
+    environment=os.environ.copy()
+    environment.update({
+        'COPIMINE_MIGRATION_ENV_MODULE':str(environment_module),
+        'COPIMINE_TEST_MIGRATION_ENV_PATH':str(credential),
+        'COPIMINE_TEST_MIGRATION_ENV_CONTENTS':'POSTGRES_PASSWORD='+'a'*64+'\n',
+        'PSModulePath':str(windows_root/'System32/WindowsPowerShell/v1.0/Modules'),
+    })
+    create_private_credential=(
+        "$ErrorActionPreference='Stop'; "
+        "Import-Module -Name $env:COPIMINE_MIGRATION_ENV_MODULE -Force; "
+        "Write-MigrationPrivateEnvFile -Path $env:COPIMINE_TEST_MIGRATION_ENV_PATH "
+        "-Contents $env:COPIMINE_TEST_MIGRATION_ENV_CONTENTS"
+    )
+    created=subprocess.run(
+        [str(powershell),'-NoProfile','-ExecutionPolicy','Bypass','-Command',create_private_credential],
+        check=False,capture_output=True,text=True,timeout=30,env=environment)
+    assert created.returncode==0,created.stderr
+
+    mod._copy_runtime_state(source,destination)
+
+    compare_acl=(
+        "$ErrorActionPreference='Stop'; "
+        "$source=Get-Acl -LiteralPath $env:COPIMINE_TEST_MIGRATION_SOURCE; "
+        "$copy=Get-Acl -LiteralPath $env:COPIMINE_TEST_MIGRATION_COPY; "
+        "$sourceRules=@($source.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | "
+        "ForEach-Object { '{0}|{1}|{2}|{3}|{4}|{5}' -f $_.IdentityReference.Value,[int]$_.FileSystemRights,"
+        "$_.AccessControlType,$_.IsInherited,$_.InheritanceFlags,$_.PropagationFlags } | Sort-Object); "
+        "$copyRules=@($copy.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]) | "
+        "ForEach-Object { '{0}|{1}|{2}|{3}|{4}|{5}' -f $_.IdentityReference.Value,[int]$_.FileSystemRights,"
+        "$_.AccessControlType,$_.IsInherited,$_.InheritanceFlags,$_.PropagationFlags } | Sort-Object); "
+        "$rulesMatch=@(Compare-Object -ReferenceObject $sourceRules -DifferenceObject $copyRules).Count -eq 0; "
+        "$same=$source.Owner -ceq $copy.Owner -and $source.Group -ceq $copy.Group -and "
+        "$source.AreAccessRulesProtected -eq $copy.AreAccessRulesProtected -and $rulesMatch; "
+        "[PSCustomObject]@{same=$same} | ConvertTo-Json -Compress"
+    )
+    environment['COPIMINE_TEST_MIGRATION_SOURCE']=str(credential)
+    environment['COPIMINE_TEST_MIGRATION_COPY']=str(destination/credential.name)
+    compared=subprocess.run(
+        [str(powershell),'-NoProfile','-ExecutionPolicy','Bypass','-Command',compare_acl],
+        check=False,capture_output=True,text=True,timeout=30,env=environment)
+    assert compared.returncode==0,compared.stderr
+    assert json.loads(compared.stdout)=={'same':True},'the copied migration credential must retain its protected source ACL'
+
+
+def test_prepare_runtime_migrates_owned_older_paper_and_preserves_data_and_configs(tmp_path,capsys,monkeypatch):
     mod=load();old_content,old_filename=write_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(mod,'port_open',lambda port,host:False)
     _,error=invoke_runtime_prepare(mod,tmp_path)
     assert error is None, f'initial --prepare-runtime should complete successfully, got {error}'
 
@@ -1298,6 +1578,7 @@ def test_prepare_runtime_migrates_owned_older_paper_and_preserves_data_and_confi
 
 def test_prepare_runtime_recovers_interrupted_paper_swap_without_losing_world_data(tmp_path,monkeypatch):
     mod=load();write_bootstrap_fixture(tmp_path)
+    monkeypatch.setattr(mod,'port_open',lambda port,host:False)
     _,error=invoke_runtime_prepare(mod,tmp_path)
     assert error is None, f'initial --prepare-runtime should complete successfully, got {error}'
 
@@ -1338,6 +1619,8 @@ def test_prepare_runtime_recovers_interrupted_paper_swap_without_losing_world_da
     assert len(snapshots)==1
     assert (snapshots[0]/'world/region/r.0.0.mca').read_bytes()==b'world data must survive an interrupted Paper swap'
     assert (snapshots[0].parent/'upgrade-in-progress.json').is_file(), 'the swap must leave a recovery record before moving the runtime'
+    orphaned_scratch=list((tmp_path/'local-runtime').glob('.end-rift-server-26.3-upgrade-*'))
+    assert len(orphaned_scratch)==1 and orphaned_scratch[0].is_dir()
 
     monkeypatch.setattr(mod.os,'rename',real_rename)
     _,error=invoke_runtime_prepare(mod,tmp_path)
@@ -1346,6 +1629,7 @@ def test_prepare_runtime_recovers_interrupted_paper_swap_without_losing_world_da
     assert (runtime/'world/region/r.0.0.mca').read_bytes()==b'world data must survive an interrupted Paper swap'
     metadata=json.loads((runtime/'copimine-migration-runtime.json').read_text(encoding='utf-8'))
     assert metadata['paperFilename']==new_filename
+    assert not list((tmp_path/'local-runtime').glob('.end-rift-server-26.3-upgrade-*'))
 
 
 def test_prepare_runtime_refuses_blank_recreation_when_only_an_archived_world_remains(tmp_path):
@@ -1481,7 +1765,7 @@ def test_plugin_install_rejects_public_bind_or_enabled_rcon_before_listener_chec
 def test_plugin_install_refuses_while_server_start_holds_runtime_lifecycle_lock(tmp_path):
     mod=load();server,stage,record,old,new=fixture(tmp_path)
     ready=tmp_path/'server-start-lock-ready.txt'
-    lock_name='Local\\CopiMineMinecraft263RuntimeLifecycleLock'
+    lock_name=mod.runtime_lifecycle_mutex_name(server)
     if os.name=='nt':
         child_code='\n'.join((
             'import ctypes, pathlib, sys, time',
@@ -1532,20 +1816,99 @@ def test_plugin_install_refuses_while_server_start_holds_runtime_lifecycle_lock(
             process.kill();process.wait(timeout=5)
 
 
-def test_migration_test_server_launcher_holds_shared_lock_for_local_offline_runtime():
+def test_runtime_lifecycle_mutex_name_matches_powershell_full_path_without_resolving_aliases(tmp_path,monkeypatch):
+    mod=load()
+    server=tmp_path/'runtime'/'..'/'runtime'
+    canonical=os.path.normcase(os.path.abspath(os.fspath(server))).replace('/','\\')
+    expected=mod.MIGRATION_RUNTIME_MUTEX_PREFIX+hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+    path_module=SimpleNamespace(
+        abspath=os.path.abspath,
+        normcase=os.path.normcase,
+        realpath=lambda *_:pytest.fail('mutex key must not resolve junctions or aliases'),
+    )
+    monkeypatch.setattr(mod,'os',SimpleNamespace(fspath=os.fspath,path=path_module))
+
+    assert mod.runtime_lifecycle_mutex_name(server)==expected
+
+
+def test_plugin_install_allows_an_independent_runtime_lifecycle_lock(tmp_path):
+    mod=load()
+    candidate_root=tmp_path/'candidate'
+    other_root=tmp_path/'existing-worktree'
+    server,stage,record,old,new=fixture(candidate_root)
+    other_server=other_root/'local-runtime/end-rift-server-26.3'
+    ready=tmp_path/'other-runtime-lock-ready.txt'
+    if os.name=='nt':
+        other_lock_name=mod.runtime_lifecycle_mutex_name(other_server)
+        child_code='\n'.join((
+            'import ctypes, pathlib, sys, time',
+            'from ctypes import wintypes',
+            'kernel32=ctypes.WinDLL("kernel32",use_last_error=True)',
+            'kernel32.CreateMutexW.argtypes=(wintypes.LPVOID,wintypes.BOOL,wintypes.LPCWSTR)',
+            'kernel32.CreateMutexW.restype=wintypes.HANDLE',
+            'handle=kernel32.CreateMutexW(None,False,sys.argv[2])',
+            'if not handle: raise ctypes.WinError(ctypes.get_last_error())',
+            'state=kernel32.WaitForSingleObject(handle,0)',
+            'if state not in (0,0x80): raise RuntimeError("failed to acquire other runtime mutex: %s"%state)',
+            'pathlib.Path(sys.argv[1]).write_text("locked",encoding="ascii")',
+            'time.sleep(30)',
+        ))
+        lock_argument=other_lock_name
+    else:
+        other_lock_path=other_server.parent/'.migration-lifecycle.lock'
+        child_code='\n'.join((
+            'import fcntl, os, pathlib, sys, time',
+            'descriptor=os.open(sys.argv[2],os.O_CREAT|os.O_RDWR,0o600)',
+            'fcntl.flock(descriptor,fcntl.LOCK_EX|fcntl.LOCK_NB)',
+            'pathlib.Path(sys.argv[1]).write_text("locked",encoding="ascii")',
+            'time.sleep(30)',
+        ))
+        lock_argument=str(other_lock_path)
+    process=subprocess.Popen([sys.executable,'-c',child_code,str(ready),lock_argument],
+                             stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    try:
+        for _ in range(200):
+            if ready.exists():break
+            if process.poll() is not None:
+                pytest.fail('independent runtime lock holder exited early: '+process.stderr.read())
+            time.sleep(0.025)
+        assert ready.exists(), 'independent runtime did not acquire its lifecycle lock'
+        receipt=mod.install_records(candidate_root,server,[record],stage,lambda port,host:False)
+        assert (server/'plugins/new.jar').read_bytes()==new
+        assert receipt['installed'][0]['pluginName']=='Example'
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill();process.wait(timeout=5)
+
+
+def test_migration_test_server_launcher_holds_runtime_scoped_lock_for_local_offline_runtime():
     source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
 
-    assert 'Local\\CopiMineMinecraft263RuntimeLifecycleLock' in source
+    assert 'Local\\CopiMineMinecraft263RuntimeLifecycleLock-' in source
+    assert 'ComputeHash' in source
+    assert 'GetFullPath($runtime)' in source
     assert '.WaitOne(0)' in source
     assert '--startup-settings-json' in source
     assert '--unauthenticated-test-runtime' in source
     assert 'ConvertFrom-Json' in source
     assert "eula=true" in source
     assert 'AuthMe' in source
+    assert 'AuthEffects' in source
+    assert '$authEffectsJars.Count -gt 0' in source
     assert '$javaArguments = @(' in source
     assert '& $java @javaArguments' in source
     assert "'127.0.0.1'" in source
     assert 'voiceChatBindAddress' in source
+
+
+def test_migration_server_uses_jvm_heap_base_and_startup_reserve_safeguards():
+    source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
+
+    assert "'-XX:HeapBaseMinAddress=4g'" in source
+    assert "'-Xms128M'" in source
 
 
 def test_local_voice_chat_configuration_rebinds_wildcard_to_loopback(tmp_path):
@@ -1578,7 +1941,7 @@ def test_migration_test_server_launcher_supports_explicit_full_plugin_loopback_m
     assert '[switch]$FullPluginSet' in source
     assert 'if ($FullPluginSet)' in source
     assert "'--unauthenticated-test-runtime'" in source
-    assert 'AuthMe is required for -FullPluginSet' in source
+    assert 'AuthMe and AuthEffects are required for -FullPluginSet' in source
     assert '127.0.0.1' in source
     assert 'enableRcon' in source
 
@@ -1594,6 +1957,16 @@ def test_migration_test_server_launcher_checks_java_version_process_exit_code_ex
     assert '$javaVersionExitCode -ne 0' in source
     java_version_gate = source[source.index("$java = Join-Path $JavaHome"):source.index("$probe = [System.Net.Sockets.TcpClient]::new()")]
     assert '$LASTEXITCODE -ne 0' not in java_version_gate
+
+
+def test_migration_test_server_launcher_bounds_idle_g1_heap_retention():
+    source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
+    java_arguments = source[source.index('$javaArguments = @('):source.index('Push-Location -LiteralPath $runtime')]
+
+    assert "'-Xmx2G'" in java_arguments
+    assert "'-XX:MinHeapFreeRatio=20'" in java_arguments
+    assert "'-XX:MaxHeapFreeRatio=40'" in java_arguments
+    assert 'SoftMaxHeapSize' not in java_arguments
 
 
 def test_migration_plugin_builder_checks_java_version_process_exit_code_explicitly():
@@ -1612,8 +1985,14 @@ def test_migration_plugin_builder_checks_java_version_process_exit_code_explicit
 def test_migration_test_server_launcher_uses_its_isolated_database_environment():
     source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
 
-    assert "$databaseEnvironmentFile = Join-Path $runtime 'migration-test.env'" in source
-    assert "Test-Path -LiteralPath $databaseEnvironmentFile -PathType Leaf" in source
+    assert "$postgresInitializer = Join-Path $root 'scripts/minecraft/InitializeMigrationPostgres.ps1'" in source
+    assert "'POSTGRES_HOST=127.0.0.1'" in source
+    assert "'POSTGRES_PORT=55434'" in source
+    assert "'POSTGRES_DB=copimine_migration_test'" in source
+    assert "'POSTGRES_SCHEMA=copimine_migration_26_3_candidate'" in source
+    assert "$databaseSetupArguments = @{ RuntimeDirectory = $runtime }" in source
+    assert "$databaseSetupArguments.PostgresBin = $PostgresBin" in source
+    assert "$null = Assert-MigrationDatabaseEnvironment -Path $databaseEnvironmentFile -RequiredSettings $requiredDatabaseSettings" in source
     assert "$env:COPIMINE_ENV_FILE = $databaseEnvironmentFile" in source
     assert "Import-Module -Name (Join-Path $PSScriptRoot 'MigrationDatabaseEnvironment.psm1')" in source
     assert "$previousDatabaseEnvironment = Clear-MigrationDatabaseOverrides" in source
@@ -1716,3 +2095,30 @@ def test_plugin_install_rejects_online_mode_for_licensed_and_offline_local_test_
     assert checked==[]
     assert (server/'plugins/old.jar').read_bytes()==old
     assert not (server/'plugins/new.jar').exists()
+
+
+def test_upstream_baseline_plugins_have_locked_candidates_that_declare_minecraft_26_3():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    baseline={row['pluginName']:row for row in lock['unchangedBaseline']}
+    candidates={row['pluginName']:row for row in lock['modules']}
+    expected={
+        'Chunky':('1.5.3','Chunky-Bukkit-1.5.3.jar','https://cdn.modrinth.com/data/fALzjamp/versions/MdY6JATr/Chunky-Bukkit-1.5.3.jar'),
+        'GSit':('3.7.0','GSit-3.7.0.jar','https://hangarcdn.papermc.io/plugins/Gecolay/GSit/versions/3.7.0/PAPER/GSit-3.7.0.jar'),
+        'LuckPerms':('v5.5.71-bukkit','LuckPerms-Bukkit-5.5.71.jar','https://cdn.modrinth.com/data/Vebnzrzj/versions/b0mk8uS6/LuckPerms-Bukkit-5.5.71.jar'),
+        'Vault':('2.20.3','VaultUnlocked-2.20.3.jar','https://cdn.modrinth.com/data/ayRaM8J7/versions/qZgRzoYs/VaultUnlocked-2.20.3.jar'),
+    }
+    for plugin_name,(version,filename,url) in expected.items():
+        candidate=candidates[plugin_name]
+        assert candidate['version']==version
+        assert candidate['filename']==filename
+        assert candidate['url']==url
+        assert candidate['compatibilityStatus']=='requires-runtime-validation'
+        assert candidate['nativeVerified'] is False
+        assert re.fullmatch(r'[0-9a-f]{64}',candidate['sha256'])
+        assert re.fullmatch(r'[0-9a-f]{128}',candidate['sha512'])
+        assert candidate['size']>0
+        assert baseline[plugin_name]['sha256'] in candidate['replaceSha256']
+        assert '26.3' in candidate['gameVersions']
+
+    assert candidates['GSit']['sha256']=='57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea'
+    assert candidates['GSit']['sha512']=='5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad'

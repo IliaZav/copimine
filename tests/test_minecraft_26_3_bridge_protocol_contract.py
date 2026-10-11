@@ -64,3 +64,16 @@ def test_pending_client_auth_commands_reject_unrelated_plugin_namespaces():
     assert 'AUTHENTICATION_NAMESPACE = "authme"' in command_policy
     assert "command.substring(0, namespaceSeparator).equalsIgnoreCase(AUTHENTICATION_NAMESPACE)" in command_policy
     assert "command.indexOf(':', namespaceSeparator + 1) >= 0" in command_policy
+
+
+def test_client_mod_docs_describe_reported_identity_without_claiming_install_attestation():
+    protocol = _read("CopiMineClient/PROTOCOL.md")
+    readme = _read("CopiMineClient/README_INSTALL_RU.md")
+
+    assert "challenge response only when it reports mod ID" in protocol
+    assert "This protocol does not prove that an unmodified copy of the mod is installed." in protocol
+    assert "A repeated `hello` for an already verified session is acknowledged with `ping`" in protocol
+    assert "клиент сообщает mod ID" in readme
+    assert "не доказывает, что клиент использует неизменённый JAR мода" in readme
+    assert "verifies the installed CopiMineClient version" not in protocol
+    assert "сервер проверяет только этот мод" not in readme

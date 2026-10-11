@@ -8,10 +8,10 @@ Protocol version:
 
 Transport model:
 - CopiMineClient is mandatory for joining the Minecraft 26.3 CopiMine server;
-- the server checks only mod ID `copimineclient` and the configured exact version; other gameplay and graphics mods are optional;
+- the server accepts a client challenge response only when it reports mod ID `copimineclient` and the configured exact version; other gameplay and graphics mods are optional;
 - Fabric Loader and Fabric API remain client launch dependencies because this mod uses their APIs, but the server does not check them as separate mod identities;
 - server never requires Iris or OptiFine;
-- if the required mod is missing, reports the wrong version, fails to answer, or sends a malformed response, the server disconnects the client;
+- if the client does not answer before the handshake timeout, reports a different ID or version, or sends a malformed response, the server disconnects the client;
 - while the challenge is pending, movement, interaction, inventory actions and chat are blocked; only authentication commands `/login`, `/l`, `/register`, `/reg`, `/2fa`, `/premium`, and `/freemium` remain available;
 - primary route is built-in ZIP shaderpack switching through Iris when Iris runtime is available;
 - fallback route is CopiMineClient post-processing plus overlay composition;
@@ -46,8 +46,8 @@ Required client check:
 1. On join, the Paper bridge creates a new random challenge ID and expiration time for that player connection.
 2. It sends `client_mod_challenge` with the current protocol, challenge ID in `sessionId`, configured required version in `clientVersion`, and required mod ID in `mode`.
 3. CopiMineClient answers with `hello`, echoing the challenge ID and reporting its loaded Fabric metadata version and mod ID.
-4. The server accepts only the exact ID, exact version, protocol 3, matching unexpired challenge, then acknowledges the same session with `ping`.
-5. Missing, stale, replayed, malformed or mismatched responses fail closed. The handshake timeout and required version live in `copimine-narcotics/config.yml` and are checked against `tools/minecraft-26.3/profile.lock.json`.
+4. While a challenge is pending, the server accepts only the exact ID, exact version, protocol 3, and matching unexpired challenge, then acknowledges the session with `ping`.
+5. If no response arrives before timeout, the player is disconnected. While a challenge is pending, a response with a different challenge ID, malformed payload, mismatched ID/version, or wrong protocol is rejected. A repeated `hello` for an already verified session is acknowledged with `ping`; it does not repeat the initial check. The handshake timeout and required version live in `copimine-narcotics/config.yml` and are checked against `tools/minecraft-26.3/profile.lock.json`.
 
 This challenge makes ordinary vanilla clients and wrong CopiMineClient releases fail the compatibility gate. It is not cryptographic client attestation: a deliberately modified client can implement the same public protocol and claim the expected ID/version. The payload format contains no shared secret.
 
@@ -101,4 +101,4 @@ Runtime rules:
 - if the player already had an Iris shaderpack active, the previous state is restored after the CopiMine effect unless local config blocks override;
 - if Iris is absent, unsupported, or a ZIP is not Iris-compatible, CopiMineClient uses fallback post-processing;
 - non-Iris shaderpack ZIPs are not embedded in the active runtime set; unsupported visuals use fallback post-processing instead of pretending a ZIP was enabled;
-- the server remains authoritative for gameplay effects. Separately, a player may finish joining and receive CopiMine client-side rendering only after the server verifies the installed CopiMineClient version and accepts its challenge response.
+- the server remains authoritative for gameplay effects. Separately, a player may finish joining and receive CopiMine client-side rendering only after the server accepts a challenge response reporting the required CopiMineClient ID and version. This protocol does not prove that an unmodified copy of the mod is installed.

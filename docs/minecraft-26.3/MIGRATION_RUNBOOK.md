@@ -26,7 +26,9 @@ $GrimJava21 = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').
   -PythonExe python
 ```
 
-Скрипт сверяет источники и собранные файлы по lock, скачивает закреплённые upstream-моды, проверяет Fabric metadata, собирает custom Paper plugins и CopiMineClient, затем строит resource pack. Не подменяйте JAR вручную в `build/minecraft-26.3`.
+Скрипт сверяет источники и собранные файлы по lock, скачивает закреплённые upstream-моды, проверяет Fabric metadata, собирает custom Paper plugins и CopiMineClient, затем строит resource pack. Миграционный клиент собирается проектом `tools/minecraft-26.3/client`: он использует общие исходные ресурсы из `CopiMineClient/src/main/resources`, но формирует отдельный артефакт `0.1.1+26.3` с метаданными из migration lock. Корневой `CopiMineClient/build-client.ps1` остаётся сборкой прежнего проекта 1.21.1 и не создаёт JAR для Paper 26.3. Не подменяйте JAR вручную в `build/minecraft-26.3`.
+
+Не выпускайте Minecraft 26.3 сервер через legacy `scripts/package_full_release.ps1` или его Windows install/update wrappers: они собирают клиент 1.21.1. Старый упаковщик завершится до создания release output, если обнаружит migration profile lock либо YAML-конфигурацию, требующую CopiMineClient `+26.3`. Для проверки используется `scripts/minecraft/inspect_legacy_release_client_bridge.py` с PyYAML SafeLoader: комментарии, block scalars, anchors/merge aliases и экранированные ключи интерпретируются по YAML-семантике; malformed YAML, дублированные ключи и неподдерживаемая структура закрывают упаковку с ошибкой. `PrepareMigrationCandidates.ps1` формирует и проверяет candidate артефакты 26.3, но ещё не создаёт production release bundle.
 
 ## Установка в локальный Minecraft-профиль
 
@@ -78,7 +80,7 @@ python -m pytest -q -rs `
 
 Fabric-клиентские unit-тесты выполняются сборочной процедурой на закреплённых Gradle и Java 25. PostgreSQL-интеграция создаёт случайную схему в специально выделенной тестовой базе, проверяет DDL/переносы и удаляет только эту временную схему.
 
-Для публикации кандидата GitHub Actions и GitLab CI проверяются отдельно на одном source commit SHA. Датированная candidate-ветка должна получить собственный pipeline; результаты основной ветки или локальный запуск не заменяют эти два результата. Открытая PR/MR остаётся обзорной и не сливается до проверки владельцем проекта.
+Для публикации кандидата GitHub Actions должен пройти на точном source commit SHA; датированная candidate-ветка получает собственный GitHub pipeline. GitLab хранит зеркало того же SHA, а его CI служит дополнительной диагностикой и не блокирует checkpoint. Локальный запуск не заменяет GitHub результат. Открытая PR/MR остаётся обзорной и не сливается до проверки владельцем проекта.
 
 ## Критерий native acceptance
 

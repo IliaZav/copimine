@@ -13,6 +13,12 @@ if ($ValidateOnly -and $ValidateDefinitionOnly) {
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path
 $profile = Get-Content -LiteralPath (Join-Path $root 'tools/minecraft-26.3/profile.lock.json') -Raw | ConvertFrom-Json
 $lock = Get-Content -LiteralPath (Join-Path $root 'tools/minecraft-26.3/client-mods.lock.json') -Raw | ConvertFrom-Json
+$bundledModules = @($lock.modules | Where-Object { $_.bundled -eq $true })
+$modulesToInstall = if ($DependenciesOnly) {
+    @($lock.modules)
+} else {
+    @($lock.modules | Where-Object { $_.bundled -ne $true })
+}
 $target = (Resolve-Path -LiteralPath $ProfileDirectory).Path
 $id = Split-Path -Leaf $target
 $migrationReceiptPath = Join-Path $target 'copimine-migration-receipt.json'
@@ -183,13 +189,34 @@ function Test-PinnedModrinthUrl([object]$module) {
         '/versions/' + [regex]::Escape([string]$module.versionId) + '/[^/]+$'
     return $uri.AbsolutePath -cmatch $pathPattern
 }
-function Assert-InstalledMigrationProfile([object[]]$modules, [string]$expectedProfileId,
+function Assert-InstalledMigrationProfile([object[]]$modules, [object[]]$bundledModules, [string]$expectedProfileId,
     [string]$clientDestination, [object]$clientArtifactPin, [string]$clientVersion,
     [string]$expectedPackHash, [switch]$dependenciesOnly) {
     Assert-ProfileDirectoryDestination -Path $mods -Description 'installed mods directory' -StopAt $target
     Assert-ProfileDirectoryDestination -Path $packs -Description 'installed resource-pack directory' -StopAt $target
     if (-not (Test-Path -LiteralPath $mods -PathType Container)) { throw 'Installed profile is missing its mods directory' }
     if (-not (Test-Path -LiteralPath $packs -PathType Container)) { throw 'Installed profile is missing its resource-pack directory' }
+
+    if (-not $dependenciesOnly -and $bundledModules.Count -gt 0) {
+        foreach ($installedJar in Get-ChildItem -LiteralPath $mods -Filter '*.jar' -File) {
+            $installedArchive = $null
+            try {
+                $installedArchive = [IO.Compression.ZipFile]::OpenRead($installedJar.FullName)
+                if ($installedArchive.GetEntry('fabric.mod.json')) {
+                    $installedMetadata = Read-ZipJson $installedArchive 'fabric.mod.json'
+                    foreach ($bundledModule in $bundledModules) {
+                        if ($installedMetadata.id -ceq [string]$bundledModule.modId) {
+                            throw 'A standalone bundled Fabric API mod remains in the profile alongside CopiMineClient'
+                        }
+                    }
+                }
+            } catch [System.IO.InvalidDataException] {
+                # Non-ZIP files cannot be Fabric mods.
+            } finally {
+                if ($installedArchive) { $installedArchive.Dispose() }
+            }
+        }
+    }
 
     foreach ($module in $modules) {
         $installedModulePath = Join-Path $mods $module.filename
@@ -325,6 +352,42 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
         if (@($clientMetadata.mixins).Count -ne 1 -or $clientMixinsName -cne 'copimineclient-26.3.mixins.json') {
             throw 'CopiMineClient jar does not declare the pinned 26.3 mixin config'
         }
+        foreach ($bundledModule in $bundledModules) {
+            $nestedPath = 'META-INF/jars/' + [string]$bundledModule.filename
+            $declaredNestedJars = @($clientMetadata.jars | Where-Object { $_.file -ceq $nestedPath })
+            if ($declaredNestedJars.Count -ne 1) {
+                throw ('CopiMineClient does not declare the bundled dependency: ' + $nestedPath)
+            }
+            $nestedEntry = $clientArchive.GetEntry($nestedPath)
+            if (-not $nestedEntry -or $nestedEntry.Length -ne [long]$bundledModule.size) {
+                throw ('CopiMineClient is missing or has an incorrect-sized bundled dependency: ' + $nestedPath)
+            }
+            $nestedStream = $nestedEntry.Open()
+            $nestedBytes = [IO.MemoryStream]::new()
+            $nestedArchive = $null
+            try {
+                $nestedStream.CopyTo($nestedBytes)
+                $nestedBytes.Position = 0
+                $nestedHasher = [Security.Cryptography.SHA512]::Create()
+                try {
+                    $nestedHash = [BitConverter]::ToString($nestedHasher.ComputeHash($nestedBytes.ToArray())).Replace('-', '').ToLowerInvariant()
+                }
+                finally { $nestedHasher.Dispose() }
+                if ($nestedHash -cne [string]$bundledModule.sha512) {
+                    throw ('CopiMineClient bundled dependency differs from its locked SHA-512: ' + $nestedPath)
+                }
+                $nestedArchive = [IO.Compression.ZipArchive]::new($nestedBytes, [IO.Compression.ZipArchiveMode]::Read, $false)
+                $nestedMetadata = Read-ZipJson $nestedArchive 'fabric.mod.json'
+                if ($nestedMetadata.id -cne [string]$bundledModule.modId -or
+                    $nestedMetadata.version -cne [string]$bundledModule.fabricMetadataVersion) {
+                    throw ('CopiMineClient bundled dependency metadata differs from its lock: ' + $nestedPath)
+                }
+            } finally {
+                if ($nestedArchive) { $nestedArchive.Dispose() }
+                $nestedBytes.Dispose()
+                $nestedStream.Dispose()
+            }
+        }
         $mixinConfig = Read-ZipJson $clientArchive $clientMixinsName
         $packagePath = $mixinConfig.package.Replace('.', '/')
         foreach ($mixinClass in $mixinConfig.client) {
@@ -335,8 +398,13 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
     } finally { $clientArchive.Dispose() }
 }
 $lockedModuleFilenamesById = @{}
+$allLockedModuleIds = @{}
 $lockedModuleConflicts = [Collections.Generic.List[IO.FileInfo]]::new()
 $lockedModuleConflictIds = @{}
+$bundledModuleIds = @{}
+foreach ($module in $bundledModules) {
+    if ($module.modId) { $bundledModuleIds[[string]$module.modId] = [string]$module.filename }
+}
 foreach ($module in $lock.modules) {
     if ([IO.Path]::GetFileName($module.filename) -ne $module.filename -or $module.filename -match '[\\/:]') { throw 'Unsafe mod filename' }
     if (($lock.schemaVersion -eq 1 -and [string]::IsNullOrWhiteSpace([string]$module.modId)) -or
@@ -344,10 +412,13 @@ foreach ($module in $lock.modules) {
         throw ('Client mod lock has a missing or invalid Fabric mod id: ' + $module.filename)
     }
     if ($module.modId) {
-        if ($lockedModuleFilenamesById.ContainsKey([string]$module.modId)) {
+        if ($allLockedModuleIds.ContainsKey([string]$module.modId)) {
             throw ('Client mod lock contains the same Fabric mod id more than once: ' + $module.modId)
         }
-        $lockedModuleFilenamesById[[string]$module.modId] = [string]$module.filename
+        $allLockedModuleIds[[string]$module.modId] = [string]$module.filename
+        if ($DependenciesOnly -or $module.bundled -ne $true) {
+            $lockedModuleFilenamesById[[string]$module.modId] = [string]$module.filename
+        }
     }
     $trustedModrinthSource = Test-PinnedModrinthUrl $module
     $trustedCustomSkinLoaderSource = $module.filename -eq 'CustomSkinLoader_Universal-15.1.jar' -and
@@ -403,11 +474,26 @@ if (Test-Path -LiteralPath $mods -PathType Container) {
                 }
                 if ($existingMetadata) {
                     $existingModId = [string]$existingMetadata.id
+                    if ($DependenciesOnly -and $existingModId -ceq 'copimineclient') {
+                        throw 'DependenciesOnly cannot run when CopiMineClient is installed; run the full installer to preserve the ready profile.'
+                    }
                     if (-not $DependenciesOnly -and $existingModId -eq 'copimineclient' -and
                         $existingJar.FullName -ne $clientDestination) {
                         throw ('Another CopiMineClient mod is already present: ' + $existingJar.Name)
                     }
-                    if ($lockedModuleFilenamesById.ContainsKey($existingModId)) {
+                    if (-not $DependenciesOnly -and $bundledModuleIds.ContainsKey($existingModId)) {
+                        if ($ValidateOnly) {
+                            throw 'A standalone bundled Fabric API mod remains in the profile alongside CopiMineClient'
+                        }
+                        if ($existingJar.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                            throw ('Existing bundled dependency is a link and cannot be backed up safely: ' + $existingJar.Name)
+                        }
+                        if ($lockedModuleConflictIds.ContainsKey($existingModId)) {
+                            throw ('Multiple existing JARs conflict with bundled dependency id: ' + $existingModId)
+                        }
+                        $lockedModuleConflictIds[$existingModId] = $existingJar.Name
+                        $lockedModuleConflicts.Add($existingJar)
+                    } elseif ($lockedModuleFilenamesById.ContainsKey($existingModId)) {
                         $lockedFilename = [string]$lockedModuleFilenamesById[$existingModId]
                         if ($existingJar.Name -cne $lockedFilename) {
                             if ($ValidateOnly) {
@@ -424,13 +510,13 @@ if (Test-Path -LiteralPath $mods -PathType Container) {
                             $lockedModuleConflictIds[$existingModId] = $existingJar.Name
                             $lockedModuleConflicts.Add($existingJar)
                         } else {
-                            $lockedModule = $lock.modules | Where-Object { $_.modId -ceq $existingModId } | Select-Object -First 1
+                            $lockedModule = $modulesToInstall | Where-Object { $_.modId -ceq $existingModId } | Select-Object -First 1
                             if ((Get-FileDigest $existingJar.FullName 'SHA512') -ne $lockedModule.sha512) {
                                 throw ('Existing mod differs from its pinned migration artifact: ' + $existingJar.Name)
                             }
                         }
                     }
-                    $lockedModuleForFilename = $lock.modules | Where-Object { $_.filename -ceq $existingJar.Name } | Select-Object -First 1
+                    $lockedModuleForFilename = $modulesToInstall | Where-Object { $_.filename -ceq $existingJar.Name } | Select-Object -First 1
                     if ($lockedModuleForFilename -and $lockedModuleForFilename.modId -and
                         $existingModId -cne $lockedModuleForFilename.modId) {
                         throw ('Existing mod does not contain its pinned Fabric mod id: ' + $existingJar.Name)
@@ -447,7 +533,7 @@ if ($ValidateOnly) {
     Assert-ProfileDirectoryDestination -Path $packs -Description 'installed resource-pack directory' -StopAt $target
     Assert-AtomicFileDestination -Path $optionsPath -Description 'installed Minecraft options' -StopAt $target
     Assert-AtomicFileDestination -Path $migrationReceiptPath -Description 'migration receipt' -StopAt $target
-    Assert-InstalledMigrationProfile -Modules @($lock.modules) -ExpectedProfileId $id `
+    Assert-InstalledMigrationProfile -Modules @($modulesToInstall) -BundledModules @($bundledModules) -ExpectedProfileId $id `
         -ClientDestination $clientDestination -ClientArtifactPin $profile.clientArtifact `
         -ClientVersion ([string]$clientMetadata.version) -ExpectedPackHash $packHash -DependenciesOnly:$DependenciesOnly
     if (-not $DependenciesOnly) { Write-Output ('Validated CopiMineClient ' + $clientMetadata.version + ' and ' + $clientMixinsName) }
@@ -464,7 +550,7 @@ Assert-ProfileDirectoryDestination -Path $backupOptionsRoot -Description 'profil
 if (-not $DependenciesOnly) {
     Assert-AtomicFileDestination -Path $clientDestination -Description 'profile artifact' -StopAt $target
 }
-foreach ($module in $lock.modules) {
+foreach ($module in $modulesToInstall) {
     Assert-AtomicFileDestination -Path (Join-Path $mods $module.filename) -Description 'profile artifact' -StopAt $target
 }
 $packTarget = Join-Path $packs 'CopiMineResourcePack-26.3.zip'
@@ -505,7 +591,7 @@ if ($hasTrailingNewline -and $optionLines.Count -gt 0) { $updatedOptions += $lin
 $stage = Join-Path $root 'build/minecraft-26.3/client-mods'
 Assert-ProfileDirectoryDestination -Path $stage -Description 'migration stage directory' -StopAt $root
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
-foreach ($module in $lock.modules) {
+foreach ($module in $modulesToInstall) {
     $path = Join-Path $stage $module.filename
     Assert-AtomicFileDestination -Path $path -Description 'migration mod cache' -StopAt $root
     $validCache = $false
@@ -533,14 +619,14 @@ foreach ($module in $lock.modules) {
         } finally { $modArchive.Dispose() }
     }
 }
-foreach ($module in $lock.modules) {
+foreach ($module in $modulesToInstall) {
     $destination = Join-Path $mods $module.filename
     if ((Test-Path -LiteralPath $destination -PathType Leaf) -and
         (Get-FileDigest $destination 'SHA512') -ne $module.sha512) {
         throw ('Refusing to replace a different existing mod: ' + $module.filename)
     }
 }
-$installed = @($lock.modules | ForEach-Object { @{filename=$_.filename;sha512=$_.sha512;version=$_.version} })
+$installed = @($modulesToInstall | ForEach-Object { @{filename=$_.filename;sha512=$_.sha512;version=$_.version} })
 $clientReceipt = $null
 if (-not $DependenciesOnly) {
     $clientReceipt = @{filename=[IO.Path]::GetFileName($clientJar);sha512=$clientSha512;version=$clientMetadata.version}
@@ -557,7 +643,7 @@ $createdBackupDirectories = [Collections.Generic.List[string]]::new()
 try {
     Assert-ProfileDirectoryDestination -Path $transactionRoot -Description 'profile transaction directory' -StopAt $target
     New-Item -ItemType Directory -Path $transactionRoot -ErrorAction Stop | Out-Null
-    foreach ($module in $lock.modules) {
+    foreach ($module in $modulesToInstall) {
         Add-ProfileTransactionSnapshot $journal (Join-Path $mods $module.filename) $transactionRoot
     }
     foreach ($conflict in $lockedModuleConflicts) {
@@ -592,7 +678,7 @@ try {
             Remove-Item -LiteralPath $conflict.FullName -Force -ErrorAction Stop
         }
     }
-    foreach ($module in $lock.modules) {
+    foreach ($module in $modulesToInstall) {
         $destination = Join-Path $mods $module.filename
         if ((Test-Path -LiteralPath $destination -PathType Leaf) -and
             (Get-FileDigest $destination 'SHA512') -ne $module.sha512) {

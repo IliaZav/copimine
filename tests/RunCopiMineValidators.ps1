@@ -43,6 +43,10 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $passed = 0
 $index = 0
 $skippedCount = 0
+$validatorShell = Get-Command pwsh -CommandType Application -ErrorAction SilentlyContinue
+if (-not $validatorShell) {
+  $validatorShell = Get-Command powershell -CommandType Application -ErrorAction Stop
+}
 
 if ($SkipReleaseArtifacts) {
   $skipped = $allTests | Where-Object { $_.Name -in $releaseArtifactValidators }
@@ -53,7 +57,13 @@ if ($SkipReleaseArtifacts) {
 foreach ($test in $tests) {
   $index++
   try {
-    & $test.FullName *>&1 | Out-Null
+    $testOutput = @(& $validatorShell.Source -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass `
+      -File $test.FullName *>&1)
+    $testExitCode = $LASTEXITCODE
+    if ($testExitCode -ne 0) {
+      $details = ($testOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+      throw "Validator process exited with code $testExitCode.$([Environment]::NewLine)$details"
+    }
     $passed++
   } catch {
     $failures.Add(('{0}: {1}' -f $test.Name, $_.Exception.Message))

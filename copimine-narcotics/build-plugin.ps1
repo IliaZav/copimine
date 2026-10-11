@@ -53,7 +53,11 @@ foreach ($dependency in @(
   }
 }
 
-$sources = Get-ChildItem -Path $srcDir -Recurse -Filter '*.java' | ForEach-Object FullName
+$protocolDir = Join-Path $releaseRoot 'tools\minecraft-26.3\protocol\src\main\java'
+$sources = @(
+  (Get-ChildItem -Path $srcDir -Recurse -Filter '*.java' | ForEach-Object FullName)
+  (Get-ChildItem -Path $protocolDir -Recurse -Filter '*.java' | ForEach-Object FullName)
+)
 if (-not $sources -or $sources.Count -eq 0) {
   throw 'No Java sources found for CopiMineNarcotics.'
 }

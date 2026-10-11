@@ -8,6 +8,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class EndEventPlayerVisualManagerTest {
     @Test
+    void rejectsThePreviousBridgeProtocolWithoutChangingCurrentPresentation() {
+        EndEventPlayerVisualManager manager = new EndEventPlayerVisualManager();
+        assertTrue(manager.apply(packet("event", 4, 100, 1, 0, "ACTIVE", 1_500), 100));
+
+        assertFalse(manager.apply(rawPacket(2, "event", 4, 200, "WAVE1_CARRIER_V1",
+                "wave1-carrier-charge", "the_end|wave1|0", "ACTIVE", 1_500), 200));
+        assertEquals("event", manager.eventId());
+        assertNotNull(manager.visualState("the_end", 200));
+    }
+
+    @Test
     void carrierAndHuntFeedbackUseTheServerWindowAndTheMatchingDimension() {
         EndEventPlayerVisualManager manager = new EndEventPlayerVisualManager();
         assertTrue(manager.apply(packet("event", 4, 100, 1, 0, "ACTIVE", 1_500), 1_000));
@@ -222,7 +233,13 @@ class EndEventPlayerVisualManagerTest {
 
     private static BridgePayload rawPacket(String event, long generation, long timestamp, String visual,
                                            String instance, String mode, String status, int duration) {
-        return new BridgePayload("END_EVENT:END_PLAYER_STATE", 2, generation, timestamp, event,
+        return rawPacket(ClientBridgeProtocol.PROTOCOL_VERSION, event, generation, timestamp, visual,
+                instance, mode, status, duration);
+    }
+
+    private static BridgePayload rawPacket(int protocol, String event, long generation, long timestamp,
+                                           String visual, String instance, String mode, String status, int duration) {
+        return new BridgePayload("END_EVENT:END_PLAYER_STATE", protocol, generation, timestamp, event,
                 instance, false, false, false, false, Set.of(), "", visual, duration, .8F,
                 0, 0, mode, "", "", "", status);
     }

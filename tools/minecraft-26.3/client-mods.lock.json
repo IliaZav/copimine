@@ -19,6 +19,7 @@
       },
       "filename": "fabric-api-0.162.0+26.3.jar",
       "modId": "fabric-api",
+      "bundled": true,
       "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar",
       "sha512": "5ab70908952f1d2346d16b122ca31327f4055db59c279a1bc3c3c581ce359bb541cba15730f55b0727be7c7c4debc4a4412a183c228e0d4dea81c734f7b412ce",
       "sha1": "273cd2dcbd92d1559edcc91c9f23fee47f6ff93f",

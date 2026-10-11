@@ -762,18 +762,19 @@
         "86820193e67f166d79128d224e4ab9abf7dafce2c6efaad21b4dc6134bfaf4d7",
         "e2335f9462f61c0f255a87cc3609520099f3836843f46aee6dd0a910dad636bd",
         "d63ed7c3c3d810a5ecb8ea8f497ecb24004cf195381e410bfbb8d182094842c0",
-        "93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea"
+        "93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea",
+        "825602f54b15615ecec9a3a6b10e3f4f45e41d8698d14712da33252659c5ae8d"
       ],
       "candidate": {
         "filename": "CopiMineEndEvent-26.3.jar",
         "runtimeFilename": "CopiMineEndEvent.jar",
-        "sha256": "825602f54b15615ecec9a3a6b10e3f4f45e41d8698d14712da33252659c5ae8d",
+        "sha256": "c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 1349153,
-        "sha512": "90ba7d82d2e3c0c6aa2c66936e721043694b68a5466a23531c427b49613054932ea051abe73d63e6a6235a6882b7439d39173cdd5b14b4b0220374f8f62821c6"
+        "size": 1349199,
+        "sha512": "9d81231c68a47916f25332a65662910681438a85f7308405dd8e7b11bde5a2c85bceaa6b141e162bda0e8675e800b67a099336208d348df534b40dfbdd3ff79f"
       },
       "nativeVerified": false
     },
@@ -783,18 +784,23 @@
       "version": "2.1.0-client-bridge",
       "sha256": "de9015dc9d421f98f294b0da081ca68a76fb33610684ca5f8403def0a246bbfc",
       "replaceSha256": [
-        "ead5a29b561e96e0c46ab252743297e991f8fb1e21432ca47c1571c28a502928"
+        "4a3e01050f8ab635f4760164fdb2723482b81923fafe75099506b6290b89b4d8",
+        "ead5a29b561e96e0c46ab252743297e991f8fb1e21432ca47c1571c28a502928",
+        "6c1872fa0c5047a88fc90addc18d7c4537e3b70395636b8ee2980c82c22f3df9",
+        "60e2945678a7e2976ce7458531c173048de30787dbcd4d12fdb988af48cb127b",
+        "65a3821e5962f402a96fec1cfdab1d0a8a5c204d97dccb38a4b299c818802e3d",
+        "ad9ec409e3bc82f3c1b40e57177f87a6ad5b06640a773f8479436d4a96adc0d5"
       ],
       "candidate": {
         "filename": "CopiMineNarcotics-26.3.jar",
         "runtimeFilename": "CopiMineNarcotics.jar",
-        "sha256": "6c1872fa0c5047a88fc90addc18d7c4537e3b70395636b8ee2980c82c22f3df9",
+          "sha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 214522,
-        "sha512": "bcc28bccacab125991453448a270608fb8f794314f44bafbed20d448189ae283d7d4bc2297e53cf6d48f8abb2a633feb99dbb9bfdd9c6b0ba2ed122832207260"
+          "size": 225221,
+          "sha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3"
       },
       "nativeVerified": false
     },

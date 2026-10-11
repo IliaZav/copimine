@@ -99,8 +99,9 @@ if ($clientModsLock.loader -cne 'fabric' -or -not $profile.fabric -or
 }
 $fabricApiModule = $fabricApiModules[0]
 if ($fabricApiModule.version -cne $profile.fabric.api -or
-    $fabricApiModule.filename -cne ('fabric-api-' + $profile.fabric.api + '.jar')) {
-    throw 'Client mod lock Fabric API version must match the API used to build CopiMineClient'
+    $fabricApiModule.filename -cne ('fabric-api-' + $profile.fabric.api + '.jar') -or
+    $fabricApiModule.bundled -ne $true) {
+    throw 'Client mod lock Fabric API version must match the API bundled into CopiMineClient'
 }
 foreach ($clientMod in $clientModsLock.modules) {
     if (-not $clientMod.filename -or $clientMod.filename -match '[\\/:]' -or

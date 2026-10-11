@@ -1,5 +1,6 @@
 """Execute the production packet boundary in Paper's disabled-plugin state."""
 from pathlib import Path
+import re
 import subprocess
 
 import pytest
@@ -10,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture(scope="module")
 def packet_probe(tmp_path_factory):
     source = (ROOT / "copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java").read_text(encoding="utf-8")
+    protocol_constant = re.search(r"private static final int CLIENT_BRIDGE_PROTOCOL_VERSION = \d+;", source)
+    assert protocol_constant, "production bridge protocol version constant is required by the extracted packet boundary"
     start = source.index("    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,\n"
                          "                                  String subjectId, String visualId, int health, int maxHealth,\n"
                          "                                  float progress, String clearPolicy, String status)")
@@ -23,6 +26,7 @@ def packet_probe(tmp_path_factory):
     fixture.write_text('''
 import java.util.logging.Level;
 public class DisabledPacketCleanup {
+  %s
   boolean enabled = true, checkpointSaved; int packets;
   long generation = 5; String eventId = "attempt";
   record Config(String bridgeChannel) { }
@@ -47,7 +51,7 @@ public class DisabledPacketCleanup {
     if (!p.checkpointSaved || p.packets != Integer.parseInt(args[2]))
       throw new AssertionError("cleanup must reach its checkpoint; only enabled plugins send packets");
   }
-''' + source[start:end] + "\n}", encoding="utf-8")
+''' % protocol_constant.group(0) + source[start:end] + "\n}", encoding="utf-8")
     result = subprocess.run(["javac", "-d", str(directory), str(fixture)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     return directory

@@ -21,6 +21,7 @@ dependencies {
     minecraft "com.mojang:minecraft:${profile.minecraftVersion}"
     implementation "net.fabricmc:fabric-loader:${profile.fabric.loader}"
     implementation "net.fabricmc.fabric-api:fabric-api:${profile.fabric.api}"
+    include "net.fabricmc.fabric-api:fabric-api:${profile.fabric.api}"
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -40,8 +41,10 @@ processResources {
     doLast {
         def metadata = new File(destinationDir, 'fabric.mod.json')
         def parsed = new JsonSlurper().parse(metadata)
+        parsed.description = 'Required CopiMine client features and visuals; additional client mods are optional.'
         parsed.depends.minecraft = profile.minecraftVersion
         parsed.depends.fabricloader = ">=${profile.fabric.loader}"
+        parsed.depends['fabric-api'] = ">=${profile.fabric.api}"
         parsed.mixins = ['copimineclient-26.3.mixins.json']
         metadata.setText(JsonOutput.prettyPrint(JsonOutput.toJson(parsed)) + '\n', 'UTF-8')
     }

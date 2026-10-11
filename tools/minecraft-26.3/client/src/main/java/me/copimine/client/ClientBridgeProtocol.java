@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import me.copimine.protocol.ClientModHandshakePolicy;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -12,7 +13,8 @@ import me.copimine.protocol.EncounterGenerationPolicy;
 
 public final class ClientBridgeProtocol {
     public static final String MOD_CHANNEL = "copimine:client_bridge";
-    public static final int PROTOCOL_VERSION = 2;
+    public static final int PROTOCOL_VERSION = ClientModHandshakePolicy.PROTOCOL_VERSION;
+    public static final String TYPE_CLIENT_MOD_CHALLENGE = ClientModHandshakePolicy.CHALLENGE_MESSAGE_TYPE;
     public static final String TYPE_HELLO = "hello";
     public static final String TYPE_HEARTBEAT = "heartbeat";
     public static final String TYPE_CAPABILITIES_UPDATE = "capabilities_update";
@@ -81,6 +83,10 @@ public final class ClientBridgeProtocol {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
                 CopiMineClientLogger.warnFromServer("Rejected bridge payload because of protocol mismatch: " + payload.protocol());
+                return;
+            }
+            if (TYPE_CLIENT_MOD_CHALLENGE.equals(payload.messageType())) {
+                context.client().execute(() -> acceptClientModChallenge(payload));
                 return;
             }
             if (payload.messageType().startsWith(TYPE_END_EVENT_PREFIX)) {
@@ -265,7 +271,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static boolean sendHello() {
-        if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
+        if (sessionId.isBlank() || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
             return false;
         }
         irisShaderPackActive = detectIrisShaderPackInUse();
@@ -341,7 +347,7 @@ public final class ClientBridgeProtocol {
     public static void onJoin() {
         resetEndEventConnection();
         connected = true;
-        sessionId = UUID.randomUUID().toString();
+        sessionId = "";
         helloAttempts = 0;
         helloSent = false;
         helloAcknowledged = false;
@@ -395,7 +401,8 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickHelloRetry(Minecraft client) {
-        if (!connected || helloAcknowledged || client.getConnection() == null || helloAttempts >= MAX_HELLO_ATTEMPTS) {
+        if (!connected || sessionId.isBlank() || helloAcknowledged
+                || client.getConnection() == null || helloAttempts >= MAX_HELLO_ATTEMPTS) {
             return;
         }
         if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
@@ -412,6 +419,53 @@ public final class ClientBridgeProtocol {
         } catch (RuntimeException error) {
             CopiMineClientLogger.error("Bridge hello retry failed", error);
         }
+    }
+
+    private static void acceptClientModChallenge(BridgePayload payload) {
+        if (!connected) {
+            return;
+        }
+        if (!ClientModHandshakePolicy.isValidChallenge(
+                payload.messageType(),
+                TYPE_CLIENT_MOD_CHALLENGE,
+                payload.sessionId(),
+                payload.mode(),
+                CopiMineClient.MOD_ID,
+                payload.protocol(),
+                PROTOCOL_VERSION
+        )) {
+            lastError = "invalid-client-mod-challenge";
+            CopiMineClientLogger.warnFromServer("Rejected malformed or unexpected CopiMineClient challenge");
+            return;
+        }
+        if (!sessionId.equals(payload.sessionId()) || helloAcknowledged) {
+            resetHandshakeForChallenge(payload.sessionId());
+        }
+        if (!helloSent) {
+            try {
+                helloAttempts = 1;
+                lastHelloAttemptAt = System.currentTimeMillis();
+                if (!sendHello()) {
+                    helloAttempts = 0;
+                    lastHelloAttemptAt = 0L;
+                }
+            } catch (RuntimeException error) {
+                lastError = "client-mod-hello-failed";
+                CopiMineClientLogger.error("Unable to answer CopiMineClient server challenge", error);
+            }
+        }
+    }
+
+    private static void resetHandshakeForChallenge(String challengeId) {
+        sessionId = challengeId;
+        helloAttempts = 0;
+        helloSent = false;
+        helloAcknowledged = false;
+        lastHelloAttemptAt = 0L;
+        lastHeartbeatSentAt = 0L;
+        lastServerPingAt = 0L;
+        lastAckSeq = 0L;
+        lastError = "";
     }
 
     public static String handshakeStatusLine() {

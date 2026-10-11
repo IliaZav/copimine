@@ -16,8 +16,8 @@
 | Paper | build 169 beta, JAR по SHA-256 и размеру в `profile.lock.json` |
 | Java сборки | Temurin 25; Grim compatibility patch собирается Java 21 |
 | Gradle | 9.8.1, distribution SHA-256 закреплён в lock |
-| Fabric | Loader 0.19.5, Loom 1.17.21, Fabric API 0.162.0+26.3 |
-| CopiMineClient | 0.1.1+26.3; точные размер и SHA-512 закреплены в lock |
+| Fabric | Loader 0.19.5, Loom 1.17.21, Fabric API 0.162.0+26.3 (вложен в CopiMineClient) |
+| CopiMineClient | 0.1.1+26.3; точные размер и SHA-512 закреплены в lock; единственный отдельный обязательный JAR в `mods` |
 | Gradle зависимости | SHA-256 manifest и описание происхождения в `GRADLE_DEPENDENCY_VERIFICATION.md` |
 | Серверные плагины | Lock с URL, версией, размером, SHA-256 и SHA-512 в `server-plugins.lock.json` |
 
@@ -42,7 +42,7 @@
 
 ## Клиентские моды
 
-Lock содержит все 13 внешних JAR из установленного профиля `D:\.minecraft\versions\CopiMine\mods`. Версии, source release IDs, URL и хэши каждого JAR закреплены в `client-mods.lock.json`; значения `version` страницы релиза могут отличаться от версии внутри `fabric.mod.json`.
+Lock фиксирует 13 client mod artifacts: Fabric API `0.162.0+26.3` вложен в отдельный CopiMineClient JAR, а остальные 12 закреплённых JAR устанавливаются отдельно и остаются необязательными. При обычной установке отдельный Fabric API не добавляется в `mods`; `DependenciesOnly` может установить его отдельно для подготовки профиля до CopiMineClient. Этот режим теперь отклоняется, если CopiMineClient уже установлен, чтобы не пометить готовый профиль неполным. Версии, source release IDs, URL и хэши закреплены в `client-mods.lock.json`; версия страницы релиза может отличаться от `fabric.mod.json`.
 
 | Мод | Версия Minecraft 26.3 |
 | --- | --- |
@@ -115,9 +115,9 @@ py -3.13 -m pytest -q -rs tests
 py -3.13 -m pytest -q -rs tests/test_minecraft_26_3_custom_plugin_database_contracts.py
 ```
 
-Remote acceptance состоит из двух независимых pipeline: GitHub Actions и GitLab CI на одном исходном SHA. Postgres integration test должен запускаться с выделенным временным PostgreSQL service; `skipped` не считается PASS. Сверяйте commit SHA и статус каждого провайдера отдельно.
+GitHub Actions — основной и обязательный acceptance pipeline для точного source SHA; все его jobs, включая PostgreSQL integration test с выделенным временным PostgreSQL service, должны завершиться успешно, а `skipped` не считается PASS. GitLab хранит зеркало того же SHA; его CI остаётся дополнительной диагностикой и не блокирует приёмку.
 
-Оба pipeline проверяют `--require-evidence-for-accepted-locks` на любой ветке. Для обычного кандидата с `runtime-candidates` и `nativeVerified=false` подпись не требуется; если в lock-файлах появляется принятое состояние, проверка без подписанного evidence завершается ошибкой. Если файлы native acceptance добавлены, CI на любой ветке сверяет подпись, доверенный ключ и исходный commit SHA. GitLab запускает ветки `codex/minecraft-26-3-migration` и `codex/minecraft-26-3-migration-candidate-YYYYMMDD` по push и подавляет для них synthetic merge-request pipeline, чтобы источник подписи сверялся с точным commit, а не merge commit.
+GitHub Actions проверяет `--require-evidence-for-accepted-locks` на любой ветке. Для обычного кандидата с `runtime-candidates` и `nativeVerified=false` подпись не требуется; если в lock-файлах появляется принятое состояние, GitHub gate требует подписанное evidence. Если native acceptance файлы добавлены, GitHub сверяет подпись, доверенный ключ и исходный commit SHA. GitLab pipeline может выполнять те же проверки как зеркало, но его identity gate, очередь или статус не заменяют и не блокируют GitHub acceptance.
 
 ## Перенос старой схемы кандидатов
 
@@ -143,10 +143,10 @@ AR-сверка запускается scheduler каждые 200 тиков. А
 
 1. Точная сборка из чистого checkout, без неучтённых generated или локальных файлов.
 2. Полные автоматические тесты и review изменённого кода, без незакрытых actionable findings.
-3. Успешный GitHub Actions pipeline и успешный GitLab pipeline на одном и том же commit SHA.
+3. Все обязательные jobs GitHub Actions успешно завершились для проверяемого source SHA; GitLab ref должен зеркалировать этот SHA, а статус GitLab CI не является условием приёмки.
 4. Два штатных запуска полного locked plugin inventory на Paper 26.3 и фактическое состояние всех записей плагинов.
 5. Запуск профиля CopiMine на Minecraft 26.3, подключение к локальному серверу, проверка ресурс-пака, клиентского bridge и нужных визуальных эффектов.
 6. Свежие серверные/клиентские логи, inventory и скриншоты F2, сверенные с lock и связанные с проверяемым SHA.
 7. Подписанная native acceptance запись, где `sourceCommit` указывает на проверенный source commit. Любое изменение кода после него требует нового запуска, evidence и подписи.
 
-Полная процедура, включая AuthMe, полный inventory и подпись, описана в `NATIVE_ACCEPTANCE_SIGNING.md`. Логи, снимки, ключи и runtime DB credentials не коммитятся. Native evidence и любой публичный login/proxy security setup не имитируются unit-тестами.
+Полная процедура, включая AuthMe, полный inventory и подпись, описана в `NATIVE_ACCEPTANCE_SIGNING.md`. Решения по AuthMe и обязательности CopiMineClient собраны в `AUTH_AND_CLIENT_MOD_ENFORCEMENT.md`. Логи, снимки, ключи и runtime DB credentials не коммитятся. Native evidence и любой публичный login/proxy security setup не имитируются unit-тестами.

@@ -12,6 +12,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EndEventWorldVfxManagerTest {
     @Test
+    void rejectsThePreviousBridgeProtocolForBeamAndClearPackets() {
+        EndEventWorldVfxManager manager = new EndEventWorldVfxManager();
+        BridgePayload current = beam("event-1", 1L, "beam-1", "overworld|key-1|1,64,2",
+                "4,65,6|4EE6FF", 0.12F, 1_000);
+        assertFalse(manager.applyBeam(withProtocol(current, 2), 100L));
+        assertEquals(0, manager.activeBeamCount());
+        assertTrue(manager.applyBeam(current, 100L));
+        assertFalse(manager.applyClear(withProtocol(clear("event-1", 1L, "beam-1"), 2), 200L));
+        assertEquals(1, manager.activeBeamCount());
+    }
+
+    @Test
     void casterHandLinksInterpolateButCleanupRejectsQueuedPackets() {
         var manager = new EndEventWorldVfxManager();
         String key = "wave6-ritual-caster-hand-0";
@@ -222,14 +234,23 @@ class EndEventWorldVfxManagerTest {
 
     private static BridgePayload beam(String eventId, long generation, String instance,
                                       String mode, String end, float width, int duration) {
-        return new BridgePayload("END_EVENT:END_WORLD_BEAM", 2, generation, 1L,
+        return new BridgePayload("END_EVENT:END_WORLD_BEAM", ClientBridgeProtocol.PROTOCOL_VERSION, generation, 1L,
                 eventId, instance, false, false, false, false, Set.of(), "", "RIFT_BEAM",
                 duration, width, 0, 0, mode, end, "", "", "");
     }
 
     private static BridgePayload clear(String eventId, long generation, String instance) {
-        return new BridgePayload("END_EVENT:END_WORLD_VFX_CLEAR", 2, generation, 1L,
+        return new BridgePayload("END_EVENT:END_WORLD_VFX_CLEAR", ClientBridgeProtocol.PROTOCOL_VERSION, generation, 1L,
                 eventId, instance, false, false, false, false, Set.of(), "", "RIFT_BEAM",
                 1_000, 0.0F, 0, 0, "", "", "", "", "");
+    }
+
+    private static BridgePayload withProtocol(BridgePayload payload, int protocol) {
+        return new BridgePayload(payload.messageType(), protocol, payload.seq(), payload.timestampMillis(),
+                payload.sessionId(), payload.clientVersion(), payload.clientVisuals(), payload.clientOverlay(),
+                payload.clientShaderLike(), payload.trueIrisShader(), payload.supportedEffects(), payload.effectId(),
+                payload.shaderpack(), payload.durationMillis(), payload.intensity(), payload.fadeInMillis(),
+                payload.fadeOutMillis(), payload.mode(), payload.clearPolicy(), payload.source(), payload.reason(),
+                payload.status());
     }
 }

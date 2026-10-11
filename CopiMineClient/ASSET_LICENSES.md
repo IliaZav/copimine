@@ -1,5 +1,12 @@
 # CopiMineClient Asset Licenses
 
+Fabric API `0.162.0+26.3` is included unchanged as a nested JAR at
+`META-INF/jars/fabric-api-0.162.0+26.3.jar` to avoid requiring a second top-level mod.
+Its Fabric metadata declares `Apache-2.0`; the upstream `LICENSE-fabric-api` notice is
+preserved inside the nested artifact. The upstream binary is SHA-512 pinned in
+`tools/minecraft-26.3/client-mods.lock.json` and is included with Fabric Loom's
+Jar-in-Jar mechanism.
+
 Client overlay textures in `src/main/resources/assets/copimineclient/textures/visuals` are adapted from CopiMine self-made fallback assets:
 - source: `resourcepacks/src/assets/copimine/textures/gui/narcotics/`
 - status: internal CopiMine self-made assets

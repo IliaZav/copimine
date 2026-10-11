@@ -13,6 +13,29 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
+$legacyMigrationProfileLock = Join-Path $ProjectRoot "tools\minecraft-26.3\profile.lock.json"
+$hasMinecraft263MigrationProfile = Test-Path -LiteralPath $legacyMigrationProfileLock -PathType Leaf
+$requiresMinecraft263ClientBridge = $false
+$legacyNarcoticsConfigPath = Join-Path $ProjectRoot "copimine-narcotics\config.yml"
+if (Test-Path -LiteralPath $legacyNarcoticsConfigPath -PathType Leaf) {
+    $legacyClientBridgeInspector = Join-Path $PSScriptRoot "minecraft\inspect_legacy_release_client_bridge.py"
+    if (-not (Test-Path -LiteralPath $legacyClientBridgeInspector -PathType Leaf)) {
+        throw 'The legacy full-release workflow cannot safely inspect copimine-narcotics/config.yml. Use PrepareMigrationCandidates.ps1.'
+    }
+    $legacyClientBridgeInspectionOutput = & python $legacyClientBridgeInspector $legacyNarcoticsConfigPath 2>$null
+    $legacyClientBridgeInspectorExitCode = $LASTEXITCODE
+    if ($legacyClientBridgeInspectorExitCode -ne 0) {
+        throw 'The legacy full-release workflow cannot safely inspect copimine-narcotics/config.yml. Ensure PyYAML is installed and the YAML is valid and unambiguous, or use PrepareMigrationCandidates.ps1.'
+    }
+    $legacyClientBridgeState = (($legacyClientBridgeInspectionOutput | Out-String).Trim())
+    if ($legacyClientBridgeState -notin @('legacy', 'requires-26.3')) {
+        throw 'The legacy full-release workflow received an invalid client bridge inspection result. Use PrepareMigrationCandidates.ps1.'
+    }
+    $requiresMinecraft263ClientBridge = $legacyClientBridgeState -eq 'requires-26.3'
+}
+if ($hasMinecraft263MigrationProfile -or $requiresMinecraft263ClientBridge) {
+    throw 'The legacy full-release workflow packages CopiMineClient 1.21.1 and cannot ship the Minecraft 26.3 client bridge. Use PrepareMigrationCandidates.ps1.'
+}
 $SigningKeyPath = if ($SigningKeyPath) { $SigningKeyPath } else { $env:COPIMINE_RELEASE_SIGNING_KEY }
 if (-not $SigningKeyPath) {
     throw 'Release packaging requires -SigningKeyPath or COPIMINE_RELEASE_SIGNING_KEY.'

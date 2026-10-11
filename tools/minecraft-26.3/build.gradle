@@ -70,6 +70,8 @@ modules.each { name, module ->
     }
 }
 
+sourceSets.narcotics.java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
+
 dependencies {
     adminCompileOnly sourceSets.economyCore.output
     adminCompileOnly 'me.clip:placeholderapi:2.12.3'

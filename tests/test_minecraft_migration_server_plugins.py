@@ -629,7 +629,12 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     expected_local.update(item['pluginName'] for item in lock['modules'] if item.get('buildArtifact'))
     assert {record['pluginName'] for record in records if record['sourceType']=='local'}==expected_local
     narcotics=next(record for record in records if record['pluginName']=='CopiMineNarcotics')
+    assert '4a3e01050f8ab635f4760164fdb2723482b81923fafe75099506b6290b89b4d8' in narcotics['replaceSha256']
     assert 'ead5a29b561e96e0c46ab252743297e991f8fb1e21432ca47c1571c28a502928' in narcotics['replaceSha256']
+    assert '6c1872fa0c5047a88fc90addc18d7c4537e3b70395636b8ee2980c82c22f3df9' in narcotics['replaceSha256']
+    assert '60e2945678a7e2976ce7458531c173048de30787dbcd4d12fdb988af48cb127b' in narcotics['replaceSha256']
+    assert '65a3821e5962f402a96fec1cfdab1d0a8a5c204d97dccb38a4b299c818802e3d' in narcotics['replaceSha256']
+    assert 'ad9ec409e3bc82f3c1b40e57177f87a6ad5b06640a773f8479436d4a96adc0d5' in narcotics['replaceSha256']
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -857,6 +862,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'e2335f9462f61c0f255a87cc3609520099f3836843f46aee6dd0a910dad636bd',
         'd63ed7c3c3d810a5ecb8ea8f497ecb24004cf195381e410bfbb8d182094842c0',
         '93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea',
+        '825602f54b15615ecec9a3a6b10e3f4f45e41d8698d14712da33252659c5ae8d',
     ]
 
     built=ROOT/candidate['buildArtifact']

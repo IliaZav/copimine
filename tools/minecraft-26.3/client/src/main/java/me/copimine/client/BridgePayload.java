@@ -85,7 +85,7 @@ public record BridgePayload(
                 0.0F,
                 0,
                 0,
-                "CLIENT_MOD",
+                CopiMineClient.MOD_ID,
                 "",
                 "SYSTEM",
                 "",
@@ -112,7 +112,7 @@ public record BridgePayload(
                 0.0F,
                 0,
                 0,
-                "CLIENT_MOD",
+                CopiMineClient.MOD_ID,
                 "",
                 "SYSTEM",
                 "",
@@ -228,7 +228,7 @@ public record BridgePayload(
         );
     }
 
-    /** Encode one server-validated prisoner ability press in the shared v2 envelope. */
+    /** Encode one server-validated prisoner ability press in the shared v3 envelope. */
     public static BridgePayload prisonerAbilityRequest(String sessionId, long generation,
                                                         String eventId, String abilityId,
                                                         String targetUuid) {

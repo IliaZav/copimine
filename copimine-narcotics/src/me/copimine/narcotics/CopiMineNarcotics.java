@@ -142,7 +142,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             overdoseService.preloadState(player.getUniqueId());
         }
         scheduleIntegritySweep();
-        getLogger().info("CopiMineNarcotics with optional CopiMineClient bridge enabled.");
+        getLogger().info("CopiMineNarcotics with mandatory CopiMineClient bridge enabled.");
     }
 
     @Override
@@ -1156,9 +1156,6 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
             if (args.length == 3 && ("visualtest".equalsIgnoreCase(args[0]) || "fallbacktest".equalsIgnoreCase(args[0]))) {
                 return prefix(new ArrayList<>(configService.visualEffectIds()), args[2]);
             }
-            if (args.length == 3 && "require".equalsIgnoreCase(args[0])) {
-                return prefix(List.of("true", "false"), args[2]);
-            }
             return List.of();
         }
         if (args.length == 1) {
@@ -1964,7 +1961,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient require client");
     }
 
     private void sendHelp(CommandSender sender) {
@@ -1988,7 +1985,7 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         sender.sendMessage(ChatColor.GOLD + "/cmclient check <игрок>");
         sender.sendMessage(ChatColor.GOLD + "/cmclient visualtest <игрок> <effectId> [seconds]");
         sender.sendMessage(ChatColor.GOLD + "/cmclient fallbacktest <игрок> <effectId> [seconds]");
-        sender.sendMessage(ChatColor.GOLD + "/cmclient require client <true|false>");
+        sender.sendMessage(ChatColor.GOLD + "/cmclient require client");
     }
 
     private String message(String key, String... args) {

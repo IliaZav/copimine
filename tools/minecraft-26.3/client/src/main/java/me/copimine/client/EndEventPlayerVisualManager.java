@@ -68,7 +68,8 @@ public final class EndEventPlayerVisualManager {
 
     /** mode is dimension|wave1/2|cycle for ACTIVE, CLEAR and SUSPEND alike. */
     public synchronized boolean apply(BridgePayload payload, long nowMillis) {
-        if (payload == null || nowMillis < 0L || !EVENT_TYPE.equals(payload.messageType()) || payload.protocol() != 2
+        if (payload == null || nowMillis < 0L || !EVENT_TYPE.equals(payload.messageType())
+                || payload.protocol() != ClientBridgeProtocol.PROTOCOL_VERSION
                 || payload.sessionId().isBlank() || payload.sessionId().length() > MAX_EVENT_ID_LENGTH
                 || payload.seq() <= 0L || payload.timestampMillis() <= 0L || payload.mode().length() > 64) {
             return false;

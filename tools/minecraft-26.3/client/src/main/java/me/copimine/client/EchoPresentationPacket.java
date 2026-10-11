@@ -2,10 +2,11 @@ package me.copimine.client;
 
 import java.util.UUID;
 
-/** Echo semantics carried inside the unchanged shared bridge v2 envelope. */
+/** Echo semantics carried inside the shared bridge v3 envelope. */
 public record EchoPresentationPacket(String operation, EchoPresentationState.Frame frame) {
     public static EchoPresentationPacket decode(BridgePayload payload) {
-        if (payload == null || payload.protocol() != 2 || !"END_RIFT_ECHO_V1".equals(payload.shaderpack())
+        if (payload == null || payload.protocol() != ClientBridgeProtocol.PROTOCOL_VERSION
+                || !"END_RIFT_ECHO_V1".equals(payload.shaderpack())
                 || payload.clearPolicy().length() > 256 || payload.status().length() > 64)
             throw new IllegalArgumentException("Invalid Echo bridge envelope");
         String operation = switch (payload.messageType()) {

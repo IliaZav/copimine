@@ -75,6 +75,20 @@ def test_client_mod_lock_ids_are_explicit_and_candidate_artifacts_are_checked():
     assert "$modMetadata.version -cne $lockedFabricVersion" in profile_installer
     assert "$clientMod.url -cnotin $trustedForgeCdnSources" in candidate_builder
     assert '9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar' in candidate_builder
+    fabric_api = next(module for module in lock['modules'] if module['modId'] == 'fabric-api')
+    assert fabric_api['bundled'] is True
+    assert 'include "net.fabricmc.fabric-api:fabric-api:${profile.fabric.api}"' in (
+        ROOT / 'tools/minecraft-26.3/client/build.gradle').read_text(encoding='utf-8')
+    assert "Where-Object { $_.bundled -ne $true }" in profile_installer
+
+
+def test_profile_validator_hashes_nested_dependencies_on_windows_powershell_51():
+    profile_installer = SCRIPT.read_text(encoding='utf-8')
+
+    assert '[Security.Cryptography.SHA512]::Create()' in profile_installer
+    assert '$nestedHasher.ComputeHash($nestedBytes.ToArray())' in profile_installer
+    assert '[Security.Cryptography.SHA512]::HashData(' not in profile_installer
+    assert '[Convert]::ToHexString(' not in profile_installer
 
 
 def test_incomplete_profile_rollback_reports_original_and_rollback_errors():
@@ -215,6 +229,133 @@ def pin_test_client_artifact(migration, client_jar):
         'sha512': hashlib.sha512(payload).hexdigest(),
     }
     lock_path.write_text(json.dumps(lock), encoding='utf-8')
+
+
+def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path):
+    shell = shutil.which('pwsh') or shutil.which('powershell')
+    if not shell:
+        pytest.skip('PowerShell profile installation requires a Windows verification host')
+
+    root = tmp_path / 'repo'
+    script = root / 'scripts/minecraft/InstallMigrationProfile.ps1'
+    script.parent.mkdir(parents=True)
+    script.write_bytes(SCRIPT.read_bytes())
+    (script.parent / 'DownloadPinnedArtifact.ps1').write_bytes(
+        (ROOT / 'scripts/minecraft/DownloadPinnedArtifact.ps1').read_bytes())
+    migration = root / 'tools/minecraft-26.3'
+    migration.mkdir(parents=True)
+    _, pack_hash = write_migration_pack(root)
+
+    api_version = '0.162.0+26.3'
+    api_filename = f'fabric-api-{api_version}.jar'
+    api_payload = io.BytesIO()
+    with zipfile.ZipFile(api_payload, 'w') as archive:
+        archive.writestr('fabric.mod.json', json.dumps({'id': 'fabric-api', 'version': api_version}))
+    api_bytes = api_payload.getvalue()
+    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+    client_jar.parent.mkdir(parents=True)
+    with zipfile.ZipFile(client_jar, 'w') as archive:
+        archive.writestr('fabric.mod.json', json.dumps({
+            'id': 'copimineclient', 'version': '0.1.1+26.3',
+            'depends': {'minecraft': '26.3', 'fabric-api': '>=' + api_version},
+            'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
+            'mixins': ['copimineclient-26.3.mixins.json'],
+            'jars': [{'file': f'META-INF/jars/{api_filename}'}],
+        }))
+        archive.writestr('copimineclient-26.3.mixins.json', json.dumps({'package': 'me.copimine.client.mixin', 'client': []}))
+        archive.writestr('META-INF/jars/' + api_filename, api_bytes)
+        archive.writestr('me/copimine/client/CopiMineClient.class', b'fixture entrypoint')
+        archive.writestr('me/copimine/client/ClientBridgeProtocol.class', b'fixture bridge')
+        archive.writestr('me/copimine/client/BridgePayload.class', b'fixture payload')
+    (migration / 'profile.lock.json').write_text(json.dumps({
+        'minecraftVersion': '26.3', 'minimumJava': 25,
+        'minecraftClient': {'sha1': CLIENT_SHA1},
+        'clientArtifact': {
+            'filename': client_jar.name, 'size': client_jar.stat().st_size,
+            'sha512': hashlib.sha512(client_jar.read_bytes()).hexdigest(),
+        },
+        'fabric': {'loader': '0.19.5', 'clientPortComplete': True},
+        'resourcePackMigration': {'legacyPackSha256': LEGACY_PACK_SHA256, 'candidateSha256': pack_hash},
+    }), encoding='utf-8')
+    (migration / 'client-mods.lock.json').write_text(json.dumps({
+        'schemaVersion': 1,
+        'modules': [{
+            'project': 'fabric-api', 'modId': 'fabric-api', 'fabricMetadataVersion': api_version,
+            'version': api_version, 'filename': api_filename, 'bundled': True,
+            'projectId': 'P7dR8mSH', 'versionId': 'v2j28coa',
+            'url': 'https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/' + api_filename,
+            'sha512': hashlib.sha512(api_bytes).hexdigest(), 'size': len(api_bytes),
+        }],
+    }), encoding='utf-8')
+    stage = root / 'build/minecraft-26.3/client-mods'
+    stage.mkdir(parents=True)
+    (stage / api_filename).write_bytes(api_bytes)
+
+    profile = tmp_path / 'Copimine'
+    profile.mkdir()
+    (profile / 'Copimine.json').write_text(json.dumps({
+        'downloads': {'client': {'sha1': CLIENT_SHA1}},
+        'mainClass': 'net.fabricmc.loader.impl.launch.knot.KnotClient',
+        'javaVersion': {'majorVersion': 25},
+        'libraries': [{'name': 'net.fabricmc:fabric-loader:0.19.5'}],
+    }), encoding='utf-8')
+    (profile / 'options.txt').write_text('resourcePacks:["vanilla"]\n', encoding='utf-8')
+    mods = profile / 'mods'
+    mods.mkdir()
+    old_api = mods / 'fabric-api-0.161.0+26.3.jar'
+    with zipfile.ZipFile(old_api, 'w') as archive:
+        archive.writestr('fabric.mod.json', json.dumps({'id': 'fabric-api', 'version': '0.161.0+26.3'}))
+    old_api_bytes = old_api.read_bytes()
+
+    dependency_setup = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+        '-ProfileDirectory', str(profile), '-DependenciesOnly',
+    ], capture_output=True, text=True, timeout=30)
+    assert dependency_setup.returncode == 0, dependency_setup.stdout + dependency_setup.stderr
+    assert (mods / api_filename).read_bytes() == api_bytes
+
+    result = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+        '-ProfileDirectory', str(profile),
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
+    assert not any(
+        json.loads(zipfile.ZipFile(path).read('fabric.mod.json')).get('id') == 'fabric-api'
+        for path in mods.glob('*.jar')
+    )
+    receipt_path = profile / 'copimine-migration-receipt.json'
+    complete_receipt = receipt_path.read_bytes()
+    complete_options = (profile / 'options.txt').read_bytes()
+    repeated_dependency_setup = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+        '-ProfileDirectory', str(profile), '-DependenciesOnly',
+    ], capture_output=True, text=True, timeout=30)
+    assert repeated_dependency_setup.returncode != 0, repeated_dependency_setup.stdout + repeated_dependency_setup.stderr
+    assert 'DependenciesOnly cannot run when CopiMineClient is installed' in (
+        repeated_dependency_setup.stdout + repeated_dependency_setup.stderr)
+    assert receipt_path.read_bytes() == complete_receipt
+    assert (profile / 'options.txt').read_bytes() == complete_options
+    assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
+    assert not any(
+        json.loads(zipfile.ZipFile(path).read('fabric.mod.json')).get('id') == 'fabric-api'
+        for path in mods.glob('*.jar')
+    )
+    backups = list((profile / 'migration-backups' / 'client-mods').glob('*/' + old_api.name))
+    assert len(backups) == 1 and backups[0].read_bytes() == old_api_bytes
+    bundled_api_backups = list((profile / 'migration-backups' / 'client-mods').glob('*/' + api_filename))
+    assert len(bundled_api_backups) == 1 and bundled_api_backups[0].read_bytes() == api_bytes
+    receipt = json.loads((profile / 'copimine-migration-receipt.json').read_text(encoding='utf-8-sig'))
+    assert receipt['mods'] == []
+
+    old_api.write_bytes(old_api_bytes)
+    validation = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+        '-ProfileDirectory', str(profile), '-ValidateOnly',
+    ], capture_output=True, text=True, timeout=30)
+    assert validation.returncode != 0
+    assert 'bundled Fabric API' in validation.stdout + validation.stderr
 
 @pytest.mark.parametrize('sha1,loader,accepted', [
     ('wrong', '0.19.5', False),
@@ -982,6 +1123,48 @@ def test_profile_install_rejects_unpinned_pack_before_modifying_profile(tmp_path
     assert not (profile / 'mods').exists()
     assert not (profile / 'resourcepacks').exists()
     assert not (root / 'build/minecraft-26.3/client-mods').exists()
+
+
+def test_required_client_validator_scopes_enabled_check_to_client_bridge(tmp_path):
+    shell = shutil.which('pwsh') or shutil.which('powershell')
+    if not shell:
+        pytest.skip('PowerShell migration validators require a Windows verification host')
+
+    copied_paths = [
+        'CopiMineClient/gradle.properties',
+        'CopiMineClient/src/main/resources/fabric.mod.json',
+        'copimine-narcotics/config.yml',
+        'copimine-narcotics/src/me/copimine/clientbridge/ClientBridgePayloads.java',
+        'copimine-narcotics/src/me/copimine/clientbridge/CopiMineClientBridge.java',
+        'copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java',
+        'tests/ValidateCopiMineClientModRequired.ps1',
+        'tools/minecraft-26.3/client/build.gradle',
+        'tools/minecraft-26.3/client/src/main/java/me/copimine/client/ClientBridgeProtocol.java',
+        'tools/minecraft-26.3/client/src/main/java/me/copimine/client/CopiMineClient.java',
+        'tools/minecraft-26.3/client-mods.lock.json',
+        'tools/minecraft-26.3/profile.lock.json',
+        'tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/ClientModHandshakePolicy.java',
+    ]
+    temp_repo = tmp_path / 'repo'
+    for relative in copied_paths:
+        source = ROOT / relative
+        destination = temp_repo / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+
+    config = temp_repo / 'copimine-narcotics/config.yml'
+    text = config.read_text(encoding='utf-8')
+    assert 'client_bridge:\n  enabled: true' in text
+    text = text.replace('client_bridge:\n  enabled: true', 'client_bridge:\n  enabled: false', 1)
+    config.write_text(text + '\nother_plugin:\n  enabled: true\n', encoding='utf-8')
+
+    result = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+        str(temp_repo / 'tests/ValidateCopiMineClientModRequired.ps1'),
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert 'client bridge must be enabled' in result.stdout + result.stderr
 
 
 def test_partial_client_mod_copy_does_not_install_corrupt_jar_or_replace_existing_mod(tmp_path):

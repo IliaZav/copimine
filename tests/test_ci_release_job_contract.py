@@ -533,6 +533,33 @@ def test_native_acceptance_gate_follows_evidence_on_every_ref() -> None:
     )
 
 
+def test_legacy_full_release_rejects_minecraft_26_3_bridge_before_writing_outputs() -> None:
+    package = (ROOT / "scripts/package_full_release.ps1").read_text(encoding="utf-8")
+    migration_profile_guard = '$legacyMigrationProfileLock = Join-Path $ProjectRoot "tools\\minecraft-26.3\\profile.lock.json"'
+    clear_failure = "The legacy full-release workflow packages CopiMineClient 1.21.1 and cannot ship the Minecraft 26.3 client bridge. Use PrepareMigrationCandidates.ps1."
+
+    assert migration_profile_guard in package
+    assert "$hasMinecraft263MigrationProfile -or $requiresMinecraft263ClientBridge" in package
+    inspector_path = '$legacyClientBridgeInspector = Join-Path $PSScriptRoot "minecraft\\inspect_legacy_release_client_bridge.py"'
+    inspector_invocation = '$legacyClientBridgeInspectionOutput = & python $legacyClientBridgeInspector $legacyNarcoticsConfigPath 2>$null'
+    assert inspector_path in package
+    assert inspector_invocation in package
+    assert "$requiresMinecraft263ClientBridge = $legacyClientBridgeState -eq 'requires-26.3'" in package
+    inspector = (ROOT / "scripts/minecraft/inspect_legacy_release_client_bridge.py").read_text(encoding="utf-8")
+    assert "yaml.SafeLoader" in inspector
+    assert "required_client_mod_version" in inspector
+    assert "client_bridge" in inspector
+    regression_script = (ROOT / "tests/ValidateCopiMineLegacyReleaseMigrationGuard.ps1").read_text(encoding="utf-8")
+    assert "&required_version >-" in regression_script
+    assert "required_client_mod_version: # comment`n    0.2.0+26.3" in regression_script
+    assert r"required_client_mod_\u0076ersion" in regression_script
+    assert "0.1.1+1.21.1" in regression_script
+    assert "old required_client_mod_version: example" in regression_script
+    assert clear_failure in package
+    assert package.index(migration_profile_guard) < package.index('New-Item -ItemType Directory -Force -Path $ReleaseDir')
+    assert (ROOT / "tests/ValidateCopiMineLegacyReleaseMigrationGuard.ps1").is_file()
+
+
 def test_gitlab_uses_source_branch_pipeline_for_migration_candidates() -> None:
     gitlab = yaml.load((ROOT / ".gitlab-ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     rules = gitlab["workflow"]["rules"]

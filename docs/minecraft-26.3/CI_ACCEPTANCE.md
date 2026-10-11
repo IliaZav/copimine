@@ -2,6 +2,18 @@
 
 Документ фиксирует проверяемые результаты migration checkpoint. Волны 1–7 и Rift Guardian остаются отложены. Git push, зелёная сборка или CodeRabbit review сами по себе не означают, что миграция принята.
 
+Политика CI обновлена 2026-10-11 по решению владельца проекта: GitHub Actions является обязательным источником приёмки; GitLab — резервное зеркало, его pipeline может быть диагностическим и не блокирует результат. Записи ниже сохраняют фактические статусы на момент прежних запусков.
+
+## Текущий migration candidate — 2026-10-12
+
+- Рабочая ветка `codex/minecraft-26-3-migration-candidate-20261010` основана на `00f2c6927c9db3c58599fc77e257c6d1ea623061`; проверенный кандидат ожидает публикации. Draft PR [#5](https://github.com/IliaZav/copimine/pull/5) остаётся открытым и не слит.
+- Свежая сводка проверок, точные артефактные хэши и блокеры: [validation evidence](VALIDATION_EVIDENCE_2026-10-12.md). Транскрипты команд хранятся в `evidence/`.
+- Локальные проверки: Python — `1555 passed, 6 skipped, 88 warnings` в полном прогоне 2026-10-12; миграционные PowerShell validators — `636 passed, 0 failed, 25 skipped`; PostgreSQL contracts — `27 passed`; CopiMineClient Gradle — `31 suites / 127 tests`. Транскрипты и точные границы результатов указаны в [validation evidence](VALIDATION_EVIDENCE_2026-10-12.md).
+- Старый `scripts/package_full_release.ps1` собирает клиент 1.21.1. Он теперь fail-closed, если профильный migration lock существует либо если разобранная YAML-конфигурация требует CopiMineClient 26.3; guard использует SafeLoader и отклоняет malformed/ambiguous YAML и повторяющиеся ключи до создания output. Legacy bundle не является выпуском миграции. `PrepareMigrationCandidates.ps1` строит отдельные 26.3 артефакты по lock; production release bundle требует отдельной миграционной упаковки.
+- GitHub PR ветка станет authoritative после push нового SHA; точный commit должен пройти все GitHub Actions jobs. GitLab остаётся резервным зеркалом.
+- Локальный Paper 26.3 build 169 работает на `127.0.0.1:25568`. Read-only проверка сверила все 29 активных JAR и receipt с текущей lock-конфигурацией; стартовый лог показывает подключение PostgreSQL для собственных модулей. ProtocolLib отдельно предупреждает, что его upstream не тестировал Minecraft 26.3.
+- `nativeVerified=false`: нет входа CopiMineClient, теста отказа vanilla/wrong-version клиента и F2 screenshots для текущих хэшей. Computer Use вернул `apps: []`, поэтому GUI-проверка сейчас недоступна. Независимый reviewer подтвердил известное ограничение: изменённый клиент может подделать публичный HELLO; CopiMineClient challenge — барьер совместимости для штатного клиента, не защита от намеренной подделки. Это раскрыто в [политике client enforcement](AUTH_AND_CLIENT_MOD_ENFORCEMENT.md). Reviewer не нашёл другого actionable замечания в проверенных handshake/guard путях; финальные CodeRabbit и Codex Security review точного commit ещё требуются.
+
 ## Кодовый checkpoint 3a31dab9
 
 - Полный SHA: 3a31dab971cea6b81b1ee8252635f054c397777b.
@@ -31,11 +43,11 @@ GitHub завершил оба triggers для точного SHA:
 
 Падение было в test_dangling_plugin_temp_symlink_is_rejected_before_backup_or_copy: Windows runner создал dangling symlink и installer правильно отклонил её до mutation, но тест ожидал только текст temporary|symlink|link. Фактический ValueError — Unrecognized staging file in plugin directory: new.candidate. Соседний regression, который проверяет тот же fail-closed path через lstat, ожидал это сообщение. Исправление расширяет matcher теста, оставляя проверки старого JAR, отсутствия внешней копии/backup и сохранения symlink. Исправленный source SHA должен пройти оба GitHub triggers заново; результат для 3a31dab9 не переносится на последующий commit.
 
-## GitLab CI: account-level blocker
+## Исторический GitLab CI результат — резервное зеркало
 
 Для SHA 3a31dab9 GitLab создал [push pipeline 2935239276](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2935239276) и [MR pipeline 2935239311](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2935239311). Оба завершились со статусом failed, не запустив ни одной job (списки jobs пусты). Штатный API запуск вернул HTTP 400: Identity verification is required in order to run CI jobs.
 
-Это account-level блокировка проверки личности, не результат тестов. Нельзя считать GitLab CI пройденным, пока не появятся независимые успешные push/MR pipelines для одного и того же source SHA.
+Это account-level блокировка проверки личности, не результат тестов. GitLab остаётся резервным хранилищем по текущему решению владельца проекта; его pipeline не является обязательным migration acceptance gate. GitHub Actions на опубликованном candidate SHA остаётся обязательным.
 
 ## Code review и Security
 
@@ -50,9 +62,9 @@ GitHub завершил оба triggers для точного SHA:
 
 Computer Use вернул apps: [] вместе с ошибкой browser request-header policy; Remote Desktop Commander сообщил, что DESKTOP-DQLROSV offline. В текущей сессии не подтверждены native login, F2 screenshots, paired client/server logs, загрузка всего candidate inventory и resource-pack acceptance. nativeVerified=false сохраняется.
 
-## Оставшиеся gates
+## Gates на момент checkpoint `afcc75cd` (историческая запись)
 
-1. Завершить GitLab identity verification и получить успешные push/MR jobs на итоговом SHA; на `afcc75cd` GitLab создал два pipeline, но не запустил ни одной job.
+1. Для этого старого checkpoint ожидалось завершить GitLab identity verification и получить успешные push/MR jobs; на `afcc75cd` GitLab создал два pipeline, но не запустил ни одной job. Это историческое требование superseded решением владельца: GitHub — обязательный CI/review authority, GitLab — необязательное резервное зеркало и его CI не блокирует acceptance.
 2. Выполнить native login в профиле `D:\.minecraft\versions\CopiMine`, проверить моды/resource pack и сохранить F2 evidence, привязанный к exact source SHA. Среда Computer Use пока недоступна.
 3. Только после подписанного native acceptance закрывать migration checkpoint. До этого игровые стадии Waves 1–7 и Rift Guardian не запускать.
 
@@ -68,3 +80,25 @@ GitBook не подключён к организации: доступный AP
 - Старый Paper процесс остановлен штатно, затем candidate был установлен миграционным installer с backup/rollback и receipt validation. Paper 26.3-169 на Java 25 перезапущен с 29 плагинами из lock; `CopiMineArtifacts 1.1.0-shops-blocks-prices` загрузился, EconomyCore, AdminPlus и ElectionCore сообщили `ENABLED`/`DB READY` на отдельной PostgreSQL. AuthMe/AuthEffects отключены только в loopback-тестовом runtime.
 - Server status handshake к `127.0.0.1:25568` вернул `Paper 26.3`, protocol `777`, online `0/1`; listener сейчас привязан к loopback. Профиль `D:\.minecraft\versions\CopiMine` прошёл read-only `InstallMigrationProfile.ps1 -ValidateOnly`, сверив client profile и моды по lock. Это не заменяет фактический запуск клиента, вход или визуальную проверку resource pack.
 - При старте остаются OSHI/Windows Perflib, ProtocolLib 26.3 compatibility/`Unsafe` deprecation и offline-mode voice encryption warnings. `Computer Use` в этой сессии видит только браузеры (`apps: []`), поэтому Minecraft GUI, реальный вход и F2 screenshot не выполнены. `nativeVerified=false` сохраняется; Waves 1–7 и Rift Guardian не начинались.
+
+## Локальный candidate после mandatory CopiMineClient — 2026-10-11
+
+Это отдельное последующее рабочее дерево на ветке `codex/minecraft-26-3-migration-candidate-20261010`, основанное на `00f2c6927c9db3c58599fc77e257c6d1ea623061`; эти результаты не относятся к `afcc75cd` до создания и публикации нового commit.
+
+| Проверка | Результат | Что подтверждает |
+| --- | --- | --- |
+| CopiMineClient Gradle `test jar` (Gradle 9.8.1 / Java 25) | PASS; 14,827,743 bytes; SHA-512 `68be0d8cf07d38c375cf49595e60ec8f21d4897414bff308dd09976e18fbf2127acfa6de84674cbbdd1c67e6b832a4ad52dccfa5b06253ea93e92d0c1b6f559e` | Версию 0.1.1+26.3 и nested Fabric API; не заменяет реальное подключение клиента |
+| First-party Paper 26.3 migration candidates | CopiMineEndEvent 1,349,199 bytes, SHA-256 `c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd`; CopiMineNarcotics 225,221 bytes, SHA-256 `d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97` | Собранные артефакты сверены с lock; не заменяет runtime проверку всех плагинов |
+| Полный Python 3.13 suite без default DB DSN | `1551 passed, 6 skipped, 88 warnings` | Изолированные PostgreSQL contracts отдельно дали `27 passed`; native client и Windows-only private-key/symlink semantics остаются недоказанными |
+| PostgreSQL contracts | `27 passed`; все два DB integration tests вошли в полный suite | Только изолированную `copimine_migration_test`, не production DB |
+| CopiMine profile install + `-ValidateOnly` | PASS: 12 external mods + CopiMineClient 0.1.1+26.3 + resource pack; standalone Fabric API backup-removed | Закреплённые профилированные байты и metadata, не фактический запуск GUI |
+| Paper 26.3-169 runtime | PASS: `Done (29.234s)`, 29 plugins initialized, loopback status protocol 777, 0/1; custom EconomyCore/ElectionCore/Artifacts/AdminPlus report DB ready | Startup/inventory/status; не native gameplay acceptance |
+| Mandatory client contracts | PASS: exact-version, default-required, timeout, abuse guards, registered hanging-break guard; hanging-break reviewer finding fixed | Source-level event contracts; plugin-message challenge is not cryptographic proof |
+
+Profile validator выявил Windows PowerShell 5.1 incompatibility с .NET-only `SHA512.HashData`/`Convert.ToHexString`. Она исправлена на `SHA512.Create().ComputeHash()` и покрыта regression test; пользовательский профиль после этого установлен и `-ValidateOnly` прошёл.
+
+Local Java gate `RunJavaPluginCi.ps1` завершился внешней загрузочной ошибкой на legacy 1.21.1 CopiMineClient build: Mojang `server.jar` ожидал 51,627,615 bytes, после трёх попыток получено 34,766,848 bytes (`BUFFER_UNDERFLOW with EOF`). Это не помечается как успешная Java gate; GitHub Actions должен быть проверен на итоговом SHA.
+
+Профиль, установленный сервер и локальный Minecraft находятся на одном ПК, но Computer Use сообщает `apps: []`, а Desktop Commander — `DESKTOP-DQLROSV offline, last seen 22h ago`. Нативное подключение, отклонение vanilla/wrong-version клиентов и F2 screenshots не проверены; `nativeVerified=false`.
+
+Для этого рабочего diff GitHub Actions пока не запускался, fresh CodeRabbit/Codex Security review pending, а commit/push ещё нет. GitLab остаётся резервным зеркалом; его CI ранее завершился до запуска jobs из-за account-level identity verification. Принимать или менять lock status можно только после GitHub CI на exact commit и native acceptance.

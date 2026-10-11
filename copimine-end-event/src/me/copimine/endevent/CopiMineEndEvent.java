@@ -314,6 +314,7 @@ import org.joml.Quaternionf;
  */
 public final class CopiMineEndEvent extends JavaPlugin implements Listener, CommandExecutor, TabCompleter,
         PluginMessageListener {
+    private static final int CLIENT_BRIDGE_PROTOCOL_VERSION = 3;
     private static final String EVENT_KIND_CORE = "CORE";
     private static final String EVENT_KIND_PAD = "PAD";
     private static final String EVENT_KIND_DISPLAY = "DISPLAY";
@@ -6449,7 +6450,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void updateEchoPresentationCapability(Player player, int protocol, String session,
                                                    String clientVersion, boolean capable) {
-        if (protocol != 2 || clientVersion.isBlank()
+        if (protocol != CLIENT_BRIDGE_PROTOCOL_VERSION || clientVersion.isBlank()
                 || !Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)) return;
         if (capable) echoPresentationCapablePlayers.add(player.getUniqueId());
         else echoPresentationCapablePlayers.remove(player.getUniqueId());
@@ -35063,11 +35064,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         try {
             java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
             java.io.DataOutputStream output = new java.io.DataOutputStream(bytes);
-            // Keep End Rift messages inside the shared bridge-current envelope.
+            // Keep End Rift messages inside the shared v3 bridge envelope.
             // The client maps event-specific meaning once at its protocol
             // boundary; no private event packet format is emitted here.
             output.writeUTF("END_EVENT:" + type);
-            output.writeInt(2);
+            output.writeInt(CLIENT_BRIDGE_PROTOCOL_VERSION);
             output.writeLong(generation);
             output.writeLong(System.currentTimeMillis());
             output.writeUTF(eventId);
@@ -35097,7 +35098,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
     }
 
-    /** Decode only hello and one-shot prisoner ability requests from the shared v2 envelope. */
+    /** Decode only hello and one-shot prisoner ability requests from the shared v3 envelope. */
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
         if (config == null || player == null || message == null
@@ -35152,7 +35153,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             if (!"END_PRISONER_ABILITY_REQUEST".equals(type)
-                    || protocol != 2 || packetGeneration != generation
+                    || protocol != CLIENT_BRIDGE_PROTOCOL_VERSION || packetGeneration != generation
                     || !Objects.equals(clientBridgeSessions.get(player.getUniqueId()), session)
                     || eventIdFromPacket.isBlank() || !eventId.equals(eventIdFromPacket)
                     || clientVersion.isBlank() || !effectId.isBlank() || effectCount != 0
@@ -35181,7 +35182,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     private void registerClientBridgeSession(Player player, int protocol,
                                              String session, String clientVersion) {
-        if (player == null || protocol != 2 || session == null || session.isBlank()
+        if (player == null || protocol != CLIENT_BRIDGE_PROTOCOL_VERSION || session == null || session.isBlank()
                 || session.length() > 64 || clientVersion == null || clientVersion.isBlank()) {
             return;
         }

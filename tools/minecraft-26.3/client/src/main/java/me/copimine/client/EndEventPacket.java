@@ -4,7 +4,7 @@ import java.util.Set;
 
 /**
  * Current End Rift semantic packet after the shared bridge envelope has been
- * decoded.  The bridge has a fixed, shared v2 envelope, so this adapter keeps
+ * decoded.  The bridge has a fixed, shared v3 envelope, so this adapter keeps
  * the event-specific meaning out of shared bridge fields such as
  * {@code shaderpack}.
  */

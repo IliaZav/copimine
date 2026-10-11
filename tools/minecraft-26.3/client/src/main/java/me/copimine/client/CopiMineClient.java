@@ -13,11 +13,16 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 public final class CopiMineClient implements ClientModInitializer {
-    public static final String CLIENT_VERSION = "0.1.1";
+    public static final String MOD_ID = "copimineclient";
+    public static final String CLIENT_VERSION = FabricLoader.getInstance()
+            .getModContainer(MOD_ID)
+            .map(container -> container.getMetadata().getVersion().getFriendlyString())
+            .orElse("unknown");
 
     private final ClientConfig config = ClientConfig.load();
     private final ClientVisualManager visualManager = new ClientVisualManager(config);

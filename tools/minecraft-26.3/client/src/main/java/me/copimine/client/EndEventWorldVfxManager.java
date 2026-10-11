@@ -66,7 +66,8 @@ public final class EndEventWorldVfxManager {
      * </pre>
      */
     public synchronized boolean applyBeam(BridgePayload payload, long nowMillis) {
-        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
+        if (payload == null || payload.protocol() != ClientBridgeProtocol.PROTOCOL_VERSION
+                || nowMillis < 0L || payload.timestampMillis() <= 0L
                 || !Objects.equals(payload.messageType(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_BEAM")) {
             return false;
         }
@@ -121,7 +122,8 @@ public final class EndEventWorldVfxManager {
 
     /** Remove one server-owned beam instance after event/phase cleanup. */
     public synchronized boolean applyClear(BridgePayload payload, long nowMillis) {
-        if (payload == null || nowMillis < 0L || payload.timestampMillis() <= 0L
+        if (payload == null || payload.protocol() != ClientBridgeProtocol.PROTOCOL_VERSION
+                || nowMillis < 0L || payload.timestampMillis() <= 0L
                 || !Objects.equals(payload.messageType(), ClientBridgeProtocol.TYPE_END_EVENT_PREFIX + "END_WORLD_VFX_CLEAR")) {
             return false;
         }

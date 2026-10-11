@@ -782,3 +782,13 @@ def test_java_event_tests_bound_heap_and_compiler_threads() -> None:
 
     assert "$javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')" in event_runner
     assert "& java @javaTestJvmArgs -cp $Classpath $MainClass" in event_runner
+
+
+def test_windows_powershell_cabinet_validator_source_is_ansi_independent() -> None:
+    validator = ROOT / "tests" / "ValidateCopiMineCabinetUnifiedShell.ps1"
+    source = validator.read_bytes()
+
+    assert source.isascii(), (
+        "Windows PowerShell 5.1 reads UTF-8 scripts without a BOM using the system ANSI code page; "
+        "keep this validator's source ASCII-only and encode expected Unicode text as UTF-8 base64."
+    )

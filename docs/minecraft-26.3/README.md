@@ -37,6 +37,7 @@
 - `NATIVE_ACCEPTANCE_SIGNING.md` описывает сбор реального evidence, подпись и проверку доверительной границы.
 - `MIGRATION_PROGRESS.md` — append-only журнал фактических тестов, review, CI и блокеров с датами.
 - `MIGRATION_RUNBOOK.md` — пошаговая сборка, установка в локальный клиент, проверки артефактов и границы acceptance.
+- `CI_ACCEPTANCE.md` — доказательства exact-SHA локальных и удалённых проверок, review и оставшиеся migration gates.
 - `DATABASES.md` — карта изолированной PostgreSQL БД и миграционной схемы.
 
 ## Клиентские моды

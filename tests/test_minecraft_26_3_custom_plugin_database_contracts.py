@@ -396,6 +396,7 @@ def test_election_core_does_not_rerun_schema_migrations_after_database_readiness
 def test_first_party_candidate_hashes_cover_the_installed_runtime_upgrade_path():
     lock = json.loads(_read("tools/minecraft-26.3/server-plugins.lock.json"))
     entries = {record["pluginName"]: record for record in lock["unchangedBaseline"]}
+    assert "3bd3dd68f58f9fad7e23ef8a6c18c0095c1004e4d2a5b59fd9276183dc16e6b7" in entries["CopiMineArtifacts"].get("replaceSha256", [])
     receipt_path = ROOT / "local-runtime/end-rift-server-26.3/migration-plugin-receipt.json"
     receipt = json.loads(receipt_path.read_text(encoding="utf-8")) if receipt_path.is_file() else None
     installed = {record["pluginName"]: record for record in receipt["installed"]} if receipt else {}

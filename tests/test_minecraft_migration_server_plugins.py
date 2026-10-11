@@ -833,7 +833,10 @@ def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runt
         assert built.is_file(), f'missing 26.3 build artifact for {plugin_name}'
         artifacts=[built]+([runtime] if runtime.is_file() else [])
         for artifact in artifacts:
-            assert hashlib.sha256(artifact.read_bytes()).hexdigest()==candidate['sha256']
+            artifact_bytes=artifact.read_bytes()
+            assert len(artifact_bytes)==candidate['size']
+            assert hashlib.sha256(artifact_bytes).hexdigest()==candidate['sha256']
+            assert hashlib.sha512(artifact_bytes).hexdigest()==candidate['sha512']
             with zipfile.ZipFile(artifact) as jar_file:
                 plugin_yml=jar_file.read('plugin.yml').decode('utf-8')
             assert f'name: {plugin_name}' in plugin_yml

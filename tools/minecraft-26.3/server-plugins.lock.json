@@ -688,13 +688,13 @@
       "candidate": {
         "filename": "CopiMineArtifacts-26.3.jar",
         "runtimeFilename": "CopiMineArtifacts.jar",
-        "sha256": "3bd3dd68f58f9fad7e23ef8a6c18c0095c1004e4d2a5b59fd9276183dc16e6b7",
+        "sha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineArtifacts-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "a7cf39c091a4ddc2ee3783d3cfc91a3baf559155f4ef0e19e23bc58f5f01118ce7ca93caad388891f3a2882a98b818c347e0fc95e16f07126b35ee36129bcaa8",
-        "size": 325468
+        "sha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
+        "size": 325573
       },
       "nativeVerified": false,
       "replaceSha256": [

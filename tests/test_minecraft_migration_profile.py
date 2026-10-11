@@ -530,6 +530,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     profile = tmp_path / 'Copimine'
     profile.mkdir()
     (profile / 'Copimine.json').write_text(json.dumps({
+        'id': 'Copimine',
         'downloads': {'client': {'sha1': 'e877b6a07acd633fb3bb475002175cec036e7b87'}},
         'mainClass': 'net.fabricmc.loader.impl.launch.knot.KnotClient',
         'javaVersion': {'majorVersion': 25},
@@ -677,6 +678,18 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     receipt_path.write_text('{"minecraftVersion":"26.2"}', encoding='utf-8')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
     assert validation.returncode != 0 and 'receipt does not match the installed profile' in validation.stdout + validation.stderr
+
+    if os.name == 'nt':
+        receipt_path.write_bytes(installed_state[receipt_path])
+        intermediate_profile = tmp_path / 'profile-case-rename'
+        profile.rename(intermediate_profile)
+        renamed_profile = tmp_path / 'CopiMine'
+        intermediate_profile.rename(renamed_profile)
+        renamed_validation = subprocess.run([
+            shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+            '-ProfileDirectory', str(renamed_profile), '-ValidateOnly',
+        ], capture_output=True, text=True, timeout=30)
+        assert renamed_validation.returncode == 0, renamed_validation.stdout + renamed_validation.stderr
 
 
 @pytest.mark.parametrize('unsafe_target', [

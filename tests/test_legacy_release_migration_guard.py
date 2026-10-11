@@ -52,3 +52,17 @@ def test_duplicate_bridge_version_keys_fail_closed(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "cannot safely parse" in result.stderr.lower()
+
+
+def test_explicit_bridge_version_can_override_an_inherited_yaml_merge_value(tmp_path: Path) -> None:
+    result = inspect_config(
+        tmp_path,
+        "defaults: &defaults\n"
+        "  required_client_mod_version: '0.1.1+1.21.1'\n"
+        "client_bridge:\n"
+        "  <<: *defaults\n"
+        "  required_client_mod_version: '0.2.0+26.3'\n",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "requires-26.3"

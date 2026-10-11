@@ -20,7 +20,14 @@ $modulesToInstall = if ($DependenciesOnly) {
     @($lock.modules | Where-Object { $_.bundled -ne $true })
 }
 $target = (Resolve-Path -LiteralPath $ProfileDirectory).Path
-$id = Split-Path -Leaf $target
+$profileDirectoryName = Split-Path -Leaf $target
+$definitionPath = Join-Path $target ($profileDirectoryName + '.json')
+$definition = Get-Content -LiteralPath $definitionPath -Raw | ConvertFrom-Json
+$id = [string]$definition.id
+if ([string]::IsNullOrWhiteSpace($id)) { $id = $profileDirectoryName }
+if ($id -ine $profileDirectoryName) {
+    throw "Minecraft profile directory '$profileDirectoryName' does not match profile ID '$id'"
+}
 $migrationReceiptPath = Join-Path $target 'copimine-migration-receipt.json'
 $optionsPath = Join-Path $target 'options.txt'
 $mods = Join-Path $target 'mods'
@@ -28,7 +35,6 @@ $packs = Join-Path $target 'resourcepacks'
 $backupRoot = Join-Path $target 'migration-backups'
 $backupClientModsRoot = Join-Path $backupRoot 'client-mods'
 $backupOptionsRoot = Join-Path $backupRoot 'options'
-$definition = Get-Content -LiteralPath (Join-Path $target ($id + '.json')) -Raw | ConvertFrom-Json
 if ($definition.downloads.client.sha1 -ne $profile.minecraftClient.sha1) { throw 'Profile is not the pinned Minecraft 26.3 client' }
 if ($definition.mainClass -ne 'net.fabricmc.loader.impl.launch.knot.KnotClient' -or
     @($definition.libraries.name) -notcontains ('net.fabricmc:fabric-loader:' + $profile.fabric.loader)) {

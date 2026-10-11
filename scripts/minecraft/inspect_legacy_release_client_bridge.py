@@ -15,9 +15,13 @@ class MigrationGuardLoader(yaml.SafeLoader):
     """Safe YAML loader that rejects duplicate migration guard keys."""
 
     def construct_mapping(self, node: MappingNode, deep: bool = False) -> dict[object, object]:
-        self.flatten_mapping(node)
         seen_guarded_keys: set[str] = set()
+        # Check only keys written in this mapping. Flattening first expands
+        # inherited merge entries into node.value, where a deliberate explicit
+        # override becomes indistinguishable from a duplicate source key.
         for key_node, _ in node.value:
+            if key_node.tag == "tag:yaml.org,2002:merge":
+                continue
             key = self.construct_object(key_node, deep=deep)
             if isinstance(key, str) and key in GUARDED_KEYS:
                 if key in seen_guarded_keys:
@@ -28,6 +32,7 @@ class MigrationGuardLoader(yaml.SafeLoader):
                         key_node.start_mark,
                     )
                 seen_guarded_keys.add(key)
+        self.flatten_mapping(node)
         return super().construct_mapping(node, deep=deep)
 
 

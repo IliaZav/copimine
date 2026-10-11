@@ -1,0 +1,201 @@
+package me.copimine.client;
+
+import net.minecraft.client.model.monster.spider.SpiderModel;
+import net.minecraft.client.renderer.entity.state.LivingEntityRenderState;
+import net.minecraft.client.model.geom.ModelPart;
+import net.minecraft.client.model.geom.PartPose;
+import net.minecraft.client.model.geom.builders.CubeListBuilder;
+import net.minecraft.client.model.geom.builders.LayerDefinition;
+import net.minecraft.client.model.geom.builders.MeshDefinition;
+import net.minecraft.client.model.geom.builders.PartDefinition;
+import net.minecraft.util.Mth;
+
+/**
+ * Adapted event spider rig. The supplied archive contains the 64x32 spider
+ * skin but no spider geometry, so the vanilla spider skeleton is kept as the
+ * gameplay-compatible base and the event shell/core/spines are added as real
+ * model parts instead of leaving the spider on the vanilla renderer.
+ */
+public final class RiftSpiderModel extends SpiderModel {
+    public static final int TEXTURE_WIDTH = 64;
+    public static final int TEXTURE_HEIGHT = 32;
+
+    public enum Variant {
+        ORDINARY,
+        ELITE,
+        WAVE_GUARDIAN,
+        RITUAL_GUARD
+    }
+
+    private final ModelPart root;
+    private final ModelPart riftCore;
+    private final ModelPart riftShell;
+    private final ModelPart riftSpines;
+    private final ModelPart eliteCarapace;
+    private final ModelPart guardianSpine;
+    private final ModelPart guardSeal;
+    private final ModelPart ritualFocus;
+    private final Variant variant;
+
+    public RiftSpiderModel(ModelPart root) {
+        this(root, Variant.ORDINARY);
+    }
+
+    public RiftSpiderModel(ModelPart root, Variant variant) {
+        super(root);
+        this.root = root;
+        this.riftCore = root.getChild("rift_core");
+        this.riftShell = root.getChild("rift_shell");
+        this.riftSpines = root.getChild("rift_spines");
+        this.eliteCarapace = root.getChild("body1").getChild("elite_carapace");
+        this.guardianSpine = root.getChild("body1").getChild("guardian_spine");
+        this.guardSeal = root.getChild("head").getChild("guard_seal");
+        this.ritualFocus = root.getChild("head").getChild("ritual_focus");
+        this.variant = variant;
+        // The supplied 64x32 skin is painted for the spider's original body.
+        // Extra opaque shells obscure that art on ordinary wave spiders.
+        this.riftCore.visible = false;
+        this.riftShell.visible = false;
+        // Keep the supplied skin unobstructed on ordinary spiders. Role
+        // details appear only on the variants that are authored to use them.
+        this.riftSpines.visible = false;
+        this.eliteCarapace.visible = variant == Variant.ELITE;
+        this.guardianSpine.visible = variant == Variant.WAVE_GUARDIAN;
+        this.guardSeal.visible = variant == Variant.RITUAL_GUARD;
+        this.ritualFocus.visible = variant == Variant.RITUAL_GUARD;
+    }
+
+    public static LayerDefinition createSpiderBodyLayer() {
+        return getTexturedModelData(Variant.ORDINARY);
+    }
+
+    public static LayerDefinition getTexturedModelData(Variant variant) {
+        MeshDefinition data = new MeshDefinition();
+        PartDefinition root = data.getRoot();
+
+        // Vanilla-compatible head/body and eight articulated legs.
+        root.addOrReplaceChild("head", cube(32, 4, -4.0F, -4.0F, -8.0F, 8.0F, 8.0F, 8.0F),
+                PartPose.offset(0.0F, 15.0F, -3.0F));
+        root.addOrReplaceChild("body", cube(0, 0, -3.0F, -3.0F, -3.0F, 6.0F, 6.0F, 6.0F),
+                PartPose.offset(0.0F, 15.0F, 0.0F));
+        root.addOrReplaceChild("body1", cube(0, 12, -5.0F, -4.0F, -6.0F, 10.0F, 8.0F, 12.0F),
+                PartPose.offset(0.0F, 15.0F, 9.0F));
+
+        PartDefinition head = root.getChild("head");
+        PartDefinition abdomen = root.getChild("body1");
+
+        addLeg(root, "right_hind_leg", -4.0F, 15.0F, 2.0F, false);
+        addLeg(root, "left_hind_leg", 4.0F, 15.0F, 2.0F, true);
+        addLeg(root, "right_middle_hind_leg", -4.0F, 15.0F, 1.0F, false);
+        addLeg(root, "left_middle_hind_leg", 4.0F, 15.0F, 1.0F, true);
+        addLeg(root, "right_middle_front_leg", -4.0F, 15.0F, 0.0F, false);
+        addLeg(root, "left_middle_front_leg", 4.0F, 15.0F, 0.0F, true);
+        addLeg(root, "right_front_leg", -4.0F, 15.0F, -1.0F, false);
+        addLeg(root, "left_front_leg", 4.0F, 15.0F, -1.0F, true);
+
+        // The user supplied archive has no spider mesh. These optional
+        // elite parts add a ritual silhouette without covering the ordinary
+        // spider's source-painted body.
+        root.addOrReplaceChild("rift_core", cube(32, 16, -3.0F, -3.0F, -3.0F, 6.0F, 6.0F, 6.0F),
+                PartPose.offset(0.0F, 15.0F, 3.0F));
+        root.addOrReplaceChild("rift_shell", cube(0, 16, -4.5F, -3.0F, -5.0F, 9.0F, 5.0F, 10.0F),
+                PartPose.offset(0.0F, 15.0F, 7.0F));
+        root.addOrReplaceChild("rift_spines", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(48, 16, -1.0F, -7.0F, -1.0F,
+                                2.0F, 4.0F, 2.0F),
+                        new ModelUvBounds.Box(48, 22, -1.0F, -5.0F, 2.0F,
+                                2.0F, 3.0F, 2.0F),
+                        new ModelUvBounds.Box(56, 16, -1.0F, -5.0F, -4.0F,
+                                2.0F, 3.0F, 2.0F)),
+                PartPose.offset(0.0F, 15.0F, 6.0F));
+
+        // SpiderEntityModel renders its named head/body/leg parts directly.
+        // Attach active role accents to those bones so they are actually
+        // traversed; compensate for the parent pivots to keep their authored
+        // world-space placement intact.
+        abdomen.addOrReplaceChild("elite_carapace", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(0, 16, -5.5F, -4.2F, -6.5F,
+                                11.0F, 2.2F, 13.0F),
+                        new ModelUvBounds.Box(0, 21, -6.2F, -2.4F, -4.8F,
+                                1.6F, 2.2F, 8.0F),
+                        new ModelUvBounds.Box(0, 21, 4.6F, -2.4F, -4.8F,
+                                1.6F, 2.2F, 8.0F)),
+                PartPose.offset(0.0F, 0.0F, -2.0F));
+        abdomen.addOrReplaceChild("guardian_spine", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(24, 24, -1.0F, -7.0F, 5.8F,
+                                2.0F, 3.0F, 2.0F),
+                        new ModelUvBounds.Box(24, 26, -1.2F, -4.6F, 6.0F,
+                                2.4F, 3.2F, 1.6F),
+                        new ModelUvBounds.Box(32, 24, -1.4F, -2.0F, 6.1F,
+                                2.8F, 2.8F, 1.4F)),
+                PartPose.offset(0.0F, 0.0F, -5.0F));
+        head.addOrReplaceChild("guard_seal", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(38, 24, -2.4F, -5.4F, -8.15F,
+                                4.8F, 3.8F, 0.45F),
+                        new ModelUvBounds.Box(38, 29, -1.1F, -6.6F, -8.25F,
+                                2.2F, 1.2F, 0.35F)),
+                PartPose.offset(0.0F, 0.0F, 1.0F));
+        head.addOrReplaceChild("ritual_focus", ModelUvBounds.boxes(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        new ModelUvBounds.Box(46, 24, -1.5F, -1.5F, -8.6F,
+                                3.0F, 3.0F, 1.0F),
+                        new ModelUvBounds.Box(54, 24, -0.6F, -2.5F, -8.45F,
+                                1.2F, 1.0F, 0.7F)),
+                PartPose.offset(0.0F, 0.0F, 4.0F));
+
+        return LayerDefinition.create(data, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    }
+
+    private static void addLeg(PartDefinition root, String name, float x, float y,
+                               float z, boolean mirrored) {
+        root.addOrReplaceChild(name, ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
+                        18, 0, mirrored ? -2.0F : -14.0F,
+                        -1.0F, -1.0F, 16.0F, 2.0F, 2.0F, mirrored),
+                PartPose.offset(x, y, z));
+    }
+
+    private static CubeListBuilder cube(int u, int v, float x, float y, float z,
+                                         float width, float height, float depth) {
+        return ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT, u, v,
+                x, y, z, width, height, depth);
+    }
+
+    @Override
+    public void setupAnim(LivingEntityRenderState state) {
+        // Display entities reuse the same model instance. Reset the added
+        // parts before vanilla applies its deterministic spider leg pose.
+        root.getAllParts().forEach(ModelPart::resetPose);
+        String wavePose = ((EndRiftRenderStateAccess) state).copimine$wavePose();
+        boolean frozen = "WAVE_FROZEN".equals(wavePose);
+        float walkPosition = state.walkAnimationPos;
+        float walkSpeed = state.walkAnimationSpeed;
+        if (frozen) { state.walkAnimationPos = 0; state.walkAnimationSpeed = 0; }
+        try {
+            super.setupAnim(state);
+        } finally {
+            if (frozen) { state.walkAnimationPos = walkPosition; state.walkAnimationSpeed = walkSpeed; }
+        }
+        float animationProgress = frozen ? 0 : state.ageInTicks;
+
+        float pulse = Mth.sin(animationProgress * 0.16F);
+        riftCore.yScale = 1.0F + pulse * 0.10F;
+        riftCore.xScale = 1.0F + pulse * 0.06F;
+        riftCore.zScale = 1.0F + pulse * 0.06F;
+        riftShell.zRot = pulse * 0.035F;
+        riftShell.yRot = pulse * 0.045F;
+        riftSpines.xRot = pulse * 0.10F;
+        riftSpines.yRot = pulse * 0.08F;
+        eliteCarapace.zRot = pulse * (variant == Variant.ELITE ? 0.04F : 0.025F);
+        eliteCarapace.yRot = pulse * 0.025F;
+        guardianSpine.xRot = pulse * 0.08F;
+        guardianSpine.yRot = pulse * 0.11F;
+        guardSeal.yRot = pulse * 0.12F;
+        ritualFocus.yScale = 1.0F + pulse * 0.16F;
+        if ("WAVE_WINDUP".equals(wavePose)) root.getChild("head").xRot = -.3F;
+        if ("WAVE_RECOVER".equals(wavePose)) root.getChild("head").xRot = .2F;
+    }
+
+    public Variant variant() {
+        return variant;
+    }
+
+}

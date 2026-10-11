@@ -2,34 +2,48 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "status": "migration-candidate",
-  "verifiedAt": "2026-10-07",
+  "verifiedAt": "2026-10-11",
   "minimumJava": 25,
+  "buildJavaMajor": 25,
+  "grimPatchJavaMajor": 21,
   "minecraftManifest": {
     "url": "https://piston-meta.mojang.com/v1/packages/702fe59163c6ee6578607daa85811d9bc9c7cc40/26.3.json",
     "sha1": "702fe59163c6ee6578607daa85811d9bc9c7cc40"
   },
   "minecraftClient": {
     "url": "https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar",
-    "sha1": "e877b6a07acd633fb3bb475002175cec036e7b87"
+    "sha1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+    "size": 41483720
+  },
+  "clientArtifact": {
+    "filename": "CopiMineClient-0.1.1+26.3.jar",
+    "size": 13056514,
+    "sha512": "aff629a49489e60a9b65e94d20032a42e19dd537992dd10b50f0a5e384205449dfff7ffd16280d05f1652b13aba4cbf6461ac6e43f4e6a61c12aebce6877f3b9"
   },
   "paper": {
-    "build": 159,
+    "build": 169,
     "channel": "BETA",
-    "api": "26.3.build.159-beta",
-    "apiSha256": "7ab1b5133b5702acb78a120440e21eb924a181b99b1fd2785cfa649932ffe54f",
-    "url": "https://fill-data.papermc.io/v1/objects/2224a0b2b6b096ff4c429ad926e97977213e4f633e90cb3a49b5eeb82f94bab0/paper-26.3-159.jar",
-    "sha256": "2224a0b2b6b096ff4c429ad926e97977213e4f633e90cb3a49b5eeb82f94bab0"
+    "api": "26.3.build.169-beta",
+    "apiSha256": "94ab589248e2fac75a2e83fe1feb9af22bbe99bd9baaa1c801328e54538b4213",
+    "url": "https://fill-data.papermc.io/v1/objects/185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb/paper-26.3-169.jar",
+    "size": 55138949,
+    "sha256": "185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb"
   },
   "gradle": {
-    "version": "9.8.0",
-    "url": "https://services.gradle.org/distributions/gradle-9.8.0-bin.zip",
-    "sha256": "bafd5ce9cfaea0fbccfdc8439a1ac42fbd4cd9c89dc9a988228d8a2639a58e6c"
+    "version": "9.8.1",
+    "url": "https://services.gradle.org/distributions/gradle-9.8.1-bin.zip",
+    "sha256": "dce76f55f8e251a3a1f130eb120f30b3d271de2b76c9b0729d316b5a1b6dc01f",
+    "size": 151620101
   },
   "fabric": {
     "loader": "0.19.5",
     "loom": "1.17.21",
     "api": "0.162.0+26.3",
     "namespace": "official",
-    "clientPortComplete": false
+    "clientPortComplete": true
+  },
+  "resourcePackMigration": {
+    "legacyPackSha256": "701bc0d86d451b22211a09ff2de4ded0db887cbd202ab0ca45193c6db27a840c",
+    "candidateSha256": "d1178b427b926aee3c2e49f9a72aca7156f5e99917766e63248fb6226d4977dd"
   }
 }

@@ -62,11 +62,15 @@ public final class DepositJournal {
      * current attempt; the caller must put the event into recovery instead.
      */
     public synchronized List<Entry> unresolvedFor(String eventId, long generation) {
+        List<Entry> unresolvedEntries = unresolved();
+        if (unresolvedEntries.isEmpty()) {
+            return List.of();
+        }
         if (eventId == null || eventId.isBlank() || generation <= 0L) {
             throw new JournalCorruptionException("current deposit journal owner is incomplete");
         }
         List<Entry> result = new ArrayList<>();
-        for (Entry entry : unresolved()) {
+        for (Entry entry : unresolvedEntries) {
             if (entry.legacy()) {
                 throw new JournalCorruptionException(
                         "legacy unscoped deposit record requires administrative recovery: " + entry.id());

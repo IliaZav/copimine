@@ -18,11 +18,102 @@
         "url": null
       },
       "filename": "fabric-api-0.162.0+26.3.jar",
+      "modId": "fabric-api",
       "url": "https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar",
       "sha512": "5ab70908952f1d2346d16b122ca31327f4055db59c279a1bc3c3c581ce359bb541cba15730f55b0727be7c7c4debc4a4412a183c228e0d4dea81c734f7b412ce",
       "sha1": "273cd2dcbd92d1559edcc91c9f23fee47f6ff93f",
       "size": 1772377,
-      "dependencies": []
+      "dependencies": [],
+      "fabricMetadataVersion": "0.162.0+26.3"
+    },
+    {
+      "project": "AppleSkin",
+      "version": "3.0.10+mc26.3",
+      "channel": "release",
+      "versionId": "PHjDtQay",
+      "projectId": "EsAfCjCV",
+      "source": "https://modrinth.com/mod/appleskin",
+      "license": {
+        "id": "Unlicense",
+        "name": "The Unlicense",
+        "url": null
+      },
+      "filename": "appleskin-fabric-mc26.3-3.0.10.jar",
+      "modId": "appleskin",
+      "url": "https://cdn.modrinth.com/data/EsAfCjCV/versions/PHjDtQay/appleskin-fabric-mc26.3-3.0.10.jar",
+      "sha512": "17d257af419b7530aa8617c2e8c0e4bbfabcf888f26655790e0188e7957e0bcd931f85f9a4c69fd27e889dee5082cf7b2b8741a14a6ed4425e9ef4bfe13a8b8c",
+      "sha1": "3d19e40c5f97186857db98e622c01c2cd0030497",
+      "size": 180194,
+      "dependencies": [
+        {
+          "version_id": null,
+          "project_id": "P7dR8mSH",
+          "file_name": null,
+          "dependency_type": "required"
+        }
+      ],
+      "fabricMetadataVersion": "3.0.10+mc26.3"
+    },
+    {
+      "project": "BetterF3",
+      "version": "20.0.0",
+      "channel": "release",
+      "versionId": "XB7u4eSf",
+      "projectId": "8shC1gFX",
+      "source": "https://modrinth.com/mod/betterf3",
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": null
+      },
+      "filename": "BetterF3-20.0.0-Fabric-26.3.jar",
+      "modId": "betterf3",
+      "url": "https://cdn.modrinth.com/data/8shC1gFX/versions/XB7u4eSf/BetterF3-20.0.0-Fabric-26.3.jar",
+      "sha512": "1e78531358f690404efe98b26de1024284078596785420a92ff5dba052003064e87537936c006c3c58470ccdc2ed6ae69a65f26ca534366e90d97470f2973118",
+      "sha1": "418b70684cf0e5a48c861216c86ae97949bc39f7",
+      "size": 719577,
+      "dependencies": [
+        {
+          "version_id": null,
+          "project_id": "9s6osm5g",
+          "file_name": null,
+          "dependency_type": "required"
+        },
+        {
+          "version_id": null,
+          "project_id": "P7dR8mSH",
+          "file_name": null,
+          "dependency_type": "required"
+        },
+        {
+          "version_id": null,
+          "project_id": "mOgUt4GM",
+          "file_name": null,
+          "dependency_type": "optional"
+        }
+      ],
+      "fabricMetadataVersion": "20.0.0"
+    },
+    {
+      "project": "Cloth Config API",
+      "version": "26.3.159+fabric",
+      "channel": "release",
+      "versionId": "fg2uyxOW",
+      "projectId": "9s6osm5g",
+      "source": "https://modrinth.com/mod/cloth-config",
+      "license": {
+        "id": "LGPL-3.0-only",
+        "name": "GNU Lesser General Public License v3.0 only",
+        "url": null
+      },
+      "filename": "cloth-config-fabric-26.3.159.jar",
+      "modId": "cloth-config",
+      "url": "https://cdn.modrinth.com/data/9s6osm5g/versions/fg2uyxOW/cloth-config-fabric-26.3.159.jar",
+      "sha512": "8924e19d41845096724fa10f3717bc51964a0edbbbcad0ff1e6c6187a398b08f356e49579a657c2dc44a7f92e3850771f3ca70bf8c1f654de60425163b91dbb1",
+      "sha1": "9a5cce069380a2047250831dcb19f4ef1b15872d",
+      "size": 1135009,
+      "dependencies": [],
+      "fabricMetadataVersion": "26.3.159"
     },
     {
       "project": "emotecraft",
@@ -37,6 +128,7 @@
         "url": null
       },
       "filename": "emotecraft-for-MC26.3-3.5.0-a.build.171.jar",
+      "modId": "emotecraft",
       "url": "https://cdn.modrinth.com/data/pZ2wrerK/versions/M17ZQBUj/emotecraft-for-MC26.3-3.5.0-a.build.171.jar",
       "sha512": "e4642e12d3e3eb6e8f60bfc1fd122f093794382c621a30f7d07fb74156699ef640d2a9f9ad63df890f7a832c5865e0a30a123fe141eddb663f2b0b3adcca3f67",
       "sha1": "92815a8e4c85d7d81bba9ae50458a3f1d962e242",
@@ -60,7 +152,106 @@
           "file_name": null,
           "dependency_type": "optional"
         }
-      ]
+      ],
+      "fabricMetadataVersion": "3.5.0-a.build.171"
+    },
+    {
+      "project": "FPS Reducer",
+      "version": "26.3-2.18",
+      "channel": "release",
+      "versionId": "fY8E5FjE",
+      "projectId": "iZ10HXDj",
+      "source": "https://modrinth.com/mod/fps-reducer",
+      "license": {
+        "id": "LicenseRef-All-Rights-Reserved",
+        "name": "",
+        "url": null
+      },
+      "filename": "FpsReducer2-fabric-26.3-2.18.jar",
+      "modId": "fpsreducer",
+      "url": "https://cdn.modrinth.com/data/iZ10HXDj/versions/fY8E5FjE/FpsReducer2-fabric-26.3-2.18.jar",
+      "sha512": "048396a4cd2802271cf9e6cb445dfafa2ab9a68b059967c674ea845ae2735636594e247a16a813c69f7b70b02e3fdf1c299faf770f10425164439f768b0a942a",
+      "sha1": "08450f7380b61af2aadcf38cb61cb31ee74fd522",
+      "size": 136631,
+      "dependencies": [],
+      "fabricMetadataVersion": "26.3-2.18"
+    },
+    {
+      "project": "iris",
+      "version": "1.11.7+26.3-fabric",
+      "channel": "release",
+      "versionId": "vTN4NRGW",
+      "projectId": "YL57xq9U",
+      "source": "https://modrinth.com/mod/iris",
+      "license": {
+        "id": "LGPL-3.0-only",
+        "name": "GNU Lesser General Public License v3.0 only",
+        "url": null
+      },
+      "filename": "iris-fabric-1.11.7+mc26.3.jar",
+      "modId": "iris",
+      "url": "https://cdn.modrinth.com/data/YL57xq9U/versions/vTN4NRGW/iris-fabric-1.11.7%2Bmc26.3.jar",
+      "sha512": "d8d3312f77fc52a48e4a6cd836fda33669bdebcb4de0b8c0d30adc808b287330a533e0baef355cc1ce6336a26851d9775369a802a4666b7b7a6266af20088f42",
+      "sha1": "fa03640ba1e4ef2f7ae3619c6373a06e46d0ba2c",
+      "size": 2850938,
+      "dependencies": [
+        {
+          "version_id": "bAZQdGpg",
+          "project_id": "AANobbMI",
+          "file_name": null,
+          "dependency_type": "required"
+        }
+      ],
+      "fabricMetadataVersion": "1.11.7+mc26.3"
+    },
+    {
+      "project": "JourneyMap",
+      "version": "26.3-6.0.10+fabric",
+      "channel": "release",
+      "versionId": "2zmj8ela",
+      "projectId": "lfHFW1mp",
+      "source": "https://modrinth.com/mod/journeymap",
+      "license": {
+        "id": "LicenseRef-All-Rights-Reserved",
+        "name": "",
+        "url": null
+      },
+      "filename": "journeymap-fabric-26.3-6.0.10.jar",
+      "modId": "journeymap",
+      "url": "https://cdn.modrinth.com/data/lfHFW1mp/versions/2zmj8ela/journeymap-fabric-26.3-6.0.10.jar",
+      "sha512": "d461b24b3eeaf74ecc75911542cfbfeefe7148a2a260453f15af047d1a895f6484b8e21816de990dc25987d747cc1cccdd5386e8c51a5dcc72a1356b39139bf2",
+      "sha1": "8fb9d3039e0acca2e1d5f5ced71ab5aaac22fdf8",
+      "size": 4384661,
+      "dependencies": [
+        {
+          "version_id": null,
+          "project_id": "P7dR8mSH",
+          "file_name": null,
+          "dependency_type": "required"
+        }
+      ],
+      "fabricMetadataVersion": "26.3-6.0.10"
+    },
+    {
+      "project": "Armor Durability HUD",
+      "version": "8.1.1.6",
+      "channel": "release",
+      "versionId": "9021707",
+      "projectId": "1155218",
+      "source": "https://www.curseforge.com/minecraft/mc-mods/armor-durability-hud/files/9021707",
+      "license": {
+        "id": "All Rights Reserved",
+        "name": "All Rights Reserved",
+        "url": null
+      },
+      "filename": "mc-armor-hud-8.1.1.6-26.3-fabric.jar",
+      "modId": "mc-armor-hud",
+      "url": "https://edge.forgecdn.net/files/9021/707/mc-armor-hud-8.1.1.6-26.3-fabric.jar",
+      "sha512": "71b78e432c77f30ddfe2a579110953342ab1cb1676822fb06ccfb2bd988c615e61a4eaac1d844bc898eb868be3864bc812cc1261124570862e590d17c77d8c38",
+      "sha1": "cc6bad23aadc31281084a55728045c3811500d5a",
+      "size": 51262,
+      "dependencies": [],
+      "fabricMetadataVersion": "8.1.1.6"
     },
     {
       "project": "player-animation-library",
@@ -75,11 +266,34 @@
         "url": null
       },
       "filename": "PlayerAnimationLibMerged-1.2.8+mc.26.3.jar",
+      "modId": "player_animation_library",
       "url": "https://cdn.modrinth.com/data/ha1mEyJS/versions/xJ30QmpE/PlayerAnimationLibMerged-1.2.8%2Bmc.26.3.jar",
       "sha512": "d6870759e2f5f83c6a74b2d02aeabab937d6d8da8c46245566646bc6e8efaeeb06c978edc43a50b57a0de2d015b341c284382bc5d4ae2e450d1b6aa5f8e2e97e",
       "sha1": "e878fad023249fb2e039ddc6ce67821e1ba22960",
       "size": 406793,
-      "dependencies": []
+      "dependencies": [],
+      "fabricMetadataVersion": "1.2.8+mc.26.3"
+    },
+    {
+      "project": "sodium",
+      "version": "mc26.3-0.9.2-fabric",
+      "channel": "release",
+      "versionId": "bAZQdGpg",
+      "projectId": "AANobbMI",
+      "source": "https://modrinth.com/mod/sodium",
+      "license": {
+        "id": "LicenseRef-Polyform-Shield-1.0.0",
+        "name": "",
+        "url": "https://github.com/CaffeineMC/sodium/blob/dev/LICENSE.md"
+      },
+      "filename": "sodium-fabric-0.9.2+mc26.3.jar",
+      "modId": "sodium",
+      "url": "https://cdn.modrinth.com/data/AANobbMI/versions/bAZQdGpg/sodium-fabric-0.9.2%2Bmc26.3.jar",
+      "sha512": "f3f260f204b8ce5e8777c2c73f537956755ec61f3817b0b78b5e5568e8aa40f14891f146475075109747665c7c88a45ca0ca9a8df3c68d79c58ecdaa8d8c4b93",
+      "sha1": "9acfe851e36f4fb27d7c5baa224e8bd4e0334283",
+      "size": 1908068,
+      "dependencies": [],
+      "fabricMetadataVersion": "0.9.2+mc26.3"
     },
     {
       "project": "simple-voice-chat",
@@ -94,6 +308,7 @@
         "url": null
       },
       "filename": "voicechat-fabric-2.6.24+26.3.jar",
+      "modId": "voicechat",
       "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/OLnMVWXy/voicechat-fabric-2.6.24%2B26.3.jar",
       "sha512": "414eb51967305fe7740d34016bc8e3e4e2fa1590e1278ad06bcdfa0687f65007b825d345dc09f79a992704a51ec93baf01fe727e0bbc32fdf506828b5a65d85a",
       "sha1": "2ac4bb844e3b23b6e0a729edcf521ba1198ec5d2",
@@ -141,56 +356,33 @@
           "file_name": null,
           "dependency_type": "optional"
         }
-      ]
+      ],
+      "fabricMetadataVersion": "2.6.24+26.3"
     },
     {
-      "project": "sodium",
-      "version": "mc26.3-0.9.2-fabric",
+      "project": "customskinloader",
+      "version": "15.1",
       "channel": "release",
-      "versionId": "bAZQdGpg",
-      "projectId": "AANobbMI",
-      "source": "https://modrinth.com/mod/sodium",
+      "fileId": "9023814",
+      "projectId": "286924",
+      "source": "https://www.curseforge.com/minecraft/mc-mods/customskinloader",
       "license": {
-        "id": "LicenseRef-Polyform-Shield-1.0.0",
-        "name": "",
-        "url": "https://github.com/CaffeineMC/sodium/blob/dev/LICENSE.md"
+        "id": "GPL-3.0",
+        "name": "GNU General Public License v3",
+        "url": "https://www.gnu.org/licenses/gpl-3.0.html"
       },
-      "filename": "sodium-fabric-0.9.2+mc26.3.jar",
-      "url": "https://cdn.modrinth.com/data/AANobbMI/versions/bAZQdGpg/sodium-fabric-0.9.2%2Bmc26.3.jar",
-      "sha512": "f3f260f204b8ce5e8777c2c73f537956755ec61f3817b0b78b5e5568e8aa40f14891f146475075109747665c7c88a45ca0ca9a8df3c68d79c58ecdaa8d8c4b93",
-      "sha1": "9acfe851e36f4fb27d7c5baa224e8bd4e0334283",
-      "size": 1908068,
-      "dependencies": []
-    },
-    {
-      "project": "iris",
-      "version": "1.11.7+26.3-fabric",
-      "channel": "release",
-      "versionId": "vTN4NRGW",
-      "projectId": "YL57xq9U",
-      "source": "https://modrinth.com/mod/iris",
-      "license": {
-        "id": "LGPL-3.0-only",
-        "name": "GNU Lesser General Public License v3.0 only",
-        "url": null
-      },
-      "filename": "iris-fabric-1.11.7+mc26.3.jar",
-      "url": "https://cdn.modrinth.com/data/YL57xq9U/versions/vTN4NRGW/iris-fabric-1.11.7%2Bmc26.3.jar",
-      "sha512": "d8d3312f77fc52a48e4a6cd836fda33669bdebcb4de0b8c0d30adc808b287330a533e0baef355cc1ce6336a26851d9775369a802a4666b7b7a6266af20088f42",
-      "sha1": "fa03640ba1e4ef2f7ae3619c6373a06e46d0ba2c",
-      "size": 2850938,
-      "dependencies": [
-        {
-          "version_id": "bAZQdGpg",
-          "project_id": "AANobbMI",
-          "file_name": null,
-          "dependency_type": "required"
-        }
-      ]
+      "filename": "CustomSkinLoader_Universal-15.1.jar",
+      "modId": "customskinloader-bootstrap",
+      "url": "https://edge.forgecdn.net/files/9023/814/CustomSkinLoader_Universal-15.1.jar",
+      "sha512": "1c3ee525200d3dff69b19d4667f0c40155d0a8eedcfed4749ec8883fcf169bcf1123942a87ca73ecf46002fded35ec653bb902b0d3900c42f4eab0323793daf2",
+      "sha1": "324e6921ecd576e44875981466e7f22170b6541a",
+      "size": 222917,
+      "dependencies": [],
+      "fabricMetadataVersion": "15.1"
     }
   ],
   "pending": [
-    "CopiMineClient full source port",
-    "CustomSkinLoader 26.3 compatibility"
+    "Native Minecraft gameplay and visual acceptance",
+    "Authenticated CustomSkinLoader skin retrieval"
   ]
 }

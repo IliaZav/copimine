@@ -37,8 +37,17 @@ foreach ($needle in @('Copy-RedactedBackupTree', 'redacted', 'database dumps and
 }
 
 $ci = Read-Utf8 (Join-Path $root '.github\workflows\ci.yml')
-if ($ci -notmatch "expectedSha512\s*=\s*'8beac8d11ef208f1e2a8df0682b9448a9a363d2ad13ca74af43705549e72e74c9378823bf689287801cbbfc2f6ea9596201d19ccacfdfb682ee8a2ff4c4418ba'") {
-    $errors.Add('CI Maven download is missing its pinned SHA512.')
+if (-not $ci.Contains('RunJavaPluginCi.ps1')) {
+    $errors.Add('GitHub CI is missing the shared Java plugin release gate.')
+}
+$javaPluginCi = Read-Utf8 (Join-Path $root 'scripts\minecraft\RunJavaPluginCi.ps1')
+$compileDependencyLock = Read-Utf8 (Join-Path $root 'tools\minecraft-26.3\java-plugin-compile-dependencies.lock.json')
+if ($javaPluginCi -notmatch 'java-plugin-compile-dependencies\.lock\.json' -or
+    $javaPluginCi -notmatch 'Save-PinnedArtifact\s+-Uri\s+\$artifactUri[\s\S]*?-ExpectedHash\s+\$locked\.sha256\s+-ExpectedSize\s+\$locked\.size\s+-MaximumBytes\s+\$locked\.size' -or
+    $javaPluginCi -notmatch 'Get-FileHash\s+-Algorithm\s+SHA256' -or
+    $javaPluginCi -match 'maven-dependency-plugin' -or
+    $compileDependencyLock -notmatch '"artifactRepository":\s*"https://repo\.papermc\.io/repository/maven-public"') {
+    $errors.Add('Shared Java CI compile dependencies must be downloaded with byte caps and verified against the content lock.')
 }
 
 Throw-IfErrors 'ValidateCopiMineSignedPayloadIntegrity'

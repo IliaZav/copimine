@@ -34,15 +34,19 @@ def test_ci_runs_the_entire_python_suite_with_real_pytest_and_junit_output():
 
 
 def test_ci_pins_external_compile_artifacts_with_independent_sha256_digests():
-    assert "Get-FileHash -Algorithm SHA256" in CI
-    assert ".jar.sha1" not in CI
-    assert "SHA1" not in CI
+    runner = (ROOT / "scripts" / "minecraft" / "RunJavaPluginCi.ps1").read_text(encoding="utf-8")
+    assert "Run shared Java plugin release gate" in CI
+    assert "Save-PinnedArtifact" in runner
+    assert "Get-FileHash -Algorithm SHA256" in runner
+    assert ".jar.sha1" not in runner
+    assert "SHA1" not in runner
     for digest in (
         "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0",
-        "c80905a70192b4d1d9fd5d2ab7cf7879b928c71d5c0bf3715f8806dc338d4c46",
         "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+        "1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b",
+        "bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce",
     ):
-        assert digest in CI
+        assert digest in runner
 
 
 def test_release_verification_does_not_bootstrap_trust_from_upload_directory():

@@ -278,6 +278,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    private final Object donationLossJournalLock = new Object();
    private final AtomicBoolean bridgeWarned = new AtomicBoolean(false);
    private final AtomicBoolean visualRepairDrainRunning = new AtomicBoolean(false);
+   private final ArtifactShopPurchaseRecoveryGuard activeArtifactShopPurchases = new ArtifactShopPurchaseRecoveryGuard();
    private final Random random = new Random();
    private static final long SESSION_TTL_SECONDS = 900L;
    private int donationCatalogVersion = 1;
@@ -415,7 +416,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                this.loadInstanceCache();
                this.flushPendingDonationLossJournalAsync();
                this.runAsync(this::reconcilePendingRevenuePayouts);
-               this.runAsync(this::reconcileOrphanedShopTransfers);
+               this.scheduleOrphanedShopTransferReconciliation();
                this.runAsync(() -> {
                   CopiMineArtifacts.BridgeHealthSnapshot health = this.bridge.health((UUID)null, "artifacts-startup");
                   this.getLogger().info("Artifacts bridge ready=" + health.bridgeReady() + " postgres=" + health.postgresReady() + " context=" + health.context());
@@ -9069,6 +9070,8 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            }
                         );
                      } else {
+                        this.activeArtifactShopPurchases.begin(var6);
+                        try {
                         CopiMineArtifacts.BridgeTxnResult var10 = this.bridge
                            .transferToAccount(
                               var1,
@@ -9131,88 +9134,84 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            try {
                               this.persistPaidPurchase(var1, var7, var10);
                            } catch (SQLException var15) {
-                              CopiMineArtifacts.BridgeTxnResult var12 = this.bridge
-                                 .transferFromAccount(
-                                    this.firstNonBlank(var7.revenueRecipient().budgetAccountId(), PRESIDENT_BUDGET_ACCOUNT_ID),
-                                    var7.revenueRecipient().presidentUuid().toString(),
-                                    var7.revenueRecipient().presidentName(),
-                                    var1.getUniqueId(),
-                                    var1.getName(),
-                                    var3.priceAr(),
-                                    "artifact-refund-" + var6,
-                                    "AR_SHOP_PURCHASE_REFUND",
-                                    "purchase=" + var6
-                                 );
-                              boolean var13 = "ARTIFACT_LIMIT_SUPPLY".equalsIgnoreCase(this.firstNonBlank(var15.getMessage(), ""));
-                              boolean var14 = "ARTIFACT_LIMIT_PLAYER".equalsIgnoreCase(this.firstNonBlank(var15.getMessage(), ""));
-                              if (!var12.ok()) {
+                               boolean var13 = ArtifactRevenuePayoutPolicy.shouldRefundAfterPersistenceFailure(var15.getMessage());
+                               CopiMineArtifacts.BridgeTxnResult var12 = null;
+                               if (var13) {
+                                  var12 = this.bridge.transferFromAccount(
+                                     this.firstNonBlank(var7.revenueRecipient().budgetAccountId(), PRESIDENT_BUDGET_ACCOUNT_ID),
+                                     var7.revenueRecipient().presidentUuid().toString(),
+                                     var7.revenueRecipient().presidentName(),
+                                     var1.getUniqueId(),
+                                     var1.getName(),
+                                     var3.priceAr(),
+                                     ArtifactShopPurchaseRecoveryGuard.refundIdempotencyKey(var6),
+                                     "AR_SHOP_PURCHASE_REFUND",
+                                     "purchase=" + var6
+                                  );
+                               } else {
                                  this.audit(
                                     var1.getName(),
-                                    "purchase_manual_review",
+                                     "purchase_reconciliation_pending",
                                     var7.purchaseId(),
-                                    var7.item().itemId() + " reason=persist_failed refund=" + this.safeBridgeCode(var12.code())
+                                     var7.item().itemId() + " reason=ambiguous_persist_outcome"
                                  );
                                  this.getLogger()
                                     .log(
                                        Level.WARNING,
-                                       "Artifact purchase refund failed after persist error: " + var7.purchaseId() + " / " + this.safeBridgeCode(var12.code()),
+                                        "Artifact purchase persistence outcome is ambiguous; automatic orphan reconciliation will decide after its safety checks: " + var7.purchaseId(),
                                        (Throwable)var15
                                     );
                               }
+                               if (var13 && !var12.ok()) {
+                                  this.audit(
+                                     var1.getName(),
+                                     "purchase_manual_review",
+                                     var7.purchaseId(),
+                                     var7.item().itemId() + " reason=limit_refund_failed code=" + this.safeBridgeCode(var12.code())
+                                  );
+                                  this.getLogger().log(
+                                     Level.WARNING,
+                                     "Artifact purchase limit refund failed: " + var7.purchaseId() + " / " + this.safeBridgeCode(var12.code()),
+                                     (Throwable)var15
+                                  );
+                               }
 
+                               CopiMineArtifacts.BridgeTxnResult refundResult = var12;
+                               boolean limitRejection = var13;
                               this.runSync(
                                  () -> {
                                     var5.purchaseInFlightId = "";
                                     if (var1.isOnline()) {
-                                       if (var12.ok()) {
-                                          if (var13) {
-                                             var1.sendMessage(
-                                                this.color(
-                                                   "&cЛимит поставки для этого артефакта уже исчерпан. AR автоматически возвращены."
-                                                )
-                                             );
-                                             this.openError(
-                                                var1,
-                                                var3,
-                                                "&cЛимит поставки исчерпан",
-                                                "Во время финальной записи лимит уже занял другой покупатель. Списание AR отменено."
-                                             );
-                                          } else if (var14) {
-                                             var1.sendMessage(
-                                                this.color(
-                                                   "&cВаш персональный лимит на этот артефакт уже достигнут. AR автоматически возвращены."
-                                                )
-                                             );
-                                             this.openError(
-                                                var1,
-                                                var3,
-                                                "&cПерсональный лимит достигнут",
-                                                "Во время финальной записи лимит уже был занят. Списание AR отменено."
-                                             );
-                                          } else {
-                                             var1.sendMessage(
-                                                this.color(
-                                                   "&cБаза CopiMineArtifacts недоступна. Покупка отменена, AR возвращены."
-                                                )
-                                             );
-                                             this.openError(
-                                                var1,
-                                                var3,
-                                                "&cПокупка отменена",
-                                                "Финальная запись покупки не прошла. Списание AR отменено."
-                                             );
-                                          }
+                                        if (!limitRejection) {
+                                           var1.sendMessage(this.color(
+                                              "&eПокупка ожидает проверки. Не повторяйте её: статус и выдача будут восстановлены автоматически."
+                                           ));
+                                           this.openError(
+                                              var1,
+                                              var3,
+                                              "&eПокупка проверяется",
+                                              "Банк подтвердил перевод, но ответ базы покупок неоднозначен. Система сверит запись и не выполнит двойное списание или возврат."
+                                           );
+                                           Bukkit.getScheduler().runTaskLater(this, () -> this.recoverStrandedDeliveries(var1), 40L);
+                                        } else if (refundResult != null && refundResult.ok()) {
+                                           boolean supplyLimit = "ARTIFACT_LIMIT_SUPPLY".equalsIgnoreCase(this.firstNonBlank(var15.getMessage(), ""));
+                                           String message = supplyLimit
+                                              ? "Лимит поставки для этого артефакта уже исчерпан. AR автоматически возвращены."
+                                              : "Ваш персональный лимит на этот артефакт уже достигнут. AR автоматически возвращены.";
+                                           String title = supplyLimit ? "&cЛимит поставки исчерпан" : "&cПерсональный лимит достигнут";
+                                           var1.sendMessage(this.color("&c" + message));
+                                           this.openError(var1, var3, title, "Списание AR отменено, потому что лимит уже был достигнут.");
                                        } else {
                                           var1.sendMessage(
                                              this.color(
-                                                "&cПокупка остановлена после списания AR. Автовозврат не подтверждён, нужна ручная проверка администрации."
+                                                 "&cЛимит покупки достигнут, но автоматический возврат не подтверждён. Нужна проверка администрации."
                                              )
                                           );
                                           this.openError(
                                              var1,
                                              var3,
                                              "&cНужна ручная проверка",
-                                             "Списание прошло, но rollback не подтверждён. Автоматическая повторная выдача отключена."
+                                              "Возврат по ограничению покупки не подтверждён. Не повторяйте операцию до проверки."
                                           );
                                        }
                                     }
@@ -9222,6 +9221,9 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                            }
 
                            this.runSync(() -> this.deliverPurchase(var1, var7, var10));
+                        }
+                        } finally {
+                           this.activeArtifactShopPurchases.finish(var6);
                         }
                      }
                   }
@@ -9256,6 +9258,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                 "    INSERT INTO artifact_revenue_payouts(purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,shop_id,amount_ar,status,bank_tx_id,idempotency_key,last_error,created_at,updated_at)\n    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)\n"
             );
          ) {
+            try (PreparedStatement lockTimeout = var4.prepareStatement("SET LOCAL lock_timeout = '5s'")) {
+               lockTimeout.execute();
+            }
+            this.lockArtifactPurchasePersistence(var4, var2.purchaseId());
             this.lockArtifactPurchaseConstraints(var4, var1.getUniqueId().toString(), var2.item().itemId());
             if (var2.item().supplyLimit() > 0 && this.purchasedCount(var4, var2.item().itemId()) >= var2.item().supplyLimit()) {
                throw new SQLException("ARTIFACT_LIMIT_SUPPLY");
@@ -9299,11 +9305,10 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
             var8.setString(7, var2.item().itemId());
             var8.setString(8, var2.shop().shopId());
             var8.setLong(9, var2.item().priceAr());
-            // The bank transfer only charges the buyer here. Revenue is
-            // credited by the asynchronous payout worker, which consumes
-            // PENDING rows; inserting CREDITED would silently strand every
-            // shop sale before the president/treasury receives its share.
-            var8.setString(10, "PENDING");
+            // transferToAccount already debits the buyer and credits the
+            // recipient in one bank transaction. Persist that same transfer
+            // as the settlement; a second asynchronous credit would mint AR.
+            var8.setString(10, "CREDITED");
             var8.setString(11, var3.txId());
             var8.setString(12, "artifact-president-budget-" + var2.purchaseId());
             var8.setString(13, "");
@@ -10652,60 +10657,193 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
       });
    }
 
-   private void reconcileOrphanedShopTransfers() {
-      if (this.pgPool != null && this.bridge != null) {
-         for (CopiMineArtifacts.OrphanedShopTransfer var2 : this.readOrphanedShopTransfers(128)) {
-            String var3 = this.firstNonBlank(var2.idempotencyKey(), "");
-            String var4 = "artifact-purchase-";
-            if (!var3.startsWith(var4)) {
-               continue;
-            }
+   private void scheduleOrphanedShopTransferReconciliation() {
+      new org.bukkit.scheduler.BukkitRunnable() {
+         private int completedScanPolls;
+         private final OrphanTransferReconciliationRunGate reconciliationRunGate =
+            new OrphanTransferReconciliationRunGate();
+         private final OrphanShopTransferRecoveryState<CopiMineArtifacts.OrphanedShopTransfer> recoveryState =
+            new OrphanShopTransferRecoveryState<>();
 
-            String var5 = var3.substring(var4.length());
-            if (var5.isBlank() || var2.amount() <= 0L || this.firstNonBlank(var2.recipientAccountId(), "").isBlank()) {
-               continue;
-            }
+         @Override
+         public void run() {
+            this.reconciliationRunGate.runIfIdle(this::reconcile);
+         }
 
-            UUID var6;
+         private void reconcile() {
+            if (!CopiMineArtifacts.this.isEnabled()) {
+               cancel();
+               return;
+            }
+            if (this.recoveryState.isScanComplete()) {
+               // Recheck once per minute; a later purchase can fail to persist after the first pass.
+               if (++this.completedScanPolls < 6) {
+                  if (this.recoveryState.isComplete()) {
+                     return;
+                  }
+               } else {
+                  this.completedScanPolls = 0;
+                  this.recoveryState.beginNextScan(System.currentTimeMillis(), 60_000L);
+               }
+            }
             try {
-               var6 = UUID.fromString(var2.playerUuid());
-            } catch (IllegalArgumentException var10) {
-               this.getLogger().warning("Skipping orphaned artifact shop transfer with invalid player UUID: " + var2.transactionId());
-               continue;
-            }
-
-            CopiMineArtifacts.BridgeTxnResult var7 = this.bridge.transferFromAccount(
-               var2.recipientAccountId(),
-               EMPTY_UUID.toString(),
-               TREASURY_LABEL,
-               var6,
-               this.firstNonBlank(var2.playerName(), "Игрок"),
-               var2.amount(),
-               "artifact-orphan-refund-" + var5,
-               "AR_SHOP_PURCHASE_RECOVERY_REFUND",
-               "purchase=" + var5 + ";source_tx=" + var2.transactionId()
-            );
-            if (var7.ok()) {
-               this.audit("SERVER", "purchase_orphan_refunded", var5, "source_tx=" + var2.transactionId() + " amount=" + var2.amount());
-            } else {
-               this.getLogger().warning(
-                  "Artifact orphaned shop transfer refund is pending manual retry: " + var2.transactionId() + " / " + this.safeBridgeCode(var7.code())
+               CopiMineArtifacts.BridgeHealthSnapshot health = CopiMineArtifacts.this.bridge == null
+                  ? null : CopiMineArtifacts.this.bridge.health((UUID)null, "artifacts-orphan-recovery");
+               if (health == null || !health.bridgeReady() || !health.postgresReady()) {
+                  return;
+               }
+               for (Entry<String, CopiMineArtifacts.OrphanedShopTransfer> pending : this.recoveryState.pendingSnapshot().entrySet()) {
+                  if (CopiMineArtifacts.this.refundOrSkipOrphanedShopTransfer(pending.getValue())) {
+                     this.recoveryState.resolved(pending.getKey());
+                  }
+               }
+               if (!this.recoveryState.isScanComplete()) {
+                  OrphanShopTransferRecoveryState.Cursor cursor = this.recoveryState.cursor();
+                  List<CopiMineArtifacts.OrphanedShopTransfer> transfers =
+                     CopiMineArtifacts.this.readOrphanedShopTransfers(128, cursor);
+                  List<OrphanShopTransferRecoveryState.Cursor> fetchedCursors = new ArrayList<>(transfers.size());
+                  for (CopiMineArtifacts.OrphanedShopTransfer transfer : transfers) {
+                     fetchedCursors.add(new OrphanShopTransferRecoveryState.Cursor(transfer.createdAt(), transfer.transactionId()));
+                  }
+                  this.recoveryState.recordFetchedPage(fetchedCursors, 128);
+                  for (CopiMineArtifacts.OrphanedShopTransfer transfer : transfers) {
+                     if (!CopiMineArtifacts.this.refundOrSkipOrphanedShopTransfer(transfer)) {
+                        this.recoveryState.defer(transfer.transactionId(), transfer);
+                     }
+                  }
+               }
+            } catch (Exception error) {
+               CopiMineArtifacts.this.getLogger().log(
+                  Level.WARNING,
+                  "Artifacts orphan-transfer reconciliation will retry after the economy bridge is ready",
+                  error
                );
             }
          }
+      }.runTaskTimerAsynchronously(this, 20L, 200L);
+   }
+
+   private boolean refundOrSkipOrphanedShopTransfer(CopiMineArtifacts.OrphanedShopTransfer transfer) {
+      String transactionId = this.firstNonBlank(transfer.transactionId(), "");
+      if (transactionId.isBlank()) {
+         this.getLogger().warning("Skipping an orphaned artifact shop transfer without a transaction ID.");
+         return true;
+      }
+      String idempotencyKey = this.firstNonBlank(transfer.idempotencyKey(), "");
+      String purchasePrefix = "artifact-purchase-";
+      if (!idempotencyKey.startsWith(purchasePrefix)) {
+         return true;
+      }
+
+      String purchaseId = idempotencyKey.substring(purchasePrefix.length());
+      if (purchaseId.isBlank() || transfer.amount() <= 0L || this.firstNonBlank(transfer.recipientAccountId(), "").isBlank()) {
+         this.getLogger().warning("Skipping malformed orphaned artifact shop transfer: " + transactionId);
+         return true;
+      }
+
+      if (ArtifactRevenuePayoutPolicy.isWithinOrphanRefundGracePeriod(transfer.createdAt(), this.now())) {
+         return false;
+      }
+
+      if (this.activeArtifactShopPurchases.isPurchaseInFlight(purchaseId)) {
+         return false;
+      }
+
+      ArtifactShopPurchaseRecoveryGuard.RecoveryDecision recoveryDecision;
+      try {
+         boolean purchasePersisted = this.hasPersistedArtifactShopPurchase(idempotencyKey);
+         recoveryDecision = ArtifactShopPurchaseRecoveryGuard.decisionAfterPersistenceLookup(purchasePersisted);
+      } catch (SQLException error) {
+         this.getLogger().log(Level.WARNING, "Artifact purchase state lookup failed; orphan refund will retry: " + transactionId, error);
+         return false;
+      }
+      if (recoveryDecision == ArtifactShopPurchaseRecoveryGuard.RecoveryDecision.SKIP) {
+         return true;
+      }
+
+      UUID playerUuid;
+      try {
+         playerUuid = UUID.fromString(transfer.playerUuid());
+      } catch (IllegalArgumentException error) {
+         this.getLogger().warning("Skipping orphaned artifact shop transfer with invalid player UUID: " + transactionId);
+         return true;
+      }
+
+      CopiMineArtifacts.BridgeTxnResult result = this.bridge.transferFromAccount(
+         transfer.recipientAccountId(),
+         EMPTY_UUID.toString(),
+         TREASURY_LABEL,
+         playerUuid,
+         this.firstNonBlank(transfer.playerName(), "Игрок"),
+         transfer.amount(),
+         ArtifactShopPurchaseRecoveryGuard.refundIdempotencyKey(purchaseId),
+         "AR_SHOP_PURCHASE_RECOVERY_REFUND",
+         "purchase=" + purchaseId + ";source_tx=" + transactionId
+      );
+      if (result.ok()) {
+         this.audit("SERVER", "purchase_orphan_refunded", purchaseId, "source_tx=" + transactionId + " amount=" + transfer.amount());
+         return true;
+      }
+
+      this.getLogger().warning(
+         "Artifact orphaned shop transfer refund is pending automatic retry: " + transactionId + " / " + this.safeBridgeCode(result.code())
+      );
+      return false;
+   }
+
+   private boolean hasPersistedArtifactShopPurchase(String idempotencyKey) throws SQLException {
+      Connection connection = this.pgPool.acquire();
+      try {
+         connection.setAutoCommit(false);
+         String purchaseId = idempotencyKey.startsWith("artifact-purchase-")
+            ? idempotencyKey.substring("artifact-purchase-".length())
+            : "";
+         if (purchaseId.isBlank()) {
+            throw new SQLException("Invalid artifact purchase idempotency key.");
+         }
+         try (PreparedStatement lockTimeout = connection.prepareStatement("SET LOCAL lock_timeout = '5s'")) {
+            lockTimeout.execute();
+         }
+         try (PreparedStatement lock = connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+            lock.setString(1, ArtifactRevenuePayoutPolicy.purchasePersistenceLockKey(purchaseId));
+            lock.execute();
+         }
+         try (PreparedStatement statement = connection.prepareStatement(
+               "SELECT 1 FROM artifact_purchases WHERE idempotency_key=? LIMIT 1")) {
+            statement.setString(1, idempotencyKey);
+            try (ResultSet rows = statement.executeQuery()) {
+                boolean persisted = rows.next();
+                connection.commit();
+                return persisted;
+            }
+         }
+      } catch (SQLException error) {
+         try {
+            connection.rollback();
+         } catch (SQLException rollbackError) {
+            error.addSuppressed(rollbackError);
+         }
+         throw error;
+      } finally {
+         try {
+            connection.setAutoCommit(true);
+         } catch (SQLException ignored) {
+         }
+         this.pgPool.release(connection);
       }
    }
 
-   private List<CopiMineArtifacts.OrphanedShopTransfer> readOrphanedShopTransfers(int var1) {
+   private List<CopiMineArtifacts.OrphanedShopTransfer> readOrphanedShopTransfers(int limit, OrphanShopTransferRecoveryState.Cursor cursor) {
       if (this.bridge == null) {
          return List.of();
       }
       try {
-         List<Map<String, Object>> rows = this.bridge.findOrphanedArtifactShopTransfers(var1);
+         List<Map<String, Object>> rows = this.bridge.findOrphanedArtifactShopTransfers(limit, cursor.createdAt(), cursor.transactionId());
          List<CopiMineArtifacts.OrphanedShopTransfer> result = new ArrayList<>();
          for (Map<String, Object> row : rows) {
             result.add(new CopiMineArtifacts.OrphanedShopTransfer(
                this.firstNonBlank(this.str(row.get("tx_id")), ""),
+               this.parseLong(this.str(row.get("created_at")), 0L),
                this.firstNonBlank(this.str(row.get("to_account_id")), ""),
                Math.max(0L, this.parseLong(this.str(row.get("amount")), 0L)),
                this.firstNonBlank(this.str(row.get("idempotency_key")), ""),
@@ -10716,7 +10854,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          return result;
       } catch (Exception error) {
          this.getLogger().log(Level.WARNING, "Artifact orphaned shop transfer reconciliation lookup failed", error);
-         return List.of();
+         throw new IllegalStateException("Artifact orphan transfer lookup failed; reconciliation will retry.", error);
       }
    }
 
@@ -10766,35 +10904,24 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
    private void processRevenuePayout(String var1) throws Exception {
       Map<String, Object> var2 = this.readRevenuePayoutRow(var1);
-      if (var2 == null || !"PENDING".equalsIgnoreCase(this.firstNonBlank(this.str(var2.get("status")), ""))) {
+      String status = var2 == null ? "" : this.firstNonBlank(this.str(var2.get("status")), "");
+      String bankTransactionId = var2 == null ? "" : this.firstNonBlank(this.str(var2.get("bank_tx_id")), "");
+      long amount = var2 == null ? 0L : this.parseLong(this.str(var2.get("amount_ar")), 0L);
+      ArtifactRevenuePayoutPolicy.PendingRowAction action = ArtifactRevenuePayoutPolicy.pendingRowAction(status, bankTransactionId);
+      if (var2 == null || action == ArtifactRevenuePayoutPolicy.PendingRowAction.IGNORE) {
          return;
       }
 
-      String var3 = this.firstNonBlank(this.str(var2.get("recipient_account_id")), PRESIDENT_BUDGET_ACCOUNT_ID);
-      String var4 = this.firstNonBlank(this.str(var2.get("president_uuid")), "");
-      String var5x = TREASURY_LABEL;
-      long var5 = Math.max(0L, this.parseLong(this.str(var2.get("amount_ar")), 0L));
-      if (var5 <= 0L) {
-         this.markRevenuePayoutReview(var1, "amount_invalid");
+      String auditActor = TREASURY_LABEL;
+      if (action == ArtifactRevenuePayoutPolicy.PendingRowAction.MANUAL_REVIEW || amount <= 0L) {
+         String reason = amount <= 0L ? "amount_invalid" : "bank_tx_missing";
+         this.markRevenuePayoutReview(var1, reason);
+         this.audit(auditActor, "artifact_revenue_review", var1, "reason=" + reason + "; no additional credit issued");
          return;
       }
 
-      CopiMineArtifacts.BridgeTxnResult var7 = this.bridge.creditAccount(
-         var3,
-         var4,
-         var5x,
-         var5,
-         this.firstNonBlank(this.str(var2.get("idempotency_key")), "artifact-president-budget-" + var1),
-         "artifact_president_budget",
-         "purchase=" + var1 + ";item=" + this.firstNonBlank(this.str(var2.get("item_id")), "") + ";buyer=" + this.firstNonBlank(this.str(var2.get("buyer_uuid")), "")
-      );
-      if (var7.ok()) {
-         this.markRevenuePayoutCredited(var1, var7.txId());
-         this.audit(var5x, "artifact_revenue_paid", var1, "amount=" + var5 + " buyer=" + this.firstNonBlank(this.str(var2.get("buyer_name")), ""));
-      } else {
-         this.markRevenuePayoutReview(var1, this.safeBridgeCode(var7.code()));
-         this.audit(var5x, "artifact_revenue_review", var1, "code=" + this.safeBridgeCode(var7.code()));
-      }
+      this.markRevenuePayoutCredited(var1, bankTransactionId);
+      this.audit(auditActor, "artifact_revenue_reconciled", var1, "bank_tx=" + bankTransactionId + "; existing direct transfer retained");
    }
 
    private Map<String, Object> readRevenuePayoutRow(String var1) throws SQLException {
@@ -10802,7 +10929,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
 
       try {
          PreparedStatement var3 = var2.prepareStatement(
-            "SELECT purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,amount_ar,idempotency_key,status FROM artifact_revenue_payouts WHERE purchase_id=? LIMIT 1"
+            "SELECT purchase_id,president_uuid,president_name,recipient_account_id,buyer_uuid,buyer_name,item_id,amount_ar,idempotency_key,status,bank_tx_id FROM artifact_revenue_payouts WHERE purchase_id=? LIMIT 1"
          );
 
          try {
@@ -13610,6 +13737,13 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
                var11.execute();
             }
          }
+      }
+   }
+
+   private void lockArtifactPurchasePersistence(Connection connection, String purchaseId) throws SQLException {
+      try (PreparedStatement lock = connection.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+         lock.setString(1, ArtifactRevenuePayoutPolicy.purchasePersistenceLockKey(purchaseId));
+         lock.execute();
       }
    }
 
@@ -17057,12 +17191,12 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
          }
       }
 
-      List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit) {
+      List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit, long afterCreatedAt, String afterTxId) {
          ArtifactsBridge bridge = this.resolveBridge();
          if (bridge == null) {
             return List.of();
          }
-         return bridge.findOrphanedArtifactShopTransfers(limit);
+         return bridge.findOrphanedArtifactShopTransfers(limit, afterCreatedAt, afterTxId);
       }
 
       private CopiMineArtifacts.BridgeTxnResult invokeTxn(String var1, Player var2, long var3, String var5, String var6, String var7, String var8) {
@@ -17260,7 +17394,7 @@ public final class CopiMineArtifacts extends JavaPlugin implements Listener, Com
    }
 
    private static record OrphanedShopTransfer(
-      String transactionId, String recipientAccountId, long amount, String idempotencyKey, String playerUuid, String playerName
+      String transactionId, long createdAt, String recipientAccountId, long amount, String idempotencyKey, String playerUuid, String playerName
    ) {
    }
 

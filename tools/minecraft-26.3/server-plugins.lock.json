@@ -1,0 +1,1007 @@
+{
+  "schemaVersion": 1,
+  "minecraftVersion": "26.3",
+  "verifiedAt": "2026-10-11",
+  "nativeVerified": false,
+  "status": "runtime-candidates",
+  "modules": [
+    {
+      "project": "authmereloaded",
+      "pluginName": "AuthMe",
+      "version": "6.0.1",
+      "channel": "release",
+      "versionId": "fPuH4uYs",
+      "projectId": "9js4IEHC",
+      "source": "https://modrinth.com/plugin/authmereloaded",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": "https://github.com/AuthMe/AuthMeReloaded/blob/master/LICENSE"
+      },
+      "filename": "AuthMe-6.0.1-Paper.jar",
+      "url": "https://cdn.modrinth.com/data/9js4IEHC/versions/fPuH4uYs/AuthMe-6.0.1-Paper.jar",
+      "size": 1153596,
+      "sha1": "59f7e8139f964df424bab5c1aaed6794a70fb5d7",
+      "sha512": "832eb1570f1887493dc09bd183360c6c890aafe24fbc635d36f7c3162c339f064e3a0e082519defe7e67569c1d78072f582cb49c14a24d125d4ece463b765271",
+      "sha256": "7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a",
+      "artifactVersion": "6.0.1",
+      "platform": "paper",
+      "gameVersions": [
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "80371ba80087c14e49fad908c581ea7677943db4b968760c053d3bb0d26764d1"
+      ]
+    },
+    {
+      "project": "packetevents",
+      "pluginName": "packetevents",
+      "version": "2.14.0",
+      "channel": "release",
+      "versionId": "m78nFxYg",
+      "projectId": "HYKaKraK",
+      "source": "https://modrinth.com/plugin/packetevents",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": "https://github.com/retrooper/packetevents/blob/2.0/LICENSE"
+      },
+      "filename": "packetevents-spigot-2.14.0.jar",
+      "url": "https://cdn.modrinth.com/data/HYKaKraK/versions/m78nFxYg/packetevents-spigot-2.14.0.jar",
+      "size": 5723413,
+      "sha1": "f576038135551cb5549856bafec8d4f2456e1ba5",
+      "sha512": "18a942cb55f64783a63b28deea2cebbbe782e5d6a1089f6700430e183bfbce0a45398a640ed0dff4361b55190dcf47017f2ca7788f4a5c8c9efad1f549a63fe3",
+      "sha256": "060087c58ec268eae7dd0eb1f17ac3bea1eaadda1693414141ff64e506091bd7",
+      "artifactVersion": "2.14.0+spigot",
+      "platform": "paper",
+      "gameVersions": [
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": []
+    },
+    {
+      "project": "worldedit",
+      "pluginName": "WorldEdit",
+      "version": "7.4.6-beta-02",
+      "channel": "beta",
+      "versionId": "J1eeOh6C",
+      "projectId": "1u6JkXh5",
+      "source": "https://modrinth.com/plugin/worldedit",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": "https://github.com/EngineHub/WorldEdit/blob/master/LICENSE.txt"
+      },
+      "filename": "worldedit-bukkit-7.4.6-beta-02.jar",
+      "url": "https://cdn.modrinth.com/data/1u6JkXh5/versions/J1eeOh6C/worldedit-bukkit-7.4.6-beta-02.jar",
+      "size": 7872751,
+      "sha512": "138ea8f412bf4a17104d2e090a9171e1b263c6b28a060dacda5bc78c4629e9bac1c3834cccaaa50ac87bf148a269cf9dfd46967dddedd64dc512fdf7a5db17f9",
+      "sha1": "05474d9ef7fcae884513a97287df56672d460d48",
+      "dependencies": [],
+      "sha256": "166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289",
+      "artifactVersion": "7.4.6-beta-02+2c90a77a1",
+      "replaceSha256": [
+        "75df26f120ff424e62cba3a6e41b3b4e496251d5613b3c55c5f35b96bd8fd57c"
+      ]
+    },
+    {
+      "project": "worldguard",
+      "pluginName": "WorldGuard",
+      "version": "7.0.19",
+      "channel": "release",
+      "versionId": "TtfwTyi6",
+      "projectId": "DKY9btbd",
+      "source": "https://modrinth.com/plugin/worldguard",
+      "license": {
+        "id": "LGPL-3.0-only",
+        "name": "GNU Lesser General Public License v3.0 only",
+        "url": null
+      },
+      "filename": "worldguard-bukkit-7.0.19.jar",
+      "url": "https://cdn.modrinth.com/data/DKY9btbd/versions/TtfwTyi6/worldguard-bukkit-7.0.19.jar",
+      "size": 1199021,
+      "sha512": "e9ad7ad53c93a07a7d5c3af3d844a677abbe894de4d7ff69fc03397daae5e8532217d57de23a3cddbe0d94ae81ee7acde6c78384b9596aa1eb3001bb37087d41",
+      "sha1": "52e3d1819061308be001d14206b9d73a9c53a618",
+      "dependencies": [],
+      "sha256": "396df065f1cf38bab9878a0f53a776d5a085ebbf3c41813938b73f95d4eaca03",
+      "artifactVersion": "7.0.19+2400-f395a16",
+      "replaceSha256": [
+        "48b136938b3cd4816a95887847ff28e56a06fb110103344bb574739c35f9e86c"
+      ]
+    },
+    {
+      "project": "simple-voice-chat",
+      "pluginName": "voicechat",
+      "version": "bukkit-2.6.24",
+      "channel": "release",
+      "versionId": "EJth3OAr",
+      "projectId": "9eGKb6K1",
+      "source": "https://modrinth.com/plugin/simple-voice-chat",
+      "license": {
+        "id": "LicenseRef-All-Rights-Reserved",
+        "name": "",
+        "url": null
+      },
+      "filename": "voicechat-bukkit-2.6.24.jar",
+      "url": "https://cdn.modrinth.com/data/9eGKb6K1/versions/EJth3OAr/voicechat-bukkit-2.6.24.jar",
+      "size": 939426,
+      "sha1": "bdc44827f53e392800935452dc2c6e6e20f378d4",
+      "sha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+      "dependencies": [],
+      "sha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
+      "artifactVersion": "2.6.24",
+      "replaceSha256": [
+        "d2b7c115f5132b9bff2a9a49dd6306b6b7b2049950961112b15b8936b129ff30"
+      ]
+    },
+    {
+      "project": "emotecraft",
+      "pluginName": "emotecraft",
+      "version": "3.5.0-a.build.171-paper",
+      "channel": "alpha",
+      "versionId": "c6FIjPqt",
+      "projectId": "pZ2wrerK",
+      "source": "https://modrinth.com/plugin/emotecraft",
+      "license": {
+        "id": "GPL-3.0-or-later",
+        "name": "GNU General Public License v3.0 or later",
+        "url": null
+      },
+      "filename": "emotecraft-paper-for-MC26.3-3.5.0-a.build.171.jar",
+      "url": "https://cdn.modrinth.com/data/pZ2wrerK/versions/c6FIjPqt/emotecraft-paper-for-MC26.3-3.5.0-a.build.171.jar",
+      "size": 2077354,
+      "sha512": "567e29f089c2ef826393188241f5e7afb1be618fff324956ff314fdf34ac8af87d25b1f78da161d3e5351f210cc1a848ff3e3211688daf0d6acfafddc00ddf97",
+      "sha1": "faf2ce920badcc71309a110ce2a9ffa8389ec3da",
+      "dependencies": [],
+      "sha256": "bd319147504003b83d82d35f40b42fcf7288f5b8139fd1bf40f160e0c43041fa",
+      "artifactVersion": "3.5.0-a.build.171",
+      "replaceSha256": [
+        "b8defd7f557262db50b9d0c411544d09ced5bb7f10703e1ffa05f4b38c851e23"
+      ]
+    },
+    {
+      "project": "imageframe",
+      "pluginName": "ImageFrame",
+      "version": "2026.1.5",
+      "channel": "release",
+      "versionId": "dKkWOwRr",
+      "projectId": "lJFOpcEj",
+      "source": "https://modrinth.com/plugin/imageframe",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": null
+      },
+      "filename": "ImageFrame-2026.1.5.0.jar",
+      "url": "https://cdn.modrinth.com/data/lJFOpcEj/versions/dKkWOwRr/ImageFrame-2026.1.5.0.jar",
+      "size": 4762072,
+      "sha1": "d725eea7810e8b8a8037db95db8b0860e1f539e4",
+      "sha512": "e9ee5cea569946767c125397550c7ca5bbcbe0d504832af216ec9d8dea99f532f4af80e0e9a17ee917c7fd78c10292ba3bbe61457947f19d3edf68bbf5f2f4a8",
+      "dependencies": [
+        {
+          "version_id": null,
+          "project_id": "7JSyQd4e",
+          "file_name": null,
+          "dependency_type": "optional"
+        }
+      ],
+      "sha256": "65b5c14eb6bd847f1cc0f4985efa95ab43d2f3e2f67dbaec2ecf3ea327fde9b1",
+      "artifactVersion": "2026.1.5.0",
+      "replaceSha256": [
+        "cbbf505000338a6c1d27a249a10441b69d9c53b5aeb5a79ad8b7b2392419c7ce"
+      ]
+    },
+    {
+      "project": "tab-was-taken",
+      "pluginName": "TAB",
+      "version": "6.2.0",
+      "channel": "release",
+      "versionId": "OzomWbbH",
+      "projectId": "gG7VFbG0",
+      "source": "https://modrinth.com/plugin/tab-was-taken",
+      "license": {
+        "id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "url": null
+      },
+      "filename": "TAB v6.2.0.jar",
+      "url": "https://cdn.modrinth.com/data/gG7VFbG0/versions/OzomWbbH/TAB%20v6.2.0.jar",
+      "size": 8482800,
+      "sha512": "b09aa679e40b526273b6c59109ad69c135ee41cf2b26c636a1edc5662b83928278000bbb028088d5be55dd71f0eb239dba5289df265b6141307b251b2c8133e3",
+      "sha1": "0e5288cd0565e40fb40c54696e7f017eb55a964b",
+      "dependencies": [],
+      "sha256": "f94331947134242efa478b9b9bf04b29e37861721dee58c32b7ea57779aa735e",
+      "artifactVersion": "6.2.0",
+      "replaceSha256": [
+        "2811fa2dd8c080b12696fcad139bbb9360829b18565d31e3a670945bb1ac8a8b"
+      ]
+    },
+    {
+      "project": "grimac",
+      "version": "2.3.74-f5bbe9c",
+      "channel": "alpha",
+      "versionId": "nKI7MWZj",
+      "projectId": "LJNGWSvH",
+      "source": "https://modrinth.com/plugin/grimac",
+      "license": {
+        "id": "GPL-3.0-or-later",
+        "name": "GNU General Public License v3.0 or later",
+        "url": "https://github.com/GrimAnticheat/Grim/blob/2.0/LICENSE"
+      },
+      "filename": "GrimAC-2.3.74-f5bbe9c-creative-fix.jar",
+      "url": "https://cdn.modrinth.com/data/LJNGWSvH/versions/nKI7MWZj/grimac-bukkit-2.3.74-f5bbe9c.jar",
+      "size": 13138862,
+      "sha512": "34ae21d58d047af9647275b17d413fa3d4a7bd82b193fedf921ca27112d225708581943cd59a930116e2686e9a977059888dbb8e17cb24ad185efe1bde165baf",
+      "sha1": "17bf33212c625ce5196488f82c59625f9cd8efca",
+      "dependencies": [],
+      "upstreamDeclares263": false,
+      "compatibilityStatus": "requires-runtime-validation",
+      "sha256": "0dedc39af02e14e7df6f67d06fced5fd694d6973bdd7e4cdbb33b77ed54c4ae1",
+      "pluginName": "GrimAC",
+      "artifactVersion": "2.3.74-f5bbe9c",
+      "replaceSha256": [
+        "7f1df9c02b52c1d2f69949a0c465781ed8c53dd0c52234feec01785e675ff5d1"
+      ],
+      "upstreamFilename": "grimac-bukkit-2.3.74-f5bbe9c.jar",
+      "upstreamSize": 13139023,
+      "upstreamSha512": "f2195bafc056c8a0460f1410989febc38de03c7c94e5fea2744f47e62b4c4a6a8a322ee9387e9d89daea0390fcb0fed932c256d71dbb16e9343353aa0da202e5",
+      "upstreamSha1": "85bac82e77938549ecd07b2369b07aabc835d67f",
+      "upstreamSha256": "a6768ab769ac8801b7d03567528424b0a8e7310cecd31dc70d100b521ab959e3",
+      "patch": "thirdparty/grim-creative-patch/minecraft-26.3/build.ps1",
+      "sourceCommit": "f5bbe9cf55a631f40b3d28d722d0f82b514e3403"
+    },
+    {
+      "project": "coreprotect",
+      "version": "24.1",
+      "channel": "source-development",
+      "versionId": "3sehX6Sg",
+      "projectId": "Lu3KuzdV",
+      "source": "https://github.com/PlayPro/CoreProtect/tree/4b1e9ab33496d1672946c3ad497c119a0bb08df3",
+      "license": {
+        "id": "Artistic-2.0",
+        "url": "https://github.com/PlayPro/CoreProtect/blob/4b1e9ab33496d1672946c3ad497c119a0bb08df3/LICENSE"
+      },
+      "filename": "CoreProtect-CE-24.1-26.3-upstream.jar",
+      "url": "https://cdn.modrinth.com/data/Lu3KuzdV/versions/3sehX6Sg/CoreProtect-CE-24.1.jar",
+      "size": 14131252,
+      "sha1": "3e6ef12c6d4bd2c72f8dc32a35491fd414dc4d80",
+      "sha512": "cb88a656d23695fbe05b92c8d0afc60249cd6d5ef6165205e4a96398e473a666d53a75136f7fcb2b54235115781bfdac74d1937450dbe3ae1d47e96be5a15860",
+      "dependencies": [],
+      "upstreamDeclares263": true,
+      "compatibilityStatus": "requires-runtime-validation",
+      "sha256": "c4db887418ae0c802996057f6f565452574458b07241b190623135373c2bf79b",
+      "pluginName": "CoreProtect",
+      "artifactVersion": "24.1",
+      "replaceSha256": [
+        "402075d0eca6c3748d67d5b580bc5faf78b1b5ba91446ac15ccc7c7225457a81",
+        "a2acef7c06ef201355cef07d591a6055dfed358ad768faaaaaf4e276865ecc97",
+        "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef"
+      ],
+      "upstreamFilename": "CoreProtect-CE-24.1.jar",
+      "upstreamSha512": "76aad727528ddb990bbee5069f8ef3fcd018ae0bcdea89b965be2485e828633eb068672e841be64e550c8474f901a24d8c15c7bd44c2bd6c96244e1e58de0c95",
+      "sourceCommit": "4b1e9ab33496d1672946c3ad497c119a0bb08df3",
+      "buildScript": "scripts/minecraft/BuildCoreProtectMigration.ps1",
+      "buildArtifact": "build/minecraft-26.3/server-plugins/CoreProtect-CE-24.1-26.3-upstream.jar",
+      "buildReceipt": "build/minecraft-26.3/server-plugins/CoreProtect-CE-24.1-26.3-upstream.jar.receipt.json",
+      "buildSize": 14131228,
+      "buildSha256": "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
+      "buildSha512": "3721dd7c5751d19fd5d603eabc456b42a3e8f96bc2064be301a92a8f3ed5bfdf5427ccde629ec65a1d266231bd1a192733f9f8b4e68eb97ec293d8569255a0e4"
+    },
+    {
+      "project": "EssentialsX",
+      "version": "2.22.1-dev+27-e70bdb8",
+      "channel": "development",
+      "source": "https://ci.ender.zone/job/EssentialsX/1832/",
+      "license": {
+        "id": "GPL-3.0-only"
+      },
+      "filename": "EssentialsX-2.22.1-dev+27-e70bdb8.jar",
+      "url": "https://ci.ender.zone/job/EssentialsX/1832/artifact/jars/EssentialsX-2.22.1-dev+27-e70bdb8.jar",
+      "sourceCommit": "e70bdb817c758474acb3a23a37cf961b2f716a50",
+      "compatibilityStatus": "requires-runtime-validation",
+      "sha512": "c1e2dacdb6b425690be79187081075a86f032a24b024c7c45bfdfd638006bb43ec5569c8c730dd36054e1ab5c9c779c36085be79e93af44237f6c710416e6d20",
+      "sha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
+      "size": 4820392,
+      "pluginName": "Essentials",
+      "artifactVersion": "2.22.1-dev+27-e70bdb8",
+      "replaceSha256": [
+        "bda4685105977fca2e209820a9f0ad24275bd103390a03236f38e59bfdac58e6"
+      ]
+    },
+    {
+      "project": "EssentialsXChat",
+      "version": "2.22.1-dev+27-e70bdb8",
+      "channel": "development",
+      "source": "https://ci.ender.zone/job/EssentialsX/1832/",
+      "license": {
+        "id": "GPL-3.0-only"
+      },
+      "filename": "EssentialsXChat-2.22.1-dev+27-e70bdb8.jar",
+      "url": "https://ci.ender.zone/job/EssentialsX/1832/artifact/jars/EssentialsXChat-2.22.1-dev+27-e70bdb8.jar",
+      "sourceCommit": "e70bdb817c758474acb3a23a37cf961b2f716a50",
+      "compatibilityStatus": "requires-runtime-validation",
+      "sha512": "4be14ee964fcbef2161baa3d52f4f64d3ac1e0b90c81e8923ca466b0c2837b6b90ee276d8316d65f6fb28c2a8b478de647ee15eec4d8dda0f5c58f8cccd253ae",
+      "sha256": "fccab8d4fc659484a53ef62f64390910507f061d04f02d0bc759676b4cf5e555",
+      "size": 21786,
+      "pluginName": "EssentialsChat",
+      "artifactVersion": "2.22.1-dev+27-e70bdb8",
+      "replaceSha256": [
+        "e5b0211f98af1eaba712d9294997639a39209db1fc842394a0923820073ec65a"
+      ]
+    },
+    {
+      "project": "EssentialsXSpawn",
+      "version": "2.22.1-dev+27-e70bdb8",
+      "channel": "development",
+      "source": "https://ci.ender.zone/job/EssentialsX/1832/",
+      "license": {
+        "id": "GPL-3.0-only"
+      },
+      "filename": "EssentialsXSpawn-2.22.1-dev+27-e70bdb8.jar",
+      "url": "https://ci.ender.zone/job/EssentialsX/1832/artifact/jars/EssentialsXSpawn-2.22.1-dev+27-e70bdb8.jar",
+      "sourceCommit": "e70bdb817c758474acb3a23a37cf961b2f716a50",
+      "compatibilityStatus": "requires-runtime-validation",
+      "sha512": "e2cb4efae14ef92c4b093afc0199febaefd6084147ab8f6a928ca9abcaa3a1b93ae4fb8a74f3a7b519c7f8e30816e55abfb1ae0ef851b1a06c9fcc96ccddd9e8",
+      "sha256": "bb386f1fdd9f80bf243177a0f686617e945c81a5a8b54721cf88e0c1ed52b3a0",
+      "size": 18686,
+      "pluginName": "EssentialsSpawn",
+      "artifactVersion": "2.22.1-dev+27-e70bdb8",
+      "replaceSha256": [
+        "dd5377c4c921b9b67814209f4f6646ffbb959729003e721ec5e63c47c7c010b8"
+      ]
+    },
+    {
+      "project": "protocollib",
+      "version": "dev-d89a5de",
+      "channel": "development",
+      "source": "https://github.com/dmulloy2/ProtocolLib/releases/tag/dev-build",
+      "license": {
+        "id": "GPL-2.0-only"
+      },
+      "filename": "ProtocolLib-26.3-dev.jar",
+      "url": "https://github.com/dmulloy2/ProtocolLib/releases/download/dev-build/ProtocolLib.jar",
+      "sourceCommit": "d89a5deb3eb625b16846da57fbbb04bfdd0d031d",
+      "upstreamPacketMappingVersion": "26.3",
+      "upstreamMappingCommit": "583353e9fa3dcec1f6da06d89c189d4ecda1afd4",
+      "upstreamMappingUrl": "https://github.com/dmulloy2/ProtocolLib/commit/583353e9fa3dcec1f6da06d89c189d4ecda1afd4",
+      "upstreamMaximumTestedVersion": "26.2",
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "sha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
+      "sha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+      "size": 10567022,
+      "pluginName": "ProtocolLib",
+      "artifactVersion": "5.5.0-SNAPSHOT-d89a5de",
+      "replaceSha256": [
+        "ee2e7ab9b5386f2d103081c4d108e61b1035df2ca692b53d6e2409fb1f5caccf"
+      ]
+    },
+    {
+      "project": "chunky",
+      "pluginName": "Chunky",
+      "version": "1.5.3",
+      "channel": "release",
+      "versionId": "MdY6JATr",
+      "projectId": "fALzjamp",
+      "source": "https://modrinth.com/plugin/chunky",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": "https://github.com/pop4959/Chunky/blob/master/LICENSE"
+      },
+      "filename": "Chunky-Bukkit-1.5.3.jar",
+      "url": "https://cdn.modrinth.com/data/fALzjamp/versions/MdY6JATr/Chunky-Bukkit-1.5.3.jar",
+      "size": 304616,
+      "sha1": "7ff47ee3afec89a1725e6eef393f373c549eff3b",
+      "sha512": "43ffecc6e6a734b752da41575bbb316526c124c3f878942437d5133c377bfbd9b78bda975520dc074d7158c15dade58a444ccd0fd8d8a25d165b6fc450140422",
+      "sha256": "530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3",
+      "artifactVersion": "1.5.3",
+      "platform": "paper",
+      "gameVersions": [
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2",
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "2a5477fc80f71012e15ade1ce34dbeb836e17623b28db112492c0f1443c09721"
+      ]
+    },
+    {
+      "project": "clearlag",
+      "pluginName": "ClearLag",
+      "version": "1.14.1",
+      "channel": "beta",
+      "versionId": "raHM5t3P",
+      "projectId": "7bhTp28M",
+      "source": "https://modrinth.com/plugin/clearlag%2B%2B",
+      "license": {
+        "id": "LicenseRef-All-Rights-Reserved",
+        "name": "All Rights Reserved",
+        "url": null
+      },
+      "filename": "ClearLag 1.14.1 VER 1.18-26.3.jar",
+      "url": "https://cdn.modrinth.com/data/7bhTp28M/versions/raHM5t3P/ClearLag%201.14.1%20VER%201.18-26.3.jar",
+      "size": 303709,
+      "sha1": "5c9d40ff459f589b94cead5893ca01fed6d9a3af",
+      "sha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+      "sha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+      "artifactVersion": "1.14.1",
+      "apiVersion": "1.18",
+      "platform": "paper",
+      "gameVersions": [
+        "1.18",
+        "1.18.1",
+        "1.18.2",
+        "1.19",
+        "1.19.1",
+        "1.19.2",
+        "1.19.3",
+        "1.19.4",
+        "1.20",
+        "1.20.1",
+        "1.20.2",
+        "1.20.3",
+        "1.20.4",
+        "1.20.5",
+        "1.20.6",
+        "1.21",
+        "1.21.1",
+        "1.21.2",
+        "1.21.3",
+        "1.21.4",
+        "1.21.5",
+        "1.21.6",
+        "1.21.7",
+        "1.21.8",
+        "1.21.9",
+        "1.21.10",
+        "1.21.11",
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2",
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "aea791f8859f18e62f6b5b2d61e49a7b866c8a8a5878345f445b264e7853f44c"
+      ]
+    },
+    {
+      "project": "luckperms",
+      "pluginName": "LuckPerms",
+      "version": "v5.5.71-bukkit",
+      "channel": "release",
+      "versionId": "b0mk8uS6",
+      "projectId": "Vebnzrzj",
+      "source": "https://modrinth.com/plugin/luckperms",
+      "license": {
+        "id": "MIT",
+        "name": "MIT License",
+        "url": "https://github.com/LuckPerms/LuckPerms/blob/master/LICENSE"
+      },
+      "filename": "LuckPerms-Bukkit-5.5.71.jar",
+      "url": "https://cdn.modrinth.com/data/Vebnzrzj/versions/b0mk8uS6/LuckPerms-Bukkit-5.5.71.jar",
+      "size": 1501521,
+      "sha1": "fc8bb9919fa77c670b7ed5c284bcb66770ea71fc",
+      "sha512": "188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27",
+      "sha256": "49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d",
+      "artifactVersion": "5.5.71",
+      "platform": "paper",
+      "gameVersions": [
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2",
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "ddae0381514663e3b499e601d05b058274e3567be702fb635e3cb3b0eaabf934"
+      ]
+    },
+    {
+      "project": "gsit",
+      "pluginName": "GSit",
+      "version": "3.7.0",
+      "channel": "release",
+      "source": "https://hangar.papermc.io/Gecolay/GSit/versions/3.7.0",
+      "license": {
+        "id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "url": "https://github.com/Gecolay/GSit/blob/master/LICENSE"
+      },
+      "filename": "GSit-3.7.0.jar",
+      "url": "https://hangarcdn.papermc.io/plugins/Gecolay/GSit/versions/3.7.0/PAPER/GSit-3.7.0.jar",
+      "size": 811798,
+      "sha1": "55c5f0fa6e98f33a9c951244bbc56551ef95ff3e",
+      "sha512": "5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad",
+      "sha256": "57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea",
+      "artifactVersion": "3.7.0",
+      "platform": "paper",
+      "gameVersions": [
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2",
+        "26.3"
+      ],
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "b0749412b65c01bdcd683820a764a2f769ac557eb0b691856d267a63f283ca1c",
+        "143d38509f49c40b214887ad3c682c8db7fdd81c610787d0186d65f51256f4d2"
+      ]
+    },
+    {
+      "project": "vaultunlocked",
+      "pluginName": "Vault",
+      "version": "2.20.3",
+      "channel": "release",
+      "versionId": "qZgRzoYs",
+      "projectId": "ayRaM8J7",
+      "source": "https://modrinth.com/plugin/vaultunlocked",
+      "license": {
+        "id": "LGPL-3.0-or-later",
+        "name": "GNU Lesser General Public License v3.0 or later",
+        "url": "https://www.gnu.org/licenses/lgpl-3.0.html"
+      },
+      "filename": "VaultUnlocked-2.20.3.jar",
+      "url": "https://cdn.modrinth.com/data/ayRaM8J7/versions/qZgRzoYs/VaultUnlocked-2.20.3.jar",
+      "size": 134932,
+      "sha1": "daeb8d9dd3ba7bfbdfe51da01c7ccc6c8db47b3f",
+      "sha512": "0eedea1591459e7e327315b43afa834a173c8c2ae31b3b235586d31963df29a4a6c0ef4b8f3fdc746e15afd47ee50c1ff93584543b5c2ef7c2a80135dba1136a",
+      "sha256": "fbc6651aca11e13376c115df66eeffa79592e79517be398299aa6beb49c22695",
+      "artifactVersion": "2.20.3",
+      "platform": "paper",
+      "gameVersions": [
+        "26.1",
+        "26.1.1",
+        "26.1.2",
+        "26.2",
+        "26.3"
+      ],
+      "apiVersion": "1.13",
+      "compatibilityStatus": "requires-runtime-validation",
+      "nativeVerified": false,
+      "replaceSha256": [
+        "a6b5ed97f43a5cf5bbaf00a7c8cd23c5afc9bd003f849875af8b36e6cf77d01d"
+      ]
+    }
+  ],
+  "unchangedBaseline": [
+    {
+      "pluginName": "AuthEffects",
+      "filename": "AuthEffects.jar",
+      "version": "1.0.0",
+      "sha256": "b2241bd5ccb6df8b2afbe50716009b9cda4c409207037ecb2b615d8d661c34aa",
+      "candidate": {
+        "filename": "AuthEffects-26.3.jar",
+        "runtimeFilename": "AuthEffects.jar",
+        "sha256": "8bb660035c2fba47b0b832fa9cfb3a8b87bc5f7c446af970d8edeaa11e102e8f",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/AuthEffects-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "sha512": "a0021d8ddd3d0381d598297c9500c0da4ebe71258841482406263a29b038c85783f2f4dcbe272d35aa5bfb8a7b135a490f7290f9589e020e11a4242eba61995e",
+        "size": 11003
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "AuthMe",
+      "filename": "AuthMe-5.6.0.jar",
+      "version": "5.6.0-bCUSTOM",
+      "sha256": "80371ba80087c14e49fad908c581ea7677943db4b968760c053d3bb0d26764d1",
+      "candidate": {
+        "filename": "AuthMe-6.0.1-Paper.jar",
+        "runtimeFilename": "AuthMe-6.0.1-Paper.jar",
+        "sha256": "7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a",
+        "apiVersion": "26.3",
+        "versionId": "fPuH4uYs",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "Chunky",
+      "filename": "Chunky-Bukkit-1.4.40.jar",
+      "version": "1.4.40",
+      "sha256": "2a5477fc80f71012e15ade1ce34dbeb836e17623b28db112492c0f1443c09721",
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "ClearLag",
+      "filename": "ClearLag.jar",
+      "version": "1.12.1",
+      "sha256": "aea791f8859f18e62f6b5b2d61e49a7b866c8a8a5878345f445b264e7853f44c",
+      "candidate": {
+        "filename": "ClearLag 1.14.1 VER 1.18-26.3.jar",
+        "runtimeFilename": "ClearLag 1.14.1 VER 1.18-26.3.jar",
+        "sha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+        "sha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+        "size": 303709,
+        "versionId": "raHM5t3P",
+        "projectId": "7bhTp28M",
+        "source": "https://modrinth.com/plugin/clearlag%2B%2B",
+        "gameVersions": [
+          "1.18",
+          "1.18.1",
+          "1.18.2",
+          "1.19",
+          "1.19.1",
+          "1.19.2",
+          "1.19.3",
+          "1.19.4",
+          "1.20",
+          "1.20.1",
+          "1.20.2",
+          "1.20.3",
+          "1.20.4",
+          "1.20.5",
+          "1.20.6",
+          "1.21",
+          "1.21.1",
+          "1.21.2",
+          "1.21.3",
+          "1.21.4",
+          "1.21.5",
+          "1.21.6",
+          "1.21.7",
+          "1.21.8",
+          "1.21.9",
+          "1.21.10",
+          "1.21.11",
+          "26.1",
+          "26.1.1",
+          "26.1.2",
+          "26.2",
+          "26.3"
+        ],
+        "channel": "beta",
+        "license": {
+          "id": "LicenseRef-All-Rights-Reserved",
+          "name": "All Rights Reserved",
+          "url": null
+        },
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "CopiMineArtifacts",
+      "filename": "CopiMineArtifacts.jar",
+      "version": "1.1.0-shops-blocks-prices",
+      "sha256": "5bcf75ab368402b10add4738962add7454f24b30e04401cb3e613971e96ae1b0",
+      "candidate": {
+        "filename": "CopiMineArtifacts-26.3.jar",
+        "runtimeFilename": "CopiMineArtifacts.jar",
+        "sha256": "3bd3dd68f58f9fad7e23ef8a6c18c0095c1004e4d2a5b59fd9276183dc16e6b7",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineArtifacts-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "sha512": "a7cf39c091a4ddc2ee3783d3cfc91a3baf559155f4ef0e19e23bc58f5f01118ce7ca93caad388891f3a2882a98b818c347e0fc95e16f07126b35ee36129bcaa8",
+        "size": 325468
+      },
+      "nativeVerified": false,
+      "replaceSha256": [
+        "248505b556215c338695653837789a1b73978e2c72639c0626527f1ce160f0c2",
+        "0b6147e644564f6af90c8c7a439969fbc408033b7ea07566ca5e2074db3dd47c",
+        "2d25ed0e3f4dbf9ff68852b98d1192ee9e3ee388c53880759bfedf824a37cd2d",
+        "26d3520b91218acc178b7189ee6599528c759baf965f42bdda5fbd807c01d053"
+      ]
+    },
+    {
+      "pluginName": "CopiMineEconomyCore",
+      "filename": "CopiMineEconomyCore.jar",
+      "version": "1.0.0",
+      "sha256": "726790d047ab9d38e2ccb13b036c06f2dde9515e58933210601cc74f8b8251d2",
+      "candidate": {
+        "filename": "CopiMineEconomyCore-26.3.jar",
+        "runtimeFilename": "CopiMineEconomyCore.jar",
+        "sha256": "fc0ae2204aaa055ac31e8e446c82eafd0457abdb7ca56c744bd1270d7e769fd9",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEconomyCore-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "sha512": "cf2295e0dc663bca201bbd9c5a1319508603014cf96e8f5aa9c8c4c5eeef4f0d106b81eafa8e666ab36dd25ed8bc5f21c4d6514d0e56ad0f119a99080f2c2a7e",
+        "size": 169971
+      },
+      "nativeVerified": false,
+      "replaceSha256": [
+        "41c35fdc9631fb4fae6dc8eefe746fb7bb1f8b6923b4c22ad8e1f1fabc369d5b",
+        "3172e18242e43ee7ce601b3adc7857da31ffd51ac85b9a96d4c99282dd0bdc0b",
+        "43a7a3241b9fdd347a7bd4ad56b2436dec4b97b3822c69f5371182604c6d7bc9"
+      ]
+    },
+    {
+      "pluginName": "CopiMineElectionCore",
+      "filename": "CopiMineElectionCore.jar",
+      "version": "9.2.0-postgres-v4-balance-credit",
+      "sha256": "f689a75bfb2c6174774764ba67fdbe2b8a65c9c8ee7307a91c3bf258d63bcc5b",
+      "candidate": {
+        "filename": "CopiMineElectionCore-26.3.jar",
+        "runtimeFilename": "CopiMineElectionCore.jar",
+        "sha256": "18339319b220fe36c17fc30ee907fa919300cc6df32083340545fc228eff224b",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineElectionCore-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "sha512": "297fd7df78ad0ed3e051c2e709355d65d917c25b439ff128d18014b29fc935ae118a1c60882565535b2b4c7b0abff74ee5fa4d6c6a2954918eb6295bb525bd3a",
+        "size": 234329
+      },
+      "nativeVerified": false,
+      "replaceSha256": [
+        "6ebe7256a7f26aff6c8f8c3b6ac1a2bf4d5a84fb9d9cc18233c42dba43836571",
+        "fc2d349fdc6632fab1501d0b9dc467e342e4b0171cfe687cf9b2e1ee61ab7426",
+        "cdf92d64f6067b1d5a661a7a074eaf19da71d22000d255f16afcc5ba8fece0b1",
+        "e12d16de78ae50f57447a124b6be32f3f27cc0a93183d91770f91d009bfd5a78",
+        "779ff67106d092ca70bc9fdcc542e21b8912194b7c672378e23a61a9c49af073"
+      ]
+    },
+    {
+      "pluginName": "CopiMineEndEvent",
+      "filename": "CopiMineEndEvent.jar",
+      "version": "0.1.0",
+      "sha256": "c32ff397bfa01a4279524ff9d9b31dcd8b18a0f7836a09cabecdbcd2e07f0cc3",
+      "replaceSha256": [
+        "86820193e67f166d79128d224e4ab9abf7dafce2c6efaad21b4dc6134bfaf4d7",
+        "e2335f9462f61c0f255a87cc3609520099f3836843f46aee6dd0a910dad636bd",
+        "d63ed7c3c3d810a5ecb8ea8f497ecb24004cf195381e410bfbb8d182094842c0",
+        "93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea"
+      ],
+      "candidate": {
+        "filename": "CopiMineEndEvent-26.3.jar",
+        "runtimeFilename": "CopiMineEndEvent.jar",
+        "sha256": "825602f54b15615ecec9a3a6b10e3f4f45e41d8698d14712da33252659c5ae8d",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "size": 1349153,
+        "sha512": "90ba7d82d2e3c0c6aa2c66936e721043694b68a5466a23531c427b49613054932ea051abe73d63e6a6235a6882b7439d39173cdd5b14b4b0220374f8f62821c6"
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "CopiMineNarcotics",
+      "filename": "CopiMineNarcotics.jar",
+      "version": "2.1.0-client-bridge",
+      "sha256": "de9015dc9d421f98f294b0da081ca68a76fb33610684ca5f8403def0a246bbfc",
+      "replaceSha256": [
+        "ead5a29b561e96e0c46ab252743297e991f8fb1e21432ca47c1571c28a502928"
+      ],
+      "candidate": {
+        "filename": "CopiMineNarcotics-26.3.jar",
+        "runtimeFilename": "CopiMineNarcotics.jar",
+        "sha256": "6c1872fa0c5047a88fc90addc18d7c4537e3b70395636b8ee2980c82c22f3df9",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "size": 214522,
+        "sha512": "bcc28bccacab125991453448a270608fb8f794314f44bafbed20d448189ae283d7d4bc2297e53cf6d48f8abb2a633feb99dbb9bfdd9c6b0ba2ed122832207260"
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "CopiMineUltimateAdminPlus",
+      "filename": "CopiMineUltimateAdminPlus.jar",
+      "version": "9.2.0-postgres-v4-balance-credit",
+      "sha256": "63c379a882600fd2e5c9ee227632c231d7657e8aefcf8c0fe142a7b6702796a6",
+      "candidate": {
+        "filename": "CopiMineUltimateAdminPlus-26.3.jar",
+        "runtimeFilename": "CopiMineUltimateAdminPlus.jar",
+        "sha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineUltimateAdminPlus-26.3.jar",
+        "nativeVerified": false,
+        "size": 271483,
+        "sha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15"
+      },
+      "nativeVerified": false,
+      "replaceSha256": [
+        "4f877a067ca3abb01cedb4ef1d1b71ef06bfa8a1bc2df6c8d5fd6ce78402562f",
+        "8d7c19ab35886b56610a1ad8c54f73c1612ee18aa2601b3486a5e7e072e98092",
+        "0995029374cde2780eb85c578d0400c54859c83891da14b323e06a787a8c9587"
+      ]
+    },
+    {
+      "pluginName": "CopiMineWorldCore",
+      "filename": "CopiMineWorldCore.jar",
+      "version": "1.0.0",
+      "sha256": "ff346468e93ab3fbe96f06cf96de508d8dbb31bc3d6cf2206cab8007f2b8656a",
+      "candidate": {
+        "filename": "CopiMineWorldCore-26.3.jar",
+        "runtimeFilename": "CopiMineWorldCore.jar",
+        "sha256": "cf605dc9e384302c6e946fbd03790432135f3bf1d27563fa8bfe17d2738e1111",
+        "apiVersion": "26.3",
+        "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineWorldCore-26.3.jar",
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false,
+        "size": 36776,
+        "sha512": "16db616aaee039bc01eb683b408b98d984596d3ebcc17578cb33ef2f03249dd90b79a59e72559d8e72234ade36e02286449a33e27d0aa0e26c6072161401c2e0"
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "EntityClearer",
+      "filename": "EntityClearer.jar",
+      "version": "4.1.3",
+      "sha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+      "candidate": {
+        "filename": "EntityClearer.jar",
+        "runtimeFilename": "EntityClearer.jar",
+        "version": "4.1.3",
+        "sha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+        "sha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6",
+        "size": 134954,
+        "url": "https://cdn.modrinth.com/data/SjDWdFjp/versions/G2mhZT01/EntityClearer.jar",
+        "versionId": "G2mhZT01",
+        "projectId": "SjDWdFjp",
+        "source": "https://modrinth.com/plugin/entityclearer",
+        "gameVersions": [
+          "26.1",
+          "26.1.1",
+          "26.1.2",
+          "26.2",
+          "26.3"
+        ],
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "FarmControl",
+      "filename": "FarmControl-1.3.0.jar",
+      "version": "1.3.0",
+      "sha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+      "candidate": {
+        "filename": "FarmControl-1.3.0.jar",
+        "runtimeFilename": "FarmControl-1.3.0.jar",
+        "version": "1.3.0",
+        "url": "https://github.com/froobynooby/FarmControl/releases/download/v1.3.0/FarmControl-1.3.0.jar",
+        "sha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+        "sha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629",
+        "size": 266131,
+        "source": "https://hangar.papermc.io/froobynooby/FarmControl/versions/1.3.0",
+        "gameVersions": [
+          "1.16",
+          "1.16.1",
+          "1.16.2",
+          "1.16.3",
+          "1.16.4",
+          "1.16.5",
+          "1.17",
+          "1.17.1",
+          "1.18",
+          "1.18.1",
+          "1.18.2",
+          "1.19",
+          "1.19.1",
+          "1.19.2",
+          "1.19.3",
+          "1.19.4",
+          "1.20",
+          "1.20.1",
+          "1.20.2",
+          "1.20.3",
+          "1.20.4",
+          "1.20.5",
+          "1.20.6",
+          "1.21"
+        ],
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "GSit",
+      "filename": "GSit-3.5.1.jar",
+      "version": "3.5.1",
+      "sha256": "b0749412b65c01bdcd683820a764a2f769ac557eb0b691856d267a63f283ca1c",
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "LuckPerms",
+      "filename": "LuckPerms-Bukkit-5.5.42.jar",
+      "version": "5.5.42",
+      "sha256": "ddae0381514663e3b499e601d05b058274e3567be702fb635e3cb3b0eaabf934",
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "PlaceholderAPI",
+      "filename": "PlaceholderAPI-2.12.3.jar",
+      "version": "2.12.3",
+      "sha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+      "candidate": {
+        "filename": "PlaceholderAPI-2.12.3.jar",
+        "runtimeFilename": "PlaceholderAPI-2.12.3.jar",
+        "version": "2.12.3",
+        "sha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+        "sha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479",
+        "size": 1160690,
+        "url": "https://cdn.modrinth.com/data/lKEzGugV/versions/pIvQcXW8/PlaceholderAPI-2.12.3.jar",
+        "versionId": "pIvQcXW8",
+        "projectId": "lKEzGugV",
+        "source": "https://modrinth.com/plugin/placeholderapi",
+        "gameVersions": [
+          "26.1",
+          "26.1.1",
+          "26.1.2",
+          "26.2",
+          "26.3"
+        ],
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "SeeMore",
+      "filename": "SeeMore-1.0.2.jar",
+      "version": "1.0.2",
+      "sha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+      "candidate": {
+        "filename": "SeeMore-1.0.2.jar",
+        "runtimeFilename": "SeeMore-1.0.2.jar",
+        "version": "1.0.2",
+        "url": "https://cdn.modrinth.com/data/IEt1Yy3F/versions/QXCh3qCi/SeeMore-1.0.2.jar",
+        "sha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+        "sha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b",
+        "size": 107284,
+        "versionId": "QXCh3qCi",
+        "projectId": "IEt1Yy3F",
+        "source": "https://modrinth.com/plugin/see-more",
+        "gameVersions": [
+          "1.19",
+          "1.19.1",
+          "1.19.2",
+          "1.19.3",
+          "1.19.4",
+          "1.20",
+          "1.20.1",
+          "1.20.2",
+          "1.20.3",
+          "1.20.4",
+          "1.20.5",
+          "1.20.6",
+          "1.21",
+          "1.21.1",
+          "1.21.2",
+          "1.21.3",
+          "1.21.4",
+          "1.21.5",
+          "1.21.6",
+          "1.21.7",
+          "1.21.8"
+        ],
+        "compatibilityStatus": "requires-runtime-validation",
+        "nativeVerified": false
+      },
+      "nativeVerified": false
+    },
+    {
+      "pluginName": "Vault",
+      "filename": "Vault.jar",
+      "version": "1.7.3-b131",
+      "sha256": "a6b5ed97f43a5cf5bbaf00a7c8cd23c5afc9bd003f849875af8b36e6cf77d01d",
+      "nativeVerified": false
+    }
+  ]
+}

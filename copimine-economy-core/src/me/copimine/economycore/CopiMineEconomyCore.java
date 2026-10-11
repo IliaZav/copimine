@@ -291,6 +291,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
 
     /** Typed optional API exported through Bukkit's service registry. */
     public interface ElectionRuntimeService {
+        boolean databaseReady();
         Map<String, Object> activePresidentRevenueProfile();
         CompletableFuture<Map<String, Object>> grantTaxClockExemption(UUID playerUuid, String playerName, String artifactInstanceId);
     }
@@ -335,7 +336,7 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
          * The economy plugin owns this recovery query so feature plugins never
          * read bank tables directly.
          */
-        List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit);
+        List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit, long afterCreatedAt, String afterTxId);
         long balance(UUID playerUuid, String playerName);
         Health health(UUID playerUuid, String context);
     }
@@ -6126,25 +6127,28 @@ public final class CopiMineEconomyCore extends JavaPlugin implements Listener {
         }
 
         @Override
-        public List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit) {
+        public List<Map<String, Object>> findOrphanedArtifactShopTransfers(int limit, long afterCreatedAt, String afterTxId) {
             requireAsyncBankContext("ArtifactsBridge.findOrphanedArtifactShopTransfers");
             int boundedLimit = Math.max(1, Math.min(limit, 256));
+            String cursorTxId = first(afterTxId, "");
             try {
                 return queryList(
                     "SELECT t.tx_id,t.to_account_id,t.amount,t.idempotency_key,l.player_uuid,l.actor "
+                        + ",t.created_at "
                         + "FROM cmv4_bank_transfers t "
                         + "JOIN cmv4_bank_ledger l ON l.tx_id=t.tx_id || ':out' AND l.tx_type='AR_SHOP_PURCHASE' "
                         + "WHERE t.idempotency_key LIKE 'artifact-purchase-%' "
+                        + "  AND (t.created_at > ? OR (t.created_at = ? AND (? = '' OR t.tx_id > ?))) "
                         + "  AND NOT EXISTS (SELECT 1 FROM artifact_purchases p WHERE p.idempotency_key=t.idempotency_key) "
                         + "  AND NOT EXISTS (SELECT 1 FROM cmv4_bank_transfers r WHERE r.idempotency_key IN ( "
                         + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-refund-'), "
                         + "      REPLACE(t.idempotency_key,'artifact-purchase-','artifact-orphan-refund-'))) "
-                        + "ORDER BY t.created_at ASC LIMIT ?",
-                    boundedLimit
+                        + "ORDER BY t.created_at ASC, t.tx_id ASC LIMIT ?",
+                    afterCreatedAt, afterCreatedAt, cursorTxId, cursorTxId, boundedLimit
                 );
             } catch (Exception error) {
                 getLogger().log(java.util.logging.Level.WARNING, "Artifact orphan transfer lookup failed", error);
-                return List.of();
+                throw new IllegalStateException("Artifact orphan transfer lookup failed; callers must retry.", error);
             }
         }
 

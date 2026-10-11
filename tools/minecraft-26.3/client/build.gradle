@@ -1,0 +1,64 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.21'
+}
+
+def profile = new JsonSlurper().parse(file('../profile.lock.json'))
+def checkout = file('../../..').canonicalFile
+version = '0.1.1+26.3'
+group = 'me.copimine'
+base { archivesName = 'CopiMineClient' }
+layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/client')
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.fabricmc.net/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${profile.minecraftVersion}"
+    implementation "net.fabricmc:fabric-loader:${profile.fabric.loader}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${profile.fabric.api}"
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+sourceSets {
+    main {
+        java.srcDir('../protocol/src/main/java')
+        resources.srcDir(new File(checkout, 'CopiMineClient/src/main/resources'))
+    }
+}
+
+processResources {
+    inputs.property('version', project.version)
+    inputs.property('minecraftVersion', profile.minecraftVersion)
+    filesMatching('fabric.mod.json') { expand(version: project.version) }
+    doLast {
+        def metadata = new File(destinationDir, 'fabric.mod.json')
+        def parsed = new JsonSlurper().parse(metadata)
+        parsed.depends.minecraft = profile.minecraftVersion
+        parsed.depends.fabricloader = ">=${profile.fabric.loader}"
+        parsed.mixins = ['copimineclient-26.3.mixins.json']
+        metadata.setText(JsonOutput.prettyPrint(JsonOutput.toJson(parsed)) + '\n', 'UTF-8')
+    }
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = 25
+    options.encoding = 'UTF-8'
+    options.compilerArgs += ['-Xmaxerrs', '1500']
+}
+tasks.withType(AbstractArchiveTask).configureEach {
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+tasks.withType(Test).configureEach { useJUnitPlatform() }

@@ -9,9 +9,14 @@ $jar = Join-Path $pluginDir 'CopiMineArtifacts.jar'
 $serverJar = Join-Path $serverDir 'plugins\CopiMineArtifacts.jar'
 $serverDataDir = Join-Path $serverDir 'plugins\CopiMineArtifacts'
 
+$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY) {
+  $env:COPIMINE_MAVEN_REPOSITORY
+} else {
+  Join-Path $env:USERPROFILE '.m2\repository'
+}
 $paperApi = $env:PAPER_API_JAR
 if (-not $paperApi) {
-  $paperApi = Get-ChildItem -Path "$env:USERPROFILE\.m2\repository" -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
+  $paperApi = Get-ChildItem -Path $mavenRepo -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 -ExpandProperty FullName
 }
@@ -20,19 +25,19 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
-$mavenRepo = Join-Path $env:USERPROFILE '.m2\repository'
-if (Test-Path $mavenRepo) {
-  # paper-api is intentionally a thin API jar.  javac also needs the public
-  # Adventure, Bungee chat and JOML classes referenced by Paper signatures.
-  foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
-    $groupPath = Join-Path $mavenRepo $group
-    if (Test-Path $groupPath) {
-      $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
-    }
-  }
-}
 if ($env:PAPER_COMPILE_DEPS) {
   $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
+} else {
+  if (Test-Path $mavenRepo) {
+    # paper-api is intentionally a thin API jar.  javac also needs the public
+    # Adventure, Bungee chat and JOML classes referenced by Paper signatures.
+    foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
+      $groupPath = Join-Path $mavenRepo $group
+      if (Test-Path $groupPath) {
+        $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
+      }
+    }
+  }
 }
 if (Test-Path (Join-Path $releaseRoot 'copimine-economy-core\CopiMineEconomyCore.jar')) {
   $cp += (Join-Path $releaseRoot 'copimine-economy-core\CopiMineEconomyCore.jar')
@@ -40,7 +45,7 @@ if (Test-Path (Join-Path $releaseRoot 'copimine-economy-core\CopiMineEconomyCore
 if (Test-Path (Join-Path $releaseRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar')) {
   $cp += (Join-Path $releaseRoot 'copimine-admin-plugin\CopiMineUltimateAdminPlus.jar')
 }
-if (Test-Path (Join-Path $serverDir 'libraries')) {
+if (-not $env:PAPER_COMPILE_DEPS -and (Test-Path (Join-Path $serverDir 'libraries'))) {
   $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
 }
 
@@ -50,7 +55,7 @@ $sources = Get-ChildItem -Path $srcRoot -Filter '*.java' -Recurse | Select-Objec
 if (-not $sources) {
   throw "No Java sources found under $srcRoot."
 }
-javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
+javac -proc:none -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
 if ($LASTEXITCODE -ne 0) {
   throw "javac failed for CopiMineArtifacts with exit code $LASTEXITCODE."
 }

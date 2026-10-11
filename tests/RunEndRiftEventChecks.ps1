@@ -7,6 +7,22 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Get-FileSha256 {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+      return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+      $stream.Dispose()
+    }
+  } finally {
+    $sha256.Dispose()
+  }
+}
+
 # Current End Rift gate. This runner is deliberately local/staging-only and
 # names only the schema-4, seven-wave, real-health encounter. Production is
 # never started or mutated by this script.
@@ -35,7 +51,8 @@ function Invoke-GateStep {
 
 function Invoke-JavaTest {
   param([Parameter(Mandatory)][string]$Classpath, [Parameter(Mandatory)][string]$MainClass)
-  & java -cp $Classpath $MainClass
+  $javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')
+  & java @javaTestJvmArgs -cp $Classpath $MainClass
   if ($LASTEXITCODE -ne 0) {
     throw "Java test $MainClass failed with exit code $LASTEXITCODE"
   }
@@ -43,12 +60,12 @@ function Invoke-JavaTest {
 
 $firstPartyBuilds = @(
   @{ Label = 'WorldCore'; Directory = 'copimine-world-core' },
-  @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
-  @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
   @{ Label = 'EconomyCore'; Directory = 'copimine-economy-core' },
   @{ Label = 'ElectionCore'; Directory = 'copimine-election-core' },
-  @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
   @{ Label = 'UltimateAdminPlus'; Directory = 'copimine-admin-plugin' },
+  @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
+  @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
+  @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
   @{ Label = 'AuthEffects'; Directory = 'minecraft\server\plugins\AuthEffects' }
 )
 if (-not $SkipBuilds) {
@@ -361,33 +378,103 @@ Invoke-GateStep 'Current pure Java policies' {
   $pureSourceList = Join-Path $testBuild 'pure-sources.args'
   $pureSourceArguments = @($pureSources | ForEach-Object { '"' + $_.Replace('\', '/') + '"' })
   Set-Content -LiteralPath $pureSourceList -Value $pureSourceArguments -Encoding ascii
-  & javac -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
+  & javac -proc:none -encoding UTF-8 -d $testBuild ('@' + $pureSourceList)
   if ($LASTEXITCODE -ne 0) { throw 'Current pure Java compilation failed.' }
   foreach ($name in $pureTests) {
     Invoke-JavaTest -Classpath $testBuild -MainClass $name
   }
 }
 
-$mavenRepository = Join-Path $env:USERPROFILE '.m2\repository'
-$guavaJar = Get-ChildItem -Path $mavenRepository -Filter 'guava-32.1.2-jre.jar' -Recurse -ErrorAction SilentlyContinue |
-  Select-Object -First 1 -ExpandProperty FullName
-if (-not $guavaJar -or -not (Test-Path -LiteralPath $guavaJar -PathType Leaf)) {
-  throw 'Pinned Guava 32.1.2 jar is required to run persistence tests.'
+$mavenRepository = $env:COPIMINE_MAVEN_REPOSITORY
+if (-not $mavenRepository) {
+  $mavenRepository = Join-Path $env:USERPROFILE '.m2\repository'
 }
-$mavenJars = @(Get-ChildItem -Path $mavenRepository -Filter '*.jar' -Recurse |
-  Where-Object { $_.Name -notlike 'guava-*.jar' } |
-  ForEach-Object FullName)
+if (-not (Test-Path -LiteralPath $mavenRepository -PathType Container)) {
+  throw "Maven dependency repository is missing: $mavenRepository"
+}
+$mavenRepository = [IO.Path]::GetFullPath($mavenRepository)
+$compileLockPath = Join-Path $root 'tools\minecraft-26.3\java-plugin-compile-dependencies.lock.json'
+$compileLock = Get-Content -LiteralPath $compileLockPath -Raw | ConvertFrom-Json
+if ($compileLock.schemaVersion -ne 1 -or -not $compileLock.dependencies) {
+  throw "Invalid Java compile dependency lock: $compileLockPath"
+}
+$pinnedCompileJars = [Collections.Generic.List[string]]::new()
+$legacyGuavaPath = 'com/google/guava/guava/21.0/guava-21.0.jar'
+foreach ($lockedDependency in $compileLock.dependencies) {
+  if ($lockedDependency.path -notmatch '^[A-Za-z0-9._+/-]+\.jar$' -or $lockedDependency.path.Split('/') -contains '..' -or
+      $lockedDependency.size -le 0 -or $lockedDependency.sha256 -notmatch '^[0-9a-f]{64}$') {
+    throw "Invalid Java compile dependency lock entry: $($lockedDependency.path)"
+  }
+  $dependencyPath = [IO.Path]::GetFullPath((Join-Path $mavenRepository $lockedDependency.path.Replace('/', [IO.Path]::DirectorySeparatorChar)))
+  if (-not (Test-Path -LiteralPath $dependencyPath -PathType Leaf)) {
+    throw "Locked Java compile dependency is missing: $($lockedDependency.path)"
+  }
+  $dependencyItem = Get-Item -LiteralPath $dependencyPath
+  $dependencySha256 = Get-FileSha256 -Path $dependencyPath
+  if ($dependencyItem.Length -ne [long]$lockedDependency.size -or $dependencySha256 -ne $lockedDependency.sha256) {
+    throw "Locked Java compile dependency failed size/SHA256 verification: $($lockedDependency.path)"
+  }
+  if ($lockedDependency.path -ne $legacyGuavaPath) {
+    $pinnedCompileJars.Add($dependencyPath)
+  }
+}
+$guavaJar = Join-Path $mavenRepository 'com\google\guava\guava\32.1.2-jre\guava-32.1.2-jre.jar'
+$snakeYamlJar = Join-Path $mavenRepository 'org\yaml\snakeyaml\2.2\snakeyaml-2.2.jar'
+foreach ($pinnedTestDependency in @(
+  @{ Path = $guavaJar; Size = 3041591; Sha256 = 'bc65dea7cfd9e4dacf8419d8af0e741655857d27885bb35d943d7187fc3a8fce' },
+  @{ Path = $snakeYamlJar; Size = 334352; Sha256 = '1467931448a0817696ae2805b7b8b20bfb082652bf9c4efaed528930dc49389b' }
+)) {
+  if (-not (Test-Path -LiteralPath $pinnedTestDependency.Path -PathType Leaf)) {
+    throw "Pinned persistence test dependency is missing: $($pinnedTestDependency.Path)"
+  }
+  $testDependencyItem = Get-Item -LiteralPath $pinnedTestDependency.Path
+  $testDependencySha256 = Get-FileSha256 -Path $pinnedTestDependency.Path
+  if ($testDependencyItem.Length -ne [long]$pinnedTestDependency.Size -or $testDependencySha256 -ne $pinnedTestDependency.Sha256) {
+    throw "Pinned persistence test dependency failed size/SHA256 verification: $($pinnedTestDependency.Path)"
+  }
+}
 $pluginClasses = (Resolve-Path (Join-Path $root 'copimine-end-event\build\classes')).Path
+$paperApiExpectedSize = [long]2344886
+$paperApiExpectedSha256 = 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0'
 $paperApiJar = $env:PAPER_API_JAR
 if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Leaf)) {
-  $paperApiJar = Get-ChildItem -Path (Join-Path $env:USERPROFILE '.m2\repository') -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1 -ExpandProperty FullName
+  $paperApiJar = $null
+  $pinnedPaperApiPath = Join-Path $mavenRepository 'io\papermc\paper\paper-api\1.21.1-R0.1-SNAPSHOT\paper-api-1.21.1-R0.1-20250328.161643-128.jar'
+  if (Test-Path -LiteralPath $pinnedPaperApiPath -PathType Leaf) {
+    try {
+      $candidateItem = Get-Item -LiteralPath $pinnedPaperApiPath -ErrorAction Stop
+      $candidateSha256 = Get-FileSha256 -Path $pinnedPaperApiPath
+      if ($candidateItem.Length -eq $paperApiExpectedSize -and $candidateSha256 -eq $paperApiExpectedSha256) {
+        $paperApiJar = $pinnedPaperApiPath
+      }
+    } catch {
+      # The recursive search below may still find a readable copy of the pinned artifact.
+    }
+  }
+  if (-not $paperApiJar) {
+    foreach ($candidate in Get-ChildItem -LiteralPath $mavenRepository -Filter 'paper-api-*-R0.1-*.jar' -Recurse -File -ErrorAction SilentlyContinue) {
+      if ($candidate.Length -ne $paperApiExpectedSize) { continue }
+      try {
+        $candidateSha256 = Get-FileSha256 -Path $candidate.FullName
+      } catch {
+        continue
+      }
+      if ($candidateSha256 -eq $paperApiExpectedSha256) {
+        $paperApiJar = $candidate.FullName
+        break
+      }
+    }
+  }
 }
 if (-not $paperApiJar -or -not (Test-Path -LiteralPath $paperApiJar -PathType Leaf)) {
   throw 'Pinned Paper API jar is required to compile persistence tests.'
 }
-$persistenceClasspath = @($testBuild, $pluginClasses, $paperApiJar, $guavaJar) + $mavenJars
+$paperApiItem = Get-Item -LiteralPath $paperApiJar
+$paperApiSha256 = Get-FileSha256 -Path $paperApiJar
+if ($paperApiItem.Length -ne $paperApiExpectedSize -or $paperApiSha256 -ne $paperApiExpectedSha256) {
+  throw 'Persistence tests require the pinned Paper API 1.21.1 artifact.'
+}
+$persistenceClasspath = @($testBuild, $pluginClasses, $paperApiJar, $guavaJar, $snakeYamlJar) + $pinnedCompileJars.ToArray()
 $persistenceClasspathText = $persistenceClasspath -join [IO.Path]::PathSeparator
 $persistenceTests = @(
   'EventStateStoreTest',
@@ -408,7 +495,7 @@ $persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endev
 $persistenceSources += Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterResourceScope.java'
 
 Invoke-GateStep 'Current persistence and recovery' {
-  & javac -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources
+  & javac -proc:none -encoding UTF-8 -cp $persistenceClasspathText -d $testBuild @persistenceSources
   if ($LASTEXITCODE -ne 0) { throw 'Persistence Java compilation failed.' }
   foreach ($name in $persistenceTests) {
     Invoke-JavaTest -Classpath $persistenceClasspathText -MainClass $name
@@ -434,7 +521,11 @@ foreach ($artifact in @(
   (Join-Path $root 'resourcepacks\build\CopiMineResourcePack.zip')
 )) {
   if (-not (Test-Path -LiteralPath $artifact)) { throw "Missing build artifact: $artifact" }
-  Get-FileHash -LiteralPath $artifact -Algorithm SHA256
+  [pscustomobject]@{
+    Path = $artifact
+    Algorithm = 'SHA256'
+    Hash = (Get-FileSha256 -Path $artifact).ToUpperInvariant()
+  }
 }
 
 Write-Host 'End Rift current local checks passed.'

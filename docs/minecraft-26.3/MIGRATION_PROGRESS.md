@@ -671,3 +671,12 @@
 - В `evidence/plugin-inventory-hashes-2026-10-12.json` сохранены plugin name, одно фактическое поле `filename`, expected/actual SHA-256 и SHA-512 по каждому JAR: 29/29 для основного offline test runtime и 31/31 для полного изолированного набора в post-start snapshot. Manifest SHA-256 `0DEBCFFC901544724BE61288B7928AD00F927523F552F33023E895F0E3B0DB3D`; inventory основан на lock в source commit `892b6980e88d40439f9364d9f951220ecd53c50c`.
 - Во втором fullset старте асинхронный PacketEvents update check получил HTTP 403 от GitHub API и завершился WARN/parse exception; это не остановило V_26_3 mappings или загрузку плагинов. Причина 403 не установлена; записано для последующего аудита плагинов.
 - Этот evidence cleanup не снимает native blocker: клиент ещё не подключился к Paper, поэтому migration остаётся незакрытой и Waves/Rift не начинались. На опубликование и GitHub CI будет записан новый exact commit SHA после review.
+
+
+## 2026-10-12 06:57 MSK — публикация evidence checkpoint и CI
+
+- Commit `e42b37deb593379a620f08173044e453beab3b0c` опубликован в GitHub branch `codex/minecraft-26-3-migration-candidate-20261010` и синхронизирован в GitLab; refs обоих remotes совпадают с этим SHA. Изменения commit — docs и проверочные evidence, исходный migration code не менялся.
+- GitHub push run [38199594141](https://github.com/IliaZav/copimine/actions/runs/38199594141) и PR run [38199598509](https://github.com/IliaZav/copimine/actions/runs/38199598509) завершились success на exact SHA. В каждом зелёные `migration-postgres-contract`, `static-and-contract`, `java-plugins`. Native-evidence workflow steps пропущены, так как нет принятого player-login artifact.
+- CI warnings: переход GitHub Actions с Node 20, предупреждение об обновлении `ubuntu-latest` runner image, Java deprecated/removal APIs в существующих plugin sources. Все jobs завершились success; эти warnings остаются для последующей приоритизации.
+- GitLab backup pipelines 2937115742 (push) и 2937115844 (MR) завершились до запуска jobs; обе job lists пусты. Это не GitLab test pass/failure. Для этого аккаунта ранее подтверждался identity-verification gate. GitHub остаётся обязательным gate по решению пользователя.
+- Полные старты плагинов, hashes и focused-test results описаны в `VALIDATION_EVIDENCE_2026-10-12.md`; ошибки PacketEvents updater HTTP 403 внесены в список последующего plugin QA. Native Minecraft login/rejection/resource-pack/gameplay/recovery всё ещё не проверены; `nativeVerified=false`, Waves/Rift отложены.

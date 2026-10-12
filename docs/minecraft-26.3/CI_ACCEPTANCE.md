@@ -124,3 +124,16 @@ Migration CI зелёный, но acceptance остаётся открытой. 
 | GitLab backup MR | [2936997065](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936997065) | failed before jobs; zero jobs returned |
 
 GitHub push и PR jobs были независимо перечитаны по run IDs; все три job завершились success на указанном SHA. GitLab ветка указывает на тот же SHA, но pipeline без jobs не считается ни успешным, ни неуспешным результатом тестов. На текущем SHA условия workflow для native-acceptance artifact были пропущены, потому что acceptance evidence ещё не создано и проверено. Draft PR #5 остаётся отдельной веткой review и не слит.
+
+## Verified evidence publication checkpoint — 2026-10-12 — `e42b37de`
+
+Commit `e42b37deb593379a620f08173044e453beab3b0c` adds only migration acceptance documentation and sanitized runtime/test evidence on top of source checkpoint `892b6980e88d40439f9364d9f951220ecd53c50c`. The branch is pushed to GitHub and synchronized to the GitLab backup remote.
+
+| GitHub trigger | Run | Exact SHA | Result |
+| --- | --- | --- | --- |
+| Push | [38199594141](https://github.com/IliaZav/copimine/actions/runs/38199594141) | `e42b37deb593379a620f08173044e453beab3b0c` | `migration-postgres-contract`, `static-and-contract`, `java-plugins` — success |
+| Pull request #5 | [38199598509](https://github.com/IliaZav/copimine/actions/runs/38199598509) | `e42b37deb593379a620f08173044e453beab3b0c` | all three jobs — success |
+
+The native migration-evidence workflow steps were skipped in both runs because no accepted native-evidence artifact is present. This matches the actual state: no successful player login/bridge handshake is recorded, and `nativeVerified=false`. GitHub annotations were non-blocking: Node 20 deprecation notices, upcoming `ubuntu-latest` image migration notice, and existing Java deprecation/removal warnings in plugin compilation. No CI job failed.
+
+GitLab backup pipelines [2937115742](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937115742) (push) and [2937115844](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937115844) (MR) failed before creating jobs; both job lists contain zero entries. They do not represent failed test assertions. The candidate branch refs on `origin` and `gitlab` both equal `e42b37deb593379a620f08173044e453beab3b0c`. GitHub remains the required CI authority per the owner's decision.

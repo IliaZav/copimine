@@ -28,3 +28,9 @@
 - CodeRabbit CLI 0.8.2, authenticated agent mode, fresh uncommitted review: completed with `0 issues`.
 - Independent local reviewer initially found three evidence-precision issues (single snapshot wording, PacketEvents update-check HTTP 403 omission, and manifest filename field description). All were corrected. Final read-only re-review found no actionable issues and confirmed the manifest and log hashes, plugin counts, test transcript, and `nativeVerified=false` boundary.
 - These reviews assess the evidence/documentation diff. They do not replace native Minecraft login, plugin live-behavior, or recovery verification.
+
+## Published CI-status ledger review — 2026-10-12
+
+- CodeRabbit CLI 0.8.2 fresh review of `CI_ACCEPTANCE.md` and `MIGRATION_PROGRESS.md`: `0 issues`.
+- Independent local reviewer confirmed both GitHub run IDs and all three successful jobs per trigger on exact SHA `e42b37deb593379a620f08173044e453beab3b0c`; verified native-evidence steps were skipped and `nativeVerified=false` remains accurate.
+- The same review confirmed GitLab push/MR pipelines for that SHA failed before jobs with empty job lists, and the workflow/API warnings are described as warnings rather than test failures. No actionable findings.

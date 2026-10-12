@@ -29,6 +29,7 @@ if ($id -ine $profileDirectoryName) {
     throw "Minecraft profile directory '$profileDirectoryName' does not match profile ID '$id'"
 }
 $migrationReceiptPath = Join-Path $target 'copimine-migration-receipt.json'
+$tlauncherAdditionalPath = Join-Path $target 'TLauncherAdditional.json'
 $optionsPath = Join-Path $target 'options.txt'
 $mods = Join-Path $target 'mods'
 $packs = Join-Path $target 'resourcepacks'
@@ -47,6 +48,7 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly -and -not $profile.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-FileDigest([string]$path, [string]$algorithm) {
     switch ($algorithm) {
+        'SHA1' { $hasher = [Security.Cryptography.SHA1]::Create() }
         'SHA256' { $hasher = [Security.Cryptography.SHA256]::Create() }
         'SHA512' { $hasher = [Security.Cryptography.SHA512]::Create() }
         default { throw ('Unsupported digest algorithm: ' + $algorithm) }
@@ -186,6 +188,177 @@ function Set-OptionStringArray([System.Collections.Generic.List[string]]$optionL
         }
     }
     $optionLines.Add($replacement)
+}
+function Set-TLauncherField([object]$targetObject, [string]$name, [object]$value) {
+    if ($targetObject.PSObject.Properties[$name]) {
+        $targetObject.$name = $value
+    } else {
+        $targetObject | Add-Member -NotePropertyName $name -NotePropertyValue $value
+    }
+}
+function Set-TLauncherLocalMod([object]$launcherMod, [string]$displayName, [string]$version,
+    [string]$filename, [string]$sha1, [long]$size) {
+    Set-TLauncherField $launcherMod 'stateGameElement' 'active'
+    Set-TLauncherField $launcherMod 'name' $displayName
+    Set-TLauncherField $launcherMod 'userInstall' $true
+    Set-TLauncherField $launcherMod 'available' $false
+    Set-TLauncherField $launcherMod 'parser' $false
+    Set-TLauncherField $launcherMod 'notExists' $false
+    if (-not $launcherMod.version) {
+        Set-TLauncherField $launcherMod 'version' ([pscustomobject]@{})
+    }
+    Set-TLauncherField $launcherMod.version 'name' $version
+    Set-TLauncherField $launcherMod.version 'type' 'release'
+    if (-not $launcherMod.version.metadata) {
+        Set-TLauncherField $launcherMod.version 'metadata' ([pscustomobject]@{})
+    }
+    $relativePath = 'mods/' + $filename
+    Set-TLauncherField $launcherMod.version.metadata 'sha1' $sha1
+    Set-TLauncherField $launcherMod.version.metadata 'size' $size
+    Set-TLauncherField $launcherMod.version.metadata 'path' $relativePath
+    Set-TLauncherField $launcherMod.version.metadata 'url' $relativePath
+}
+function ConvertTo-TLauncherIdentityKey([string]$value) {
+    if ([string]::IsNullOrWhiteSpace($value)) { return '' }
+    return [regex]::Replace($value.ToLowerInvariant(), '[^a-z0-9]', '')
+}
+function Test-TLauncherVersionedIdentity([string]$valueKey, [string[]]$identityKeys) {
+    if ([string]::IsNullOrWhiteSpace($valueKey)) { return $false }
+    foreach ($identityKey in $identityKeys) {
+        if ($identityKey -and $valueKey -match ('^' + [regex]::Escape($identityKey) + '(?:v)?\d')) {
+            return $true
+        }
+    }
+    return $false
+}
+function Get-TLauncherProjectSlug([string]$projectLink) {
+    if ([string]::IsNullOrWhiteSpace($projectLink)) { return '' }
+    $projectUri = $null
+    if ([Uri]::TryCreate($projectLink, [UriKind]::Absolute, [ref]$projectUri)) {
+        return [IO.Path]::GetFileName($projectUri.AbsolutePath.TrimEnd('/'))
+    }
+    return ($projectLink.TrimEnd('/').Split('/')[-1])
+}
+function New-TLauncherMigrationManifestPlan([string]$path, [object[]]$modules,
+    [object[]]$bundledModules, [string]$clientFilename, [string]$clientVersion,
+    [string]$clientSha1, [long]$clientSize) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    Assert-AtomicFileDestination -Path $path -Description 'TLauncher profile metadata' -StopAt $target
+    $sourceBytes = [IO.File]::ReadAllBytes($path)
+    $hasUtf8Bom = $sourceBytes.Length -ge 3 -and $sourceBytes[0] -eq 0xEF -and
+        $sourceBytes[1] -eq 0xBB -and $sourceBytes[2] -eq 0xBF
+    $content = [IO.File]::ReadAllText($path)
+    try {
+        $manifest = ConvertFrom-Json -InputObject $content -ErrorAction Stop
+    } catch {
+        throw 'TLauncherAdditional.json is not valid JSON'
+    }
+    if (-not $manifest.modpack -or -not $manifest.modpack.version -or
+        -not $manifest.modpack.version.PSObject.Properties['mods']) {
+        throw 'TLauncherAdditional.json does not contain a modpack version mod list'
+    }
+    $originalCanonical = ConvertTo-Json -InputObject $manifest -Depth 100
+    $normalizedMods = [Collections.Generic.List[object]]::new()
+    $seenClient = $false
+    $seenModuleIds = @{}
+    foreach ($launcherMod in @($manifest.modpack.version.mods)) {
+        $metadata = $launcherMod.version.metadata
+        $relativeFile = if ($metadata.path) { [IO.Path]::GetFileName([string]$metadata.path) } else { '' }
+        $launcherName = [string]$launcherMod.name
+        $isClient = $launcherName -match '^CopiMineClient-' -or $relativeFile -match '^CopiMineClient-'
+        if ($isClient) {
+            if (-not $seenClient) {
+                Set-TLauncherLocalMod $launcherMod ([IO.Path]::GetFileNameWithoutExtension($clientFilename)) `
+                    $clientVersion $clientFilename $clientSha1 $clientSize
+                $normalizedMods.Add($launcherMod)
+                $seenClient = $true
+            }
+            continue
+        }
+
+        $isBundledDependency = $false
+        foreach ($bundledModule in $bundledModules) {
+            $bundledIdentityKeys = @(
+                ConvertTo-TLauncherIdentityKey ([string]$bundledModule.modId)
+                ConvertTo-TLauncherIdentityKey ([string]$bundledModule.project)
+            ) | Where-Object { $_ }
+            $launcherIdentityKeys = @(
+                ConvertTo-TLauncherIdentityKey ([string]$launcherMod.lanName)
+                ConvertTo-TLauncherIdentityKey $launcherName
+                ConvertTo-TLauncherIdentityKey (Get-TLauncherProjectSlug ([string]$launcherMod.linkProject))
+            ) | Where-Object { $_ }
+            $relativeFileKey = ConvertTo-TLauncherIdentityKey $relativeFile
+            $sameBundledIdentity = @($bundledIdentityKeys | Where-Object {
+                $launcherIdentityKeys -contains $_
+            }).Count -gt 0
+            $bundledArtifactPrefixes = @($bundledIdentityKeys) + @(
+                $bundledModule.tlauncherArtifactPrefixes | ForEach-Object {
+                    ConvertTo-TLauncherIdentityKey ([string]$_)
+                } | Where-Object { $_ }
+            )
+            $versionedBundledArtifact = Test-TLauncherVersionedIdentity $relativeFileKey $bundledArtifactPrefixes
+            $sameBundledArtifact = $relativeFile -ieq [string]$bundledModule.filename -or
+                ($bundledModule.sha1 -and $metadata.sha1 -ieq [string]$bundledModule.sha1)
+            if ($sameBundledIdentity -or $versionedBundledArtifact -or $sameBundledArtifact) {
+                $isBundledDependency = $true
+                break
+            }
+        }
+        if ($isBundledDependency) { continue }
+
+        $launcherHash = [string]$metadata.sha1
+        $launcherIdentityKeys = @(
+            ConvertTo-TLauncherIdentityKey ([string]$launcherMod.lanName)
+            ConvertTo-TLauncherIdentityKey $launcherName
+            ConvertTo-TLauncherIdentityKey (Get-TLauncherProjectSlug ([string]$launcherMod.linkProject))
+        ) | Where-Object { $_ }
+        $relativeFileKey = ConvertTo-TLauncherIdentityKey $relativeFile
+        $matchingModules = [Collections.Generic.List[object]]::new()
+        foreach ($module in $modules) {
+            $moduleId = [string]$module.modId
+            $moduleIdentityKeys = @(
+                ConvertTo-TLauncherIdentityKey $moduleId
+                ConvertTo-TLauncherIdentityKey ([string]$module.project)
+            ) | Where-Object { $_ }
+            $sameId = @($moduleIdentityKeys | Where-Object {
+                $launcherIdentityKeys -contains $_
+            }).Count -gt 0
+            $moduleArtifactPrefixes = @($moduleIdentityKeys) + @(
+                $module.tlauncherArtifactPrefixes | ForEach-Object {
+                    ConvertTo-TLauncherIdentityKey ([string]$_)
+                } | Where-Object { $_ }
+            )
+            $versionedModuleArtifact = (Test-TLauncherVersionedIdentity $relativeFileKey $moduleArtifactPrefixes) -or
+                (Test-TLauncherVersionedIdentity (ConvertTo-TLauncherIdentityKey $launcherName) $moduleArtifactPrefixes)
+            $sameArtifact = ($module.sha1 -and $launcherHash -ieq [string]$module.sha1) -or
+                $relativeFile -ieq [string]$module.filename
+            if ($sameId -or $versionedModuleArtifact -or $sameArtifact) {
+                $matchingModules.Add($module)
+            }
+        }
+        if ($matchingModules.Count -gt 1) {
+            throw ('TLauncher mod entry matches multiple locked migration mods: ' + $launcherName)
+        }
+        if ($matchingModules.Count -eq 1) {
+            $module = $matchingModules[0]
+            $moduleId = [string]$module.modId
+            if (-not $seenModuleIds.ContainsKey($moduleId)) {
+                Set-TLauncherLocalMod $launcherMod $launcherName ([string]$module.version) `
+                    ([string]$module.filename) ([string]$module.sha1) ([long]$module.size)
+                $normalizedMods.Add($launcherMod)
+                $seenModuleIds[$moduleId] = $true
+            }
+            continue
+        }
+        $normalizedMods.Add($launcherMod)
+    }
+    $manifest.modpack.version.mods = $normalizedMods.ToArray()
+    $normalizedContent = ConvertTo-Json -InputObject $manifest -Depth 100
+    return [pscustomobject]@{
+        Content = $normalizedContent
+        Changed = $normalizedContent -cne $originalCanonical
+        Utf8Bom = $hasUtf8Bom
+    }
 }
 function Test-PinnedModrinthUrl([object]$module) {
     if ([string]$module.projectId -notmatch '^[A-Za-z0-9]{8}$' -or
@@ -329,6 +502,7 @@ $clientJar = Join-Path $root ('build/minecraft-26.3/client/libs/' + $profile.cli
 $clientMetadata = $null
 $clientMixinsName = $null
 $clientSha512 = $null
+$clientSha1 = $null
 if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
     Assert-AtomicFileDestination -Path $clientJar -Description 'CopiMineClient build artifact' -StopAt $root
     if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw 'Build the 26.3 CopiMineClient jar before installing the profile' }
@@ -407,6 +581,7 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
             if (-not $clientArchive.GetEntry($classEntry)) { throw ('Missing declared mixin class: ' + $classEntry) }
         }
         $clientSha512 = $clientArtifactPin.sha512
+        $clientSha1 = Get-FileDigest $clientJar 'SHA1'
     } finally { $clientArchive.Dispose() }
 }
 $lockedModuleFilenamesById = @{}
@@ -419,6 +594,22 @@ foreach ($module in $bundledModules) {
 }
 foreach ($module in $lock.modules) {
     if ([IO.Path]::GetFileName($module.filename) -ne $module.filename -or $module.filename -match '[\\/:]') { throw 'Unsafe mod filename' }
+    if ($module.PSObject.Properties['tlauncherArtifactPrefixes']) {
+        if ($module.tlauncherArtifactPrefixes -isnot [Array] -or $module.tlauncherArtifactPrefixes.Count -eq 0) {
+            throw ('Client mod lock has invalid TLauncher artifact prefixes: ' + $module.filename)
+        }
+        $seenTLauncherPrefixes = @{}
+        foreach ($prefix in $module.tlauncherArtifactPrefixes) {
+            if ($prefix -isnot [string] -or $prefix -notmatch '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$') {
+                throw ('Client mod lock has an unsafe TLauncher artifact prefix: ' + $module.filename)
+            }
+            $prefixKey = ConvertTo-TLauncherIdentityKey $prefix
+            if (-not $prefixKey -or $seenTLauncherPrefixes.ContainsKey($prefixKey)) {
+                throw ('Client mod lock contains duplicate TLauncher artifact prefixes: ' + $module.filename)
+            }
+            $seenTLauncherPrefixes[$prefixKey] = $true
+        }
+    }
     if (($lock.schemaVersion -eq 1 -and [string]::IsNullOrWhiteSpace([string]$module.modId)) -or
         ($module.modId -and [string]$module.modId -notmatch '^[a-z0-9_.-]{1,64}$')) {
         throw ('Client mod lock has a missing or invalid Fabric mod id: ' + $module.filename)
@@ -556,7 +747,17 @@ if (Test-Path -LiteralPath $mods -PathType Container) {
         } finally { if ($existingArchive) { $existingArchive.Dispose() } }
     }
 }
+$tlauncherAdditionalPlan = $null
+if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly -and
+    (Test-Path -LiteralPath $tlauncherAdditionalPath -PathType Leaf)) {
+    $tlauncherAdditionalPlan = New-TLauncherMigrationManifestPlan $tlauncherAdditionalPath `
+        @($modulesToInstall) @($bundledModules) ([IO.Path]::GetFileName($clientJar)) `
+        ([string]$clientMetadata.version) $clientSha1 ([long](Get-Item -LiteralPath $clientJar).Length)
+}
 if ($ValidateOnly) {
+    if ($tlauncherAdditionalPlan -and $tlauncherAdditionalPlan.Changed) {
+        throw 'TLauncherAdditional.json contains stale migration mod entries; reinstall the profile before launch'
+    }
     Assert-ProfileDirectoryDestination -Path $mods -Description 'installed mods directory' -StopAt $target
     Assert-ProfileDirectoryDestination -Path $packs -Description 'installed resource-pack directory' -StopAt $target
     Assert-AtomicFileDestination -Path $optionsPath -Description 'installed Minecraft options' -StopAt $target
@@ -668,6 +869,8 @@ $transactionRoot = Join-Path $target ('.copimine-migration-transaction-' + [Guid
 $journal = [Collections.Generic.List[object]]::new()
 $createdBackupFiles = [Collections.Generic.List[string]]::new()
 $createdBackupDirectories = [Collections.Generic.List[string]]::new()
+$tlauncherAdditionalBom = $false
+if ($tlauncherAdditionalPlan) { $tlauncherAdditionalBom = [bool]$tlauncherAdditionalPlan.Utf8Bom }
 try {
     Assert-ProfileDirectoryDestination -Path $transactionRoot -Description 'profile transaction directory' -StopAt $target
     New-Item -ItemType Directory -Path $transactionRoot -ErrorAction Stop | Out-Null
@@ -683,6 +886,9 @@ try {
         Add-ProfileTransactionSnapshot $journal $optionsPath $transactionRoot
     }
     Add-ProfileTransactionSnapshot $journal $migrationReceiptPath $transactionRoot
+    if ($tlauncherAdditionalPlan -and $tlauncherAdditionalPlan.Changed) {
+        Add-ProfileTransactionSnapshot $journal $tlauncherAdditionalPath $transactionRoot
+    }
 
     New-Item -ItemType Directory -Path $mods,$packs -Force -ErrorAction Stop | Out-Null
     if ($lockedModuleConflicts.Count -gt 0) {
@@ -767,6 +973,10 @@ try {
         }
         Save-TextFileAtomically -Path $optionsPath -Content $updatedOptions `
             -Encoding ([Text.UTF8Encoding]::new($hasUtf8Bom)) -StopAt $target
+    }
+    if ($tlauncherAdditionalPlan -and $tlauncherAdditionalPlan.Changed) {
+        Save-TextFileAtomically -Path $tlauncherAdditionalPath -Content $tlauncherAdditionalPlan.Content `
+            -Encoding ([Text.UTF8Encoding]::new($tlauncherAdditionalBom)) -StopAt $target
     }
     Save-TextFileAtomically -Path $migrationReceiptPath -Content $receiptContent `
         -Encoding ([Text.UTF8Encoding]::new($true)) -StopAt $target

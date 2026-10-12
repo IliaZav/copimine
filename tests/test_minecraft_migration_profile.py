@@ -64,6 +64,19 @@ def test_client_mod_lock_ids_are_explicit_and_candidate_artifacts_are_checked():
     assert all(re.fullmatch(r'[a-z0-9_.-]{1,64}', mod_id) for mod_id in module_ids)
     assert len(module_ids) == len(set(module_ids))
     assert all(module.get('fabricMetadataVersion') for module in lock['modules'])
+    assert {
+        module['modId']: module['tlauncherArtifactPrefixes']
+        for module in lock['modules'] if module.get('tlauncherArtifactPrefixes')
+    } == {
+        'customskinloader-bootstrap': ['CustomSkinLoader_Universal'],
+        'emotecraft': ['emotecraft-for-MC26.3'],
+        'iris': ['iris-fabric'],
+        'player_animation_library': ['PlayerAnimationLibMerged'],
+        'sodium': ['sodium-fabric'],
+        'voicechat': ['voicechat-fabric'],
+    }
+    assert 'Test-TLauncherVersionedIdentity' in profile_installer
+    assert 'Client mod lock has an unsafe TLauncher artifact prefix' in profile_installer
     assert set(module_ids) == {
         'appleskin', 'betterf3', 'cloth-config', 'customskinloader-bootstrap', 'emotecraft',
         'fabric-api', 'fpsreducer', 'iris', 'journeymap', 'mc-armor-hud',
@@ -499,15 +512,36 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     module_bytes = module_buffer.getvalue()
     module_filename = 'FixtureMod-1.0.jar'
     module_sha512 = hashlib.sha512(module_bytes).hexdigest()
+    api_version = '0.162.0+26.3'
+    api_filename = 'fabric-api-0.162.0+26.3.jar'
+    api_buffer = io.BytesIO()
+    with zipfile.ZipFile(api_buffer, 'w') as archive:
+        archive.writestr('fabric.mod.json', json.dumps({'id': 'fabric-api', 'version': api_version}))
+    api_bytes = api_buffer.getvalue()
     (migration / 'client-mods.lock.json').write_text(json.dumps({'schemaVersion': 1, 'modules': [{
         'filename': module_filename,
         'modId': 'fixturemod',
+        'tlauncherArtifactPrefixes': ['FixtureMod-Official'],
+        'version': '1.0',
         'fabricMetadataVersion': '1.0',
         'projectId': 'A1b2C3d4',
         'versionId': 'Z9y8X7w6',
         'url': 'https://cdn.modrinth.com/data/A1b2C3d4/versions/Z9y8X7w6/FixtureMod-1.0.jar',
+        'sha1': hashlib.sha1(module_bytes).hexdigest(),
         'sha512': module_sha512,
         'size': len(module_bytes),
+    }, {
+        'project': 'fabric-api',
+        'version': api_version,
+        'fabricMetadataVersion': api_version,
+        'filename': api_filename,
+        'modId': 'fabric-api',
+        'bundled': True,
+        'projectId': 'P7dR8mSH',
+        'versionId': 'v2j28coa',
+        'url': 'https://cdn.modrinth.com/data/P7dR8mSH/versions/v2j28coa/fabric-api-0.162.0%2B26.3.jar',
+        'sha512': hashlib.sha512(api_bytes).hexdigest(),
+        'size': len(api_bytes),
     }]}), encoding='utf-8')
     module_stage = root / 'build/minecraft-26.3/client-mods'
     module_stage.mkdir(parents=True)
@@ -519,10 +553,12 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         archive.writestr('fabric.mod.json', json.dumps({
             'id': 'copimineclient',
             'version': '0.1.2+26.3',
-            'depends': {'minecraft': '26.3'},
+            'depends': {'minecraft': '26.3', 'fabric-api': '>=' + api_version},
             'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
             'mixins': ['copimineclient-26.3.mixins.json'],
+            'jars': [{'file': 'META-INF/jars/' + api_filename}],
         }))
+        archive.writestr('META-INF/jars/' + api_filename, api_bytes)
         archive.writestr('copimineclient-26.3.mixins.json', json.dumps({
             'package': 'me.copimine.client.mixin',
             'client': [],
@@ -562,6 +598,65 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     old_module_bytes = old_module_buffer.getvalue()
     (malformed_mods / old_module_filename).write_bytes(old_module_bytes)
 
+    old_client_bytes = b'previous CopiMine client artifact'
+    old_api_bytes = b'previous standalone Fabric API artifact'
+    api_base_bytes = b'Fabric API Base must stay independent'
+    fixture_mod_extra_bytes = b'FixtureMod Extra must stay independent'
+    tlauncher_additional = profile / 'TLauncherAdditional.json'
+    tlauncher_additional.write_text(json.dumps({
+        'modpack': {'version': {'mods': [
+            {
+                'stateGameElement': 'active', 'name': 'Fabric API Base', 'lanName': 'fabric-api-base',
+                'version': {'name': '1.0', 'metadata': {
+                    'sha1': hashlib.sha1(api_base_bytes).hexdigest(), 'size': len(api_base_bytes),
+                    'path': 'mods/fabric-api-base-1.0.jar', 'url': 'mods/fabric-api-base-1.0.jar',
+                }},
+            },
+            {
+                'stateGameElement': 'active', 'name': 'Fabric API', 'lanName': 'fabric-api',
+                'version': {'name': 'fabric-api-0.161.0+26.3', 'metadata': {
+                    'sha1': hashlib.sha1(old_api_bytes).hexdigest(), 'size': len(old_api_bytes),
+                    'path': 'mods/fabric-api-0.161.0%2B26.3.jar',
+                    'url': '/mods/306612/8913512/fabric-api-0.161.0%252B26.3.jar',
+                }},
+            },
+            {
+                'stateGameElement': 'active', 'name': 'fabric-api-0.162.0+26.3',
+                'userInstall': True,
+                'version': {'name': '1.0', 'metadata': {
+                    'sha1': hashlib.sha1(b'new standalone API').hexdigest(), 'size': 17,
+                    'path': 'mods/fabric-api-0.162.0+26.3.jar',
+                    'url': 'mods/fabric-api-0.162.0+26.3.jar',
+                }},
+            },
+            {
+                'stateGameElement': 'active', 'name': 'CopiMineClient-0.1.1+26.3',
+                'userInstall': True,
+                'version': {'name': '1.0', 'metadata': {
+                    'sha1': hashlib.sha1(old_client_bytes).hexdigest(), 'size': len(old_client_bytes),
+                    'path': 'mods/CopiMineClient-0.1.1+26.3.jar',
+                    'url': 'mods/CopiMineClient-0.1.1+26.3.jar',
+                }},
+            },
+            {
+                'stateGameElement': 'active', 'name': 'FixtureMod Extra', 'lanName': 'fixturemod-extra',
+                'version': {'name': '1.0', 'metadata': {
+                    'sha1': hashlib.sha1(fixture_mod_extra_bytes).hexdigest(),
+                    'size': len(fixture_mod_extra_bytes),
+                    'path': 'mods/FixtureMod-Extra-1.0.jar',
+                    'url': 'mods/FixtureMod-Extra-1.0.jar',
+                }},
+            },
+            {
+                'stateGameElement': 'active', 'name': 'FixtureMod-Official-0.9',
+                'version': {'name': '0.9', 'metadata': {
+                    'sha1': hashlib.sha1(old_module_bytes).hexdigest(), 'size': len(old_module_bytes),
+                    'path': 'mods/FixtureMod-Official-0.9.jar', 'url': 'mods/FixtureMod-Official-0.9.jar',
+                }},
+            },
+        ]}}}), encoding='utf-8')
+    original_tlauncher_additional = tlauncher_additional.read_bytes()
+
     receipt_alias = tmp_path / 'receipt-hardlink-sentinel.json'
     receipt_alias.write_text('preserve linked file contents', encoding='utf-8')
     os.link(receipt_alias, profile / 'copimine-migration-receipt.json')
@@ -595,6 +690,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     assert failed_commit.returncode != 0, failed_commit.stdout + failed_commit.stderr
     assert 'simulated migration receipt publication failure' in failed_commit.stdout + failed_commit.stderr
     assert (profile / 'options.txt').read_bytes() == original_options_bytes
+    assert tlauncher_additional.read_bytes() == original_tlauncher_additional
     assert (profile / 'copimine-migration-receipt.json').read_text(encoding='utf-8') == 'preserve linked file contents'
     assert (profile / 'mods' / old_module_filename).read_bytes() == old_module_bytes
     assert not (profile / 'mods' / module_filename).exists()
@@ -610,6 +706,40 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     ], capture_output=True, text=True, timeout=30)
 
     assert result.returncode == 0, result.stdout + result.stderr
+    tlauncher_manifest = json.loads(tlauncher_additional.read_text(encoding='utf-8'))
+    launcher_mods = tlauncher_manifest['modpack']['version']['mods']
+    assert not any(
+        mod.get('lanName', '').casefold() == 'fabric-api'
+        or mod.get('name', '').casefold() == 'fabric-api-0.162.0+26.3'
+        for mod in launcher_mods
+    )
+    launcher_api_base = next(mod for mod in launcher_mods if mod.get('lanName') == 'fabric-api-base')
+    assert launcher_api_base['version']['metadata']['path'] == 'mods/fabric-api-base-1.0.jar'
+    assert launcher_api_base['version']['metadata']['sha1'] == hashlib.sha1(api_base_bytes).hexdigest()
+    launcher_client = next(mod for mod in launcher_mods if mod.get('name', '').startswith('CopiMineClient-'))
+    client_metadata = launcher_client['version']['metadata']
+    assert launcher_client['name'] == 'CopiMineClient-0.1.2+26.3'
+    assert client_metadata['path'] == 'mods/CopiMineClient-0.1.2+26.3.jar'
+    assert client_metadata['sha1'] == hashlib.sha1(client_jar.read_bytes()).hexdigest()
+    assert client_metadata['size'] == client_jar.stat().st_size
+    launcher_module = next(
+        mod for mod in launcher_mods
+        if mod.get('version', {}).get('metadata', {}).get('path') == 'mods/FixtureMod-1.0.jar'
+    )
+    module_metadata = launcher_module['version']['metadata']
+    assert module_metadata['path'] == 'mods/FixtureMod-1.0.jar'
+    assert module_metadata['sha1'] == hashlib.sha1(module_bytes).hexdigest()
+    assert module_metadata['size'] == len(module_bytes)
+    assert launcher_module['userInstall'] is True
+    launcher_fixture_mod_extra = next(
+        mod for mod in launcher_mods if mod.get('lanName') == 'fixturemod-extra'
+    )
+    assert launcher_fixture_mod_extra['name'] == 'FixtureMod Extra'
+    assert launcher_fixture_mod_extra['version']['metadata']['path'] == 'mods/FixtureMod-Extra-1.0.jar'
+    assert launcher_fixture_mod_extra['version']['metadata']['sha1'] == hashlib.sha1(
+        fixture_mod_extra_bytes
+    ).hexdigest()
+    manifest_after_install = tlauncher_additional.read_bytes()
     options = (profile / 'options.txt').read_text(encoding='utf-8').splitlines()
     active_packs = json.loads(next(line.split(':', 1)[1] for line in options if line.startswith('resourcePacks:')))
     incompatible_packs = json.loads(next(
@@ -634,6 +764,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         '-ProfileDirectory', str(profile),
     ], capture_output=True, text=True, timeout=30)
     assert repeated.returncode == 0, repeated.stdout + repeated.stderr
+    assert tlauncher_additional.read_bytes() == manifest_after_install
     assert hashlib.sha256(installed_pack.read_bytes()).hexdigest() == candidate_sha256
     assert list((profile / 'resourcepacks').glob('CopiMineResourcePack-26.3.zip.backup-*'))
     assert receipt_alias.read_text(encoding='utf-8') == 'preserve linked file contents'
@@ -642,6 +773,10 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
         '-ProfileDirectory', str(profile), '-ValidateOnly',
     ]
+    for malformed_name in ('InvalidUtf8.jar', 'OversizedMetadata.jar', 'MalformedJson.jar'):
+        malformed_path = malformed_mods / malformed_name
+        assert malformed_path.is_file()
+        malformed_path.unlink()
     installed_state = {
         path: path.read_bytes()
         for path in (
@@ -650,11 +785,27 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
             profile / 'resourcepacks' / 'CopiMineResourcePack-26.3.zip',
             profile / 'options.txt',
             profile / 'copimine-migration-receipt.json',
+            tlauncher_additional,
         )
     }
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
     assert validation.returncode == 0, validation.stdout + validation.stderr
     assert {path: path.read_bytes() for path in installed_state} == installed_state
+
+    stale_manifest = json.loads(installed_state[tlauncher_additional].decode('utf-8-sig'))
+    stale_client = next(
+        mod for mod in stale_manifest['modpack']['version']['mods']
+        if mod.get('name', '').startswith('CopiMineClient-')
+    )
+    stale_client['version']['metadata']['path'] = 'mods/CopiMineClient-0.1.1+26.3.jar'
+    tlauncher_additional.write_text(json.dumps(stale_manifest), encoding='utf-8')
+    stale_manifest_bytes = tlauncher_additional.read_bytes()
+    stale_validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
+    assert stale_validation.returncode != 0
+    assert 'TLauncherAdditional.json contains stale migration mod entries' in (
+        stale_validation.stdout + stale_validation.stderr)
+    assert tlauncher_additional.read_bytes() == stale_manifest_bytes
+    tlauncher_additional.write_bytes(installed_state[tlauncher_additional])
 
     module_path = profile / 'mods' / module_filename
     module_path.unlink()

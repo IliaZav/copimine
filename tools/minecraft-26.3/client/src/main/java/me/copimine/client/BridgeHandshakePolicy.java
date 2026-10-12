@@ -13,4 +13,15 @@ final class BridgeHandshakePolicy {
                 && !activeSessionId.isBlank()
                 && activeSessionId.equals(acknowledgedSessionId);
     }
+
+    static boolean shouldAttemptHello(boolean connected, String challengeId,
+                                      boolean helloAcknowledged, int attempts, int maxAttempts) {
+        return connected
+                && challengeId != null
+                && !challengeId.isBlank()
+                && !helloAcknowledged
+                && attempts >= 0
+                && maxAttempts > 0
+                && attempts < maxAttempts;
+    }
 }

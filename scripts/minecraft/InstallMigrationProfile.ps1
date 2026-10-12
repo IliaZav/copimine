@@ -109,6 +109,11 @@ function Restore-ProfileTransactionSnapshot([object]$snapshot) {
         if (-not (Test-Path -LiteralPath $snapshot.BackupPath -PathType Leaf)) {
             throw ('Profile transaction snapshot is missing: ' + $snapshot.BackupPath)
         }
+        $snapshotHash = Get-FileDigest $snapshot.BackupPath 'SHA256'
+        if ((Test-Path -LiteralPath $snapshot.Path -PathType Leaf) -and
+            (Get-FileDigest $snapshot.Path 'SHA256') -ceq $snapshotHash) {
+            return
+        }
         $temporary = $snapshot.Path + '.rollback.' + [Guid]::NewGuid().ToString('N') + '.tmp'
         try {
             [IO.File]::Copy($snapshot.BackupPath, $temporary, $false)
@@ -120,7 +125,7 @@ function Restore-ProfileTransactionSnapshot([object]$snapshot) {
             } else {
                 [IO.File]::Move($temporary, $snapshot.Path)
             }
-            if ((Get-FileDigest $snapshot.Path 'SHA256') -ne (Get-FileDigest $snapshot.BackupPath 'SHA256')) {
+            if ((Get-FileDigest $snapshot.Path 'SHA256') -ne $snapshotHash) {
                 throw 'Restored profile file differs from its transaction snapshot'
             }
         } finally {
@@ -320,7 +325,7 @@ function Assert-InstalledMigrationProfile([object[]]$modules, [object[]]$bundled
     }
     if (-not $receiptMatches) { throw 'Migration receipt does not match the installed profile' }
 }
-$clientJar = Join-Path $root 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+$clientJar = Join-Path $root ('build/minecraft-26.3/client/libs/' + $profile.clientArtifact.filename)
 $clientMetadata = $null
 $clientMixinsName = $null
 $clientSha512 = $null
@@ -329,6 +334,7 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
     if (-not (Test-Path -LiteralPath $clientJar -PathType Leaf)) { throw 'Build the 26.3 CopiMineClient jar before installing the profile' }
     $clientArtifactPin = $profile.clientArtifact
     if (-not $clientArtifactPin -or $clientArtifactPin.filename -cne [IO.Path]::GetFileName($clientJar) -or
+        [string]::IsNullOrWhiteSpace([string]$clientArtifactPin.version) -or
         $clientArtifactPin.sha512 -notmatch '^[0-9a-f]{128}$' -or
         [long]$clientArtifactPin.size -le 0 -or [long]$clientArtifactPin.size -gt 100000000) {
         throw 'CopiMineClient build provenance lock is missing or invalid'
@@ -340,7 +346,7 @@ if (-not $DependenciesOnly -and -not $ValidateDefinitionOnly) {
     $clientArchive = [IO.Compression.ZipFile]::OpenRead($clientJar)
     try {
         $clientMetadata = Read-ZipJson $clientArchive 'fabric.mod.json'
-        if ($clientMetadata.id -ne 'copimineclient' -or $clientMetadata.version -ne '0.1.1+26.3' -or
+        if ($clientMetadata.id -ne 'copimineclient' -or $clientMetadata.version -ne [string]$profile.clientArtifact.version -or
             $clientMetadata.depends.minecraft -ne '26.3') {
             throw 'CopiMineClient jar metadata does not match the pinned 26.3 client'
         }
@@ -485,7 +491,23 @@ if (Test-Path -LiteralPath $mods -PathType Container) {
                     }
                     if (-not $DependenciesOnly -and $existingModId -eq 'copimineclient' -and
                         $existingJar.FullName -ne $clientDestination) {
-                        throw ('Another CopiMineClient mod is already present: ' + $existingJar.Name)
+                        $isPreviousMigrationClient = $existingJar.Name -ceq 'CopiMineClient-0.1.1+26.3.jar' -and
+                            $existingMetadata.version -ceq '0.1.1+26.3' -and
+                            [string]$existingMetadata.depends.minecraft -ceq '26.3'
+                        if (-not $isPreviousMigrationClient) {
+                            throw ('Another CopiMineClient mod is already present: ' + $existingJar.Name)
+                        }
+                        if ($ValidateOnly) {
+                            throw 'CopiMineClient 0.1.1+26.3 is installed; run the installer to upgrade it to the pinned migration version.'
+                        }
+                        if ($existingJar.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                            throw ('Existing CopiMineClient is a link and cannot be backed up safely: ' + $existingJar.Name)
+                        }
+                        if ($lockedModuleConflictIds.ContainsKey($existingModId)) {
+                            throw 'Multiple existing CopiMineClient mods conflict with the pinned migration artifact'
+                        }
+                        $lockedModuleConflictIds[$existingModId] = $existingJar.Name
+                        $lockedModuleConflicts.Add($existingJar)
                     }
                     if (-not $DependenciesOnly -and $bundledModuleIds.ContainsKey($existingModId)) {
                         if ($ValidateOnly) {

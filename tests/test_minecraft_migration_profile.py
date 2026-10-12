@@ -223,8 +223,11 @@ def pin_test_client_artifact(migration, client_jar):
     lock_path = migration / 'profile.lock.json'
     lock = json.loads(lock_path.read_text(encoding='utf-8'))
     payload = client_jar.read_bytes()
+    with zipfile.ZipFile(client_jar) as archive:
+        client_version = json.loads(archive.read('fabric.mod.json'))['version']
     lock['clientArtifact'] = {
         'filename': client_jar.name,
+        'version': client_version,
         'size': len(payload),
         'sha512': hashlib.sha512(payload).hexdigest(),
     }
@@ -252,11 +255,11 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
     with zipfile.ZipFile(api_payload, 'w') as archive:
         archive.writestr('fabric.mod.json', json.dumps({'id': 'fabric-api', 'version': api_version}))
     api_bytes = api_payload.getvalue()
-    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.2+26.3.jar'
     client_jar.parent.mkdir(parents=True)
     with zipfile.ZipFile(client_jar, 'w') as archive:
         archive.writestr('fabric.mod.json', json.dumps({
-            'id': 'copimineclient', 'version': '0.1.1+26.3',
+            'id': 'copimineclient', 'version': '0.1.2+26.3',
             'depends': {'minecraft': '26.3', 'fabric-api': '>=' + api_version},
             'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
             'mixins': ['copimineclient-26.3.mixins.json'],
@@ -271,7 +274,8 @@ def test_bundled_fabric_api_is_not_installed_as_a_separate_required_mod(tmp_path
         'minecraftVersion': '26.3', 'minimumJava': 25,
         'minecraftClient': {'sha1': CLIENT_SHA1},
         'clientArtifact': {
-            'filename': client_jar.name, 'size': client_jar.stat().st_size,
+            'filename': client_jar.name, 'version': '0.1.2+26.3',
+            'size': client_jar.stat().st_size,
             'sha512': hashlib.sha512(client_jar.read_bytes()).hexdigest(),
         },
         'fabric': {'loader': '0.19.5', 'clientPortComplete': True},
@@ -509,12 +513,12 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     module_stage.mkdir(parents=True)
     (module_stage / module_filename).write_bytes(module_bytes)
 
-    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.2+26.3.jar'
     client_jar.parent.mkdir(parents=True)
     with zipfile.ZipFile(client_jar, 'w') as archive:
         archive.writestr('fabric.mod.json', json.dumps({
             'id': 'copimineclient',
-            'version': '0.1.1+26.3',
+            'version': '0.1.2+26.3',
             'depends': {'minecraft': '26.3'},
             'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
             'mixins': ['copimineclient-26.3.mixins.json'],
@@ -594,7 +598,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     assert (profile / 'copimine-migration-receipt.json').read_text(encoding='utf-8') == 'preserve linked file contents'
     assert (profile / 'mods' / old_module_filename).read_bytes() == old_module_bytes
     assert not (profile / 'mods' / module_filename).exists()
-    assert not (profile / 'mods' / 'CopiMineClient-0.1.1+26.3.jar').exists()
+    assert not (profile / 'mods' / 'CopiMineClient-0.1.2+26.3.jar').exists()
     assert not (profile / 'resourcepacks' / 'CopiMineResourcePack-26.3.zip').exists()
     assert not (profile / 'migration-backups').exists()
 
@@ -642,7 +646,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
         path: path.read_bytes()
         for path in (
             profile / 'mods' / module_filename,
-            profile / 'mods' / 'CopiMineClient-0.1.1+26.3.jar',
+            profile / 'mods' / 'CopiMineClient-0.1.2+26.3.jar',
             profile / 'resourcepacks' / 'CopiMineResourcePack-26.3.zip',
             profile / 'options.txt',
             profile / 'copimine-migration-receipt.json',
@@ -658,7 +662,7 @@ def test_profile_install_activates_migration_pack_and_preserves_other_options(tm
     assert validation.returncode != 0 and 'missing locked migration mod' in validation.stdout + validation.stderr
     module_path.write_bytes(module_bytes)
 
-    client_path = profile / 'mods' / 'CopiMineClient-0.1.1+26.3.jar'
+    client_path = profile / 'mods' / 'CopiMineClient-0.1.2+26.3.jar'
     client_path.write_bytes(b'corrupt client')
     validation = subprocess.run(validation_command, capture_output=True, text=True, timeout=30)
     assert validation.returncode != 0 and 'CopiMineClient differs from its pinned artifact' in validation.stdout + validation.stderr
@@ -772,10 +776,10 @@ def test_profile_install_rejects_unsafe_targets_before_mutating_profile(tmp_path
     elif unsafe_target == 'client-jar-junction':
         external_client_libs = tmp_path / 'external-client-libs'
         external_client_libs.mkdir()
-        client_artifact = external_client_libs / 'CopiMineClient-0.1.1+26.3.jar'
+        client_artifact = external_client_libs / 'CopiMineClient-0.1.2+26.3.jar'
         with zipfile.ZipFile(client_artifact, 'w') as archive:
             archive.writestr('fabric.mod.json', json.dumps({
-                'id': 'copimineclient', 'version': '0.1.1+26.3',
+                'id': 'copimineclient', 'version': '0.1.2+26.3',
                 'depends': {'minecraft': '26.3'},
                 'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
                 'mixins': ['copimineclient-26.3.mixins.json'],
@@ -902,11 +906,11 @@ def test_malformed_resource_pack_options_fail_before_profile_mutation(tmp_path, 
     }), encoding='utf-8')
     (migration / 'client-mods.lock.json').write_text(json.dumps({'modules': []}), encoding='utf-8')
 
-    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.2+26.3.jar'
     client_jar.parent.mkdir(parents=True)
     with zipfile.ZipFile(client_jar, 'w') as archive:
         archive.writestr('fabric.mod.json', json.dumps({
-            'id': 'copimineclient', 'version': '0.1.1+26.3',
+            'id': 'copimineclient', 'version': '0.1.2+26.3',
             'depends': {'minecraft': '26.3'},
             'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
             'mixins': ['copimineclient-26.3.mixins.json'],
@@ -950,7 +954,7 @@ def test_malformed_resource_pack_options_fail_before_profile_mutation(tmp_path, 
 
 def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_path):
     shell = shutil.which('pwsh') or shutil.which('powershell')
-    if not shell:
+    if os.name != 'nt' or not shell:
         pytest.skip('PowerShell profile installation requires a Windows verification host')
 
     root = tmp_path / 'repo'
@@ -973,11 +977,11 @@ def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_pat
     }), encoding='utf-8')
     (migration / 'client-mods.lock.json').write_text(json.dumps({'modules': []}), encoding='utf-8')
 
-    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.1+26.3.jar'
+    client_jar = root / 'build/minecraft-26.3/client/libs/CopiMineClient-0.1.2+26.3.jar'
     client_jar.parent.mkdir(parents=True)
     with zipfile.ZipFile(client_jar, 'w') as archive:
         archive.writestr('fabric.mod.json', json.dumps({
-            'id': 'copimineclient', 'version': '0.1.1+26.3',
+            'id': 'copimineclient', 'version': '0.1.2+26.3',
             'depends': {'minecraft': '26.3'},
             'entrypoints': {'client': ['me.copimine.client.CopiMineClient']},
             'mixins': ['copimineclient-26.3.mixins.json'],
@@ -1015,6 +1019,49 @@ def test_existing_copimineclient_mod_is_rejected_before_profile_mutation(tmp_pat
     assert existing_client.is_file()
     assert not (profile / 'resourcepacks').exists()
     assert not (profile / 'copimine-migration-receipt.json').exists()
+
+    existing_client.unlink()
+    previous_client = mods / 'CopiMineClient-0.1.1+26.3.jar'
+    with zipfile.ZipFile(previous_client, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('fabric.mod.json', json.dumps({
+            'id': 'copimineclient',
+            'version': '0.1.1+26.3',
+            'depends': {'minecraft': '26.3'},
+        }))
+    held_path = str(previous_client).replace("'", "''")
+    installer_path = str(script).replace("'", "''")
+    profile_path = str(profile).replace("'", "''")
+    shell_path = str(shell).replace("'", "''")
+    lock_wrapper = f"""
+$held = [IO.File]::Open('{held_path}', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+try {{
+    & '{shell_path}' -NoProfile -ExecutionPolicy Bypass -File '{installer_path}' -ProfileDirectory '{profile_path}'
+    exit $LASTEXITCODE
+}} finally {{ $held.Dispose() }}
+"""
+    locked_result = subprocess.run([
+        shell, '-NoProfile', '-Command', lock_wrapper,
+    ], capture_output=True, text=True, timeout=30)
+
+    assert locked_result.returncode != 0, locked_result.stdout + locked_result.stderr
+    assert 'used by another process' in (locked_result.stdout + locked_result.stderr).lower()
+    assert 'rollback is incomplete' not in (locked_result.stdout + locked_result.stderr).lower()
+    assert previous_client.is_file()
+    assert not (mods / client_jar.name).exists()
+    assert not list(profile.glob('.copimine-migration-transaction-*'))
+
+    result = subprocess.run([
+        shell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', str(script),
+        '-ProfileDirectory', str(profile),
+    ], capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (mods / client_jar.name).read_bytes() == client_jar.read_bytes()
+    assert not previous_client.exists()
+    backups = list((profile / 'migration-backups' / 'client-mods').glob('*/' + previous_client.name))
+    assert len(backups) == 1 and backups[0].read_bytes() != b''
+    assert json.loads((profile / 'copimine-migration-receipt.json').read_text(encoding='utf-8-sig'))[
+        'copimineClient']['version'] == '0.1.2+26.3'
 
 
 def test_stale_locked_fabric_mod_id_is_rejected_before_profile_mutation(tmp_path):

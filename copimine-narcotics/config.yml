@@ -29,7 +29,7 @@ textures:
 client_bridge:
   enabled: true
   required_client_mod_id: copimineclient
-  required_client_mod_version: 0.1.1+26.3
+  required_client_mod_version: 0.1.2+26.3
   handshake_timeout_seconds: 10
   prefer_client_visuals: true
   fallback_to_server_overlay: false

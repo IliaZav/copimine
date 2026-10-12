@@ -291,19 +291,38 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         PendingClientHandshake pending = new PendingClientHandshake(UUID.randomUUID().toString(), expiresAt);
         pendingHandshakes.put(playerId, pending);
         long timeoutTicks = configService.handshakeTimeoutSeconds() * 20L;
+        scheduleClientModChallenge(player, playerId, pending, 1L);
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (player.isOnline() && pendingHandshakes.get(playerId) == pending) {
+                boolean channelRegistered = player.getListeningPluginChannels().contains(ClientBridgePayloads.CHANNEL);
+                rejectClient(player, channelRegistered
+                        ? "client-mod-timeout"
+                        : "client-mod-channel-not-registered");
+            }
+        }, timeoutTicks);
+    }
+
+    private void scheduleClientModChallenge(Player player, UUID playerId,
+                                            PendingClientHandshake pending, long delayTicks) {
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (!player.isOnline() || pendingHandshakes.get(playerId) != pending) {
                 return;
             }
-            player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL,
-                    ClientBridgePayloads.encodeClientModChallenge(
-                            pending.challengeId(), configService.requiredClientModVersion()));
-        }, 1L);
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline() && pendingHandshakes.get(playerId) == pending) {
-                rejectClient(player, "client-mod-timeout");
+            long now = System.currentTimeMillis();
+            boolean channelRegistered = player.getListeningPluginChannels().contains(ClientBridgePayloads.CHANNEL);
+            if (ClientModHandshakePolicy.shouldSendChallenge(
+                    true, channelRegistered, pending.expiresAtMillis(), now)) {
+                player.sendPluginMessage(plugin, ClientBridgePayloads.CHANNEL,
+                        ClientBridgePayloads.encodeClientModChallenge(
+                                pending.challengeId(), configService.requiredClientModVersion()));
+                plugin.getLogger().fine("Sent CopiMineClient challenge to " + player.getName());
+                return;
             }
-        }, timeoutTicks);
+            if (ClientModHandshakePolicy.shouldWaitForClientChannel(
+                    true, channelRegistered, pending.expiresAtMillis(), now)) {
+                scheduleClientModChallenge(player, playerId, pending, 4L);
+            }
+        }, delayTicks);
     }
 
     @EventHandler

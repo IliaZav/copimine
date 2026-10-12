@@ -146,7 +146,7 @@ def write_plugin_snapshot(path: Path, files: dict[str, bytes]) -> None:
 def make_fixture(root: Path) -> tuple[Path, dict]:
     artifact_dir = root / "build/minecraft-26.3"
     paper = artifact_dir / "server/paper-26.3-161.jar"
-    client = artifact_dir / "client/libs/CopiMineClient-0.1.1+26.3.jar"
+    client = artifact_dir / "client/libs/CopiMineClient-0.1.2+26.3.jar"
     locked_mod = artifact_dir / "client-mods/fabric-api-0.162.0+26.3.jar"
     pack = artifact_dir / "CopiMineResourcePack-26.3.zip"
     plugin_candidate = artifact_dir / "server-plugins/TestPlugin.jar"

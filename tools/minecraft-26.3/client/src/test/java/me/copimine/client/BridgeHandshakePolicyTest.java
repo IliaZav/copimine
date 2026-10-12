@@ -17,4 +17,15 @@ class BridgeHandshakePolicyTest {
                 "b4bfc0f3-fb42-450e-a6bd-98087b36b55c"));
         assertFalse(BridgeHandshakePolicy.acceptsAcknowledgement(true, true, "", ACTIVE_SESSION));
     }
+
+    @Test
+    void sendsHelloForAValidServerChallengeWithoutWaitingForChannelAdvertisement() {
+        assertTrue(BridgeHandshakePolicy.shouldAttemptHello(true, ACTIVE_SESSION, false, 0, 10));
+        assertTrue(BridgeHandshakePolicy.shouldAttemptHello(true, ACTIVE_SESSION, false, 9, 10));
+        assertFalse(BridgeHandshakePolicy.shouldAttemptHello(false, ACTIVE_SESSION, false, 0, 10));
+        assertFalse(BridgeHandshakePolicy.shouldAttemptHello(true, "", false, 0, 10));
+        assertFalse(BridgeHandshakePolicy.shouldAttemptHello(true, null, false, 0, 10));
+        assertFalse(BridgeHandshakePolicy.shouldAttemptHello(true, ACTIVE_SESSION, true, 0, 10));
+        assertFalse(BridgeHandshakePolicy.shouldAttemptHello(true, ACTIVE_SESSION, false, 10, 10));
+    }
 }

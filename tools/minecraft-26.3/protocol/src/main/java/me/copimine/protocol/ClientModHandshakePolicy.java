@@ -6,7 +6,7 @@ import java.util.Objects;
 public final class ClientModHandshakePolicy {
     public static final String MOD_ID = "copimineclient";
     public static final String CHALLENGE_MESSAGE_TYPE = "client_mod_challenge";
-    public static final String DEFAULT_REQUIRED_VERSION = "0.1.1+26.3";
+    public static final String DEFAULT_REQUIRED_VERSION = "0.1.2+26.3";
     public static final int PROTOCOL_VERSION = 3;
 
     private ClientModHandshakePolicy() {
@@ -46,6 +46,26 @@ public final class ClientModHandshakePolicy {
                 && hasText(modId)
                 && Objects.equals(modId, expectedModId)
                 && protocol == expectedProtocol;
+    }
+
+    public static boolean shouldSendChallenge(
+            boolean handshakePending,
+            boolean clientListeningOnChannel,
+            long expiresAtMillis,
+            long nowMillis) {
+        return handshakePending
+                && clientListeningOnChannel
+                && nowMillis <= expiresAtMillis;
+    }
+
+    public static boolean shouldWaitForClientChannel(
+            boolean handshakePending,
+            boolean clientListeningOnChannel,
+            long expiresAtMillis,
+            long nowMillis) {
+        return handshakePending
+                && !clientListeningOnChannel
+                && nowMillis < expiresAtMillis;
     }
 
     private static boolean hasText(String value) {

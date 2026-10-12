@@ -8,7 +8,7 @@
 - Paper 26.3 build 169 beta сверяется с размером и SHA-256 из того же lock.
 - Сборка Paper-плагинов и клиента требует Java 25; независимый Grim compatibility patch собирается Java 21.
 - Fabric Loader 0.19.5, Loom 1.17.21 и Fabric API 0.162.0+26.3.
-- Client mod lock содержит 13 артефактов, включая Fabric API, который вложен в CopiMineClient; отдельно в профиль устанавливаются 12 внешних JAR плюс CopiMineClient 0.1.1+26.3. Все артефакты закреплены SHA-512, размером, URL и Fabric metadata в `client-mods.lock.json`.
+- Client mod lock содержит 13 артефактов, включая Fabric API, который вложен в CopiMineClient; отдельно в профиль устанавливаются 12 внешних JAR плюс CopiMineClient 0.1.2+26.3. Все артефакты закреплены SHA-512, размером, URL и Fabric metadata в `client-mods.lock.json`.
 - Мигрированный ресурс-пак имеет format 97.1 и закреплён SHA-256. Текстуры, копируемые из item atlas в block atlas, приводятся к нижней границе размера, кратной 16, Lanczos-фильтром. Это сохраняет mipmap-уровни; исходные item-текстуры не меняются.
 
 ## Подготовка воспроизводимой сборки
@@ -27,7 +27,7 @@ $Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
   -PythonExe $Python313
 ```
 
-Скрипт сверяет источники и собранные файлы по lock, скачивает закреплённые upstream-моды, проверяет Fabric metadata, собирает custom Paper plugins и CopiMineClient, затем строит resource pack. Миграционный клиент собирается проектом `tools/minecraft-26.3/client`: он использует общие исходные ресурсы из `CopiMineClient/src/main/resources`, но формирует отдельный артефакт `0.1.1+26.3` с метаданными из migration lock. Корневой `CopiMineClient/build-client.ps1` остаётся сборкой прежнего проекта 1.21.1 и не создаёт JAR для Paper 26.3. Не подменяйте JAR вручную в `build/minecraft-26.3`.
+Скрипт сверяет источники и собранные файлы по lock, скачивает закреплённые upstream-моды, проверяет Fabric metadata, собирает custom Paper plugins и CopiMineClient, затем строит resource pack. Миграционный клиент собирается проектом `tools/minecraft-26.3/client`: он использует общие исходные ресурсы из `CopiMineClient/src/main/resources`, но формирует отдельный артефакт `0.1.2+26.3` с метаданными из migration lock. Корневой `CopiMineClient/build-client.ps1` остаётся сборкой прежнего проекта 1.21.1 и не создаёт JAR для Paper 26.3. Не подменяйте JAR вручную в `build/minecraft-26.3`.
 
 Не выпускайте Minecraft 26.3 сервер через legacy `scripts/package_full_release.ps1` или его Windows install/update wrappers: они собирают клиент 1.21.1. Старый упаковщик завершится до создания release output, если обнаружит migration profile lock либо YAML-конфигурацию, требующую CopiMineClient `+26.3`. Для проверки используется `scripts/minecraft/inspect_legacy_release_client_bridge.py` с PyYAML SafeLoader: комментарии, block scalars, anchors/merge aliases и экранированные ключи интерпретируются по YAML-семантике; malformed YAML, дублированные ключи и неподдерживаемая структура закрывают упаковку с ошибкой. `PrepareMigrationCandidates.ps1` формирует и проверяет candidate артефакты 26.3, но ещё не создаёт production release bundle.
 

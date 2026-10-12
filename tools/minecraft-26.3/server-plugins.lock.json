@@ -789,18 +789,19 @@
         "6c1872fa0c5047a88fc90addc18d7c4537e3b70395636b8ee2980c82c22f3df9",
         "60e2945678a7e2976ce7458531c173048de30787dbcd4d12fdb988af48cb127b",
         "65a3821e5962f402a96fec1cfdab1d0a8a5c204d97dccb38a4b299c818802e3d",
-        "ad9ec409e3bc82f3c1b40e57177f87a6ad5b06640a773f8479436d4a96adc0d5"
+        "ad9ec409e3bc82f3c1b40e57177f87a6ad5b06640a773f8479436d4a96adc0d5",
+        "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97"
       ],
       "candidate": {
         "filename": "CopiMineNarcotics-26.3.jar",
         "runtimeFilename": "CopiMineNarcotics.jar",
-          "sha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
+          "sha256": "dc4d7f2dab2a3cd1e1ab8fee2bfff9849d22afb494e8cdebd9857e99937b5cce",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-          "size": 225221,
-          "sha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3"
+          "size": 225749,
+          "sha512": "acba3b5e47b8ca703052d3a40ebd85462707aac86821f05eb0b57f7cf663847e94b1265c121152511a92735f752e77e4fc3912e159da8ff45ddb5e79543201d7"
       },
       "nativeVerified": false
     },

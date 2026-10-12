@@ -271,7 +271,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static boolean sendHello() {
-        if (sessionId.isBlank() || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+        if (sessionId.isBlank()) {
             return false;
         }
         irisShaderPackActive = detectIrisShaderPackInUse();
@@ -401,11 +401,9 @@ public final class ClientBridgeProtocol {
     }
 
     public static void tickHelloRetry(Minecraft client) {
-        if (!connected || sessionId.isBlank() || helloAcknowledged
-                || client.getConnection() == null || helloAttempts >= MAX_HELLO_ATTEMPTS) {
-            return;
-        }
-        if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
+        if (!BridgeHandshakePolicy.shouldAttemptHello(
+                connected, sessionId, helloAcknowledged, helloAttempts, MAX_HELLO_ATTEMPTS)
+                || client.getConnection() == null) {
             return;
         }
         long now = System.currentTimeMillis();

@@ -51,7 +51,7 @@ def test_copimine_client_candidate_matches_locked_build_artifact():
     artifact = lock["clientArtifact"]
     candidate = ROOT / "build/minecraft-26.3/client/libs" / artifact["filename"]
 
-    assert artifact["filename"] == "CopiMineClient-0.1.1+26.3.jar"
+    assert artifact["filename"] == "CopiMineClient-0.1.2+26.3.jar"
     assert artifact["size"] > 0
     assert len(artifact["sha512"]) == 128
     assert candidate.is_file(), "PrepareMigrationCandidates.ps1 must build CopiMineClient before profile install"

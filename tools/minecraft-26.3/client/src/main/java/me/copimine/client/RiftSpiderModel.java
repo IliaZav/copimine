@@ -84,14 +84,24 @@ public final class RiftSpiderModel extends SpiderModel {
         PartDefinition head = root.getChild("head");
         PartDefinition abdomen = root.getChild("body1");
 
-        addLeg(root, "right_hind_leg", -4.0F, 15.0F, 2.0F, false);
-        addLeg(root, "left_hind_leg", 4.0F, 15.0F, 2.0F, true);
-        addLeg(root, "right_middle_hind_leg", -4.0F, 15.0F, 1.0F, false);
-        addLeg(root, "left_middle_hind_leg", 4.0F, 15.0F, 1.0F, true);
-        addLeg(root, "right_middle_front_leg", -4.0F, 15.0F, 0.0F, false);
-        addLeg(root, "left_middle_front_leg", 4.0F, 15.0F, 0.0F, true);
-        addLeg(root, "right_front_leg", -4.0F, 15.0F, -1.0F, false);
-        addLeg(root, "left_front_leg", 4.0F, 15.0F, -1.0F, true);
+        // Preserve vanilla's radial resting pose; setupAnim adds gait deltas
+        // to these baked yaw/roll angles rather than replacing them.
+        addLeg(root, "right_hind_leg", -4.0F, 15.0F, 2.0F, false,
+                0.7853982F, -0.7853982F);
+        addLeg(root, "left_hind_leg", 4.0F, 15.0F, 2.0F, true,
+                -0.7853982F, 0.7853982F);
+        addLeg(root, "right_middle_hind_leg", -4.0F, 15.0F, 1.0F, false,
+                0.3926991F, -0.58119464F);
+        addLeg(root, "left_middle_hind_leg", 4.0F, 15.0F, 1.0F, true,
+                -0.3926991F, 0.58119464F);
+        addLeg(root, "right_middle_front_leg", -4.0F, 15.0F, 0.0F, false,
+                -0.3926991F, -0.58119464F);
+        addLeg(root, "left_middle_front_leg", 4.0F, 15.0F, 0.0F, true,
+                0.3926991F, 0.58119464F);
+        addLeg(root, "right_front_leg", -4.0F, 15.0F, -1.0F, false,
+                -0.7853982F, -0.7853982F);
+        addLeg(root, "left_front_leg", 4.0F, 15.0F, -1.0F, true,
+                0.7853982F, 0.7853982F);
 
         // The user supplied archive has no spider mesh. These optional
         // elite parts add a ritual silhouette without covering the ordinary
@@ -146,11 +156,11 @@ public final class RiftSpiderModel extends SpiderModel {
     }
 
     private static void addLeg(PartDefinition root, String name, float x, float y,
-                               float z, boolean mirrored) {
+                               float z, boolean mirrored, float yaw, float roll) {
         root.addOrReplaceChild(name, ModelUvBounds.cuboid(TEXTURE_WIDTH, TEXTURE_HEIGHT,
                         18, 0, mirrored ? -2.0F : -14.0F,
                         -1.0F, -1.0F, 16.0F, 2.0F, 2.0F, mirrored),
-                PartPose.offset(x, y, z));
+                PartPose.offsetAndRotation(x, y, z, 0.0F, yaw, roll));
     }
 
     private static CubeListBuilder cube(int u, int v, float x, float y, float z,

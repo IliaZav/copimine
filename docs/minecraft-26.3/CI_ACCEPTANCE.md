@@ -112,3 +112,15 @@ GitHub exact-head push run [#889](https://github.com/IliaZav/copimine/actions/ru
 GitHub остаётся обязательной CI-проверкой по решению владельца. В GitLab ветка синхронизирована с GitHub, но pipelines [#2936887334](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936887334) и [#2936887383](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936887383) завершились до запуска jobs; GitLab тесты не запускались и результат нельзя обозначать как pass.
 
 Migration CI зелёный, но acceptance остаётся открытой. Native-evidence steps пропущены условием workflow, потому что в checkout SHA d12b526 отсутствовали файлы artifacts/minecraft-26.3/native-acceptance/. Отдельно от причины пропуска CI шагов, настоящий вход игрока и bridge handshake пока не подтверждены. См. актуальное migration evidence в VALIDATION_EVIDENCE_2026-10-12.md и progress ledger в MIGRATION_PROGRESS.md.
+
+
+## GitHub CI на точном candidate SHA 892b6980e88d40439f9364d9f951220ecd53c50c — проверено 2026-10-12 06:00 MSK
+
+| Платформа/событие | Запуск | Результат |
+| --- | --- | --- |
+| GitHub push | [38195002466](https://github.com/IliaZav/copimine/actions/runs/38195002466) | success: migration-postgres-contract, static-and-contract, java-plugins |
+| GitHub pull request | [38195005385](https://github.com/IliaZav/copimine/actions/runs/38195005385) | success: migration-postgres-contract, static-and-contract, java-plugins |
+| GitLab backup push | [2936997017](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936997017) | failed before jobs; zero jobs returned |
+| GitLab backup MR | [2936997065](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936997065) | failed before jobs; zero jobs returned |
+
+GitHub push и PR jobs были независимо перечитаны по run IDs; все три job завершились success на указанном SHA. GitLab ветка указывает на тот же SHA, но pipeline без jobs не считается ни успешным, ни неуспешным результатом тестов. На текущем SHA условия workflow для native-acceptance artifact были пропущены, потому что acceptance evidence ещё не создано и проверено. Draft PR #5 остаётся отдельной веткой review и не слит.

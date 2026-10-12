@@ -86,3 +86,28 @@ AuthMe and AuthEffects are disabled only in the loopback test runtime. AuthMe 6.
 | Native connection and bridge | Не выполнено; nativeVerified=false | Windows Firewall system prompt и недоступный Computer Use bridge блокируют безопасное управление Minecraft GUI |
 
 GitLab backup pipelines для этого candidate завершились без jobs. Они не дают результата тестов и не являются доказательством отказа конкретного теста. Историю предыдущих exact-SHA результатов и их пределы см. в разделах выше.
+
+
+## Повторный полный старт Paper 26.3 — 2026-10-12, база SHA 892b6980e88d40439f9364d9f951220ecd53c50c
+
+### Проверяемые результаты
+
+| Проверка | Результат |
+| --- | --- |
+| Установленный Fabric-профиль | InstallMigrationProfile.ps1 -ValidateOnly подтвердил CopiMineClient 0.1.1+26.3 и copimineclient-26.3.mixins.json |
+| Focused migration acceptance tests | 148 passed, 2 skipped за 83.26s на Python 3.14.3 с зафиксированными cryptography/rfc8785/pytest; см. [native-acceptance-tests-2026-10-12.txt](evidence/native-acceptance-tests-2026-10-12.txt) |
+| Основной тестовый сервер | 29/29 выбранных по lock JAR совпали по SHA-256 и SHA-512; listener только 127.0.0.1:25568 |
+| Отдельный полный набор | Один зафиксированный после старта inventory snapshot: 31/31 JAR имеют SHA-256/SHA-512, совпадающие с lock; AuthMe и AuthEffects входят в этот набор |
+| Старт fullset #1 | Paper 26.3 build 169: Done=1, Enabling=31, plugin-load failures=0, SEVERE=0; 1 nonfatal OSHI/Perflib ERROR |
+| Старт fullset #2 | Done=1, Enabling=31, plugin-load failures=0, SEVERE=0; 1 nonfatal OSHI/Perflib ERROR; AuthMe 6.0.1 build n.2770 и AuthEffects включились |
+| PacketEvents update check | Во втором полном старте асинхронная проверка версии получила HTTP 403 от GitHub API и вывела WARN/parse exception; блок mappings V_26_3 и загрузка плагинов продолжились. Причина 403 из лога не установлена; проверить в последующем плагинном аудите. |
+| Остановка и порты | Оба fullset процесса остановлены; 25569 и 24457 закрыты; основной тестовый сервер остался на 25568 |
+| Native connection | Не состоялся; клиентский log не содержит подключения/join. nativeVerified=false |
+
+### Логи и пределы
+
+Один read-only inventory manifest фиксирует plugin name, одно фактическое поле `filename`, а также expected/actual SHA-256 и SHA-512: 29/29 точных совпадений для основного loopback test runtime и 31/31 для отдельного полного набора после старта; SHA-256 manifest — `0DEBCFFC901544724BE61288B7928AD00F927523F552F33023E895F0E3B0DB3D`. В обоих стартах `Done=1`, `Enabling=31`, plugin-load failures=0, `SEVERE=0`; каждый лог содержит одну нефатальную OSHI/Perflib `ERROR` о Windows performance counters. Во втором старте также зафиксирован сбой только асинхронной проверки обновлений PacketEvents: GitHub API ответил HTTP 403; точная причина отказа не установлена. AuthMe печатает benign `No MaxMind credentials found`; секретных значений эта строка не содержит.
+
+Tracked sanitized копии: [fullset-start-1-2026-10-12-redacted.log](evidence/fullset-start-1-2026-10-12-redacted.log) и [fullset-start-2-2026-10-12-redacted.log](evidence/fullset-start-2-2026-10-12-redacted.log). В них удалены строки с настройками auth/database и UUID, а локальный путь заменён нейтральным маркером `<TEST_RUNTIME>`. Оригиналы остаются локально в ACL-защищённой папке %LOCALAPPDATA%\CopiMine\minecraft-26.3\fullset-test-20261012-01\acceptance-evidence. Сканирование tracked-копий не обнаружило значений секретов, UUID, имени пользователя или исходных локальных путей; безопасная строка AuthMe «No MaxMind credentials found» оставлена. Manifest содержит поле `filename` для каждого JAR и ожидаемые/фактические SHA-256/SHA-512 для обоих наборов: [plugin-inventory-hashes-2026-10-12.json](evidence/plugin-inventory-hashes-2026-10-12.json), SHA-256 `0DEBCFFC901544724BE61288B7928AD00F927523F552F33023E895F0E3B0DB3D`. Хэши tracked log #1 и #2: `A7567A2AD39F49F5A087DA6B794B6C4C75C581E2386FD6F04AF54FFDD69AD9B6` и `5FCB60E0F715BAA81273C93786E77790FC1898352ECC612FA4E30AA4C3F67810`.
+
+Зелёный старт не проверяет вход, команды, экономику, permissions, auth flow, PacketEvents/ProtocolLib с живым клиентом, визуальную доставку resource pack или корректность восстановления после перезапуска. AuthMe GeoIP остался без локальной GeoIP базы/ключа, а upstream ProtocolLib всё ещё обозначает 26.2 как максимум протестированной версии. Эти пункты сохраняют статус runtime/native validation.

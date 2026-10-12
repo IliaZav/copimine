@@ -20,3 +20,11 @@
 - Result: complete coverage of 25 changed files, 0 reportable findings.
 - A candidate noted that a deliberately modified client can forge the public compatibility HELLO. It was assessed as not applicable to server security because it grants no extra privileges; the limitation remains a product compatibility boundary documented in the source docs.
 - This scan predates the profile case fix and YAML merge override fix. A new scan of the final commit is required and will supersede it for the published candidate.
+
+
+## Fullset migration evidence review — 2026-10-12
+
+- Scope: the seven-file evidence checkpoint based on source SHA `892b6980e88d40439f9364d9f951220ecd53c50c`: CI acceptance, progress ledger, validation evidence, two sanitized startup logs, focused-test transcript, and per-plugin hash manifest. This was a documentation/evidence-only diff; no production source changed.
+- CodeRabbit CLI 0.8.2, authenticated agent mode, fresh uncommitted review: completed with `0 issues`.
+- Independent local reviewer initially found three evidence-precision issues (single snapshot wording, PacketEvents update-check HTTP 403 omission, and manifest filename field description). All were corrected. Final read-only re-review found no actionable issues and confirmed the manifest and log hashes, plugin counts, test transcript, and `nativeVerified=false` boundary.
+- These reviews assess the evidence/documentation diff. They do not replace native Minecraft login, plugin live-behavior, or recovery verification.

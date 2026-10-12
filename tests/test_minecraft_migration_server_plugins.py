@@ -52,6 +52,13 @@ def jar(name,version):
     with zipfile.ZipFile(out,'w') as z:z.writestr('plugin.yml',f'name: {name}\nversion: {version}\n')
     return out.getvalue()
 
+def artifacts_jar(version,items):
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,'w') as z:
+        z.writestr('plugin.yml',f'name: CopiMineArtifacts\nversion: {version}\n')
+        z.writestr('items.yml',items)
+    return out.getvalue()
+
 def descriptor_jar(name_line):
     out=io.BytesIO()
     with zipfile.ZipFile(out,'w') as z:z.writestr('plugin.yml',name_line+'\nversion: 1\n')
@@ -121,6 +128,108 @@ def test_install_preserves_accepted_eula_while_the_server_is_stopped(tmp_path):
     assert (server/'plugins/new.jar').read_bytes()==new
     assert not (server/'plugins/old.jar').exists()
     assert (server/'migration-backups').is_dir()
+
+def artifacts_install_fixture(tmp_path):
+    mod=load();server,stage,record,old,new=fixture(tmp_path)
+    previous=server/'plugins/old.jar'
+    previous.unlink()
+    old=jar('CopiMineArtifacts','1')
+    (server/'plugins/CopiMineArtifacts.jar').write_bytes(old)
+    record.update(pluginName='CopiMineArtifacts',version='2',filename='CopiMineArtifacts-26.3.jar',
+                  runtimeFilename='CopiMineArtifacts.jar',sha512='',size=0,
+                  replaceSha256=[hashlib.sha256(old).hexdigest()])
+    candidate=artifacts_jar('2','''items:\n  - id: current_item\n    price_ar: 150\n    name: Canonical name\n  - id: new_item\n    price_ar: 25\ndonation-catalog:\n  catalog-version: 1\n  website-base-url: https://copimine.ru\n  items:\n    - item-id: new_donation\n      price-donation: 50\n''')
+    (stage/'new.jar').unlink()
+    (stage/record['filename']).write_bytes(candidate)
+    record['sha512']=hashlib.sha512(candidate).hexdigest()
+    record['size']=len(candidate)
+    data=server/'plugins/CopiMineArtifacts'
+    data.mkdir()
+    catalog=data/'items.yml'
+    catalog.write_text('''items:\n  - id: current_item\n    price_ar: 500\n    admin_note: keep this field\n  - id: custom_item\n    price_ar: 75\ndonation-catalog:\n  catalog-version: 3\n  website-base-url: https://custom.example\n  items:\n    - item-id: custom_donation\n      price-donation: 100\n''',encoding='utf-8')
+    config=data/'config.yml'
+    config.write_bytes(b'debug_gui: false\nrepair:\n  fixed-price-ar: 7\n')
+    return mod,server,stage,record,catalog,config,candidate
+
+def test_artifacts_install_adds_missing_catalog_items_without_overwriting_custom_values(tmp_path):
+    mod,server,stage,record,catalog,config,candidate=artifacts_install_fixture(tmp_path)
+    original_config=config.read_bytes()
+
+    mod.install_records(tmp_path,server,[record],stage,lambda port,host:False)
+
+    import yaml
+    merged=yaml.safe_load(catalog.read_text(encoding='utf-8'))
+    assert [(item['id'],item['price_ar']) for item in merged['items']]==[
+        ('current_item',500),('custom_item',75),('new_item',25)]
+    assert merged['items'][0]['admin_note']=='keep this field'
+    assert merged['donation-catalog']['catalog-version']==3
+    assert merged['donation-catalog']['website-base-url']=='https://custom.example'
+    assert [item['item-id'] for item in merged['donation-catalog']['items']]==[
+        'custom_donation','new_donation']
+    assert config.read_bytes()==original_config
+    assert (server/'plugins/CopiMineArtifacts.jar').read_bytes()==candidate
+
+def test_artifacts_catalog_is_restored_when_plugin_receipt_publication_fails(tmp_path):
+    mod,server,stage,record,catalog,config,candidate=artifacts_install_fixture(tmp_path)
+    original_catalog=catalog.read_bytes()
+    original_plugin=(server/'plugins/CopiMineArtifacts.jar').read_bytes()
+
+    def fail_receipt(*args):
+        assert b'new_item' in catalog.read_bytes()
+        raise OSError('simulated receipt publication failure')
+    with pytest.raises(OSError,match='simulated receipt publication failure'):
+        mod.install_records(tmp_path,server,[record],stage,lambda port,host:False,receipt_writer=fail_receipt)
+
+    assert catalog.read_bytes()==original_catalog
+    assert (server/'plugins/CopiMineArtifacts.jar').read_bytes()==original_plugin
+    assert not (server/'migration-plugin-receipt.json').exists()
+
+def test_artifacts_catalog_merge_completes_locked_source_and_is_idempotent():
+    mod=load()
+    canonical=(ROOT/'copimine-artifacts/items.yml').read_bytes()
+    existing=b'''items:
+  - id: zmei_gorynych
+    price_ar: 500
+    admin-note: preserve this value
+'''
+
+    merged=mod.merge_artifacts_catalog_bytes(existing,canonical)
+
+    import yaml
+    document=yaml.safe_load(merged)
+    assert len(document['items'])==30
+    assert len(document['donation-catalog']['items'])==9
+    zmei=next(item for item in document['items'] if item['id']=='zmei_gorynych')
+    assert zmei['price_ar']==500
+    assert zmei['admin-note']=='preserve this value'
+    assert mod.merge_artifacts_catalog_bytes(merged,canonical)==merged
+
+def test_artifacts_install_recovers_stale_catalog_even_when_plugin_jar_is_current(tmp_path):
+    mod,server,stage,record,catalog,config,candidate=artifacts_install_fixture(tmp_path)
+    stale_catalog=catalog.read_bytes()
+    mod.install_records(tmp_path,server,[record],stage,lambda port,host:False)
+    catalog.write_bytes(stale_catalog)
+
+    mod.install_records(tmp_path,server,[record],stage,lambda port,host:False)
+
+    import yaml
+    merged=yaml.safe_load(catalog.read_text(encoding='utf-8'))
+    assert [item['id'] for item in merged['items']]==['current_item','custom_item','new_item']
+    assert [item['item-id'] for item in merged['donation-catalog']['items']]==[
+        'custom_donation','new_donation']
+
+def test_malformed_artifacts_catalog_refuses_plugin_install_before_mutation(tmp_path):
+    mod,server,stage,record,catalog,config,candidate=artifacts_install_fixture(tmp_path)
+    malformed=b'items: [broken\n'
+    catalog.write_bytes(malformed)
+    old_plugin=(server/'plugins/CopiMineArtifacts.jar').read_bytes()
+
+    with pytest.raises(ValueError,match='Invalid or ambiguous existing Artifacts catalog YAML'):
+        mod.install_records(tmp_path,server,[record],stage,lambda port,host:False)
+
+    assert catalog.read_bytes()==malformed
+    assert (server/'plugins/CopiMineArtifacts.jar').read_bytes()==old_plugin
+    assert not (server/'migration-backups/plugins').exists()
 
 def test_tampered_stage_rejected_before_any_live_file_changes(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)

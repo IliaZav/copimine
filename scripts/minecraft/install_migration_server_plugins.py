@@ -1,7 +1,8 @@
 """Install pinned plugin candidates into the isolated 26.3 runtime while offline.
 
 This receipt proves installed bytes, not gameplay compatibility. Old plugin JARs
-are retained outside the active plugin directory; configurations are untouched.
+are retained outside the active plugin directory. Existing settings are kept;
+the Artifacts catalog is extended only with missing canonical item IDs.
 """
 import argparse
 from contextlib import contextmanager
@@ -203,6 +204,240 @@ def _ensure_regular_file(path,label):
     if stat.S_ISLNK(info.st_mode) or (reparse_flag and getattr(info,'st_file_attributes',0)&reparse_flag):
         raise ValueError('Symlink or reparse point refused: '+label)
     if not stat.S_ISREG(info.st_mode):raise ValueError('Non-regular file refused: '+label)
+
+
+def _unique_yaml_mapping(loader,node,deep=False):
+    mapping={}
+    for key_node,value_node in node.value:
+        key=loader.construct_object(key_node,deep=deep)
+        try:duplicate=key in mapping
+        except TypeError as error:raise ValueError('YAML mapping keys must be scalar values') from error
+        if duplicate:raise ValueError('Duplicate YAML mapping key: '+str(key))
+        mapping[key]=loader.construct_object(value_node,deep=deep)
+    return mapping
+
+
+def _artifacts_yaml_load(text,label):
+    try:import yaml
+    except ImportError as error:raise ValueError('PyYAML is required to safely merge the Artifacts catalog') from error
+
+    class UniqueSafeLoader(yaml.SafeLoader):pass
+    UniqueSafeLoader.add_constructor('tag:yaml.org,2002:map',_unique_yaml_mapping)
+    try:return yaml.load(text,Loader=UniqueSafeLoader)
+    except Exception as error:raise ValueError('Invalid or ambiguous '+label+' YAML') from error
+
+
+def _catalog_entry_ids(rows,key,label):
+    result=[]
+    for row in rows:
+        if not isinstance(row,dict) or not isinstance(row.get(key),str) or not row[key].strip():
+            raise ValueError(label+' entries must have a non-empty '+key)
+        result.append(row[key])
+    if len(result)!=len(set(result)):raise ValueError(label+' contains duplicate '+key+' values')
+    return result
+
+
+def _yaml_find_header(lines,key,indent,start=0,end=None):
+    end=len(lines) if end is None else end
+    pattern=re.compile(r'^'+(' '*indent)+re.escape(key)+r':[ \t]*(?:#.*)?(?:\r?\n)?$')
+    matches=[i for i in range(start,end) if pattern.fullmatch(lines[i])]
+    if len(matches)>1:raise ValueError('Ambiguous Artifacts catalog section: '+key)
+    return matches[0] if matches else None
+
+
+def _yaml_mapping_end(lines,header_index,parent_indent):
+    for index in range(header_index+1,len(lines)):
+        stripped=lines[index].strip()
+        if not stripped or stripped.startswith('#'):continue
+        leading=lines[index][:len(lines[index])-len(lines[index].lstrip(' \t'))]
+        if '\t' in leading:raise ValueError('Tabs are not supported in the Artifacts catalog YAML')
+        if len(leading)<=parent_indent:return index
+    return len(lines)
+
+
+def _yaml_render_rows(rows,indent,newline):
+    import yaml
+    rendered=yaml.safe_dump(rows,sort_keys=False,allow_unicode=True,
+                            default_flow_style=False,width=1000)
+    return ''.join(' '*indent+line for line in rendered.splitlines(keepends=True)).replace('\n',newline)
+
+
+def _yaml_append_list_rows(text,header_index,key,indent,rows,newline,existing_count):
+    lines=text.splitlines(keepends=True)
+    header=lines[header_index]
+    inline_empty=re.fullmatch(
+        r'(?P<prefix> *'+re.escape(key)+r':)[ \t]*\[\][ \t]*(?P<comment>#.*)?(?P<newline>\r?\n)?',header)
+    if inline_empty:
+        ending=inline_empty.group('newline') or ''
+        suffix=(' '+inline_empty.group('comment') if inline_empty.group('comment') else '')+ending
+        lines[header_index]=inline_empty.group('prefix')+suffix
+        text=''.join(lines)
+    body_end=_yaml_mapping_end(lines,header_index,indent-2)
+    found_indents=[
+        len(lines[index])-len(lines[index].lstrip(' '))
+        for index in range(header_index+1,body_end)
+        if re.match(r'^ *-\s',lines[index])
+    ]
+    list_indent=min(found_indents) if found_indents else indent
+    if list_indent!=indent or sum(value==list_indent for value in found_indents)!=existing_count:
+        raise ValueError('Unexpected Artifacts catalog list indentation')
+    insert_at=sum(len(line) for line in lines[:body_end])
+    prefix='' if insert_at==0 or text[:insert_at].endswith(('\n','\r')) else newline
+    return text[:insert_at]+prefix+_yaml_render_rows(rows,indent,newline)+text[insert_at:]
+
+
+def merge_artifacts_catalog_bytes(existing_bytes,canonical_bytes):
+    """Add missing official IDs while keeping every existing item field unchanged."""
+    maximum=4_000_000
+    if not isinstance(existing_bytes,bytes) or not isinstance(canonical_bytes,bytes):
+        raise TypeError('Artifacts catalog merge requires byte inputs')
+    if len(existing_bytes)>maximum or len(canonical_bytes)>maximum:
+        raise ValueError('Artifacts catalog exceeds the safe size limit')
+    bom=existing_bytes.startswith(b'\xef\xbb\xbf')
+    try:
+        existing_text=existing_bytes.decode('utf-8-sig')
+        canonical_text=canonical_bytes.decode('utf-8-sig')
+    except UnicodeDecodeError as error:raise ValueError('Artifacts catalog must be UTF-8') from error
+    current=_artifacts_yaml_load(existing_text,'existing Artifacts catalog')
+    canonical=_artifacts_yaml_load(canonical_text,'canonical Artifacts catalog')
+    if not isinstance(canonical,dict):raise ValueError('Canonical Artifacts catalog root must be a mapping')
+    canonical_items=canonical.get('items')
+    canonical_donation=canonical.get('donation-catalog')
+    if not isinstance(canonical_items,list) or not isinstance(canonical_donation,dict) or not isinstance(canonical_donation.get('items'),list):
+        raise ValueError('Canonical Artifacts catalog has incomplete item sections')
+    canonical_item_ids=_catalog_entry_ids(canonical_items,'id','Canonical Artifacts AR catalog')
+    canonical_donations=canonical_donation['items']
+    canonical_donation_ids=_catalog_entry_ids(canonical_donations,'item-id','Canonical Artifacts donation catalog')
+    if not isinstance(current,dict):raise ValueError('Existing Artifacts catalog YAML root must be a mapping')
+
+    existing_items=current.get('items',[])
+    if not isinstance(existing_items,list):raise ValueError('Existing Artifacts items must be a list')
+    existing_item_ids=_catalog_entry_ids(existing_items,'id','Existing Artifacts AR catalog')
+    current_donation=current.get('donation-catalog')
+    if 'donation-catalog' in current and not isinstance(current_donation,dict):
+        raise ValueError('Existing Artifacts donation-catalog must be a mapping')
+    existing_donations=[] if current_donation is None else current_donation.get('items',[])
+    if not isinstance(existing_donations,list):raise ValueError('Existing Artifacts donation items must be a list')
+    existing_donation_ids=_catalog_entry_ids(existing_donations,'item-id','Existing Artifacts donation catalog')
+
+    existing_item_set=set(existing_item_ids)
+    existing_donation_set=set(existing_donation_ids)
+    missing_items=[row for row,item_id in zip(canonical_items,canonical_item_ids) if item_id not in existing_item_set]
+    missing_donations=[row for row,item_id in zip(canonical_donations,canonical_donation_ids)
+                       if item_id not in existing_donation_set]
+    if not missing_items and not missing_donations:return existing_bytes
+    newline='\r\n' if '\r\n' in existing_text else '\n'
+
+    lines=existing_text.splitlines(keepends=True)
+    items_header=_yaml_find_header(lines,'items',0)
+    if items_header is None:
+        if 'items' in current:raise ValueError('Existing Artifacts items list has no editable YAML section')
+        import yaml
+        addition=yaml.safe_dump({'items':missing_items},sort_keys=False,allow_unicode=True,
+                                default_flow_style=False,width=1000).replace('\n',newline)
+        prefix='' if not existing_text or existing_text.endswith(('\n','\r')) else newline
+        existing_text+=prefix+addition
+    elif missing_items:
+        existing_text=_yaml_append_list_rows(existing_text,items_header,'items',2,missing_items,
+                                             newline,len(existing_items))
+
+    current=_artifacts_yaml_load(existing_text,'merged Artifacts catalog')
+    if 'donation-catalog' not in current:
+        import yaml
+        addition=yaml.safe_dump({'donation-catalog':canonical_donation},sort_keys=False,
+                                allow_unicode=True,default_flow_style=False,width=1000).replace('\n',newline)
+        prefix='' if not existing_text or existing_text.endswith(('\n','\r')) else newline
+        existing_text+=prefix+addition
+    elif missing_donations:
+        lines=existing_text.splitlines(keepends=True)
+        donation_header=_yaml_find_header(lines,'donation-catalog',0)
+        if donation_header is None:raise ValueError('Existing donation-catalog has no editable YAML section')
+        donation_end=_yaml_mapping_end(lines,donation_header,0)
+        donation_items_header=_yaml_find_header(lines,'items',2,donation_header+1,donation_end)
+        if donation_items_header is None:
+            snippet='  items:'+newline+_yaml_render_rows(missing_donations,4,newline)
+            insert_at=sum(len(line) for line in lines[:donation_end])
+            prefix='' if insert_at==0 or existing_text[:insert_at].endswith(('\n','\r')) else newline
+            existing_text=existing_text[:insert_at]+prefix+snippet+existing_text[insert_at:]
+        else:
+            existing_text=_yaml_append_list_rows(existing_text,donation_items_header,'items',4,
+                                                 missing_donations,newline,len(existing_donations))
+
+    merged=_artifacts_yaml_load(existing_text,'merged Artifacts catalog')
+    if not isinstance(merged,dict) or not isinstance(merged.get('items'),list):
+        raise ValueError('Merged Artifacts catalog did not retain its AR item list')
+    donation=merged.get('donation-catalog')
+    if not isinstance(donation,dict) or not isinstance(donation.get('items'),list):
+        raise ValueError('Merged Artifacts catalog did not retain its donation item list')
+    _catalog_entry_ids(merged['items'],'id','Merged Artifacts AR catalog')
+    _catalog_entry_ids(donation['items'],'item-id','Merged Artifacts donation catalog')
+    return (b'\xef\xbb\xbf' if bom else b'')+existing_text.encode('utf-8')
+
+
+def _prepare_artifacts_catalog_update(server,records,stage):
+    record=next((row for row in records if row.get('pluginName')=='CopiMineArtifacts'),None)
+    if record is None:return None
+    candidate=Path(stage)/record['filename']
+    try:
+        with zipfile.ZipFile(candidate) as archive:
+            info=archive.getinfo('items.yml')
+            if info.file_size>4_000_000:raise ValueError('Canonical Artifacts items.yml exceeds the safe size limit')
+            canonical=archive.read(info)
+            if len(canonical)!=info.file_size:raise ValueError('Canonical Artifacts items.yml size changed while reading')
+    except (KeyError,zipfile.BadZipFile,OSError) as error:
+        raise ValueError('Pinned CopiMineArtifacts JAR has no valid items.yml catalog') from error
+    canonical_text=canonical.decode('utf-8-sig')
+    parsed=_artifacts_yaml_load(canonical_text,'canonical Artifacts catalog')
+    if not isinstance(parsed,dict) or not isinstance(parsed.get('items'),list):
+        raise ValueError('Canonical Artifacts catalog has an invalid AR item list')
+    donation=parsed.get('donation-catalog')
+    if not isinstance(donation,dict) or not isinstance(donation.get('items'),list):
+        raise ValueError('Canonical Artifacts catalog has an invalid donation item list')
+    _catalog_entry_ids(parsed['items'],'id','Canonical Artifacts AR catalog')
+    _catalog_entry_ids(donation['items'],'item-id','Canonical Artifacts donation catalog')
+
+    plugins=Path(server)/'plugins';plugin_data=plugins/'CopiMineArtifacts'
+    if _path_exists(plugin_data):
+        info=plugin_data.lstat();reparse_flag=getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',0)
+        if (stat.S_ISLNK(info.st_mode) or
+            (reparse_flag and getattr(info,'st_file_attributes',0)&reparse_flag) or
+            not stat.S_ISDIR(info.st_mode)):
+            raise ValueError('Symlink or non-directory refused: CopiMineArtifacts data directory')
+    catalog=plugin_data/'items.yml'
+    if not _path_exists(catalog):return catalog,None,canonical
+    _ensure_regular_file(catalog,'existing CopiMineArtifacts items.yml')
+    if catalog.stat().st_size>4_000_000:raise ValueError('Existing CopiMineArtifacts items.yml exceeds the safe size limit')
+    original=catalog.read_bytes();desired=merge_artifacts_catalog_bytes(original,canonical)
+    return None if desired==original else (catalog,original,desired)
+
+
+def _publish_artifacts_catalog_update(update,backup,created,moved,temporaries):
+    if update is None:return
+    destination,expected,desired=update;parent=destination.parent
+    if not _path_exists(parent):parent.mkdir()
+    info=parent.lstat();reparse_flag=getattr(stat,'FILE_ATTRIBUTE_REPARSE_POINT',0)
+    if (stat.S_ISLNK(info.st_mode) or
+        (reparse_flag and getattr(info,'st_file_attributes',0)&reparse_flag) or
+        not stat.S_ISDIR(info.st_mode)):
+        raise ValueError('Symlink or non-directory refused: CopiMineArtifacts data directory')
+    if expected is None:
+        if _path_exists(destination):raise ValueError('Artifacts catalog appeared during installation')
+    else:
+        _ensure_regular_file(destination,'existing CopiMineArtifacts items.yml')
+        if destination.read_bytes()!=expected:raise ValueError('Artifacts catalog changed after installation preflight')
+        saved=backup/'CopiMineArtifacts.items.yml'
+        if _path_exists(saved):raise ValueError('Artifacts catalog rollback destination is already occupied')
+        os.replace(destination,saved);moved.append((destination,saved))
+        _ensure_regular_file(saved,'CopiMineArtifacts catalog rollback backup')
+        if saved.read_bytes()!=expected:raise ValueError('Artifacts catalog changed while creating its rollback backup')
+    descriptor,temporary_name=tempfile.mkstemp(prefix='items.yml.',suffix='.candidate',dir=parent)
+    temporary=Path(temporary_name);temporaries.append(temporary)
+    with os.fdopen(descriptor,'wb') as output:
+        output.write(desired);output.flush();os.fsync(output.fileno())
+    _ensure_regular_file(temporary,'temporary CopiMineArtifacts items.yml')
+    os.replace(temporary,destination);created.append(destination)
+    _ensure_regular_file(destination,'installed CopiMineArtifacts items.yml')
+    if destination.read_bytes()!=desired:raise ValueError('Installed CopiMineArtifacts catalog differs from the verified merge')
 
 
 def _has_verified_plugin_backup(server,filename,expected_sha256):
@@ -1443,10 +1678,13 @@ def _install_records_locked(root,server,records,stage,port_checker=port_open,val
                     if identity(source)!=plugin_name:
                         raise ValueError('Staged '+plugin_name+' rollback candidate identity differs from its pinned lock')
                     disabled_auth_backup_sources.append((source,filename,expected_sha256))
+    catalog_update=_prepare_artifacts_catalog_update(server,records,stage)
     receipt={'schemaVersion':1,'minecraftVersion':'26.3','nativeVerified':False,
              'authenticationMode':'disabled-for-local-testing' if unauthenticated_test_mode else 'AuthMe-6.0.1',
              'installed':[],'pluginInventory':[]}
     if validate_only:
+        if catalog_update is not None:
+            raise ValueError('Artifacts catalog requires an additive migration; run the installer before validation')
         active_auth_plugins=[name for name in ('AuthMe','AuthEffects') if existing.get(name)]
         if unauthenticated_test_mode and active_auth_plugins:
             raise ValueError('Authentication plugins are still active in the unauthenticated local test runtime: '+
@@ -1460,7 +1698,7 @@ def _install_records_locked(root,server,records,stage,port_checker=port_open,val
         if already_installed:
             complete_receipt(server,receipt,records)
         return receipt
-    if not plan and not disabled_auth_plugins and not disabled_auth_backup_sources:
+    if not plan and not disabled_auth_plugins and not disabled_auth_backup_sources and catalog_update is None:
         complete_receipt(server,receipt,records)
         if receipt_writer:receipt_writer(server,receipt)
         return receipt
@@ -1504,6 +1742,7 @@ def _install_records_locked(root,server,records,stage,port_checker=port_open,val
             path=plugins/(record.get('runtimeFilename') or record['filename'])
             _ensure_regular_file(path,'installed plugin JAR')
             verify_staged(record,path)
+        _publish_artifacts_catalog_update(catalog_update,backup,created,moved,temporaries)
         complete_receipt(server,receipt,records)
         receipt['backup']=str(backup)
         if receipt_writer:receipt_writer(server,receipt)

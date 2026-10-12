@@ -4,7 +4,9 @@
 
 Политика CI обновлена 2026-10-11 по решению владельца проекта: GitHub Actions является обязательным источником приёмки; GitLab — резервное зеркало, его pipeline может быть диагностическим и не блокирует результат. Записи ниже сохраняют фактические статусы на момент прежних запусков.
 
-## Текущий migration candidate — 2026-10-12
+## Исторический снимок migration candidate — 2026-10-12, 01:24 UTC
+
+Этот блок был записан до завершения push/PR runs #889/#890 и до повторного подтверждения Paper listener. Актуальный статус находится в конце документа.
 
 - Рабочая ветка `codex/minecraft-26-3-migration-candidate-20261010` основана на `00f2c6927c9db3c58599fc77e257c6d1ea623061`; локальные исправления и проверки завершены, публикация exact-head SHA и GitHub Actions ещё ожидаются. Draft PR [#5](https://github.com/IliaZav/copimine/pull/5) остаётся открытым и не слит.
 - Свежая сводка проверок, точные артефактные хэши и блокеры: [validation evidence](VALIDATION_EVIDENCE_2026-10-12.md). Транскрипты команд хранятся в `evidence/`.
@@ -101,4 +103,12 @@ Local Java gate `RunJavaPluginCi.ps1` завершился внешней заг
 
 Профиль, установленный сервер и локальный Minecraft находятся на одном ПК, но Computer Use сообщает `apps: []`, а Desktop Commander — `DESKTOP-DQLROSV offline, last seen 22h ago`. Нативное подключение, отклонение vanilla/wrong-version клиентов и F2 screenshots не проверены; `nativeVerified=false`.
 
-Для этого рабочего diff GitHub Actions пока не запускался, fresh CodeRabbit/Codex Security review pending, а commit/push ещё нет. GitLab остаётся резервным зеркалом; его CI ранее завершился до запуска jobs из-за account-level identity verification. Принимать или менять lock status можно только после GitHub CI на exact commit и native acceptance.
+Исторически, на момент снимка 2026-10-12 01:24 UTC, этот diff ещё ожидал CI и публикации. Этот статус заменён более поздней контрольной точкой для d12b526 в конце документа.
+
+## Актуальный CI checkpoint — 2026-10-12, SHA d12b526
+
+GitHub exact-head push run [#889](https://github.com/IliaZav/copimine/actions/runs/38191785993) и PR run [#890](https://github.com/IliaZav/copimine/actions/runs/38191788666) — отдельные новые запуски на SHA d12b52638c90b6a5479a9508547165604ad1f1c9. В обоих прошли все jobs: static-and-contract, migration-postgres-contract и java-plugins. Проверка workflow-run API подтвердила conclusions. Более ранние runs #887/#888 относились к предыдущему SHA 876e2f07 и остаются отдельным историческим результатом.
+
+GitHub остаётся обязательной CI-проверкой по решению владельца. В GitLab ветка синхронизирована с GitHub, но pipelines [#2936887334](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936887334) и [#2936887383](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2936887383) завершились до запуска jobs; GitLab тесты не запускались и результат нельзя обозначать как pass.
+
+Migration CI зелёный, но acceptance остаётся открытой. Native-evidence steps пропущены условием workflow, потому что в checkout SHA d12b526 отсутствовали файлы artifacts/minecraft-26.3/native-acceptance/. Отдельно от причины пропуска CI шагов, настоящий вход игрока и bridge handshake пока не подтверждены. См. актуальное migration evidence в VALIDATION_EVIDENCE_2026-10-12.md и progress ledger в MIGRATION_PROGRESS.md.

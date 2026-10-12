@@ -71,3 +71,18 @@ AuthMe and AuthEffects are disabled only in the loopback test runtime. AuthMe 6.
 - `nativeVerified=false`. Not yet verified: multiplayer connection, required-client handshake, vanilla or wrong-version rejection, server resource-pack delivery/rendering, active gameplay, plugin behavior with a real player, and restart/recovery through Minecraft.
 - Iris shader processing was temporarily disabled (`enableShaders=false`) for this diagnostic launch; the original `iris.properties` was backed up with SHA-256 `3dde0d0e1128e47260421b9cd72fd8db930d7e0560431423bf22b727ebbe43df2`. Restore the original after the client is closed. This machine-profile change is not part of the migration commit.
 - Waves 1–7 and Rift Guardian remain deferred until migration acceptance passes.
+
+## Повторно подтверждено 2026-10-12 05:05 MSK — SHA d12b526
+
+Команды gh в текущей среде отсутствуют; статусы Actions получены через GitHub connector непосредственно для run/job IDs, а ветки — через git ls-remote.
+
+| Контроль | Результат | Граница доказательства |
+| --- | --- | --- |
+| GitHub push Actions для d12b52638c90b6a5479a9508547165604ad1f1c9 | Run [38191785993](https://github.com/IliaZav/copimine/actions/runs/38191785993): static-and-contract, migration-postgres-contract, java-plugins — success | Все три job прошли на точном SHA; native-evidence steps пропущены условием workflow, так как в checkout отсутствовали файлы artifacts/minecraft-26.3/native-acceptance/. Отдельно, player login/handshake остаются непроверенными |
+| GitHub PR Actions для того же SHA | Run [38191788666](https://github.com/IliaZav/copimine/actions/runs/38191788666): те же три jobs — success | Подтверждает PR-trigger CI и shared Java regression gate, не реальную Minecraft multiplayer session |
+| Git remote refs | origin/codex/minecraft-26-3-migration-candidate-20261010 и gitlab/... равны d12b52638c90b6a5479a9508547165604ad1f1c9 | Синхронизация branch refs, не GitLab CI |
+| Локальный Paper listener | 127.0.0.1:25568, PID 34632; процесс Paper 26.3 build 169 | Listener и текущие EndEvent idle diagnostics; нет player ping/session |
+| Установленный runtime inventory | Последняя read-only проверка: 29/29 выбранных offline-test plugin JAR совпали с lock и receipt | AuthMe/AuthEffects исключены в тестовой конфигурации; installer validate-only не выполнялся, пока mutex удерживался активным сервером |
+| Native connection and bridge | Не выполнено; nativeVerified=false | Windows Firewall system prompt и недоступный Computer Use bridge блокируют безопасное управление Minecraft GUI |
+
+GitLab backup pipelines для этого candidate завершились без jobs. Они не дают результата тестов и не являются доказательством отказа конкретного теста. Историю предыдущих exact-SHA результатов и их пределы см. в разделах выше.

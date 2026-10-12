@@ -2,7 +2,9 @@
 
 Обновлено: 2026-10-12 Europe/Moscow
 
-## Текущий статус — 2026-10-12
+## Исторический снимок до завершения GitHub runs #889/#890 — 2026-10-12, 01:24 UTC
+
+Этот блок фиксирует состояние до завершения push/PR CI и до повторного подтверждения Paper listener. Актуальный exact-SHA статус записан в контрольной точке ниже.
 
 - Активен только Minecraft 26.3 migration. Waves 1–7, Rift Guardian и отдельный игровой редизайн не начинались.
 - Локальные regression-проверки source candidate: Python 3.13 — `1555 passed, 7 skipped, 88 warnings`; migration PowerShell gate — `636 passed, 0 failed, 25 skipped`; client Gradle — `31 suites / 127 tests`; PostgreSQL migration contract — `27 passed`. В этом продолжении сфокусированные проверки lock/ProtocolLib прошли `2 passed`. Кодовый SHA `a47cdc40bceab38c3c7fc6edde6cf4469e2e46c6` добавил pin `PyYAML==6.0.2`; последующие изменения `e3c31cbe` и `09da1aa3` — документация.
@@ -632,3 +634,15 @@
 - Runtime не заменялся и сервер не завершался, потому что Paper ещё работает и удерживает migration lifecycle lock; замена JAR во время активной сессии не проверила бы код, реально исполняемый JVM. Текущий сервер продолжает оставаться доступным для локального теста на `127.0.0.1:25568`, но он ещё не загружал EndEvent v3. Требуется дождаться штатной остановки и затем установить locked кандидат, пересоздать receipt и выполнить live проверки.
 - Пользовательский профиль `D:\.minecraft\versions\Copimine` обновлён: установщик проверил и поставил новый CopiMineClient, resource pack и 12 внешних модов. `-ValidateOnly` прошёл; установленный клиентский JAR совпадает с новым SHA-512 lock. Minecraft client process не работал при установке. Native GUI login и F2 screenshots всё ещё недоступны через текущий computer-control bridge; `nativeVerified=false`.
 - GitHub candidate branch пока не обновлён. Перед commit остаются финальные CodeRabbit и independent review, Codex Security exact-range scan, публикация на GitHub, проверка GitHub Actions на точном SHA и backup push в GitLab. GitLab CI может быть заблокирован ранее сообщённым identity verification gate. Waves 1–7 и Rift Guardian остаются строго отложенными.
+
+## Контрольная точка 2026-10-12, 05:05 MSK — exact-SHA CI прошёл, native acceptance открыта
+
+- Проверенный исходник: d12b52638c90b6a5479a9508547165604ad1f1c9, ветка codex/minecraft-26-3-migration-candidate-20261010. GitHub origin и резервный GitLab gitlab указывали на одинаковый SHA при проверке.
+- Оба GitHub Actions запуска для этого SHA завершились успешно: push [#889](https://github.com/IliaZav/copimine/actions/runs/38191785993) и pull request [#890](https://github.com/IliaZav/copimine/actions/runs/38191788666). В каждом прошли migration-postgres-contract, static-and-contract и java-plugins. Ветка PR #5 остаётся draft и не слита.
+- static-and-contract собрал и проверил закреплённые migration artifacts, выполнил Python contracts и dependency vulnerability gates. Java job прогнал общий plugin regression gate; его успешный результат не является визуальной или native-приёмкой gameplay. PostgreSQL job прошёл на временном CI-сервисе.
+- Установленный клиентский профиль D:\.minecraft\versions\CopiMine прошёл read-only -ValidateOnly; экран Minecraft 26.3 main menu подтверждён F2-capture из предыдущей записи. Локальный Paper 26.3 продолжает слушать только 127.0.0.1:25568 (PID 34632). Последняя read-only сверка увидела 29 ожидаемых тестовых плагинов, 29 загруженных и совпадающие SHA по lock/receipt. AuthMe и AuthEffects выключены только в offline loopback test runtime; это не проверка их полного запуска.
+- Native migration acceptance не пройдена: игрок ещё не подключался. Не подтверждены CopiMineClient bridge v3 handshake, запрет vanilla/wrong-version клиента, серверная доставка и визуальная проверка resource pack, фактическое взаимодействие плагинов с игроком и restart/recovery. Состояние остаётся nativeVerified=false.
+- Текущая попытка открыть Multiplayer остановилась на системном Windows Firewall dialog. Доступный Computer Use bridge не видит локальные приложения (apps: []), а правила Computer Use запрещают агенту выбирать разрешения в таком системном диалоге. Пока пользователь вручную не закроет его, эти GUI-проверки недоступны.
+- ProtocolLib lock содержит 26.3 mappings/fixes, но upstream warning сообщает, что версия 26.3 не заявлена как протестированная (upstream maximum tested: 26.2); оставлен requires-runtime-validation. Не подтверждена и полная загрузка AuthMe 6.0.1 с AuthEffects.
+- GitLab refs совпадают с GitHub, но GitLab pipelines завершились до создания jobs; GitLab CI не запускался и не прошёл. По решению пользователя GitHub остаётся обязательным CI, GitLab — резервным зеркалом.
+- Миграция не закрыта. До принятия нужны настоящий вход из установленного профиля, live handshake и negative-version checks, pack/gameplay проверка и restart/recovery, а также закрытие/явное принятие оставшихся compatibility warnings. Волны 1–7, Narcotics redesign и Rift Guardian не начинались и остаются отложенными.

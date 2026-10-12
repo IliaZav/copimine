@@ -137,3 +137,16 @@ Commit `e42b37deb593379a620f08173044e453beab3b0c` adds only migration acceptance
 The native migration-evidence workflow steps were skipped in both runs because no accepted native-evidence artifact is present. This matches the actual state: no successful player login/bridge handshake is recorded, and `nativeVerified=false`. GitHub annotations were non-blocking: Node 20 deprecation notices, upcoming `ubuntu-latest` image migration notice, and existing Java deprecation/removal warnings in plugin compilation. No CI job failed.
 
 GitLab backup pipelines [2937115742](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937115742) (push) and [2937115844](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937115844) (MR) failed before creating jobs; both job lists contain zero entries. They do not represent failed test assertions. The candidate branch refs on `origin` and `gitlab` both equal `e42b37deb593379a620f08173044e453beab3b0c`. GitHub remains the required CI authority per the owner's decision.
+
+## Current exact-SHA checkpoint — 2026-10-12 — `bf55bd3e`
+
+The candidate branch currently points to `bf55bd3e7119a5624d2b58704be74de3d20eb847`. GitHub `origin` and backup remote `gitlab` were independently checked with `git ls-remote`; both refs match this SHA. The `bf55bd3e` commit records the preceding evidence checkpoint and contains documentation only.
+
+| GitHub trigger | Run | Exact SHA | Result |
+| --- | --- | --- | --- |
+| Push | [38202025671](https://github.com/IliaZav/copimine/actions/runs/38202025671) | `bf55bd3e7119a5624d2b58704be74de3d20eb847` | `static-and-contract`, `migration-postgres-contract`, `java-plugins` — success |
+| Pull request #5 | [38202029483](https://github.com/IliaZav/copimine/actions/runs/38202029483) | `bf55bd3e7119a5624d2b58704be74de3d20eb847` | all three jobs — success |
+
+Workflow job details were re-read for both exact run IDs. In each run, the three test jobs completed successfully. Native-evidence steps were skipped because the signed native acceptance artifact is not present; therefore these runs do not establish player login or set `nativeVerified=true`.
+
+GitLab backup push pipeline [2937179426](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937179426) and merge-request pipeline [2937179463](https://gitlab.com/copimine-group/Copimine-project/-/pipelines/2937179463) both have status `failed` and zero jobs. No GitLab test ran. GitHub remains the required CI authority.

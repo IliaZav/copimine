@@ -8,22 +8,23 @@
 - Paper 26.3 build 169 beta сверяется с размером и SHA-256 из того же lock.
 - Сборка Paper-плагинов и клиента требует Java 25; независимый Grim compatibility patch собирается Java 21.
 - Fabric Loader 0.19.5, Loom 1.17.21 и Fabric API 0.162.0+26.3.
-- Fabric-профиль содержит 13 внешних модов и CopiMineClient 0.1.1+26.3. Каждый внешний JAR закреплён SHA-512, размером, URL и Fabric metadata в `client-mods.lock.json`.
+- Client mod lock содержит 13 артефактов, включая Fabric API, который вложен в CopiMineClient; отдельно в профиль устанавливаются 12 внешних JAR плюс CopiMineClient 0.1.1+26.3. Все артефакты закреплены SHA-512, размером, URL и Fabric metadata в `client-mods.lock.json`.
 - Мигрированный ресурс-пак имеет format 97.1 и закреплён SHA-256. Текстуры, копируемые из item atlas в block atlas, приводятся к нижней границе размера, кратной 16, Lanczos-фильтром. Это сохраняет mipmap-уровни; исходные item-текстуры не меняются.
 
 ## Подготовка воспроизводимой сборки
 
-Из корня чистого migration checkout используйте закреплённые каталоги Java из локального toolchain. Пути ниже показаны для PowerShell; в чистом checkout сначала подготовьте toolchain по `README.md`.
+Из корня чистого migration checkout используйте закреплённые каталоги Java из локального toolchain. Для чистого checkout сначала выполните проверенную по размеру и SHA-256 установку Temurin из раздела «Подготовка кандидата» в `README.md`; команды ниже используют полученные версии 21.0.12.1 и 25.0.4.1. Не пропускайте проверку Java, если повторно используете уже существующие каталоги toolchain.
 
 ```powershell
 $BuildJava25 = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-25.0.4.1+1').Path
 $GrimJava21 = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').Path
+$Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\minecraft\PrepareMigrationCandidates.ps1 `
   -BuildJavaHome $BuildJava25 `
   -GrimPatchJavaHome $GrimJava21 `
-  -PythonExe python
+  -PythonExe $Python313
 ```
 
 Скрипт сверяет источники и собранные файлы по lock, скачивает закреплённые upstream-моды, проверяет Fabric metadata, собирает custom Paper plugins и CopiMineClient, затем строит resource pack. Миграционный клиент собирается проектом `tools/minecraft-26.3/client`: он использует общие исходные ресурсы из `CopiMineClient/src/main/resources`, но формирует отдельный артефакт `0.1.1+26.3` с метаданными из migration lock. Корневой `CopiMineClient/build-client.ps1` остаётся сборкой прежнего проекта 1.21.1 и не создаёт JAR для Paper 26.3. Не подменяйте JAR вручную в `build/minecraft-26.3`.
@@ -45,7 +46,7 @@ $GrimJava21 = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').
   -ValidateOnly
 ```
 
-`-ValidateOnly` выполняет read-only проверку фактически установленного профиля: сверяет 13 внешних JAR по размеру, SHA-512 и `fabric.mod.json`, CopiMineClient, resource pack, включение pack в `options.txt` и migration receipt. Режим не скачивает и не заменяет файлы; ему требуются проверенные локальные source-build JAR клиента и resource pack. `-ValidateDefinitionOnly` проверяет launcher JSON профиля и allowlist закреплённых URL/ID внешних модов, не требуя собранных клиентских артефактов и не меняя файлы.
+`-ValidateOnly` выполняет read-only проверку фактически установленного профиля: сверяет 12 отдельно установленных внешних JAR по размеру, SHA-512 и `fabric.mod.json`, CopiMineClient (с вложенным Fabric API), resource pack, включение pack в `options.txt` и migration receipt. Режим не скачивает и не заменяет файлы; ему требуются проверенные локальные source-build JAR клиента и resource pack. `-ValidateDefinitionOnly` проверяет launcher JSON профиля и allowlist закреплённых URL/ID внешних модов, не требуя собранных клиентских артефактов и не меняя файлы.
 
 Установщик включает мигрированный pack в `options.txt`, сохраняет прежние копии заменённых JAR в `migration-backups/client-mods`, атомарно ставит артефакты и пишет `copimine-migration-receipt.json`. Обычная локальная установка обратима через резервные копии; не удаляйте каталог `migration-backups`, пока версия не принята.
 
@@ -70,12 +71,14 @@ python -m pytest -q -rs `
 Полный Java plugin gate:
 
 ```powershell
+$GrimJava21 = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').Path
+$Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 & powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\minecraft\RunJavaPluginCi.ps1 `
   -JavaHome $GrimJava21 `
   -WorkspaceRoot $PWD.Path `
   -TemporaryDirectory $env:TEMP `
-  -PythonExe python
+  -PythonExe $Python313
 ```
 
 Fabric-клиентские unit-тесты выполняются сборочной процедурой на закреплённых Gradle и Java 25. PostgreSQL-интеграция создаёт случайную схему в специально выделенной тестовой базе, проверяет DDL/переносы и удаляет только эту временную схему.

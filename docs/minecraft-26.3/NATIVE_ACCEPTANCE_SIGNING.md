@@ -42,7 +42,9 @@ py -3.13 .\scripts\minecraft\install_migration_server_plugins.py
 ```powershell
 py -3.13 .\scripts\minecraft\install_migration_server_plugins.py --unauthenticated-test-runtime
 .\scripts\minecraft\StartMigrationTestServer.ps1
-``` После клиентской проверки штатно остановите сервер и восстановите полный locked plugin inventory и receipt:
+```
+
+После клиентской проверки штатно остановите сервер и восстановите полный locked plugin inventory и receipt:
 
 ```powershell
 py -3.13 .\scripts\minecraft\install_migration_server_plugins.py
@@ -60,7 +62,7 @@ py -3.13 .\scripts\minecraft\capture_native_plugin_snapshot.py --candidate
 py -3.13 .\scripts\minecraft\sign_native_acceptance.py sign
 ```
 
-Команда проверяет canonical JSON, подписывает запись внешним ключом, запускает локальный acceptance validator и сохраняет `acceptance.sig` только при успешной проверке. Любое изменение записи или её привязанного файла после подписи требует повторной проверки и подписи.
+Команда проверяет canonical JSON, подписывает запись внешним ключом, запускает локальный acceptance validator и сохраняет `acceptance.sig` только при успешной проверке. Любое изменение записи или её привязанного файла после подписи требует повторной проверки и подписи. Перед добавлением acceptance на проверенный source SHA вручную просмотрите raw-логи и screenshots вне Git. Затем зафиксируйте полный проверенный набор, перечисленный в `acceptance.json`, под `artifacts/minecraft-26.3/native-acceptance/` вместе с `acceptance.json` и `acceptance.sig`: CI проверяет server/client logs, inventory/receipt, snapshot JAR полного runtime и Minecraft F2 PNG, а также закрытый список файлов в evidence-каталоге. Не добавляйте private key или runtime DB credentials; если в evidence видны секреты, исправьте источник и соберите его заново до подписи.
 
 ## CI и ротация
 

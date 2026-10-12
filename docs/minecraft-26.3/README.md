@@ -69,9 +69,85 @@ py -3.13 -m pytest -q -rs tests/test_minecraft_26_3_paper.py tests/test_minecraf
 py -3.13 .\scripts\minecraft\install_migration_server_plugins.py --stage-only
 ```
 
-Для полной сборки задайте абсолютные пути к закреплённым Java 25 и Java 21 и выполните:
+Для сборки нужны Temurin Java 25 и Java 21. В чистом checkout эти каталоги пока не существуют. Сначала скачайте и проверьте закреплённые архивы Temurin; helper проверяет SHA-256 и точный размер до распаковки. Скрипт ниже рассчитан на пустые целевые каталоги. Если точные версии Temurin уже установлены в другом месте, пропустите установку и используйте переменные окружения, описанные ниже. Для воспроизводимой установки с проверенными байтами используйте закреплённые архивы.
+
+Если Java уже установлена в другом месте, её корневой каталог должен содержать `bin\java.exe`, а версия должна быть `25.0.4.1` или `21.0.12.1` соответственно. Одного совпадения `java --version` достаточно для выбора версии, но не для проверки байтов; для полностью закреплённого toolchain проверьте архивы и используйте установку ниже.
 
 ```powershell
+. .\scripts\minecraft\DownloadPinnedArtifact.ps1
+$ToolchainRoot = Join-Path $PWD 'build/minecraft-26.3/toolchain'
+New-Item -ItemType Directory -Path $ToolchainRoot -Force | Out-Null
+
+function Install-CopiminePinnedJdk {
+  param(
+    [int]$Major,
+    [string]$Version,
+    [string]$Url,
+    [string]$ArchiveName,
+    [string]$ArchiveHash,
+    [long]$ArchiveSize
+  )
+  $Destination = Join-Path $ToolchainRoot ("jdk-$Version+1")
+  if (Test-Path -LiteralPath $Destination) { throw "JDK destination already exists: $Destination" }
+  $Archive = Join-Path $ToolchainRoot $ArchiveName
+  $ExtractRoot = Join-Path $ToolchainRoot ('.jdk-extract-' + [guid]::NewGuid().ToString('N'))
+  try {
+    Save-PinnedArtifact -Uri $Url -Destination $Archive -Algorithm SHA256 `
+      -ExpectedHash $ArchiveHash -ExpectedSize $ArchiveSize -MaximumBytes $ArchiveSize
+    New-Item -ItemType Directory -Path $ExtractRoot -ErrorAction Stop | Out-Null
+    Expand-Archive -LiteralPath $Archive -DestinationPath $ExtractRoot -ErrorAction Stop
+    $JavaFiles = @(Get-ChildItem -LiteralPath $ExtractRoot -Filter java.exe -File -Recurse |
+      Where-Object { $_.Directory.Name -eq 'bin' })
+    if ($JavaFiles.Count -ne 1) { throw "Expected one Temurin $Major java.exe; found $($JavaFiles.Count)." }
+    $Java = $JavaFiles[0].FullName
+    $VersionOutput = (& $Java --version | Out-String)
+    if ($LASTEXITCODE -ne 0 -or $VersionOutput -notmatch ('(?m)^openjdk ' + [regex]::Escape($Version) + '(?:\s|$)')) {
+      throw "Temurin $Major did not report pinned version ${Version}: $VersionOutput"
+    }
+    $JdkHome = Split-Path -Parent (Split-Path -Parent $Java)
+    Move-Item -LiteralPath $JdkHome -Destination $Destination -ErrorAction Stop
+  } finally {
+    if (Test-Path -LiteralPath $ExtractRoot) {
+      Remove-Item -LiteralPath $ExtractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+Install-CopiminePinnedJdk -Major 21 -Version '21.0.12.1' `
+  -Url 'https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12.1_1.zip' `
+  -ArchiveName 'temurin-21.0.12.1.zip' `
+  -ArchiveHash 'f9d6e191ab098c0d416e7d588a24420a8621cd2f4720dab2459b8b7b2d2d8b4e' `
+  -ArchiveSize 205073461
+Install-CopiminePinnedJdk -Major 25 -Version '25.0.4.1' `
+  -Url 'https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_x64_windows_hotspot_25.0.4.1_1.zip' `
+  -ArchiveName 'temurin-25.0.4.1.zip' `
+  -ArchiveHash '00c847d804f4a78e9f04f2683faf14fed898535b177b7fc704486cb0284e9283' `
+  -ArchiveSize 141167264
+```
+
+Архивы и версии совпадают с Windows GitLab migration job; GitHub Actions использует Temurin того же major для сборки. После установки проверьте вывод `java --version` из каталогов `jdk-21.0.12.1+1` и `jdk-25.0.4.1+1`.
+
+По умолчанию полная сборка использует каталоги из pinned toolchain. Для тех же закреплённых версий, установленных в другом месте, задайте необязательные `COPIMINE_JAVA25_HOME` и `COPIMINE_JAVA21_HOME` как абсолютные пути к корням JDK.
+
+```powershell
+if ($env:COPIMINE_JAVA25_HOME) {
+  $BuildJava25Home = (Resolve-Path $env:COPIMINE_JAVA25_HOME).Path
+} else {
+  $BuildJava25Home = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-25.0.4.1+1').Path
+}
+if ($env:COPIMINE_JAVA21_HOME) {
+  $GrimPatchJava21Home = (Resolve-Path $env:COPIMINE_JAVA21_HOME).Path
+} else {
+  $GrimPatchJava21Home = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').Path
+}
+$BuildJava25Version = (& (Join-Path $BuildJava25Home 'bin/java.exe') --version | Out-String)
+if ($LASTEXITCODE -ne 0 -or $BuildJava25Version -notmatch '(?m)^openjdk 25\.0\.4\.1(?:\s|$)') {
+  throw "Minecraft 26.3 build requires pinned Temurin 25.0.4.1: $BuildJava25Version"
+}
+$GrimPatchJava21Version = (& (Join-Path $GrimPatchJava21Home 'bin/java.exe') --version | Out-String)
+if ($LASTEXITCODE -ne 0 -or $GrimPatchJava21Version -notmatch '(?m)^openjdk 21\.0\.12\.1(?:\s|$)') {
+  throw "The Grim compatibility patch requires pinned Temurin 21.0.12.1: $GrimPatchJava21Version"
+}
 $Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 .\scripts\minecraft\PrepareMigrationCandidates.ps1 `
   -BuildJavaHome $BuildJava25Home `
@@ -89,7 +165,7 @@ $Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 
 `-ValidateOnly` не чинит профиль автоматически. После любой установки повторите проверку SHA-512 каждого внешнего JAR и CopiMineClient по lock.
 
-Проверка `-ValidateOnly` выполняется без записи: сверяет установленный профиль с lock, проверяет все 13 внешних JAR по размеру, SHA-512 и `fabric.mod.json`, CopiMineClient, SHA-256 resource pack, его включение в `options.txt` и receipt. Для неё должны быть доступны локальные source-build артефакты CopiMineClient и pack; этот режим не скачивает моды и не исправляет файлы. Чтобы проверить только JSON определения профиля и закреплённые источники внешних модов без собранных клиентских артефактов, используйте `-ValidateDefinitionOnly`.
+Проверка `-ValidateOnly` выполняется без записи: сверяет 12 отдельно установленных внешних JAR по размеру, SHA-512 и `fabric.mod.json`, CopiMineClient (внутри которого находится Fabric API), SHA-256 resource pack, его включение в `options.txt` и receipt. Для неё должны быть доступны локальные source-build артефакты CopiMineClient и pack; этот режим не скачивает моды и не исправляет файлы. Чтобы проверить только JSON определения профиля и закреплённые источники внешних модов без собранных клиентских артефактов, используйте `-ValidateDefinitionOnly`.
 
 Lock клиента хранит Fabric mod id, версию релиза источника и точную версию из `fabric.mod.json` каждого внешнего JAR. Подготовка кандидата и установщик сравнивают ID и внутреннюю версию метаданных с lock. При обычной установке одна старая копия закреплённого мода под другим именем побайтно копируется в `migration-backups/client-mods/<timestamp-id>/`; содержимое исходного JAR включается в журнал отката и удаляется из `mods` только перед атомарной установкой закреплённого файла. При ошибке транзакция восстанавливает исходный JAR. `-ValidateOnly` сообщает о конфликте без изменений; несколько конфликтных JAR с одним mod id и файлы-ссылки блокируют установку.
 
@@ -105,6 +181,12 @@ py -3.13 -m pytest -q -rs tests
 # Запускать через PrepareMigrationCandidates.ps1 либо migration CI workflow.
 
 # Общий Java plugin gate на закреплённом Java 21
+if ($env:COPIMINE_JAVA21_HOME) {
+  $GrimPatchJava21Home = (Resolve-Path $env:COPIMINE_JAVA21_HOME).Path
+} else {
+  $GrimPatchJava21Home = (Resolve-Path '.\build\minecraft-26.3\toolchain\jdk-21.0.12.1+1').Path
+}
+$Python313 = (py -3.13 -c 'import sys; print(sys.executable)').Trim()
 .\scripts\minecraft\RunJavaPluginCi.ps1 `
   -JavaHome $GrimPatchJava21Home `
   -WorkspaceRoot $PWD.Path `
@@ -149,4 +231,4 @@ AR-сверка запускается scheduler каждые 200 тиков. А
 6. Свежие серверные/клиентские логи, inventory и скриншоты F2, сверенные с lock и связанные с проверяемым SHA.
 7. Подписанная native acceptance запись, где `sourceCommit` указывает на проверенный source commit. Любое изменение кода после него требует нового запуска, evidence и подписи.
 
-Полная процедура, включая AuthMe, полный inventory и подпись, описана в `NATIVE_ACCEPTANCE_SIGNING.md`. Решения по AuthMe и обязательности CopiMineClient собраны в `AUTH_AND_CLIENT_MOD_ENFORCEMENT.md`. Логи, снимки, ключи и runtime DB credentials не коммитятся. Native evidence и любой публичный login/proxy security setup не имитируются unit-тестами.
+Полная процедура, включая AuthMe, полный inventory и подпись, описана в `NATIVE_ACCEPTANCE_SIGNING.md`. Решения по AuthMe и обязательности CopiMineClient собраны в `AUTH_AND_CLIENT_MOD_ENFORCEMENT.md`. Не включайте private key или runtime DB credentials в Git. Перед фиксацией acceptance просмотрите raw-логи и screenshots вне Git; затем сохраните в `artifacts/minecraft-26.3/native-acceptance/` все проверенные файлы, на которые ссылается `acceptance.json`, вместе с `acceptance.json` и `acceptance.sig`. Это закрытый набор evidence для CI: отсутствующие или лишние файлы отклоняются. Native evidence и любой публичный login/proxy security setup не имитируются unit-тестами.

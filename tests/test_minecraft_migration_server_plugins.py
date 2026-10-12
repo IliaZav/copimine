@@ -16,6 +16,10 @@ import zipfile
 import pytest
 
 ROOT=Path(__file__).resolve().parents[1]
+MIGRATION_RUNTIME=Path(os.environ.get(
+    'COPIMINE_26_3_TEST_RUNTIME',
+    str(ROOT/'local-runtime/end-rift-server-26.3'),
+)).resolve()
 
 
 def test_grim_creative_path_does_not_skip_pending_inventory_resync():
@@ -813,11 +817,26 @@ def test_admin_26_3_candidate_keeps_baseline_hash_and_tracks_runtime_build():
     assert candidate['runtimeFilename']==record['filename']
     assert len(candidate['sha256'])==64
     built=ROOT/candidate['buildArtifact']
-    runtime=ROOT/'local-runtime/end-rift-server-26.3/plugins'/candidate['runtimeFilename']
+    runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
     assert built.is_file(), 'the pinned 26.3 AdminPlus candidate build is missing'
     artifacts=[built]+([runtime] if runtime.is_file() else [])
     for artifact in artifacts:
         assert hashlib.sha256(artifact.read_bytes()).hexdigest()==candidate['sha256']
+        with zipfile.ZipFile(artifact) as jar_file:
+            assert 'messages_ru.yml' in jar_file.namelist()
+            assert jar_file.read('messages_ru.yml')==(ROOT/'copimine-admin-plugin/messages_ru.yml').read_bytes()
+
+def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
+    lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
+    baselines={row['pluginName']:row for row in lock['unchangedBaseline']}
+    installed_predecessors={
+        'CopiMineArtifacts':'64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef',
+        'CopiMineUltimateAdminPlus':'6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175',
+    }
+    for plugin_name,digest in installed_predecessors.items():
+        assert digest in baselines[plugin_name].get('replaceSha256',[]), (
+            f'{plugin_name} locked installer does not recognize its verified installed predecessor'
+        )
 
 def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runtime_jars():
     lock=json.loads((ROOT/'tools/minecraft-26.3/server-plugins.lock.json').read_text(encoding='utf-8'))
@@ -840,7 +859,7 @@ def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runt
         assert candidate['nativeVerified'] is lock['nativeVerified']
 
         built=ROOT/candidate['buildArtifact']
-        runtime=ROOT/'local-runtime/end-rift-server-26.3/plugins'/candidate['runtimeFilename']
+        runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
         assert built.is_file(), f'missing 26.3 build artifact for {plugin_name}'
         artifacts=[built]+([runtime] if runtime.is_file() else [])
         for artifact in artifacts:
@@ -850,6 +869,17 @@ def test_all_remaining_first_party_26_3_plugins_track_their_exact_build_and_runt
             assert hashlib.sha512(artifact_bytes).hexdigest()==candidate['sha512']
             with zipfile.ZipFile(artifact) as jar_file:
                 plugin_yml=jar_file.read('plugin.yml').decode('utf-8')
+                required_resource={
+                    'CopiMineArtifacts':('items.yml', ROOT/'copimine-artifacts/items.yml'),
+                }.get(plugin_name)
+                if required_resource:
+                    resource_name,source_path=required_resource
+                    assert resource_name in jar_file.namelist(), (
+                        f'{plugin_name} migration JAR is missing required runtime resource {resource_name}'
+                    )
+                    assert jar_file.read(resource_name)==source_path.read_bytes(), (
+                        f'{plugin_name} migration JAR resource {resource_name} differs from its source catalog'
+                    )
             assert f'name: {plugin_name}' in plugin_yml
             assert "api-version: '26.3'" in plugin_yml
 
@@ -872,7 +902,7 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     ]
 
     built=ROOT/candidate['buildArtifact']
-    runtime=ROOT/'local-runtime/end-rift-server-26.3/plugins'/candidate['runtimeFilename']
+    runtime=MIGRATION_RUNTIME/'plugins'/candidate['runtimeFilename']
     assert built.is_file(), 'the pinned first-party 26.3 candidate build is missing'
     artifacts=[built]+([runtime] if runtime.is_file() else [])
     for artifact in artifacts:
@@ -903,7 +933,7 @@ def test_active_26_3_plugin_directory_matches_the_unique_locked_inventory():
         }
 
     assert len({entry['filename'] for entry in expected.values()})==len(expected), 'plugin lock must not assign one runtime filename to multiple plugins'
-    runtime=ROOT/'local-runtime/end-rift-server-26.3/plugins'
+    runtime=MIGRATION_RUNTIME/'plugins'
     if not runtime.is_dir():pytest.skip('isolated 26.3 runtime is not installed in this checkout')
     assert len(expected)==31, 'replacement candidates must collapse to one entry per installed plugin'
     server=runtime.parent
@@ -1060,7 +1090,7 @@ def test_protocollib_26_3_packet_mapping_evidence_is_distinct_from_tested_maximu
     assert candidate['compatibilityStatus']=='requires-runtime-validation'
     assert candidate['nativeVerified'] is lock['nativeVerified']
 
-    runtime=ROOT/'local-runtime/end-rift-server-26.3/plugins'/candidate['filename']
+    runtime=MIGRATION_RUNTIME/'plugins'/candidate['filename']
     if not runtime.is_file():
         pytest.skip('ProtocolLib runtime candidate is not installed in this checkout')
     assert hashlib.sha256(runtime.read_bytes()).hexdigest()==candidate['sha256']
@@ -1978,7 +2008,7 @@ def test_migration_test_server_launcher_bounds_idle_g1_heap_retention():
     source=(ROOT/'scripts/minecraft/StartMigrationTestServer.ps1').read_text(encoding='utf-8')
     java_arguments = source[source.index('$javaArguments = @('):source.index('Push-Location -LiteralPath $runtime')]
 
-    assert "'-Xmx2G'" in java_arguments
+    assert "'-Xmx1536M'" in java_arguments
     assert "'-XX:MinHeapFreeRatio=20'" in java_arguments
     assert "'-XX:MaxHeapFreeRatio=40'" in java_arguments
     assert 'SoftMaxHeapSize' not in java_arguments

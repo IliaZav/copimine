@@ -201,7 +201,7 @@ try {
     Write-Output 'Keep this console open; press Ctrl+C to stop the server.'
     $javaArguments = @(
         '-Xms128M'
-        '-Xmx2G'
+        '-Xmx1536M'
         '-XX:HeapBaseMinAddress=4g'
         '-XX:MinHeapFreeRatio=20'
         '-XX:MaxHeapFreeRatio=40'

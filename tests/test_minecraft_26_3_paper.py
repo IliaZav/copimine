@@ -32,6 +32,7 @@ def test_paper_server_candidate_matches_locked_build_and_download_object():
 
     assert lock["minimumJava"] == 25
     assert lock["buildJavaMajor"] == 25
+    assert lock["buildJavaVersion"] == "25.0.4.1"
     assert paper["build"] == 169
     assert paper["channel"] == "BETA"
     assert paper["api"] == "26.3.build.169-beta"

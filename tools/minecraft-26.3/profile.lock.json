@@ -5,6 +5,7 @@
   "verifiedAt": "2026-10-12",
   "minimumJava": 25,
   "buildJavaMajor": 25,
+  "buildJavaVersion": "25.0.4.1",
   "grimPatchJavaMajor": 21,
   "minecraftManifest": {
     "url": "https://piston-meta.mojang.com/v1/packages/702fe59163c6ee6578607daa85811d9bc9c7cc40/26.3.json",

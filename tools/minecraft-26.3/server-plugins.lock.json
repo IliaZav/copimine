@@ -688,13 +688,13 @@
       "candidate": {
         "filename": "CopiMineArtifacts-26.3.jar",
         "runtimeFilename": "CopiMineArtifacts.jar",
-        "sha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
+        "sha256": "10507a39326c7117235b9ba200b3041ddf3f25dc81912b233c341b738771ed92",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineArtifacts-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "sha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
-        "size": 325573
+        "sha512": "b4aaf6e6ea28621aa61a3a000991ee4046ec16aa6b18caa2bb513fc49dc8cab88296c84c530fd61774ce31dcf203edf101ed0ef27a4fe45174a7949353042423",
+        "size": 330155
       },
       "nativeVerified": false,
       "replaceSha256": [
@@ -702,7 +702,8 @@
         "0b6147e644564f6af90c8c7a439969fbc408033b7ea07566ca5e2074db3dd47c",
         "2d25ed0e3f4dbf9ff68852b98d1192ee9e3ee388c53880759bfedf824a37cd2d",
         "26d3520b91218acc178b7189ee6599528c759baf965f42bdda5fbd807c01d053",
-        "3bd3dd68f58f9fad7e23ef8a6c18c0095c1004e4d2a5b59fd9276183dc16e6b7"
+        "3bd3dd68f58f9fad7e23ef8a6c18c0095c1004e4d2a5b59fd9276183dc16e6b7",
+        "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef"
       ]
     },
     {
@@ -813,18 +814,19 @@
       "candidate": {
         "filename": "CopiMineUltimateAdminPlus-26.3.jar",
         "runtimeFilename": "CopiMineUltimateAdminPlus.jar",
-        "sha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+        "sha256": "7c40a2c9970545cbc56181ad10ab92255b2813734ce3d7691f546654ca39384f",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineUltimateAdminPlus-26.3.jar",
         "nativeVerified": false,
-        "size": 271483,
-        "sha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15"
+        "size": 272234,
+        "sha512": "0a6d9d2637917d0b518653e9cd2a96fc5d43d7bd4aa6256ed7f428e5f61b2910b03e87392c517a6a83d6f461c800bc198e8837c01b38d8f37b698f0d338434c8"
       },
       "nativeVerified": false,
       "replaceSha256": [
         "4f877a067ca3abb01cedb4ef1d1b71ef06bfa8a1bc2df6c8d5fd6ce78402562f",
         "8d7c19ab35886b56610a1ad8c54f73c1612ee18aa2601b3486a5e7e072e98092",
-        "0995029374cde2780eb85c578d0400c54859c83891da14b323e06a787a8c9587"
+        "0995029374cde2780eb85c578d0400c54859c83891da14b323e06a787a8c9587",
+        "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175"
       ]
     },
     {

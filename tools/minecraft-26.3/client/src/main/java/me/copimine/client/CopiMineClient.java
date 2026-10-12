@@ -46,7 +46,6 @@ public final class CopiMineClient implements ClientModInitializer {
         ClientBridgeProtocol.registerNetworking(visualManager);
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("copimineclient", "hud"),
                 (drawContext, ignoredTickCounter) -> {
-            EndRiftBossBarHud.render(drawContext);
             visualManager.render(drawContext);
             ClientBridgeProtocol.endEventWorldVfx().renderHud(drawContext);
             EndEventPlayerVisualRenderer.render(drawContext);

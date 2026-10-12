@@ -45,11 +45,22 @@ def modules = [
     authEffects: ['minecraft/server/plugins/AuthEffects', 'AuthEffects']
 ]
 
+def moduleRuntimeResources = [
+    economyCore: ['plugin.yml'],
+    worldCore: ['plugin.yml', 'config.yml'],
+    admin: ['plugin.yml', 'config.yml', 'messages_ru.yml'],
+    artifacts: ['plugin.yml', 'config.yml', 'items.yml'],
+    electionCore: ['plugin.yml', 'config.yml'],
+    narcotics: ['plugin.yml', 'config.yml'],
+    endEvent: ['plugin.yml', 'config.yml'],
+    authEffects: ['plugin.yml']
+]
+
 modules.each { name, module ->
     sourceSets.create(name) {
         java.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/java' : '/src')))
         resources.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/resources' : '')))
-        resources.include('plugin.yml', 'config.yml')
+        resources.include(moduleRuntimeResources[name])
     }
     dependencies.add("${name}CompileOnly", "io.papermc.paper:paper-api:${profile.paper.api}")
     tasks.named(sourceSets[name].processResourcesTaskName) {
@@ -92,6 +103,31 @@ tasks.register('migrationPlugins') {
     description = 'Compile all eight first-party plugins against the pinned 26.3 API in isolated output directories.'
     dependsOn(modules.keySet().collect { "${it}Jar" })
 }
+
+tasks.register('verifyMigrationPluginResources') {
+    group = 'verification'
+    description = 'Verify each first-party migration JAR contains its required runtime resources.'
+    dependsOn(modules.keySet().collect { "${it}Jar" })
+    doLast {
+        moduleRuntimeResources.each { name, requiredResources ->
+            def archive = tasks.named("${name}Jar", Jar).get().archiveFile.get().asFile
+            if (!archive.isFile()) {
+                throw new GradleException("Migration plugin JAR is missing: ${archive}")
+            }
+            def zip = new java.util.zip.ZipFile(archive)
+            try {
+                def missing = requiredResources.findAll { zip.getEntry(it) == null }
+                if (!missing.isEmpty()) {
+                    throw new GradleException(
+                            "${archive.name} is missing required runtime resources: ${missing.join(', ')}")
+                }
+            } finally {
+                zip.close()
+            }
+            logger.lifecycle("Verified ${archive.name} resources: ${requiredResources.join(', ')}")
+        }
+    }
+}
 tasks.named('compileAdminJava') { dependsOn(verifyVoiceChatApi) }
 
 tasks.register('verifyPaperApi') {
@@ -105,4 +141,4 @@ tasks.register('verifyPaperApi') {
         logger.lifecycle("Verified Paper API ${profile.paper.api}: ${actual}")
     }
 }
-tasks.named('migrationPlugins') { dependsOn('verifyPaperApi') }
+tasks.named('migrationPlugins') { dependsOn('verifyPaperApi', 'verifyMigrationPluginResources') }

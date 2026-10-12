@@ -15,18 +15,27 @@ $clientModsLock = Get-Content -LiteralPath (Join-Path $root 'tools/minecraft-26.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-function Get-LockedJavaMajor([string]$javaHome) {
+function Get-LockedJavaVersion([string]$javaHome) {
     $java = Join-Path $javaHome 'bin/java.exe'
     if (-not (Test-Path -LiteralPath $java -PathType Leaf)) { throw ('Java home is missing java.exe: ' + $javaHome) }
     $version = (& $java --version | Out-String)
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '(?m)^(?:openjdk|java)(?: version)?[ "]+(?<major>\d+)') {
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '(?m)^(?:openjdk|java)(?: version)?[ "]+(?<version>\d+(?:\.\d+){1,3})') {
         throw ('Cannot read Java version from: ' + $javaHome)
     }
-    return [int]$Matches.major
+    return $Matches.version
 }
 
-if ((Get-LockedJavaMajor $BuildJavaHome) -ne $profile.buildJavaMajor) {
+function Get-LockedJavaMajor([string]$javaHome) {
+    $version = Get-LockedJavaVersion $javaHome
+    return [int]($version.Split('.')[0])
+}
+
+$buildJavaVersion = Get-LockedJavaVersion $BuildJavaHome
+if ([int]($buildJavaVersion.Split('.')[0]) -ne $profile.buildJavaMajor) {
     throw ('Minecraft 26.3 migration artifacts require Java ' + $profile.buildJavaMajor)
+}
+if ($buildJavaVersion -cne [string]$profile.buildJavaVersion) {
+    throw ('Minecraft 26.3 migration artifacts require Java ' + $profile.buildJavaVersion)
 }
 if ((Get-LockedJavaMajor $GrimPatchJavaHome) -ne $profile.grimPatchJavaMajor) {
     throw ('The Grim compatibility patch requires Java ' + $profile.grimPatchJavaMajor)

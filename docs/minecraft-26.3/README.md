@@ -125,7 +125,7 @@ Install-CopiminePinnedJdk -Major 25 -Version '25.0.4.1' `
   -ArchiveSize 141167264
 ```
 
-Архивы и версии совпадают с Windows GitLab migration job; GitHub Actions использует Temurin того же major для сборки. После установки проверьте вывод `java --version` из каталогов `jdk-21.0.12.1+1` и `jdk-25.0.4.1+1`.
+Архивы и версии совпадают с Windows GitLab migration job; GitHub Actions использует точный Temurin 25.0.4.1 для сборки закреплённого клиентского JAR. Версия Java 25 должна совпадать с профилем, поскольку CI сравнивает байтовый SHA-512 пересобранного JAR с lock. После установки проверьте вывод `java --version` из каталогов `jdk-21.0.12.1+1` и `jdk-25.0.4.1+1`.
 
 По умолчанию полная сборка использует каталоги из pinned toolchain. Для тех же закреплённых версий, установленных в другом месте, задайте необязательные `COPIMINE_JAVA25_HOME` и `COPIMINE_JAVA21_HOME` как абсолютные пути к корням JDK.
 

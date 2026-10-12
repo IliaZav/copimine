@@ -156,19 +156,16 @@ def test_minecraft_26_3_mixin_compatibility_matches_java_25_bytecode():
     assert "options.release = 25" in build_script
 
 
-def test_26_3_boss_bar_and_prisoner_mixins_use_current_targets_and_are_reachable():
+def test_26_3_preserves_vanilla_end_rift_boss_bar_and_prisoner_mixins_use_current_targets():
     config_path = CLIENT_SOURCE_ROOT.parent / "resources/copimineclient-26.3.mixins.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    boss_mixin = (CLIENT_SOURCE_ROOT / "me/copimine/client/mixin/EndRiftBossBarHudMixin.java").read_text(encoding="utf-8")
     prisoner_mixin = (CLIENT_SOURCE_ROOT / "me/copimine/client/mixin/ClientPlayerInteractionManagerPrisonerMixin.java").read_text(encoding="utf-8")
     model_accessor = (CLIENT_SOURCE_ROOT / "me/copimine/client/mixin/ModelPartAccessor.java").read_text(encoding="utf-8")
     cube_accessor = (CLIENT_SOURCE_ROOT / "me/copimine/client/mixin/ModelPartCuboidAccessor.java").read_text(encoding="utf-8")
     client = CLIENT_ENTRYPOINT.read_text(encoding="utf-8")
 
-    assert "EndRiftBossBarHudMixin" in config["client"]
-    assert 'extractBar(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IILnet/minecraft/world/BossEvent;)V' in boss_mixin
-    assert 'extractBar(Lnet/minecraft/client/gui/GuiGraphicsExtractor;IILnet/minecraft/world/BossEvent;I[Lnet/minecraft/resources/Identifier;[Lnet/minecraft/resources/Identifier;)V' in boss_mixin
-    assert "EndRiftBossBarHud.render(drawContext);" in client
+    assert "EndRiftBossBarHudMixin" not in config["client"]
+    assert "EndRiftBossBarHud.render(drawContext);" not in client
     assert '@Accessor("cubes")' in model_accessor
     assert '@Accessor("polygons")' in cube_accessor
     for target in ("attack(", "startDestroyBlock(", "continueDestroyBlock(", "destroyBlock(",

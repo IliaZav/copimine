@@ -67,6 +67,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private PgConnectionPool pgPool;
     private volatile boolean dbReady = false;
     private ExecutorService dbExecutor;
+    private BukkitTask databaseBootstrapTask;
     private final AtomicBoolean dbNotReadyWarned = new AtomicBoolean(false);
     private final Set<UUID> frozen = ConcurrentHashMap.newKeySet();
     private final Map<UUID, UUID> checkMode = new ConcurrentHashMap<>();
@@ -272,25 +273,111 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
+        scheduleDatabaseBootstrap();
+    }
+
+    private void scheduleDatabaseBootstrap() {
+        databaseBootstrapTask = new org.bukkit.scheduler.BukkitRunnable() {
+            private int attempts;
+            private boolean healthProbeInFlight;
+
+            @Override
+            public void run() {
+                if (!isEnabled()) {
+                    cancel();
+                    return;
+                }
+                if (++attempts > 300) {
+                    cancel();
+                    getLogger().severe("Shared PostgreSQL schemas did not become ready within five minutes; AdminPlus is stopping without running migrations.");
+                    Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this,
+                            () -> getServer().getPluginManager().disablePlugin(CopiMineUltimateAdminPlus.this));
+                    return;
+                }
+                if (healthProbeInFlight) {
+                    return;
+                }
+                CopiMineEconomyCore.ArtifactsBridge economyBridge = sharedDatabaseBridgeOnServerThread();
+                if (economyBridge == null) {
+                    return;
+                }
+                healthProbeInFlight = true;
+                try {
+                    dbExecutor.execute(() -> {
+                        boolean ready = sharedDatabaseSchemasReady(economyBridge);
+                        Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this, () -> {
+                            healthProbeInFlight = false;
+                            if (!isEnabled()) {
+                                cancel();
+                                return;
+                            }
+                            if (!ready) {
+                                return;
+                            }
+                            cancel();
+                            databaseBootstrapTask = null;
+                            beginDatabaseSchemaInitialization();
+                        });
+                    });
+                } catch (RejectedExecutionException error) {
+                    healthProbeInFlight = false;
+                    getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL readiness worker rejected", error);
+                    closePostgres();
+                    Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this,
+                            () -> getServer().getPluginManager().disablePlugin(CopiMineUltimateAdminPlus.this));
+                }
+            }
+        }.runTaskTimer(this, 1L, 20L);
+    }
+
+    private CopiMineEconomyCore.ArtifactsBridge sharedDatabaseBridgeOnServerThread() {
+        if (!Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("Bukkit service and plugin registries must be read on the server thread.");
+        }
+        CopiMineEconomyCore.ElectionRuntimeService electionRuntime =
+                getServer().getServicesManager().load(CopiMineEconomyCore.ElectionRuntimeService.class);
+        Plugin economyPlugin = getServer().getPluginManager().getPlugin("CopiMineEconomyCore");
+        if (electionRuntime == null || !(economyPlugin instanceof CopiMineEconomyCore economyCore)
+                || !economyPlugin.isEnabled() || !electionRuntime.databaseReady()) {
+            return null;
+        }
+        return economyCore.artifactsBridge();
+    }
+
+    private boolean sharedDatabaseSchemasReady(CopiMineEconomyCore.ArtifactsBridge economyBridge) {
+        if (economyBridge == null) {
+            return false;
+        }
+        try {
+            CopiMineEconomyCore.Health health = economyBridge.health(null, "admin-schema-startup");
+            return health.bridgeReady && health.postgresReady;
+        } catch (RuntimeException unavailable) {
+            return false;
+        }
+    }
+
+    private void beginDatabaseSchemaInitialization() {
         try {
             dbExecutor.execute(() -> {
                 try {
                     ensureTables();
                     dbReady = true;
                     audit("SERVER", "ULTRA7_750_ENABLE", "enabled postgresql=" + dbLabel, true);
-                    Bukkit.getScheduler().runTask(this, this::finishEnable);
+                    Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this,
+                            CopiMineUltimateAdminPlus.this::finishEnable);
                 } catch (Exception error) {
                     getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL schema initialization failed", error);
-                    Bukkit.getScheduler().runTask(this, () -> {
+                    Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this, () -> {
                         closePostgres();
-                        getServer().getPluginManager().disablePlugin(this);
+                        getServer().getPluginManager().disablePlugin(CopiMineUltimateAdminPlus.this);
                     });
                 }
             });
         } catch (RejectedExecutionException error) {
             getLogger().log(java.util.logging.Level.SEVERE, "PostgreSQL initialization worker rejected", error);
             closePostgres();
-            getServer().getPluginManager().disablePlugin(this);
+            Bukkit.getScheduler().runTask(CopiMineUltimateAdminPlus.this,
+                    () -> getServer().getPluginManager().disablePlugin(CopiMineUltimateAdminPlus.this));
         }
     }
 
@@ -332,6 +419,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     @Override public void onDisable() {
+        if (databaseBootstrapTask != null) databaseBootstrapTask.cancel();
         if (sidebarTask != null) sidebarTask.cancel();
         if (inventorySnapshotTask != null) inventorySnapshotTask.cancel();
         if (nameplateTask != null) nameplateTask.cancel();
@@ -1704,7 +1792,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         Map<String,String> st=electionSettings(eid);
         long stations=scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=? AND active=1",eid);
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         long ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=? AND COALESCE(used,0)=0",eid);
         long chair=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid);
         long curators=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1",eid);
@@ -1818,7 +1906,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
         Map<String,String> st=electionSettings(eid);
         long stations=scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=? AND active=1",eid);
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         long chair=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid);
         long ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid);
         long unusedBallots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=? AND COALESCE(used,0)=0",eid);
@@ -1826,7 +1914,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         long dupVotes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM (SELECT voter_uuid FROM cmv731_votes WHERE election_id=? GROUP BY voter_uuid HAVING COUNT(*)>1)",eid):0;
         long sealedSessions=tableExists("cmv731_vote_sessions")?scalarLong("SELECT COUNT(*) FROM cmv731_vote_sessions WHERE election_id=? AND COALESCE(selected_at,0)>0",eid):0;
         long votedSessions=tableExists("cmv731_vote_sessions")&&tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_vote_sessions s WHERE s.election_id=? AND EXISTS(SELECT 1 FROM cmv731_votes v WHERE v.election_id=s.election_id AND v.voter_uuid=s.voter_uuid)",eid):0;
-        long orphanVotes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes v LEFT JOIN candidates c ON c.election_id=v.election_id AND c.uuid=v.candidate_uuid WHERE v.election_id=? AND c.uuid IS NULL",eid):0;
+        long orphanVotes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes v LEFT JOIN candidates c ON c.election_id=v.election_id AND c.player_uuid=v.candidate_uuid WHERE v.election_id=? AND c.player_uuid IS NULL",eid):0;
         rows.add(new ElectionIntegrityRow("election_cycle",true,Material.RECOVERY_COMPASS,"Цикл найден","ID "+shortId(eid)+", этап "+humanStage(st.getOrDefault("stage","?")),"open:lifecycle"));
         rows.add(new ElectionIntegrityRow("stations",stations>0,Material.LECTERN,"Участки ЦИК",stations>0?"Активных участков: "+stations:"Поставь хотя бы один участок.","open:polling-stations"));
         rows.add(new ElectionIntegrityRow("candidates",candidates>0,Material.PLAYER_HEAD,"Кандидаты",candidates>0?"Активных кандидатов: "+candidates:"Одобри заявки и перенеси в кандидаты.","open:candidates"));
@@ -1935,14 +2023,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Map<String,String> st=electionSettings(eid);
         long stations=scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=? AND active=1",eid);
         long chair=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid);
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         long ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid);
         long unusedBallots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=? AND COALESCE(used,0)=0",eid);
         long pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid);
         long votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0;
         long duplicateVoter=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM (SELECT voter_uuid FROM cmv731_votes WHERE election_id=? GROUP BY voter_uuid HAVING COUNT(*)>1)",eid):0;
         long sealedNotDeposited=tableExists("cmv731_vote_sessions")?scalarLong("SELECT COUNT(*) FROM cmv731_vote_sessions WHERE election_id=? AND COALESCE(selected_at,0)>0",eid):0;
-        long orphanVotes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes v LEFT JOIN candidates c ON c.election_id=v.election_id AND c.uuid=v.candidate_uuid WHERE v.election_id=? AND c.uuid IS NULL",eid):0;
+        long orphanVotes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes v LEFT JOIN candidates c ON c.election_id=v.election_id AND c.player_uuid=v.candidate_uuid WHERE v.election_id=? AND c.player_uuid IS NULL",eid):0;
         rows.add(new ElectionGateRow("election_cycle",true,true,Material.RECOVERY_COMPASS,"Цикл выборов","ID "+shortId(eid)+", текущий этап "+humanStage(st.getOrDefault("stage","?")),"open:lifecycle"));
         rows.add(new ElectionGateRow("cmv7_polling_stations",stations>0,needsVoting,Material.LECTERN,"Участки ЦИК",stations>0?"Активных участков: "+stations:"Поставь хотя бы один лекторн участка ЦИК.","open:polling-stations"));
         rows.add(new ElectionGateRow("CIK_CHAIR",chair>0,needsVoting,Material.NAME_TAG,"Председатель ЦИК",chair>0?"Председатель назначен.":"Назначь CIK_CHAIR в кураторах.","open:curators"));
@@ -2010,8 +2098,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(eid==null) btn(m,22,Material.BARRIER,"&cНет выборов",List.of(),"none");
         else{
             List<Map<String,Object>> rows=query("""
-                SELECT uuid,name,display_name,COALESCE(raw_votes,0) raw_votes,COALESCE(admin_adjustment,0) admin_adjustment,COALESCE(removed,0) removed,
-                COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? ORDER BY removed ASC,total DESC,name ASC LIMIT 45
+                SELECT player_uuid AS uuid,player_name AS name,display_name,COALESCE(raw_votes,0) raw_votes,COALESCE(admin_adjustment,0) admin_adjustment,CASE WHEN COALESCE(active,0)=1 THEN 0 ELSE 1 END AS removed,
+                COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? ORDER BY active DESC,total DESC,player_name ASC LIMIT 45
                 """,eid);
             int slot=0; for(Map<String,Object> r:rows){
                 String uuid=s(r.get("uuid")), name=first(s(r.get("display_name")),s(r.get("name")),uuid); boolean rem=num(r.get("removed"))!=0;
@@ -2282,7 +2370,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String uuid=p.getUniqueId().toString();
         boolean app=hasActiveApplication(uuid,eid), cand=isCitizenCandidate(p,eid), ballot=hasCitizenBallot(p,eid), voted=hasCitizenVote(p,eid);
         boolean live=onOff(st.get("show_live_results"))==1;
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         long chairs=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid);
         btn(m,4,Material.GOLDEN_HELMET,"&6&lТекущие выборы",List.of("&7ID: &f"+shortId(eid),"&7Статус: &f"+humanStatus(electionStatus(eid)),"&7Этап: &f"+humanStage(st.getOrDefault("stage","?")),"&7Кандидатов: &f"+candidates,"&7Председатель ЦИК: &f"+(chairs>0?"назначен":"не назначен")),"none");
         btn(m,10,Material.WRITABLE_BOOK,app?"&aЗаявка подана":"&eЗаявка кандидата",List.of(app?"&7Твоя заявка уже в системе.":"&7Книгу заявки выдаёт ЦИК или админ.","&7После подписи книга сама попадёт в БД."),"none");
@@ -2309,7 +2397,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         String uuid=p.getUniqueId().toString();
         boolean app=hasActiveApplication(uuid,eid), cand=isCitizenCandidate(p,eid), ballot=hasCitizenBallot(p,eid), sealed=hasOwnedSealedBallot(p,eid), voted=hasCitizenVote(p,eid);
         boolean applicationsOpen=onOff(st.get(COL_APP_OPEN))==1, votingOpen=onOff(st.get(COL_VOTE_OPEN))==1;
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         long stations=scalarLong("SELECT COUNT(*) FROM cmv7_polling_stations WHERE election_id=? AND active=1",eid);
         btn(m,4,Material.RECOVERY_COMPASS,"&6&lТвой путь на выборах",List.of(
                 "&7Цикл: &f"+shortId(eid),
@@ -2451,7 +2539,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Map<String,String> st=electionSettings(eid);
         boolean votingOpen=onOff(st.get(COL_VOTE_OPEN))==1;
         boolean ballot=hasCitizenBallot(p,eid), sealed=hasOwnedSealedBallot(p,eid), voted=hasCitizenVote(p,eid);
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         p.sendMessage(c("&eЭтап: &f"+humanStage(st.getOrDefault("stage","?"))+" &8| &eКандидатов: &f"+candidates+" &8| &eПриём бюллетеней: "+(votingOpen?"&aоткрыт":"&eзакрыт")));
         if(voted){
             p.sendMessage(c("&aТвой бюллетень уже принят. Новых действий на участке не требуется."));
@@ -2521,7 +2609,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         Map<String,String> st=electionSettings(eid);
         boolean votingOpen=onOff(st.get(COL_VOTE_OPEN))==1;
         boolean ballot=hasCitizenBallot(p,eid), sealed=hasOwnedSealedBallot(p,eid), voted=hasCitizenVote(p,eid);
-        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid);
+        long candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid);
         p.sendMessage(c("&eЭтап: &f"+humanStage(st.getOrDefault("stage","?"))+" &8| &eКандидатов: &f"+candidates+" &8| &eПриём бюллетеней: "+(votingOpen?"&aоткрыт":"&eзакрыт")));
         if(voted){
             p.sendMessage(c("&aТвой бюллетень уже принят. Новых действий на участке не требуется."));
@@ -2540,7 +2628,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openCandidateDecision(Player p,String eid,String candidateUuid,String stationId)throws Exception{
-        List<Map<String,Object>> rows=query("SELECT name,display_name,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND uuid=? AND COALESCE(removed,0)=0 LIMIT 1",eid,candidateUuid);
+        List<Map<String,Object>> rows=query("SELECT player_name AS name,display_name,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND player_uuid=? AND COALESCE(active,0)=1 LIMIT 1",eid,candidateUuid);
         if(rows.isEmpty()){warn(p,"Кандидат не найден.");return;}
         String name=first(s(rows.get(0).get("display_name")),s(rows.get(0).get("name")),candidateUuid);
         Map<String,String> st=electionSettings(eid);
@@ -2559,7 +2647,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     }
 
     private void openVoteConfirm(Player p,String eid,String candidateUuid,String stationId)throws Exception{
-        List<Map<String,Object>> rows=query("SELECT name,display_name FROM candidates WHERE election_id=? AND uuid=? AND COALESCE(removed,0)=0 LIMIT 1",eid,candidateUuid);
+        List<Map<String,Object>> rows=query("SELECT player_name AS name,display_name FROM candidates WHERE election_id=? AND player_uuid=? AND COALESCE(active,0)=1 LIMIT 1",eid,candidateUuid);
         if(rows.isEmpty()){warn(p,"Кандидат не найден.");return;}
         String name=first(s(rows.get(0).get("display_name")),s(rows.get(0).get("name")),candidateUuid);
         Menu m=new Menu("vote-confirm"); create(m,54,"&a&lПодтверждение голоса");
@@ -3259,9 +3347,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE TABLE IF NOT EXISTS audit(time INTEGER,actor TEXT,action TEXT,details TEXT,admin_only INTEGER DEFAULT 0)");
         exec("CREATE TABLE IF NOT EXISTS cmv7_audit(id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER,actor TEXT,action TEXT,details TEXT,admin_only INTEGER)");
         exec("CREATE TABLE IF NOT EXISTS elections(id TEXT PRIMARY KEY,status TEXT,started_at INTEGER,ended_at INTEGER,scheduled_end_at INTEGER,started_by TEXT,ended_by TEXT,winner_uuid TEXT,winner_name TEXT,notes TEXT)");
-        exec("CREATE TABLE IF NOT EXISTS candidates(election_id TEXT,uuid TEXT,name TEXT,display_name TEXT,raw_votes INTEGER DEFAULT 0,admin_adjustment INTEGER DEFAULT 0,removed INTEGER DEFAULT 0)");
+        exec("CREATE TABLE IF NOT EXISTS candidates(id TEXT PRIMARY KEY,election_id TEXT NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL DEFAULT '',application_id TEXT NOT NULL DEFAULT '',created_at BIGINT NOT NULL DEFAULT 0,active INTEGER NOT NULL DEFAULT 1,last_result INTEGER NOT NULL DEFAULT 0,display_name TEXT NOT NULL DEFAULT '',raw_votes BIGINT NOT NULL DEFAULT 0,admin_adjustment BIGINT NOT NULL DEFAULT 0)");
         ensureColumn("elections","scheduled_end_at","scheduled_end_at INTEGER DEFAULT 0"); ensureColumn("elections","winner_uuid","winner_uuid TEXT DEFAULT ''"); ensureColumn("elections","winner_name","winner_name TEXT DEFAULT ''"); ensureColumn("elections","notes","notes TEXT DEFAULT ''");
-        ensureColumn("candidates","display_name","display_name TEXT"); ensureColumn("candidates","raw_votes","raw_votes INTEGER DEFAULT 0"); ensureColumn("candidates","admin_adjustment","admin_adjustment INTEGER DEFAULT 0"); ensureColumn("candidates","removed","removed INTEGER DEFAULT 0");
+        ensureColumn("candidates","id","id TEXT DEFAULT ''"); ensureColumn("candidates","player_uuid","player_uuid TEXT DEFAULT ''"); ensureColumn("candidates","player_name","player_name TEXT NOT NULL DEFAULT ''"); ensureColumn("candidates","application_id","application_id TEXT NOT NULL DEFAULT ''"); ensureColumn("candidates","created_at","created_at BIGINT NOT NULL DEFAULT 0"); ensureColumn("candidates","active","active INTEGER NOT NULL DEFAULT 1"); ensureColumn("candidates","last_result","last_result INTEGER NOT NULL DEFAULT 0"); ensureColumn("candidates","display_name","display_name TEXT NOT NULL DEFAULT ''"); ensureColumn("candidates","raw_votes","raw_votes BIGINT NOT NULL DEFAULT 0"); ensureColumn("candidates","admin_adjustment","admin_adjustment BIGINT NOT NULL DEFAULT 0");
+        List<String> candidateColumns=cols("candidates");
+        if(candidateColumns.contains("uuid"))exec("UPDATE candidates SET player_uuid=uuid WHERE COALESCE(player_uuid,'')='' AND COALESCE(uuid,'')<>''");
+        if(candidateColumns.contains("name"))exec("UPDATE candidates SET player_name=name WHERE COALESCE(player_name,'')='' AND COALESCE(name,'')<>''");
+        if(candidateColumns.contains("removed"))exec("UPDATE candidates SET active=0 WHERE COALESCE(removed,0)=1");
+        exec("UPDATE candidates SET id=gen_random_uuid()::text WHERE COALESCE(id,'')=''");
         exec("CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,election_id TEXT,applicant_uuid TEXT,applicant_name TEXT,statement TEXT,submitted_at INTEGER,status TEXT DEFAULT 'PENDING',reviewed_by TEXT DEFAULT '',reviewed_at INTEGER DEFAULT 0,verdict_reason TEXT DEFAULT '',visible_in_game INTEGER DEFAULT 1,deleted_by TEXT DEFAULT '',deleted_at INTEGER DEFAULT 0)");
         for(String[] c:new String[][]{{"election_id","election_id TEXT"},{"applicant_uuid","applicant_uuid TEXT"},{"applicant_name","applicant_name TEXT"},{"statement","statement TEXT"},{"submitted_at","submitted_at INTEGER DEFAULT 0"},{"status","status TEXT DEFAULT 'PENDING'"},{"reviewed_by","reviewed_by TEXT DEFAULT ''"},{"reviewed_at","reviewed_at INTEGER DEFAULT 0"},{"verdict_reason","verdict_reason TEXT DEFAULT ''"},{"visible_in_game","visible_in_game INTEGER DEFAULT 1"},{"deleted_by","deleted_by TEXT DEFAULT ''"},{"deleted_at","deleted_at INTEGER DEFAULT 0"}}) ensureColumn("applications",c[0],c[1]);
         exec("CREATE TABLE IF NOT EXISTS cmv7_ballot_issues(id TEXT PRIMARY KEY,election_id TEXT,voter_uuid TEXT,voter_name TEXT,issued_at INTEGER,issued_by TEXT,used INTEGER DEFAULT 0,notes TEXT DEFAULT '')");
@@ -3289,8 +3382,8 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE TABLE IF NOT EXISTS cmv7_inventory_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,player_uuid TEXT NOT NULL,player_name TEXT NOT NULL,source TEXT NOT NULL,inventory_json TEXT NOT NULL,ender_json TEXT NOT NULL,ar_inventory INTEGER DEFAULT 0,ar_ender INTEGER DEFAULT 0,health REAL DEFAULT 0,food INTEGER DEFAULT 0,world TEXT,x INTEGER,y INTEGER,z INTEGER)");
         exec("CREATE TABLE IF NOT EXISTS cmv7_ar_economy_snapshots(id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,actor TEXT NOT NULL,online_players INTEGER DEFAULT 0,total_balance INTEGER DEFAULT 0,total_inventory INTEGER DEFAULT 0,total_ender INTEGER DEFAULT 0,details TEXT DEFAULT '')");
         exec("CREATE TABLE IF NOT EXISTS cmv8_startup_checks(key TEXT PRIMARY KEY,time INTEGER NOT NULL,ok INTEGER NOT NULL DEFAULT 0,title TEXT NOT NULL DEFAULT '',detail TEXT NOT NULL DEFAULT '',action TEXT NOT NULL DEFAULT '')");
-        exec("CREATE INDEX IF NOT EXISTS idx_cmv7_candidates_election_uuid ON candidates(election_id,uuid)");
-        exec("CREATE INDEX IF NOT EXISTS idx_cmv7_candidates_election_total ON candidates(election_id,removed,raw_votes,admin_adjustment)");
+        exec("CREATE INDEX IF NOT EXISTS idx_cmv7_candidates_election_uuid ON candidates(election_id,player_uuid)");
+        exec("CREATE INDEX IF NOT EXISTS idx_cmv7_candidates_election_total ON candidates(election_id,active,raw_votes,admin_adjustment)");
         exec("CREATE INDEX IF NOT EXISTS idx_cmv7_applications_election_status ON applications(election_id,status,deleted_at)");
         exec("CREATE INDEX IF NOT EXISTS idx_cmv7_ballot_issues_election_voter ON cmv7_ballot_issues(election_id,voter_uuid,used)");
         exec("CREATE INDEX IF NOT EXISTS idx_cmv7_application_issues_election_player ON cmv7_application_issues(election_id,applicant_uuid,annulled,used)");
@@ -3301,7 +3394,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         exec("CREATE INDEX IF NOT EXISTS idx_cmv731_votes_election_voter ON cmv731_votes(election_id,voter_uuid)");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv731_votes_once ON cmv731_votes(election_id,voter_uuid)");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv731_votes_ballot_once ON cmv731_votes(election_id,ballot_id)");
-        exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv7_candidates_once ON candidates(election_id,uuid)");
+        exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_candidates_election_player ON candidates(election_id,player_uuid)");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv7_applications_active_once ON applications(election_id,applicant_uuid) WHERE COALESCE(deleted_at,0)=0 AND UPPER(COALESCE(status,'')) IN ('PENDING','APPROVED')");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv7_ballot_issues_active_once ON cmv7_ballot_issues(election_id,voter_uuid) WHERE COALESCE(used,0)=0");
         exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_cmv7_polling_stations_location_active ON cmv7_polling_stations(world,x,y,z) WHERE COALESCE(active,0)=1 AND COALESCE(archived_at,0)=0");
@@ -3364,7 +3457,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         }
     }
 
-    private ElectionLifecycleSnapshot lifecycleSnapshot()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return new ElectionLifecycleSnapshot(null,"NONE","NONE",0,0,0,0,0,0,""); String status=electionStatus(eid); long apps=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND COALESCE(deleted_at,0)=0",eid), pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid), approved=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid), candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0",eid), ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid), votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0; String winner=safeWinnerName(eid); return new ElectionLifecycleSnapshot(eid,status,status,apps,pending,approved,candidates,ballots,votes,winner);}
+    private ElectionLifecycleSnapshot lifecycleSnapshot()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return new ElectionLifecycleSnapshot(null,"NONE","NONE",0,0,0,0,0,0,""); String status=electionStatus(eid); long apps=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND COALESCE(deleted_at,0)=0",eid), pending=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='PENDING' AND COALESCE(deleted_at,0)=0",eid), approved=scalarLong("SELECT COUNT(*) FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid), candidates=scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND COALESCE(active,0)=1",eid), ballots=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE election_id=?",eid), votes=tableExists("cmv731_votes")?scalarLong("SELECT COUNT(*) FROM cmv731_votes WHERE election_id=?",eid):0; String winner=safeWinnerName(eid); return new ElectionLifecycleSnapshot(eid,status,status,apps,pending,approved,candidates,ballots,votes,winner);}
     private void runLifecycleNext(Player p)throws Exception{
         if(legacyElectionRuntimeDisabled())throw legacyElectionRuntimeDisabledError("runLifecycleNext");
         ElectionLifecycleSnapshot s=lifecycleSnapshot(); if(s.eid()==null){openApplications(p.getName(),72); announceStage(p.getName()); openElectionLifecycle(p); return;} ElectionStatus status=parseElectionStatus(s.status()); switch(status){case APPLICATIONS_OPEN->{if(s.applications()==0){warn(p,"Сначала выдай книги заявок или дождись заявок игроков."); openApplicationsIssue(p); return;} closeApplications(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case APPLICATIONS_CLOSED->{if(s.approved()==0&&s.candidates()==0){warn(p,"Нет утвержденных кандидатов. Проверь заявки."); openApplicationsReview(p); return;} approvedToCandidates(p.getName()); openBallotIssue(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case BALLOTS_OPEN->{openVoting(p.getName()); showSidebarAll(true); announceStage(p.getName()); openElectionLifecycle(p); return;} case VOTING_OPEN->{startCounting(p.getName()); announceStage(p.getName()); openElectionLifecycle(p); return;} case COUNTING,SECOND_ROUND_REQUIRED->{msg(p,finishElection(p.getName())); openElectionLifecycle(p); return;} case FINISHED->{archiveElectionLifecycle(p.getName()); hideSidebarAll(true); openElectionLifecycle(p); return;} default->{msg(p,"&7Цикл завершен или требует ручного решения."); openElectionLifecycle(p);}}}
@@ -3381,14 +3474,14 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String resetVotes(String actor)throws SQLException{
         throw legacyElectionRuntimeDisabledError("reset votes");
     }
-    private String clearCandidates(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; int n=exec("DELETE FROM candidates WHERE election_id=?",id); return"&cКандидаты очищены: &e"+n; }
+    private String clearCandidates(String actor)throws SQLException{ String id=activeOrLatestElectionId(); if(id==null)return"&cНет выборов."; int n=exec("UPDATE candidates SET active=0 WHERE election_id=? AND COALESCE(active,0)=1",id); return"&cКандидаты очищены: &e"+n; }
     private String fullReset(String actor)throws SQLException{
         throw legacyElectionRuntimeDisabledError("full reset");
     }
-    private void addCandidate(String name,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); OfflinePlayer op=Bukkit.getOfflinePlayer(name); String uuid=op.getUniqueId().toString(), display=op.getName()==null?name:op.getName(); if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=?",eid,uuid)==0) exec("INSERT INTO candidates(election_id,uuid,name,display_name,raw_votes,admin_adjustment,removed) VALUES(?,?,?,?,0,0,0)",eid,uuid,display,display); else exec("UPDATE candidates SET removed=0,display_name=? WHERE election_id=? AND uuid=?",display,eid,uuid); }
-    private void adjustCandidate(String uuid,int d,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET admin_adjustment=COALESCE(admin_adjustment,0)+? WHERE election_id=? AND uuid=?",d,eid,uuid); }
-    private void toggleCandidate(String uuid,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET removed=CASE WHEN COALESCE(removed,0)=0 THEN 1 ELSE 0 END WHERE election_id=? AND uuid=?",eid,uuid); }
-    private void setWinner(String uuid,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)return; List<Map<String,Object>> rows=query("SELECT * FROM candidates WHERE election_id=? AND uuid=? LIMIT 1",eid,uuid); if(rows.isEmpty())return; String name=first(s(rows.get(0).get("display_name")),s(rows.get(0).get("name"))); exec("UPDATE elections SET winner_uuid=?,winner_name=? WHERE id=?",uuid,name,eid); if(!name.isBlank()) assignPresident(eid,uuid,name,actor,"manual-winner"); }
+    private void addCandidate(String name,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); OfflinePlayer op=Bukkit.getOfflinePlayer(name); String uuid=op.getUniqueId().toString(), display=op.getName()==null?name:op.getName(); if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=?",eid,uuid)==0) exec("INSERT INTO candidates(id,election_id,player_uuid,player_name,display_name,raw_votes,admin_adjustment,active,last_result) VALUES(?,?,?,?,?,?,0,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,display_name=excluded.display_name,active=1",UUID.randomUUID().toString(),eid,uuid,display,display,0); else exec("UPDATE candidates SET active=1,display_name=?,player_name=? WHERE election_id=? AND player_uuid=?",display,display,eid,uuid); }
+    private void adjustCandidate(String uuid,int d,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET admin_adjustment=COALESCE(admin_adjustment,0)+? WHERE election_id=? AND player_uuid=?",d,eid,uuid); }
+    private void toggleCandidate(String uuid,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid!=null)exec("UPDATE candidates SET active=CASE WHEN COALESCE(active,0)=1 THEN 0 ELSE 1 END WHERE election_id=? AND player_uuid=?",eid,uuid); }
+    private void setWinner(String uuid,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)return; List<Map<String,Object>> rows=query("SELECT player_uuid AS uuid,player_name AS name,display_name FROM candidates WHERE election_id=? AND player_uuid=? LIMIT 1",eid,uuid); if(rows.isEmpty())return; String name=first(s(rows.get(0).get("display_name")),s(rows.get(0).get("name"))); exec("UPDATE elections SET winner_uuid=?,winner_name=? WHERE id=?",uuid,name,eid); if(!name.isBlank()) assignPresident(eid,uuid,name,actor,"manual-winner"); }
     private void addCurator(String name,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); OfflinePlayer op=Bukkit.getOfflinePlayer(name); String uuid=op.getUniqueId().toString(), display=op.getName()==null?name:op.getName(); String role=scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND active=1 AND role='CIK_CHAIR'",eid)==0?"CIK_CHAIR":"CURATOR"; if(scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND uuid=?",eid,uuid)==0) exec("INSERT INTO cmv7_election_curators(election_id,uuid,name,role,active,added_by,added_at) VALUES(?,?,?,?,1,?,?)",eid,uuid,display,role,actor,now()); else exec("UPDATE cmv7_election_curators SET active=1,name=?,role=CASE WHEN COALESCE(role,'')='' THEN ? ELSE role END WHERE election_id=? AND uuid=?",display,role,eid,uuid); updateRoleNameplates(); }
     private void appointPresidentDelegate(String name,String actor)throws SQLException{ String eid=activeOrLatestElectionId(); if(eid==null)throw new SQLException("Нет выборов"); OfflinePlayer op=Bukkit.getOfflinePlayer(name); String uuid=op.getUniqueId().toString(), display=op.getName()==null?name:op.getName(); if(scalarLong("SELECT COUNT(*) FROM cmv7_election_curators WHERE election_id=? AND uuid=?",eid,uuid)==0) exec("INSERT INTO cmv7_election_curators(election_id,uuid,name,role,active,added_by,added_at) VALUES(?,?,?,?,1,?,?)",eid,uuid,display,"PRESIDENT_DELEGATE",actor,now()); else exec("UPDATE cmv7_election_curators SET active=1,name=?,role='PRESIDENT_DELEGATE',added_by=?,added_at=? WHERE election_id=? AND uuid=?",display,actor,now(),eid,uuid); audit(actor,"ULTRA7_PRESIDENT_DELEGATE","election="+eid+" delegate="+display,true); staffNotify("&6Президент назначил представителя: &e"+display+" &7("+actor+")"); updateRoleNameplates(); }
     private void presidentAnnounce(Player p)throws Exception{ if(!hasAdmin(p)&&!isPresident(p)){warn(p,"Нет прав президента.");return;} String eid=activeOrLatestElectionId(); Bukkit.broadcastMessage(c("&6&lПрезидент &f"+p.getName()+"&7: &eследите за выборами, заявками и программами кандидатов в интерфейсе.")); for(Player t:Bukkit.getOnlinePlayers())t.sendTitle(c("&6Президент "+p.getName()),c("&fОткрой бюллетень и проверь заявки кандидатов"),10,70,15); audit(p.getName(),"ULTRA7_PRESIDENT_ANNOUNCE","election="+first(eid,"none"),false); }
@@ -3462,7 +3555,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         if(num(r.get("deleted_at"))>0||"ANNULLED".equalsIgnoreCase(s(r.get("status"))))return"&eЗаявка уже аннулирована.";
         String note=" | ANNULLED_BY:"+actor+" reason="+first(reason,"emergency");
         exec("UPDATE applications SET status='ANNULLED',visible_in_game=0,deleted_by=?,deleted_at=?,verdict_reason=COALESCE(verdict_reason,'')||? WHERE id=?",actor,now(),note,appId);
-        int removed=exec("UPDATE candidates SET removed=1 WHERE election_id=? AND uuid=?",eid,uuid);
+        int removed=exec("UPDATE candidates SET active=0 WHERE election_id=? AND player_uuid=?",eid,uuid);
         audit(actor,"ULTRA7_APPLICATION_ANNUL","application="+appId+" election="+eid+" player="+name+" removedCandidateRows="+removed+" reason="+first(reason,"emergency"),true);
         return"&aЗаявка аннулирована. Снято строк кандидата: &e"+removed;
     }
@@ -3632,7 +3725,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         try { requireElectionStatus(eid,ElectionStatus.VOTING_OPEN); }
         catch(SQLException closed){warn(p,"Голосование сейчас закрыто.");return;}
         if(hasCitizenVote(p,eid)){warn(p,"Твой голос уже учтен.");return;}
-        List<Map<String,Object>> candidates=query("SELECT name,display_name FROM candidates WHERE election_id=? AND uuid=? AND COALESCE(removed,0)=0 LIMIT 1",eid,candidateUuid);
+        List<Map<String,Object>> candidates=query("SELECT player_name AS name,display_name FROM candidates WHERE election_id=? AND player_uuid=? AND COALESCE(active,0)=1 LIMIT 1",eid,candidateUuid);
         if(candidates.isEmpty()){warn(p,"Кандидат недоступен.");return;}
         ItemStack ballot=findOwnedUnusedBallot(p,eid);
         if(ballot==null){warn(p,"Нужен твой неиспользованный физический бюллетень. Чужой или переданный бюллетень не работает.");return;}
@@ -3675,7 +3768,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         try { requireElectionStatus(eid,ElectionStatus.VOTING_OPEN); }
         catch(SQLException closed){warn(p,"Голосование сейчас закрыто.");return;}
         if(hasCitizenVote(p,eid)){warn(p,"Твой голос уже учтен.");return;}
-        List<Map<String,Object>> candidates=query("SELECT name,display_name FROM candidates WHERE election_id=? AND uuid=? AND COALESCE(removed,0)=0 LIMIT 1",eid,candidateUuid);
+        List<Map<String,Object>> candidates=query("SELECT player_name AS name,display_name FROM candidates WHERE election_id=? AND player_uuid=? AND COALESCE(active,0)=1 LIMIT 1",eid,candidateUuid);
         if(candidates.isEmpty()){warn(p,"Кандидат недоступен.");return;}
         long validBallot=scalarLong("SELECT COUNT(*) FROM cmv7_ballot_issues WHERE id=? AND election_id=? AND voter_uuid=? AND COALESCE(used,0)=0",ballotId,eid,p.getUniqueId().toString());
         if(validBallot<=0){warn(p,"Бюллетень уже использован или не принадлежит тебе.");return;}
@@ -3689,7 +3782,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
             int marked=exec(c,"UPDATE cmv7_ballot_issues SET used=1,notes=COALESCE(notes,'')||? WHERE id=? AND election_id=? AND voter_uuid=? AND COALESCE(used,0)=0"," | DEPOSITED:"+candidateName+" station="+first(stationId,"station-deposit"),ballotId,eid,p.getUniqueId().toString());
             if(marked!=1)throw new SQLException(ELECTION_BALLOT_ALREADY_USED);
             exec(c,"INSERT INTO cmv731_votes(id,election_id,voter_uuid,voter_name,candidate_uuid,candidate_name,ballot_id,station_id,world,x,y,z,time) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",voteId,eid,p.getUniqueId().toString(),p.getName(),candidateUuid,candidateName,ballotId,first(stationId,"station-deposit"),loc.getWorld()==null?"":loc.getWorld().getName(),loc.getBlockX(),loc.getBlockY(),loc.getBlockZ(),t);
-            exec(c,"UPDATE candidates SET raw_votes=COALESCE(raw_votes,0)+1 WHERE election_id=? AND uuid=?",eid,candidateUuid);
+            exec(c,"UPDATE candidates SET raw_votes=COALESCE(raw_votes,0)+1 WHERE election_id=? AND player_uuid=?",eid,candidateUuid);
             exec(c,"DELETE FROM cmv731_vote_sessions WHERE voter_uuid=? AND election_id=?",p.getUniqueId().toString(),eid);
             exec(c,"INSERT INTO cmv7_audit(time,actor,action,details,admin_only) VALUES(?,?,?,?,?)",t,p.getName(),"ULTRA7_BALLOT_DEPOSIT","election="+eid+" candidate="+candidateName+" ballot="+ballotId+" station="+first(stationId,"station-deposit"),0);
             return null;
@@ -3702,13 +3795,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
         reloadSidebarAll();
     }
 
-    private int approvedToCandidates(String actor)throws Exception{ String eid=activeOrLatestElectionId(); if(eid==null)return 0; int n=0; for(Map<String,Object> app:query("SELECT applicant_uuid,applicant_name FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid)){String uuid=s(app.get("applicant_uuid")), name=s(app.get("applicant_name")); if(!uuid.isBlank()&&!name.isBlank()&&scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=?",eid,uuid)==0){exec("INSERT INTO candidates(election_id,uuid,name,display_name,raw_votes,admin_adjustment,removed) VALUES(?,?,?,?,0,0,0)",eid,uuid,name,name); n++;}} return n;}
+    private int approvedToCandidates(String actor)throws Exception{ String eid=activeOrLatestElectionId(); if(eid==null)return 0; int n=0; for(Map<String,Object> app:query("SELECT applicant_uuid,applicant_name FROM applications WHERE election_id=? AND status='APPROVED' AND COALESCE(deleted_at,0)=0",eid)){String uuid=s(app.get("applicant_uuid")), name=s(app.get("applicant_name")); if(!uuid.isBlank()&&!name.isBlank()&&scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=?",eid,uuid)==0){exec("INSERT INTO candidates(id,election_id,player_uuid,player_name,display_name,raw_votes,admin_adjustment,active,last_result) VALUES(?,?,?,?,?,?,0,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,display_name=excluded.display_name,active=1",UUID.randomUUID().toString(),eid,uuid,name,name,0); n++;}} return n;}
     private void reviewApplication(String rowid,String status,String actor)throws SQLException{String normalized=status==null?"PENDING":status.toUpperCase(Locale.ROOT); if(!Set.of("PENDING","APPROVED","REJECTED").contains(normalized))normalized="PENDING"; exec("UPDATE applications SET status=?,reviewed_by=?,reviewed_at=?,verdict_reason=? WHERE rowid=?",normalized,actor,now(),"admin-panel-"+normalized.toLowerCase(Locale.ROOT),rowid); audit(actor,"ULTRA7_APPLICATION_"+normalized,"rowid="+rowid,true);}
-    private void promoteApplicationCandidate(String rowid,String actor)throws SQLException{List<Map<String,Object>> rows=query("SELECT election_id,applicant_uuid,applicant_name FROM applications WHERE rowid=? LIMIT 1",rowid); if(rows.isEmpty())return; Map<String,Object> app=rows.get(0); String eid=s(app.get("election_id")), uuid=s(app.get("applicant_uuid")), name=s(app.get("applicant_name")); if(eid.isBlank()||uuid.isBlank()||name.isBlank())return; if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=?",eid,uuid)==0)exec("INSERT INTO candidates(election_id,uuid,name,display_name,raw_votes,admin_adjustment,removed) VALUES(?,?,?,?,0,0,0)",eid,uuid,name,name); else exec("UPDATE candidates SET removed=0,display_name=? WHERE election_id=? AND uuid=?",name,eid,uuid); audit(actor,"ULTRA7_APPLICATION_PROMOTE","rowid="+rowid+" candidate="+name,true);}
+    private void promoteApplicationCandidate(String rowid,String actor)throws SQLException{List<Map<String,Object>> rows=query("SELECT election_id,applicant_uuid,applicant_name FROM applications WHERE rowid=? LIMIT 1",rowid); if(rows.isEmpty())return; Map<String,Object> app=rows.get(0); String eid=s(app.get("election_id")), uuid=s(app.get("applicant_uuid")), name=s(app.get("applicant_name")); if(eid.isBlank()||uuid.isBlank()||name.isBlank())return; if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=?",eid,uuid)==0)exec("INSERT INTO candidates(id,election_id,player_uuid,player_name,display_name,raw_votes,admin_adjustment,active,last_result) VALUES(?,?,?,?,?,?,0,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,display_name=excluded.display_name,active=1",UUID.randomUUID().toString(),eid,uuid,name,name,0); else exec("UPDATE candidates SET active=1,display_name=?,player_name=? WHERE election_id=? AND player_uuid=?",name,name,eid,uuid); audit(actor,"ULTRA7_APPLICATION_PROMOTE","rowid="+rowid+" candidate="+name,true);}
     private void prepareReview(String actor)throws SQLException{closeApplications(actor);}
     private void prepareVoting(String actor)throws Exception{openVoting(actor);}
     private void prepareCounting(String actor)throws Exception{startCounting(actor);}
-    private int syncCandidateVotesFromLedger(String eid,String actor)throws SQLException{if(eid==null||eid.isBlank()||!tableExists("cmv731_votes"))return 0; int total=0; for(Map<String,Object> r:query("SELECT candidate_uuid,candidate_name,COUNT(*) votes FROM cmv731_votes WHERE election_id=? GROUP BY candidate_uuid,candidate_name",eid)){String uuid=s(r.get("candidate_uuid")), name=first(s(r.get("candidate_name")),uuid); long votes=num(r.get("votes")); total+=votes; if(uuid.isBlank())continue; if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=?",eid,uuid)==0)exec("INSERT INTO candidates(election_id,uuid,name,display_name,raw_votes,admin_adjustment,removed) VALUES(?,?,?,?,?,0,0)",eid,uuid,name,name,votes); else exec("UPDATE candidates SET raw_votes=?,display_name=COALESCE(NULLIF(display_name,''),?) WHERE election_id=? AND uuid=?",votes,name,eid,uuid);} exec("UPDATE cmv7_ballot_issues SET used=1,notes=COALESCE(notes,'')||' | vote-ledger-sync' WHERE election_id=? AND id IN (SELECT ballot_id FROM cmv731_votes WHERE election_id=?)",eid,eid); audit(actor,"ULTRA7_ELECTION_VOTE_LEDGER_SYNC","election="+eid+" votes="+total,true); return total;}
+    private int syncCandidateVotesFromLedger(String eid,String actor)throws SQLException{if(eid==null||eid.isBlank()||!tableExists("cmv731_votes"))return 0; int total=0; for(Map<String,Object> r:query("SELECT candidate_uuid,candidate_name,COUNT(*) votes FROM cmv731_votes WHERE election_id=? GROUP BY candidate_uuid,candidate_name",eid)){String uuid=s(r.get("candidate_uuid")), name=first(s(r.get("candidate_name")),uuid); long votes=num(r.get("votes")); total+=votes; if(uuid.isBlank())continue; if(scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=?",eid,uuid)==0)exec("INSERT INTO candidates(id,election_id,player_uuid,player_name,display_name,raw_votes,admin_adjustment,active,last_result) VALUES(?,?,?,?,?,?,0,1,0) ON CONFLICT(election_id,player_uuid) DO UPDATE SET player_name=excluded.player_name,display_name=excluded.display_name,raw_votes=excluded.raw_votes,active=1",UUID.randomUUID().toString(),eid,uuid,name,name,votes); else exec("UPDATE candidates SET raw_votes=?,display_name=COALESCE(NULLIF(display_name,''),?),player_name=COALESCE(NULLIF(player_name,''),?) WHERE election_id=? AND player_uuid=?",votes,name,name,eid,uuid);} exec("UPDATE cmv7_ballot_issues SET used=1,notes=COALESCE(notes,'')||' | vote-ledger-sync' WHERE election_id=? AND id IN (SELECT ballot_id FROM cmv731_votes WHERE election_id=?)",eid,eid); audit(actor,"ULTRA7_ELECTION_VOTE_LEDGER_SYNC","election="+eid+" votes="+total,true); return total;}
     private String finishElection(String actor)throws Exception{String eid=activeElectionId(); if(eid==null)eid=activeOrLatestElectionId(); if(eid==null)return"&cНет выборов."; ensureSettings(eid,actor); requireElectionStatus(eid,ElectionStatus.COUNTING,ElectionStatus.SECOND_ROUND_REQUIRED,ElectionStatus.FINISHED); requireElectionGate(eid,"FINISH",actor); syncCandidateVotesFromLedger(eid,actor); Map<String,Object>w=leader(eid); String wu=w==null?"":s(w.get("uuid")), wn=w==null?"":first(s(w.get("display_name")),s(w.get("name"))); exec("UPDATE elections SET status=?,ended_at=?,ended_by=?,winner_uuid=?,winner_name=? WHERE id=?",ElectionStatus.FINISHED.name(),now(),actor,wu,wn,eid); if(!wn.isBlank())assignPresident(eid,wu,wn,actor,"election-finished"); syncElectionSettingsStatus(eid,ElectionStatus.FINISHED,actor); audit(actor,"ULTRA7_ELECTION_FINISH","election="+eid+" winner="+wn,true); announceInauguration(actor); return"&aВыборы завершены. Победитель: &e"+(wn.isBlank()?"не найден":wn);}
     private String finishElectionLifecycle(String actor)throws Exception{return finishElection(actor);}
     private String cancelElection(String actor)throws SQLException{String eid=activeElectionId(); if(eid==null)eid=activeOrLatestElectionId(); if(eid==null)return"&cНет выборов."; exec("UPDATE elections SET status=?,ended_at=?,ended_by=? WHERE id=?",ElectionStatus.CANCELLED.name(),now(),actor,eid); syncElectionSettingsStatus(eid,ElectionStatus.CANCELLED,actor); sidebarGlobal=false; audit(actor,"ULTRA7_ELECTION_CANCEL","election="+eid,true); return"&eВыборы отменены."; }
@@ -3798,13 +3891,13 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
     private String activeOrLatestElectionId()throws SQLException{String a=activeElectionId(); return a!=null?a:latestElectionId();}
     private String issuableElectionId()throws SQLException{String eid=activeOrLatestElectionId(); if(eid==null)return null; ElectionStatus status=parseElectionStatus(electionStatus(eid)); if(status==ElectionStatus.FINISHED||status==ElectionStatus.CANCELLED)return null; return eid;}
     private String electionStatus(String eid)throws SQLException{if(eid==null||eid.isBlank())return"нет"; List<Map<String,Object>> r=query("SELECT status FROM elections WHERE id=? LIMIT 1",eid); return r.isEmpty()?"нет":parseElectionStatus(s(r.get(0).get("status"))).name();}
-    private Map<String,Object> leader(String eid)throws SQLException{List<Map<String,Object>> r=query("SELECT *,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0 ORDER BY total DESC,name ASC LIMIT 1",eid); return r.isEmpty()?null:r.get(0);}
+    private Map<String,Object> leader(String eid)throws SQLException{List<Map<String,Object>> r=query("SELECT player_uuid AS uuid,player_name AS name,display_name,raw_votes,admin_adjustment,active,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND COALESCE(active,0)=1 ORDER BY total DESC,player_name ASC LIMIT 1",eid); return r.isEmpty()?null:r.get(0);}
     private String electionText()throws SQLException{String id=activeOrLatestElectionId(); if(id==null)return"&cВыборов нет."; return"&eВыборы: &f"+id+" &7| status=&f"+electionStatus(id);}
-    private List<Map<String,Object>> candidateRowsForElection(String eid,int limit)throws SQLException{return query("SELECT uuid,name,display_name,COALESCE(raw_votes,0) raw_votes,COALESCE(admin_adjustment,0) admin_adjustment,COALESCE(removed,0) removed,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND COALESCE(removed,0)=0 ORDER BY total DESC,name ASC LIMIT ?",eid,limit);}
+    private List<Map<String,Object>> candidateRowsForElection(String eid,int limit)throws SQLException{return query("SELECT player_uuid AS uuid,player_name AS name,display_name,COALESCE(raw_votes,0) raw_votes,COALESCE(admin_adjustment,0) admin_adjustment,0 AS removed,COALESCE(raw_votes,0)+COALESCE(admin_adjustment,0) total FROM candidates WHERE election_id=? AND COALESCE(active,0)=1 ORDER BY total DESC,player_name ASC LIMIT ?",eid,limit);}
     private void assignPresident(String eid,String uuid,String name,String actor,String reason)throws SQLException{if(name==null||name.isBlank())return; retireActivePresident(actor,"replaced-by-"+name); exec("INSERT INTO cmv7_president_state(election_id,uuid,name,assigned_at,assigned_by,active,reason,removed_at,removed_by,remove_reason) VALUES(?,?,?,?,?,1,?,0,'','')",first(eid,"manual"),first(uuid,""),name,now(),actor,reason); dispatchIfExists("lp user "+name+" parent add president"); dispatchIfExists("lp user "+name+" meta setprefix 100 \"&6[Президент] \""); audit(actor,"ULTRA7_PRESIDENT_ASSIGN","election="+first(eid,"")+" name="+name+" reason="+reason,true); updateRoleNameplates();}
     private void retireActivePresident(String actor,String reason)throws SQLException{for(Map<String,Object> r:query("SELECT name FROM cmv7_president_state WHERE active=1 ORDER BY assigned_at DESC,id DESC")){String name=s(r.get("name")); if(!name.isBlank()){dispatchIfExists("lp user "+name+" parent remove president"); dispatchIfExists("lp user "+name+" meta removeprefix 100"); dispatchIfExists("lp user "+name+" meta unsetprefix");}} exec("UPDATE cmv7_president_state SET active=0,removed_at=?,removed_by=?,remove_reason=? WHERE active=1",now(),actor,reason); audit(actor,"ULTRA7_PRESIDENT_RETIRE",reason,true); updateRoleNameplates();}
     private String activePresidentName(){try{List<Map<String,Object>> r=query("SELECT name FROM cmv7_president_state WHERE active=1 ORDER BY assigned_at DESC,id DESC LIMIT 1"); return r.isEmpty()?"нет":s(r.get(0).get("name"));}catch(Exception e){return"нет";}}
-    private boolean isCitizenCandidate(Player p,String eid)throws SQLException{return eid!=null&&scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND uuid=? AND COALESCE(removed,0)=0",eid,p.getUniqueId().toString())>0;}
+    private boolean isCitizenCandidate(Player p,String eid)throws SQLException{return eid!=null&&scalarLong("SELECT COUNT(*) FROM candidates WHERE election_id=? AND player_uuid=? AND COALESCE(active,0)=1",eid,p.getUniqueId().toString())>0;}
     private boolean hasCitizenBallot(Player p,String eid)throws SQLException{String uuid=p.getUniqueId().toString(); return eid!=null&&(countRowsForPlayer("cmv7_ballot_issues",eid,uuid,true,"voter_uuid","player_uuid")>0||countRowsForPlayer("ballots",eid,uuid,true,"voter_uuid","player_uuid")>0||countRowsForPlayer("clean_ballots",eid,uuid,true,"voter_uuid","player_uuid")>0||countRowsForPlayer("cmclean_ballot_issues",eid,uuid,true,"voter_uuid","player_uuid")>0);}
     private boolean hasCitizenVote(Player p,String eid)throws SQLException{return eid!=null&&(countRowsForPlayer("cmv731_votes",eid,p.getUniqueId().toString(),false,"voter_uuid","player_uuid")>0||countRowsForPlayer("votes",eid,p.getUniqueId().toString(),false,"voter_uuid","player_uuid")>0);}
     private long countRowsForPlayer(String table,String eid,String uuid,boolean unusedOnly,String... uuidCols)throws SQLException{if(!tableExists(table))return 0; List<String> c=cols(table); if(!c.contains("election_id"))return 0; List<String> wh=new ArrayList<>(); List<Object> args=new ArrayList<>(); args.add(eid); for(String col:uuidCols)if(c.contains(col.toLowerCase(Locale.ROOT))){wh.add(col+"=?"); args.add(uuid);} if(wh.isEmpty())return 0; String sql="SELECT COUNT(*) FROM "+table+" WHERE election_id=? AND ("+String.join(" OR ",wh)+")"; if(unusedOnly&&c.contains("used"))sql+=" AND COALESCE(used,0)=0"; return scalarLong(sql,args.toArray());}
@@ -4761,7 +4854,7 @@ public final class CopiMineUltimateAdminPlus extends JavaPlugin implements Liste
 
     private void giveTemporaryApplicationBook(Player p,String eid,String candidateUuid)throws Exception{
         if(eid==null||eid.isBlank())throw new SQLException("Нет активных выборов");
-        List<Map<String,Object>> cand=query("SELECT name,display_name FROM candidates WHERE election_id=? AND uuid=? LIMIT 1",eid,candidateUuid);
+        List<Map<String,Object>> cand=query("SELECT player_name AS name,display_name FROM candidates WHERE election_id=? AND player_uuid=? LIMIT 1",eid,candidateUuid);
         String candidate=cand.isEmpty()?candidateUuid:first(s(cand.get(0).get("display_name")),s(cand.get(0).get("name")),candidateUuid);
         List<Map<String,Object>> apps=query("""
                 SELECT applicant_name,statement,status,submitted_at,reviewed_by

@@ -9,9 +9,14 @@ $jar = Join-Path $pluginDir 'CopiMineEconomyCore.jar'
 $tempJar = Join-Path $pluginDir 'build\CopiMineEconomyCore.jar'
 $serverJar = Join-Path $serverDir 'plugins\CopiMineEconomyCore.jar'
 
+$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY) {
+  $env:COPIMINE_MAVEN_REPOSITORY
+} else {
+  Join-Path $env:USERPROFILE '.m2\repository'
+}
 $paperApi = $env:PAPER_API_JAR
 if (-not $paperApi) {
-  $paperApi = Get-ChildItem -Path "$env:USERPROFILE\.m2\repository" -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
+  $paperApi = Get-ChildItem -Path $mavenRepo -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1 -ExpandProperty FullName
 }
@@ -20,22 +25,22 @@ if (-not $paperApi -or -not (Test-Path $paperApi)) {
 }
 
 $cp = @($paperApi)
-$mavenRepo = Join-Path $env:USERPROFILE '.m2\repository'
-if (Test-Path $mavenRepo) {
-  # Paper API is intentionally thin. Include its public signature
-  # dependencies so a clean local build does not rely on a populated server.
-  foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
-    $groupPath = Join-Path $mavenRepo $group
-    if (Test-Path $groupPath) {
-      $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
-    }
-  }
-}
 if ($env:PAPER_COMPILE_DEPS) {
   $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
-}
-if (Test-Path (Join-Path $serverDir 'libraries')) {
-  $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+} else {
+  if (Test-Path $mavenRepo) {
+    # Paper API is intentionally thin. Include its public signature
+    # dependencies so a clean local build does not rely on a populated server.
+    foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
+      $groupPath = Join-Path $mavenRepo $group
+      if (Test-Path $groupPath) {
+        $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
+      }
+    }
+  }
+  if (Test-Path (Join-Path $serverDir 'libraries')) {
+    $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+  }
 }
 
 $sources = Get-ChildItem -Path $srcRoot -Recurse -Filter '*.java' | ForEach-Object FullName
@@ -45,7 +50,7 @@ if (-not $sources) {
 
 Remove-Item -LiteralPath $classes -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $classes | Out-Null
-javac -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
+javac -proc:none -encoding UTF-8 -cp ($cp -join [IO.Path]::PathSeparator) -d $classes $sources
 if ($LASTEXITCODE -ne 0) {
   throw "javac failed for CopiMineEconomyCore with exit code $LASTEXITCODE."
 }

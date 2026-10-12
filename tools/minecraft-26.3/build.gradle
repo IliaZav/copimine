@@ -3,7 +3,25 @@ import groovy.json.JsonSlurper
 plugins { id 'java' }
 
 def profile = new JsonSlurper().parse(file('profile.lock.json'))
+def serverPluginLock = new JsonSlurper().parse(file('server-plugins.lock.json'))
 def checkout = file('../..').canonicalFile
+def voiceChatPlugin = serverPluginLock.modules.find { it.pluginName == 'voicechat' }
+if (voiceChatPlugin == null || voiceChatPlugin.filename != 'voicechat-bukkit-2.6.24.jar') {
+    throw new GradleException('Pinned Paper Voice Chat API candidate is missing from the server lock')
+}
+def voiceChatApiCandidate = new File(checkout, "build/minecraft-26.3/server-plugins/${voiceChatPlugin.filename}")
+def verifyVoiceChatApi = tasks.register('verifyVoiceChatApi') {
+    doLast {
+        if (!voiceChatApiCandidate.isFile() || voiceChatApiCandidate.length() != voiceChatPlugin.size) {
+            throw new GradleException('Pinned Paper Voice Chat API candidate is missing or has the wrong size')
+        }
+        def voiceChatApiSha512 = java.security.MessageDigest.getInstance('SHA-512')
+                .digest(voiceChatApiCandidate.bytes).encodeHex().toString()
+        if (voiceChatApiSha512 != voiceChatPlugin.sha512) {
+            throw new GradleException('Pinned Paper Voice Chat API candidate differs from the server lock')
+        }
+    }
+}
 layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/plugins')
 
 if (JavaVersion.current().majorVersion.toInteger() < profile.minimumJava) {
@@ -27,11 +45,22 @@ def modules = [
     authEffects: ['minecraft/server/plugins/AuthEffects', 'AuthEffects']
 ]
 
+def moduleRuntimeResources = [
+    economyCore: ['plugin.yml'],
+    worldCore: ['plugin.yml', 'config.yml'],
+    admin: ['plugin.yml', 'config.yml', 'messages_ru.yml'],
+    artifacts: ['plugin.yml', 'config.yml', 'items.yml'],
+    electionCore: ['plugin.yml', 'config.yml'],
+    narcotics: ['plugin.yml', 'config.yml'],
+    endEvent: ['plugin.yml', 'config.yml'],
+    authEffects: ['plugin.yml']
+]
+
 modules.each { name, module ->
     sourceSets.create(name) {
         java.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/java' : '/src')))
         resources.srcDir(new File(checkout, module[0] + (name == 'authEffects' ? '/src/main/resources' : '')))
-        resources.include('plugin.yml', 'config.yml')
+        resources.include(moduleRuntimeResources[name])
     }
     dependencies.add("${name}CompileOnly", "io.papermc.paper:paper-api:${profile.paper.api}")
     tasks.named(sourceSets[name].processResourcesTaskName) {
@@ -52,12 +81,12 @@ modules.each { name, module ->
     }
 }
 
+sourceSets.narcotics.java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
+
 dependencies {
     adminCompileOnly sourceSets.economyCore.output
     adminCompileOnly 'me.clip:placeholderapi:2.12.3'
-    // Compile against the public voice API only. This does not approve the
-    // installed 1.21.1 runtime plugin for 26.3.
-    adminCompileOnly files(new File(checkout, 'thirdparty/client-mods/voicechat-fabric-1.21.1-2.6.16.jar'))
+    adminCompileOnly files(voiceChatApiCandidate)
     artifactsCompileOnly sourceSets.economyCore.output
     electionCoreCompileOnly sourceSets.economyCore.output
     endEventCompileOnly sourceSets.worldCore.output
@@ -75,6 +104,32 @@ tasks.register('migrationPlugins') {
     dependsOn(modules.keySet().collect { "${it}Jar" })
 }
 
+tasks.register('verifyMigrationPluginResources') {
+    group = 'verification'
+    description = 'Verify each first-party migration JAR contains its required runtime resources.'
+    dependsOn(modules.keySet().collect { "${it}Jar" })
+    doLast {
+        moduleRuntimeResources.each { name, requiredResources ->
+            def archive = tasks.named("${name}Jar", Jar).get().archiveFile.get().asFile
+            if (!archive.isFile()) {
+                throw new GradleException("Migration plugin JAR is missing: ${archive}")
+            }
+            def zip = new java.util.zip.ZipFile(archive)
+            try {
+                def missing = requiredResources.findAll { zip.getEntry(it) == null }
+                if (!missing.isEmpty()) {
+                    throw new GradleException(
+                            "${archive.name} is missing required runtime resources: ${missing.join(', ')}")
+                }
+            } finally {
+                zip.close()
+            }
+            logger.lifecycle("Verified ${archive.name} resources: ${requiredResources.join(', ')}")
+        }
+    }
+}
+tasks.named('compileAdminJava') { dependsOn(verifyVoiceChatApi) }
+
 tasks.register('verifyPaperApi') {
     doLast {
         def artifact = configurations.endEventCompileClasspath.resolvedConfiguration.resolvedArtifacts.find {
@@ -86,4 +141,4 @@ tasks.register('verifyPaperApi') {
         logger.lifecycle("Verified Paper API ${profile.paper.api}: ${actual}")
     }
 }
-tasks.named('migrationPlugins') { dependsOn('verifyPaperApi') }
+tasks.named('migrationPlugins') { dependsOn('verifyPaperApi', 'verifyMigrationPluginResources') }

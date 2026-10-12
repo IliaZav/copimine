@@ -10,6 +10,8 @@ public final class DepositJournalTest {
     public static void main(String[] args) throws Exception {
         Path directory = Files.createTempDirectory("copimine-end-deposit-test-");
         DepositJournal journal = new DepositJournal(directory);
+        check(journal.unresolvedFor("", 0L).isEmpty(),
+                "an empty deposit journal must not require an event owner");
         UUID player = UUID.randomUUID();
         DepositJournal.Entry entry = new DepositJournal.Entry("deposit-1", player, Material.DIAMOND, 12, 12, "PREPARED");
 

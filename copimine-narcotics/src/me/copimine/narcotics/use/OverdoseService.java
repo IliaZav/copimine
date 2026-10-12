@@ -464,9 +464,9 @@ public final class OverdoseService {
             }
             int effectSeconds = overrideDurationSeconds > 0 ? overrideDurationSeconds : effectiveDuration(configured.durationSeconds());
             int ticks = Math.max(1, effectSeconds) * 20;
-            // The optional client mod replaces the noisy vanilla list with one
-            // consolidated badge. Gameplay remains server-authoritative: only
-            // the icon is hidden, the potion effect itself is unchanged.
+            // The required client mod replaces the noisy vanilla list with one
+            // consolidated badge when this visual route is advertised. Gameplay
+            // remains server-authoritative: only the icon is hidden, the effect is unchanged.
             player.addPotionEffect(new PotionEffect(type, ticks, Math.max(0, configured.amplifier()), false, false, !hideNegativeIcons));
             tracked.add(type);
         }

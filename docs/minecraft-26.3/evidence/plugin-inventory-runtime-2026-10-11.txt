@@ -1,0 +1,1 @@
+PLUGIN_INVENTORY_HASH_MATCH expected=29 actual=29 receipt=29 auth=disabled-for-local-testing nativeVerified=False

@@ -4,8 +4,11 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 $source = Join-Path $root 'copimine-admin-plugin\src\me\copimine\ultimateplus\CopiMineUltimateAdminPlus.java'
 $migration = Join-Path $root 'db\migrations\20260612_006_elections_hardening.sql'
 $baseMigration = Join-Path $root 'db\migrations\20260611_001_copimine_v4_postgres.sql'
+$electionCoreMigration = Join-Path $root 'db\migrations\20260623_008_copimine_election_core_phase1_stability.sql'
 $text = Get-Content -Raw -Encoding UTF8 -LiteralPath $source
-$sql = (Get-Content -Raw -Encoding UTF8 -LiteralPath $migration) + "`n" + (Get-Content -Raw -Encoding UTF8 -LiteralPath $baseMigration)
+$sql = (Get-Content -Raw -Encoding UTF8 -LiteralPath $migration) + "`n" +
+  (Get-Content -Raw -Encoding UTF8 -LiteralPath $baseMigration) + "`n" +
+  (Get-Content -Raw -Encoding UTF8 -LiteralPath $electionCoreMigration)
 $errors = New-Object System.Collections.Generic.List[string]
 
 function Require([string]$haystack, [string]$needle, [string]$message) {
@@ -36,7 +39,7 @@ foreach ($table in @(
 foreach ($index in @(
   'ux_cmv731_votes_once',
   'ux_cmv731_votes_ballot_once',
-  'ux_cmv7_candidates_once',
+  'uq_candidates_election_player',
   'ux_cmv7_applications_active_once',
   'ux_cmv7_ballot_issues_active_once',
   'ux_cmv7_polling_stations_location_active'

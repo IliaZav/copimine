@@ -1,0 +1,15 @@
+# Local Paper 26.3 loopback readiness check
+Observed local: 2026-10-12 08:28:15 +03:00
+
+- Windows process `34632` was running Paper from `build/minecraft-26.3/server/paper-26.3-169.jar`.
+- The JAR was 55,138,949 bytes with SHA-256 `185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb`, matching `tools/minecraft-26.3/profile.lock.json`.
+- The process had started at 01:28:30 +03:00 with Temurin Java 25.0.2. The lock requires Java 25 or newer.
+- A TCP connection to `127.0.0.1:25568` succeeded.
+- `local-runtime/end-rift-server-26.3/logs/latest.log` contains `[01:29:05] [Server thread/INFO]: Done (34.163s)!`.
+
+This verifies that the locked Paper artifact is running and listening on loopback. It does not verify a Minecraft player login, the client handshake, server resource pack rendering, live plugin behavior, or restart recovery. `nativeVerified` remains `false`.
+
+Repeat observation: 2026-10-12 08:31:23 +03:00
+- PID 34632 still ran the same Paper JAR, with size 55,138,949 bytes and SHA-256 `185d9f4267afca48959d6a56150cf8803b6645aee10de3ed147df7ab1ff781fb`, matching `profile.lock.json`.
+- A new TCP connection to `127.0.0.1:25568` succeeded.
+- This repeat check confirms server readiness only; it adds no client login or live gameplay evidence.

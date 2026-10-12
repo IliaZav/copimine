@@ -13,6 +13,8 @@ CLIENT = ROOT / "CopiMineClient"
 BUILD = CLIENT / "build"
 DEV_JAR = BUILD / "devlibs" / "CopiMineClient-0.1.1-dev.jar"
 BUILD_JAR = BUILD / "libs" / "CopiMineClient-0.1.1.jar"
+MIGRATION_BUILD_JAR = ROOT / "build" / "minecraft-26.3" / "client" / "libs" / "CopiMineClient-0.1.2+26.3.jar"
+MIGRATION_CLASSES = ROOT / "build" / "minecraft-26.3" / "client" / "classes" / "java" / "main"
 STAGED_JAR = ROOT / "thirdparty" / "client-mods" / "CopiMineClient-0.1.1.jar"
 MODPACK = ROOT / "thirdparty" / "CopiMineMods.zip"
 MODPACK_CLIENT_ENTRY = "mods/CopiMineClient-0.1.1.jar"
@@ -49,12 +51,15 @@ def jar_payloads(payload: bytes) -> dict[str, bytes]:
         }
 
 
-def assert_current_mob_payload(artifact: str, payload: bytes) -> None:
+def assert_current_mob_payload(
+    artifact: str,
+    payload: bytes,
+    compiled_classes: Path = BUILD / "classes" / "java" / "main",
+) -> None:
     entries = jar_payloads(payload)
     for class_name in MODEL_CLASSES:
         assert class_name in entries, f"{artifact} is missing current mob class {class_name}"
 
-    compiled_classes = BUILD / "classes" / "java" / "main"
     if compiled_classes.is_dir():
         missing_classes = {
             path.relative_to(compiled_classes).as_posix()
@@ -170,7 +175,8 @@ def test_configured_live_profile_jar_matches_the_gradle_remap_output() -> None:
         pytest.skip(f"set {PROFILE_JAR_ENV} to audit a local Minecraft profile")
     profile_jar = Path(configured_path)
     assert profile_jar.is_file(), f"configured live-profile client JAR is missing: {profile_jar}"
-    assert profile_jar.read_bytes() == BUILD_JAR.read_bytes(), (
-        f"live-profile client JAR {profile_jar} is stale relative to Gradle remapJar output"
+    assert MIGRATION_BUILD_JAR.is_file(), f"26.3 migration client JAR is missing: {MIGRATION_BUILD_JAR}"
+    assert profile_jar.read_bytes() == MIGRATION_BUILD_JAR.read_bytes(), (
+        f"live-profile client JAR {profile_jar} is stale relative to the locked Minecraft 26.3 build"
     )
-    assert_current_mob_payload(str(profile_jar), profile_jar.read_bytes())
+    assert_current_mob_payload(str(profile_jar), profile_jar.read_bytes(), MIGRATION_CLASSES)

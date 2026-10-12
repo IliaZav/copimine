@@ -188,7 +188,7 @@ public final class VisualRuntimeService {
         if (!manifestFlag("true_shader_runtime_supported")) {
             return "CopiMineClient uses built-in ZIP shaderpacks through Iris when available; without client support the server falls back to light particles only";
         }
-        return "available through optional CopiMineClient runtime";
+        return "available through the required CopiMineClient runtime";
     }
 
     public String clientShaderLikeSupportReason() {
@@ -204,7 +204,7 @@ public final class VisualRuntimeService {
         if (!shaderLikeSupportedManifestFlag()) {
             return "client-mod visual runtime disabled by visuals manifest";
         }
-        return "available through optional CopiMineClient post-process and Iris shaderpack runtime";
+        return "available through CopiMineClient post-process and optional Iris shaderpack runtime";
     }
 
     public String clientShaderpackSupportReason() {
@@ -217,7 +217,7 @@ public final class VisualRuntimeService {
         if (!manifestFlag("client_zip_shaderpack_runtime_supported")) {
             return "client ZIP shaderpack runtime not declared in visuals manifest";
         }
-        return "available through optional CopiMineClient + Iris runtime switching for built-in shaderpacks";
+        return "available through CopiMineClient with optional Iris runtime switching for built-in shaderpacks";
     }
 
     public String overlaySupportReason() {
@@ -233,8 +233,8 @@ public final class VisualRuntimeService {
     }
 
     /**
-     * True only after the optional client has completed its authenticated-in-session
-     * handshake.  The server still owns every gameplay effect; this flag is used
+     * True only after the required CopiMineClient has completed its challenge-bound
+     * version check. The server still owns every gameplay effect; this flag is used
      * solely to decide whether vanilla status icons can be consolidated.
      */
     public boolean clientModAvailable(Player player) {

@@ -7,6 +7,10 @@ if (-not $pages) {
 }
 
 $errors = New-Object System.Collections.Generic.List[string]
+# Windows PowerShell 5.1 decodes UTF-8 scripts without a BOM using the system
+# ANSI code page, so keep Russian fixture expectations encoded as UTF-8 bytes.
+$demotedPlayerMessage = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('0JLRiyDQsdGL0LvQuCDRgNCw0LfQttCw0LvQvtCy0LDQvdGLINC00L4g0LjQs9GA0L7QutCwLg=='))
+$adminContactMessage = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('0J7QsdGA0LDRgtC40YLQtdGB0Ywg0Log0LDQtNC80LjQvdC40YHRgtGA0LDRhtC40Lgu'))
 
 function Require-Contains {
   param(
@@ -24,8 +28,8 @@ foreach ($page in $pages) {
   $label = $page.Name
   if ($page.Name -eq 'demoted.html') {
     Require-Contains $content '<body class="auth-screen">' $label
-    Require-Contains $content 'Вы были разжалованы до игрока.' $label
-    Require-Contains $content 'Обратитесь к администрации.' $label
+    Require-Contains $content $demotedPlayerMessage $label
+    Require-Contains $content $adminContactMessage $label
     continue
   }
   Require-Contains $content 'data-page-kind="cabinet"' $label

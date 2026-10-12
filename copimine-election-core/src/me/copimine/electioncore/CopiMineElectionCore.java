@@ -9169,6 +9169,11 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
         return payload;
     }
 
+    @Override
+    public boolean databaseReady() {
+        return databaseReady.get();
+    }
+
     public CompletableFuture<Map<String, Object>> grantTaxClockExemption(UUID playerUuid, String playerName, String artifactInstanceId) {
         if (playerUuid == null || artifactInstanceId == null || artifactInstanceId.isBlank()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("tax_clock_identity_missing"));
@@ -10550,7 +10555,84 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS active INTEGER NOT NULL DEFAULT 1");
             update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS last_result INTEGER NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS raw_votes BIGINT NOT NULL DEFAULT 0");
+            update(connection, "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS admin_adjustment BIGINT NOT NULL DEFAULT 0");
+            if (scalarLong(connection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='candidates' AND column_name='uuid'") > 0L) {
+                update(connection, "UPDATE candidates SET player_uuid=uuid WHERE COALESCE(player_uuid,'')='' AND COALESCE(uuid,'')<>''");
+            }
+            if (scalarLong(connection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='candidates' AND column_name='name'") > 0L) {
+                update(connection, "UPDATE candidates SET player_name=name WHERE COALESCE(player_name,'')='' AND COALESCE(name,'')<>''");
+            }
+            update(connection, "DO $migration$ "
+                    + "DECLARE legacy_candidate_constraint RECORD; legacy_candidate_index RECORD; "
+                    + "BEGIN "
+                    + "FOR legacy_candidate_constraint IN "
+                    + "SELECT table_namespace.nspname AS table_schema,table_class.relname AS table_name,constraint_row.conname "
+                    + "FROM pg_constraint constraint_row "
+                    + "JOIN pg_class table_class ON table_class.oid=constraint_row.conrelid "
+                    + "JOIN pg_namespace table_namespace ON table_namespace.oid=table_class.relnamespace "
+                    + "WHERE table_namespace.nspname=current_schema() AND table_class.relname='candidates' "
+                    + "AND constraint_row.contype IN ('p','u') "
+                    + "AND EXISTS (SELECT 1 FROM unnest(constraint_row.conkey) AS key(attnum) "
+                    + "JOIN pg_attribute attribute ON attribute.attrelid=table_class.oid AND attribute.attnum=key.attnum "
+                    + "WHERE attribute.attname IN ('uuid','name')) "
+                    + "LOOP "
+                    + "EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I',legacy_candidate_constraint.table_schema,legacy_candidate_constraint.table_name,legacy_candidate_constraint.conname); "
+                    + "END LOOP; "
+                    + "FOR legacy_candidate_index IN "
+                    + "SELECT index_namespace.nspname AS index_schema,index_class.relname AS index_name "
+                    + "FROM pg_index index_row "
+                    + "JOIN pg_class table_class ON table_class.oid=index_row.indrelid "
+                    + "JOIN pg_namespace table_namespace ON table_namespace.oid=table_class.relnamespace "
+                    + "JOIN pg_class index_class ON index_class.oid=index_row.indexrelid "
+                    + "JOIN pg_namespace index_namespace ON index_namespace.oid=index_class.relnamespace "
+                    + "WHERE table_namespace.nspname=current_schema() AND table_class.relname='candidates' "
+                    + "AND index_row.indisunique "
+                    + "AND NOT EXISTS (SELECT 1 FROM pg_constraint constraint_row WHERE constraint_row.conindid=index_row.indexrelid) "
+                    + "AND EXISTS (SELECT 1 FROM pg_depend index_dependency "
+                    + "JOIN pg_attribute attribute ON attribute.attrelid=table_class.oid AND attribute.attnum=index_dependency.refobjsubid "
+                    + "WHERE index_dependency.classid='pg_class'::regclass "
+                    + "AND index_dependency.objid=index_row.indexrelid "
+                    + "AND index_dependency.refclassid='pg_class'::regclass "
+                    + "AND index_dependency.refobjid=table_class.oid AND index_dependency.refobjsubid>0 "
+                    + "AND attribute.attname IN ('uuid','name')) "
+                    + "LOOP "
+                    + "EXECUTE format('DROP INDEX %I.%I',legacy_candidate_index.index_schema,legacy_candidate_index.index_name); "
+                    + "END LOOP; "
+                    + "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='candidates' AND column_name='uuid') "
+                    + "THEN EXECUTE 'ALTER TABLE candidates ALTER COLUMN uuid DROP NOT NULL'; END IF; "
+                    + "IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='candidates' AND column_name='name') "
+                    + "THEN EXECUTE 'ALTER TABLE candidates ALTER COLUMN name DROP NOT NULL'; END IF; "
+                    + "END "
+                    + "$migration$");
+            if (scalarLong(connection, "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='candidates' AND column_name='removed'") > 0L) {
+                update(connection, "UPDATE candidates SET active=0 WHERE lower(COALESCE(removed::text,'0')) IN ('1','true','t','yes','y')");
+            }
+            update(connection, "UPDATE candidates SET election_id='legacy-orphan:' || md5(ctid::text),active=0 WHERE COALESCE(election_id,'')=''");
+            update(connection, "UPDATE candidates SET player_uuid='legacy-missing:' || md5(COALESCE(election_id,'') || ':' || ctid::text),active=0 WHERE COALESCE(player_uuid,'')=''");
             update(connection, "UPDATE candidates SET id='candidate_' || election_id || '_' || player_uuid WHERE COALESCE(id,'')='' AND COALESCE(election_id,'')<>'' AND COALESCE(player_uuid,'')<>''");
+            update(connection, "CREATE TABLE IF NOT EXISTS candidate_migration_duplicate_archive(archived_id BIGSERIAL PRIMARY KEY,archived_at BIGINT NOT NULL,election_id TEXT NOT NULL,player_uuid TEXT NOT NULL,original_candidate_row JSONB NOT NULL)");
+            long duplicateCandidatesArchivedAt = now();
+            update(connection,
+                    "WITH ranked_candidates AS (SELECT ctid,ROW_NUMBER() OVER (PARTITION BY election_id,player_uuid "
+                            + "ORDER BY COALESCE(active,0) DESC,COALESCE(created_at,0) DESC,id,ctid) AS rn FROM candidates) "
+                            + "INSERT INTO candidate_migration_duplicate_archive(archived_at,election_id,player_uuid,original_candidate_row) "
+                            + "SELECT ?,c.election_id,c.player_uuid,to_jsonb(c) FROM candidates c "
+                            + "JOIN ranked_candidates r ON c.ctid=r.ctid WHERE r.rn>1",
+                    duplicateCandidatesArchivedAt);
+            update(connection,
+                    "WITH ranked_candidates AS (SELECT ctid,"
+                            + "ROW_NUMBER() OVER (PARTITION BY election_id,player_uuid "
+                            + "ORDER BY COALESCE(active,0) DESC,COALESCE(created_at,0) DESC,id,ctid) AS rn,"
+                            + "SUM(COALESCE(raw_votes,0)) OVER (PARTITION BY election_id,player_uuid) AS total_raw_votes,"
+                            + "SUM(COALESCE(admin_adjustment,0)) OVER (PARTITION BY election_id,player_uuid) AS total_admin_adjustment "
+                            + "FROM candidates) "
+                            + "UPDATE candidates c SET raw_votes=r.total_raw_votes,admin_adjustment=r.total_admin_adjustment "
+                            + "FROM ranked_candidates r WHERE c.ctid=r.ctid AND r.rn=1");
+            update(connection,
+                    "WITH ranked_candidates AS (SELECT ctid,ROW_NUMBER() OVER (PARTITION BY election_id,player_uuid "
+                            + "ORDER BY COALESCE(active,0) DESC,COALESCE(created_at,0) DESC,id,ctid) AS rn FROM candidates) "
+                            + "DELETE FROM candidates c USING ranked_candidates r WHERE c.ctid=r.ctid AND r.rn>1");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS player_uuid TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS player_name TEXT NOT NULL DEFAULT ''");
             update(connection, "ALTER TABLE ballots ADD COLUMN IF NOT EXISTS station_id TEXT NOT NULL DEFAULT ''");
@@ -11019,7 +11101,7 @@ public final class CopiMineElectionCore extends JavaPlugin implements Listener, 
 
     /** Bounded, retryable PostgreSQL bootstrap.  Never called from onEnable's main thread. */
     private void bootstrapDatabaseSafe() {
-        if (db == null || !databaseBootstrapInFlight.compareAndSet(false, true)) {
+        if (databaseReady.get() || db == null || !databaseBootstrapInFlight.compareAndSet(false, true)) {
             return;
         }
         try {

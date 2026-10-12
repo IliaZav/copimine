@@ -290,7 +290,7 @@ public final class ClientVisualEffectService {
         String status = message.status().toUpperCase(Locale.ROOT);
         lastAckByPlayer.put(player.getUniqueId(), status + ":" + pending.effectId() + "#" + pending.seq());
         if (status.startsWith(ClientBridgePayloads.STATUS_STARTED)) {
-            if (!status.contains("IRIS_SHADERPACK")) {
+            if (ClientVisualAckStatusPolicy.shouldReportNonIrisFallback(status)) {
                 String route = status.replace(ClientBridgePayloads.STATUS_STARTED, "").replaceFirst("^[:_\\-]+", "");
                 if (route.isBlank()) {
                     route = "UNKNOWN_CLIENT_ROUTE";
@@ -303,6 +303,8 @@ public final class ClientVisualEffectService {
                         + ", route=" + route
                         + ", shaderpack=" + pending.shaderpack());
             } else {
+                // A rate-limited Iris transition is accepted and retried by the client.
+                // Keep the ACK neutral instead of recording a permanent fallback error.
                 lastErrorByPlayer.remove(player.getUniqueId());
             }
             runningCommands.put(pending.seq(), pending);

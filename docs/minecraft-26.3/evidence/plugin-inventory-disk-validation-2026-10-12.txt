@@ -1,0 +1,26 @@
+# Read-only on-disk plugin directory and receipt validation
+Observed local: 2026-10-12 08:22:12 +03:00
+Source HEAD before documentation checkpoint: bf55bd3e7119a5624d2b58704be74de3d20eb847
+
+Command (PowerShell, run from the repository root):
+
+```powershell
+@'
+from pathlib import Path
+from scripts.minecraft.install_migration_server_plugins import load_install_records, validate_active_plugin_inventory
+root = Path.cwd()
+records = load_install_records(root)
+validate_active_plugin_inventory(
+    root / "local-runtime/end-rift-server-26.3",
+    records,
+    unauthenticated_test_mode=True,
+)
+print("PLUGIN_LOCK_VALIDATION_PASS count=29 auth_mode=disabled-for-local-testing")
+'@ | py -3.13 -
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
+
+Observed output: `PLUGIN_LOCK_VALIDATION_PASS count=29 auth_mode=disabled-for-local-testing`
+
+Validated fields: plugin identity, filename, SHA-256, SHA-512, receipt, and missing/extra inventory.
+This checks the plugin files and receipt on disk against the migration lock. It does not establish that a Paper process or listener was active at the observation time, or verify live plugin behavior or player login.

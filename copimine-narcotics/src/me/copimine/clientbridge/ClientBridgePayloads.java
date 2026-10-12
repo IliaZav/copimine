@@ -1,5 +1,7 @@
 package me.copimine.clientbridge;
 
+import me.copimine.protocol.ClientModHandshakePolicy;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -10,8 +12,9 @@ import java.util.Set;
 
 public final class ClientBridgePayloads {
     public static final String CHANNEL = "copimine:client_bridge";
-    public static final int PROTOCOL_VERSION = 2;
+    public static final int PROTOCOL_VERSION = ClientModHandshakePolicy.PROTOCOL_VERSION;
 
+    public static final String CLIENT_MOD_CHALLENGE = ClientModHandshakePolicy.CHALLENGE_MESSAGE_TYPE;
     public static final String HELLO = "hello";
     public static final String HEARTBEAT = "heartbeat";
     public static final String CAPABILITIES_UPDATE = "capabilities_update";
@@ -78,7 +81,7 @@ public final class ClientBridgePayloads {
                 0.0F,
                 0,
                 0,
-                "CLIENT_MOD",
+                ClientModHandshakePolicy.MOD_ID,
                 "",
                 "SYSTEM",
                 "",
@@ -132,7 +135,7 @@ public final class ClientBridgePayloads {
                 0.0F,
                 0,
                 0,
-                "CLIENT_MOD",
+                ClientModHandshakePolicy.MOD_ID,
                 "",
                 "SYSTEM",
                 "",
@@ -295,6 +298,33 @@ public final class ClientBridgePayloads {
                 0,
                 0,
                 "",
+                "",
+                "SYSTEM",
+                "",
+                ""
+        ));
+    }
+
+    public static byte[] encodeClientModChallenge(String challengeId, String requiredClientModVersion) {
+        return encode(new Message(
+                CLIENT_MOD_CHALLENGE,
+                PROTOCOL_VERSION,
+                0L,
+                System.currentTimeMillis(),
+                normalizeBounded(challengeId, MAX_SESSION_ID_LENGTH),
+                normalizeBounded(requiredClientModVersion, MAX_CLIENT_VERSION_LENGTH),
+                false,
+                false,
+                false,
+                false,
+                Set.of(),
+                "",
+                "",
+                0,
+                0.0F,
+                0,
+                0,
+                ClientModHandshakePolicy.MOD_ID,
                 "",
                 "SYSTEM",
                 "",

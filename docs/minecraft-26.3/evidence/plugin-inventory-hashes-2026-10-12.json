@@ -1,0 +1,564 @@
+{
+  "schemaVersion": 1,
+  "minecraftVersion": "26.3",
+  "lockSourceCommit": "892b6980e88d40439f9364d9f951220ecd53c50c",
+  "observedAtUtc": "2026-10-12T03:13:45.741249+00:00",
+  "runtimes": [
+    {
+      "runtime": "main-loopback-offline-test",
+      "expectedCount": 29,
+      "actualCount": 29,
+      "exactMatch": true,
+      "plugins": [
+        {
+          "pluginName": "packetevents",
+          "filename": "packetevents-spigot-2.14.0.jar",
+          "expectedSha256": "060087c58ec268eae7dd0eb1f17ac3bea1eaadda1693414141ff64e506091bd7",
+          "expectedSha512": "18a942cb55f64783a63b28deea2cebbbe782e5d6a1089f6700430e183bfbce0a45398a640ed0dff4361b55190dcf47017f2ca7788f4a5c8c9efad1f549a63fe3",
+          "actualSha256": "060087c58ec268eae7dd0eb1f17ac3bea1eaadda1693414141ff64e506091bd7",
+          "actualSha512": "18a942cb55f64783a63b28deea2cebbbe782e5d6a1089f6700430e183bfbce0a45398a640ed0dff4361b55190dcf47017f2ca7788f4a5c8c9efad1f549a63fe3",
+          "match": true
+        },
+        {
+          "pluginName": "WorldEdit",
+          "filename": "worldedit-bukkit-7.4.6-beta-02.jar",
+          "expectedSha256": "166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289",
+          "expectedSha512": "138ea8f412bf4a17104d2e090a9171e1b263c6b28a060dacda5bc78c4629e9bac1c3834cccaaa50ac87bf148a269cf9dfd46967dddedd64dc512fdf7a5db17f9",
+          "actualSha256": "166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289",
+          "actualSha512": "138ea8f412bf4a17104d2e090a9171e1b263c6b28a060dacda5bc78c4629e9bac1c3834cccaaa50ac87bf148a269cf9dfd46967dddedd64dc512fdf7a5db17f9",
+          "match": true
+        },
+        {
+          "pluginName": "WorldGuard",
+          "filename": "worldguard-bukkit-7.0.19.jar",
+          "expectedSha256": "396df065f1cf38bab9878a0f53a776d5a085ebbf3c41813938b73f95d4eaca03",
+          "expectedSha512": "e9ad7ad53c93a07a7d5c3af3d844a677abbe894de4d7ff69fc03397daae5e8532217d57de23a3cddbe0d94ae81ee7acde6c78384b9596aa1eb3001bb37087d41",
+          "actualSha256": "396df065f1cf38bab9878a0f53a776d5a085ebbf3c41813938b73f95d4eaca03",
+          "actualSha512": "e9ad7ad53c93a07a7d5c3af3d844a677abbe894de4d7ff69fc03397daae5e8532217d57de23a3cddbe0d94ae81ee7acde6c78384b9596aa1eb3001bb37087d41",
+          "match": true
+        },
+        {
+          "pluginName": "voicechat",
+          "filename": "voicechat-bukkit-2.6.24.jar",
+          "expectedSha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
+          "expectedSha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+          "actualSha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
+          "actualSha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+          "match": true
+        },
+        {
+          "pluginName": "emotecraft",
+          "filename": "emotecraft-paper-for-MC26.3-3.5.0-a.build.171.jar",
+          "expectedSha256": "bd319147504003b83d82d35f40b42fcf7288f5b8139fd1bf40f160e0c43041fa",
+          "expectedSha512": "567e29f089c2ef826393188241f5e7afb1be618fff324956ff314fdf34ac8af87d25b1f78da161d3e5351f210cc1a848ff3e3211688daf0d6acfafddc00ddf97",
+          "actualSha256": "bd319147504003b83d82d35f40b42fcf7288f5b8139fd1bf40f160e0c43041fa",
+          "actualSha512": "567e29f089c2ef826393188241f5e7afb1be618fff324956ff314fdf34ac8af87d25b1f78da161d3e5351f210cc1a848ff3e3211688daf0d6acfafddc00ddf97",
+          "match": true
+        },
+        {
+          "pluginName": "ImageFrame",
+          "filename": "ImageFrame-2026.1.5.0.jar",
+          "expectedSha256": "65b5c14eb6bd847f1cc0f4985efa95ab43d2f3e2f67dbaec2ecf3ea327fde9b1",
+          "expectedSha512": "e9ee5cea569946767c125397550c7ca5bbcbe0d504832af216ec9d8dea99f532f4af80e0e9a17ee917c7fd78c10292ba3bbe61457947f19d3edf68bbf5f2f4a8",
+          "actualSha256": "65b5c14eb6bd847f1cc0f4985efa95ab43d2f3e2f67dbaec2ecf3ea327fde9b1",
+          "actualSha512": "e9ee5cea569946767c125397550c7ca5bbcbe0d504832af216ec9d8dea99f532f4af80e0e9a17ee917c7fd78c10292ba3bbe61457947f19d3edf68bbf5f2f4a8",
+          "match": true
+        },
+        {
+          "pluginName": "TAB",
+          "filename": "TAB v6.2.0.jar",
+          "expectedSha256": "f94331947134242efa478b9b9bf04b29e37861721dee58c32b7ea57779aa735e",
+          "expectedSha512": "b09aa679e40b526273b6c59109ad69c135ee41cf2b26c636a1edc5662b83928278000bbb028088d5be55dd71f0eb239dba5289df265b6141307b251b2c8133e3",
+          "actualSha256": "f94331947134242efa478b9b9bf04b29e37861721dee58c32b7ea57779aa735e",
+          "actualSha512": "b09aa679e40b526273b6c59109ad69c135ee41cf2b26c636a1edc5662b83928278000bbb028088d5be55dd71f0eb239dba5289df265b6141307b251b2c8133e3",
+          "match": true
+        },
+        {
+          "pluginName": "GrimAC",
+          "filename": "GrimAC-2.3.74-f5bbe9c-creative-fix.jar",
+          "expectedSha256": "0dedc39af02e14e7df6f67d06fced5fd694d6973bdd7e4cdbb33b77ed54c4ae1",
+          "expectedSha512": "34ae21d58d047af9647275b17d413fa3d4a7bd82b193fedf921ca27112d225708581943cd59a930116e2686e9a977059888dbb8e17cb24ad185efe1bde165baf",
+          "actualSha256": "0dedc39af02e14e7df6f67d06fced5fd694d6973bdd7e4cdbb33b77ed54c4ae1",
+          "actualSha512": "34ae21d58d047af9647275b17d413fa3d4a7bd82b193fedf921ca27112d225708581943cd59a930116e2686e9a977059888dbb8e17cb24ad185efe1bde165baf",
+          "match": true
+        },
+        {
+          "pluginName": "CoreProtect",
+          "filename": "CoreProtect-CE-24.1-26.3-upstream.jar",
+          "expectedSha256": "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
+          "expectedSha512": "3721dd7c5751d19fd5d603eabc456b42a3e8f96bc2064be301a92a8f3ed5bfdf5427ccde629ec65a1d266231bd1a192733f9f8b4e68eb97ec293d8569255a0e4",
+          "actualSha256": "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
+          "actualSha512": "3721dd7c5751d19fd5d603eabc456b42a3e8f96bc2064be301a92a8f3ed5bfdf5427ccde629ec65a1d266231bd1a192733f9f8b4e68eb97ec293d8569255a0e4",
+          "match": true
+        },
+        {
+          "pluginName": "Essentials",
+          "filename": "EssentialsX-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
+          "expectedSha512": "c1e2dacdb6b425690be79187081075a86f032a24b024c7c45bfdfd638006bb43ec5569c8c730dd36054e1ab5c9c779c36085be79e93af44237f6c710416e6d20",
+          "actualSha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
+          "actualSha512": "c1e2dacdb6b425690be79187081075a86f032a24b024c7c45bfdfd638006bb43ec5569c8c730dd36054e1ab5c9c779c36085be79e93af44237f6c710416e6d20",
+          "match": true
+        },
+        {
+          "pluginName": "EssentialsChat",
+          "filename": "EssentialsXChat-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "fccab8d4fc659484a53ef62f64390910507f061d04f02d0bc759676b4cf5e555",
+          "expectedSha512": "4be14ee964fcbef2161baa3d52f4f64d3ac1e0b90c81e8923ca466b0c2837b6b90ee276d8316d65f6fb28c2a8b478de647ee15eec4d8dda0f5c58f8cccd253ae",
+          "actualSha256": "fccab8d4fc659484a53ef62f64390910507f061d04f02d0bc759676b4cf5e555",
+          "actualSha512": "4be14ee964fcbef2161baa3d52f4f64d3ac1e0b90c81e8923ca466b0c2837b6b90ee276d8316d65f6fb28c2a8b478de647ee15eec4d8dda0f5c58f8cccd253ae",
+          "match": true
+        },
+        {
+          "pluginName": "EssentialsSpawn",
+          "filename": "EssentialsXSpawn-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "bb386f1fdd9f80bf243177a0f686617e945c81a5a8b54721cf88e0c1ed52b3a0",
+          "expectedSha512": "e2cb4efae14ef92c4b093afc0199febaefd6084147ab8f6a928ca9abcaa3a1b93ae4fb8a74f3a7b519c7f8e30816e55abfb1ae0ef851b1a06c9fcc96ccddd9e8",
+          "actualSha256": "bb386f1fdd9f80bf243177a0f686617e945c81a5a8b54721cf88e0c1ed52b3a0",
+          "actualSha512": "e2cb4efae14ef92c4b093afc0199febaefd6084147ab8f6a928ca9abcaa3a1b93ae4fb8a74f3a7b519c7f8e30816e55abfb1ae0ef851b1a06c9fcc96ccddd9e8",
+          "match": true
+        },
+        {
+          "pluginName": "ProtocolLib",
+          "filename": "ProtocolLib-26.3-dev.jar",
+          "expectedSha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+          "expectedSha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
+          "actualSha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+          "actualSha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
+          "match": true
+        },
+        {
+          "pluginName": "Chunky",
+          "filename": "Chunky-Bukkit-1.5.3.jar",
+          "expectedSha256": "530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3",
+          "expectedSha512": "43ffecc6e6a734b752da41575bbb316526c124c3f878942437d5133c377bfbd9b78bda975520dc074d7158c15dade58a444ccd0fd8d8a25d165b6fc450140422",
+          "actualSha256": "530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3",
+          "actualSha512": "43ffecc6e6a734b752da41575bbb316526c124c3f878942437d5133c377bfbd9b78bda975520dc074d7158c15dade58a444ccd0fd8d8a25d165b6fc450140422",
+          "match": true
+        },
+        {
+          "pluginName": "ClearLag",
+          "filename": "ClearLag 1.14.1 VER 1.18-26.3.jar",
+          "expectedSha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+          "expectedSha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+          "actualSha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+          "actualSha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+          "match": true
+        },
+        {
+          "pluginName": "LuckPerms",
+          "filename": "LuckPerms-Bukkit-5.5.71.jar",
+          "expectedSha256": "49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d",
+          "expectedSha512": "188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27",
+          "actualSha256": "49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d",
+          "actualSha512": "188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27",
+          "match": true
+        },
+        {
+          "pluginName": "GSit",
+          "filename": "GSit-3.7.0.jar",
+          "expectedSha256": "57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea",
+          "expectedSha512": "5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad",
+          "actualSha256": "57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea",
+          "actualSha512": "5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad",
+          "match": true
+        },
+        {
+          "pluginName": "Vault",
+          "filename": "VaultUnlocked-2.20.3.jar",
+          "expectedSha256": "fbc6651aca11e13376c115df66eeffa79592e79517be398299aa6beb49c22695",
+          "expectedSha512": "0eedea1591459e7e327315b43afa834a173c8c2ae31b3b235586d31963df29a4a6c0ef4b8f3fdc746e15afd47ee50c1ff93584543b5c2ef7c2a80135dba1136a",
+          "actualSha256": "fbc6651aca11e13376c115df66eeffa79592e79517be398299aa6beb49c22695",
+          "actualSha512": "0eedea1591459e7e327315b43afa834a173c8c2ae31b3b235586d31963df29a4a6c0ef4b8f3fdc746e15afd47ee50c1ff93584543b5c2ef7c2a80135dba1136a",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineArtifacts",
+          "filename": "CopiMineArtifacts.jar",
+          "expectedSha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
+          "expectedSha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
+          "actualSha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
+          "actualSha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineEconomyCore",
+          "filename": "CopiMineEconomyCore.jar",
+          "expectedSha256": "fc0ae2204aaa055ac31e8e446c82eafd0457abdb7ca56c744bd1270d7e769fd9",
+          "expectedSha512": "cf2295e0dc663bca201bbd9c5a1319508603014cf96e8f5aa9c8c4c5eeef4f0d106b81eafa8e666ab36dd25ed8bc5f21c4d6514d0e56ad0f119a99080f2c2a7e",
+          "actualSha256": "fc0ae2204aaa055ac31e8e446c82eafd0457abdb7ca56c744bd1270d7e769fd9",
+          "actualSha512": "cf2295e0dc663bca201bbd9c5a1319508603014cf96e8f5aa9c8c4c5eeef4f0d106b81eafa8e666ab36dd25ed8bc5f21c4d6514d0e56ad0f119a99080f2c2a7e",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineElectionCore",
+          "filename": "CopiMineElectionCore.jar",
+          "expectedSha256": "18339319b220fe36c17fc30ee907fa919300cc6df32083340545fc228eff224b",
+          "expectedSha512": "297fd7df78ad0ed3e051c2e709355d65d917c25b439ff128d18014b29fc935ae118a1c60882565535b2b4c7b0abff74ee5fa4d6c6a2954918eb6295bb525bd3a",
+          "actualSha256": "18339319b220fe36c17fc30ee907fa919300cc6df32083340545fc228eff224b",
+          "actualSha512": "297fd7df78ad0ed3e051c2e709355d65d917c25b439ff128d18014b29fc935ae118a1c60882565535b2b4c7b0abff74ee5fa4d6c6a2954918eb6295bb525bd3a",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineEndEvent",
+          "filename": "CopiMineEndEvent.jar",
+          "expectedSha256": "c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd",
+          "expectedSha512": "9d81231c68a47916f25332a65662910681438a85f7308405dd8e7b11bde5a2c85bceaa6b141e162bda0e8675e800b67a099336208d348df534b40dfbdd3ff79f",
+          "actualSha256": "c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd",
+          "actualSha512": "9d81231c68a47916f25332a65662910681438a85f7308405dd8e7b11bde5a2c85bceaa6b141e162bda0e8675e800b67a099336208d348df534b40dfbdd3ff79f",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineNarcotics",
+          "filename": "CopiMineNarcotics.jar",
+          "expectedSha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
+          "expectedSha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3",
+          "actualSha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
+          "actualSha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineUltimateAdminPlus",
+          "filename": "CopiMineUltimateAdminPlus.jar",
+          "expectedSha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+          "expectedSha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15",
+          "actualSha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+          "actualSha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineWorldCore",
+          "filename": "CopiMineWorldCore.jar",
+          "expectedSha256": "cf605dc9e384302c6e946fbd03790432135f3bf1d27563fa8bfe17d2738e1111",
+          "expectedSha512": "16db616aaee039bc01eb683b408b98d984596d3ebcc17578cb33ef2f03249dd90b79a59e72559d8e72234ade36e02286449a33e27d0aa0e26c6072161401c2e0",
+          "actualSha256": "cf605dc9e384302c6e946fbd03790432135f3bf1d27563fa8bfe17d2738e1111",
+          "actualSha512": "16db616aaee039bc01eb683b408b98d984596d3ebcc17578cb33ef2f03249dd90b79a59e72559d8e72234ade36e02286449a33e27d0aa0e26c6072161401c2e0",
+          "match": true
+        },
+        {
+          "pluginName": "EntityClearer",
+          "filename": "EntityClearer.jar",
+          "expectedSha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+          "expectedSha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6",
+          "actualSha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+          "actualSha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6",
+          "match": true
+        },
+        {
+          "pluginName": "FarmControl",
+          "filename": "FarmControl-1.3.0.jar",
+          "expectedSha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+          "expectedSha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629",
+          "actualSha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+          "actualSha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629",
+          "match": true
+        },
+        {
+          "pluginName": "PlaceholderAPI",
+          "filename": "PlaceholderAPI-2.12.3.jar",
+          "expectedSha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+          "expectedSha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479",
+          "actualSha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+          "actualSha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479",
+          "match": true
+        },
+        {
+          "pluginName": "SeeMore",
+          "filename": "SeeMore-1.0.2.jar",
+          "expectedSha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+          "expectedSha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b",
+          "actualSha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+          "actualSha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b",
+          "match": true
+        }
+      ]
+    },
+    {
+      "runtime": "full-lock-isolated-test",
+      "expectedCount": 31,
+      "actualCount": 31,
+      "exactMatch": true,
+      "plugins": [
+        {
+          "pluginName": "AuthMe",
+          "filename": "AuthMe-6.0.1-Paper.jar",
+          "expectedSha256": "7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a",
+          "expectedSha512": "832eb1570f1887493dc09bd183360c6c890aafe24fbc635d36f7c3162c339f064e3a0e082519defe7e67569c1d78072f582cb49c14a24d125d4ece463b765271",
+          "actualSha256": "7704335e9e73a634d9d926344f77897f4c74f78f82453a59f5aa0f8d2722450a",
+          "actualSha512": "832eb1570f1887493dc09bd183360c6c890aafe24fbc635d36f7c3162c339f064e3a0e082519defe7e67569c1d78072f582cb49c14a24d125d4ece463b765271",
+          "match": true
+        },
+        {
+          "pluginName": "packetevents",
+          "filename": "packetevents-spigot-2.14.0.jar",
+          "expectedSha256": "060087c58ec268eae7dd0eb1f17ac3bea1eaadda1693414141ff64e506091bd7",
+          "expectedSha512": "18a942cb55f64783a63b28deea2cebbbe782e5d6a1089f6700430e183bfbce0a45398a640ed0dff4361b55190dcf47017f2ca7788f4a5c8c9efad1f549a63fe3",
+          "actualSha256": "060087c58ec268eae7dd0eb1f17ac3bea1eaadda1693414141ff64e506091bd7",
+          "actualSha512": "18a942cb55f64783a63b28deea2cebbbe782e5d6a1089f6700430e183bfbce0a45398a640ed0dff4361b55190dcf47017f2ca7788f4a5c8c9efad1f549a63fe3",
+          "match": true
+        },
+        {
+          "pluginName": "WorldEdit",
+          "filename": "worldedit-bukkit-7.4.6-beta-02.jar",
+          "expectedSha256": "166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289",
+          "expectedSha512": "138ea8f412bf4a17104d2e090a9171e1b263c6b28a060dacda5bc78c4629e9bac1c3834cccaaa50ac87bf148a269cf9dfd46967dddedd64dc512fdf7a5db17f9",
+          "actualSha256": "166365c44bad4cd916200b288cf391d3770e3197d1eca84ff74f3914d933e289",
+          "actualSha512": "138ea8f412bf4a17104d2e090a9171e1b263c6b28a060dacda5bc78c4629e9bac1c3834cccaaa50ac87bf148a269cf9dfd46967dddedd64dc512fdf7a5db17f9",
+          "match": true
+        },
+        {
+          "pluginName": "WorldGuard",
+          "filename": "worldguard-bukkit-7.0.19.jar",
+          "expectedSha256": "396df065f1cf38bab9878a0f53a776d5a085ebbf3c41813938b73f95d4eaca03",
+          "expectedSha512": "e9ad7ad53c93a07a7d5c3af3d844a677abbe894de4d7ff69fc03397daae5e8532217d57de23a3cddbe0d94ae81ee7acde6c78384b9596aa1eb3001bb37087d41",
+          "actualSha256": "396df065f1cf38bab9878a0f53a776d5a085ebbf3c41813938b73f95d4eaca03",
+          "actualSha512": "e9ad7ad53c93a07a7d5c3af3d844a677abbe894de4d7ff69fc03397daae5e8532217d57de23a3cddbe0d94ae81ee7acde6c78384b9596aa1eb3001bb37087d41",
+          "match": true
+        },
+        {
+          "pluginName": "voicechat",
+          "filename": "voicechat-bukkit-2.6.24.jar",
+          "expectedSha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
+          "expectedSha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+          "actualSha256": "af3d4e2ad318d3065959248c1370ae32a619752cb4d2a4fec2f7a79b10067769",
+          "actualSha512": "7f1d5765e79cd42616f14f40322d1171a8505e1116dfff71c7bd0e59af9d255c06f70a68a5b622015c0407d40c80e70298c172992007ff339cedcef0116fec42",
+          "match": true
+        },
+        {
+          "pluginName": "emotecraft",
+          "filename": "emotecraft-paper-for-MC26.3-3.5.0-a.build.171.jar",
+          "expectedSha256": "bd319147504003b83d82d35f40b42fcf7288f5b8139fd1bf40f160e0c43041fa",
+          "expectedSha512": "567e29f089c2ef826393188241f5e7afb1be618fff324956ff314fdf34ac8af87d25b1f78da161d3e5351f210cc1a848ff3e3211688daf0d6acfafddc00ddf97",
+          "actualSha256": "bd319147504003b83d82d35f40b42fcf7288f5b8139fd1bf40f160e0c43041fa",
+          "actualSha512": "567e29f089c2ef826393188241f5e7afb1be618fff324956ff314fdf34ac8af87d25b1f78da161d3e5351f210cc1a848ff3e3211688daf0d6acfafddc00ddf97",
+          "match": true
+        },
+        {
+          "pluginName": "ImageFrame",
+          "filename": "ImageFrame-2026.1.5.0.jar",
+          "expectedSha256": "65b5c14eb6bd847f1cc0f4985efa95ab43d2f3e2f67dbaec2ecf3ea327fde9b1",
+          "expectedSha512": "e9ee5cea569946767c125397550c7ca5bbcbe0d504832af216ec9d8dea99f532f4af80e0e9a17ee917c7fd78c10292ba3bbe61457947f19d3edf68bbf5f2f4a8",
+          "actualSha256": "65b5c14eb6bd847f1cc0f4985efa95ab43d2f3e2f67dbaec2ecf3ea327fde9b1",
+          "actualSha512": "e9ee5cea569946767c125397550c7ca5bbcbe0d504832af216ec9d8dea99f532f4af80e0e9a17ee917c7fd78c10292ba3bbe61457947f19d3edf68bbf5f2f4a8",
+          "match": true
+        },
+        {
+          "pluginName": "TAB",
+          "filename": "TAB v6.2.0.jar",
+          "expectedSha256": "f94331947134242efa478b9b9bf04b29e37861721dee58c32b7ea57779aa735e",
+          "expectedSha512": "b09aa679e40b526273b6c59109ad69c135ee41cf2b26c636a1edc5662b83928278000bbb028088d5be55dd71f0eb239dba5289df265b6141307b251b2c8133e3",
+          "actualSha256": "f94331947134242efa478b9b9bf04b29e37861721dee58c32b7ea57779aa735e",
+          "actualSha512": "b09aa679e40b526273b6c59109ad69c135ee41cf2b26c636a1edc5662b83928278000bbb028088d5be55dd71f0eb239dba5289df265b6141307b251b2c8133e3",
+          "match": true
+        },
+        {
+          "pluginName": "GrimAC",
+          "filename": "GrimAC-2.3.74-f5bbe9c-creative-fix.jar",
+          "expectedSha256": "0dedc39af02e14e7df6f67d06fced5fd694d6973bdd7e4cdbb33b77ed54c4ae1",
+          "expectedSha512": "34ae21d58d047af9647275b17d413fa3d4a7bd82b193fedf921ca27112d225708581943cd59a930116e2686e9a977059888dbb8e17cb24ad185efe1bde165baf",
+          "actualSha256": "0dedc39af02e14e7df6f67d06fced5fd694d6973bdd7e4cdbb33b77ed54c4ae1",
+          "actualSha512": "34ae21d58d047af9647275b17d413fa3d4a7bd82b193fedf921ca27112d225708581943cd59a930116e2686e9a977059888dbb8e17cb24ad185efe1bde165baf",
+          "match": true
+        },
+        {
+          "pluginName": "CoreProtect",
+          "filename": "CoreProtect-CE-24.1-26.3-upstream.jar",
+          "expectedSha256": "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
+          "expectedSha512": "3721dd7c5751d19fd5d603eabc456b42a3e8f96bc2064be301a92a8f3ed5bfdf5427ccde629ec65a1d266231bd1a192733f9f8b4e68eb97ec293d8569255a0e4",
+          "actualSha256": "467f16bc133b1fe93b2785e16a512f1a277637ee700b0abd7436fb2263a50cef",
+          "actualSha512": "3721dd7c5751d19fd5d603eabc456b42a3e8f96bc2064be301a92a8f3ed5bfdf5427ccde629ec65a1d266231bd1a192733f9f8b4e68eb97ec293d8569255a0e4",
+          "match": true
+        },
+        {
+          "pluginName": "Essentials",
+          "filename": "EssentialsX-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
+          "expectedSha512": "c1e2dacdb6b425690be79187081075a86f032a24b024c7c45bfdfd638006bb43ec5569c8c730dd36054e1ab5c9c779c36085be79e93af44237f6c710416e6d20",
+          "actualSha256": "a79eeeff1d628cd14aaf646b3a3fe9627efb6bc641890ef4bb71fca0ec65633c",
+          "actualSha512": "c1e2dacdb6b425690be79187081075a86f032a24b024c7c45bfdfd638006bb43ec5569c8c730dd36054e1ab5c9c779c36085be79e93af44237f6c710416e6d20",
+          "match": true
+        },
+        {
+          "pluginName": "EssentialsChat",
+          "filename": "EssentialsXChat-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "fccab8d4fc659484a53ef62f64390910507f061d04f02d0bc759676b4cf5e555",
+          "expectedSha512": "4be14ee964fcbef2161baa3d52f4f64d3ac1e0b90c81e8923ca466b0c2837b6b90ee276d8316d65f6fb28c2a8b478de647ee15eec4d8dda0f5c58f8cccd253ae",
+          "actualSha256": "fccab8d4fc659484a53ef62f64390910507f061d04f02d0bc759676b4cf5e555",
+          "actualSha512": "4be14ee964fcbef2161baa3d52f4f64d3ac1e0b90c81e8923ca466b0c2837b6b90ee276d8316d65f6fb28c2a8b478de647ee15eec4d8dda0f5c58f8cccd253ae",
+          "match": true
+        },
+        {
+          "pluginName": "EssentialsSpawn",
+          "filename": "EssentialsXSpawn-2.22.1-dev+27-e70bdb8.jar",
+          "expectedSha256": "bb386f1fdd9f80bf243177a0f686617e945c81a5a8b54721cf88e0c1ed52b3a0",
+          "expectedSha512": "e2cb4efae14ef92c4b093afc0199febaefd6084147ab8f6a928ca9abcaa3a1b93ae4fb8a74f3a7b519c7f8e30816e55abfb1ae0ef851b1a06c9fcc96ccddd9e8",
+          "actualSha256": "bb386f1fdd9f80bf243177a0f686617e945c81a5a8b54721cf88e0c1ed52b3a0",
+          "actualSha512": "e2cb4efae14ef92c4b093afc0199febaefd6084147ab8f6a928ca9abcaa3a1b93ae4fb8a74f3a7b519c7f8e30816e55abfb1ae0ef851b1a06c9fcc96ccddd9e8",
+          "match": true
+        },
+        {
+          "pluginName": "ProtocolLib",
+          "filename": "ProtocolLib-26.3-dev.jar",
+          "expectedSha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+          "expectedSha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
+          "actualSha256": "ca3ec620315ff92bee2d6d09af297d77362e99b4791b163135b745262df75ecc",
+          "actualSha512": "6372787a9d8a63425184f60b06f082ea6ab1bb7415c2e7fd6a38c39f7d808ed8b44305b299bb5b4ecc3c432bb04987d0c5c26b9e776590c93961da677476e604",
+          "match": true
+        },
+        {
+          "pluginName": "Chunky",
+          "filename": "Chunky-Bukkit-1.5.3.jar",
+          "expectedSha256": "530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3",
+          "expectedSha512": "43ffecc6e6a734b752da41575bbb316526c124c3f878942437d5133c377bfbd9b78bda975520dc074d7158c15dade58a444ccd0fd8d8a25d165b6fc450140422",
+          "actualSha256": "530d2c7430a96a39957391b7088be144daa3108f7665896d1c23aa8dd4af32f3",
+          "actualSha512": "43ffecc6e6a734b752da41575bbb316526c124c3f878942437d5133c377bfbd9b78bda975520dc074d7158c15dade58a444ccd0fd8d8a25d165b6fc450140422",
+          "match": true
+        },
+        {
+          "pluginName": "ClearLag",
+          "filename": "ClearLag 1.14.1 VER 1.18-26.3.jar",
+          "expectedSha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+          "expectedSha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+          "actualSha256": "3b73f36478f7ccebb2c1fc482a2724c1b5e75dd0835c0ec35a765249639991ba",
+          "actualSha512": "b6111de4e5b1d201cae890eead341e53272edc24cc205dfad92c7558169a7730447a7c10cac123b8f1696937658a3849216f8e278ffa566832a47015fd002c3e",
+          "match": true
+        },
+        {
+          "pluginName": "LuckPerms",
+          "filename": "LuckPerms-Bukkit-5.5.71.jar",
+          "expectedSha256": "49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d",
+          "expectedSha512": "188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27",
+          "actualSha256": "49cecb66fa1fd22a133039a490e9c1e5095a238e7cd66eb9d2a16fe6c897550d",
+          "actualSha512": "188a91f0a543d23bfda32385fca6db63d61e49c8a422bd452a260bd9cbc6a7d7fe45071199e9fca8f3ce43c2b41ee84fd315bd15464577028ff3951a7d4fab27",
+          "match": true
+        },
+        {
+          "pluginName": "GSit",
+          "filename": "GSit-3.7.0.jar",
+          "expectedSha256": "57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea",
+          "expectedSha512": "5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad",
+          "actualSha256": "57e119ca79d60fae98bffbb84961a78d70c2403698c4ebe208cae09d69302cea",
+          "actualSha512": "5a3941efcf28204c6f60fb90482ddfddfb14aa4d08dff03d5ba53258ba417b78942002b7fbb578ee15c562fcd7442a197629ab004ed78d64a6c432e4ca49bfad",
+          "match": true
+        },
+        {
+          "pluginName": "Vault",
+          "filename": "VaultUnlocked-2.20.3.jar",
+          "expectedSha256": "fbc6651aca11e13376c115df66eeffa79592e79517be398299aa6beb49c22695",
+          "expectedSha512": "0eedea1591459e7e327315b43afa834a173c8c2ae31b3b235586d31963df29a4a6c0ef4b8f3fdc746e15afd47ee50c1ff93584543b5c2ef7c2a80135dba1136a",
+          "actualSha256": "fbc6651aca11e13376c115df66eeffa79592e79517be398299aa6beb49c22695",
+          "actualSha512": "0eedea1591459e7e327315b43afa834a173c8c2ae31b3b235586d31963df29a4a6c0ef4b8f3fdc746e15afd47ee50c1ff93584543b5c2ef7c2a80135dba1136a",
+          "match": true
+        },
+        {
+          "pluginName": "AuthEffects",
+          "filename": "AuthEffects.jar",
+          "expectedSha256": "8bb660035c2fba47b0b832fa9cfb3a8b87bc5f7c446af970d8edeaa11e102e8f",
+          "expectedSha512": "a0021d8ddd3d0381d598297c9500c0da4ebe71258841482406263a29b038c85783f2f4dcbe272d35aa5bfb8a7b135a490f7290f9589e020e11a4242eba61995e",
+          "actualSha256": "8bb660035c2fba47b0b832fa9cfb3a8b87bc5f7c446af970d8edeaa11e102e8f",
+          "actualSha512": "a0021d8ddd3d0381d598297c9500c0da4ebe71258841482406263a29b038c85783f2f4dcbe272d35aa5bfb8a7b135a490f7290f9589e020e11a4242eba61995e",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineArtifacts",
+          "filename": "CopiMineArtifacts.jar",
+          "expectedSha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
+          "expectedSha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
+          "actualSha256": "64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef",
+          "actualSha512": "de4448b0a959caf006ad2dbd5904c3be0c8b88bdb82d132168df275574730ad5c89c04f8fe790e04846ee540ea906ddd05566ddc72971efca665b111dfcab222",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineEconomyCore",
+          "filename": "CopiMineEconomyCore.jar",
+          "expectedSha256": "fc0ae2204aaa055ac31e8e446c82eafd0457abdb7ca56c744bd1270d7e769fd9",
+          "expectedSha512": "cf2295e0dc663bca201bbd9c5a1319508603014cf96e8f5aa9c8c4c5eeef4f0d106b81eafa8e666ab36dd25ed8bc5f21c4d6514d0e56ad0f119a99080f2c2a7e",
+          "actualSha256": "fc0ae2204aaa055ac31e8e446c82eafd0457abdb7ca56c744bd1270d7e769fd9",
+          "actualSha512": "cf2295e0dc663bca201bbd9c5a1319508603014cf96e8f5aa9c8c4c5eeef4f0d106b81eafa8e666ab36dd25ed8bc5f21c4d6514d0e56ad0f119a99080f2c2a7e",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineElectionCore",
+          "filename": "CopiMineElectionCore.jar",
+          "expectedSha256": "18339319b220fe36c17fc30ee907fa919300cc6df32083340545fc228eff224b",
+          "expectedSha512": "297fd7df78ad0ed3e051c2e709355d65d917c25b439ff128d18014b29fc935ae118a1c60882565535b2b4c7b0abff74ee5fa4d6c6a2954918eb6295bb525bd3a",
+          "actualSha256": "18339319b220fe36c17fc30ee907fa919300cc6df32083340545fc228eff224b",
+          "actualSha512": "297fd7df78ad0ed3e051c2e709355d65d917c25b439ff128d18014b29fc935ae118a1c60882565535b2b4c7b0abff74ee5fa4d6c6a2954918eb6295bb525bd3a",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineEndEvent",
+          "filename": "CopiMineEndEvent.jar",
+          "expectedSha256": "c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd",
+          "expectedSha512": "9d81231c68a47916f25332a65662910681438a85f7308405dd8e7b11bde5a2c85bceaa6b141e162bda0e8675e800b67a099336208d348df534b40dfbdd3ff79f",
+          "actualSha256": "c77873078f3eb61bd3f3c5059aec0f3f89b04c7f5b2044c972ecf58a47c113dd",
+          "actualSha512": "9d81231c68a47916f25332a65662910681438a85f7308405dd8e7b11bde5a2c85bceaa6b141e162bda0e8675e800b67a099336208d348df534b40dfbdd3ff79f",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineNarcotics",
+          "filename": "CopiMineNarcotics.jar",
+          "expectedSha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
+          "expectedSha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3",
+          "actualSha256": "d53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97",
+          "actualSha512": "29dafac22cb604da0e738f8e5b2551a2bf56099ac3d944547c7f581b751f7b2c264b92ee5dce8eddfc4e4808047d552c0160549bdcd59afd3526f2eef5f1d8e3",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineUltimateAdminPlus",
+          "filename": "CopiMineUltimateAdminPlus.jar",
+          "expectedSha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+          "expectedSha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15",
+          "actualSha256": "6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175",
+          "actualSha512": "accabfe730e9613d24cf4669191e9fb2fbabc0a7b54435445475335ea98f682784e74d9c2c838e752ead27174974f6f882557bbdccfaf64f3e25583f3e785c15",
+          "match": true
+        },
+        {
+          "pluginName": "CopiMineWorldCore",
+          "filename": "CopiMineWorldCore.jar",
+          "expectedSha256": "cf605dc9e384302c6e946fbd03790432135f3bf1d27563fa8bfe17d2738e1111",
+          "expectedSha512": "16db616aaee039bc01eb683b408b98d984596d3ebcc17578cb33ef2f03249dd90b79a59e72559d8e72234ade36e02286449a33e27d0aa0e26c6072161401c2e0",
+          "actualSha256": "cf605dc9e384302c6e946fbd03790432135f3bf1d27563fa8bfe17d2738e1111",
+          "actualSha512": "16db616aaee039bc01eb683b408b98d984596d3ebcc17578cb33ef2f03249dd90b79a59e72559d8e72234ade36e02286449a33e27d0aa0e26c6072161401c2e0",
+          "match": true
+        },
+        {
+          "pluginName": "EntityClearer",
+          "filename": "EntityClearer.jar",
+          "expectedSha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+          "expectedSha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6",
+          "actualSha256": "1918f1f611c04734b48435133cf74f806ab4154c5e6a1f556f2a45616573d330",
+          "actualSha512": "00a67c2ae3463517eab3a8ca929d26976676f797ac5aee1bf4fd0360ea8e48b7e6e971154e3f859f8b34bca70d6832f8ec8d653b0049af42023686fded6fded6",
+          "match": true
+        },
+        {
+          "pluginName": "FarmControl",
+          "filename": "FarmControl-1.3.0.jar",
+          "expectedSha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+          "expectedSha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629",
+          "actualSha256": "0cc753647b4f6bf55061aea05cdcb4dfbce6c922f912c817553dbfe14e088e85",
+          "actualSha512": "14d2c07d409e99c2068be9a20aecfb8ec00c98489e46b741c0dc103e52b6cdab1a9d3c955df91931962cf4e4768415e4f90aad1b3f3c4d794b9bb0240419c629",
+          "match": true
+        },
+        {
+          "pluginName": "PlaceholderAPI",
+          "filename": "PlaceholderAPI-2.12.3.jar",
+          "expectedSha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+          "expectedSha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479",
+          "actualSha256": "fde03259f5af6938f3c33eeb4d814000a1adabf1d2304ce14970be81f609a437",
+          "actualSha512": "f048d55b633fd816c08e2e4472bd54a75fc4d13534682e6e7745408253d2f393706efdc389d12ca2cf28d4dc035a9afdda3eed9ecde51c7e332831391d9b6479",
+          "match": true
+        },
+        {
+          "pluginName": "SeeMore",
+          "filename": "SeeMore-1.0.2.jar",
+          "expectedSha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+          "expectedSha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b",
+          "actualSha256": "8d06d342489947a296f07fbd012ea0e9842242f5af8d534f2dc91b9d2f0721e6",
+          "actualSha512": "5b6ad1edf059b8f78bb75b0cb7a47df39c05a1443d35e3b8a1f71ed78c4ccbc75d0422001442e6fc3bfdb9df26545600825af22bb00671135d5d206c20fc016b",
+          "match": true
+        }
+      ]
+    }
+  ]
+}

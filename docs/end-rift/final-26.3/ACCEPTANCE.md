@@ -12,7 +12,7 @@
 - актуальные Python 3.13 pytest suites по волнaм и recovery, Java25 Gradle client tests + jar, BuildMigrationPlugins.ps1, ресурспак и asset hash guards.
 - clean-checkout reproducibility exact source SHA, GitHub Actions 3 required jobs, independent/CodeRabbit/Security review релевантных diffs.
 
-Тесты должны выявлять ПОВТОРНОЕ появление guardian, старые W7 trials, недоступность ally highlight, miss on portal partial asset failures, doubled rewards, W6 stale target, pre-boss double timer и recovery generation leak. Тест не является доказательством рендера.
+Тесты должны выявлять досрочное появление guardian до 90 секунд, восстановление всей группы через 15 секунд, неверное число визуальных щитов и повторную смерть/спавн, а также старые W7 trials, недоступность ally highlight, неполную модель портала, double rewards, старые пакеты и recovery generation leak.
 
 ## Игровой сценарий
 Реальные Minecraft 26.3 Paper + Fabric CopiMineClient, matched 26.3 resourcepack, корректная bridge handshake, 2 игрока минимум, отдельно 5–6. Не путать protocol bots и настоящих игроков с рендером.
@@ -27,7 +27,7 @@
 8. W7 четыре УТВЕРЖДЁННЫЕ испытания, персональный Echo, подвижный Стрелок, Архимаг, Страж, 1-блочные прозрачные стены и их истинная коллизия.
 9. НЕТ рун после W7, полное HP, ремонт 30% максимальной прочности, ровно 40 сек в сумме, затем boss.
 10. Boss six HP phases, заземлённый ход 1–5, над Core 6, музыка/экран/бар/UV и все атаки.
-11. Kagune permanent guardian kill, temporary ambush, coherent grab/throw, no click spam, no respawn after 800 ticks.
+11. Kagune: per-defender 90-second active-combat respawn, 5-second telegraph, one full-health spawn, 15-second guaranteed boss-vulnerability grace after all defenders die, shields equal living guardians, no revive after boss death, persisted cooldown after restart, temporary ambush with coherent grab/throw, and no click-spam damage when immune.
 
 ## Снимки и видео
 Каждая модель: спереди, сзади, слева, справа, сверху, крупно; по одной сцене до/после. Ключевые анимации: начало/предупреждение/каст/попадание/промах/отход/смерть. Для W3 портал обе стороны и закрытие, W4 4 модели, W6 first-person подсветка игрока и 4 HUD иконки, W7 4 комнаты и стены, boss 6 phases, tentacles размыкание/схват/бросок. F2 screenshot + короткое видео для движущихся фаз, актуальный server/client/pack SHA, user/time/scenario в manifest.
@@ -37,3 +37,10 @@
 
 ## Критерий готовности
 Окончательная приёмка каждого этапа требует: код, воспроизводимые автоматические тесты, чистая сборка и CI, серверная проверка, **реальный клиент 26.3 и визуальные материалы**. Если клиент недоступен — VISUAL NOT VERIFIED; если есть опасный старый snapshot — RECOVERY_REQUIRED с сохранением данных, а не «само исправилось». Итоговый отчёт на русском, по разделам и с конкретными ссылками на доказательства и SHA.
+
+## Новая обязательная матрица на основании аудита 13 октября
+См. KAGUNE_90S_ACCEPTANCE.md. Написать воспроизводимый RED/GREEN тест ИСПОЛНЯЮЩЕГО tickCurrentTentacles/restoreTentacleGuardians, а не только policy class. Убить слоты по отдельности, проверить t=89.9s/90s, рано наступивший deadline во время 15с гарантированного окна, предупреждение за 5с до ФАКТИЧЕСКОГО появления, 0/1/2/5/6 щитов, restart с 30/60/89s, 10TPS и kill босса точно на deadline. Протестировать WorldGuard cancel, HIT_RECOVERY и запрещённые состояния.
+
+Волна 3: вызывать двукратную ошибку спавна отдельного модельного слоя, убеждаться, что портал остаётся целостным или вся попытка откатывается без призраков. Босс: мигрировать 5с и 'сектора' магмы на настоящие ~20с с защищёнными блоками, steam vents, контролируемым поджогом и минимальным износом брони без секторов. Волна 7: убедиться, что named admission действительно вызывает новых четырёх противников в реальном спавнере.
+
+Полный Minecraft F2/видео обязателен на точных JAR/pack SHA: отсутствие warning/слоя/подсветки нельзя проверять только существованием Java класса.

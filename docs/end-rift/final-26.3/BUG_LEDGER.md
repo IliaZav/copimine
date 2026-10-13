@@ -44,9 +44,9 @@
 | B04 | Boss | Магма задумана 20с, конфигурация задаёт 100 тиков (5с при 20 TPS) | config.yml boss.arena-inferno | CODE-MISMATCH конфигурации, проверить usage |
 | B05 | Boss | Модель, неверная UV, scale, хитбокс, shields, bossbar | пользовательские скрины, старые code reviews | USER-REPORTED, NATIVE-UNVERIFIED |
 | B06 | Boss | Атаки застревают, два независимых schedulers, false collision rotated AABB | исторический code review | CODE-RISK, исследовать актуальный |
-| K01 | Kagune | Защитники снова рождаются через 40с вместо окончательной гибели | TentacleGuardianPolicy.RESPAWN_DELAY_TICKS=800, tentacleGuardianRespawnAt, ensurePermanentTentacles | CODE-MISMATCH |
+| K01 | Kagune | **НОВОЕ ТРЕБОВАНИЕ: вернуть каждого защитника через 90 секунд, а не 40 секунд или никогда**; прежний код после 15 секунд массово восстанавливает guardian-слоты и сбрасывает cooldown | TentacleGuardianPolicy.RESPAWN_DELAY_TICKS=800; CopiMineEndEvent.restoreTentacleGuardians | CODE-MISMATCH, обязательное исправление |
 | K02 | Kagune | Захват разваливает модель/сегменты падают | жалоба по F2/игре | USER-REPORTED |
-| K03 | Kagune | Спам по закрытому damage window всё ещё наносил урон и ставил HIT_RECOVERY | жалоба; damage handler/state guard есть | USER-REPORTED, повторить live |
+| K03 | Kagune | Спам во время анимационной неуязвимости всё ещё может уменьшить HP: tentacleDamageWindowOpen() проверяет только активный бой, а applyTentacleGuardianDamage() сначала списывает HP, затем проверяет shouldEnterHitRecovery() | CopiMineEndEvent.onTentacleGuardianDamage/applyTentacleGuardianDamage | CODE-RISK HIGH, проверка через полный адаптер |
 | K04 | Kagune | Щупальца слишком маленькие; 6.25 блоков из старого guide против модели 4.5–5 | новый пользовательский дизайн + config hitbox-height=6.25 | CODE-RISK неверной геометрии |
 | K05 | Kagune | Слишком мало HP, требуется около 3× старого баланса | запрос пользователя; config budget, temp health=20 | USER-REPORTED, баланс через реальные прогоны |
 | R01 | Recovery | Torn DepositJournal, generation=0, partial append и unsafe restart | прежний журнал ошибки и аудит; новые тесты | CODE-RISK, повторить fault injection |
@@ -54,3 +54,22 @@
 | R03 | Профиль клиента | Старые F2, тесты и CI могут быть с 1.21.1 или старым 26.3 client | незавершённая native 26.3 приёмка | NATIVE-UNVERIFIED |
 
 При исполнении: каждую строку проверить в новом HEAD. Закрывать только конкретным тестом/логом/скрином на соответствующем SHA; нельзя писать «поправлено» по факту наличия класса. Не исправлять уже исправленный баг второй раз, если новый regression проходит.
+
+## Продолжение исходного аудита 13.10 — дополнительно проверено по Java-коду
+
+| ID | Степень | Ошибка/причина | Обязательная проверка |
+|---|---|---|---|
+| K06 | CODE-MISMATCH | tickCurrentTentacles() вызывает restoreTentacleGuardians() после 15 секунд all-dead window; этот метод вызывает tentacleGuardianRespawnAt.clear() и переполняет все guardian HP. Результат: **досрочный общий респавн**, независимо от 90 секунд. | Один slot killed, all killed, t=15/89/90, реальные сроки; без reset на 15с |
+| K07 | CODE-MISMATCH | reconcileGuardianShieldOrbit() всегда создаёт четыре щита через List.of(0,1,2,3). Реальные livingTentacleGuardianSlots() не используются. | 0/1/2/5/6 guardian живы => столько же моделей щитов и корректные UUID |
+| K08 | CODE-RISK HIGH | tentacleGuardianRespawnAt/HP/damageWindowStartedTick в оперативной памяти; objectiveProgressSnapshot() кодирует W6/W7/pre-boss без явного снимка guardian timers в LAST_SEAL. | Перезапуск в финальной фазе, 30/60/89с после kill, не терять прогресс/HP, fail-closed |
+| K09 | CODE-RISK HIGH | onTentacleGuardianDamage(ignoreCancelled=false) протоколирует отмену удара, но затем вручную наносит урон даже без проверки previous event.isCancelled(). | WorldGuard deny, чужой/отменённый удар, стрелы, без нелегального урона |
+| K10 | CODE-RISK HIGH | permanentTarget вычисляется каждый tick от активных игроков; trimTentacles может менять набор слотов при quit/rejoin. | Изменение группы во время cooldown не меняет dead slots, сроки и boss shielding |
+| K11 | CODE-MISMATCH | EventConfig.tentacleGuardianTuning() отвергает respawn delay свыше 1600, так что просто поставить 1800 в YAML не позволит запускать plugin. | Чистая загрузка config c 1800, неверные границы отклоняются безопасно |
+| P01 | CODE-RISK HIGH | spawnPortalModelVisual() допускает частичную FRAME/INNER/SHARD модель; PortalPresentationPolicy.shouldRebuild() допускает лишь первую попытку, а попытка помечается ещё до успешного появления. | Инъекция двух последовательных неудач создания слоя; ограниченный retry и полный rollback без ghost displays |
+| B07 | CODE-MISMATCH | arenaInferno() использует 100 тактов (5с) в отдельной константе, игнорируя желаемые 20 секунд. | Реальный таймер 20с, начало/cleanup, никакого двойного источника config |
+| B08 | CODE-MISMATCH | Магма использует safeLane по координатным секторам, сообщение «безопасные сектора — пять секунд», урон и Weakness, без полной согласованной steam/ignite/armor механики. | 20с, честный телеграф, нет секторов, ограниченный огонь/броня, жерла, восстановление блоков |
+| W705 | CODE-MISMATCH | Wave7AdmissionPolicy содержит WARDEN/ECHO/MARKSMAN/ARCHMAGE, но реальный RealitySplitTrialController использует RIFT_REFLECTION/JUGGERNAUT/RIFT_HUNTER. | Настоящие четыре trial mobs/players, room combat и snapshot migration |
+| W706 | CODE-RISK / DESIGN | Wave7AdmissionPolicy.defaultLayout(2) определяет лишь WARDEN/ECHO. Двое игроков не должны зависнуть без других участников, когда задумано четыре испытания. | Реальный полный сценарий с 2 и 5–6 участниками, последовательная допустимая маршрутизация |
+| W607 | CODE-RISK | PrisonerTargetSelector ограничивает выбор MAX_QUERY_ENTITIES=256, рендер подсветки зависит от outline Mixins,eligibility и сферы. | Реальный клиент, циановый союзник при наведении, 256+ entities, F1/F5/GUI |
+
+Исторические жалобы и подтверждённые кодовые ошибки различать. Эти строки внесены как результаты read-only ревью, а не как исправленные тестами или проверенные в Minecraft. Дополнительный подробный контракт — KAGUNE_90S_ACCEPTANCE.md.

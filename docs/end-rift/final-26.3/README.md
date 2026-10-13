@@ -16,11 +16,11 @@
 8. [Волна 7 — четыре испытания](WAVE_07.md)
 9. [Rift Guardian](BOSS.md)
 10. [Kagune](KAGUNE.md)
-11. [NEW: Respawn after 90 seconds, full code audit and test matrix](KAGUNE_90S_ACCEPTANCE.md)
-11. [Реестр известных и найденных проблем](BUG_LEDGER.md)
-12. [Тесты, команды, снимки и критерии готовности](ACCEPTANCE.md)
-13. [Перенос кода и сохранение worktree](INTEGRATION.md)
-14. [Self-contained Codex execution brief](CODEX_EXECUTION_BRIEF.md)
+11. [Возрождение Kagune через 90 секунд: архитектура, ошибки и тесты](KAGUNE_90S_ACCEPTANCE.md)
+12. [Реестр известных и найденных проблем](BUG_LEDGER.md)
+13. [Тесты, команды, снимки и критерии готовности](ACCEPTANCE.md)
+14. [Перенос кода и сохранение worktree](INTEGRATION.md)
+15. [Готовое техническое задание Codex](CODEX_EXECUTION_BRIEF.md)
 
 ## Исторические первоисточники
 

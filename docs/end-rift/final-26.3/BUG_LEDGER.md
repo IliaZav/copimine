@@ -70,6 +70,6 @@
 | B08 | CODE-MISMATCH | Магма использует safeLane по координатным секторам, сообщение «безопасные сектора — пять секунд», урон и Weakness, без полной согласованной steam/ignite/armor механики. | 20с, честный телеграф, нет секторов, ограниченный огонь/броня, жерла, восстановление блоков |
 | W705 | CODE-MISMATCH | Wave7AdmissionPolicy содержит WARDEN/ECHO/MARKSMAN/ARCHMAGE, но реальный RealitySplitTrialController использует RIFT_REFLECTION/JUGGERNAUT/RIFT_HUNTER. | Настоящие четыре trial mobs/players, room combat и snapshot migration |
 | W706 | CODE-RISK / DESIGN | Wave7AdmissionPolicy.defaultLayout(2) определяет лишь WARDEN/ECHO. Двое игроков не должны зависнуть без других участников, когда задумано четыре испытания. | Реальный полный сценарий с 2 и 5–6 участниками, последовательная допустимая маршрутизация |
-| W607 | CODE-RISK | PrisonerTargetSelector ограничивает выбор MAX_QUERY_ENTITIES=256, рендер подсветки зависит от outline Mixins,eligibility и сферы. | Реальный клиент, циановый союзник при наведении, 256+ entities, F1/F5/GUI |
+| W609 | CODE-RISK | PrisonerTargetSelector ограничивает выбор MAX_QUERY_ENTITIES=256, рендер подсветки зависит от outline Mixins,eligibility и сферы. | Реальный клиент, циановый союзник при наведении, 256+ entities, F1/F5/GUI |
 
 Исторические жалобы и подтверждённые кодовые ошибки различать. Эти строки внесены как результаты read-only ревью, а не как исправленные тестами или проверенные в Minecraft. Дополнительный подробный контракт — KAGUNE_90S_ACCEPTANCE.md.

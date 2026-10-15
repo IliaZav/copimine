@@ -53,13 +53,45 @@ public final class Wave7ReturnLifecycleTest {
         check(life.observeWave7ReturnWindow(GEN, 120_000_000_000L, WALL, GRACE) == ReturnWindowStatus.EXPIRED,
                 "deadline expires exactly once without extending through wall clock changes");
 
+        var personalDeadline = new AttemptLifecycleController();
+        personalDeadline.begin(GEN, Set.of(A, B)); personalDeadline.enableWave7Returns(GEN);
+        check(personalDeadline.markDead(A, GEN, 0L, WALL, GRACE), "first death starts the owner's durable return deadline");
+        check(personalDeadline.observeWave7OwnerReturnWindow(A, GEN, 0L, WALL, GRACE) == ReturnWindowStatus.WAITING,
+                "one pending owner has a live deadline while another participant remains admitted");
+        personalDeadline.markAlive(A, GEN);
+        var firstAdmission = personalDeadline.beginReturn(A, GEN, 1L, 1L, 0L);
+        check(firstAdmission != null && personalDeadline.completeReturn(firstAdmission, 2L, 2_000_000_000L),
+                "owner can complete the staged return inside the original deadline");
+        check(personalDeadline.markDead(A, GEN, 3_000_000_000L, WALL + 3_000L, GRACE),
+                "subsequent death is recorded after the first return");
+        check(personalDeadline.observeWave7OwnerReturnWindow(A, GEN, 3_000_000_000L, WALL + 3_000L, GRACE)
+                        == ReturnWindowStatus.WAITING,
+                "second death preserves the original deadline instead of starting a new one");
+        check(personalDeadline.observeWave7OwnerReturnWindow(A, GEN, 120_000_000_000L, WALL + 120_000L, GRACE)
+                        == ReturnWindowStatus.EXPIRED,
+                "owner deadline expires 120 seconds after first death even after an admitted return");
+
+        var staggered = new AttemptLifecycleController();
+        staggered.begin(GEN, Set.of(A, B)); staggered.enableWave7Returns(GEN);
+        check(staggered.markDead(A, GEN, 0L, WALL, GRACE), "first participant death recorded");
+        check(staggered.markDead(B, GEN, 60_000_000_000L, WALL + 60_000L, GRACE), "later participant death recorded");
+        check(staggered.observeWave7ReturnWindow(GEN, 120_000_000_000L, WALL + 120_000L, GRACE)
+                        == ReturnWindowStatus.STARTED,
+                "all-dead checkpoint opens while a later participant still has personal time");
+        check(staggered.observeWave7ReturnWindow(GEN, 120_000_000_000L, WALL + 120_000L, GRACE)
+                        == ReturnWindowStatus.WAITING,
+                "all-dead attempt remains open until the later participant's deadline");
+        check(staggered.observeWave7ReturnWindow(GEN, 180_000_000_000L, WALL + 180_000L, GRACE)
+                        == ReturnWindowStatus.EXPIRED,
+                "all-dead attempt expires only after every pending owner's original deadline");
+
         life.begin(GEN, Set.of(A, B)); life.enableWave7Returns(GEN); life.markDead(A, GEN); life.markDead(B, GEN);
         life.observeWave7ReturnWindow(GEN, 0, WALL, GRACE); life.markAlive(A, GEN);
         var onTime = life.beginReturn(A, GEN, 0, 40);
         check(life.completeReturn(onTime, 40, 20_000_000_000L), "valid admitted return resolves all-dead window");
         life.markDead(A, GEN);
-        check(life.observeWave7ReturnWindow(GEN, 30_000_000_000L, WALL + 30_000, GRACE) == ReturnWindowStatus.STARTED,
-                "a subsequent real death after admitted combat may start a new window");
+        check(life.observeWave7ReturnWindow(GEN, 30_000_000_000L, WALL + 30_000, GRACE) == ReturnWindowStatus.WAITING,
+                "a subsequent real death retains its original owner's deadline");
         var encoded = life.encodeWave7Returns("event", CLAIMS, 90_000_000_000L, WALL + 90_000, GRACE);
         var restored = new AttemptLifecycleController();
         check(restored.restoreWave7Returns(encoded, "event", GEN, CLAIMS, Set.of(A, B), 5_000_000_000L, WALL + 100_000, GRACE),

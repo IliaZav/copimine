@@ -118,6 +118,18 @@ public final class AttemptLifecycleController {
         return true;
     }
 
+    /** Records the first Wave 7 return deadline at the disconnect boundary. */
+    public synchronized boolean markOffline(UUID player, long expectedGeneration,
+                                            long nowNanos, long nowMillis, long graceMillis) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null) return false;
+        if (current.online()) requireWave7Return(player, nowNanos, nowMillis, graceMillis);
+        participants.put(player, new ParticipantStatus(
+                current.registered(), current.active(), false, current.alive(), false));
+        return true;
+    }
+
     /** Recompute arena/objective eligibility without changing the death lifecycle. */
     public synchronized boolean markObjectiveEligible(UUID player, long expectedGeneration,
                                                        boolean eligible) {
@@ -157,6 +169,19 @@ public final class AttemptLifecycleController {
         ParticipantStatus current = participants.get(player);
         if (current == null || !current.alive()) return false;
         requireWave7Return(player);
+        participants.put(player, new ParticipantStatus(current.registered(), current.active(),
+                current.online(), false, false));
+        return true;
+    }
+
+    /** Records the first Wave 7 return deadline at the death boundary. */
+    public synchronized boolean markDead(UUID player, long expectedGeneration,
+                                         long nowNanos, long nowMillis, long graceMillis) {
+        if (!acceptsCallback(expectedGeneration) || player == null) return false;
+        ParticipantStatus current = participants.get(player);
+        if (current == null || !current.alive()) return false;
+        if (wave7ReturnAdmission) requireWave7Return(player, nowNanos, nowMillis, graceMillis);
+        else requireWave7Return(player);
         participants.put(player, new ParticipantStatus(current.registered(), current.active(),
                 current.online(), false, false));
         return true;
@@ -242,7 +267,8 @@ public final class AttemptLifecycleController {
         if (wave7ReturnAdmission) return true;
         wave7ReturnAdmission = true;
         participants.forEach((owner, status) -> wave7Returns.put(owner, new ReturnStatus(1L,
-                status.active() && status.alive() && status.online() ? ReturnStage.ADMITTED : ReturnStage.PENDING, 0L)));
+                status.active() && status.alive() && status.online() ? ReturnStage.ADMITTED : ReturnStage.PENDING,
+                0L, 0L, 0L, 0L)));
         return true;
     }
 
@@ -273,12 +299,23 @@ public final class AttemptLifecycleController {
     }
 
     public synchronized ReturnToken beginReturn(UUID owner, long expectedGeneration, long nowTick, long stagingTicks) {
+        return beginReturn(owner, expectedGeneration, nowTick, stagingTicks, Long.MIN_VALUE, false);
+    }
+
+    public synchronized ReturnToken beginReturn(UUID owner, long expectedGeneration, long nowTick,
+                                                long stagingTicks, long nowNanos) {
+        return beginReturn(owner, expectedGeneration, nowTick, stagingTicks, nowNanos, true);
+    }
+
+    private ReturnToken beginReturn(UUID owner, long expectedGeneration, long nowTick, long stagingTicks,
+                                    long nowNanos, boolean checkDeadline) {
         if (!isReturnPending(owner, expectedGeneration) || nowTick < 0L || stagingTicks < 1L
                 || stagingTicks > 60L || nowTick > Long.MAX_VALUE - stagingTicks) return null;
         ParticipantStatus status = participants.get(owner);
         if (!status.online() || !status.alive()) return null;
         ReturnStatus claim = wave7Returns.get(owner);
-        wave7Returns.put(owner, new ReturnStatus(claim.incarnation(), ReturnStage.STAGING, nowTick + stagingTicks));
+        if (checkDeadline && hasReturnDeadline(claim) && remainingReturnNanos(claim, nowNanos) <= 0L) return null;
+        wave7Returns.put(owner, withStage(claim, ReturnStage.STAGING, nowTick + stagingTicks));
         return new ReturnToken(owner, expectedGeneration, claim.incarnation());
     }
 
@@ -292,14 +329,14 @@ public final class AttemptLifecycleController {
 
     /** Adapter must revalidate the unchanged claim and destination before committing. */
     public synchronized boolean completeReturn(ReturnToken token, long nowTick, long nowNanos) {
-        if (!validStaging(token) || nowTick < wave7Returns.get(token.owner()).readyTick()
-                || returnWindowOpen && remainingReturnNanos(nowNanos) <= 0L) return false;
+        if (!validStaging(token) || nowTick < wave7Returns.get(token.owner()).readyTick()) return false;
+        ReturnStatus claim = wave7Returns.get(token.owner());
+        if (hasReturnDeadline(claim) && remainingReturnNanos(claim, nowNanos) <= 0L) return false;
         ParticipantStatus current = participants.get(token.owner());
         if (!current.active() || !current.online() || !current.alive()) return false;
-        wave7Returns.put(token.owner(), new ReturnStatus(token.incarnation(), ReturnStage.ADMITTED, 0L));
+        wave7Returns.put(token.owner(), withStage(claim, ReturnStage.ADMITTED, 0L));
         // Physical/objective admission is rechecked by the existing adapter.
         participants.put(token.owner(), new ParticipantStatus(true, true, true, true, false));
-        returnWindowOpen = false;
         return true;
     }
 
@@ -323,19 +360,74 @@ public final class AttemptLifecycleController {
         return validStaging(token) && nowTick >= wave7Returns.get(token.owner()).readyTick();
     }
 
-    /** Repeated bed respawn/quit/join cannot extend this monotonic window. */
+    /** Starts each owner's deadline once; a pending owner is timed even while teammates remain alive. */
+    public synchronized ReturnWindowStatus observeWave7OwnerReturnWindow(UUID owner, long expectedGeneration,
+                                                                          long nowNanos, long nowMillis,
+                                                                          long graceMillis) {
+        if (!hasWave7Returns(expectedGeneration) || owner == null) return ReturnWindowStatus.NONE;
+        requireGrace(graceMillis);
+        ReturnStatus claim = wave7Returns.get(owner);
+        ParticipantStatus participant = participants.get(owner);
+        if (claim == null || participant == null || !participant.active()
+                || claim.stage() == ReturnStage.ADMITTED) return ReturnWindowStatus.NONE;
+        if (!hasReturnDeadline(claim)) {
+            claim = withDeadline(claim, nowNanos, nowMillis, graceMillis);
+            wave7Returns.put(owner, claim);
+            return ReturnWindowStatus.STARTED;
+        }
+        return remainingReturnNanos(claim, nowNanos) > 0L
+                ? ReturnWindowStatus.WAITING : ReturnWindowStatus.EXPIRED;
+    }
+
+    /** Repeated bed respawn/quit/join cannot extend any owner's monotonic deadline. */
     public synchronized ReturnWindowStatus observeWave7ReturnWindow(long expectedGeneration,
                                                                     long nowNanos, long nowMillis, long graceMillis) {
         if (!hasWave7Returns(expectedGeneration)) return ReturnWindowStatus.NONE;
         requireGrace(graceMillis);
+        boolean started = false;
+        for (var entry : new LinkedHashMap<>(wave7Returns).entrySet()) {
+            ReturnStatus claim = entry.getValue();
+            ParticipantStatus participant = participants.get(entry.getKey());
+            if (participant == null || !participant.active() || claim.stage() == ReturnStage.ADMITTED) continue;
+            if (!hasReturnDeadline(claim)) {
+                wave7Returns.put(entry.getKey(), withDeadline(claim, nowNanos, nowMillis, graceMillis));
+                started = true;
+            }
+        }
         if (!activeLivingOnlineRoster().isEmpty()) return ReturnWindowStatus.NONE;
-        if (returnWindowOpen) return remainingReturnNanos(nowNanos) > 0L
-                ? ReturnWindowStatus.WAITING : ReturnWindowStatus.EXPIRED;
-        returnWindowOpen = true;
-        returnWindowStartedNanos = nowNanos;
-        returnWindowDurationNanos = graceMillis * 1_000_000L;
-        returnWindowDeadlineMillis = Math.addExact(nowMillis, graceMillis);
-        return ReturnWindowStatus.STARTED;
+        boolean anyPending = false;
+        boolean anyReturnable = false;
+        long latestRemaining = 0L;
+        long latestDeadline = nowMillis;
+        for (var entry : wave7Returns.entrySet()) {
+            ParticipantStatus participant = participants.get(entry.getKey());
+            ReturnStatus claim = entry.getValue();
+            if (participant == null || !participant.active() || claim.stage() == ReturnStage.ADMITTED) continue;
+            anyPending = true;
+            long remaining = remainingReturnNanos(claim, nowNanos);
+            if (remaining > 0L) {
+                anyReturnable = true;
+                latestRemaining = Math.max(latestRemaining, remaining);
+                latestDeadline = Math.max(latestDeadline, claim.deadlineMillis());
+            }
+        }
+        if (anyReturnable) {
+            if (!returnWindowOpen) {
+                returnWindowOpen = true;
+                returnWindowStartedNanos = nowNanos;
+                returnWindowDurationNanos = latestRemaining;
+                returnWindowDeadlineMillis = latestDeadline;
+                return ReturnWindowStatus.STARTED;
+            }
+            return ReturnWindowStatus.WAITING;
+        }
+        if (!returnWindowOpen && (started || anyPending)) {
+            returnWindowOpen = true;
+            returnWindowStartedNanos = nowNanos;
+            returnWindowDurationNanos = 0L;
+            returnWindowDeadlineMillis = nowMillis;
+        }
+        return ReturnWindowStatus.EXPIRED;
     }
 
     public synchronized Map<String, String> encodeWave7Returns(String event, Map<UUID, Integer> claims,
@@ -346,24 +438,29 @@ public final class AttemptLifecycleController {
                 || !claims.keySet().equals(roster())) throw new IllegalArgumentException("invalid Wave 7 claims");
         Map<String, String> result = new LinkedHashMap<>();
         String prefix = "wave7-return.";
-        result.put(prefix + "version", "1"); result.put(prefix + "event", event);
+        result.put(prefix + "version", "2"); result.put(prefix + "event", event);
         result.put(prefix + "generation", Long.toString(generation));
         result.put(prefix + "saved-millis", Long.toString(nowMillis));
-        // On a clean restart, formerly admitted owners must explicitly return.
-        // Their grace starts at this checkpoint, never at the later boot time.
-        long deadline = returnWindowOpen ? returnWindowDeadlineMillis : Math.addExact(nowMillis, graceMillis);
-        long remainingMillis = returnWindowOpen ? Math.max(0L, remainingReturnNanos(nowNanos) / 1_000_000L) : graceMillis;
-        remainingMillis = Math.min(remainingMillis, Math.max(0L, deadline - nowMillis));
-        result.put(prefix + "deadline-millis", Long.toString(deadline));
-        result.put(prefix + "remaining-millis", Long.toString(remainingMillis));
         for (var entry : claims.entrySet()) {
             UUID owner = entry.getKey(); ReturnStatus state = wave7Returns.get(owner);
             if (owner == null || entry.getValue() == null || entry.getValue() < 0 || entry.getValue() > 3
                     || state == null) throw new IllegalArgumentException("invalid Wave 7 claim");
+            if (!hasReturnDeadline(state) && state.stage() != ReturnStage.ADMITTED) {
+                state = withDeadline(state, nowNanos, nowMillis, graceMillis);
+                wave7Returns.put(owner, state);
+            }
+            long remainingMillis = hasReturnDeadline(state)
+                    ? Math.max(0L, remainingReturnNanos(state, nowNanos) / 1_000_000L) : 0L;
+            if (hasReturnDeadline(state)) {
+                remainingMillis = Math.min(remainingMillis, Math.max(0L, state.deadlineMillis() - nowMillis));
+            }
             String key = prefix + owner + ".";
             result.put(key + "claim", Integer.toString(entry.getValue()));
             result.put(key + "incarnation", Long.toString(state.incarnation()));
             result.put(key + "active", Boolean.toString(participants.get(owner).active()));
+            result.put(key + "stage", state.stage().name());
+            result.put(key + "deadline-millis", Long.toString(hasReturnDeadline(state) ? state.deadlineMillis() : 0L));
+            result.put(key + "remaining-millis", Long.toString(remainingMillis));
         }
         return Map.copyOf(result);
     }
@@ -375,21 +472,27 @@ public final class AttemptLifecycleController {
         try {
             requireGrace(graceMillis);
             String prefix = "wave7-return.";
+            String version = encoded == null ? null : encoded.get(prefix + "version");
             if (encoded == null || event == null || event.isBlank() || expectedGeneration <= 0L
                     || claims == null || claims.isEmpty() || claims.size() > 20 || officialRoster == null
                     || officialRoster.size() > 20 || !officialRoster.containsAll(claims.keySet())
-                    || !"1".equals(encoded.get(prefix + "version"))
+                    || !("1".equals(version) || "2".equals(version))
                     || !event.equals(encoded.get(prefix + "event"))
                     || expectedGeneration != Long.parseLong(encoded.get(prefix + "generation"))) return false;
             long saved = Long.parseLong(encoded.get(prefix + "saved-millis"));
-            long deadline = Long.parseLong(encoded.get(prefix + "deadline-millis"));
-            long remaining = Long.parseLong(encoded.get(prefix + "remaining-millis"));
-            if (saved <= 0L || nowMillis < saved || remaining < 0L || remaining > graceMillis
-                    || deadline <= 0L || deadline > Math.addExact(saved, graceMillis)) return false;
+            if (saved <= 0L || nowMillis < saved) return false;
+            long legacyDeadline = 0L;
+            long legacyRemaining = 0L;
+            if ("1".equals(version)) {
+                legacyDeadline = Long.parseLong(encoded.get(prefix + "deadline-millis"));
+                legacyRemaining = Long.parseLong(encoded.get(prefix + "remaining-millis"));
+                if (legacyRemaining < 0L || legacyRemaining > graceMillis
+                        || legacyDeadline <= 0L || legacyDeadline > Math.addExact(saved, graceMillis)) return false;
+            }
             Map<UUID, ReturnStatus> restored = new LinkedHashMap<>();
             Map<UUID, ParticipantStatus> statuses = new LinkedHashMap<>();
             Set<String> expectedKeys = new LinkedHashSet<>(Set.of(prefix + "version", prefix + "event",
-                    prefix + "generation", prefix + "saved-millis", prefix + "deadline-millis", prefix + "remaining-millis"));
+                    prefix + "generation", prefix + "saved-millis"));
             for (var entry : claims.entrySet()) {
                 UUID owner = entry.getKey(); String key = prefix + owner + ".";
                 if (owner == null || entry.getValue() == null || entry.getValue() < 0 || entry.getValue() > 3
@@ -397,20 +500,44 @@ public final class AttemptLifecycleController {
                 long incarnation = Long.parseLong(encoded.get(key + "incarnation"));
                 String active = encoded.get(key + "active");
                 if (incarnation <= 0L || incarnation == Long.MAX_VALUE || !"true".equals(active)) return false;
-                restored.put(owner, new ReturnStatus(incarnation + 1L, ReturnStage.PENDING, 0L));
+                long deadline;
+                long remaining;
+                if ("1".equals(version)) {
+                    deadline = legacyDeadline;
+                    remaining = legacyRemaining;
+                    expectedKeys.add(key + "claim"); expectedKeys.add(key + "incarnation"); expectedKeys.add(key + "active");
+                } else {
+                    ReturnStage savedStage = ReturnStage.valueOf(encoded.get(key + "stage"));
+                    deadline = Long.parseLong(encoded.get(key + "deadline-millis"));
+                    remaining = Long.parseLong(encoded.get(key + "remaining-millis"));
+                    if (remaining < 0L || remaining > graceMillis) return false;
+                    if (deadline == 0L) {
+                        if (savedStage != ReturnStage.ADMITTED || remaining != 0L) return false;
+                        deadline = Math.addExact(saved, graceMillis);
+                        remaining = graceMillis;
+                    } else if (deadline < saved || deadline > Math.addExact(saved, graceMillis)
+                            || remaining > Math.max(0L, deadline - saved)) return false;
+                    expectedKeys.add(key + "claim"); expectedKeys.add(key + "incarnation"); expectedKeys.add(key + "active");
+                    expectedKeys.add(key + "stage");
+                    expectedKeys.add(key + "deadline-millis"); expectedKeys.add(key + "remaining-millis");
+                }
+                long elapsed = nowMillis - saved;
+                long restoredRemaining = Math.min(Math.max(0L, remaining - elapsed), Math.max(0L, deadline - nowMillis));
+                restored.put(owner, new ReturnStatus(incarnation + 1L, ReturnStage.PENDING, 0L,
+                        nowNanos, restoredRemaining * 1_000_000L, deadline));
                 statuses.put(owner, new ParticipantStatus(true, true, false, false, false));
-                expectedKeys.add(key + "claim"); expectedKeys.add(key + "incarnation"); expectedKeys.add(key + "active");
+            }
+            if ("1".equals(version)) {
+                expectedKeys.add(prefix + "deadline-millis"); expectedKeys.add(prefix + "remaining-millis");
             }
             Set<String> actualKeys = new LinkedHashSet<>();
             encoded.keySet().stream().filter(key -> key.startsWith(prefix)).forEach(actualKeys::add);
             if (!actualKeys.equals(expectedKeys)) return false;
-            long elapsed = nowMillis - saved;
-            long restoredRemaining = Math.min(Math.max(0L, remaining - elapsed), Math.max(0L, deadline - nowMillis));
             generation = expectedGeneration; pendingNextGeneration = Long.MIN_VALUE; wiping = false;
             participants.clear(); participants.putAll(statuses);
             wave7Returns.clear(); wave7Returns.putAll(restored); wave7ReturnAdmission = true;
-            returnWindowOpen = true; returnWindowStartedNanos = nowNanos;
-            returnWindowDurationNanos = restoredRemaining * 1_000_000L; returnWindowDeadlineMillis = deadline;
+            returnWindowOpen = false; returnWindowStartedNanos = 0L;
+            returnWindowDurationNanos = 0L; returnWindowDeadlineMillis = 0L;
             return true;
         } catch (IllegalArgumentException | ArithmeticException failure) {
             return false;
@@ -432,13 +559,48 @@ public final class AttemptLifecycleController {
         ReturnStatus state = wave7Returns.get(owner);
         if (!wave7ReturnAdmission || state == null) return;
         if (state.incarnation() == Long.MAX_VALUE) throw new IllegalStateException("incarnation exhausted");
-        wave7Returns.put(owner, new ReturnStatus(state.incarnation() + 1L, ReturnStage.PENDING, 0L));
+        wave7Returns.put(owner, withStage(state, ReturnStage.PENDING, 0L, state.incarnation() + 1L));
+    }
+
+    private void requireWave7Return(UUID owner, long nowNanos, long nowMillis, long graceMillis) {
+        ReturnStatus state = wave7Returns.get(owner);
+        if (!wave7ReturnAdmission || state == null) return;
+        requireGrace(graceMillis);
+        if (state.incarnation() == Long.MAX_VALUE) throw new IllegalStateException("incarnation exhausted");
+        ReturnStatus pending = withStage(state, ReturnStage.PENDING, 0L, state.incarnation() + 1L);
+        if (!hasReturnDeadline(pending)) pending = withDeadline(pending, nowNanos, nowMillis, graceMillis);
+        wave7Returns.put(owner, pending);
     }
 
     private long remainingReturnNanos(long nowNanos) {
         // nanoTime subtraction remains valid across the signed wrap for bounded intervals.
         long elapsed = nowNanos - returnWindowStartedNanos;
         return elapsed < 0L ? 0L : returnWindowDurationNanos - Math.min(returnWindowDurationNanos, elapsed);
+    }
+
+    private static long remainingReturnNanos(ReturnStatus status, long nowNanos) {
+        if (!hasReturnDeadline(status)) return Long.MAX_VALUE;
+        long elapsed = nowNanos - status.deadlineStartedNanos();
+        return elapsed < 0L ? 0L : status.deadlineDurationNanos()
+                - Math.min(status.deadlineDurationNanos(), elapsed);
+    }
+
+    private static boolean hasReturnDeadline(ReturnStatus status) {
+        return status != null && status.deadlineMillis() > 0L;
+    }
+
+    private static ReturnStatus withDeadline(ReturnStatus status, long nowNanos, long nowMillis, long graceMillis) {
+        return new ReturnStatus(status.incarnation(), status.stage(), status.readyTick(), nowNanos,
+                Math.multiplyExact(graceMillis, 1_000_000L), Math.addExact(nowMillis, graceMillis));
+    }
+
+    private static ReturnStatus withStage(ReturnStatus status, ReturnStage stage, long readyTick) {
+        return withStage(status, stage, readyTick, status.incarnation());
+    }
+
+    private static ReturnStatus withStage(ReturnStatus status, ReturnStage stage, long readyTick, long incarnation) {
+        return new ReturnStatus(incarnation, stage, readyTick, status.deadlineStartedNanos(),
+                status.deadlineDurationNanos(), status.deadlineMillis());
     }
 
     private void clearWave7Returns() {
@@ -457,7 +619,8 @@ public final class AttemptLifecycleController {
 
     public enum ReturnStage { ADMITTED, PENDING, STAGING }
     public enum ReturnWindowStatus { NONE, STARTED, WAITING, EXPIRED }
-    private record ReturnStatus(long incarnation, ReturnStage stage, long readyTick) { }
+    private record ReturnStatus(long incarnation, ReturnStage stage, long readyTick, long deadlineStartedNanos,
+                                long deadlineDurationNanos, long deadlineMillis) { }
     public record ReturnToken(UUID owner, long generation, long incarnation) { }
 
     private static long nextGeneration(long current) {

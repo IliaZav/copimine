@@ -91,8 +91,8 @@ try {
   @{ schemaVersion = 1; paper = @{ api = '26.3.build.169-beta'; apiSha256 = $paperHash } } |
     ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $lockDirectory 'profile.lock.json') -Encoding UTF8
   $dependencyPaths = @(
-    'net/kyori/adventure-api/4.17.0/adventure-api-4.17.0.jar',
-    'org/joml/joml/1.10.5/joml-1.10.5.jar'
+    'net/kyori/adventure-api/5.2.0/adventure-api-5.2.0.jar',
+    'org/joml/joml/1.10.9/joml-1.10.9.jar'
   )
   $lockedPaths = @()
   $dependencyEntries = @()
@@ -102,7 +102,11 @@ try {
     $lockedPaths += $path
     $dependencyEntries += @{ path = $dependencyPath; size = (Get-Item -LiteralPath $path).Length; sha256 = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
   }
-  @{ schemaVersion = 1; dependencies = $dependencyEntries } | ConvertTo-Json -Depth 4 |
+  $legacyPath = 'net/kyori/adventure-api/4.17.0/adventure-api-4.17.0.jar'
+  $legacyFixture = Join-Path $fixtureMaven $legacyPath
+  Write-FixtureArtifact $legacyFixture 'legacy-only'
+  $legacyEntries = @(@{ path = $legacyPath; size = 11; sha256 = (Get-FileHash -LiteralPath $legacyFixture -Algorithm SHA256).Hash.ToLowerInvariant() })
+  @{ schemaVersion = 1; dependencies = $legacyEntries; paper26_3Api = '26.3.build.169-beta'; paper26_3Dependencies = $dependencyEntries } | ConvertTo-Json -Depth 4 |
     Set-Content -LiteralPath (Join-Path $lockDirectory 'java-plugin-compile-dependencies.lock.json') -Encoding UTF8
   $decoyPaper = Join-Path $fixtureMaven 'io/papermc/paper/paper-api/99-R0.1-SNAPSHOT/paper-api-99-R0.1-SNAPSHOT.jar'
   Write-FixtureArtifact $decoyPaper 'wrong-paper!'

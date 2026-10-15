@@ -152,6 +152,36 @@ def test_java_compile_dependency_lock_pins_exact_classpath_content_and_order():
     assert all(entry['size']>0 and len(entry['sha256'])==64 and entry['sha256']==entry['sha256'].lower() for entry in dependencies)
 
 
+def test_paper_26_3_compile_lock_uses_one_verified_version_per_artifact():
+    from xml.etree import ElementTree
+
+    lock = json.loads((ROOT/'tools/minecraft-26.3/java-plugin-compile-dependencies.lock.json').read_text(encoding='utf-8'))
+    profile = json.loads((ROOT/'tools/minecraft-26.3/profile.lock.json').read_text(encoding='utf-8'))
+    assert lock['paper26_3Api'] == profile['paper']['api']
+    dependencies = lock['paper26_3Dependencies']
+    assert len(dependencies) == 17
+    coordinates = [entry['path'].rsplit('/', 2)[0] for entry in dependencies]
+    assert len(coordinates) == len(set(coordinates))
+    assert dependencies[0]['path'] == 'net/kyori/adventure-api/5.2.0/adventure-api-5.2.0.jar'
+    assert dependencies[1]['path'] == 'net/kyori/adventure-key/5.2.0/adventure-key-5.2.0.jar'
+    assert all('/5.2.0/' in entry['path'] for entry in dependencies if '/adventure-' in entry['path'])
+    metadata = ElementTree.parse(ROOT/'tools/minecraft-26.3/gradle/verification-metadata.xml')
+    namespace = {'v': 'https://schema.gradle.org/dependency-verification'}
+    verified = {}
+    for component in metadata.findall('.//v:component', namespace):
+        for artifact in component.findall('v:artifact', namespace):
+            sha = artifact.find('v:sha256', namespace)
+            if sha is not None:
+                path = '/'.join((component.attrib['group'].replace('.', '/'), component.attrib['name'], component.attrib['version'], artifact.attrib['name']))
+                verified[path] = sha.attrib['value']
+    for entry in dependencies:
+        assert entry['sha256'] == verified[entry['path']]
+        assert entry['size'] > 0
+    # The existing shared Java gate still consumes exactly the legacy graph.
+    assert len(lock['dependencies']) == 18
+    assert lock['dependencies'][0]['path'] == 'net/kyori/adventure-api/4.17.0/adventure-api-4.17.0.jar'
+
+
 def test_java_plugin_build_scripts_prefer_the_isolated_maven_repository():
     scripts=[
         'copimine-world-core/build-plugin.ps1',

@@ -48,7 +48,14 @@ if ($env:PAPER_API_JAR -and (Test-Path -LiteralPath $paperApi -PathType Leaf) -a
 Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize
 
 $cp = @($paperApi)
-$lockedDependencies = @($compileLock.dependencies)
+$lockedDependencies = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
+  @($compileLock.dependencies)
+} else {
+  if ($compileLock.paper26_3Api -cne $profile.paper.api -or -not $compileLock.paper26_3Dependencies) {
+    throw 'Locked Paper 26.3 compile dependency graph is missing or targets a different API.'
+  }
+  @($compileLock.paper26_3Dependencies)
+}
 $compileDependencies = @()
 if ($env:PAPER_COMPILE_DEPS) {
   $compileDependencies = @($env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator)

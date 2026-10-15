@@ -515,7 +515,7 @@ public final class AttemptLifecycleController {
                         if (savedStage != ReturnStage.ADMITTED || remaining != 0L) return false;
                         deadline = Math.addExact(saved, graceMillis);
                         remaining = graceMillis;
-                    } else if (deadline < saved || deadline > Math.addExact(saved, graceMillis)
+                    } else if (deadline <= 0L || deadline > Math.addExact(saved, graceMillis)
                             || remaining > Math.max(0L, deadline - saved)) return false;
                     expectedKeys.add(key + "claim"); expectedKeys.add(key + "incarnation"); expectedKeys.add(key + "active");
                     expectedKeys.add(key + "stage");

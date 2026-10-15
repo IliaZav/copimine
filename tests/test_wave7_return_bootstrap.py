@@ -15,6 +15,9 @@ def test_bootstrap_preserves_validated_return_generation_and_original_deadline(t
     signature = "boolean canResumeWave7ParticipationAfterRestart()"
     if "    private " + signature in source:
         adapters += extract(source, signature)
+    wave2_signature = "boolean canResumeWave2AfterRestart()"
+    if "    private " + wave2_signature in source:
+        adapters += extract(source, wave2_signature)
     probe = tmp_path / "Wave7ReturnBootstrapProbe.java"
     probe.write_text(r'''
 import java.util.*;
@@ -26,6 +29,7 @@ public class Wave7ReturnBootstrapProbe {
     static final String VICTORY_COMPLETE="complete";
     boolean bootstrapped,testWaveFrontVisualMode,testCombatAiMode,configured=true;
     long generation=43;int activeWave=7,recoveries,restores;
+    int currentHuntCycles,waveTwoGroupsSpawned,waveTwoGroupCleared;
     String eventId="synthetic-event",victoryStep="",recoveryReason="";
     boolean endUnlocked;
     EventPhase phase=EventPhase.WAVE_7,restoredPhase;
@@ -38,6 +42,9 @@ public class Wave7ReturnBootstrapProbe {
     RealitySplitChamberController realitySplitChamberController=new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController=new RealitySplitTrialController();
     static class Config {String bridgeChannel(){return "synthetic:bridge";}}
+    static class WaveTwoStagePolicy {
+        static boolean hasConsistentProgress(int completed,int spawned,int cleared){return false;}
+    }
     static class EventLayoutState {
         EventLayoutState(Object a,Object b,Object c,Object d,Map<?,?> e,String f,Object g){}
         Object portalRoom(){return null;}
@@ -70,6 +77,7 @@ public class Wave7ReturnBootstrapProbe {
     static class DepositJournal {static class JournalCorruptionException extends RuntimeException {}}
     boolean isEnabled(){return true;}boolean isConfigured(){return configured;}
     boolean isOfficialAttemptActive(){return true;}
+    boolean isOfficialCurrentAttempt(){return false;}
     Logger getLogger(){return Logger.getAnonymousLogger();}Server getServer(){return new Server();}
     void resetEncounterTaskRegistry(long gen){}
     void recoverHazardJournal(){}void restorePersistedGateIfNeeded(){}
@@ -107,8 +115,13 @@ public class Wave7ReturnBootstrapProbe {
                 "cold boot must retain pending participation without automatically admitting owners");
         require(main.attemptLifecycle.incarnation(OWNER,43)==3,"restart must retain the strictly advanced incarnation");
         var after=main.attemptLifecycle.encodeWave7Returns(main.eventId,main.realitySplitChamberController.assignment().chamberByPlayer(),3000000,11001,120000);
-        require(saved.get("wave7-return.deadline-millis").equals(after.get("wave7-return.deadline-millis")),
-                "bootstrap must never reset or extend the original all-dead deadline");
+        for(UUID owner:List.of(OWNER,OTHER)){
+            String key="wave7-return."+owner+".";
+            require(saved.get(key+"deadline-millis").equals(after.get(key+"deadline-millis")),
+                    "bootstrap must never reset an owner's original return deadline");
+            require(Long.parseLong(after.get(key+"remaining-millis"))<=Long.parseLong(saved.get(key+"remaining-millis")),
+                    "restart checkpoint must not increase an owner's remaining return time");
+        }
         main.tryBootstrap();require(main.restores==1&&main.recoveries==0,"duplicate bootstrap cannot reconstruct another session");
         var preBoss=new Wave7ReturnBootstrapProbe();preBoss.prepareRestoredReturns();preBoss.phase=EventPhase.PRE_BOSS_COOLDOWN;
         preBoss.tryBootstrap();require(preBoss.recoveries==0&&preBoss.restoredPhase==EventPhase.PRE_BOSS_COOLDOWN&&preBoss.generation==43,
@@ -139,7 +152,8 @@ public class Wave7ReturnBootstrapProbe {
     paths = (
         "domain/EventPhase.java", "domain/EndEventStateMachine.java",
         "domain/EndRiftObjective.java", "domain/ChamberIsolationPolicy.java",
-        "domain/RealitySplitBarrierPolicy.java", "runtime/RealitySplitChamberController.java",
+        "domain/RealitySplitBarrierPolicy.java", "domain/Wave7DuoLayoutPolicy.java",
+        "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/AttemptLifecycleController.java",
     )
     compile_result = subprocess.run(

@@ -70,6 +70,15 @@ public final class Wave7ReturnLifecycleTest {
         check(personalDeadline.observeWave7OwnerReturnWindow(A, GEN, 120_000_000_000L, WALL + 120_000L, GRACE)
                         == ReturnWindowStatus.EXPIRED,
                 "owner deadline expires 120 seconds after first death even after an admitted return");
+        var expiredSnapshot = personalDeadline.encodeWave7Returns(
+                "event", CLAIMS, 130_000_000_000L, WALL + 130_000L, GRACE);
+        var expiredRestore = new AttemptLifecycleController();
+        check(expiredRestore.restoreWave7Returns(expiredSnapshot, "event", GEN, CLAIMS, Set.of(A, B),
+                        1L, WALL + 130_001L, GRACE),
+                "an already-expired but well-formed owner deadline remains restorable");
+        check(expiredRestore.observeWave7OwnerReturnWindow(A, GEN, 1L, WALL + 130_001L, GRACE)
+                        == ReturnWindowStatus.EXPIRED,
+                "restore does not reopen an expired owner's return deadline");
 
         var staggered = new AttemptLifecycleController();
         staggered.begin(GEN, Set.of(A, B)); staggered.enableWave7Returns(GEN);

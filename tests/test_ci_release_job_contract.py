@@ -245,6 +245,27 @@ def test_plugin_build_scripts_find_paper_api_in_the_selected_maven_repository() 
     for relative in scripts:
         source = (ROOT / relative).read_text(encoding="utf-8")
         repo_override = source.index("$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)")
+        if relative in (
+            "copimine-end-event/build-plugin.ps1",
+            "copimine-narcotics/build-plugin.ps1",
+        ):
+            # These direct builders use the migration lock and permit only the
+            # explicit, hash-pinned legacy API used by the shared Java gate.
+            assert repo_override < source.index("$profile.paper.api)/paper-api-")
+            assert "profile.lock.json" in source
+            assert "java-plugin-compile-dependencies.lock.json" in source
+            assert "-Sha256 $paperApiSha256 -Size $paperApiSize" in source
+            assert "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0" in source
+            assert "$paperApiSize = 2344886" in source
+            assert "$paperApiSize = 2934206" in source
+            for ambient_marker in (
+                "paper-api-*-R0.1-SNAPSHOT.jar",
+                "Sort-Object LastWriteTime",
+                "Get-ChildItem -Path $groupPath",
+                "Get-ChildItem -Path (Join-Path $serverDir 'libraries')",
+            ):
+                assert ambient_marker not in source, (relative, ambient_marker)
+            continue
         paper_lookup = source.index("paper-api-*-R0.1-SNAPSHOT.jar")
 
         assert repo_override < paper_lookup, relative

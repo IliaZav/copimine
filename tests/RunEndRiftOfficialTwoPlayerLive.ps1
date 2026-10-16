@@ -7,7 +7,7 @@ param(
   [ValidatePattern('^[A-Za-z0-9_]{1,16}$')]
   [string[]]$AdditionalBotNames = @(),
   [ValidateRange(30, 3600)]
-  [int]$BotDurationSeconds = 900,
+  [int]$BotDurationSeconds = 3600,
   [ValidateRange(30, 3600)]
   [int]$TimeoutSeconds = 900,
   [ValidateRange(0, 7)]

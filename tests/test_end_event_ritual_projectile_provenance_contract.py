@@ -73,9 +73,9 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     outcome_body = method_body(source, "public void onEventSkeletonShootBowOutcome")
     assert "runTaskLater(this, () ->" in outcome_body
     assert "event.isCancelled()" in outcome_body
-    assert "spawnPendingSkeletonSideArrows(arrowId, pending)" in outcome_body
+    assert "spawnPendingSkeletonSideArrows(originalArrowId, pending)" in outcome_body
     assert outcome_body.index("event.isCancelled()") < outcome_body.index(
-        "spawnPendingSkeletonSideArrows(arrowId, pending)"
+        "spawnPendingSkeletonSideArrows(originalArrowId, pending)"
     )
     side_arrows_body = method_body(source, "private void spawnPendingSkeletonSideArrows(")
     assert "configureEventSkeletonArrow(extra, skeleton" in side_arrows_body

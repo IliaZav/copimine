@@ -38,6 +38,16 @@ def test_official_runner_drives_one_participant_through_the_ritual_seal() -> Non
     assert "WAVE6_RITUAL_PRISONER_DRAIN" not in source
 
 
+def test_official_runner_keeps_probe_bots_online_through_late_wave_waits() -> None:
+    """Wave 6 alone may wait 1200 seconds, before the runner reaches Wave 7."""
+
+    source = RUNNER.read_text(encoding="utf-8")
+
+    assert "[int]$BotDurationSeconds = 3600" in source
+    assert "Wait-WaveComplete -Wave 6 -Core $core -Seconds 1200" in source
+    assert "Wait-WaveComplete -Wave 7 -Core $core -Seconds 900" in source
+
+
 def test_four_player_wave6_wave7_boundary_runner_uses_current_control_profile() -> None:
     """The fixed four-player boundary probe must not expect the old ring profile."""
 

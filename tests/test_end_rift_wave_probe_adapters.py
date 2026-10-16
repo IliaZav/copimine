@@ -61,6 +61,8 @@ import java.util.stream.Collectors;
 import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
+import me.copimine.endevent.runtime.AttemptLifecycleController;
+import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 
 public final class WaveProbeAdapterHarness {
     String eventId = "event", worldName = "world";
@@ -69,6 +71,8 @@ public final class WaveProbeAdapterHarness {
     static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
     static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
     static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
+    static final String WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX = "wave2-attempt-lifecycle.";
+    static final long OFFLINE_RECONNECT_GRACE_MILLIS = 25_000L;
     Map<String, String> wave7RecoveryCheckpoint = Map.of();
     long generation = 4L, creativeTestGeneration = 4L, phaseDeadlineMillis;
     UUID creativeTestPlayerUuid;
@@ -84,6 +88,8 @@ public final class WaveProbeAdapterHarness {
             testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
             officialAttempt;
     Set<UUID> sandboxWaveRoster = Set.of(), officialRoster = Set.of(), initializedRoster = Set.of();
+    Set<UUID> officialRewardRoster = new LinkedHashSet<>();
+    Map<UUID, Long> offlineRosterGraceUntilMillis = new HashMap<>();
     List<Object> waveSpawnSchedule = List.of();
     Task creativeTestTask;
     Diagnostics diagnostics = new Diagnostics();
@@ -93,8 +99,7 @@ public final class WaveProbeAdapterHarness {
     Set<Object> realitySplitBarrierCells = Set.of();
     Chambers realitySplitChamberController = new Chambers();
     Trials realitySplitTrialController = new Trials();
-    static final class Lifecycle {boolean hasWave7Returns(long generation){return false;}}
-    Lifecycle attemptLifecycle = new Lifecycle();
+    AttemptLifecycleController attemptLifecycle = new AttemptLifecycleController();
     static final Logger LOGGER = Logger.getLogger("detached-wave-probe");
     static { LOGGER.setLevel(Level.OFF); }
     Logger getLogger() { return LOGGER; }
@@ -261,6 +266,9 @@ public final class WaveProbeAdapterHarness {
                 probe.currentHuntCycles = 1;
                 probe.waveTwoGroupsSpawned = 2;
                 probe.waveTwoGroupCleared = false;
+                UUID rosteredPlayer = UUID.fromString("00000000-0000-0000-0000-000000000001");
+                probe.officialRewardRoster.add(rosteredPlayer);
+                probe.attemptLifecycle.begin(probe.generation, probe.officialRewardRoster);
                 UUID outstanding = UUID.fromString("00000000-0000-0000-0000-000000000002");
                 probe.waveTwoOutstandingEntityUuids = Set.of(outstanding);
                 Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
@@ -269,6 +277,16 @@ public final class WaveProbeAdapterHarness {
                                 && "false".equals(saved.get(WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY))
                                 && outstanding.toString().equals(saved.get(WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY)),
                         "active Wave 2 checkpoint must encode stage, group and durable outstanding UUIDs");
+                String lifecyclePrefix = WAVE_TWO_ATTEMPT_LIFECYCLE_PREFIX;
+                String ownerPrefix = lifecyclePrefix + rosteredPlayer + ".";
+                check("1".equals(saved.get(lifecyclePrefix + "version"))
+                                && "event".equals(saved.get(lifecyclePrefix + "event"))
+                                && Long.toString(probe.generation).equals(saved.get(lifecyclePrefix + "generation"))
+                                && rosteredPlayer.toString().equals(saved.get(lifecyclePrefix + "roster"))
+                                && "true".equals(saved.get(ownerPrefix + "active"))
+                                && "true".equals(saved.get(ownerPrefix + "alive"))
+                                && "0".equals(saved.get(ownerPrefix + "offline-deadline-millis")),
+                        "active Wave 2 checkpoint must include the controller's registered participant state");
             }
             case "playable-snapshot" -> {
                 probe.activeWave = 6;
@@ -388,13 +406,16 @@ public final class WaveProbeAdapterHarness {
     java_file = output / "WaveProbeAdapterHarness.java"
     java_file.write_text(harness, encoding="utf-8")
     domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
+    runtime = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime"
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
                                str(java_file), str(domain / "EventPhase.java"),
                                str(domain / "SandboxWaveSessionSnapshot.java"),
                                str(domain / "PressureBudgetController.java"),
                                str(domain / "WaveMechanicsPolicy.java"),
                                str(domain / "WaveTwoStagePolicy.java"),
-                               str(domain / "WaveTwoEntityRecoveryPolicy.java")],
+                               str(domain / "WaveTwoEntityRecoveryPolicy.java"),
+                               str(runtime / "AttemptLifecycleController.java"),
+                               str(runtime / "WaveTwoAttemptLifecycleSnapshot.java")],
                               capture_output=True, text=True, check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return output

@@ -38,6 +38,7 @@ public class BedRespawnProbe {
     void containRealitySplitParticipant(Player player,long generation,String reason){teleports++;}
     void teleportRespawnedOfficialParticipant(Player player,long generation){teleports++;}
     void refreshClientBindingsForPlayer(Player player){bindings++;}
+    void saveStateAsync(){}
     void offerWave7Return(Player player){}
     void registerEncounterTask(BukkitTask task){}
 ''' + callback + r'''

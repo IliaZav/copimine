@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import me.copimine.protocol.NarcoticsBridgeBodyCodec;
 
 public final class ClientVisualManager {
     private static final String CLIENT_OVERLAY_ROUTE = "CLIENT_OVERLAY";
@@ -20,6 +21,8 @@ public final class ClientVisualManager {
     private final Minecraft client = Minecraft.getInstance();
     private final ClientConfig config;
     private final Map<Long, ActiveVisual> active = new ConcurrentHashMap<>();
+    private final AuthenticatedRemoteVisualRegistry authenticatedRemoteVisuals =
+            new AuthenticatedRemoteVisualRegistry();
     private final RemoteVisualRuntimeTransitionGate remoteRuntimeTransitionGate =
             new RemoteVisualRuntimeTransitionGate(REMOTE_IRIS_RELOAD_INTERVAL_NANOS);
     private ShaderRuntimeManager shaderRuntimeManager;
@@ -29,6 +32,7 @@ public final class ClientVisualManager {
     private volatile boolean pendingRemoteRuntimeTransition;
     private volatile String pendingRuntimeClearReason = "";
     private volatile String lastRuntimeTransitionReason = "";
+    private volatile String lastAuthenticatedRemoteVisualRejectionReason = "";
 
     public ClientVisualManager(ClientConfig config) {
         this.config = config;
@@ -92,6 +96,109 @@ public final class ClientVisualManager {
         lastServerSeq = seq;
         boolean runtimeApplied = refreshRuntime(seq > 0L);
         return runtimeApplied || hasActiveVisuals();
+    }
+
+    /** Applies one already authenticated v4 Narcotics visual without touching local test visuals. */
+    public synchronized boolean applyAuthenticatedRemoteVisual(NarcoticsBridgeBodyCodec.Body body,
+            String streamId, long signedStreamCounter) {
+        lastAuthenticatedRemoteVisualRejectionReason = "";
+        if (body == null || streamId == null || streamId.isBlank() || signedStreamCounter <= 0) {
+            lastAuthenticatedRemoteVisualRejectionReason = "invalid-visual-command";
+            return false;
+        }
+        if (!ClientVisualCommandPolicy.shouldApply(config.allowServerVisuals(), body.type())) {
+            lastAuthenticatedRemoteVisualRejectionReason = "server-visuals-disabled";
+            return false;
+        }
+        return switch (body.type()) {
+            case VISUAL_START -> startAuthenticatedRemoteVisual(body, streamId, signedStreamCounter);
+            case VISUAL_STOP -> stopAuthenticatedRemoteVisual(body, streamId);
+            case VISUAL_CLEAR_ALL -> clearAuthenticatedRemoteVisualsThrough(streamId, body.clearThroughCounter());
+        };
+    }
+
+    /** Clears only authenticated remote visuals, preserving local tests and client-owned state. */
+    public synchronized void clearAuthenticatedRemoteVisuals() {
+        boolean changed = false;
+        for (Long sequence : authenticatedRemoteVisuals.clearAll()) {
+            changed |= active.remove(sequence) != null;
+        }
+        if (changed) {
+            refreshRuntime(true);
+        }
+    }
+
+    private boolean startAuthenticatedRemoteVisual(NarcoticsBridgeBodyCodec.Body body,
+            String streamId, long signedStreamCounter) {
+        boolean replacementChanged = false;
+        if ("REPLACE_ALL_FULLSCREEN".equals(body.clearPolicy())) {
+            replacementChanged = removeAuthenticatedRemoteVisualsThrough(
+                    streamId, body.clearThroughCounter(), body.visualInstanceId());
+        }
+        Long previousSequence = authenticatedRemoteVisuals.remove(streamId, body.visualInstanceId());
+        if (previousSequence != null) {
+            replacementChanged |= active.remove(previousSequence) != null;
+        }
+        long sequence = body.commandSeq();
+        if (!RemoteVisualCapacityPolicy.accepts(active.size(), active.containsKey(sequence))) {
+            if (replacementChanged) {
+                refreshRuntime(true);
+            }
+            lastAuthenticatedRemoteVisualRejectionReason = "visual-capacity-limit";
+            CopiMineClientLogger.warnFromServer(
+                    "Rejected authenticated bridge visual because active visual limit was reached: command="
+                            + sequence);
+            return false;
+        }
+        ActiveVisual visual = new ActiveVisual(
+                sequence,
+                normalize(body.effectId()),
+                body.shaderpackId(),
+                System.currentTimeMillis() + clampDuration((int) body.durationMillis()),
+                clamp(body.intensity()),
+                clampFade((int) body.fadeInMillis()),
+                clampFade((int) body.fadeOutMillis()),
+                body.source());
+        active.put(sequence, visual);
+        authenticatedRemoteVisuals.put(streamId, body.visualInstanceId(), signedStreamCounter, sequence);
+        lastServerSeq = sequence;
+        return refreshRuntime(true) || active.containsKey(sequence);
+    }
+
+    private boolean stopAuthenticatedRemoteVisual(NarcoticsBridgeBodyCodec.Body body, String streamId) {
+        Long sequence = authenticatedRemoteVisuals.get(streamId, body.targetVisualInstanceId());
+        if (sequence == null) {
+            return true;
+        }
+        ActiveVisual visual = active.get(sequence);
+        if (visual != null && !visual.effectId().equalsIgnoreCase(body.effectId())) {
+            lastAuthenticatedRemoteVisualRejectionReason = "visual-effect-mismatch";
+            return false;
+        }
+        authenticatedRemoteVisuals.remove(streamId, body.targetVisualInstanceId());
+        boolean removed = active.remove(sequence) != null;
+        if (removed) {
+            refreshRuntime(true);
+        }
+        return true;
+    }
+
+    private boolean clearAuthenticatedRemoteVisualsThrough(String streamId, long clearThroughCounter) {
+        boolean changed = removeAuthenticatedRemoteVisualsThrough(streamId, clearThroughCounter, null);
+        if (changed) {
+            refreshRuntime(true);
+        }
+        return true;
+    }
+
+    private boolean removeAuthenticatedRemoteVisualsThrough(String streamId, long clearThroughCounter,
+            java.util.UUID excludedVisualInstanceId) {
+        boolean changed = false;
+        for (Long sequence : authenticatedRemoteVisuals.clearThrough(
+                streamId, clearThroughCounter, excludedVisualInstanceId)) {
+            changed |= active.remove(sequence) != null;
+        }
+        return changed;
     }
 
     public void startLocalTest(String effectId, int seconds, float intensity) {
@@ -159,6 +266,7 @@ public final class ClientVisualManager {
     public void clearAll(FinishedVisualHandler finishedHandler, String reason, boolean serverTriggered) {
         List<ActiveVisual> cleared = new ArrayList<>(active.values());
         active.clear();
+        authenticatedRemoteVisuals.clearAll();
         if (shaderRuntimeManager != null) {
             boolean serverDerivedClear = serverTriggered;
             CopiMineClientLogger.runFromServerIf(serverDerivedClear, () -> clearRuntime(reason, serverDerivedClear));
@@ -188,6 +296,7 @@ public final class ClientVisualManager {
             }
             return expired;
         });
+        authenticatedRemoteVisuals.prune(active.keySet());
         boolean refreshedAfterExpiry = false;
         if (!finished.isEmpty()) {
             boolean serverDerivedExpiry = finished.stream().anyMatch(visual -> visual.seq() > 0L);
@@ -281,6 +390,10 @@ public final class ClientVisualManager {
             return lastRuntimeTransitionReason;
         }
         return shaderRuntimeManager == null ? "shader-runtime-manager-not-wired" : shaderRuntimeManager.lastFailureReason();
+    }
+
+    public String lastAuthenticatedRemoteVisualRejectionReason() {
+        return lastAuthenticatedRemoteVisualRejectionReason;
     }
 
     private void drawEffect(GuiGraphicsExtractor context, int width, int height, ActiveVisual visual, float pulse) {

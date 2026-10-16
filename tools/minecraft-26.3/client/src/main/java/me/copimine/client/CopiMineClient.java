@@ -70,7 +70,7 @@ public final class CopiMineClient implements ClientModInitializer {
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             PrisonerTargetSelector.invalidatePreview();
-            ClientBridgeProtocol.onJoin();
+            ClientBridgeProtocol.onJoin(client.player == null ? null : client.player.getUUID());
         });
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             PrisonerTargetSelector.invalidatePreview();

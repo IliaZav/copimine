@@ -121,6 +121,55 @@ public final class BridgeRequestCodec {
         }
     }
 
+    /**
+     * Classifies the shared plugin channel using only the fixed request header and sender byte.
+     * This is intentionally not full validation; the owning bridge still decodes and validates the
+     * complete packet after applying its per-player admission limit.
+     */
+    public static Recipient classifyRecipient(byte[] encoded) {
+        if (encoded == null || encoded.length < COMMON_HEADER_BYTES || encoded.length > MAX_REQUEST_BYTES
+                || Byte.toUnsignedInt(encoded[0]) != BridgeSigningPolicy.PROTOCOL_VERSION) {
+            return Recipient.MALFORMED;
+        }
+        int type = Byte.toUnsignedInt(encoded[1]);
+        if (type == 0) {
+            return Recipient.BOTH;
+        }
+        if (type == 1) {
+            return Recipient.END_EVENT;
+        }
+        final int senderOffset;
+        switch (type) {
+            case 2, 3 -> senderOffset = COMMON_HEADER_BYTES + Long.BYTES;
+            case 4 -> senderOffset = COMMON_HEADER_BYTES;
+            default -> { return Recipient.MALFORMED; }
+        }
+        if (encoded.length <= senderOffset) {
+            return Recipient.MALFORMED;
+        }
+        try {
+            return Sender.fromId(Byte.toUnsignedInt(encoded[senderOffset])) == Sender.NARCOTICS
+                    ? Recipient.NARCOTICS : Recipient.END_EVENT;
+        } catch (IllegalArgumentException invalidSender) {
+            return Recipient.MALFORMED;
+        }
+    }
+
+    public enum Recipient {
+        NARCOTICS,
+        END_EVENT,
+        BOTH,
+        MALFORMED;
+
+        public boolean includesNarcotics() {
+            return this == NARCOTICS || this == BOTH || this == MALFORMED;
+        }
+
+        public boolean includesEndEvent() {
+            return this == END_EVENT || this == BOTH || this == MALFORMED;
+        }
+    }
+
     private static int writeCommonHeader(DataOutputStream output, Request request) throws IOException {
         String nonce = request.clientNonce();
         if (!BridgeSigningPolicy.isCanonicalBase64Url(nonce,

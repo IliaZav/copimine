@@ -60,7 +60,7 @@ public record BridgePayload(
         source = safe(source);
         reason = safe(reason);
         status = safe(status);
-        durationMillis = clampDuration(durationMillis);
+        durationMillis = isVisualReport(messageType) ? 0 : clampDuration(durationMillis);
         intensity = clampIntensity(intensity);
         fadeInMillis = clampFade(fadeInMillis);
         fadeOutMillis = clampFade(fadeOutMillis);
@@ -404,6 +404,12 @@ public record BridgePayload(
             return 1_000;
         }
         return Math.max(1_000, Math.min(600_000, durationMillis));
+    }
+
+    private static boolean isVisualReport(String messageType) {
+        return ClientBridgeProtocol.TYPE_VISUAL_ACK.equals(messageType)
+                || ClientBridgeProtocol.TYPE_VISUAL_FINISHED.equals(messageType)
+                || ClientBridgeProtocol.TYPE_VISUAL_ERROR.equals(messageType);
     }
 
     private static int clampFade(int fadeMillis) {

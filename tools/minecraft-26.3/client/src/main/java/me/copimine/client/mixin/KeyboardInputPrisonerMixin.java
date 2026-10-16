@@ -1,6 +1,7 @@
 package me.copimine.client.mixin;
 
 import me.copimine.client.ClientBridgeProtocol;
+import me.copimine.client.WaveTwoControlInputPolicy;
 import net.minecraft.world.entity.player.Input;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.client.player.ClientInput;
@@ -15,10 +16,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class KeyboardInputPrisonerMixin extends ClientInput {
     @Inject(method = "tick", at = @At("TAIL"))
     private void copimine$lockPrisonerMovement(CallbackInfo ci) {
-        if (!ClientBridgeProtocol.isPrisonerModeActive()) {
+        if (ClientBridgeProtocol.isPrisonerModeActive()) {
+            this.keyPresses = Input.EMPTY;
+            this.moveVector = new Vec2(0.0F, 0.0F);
             return;
         }
-        this.keyPresses = Input.EMPTY;
-        this.moveVector = new Vec2(0.0F, 0.0F);
+
+        boolean reverseActive = ClientBridgeProtocol.endEventState().isReverseActive(System.currentTimeMillis());
+        if (reverseActive) {
+            this.keyPresses = WaveTwoControlInputPolicy.apply(this.keyPresses, true);
+            this.moveVector = WaveTwoControlInputPolicy.moveVector(this.keyPresses);
+        }
     }
 }

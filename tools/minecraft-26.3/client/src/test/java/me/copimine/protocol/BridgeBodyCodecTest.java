@@ -143,6 +143,23 @@ class BridgeBodyCodecTest {
         assertEquals(ready.readyRequestCounter(), decodedReady.readyRequestCounter());
         assertArrayEquals(ready.requestId(), decodedReady.requestId());
 
+        byte[] confirmDigest = new byte[32];
+        for (int index = 0; index < confirmDigest.length; index++) {
+            confirmDigest[index] = (byte) (31 - index);
+        }
+        BridgeControlBodyCodec.SenderReadyConfirmAck confirmed =
+                new BridgeControlBodyCodec.SenderReadyConfirmAck(
+                        BridgeRequestCodec.Sender.END_EVENT, EVENT, hello.requestId(), 21L, confirmDigest);
+        byte[] confirmedExpected = controlReadyConfirmAckFixture(confirmed);
+        assertArrayEquals(confirmedExpected, BridgeControlBodyCodec.encode(confirmed));
+        BridgeControlBodyCodec.SenderReadyConfirmAck decodedConfirmed =
+                (BridgeControlBodyCodec.SenderReadyConfirmAck) BridgeControlBodyCodec.decode(confirmedExpected);
+        assertEquals(confirmed.sender(), decodedConfirmed.sender());
+        assertEquals(confirmed.sessionUuid(), decodedConfirmed.sessionUuid());
+        assertEquals(confirmed.readyRequestCounter(), decodedConfirmed.readyRequestCounter());
+        assertArrayEquals(confirmed.requestId(), decodedConfirmed.requestId());
+        assertArrayEquals(confirmed.confirmRequestSha256(), decodedConfirmed.confirmRequestSha256());
+
         byte[] trailing = java.util.Arrays.copyOf(helloExpected, helloExpected.length + 1);
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(trailing));
         byte[] invalidRequestKind = helloExpected.clone();
@@ -151,6 +168,14 @@ class BridgeBodyCodecTest {
         byte[] unknownSender = readyExpected.clone();
         unknownSender[2] = 3;
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(unknownSender));
+        byte[] truncatedReceipt = java.util.Arrays.copyOf(confirmedExpected, confirmedExpected.length - 1);
+        assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(truncatedReceipt));
+        assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.encode(
+                new BridgeControlBodyCodec.SenderReadyConfirmAck(
+                        BridgeRequestCodec.Sender.END_EVENT, EVENT, hello.requestId(), 0L, confirmDigest)));
+        assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.encode(
+                new BridgeControlBodyCodec.SenderReadyConfirmAck(
+                        BridgeRequestCodec.Sender.END_EVENT, EVENT, hello.requestId(), 21L, new byte[31])));
     }
 
     @Test
@@ -383,6 +408,20 @@ class BridgeBodyCodecTest {
         writeUuid(out, body.sessionUuid());
         out.write(body.requestId());
         out.writeLong(body.readyRequestCounter());
+        return bytes.toByteArray();
+    }
+
+    private static byte[] controlReadyConfirmAckFixture(
+            BridgeControlBodyCodec.SenderReadyConfirmAck body) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(bytes);
+        out.writeByte(1);
+        out.writeByte(254);
+        out.writeByte(body.sender().id());
+        writeUuid(out, body.sessionUuid());
+        out.write(body.requestId());
+        out.writeLong(body.readyRequestCounter());
+        out.write(body.confirmRequestSha256());
         return bytes.toByteArray();
     }
 

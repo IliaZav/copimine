@@ -60,6 +60,38 @@ class EndEventClientStateTest {
         assertEquals(identity, state.tentaclePoseForEntityAt("entity", -1L));
     }
 
+    @Test
+    void reverseMarkExpiresAtItsServerDeadline() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(reverseControl("event-1", 1L, "control-1", 100L), 1_000L));
+
+        assertTrue(state.isReverseActive(1_099L));
+        assertFalse(state.isReverseActive(1_100L));
+        assertEquals("NONE", state.controlMode());
+    }
+
+    @Test
+    void eventSwitchAndConnectionResetClearThePreviousReverseMark() {
+        EndEventClientState state = new EndEventClientState();
+        assertTrue(state.apply(reverseControl("event-1", 1L, "control-1", 10_000L), 1_000L));
+        assertTrue(state.isReverseActive(1_001L));
+
+        assertFalse(state.apply(new EndEventPacket("END_WORLD_VFX_CLEAR", "event-2", 2L,
+                "", 0L, "", "", "", ""), 1_002L));
+        assertFalse(state.isReverseActive(1_003L));
+
+        assertTrue(state.apply(reverseControl("event-2", 2L, "control-2", 10_000L), 1_004L));
+        state.clear();
+        assertFalse(state.isReverseActive(1_005L));
+        assertEquals("NONE", state.controlMode());
+    }
+
+    private static EndEventPacket reverseControl(String eventId, long generation,
+                                                 String instanceId, long durationMillis) {
+        return new EndEventPacket("END_CONTROL_START", eventId, generation, instanceId,
+                durationMillis, "", "", "", "");
+    }
+
     private static EndEventPacket bind(String subject, String instance) {
         return new EndEventPacket("END_ENTITY_BIND", "test-event", 1L, instance,
                 0L, subject, "END_RIFT_ENDERMAN_V1", "", "");

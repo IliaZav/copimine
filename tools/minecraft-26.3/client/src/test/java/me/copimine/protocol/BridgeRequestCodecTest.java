@@ -128,6 +128,46 @@ class BridgeRequestCodecTest {
                         BridgeRequestCodec.Sender.END_EVENT, END_STREAM, requestId, 0, new byte[32])));
     }
 
+    @Test
+    void routesSharedChannelRequestsToOnlyTheirOwningBridge() {
+        byte[] hello = BridgeRequestCodec.encode(new BridgeRequestCodec.ControlHello(
+                NONCE, PLAYER, SESSION, sequence(16, 1)));
+        byte[] ability = BridgeRequestCodec.encode(new BridgeRequestCodec.PrisonerAbilityRequest(
+                NONCE, PLAYER, SESSION, 1, END_STREAM, EVENT, 3, "HEAL", Optional.of(TARGET)));
+        byte[] narcoticsReopen = BridgeRequestCodec.encode(new BridgeRequestCodec.StreamReopenRequest(
+                NONCE, PLAYER, SESSION, 4, BridgeRequestCodec.Sender.NARCOTICS,
+                Optional.empty(), sequence(16, 2)));
+        byte[] endEventReady = BridgeRequestCodec.encode(new BridgeRequestCodec.SenderReady(
+                NONCE, PLAYER, SESSION, 5, BridgeRequestCodec.Sender.END_EVENT,
+                END_STREAM, sequence(16, 3), sequence(32, 4)));
+        byte[] narcoticsConfirm = BridgeRequestCodec.encode(new BridgeRequestCodec.SenderReadyConfirm(
+                NONCE, PLAYER, SESSION, BridgeRequestCodec.Sender.NARCOTICS,
+                END_STREAM, sequence(16, 3), 5, sequence(32, 4)));
+
+        assertEquals(BridgeRequestCodec.Recipient.BOTH, BridgeRequestCodec.classifyRecipient(hello));
+        assertEquals(BridgeRequestCodec.Recipient.END_EVENT, BridgeRequestCodec.classifyRecipient(ability));
+        assertEquals(BridgeRequestCodec.Recipient.NARCOTICS, BridgeRequestCodec.classifyRecipient(narcoticsReopen));
+        assertEquals(BridgeRequestCodec.Recipient.END_EVENT, BridgeRequestCodec.classifyRecipient(endEventReady));
+        assertEquals(BridgeRequestCodec.Recipient.NARCOTICS, BridgeRequestCodec.classifyRecipient(narcoticsConfirm));
+    }
+
+    @Test
+    void routesUnclassifiablePacketsThroughTheBoundedMalformedPath() {
+        byte[] hello = BridgeRequestCodec.encode(new BridgeRequestCodec.ControlHello(
+                NONCE, PLAYER, SESSION, sequence(16, 1)));
+        byte[] unknownType = hello.clone();
+        unknownType[1] = 99;
+        byte[] unknownSender = BridgeRequestCodec.encode(new BridgeRequestCodec.SenderReady(
+                NONCE, PLAYER, SESSION, 5, BridgeRequestCodec.Sender.END_EVENT,
+                END_STREAM, sequence(16, 3), sequence(32, 4)));
+        unknownSender[BridgeRequestCodec.COMMON_HEADER_BYTES + Long.BYTES] = 77;
+
+        assertEquals(BridgeRequestCodec.Recipient.MALFORMED,
+                BridgeRequestCodec.classifyRecipient(new byte[]{4, 3}));
+        assertEquals(BridgeRequestCodec.Recipient.MALFORMED, BridgeRequestCodec.classifyRecipient(unknownType));
+        assertEquals(BridgeRequestCodec.Recipient.MALFORMED, BridgeRequestCodec.classifyRecipient(unknownSender));
+    }
+
     private static ByteArrayOutputStream fixtureHeader(int type) throws Exception {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(bytes);

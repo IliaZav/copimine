@@ -11,11 +11,14 @@ import java.util.UUID;
 public final class BridgeControlBodyCodec {
     public static final int SCHEMA = 1;
     public static final int HELLO_ACK_TYPE = 0;
+    public static final int SENDER_READY_CONFIRM_ACK_TYPE = 254;
     public static final int SENDER_READY_ACK_TYPE = 255;
     public static final int REQUEST_ID_BYTES = 16;
+    public static final int SHA256_BYTES = 32;
 
     private static final int HELLO_ACK_BYTES = 1 + 1 + 1 + 16 + 1 + REQUEST_ID_BYTES;
     private static final int SENDER_READY_ACK_BYTES = 1 + 1 + 1 + 16 + REQUEST_ID_BYTES + 8;
+    private static final int SENDER_READY_CONFIRM_ACK_BYTES = 1 + 1 + 1 + 16 + REQUEST_ID_BYTES + 8 + SHA256_BYTES;
 
     private BridgeControlBodyCodec() {
     }
@@ -53,6 +56,24 @@ public final class BridgeControlBodyCodec {
                 output.writeLong(readyAck.readyRequestCounter());
             }, SENDER_READY_ACK_BYTES);
         }
+        if (body instanceof SenderReadyConfirmAck confirmAck) {
+            requireSender(confirmAck.sender());
+            requireUuid(confirmAck.sessionUuid());
+            requireRequestId(confirmAck.requestId());
+            requireSha256(confirmAck.confirmRequestSha256());
+            if (confirmAck.readyRequestCounter() <= 0) {
+                throw new IllegalArgumentException("sender_ready_confirm_ack counter must be positive");
+            }
+            return write(output -> {
+                output.writeByte(SCHEMA);
+                output.writeByte(SENDER_READY_CONFIRM_ACK_TYPE);
+                output.writeByte(confirmAck.sender().id());
+                writeUuid(output, confirmAck.sessionUuid());
+                output.write(confirmAck.requestId());
+                output.writeLong(confirmAck.readyRequestCounter());
+                output.write(confirmAck.confirmRequestSha256());
+            }, SENDER_READY_CONFIRM_ACK_BYTES);
+        }
         throw new IllegalArgumentException("Unknown bridge control body type");
     }
 
@@ -86,6 +107,17 @@ public final class BridgeControlBodyCodec {
                 throw new IllegalArgumentException("sender_ready_ack counter must be positive");
             }
             body = new SenderReadyAck(sender, sessionUuid, requestId, requestCounter);
+        } else if (type == SENDER_READY_CONFIRM_ACK_TYPE) {
+            requireExactLength(encoded, SENDER_READY_CONFIRM_ACK_BYTES);
+            BridgeRequestCodec.Sender sender = readSender(input);
+            UUID sessionUuid = readUuid(input);
+            byte[] requestId = readRequestId(input);
+            long requestCounter = readLong(input);
+            if (requestCounter <= 0) {
+                throw new IllegalArgumentException("sender_ready_confirm_ack counter must be positive");
+            }
+            byte[] confirmDigest = readSha256(input);
+            body = new SenderReadyConfirmAck(sender, sessionUuid, requestId, requestCounter, confirmDigest);
         } else {
             throw new IllegalArgumentException("Unknown bridge control body type");
         }
@@ -148,6 +180,15 @@ public final class BridgeControlBodyCodec {
         return input.getLong();
     }
 
+    private static byte[] readSha256(ByteBuffer input) {
+        if (input.remaining() < SHA256_BYTES) {
+            throw new IllegalArgumentException("Truncated bridge control SHA-256 digest");
+        }
+        byte[] digest = new byte[SHA256_BYTES];
+        input.get(digest);
+        return digest;
+    }
+
     private static int readU8(ByteBuffer input) {
         if (!input.hasRemaining()) {
             throw new IllegalArgumentException("Truncated bridge control field");
@@ -178,12 +219,18 @@ public final class BridgeControlBodyCodec {
         }
     }
 
+    private static void requireSha256(byte[] digest) {
+        if (digest == null || digest.length != SHA256_BYTES) {
+            throw new IllegalArgumentException("Bridge control SHA-256 digest must be 32 bytes");
+        }
+    }
+
     @FunctionalInterface
     private interface Writer {
         void write(DataOutputStream output) throws IOException;
     }
 
-    public sealed interface Body permits HelloAck, SenderReadyAck {
+    public sealed interface Body permits HelloAck, SenderReadyAck, SenderReadyConfirmAck {
     }
 
     public record HelloAck(BridgeRequestCodec.Sender sender, UUID sessionUuid,
@@ -207,6 +254,24 @@ public final class BridgeControlBodyCodec {
         @Override
         public byte[] requestId() {
             return requestId == null ? null : requestId.clone();
+        }
+    }
+
+    public record SenderReadyConfirmAck(BridgeRequestCodec.Sender sender, UUID sessionUuid,
+            byte[] requestId, long readyRequestCounter, byte[] confirmRequestSha256) implements Body {
+        public SenderReadyConfirmAck {
+            requestId = requestId == null ? null : requestId.clone();
+            confirmRequestSha256 = confirmRequestSha256 == null ? null : confirmRequestSha256.clone();
+        }
+
+        @Override
+        public byte[] requestId() {
+            return requestId == null ? null : requestId.clone();
+        }
+
+        @Override
+        public byte[] confirmRequestSha256() {
+            return confirmRequestSha256 == null ? null : confirmRequestSha256.clone();
         }
     }
 }

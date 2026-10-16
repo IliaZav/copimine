@@ -5,14 +5,19 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import me.copimine.protocol.ClientModHandshakePolicy;
+import me.copimine.protocol.BridgeEnvelope;
+import me.copimine.protocol.BridgeRequestCodec;
+import me.copimine.protocol.BridgeSigningPolicy;
+import me.copimine.protocol.EndEventBridgeBodyCodec;
+import me.copimine.protocol.NarcoticsBridgeBodyCodec;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
-import me.copimine.protocol.EncounterGenerationPolicy;
 
 public final class ClientBridgeProtocol {
     public static final String MOD_CHANNEL = "copimine:client_bridge";
+    public static final String MOD_CHANNEL_V4 = "copimine:client_bridge_v4";
     public static final int PROTOCOL_VERSION = ClientModHandshakePolicy.PROTOCOL_VERSION;
     public static final String TYPE_CLIENT_MOD_CHALLENGE = ClientModHandshakePolicy.CHALLENGE_MESSAGE_TYPE;
     public static final String TYPE_HELLO = "hello";
@@ -66,6 +71,85 @@ public final class ClientBridgeProtocol {
     private static boolean lastReportedIrisShaderPackActive;
     private static boolean irisDetectionFailureLogged;
     private static ClientVisualManager registeredVisualManager;
+    private static final ClientBridgeConnectionState BRIDGE_V4_STATE = new ClientBridgeConnectionState();
+    private static final ClientBridgeProtocolV4 BRIDGE_V4 = new ClientBridgeProtocolV4(
+            BRIDGE_V4_STATE,
+            BridgeSigningPolicy.parsePinnedPublicKey(),
+            new ClientBridgeProtocolV4.Transport() {
+                @Override
+                public boolean canSendRequest() {
+                    return ClientPlayNetworking.canSend(BridgeV4Payload.ID);
+                }
+
+                @Override
+                public boolean sendRequest(byte[] requestBytes) {
+                    if (!canSendRequest()) {
+                        return false;
+                    }
+                    ClientPlayNetworking.send(new BridgeV4Payload(requestBytes));
+                    return true;
+                }
+
+                @Override
+                public void executeOnClient(Runnable task) {
+                    Minecraft.getInstance().execute(task);
+                }
+
+                @Override
+                public UUID currentPlayerUuid() {
+                    Minecraft client = Minecraft.getInstance();
+                    return client.player == null ? null : client.player.getUUID();
+                }
+
+                @Override
+                public long currentTimeMillis() {
+                    return System.currentTimeMillis();
+                }
+            },
+            new ClientBridgeProtocolV4.MutationHandler() {
+                @Override
+                public void apply(BridgeRequestCodec.Sender sender, Object typedBody) {
+                    applyV4Mutation(sender, typedBody);
+                }
+
+                @Override
+                public BridgePayload applyNarcotics(NarcoticsBridgeBodyCodec.Body body,
+                        BridgeEnvelope.Metadata metadata) {
+                    ClientVisualManager manager = registeredVisualManager;
+                    boolean applied = manager != null && manager.applyAuthenticatedRemoteVisual(
+                            body, metadata.streamId(), metadata.counter());
+                    if (applied) {
+                        return BridgePayload.visualAck(body.sessionUuid().toString(), body.commandSeq(),
+                                body.effectId(), ClientVisualReportPolicy.ackStatus(body.type()));
+                    }
+                    if (!ClientVisualReportPolicy.shouldReportStartError(body.type())) {
+                        return null;
+                    }
+                    return BridgePayload.visualError(body.sessionUuid().toString(), body.commandSeq(),
+                            body.effectId(), ClientVisualReportPolicy.errorReason(manager != null,
+                                    manager == null ? null : manager.lastAuthenticatedRemoteVisualRejectionReason()));
+                }
+
+                @Override
+                public void reportNarcotics(BridgePayload report) {
+                    if (!ClientPlayNetworking.canSend(BridgePayload.ID)) {
+                        return;
+                    }
+                    ClientPlayNetworking.send(report);
+                    if (TYPE_VISUAL_ACK.equals(report.messageType())) {
+                        lastAckSeq = report.seq();
+                    } else if (TYPE_VISUAL_ERROR.equals(report.messageType())) {
+                        lastError = report.reason();
+                        CopiMineClientLogger.warnFromServer("Visual error reported to server: seq="
+                                + report.seq() + ", effect=" + report.effectId() + ", reason=" + report.reason());
+                    }
+                }
+
+                @Override
+                public void clear(BridgeRequestCodec.Sender sender) {
+                    clearV4Sender(sender);
+                }
+            });
     private static final EndEventClientState END_EVENT_STATE = new EndEventClientState();
     private static final EndEventWorldVfxManager END_EVENT_WORLD_VFX = new EndEventWorldVfxManager();
     private static final EndEventBlackFogManager END_EVENT_BLACK_FOG = new EndEventBlackFogManager();
@@ -79,6 +163,8 @@ public final class ClientBridgeProtocol {
         registeredVisualManager = manager;
         PayloadTypeRegistry.serverboundPlay().register(BridgePayload.ID, BridgePayload.CODEC);
         PayloadTypeRegistry.clientboundPlay().register(BridgePayload.ID, BridgePayload.CODEC);
+        PayloadTypeRegistry.serverboundPlay().register(BridgeV4Payload.ID, BridgeV4Payload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(BridgeV4Payload.ID, BridgeV4Payload.CODEC);
         ClientPlayNetworking.registerGlobalReceiver(BridgePayload.ID, (payload, context) -> {
             if (payload.protocol() != PROTOCOL_VERSION) {
                 lastError = "protocol-mismatch:" + payload.protocol();
@@ -90,8 +176,8 @@ public final class ClientBridgeProtocol {
                 return;
             }
             if (payload.messageType().startsWith(TYPE_END_EVENT_PREFIX)) {
-                if (!EncounterGenerationPolicy.isActiveGeneration(payload.seq())) return;
-                context.client().execute(() -> CopiMineClientLogger.runFromServer(() -> applyEndEventPayload(payload)));
+                CopiMineClientLogger.warnFromServer(
+                        "Ignored unsigned v3 End Event mutation: " + payload.messageType());
                 return;
             }
             switch (payload.messageType()) {
@@ -109,52 +195,78 @@ public final class ClientBridgeProtocol {
                                         + ", session=" + sessionId);
                     }
                     helloAcknowledged = true;
+                    try {
+                        BRIDGE_V4.acceptVerifiedSession(UUID.fromString(sessionId));
+                    } catch (IllegalArgumentException invalidSession) {
+                        lastError = "invalid-v3-session-id";
+                        BRIDGE_V4.invalidateSession();
+                        CopiMineClientLogger.warnFromServer("Ignored v3 PING with invalid session UUID");
+                    }
                 });
-                case TYPE_VISUAL_START -> context.client().execute(() -> CopiMineClientLogger.runFromServer(() -> {
-                    if (!RemoteVisualSequencePolicy.isValidServerSequence(payload.seq())) {
-                        CopiMineClientLogger.warnFromServer("Rejected visual start with invalid sequence: seq=" + payload.seq());
-                        sendVisualError(payload.seq(), payload.effectId(), "invalid-sequence");
-                        return;
-                    }
-                    if (!managerStatusAllowsServerVisuals(manager)) {
-                        CopiMineClientLogger.warnFromServer("Rejected visual start because server visuals are disabled");
-                        sendVisualError(payload.seq(), payload.effectId(), "server-visuals-disabled");
-                        return;
-                    }
-                    if (manager.start(
-                            payload.effectId(),
-                            payload.shaderpack(),
-                            payload.seq(),
-                            payload.durationMillis(),
-                            payload.intensity(),
-                            payload.clearPolicy(),
-                            payload.fadeInMillis(),
-                            payload.fadeOutMillis(),
-                            payload.source()
-                    )) {
-                        String route = manager.activeRuntimeRouteName();
-                        CopiMineClientLogger.infoFromServer("Visual started: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", route=" + route);
-                        sendVisualAck(payload.seq(), payload.effectId(), "STARTED_" + route);
-                    } else {
-                        CopiMineClientLogger.warnFromServer("Visual start failed: seq=" + payload.seq() + ", effect=" + payload.effectId() + ", reason=" + manager.lastFailureReason());
-                        sendVisualError(payload.seq(), payload.effectId(), manager.lastFailureReason());
-                    }
-                }));
-                case TYPE_VISUAL_STOP -> context.client().execute(() -> CopiMineClientLogger.runFromServer(() -> {
-                    manager.stop(payload.effectId(), true);
-                    CopiMineClientLogger.infoFromServer("Visual stop received: seq=" + payload.seq() + ", effect=" + payload.effectId());
-                    sendVisualAck(payload.seq(), payload.effectId(), "STOPPED");
-                }));
-                case TYPE_VISUAL_CLEAR_ALL -> context.client().execute(() -> CopiMineClientLogger.runFromServer(() -> {
-                    manager.clearAll("server_clear", true);
-                    END_EVENT_PLAYER_VISUALS.clear();
-                    CopiMineClientLogger.infoFromServer("Visual clear-all received");
-                    sendVisualAck(payload.seq(), "", "CLEARED");
-                }));
+                case TYPE_VISUAL_START, TYPE_VISUAL_STOP, TYPE_VISUAL_CLEAR_ALL,
+                        TYPE_PRISONER_ABILITY_REQUEST -> CopiMineClientLogger.warnFromServer(
+                                "Ignored unsigned v3 server mutation: " + payload.messageType());
+                case TYPE_VISUAL_ACK, TYPE_VISUAL_FINISHED, TYPE_VISUAL_ERROR -> {
+                    // These reports are client-originated on v3 and are never server commands.
+                }
                 default -> {
                 }
             }
         });
+        ClientPlayNetworking.registerGlobalReceiver(BridgeV4Payload.ID, (payload, context) -> {
+            Minecraft client = context.client();
+            UUID currentPlayer = client.player == null ? null : client.player.getUUID();
+            BRIDGE_V4.onEnvelope(payload, currentPlayer, System.currentTimeMillis());
+        });
+    }
+
+    private static void applyV4Mutation(BridgeRequestCodec.Sender sender, Object typedBody) {
+        if (sender == BridgeRequestCodec.Sender.END_EVENT
+                && typedBody instanceof EndEventBridgeBodyCodec.Body body) {
+            if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_BIND) {
+                return;
+            }
+            if (body.type() == EndEventBridgeBodyCodec.Type.CONTEXT_UNBIND) {
+                resetEndEventConnection();
+                return;
+            }
+            BridgePayload payload = toLegacyAdapterPayload(body);
+            CopiMineClientLogger.runFromServer(() -> applyEndEventPayload(payload));
+            return;
+        }
+    }
+
+    private static BridgePayload toLegacyAdapterPayload(EndEventBridgeBodyCodec.Body body) {
+        return new BridgePayload(
+                TYPE_END_EVENT_PREFIX + body.type().name(),
+                PROTOCOL_VERSION,
+                body.generation(),
+                body.bodyTimestampMillis(),
+                body.eventUuid().toString(),
+                body.instanceId(),
+                false, false, false, false, Set.of(),
+                "",
+                body.visualId(),
+                (int) body.durationMillis(),
+                body.progressOrIntensity(),
+                (int) body.health(),
+                (int) body.maxHealth(),
+                body.subjectOrMode(),
+                body.clearPolicy(),
+                body.controlId(),
+                body.reservedOne(),
+                body.status());
+    }
+
+    private static void clearV4Sender(BridgeRequestCodec.Sender sender) {
+        if (sender == BridgeRequestCodec.Sender.END_EVENT) {
+            resetEndEventConnection();
+            return;
+        }
+        ClientVisualManager manager = registeredVisualManager;
+        if (manager != null) {
+            manager.clearAuthenticatedRemoteVisuals();
+        }
     }
 
     private static void applyEndEventPayload(BridgePayload payload) {
@@ -344,7 +456,12 @@ public final class ClientBridgeProtocol {
         CopiMineClientLogger.warnFromServer("Visual error reported to server: seq=" + seq + ", effect=" + effectId + ", reason=" + reason);
     }
 
-    public static void onJoin() {
+    public static void onJoin(UUID playerUuid) {
+        if (playerUuid != null) {
+            BRIDGE_V4.openConnection(playerUuid);
+        } else {
+            BRIDGE_V4.close();
+        }
         resetEndEventConnection();
         connected = true;
         sessionId = "";
@@ -363,6 +480,7 @@ public final class ClientBridgeProtocol {
     }
 
     public static void onDisconnect() {
+        BRIDGE_V4.close();
         resetEndEventConnection();
         connected = false;
         helloAttempts = 0;
@@ -382,6 +500,7 @@ public final class ClientBridgeProtocol {
 
     public static void tickNetwork(Minecraft client) {
         long now = System.currentTimeMillis();
+        BRIDGE_V4.tick(now);
         END_EVENT_WORLD_VFX.tick(now);
         END_EVENT_BLACK_FOG.tick(now);
         WaveMusicMix.tick(client, now);
@@ -436,7 +555,8 @@ public final class ClientBridgeProtocol {
             CopiMineClientLogger.warnFromServer("Rejected malformed or unexpected CopiMineClient challenge");
             return;
         }
-        if (!sessionId.equals(payload.sessionId()) || helloAcknowledged) {
+        if (!sessionId.equals(payload.sessionId())) {
+            BRIDGE_V4.invalidateSession();
             resetHandshakeForChallenge(payload.sessionId());
         }
         if (!helloSent) {
@@ -500,8 +620,7 @@ public final class ClientBridgeProtocol {
 
     /** Send a single selected target only in response to a Q/W/E/R key press. */
     public static void sendPrisonerAbility(PrisonerHudController.Ability ability) {
-        if (!connected || !helloSent || !helloAcknowledged
-                || !ClientPlayNetworking.canSend(BridgePayload.ID)) {
+        if (!connected || !helloSent || !helloAcknowledged || !BRIDGE_V4.isReady(BridgeRequestCodec.Sender.END_EVENT)) {
             return;
         }
         Minecraft client = Minecraft.getInstance();
@@ -514,9 +633,15 @@ public final class ClientBridgeProtocol {
         if (targetUuid.isBlank()) {
             return;
         }
-        ClientPlayNetworking.send(BridgePayload.prisonerAbilityRequest(
-                sessionId, PRISONER_HUD.generation(), PRISONER_HUD.eventId(),
-                ability.name(), targetUuid));
+        try {
+            BRIDGE_V4.sendPrisonerAbility(
+                    UUID.fromString(PRISONER_HUD.eventId()),
+                    PRISONER_HUD.generation(),
+                    ability.name(),
+                    java.util.Optional.of(UUID.fromString(targetUuid)));
+        } catch (IllegalArgumentException invalidUuid) {
+            CopiMineClientLogger.warn("Rejected prisoner ability request with invalid event or target UUID");
+        }
     }
 
     public static boolean isBoundEndBoss(String uuid) {

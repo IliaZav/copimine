@@ -576,8 +576,11 @@ def test_wave7_final_seal_rebuilds_and_preserves_the_wall_when_boss_is_pinned() 
     cleanup_start = source.index("private void clearBossOnly")
     cleanup_end = source.index("private void tickBoss", cleanup_start)
     cleanup = source[cleanup_start:cleanup_end]
-    assert "if (!finalSealBarrierContext())" in cleanup
-    assert 'releaseFinalSealBarriers("boss-cleanup")' in cleanup
+    normalized_cleanup = " ".join(cleanup.split())
+    assert (
+        'if (!finalSealBarrierContext() && !isWave7RecoveryCheckpointActive()) '
+        '{ releaseFinalSealBarriers("boss-cleanup"); }'
+    ) in normalized_cleanup
 
     assert "private boolean ensureFinalSealBarriersIntact()" in source
     assert "END_RIFT_FINAL_SEAL_BARRIERS_REBUILT" in source

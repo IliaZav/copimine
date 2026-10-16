@@ -2241,7 +2241,7 @@ def test_official_wave7_bot_has_room_local_autopilot() -> None:
         probe,
     ), "Wave 7 probe must keep its test-only repositioning inside the chamber wait"
     assert re.search(
-        r"Wait-WaveComplete\s+-Wave 7[\s\S]*?Set-Content[\s\S]*?ACTIVE",
+        r"Wait-WaveComplete\s+-Wave 7[\s\S]*?Set-PlayerBotModeForName\s+-Name\s+\$name\s+-Mode\s+'ACTIVE'",
         probe,
     ), "the official probe must return bots to normal boss combat after Wave 7"
 

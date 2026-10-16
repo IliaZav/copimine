@@ -388,6 +388,24 @@ def test_wave7_collision_and_visual_layers_are_separate() -> None:
     assert "world border" not in root.lower()
 
 
+def test_wave7_cleanup_recovery_and_final_seal_require_complete_owned_geometry() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    recovery = root[root.index("private void recoverHazardJournal"):
+                    root.index("private void applySnapshot", root.index("private void recoverHazardJournal"))]
+    cleanup = root[root.index("private boolean clearRealitySplitBarriers"):
+                   root.index("private boolean isRealitySplitBarrierBlock")]
+    final_seal = root[root.index("private boolean finalSealBarrierCellsIntact"):
+                       root.index("private void restoreCurrentCollapseRingVisualsAfterBootstrap")]
+    plan_start = root.index("private boolean spawnRealitySplitBarriers")
+    plan = root[plan_start:root.index("/** Remove one completed adjacent room boundary", plan_start)]
+
+    assert "restoreRealitySplitBarrierCellsAtomically" in recovery
+    assert "restoreRealitySplitBarrierCellsAtomically" in cleanup
+    assert "realitySplitBarrierCells.equals(requiredCells)" in final_seal
+    assert "RealitySplitBarrierCoveragePolicy.missing(requiredInsideArena" in plan
+    assert "existingWall.getState() instanceof org.bukkit.block.TileState" in plan
+
+
 def test_disposable_wave_completion_does_not_require_official_reward_roster() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     start = root.index("private void tickWaveCompletion")
@@ -573,7 +591,9 @@ def test_wave7_cleanup_reconciles_persisted_cells_even_when_live_maps_are_empty(
     assert "realitySplitBarrierCells.isEmpty()" in body
     assert "RESTORED" in body
     assert "hazardJournal.markRestored()" in root
-    assert "restoreBlock(barrier, realitySplitBarrierOriginals.get(cell))" in root
+    assert "restoreRealitySplitBarrierCellsAtomically" in body
+    assert "restoreRealitySplitBlock(block, target.originalBlockData())" in root
+    assert "block.getType() == Material.AIR" in root
 
 
 def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None:

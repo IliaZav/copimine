@@ -14,8 +14,8 @@ def test_actual_coverage_accepts_full_glass_and_refuses_partial_or_unplaced_cell
     import subprocess
 
     source = (ROOT / 'copimine-end-event/src/me/copimine/endevent/CopiMineEndEvent.java').read_text(encoding='utf-8')
-    start = source.index('            final int barrierCoreX = core.getBlockX();')
-    coverage = source[start:source.index('            if (!uncovered.isEmpty())', start)]
+    start = source.index('        final int barrierCoreX = core.getBlockX();')
+    coverage = source[start:source.index('        if (!uncovered.isEmpty())', start)]
     helper = ''
     signature = 'private boolean isRealitySplitExistingWallCoverage('
     if signature in source:
@@ -38,12 +38,16 @@ public class BarrierCoverageProbe {
     }
     record Shape(List<BoundingBox> boxes){List<BoundingBox> getBoundingBoxes(){return boxes;}}
     record Material(boolean occluding){boolean isOccluding(){return occluding;}}
-    record Block(boolean passable,boolean liquid,Material type,Shape shape){
+    record Block(boolean passable,boolean liquid,Material type,Shape shape,boolean tileState){
+        Block(boolean passable,boolean liquid,Material type,Shape shape){this(passable,liquid,type,shape,false);}
         boolean isPassable(){return passable;} boolean isLiquid(){return liquid;}
         Material getType(){return type;} Shape getCollisionShape(){return shape;}
+        Object getState(){return tileState?new org.bukkit.block.TileState(){}:new Object();}
     }
     static class World { Block wall; Block getBlockAt(int x,int y,int z){return wall;} }
     record Location(World world,int x,int y,int z){int getBlockX(){return x;} int getBlockZ(){return z;}}
+    int coreX=13, coreZ=-34;
+    boolean finalSealBarrierContext(){return false;}
     boolean isRealitySplitBarrierPlacementLocation(Location location){return true;}
     Set<RealitySplitBarrierPolicy.Cell> check(World world, boolean scheduled){
         var core=new Location(world,13,68,-34); int floorY=68;
@@ -61,6 +65,8 @@ public class BarrierCoverageProbe {
         var opaque=new Material(true); var transparent=new Material(false);
         world.wall=new Block(false,false,opaque,full);
         require(probe.check(world,false).isEmpty(),"existing opaque full block closes the wall");
+        world.wall=new Block(false,false,opaque,full,true);
+        require(!probe.check(world,false).isEmpty(),"tile-state blocks cannot substitute for journaled barriers");
         world.wall=new Block(true,false,transparent,new Shape(List.of()));
         require(probe.check(world,true).isEmpty(),"journal-planned barrier covers passable air");
         require(!probe.check(world,false).isEmpty(),"unplanned air, including protected gate/floor skips, must fail closed");
@@ -74,7 +80,10 @@ public class BarrierCoverageProbe {
         require(probe.check(world,false).isEmpty(),"full glass must count as physical coverage despite being non-occluding");
     }
 ''' + helper + '\n}', encoding='utf-8')
-    compiled = subprocess.run(['javac', '-J-Xmx96m', '-encoding', 'UTF-8', '-d', str(tmp_path), str(fixture),
+    tile_state = tmp_path / 'org' / 'bukkit' / 'block' / 'TileState.java'
+    tile_state.parent.mkdir(parents=True)
+    tile_state.write_text('package org.bukkit.block; public interface TileState {}', encoding='utf-8')
+    compiled = subprocess.run(['javac', '-J-Xmx96m', '-encoding', 'UTF-8', '-d', str(tmp_path), str(tile_state), str(fixture),
                                str(ROOT / 'copimine-end-event/src/me/copimine/endevent/domain/RealitySplitBarrierPolicy.java'),
                                str(ROOT / 'copimine-end-event/src/me/copimine/endevent/domain/RealitySplitBarrierCoveragePolicy.java')],
                               capture_output=True, text=True, timeout=30)

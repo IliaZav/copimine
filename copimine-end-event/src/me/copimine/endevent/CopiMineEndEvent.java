@@ -188,6 +188,7 @@ import me.copimine.endevent.domain.RealitySplitRuntimePolicy;
 import me.copimine.endevent.domain.ClientBindingReconnectPolicy;
 import me.copimine.endevent.domain.CollapseRingGeometryPolicy;
 import me.copimine.endevent.domain.RealitySplitBarrierPolicy;
+import me.copimine.endevent.domain.RealitySplitBarrierMutationPolicy;
 import me.copimine.endevent.domain.RealitySplitCombatSeparationPolicy;
 import me.copimine.endevent.domain.RealitySplitPlayerTeleportPolicy;
 import me.copimine.endevent.domain.RealitySplitPlayerKnockbackPolicy;
@@ -343,6 +344,8 @@ import org.joml.Quaternionf;
  */
 public final class CopiMineEndEvent extends JavaPlugin implements Listener, CommandExecutor, TabCompleter,
         PluginMessageListener {
+    private record RealitySplitBarrierRestoreTarget(int x, int y, int z, String originalBlockData) { }
+
     private static final int CLIENT_BRIDGE_PROTOCOL_VERSION = 3;
     private static final String EVENT_KIND_CORE = "CORE";
     private static final String EVENT_KIND_PAD = "PAD";
@@ -1953,6 +1956,21 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (world == null || core == null || !realitySplitChamberController.owns(generation)) {
             return false;
         }
+        int chamberCount = realitySplitChamberController.assignment().chamberCount();
+        Set<RealitySplitBarrierPolicy.Cell> requiredCells = RealitySplitBarrierPolicy
+                .finalSealCells(chamberCount).stream()
+                .filter(cell -> cell.level() >= 1
+                        && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT)
+                .filter(cell -> !(core.getBlockX() + cell.xOffset() == coreX
+                        && core.getBlockZ() + cell.zOffset() == coreZ
+                        && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS))
+                .filter(cell -> isRealitySplitBarrierPlacementLocation(new Location(world,
+                        core.getBlockX() + cell.xOffset(), combatFloorY() + cell.level(),
+                        core.getBlockZ() + cell.zOffset())))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (requiredCells.isEmpty() || !realitySplitBarrierCells.equals(requiredCells)) {
+            return false;
+        }
         int[] levels = new int[RealitySplitBarrierPolicy.FINAL_SEAL_HEIGHT + 1];
         int centralCoverCells = 0;
         for (RealitySplitBarrierPolicy.Cell cell : realitySplitBarrierCells) {
@@ -2786,6 +2804,36 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         int restored = 0;
         int skipped = 0;
+        boolean realitySplitRecoveryBlocked = false;
+        Map<String, RealitySplitBarrierRestoreTarget> realitySplitRestoreTargets = new LinkedHashMap<>();
+        for (HazardMutationJournal.Entry entry : journal.entries()) {
+            if (!entry.isRealitySplitBarrierMutation()) continue;
+            RealitySplitBarrierRestoreTarget target = new RealitySplitBarrierRestoreTarget(
+                    entry.x(), entry.floorY() + 1, entry.z(), entry.webOriginal());
+            String coordinate = target.x() + ":" + target.y() + ":" + target.z();
+            RealitySplitBarrierRestoreTarget previous = realitySplitRestoreTargets.putIfAbsent(
+                    coordinate, target);
+            if (previous != null && !previous.originalBlockData().equals(target.originalBlockData())) {
+                realitySplitRecoveryBlocked = true;
+                getLogger().severe("WAVE_HAZARD_RECOVERY_BLOCKED event=" + journal.eventId()
+                        + " reason=wave7-barrier-original-conflict x=" + target.x()
+                        + " y=" + target.y() + " z=" + target.z());
+            }
+        }
+        if (!realitySplitRecoveryBlocked && !realitySplitRestoreTargets.isEmpty()) {
+            RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierRestoreTarget> result =
+                    restoreRealitySplitBarrierCellsAtomically(world,
+                            List.copyOf(realitySplitRestoreTargets.values()));
+            if (result.committed()) {
+                restored += result.applied();
+            } else {
+                skipped += Math.max(1, result.failedCells().size());
+                realitySplitRecoveryBlocked = true;
+                getLogger().severe("WAVE_HAZARD_RECOVERY_BLOCKED event=" + journal.eventId()
+                        + " reason=wave7-barrier-transaction-failed rollback_complete="
+                        + result.rollbackComplete() + " failed_cells=" + result.failedCells());
+            }
+        }
         for (HazardMutationJournal.Entry entry : journal.entries()) {
             if (entry.isFireMutation()) {
                 Block fire = world.getBlockAt(entry.x(), entry.floorY(), entry.z());
@@ -2827,13 +2875,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 continue;
             }
             if (entry.isRealitySplitBarrierMutation()) {
-                Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
-                if (isRealitySplitBarrierBlock(barrier)) {
-                    restoreBlock(barrier, entry.webOriginal());
-                    restored++;
-                } else {
-                    skipped++;
-                }
                 continue;
             }
             if (entry.isIceMutation()) {
@@ -2876,6 +2917,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     skipped++;
                 }
             }
+        }
+        if (realitySplitRecoveryBlocked) {
+            recoveryReason = "END_RIFT_WAVE7_BARRIER_RECOVERY_UNVERIFIED";
+            getLogger().severe("WAVE_HAZARD_RECOVERY_BLOCKED event=" + journal.eventId()
+                    + " reason=wave7-barrier-restore-unverified skipped=" + skipped);
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return;
         }
         if (hazardJournal.markRestored()) {
             getLogger().warning("WAVE_HAZARD_RECOVERED event=" + journal.eventId()
@@ -26150,10 +26198,27 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 + " containment=server-enforced");
     }
 
+    private boolean restoreRealitySplitBarrierPlan(
+            World world, int originX, int originZ, int floorY,
+            List<RealitySplitBarrierPolicy.Cell> cells,
+            Map<RealitySplitBarrierPolicy.Cell, String> originals) {
+        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
+                RealitySplitBarrierMutationPolicy.applyAtomically(cells,
+                        cell -> world.getBlockAt(originX + cell.xOffset(),
+                                        floorY + cell.level(), originZ + cell.zOffset())
+                                .getBlockData().getAsString(),
+                        cell -> restoreRealitySplitBlock(world.getBlockAt(
+                                originX + cell.xOffset(), floorY + cell.level(),
+                                originZ + cell.zOffset()), originals.get(cell)),
+                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
+                                originX + cell.xOffset(), floorY + cell.level(),
+                                originZ + cell.zOffset()), before));
+        return result.committed();
+    }
+
     /**
      * Build the visible and collidable Wave 7 room separators from the
-     * deterministic policy.  Only passable blocks are changed and every
-     * placed barrier is journaled before the first mutation.
+     * deterministic policy. Every owned cell is journaled before mutation.
      */
     private boolean spawnRealitySplitBarriers(World world, Location core) {
         if (!ensureRealitySplitChamberAssignment()) {
@@ -26204,19 +26269,71 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int floorY = combatFloorY();
         List<HazardMutationJournal.Entry> journalEntries = new ArrayList<>();
         Map<RealitySplitBarrierPolicy.Cell, String> plannedOriginals = new LinkedHashMap<>();
+        Set<RealitySplitBarrierPolicy.Cell> plannedBarrierCells = new LinkedHashSet<>();
+        HazardMutationJournal.Snapshot existing = hazardJournal == null
+                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
+        HazardMutationJournal.Snapshot journal = existing;
+        boolean existingOnlyRealitySplit = journal.entries().stream().allMatch(
+                HazardMutationJournal.Entry::isRealitySplitBarrierMutation);
+        if (!journal.valid() || !journal.entries().isEmpty() && !existingOnlyRealitySplit
+                || existing.status() != HazardMutationJournal.Status.EMPTY
+                && existing.status() != HazardMutationJournal.Status.RESTORED) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=hazard-journal-busy status=" + existing.status());
+            return false;
+        }
+        boolean journalScopeMatches = journal.entries().isEmpty()
+                || journal.eventId().equals(eventId) && journal.generation() == generation
+                && journal.world().equals(world.getName());
+        boolean discardRestoredJournal = !journalScopeMatches
+                && journal.status() == HazardMutationJournal.Status.RESTORED;
+        if (!journal.entries().isEmpty() && !journalScopeMatches && !discardRestoredJournal) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " reason=hazard-journal-scope-mismatch journal_event=" + journal.eventId()
+                    + " journal_generation=" + journal.generation()
+                    + " journal_world=" + journal.world());
+            return false;
+        }
         List<RealitySplitBarrierPolicy.Cell> plannedCells = finalSealBarrierContext()
                 ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
                 : RealitySplitBarrierPolicy.cellsExcludingBoundaries(
                         barrierChamberCount, openBoundaryIndexes);
-        int boundaryCount = barrierChamberCount == 2 ? 1 : barrierChamberCount;
-        if (plannedCells.isEmpty() && !finalSealBarrierContext()
-                && openBoundaryIndexes.size() == boundaryCount) {
-            getLogger().info("END_RIFT_WAVE7_BARRIERS_READY event=" + eventId
-                    + " generation=" + generation + " chambers=" + chamberCount
-                    + " cells=0 open_boundaries=" + openBoundaryIndexes.size()
-                    + " collision=true visible=true journaled=true");
-            return true;
+        Set<RealitySplitBarrierPolicy.Cell> plannedCellSet = new LinkedHashSet<>(plannedCells);
+        Set<RealitySplitBarrierPolicy.Cell> geometryCells = new LinkedHashSet<>(
+                finalSealBarrierContext()
+                        ? RealitySplitBarrierPolicy.finalSealCells(barrierChamberCount)
+                        : RealitySplitBarrierPolicy.cells(barrierChamberCount));
+        Map<RealitySplitBarrierPolicy.Cell, HazardMutationJournal.Entry> retainedOpenEntries =
+                new LinkedHashMap<>();
+        for (HazardMutationJournal.Entry entry : journal.entries()) {
+            if (discardRestoredJournal) {
+                continue;
+            }
+            if (!entry.isRealitySplitBarrierMutation()) {
+                continue;
+            }
+            RealitySplitBarrierPolicy.Cell cell = new RealitySplitBarrierPolicy.Cell(
+                    entry.x() - core.getBlockX(), entry.z() - core.getBlockZ(),
+                    entry.floorY() + 1 - floorY);
+            if (!geometryCells.contains(cell) || plannedCellSet.contains(cell)) {
+                continue;
+            }
+            if (entry.floorY() != floorY || entry.webOriginal() == null
+                    || entry.webOriginal().isBlank()
+                    || !entry.worldId().equalsIgnoreCase(world.getUID().toString())
+                    || !entry.eventId().equals(eventId) || entry.generation() != generation) {
+                getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                        + " reason=open-boundary-journal-entry-invalid cell=" + cell);
+                return false;
+            }
+            retainedOpenEntries.putIfAbsent(cell, entry);
         }
+        for (Map.Entry<RealitySplitBarrierPolicy.Cell, HazardMutationJournal.Entry> retained
+                : retainedOpenEntries.entrySet()) {
+            plannedOriginals.put(retained.getKey(), retained.getValue().webOriginal());
+        }
+        journalEntries.addAll(retainedOpenEntries.values());
+        int boundaryCount = barrierChamberCount == 2 ? 1 : barrierChamberCount;
         for (RealitySplitBarrierPolicy.Cell cell : plannedCells) {
             int x = core.getBlockX() + cell.xOffset();
             int z = core.getBlockZ() + cell.zOffset();
@@ -26227,60 +26344,74 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boolean coreClearance = finalSealBarrierContext()
                     && x == coreX && z == coreZ
                     && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS;
+            boolean existingFullBlock = isRealitySplitExistingWallCoverage(barrier);
             if (coreClearance
                     || !isRealitySplitBarrierPlacementLocation(location) || isGateLocation(location)
                     || !floor.getType().isSolid() || floor.isLiquid()
-                    || !barrier.isPassable() || barrier.isLiquid()) {
+                    || barrier.isLiquid()
+                    || !barrier.isPassable() && !existingFullBlock
+                    || barrier.getState() instanceof org.bukkit.block.TileState) {
                 continue;
             }
             String original = barrier.getBlockData().getAsString();
             RealitySplitBarrierPolicy.Cell previous = cell;
             if (plannedOriginals.putIfAbsent(previous, original) == null) {
+                plannedBarrierCells.add(previous);
                 journalEntries.add(new HazardMutationJournal.Entry(
                         x, y - 1, z, floor.getBlockData().getAsString(), original,
                         "REALITY_SPLIT_BARRIER", world.getUID().toString(), eventId, generation));
             }
         }
-        if (!finalSealBarrierContext()) {
-            final int barrierCoreX = core.getBlockX();
-            final int barrierCoreZ = core.getBlockZ();
-            List<RealitySplitBarrierPolicy.Cell> requiredInsideArena = plannedCells.stream()
-                    .filter(cell -> isRealitySplitBarrierPlacementLocation(new Location(world,
-                            barrierCoreX + cell.xOffset(), floorY + cell.level(), barrierCoreZ + cell.zOffset())))
-                    .toList();
-            Set<RealitySplitBarrierPolicy.Cell> uncovered =
-                    me.copimine.endevent.domain.RealitySplitBarrierCoveragePolicy.missing(requiredInsideArena, cell -> {
-                        if (plannedOriginals.containsKey(cell)) return true;
-                        Block existingWall = world.getBlockAt(barrierCoreX + cell.xOffset(),
-                                floorY + cell.level(), barrierCoreZ + cell.zOffset());
-                        return isRealitySplitExistingWallCoverage(existingWall);
-                    });
-            if (!uncovered.isEmpty()) {
-                getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
-                        + " generation=" + generation + " reason=incomplete-collision-coverage missing=" + uncovered.size());
-                emitDiagnostic("WAVE7_BARRIER", "PLAN_REJECT", "ERROR", 7,
-                        "incomplete-collision-coverage", null, null, "wave7:" + eventId + ":" + generation,
-                        Map.of("missingCells", uncovered.size(), "requiredCells", requiredInsideArena.size()));
-                return false;
-            }
+        final int barrierCoreX = core.getBlockX();
+        final int barrierCoreZ = core.getBlockZ();
+        List<RealitySplitBarrierPolicy.Cell> requiredInsideArena = plannedCells.stream()
+                .filter(cell -> !(finalSealBarrierContext()
+                        && barrierCoreX + cell.xOffset() == coreX
+                        && barrierCoreZ + cell.zOffset() == coreZ
+                        && cell.level() <= RealitySplitBarrierPolicy.FINAL_SEAL_CORE_CLEARANCE_LEVELS))
+                .filter(cell -> isRealitySplitBarrierPlacementLocation(new Location(world,
+                        barrierCoreX + cell.xOffset(), floorY + cell.level(), barrierCoreZ + cell.zOffset())))
+                .toList();
+        Set<RealitySplitBarrierPolicy.Cell> uncovered =
+                me.copimine.endevent.domain.RealitySplitBarrierCoveragePolicy.missing(requiredInsideArena, cell -> {
+                    if (plannedOriginals.containsKey(cell)) return true;
+                    Block existingWall = world.getBlockAt(barrierCoreX + cell.xOffset(),
+                            floorY + cell.level(), barrierCoreZ + cell.zOffset());
+                    return !(existingWall.getState() instanceof org.bukkit.block.TileState)
+                            && isRealitySplitExistingWallCoverage(existingWall);
+                });
+        if (!uncovered.isEmpty()) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=incomplete-collision-coverage missing=" + uncovered.size());
+            emitDiagnostic("WAVE7_BARRIER", "PLAN_REJECT", "ERROR", 7,
+                    "incomplete-collision-coverage", null, null, "wave7:" + eventId + ":" + generation,
+                    Map.of("missingCells", uncovered.size(), "requiredCells", requiredInsideArena.size()));
+            return false;
         }
-        if (journalEntries.isEmpty()) {
+        if (journalEntries.isEmpty() && !plannedCells.isEmpty()) {
             getLogger().warning("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
-                    + " reason=no-safe-passable-cells");
+                    + " reason=no-safe-owned-cells");
             emitDiagnostic("WAVE7_BARRIER", "PLAN_REJECT", "WARN", 7,
-                    "no-safe-passable-cells", null, null,
+                    "no-safe-owned-cells", null, null,
                     "wave7:" + eventId + ":" + generation,
                     Map.of("chambers", chamberCount));
             return false;
         }
-        HazardMutationJournal.Snapshot existing = hazardJournal == null
-                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
-        if (existing.status() != HazardMutationJournal.Status.EMPTY
-                && existing.status() != HazardMutationJournal.Status.RESTORED
-                && !existing.entries().isEmpty()) {
-            getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
-                    + " reason=hazard-journal-busy status=" + existing.status());
-            return false;
+        if (journalEntries.isEmpty()) {
+            getLogger().info("END_RIFT_WAVE7_BARRIERS_READY event=" + eventId
+                    + " generation=" + generation + " chambers=" + chamberCount
+                    + " cells=0 open_boundaries=" + openBoundaryIndexes.size()
+                    + " collision=true visible=true journaled=true");
+            return true;
+        }
+        for (HazardMutationJournal.Entry entry : journalEntries) {
+            Block owned = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
+            if (!matchesRealitySplitBlockData(owned, entry.webOriginal())) {
+                getLogger().severe("END_RIFT_WAVE7_BARRIERS_REFUSED event=" + eventId
+                        + " reason=original-state-changed x=" + entry.x()
+                        + " y=" + (entry.floorY() + 1) + " z=" + entry.z());
+                return false;
+            }
         }
         if (hazardJournal == null
                 || !hazardJournal.prepare(eventId, generation, world.getName(), journalEntries)) {
@@ -26296,38 +26427,62 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 null, null, "wave7:" + eventId + ":" + generation,
                 Map.of("chambers", chamberCount, "plannedCells", journalEntries.size(),
                         "openBoundaries", openBoundaryIndexes.size(), "journalStatus", "PREPARED"));
-        try {
-            for (HazardMutationJournal.Entry entry : journalEntries) {
-                world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z())
-                        .setType(REALITY_SPLIT_WALL_MATERIAL, false);
+        List<RealitySplitBarrierPolicy.Cell> mutationCells = journalEntries.stream()
+                .map(entry -> new RealitySplitBarrierPolicy.Cell(
+                        entry.x() - core.getBlockX(), entry.z() - core.getBlockZ(),
+                        entry.floorY() + 1 - floorY))
+                .toList();
+        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> mutation =
+                RealitySplitBarrierMutationPolicy.applyAtomically(mutationCells,
+                        cell -> world.getBlockAt(core.getBlockX() + cell.xOffset(),
+                                        floorY + cell.level(), core.getBlockZ() + cell.zOffset())
+                                .getBlockData().getAsString(),
+                        cell -> {
+                            Block barrier = world.getBlockAt(core.getBlockX() + cell.xOffset(),
+                                    floorY + cell.level(), core.getBlockZ() + cell.zOffset());
+                            if (plannedBarrierCells.contains(cell)) {
+                                barrier.setType(REALITY_SPLIT_WALL_MATERIAL, false);
+                                return barrier.getType() == REALITY_SPLIT_WALL_MATERIAL;
+                            }
+                            barrier.setType(Material.AIR, false);
+                            return barrier.getType() == Material.AIR;
+                        },
+                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
+                                core.getBlockX() + cell.xOffset(), floorY + cell.level(),
+                                core.getBlockZ() + cell.zOffset()), before),
+                        hazardJournal::markApplied);
+        if (!mutation.committed()) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_APPLY_FAILED event=" + eventId
+                    + " rollback_complete=" + mutation.rollbackComplete()
+                    + " failed_cells=" + mutation.failedCells());
+            boolean journalRestored = mutation.rollbackComplete() && hazardJournal.markRestored();
+            if (!mutation.rollbackComplete() || !journalRestored) {
+                recoveryReason = "END_RIFT_WAVE7_BARRIER_MUTATION_RECOVERY_REQUIRED";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
             }
-            if (!hazardJournal.markApplied()) {
-                throw new IllegalStateException("Wave 7 barrier journal could not be marked APPLIED");
-            }
-        } catch (RuntimeException error) {
-            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_BARRIERS_APPLY_FAILED event=" + eventId, error);
-            for (HazardMutationJournal.Entry entry : journalEntries) {
-                Block barrier = world.getBlockAt(entry.x(), entry.floorY() + 1, entry.z());
-                if (isRealitySplitBarrierBlock(barrier)) {
-                    restoreBlock(barrier, entry.webOriginal());
-                }
-            }
-            hazardJournal.markRestored();
             endRiftDiagnostics.exception(eventTickCounter, generation, 7,
                     phase == null ? "" : phase.name(), "wave7:" + eventId + ":" + generation,
-                    "wave7-barrier-mutation", error);
+                    "wave7-barrier-mutation", new IllegalStateException(
+                            "Wave 7 barrier transaction failed; rollback_complete="
+                                    + mutation.rollbackComplete()));
             return false;
         }
         for (HazardMutationJournal.Entry entry : journalEntries) {
-            emitDiagnostic("WAVE7_BARRIER", "MUTATE", "INFO", 7, "barrier-placed",
+            RealitySplitBarrierPolicy.Cell cell = new RealitySplitBarrierPolicy.Cell(
+                    entry.x() - core.getBlockX(), entry.z() - core.getBlockZ(),
+                    entry.floorY() + 1 - floorY);
+            boolean closed = plannedBarrierCells.contains(cell);
+            emitDiagnostic("WAVE7_BARRIER", "MUTATE", "INFO", 7,
+                    closed ? "barrier-placed" : "passage-air-restored",
                     null, null, "wave7:" + generation + ":" + entry.x() + ":"
                             + entry.floorY() + ":" + entry.z(),
                     Map.of("x", entry.x(), "y", entry.floorY() + 1, "z", entry.z(),
                             "original", entry.webOriginal(), "material",
-                            REALITY_SPLIT_WALL_MATERIAL.getKey().getKey()));
+                            closed ? REALITY_SPLIT_WALL_MATERIAL.getKey().getKey() : "air"));
         }
         realitySplitBarrierOriginals.putAll(plannedOriginals);
         realitySplitBarrierCells.addAll(plannedOriginals.keySet());
+        realitySplitBarrierCells.removeAll(retainedOpenEntries.keySet());
         for (int boundary = 0; boundary < (chamberCount == 2 ? 1 : chamberCount); boundary++) {
             if (openBoundaryIndexes.contains(boundary)) {
                 continue;
@@ -26346,16 +26501,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 realitySplitBarrierByBoundary.put(boundary, cells);
             }
         }
-        Set<RealitySplitBarrierPolicy.Cell> visualCells = new LinkedHashSet<>(
-                realitySplitBarrierCells);
+        Set<RealitySplitBarrierPolicy.Cell> visualCells = new LinkedHashSet<>(realitySplitBarrierCells);
         Set<RealitySplitBarrierPolicy.Cell> visualColumns = visualCells.stream()
                 .filter(cell -> cell.level() == 1)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        for (RealitySplitBarrierPolicy.Cell cell : visualCells) {
-            int x = core.getBlockX() + cell.xOffset();
-            int z = core.getBlockZ() + cell.zOffset();
-            BlockDisplay display = world.spawn(new Location(world, x + 0.5D,
-                    floorY + cell.level(), z + 0.5D), BlockDisplay.class, value -> {
+        List<UUID> visualsCreated = new ArrayList<>();
+        try {
+            for (RealitySplitBarrierPolicy.Cell cell : visualCells) {
+                int x = core.getBlockX() + cell.xOffset();
+                int z = core.getBlockZ() + cell.zOffset();
+                BlockDisplay value = world.spawn(new Location(world, x + 0.5D,
+                        floorY + cell.level(), z + 0.5D), BlockDisplay.class);
+                visualsCreated.add(value.getUniqueId());
                 value.setBlock(Material.PURPLE_STAINED_GLASS.createBlockData());
                 value.setBrightness(new Display.Brightness(15, 15));
                 value.setGravity(false);
@@ -26371,11 +26528,51 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                 RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,
                                 RealitySplitBarrierPolicy.VISUAL_CELL_SCALE),
                         new AxisAngle4f()));
-            });
-            tag(display, EVENT_KIND_DISPLAY, 7, true);
-            registerOwnedEntity(display);
-            waveObjectiveVisuals.add(display.getUniqueId());
-            realitySplitBarrierVisuals.put(cell, display.getUniqueId());
+                tag(value, EVENT_KIND_DISPLAY, 7, true);
+                registerOwnedEntity(value);
+                waveObjectiveVisuals.add(value.getUniqueId());
+                realitySplitBarrierVisuals.put(cell, value.getUniqueId());
+            }
+        } catch (RuntimeException error) {
+            boolean visualsRemoved = true;
+            for (UUID visualId : visualsCreated) {
+                Entity display = ownedEntities.get(visualId);
+                if (display == null) {
+                    display = Bukkit.getEntity(visualId);
+                }
+                try {
+                    if (display != null && display.isValid()) {
+                        display.remove();
+                        visualsRemoved &= !display.isValid();
+                    }
+                } catch (RuntimeException cleanupError) {
+                    visualsRemoved = false;
+                    error.addSuppressed(cleanupError);
+                }
+                unregisterOwnedEntity(visualId, "wave7-barrier-visual-rollback");
+                waveObjectiveVisuals.remove(visualId);
+                realitySplitBarrierVisuals.values().remove(visualId);
+            }
+            boolean blocksRestored = restoreRealitySplitBarrierPlan(world,
+                    core.getBlockX(), core.getBlockZ(), floorY, mutationCells, plannedOriginals);
+            boolean journalRestored = visualsRemoved && blocksRestored
+                    && hazardJournal.markRestored();
+            if (journalRestored) {
+                realitySplitBarrierCells.clear();
+                realitySplitBarrierOriginals.clear();
+                realitySplitBarrierByBoundary.clear();
+                realitySplitBarrierVisuals.clear();
+            } else {
+                recoveryReason = "END_RIFT_WAVE7_BARRIER_VISUAL_ROLLBACK_FAILED";
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            }
+            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_BARRIER_VISUALS_FAILED event=" + eventId
+                    + " visuals_removed=" + visualsRemoved + " blocks_restored=" + blocksRestored,
+                    error);
+            endRiftDiagnostics.exception(eventTickCounter, generation, 7,
+                    phase == null ? "" : phase.name(), "wave7:" + eventId + ":" + generation,
+                    "wave7-barrier-visuals", error);
+            return false;
         }
         world.playSound(core, Sound.BLOCK_RESPAWN_ANCHOR_CHARGE,
                 SoundCategory.BLOCKS, 0.85F, 0.65F);
@@ -26451,7 +26648,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
-    /** Remove one completed adjacent room boundary while retaining others. */
+    /** Remove one completed adjacent room boundary by opening its owned cells. */
     private boolean openRealitySplitBoundary(int boundary, int chamberCount) {
         if (boundary < 0 || chamberCount < 2) {
             return false;
@@ -26466,48 +26663,122 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " boundary=" + boundary + " reason=world-not-loaded");
             return false;
         }
-        realitySplitBarrierByBoundary.remove(boundary);
-        Set<RealitySplitBarrierPolicy.Cell> failed = new LinkedHashSet<>();
-        int restored = 0;
-        for (RealitySplitBarrierPolicy.Cell cell : cells) {
-            if (realitySplitBarrierStillNeeded(cell)) {
-                continue;
-            }
-            try {
-                int x = coreX + cell.xOffset();
-                int z = coreZ + cell.zOffset();
-                Block barrier = world.getBlockAt(x, combatFloorY() + cell.level(), z);
-                boolean barrierPresent = isRealitySplitBarrierBlock(barrier);
-                if (barrierPresent) {
-                    restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
-                    restored++;
-                }
-                if (isRealitySplitBarrierBlock(barrier)) {
-                    failed.add(cell);
-                    continue;
-                }
-                emitDiagnostic("WAVE7_BARRIER", "RESTORE", "INFO", 7, "boundary-open",
-                        null, null, "wave7:" + generation + ":" + x + ":"
-                                + (combatFloorY() + cell.level()) + ":" + z,
-                        Map.of("x", x, "y", combatFloorY() + cell.level(), "z", z,
-                                "restored", barrierPresent));
-                removeRealitySplitBarrierVisual(cell);
-                realitySplitBarrierCells.remove(cell);
-                realitySplitBarrierOriginals.remove(cell);
-            } catch (RuntimeException error) {
-                failed.add(cell);
-                getLogger().warning("END_RIFT_WAVE7_BOUNDARY_RESTORE_RETRY event=" + eventId
-                        + " boundary=" + boundary + " cell=" + cell
-                        + " reason=" + error.getClass().getSimpleName());
-            }
-        }
-        if (!failed.isEmpty()) {
-            realitySplitBarrierByBoundary.put(boundary, failed);
+        HazardMutationJournal.Snapshot journal = hazardJournal == null
+                ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
+        boolean journalOwnsOnlyWave7Barriers = journal.valid()
+                && journal.status() == HazardMutationJournal.Status.APPLIED
+                && journal.eventId().equals(eventId) && journal.generation() == generation
+                && journal.world().equals(world.getName())
+                && !journal.entries().isEmpty()
+                && journal.entries().stream().allMatch(
+                HazardMutationJournal.Entry::isRealitySplitBarrierMutation)
+                && journal.entries().stream().allMatch(entry -> entry.eventId().equals(eventId)
+                && entry.generation() == generation
+                && entry.worldId().equalsIgnoreCase(world.getUID().toString()));
+        if (!journalOwnsOnlyWave7Barriers) {
+            recoveryReason = "END_RIFT_WAVE7_BOUNDARY_JOURNAL_SCOPE_INVALID:" + boundary;
+            getLogger().severe("END_RIFT_WAVE7_BOUNDARY_OPEN_BLOCKED event=" + eventId
+                    + " boundary=" + boundary + " reason=journal-scope-invalid");
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
             return false;
         }
-        if (realitySplitBarrierCells.isEmpty() && hazardJournal != null) {
-            hazardJournal.markRestored();
+
+        List<RealitySplitBarrierPolicy.Cell> toOpen = cells.stream()
+                .filter(cell -> !realitySplitBarrierStillNeeded(cell))
+                .toList();
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            String original = realitySplitBarrierOriginals.get(cell);
+            int x = coreX + cell.xOffset();
+            int y = combatFloorY() + cell.level();
+            int z = coreZ + cell.zOffset();
+            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+            if (original == null || original.isBlank()
+                    || !isRealitySplitBarrierBlock(barrier)
+                    && barrier.getType() != Material.AIR
+                    || journal.entries().stream().noneMatch(entry -> entry.x() == x
+                    && entry.floorY() + 1 == y && entry.z() == z
+                    && original.equals(entry.webOriginal()))) {
+                recoveryReason = "END_RIFT_WAVE7_BOUNDARY_OWNERSHIP_MISMATCH:" + boundary;
+                getLogger().severe("END_RIFT_WAVE7_BOUNDARY_OPEN_BLOCKED event=" + eventId
+                        + " boundary=" + boundary + " cell=" + cell
+                        + " reason=owned-cell-state-mismatch");
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                return false;
+            }
         }
+
+        RuntimeException[] visualRemovalError = new RuntimeException[1];
+        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
+                RealitySplitBarrierMutationPolicy.applyAtomically(toOpen,
+                        cell -> world.getBlockAt(coreX + cell.xOffset(),
+                                        combatFloorY() + cell.level(), coreZ + cell.zOffset())
+                                .getBlockData().getAsString(),
+                        cell -> {
+                            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+                            barrier.setType(Material.AIR, false);
+                            return barrier.getType() == Material.AIR;
+                        },
+                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
+                                coreX + cell.xOffset(), combatFloorY() + cell.level(),
+                                coreZ + cell.zOffset()), before),
+                        () -> {
+                            try {
+                                for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+                                    removeRealitySplitBarrierVisual(cell);
+                                }
+                                return true;
+                            } catch (RuntimeException error) {
+                                visualRemovalError[0] = error;
+                                return false;
+                            }
+                        });
+        if (!result.committed()) {
+            getLogger().log(result.rollbackComplete() ? Level.WARNING : Level.SEVERE,
+                    "END_RIFT_WAVE7_BOUNDARY_OPEN_FAILED event=" + eventId
+                            + " boundary=" + boundary + " rollback_complete="
+                            + result.rollbackComplete() + " failed_cells=" + result.failedCells());
+            if (visualRemovalError[0] != null) {
+                getLogger().log(Level.WARNING, "END_RIFT_WAVE7_BOUNDARY_VISUAL_COMMIT_FAILED event="
+                        + eventId + " boundary=" + boundary, visualRemovalError[0]);
+            }
+            if (!restoreRealitySplitBoundaryClosed(world, toOpen)) {
+                recoveryReason = "END_RIFT_WAVE7_BOUNDARY_ROLLBACK_FAILED:" + boundary;
+                forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            }
+            return false;
+        }
+
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+            if (barrier.getType() != Material.AIR) {
+                getLogger().severe("END_RIFT_WAVE7_BOUNDARY_OPEN_BLOCKED event=" + eventId
+                        + " boundary=" + boundary + " cell=" + cell
+                        + " reason=air-postcondition-failed");
+                if (!restoreRealitySplitBoundaryClosed(world, toOpen)) {
+                    recoveryReason = "END_RIFT_WAVE7_BOUNDARY_POSTCONDITION_FAILED:" + boundary;
+                    forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+                }
+                return false;
+            }
+        }
+        int opened = 0;
+        for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
+            int x = coreX + cell.xOffset();
+            int y = combatFloorY() + cell.level();
+            int z = coreZ + cell.zOffset();
+            realitySplitBarrierCells.remove(cell);
+            opened++;
+            emitDiagnostic("WAVE7_BARRIER", "OPEN", "INFO", 7, "boundary-open",
+                    null, null, "wave7:" + generation + ":" + x + ":" + y + ":" + z,
+                    Map.of("x", x, "y", y, "z", z, "material", "air",
+                            "originalRetained", realitySplitBarrierOriginals.containsKey(cell)));
+        }
+        // Keep every original in memory and in the durable journal until the
+        // entire Wave 7 barrier set is cleaned up or rebuilt.
+        realitySplitBarrierByBoundary.remove(boundary);
         Location core = coreCombatAnchorLocation();
         if (core != null) {
             spawnEventParticle(core, Particle.END_ROD, 24, 1.4D, 1.0D, 1.4D, 0.03D);
@@ -26515,7 +26786,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     SoundCategory.BLOCKS, 0.8F, 1.35F);
         }
         getLogger().info("END_RIFT_WAVE7_BOUNDARY_OPENED event=" + eventId
-                + " boundary=" + boundary + " restored=" + restored
+                + " boundary=" + boundary + " opened=" + opened
                 + " remaining_cells=" + realitySplitBarrierCells.size());
         return true;
     }
@@ -26527,6 +26798,76 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         return false;
+    }
+
+    private boolean restoreRealitySplitBoundaryClosed(
+            World world, List<RealitySplitBarrierPolicy.Cell> cells) {
+        RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
+                RealitySplitBarrierMutationPolicy.applyAtomically(cells,
+                        cell -> world.getBlockAt(coreX + cell.xOffset(),
+                                        combatFloorY() + cell.level(), coreZ + cell.zOffset())
+                                .getBlockData().getAsString(),
+                        cell -> {
+                            Block barrier = world.getBlockAt(coreX + cell.xOffset(),
+                                    combatFloorY() + cell.level(), coreZ + cell.zOffset());
+                            barrier.setType(REALITY_SPLIT_WALL_MATERIAL, false);
+                            return isRealitySplitBarrierBlock(barrier);
+                        },
+                        (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
+                                coreX + cell.xOffset(), combatFloorY() + cell.level(),
+                                coreZ + cell.zOffset()), before),
+                        () -> {
+                            for (RealitySplitBarrierPolicy.Cell cell : cells) {
+                                if (!ensureRealitySplitBarrierVisual(world, cell)) return false;
+                            }
+                            return true;
+                        });
+        return result.committed();
+    }
+
+    private boolean ensureRealitySplitBarrierVisual(World world, RealitySplitBarrierPolicy.Cell cell) {
+        UUID visualId = realitySplitBarrierVisuals.get(cell);
+        Entity current = visualId == null ? null : ownedEntities.get(visualId);
+        if (current == null && visualId != null) current = Bukkit.getEntity(visualId);
+        if (current != null && current.isValid() && !current.isDead()) {
+            return true;
+        }
+        if (visualId != null) {
+            unregisterOwnedEntity(visualId, "wave7-barrier-visual-repair");
+            waveObjectiveVisuals.remove(visualId);
+            realitySplitBarrierVisuals.remove(cell);
+        }
+        if (world == null) return false;
+        int x = coreX + cell.xOffset();
+        int z = coreZ + cell.zOffset();
+        BlockDisplay value = world.spawn(new Location(world, x + 0.5D,
+                combatFloorY() + cell.level(), z + 0.5D), BlockDisplay.class);
+        try {
+            value.setBlock(Material.PURPLE_STAINED_GLASS.createBlockData());
+            value.setBrightness(new Display.Brightness(15, 15));
+            value.setGravity(false);
+            value.setInvulnerable(true);
+            value.setPersistent(false);
+            value.setViewRange(48.0F);
+            value.setInterpolationDuration(4);
+            value.setTransformation(new Transformation(
+                    new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_TRANSLATION,
+                            0.0F, RealitySplitBarrierPolicy.VISUAL_CELL_TRANSLATION),
+                    new AxisAngle4f(),
+                    new Vector3f(RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,
+                            RealitySplitBarrierPolicy.VISUAL_CELL_SCALE,
+                            RealitySplitBarrierPolicy.VISUAL_CELL_SCALE),
+                    new AxisAngle4f()));
+            tag(value, EVENT_KIND_DISPLAY, 7, true);
+            registerOwnedEntity(value);
+            waveObjectiveVisuals.add(value.getUniqueId());
+            realitySplitBarrierVisuals.put(cell, value.getUniqueId());
+            return true;
+        } catch (RuntimeException error) {
+            if (value.isValid()) value.remove();
+            unregisterOwnedEntity(value.getUniqueId(), "wave7-barrier-visual-repair-failed");
+            throw error;
+        }
     }
 
     private void removeRealitySplitBarrierVisual(RealitySplitBarrierPolicy.Cell cell) {
@@ -26580,7 +26921,70 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return removed;
     }
 
-    /** Full reset/restart cleanup for every remaining Wave 7 wall cell. */
+    private RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierRestoreTarget>
+            restoreRealitySplitBarrierCellsAtomically(
+            World world, List<RealitySplitBarrierRestoreTarget> targets) {
+        return RealitySplitBarrierMutationPolicy.applyAtomically(targets,
+                target -> world.getBlockAt(target.x(), target.y(), target.z())
+                        .getBlockData().getAsString(),
+                target -> {
+                    Block block = world.getBlockAt(target.x(), target.y(), target.z());
+                    return isRealitySplitOwnedOrRestoredState(block, target.originalBlockData())
+                            && restoreRealitySplitBlock(block, target.originalBlockData())
+                            && matchesRealitySplitBlockData(block, target.originalBlockData());
+                },
+                (target, before) -> restoreRealitySplitBlock(
+                        world.getBlockAt(target.x(), target.y(), target.z()), before));
+    }
+
+    private boolean matchesRealitySplitBlockData(Block block, String blockData) {
+        if (block == null || blockData == null || blockData.isBlank()) {
+            return false;
+        }
+        try {
+            return Bukkit.createBlockData(blockData).getAsString()
+                    .equals(block.getBlockData().getAsString());
+        } catch (IllegalArgumentException error) {
+            return false;
+        }
+    }
+
+    /** Restore Wave 7 ownership data and verify the exact Bukkit block state. */
+    private boolean restoreRealitySplitBlock(Block block, String blockData) {
+        if (block == null || blockData == null || blockData.isBlank()) {
+            return false;
+        }
+        try {
+            BlockData expected = Bukkit.createBlockData(blockData);
+            block.setBlockData(expected, false);
+            return expected.getAsString().equals(block.getBlockData().getAsString());
+        } catch (IllegalArgumentException error) {
+            getLogger().log(Level.SEVERE, "Refused to restore invalid Wave 7 block data at "
+                    + block.getLocation(), error);
+            return false;
+        } catch (RuntimeException error) {
+            getLogger().log(Level.SEVERE, "Wave 7 block restoration failed at "
+                    + block.getLocation(), error);
+            return false;
+        }
+    }
+
+    private boolean isRealitySplitOwnedOrRestoredState(Block block, String originalData) {
+        if (block == null || originalData == null || originalData.isBlank()) {
+            return false;
+        }
+        if (isRealitySplitBarrierBlock(block) || block.getType() == Material.AIR) {
+            return true;
+        }
+        try {
+            return Bukkit.createBlockData(originalData).getAsString()
+                    .equals(block.getBlockData().getAsString());
+        } catch (IllegalArgumentException error) {
+            getLogger().warning("Invalid Wave 7 ownership data at " + block.getLocation());
+            return false;
+        }
+    }
+
     private boolean clearRealitySplitBarriers(String reason) {
         HazardMutationJournal.Snapshot journal = hazardJournal == null
                 ? HazardMutationJournal.Snapshot.empty() : hazardJournal.load();
@@ -26591,13 +26995,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && !journal.entries().isEmpty()
                 && journal.entries().stream().allMatch(
                 HazardMutationJournal.Entry::isRealitySplitBarrierMutation);
-        if (realitySplitBarrierCells.isEmpty() && realitySplitBarrierVisuals.isEmpty()
-                && !hasPersistedRealitySplitEntries) {
+        if (!journal.valid() && (hasPersistedRealitySplitEntries
+                || !realitySplitBarrierOriginals.isEmpty())) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_BLOCKED event=" + eventId
+                    + " reason=invalid-hazard-journal");
+            return false;
+        }
+        if (!journal.entries().isEmpty() && !ownsOnlyRealitySplitJournal
+                && (hasPersistedRealitySplitEntries || !realitySplitBarrierOriginals.isEmpty())) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_BLOCKED event=" + eventId
+                    + " reason=mixed-hazard-journal");
+            return false;
+        }
+        if (journal.status() == HazardMutationJournal.Status.RESTORED
+                && realitySplitBarrierCells.isEmpty()
+                && realitySplitBarrierOriginals.isEmpty()
+                && realitySplitBarrierVisuals.isEmpty()) {
+            return true;
+        }
+        if (realitySplitBarrierCells.isEmpty() && realitySplitBarrierOriginals.isEmpty()
+                && realitySplitBarrierVisuals.isEmpty() && !hasPersistedRealitySplitEntries) {
             // Do not mark an unrelated active hazard journal RESTORED merely
             // because this Wave 7 map is already empty.
-            if (ownsOnlyRealitySplitJournal && hazardJournal != null) {
-                hazardJournal.markRestored();
-            }
             return true;
         }
         World world = Bukkit.getWorld(worldName);
@@ -26606,71 +27025,102 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " reason=world-not-loaded");
             return false;
         }
+        if (hasPersistedRealitySplitEntries
+                && (!journal.world().equals(world.getName())
+                || !journal.eventId().equals(eventId)
+                || journal.generation() != generation)) {
+            getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_BLOCKED event=" + eventId
+                    + " reason=journal-scope-mismatch journal_event=" + journal.eventId()
+                    + " journal_generation=" + journal.generation()
+                    + " loaded_world=" + world.getName());
+            return false;
+        }
+        String loadedWorldId = world.getUID().toString();
         int restored = 0;
-        Set<String> restoredCoordinates = new HashSet<>();
-        for (RealitySplitBarrierPolicy.Cell cell
-                : new LinkedHashSet<>(realitySplitBarrierCells)) {
+        int failed = 0;
+        Map<String, RealitySplitBarrierRestoreTarget> restoreTargets = new LinkedHashMap<>();
+        for (Map.Entry<RealitySplitBarrierPolicy.Cell, String> owned
+                : new LinkedHashMap<>(realitySplitBarrierOriginals).entrySet()) {
+            RealitySplitBarrierPolicy.Cell cell = owned.getKey();
             int x = coreX + cell.xOffset();
             int y = combatFloorY() + cell.level();
             int z = coreZ + cell.zOffset();
-            Block barrier = world.getBlockAt(x, y, z);
-            boolean barrierPresent = isRealitySplitBarrierBlock(barrier);
-            if (barrierPresent) {
-                restoreBlock(barrier, realitySplitBarrierOriginals.get(cell));
-                restored++;
-                restoredCoordinates.add(x + ":" + y + ":" + z);
+            RealitySplitBarrierRestoreTarget target = new RealitySplitBarrierRestoreTarget(
+                    x, y, z, owned.getValue());
+            String coordinate = x + ":" + y + ":" + z;
+            RealitySplitBarrierRestoreTarget previous = restoreTargets.putIfAbsent(coordinate, target);
+            if (previous != null && !previous.originalBlockData().equals(target.originalBlockData())) {
+                failed++;
             }
-            emitDiagnostic("WAVE7_BARRIER", "RESTORE", "INFO", 7,
-                    "full-barrier-cleanup", null, null,
-                    "wave7:" + generation + ":" + x + ":" + y + ":" + z,
-                    Map.of("x", x, "y", y, "z", z, "restored", barrierPresent));
         }
         if (hasPersistedRealitySplitEntries) {
-            if (!journal.world().equals(world.getName())) {
-                getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_UNCOMMITTED event=" + eventId
-                        + " reason=journal-world-mismatch journal_world=" + journal.world()
-                        + " loaded_world=" + world.getName());
-                return false;
-            }
-            String loadedWorldId = world.getUID().toString();
             for (HazardMutationJournal.Entry entry : journal.entries()) {
                 if (!entry.isRealitySplitBarrierMutation()) {
                     continue;
                 }
-                if (!entry.worldId().isBlank()
-                        && !loadedWorldId.equalsIgnoreCase(entry.worldId())) {
+                if (!entry.worldId().equalsIgnoreCase(loadedWorldId)
+                        || !entry.eventId().equals(eventId)
+                        || entry.generation() != generation) {
                     getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_UNCOMMITTED event=" + eventId
-                            + " reason=journal-entry-world-mismatch entry_world="
-                            + entry.worldId() + " loaded_world=" + loadedWorldId);
-                    return false;
-                }
-                int y = entry.floorY() + 1;
-                String coordinate = entry.x() + ":" + y + ":" + entry.z();
-                if (!restoredCoordinates.add(coordinate)) {
+                            + " reason=journal-entry-scope-mismatch x=" + entry.x()
+                            + " floor_y=" + entry.floorY() + " z=" + entry.z());
+                    failed++;
                     continue;
                 }
-                Block barrier = world.getBlockAt(entry.x(), y, entry.z());
-                boolean barrierPresent = isRealitySplitBarrierBlock(barrier);
-                if (barrierPresent) {
-                    restoreBlock(barrier, entry.webOriginal());
-                    restored++;
+                int y = entry.floorY() + 1;
+                RealitySplitBarrierRestoreTarget target = new RealitySplitBarrierRestoreTarget(
+                        entry.x(), y, entry.z(), entry.webOriginal());
+                String coordinate = entry.x() + ":" + y + ":" + entry.z();
+                RealitySplitBarrierRestoreTarget previous = restoreTargets.putIfAbsent(coordinate, target);
+                if (previous != null && !previous.originalBlockData().equals(target.originalBlockData())) {
+                    failed++;
                 }
-                emitDiagnostic("WAVE7_BARRIER", "RESTORE", "INFO", 7,
-                        "journal-barrier-cleanup", null, null,
-                        "wave7:" + generation + ":" + entry.x() + ":" + y + ":" + entry.z(),
-                        Map.of("x", entry.x(), "y", y, "z", entry.z(),
-                                "restored", barrierPresent, "fromJournal", true));
             }
         }
-        for (RealitySplitBarrierPolicy.Cell cell
-                : new LinkedHashSet<>(realitySplitBarrierVisuals.keySet())) {
-            removeRealitySplitBarrierVisual(cell);
+        if (failed == 0 && !restoreTargets.isEmpty()) {
+            RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierRestoreTarget> result =
+                    restoreRealitySplitBarrierCellsAtomically(world,
+                            List.copyOf(restoreTargets.values()));
+            if (result.committed()) {
+                restored = result.applied();
+            } else {
+                failed += Math.max(1, result.failedCells().size());
+                getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_UNCOMMITTED event=" + eventId
+                        + " reason=barrier-transaction-failed rollback_complete="
+                        + result.rollbackComplete() + " failed_cells=" + result.failedCells());
+            }
+        }
+        for (RealitySplitBarrierRestoreTarget target : restoreTargets.values()) {
+            emitDiagnostic("WAVE7_BARRIER", "RESTORE", "INFO", 7,
+                    "full-barrier-cleanup", null, null,
+                    "wave7:" + generation + ":" + target.x() + ":" + target.y() + ":" + target.z(),
+                    Map.of("x", target.x(), "y", target.y(), "z", target.z(),
+                            "restored", failed == 0));
+        }
+        if (failed > 0) {
+            recoveryReason = "END_RIFT_WAVE7_BARRIER_CLEANUP_FAILED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return false;
+        }
+        try {
+            for (RealitySplitBarrierPolicy.Cell cell
+                    : new LinkedHashSet<>(realitySplitBarrierVisuals.keySet())) {
+                removeRealitySplitBarrierVisual(cell);
+            }
+        } catch (RuntimeException error) {
+            recoveryReason = "END_RIFT_WAVE7_BARRIER_VISUAL_CLEANUP_FAILED";
+            getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_BARRIERS_CLEANUP_BLOCKED event=" + eventId
+                    + " reason=visual-removal-failed", error);
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
+            return false;
         }
         boolean journalRestored = !ownsOnlyRealitySplitJournal
                 || hazardJournal == null || hazardJournal.markRestored();
         if (!journalRestored) {
             getLogger().severe("END_RIFT_WAVE7_BARRIERS_CLEANUP_UNCOMMITTED event=" + eventId
                     + " reason=journal-mark-restored-failed");
+            recoveryReason = "END_RIFT_WAVE7_BARRIER_JOURNAL_COMMIT_FAILED";
+            forcePhase(EventPhase.RECOVERY_REQUIRED, recoveryReason);
             return false;
         }
         realitySplitBarrierCells.clear();

@@ -460,8 +460,8 @@ foreach ($relativeDirectory in @(
     'copimine-election-core',
     'copimine-admin-plugin',
     'copimine-artifacts',
-    'copimine-end-event',
     'copimine-narcotics',
+    'copimine-end-event',
     'minecraft/server/plugins/AuthEffects'
 )) {
     $buildScript = Join-Path (Join-Path $repo $relativeDirectory) 'build-plugin.ps1'

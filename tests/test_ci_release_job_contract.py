@@ -214,6 +214,13 @@ def test_ci_restores_build_outputs_after_the_shared_java_gate() -> None:
     assert "-KeepBuildOutputs" not in gitlab
 
 
+def test_java_plugin_ci_builds_narcotics_before_end_event() -> None:
+    source = (ROOT / "scripts/minecraft/RunJavaPluginCi.ps1").read_text(encoding="utf-8")
+    build_loop = source.split("foreach ($relativeDirectory in @(", 1)[1].split(")) {", 1)[0]
+
+    assert build_loop.index("'copimine-narcotics'") < build_loop.index("'copimine-end-event'")
+
+
 def test_plugin_build_scripts_disable_javac_annotation_processing() -> None:
     scripts = (
         "copimine-world-core/build-plugin.ps1",

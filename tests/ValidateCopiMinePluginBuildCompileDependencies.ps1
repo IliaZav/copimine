@@ -13,6 +13,24 @@ $scripts = @(
 )
 $errors = [System.Collections.Generic.List[string]]::new()
 
+$javaPluginCi = Get-Content -LiteralPath (Join-Path $root 'scripts/minecraft/RunJavaPluginCi.ps1') -Raw -Encoding UTF8
+$legacyBuildStart = $javaPluginCi.IndexOf('foreach ($relativeDirectory in @(', [StringComparison]::Ordinal)
+if ($legacyBuildStart -lt 0) {
+  $errors.Add('RunJavaPluginCi.ps1 must declare the legacy plugin build order.')
+} else {
+  $legacyBuildEnd = $javaPluginCi.IndexOf(')) {', $legacyBuildStart, [StringComparison]::Ordinal)
+  if ($legacyBuildEnd -lt 0) {
+    $errors.Add('RunJavaPluginCi.ps1 must close the legacy plugin build list.')
+  } else {
+    $legacyBuildList = $javaPluginCi.Substring($legacyBuildStart, $legacyBuildEnd - $legacyBuildStart)
+    $narcoticsBuildIndex = $legacyBuildList.IndexOf("'copimine-narcotics'", [StringComparison]::Ordinal)
+    $endEventBuildIndex = $legacyBuildList.IndexOf("'copimine-end-event'", [StringComparison]::Ordinal)
+    if ($narcoticsBuildIndex -lt 0 -or $endEventBuildIndex -lt 0 -or $narcoticsBuildIndex -ge $endEventBuildIndex) {
+      $errors.Add('RunJavaPluginCi.ps1 must build legacy Narcotics before End Event so its typed compile dependency exists.')
+    }
+  }
+}
+
 foreach ($relativePath in $scripts) {
   $text = Get-Content -LiteralPath (Join-Path $root $relativePath) -Raw -Encoding UTF8
   $markers = @('$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)', 'PAPER_COMPILE_DEPS')
@@ -214,6 +232,35 @@ try {
         if ($scenario -eq 'corrupt-dependency') { Write-FixtureArtifact $lockedPaths[0] $dependencyPaths[0] }
       }
     }
+  }
+
+  # Exercise End Event's legacy Paper branch with isolated artifacts. The real
+  # CI pins Paper 1.21.1 by SHA; substitute fixture values only in the copied
+  # script so this probe can verify dependency selection without network access.
+  $legacyPaperFixture = Join-Path $fixtureRoot 'legacy-paper-api.jar'
+  Write-FixtureArtifact $legacyPaperFixture 'legacy-paper-fixture'
+  $legacyPaperFixtureHash = (Get-FileHash -LiteralPath $legacyPaperFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+  $legacyPaperFixtureSize = (Get-Item -LiteralPath $legacyPaperFixture).Length
+  $legacyNarcoticsFixture = Join-Path $fixtureRoot 'copimine-narcotics/build/classes'
+  Write-FixtureArtifact (Join-Path $legacyNarcoticsFixture 'me/copimine/clientbridge/Fixture.class') 'legacy-narcotics-compile-dependency'
+  $endEventFixtureScript = Join-Path $fixtureRoot 'copimine-end-event/build-plugin.ps1'
+  $endEventFixtureText = Get-Content -LiteralPath $endEventFixtureScript -Raw -Encoding UTF8
+  $endEventFixtureText = $endEventFixtureText.Replace(
+    "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0", $legacyPaperFixtureHash)
+  $endEventFixtureText = $endEventFixtureText.Replace('$paperApiSize = 2344886', ('$paperApiSize = ' + $legacyPaperFixtureSize))
+  Set-Content -LiteralPath $endEventFixtureScript -Value $endEventFixtureText -Encoding UTF8
+  $env:PAPER_API_JAR = $legacyPaperFixture
+  $env:PAPER_COMPILE_DEPS = $null
+  $legacyProbe = Invoke-DependencyProbe 'copimine-end-event/build-plugin.ps1' $fixtureRoot
+  $legacyExpectedClasspath = @(
+    $legacyPaperFixture,
+    (Join-Path $fixtureRoot 'copimine-world-core/CopiMineWorldCore.jar'),
+    (Join-Path $fixtureRoot 'copimine-artifacts/CopiMineArtifacts.jar'),
+    $legacyNarcoticsFixture,
+    (Join-Path $fixtureMaven $legacyPath)
+  ) -join [IO.Path]::PathSeparator
+  if ($legacyProbe.Failure -ne 'DEPENDENCY_PROBE_COMPILER_REACHED' -or $legacyProbe.Classpath -ne $legacyExpectedClasspath) {
+    $errors.Add("copimine-end-event/build-plugin.ps1 [legacy-paper] must select the freshly compiled legacy Narcotics classes; failure=$($legacyProbe.Failure); classpath=$($legacyProbe.Classpath)")
   }
 } finally {
   foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }

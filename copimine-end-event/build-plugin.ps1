@@ -53,10 +53,15 @@ if ($env:PAPER_API_JAR -and (Test-Path -LiteralPath $paperApi -PathType Leaf) -a
 Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize
 
 $cp = @($paperApi)
+$narcoticsDependency = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
+  Join-Path $releaseRoot 'copimine-narcotics\build\classes'
+} else {
+  Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineNarcotics-26.3.jar'
+}
 foreach ($dependency in @(
   (Join-Path $releaseRoot 'copimine-world-core\CopiMineWorldCore.jar'),
   (Join-Path $releaseRoot 'copimine-artifacts\CopiMineArtifacts.jar'),
-  (Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineNarcotics-26.3.jar')
+  $narcoticsDependency
 )) {
   if (-not (Test-Path $dependency)) {
     throw "Required typed dependency jar is missing: $dependency"

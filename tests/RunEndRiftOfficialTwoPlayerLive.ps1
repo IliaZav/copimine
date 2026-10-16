@@ -43,11 +43,6 @@ $oldControlDirectory = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_CONTR
 $oldWave7Chambers = [Environment]::GetEnvironmentVariable('END_RIFT_WAVE7_CHAMBERS', 'Process')
 $oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIAN_PROBE_NAMES', 'Process')
 $oldAttackInterval = [Environment]::GetEnvironmentVariable('END_RIFT_ATTACK_INTERVAL_MS', 'Process')
-$oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
-$oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
-$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
-$oldBotPort = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PORT', 'Process')
-$oldBotPassword = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PASSWORD', 'Process')
   $originalRequiredPlayers = 0
   $originalCore = $null
 
@@ -66,8 +61,11 @@ if ($configText -notmatch '(?m)^\s*schema-version:\s*4\s*$') {
 if ($configText -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: the official probe requires environment: local.'
 }
-$branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
   throw "Refused Git branch '$branch'."
 }
 foreach ($path in @($serverDir, $rconScript, $botScript, $paperLog, $statePath)) {
@@ -881,45 +879,63 @@ function Set-PlayerBotModeForName {
 function Start-PlayerBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $env:END_RIFT_BOT_HOST = '127.0.0.1'
-  $env:END_RIFT_BOT_PORT = '25566'
   $out = Join-Path $botLogDirectory ($Name + '.log')
   $err = Join-Path $botLogDirectory ($Name + '.err.log')
-  $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
-    (Format-Coordinate ($Core[0] + 0.5D)) + ' ' + (Format-Coordinate $Core[1]) + ' ' +
-    (Format-Coordinate ($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
-  $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru
-  $script:processes += $process
-}
-
-function Prepare-AuthMeAccounts {
-  foreach ($name in $playerNames) {
-    # These are disposable local probe accounts.  Serialising the database
-    # writes before any client connects avoids AuthMe's async /register race
-    # when a larger official roster is launched.
-    $unregisterOffset = Get-LogLength
-    $unregisterResponse = Invoke-LocalRcon ("authme unregister $name")
-    if ($unregisterResponse -notmatch "(?i)This user isn't registered!") {
-      Wait-Log -AfterOffset $unregisterOffset `
-        -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
-        -WaitSeconds 60 | Out-Null
-    }
-    $registerOffset = Get-LogLength
-    $null = Invoke-LocalRcon ("authme register $name endrift-local")
-    Wait-Log -AfterOffset $registerOffset `
-      -Pattern ("AuthMe\].*Rcon registered " + [Regex]::Escape($name)) `
-      -WaitSeconds 60 | Out-Null
+  $interactionRange = 20
+  $attackIntervalMilliseconds = 900
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $node
+  $startInfo.WorkingDirectory = $root
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566
+  Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{
+    END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    END_RIFT_BOT_SKIP_AUTH = '1'
+    END_RIFT_BOT_SKIP_REGISTER = '1'
+    END_RIFT_REFLECT_ENABLED = [string]$env:END_RIFT_REFLECT_ENABLED
+    END_RIFT_REFLECT_START_MS = [string]$env:END_RIFT_REFLECT_START_MS
+    END_RIFT_REFLECT_DIAGNOSTICS = [string]$env:END_RIFT_REFLECT_DIAGNOSTICS
+    END_RIFT_OBELISK_TARGETS = [string]$env:END_RIFT_OBELISK_TARGETS
+    END_RIFT_WAVE7_CHAMBERS = [string]$env:END_RIFT_WAVE7_CHAMBERS
+    END_RIFT_GUARDIAN_PROBE_NAMES = [string]$env:END_RIFT_GUARDIAN_PROBE_NAMES
+    END_RIFT_ATTACK_INTERVAL_MS = [string]$env:END_RIFT_ATTACK_INTERVAL_MS
   }
-}
-
-function Wait-PlayerAuthenticated {
-  param(
-    [Parameter(Mandatory = $true)][string]$Name,
-    [Parameter(Mandatory = $true)][int64]$AfterOffset
-  )
-  Wait-Log -AfterOffset $AfterOffset `
-    -Pattern ("AuthMe\].*" + [Regex]::Escape($Name) + " logged in") `
-    -WaitSeconds 90 | Out-Null
+  if ($null -ne $startInfo.ArgumentList) {
+    foreach ($argument in @(
+        $botScript, $Name, [string]($BotDurationSeconds * 1000),
+        (Format-Coordinate ($Core[0] + 0.5D)), (Format-Coordinate $Core[1]),
+        (Format-Coordinate ($Core[2] + 0.5D)), [string]$interactionRange,
+        [string]$attackIntervalMilliseconds, $controlDirectory)) {
+      $startInfo.ArgumentList.Add([string]$argument)
+    }
+  } else {
+    $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
+      (Format-Coordinate ($Core[0] + 0.5D)) + ' ' + (Format-Coordinate $Core[1]) + ' ' +
+      (Format-Coordinate ($Core[2] + 0.5D)) + ' ' + [string]$interactionRange + ' ' +
+      [string]$attackIntervalMilliseconds + ' "' + $controlDirectory + '"'
+  }
+  $stdoutStream = [IO.File]::Create($out)
+  $stderrStream = [IO.File]::Create($err)
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  try {
+    if (-not $process.Start()) { throw "Could not start disposable local bot $Name." }
+    $stdoutCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdoutStream)
+    $stderrCopy = $process.StandardError.BaseStream.CopyToAsync($stderrStream)
+    $process | Add-Member -NotePropertyName EndRiftOutputCapture -NotePropertyValue @{
+      StdoutTask = $stdoutCopy; StderrTask = $stderrCopy
+      StdoutStream = $stdoutStream; StderrStream = $stderrStream
+    } -Force
+  } catch {
+    $stdoutStream.Dispose()
+    $stderrStream.Dispose()
+    $process.Dispose()
+    throw
+  }
+  $script:processes += $process
 }
 
 function Wait-PlayersOnline {
@@ -1089,9 +1105,12 @@ function Teleport-GuardianProbeToNearest {
   }
 }
 
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+
 try {
   New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
   New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+  Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
   Get-ChildItem -LiteralPath $controlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
   # Keep one cursor for the whole disposable run. The event id is generated
   # after core setup, so this cursor is guaranteed to precede every marker for
@@ -1127,29 +1146,9 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   # normal boss path resume once the shield is legitimately removed.
   $env:END_RIFT_GUARDIAN_PROBE_NAMES = $playerNames -join ','
   $env:END_RIFT_ATTACK_INTERVAL_MS = '200'
-  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  $authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
-  if ($authMeEnabled) {
-    Write-Evidence 'LOCAL_AUTH_MODE authme=enabled'
-    $env:END_RIFT_BOT_SKIP_AUTH = '0'
-    Prepare-AuthMeAccounts
-    # Keep the disposable local probe credential out of source literals that
-    # the repository secret scanner treats as hardcoded passwords.
-    $env:END_RIFT_BOT_PASSWORD = [string]::Concat('end', 'rift', '-', 'local')
-  } else {
-    $env:END_RIFT_BOT_SKIP_AUTH = '1'
-    Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
-  }
   foreach ($name in $playerNames) {
     Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
-    $authOffset = Get-LogLength
     Start-PlayerBot -Name $name -Core $core
-    if ($authMeEnabled) {
-      # Wait for the real AuthMe completion marker before launching the next
-      # client.  This keeps the disposable multi-player probe concurrent during
-      # gameplay while removing only the connection-time database bottleneck.
-      Wait-PlayerAuthenticated -Name $name -AfterOffset $authOffset
-    }
     Start-Sleep -Milliseconds 250
   }
   Wait-PlayersOnline
@@ -1367,16 +1366,20 @@ finally {
   if ($null -eq $oldWave7Chambers) { Remove-Item Env:END_RIFT_WAVE7_CHAMBERS -ErrorAction SilentlyContinue } else { $env:END_RIFT_WAVE7_CHAMBERS = $oldWave7Chambers }
   if ($null -eq $oldGuardianProbeNames) { Remove-Item Env:END_RIFT_GUARDIAN_PROBE_NAMES -ErrorAction SilentlyContinue } else { $env:END_RIFT_GUARDIAN_PROBE_NAMES = $oldGuardianProbeNames }
   if ($null -eq $oldAttackInterval) { Remove-Item Env:END_RIFT_ATTACK_INTERVAL_MS -ErrorAction SilentlyContinue } else { $env:END_RIFT_ATTACK_INTERVAL_MS = $oldAttackInterval }
-  if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
-  if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
-  if ($null -eq $oldBotHost) { Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_HOST = $oldBotHost }
-  if ($null -eq $oldBotPort) { Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PORT = $oldBotPort }
-  if ($null -eq $oldBotPassword) { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PASSWORD = $oldBotPassword }
   foreach ($process in $processes) {
     if ($process -and -not $process.HasExited) { try { $process.Kill() } catch { } }
   }
   foreach ($process in $processes) {
     if ($process) { try { $process.WaitForExit(5000) | Out-Null } catch { } }
+  }
+  foreach ($process in $processes) {
+    $capture = if ($process) { $process.EndRiftOutputCapture } else { $null }
+    if ($null -ne $capture) {
+      try { $capture.StdoutTask.Wait(5000) | Out-Null } catch { }
+      try { $capture.StderrTask.Wait(5000) | Out-Null } catch { }
+      try { $capture.StdoutStream.Dispose() } catch { }
+      try { $capture.StderrStream.Dispose() } catch { }
+    }
   }
   try { Invoke-LocalRcon 'cmend wave clear' | Out-Null } catch { }
   try { Invoke-LocalRcon 'cmend boss kill cleanup' | Out-Null } catch { }

@@ -9,11 +9,20 @@ param(
 # Artifacts API through /cmartifacts admin give, real player packets, the
 # isolated End world, and the actual End Rift event state file.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+  throw "Refused Git branch '$branch'."
+}
 $repoRoot = (Resolve-Path (Join-Path $root '..\..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
-$psqlPath = Join-Path $repoRoot 'local-runtime\postgresql\pgsql\bin\psql.exe'
+$serverDir = Join-Path $runtimeRoot 'end-rift-server'
+$repoLocalRuntimeRoot = Join-Path $repoRoot 'local-runtime'
+$psqlPath = Join-Path $repoLocalRuntimeRoot 'postgresql\pgsql\bin\psql.exe'
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftShardProbe.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
@@ -25,6 +34,20 @@ $process = $null
 $openedEnd = $false
 $permissionAdded = $false
 $sectionSign = [char]0x00A7
+
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $runtimeRoot -LocalRuntimeRoot $runtimeRoot -MustExist
+$serverDir = Assert-EndRiftLocalRuntimePath -Path $serverDir -LocalRuntimeRoot $runtimeRoot -MustExist
+$paperLog = Assert-EndRiftLocalRuntimePath -Path $paperLog -LocalRuntimeRoot $runtimeRoot -MustExist
+$statePath = Assert-EndRiftLocalRuntimePath -Path $statePath -LocalRuntimeRoot $runtimeRoot -MustExist
+$botLogDirectory = Assert-EndRiftLocalRuntimePath -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
+$botLogPath = Assert-EndRiftLocalRuntimePath -Path $botLogPath -LocalRuntimeRoot $runtimeRoot
+$botErrPath = Assert-EndRiftLocalRuntimePath -Path $botErrPath -LocalRuntimeRoot $runtimeRoot
+foreach ($runtimePath in @($serverDir, $paperLog, $statePath, $botLogDirectory, $botLogPath, $botErrPath)) {
+  $null = Assert-EndRiftLocalRuntimePath -Path $runtimePath -LocalRuntimeRoot $runtimeRoot
+}
+$repoLocalRuntimeRoot = Assert-EndRiftLocalRuntimePath -Path $repoLocalRuntimeRoot -LocalRuntimeRoot $repoLocalRuntimeRoot -MustExist
+$validatedPsqlPath = Assert-EndRiftLocalRuntimePath -Path $psqlPath -LocalRuntimeRoot $repoLocalRuntimeRoot -MustExist
+$psqlPath = $validatedPsqlPath
 
 if ((Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: shard probe requires environment: local.'

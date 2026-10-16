@@ -4,15 +4,13 @@
  * runtime.  The npm dependency is installed under ignored local-runtime.
  */
 const path = require('path')
+const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 const mc = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'minecraft-protocol'))
 
-const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
-const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
+const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'EndRiftBot'
 const durationMs = Number(process.argv[3] || 15000)
 const actionDelayMs = Number(process.env.END_RIFT_BOT_ACTION_DELAY_MS || 9000)
-const authPassword = process.env.END_RIFT_BOT_PASSWORD || 'endrift-local'
-const skipRegister = process.env.END_RIFT_BOT_SKIP_REGISTER === '1'
 const environmentActions = (process.env.END_RIFT_BOT_ACTIONS || '')
   .split('|')
   .map(value => value.trim())
@@ -61,12 +59,6 @@ function startSession () {
   sessionStarted = true
   joined = true
   console.log(`PLAYER_JOIN ${username}`)
-  if (!skipRegister) {
-    client.chat(`/register ${authPassword} ${authPassword}`)
-  }
-  for (const delay of (skipRegister ? [250, 1500, 3500] : [1000, 3000, 6000])) {
-    setTimeout(() => client.chat(`/login ${authPassword}`), delay)
-  }
   actions.forEach((command, index) => {
     setTimeout(() => {
       console.log(`ACTION ${username} ${command}`)
@@ -116,20 +108,13 @@ client.on('packet', (data, meta) => {
 })
 
 client.on('login', () => console.log(`CLIENT_LOGIN_EVENT ${username}`))
-// The protocol client emits `login` after configuration/resource-pack
-// negotiation.  `playerJoin` is not guaranteed for the local self-player and
-// can fire before the connection reaches the play state, which made the
-// harness send AuthMe/chat packets too early and produced a server-side
-// "Failed to decode packet serverbound/minecraft:hello" disconnect.
+// Start probe actions after the protocol enters the play state.
 client.once('login', startSession)
 
 client.on('chat', (packet) => {
   const text = JSON.stringify(packet)
   if (process.env.END_RIFT_BOT_LOG_ALL_CHAT === '1') {
     console.log(`CHAT_ALL ${text}`)
-  }
-  if (text.includes('EndRift') || text.includes('CopiMine') || text.includes('AuthMe')) {
-    console.log(`CHAT ${text}`)
   }
 })
 

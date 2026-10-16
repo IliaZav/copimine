@@ -7,9 +7,9 @@
 const path = require('path')
 const fs = require('fs')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
+const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 
-const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
-const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
+const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'BossHitProbe'
 const durationMs = Number(process.argv[3] || 45000)
 const attackEveryMs = Number(process.env.END_RIFT_BOSS_ATTACK_EVERY_MS || 1100)
@@ -23,7 +23,6 @@ const targetUuid = process.env.END_RIFT_BOSS_UUID || ''
 const rawAttackPackets = process.env.END_RIFT_RAW_ATTACK !== '0'
 const attackBarrierPath = process.env.END_RIFT_BOSS_ATTACK_BARRIER || ''
 const attackBarrierTimeoutMs = Number(process.env.END_RIFT_BOSS_BARRIER_TIMEOUT_MS || 90000)
-const authRetryDelaysMs = [500, 2000, 5000, 9000, 13000]
 
 const bot = mineflayer.createBot({
   host,
@@ -269,17 +268,7 @@ function releaseAttacksAfterBarrier () {
 bot.once('spawn', () => {
   spawned = true
   console.log(`PLAYER_JOIN ${username} entityId=${bot.entity?.id ?? 'unknown'}`)
-  bot.chat('/register endrift-local endrift-local')
-  for (const delay of authRetryDelaysMs) {
-    setTimeout(() => bot.chat('/login endrift-local'), delay)
-  }
-  // AuthMe may process simultaneous local handshakes on different scheduler
-  // callbacks.  These sparse, bounded retries cover that race without
-  // tripping the server's chat-spam guard.
-  // A live runner may need to finish RCON login, inventory and teleport setup
-  // after all independent clients are connected.  Do not send a combat packet
-  // until the runner opens the shared barrier; this keeps the probe from
-  // measuring pre-teleport packets or AuthMe's unauthenticated join window.
+  // The shared runner barrier gates attacks until inventory and teleport setup finish.
   releaseAttacksAfterBarrier()
 })
 

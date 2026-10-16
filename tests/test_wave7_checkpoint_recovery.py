@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "copimine-end-event/src/me/copimine/endevent"
 
 
-def test_invalid_trial_checkpoint_enters_recovery_and_valid_legacy_still_resumes(tmp_path):
+def test_named_checkpoint_resumes_and_legacy_or_malformed_trial_checkpoint_requires_recovery(tmp_path):
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     signature = "void restoreWave7Checkpoint(EventSnapshot snapshot, boolean persistedDisposableWave7)"
     if "    private " + signature in source:
@@ -28,11 +28,12 @@ import me.copimine.endevent.domain.*;
 import me.copimine.endevent.runtime.*;
 public class Wave7CheckpointProbe {
     long generation = 73;
-    String eventId = "synthetic-event", recoveryReason = "";
+    String eventId = "00000000-0000-0000-0000-000000000073", recoveryReason = "";
     EventPhase phase = EventPhase.WAVE_7;
     int activeWave = 7;
     boolean testWaveFrontVisualMode, finalSealBarrierHold = true;
     Set<UUID> sandboxWaveRoster = Set.of();
+    Map<String,String> wave7RecoveryCheckpoint = Map.of();
     RealitySplitChamberController realitySplitChamberController = new RealitySplitChamberController();
     RealitySplitTrialController realitySplitTrialController = new RealitySplitTrialController();
     Controller encounterController = new Controller();
@@ -50,10 +51,33 @@ public class Wave7CheckpointProbe {
         trials.begin(73,assignment);
         trials.defeatWarden(73,0);
         state.putAll(RealitySplitTrialSnapshot.encode(73,trials.snapshot()));
+        var legacy = new Wave7CheckpointProbe();
+        legacy.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
+        require(legacy.phase==EventPhase.RECOVERY_REQUIRED && !legacy.realitySplitTrialController.owns(73),
+                "legacy checkpoint cannot become the new approved official trials");
+        var named = new RealitySplitTrialController();
+        named.beginNamed(UUID.fromString(legacy.eventId),73,assignment,List.of(
+                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
+        named.completeNamedActor(UUID.fromString(legacy.eventId),73,0,RealitySplitTrialController.NamedTrial.WARDEN);
+        state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
+        state.putAll(RealitySplitTrialSnapshot.encodeNamed(named.namedSnapshot()));
         var valid = new Wave7CheckpointProbe();
         valid.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
-        require(valid.phase==EventPhase.WAVE_7 && valid.realitySplitTrialController.trial(0).stage()==RealitySplitTrialController.Stage.COMPLETE,
-                "valid legacy checkpoint keeps its completed trial and phase");
+        require(valid.phase==EventPhase.WAVE_7 && valid.realitySplitTrialController.namedTrial(0).stage()==RealitySplitTrialController.Stage.COMPLETE,
+                "valid named checkpoint keeps its sampled layout and completed trial");
+        // Legacy schema 1-3 migration emits a current snapshot with WAVE_7
+        // intact but no named-trial progress. It must not resume as a fresh
+        // empty encounter merely because the absent checkpoint decodes empty.
+        for (int legacySchema = 1; legacySchema <= 3; legacySchema++) {
+            var missingLegacyProgress = new Wave7CheckpointProbe();
+            missingLegacyProgress.restoreWave7Checkpoint(new EventSnapshot(Map.of()),false);
+            require(missingLegacyProgress.phase==EventPhase.RECOVERY_REQUIRED
+                            && missingLegacyProgress.encounterController.phase==EventPhase.RECOVERY_REQUIRED,
+                    "legacy schema " + legacySchema + " WAVE_7 without named-trial progress must enter recovery");
+            require(missingLegacyProgress.activeWave==0 && !missingLegacyProgress.finalSealBarrierHold
+                            && !missingLegacyProgress.testWaveFrontVisualMode,
+                    "legacy schema " + legacySchema + " checkpoint cannot restart stale Wave 7 state");
+        }
         state.put("reality-split-trial.room.1","RIFT_REFLECTION:ACTIVE:99:3");
         var malformed = new Wave7CheckpointProbe();
         try {
@@ -86,7 +110,8 @@ public class Wave7CheckpointProbe {
 ''', encoding="utf-8")
     inputs = [SOURCE / item for item in (
         "domain/ChamberIsolationPolicy.java", "domain/RealitySplitBarrierPolicy.java",
-        "domain/RealitySplitChamberSnapshot.java", "runtime/RealitySplitChamberController.java",
+        "domain/RealitySplitChamberSnapshot.java",
+        "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/RealitySplitTrialSnapshot.java",
     )]
     subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, inputs), str(probe)],

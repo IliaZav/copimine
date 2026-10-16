@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import me.copimine.endevent.runtime.EncounterResourceScope;
+import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
 import org.bukkit.entity.Entity;
@@ -36,6 +37,9 @@ public final class EncounterResourceScopeTest {
         entityCleanupCanUpgradeAnExistingHandle();
         failedEntityCleanupKeepsLiveEntityUntilRetryCompletes();
         failedTaskCancellationIsRetried();
+        cancelledEliteImpactReleasesAdmissionAfterEarlierProjectileRemoval();
+        resolvedEliteImpactRemainsIdempotentAtScopeClose();
+        selectedEntitiesCanBePreservedDuringScopeShutdown();
         tasksRegisteredDuringCleanupAreCancelledImmediately(false);
         tasksRegisteredDuringCleanupAreCancelledImmediately(true);
 
@@ -126,6 +130,180 @@ public final class EncounterResourceScopeTest {
         check(!scope.closeResources().success(), "failed task cancellation must be reported");
         check(scope.closeResources().success(), "task cancellation must be retried");
         check(attempts.get() == 2, "task handle must survive until cancellation succeeds");
+    }
+
+    private static void cancelledEliteImpactReleasesAdmissionAfterEarlierProjectileRemoval() {
+        WaveProjectileAdmissionController admission = new WaveProjectileAdmissionController();
+        UUID groupId = UUID.randomUUID();
+        UUID projectileId = UUID.randomUUID();
+        check(admission.reserveGroup(groupId, 4, 1)
+                        && admission.trackProjectile(groupId, projectileId),
+                "elite impact fixture must own one admitted projectile slot");
+
+        AtomicBoolean taskCancelled = new AtomicBoolean();
+        AtomicBoolean impactScheduled = new AtomicBoolean(true);
+        BukkitTask impactTask = (BukkitTask) Proxy.newProxyInstance(
+                BukkitTask.class.getClassLoader(), new Class<?>[]{BukkitTask.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "getTaskId" -> 188;
+                    case "isCancelled" -> taskCancelled.get();
+                    case "cancel" -> { taskCancelled.set(true); yield null; }
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == arguments[0];
+                    default -> null;
+                });
+
+        EncounterResourceScope scope = new EncounterResourceScope(22L, "WAVE_5:wave-5", null);
+        List<String> order = new ArrayList<>();
+        Runnable impactCancellationCleanup = () -> {
+            order.add("task-cancelled-cleanup");
+            if (impactScheduled.getAndSet(false)) admission.releaseProjectile(projectileId);
+        };
+        scope.registerTask(impactTask, impactCancellationCleanup);
+        Runnable removeEvent = () -> {
+            order.add("entity-remove");
+            if (impactScheduled.get() && !taskCancelled.get()) return;
+            if (impactScheduled.getAndSet(false)) admission.releaseProjectile(projectileId);
+        };
+        scope.registerEntity(projectileId, removeEvent);
+
+        // The impact handler removes its projectile immediately after scheduling
+        // the one-tick resolver. That removal must retain the reservation while
+        // the resolver remains live.
+        removeEvent.run();
+        check(impactScheduled.get() && admission.activeProjectileCount() == 1,
+                "normal projectile removal must preserve the live scheduled impact reservation");
+
+        order.clear();
+        scope.closeResources();
+        check(taskCancelled.get(), "closing the phase scope must cancel the pending impact resolver");
+        check(!impactScheduled.get() && admission.activeProjectileCount() == 0
+                        && admission.activeGroupCount() == 0,
+                "scope cancellation and subsequent entity removal must release impact state and admission");
+        check(order.equals(List.of("task-cancelled-cleanup", "entity-remove")),
+                "scope close must cancel the resolver before scoped entity removal");
+
+        removeEvent.run();
+        check(admission.activeProjectileCount() == 0 && admission.activeGroupCount() == 0,
+                "stale repeated entity removal must not release a projectile slot twice");
+
+        UUID nextGroup = UUID.randomUUID();
+        UUID nextProjectile = UUID.randomUUID();
+        check(admission.reserveGroup(nextGroup, 4, 1)
+                        && admission.trackProjectile(nextGroup, nextProjectile),
+                "a later elite cast must be admitted after cancelled impact cleanup");
+    }
+
+    private static void resolvedEliteImpactRemainsIdempotentAtScopeClose() {
+        WaveProjectileAdmissionController admission = new WaveProjectileAdmissionController();
+        UUID groupId = UUID.randomUUID();
+        UUID projectileId = UUID.randomUUID();
+        check(admission.reserveGroup(groupId, 4, 1)
+                        && admission.trackProjectile(groupId, projectileId),
+                "resolved impact fixture must own one admitted projectile slot");
+
+        AtomicBoolean impactScheduled = new AtomicBoolean(true);
+        AtomicInteger releaseCount = new AtomicInteger();
+        AtomicBoolean taskCancelled = new AtomicBoolean();
+        BukkitTask impactTask = (BukkitTask) Proxy.newProxyInstance(
+                BukkitTask.class.getClassLoader(), new Class<?>[]{BukkitTask.class},
+                (proxy, method, arguments) -> switch (method.getName()) {
+                    case "getTaskId" -> 189;
+                    case "isCancelled" -> taskCancelled.get();
+                    case "cancel" -> { taskCancelled.set(true); yield null; }
+                    case "hashCode" -> System.identityHashCode(proxy);
+                    case "equals" -> proxy == arguments[0];
+                    default -> null;
+                });
+
+        Runnable clearImpact = () -> {
+            if (impactScheduled.getAndSet(false)) {
+                releaseCount.incrementAndGet();
+                admission.releaseProjectile(projectileId);
+            }
+        };
+        EncounterResourceScope scope = new EncounterResourceScope(23L, "WAVE_5:wave-5", null);
+        scope.registerTask(impactTask, clearImpact);
+
+        // The resolver's finally block may release the reservation before the
+        // scope later cancels its completed task during wave shutdown.
+        clearImpact.run();
+        check(releaseCount.get() == 1 && admission.activeProjectileCount() == 0,
+                "normal impact resolution must release its admitted child once");
+        scope.closeResources();
+        clearImpact.run(); // stale remove/finally callbacks remain harmless
+        check(taskCancelled.get() && releaseCount.get() == 1
+                        && admission.activeProjectileCount() == 0
+                        && admission.activeGroupCount() == 0,
+                "scope cancellation and stale callbacks must not double-release a resolved impact");
+    }
+
+    private static void selectedEntitiesCanBePreservedDuringScopeShutdown() {
+        UUID preservedId = UUID.randomUUID();
+        UUID removedId = UUID.randomUUID();
+        AtomicBoolean preservedAlive = new AtomicBoolean(true);
+        AtomicBoolean removedAlive = new AtomicBoolean(true);
+        AtomicBoolean taskCancelled = new AtomicBoolean();
+        AtomicInteger preservedCleanup = new AtomicInteger();
+        AtomicInteger removedCleanup = new AtomicInteger();
+        Entity preserved = entity(preservedId, preservedAlive);
+        Entity removed = entity(removedId, removedAlive);
+        Server server = (Server) Proxy.newProxyInstance(Server.class.getClassLoader(),
+                new Class<?>[]{Server.class}, (proxy, method, arguments) -> {
+                    if (method.getName().equals("getEntity")) {
+                        if (preservedId.equals(arguments[0]) && preservedAlive.get()) return preserved;
+                        if (removedId.equals(arguments[0]) && removedAlive.get()) return removed;
+                        return null;
+                    }
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        try {
+            Field serverField = Bukkit.class.getDeclaredField("server");
+            serverField.setAccessible(true);
+            Object previousServer = serverField.get(null);
+            serverField.set(null, server);
+            try {
+                EncounterResourceScope scope = new EncounterResourceScope(10L, "WAVE_2:wave-2", null);
+                BukkitTask task = (BukkitTask) Proxy.newProxyInstance(BukkitTask.class.getClassLoader(),
+                        new Class<?>[]{BukkitTask.class}, (proxy, method, arguments) -> switch (method.getName()) {
+                            case "getTaskId" -> 101;
+                            case "isCancelled" -> taskCancelled.get();
+                            case "cancel" -> { taskCancelled.set(true); yield null; }
+                            case "hashCode" -> System.identityHashCode(proxy);
+                            case "equals" -> proxy == arguments[0];
+                            default -> null;
+                        });
+                scope.registerTask(task);
+                scope.registerEntity(preservedId, preservedCleanup::incrementAndGet);
+                scope.registerEntity(removedId, removedCleanup::incrementAndGet);
+                var result = scope.closeResourcesPreservingEntities(java.util.Set.of(preservedId));
+
+                check(result.success(), "preserving selected roster entities must still close the scope");
+                check(taskCancelled.get(), "restart preservation must still cancel phase-owned Bukkit tasks");
+                check(preservedAlive.get() && preservedCleanup.get() == 0,
+                        "selected roster entities and their removal callbacks must survive shutdown cleanup");
+                check(!removedAlive.get() && removedCleanup.get() == 1,
+                        "unselected transient entities must still run their cleanup and be removed");
+                check(scope.entityIds().isEmpty(), "closed scope must detach preserved entity handles");
+                check(scope.closeResources().success() && preservedAlive.get(),
+                        "a later ordinary close must not remove detached roster entities");
+            } finally {
+                serverField.set(null, previousServer);
+            }
+        } catch (ReflectiveOperationException error) {
+            throw new AssertionError("cannot install detached Bukkit entity fixture", error);
+        }
+    }
+
+    private static Entity entity(UUID entityId, AtomicBoolean alive) {
+        return (Entity) Proxy.newProxyInstance(Entity.class.getClassLoader(),
+                new Class<?>[]{Entity.class}, (proxy, method, arguments) -> switch (method.getName()) {
+                    case "getUniqueId" -> entityId;
+                    case "isValid" -> alive.get();
+                    case "isDead" -> !alive.get();
+                    case "remove" -> { alive.set(false); yield null; }
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
     }
 
     private static void tasksRegisteredDuringCleanupAreCancelledImmediately(boolean failFirst) {

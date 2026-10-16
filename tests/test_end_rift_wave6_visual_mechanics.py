@@ -510,7 +510,7 @@ def test_real_wave_and_miniboss_target_adapters_exclude_the_captive(tmp_path):
 import java.util.*;
 import me.copimine.endevent.runtime.WaveCombatCoordinator;
 public class FreeTargetProbe {
-    int activeWave=6, waveTargetCursor, executions; Object ritualSphereState=new Object(), keyWave=new Object();
+    int activeWave=6, waveTargetCursor, executions; Object ritualSphereState=new Object(), keyWave=new Object(), keyKind=new Object();
     Registry taskRegistry=new Registry();
     long generation=1, eventTickCounter=1;
     UUID waveTwoMarkedPlayerUuid;
@@ -525,6 +525,9 @@ public class FreeTargetProbe {
     Map<UUID,Object> waveLeashReturns=new HashMap<>();
     Config config=new Config(); Player selected;
     void launchWaveMobDash(LivingEntity caster,Player target,Location mark,long generation,WaveCombatCoordinator.Lease lease){executions++;}
+    boolean isPhysicalEliteAbility(EndRiftAiPolicy.MiniBossSpell spell){return false;}
+    boolean launchPhysicalEliteAbility(LivingEntity caster,Player target,Location mark,EndRiftAiPolicy.MiniBossSpell spell){return false;}
+    java.util.logging.Logger getLogger(){return java.util.logging.Logger.getLogger("FreeTargetProbe");}
     record Config() { Config miniBossTuning(){return this;} int spellMinSeconds(){return 1;} int spellMaxSeconds(){return 1;} }
     static class Entity { UUID id=UUID.randomUUID(); int wave=6; UUID getUniqueId(){return id;}
         boolean isValid(){return true;} boolean isDead(){return false;} }
@@ -546,6 +549,11 @@ public class FreeTargetProbe {
         }
     }
     boolean isCombatTarget(Player p){return p!=null && p.combat;}
+        boolean isCurrentSafeZonePlayer(Player p){return false;}
+    boolean isWaveTwoRecoveryFenced(Entity entity){return false;}
+    String readString(Entity e,Object key){return "";}
+    boolean isEliteSpiderWebSupport(Mob mob,String kind){return false;}
+    UUID mostRecentWaveTarget(UUID entityId){return null;}
     boolean realitySplitTargetAllowed(Entity e,Player p){return p!=null && p.room;}
     boolean isFreeRitualTarget(Player p){return p!=null && p.free && p.combat;}
     int readInt(Entity e,Object key,int fallback){return e.wave;}
@@ -680,7 +688,7 @@ def test_actual_visual_abort_preserves_core_pad_rewards_and_foreign_entities(tmp
         'private void abortRitualVisualRecovery(',
         'private boolean isWaveCleanupKind(String kind)',
         'private boolean isWaveCleanupKind(String kind, boolean includeRewards)',
-        'private void clearWaveEntities(boolean includeRewards)',
+        'private boolean clearWaveEntities(boolean includeRewards)',
     ))
     constants = ('WAVE_MOB', 'ELITE', 'WAVE_GUARDIAN', 'REALITY_SPLIT_TRIAL',
                  'REALITY_SPLIT_OBJECTIVE', 'RITUAL_CASTER', 'RITUAL_GUARD', 'WAVE_REWARD')
@@ -713,23 +721,29 @@ public class VisualAbortProbe {
     enum EventPhase { ACTIVE, RECOVERY_REQUIRED }
     String eventId="this-event", ritualVisualRecoveryFailure="SHIELD_REPAIR_EXHAUSTED", recoveryReason="";
     long generation=42, nextWaveRoleVisualMillis, nextCommanderAuraMillis;
-    int activeWave=6, objectiveClears, saves, arrowsCleared;
+    int activeWave=6, objectiveClears, saves, arrowsCleared, spiderEffectsCleared;
     boolean testWaveFrontVisualMode;
     EventPhase phase=EventPhase.ACTIVE;
     Object keyKind=new Object();
     Map<UUID,Entity> ownedEntities=new LinkedHashMap<>();
+    Map<Integer,Integer> eliteSpiderSpawnCounts=new HashMap<>();
+    int eliteAbilityCleanupCalls;
     Logger getLogger(){return Logger.getLogger("VisualAbortProbe");}
     String readString(Entity entity,Object key){return entity.kind;}
     boolean ownedByEvent(Entity entity,String expected){return entity.event.equals(expected);}
+    boolean archiveWaveTwoRosterForCleanup(String reason){return true;}
     Entity unregisterOwnedEntity(UUID id,String reason){return ownedEntities.remove(id);}
-    void clearWaveObjectiveState(){
+    boolean clearWaveObjectiveState(){
         objectiveClears++; testWaveFrontVisualMode=false;
         for(var world:Bukkit.worlds)for(var entity:world.entities)if(entity.kind.equals("SPHERE")){
             entity.remove(); ownedEntities.remove(entity.id);
         }
+        return true;
     }
     void clearActiveEventArrows(){arrowsCleared++;}
     void clearCommanderAura(){}
+    void releaseAllSpiderEffects(){spiderEffectsCleared++;}
+    void clearEliteAbilityEntities(){eliteAbilityCleanupCalls++;}
     void cleanupOwnedEntities(String expected,long expectedGeneration){
         for(var world:Bukkit.worlds)for(var entity:world.entities)
             if(entity.event.equals(expected)&&entity.generation==expectedGeneration){entity.remove(); ownedEntities.remove(entity.id);}
@@ -760,6 +774,8 @@ public class VisualAbortProbe {
             for(var retired:List.of(pressure,guard,caster,sphere,unindexed))
                 require(retired.removed,"abort must retire indexed and loaded wave child "+retired.kind);
             require(probe.objectiveClears==1&&probe.arrowsCleared==1,"objective/projectile cleanup runs exactly once");
+            require(probe.spiderEffectsCleared==1,"wave cleanup releases temporary spider effects exactly once");
+            require(probe.eliteAbilityCleanupCalls==1,"elite projectiles and player roots are cleared with wave state");
             require(probe.activeWave==0,"aborted wave is inactive");
             require(probe.saves==(sandbox?1:0),"sandbox save and official recovery remain separate");
             require(probe.phase==(sandbox?EventPhase.ACTIVE:EventPhase.RECOVERY_REQUIRED),"official failure remains fail-closed");

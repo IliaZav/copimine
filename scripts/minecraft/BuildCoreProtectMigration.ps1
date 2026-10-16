@@ -16,9 +16,15 @@ if(-not $candidateLock -or $candidateLock.buildSize -le 0 -or
 }
 $java=Join-Path $JavaHome 'bin/java.exe'
 $version=(& $java --version | Out-String)
-if($LASTEXITCODE -ne 0 -or $version -notmatch '(?m)^(?:openjdk|java)(?: version)?[ "]+(?<major>\d+)' -or
-   [int]$Matches.major -lt $lock.minimumJava -or [int]$Matches.major -ne $profile.buildJavaMajor){
- throw "CoreProtect migration requires reproducible Java $($profile.buildJavaMajor) build tooling"
+$versionMatch=[regex]::Match($version,'(?m)^(?:openjdk|java)(?: version)?\s+"?(?<version>\d+(?:\.\d+){1,3})')
+if($LASTEXITCODE -ne 0 -or -not $versionMatch.Success){
+ throw 'Cannot read the CoreProtect migration Java version'
+}
+$javaVersion=$versionMatch.Groups['version'].Value
+$javaMajor=[int]($javaVersion.Split('.')[0])
+if($javaMajor -lt $lock.minimumJava -or $javaMajor -ne $profile.buildJavaMajor -or
+   $javaVersion -cne [string]$profile.buildJavaVersion){
+ throw "CoreProtect migration requires reproducible Java $($profile.buildJavaVersion) build tooling"
 }
 $cache=Join-Path $root 'build/minecraft-26.3'
 Assert-ProfileDirectoryDestination -Path $cache -Description 'CoreProtect migration cache' -StopAt $root

@@ -7,6 +7,13 @@ public final class RitualTargetPolicy {
     private RitualTargetPolicy() {
     }
 
+    /** Keep ritual spell eligibility separate from a caster's ordinary attack permission. */
+    public static boolean projectileTargetAllowed(boolean ritualProjectile,
+                                                 boolean ordinaryWaveTargetAllowed,
+                                                 boolean ritualSpecificTargetAllowed) {
+        return ritualSpecificTargetAllowed && (ritualProjectile || ordinaryWaveTargetAllowed);
+    }
+
     public static List<UUID> freeTargets(List<Candidate> candidates, UUID prisoner) {
         if (candidates == null) {
             return List.of();

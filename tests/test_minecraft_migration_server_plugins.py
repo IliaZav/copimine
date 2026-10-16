@@ -749,11 +749,12 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '65a3821e5962f402a96fec1cfdab1d0a8a5c204d97dccb38a4b299c818802e3d' in narcotics['replaceSha256']
     assert 'ad9ec409e3bc82f3c1b40e57177f87a6ad5b06640a773f8479436d4a96adc0d5' in narcotics['replaceSha256']
     assert 'd53bafb4ebe9d65b8a0cfa67a82d8acf48ac0328639ceadfd9854dbad5f23a97' in narcotics['replaceSha256']
+    assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 225749
-    assert narcotics_candidate['sha256'] == 'dc4d7f2dab2a3cd1e1ab8fee2bfff9849d22afb494e8cdebd9857e99937b5cce'
-    assert narcotics_candidate['sha512'] == 'acba3b5e47b8ca703052d3a40ebd85462707aac86821f05eb0b57f7cf663847e94b1265c121152511a92735f752e77e4fc3912e159da8ff45ddb5e79543201d7'
+    assert narcotics_candidate['size'] == 357222
+    assert narcotics_candidate['sha256'] == '6b706bf34c864caa999a23a51776e9d3fd213d6635c3b5c66f8d0108e9a6eb01'
+    assert narcotics_candidate['sha512'] == 'e8fb40d94a6ce13236755de92b8c1c20e58c519655eb443a51b483eb67ed10546528e497895d52f28eec9b78b4ca9eb3a23e0632a422cbf4def5f4d1fc856b41'
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -941,6 +942,7 @@ def test_first_party_replacements_accept_the_exact_installed_predecessor_jars():
     installed_predecessors={
         'CopiMineArtifacts':'64340259981c4e4bb56e3e1168c8f901f2b658794338eeef458b2eb0617de5ef',
         'CopiMineUltimateAdminPlus':'6ef8296d397f4cfea46dd9fa137ae18cecdac71dd0c259a9e512ad86dbdcd175',
+        'CopiMineNarcotics':'983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116',
     }
     for plugin_name,digest in installed_predecessors.items():
         assert digest in baselines[plugin_name].get('replaceSha256',[]), (
@@ -1008,6 +1010,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
         'd63ed7c3c3d810a5ecb8ea8f497ecb24004cf195381e410bfbb8d182094842c0',
         '93211233ec5649ed5e7e389ce8c557cb17b7ddee6aaabc93130cfcf84d1462ea',
         '825602f54b15615ecec9a3a6b10e3f4f45e41d8698d14712da33252659c5ae8d',
+        'c07dd5b1a741bef33ff10f6a587f847782d21ea232c9ceb3c29af4882f44a038',
+        'f6f09f56a663620b7a6f1e537071adee78b66f33137b20fad40ab24c20fe9f7d',
+        '014b8ce72de3aaabfee26a62bc0341ec606d5683bc404f9edcb2496b1884865e',
     ]
 
     built=ROOT/candidate['buildArtifact']
@@ -2134,6 +2139,17 @@ def test_migration_plugin_builder_checks_java_version_process_exit_code_explicit
     assert '$javaVersionExitCode -ne 0' in source
     java_version_gate = source[source.index("$java = Join-Path $JavaHome"):source.index("$toolchain = Join-Path $root")]
     assert '$LASTEXITCODE -ne 0' not in java_version_gate
+
+
+def test_migration_build_helpers_and_gradle_require_the_exact_profile_java_patch():
+    plugin_builder=(ROOT/'scripts/minecraft/BuildMigrationPlugins.ps1').read_text(encoding='utf-8')
+    coreprotect_builder=(ROOT/'scripts/minecraft/BuildCoreProtectMigration.ps1').read_text(encoding='utf-8')
+    gradle_build=(ROOT/'tools/minecraft-26.3/build.gradle').read_text(encoding='utf-8')
+
+    assert "$javaVersionValue -cne [string]$profile.buildJavaVersion" in plugin_builder
+    assert "$javaVersion -cne [string]$profile.buildJavaVersion" in coreprotect_builder
+    assert "System.getProperty('java.version')" in gradle_build
+    assert 'currentJavaVersion != profile.buildJavaVersion' in gradle_build
 
 
 def test_migration_test_server_launcher_uses_its_isolated_database_environment():

@@ -7,6 +7,19 @@ public final class RealitySplitBarrierPolicyTest {
     public static void main(String[] args) {
         check(RealitySplitBarrierPolicy.cells(2).size() > 0,
                 "two-player Wave 7 must have a physical separator");
+        check(!RealitySplitBarrierPolicy.cells(3).isEmpty()
+                        && RealitySplitBarrierPolicy.cells(3).size()
+                                <= RealitySplitBarrierPolicy.MAX_CELLS,
+                "three duo actor slots must have bounded physical separators");
+        for (int boundary = 0; boundary < 3; boundary++) {
+            check(!RealitySplitBarrierPolicy.cellsForBoundary(boundary, 3).isEmpty(),
+                    "each duo actor boundary must have collision cells");
+            check(RealitySplitBarrierPolicy.boundaryForPair(boundary, (boundary + 1) % 3, 3)
+                            == boundary,
+                    "adjacent duo actor slots must map to their physical barrier");
+        }
+        check(RealitySplitBarrierPolicy.cellsExcludingBoundaries(3, Set.of(0, 1, 2)).isEmpty(),
+                "opening all three actor boundaries releases their shared Core join");
         check(RealitySplitBarrierPolicy.HEIGHT >= 5
                         && RealitySplitBarrierPolicy.HEIGHT <= 6,
                 "Wave 7 room walls must be roughly five to six blocks high");
@@ -101,6 +114,9 @@ public final class RealitySplitBarrierPolicyTest {
                 "the two-room diameter and its central join must form one complete separator");
         check(!sectorsConnectWhileEveryBoundaryIsClosed(4, 0, 1),
                 "four Wave 7 rooms must not leak through the Core or arena edge");
+        check(!sectorsConnectWhileEveryBoundaryIsClosed(3, 0, 1)
+                        && !sectorsConnectWhileEveryBoundaryIsClosed(3, 1, 2),
+                "three duo actor rooms must remain physically isolated while all barriers are closed");
         System.out.println("RealitySplitBarrierPolicyTest OK");
     }
 

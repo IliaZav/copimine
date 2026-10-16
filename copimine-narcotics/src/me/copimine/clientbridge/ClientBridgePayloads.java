@@ -6,12 +6,16 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 public final class ClientBridgePayloads {
     public static final String CHANNEL = "copimine:client_bridge";
+    public static final String V4_CHANNEL = "copimine:client_bridge_v4";
     public static final int PROTOCOL_VERSION = ClientModHandshakePolicy.PROTOCOL_VERSION;
 
     public static final String CLIENT_MOD_CHALLENGE = ClientModHandshakePolicy.CHALLENGE_MESSAGE_TYPE;
@@ -58,6 +62,8 @@ public final class ClientBridgePayloads {
             "OVERDOSE",
             "ZHUZEVO_TRIP"
     );
+    private static final Pattern REPORT_REASON = Pattern.compile("[A-Za-z0-9_.:-]{1,256}");
+    private static final Pattern STARTED_ROUTE = Pattern.compile("STARTED_[A-Z0-9_-]{1,24}");
 
     private ClientBridgePayloads() {
     }
@@ -135,7 +141,7 @@ public final class ClientBridgePayloads {
                 0.0F,
                 0,
                 0,
-                ClientModHandshakePolicy.MOD_ID,
+                "CLIENT_MOD",
                 "",
                 "SYSTEM",
                 "",
@@ -439,6 +445,83 @@ public final class ClientBridgePayloads {
                     reason,
                     status
             );
+        }
+    }
+
+    /** Parses the legacy-channel reports without normalization or clamping. */
+    public static Message decodeStrictVisualReport(byte[] payload) throws IOException {
+        if (payload == null || payload.length == 0 || payload.length > 4_096) {
+            throw new IllegalArgumentException("Invalid client visual report length");
+        }
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
+            String type = input.readUTF();
+            int protocol = input.readInt();
+            long sequence = input.readLong();
+            long timestamp = input.readLong();
+            String session = input.readUTF();
+            String clientVersion = input.readUTF();
+            boolean visuals = input.readBoolean();
+            boolean overlay = input.readBoolean();
+            boolean shaderLike = input.readBoolean();
+            boolean iris = input.readBoolean();
+            int effectCount = input.readInt();
+            if (effectCount != 0) {
+                throw new IllegalArgumentException("Visual reports cannot advertise capabilities");
+            }
+            String effect = input.readUTF();
+            String shaderpack = input.readUTF();
+            int duration = input.readInt();
+            float intensity = input.readFloat();
+            int fadeIn = input.readInt();
+            int fadeOut = input.readInt();
+            String mode = input.readUTF();
+            String clearPolicy = input.readUTF();
+            String source = input.readUTF();
+            String reason = input.readUTF();
+            String status = input.readUTF();
+            if (input.available() != 0) {
+                throw new IllegalArgumentException("Trailing client visual report bytes");
+            }
+            if (!VISUAL_ACK.equals(type) && !VISUAL_FINISHED.equals(type) && !VISUAL_ERROR.equals(type)) {
+                throw new IllegalArgumentException("Unsupported client visual report type");
+            }
+            if (protocol != PROTOCOL_VERSION || sequence <= 0 || timestamp <= 0
+                    || !isCanonicalUuid(session) || !clientVersion.isEmpty()
+                    || visuals || overlay || shaderLike || iris || effectCount != 0
+                    || !shaderpack.isEmpty() || duration != 0
+                    || Float.floatToRawIntBits(intensity) != Float.floatToRawIntBits(0.0f)
+                    || fadeIn != 0 || fadeOut != 0 || !"CLIENT_MOD".equals(mode)
+                    || !clearPolicy.isEmpty() || !"SYSTEM".equals(source)) {
+                throw new IllegalArgumentException("Invalid client visual report fields");
+            }
+            if (VISUAL_ACK.equals(type)) {
+                boolean clear = STATUS_CLEARED.equals(status) && effect.isEmpty();
+                boolean start = (STATUS_STARTED.equals(status) || STARTED_ROUTE.matcher(status).matches())
+                        && EFFECT_ALLOWLIST.contains(effect) && reason.isEmpty();
+                boolean stop = STATUS_STOPPED.equals(status) && EFFECT_ALLOWLIST.contains(effect) && reason.isEmpty();
+                if (!(clear || start || stop)) {
+                    throw new IllegalArgumentException("Invalid client visual ACK status");
+                }
+            } else if (!EFFECT_ALLOWLIST.contains(effect) || !REPORT_REASON.matcher(reason).matches()) {
+                throw new IllegalArgumentException("Invalid client visual terminal report");
+            } else if (VISUAL_FINISHED.equals(type) && !status.isEmpty()) {
+                throw new IllegalArgumentException("Finished report status must be empty");
+            } else if (VISUAL_ERROR.equals(type) && !STATUS_ERROR.equals(status)) {
+                throw new IllegalArgumentException("Visual error report status is invalid");
+            }
+            return new Message(type, protocol, sequence, timestamp, session, clientVersion,
+                    visuals, overlay, shaderLike, iris, Set.of(), effect, shaderpack, duration,
+                    intensity, fadeIn, fadeOut, mode, clearPolicy, source, reason, status);
+        } catch (java.io.EOFException truncated) {
+            throw new IllegalArgumentException("Truncated client visual report", truncated);
+        }
+    }
+
+    private static boolean isCanonicalUuid(String value) {
+        try {
+            return value != null && UUID.fromString(value).toString().equals(value);
+        } catch (IllegalArgumentException malformed) {
+            return false;
         }
     }
 

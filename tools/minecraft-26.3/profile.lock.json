@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "minecraftVersion": "26.3",
   "status": "migration-candidate",
-  "verifiedAt": "2026-10-12",
+  "verifiedAt": "2026-10-16",
   "minimumJava": 25,
   "buildJavaMajor": 25,
   "buildJavaVersion": "25.0.4.1",
@@ -19,8 +19,8 @@
   "clientArtifact": {
     "filename": "CopiMineClient-0.1.2+26.3.jar",
     "version": "0.1.2+26.3",
-    "size": 14828100,
-    "sha512": "8453b8c0452c7eac316d981808c57511678a0710129ba16a06e073ab65c697ac1c347fddc34a61c931de4b73db3dc5973bb0c124bd8e9c150b5c71b624d4d5d2"
+    "size": 14954592,
+    "sha512": "e50e83641532e3879fb74c5f02aa2bcacf46f4693390a02c17421d0013ec86159153bfce845e46c4549b1f656d57c2752e77309752accf9f8eda0cb08e2a207a"
   },
   "paper": {
     "build": 169,
@@ -45,7 +45,7 @@
     "clientPortComplete": true
   },
   "resourcePackMigration": {
-    "legacyPackSha256": "701bc0d86d451b22211a09ff2de4ded0db887cbd202ab0ca45193c6db27a840c",
-    "candidateSha256": "d1178b427b926aee3c2e49f9a72aca7156f5e99917766e63248fb6226d4977dd"
+    "legacyPackSha256": "9930255ea2f5afababdd2b300b699085f0f338efb3fd8ddb8a84ebbfacdea2e8",
+    "candidateSha256": "c08d50feea6d713e1e6cfd6ef9df9b0b255c542b97b320bab8566a549704b09b"
   }
 }

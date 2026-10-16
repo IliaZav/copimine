@@ -19,6 +19,7 @@ def test_pulses_cannot_starve_reflectable_shots_or_other_obelisks(tmp_path):
 import java.util.*;import me.copimine.endevent.domain.*;import me.copimine.endevent.runtime.WaveCombatCoordinator;
 public class Wave4SpecialProbe {
     enum EventPhase { COLLECTING,READY_FOR_PLAYERS,WAVE_4,RECOVERY_REQUIRED }
+    enum Wave4PressurePackResult { COMPLETE,RETRYABLE_FAILURE,PERMANENT_FAILURE }
     enum ObeliskStage { ACTIVE,COLLAPSING }
     enum Sound { BLOCK_BEACON_AMBIENT,BLOCK_RESPAWN_ANCHOR_CHARGE }
     enum SoundCategory { HOSTILE }
@@ -44,6 +45,7 @@ public class Wave4SpecialProbe {
     long generation=43,eventTickCounter;String eventId="synthetic-attempt",worldName="configured-arena",recoveryReason;
     boolean testWave4ObeliskMode,currentWave4StartupFailed,currentWave4MobsStarted=true,currentWave4ObeliskAssaultComplete,waveObjectiveComplete;
     EventPhase phase=EventPhase.WAVE_4;EventConfig config=new EventConfig();int currentWaveScalePlayers=2,waveSpawnGroupIndex;
+    int currentWave4PressurePackAttempts;long currentWave4PressureRetryAtMillis;
     List<Object> waveSpawnSchedule=List.of();Map<UUID,Wave4ObeliskRuntimeState> activeWave4Obelisks=new LinkedHashMap<>();
     Map<UUID,UUID> waveChannelerObelisks=Map.of();Map<UUID,Object> ownedEntities=Map.of();Object keyObeliskWave4Role;
     WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
@@ -51,7 +53,8 @@ public class Wave4SpecialProbe {
     boolean targetAlive=true;
     boolean isOfficialCurrentAttempt(){return true;}void clearWave4Obelisks(String reason){}
     void forcePhase(EventPhase p,String reason){phase=p;}Location coreCombatAnchorLocation(){return new Location();}
-    void spawnWave4PressurePack(World w,Location p,ObeliskScalingPolicy.Profile profile,boolean probe){}
+    Wave4PressurePackResult spawnWave4PressurePack(World w,Location p,ObeliskScalingPolicy.Profile profile,boolean probe){return Wave4PressurePackResult.COMPLETE;}
+        void cancelWaveSpawnTask(){} int clearWave4PressurePackEntities(String reason){return 0;}
     void renderObeliskCollapse(Wave4ObeliskRuntimeState s){}void removeWave4Obelisk(UUID id,String reason){}
     void advanceObeliskEmergence(Wave4ObeliskRuntimeState s){}void renderObeliskActive(Wave4ObeliskRuntimeState s){}
     void renderWave4ChannelerBeams(){}int activeWave4FireballCount(){return 0;}void tickRiftFireballs(){}
@@ -86,6 +89,8 @@ public class Wave4SpecialProbe {
 ''', encoding="utf-8")
     base = ROOT / "copimine-end-event/src/me/copimine/endevent"
     production = [base / p for p in ("domain/ObeliskFireDirectorPolicy.java", "domain/ObeliskScalingPolicy.java",
+                                    "domain/Wave4PressurePackPolicy.java", "domain/WaveMechanicsPolicy.java",
+                                    "domain/PressureBudgetController.java",
                                     "runtime/WaveCombatCoordinator.java")]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, production),
                              str(probe)], capture_output=True, text=True)

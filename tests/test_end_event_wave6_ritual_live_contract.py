@@ -3,19 +3,41 @@
 from __future__ import annotations
 
 from pathlib import Path
-import base64
+import shutil
 import subprocess
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "tests" / "RunEndRiftWave6RitualLive.ps1"
 PLUGIN_CONFIG = ROOT / "copimine-end-event" / "config.yml"
 SERVER_PROPERTIES = ROOT / "local-runtime" / "end-rift-server" / "server.properties"
+RITUAL_SCALING = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "RitualSphereScalingPolicy.java"
+WAVE_MECHANICS = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "WaveMechanicsPolicy.java"
+PRESSURE_BUDGET = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "PressureBudgetController.java"
+ELITE_ABILITIES = ROOT / "copimine-end-event" / "src" / "me" / "copimine" / "endevent" / "domain" / "EliteAbilityPolicy.java"
+RITUAL_SCALING_TEST = ROOT / "tests" / "RitualSphereScalingPolicyTest.java"
 
 
 def read_script() -> str:
     assert SCRIPT.is_file(), f"dedicated Wave 6 local probe is missing: {SCRIPT}"
     return SCRIPT.read_text(encoding="utf-8")
+
+
+def test_wave6_small_party_elite_roles_stay_inside_the_pressure_roster(tmp_path) -> None:
+    compiled = subprocess.run(
+        ["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(tmp_path),
+         str(PRESSURE_BUDGET), str(WAVE_MECHANICS), str(ELITE_ABILITIES),
+         str(RITUAL_SCALING), str(RITUAL_SCALING_TEST)],
+        capture_output=True, text=True,
+    )
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+
+    result = subprocess.run(
+        ["java", "-cp", str(tmp_path), "RitualSphereScalingPolicyTest"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_wave6_probe_targets_only_the_isolated_local_server() -> None:
@@ -37,8 +59,8 @@ def test_wave6_probe_targets_only_the_isolated_local_server() -> None:
     assert "staging" not in script.lower()
     assert "production" not in script.lower()
     assert "environment: local" in config
-    assert "$properties['server-port'] -ne '25566'" in launcher
-    assert "$properties['rcon.port'] -ne '25576'" in launcher
+    assert "Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $serverPropertiesLines" in launcher
+    assert "-ServerPort 25566 -RconPort 25576" in launcher
     # A configured workstation also audits the actual local file. A clean CI
     # checkout proves the launcher guard below without starting a server or
     # requiring private runtime configuration/passwords in source control.
@@ -50,37 +72,58 @@ def test_wave6_probe_targets_only_the_isolated_local_server() -> None:
 
 def test_wave6_launcher_rejects_missing_or_wrong_ports_without_starting_a_server() -> None:
     launcher = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
-    start = launcher.index("if ($properties['server-port'] -ne")
-    end = launcher.index("foreach ($port in", start)
-    guard = launcher[start:end]
-    # Execute only the real production refusal branch, with inert property
-    # dictionaries. No listener lookup, file copying or launch code is loaded.
-    script = """
-$ErrorActionPreference = 'Stop'
-$cases = @(
-  @{ Properties = @{ 'server-port' = '25566'; 'rcon.port' = '25576' }; Reject = $false },
-  @{ Properties = @{ 'server-port' = '25565'; 'rcon.port' = '25576' }; Reject = $true },
-  @{ Properties = @{ 'server-port' = '25566'; 'rcon.port' = '25575' }; Reject = $true },
-  @{ Properties = @{ 'rcon.port' = '25576' }; Reject = $true },
-  @{ Properties = @{ 'server-port' = '25566' }; Reject = $true }
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+    assert "Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $serverPropertiesLines" in launcher
+    assert "-ServerPort 25566 -RconPort 25576" in launcher
+    assert "Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576) | Out-Null" in launcher or "$null = Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576)" in launcher
+    assert "function Assert-EndRiftLocalConfiguredPorts" in helper
+    assert "server-port" in helper and "rcon.port" in helper
+    assert "single configured value" in helper
+
+
+def test_shared_local_port_guards_reject_malformed_and_busy_ports() -> None:
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if powershell is None:
+        pytest.skip("PowerShell is required to exercise the shared local port guards")
+    helper_path = str(ROOT / "tests" / "EndRiftLocalAuthMode.ps1").replace("'", "''")
+    command = f"""
+. '{helper_path}'
+$valid = @('server-port=25566', 'rcon.port=25576')
+if (-not (Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $valid -ServerPort 25566 -RconPort 25576)) {{ throw 'Valid isolated ports were rejected.' }}
+$badCases = @(
+  @{{ Lines = @('rcon.port=25576'); ServerPort = 25566; RconPort = 25576 }},
+  @{{ Lines = @('server-port=25565', 'rcon.port=25576'); ServerPort = 25566; RconPort = 25576 }},
+  @{{ Lines = @('server-port=25566', 'server-port=25566', 'rcon.port=25576'); ServerPort = 25566; RconPort = 25576 }},
+  @{{ Lines = @('server-port=25566', 'rcon.port=25566'); ServerPort = 25566; RconPort = 25566 }}
 )
-foreach ($case in $cases) {
-  $properties = $case.Properties
+foreach ($case in $badCases) {{
   $rejected = $false
-  try {
-""" + guard + """
-  } catch { $rejected = $true }
-  if ($rejected -ne $case.Reject) { throw 'Unexpected local port guard result' }
-}
-Write-Output 'PORT_GUARD_CASES=5'
+  try {{ Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $case.Lines -ServerPort $case.ServerPort -RconPort $case.RconPort | Out-Null }}
+  catch {{ $rejected = $true }}
+  if (-not $rejected) {{ throw "Malformed local port case was accepted: $($case | ConvertTo-Json -Compress)" }}
+}}
+$script:simulateListener = $false
+function Get-NetTCPConnection {{
+  [CmdletBinding()]
+  param([int]$LocalPort, [string]$State)
+  if ($script:simulateListener) {{ return ,([pscustomobject]@{{ LocalPort = $LocalPort; State = $State }}) }}
+  return @()
+}}
+if (-not (Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576))) {{ throw 'Free local ports were rejected.' }}
+$script:simulateListener = $true
+$busyRejected = $false
+try {{ Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576) | Out-Null }}
+catch {{ $busyRejected = $true }}
+if (-not $busyRejected) {{ throw 'A listening local port was accepted.' }}
+Write-Output 'LOCAL_PORT_GUARDS_PASS'
 """
-    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-        capture_output=True, text=True, timeout=30,
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+        check=True,
+        capture_output=True,
+        text=True,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "PORT_GUARD_CASES=5" in result.stdout
+    assert "LOCAL_PORT_GUARDS_PASS" in result.stdout
 
 
 def test_wave6_probe_fails_closed_around_server_and_encounter_state() -> None:

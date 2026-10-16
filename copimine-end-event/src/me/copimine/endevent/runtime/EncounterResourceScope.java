@@ -22,6 +22,7 @@ public final class EncounterResourceScope implements AutoCloseable {
     private final String ownerKey;
     private final EventTaskRegistry tasks;
     private final Set<BukkitTask> ownedTasks = new LinkedHashSet<>();
+    private final Map<BukkitTask, List<Runnable>> taskCancellationCleanups = new LinkedHashMap<>();
     private final Set<UUID> entityIds = new LinkedHashSet<>();
     private final Map<UUID, List<Runnable>> entityCleanups = new LinkedHashMap<>();
     private final List<Runnable> closers = new ArrayList<>();
@@ -54,17 +55,28 @@ public final class EncounterResourceScope implements AutoCloseable {
 
     public synchronized CleanupResult lastCleanupResult() { return lastCleanupResult; }
 
+    /** Snapshot the entity handles owned by this phase before a restart boundary. */
+    public synchronized Set<UUID> entityIds() { return Set.copyOf(entityIds); }
+
     public synchronized <T extends BukkitTask> T registerTask(T task) {
-        if (closed) {
-            if (task != null) {
-                ownedTasks.add(task);
-                if (closing) cleanupTask(task, closingFailures);
-                else closeResources();
+        return registerTask(task, null);
+    }
+
+    /** Register cleanup that must run if this scope cancels the task before it resolves. */
+    public synchronized <T extends BukkitTask> T registerTask(T task, Runnable cancellationCleanup) {
+        if (task == null) return null;
+        if (cancellationCleanup != null) {
+            List<Runnable> actions = taskCancellationCleanups.computeIfAbsent(task,
+                    ignored -> new ArrayList<>());
+            if (actions.stream().noneMatch(existing -> existing == cancellationCleanup)) {
+                actions.add(cancellationCleanup);
             }
-            return task;
         }
-        if (task == null) {
-            return null;
+        if (closed) {
+            ownedTasks.add(task);
+            if (closing) cleanupTask(task, closingFailures);
+            else closeResources();
+            return task;
         }
         ownedTasks.add(task);
         return tasks == null ? task : tasks.register(task);
@@ -108,6 +120,17 @@ public final class EncounterResourceScope implements AutoCloseable {
      * operations are attempted even when one of them fails.
      */
     public synchronized CleanupResult closeResources() {
+        return closeResources(Set.of());
+    }
+
+    /** Close tasks and unselected entities while detaching persisted roster entities. */
+    public synchronized CleanupResult closeResourcesPreservingEntities(Set<UUID> entityIdsToPreserve) {
+        Set<UUID> preserved = entityIdsToPreserve == null || entityIdsToPreserve.isEmpty()
+                ? Set.of() : Set.copyOf(entityIdsToPreserve);
+        return closeResources(preserved);
+    }
+
+    private CleanupResult closeResources(Set<UUID> entityIdsToPreserve) {
         closed = true;
         if (closing) return lastCleanupResult;
         closing = true;
@@ -123,6 +146,11 @@ public final class EncounterResourceScope implements AutoCloseable {
             }
 
             for (UUID entityId : Set.copyOf(entityIds)) {
+                if (entityIdsToPreserve.contains(entityId)) {
+                    entityIds.remove(entityId);
+                    entityCleanups.remove(entityId);
+                    continue;
+                }
                 List<Runnable> cleanups = entityCleanups.get(entityId);
                 if (cleanups == null || cleanups.isEmpty()) {
                     try {
@@ -178,11 +206,29 @@ public final class EncounterResourceScope implements AutoCloseable {
     private void cleanupTask(BukkitTask task, List<CleanupFailure> failures) {
         String taskId = taskId(task);
         boolean cleaned = true;
+        boolean cancellationCompleted = false;
         try {
             if (!task.isCancelled()) task.cancel();
+            cancellationCompleted = true;
         } catch (RuntimeException error) {
             failures.add(new CleanupFailure("task", taskId, error));
             cleaned = false;
+        }
+        if (cancellationCompleted) {
+            List<Runnable> actions = taskCancellationCleanups.get(task);
+            if (actions != null) {
+                for (int index = actions.size() - 1; index >= 0; index--) {
+                    Runnable cleanup = actions.get(index);
+                    try {
+                        cleanup.run();
+                        actions.remove(index);
+                    } catch (RuntimeException error) {
+                        failures.add(new CleanupFailure("task-cancellation-cleanup", taskId, error));
+                        cleaned = false;
+                    }
+                }
+                if (actions.isEmpty()) taskCancellationCleanups.remove(task);
+            }
         }
         if (tasks != null) {
             try {
@@ -196,7 +242,8 @@ public final class EncounterResourceScope implements AutoCloseable {
     }
 
     private boolean hasPendingResources() {
-        return !ownedTasks.isEmpty() || !entityIds.isEmpty() || !closers.isEmpty();
+        return !ownedTasks.isEmpty() || !taskCancellationCleanups.isEmpty()
+                || !entityIds.isEmpty() || !closers.isEmpty();
     }
 
     private static String taskId(BukkitTask task) {

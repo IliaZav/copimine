@@ -13,7 +13,7 @@ def test_official_wave_transition_preserves_rewards_and_still_cleans_pressure():
     source = _source()
     initialize = _method(source, "private boolean initializeWaveGameplay(")
     assert "clearWaveEntities(sandbox)" in initialize
-    cleanup = _method(source, "private void clearWaveEntities(boolean includeRewards)")
+    cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards)")
     assert cleanup.count("isWaveCleanupKind(") == 3
     assert cleanup.count("includeRewards") == 3
     predicate = _method(source, "private boolean isWaveCleanupKind(String kind, boolean includeRewards)")
@@ -25,7 +25,8 @@ def test_official_wave_transition_preserves_rewards_and_still_cleans_pressure():
 def test_failed_wave6_capture_is_saved_as_cancelled():
     source = _source()
     body = _block(source, 'if (wave == 6 && !"combat".equals(testMode)')
-    assert body.index("activeWave = 0") < body.index("saveStateAsync()") < body.index("return;")
+    assert body.index("if (!clearWaveEntities())") < body.index("activeWave = 0")
+    assert body.index("activeWave = 0") < body.index("saveStateAsync()") < body.rindex("return;")
 
 
 def test_failed_sandbox_wave7_rehydration_does_not_change_official_phase():
@@ -96,9 +97,13 @@ def test_sandbox_wave7_initializes_trials_before_starting_them():
     sandbox = _method(source, "private boolean initializeWaveGameplay(")
     compact = " ".join(sandbox.split())
 
-    initialize = "realitySplitTrialController.begin(generation, realitySplitChamberController.assignment());"
+    initialize = (
+        "realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation, "
+        "realitySplitChamberController.assignment(), java.util.concurrent.ThreadLocalRandom.current());"
+    )
     assert initialize in compact
     assert compact.index(initialize) < compact.index("startRealitySplitTrials(world, core)")
+    assert "realitySplitTrialController.namedSnapshot().trials().values()" in compact
 
 
 def test_portal_capture_is_sequential_in_both_playable_modes():
@@ -161,17 +166,17 @@ def test_wave5_exhausted_safe_zone_setup_retires_the_whole_sandbox():
     tick = _method(_source(), "private void tickBlackFogObjective(long now)")
     failure_start = tick.index('if (currentFogZoneSetupAttempts >= 3)')
     failure = tick[failure_start:tick.index('blackFogPhase = BlackFogPhase.SAFE;', failure_start)]
-    assert 'clearWaveEntities();' in failure
-    assert 'clearWaveObjectiveState();' in failure
+    assert 'if (!clearWaveEntities()) return;' in failure
+    assert 'clearWaveObjectiveState();' not in failure
     assert 'activeWave = 0;' in failure and 'saveStateAsync();' in failure
-    reset = _method(_source(), 'private void clearWaveObjectiveState()')
+    reset = _method(_source(), 'private boolean clearWaveObjectiveState()')
     for flag in ('testWaveFrontVisualMode = false', 'sandboxWaveRoster = Set.of()', 'testRitualCombatMode = false'):
         assert flag in reset
 
 
 def test_scope_owner_keeps_failed_cleanup_handle_for_a_retry():
     source = _source()
-    close = _method(source, "private boolean closeEncounterResourceScope(String reason)")
+    close = _method(source, "private boolean closeEncounterResourceScope(String reason, Set<UUID> preservedEntityIds)")
 
     assert close.index("scope.closeResources()") < close.index("encounterResourceScope = null;")
     assert "if (result.success())" in close
@@ -190,6 +195,78 @@ def test_new_attempt_generation_is_not_committed_before_scope_cleanup():
     assert "if (!cancelSessionTasks())" in recovery
     recovery_commit = "generation = Math.max(1L, staleGeneration + 1L);"
     assert recovery.index("if (!cancelSessionTasks())") < recovery.index(recovery_commit)
+
+
+def test_wave_two_roster_archive_failure_stops_cancel_reset_and_initialization():
+    source = _source()
+    cancel = _method(source, "private boolean cancelSessionTasks(boolean preserveCombatForRestart)")
+    objective_cleanup = _method(source, "private boolean clearWaveObjectiveState()")
+    wave_cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards)")
+    initialize = _method(source, "private boolean initializeWaveGameplay(")
+    sandbox = _method(source, "private boolean spawnTestWave(")
+
+    assert "!archiveWaveTwoRosterForCleanup(\"session-cancellation\")" in cancel
+    assert cancel.index("!archiveWaveTwoRosterForCleanup(\"session-cancellation\")") < cancel.index(
+        "clearEchoPresentationProbe()"
+    )
+    assert "if (!clearWaveObjectiveState()) return false;" in cancel
+    assert 'if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;' in objective_cleanup
+    assert "return true;" in objective_cleanup
+    assert 'if (!archiveWaveTwoRosterForCleanup("wave-reset-cleanup")) return false;' in wave_cleanup
+    assert "if (!clearWaveObjectiveState()) return false;" in wave_cleanup
+    assert "return true;" in wave_cleanup
+    assert "if (!clearWaveEntities(sandbox)) return false;" in initialize
+    assert initialize.index("if (!clearWaveEntities(sandbox)) return false;") < initialize.index(
+        "sandboxWaveRoster = sandbox ? Set.copyOf(roster) : Set.of();"
+    )
+    assert "if (!clearWaveEntities())" in sandbox
+    assert sandbox.index("if (!clearWaveEntities())") < sandbox.index(
+        "generation = Math.max(1L, generation + 1L);"
+    )
+    reset = _method(source, "private void resetEventSafely(")
+    assert "if (!archiveWaveTwoRosterForCleanup(\"admin-safe-reset\"))" in reset
+    assert reset.index("!archiveWaveTwoRosterForCleanup(\"admin-safe-reset\")") < reset.index(
+        "depositedResources.replaceAll"
+    )
+    wipe = _method(source, "private void wipeOfficialAttemptIfAllDead(")
+    assert "if (!cancelSessionTasks())" in wipe
+    assert "attemptLifecycle.abortWipe(staleGeneration);" in wipe
+    assert wipe.index("if (!cancelSessionTasks())") < wipe.index(
+        "generation = result.nextGeneration();"
+    )
+    remove_core = _method(source, "private void removeCore(CommandSender sender)")
+    assert "if (!clearWaveEntities())" in remove_core
+    assert remove_core.index("if (!clearWaveEntities())") < remove_core.index(
+        "cleanupOwnedEntitiesForEvent(removedEventId)"
+    )
+
+
+def test_official_wave2_shutdown_detaches_saved_mobs_for_bootstrap_recovery():
+    source = _source()
+    disable = _method(source, "public void onDisable()")
+    cancel = _method(source, "private boolean cancelSessionTasks(boolean preserveCombatForRestart)")
+    restart_entities = _method(source, "private Set<UUID> restartPreservedEntityIds()")
+    close_scope = _method(source, "private boolean closeEncounterResourceScope(String reason, Set<UUID> preservedEntityIds)")
+    register_entity = _method(source, "private void registerOwnedEntity(Entity entity)")
+    bootstrap = _method(source, "private void tryBootstrap()")
+
+    assert "activeWave == 2 && phase == EventPhase.WAVE_2" in disable
+    assert "&& isOfficialAttempt()" in disable
+    assert "cancelSessionTasks(preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart)" in disable
+    assert "preserveCombatForRestart ? restartPreservedEntityIds() : Set.of()" in " ".join(cancel.split())
+    assert "closeEncounterResourceScope(\"session cancellation\", preservedEntityIds)" in cancel
+    assert "scope.closeResourcesPreservingEntities(preservedEntityIds)" in close_scope
+    assert "waveTwoOutstandingEntityUuids" in restart_entities
+    assert "waveTwoCleanupEntityUuids" in restart_entities
+    assert "isWaveTwoOrdinaryMob(entity)" in restart_entities
+    assert "encounterResourceScope.registerEntity(entity.getUniqueId()" in register_entity
+    assert "recoverTransientSession();" in bootstrap
+    assert "&& !canResumeWave2AfterRestart()" in " ".join(bootstrap.split())
+
+    resume = _method(source, "private boolean canResumeWave2AfterRestart()")
+    assert "phase == EventPhase.WAVE_2" in resume
+    assert "isOfficialCurrentAttempt()" in resume
+    assert "WaveTwoStagePolicy.hasConsistentProgress(" in resume
 
 
 def test_playable_entry_adapters_share_the_entire_mechanic_initializer():

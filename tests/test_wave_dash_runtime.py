@@ -18,7 +18,7 @@ public class WaveDashProbe {
   static final double MIN_WAVE_CORE_DISTANCE_BLOCKS=1;long generation=5,eventTickCounter;
   Map<UUID,Long> waveDashGenerations=new HashMap<>();Map<UUID,Object> waveLeashReturns=new HashMap<>();
   WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator(); Registry taskRegistry=new Registry();
-  int impacts,cancelled,recoverCues;double wall=100;
+  int impacts,cancelled,recoverCues;double wall=100;boolean missingAnchor;
   class Registry {boolean owns(long expected){return generation==expected;}}
   static class Vector implements Cloneable {
     double x,y,z;Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
@@ -28,9 +28,10 @@ public class WaveDashProbe {
     double getX(){return x;}double getY(){return y;}double getZ(){return z;}
   }
   static class Location implements Cloneable {
-    double x,y,z;Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
-    Object getWorld(){return "world";}Vector toVector(){return new Vector(x,y,z);}
-    public Location clone(){return new Location(x,y,z);}Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
+    double x,y,z;Object world="world";Location(double x,double y,double z){this.x=x;this.y=y;this.z=z;}
+    Object getWorld(){return world;}Vector toVector(){return new Vector(x,y,z);}
+    public Location clone(){Location copy=new Location(x,y,z);copy.world=world;return copy;}
+    Location add(Vector v){x+=v.x;y+=v.y;z+=v.z;return this;}
   }
   static class LivingEntity {
     UUID id=UUID.randomUUID();boolean valid=true;Location pos=new Location(3,68,0);Vector velocity=new Vector(0,0,0);
@@ -46,7 +47,7 @@ public class WaveDashProbe {
   static class Scheduler {BukkitTask task;BukkitTask runTaskTimer(Object plugin,Runnable action,long delay,long period){
     task=new BukkitTask();task.action=action;return task;}}
   static class Bukkit {static Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;}}
-  Location coreCombatAnchorLocation(){return new Location(0,68,0);}double waveMovementRadius(){return 19;}
+  Location coreCombatAnchorLocation(){return missingAnchor?null:new Location(0,68,0);}double waveMovementRadius(){return 19;}
   boolean isLiveOwnedEntity(UUID id){return true;}boolean isMiniBossCombatPhase(){return true;}
   boolean isMiniBossTargetAllowed(LivingEntity caster,Player target){return caster.valid&&target.valid;}
   boolean isFogFrozenCombatEntity(LivingEntity caster){return false;}
@@ -78,6 +79,15 @@ public class WaveDashProbe {
     p=new WaveDashProbe();caster=new Mob();p.launchWaveMobDash(caster,target,target.pos.clone(),5,null);
     target.valid=false;p.tick(caster);
     if(p.impacts!=0||p.cancelled!=1||!p.waveDashGenerations.isEmpty())throw new AssertionError("dead/quit target retained dash");
+    p=new WaveDashProbe();caster=new Mob();target=new Player();target.pos=new Location(10,68,0);p.missingAnchor=true;
+    p.launchWaveMobDash(caster,target,target.pos.clone(),5,null);
+    if(p.cancelled!=1)throw new AssertionError("missing anchor retained the spell lease");
+    p=new WaveDashProbe();caster=new Mob();target=new Player();target.pos=new Location(10,68,0);
+    p.launchWaveMobDash(caster,target,null,5,null);
+    if(p.cancelled!=1)throw new AssertionError("missing dash mark retained the spell lease");
+    p=new WaveDashProbe();caster=new Mob();target=new Player();target.pos=new Location(10,68,0);var otherWorld=target.pos.clone();otherWorld.world="other";
+    p.launchWaveMobDash(caster,target,otherWorld,5,null);
+    if(p.cancelled!=1)throw new AssertionError("cross-world dash mark retained the spell lease");
   }
 ''' + adapter + "\n}\n", encoding="utf-8")
     coordinator = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/WaveCombatCoordinator.java"

@@ -27,11 +27,11 @@ $evidenceDirectory = Join-Path $runtimeRoot 'visual-five-current'
 $botLogDirectory = Join-Path $evidenceDirectory 'bots'
 $controlDirectory = Join-Path $botLogDirectory 'control'
 $evidencePath = Join-Path $evidenceDirectory 'run.log'
+$evidenceDirectory = Assert-EndRiftLocalRuntimePath -Path $evidenceDirectory -LocalRuntimeRoot $runtimeRoot
+$botLogDirectory = Assert-EndRiftLocalRuntimePath -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
+$controlDirectory = Assert-EndRiftLocalRuntimePath -Path $controlDirectory -LocalRuntimeRoot $runtimeRoot
+$evidencePath = Assert-EndRiftLocalRuntimePath -Path $evidencePath -LocalRuntimeRoot $runtimeRoot
 $processes = @()
-$oldSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
-$oldSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
-$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
-$oldBotPort = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_PORT', 'Process')
 $playerNames = @($ViewerName, 'EndRiftVisualB', 'EndRiftVisualC', 'EndRiftVisualD', 'EndRiftVisualE')
 
 function Assert-LocalOnly {
@@ -54,7 +54,7 @@ function Assert-LocalOnly {
   }
   Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
   $branch = (& git -C $root branch --show-current 2>$null).Trim()
-  if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+  if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
     throw "Visual probe refused Git branch '$branch'."
   }
   $runtimePrefix = $runtimeRoot.TrimEnd('\') + '\'
@@ -122,39 +122,60 @@ function Wait-PlayersOnline {
   throw "Visual clients did not join: $($playerNames -join ', ')"
 }
 
-function Wait-PlayersAuthenticated {
-  param([Parameter(Mandatory = $true)][int64]$AfterOffset)
-  $deadline = (Get-Date).AddSeconds(30)
-  while ((Get-Date) -lt $deadline) {
-    $tail = Get-LogTail -Offset $AfterOffset
-    $missing = @($playerNames | Where-Object {
-        $escaped = [Regex]::Escape($_)
-        $tail -notmatch ("\[AuthMe\].*" + $escaped + " logged in")
-      })
-    if ($missing.Count -eq 0) {
-      return
-    }
-    Start-Sleep -Milliseconds 250
-  }
-  throw "Visual clients joined but did not finish AuthMe login: $($missing -join ', ')"
-}
-
 function Start-VisualBot {
   param(
     [Parameter(Mandatory = $true)][string]$Name,
     [Parameter(Mandatory = $true)][int[]]$Core
   )
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $env:END_RIFT_BOT_HOST = '127.0.0.1'
-  $env:END_RIFT_BOT_PORT = '25566'
-  $outputPath = Join-Path $botLogDirectory ($Name + '.log')
-  $errorPath = Join-Path $botLogDirectory ($Name + '.err.log')
+  $outputPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($Name + '.log')) -LocalRuntimeRoot $runtimeRoot
+  $errorPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($Name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
   $durationMs = ($BotDurationSeconds + 30) * 1000
-  $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]$durationMs) + ' ' +
-    ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
-    ([string]($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
-  $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-    -RedirectStandardOutput $outputPath -RedirectStandardError $errorPath -WindowStyle Hidden -PassThru
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $node
+  $startInfo.WorkingDirectory = $root
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566
+  Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{
+    END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    END_RIFT_BOT_SKIP_AUTH = '1'
+    END_RIFT_BOT_SKIP_REGISTER = '1'
+  }
+  $arguments = @(
+    $botScript, $Name, [string]$durationMs,
+    [string]($Core[0] + 0.5D), [string]$Core[1], [string]($Core[2] + 0.5D),
+    '20', '900', $controlDirectory
+  )
+  if ($null -ne $startInfo.ArgumentList) {
+    foreach ($argument in $arguments) { $startInfo.ArgumentList.Add([string]$argument) }
+  } else {
+    $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]$durationMs) + ' ' +
+      ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
+      ([string]($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
+  }
+  $stdoutStream = $null
+  $stderrStream = $null
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  try {
+    $stdoutStream = [IO.File]::Create($outputPath)
+    $stderrStream = [IO.File]::Create($errorPath)
+    if (-not $process.Start()) { throw "Could not start local visual bot $Name." }
+    $stdoutCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdoutStream)
+    $stderrCopy = $process.StandardError.BaseStream.CopyToAsync($stderrStream)
+    $process | Add-Member -NotePropertyName EndRiftOutputCapture -NotePropertyValue @{
+      StdoutTask = $stdoutCopy; StderrTask = $stderrCopy
+      StdoutStream = $stdoutStream; StderrStream = $stderrStream
+    } -Force
+  } catch {
+    if ($null -ne $stdoutStream) { $stdoutStream.Dispose() }
+    if ($null -ne $stderrStream) { $stderrStream.Dispose() }
+    $process.Dispose()
+    throw
+  }
   $script:processes += $process
 }
 
@@ -171,24 +192,18 @@ function Assert-Output {
 }
 
 Assert-LocalOnly
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
 New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
 Set-Content -LiteralPath $evidencePath -Value ("END_RIFT_CURRENT_VISUAL_START time=$((Get-Date).ToString('o'))") -Encoding UTF8
 foreach ($name in $playerNames) {
   if ($name -notmatch '^[A-Za-z0-9_]{1,16}$') { throw "Invalid visual client name: $name" }
-  Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'PASSIVE' -NoNewline -Encoding ASCII
+  $controlPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $controlDirectory ($name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+  Set-Content -LiteralPath $controlPath -Value 'PASSIVE' -NoNewline -Encoding ASCII
 }
 
 $viewerProcess = $null
 try {
-  $authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
-  if ($authMeEnabled) {
-    Write-Evidence 'LOCAL_AUTH_MODE authme=enabled'
-    $env:END_RIFT_BOT_SKIP_AUTH = '0'
-  } else {
-    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-    $env:END_RIFT_BOT_SKIP_AUTH = '1'
-    Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
-  }
+  Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
   $baselineStatus = Invoke-LocalRcon 'cmend status'
   $baselinePlain = $baselineStatus -replace '\u00A7.', ''
   $baselineParticipantMatch = [Regex]::Match($baselinePlain, '(?m)participants=(\d+)')
@@ -199,10 +214,8 @@ try {
   $core = Get-Core $baselineStatus
   $null = Invoke-LocalRcon 'cmend wave clear'
   $null = Invoke-LocalRcon 'cmend boss kill cleanup'
-  $joinOffset = Get-LogLength
   foreach ($name in $playerNames) { Start-VisualBot -Name $name -Core $core }
   Wait-PlayersOnline
-  if ($authMeEnabled) { Wait-PlayersAuthenticated -AfterOffset $joinOffset }
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon "gamemode survival $name"
     $null = Invoke-LocalRcon "minecraft:tp $name $($core[0] + 0.5) $($core[1]) $($core[2] + 0.5)"
@@ -254,13 +267,14 @@ try {
   $portalOffset = Get-LogLength
   $portalResponse = Invoke-LocalRcon 'cmend test wave 3'
   if ($portalResponse -match '(?i)refused|ошиб|missing') { throw "Wave 3 visual probe was refused: $portalResponse" }
-  Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE_FRONT_STARTED.*wave=3' -Seconds 30 | Out-Null
+  Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTALS_READY.*count=3.*sequential=true' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $portalOffset -Pattern 'END_RIFT_PORTAL_VISUALS.*portals=3.*layers=GATE,INNER,SHARD' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $portalOffset -Pattern 'WAVE_TEST_STARTED.*wave=3' -Seconds 30 | Out-Null
   $objective = Invoke-LocalRcon 'cmend debug objectives'
-  $visualMatch = [Regex]::Match(($objective -replace '\u00A7.', ''), 'visuals=(\d+)')
-  if (-not $visualMatch.Success -or [int]$visualMatch.Groups[1].Value -lt 12) {
-    throw "Wave 3 did not retain its layered floor visuals: $objective"
+  $objectivePlain = $objective -replace '\u00A7.', ''
+  $portalLayersPattern = 'portalLayers=portals=3 observed=9/9 slots=0:GATE\+INNER\+SHARD,1:GATE\+INNER\+SHARD,2:GATE\+INNER\+SHARD'
+  if ($objectivePlain -notmatch $portalLayersPattern) {
+    throw "Wave 3 did not retain all nine owned portal layers in their indexed slots: $objective"
   }
   $mobVisualOffset = Get-LogLength
   $mobVisual = Invoke-LocalRcon 'cmend test visuals mobs'
@@ -268,13 +282,13 @@ try {
     $mobVisual = Get-LogTail -Offset $mobVisualOffset
   }
   Assert-Output $mobVisual 'MOB_VISUAL_TOTAL=([1-9]\d*)' 'MOB_VISUAL_TOTAL'
-  Write-Evidence "CURRENT_WAVE3_VISUAL_PASS portals=3 layers=GATE,INNER,SHARD displays=$($visualMatch.Groups[1].Value)"
+  Write-Evidence 'CURRENT_WAVE3_PORTAL_LAYERS_PASS portalLayers=portals=3 observed=9/9 slots=0:GATE+INNER+SHARD,1:GATE+INNER+SHARD,2:GATE+INNER+SHARD'
+  Write-Evidence 'CURRENT_WAVE3_VISUAL_PASS portals=3 layers=GATE,INNER,SHARD'
 
   $null = Invoke-LocalRcon 'cmend wave clear'
   $w4Offset = Get-LogLength
   $w4Response = Invoke-LocalRcon 'cmend test wave 4'
   if ($w4Response -match '(?i)refused|ошиб|missing') { throw "Wave 4 visual probe was refused: $w4Response" }
-  Wait-Log -AfterOffset $w4Offset -Pattern 'WAVE_FRONT_STARTED.*wave=4' -Seconds 30 | Out-Null
   Wait-Log -AfterOffset $w4Offset -Pattern 'END_RIFT_OBELISK_ASSAULT_READY.*real_blocks=true' -Seconds 45 | Out-Null
   Write-Evidence 'CURRENT_WAVE4_VISUAL_PASS obelisk=real-block-state telegraph=present'
 
@@ -303,10 +317,6 @@ try {
   Write-Evidence 'NATIVE_CLIENT_SCREENSHOT=NOT_VERIFIED'
   Write-Evidence 'CURRENT_VISUAL_FIVE_PLAYER_PASS clients=5 wave_front=true portals=true obelisk=true boss_cues=true music_tracks=24 cleanup_requested=true'
 } finally {
-  if ($null -eq $oldSkipAuth) { Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_AUTH = $oldSkipAuth }
-  if ($null -eq $oldSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_SKIP_REGISTER = $oldSkipRegister }
-  if ($null -eq $oldBotHost) { Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_HOST = $oldBotHost }
-  if ($null -eq $oldBotPort) { Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue } else { $env:END_RIFT_BOT_PORT = $oldBotPort }
   try { $null = Invoke-LocalRcon 'cmend wave clear' } catch { }
   try { $null = Invoke-LocalRcon 'cmend boss kill cleanup' } catch { }
   try { $null = Invoke-LocalRcon "gamemode survival $ViewerName" } catch { }
@@ -317,7 +327,18 @@ try {
   foreach ($process in $processes) {
     if ($process) { try { $process.WaitForExit(5000) | Out-Null } catch { } }
   }
+  foreach ($process in $processes) {
+    $capture = if ($process) { $process.EndRiftOutputCapture } else { $null }
+    if ($null -ne $capture) {
+      try { $capture.StdoutTask.Wait(5000) | Out-Null } catch { }
+      try { $capture.StderrTask.Wait(5000) | Out-Null } catch { }
+      try { $capture.StdoutStream.Dispose() } catch { }
+      try { $capture.StderrStream.Dispose() } catch { }
+    }
+    if ($process) { try { $process.Dispose() } catch { } }
+  }
   foreach ($name in $playerNames) {
-    Remove-Item -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Force -ErrorAction SilentlyContinue
+    $controlPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $controlDirectory ($name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+    Remove-Item -LiteralPath $controlPath -Force -ErrorAction SilentlyContinue
   }
 }

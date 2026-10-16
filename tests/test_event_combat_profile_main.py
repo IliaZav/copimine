@@ -19,9 +19,13 @@ def test_profile_main_binding_preserves_attempt_and_filters_diagnostic_players(t
     probe.write_text(r'''
 import java.util.*;import java.util.logging.*;
 import me.copimine.endevent.domain.EventPhase;
+import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.runtime.*;
 import me.copimine.endevent.runtime.EventCombatProfileService.Context;
 public class CombatProfileMainProbe {
+    static final String WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY = "wave2-cleanup-uuids";
+    static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
+    static final String WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY = "wave2-cleanup-epoch";
     enum GameMode { SURVIVAL,ADVENTURE,CREATIVE,SPECTATOR }
     enum BlackFogPhase { COMBAT,SAFE,FOG }
     record Player(UUID id,String name,GameMode mode,boolean online,boolean dead,double max) {
@@ -31,12 +35,13 @@ public class CombatProfileMainProbe {
     static class Bukkit {static int getCurrentTick(){return 80;}}
     static class PreBoss {long elapsedServerTicks(long tick){return tick;}}
     boolean bootstrapped=true,testWaveFrontVisualMode,testCombatAiMode,testWaveInspectionMode,preBossHandoffCommitted;
-    String eventId="event";long generation=71,eventTickCounter=80,restoredPreBossElapsedTicks,lastCombatProfileSaveTick;
+    String eventId="event";long generation=71,eventTickCounter=80,restoredPreBossElapsedTicks,lastCombatProfileSaveTick,waveTwoCleanupEpoch;
     int activeWave=1;EventPhase phase=EventPhase.WAVE_1;BlackFogPhase blackFogPhase=BlackFogPhase.COMBAT;
     EventCombatProfileService combatProfiles=new EventCombatProfileService();
     EventCombatProfileListener combatProfileListener;
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>();UUID prisoner;
+    Set<UUID> waveTwoCleanupEntityUuids=new LinkedHashSet<>(),waveTwoOutstandingEntityUuids=new LinkedHashSet<>();
     PreBoss preBossTransitionController=new PreBoss();
     static class Chambers {Assignment assignment(){return new Assignment();}}
     static class Assignment {Map<UUID,Integer> chamberByPlayer(){return Map.of();}}
@@ -57,8 +62,20 @@ public class CombatProfileMainProbe {
         var context=main.combatProfileContext(player);
         require(context!=null&&context.activeCombat()&&context.tick()==80,"actual official context uses server tick and committed lifecycle");
         main.combatProfiles.acceptedHit(context,"first",EventCombatProfileService.Weapon.SWORD,false,false);
+        UUID cleanupId=new UUID(0,2);
+        main.waveTwoCleanupEntityUuids.add(cleanupId);
         var checkpoint=main.objectiveProgressSnapshot();
         require(checkpoint.containsKey("combat-profile.schema")&&checkpoint.containsKey("other-objective"),"profile and wave objective checkpoint coexist");
+        require("0".equals(checkpoint.get(WAVE_TWO_CLEANUP_EPOCH_PROGRESS_KEY)),
+                "Wave 2 cleanup epoch is always represented in the durable objective checkpoint");
+        require(cleanupId.toString().equals(checkpoint.get(WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY)),
+                "Wave 2 cleanup tombstones remain in the objective checkpoint");
+        UUID outstandingId=new UUID(0,3);
+        main.phase=EventPhase.RECOVERY_REQUIRED;main.waveTwoOutstandingEntityUuids.add(outstandingId);
+        var recoveryCheckpoint=main.objectiveProgressSnapshot();
+        require(outstandingId.toString().equals(recoveryCheckpoint.get(WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY))
+                        && cleanupId.toString().equals(recoveryCheckpoint.get(WAVE_TWO_CLEANUP_UUIDS_PROGRESS_KEY)),
+                "recovery checkpoint retains both outstanding fighters and cleanup tombstones");
         main.phase=EventPhase.WAVE_6;main.activeWave=6;
         require(main.combatProfileContext(player)!=null,"same attempt carries observations through numbered wave transitions");
         main.restoreCombatProfiles(checkpoint);
@@ -90,7 +107,10 @@ public class CombatProfileMainProbe {
     listener_stub.write_text("package me.copimine.endevent.runtime; public class EventCombatProfileListener {public void clear(){}}", encoding="utf-8")
     production = ROOT / "copimine-end-event/src/me/copimine/endevent"
     sources = [production / "runtime/EventCombatProfileService.java", production / "runtime/AttemptLifecycleController.java",
-               production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java", listener_stub, probe]
+               production / "domain/EventPhase.java", production / "domain/PreBossTickSnapshotPolicy.java",
+               production / "domain/PressureBudgetController.java", production / "domain/WaveMechanicsPolicy.java",
+               production / "domain/WaveTwoStagePolicy.java", production / "domain/WaveTwoEntityRecoveryPolicy.java",
+               listener_stub, probe]
     result = subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), *map(str, sources)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     result = subprocess.run(["java", "-cp", str(tmp_path), "CombatProfileMainProbe"], capture_output=True, text=True)

@@ -24,6 +24,7 @@ $sourceConfig = Join-Path $root 'copimine-end-event\config.yml'
 $installedConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
 $propertiesPath = Join-Path $serverDir 'server.properties'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
   $EvidencePath = Join-Path $runtimeRoot 'boss-hitbox-live.log'
 }
@@ -31,11 +32,7 @@ $processes = [System.Collections.Generic.List[object]]::new()
 
 function Assert-UnderRuntime {
   param([Parameter(Mandatory = $true)][string]$Path)
-  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
-  $allowed = [IO.Path]::GetFullPath($runtimeRoot).TrimEnd('\') + '\'
-  if (-not $full.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Boss hitbox evidence path is outside local-runtime: $Path"
-  }
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $runtimeRoot
 }
 
 Assert-UnderRuntime $EvidencePath
@@ -185,8 +182,8 @@ function Start-Bot {
     [Parameter(Mandatory = $true)][int]$AttackEveryMs
   )
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $stdoutPath = Join-Path $runtimeRoot ($Username + '-hitbox.stdout.log')
-  $stderrPath = Join-Path $runtimeRoot ($Username + '-hitbox.stderr.log')
+  $stdoutPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ($Username + '-hitbox.stdout.log')) -LocalRuntimeRoot $runtimeRoot
+  $stderrPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ($Username + '-hitbox.stderr.log')) -LocalRuntimeRoot $runtimeRoot
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = $node
   $startInfo.WorkingDirectory = $root

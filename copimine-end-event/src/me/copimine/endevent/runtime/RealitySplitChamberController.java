@@ -24,8 +24,9 @@ public final class RealitySplitChamberController {
 
     public void begin(long generation, List<UUID> players) {
         if (generation <= 0L) throw new IllegalArgumentException("generation must be positive");
+        ChamberIsolationPolicy.Assignment nextAssignment = ChamberIsolationPolicy.assign(players);
         this.generation = generation;
-        this.assignment = ChamberIsolationPolicy.assign(players);
+        this.assignment = nextAssignment;
         this.chamberByEntity.clear();
         this.openBoundaries.clear();
         this.completedChambers.clear();
@@ -185,7 +186,8 @@ public final class RealitySplitChamberController {
     }
 
     public boolean chamberComplete(long generation, int chamber) {
-        return owns(generation) && validChamber(chamber) && completedChambers.contains(chamber);
+        return owns(generation) && validChamber(chamber)
+                && completedChambers.contains(chamber);
     }
 
     public boolean allChambersComplete(long generation) {
@@ -235,7 +237,8 @@ public final class RealitySplitChamberController {
     }
 
     public void openBoundary(long generation, int firstChamber, int secondChamber) {
-        if (!owns(generation) || !validChamber(firstChamber) || !validChamber(secondChamber)
+        if (!owns(generation)
+                || !validChamber(firstChamber) || !validChamber(secondChamber)
                 || firstChamber == secondChamber
                 || RealitySplitBarrierPolicy.boundaryForPair(
                         firstChamber, secondChamber, assignment.chamberCount()) < 0) return;

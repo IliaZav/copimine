@@ -12,16 +12,29 @@ param(
 # brain, bounded target selection and the teleport containment listener. The
 # probe never starts a second server and never writes a production endpoint.
 $ErrorActionPreference = 'Stop'
+$authModeScript = Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1'
+. $authModeScript
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+  throw "Refused Git branch '$branch'."
+}
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$serverDir = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'end-rift-server') -LocalRuntimeRoot $runtimeRoot -MustExist
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
-$controlDirectory = Join-Path $runtimeRoot 'ai-current-bot-control'
-$controlFile = Join-Path $controlDirectory ($BotName + '.mode')
-$botOutput = Join-Path $runtimeRoot 'ai-current-bot.log'
+$controlDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'ai-current-bot-control') -LocalRuntimeRoot $runtimeRoot
+$controlFile = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $controlDirectory ($BotName + '.mode')) -LocalRuntimeRoot $runtimeRoot
+$botOutput = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'ai-current-bot.log') -LocalRuntimeRoot $runtimeRoot
 $process = $null
 $cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
@@ -29,10 +42,6 @@ $config = Get-Content -LiteralPath $configPath -Raw
 if ($config -notmatch '(?m)^\s*schema-version:\s*4\s*$' -or
     $config -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: AI smoke requires the current local configuration.'
-}
-$branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
-  throw "Refused Git branch '$branch'."
 }
 $properties = Get-Content -LiteralPath (Join-Path $serverDir 'server.properties') -Raw
 if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
@@ -42,6 +51,8 @@ if ($properties -notmatch '(?m)^server-port=25566\s*$' -or
 foreach ($path in @($serverDir, $rconScript, $botScript, $paperLog)) {
   if (-not (Test-Path -LiteralPath $path)) { throw "Missing local AI probe input: $path" }
 }
+Assert-EndRiftLocalServerTreeIsolated -ServerDir $serverDir -LocalRuntimeRoot $runtimeRoot | Out-Null
+Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
 
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
@@ -157,11 +168,27 @@ function Assert-AiDiagnostics {
 
 function Start-ProbeBot([int[]]$Core) {
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $err = Join-Path $runtimeRoot 'ai-current-bot.err.log'
-  $args = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
+  $err = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $runtimeRoot 'ai-current-bot.err.log') -LocalRuntimeRoot $runtimeRoot
+  $botArguments = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
     ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
     ([string]($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
-  return Start-Process -FilePath $node -ArgumentList $args -WorkingDirectory $root -RedirectStandardOutput $botOutput -RedirectStandardError $err -WindowStyle Hidden -PassThru
+  return Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+    $env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    $env:END_RIFT_REFLECT_ENABLED = '0'
+    $env:END_RIFT_REFLECT_START_MS = '0'
+    $env:END_RIFT_REFLECT_DIAGNOSTICS = '0'
+    $env:END_RIFT_BOT_WAVE7_AUTOPILOT = '0'
+    $env:END_RIFT_BOT_WAVE7_HOLD_POSITION = '0'
+    $env:END_RIFT_TENTACLE_TRACE = '0'
+    $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
+    $env:END_RIFT_OBELISK_TARGETS = '[]'
+    $env:END_RIFT_BOSS_UUID = ''
+    Start-Process -FilePath $node -ArgumentList $botArguments -WorkingDirectory $root `
+      -RedirectStandardOutput $botOutput -RedirectStandardError $err -WindowStyle Hidden -PassThru
+  }
 }
 
 function Set-ProbeBotMode([ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7')][string]$Mode) {
@@ -175,6 +202,9 @@ function Set-ProbeBotMode([ValidateSet('PASSIVE', 'ACTIVE', 'ACTIVE_WAVE7')][str
     return $botLog -match ("BOT_" + [Regex]::Escape($Mode) + " " + [Regex]::Escape($BotName))
   } | Out-Null
 }
+
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+Write-Output 'LOCAL_AUTH_MODE authme=disabled rcon_plugin_list=true'
 
 try {
   if (-not (Test-Path -LiteralPath $controlDirectory)) {

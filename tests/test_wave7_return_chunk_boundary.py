@@ -129,7 +129,7 @@ public class ReturnChunkProbe {
     boolean teleportWave7Return(Player player,Location destination){moves++;player.location=destination.clone();return true;}
     void saveStateAsync(){}boolean saveStateSync(){saves++;return true;}
     void message(Player player,String message){}void refreshClientBindingsForPlayer(Player player){}
-    void cancelSessionTasks(){}void cleanupOwnedEntities(String event,long generation){}void clearClientEffects(){}
+    boolean cancelSessionTasks(){return true;}void cleanupOwnedEntities(String event,long generation){}void clearClientEffects(){}
     void forcePhase(EventPhase phase,String reason){}
     java.util.logging.Logger getLogger(){return java.util.logging.Logger.getAnonymousLogger();}
 ''' + adapters + r'''

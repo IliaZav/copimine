@@ -21,21 +21,13 @@ $serverPropertiesPath = Join-Path $serverDir 'server.properties'
 $paperLogPath = Join-Path $serverDir 'logs\latest.log'
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $PSScriptRoot 'LocalEndRiftMobCombatBot.js'
-$evidenceDirectory = Join-Path $root 'artifacts\end-rift-noauth-live-20260929'
-$evidencePath = Join-Path $evidenceDirectory 'no-auth-smoke.log'
-$controlDirectory = Join-Path $runtimeRoot 'no-auth-smoke-controls'
+$evidenceDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $root 'artifacts\end-rift-noauth-live-20260929') -LocalRuntimeRoot $root
+$evidencePath = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $evidenceDirectory 'no-auth-smoke.log') -LocalRuntimeRoot $root
+$controlDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'no-auth-smoke-controls') -LocalRuntimeRoot $runtimeRoot
 $processes = [System.Collections.Generic.List[object]]::new()
-$botEnvironmentNames = @(
-  'END_RIFT_BOT_HOST', 'END_RIFT_BOT_PORT', 'END_RIFT_BOT_CONTROL_DIRECTORY',
-  'END_RIFT_BOT_SKIP_REGISTER', 'END_RIFT_BOT_SKIP_AUTH', 'END_RIFT_REFLECT_ENABLED',
-  'END_RIFT_REFLECT_START_MS', 'END_RIFT_REFLECT_DIAGNOSTICS', 'END_RIFT_BOT_WAVE7_AUTOPILOT',
-  'END_RIFT_BOT_WAVE7_HOLD_POSITION', 'END_RIFT_BOT_COMBAT_TRACE', 'END_RIFT_TENTACLE_TRACE',
-  'END_RIFT_GUARDIAN_PROBE_NAMES', 'END_RIFT_OBELISK_TARGETS', 'END_RIFT_BOSS_UUID'
-)
-$previousBotEnvironment = @{}
-foreach ($name in $botEnvironmentNames) {
-  $previousBotEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
-}
 $botNames = @()
 $before = $null
 $smokePassed = $false
@@ -71,6 +63,7 @@ function Assert-LocalOnly {
     throw 'Refused a non-local or non-current End Rift configuration.'
   }
   $properties = Get-Content -LiteralPath $serverPropertiesPath -Raw
+  Assert-EndRiftLocalServerTreeIsolated -ServerDir $serverDir -LocalRuntimeRoot $runtimeRoot | Out-Null
   $activeBindings = Assert-EndRiftLocalServerBind `
     -ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort
   if ($properties -notmatch '(?m)^online-mode=false\s*$' -or
@@ -78,8 +71,11 @@ function Assert-LocalOnly {
       $properties -notmatch ("(?m)^rcon\.port=" + $RconPort + '\s*$')) {
     throw 'Refused: no-auth smoke requires the isolated loopback offline server and its configured RCON port.'
   }
-  $branch = (& git -C $root branch --show-current 2>$null).Trim()
-  if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+  $branchLines = @(& git -C $root branch --show-current 2>$null)
+  $branchExitCode = $LASTEXITCODE
+  $branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+  if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+      $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
     throw "No-auth smoke refused Git branch '$branch'."
   }
   return $activeBindings
@@ -128,28 +124,44 @@ function Wait-Players {
 function Start-SmokeBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $logPath = Join-Path $runtimeRoot ($Name + '.log')
-  $errorPath = Join-Path $runtimeRoot ($Name + '.err.log')
+  $logPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $runtimeRoot ($Name + '.log')) -LocalRuntimeRoot $runtimeRoot
+  $errorPath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $runtimeRoot ($Name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
   $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
     ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
     ([string]($Core[2] + 0.5D)) + ' 20 900 "' + $controlDirectory + '"'
-  $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-    -RedirectStandardOutput $logPath -RedirectStandardError $errorPath -WindowStyle Hidden -PassThru
+  $process = Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort $ServerPort -Action {
+    $env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    $env:END_RIFT_REFLECT_ENABLED = '0'
+    $env:END_RIFT_REFLECT_START_MS = '0'
+    $env:END_RIFT_REFLECT_DIAGNOSTICS = '0'
+    $env:END_RIFT_BOT_WAVE7_AUTOPILOT = '0'
+    $env:END_RIFT_BOT_WAVE7_HOLD_POSITION = '0'
+    $env:END_RIFT_TENTACLE_TRACE = '0'
+    $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
+    $env:END_RIFT_OBELISK_TARGETS = '[]'
+    $env:END_RIFT_BOSS_UUID = ''
+    Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
+      -RedirectStandardOutput $logPath -RedirectStandardError $errorPath -WindowStyle Hidden -PassThru
+  }
   $processes.Add($process)
 }
+
+$activeBindings = Assert-LocalOnly
+$pluginList = Invoke-LocalRcon 'plugins'
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput $pluginList
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
 
 New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
 Set-Content -LiteralPath $evidencePath -Value "END_RIFT_LOCAL_NO_AUTH_SMOKE_START time=$((Get-Date).ToString('o'))" -Encoding UTF8
 New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
 
 try {
-  $activeBindings = Assert-LocalOnly
-  $branch = (& git -C $root branch --show-current).Trim()
   Write-Evidence "LOCAL_ONLY_PASS branch=$branch server=local-runtime/end-rift-server minecraft_port=$ServerPort minecraft_bind=$($activeBindings.MinecraftListenerAddresses -join ',') rcon_port=$RconPort rcon_bind=$($activeBindings.RconListenerAddresses -join ',')"
-  $pluginList = Invoke-LocalRcon 'plugins'
-  if (Test-EndRiftLocalAuthMeEnabled -PluginListOutput $pluginList) {
-    throw 'Refused: this live smoke specifically requires AuthMe to be disabled on the local test server.'
-  }
   Write-Evidence 'LOCAL_AUTH_MODE authme=disabled rcon_plugin_list=true'
 
   $beforeStatus = Invoke-LocalRcon 'cmend status'
@@ -173,30 +185,18 @@ try {
     throw 'Refused to use a smoke bot name that is already online.'
   }
 
-  $env:END_RIFT_BOT_HOST = '127.0.0.1'
-  $env:END_RIFT_BOT_PORT = [string]$ServerPort
-  $env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
-  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  $env:END_RIFT_BOT_SKIP_AUTH = '1'
-  $env:END_RIFT_REFLECT_ENABLED = '0'
-  $env:END_RIFT_REFLECT_START_MS = '0'
-  $env:END_RIFT_REFLECT_DIAGNOSTICS = '0'
-  $env:END_RIFT_BOT_WAVE7_AUTOPILOT = '0'
-  $env:END_RIFT_BOT_WAVE7_HOLD_POSITION = '0'
-  $env:END_RIFT_BOT_COMBAT_TRACE = '0'
-  $env:END_RIFT_TENTACLE_TRACE = '0'
-  $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
-  $env:END_RIFT_OBELISK_TARGETS = '[]'
-  $env:END_RIFT_BOSS_UUID = ''
   foreach ($name in $botNames) {
-    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) `
+    $controlFile = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $controlDirectory ($name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+    Set-Content -LiteralPath $controlFile `
       -Value 'PASSIVE' -NoNewline -Encoding ASCII
     Start-SmokeBot -Name $name -Core $core
   }
 
   Wait-Players -Names $botNames -Online $true
   foreach ($name in $botNames) {
-    $logPath = Join-Path $runtimeRoot ($name + '.log')
+    $logPath = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $runtimeRoot ($name + '.log')) -LocalRuntimeRoot $runtimeRoot -MustExist
     $deadline = (Get-Date).AddSeconds(15)
     $botLog = ''
     while ((Get-Date) -lt $deadline) {
@@ -232,16 +232,10 @@ finally {
     }
   }
   foreach ($name in $botNames) {
-    Remove-Item -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Force -ErrorAction SilentlyContinue
+    $controlFile = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $controlDirectory ($name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+    Remove-Item -LiteralPath $controlFile -Force -ErrorAction SilentlyContinue
   }
-  foreach ($name in $botEnvironmentNames) {
-    if ($null -eq $previousBotEnvironment[$name]) {
-      Remove-Item ("Env:" + $name) -ErrorAction SilentlyContinue
-    } else {
-      [Environment]::SetEnvironmentVariable($name, [string]$previousBotEnvironment[$name], 'Process')
-    }
-  }
-
   if (Test-Path -LiteralPath $serverPropertiesPath -PathType Leaf) {
     try {
       $afterStatus = Invoke-LocalRcon 'cmend status'

@@ -1,10 +1,10 @@
 package me.copimine.endevent.domain;
 
 /**
- * Bounded pressure profile. The profile describes simultaneous pressure,
- * not a kill quota: a director may feed another group only after a slot is
- * released. That keeps twenty-player fights readable and below the global
- * event hostile cap.
+ * Bounded pressure profile. It describes simultaneous hostile pressure, not
+ * a kill quota or a limit on assigned targets. Squad targeting remains a
+ * separate decision, and major ability wind-ups are admitted by the combat
+ * coordinator's single lease.
  */
 public final class EventCombatScalingPolicy {
     public static final int MIN_PLAYERS = 2;
@@ -15,15 +15,13 @@ public final class EventCombatScalingPolicy {
     }
 
     public record Profile(int players, int commonMobs, int elites, int heavyMechanics,
-                          int mechanicSlots, int maxFocusedAttackers,
-                          int maxConcurrentHostiles) {
+                          int mechanicSlots, int maxConcurrentHostiles) {
         public Profile {
             players = clamp(players, MIN_PLAYERS, MAX_PLAYERS);
             commonMobs = Math.max(0, commonMobs);
             elites = Math.max(0, elites);
             heavyMechanics = Math.max(0, heavyMechanics);
             mechanicSlots = Math.max(0, mechanicSlots);
-            maxFocusedAttackers = Math.max(1, maxFocusedAttackers);
             maxConcurrentHostiles = Math.min(GLOBAL_HOSTILE_CAP, Math.max(0, maxConcurrentHostiles));
         }
     }
@@ -47,8 +45,7 @@ public final class EventCombatScalingPolicy {
         int elites = safe <= 5 ? 1 : safe <= 13 ? 2 : 3;
         int heavy = safe <= 5 ? 1 : safe <= 15 ? 2 : 3;
         int mechanics = safe <= 5 ? 1 : safe <= 10 ? 2 : 3;
-        int focus = safe <= 10 ? 2 : 3;
-        return new Profile(safe, common, elites, heavy, mechanics, focus, common + elites);
+        return new Profile(safe, common, elites, heavy, mechanics, common + elites);
     }
 
     private static int clamp(int value, int min, int max) {

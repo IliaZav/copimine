@@ -19,7 +19,7 @@ public class TrialCancelProbe {
     static class PotionEffectType {static final Object INVISIBILITY=new Object();}
     static class RealitySplitTrialRuntimeState {UUID target;int action;long nextActionTick;}
     static class WaveCombatCoordinator {
-        record Lease(UUID target,UUID owner){} Lease currentLease(long gen,long tick){return null;}
+            record Lease(UUID target,UUID owner){} Lease currentLease(long gen,long tick){return null;} void cancelTarget(UUID target){}
     }
     WaveCombatCoordinator waveCombatCoordinator=new WaveCombatCoordinator();
     long generation=43,eventTickCounter=100;

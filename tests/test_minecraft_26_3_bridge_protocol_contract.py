@@ -14,11 +14,17 @@ def test_end_event_server_uses_the_migration_client_bridge_protocol_version():
     client_policy = _read(
         "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/ClientModHandshakePolicy.java"
     )
+    v4_sender = _read("copimine-end-event/src/me/copimine/endevent/bridge/EndEventBridgeV4Sender.java")
+    signing_policy = _read("tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/BridgeSigningPolicy.java")
 
     assert re.search(r"PROTOCOL_VERSION\s*=\s*3\s*;", client_policy)
     assert re.search(r"CLIENT_BRIDGE_PROTOCOL_VERSION\s*=\s*3\s*;", server)
-    assert "output.writeInt(CLIENT_BRIDGE_PROTOCOL_VERSION)" in server
     assert server.count("protocol != CLIENT_BRIDGE_PROTOCOL_VERSION") >= 3
+    assert 'int protocol = input.readInt();' in server
+    assert "Never send unsigned V3 fallbacks for End Event controls." in server
+    assert "endEventBridgeV4.send(player.getUniqueId(), type, instanceId," in server
+    assert "metadata.protocolVersion() != BridgeSigningPolicy.PROTOCOL_VERSION" in v4_sender
+    assert re.search(r"PROTOCOL_VERSION\s*=\s*4\s*;", signing_policy)
 
 
 def test_migration_client_event_decoders_accept_the_current_bridge_version():
@@ -77,3 +83,16 @@ def test_client_mod_docs_describe_reported_identity_without_claiming_install_att
     assert "не доказывает, что клиент использует неизменённый JAR мода" in readme
     assert "verifies the installed CopiMineClient version" not in protocol
     assert "сервер проверяет только этот мод" not in readme
+
+
+def test_paper_bridge_test_fork_has_a_bounded_heap_and_single_worker():
+    gradle = _read("tools/minecraft-26.3/build.gradle")
+    task = re.search(
+        r"tasks\.register\('bridgeServerTest', Test\)\s*\{(?P<body>.*?)\n\}",
+        gradle,
+        re.DOTALL,
+    )
+
+    assert task is not None
+    assert "maxParallelForks = 1" in task.group("body")
+    assert "maxHeapSize = '128m'" in task.group("body")

@@ -131,6 +131,8 @@ tasks.named("check") {
 
 tasks.withType(Test).configureEach {
     useJUnitPlatform()
+    maxParallelForks = 1
+    maxHeapSize = '256m'
 }
 
 tasks.withType(JavaCompile).configureEach {

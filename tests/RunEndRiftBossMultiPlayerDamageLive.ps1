@@ -19,7 +19,16 @@ param(
 # Local-only test. It starts the official current boss and uses real independent
 # player attack packets. It never changes the world layout or touches production.
 $ErrorActionPreference = 'Stop'
+$authModeScript = Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1'
+. $authModeScript
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+  throw "Refused Git branch '$branch'."
+}
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
@@ -48,6 +57,7 @@ if ((Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') 
 if (-not (Test-Path -LiteralPath $botScript -PathType Leaf)) {
   throw "Local boss combat bot is missing: $botScript"
 }
+Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
 
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)

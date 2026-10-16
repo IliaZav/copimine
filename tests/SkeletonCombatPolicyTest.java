@@ -20,8 +20,8 @@ public final class SkeletonCombatPolicyTest {
                 "common skeletons need a distinct arrow trail");
 
         SkeletonCombatPolicy.ArrowProfile elite = SkeletonCombatPolicy.arrowProfile(true);
-        require(elite.arrowCount() == 3 && elite.damage() == 8.0D,
-                "elite skeleton profile must fire a bounded three-arrow salvo");
+        require(elite.arrowCount() == 3 && elite.damage() == 3.5D,
+                "elite skeletons fire exactly three physical arrows with bounded per-arrow damage");
         require(elite.cooldownTicks() >= 50 && elite.cooldownTicks() <= 100,
                 "elite salvo cooldown must be bounded");
         require(elite.particlePattern().equals("rift_salvo"),
@@ -77,21 +77,21 @@ public final class SkeletonCombatPolicyTest {
                 "miniboss skeletons must close their ranged lane slightly");
 
         require(SkeletonCombatPolicy.maneuverFor(
-                        EndRiftObjective.Objective.RIFT_CARRIERS, false, 1, 0)
+                        EndRiftObjective.Objective.RIFT_CARRIERS, false, 1)
                         == SkeletonCombatPolicy.Maneuver.SIDE_STEP,
                 "wave one skeletons need a small readable side step");
         require(SkeletonCombatPolicy.maneuverFor(
-                        EndRiftObjective.Objective.OBELISK_ASSAULT, false, 0, 0)
+                        EndRiftObjective.Objective.OBELISK_ASSAULT, false, 0)
                         == SkeletonCombatPolicy.Maneuver.ROTATE_COVER,
                 "wave four skeletons need a rotating cover beat");
         require(SkeletonCombatPolicy.maneuverFor(
-                        EndRiftObjective.Objective.BLACK_FOG, true, 2, 0)
+                        EndRiftObjective.Objective.BLACK_FOG, true, 0)
                         == SkeletonCombatPolicy.Maneuver.CROSS_FIRE,
                 "wave five miniboss skeletons need a bounded cross-fire beat");
         SkeletonCombatPolicy.Maneuver firstManeuver = SkeletonCombatPolicy.maneuverFor(
-                EndRiftObjective.Objective.BLACK_FOG, true, 2, 0);
+                EndRiftObjective.Objective.BLACK_FOG, true, 0);
         SkeletonCombatPolicy.Maneuver secondManeuver = SkeletonCombatPolicy.maneuverFor(
-                EndRiftObjective.Objective.BLACK_FOG, true, 2, 0);
+                EndRiftObjective.Objective.BLACK_FOG, true, 0);
         require(firstManeuver == secondManeuver,
                 "skeleton maneuver selection must be deterministic");
         System.out.println("SkeletonCombatPolicyTest OK");

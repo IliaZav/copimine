@@ -7,6 +7,9 @@ load: POSTWORLD
 depend:
   - CopiMineWorldCore
   - CopiMineArtifacts
+softdepend:
+  - WorldGuard
+  - CopiMineNarcotics
 commands:
   cmend:
     description: Управление End Rift Event; личный возврат участника через /cmend return

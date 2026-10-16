@@ -2,8 +2,12 @@ import me.copimine.endevent.domain.SkeletonArrowPolicy;
 
 public final class SkeletonArrowPolicyTest {
     public static void main(String[] args) {
-        check(SkeletonArrowPolicy.forShot(true, 99L) == SkeletonArrowPolicy.ArrowKind.EXPLOSIVE,
-                "every elite skeleton shot must be explosive");
+        check(SkeletonArrowPolicy.forShot(3, true, 99L) == SkeletonArrowPolicy.ArrowKind.COMMON,
+                "Wave 3 elite arrows remain ordinary physical arrows");
+        check(SkeletonArrowPolicy.forShot(5, true, 99L) == SkeletonArrowPolicy.ArrowKind.EXPLOSIVE,
+                "only Wave 5 elite bow shots use explosive arrows");
+        check(SkeletonArrowPolicy.forShot(6, true, 99L) == SkeletonArrowPolicy.ArrowKind.COMMON,
+                "Wave 6 pressure elites use Arrow Rain instead of explosive bow shots");
         check(SkeletonArrowPolicy.forShot(false, 0L) == SkeletonArrowPolicy.ArrowKind.POISON_NAUSEA,
                 "the first 20 percent bucket must carry poison and nausea");
         check(SkeletonArrowPolicy.forShot(false, 19L) == SkeletonArrowPolicy.ArrowKind.POISON_NAUSEA,

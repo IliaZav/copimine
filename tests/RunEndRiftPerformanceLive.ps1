@@ -24,14 +24,11 @@ $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $propertiesPath = Join-Path $serverDir 'server.properties'
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
 $evidenceDirectory = Join-Path $runtimeRoot 'performance-live'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 
 function Assert-UnderRoot {
   param([string]$Path, [string]$AllowedRoot, [string]$Label)
-  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
-  $rootPath = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\') + '\'
-  if (-not $full.StartsWith($rootPath, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "$Label is outside the isolated local runtime: $Path"
-  }
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $AllowedRoot
 }
 
 Assert-UnderRoot -Path $serverDir -AllowedRoot $runtimeRoot -Label 'Server directory'
@@ -167,8 +164,8 @@ $node = (Get-Command node.exe -ErrorAction Stop).Source
 try {
   New-Item -ItemType Directory -Path $evidenceDirectory -Force | Out-Null
   foreach ($name in @($FirstBotName, $SecondBotName)) {
-    $botOut = Join-Path $evidenceDirectory ($name + '.out.log')
-    $botErr = Join-Path $evidenceDirectory ($name + '.err.log')
+    $botOut = Assert-EndRiftLocalRuntimePath -Path (Join-Path $evidenceDirectory ($name + '.out.log')) -LocalRuntimeRoot $runtimeRoot
+    $botErr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $evidenceDirectory ($name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
     # The Mineflayer combat bot has the same protocol/keep-alive path as the
     # successful live combat probes.  NaN arena coordinates would make it
     # attack arbitrary entities, so keep its measured arena radius at zero.

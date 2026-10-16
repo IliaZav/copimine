@@ -30,6 +30,14 @@ public final class SkeletonArrowPolicy {
         return isStatusRoll(roll) ? ArrowKind.POISON_NAUSEA : ArrowKind.COMMON;
     }
 
+    /** Elites use a deterministic, wave-owned physical arrow payload. */
+    public static ArrowKind forShot(int wave, boolean elite, long roll) {
+        if (!elite) return forShot(false, roll);
+        return EliteAbilityPolicy.has(wave, EliteAbilityPolicy.Role.SKELETON,
+                EliteAbilityPolicy.Ability.EXPLOSIVE_ARROWS)
+                ? ArrowKind.EXPLOSIVE : ArrowKind.COMMON;
+    }
+
     /** Convert an arbitrary random value into the requested 20% bucket. */
     public static boolean isStatusRoll(long roll) {
         return Math.floorMod(roll, 100L) < STATUS_CHANCE_PERCENT;

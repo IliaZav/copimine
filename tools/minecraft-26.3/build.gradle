@@ -24,10 +24,11 @@ def verifyVoiceChatApi = tasks.register('verifyVoiceChatApi') {
 }
 layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/plugins')
 
-if (JavaVersion.current().majorVersion.toInteger() < profile.minimumJava) {
-    throw new GradleException("Minecraft ${profile.minecraftVersion} requires Java ${profile.minimumJava} or later")
+def currentJavaVersion = System.getProperty('java.version')
+if (currentJavaVersion != profile.buildJavaVersion) {
+    throw new GradleException("Minecraft " + profile.minecraftVersion + " migration builds require Java " +
+            profile.buildJavaVersion + "; found " + currentJavaVersion)
 }
-
 repositories {
     mavenCentral()
     maven { url = 'https://repo.papermc.io/repository/maven-public/' }
@@ -83,6 +84,25 @@ modules.each { name, module ->
 
 sourceSets.narcotics.java.srcDir(new File(checkout, 'tools/minecraft-26.3/protocol/src/main/java'))
 
+sourceSets.create('bridgeServerTest') {
+    java.srcDir(file('server-bridge-tests/src/test/java'))
+    compileClasspath += sourceSets.narcotics.output + sourceSets.endEvent.output
+    runtimeClasspath += output + compileClasspath
+}
+
+configurations.bridgeServerTestCompileOnly.extendsFrom(
+        configurations.narcoticsCompileOnly, configurations.endEventCompileOnly)
+configurations.bridgeServerTestImplementation.extendsFrom(
+        configurations.narcoticsImplementation, configurations.endEventImplementation)
+configurations.bridgeServerTestRuntimeOnly.extendsFrom(
+        configurations.narcoticsRuntimeOnly, configurations.endEventRuntimeOnly)
+
+dependencies {
+    bridgeServerTestImplementation platform('org.junit:junit-bom:5.11.4')
+    bridgeServerTestImplementation 'org.junit.jupiter:junit-jupiter'
+    bridgeServerTestRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
 dependencies {
     adminCompileOnly sourceSets.economyCore.output
     adminCompileOnly 'me.clip:placeholderapi:2.12.3'
@@ -91,6 +111,7 @@ dependencies {
     electionCoreCompileOnly sourceSets.economyCore.output
     endEventCompileOnly sourceSets.worldCore.output
     endEventCompileOnly sourceSets.artifacts.output
+    endEventCompileOnly sourceSets.narcotics.output
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -102,6 +123,21 @@ tasks.register('migrationPlugins') {
     group = 'build'
     description = 'Compile all eight first-party plugins against the pinned 26.3 API in isolated output directories.'
     dependsOn(modules.keySet().collect { "${it}Jar" })
+}
+
+tasks.named('compileBridgeServerTestJava') {
+    dependsOn sourceSets.narcotics.classesTaskName, sourceSets.endEvent.classesTaskName
+}
+
+tasks.register('bridgeServerTest', Test) {
+    group = 'verification'
+    description = 'Run focused Paper-side bridge service and key-loader tests.'
+    testClassesDirs = sourceSets.bridgeServerTest.output.classesDirs
+    classpath = sourceSets.bridgeServerTest.runtimeClasspath
+    maxParallelForks = 1
+    maxHeapSize = '128m'
+    useJUnitPlatform()
+    dependsOn sourceSets.bridgeServerTest.classesTaskName
 }
 
 tasks.register('verifyMigrationPluginResources') {

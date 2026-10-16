@@ -5,6 +5,15 @@ import java.util.UUID;
 
 public final class RitualTargetPolicyTest {
     public static void main(String[] args) {
+        check(RitualTargetPolicy.projectileTargetAllowed(true, false, true),
+                "ritual spell arrows do not require their caster to pass the ordinary wave attack gate");
+        check(RitualTargetPolicy.projectileTargetAllowed(false, true, true),
+                "ordinary event arrows still require the ordinary target gate");
+        check(!RitualTargetPolicy.projectileTargetAllowed(false, false, true),
+                "ordinary event arrows remain blocked by the ordinary target gate");
+        check(!RitualTargetPolicy.projectileTargetAllowed(true, false, false),
+                "ritual arrows still require ritual-specific target and provenance approval");
+
         UUID prisoner = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID freeA = UUID.fromString("00000000-0000-0000-0000-000000000002");
         UUID freeB = UUID.fromString("00000000-0000-0000-0000-000000000003");

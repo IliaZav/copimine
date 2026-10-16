@@ -36,12 +36,14 @@ public final class RitualSphereScalingPolicy {
         int count = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, players));
         int activePressure = PressureBudgetController.profileForPlayers(count).activePressure();
         int total = Math.max(2, Math.min(8, activePressure / 4));
-        int elites = count >= 16 ? 2 : count >= 6 ? 1 : 0;
-        elites = Math.min(elites, total - 1);
+        int elites = Math.min(2, total);
         int common = total - elites;
         int endermen = (common + 1) / 2;
         int spiders = common - endermen;
-        return new WaveMechanicsPolicy.WaveCounts(endermen, spiders, 0, elites, 0);
+        int eliteEndermen = elites > 0 ? 1 : 0;
+        int eliteSkeletons = elites > 1 ? 1 : 0;
+        return new WaveMechanicsPolicy.WaveCounts(endermen, spiders,
+                0, eliteEndermen, eliteSkeletons);
     }
 
     public record Profile(int participants, int casterCount, int guardCount,

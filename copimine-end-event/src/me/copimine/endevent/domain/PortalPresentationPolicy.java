@@ -5,6 +5,8 @@ import java.util.List;
 /** Portal-specific visual projection of authoritative capture state. */
 public final class PortalPresentationPolicy {
     public static final long COLLAPSE_MILLIS = 600L;
+    public static final int MAX_REBUILD_ATTEMPTS = 3;
+    public static final long REBUILD_RETRY_BASE_MILLIS = 250L;
     public static final int GAUGE_SEGMENTS = 24;
     private PortalPresentationPolicy() {}
 
@@ -28,8 +30,15 @@ public final class PortalPresentationPolicy {
     public static boolean collapseFinished(long closingAt, long now) {
         return closingAt >= 0 && now >= closingAt && now - closingAt >= COLLAPSE_MILLIS;
     }
-    public static boolean shouldRebuild(boolean visible, boolean present, int attempts) {
-        return visible && !present && attempts == 0;
+    public static boolean shouldRebuild(boolean visible, boolean present, int attempts,
+                                        long now, long retryAtMillis) {
+        return visible && !present && attempts >= 0 && attempts < MAX_REBUILD_ATTEMPTS
+                && now >= retryAtMillis;
+    }
+
+    public static long retryDelayMillis(int retryNumber) {
+        int boundedRetry = Math.max(1, Math.min(4, retryNumber));
+        return REBUILD_RETRY_BASE_MILLIS * boundedRetry;
     }
 
     public record Frame(double progress, int gaugeSegments, double scale, int brightness, boolean visible) {}

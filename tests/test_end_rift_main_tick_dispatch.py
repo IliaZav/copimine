@@ -24,7 +24,8 @@ def tick_probe(tmp_path_factory):
     java = directory / "MainTickWaveDispatch.java"
     ordinary = ["sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace",
                 "updatePadOccupancy", "updateCombatHelpers", "tickWaveMobAi", "tickWaveCommanderAura",
-                "tickMiniBosses", "tickEventArrowProjectiles", "refreshClientBindingsForOnlinePlayers",
+                    "tickMiniBosses", "tickEliteAbilityState", "tickEventArrowProjectiles",
+                    "refreshClientBindingsForOnlinePlayers",
                 "containRealitySplitPlayers", "tickWave4ObeliskAssault", "tickStartRitual",
                 "tickCurrentIntermission", "tickCoreRestoration", "tickPreBossCooldown", "tickBossCinematic",
                 "issueVictoryRewards", "tickShardChannels", "tickShardPassives"]

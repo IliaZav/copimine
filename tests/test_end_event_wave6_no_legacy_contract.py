@@ -55,7 +55,8 @@ def test_wave6_server_has_only_prisoner_abilities_and_no_health_floor_or_input_s
     ):
         assert forbidden not in event
     assert "PrisonerAbilityController" in event
-    assert "END_PRISONER_ABILITY_REQUEST" in event
+    assert "EndEventBridgeV4Access.PrisonerAbilityRequest" in event
+    assert "handleRitualPrisonerAbilityRequest(player, request.generation()" in event
 
 
 def test_legacy_snapshot_values_are_migration_only_and_not_encoded():

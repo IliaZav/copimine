@@ -34,7 +34,9 @@ def test_startup_synchronizes_served_copy_and_declared_digest(tmp_path, existing
     properties.write_text(original, encoding="utf-8")
     source = STARTER.read_text(encoding="utf-8")
     script = tmp_path / "probe.ps1"
+    auth_helper = ROOT / "tests/EndRiftLocalAuthMode.ps1"
     script.write_text("param([string]$worktreeRoot,[string]$ServerDir,[string]$propertiesPath)\n$ErrorActionPreference='Stop'\n"
+                      + f". '{auth_helper}'\n$localRuntimeRoot = Join-Path $worktreeRoot 'local-runtime'\n"
                       + ps_function(source, "Get-LocalSha256") + "\n"
                       + ps_function(source, "Sync-LocalResourcePack") + "\nSync-LocalResourcePack\n", encoding="utf-8-sig")
     result = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
@@ -50,8 +52,9 @@ def test_startup_synchronizes_served_copy_and_declared_digest(tmp_path, existing
 
 def test_sync_runs_after_busy_port_rejection_and_before_paper_boot():
     source = STARTER.read_text(encoding="utf-8")
+    busy_port_guard = source.index("$null = Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576)")
     invocation = source.index("\nSync-LocalResourcePack\n")
-    assert source.index("Refused to start because local port") < invocation < source.index("$paper = Start-Process")
+    assert busy_port_guard < invocation < source.index("$paper = Start-Process")
 
 
 def test_local_probe_leaves_native_memory_headroom_for_the_client():

@@ -35,6 +35,43 @@ def test_wave6_live_objective_is_ritual_sphere_with_exact_server_policy() -> Non
     assert "MAX_PROJECTILES_PER_VOLLEY = 7" in scaling
 
 
+def test_wave6_elite_spider_conversion_is_not_gated_by_six_participants() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+
+    assert "int spiderConversionLimit = EliteAbilityPolicy.spiderConversions(wave);" in root
+    assert "int spiderConversionLimit = wave == 6 && currentWaveScalePlayers < 6" not in root
+
+
+def test_spell_matrix_runs_wave6_combat_and_publishes_assignment_marker() -> None:
+    root = read(SRC / "CopiMineEndEvent.java")
+    runner = read(ROOT / "tests" / "RunEndRiftSpellMatrixLive.ps1")
+
+    assert "if (wave == 3 || wave == 5 || wave == 6)" in root
+    assert "$wave -eq 6" in runner
+    assert "cmend test wave 6 combat" in runner
+    assert "WAVE6_PRESSURE_PACK.*players=6.*planned=4.*spawned=4.*test=true" in runner
+    assert '"TEST_WAVE_${wave}_SPELL_ASSIGNMENTS.*miniBossSpells=' in runner
+    assert "void_burst" in runner
+    assert '"ELITE_PROJECTILE_RELEASE.*ability=$ability.*player_only=true.*block_damage=false"' in runner
+    assert "waveScalePlayers" not in runner
+    assert "$spellMatrixBotNames = @($BotName)" in runner
+    assert "for ($index = 1; $index -le 5; $index++)" in runner
+    assert "function Start-SpellMatrixBot" in runner
+    assert "function Wait-LocalBots" in runner
+    assert "function Stop-SpellMatrixBots" in runner
+    assert "function Test-EndRiftLocalPlayerNamesOnline" in runner
+    assert "Test-EndRiftLocalPlayerNamesOnline -PlayerListOutput $list -RequiredNames $spellMatrixBotNames" in runner
+    assert "foreach ($name in $spellMatrixBotNames)" in runner
+    assert '"tp $name $($core[0] + 6)' in runner
+    assert "Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $serverProperties -ServerPort 25566 -RconPort 25576" in runner
+    assert "Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576" in runner
+    assert "Assert-EndRiftLocalAuthMeDisabled -PluginListOutput $plugins" in runner
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" in runner
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in runner
+    assert "endrift-local" not in runner
+    assert "Stop-SpellMatrixBots" in runner[runner.index("} finally {"):]
+
+
 def test_wave6_legacy_collapse_rings_are_not_a_live_execution_path() -> None:
     root = read(SRC / "CopiMineEndEvent.java")
     start = root.index("private WaveObjectiveStartResult startCanonicalObjective")
@@ -179,7 +216,14 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "LIVE_WAVE7_COMMAND_CLEANUP_PASS" in live_script
     assert "LIVE_WAVE7_NATURAL_COMPLETION_CLEANUP_PASS" in live_script
     assert "LIVE_WAVE7_RESTART_RECOVERY_PASS" in live_script
-    assert "-Action {" not in live_script
+    start_bot_start = live_script.index("function Start-Bot")
+    start_bot_end = live_script.index("function Set-BotMode", start_bot_start)
+    start_bot = live_script[start_bot_start:start_bot_end]
+    assert "Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort $ServerPort" in start_bot
+    assert "Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{" in start_bot
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" in start_bot
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in start_bot
+    assert "$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')" in live_script
     assert "Join-Path $runtimeRoot 'end-rift.env'" in live_script
     assert "Join-Path $runtimeRoot 'local.env'" not in live_script
     assert "Wait-Log-MarkerIncrease" in live_script
@@ -223,11 +267,15 @@ def test_wave7_has_one_block_journaled_boundaries_and_restore_paths() -> None:
     assert "Inventory[{Slot:1b}]" in configure_body
     assert "Boundary probe hotbar setup failed" in configure_body
     assert "attribute $name minecraft:generic.attack_damage base set 1" in configure_body
-    assert "function Wait-BotLoginSettle" in live_script
-    assert live_script.count("Wait-BotLoginSettle") >= 3
+    # The probe now skips AuthMe and waits for the server's online player list
+    # plus the bot's held-item acknowledgement. The older AuthMe settle helper
+    # and its auth-offset checks no longer exist in this runner.
+    assert "function Wait-BotsOnline" in live_script
+    assert live_script.count("Wait-BotsOnline -Names") >= 2
+    assert "function Wait-BotsHeldItemSynced" in live_script
+    assert "Wait-BotsHeldItemSynced -Names $Names" in live_script
+    assert "Wait-BotsHeldItemSynced -Names $names" in live_script
     assert "function Wait-Until" in live_script
-    assert "Wait-BotLoginSettle -Names $Names -AfterOffset $authOffset" in live_script
-    assert "Wait-BotLoginSettle -Names $names -AfterOffset $restartAuthOffset" in live_script
     assert "function Get-BotUuid" in live_script
     assert "function Get-PositivePlayerDamageLedger" in live_script
     assert "LIVE_WAVE7_PLAYER_DAMAGE_LEDGER_PASS" in live_script
@@ -536,7 +584,7 @@ def test_disposable_wave7_restart_state_is_explicitly_generation_bound() -> None
     assert "testWaveFrontVisualMode && activeWave == 7" in root
     assert "END_RIFT_WAVE7_BARRIERS_REHYDRATED" in root
     assert "preserveWave7ForRestart" in root
-    assert "cancelSessionTasks(preserveWave6ForRestart || preserveWave7ForRestart)" in root
+    assert "cancelSessionTasks(preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart)" in root
     assert "cancelSessionTasks(boolean preserveCombatForRestart)" in root
     sandbox_start = root.index("private boolean spawnTestWave(")
     sandbox_end = root.index("private void spawnWaveForObjective(", sandbox_start)
@@ -595,3 +643,47 @@ def test_wave7_mini_boss_weakness_does_not_zero_normal_weapon_damage() -> None:
     assert "private int weaknessDebuffAmplifier(String abilityId)" in root
     assert 'case "mini-void-snare", "mini-echo-pulse" -> 0;' in weakness_body
     assert 'case "mini-rift-step", "mini-void-snare", "mini-echo-pulse" -> 1;' in amplifier_body
+
+
+def test_wave7_generic_elites_are_zero_across_config_scaling_recovery_and_spawn_paths() -> None:
+    config = read(PLUGIN / "config.yml")
+    wave_definitions = config.split("\nwaves:\n", 1)[1]
+    wave7 = wave_definitions.split("  wave-7:", 1)[1].split("\n\n", 1)[0]
+    policy = read(DOMAIN / "WaveMechanicsPolicy.java")
+    scaling = read(DOMAIN / "WaveScalingPolicy.java")
+    root = read(SRC / "CopiMineEndEvent.java")
+
+    assert "    elite-endermen: 0" in wave7
+    assert "    elite-skeletons: 0" in wave7
+    assert "if (wave == 7)" in policy
+    assert "return new WaveCounts(requested.endermen(), requested.spiders(), requested.skeletons()," in policy
+    assert "0, 0);" in policy
+    assert "WaveMechanicsPolicy.compositionForWave(wave, configured)" in scaling
+    assert "WaveScalingPolicy.scale(wave, configured, players, hardCap)" in root
+    assert "WaveMechanicsPolicy.compositionForWave(wave, group)" in root
+
+    recovery_start = root.index("private void reindexPersistedCombatEntities()")
+    recovery_end = root.index("private void restorePersistedWaveSchedule()", recovery_start)
+    recovery = root[recovery_start:recovery_end]
+    assert "isObsoleteWaveEliteComposition(entity)" in recovery
+    assert recovery.index("if (isObsoleteWaveEliteComposition(entity)") < recovery.index(
+        "if (!ownedBySession(entity, eventId, generation))"
+    ), "obsolete same-event elites must be removed before a stale-generation entity is skipped"
+    obsolete = root[root.index("private boolean isObsoleteWaveEliteComposition("):]
+    obsolete = obsolete[:obsolete.index("\n    }") + 6]
+    assert "WaveEliteCompositionPolicy.isObsolete" in obsolete
+    legacy = root[root.index("private boolean isKnownLegacyWave7Elite("):]
+    legacy = legacy[:legacy.index("\n    }") + 6]
+    assert "keyMiniBossSpell" in legacy
+    assert "isWaveCommander(entity)" in legacy
+    assert "keyLootProfile" in legacy
+    assert "getCustomName()" not in legacy
+    assert '"wave-elite-composition-recovery-guard"' in recovery
+    assert "entity.remove();" in recovery
+    assert "onPersistedCombatEntitiesLoad(EntitiesLoadEvent event)" in root
+    assert '"wave-elite-composition-chunk-load-guard"' in root
+
+    start = root.index("} else if (wave == 7) {")
+    end = root.index("} else {", start + 8)
+    trial_spawn = root[start:end]
+    assert "realitySplitTrialController.activeTrialCount(), 0, 0, 0, 0" in trial_spawn

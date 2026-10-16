@@ -8,8 +8,8 @@ public final class ClientVisualAckStatusPolicy {
 
     public static boolean shouldReportNonIrisFallback(String status) {
         String normalized = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
-        return normalized.startsWith("STARTED")
-                && !normalized.contains("IRIS_SHADERPACK")
-                && !normalized.contains("TRANSITION_DEFERRED");
+        return normalized.matches("STARTED_[A-Z0-9_-]{1,24}")
+                && !normalized.equals("STARTED_IRIS_SHADERPACK")
+                && !normalized.equals("STARTED_TRANSITION_DEFERRED");
     }
 }

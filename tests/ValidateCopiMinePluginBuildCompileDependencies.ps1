@@ -16,7 +16,9 @@ $errors = [System.Collections.Generic.List[string]]::new()
 foreach ($relativePath in $scripts) {
   $text = Get-Content -LiteralPath (Join-Path $root $relativePath) -Raw -Encoding UTF8
   $markers = @('$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)', 'PAPER_COMPILE_DEPS')
-  if ($relativePath -notin @('copimine-end-event\build-plugin.ps1', 'copimine-narcotics\build-plugin.ps1')) {
+  if ($relativePath -in @('copimine-economy-core\build-plugin.ps1', 'copimine-election-core\build-plugin.ps1', 'copimine-admin-plugin\build-plugin.ps1', 'copimine-artifacts\build-plugin.ps1', 'copimine-world-core\build-plugin.ps1', 'minecraft\server\plugins\AuthEffects\build-plugin.ps1')) {
+    $markers += @('java-plugin-compile-dependencies.lock.json', 'Assert-LockedCompileFile', '$lockedDependencies')
+  } elseif ($relativePath -notin @('copimine-end-event\build-plugin.ps1', 'copimine-narcotics\build-plugin.ps1')) {
     $markers += @('net\kyori', 'net\md-5', 'org\joml')
   }
   foreach ($marker in $markers) {
@@ -26,6 +28,9 @@ foreach ($relativePath in $scripts) {
   }
   $lockedClasspathBranch = $text.IndexOf('if ($env:PAPER_COMPILE_DEPS)', [StringComparison]::Ordinal)
   $lockedClasspathUse = $text.IndexOf('$cp += $env:PAPER_COMPILE_DEPS', [StringComparison]::Ordinal)
+  if ($lockedClasspathUse -lt 0) {
+    $lockedClasspathUse = $text.IndexOf('$cp = @($paperApi) + $compileDependencies', [StringComparison]::Ordinal)
+  }
   $fallbackClasspathBranch = if ($lockedClasspathBranch -ge 0) { $text.IndexOf('} else {', $lockedClasspathBranch, [StringComparison]::Ordinal) } else { -1 }
   if ($lockedClasspathBranch -lt 0 -or $lockedClasspathUse -lt $lockedClasspathBranch) {
     $errors.Add("$relativePath must consume the verified PAPER_COMPILE_DEPS classpath")
@@ -76,7 +81,7 @@ function Write-FixtureArtifact {
 
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('copimine-compile-dependency-test-' + [guid]::NewGuid().ToString('N'))
 $savedEnvironment = @{}
-foreach ($name in @('COPIMINE_MAVEN_REPOSITORY', 'PAPER_API_JAR', 'PAPER_COMPILE_DEPS')) {
+foreach ($name in @('COPIMINE_MAVEN_REPOSITORY', 'PAPER_API_JAR', 'PAPER_COMPILE_DEPS', 'PAPER_PLACEHOLDER_API_JAR', 'PAPER_VOICECHAT_API_JAR')) {
   $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 try {
@@ -113,31 +118,77 @@ try {
   (Get-Item -LiteralPath $decoyPaper).LastWriteTime = [DateTime]::Now.AddDays(2)
   Write-FixtureArtifact (Join-Path $fixtureMaven 'net/kyori/adventure-api/99/adventure-api-99.jar') 'wrong-adventure'
   Write-FixtureArtifact (Join-Path $fixtureRoot 'minecraft/server/libraries/ambient.jar') 'ambient'
+  Write-FixtureArtifact (Join-Path $fixtureRoot 'minecraft/server/libraries/org/jetbrains/kotlin/kotlin-stdlib/1.9.21/kotlin-stdlib-1.9.21.jar') 'unrelated-kotlin'
+  Write-FixtureArtifact (Join-Path $fixtureRoot 'minecraft/server/libraries/com/google/guava/guava/21.0/guava-21.0.jar') 'old-guava'
+  $placeholderJar = Join-Path $fixtureRoot 'minecraft/server/plugins/PlaceholderAPI-2.12.3.jar'
+  $voicechatJar = Join-Path $fixtureRoot 'minecraft/server/plugins/voicechat-test.jar'
+  Write-FixtureArtifact $placeholderJar 'placeholder-api-fixture'
+  Write-FixtureArtifact $voicechatJar 'voicechat-api-fixture'
+  $migrationNarcoticsJar = Join-Path $fixtureRoot 'build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar'
+  Write-FixtureArtifact $migrationNarcoticsJar 'typed-migration-dependency'
   foreach ($relative in @('copimine-world-core/CopiMineWorldCore.jar', 'copimine-artifacts/CopiMineArtifacts.jar')) {
     Write-FixtureArtifact (Join-Path $fixtureRoot $relative) 'typed-dependency'
   }
+  Write-FixtureArtifact (Join-Path $fixtureRoot 'copimine-economy-core/CopiMineEconomyCore.jar') 'typed-project-dependency'
+  Write-FixtureArtifact (Join-Path $fixtureRoot 'copimine-admin-plugin/CopiMineUltimateAdminPlus.jar') 'typed-project-dependency'
   $env:COPIMINE_MAVEN_REPOSITORY = $fixtureMaven
-  foreach ($buildScript in @('copimine-end-event/build-plugin.ps1', 'copimine-narcotics/build-plugin.ps1')) {
+  foreach ($buildScript in @(
+    'copimine-end-event/build-plugin.ps1',
+    'copimine-narcotics/build-plugin.ps1',
+    'copimine-economy-core/build-plugin.ps1',
+    'copimine-election-core/build-plugin.ps1',
+    'copimine-admin-plugin/build-plugin.ps1',
+    'copimine-artifacts/build-plugin.ps1',
+    'copimine-world-core/build-plugin.ps1',
+    'minecraft/server/plugins/AuthEffects/build-plugin.ps1'
+  )) {
     $fixtureScript = Join-Path $fixtureRoot $buildScript
     New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureScript) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $root $buildScript) -Destination $fixtureScript
-    Write-FixtureArtifact (Join-Path (Split-Path -Parent $fixtureScript) 'src/Probe.java') 'class Probe {}'
+    $fixtureSource = if ($buildScript -like '*AuthEffects*') {
+      Join-Path (Split-Path -Parent $fixtureScript) 'src/main/java/Probe.java'
+    } elseif ($buildScript -like '*admin-plugin*') {
+      Join-Path (Split-Path -Parent $fixtureScript) 'src/me/copimine/ultimateplus/CopiMineUltimateAdminPlus.java'
+    } else {
+      Join-Path (Split-Path -Parent $fixtureScript) 'src/Probe.java'
+    }
+    Write-FixtureArtifact $fixtureSource 'class Probe {}'
     New-Item -ItemType Directory -Path (Join-Path $fixtureRoot 'tools/minecraft-26.3/protocol/src/main/java') -Force | Out-Null
     $expectedClasspath = @($paperPath)
     if ($buildScript -like '*end-event*') {
       $expectedClasspath += Join-Path $fixtureRoot 'copimine-world-core/CopiMineWorldCore.jar'
       $expectedClasspath += Join-Path $fixtureRoot 'copimine-artifacts/CopiMineArtifacts.jar'
+      $expectedClasspath += $migrationNarcoticsJar
     }
     $expectedClasspath += $lockedPaths
+    if ($buildScript -like '*election-core*' -or $buildScript -like '*narcotics*') {
+      $expectedClasspath += Join-Path $fixtureRoot 'copimine-economy-core/CopiMineEconomyCore.jar'
+    }
+    if ($buildScript -like '*narcotics*') {
+      $expectedClasspath += Join-Path $fixtureRoot 'copimine-admin-plugin/CopiMineUltimateAdminPlus.jar'
+    }
+    if ($buildScript -like '*admin-plugin*') {
+      $expectedClasspath += $placeholderJar
+      $expectedClasspath += $voicechatJar
+      $expectedClasspath += Join-Path $fixtureRoot 'copimine-economy-core/CopiMineEconomyCore.jar'
+    }
+    if ($buildScript -like '*artifacts*') {
+      $expectedClasspath += Join-Path $fixtureRoot 'copimine-economy-core/CopiMineEconomyCore.jar'
+      $expectedClasspath += Join-Path $fixtureRoot 'copimine-admin-plugin/CopiMineUltimateAdminPlus.jar'
+    }
     if ($buildScript -like '*narcotics*') {
       $expectedClasspath += Join-Path $fixtureRoot 'copimine-artifacts/CopiMineArtifacts.jar'
     }
     foreach ($scenario in @('default', 'explicit', 'missing-paper', 'corrupt-paper', 'wrong-paper-override', 'missing-dependency', 'corrupt-dependency', 'reordered-override', 'extra-override')) {
       $env:PAPER_API_JAR = $null
       $env:PAPER_COMPILE_DEPS = $null
+      $env:PAPER_PLACEHOLDER_API_JAR = $null
+      $env:PAPER_VOICECHAT_API_JAR = $null
       if ($scenario -eq 'explicit') {
         $env:PAPER_API_JAR = $paperPath
         $env:PAPER_COMPILE_DEPS = $lockedPaths -join [IO.Path]::PathSeparator
+        $env:PAPER_PLACEHOLDER_API_JAR = $placeholderJar
+        $env:PAPER_VOICECHAT_API_JAR = $voicechatJar
       }
       if ($scenario -eq 'missing-paper') { Move-Item -LiteralPath $paperPath -Destination ($paperPath + '.saved') }
       if ($scenario -eq 'corrupt-paper') { Write-FixtureArtifact $paperPath $tamperedPaperContent }

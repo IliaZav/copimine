@@ -65,8 +65,12 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     assert "ritualProjectileTargetAllowed(skeleton, player)" not in damage_body
 
     skeleton_shoot_body = method_body(source, "public void onEventSkeletonShootBow")
-    assert "isCurrentRitualGuard(skeleton)" in skeleton_shoot_body
-    assert "tagRitualProjectile(arrow)" in skeleton_shoot_body
+    assert "configureEventSkeletonArrow(arrow, skeleton" in skeleton_shoot_body
+    configure_arrow_body = method_body(
+        source, "private boolean configureEventSkeletonArrow(Arrow arrow, Skeleton shooter"
+    )
+    assert "isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)" in configure_arrow_body
+    assert "tagRitualProjectile(arrow)" in configure_arrow_body
 
     custom_body = method_body(
         source, "private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell)"

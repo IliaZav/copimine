@@ -21,17 +21,14 @@ $propertiesPath = Join-Path $serverDir 'server.properties'
 $evidenceDirectory = Join-Path $runtimeRoot 'performance-five-live'
 $botLogDirectory = Join-Path $evidenceDirectory 'bots'
 $playerNames = @('EndRiftLoadA', 'EndRiftLoadB', 'EndRiftLoadC', 'EndRiftLoadD', 'EndRiftLoadE')
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
   $OutputPath = Join-Path $evidenceDirectory 'performance-five.csv'
 }
 
 function Assert-UnderRoot {
   param([string]$Path, [string]$AllowedRoot, [string]$Label)
-  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
-  $rootPath = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\') + '\'
-  if (-not $full.StartsWith($rootPath, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "$Label is outside the isolated local runtime: $Path"
-  }
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $AllowedRoot
 }
 
 Assert-UnderRoot $serverDir $runtimeRoot 'Server directory'
@@ -129,8 +126,8 @@ try {
   New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
   $botDurationMs = ($DurationSeconds + 60) * 1000
   foreach ($name in $playerNames) {
-    $botOut = Join-Path $botLogDirectory ($name + '.out.log')
-    $botErr = Join-Path $botLogDirectory ($name + '.err.log')
+    $botOut = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($name + '.out.log')) -LocalRuntimeRoot $runtimeRoot
+    $botErr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
     $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]$botDurationMs) + ' 0 68 0 0'
     $processes += Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
       -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru

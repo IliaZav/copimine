@@ -120,8 +120,10 @@ public final class CombatTacticsPolicy {
     }
 
     public static MobManeuver maneuverFor(EndRiftObjective.Objective objective,
-                                          String role, int cycle, int slot) {
-        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 6);
+                                          String role, int slot) {
+        // A combat role owns a stable intention. Movement changes when the
+        // target, objective, or hazard state changes, not on a wall-clock beat.
+        int beat = Math.floorMod(Math.max(0, slot), 6);
         MobTactic tactic = tacticFor(objective, role, slot);
         if (tactic == MobTactic.OBELISK_GUARD || tactic == MobTactic.GATE_DEFENDER) {
             return beat % 2 == 0 ? MobManeuver.CIRCLE_OBJECTIVE : MobManeuver.CROSS_FIRE;

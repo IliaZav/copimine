@@ -14,17 +14,20 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $worktreeRoot = (Resolve-Path (Join-Path $scriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $worktreeRoot 'local-runtime')).Path
+. (Join-Path $scriptRoot 'EndRiftLocalAuthMode.ps1')
 if ([string]::IsNullOrWhiteSpace($ServerDir)) {
   $ServerDir = Join-Path $localRuntimeRoot 'end-rift-server'
 }
-$ServerDir = (Resolve-Path $ServerDir).Path
-$localPrefix = $localRuntimeRoot.TrimEnd('\') + '\'
-if (-not $ServerDir.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-  throw 'Refused to start a server outside this worktree local-runtime directory.'
-}
+$ServerDir = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $ServerDir -ErrorAction Stop).ProviderPath)
+$ServerDir = Test-EndRiftLocalRuntimePath -Path $ServerDir -LocalRuntimeRoot $localRuntimeRoot -MustExist
+Assert-EndRiftLocalServerTreeIsolated `
+  -ServerDir $ServerDir `
+  -LocalRuntimeRoot $localRuntimeRoot | Out-Null
 
 $propertiesPath = Join-Path $ServerDir 'server.properties'
+$propertiesPath = Test-EndRiftLocalRuntimePath -Path $propertiesPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
 $eventConfigPath = Join-Path $ServerDir 'plugins\CopiMineEndEvent\config.yml'
+$eventConfigPath = Test-EndRiftLocalRuntimePath -Path $eventConfigPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
 $configSourcePath = Join-Path $worktreeRoot 'copimine-end-event\config.yml'
 $envPath = Join-Path $localRuntimeRoot 'end-rift.env'
 
@@ -52,9 +55,12 @@ function Sync-LocalResourcePack {
     throw 'Local server.properties is missing resource-pack-sha1.'
   }
   $targetPackDir = Join-Path $ServerDir 'resourcepacks\build'
+  $targetPackDir = Assert-EndRiftLocalRuntimePath -Path $targetPackDir -LocalRuntimeRoot $localRuntimeRoot
   New-Item -ItemType Directory -Path $targetPackDir -Force | Out-Null
   $targetPack = Join-Path $targetPackDir 'CopiMineResourcePack.zip'
+  $targetPack = Assert-EndRiftLocalRuntimePath -Path $targetPack -LocalRuntimeRoot $localRuntimeRoot
   $nextPack = $targetPack + '.next'
+  $nextPack = Assert-EndRiftLocalRuntimePath -Path $nextPack -LocalRuntimeRoot $localRuntimeRoot
   Copy-Item -LiteralPath $sourcePack -Destination $nextPack -Force
   $sha256 = Get-LocalSha256 -LiteralPath $sourcePack
   if ((Get-LocalSha256 -LiteralPath $nextPack) -ne $sha256) {
@@ -131,32 +137,18 @@ if ($sourcePluginHash -ne $verifiedPluginHash) {
 }
 Write-Output "Verified local End Rift plugin SHA256=$verifiedPluginHash"
 
-$properties = @{}
-foreach ($line in Get-Content -LiteralPath $propertiesPath) {
-  if ($line -match '^([^#=]+)=(.*)$') {
-    $properties[$matches[1].Trim()] = $matches[2].Trim()
-  }
-}
-if ($properties['server-port'] -ne '25566' -or $properties['rcon.port'] -ne '25576') {
-  throw 'Refused: local End Rift server ports must be 25566 and 25576.'
-}
-foreach ($port in @(25566, 25576)) {
-  $listeners = @(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue)
-  if ($listeners.Count -gt 0) {
-    throw "Refused to start because local port $port is already listening."
-  }
-}
+$serverPropertiesLines = [IO.File]::ReadAllLines($propertiesPath)
+Test-EndRiftLocalServerBind -ServerPropertiesLines $serverPropertiesLines | Out-Null
+Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $serverPropertiesLines -ServerPort 25566 -RconPort 25576 | Out-Null
+$null = Assert-EndRiftLocalPortsAvailable -Ports @(25566, 25576)
 
 # The HTTP process serves this runtime copy, not the repository build file.
 # Synchronize its bytes and the declared digest together before Paper boots.
 Sync-LocalResourcePack
 
 if (Test-Path -LiteralPath $envPath -PathType Leaf) {
-  foreach ($line in Get-Content -LiteralPath $envPath) {
-    if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
-      Set-Item -Path ("Env:" + $matches[1]) -Value $matches[2]
-    }
-  }
+  $envPath = Test-EndRiftLocalRuntimePath -Path $envPath -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  Import-EndRiftLocalEnvironment -Path $envPath
 }
 
 $localLogRoot = $localRuntimeRoot
@@ -166,12 +158,22 @@ if ([string]::IsNullOrWhiteSpace($LogPath)) {
 if ([string]::IsNullOrWhiteSpace($ErrPath)) {
   $ErrPath = Join-Path $localLogRoot 'end-rift-paper-start.err.log'
 }
+foreach ($logCandidatePath in @($LogPath, $ErrPath)) {
+  $validatedLogPath = Assert-EndRiftLocalOutputPath -Path $logCandidatePath -LocalRuntimeRoot $localRuntimeRoot
+  $logDirectory = Split-Path -Parent $validatedLogPath
+  $null = Assert-EndRiftLocalRuntimePath -Path $logDirectory -LocalRuntimeRoot $localRuntimeRoot
+  if (-not (Test-Path -LiteralPath $logDirectory -PathType Container)) {
+    New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+  }
+}
+$LogPath = Assert-EndRiftLocalOutputPath -Path $LogPath -LocalRuntimeRoot $localRuntimeRoot
+$ErrPath = Assert-EndRiftLocalOutputPath -Path $ErrPath -LocalRuntimeRoot $localRuntimeRoot
 $java = (Get-Command java -ErrorAction Stop).Source
 # Leave headroom for Fabric's native buffers on this desktop. With a 1G
 # initial heap the 3G server also exhausted Windows commit during client
 # connection; the local probe does not need that much committed idle heap.
 $paper = Start-Process -FilePath $java `
-  -ArgumentList @('-Xms256M', '-Xmx2G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', 'purpur.jar', 'nogui') `
+  -ArgumentList @('-Xms256M', '-Xmx2G', '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-Dfile.encoding=UTF-8', '-jar', ('"' + (Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist) + '"'), 'nogui') `
   -WorkingDirectory $ServerDir `
   -RedirectStandardOutput $LogPath `
   -RedirectStandardError $ErrPath `
@@ -195,6 +197,28 @@ if (-not $ready) {
     $paper.WaitForExit(10000) | Out-Null
   }
   throw "Local Paper PID $($paper.Id) did not become ready within $ReadyTimeoutSeconds seconds."
+}
+
+$paperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $ServerDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
+try {
+  $bindEvidence = Assert-EndRiftLocalServerBind -ServerDir $ServerDir -ServerPort 25566 -RconPort 25576 -ExpectedProcessId $paper.Id
+  Write-EndRiftLocalServerReceipt -ProcessId $paper.Id -ServerDir $ServerDir -PaperJarPath $paperJarPath -LocalRuntimeRoot $localRuntimeRoot | Out-Null
+  $serverReceipt = Get-EndRiftLocalServerReceipt -ServerDir $ServerDir -LocalRuntimeRoot $localRuntimeRoot
+  $identityMatches = Test-EndRiftLocalServerProcessIdentity `
+    -ExpectedProcessId $serverReceipt.ProcessId `
+    -ExpectedProcessStartTimeUtcTicks $serverReceipt.ProcessStartTimeUtcTicks `
+    -ServerDir $ServerDir `
+    -PaperJarPath $serverReceipt.PaperJarPath `
+    -ExpectedWorkingDirectory $serverReceipt.WorkingDirectory `
+    -LocalRuntimeRoot $localRuntimeRoot
+  if (-not $identityMatches) { throw 'Started Paper process did not match its isolated server receipt.' }
+} catch {
+  if (-not $paper.HasExited) {
+    try { $paper.Kill() } catch { }
+    $paper.WaitForExit(10000) | Out-Null
+  }
+  Remove-Item -LiteralPath (Join-Path $ServerDir '.end-rift-process-receipt.json') -Force -ErrorAction SilentlyContinue
+  throw
 }
 
 Write-Output "Started isolated local Paper PID=$($paper.Id) server=$ServerDir"

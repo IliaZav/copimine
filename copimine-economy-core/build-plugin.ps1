@@ -14,35 +14,67 @@ $mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY) {
 } else {
   Join-Path $env:USERPROFILE '.m2\repository'
 }
+$profile = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/profile.lock.json') -Raw | ConvertFrom-Json
+$compileLock = Get-Content -LiteralPath (Join-Path $releaseRoot 'tools/minecraft-26.3/java-plugin-compile-dependencies.lock.json') -Raw | ConvertFrom-Json
+if ($profile.schemaVersion -ne 1 -or $profile.paper.api -notmatch '^[A-Za-z0-9._+-]+$' -or
+    $profile.paper.apiSha256 -notmatch '^[0-9a-f]{64}$' -or $compileLock.schemaVersion -ne 1 -or -not $compileLock.dependencies) {
+  throw 'Invalid Paper API or Java compile dependency lock.'
+}
+
+function Assert-LockedCompileFile {
+  param([string]$Path, [string]$Sha256, [long]$Size = -1)
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    throw "Locked compile dependency is missing: $Path"
+  }
+  if (($Size -ge 0 -and (Get-Item -LiteralPath $Path).Length -ne $Size) -or
+      (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Sha256) {
+    throw "Locked compile dependency failed size/SHA256 verification: $Path"
+  }
+}
+
 $paperApi = $env:PAPER_API_JAR
 if (-not $paperApi) {
-  $paperApi = Get-ChildItem -Path $mavenRepo -Filter 'paper-api-*-R0.1-SNAPSHOT.jar' -Recurse -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1 -ExpandProperty FullName
+  $paperApi = Join-Path $mavenRepo "io/papermc/paper/paper-api/$($profile.paper.api)/paper-api-$($profile.paper.api).jar"
 }
-if (-not $paperApi -or -not (Test-Path $paperApi)) {
-  throw 'Paper API jar not found. Set PAPER_API_JAR to paper-api-1.21.1-R0.1-SNAPSHOT.jar.'
+$paperApiSha256 = $profile.paper.apiSha256
+# Paper build 169's API JAR is pinned by the migration profile at 2,934,206 bytes.
+$paperApiSize = 2934206
+# RunJavaPluginCi may explicitly request this exact legacy Paper API for compatibility checks.
+$legacyPaperApiSha256 = 'b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0'
+if ($env:PAPER_API_JAR -and (Test-Path -LiteralPath $paperApi -PathType Leaf) -and
+    (Get-FileHash -LiteralPath $paperApi -Algorithm SHA256).Hash.ToLowerInvariant() -eq $legacyPaperApiSha256) {
+  $paperApiSha256 = $legacyPaperApiSha256
+  $paperApiSize = 2344886
 }
+Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize
 
-$cp = @($paperApi)
-if ($env:PAPER_COMPILE_DEPS) {
-  $cp += $env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator
+$lockedDependencies = if ($paperApiSha256 -eq $legacyPaperApiSha256) {
+  @($compileLock.dependencies)
 } else {
-  if (Test-Path $mavenRepo) {
-    # Paper API is intentionally thin. Include its public signature
-    # dependencies so a clean local build does not rely on a populated server.
-    foreach ($group in @('net\kyori', 'net\md-5', 'org\joml')) {
-      $groupPath = Join-Path $mavenRepo $group
-      if (Test-Path $groupPath) {
-        $cp += Get-ChildItem -Path $groupPath -Filter '*.jar' -Recurse | ForEach-Object FullName
-      }
-    }
+  if ($compileLock.paper26_3Api -cne $profile.paper.api -or -not $compileLock.paper26_3Dependencies) {
+    throw 'Locked Paper 26.3 compile dependency graph is missing or targets a different API.'
   }
-  if (Test-Path (Join-Path $serverDir 'libraries')) {
-    $cp += Get-ChildItem -Path (Join-Path $serverDir 'libraries') -Filter '*.jar' -Recurse | ForEach-Object FullName
+  @($compileLock.paper26_3Dependencies)
+}
+$compileDependencies = @()
+if ($env:PAPER_COMPILE_DEPS) {
+  $compileDependencies = @($env:PAPER_COMPILE_DEPS -split [IO.Path]::PathSeparator)
+  if ($compileDependencies.Count -ne $lockedDependencies.Count) {
+    throw 'Locked compile dependency count differs from PAPER_COMPILE_DEPS.'
   }
+} else {
+  $compileDependencies = @($lockedDependencies | ForEach-Object { Join-Path $mavenRepo $_.path })
+}
+for ($index = 0; $index -lt $lockedDependencies.Count; $index++) {
+  $locked = $lockedDependencies[$index]
+  if ($locked.path -notmatch '^[A-Za-z0-9._+/-]+\.jar$' -or $locked.path.Split('/') -contains '..' -or
+      $locked.size -le 0 -or $locked.sha256 -notmatch '^[0-9a-f]{64}$') {
+    throw "Invalid Java compile dependency lock entry: $($locked.path)"
+  }
+  Assert-LockedCompileFile -Path $compileDependencies[$index] -Sha256 $locked.sha256 -Size $locked.size
 }
 
+$cp = @($paperApi) + $compileDependencies
 $sources = Get-ChildItem -Path $srcRoot -Recurse -Filter '*.java' | ForEach-Object FullName
 if (-not $sources) {
   throw 'No Java sources found for CopiMineEconomyCore.'

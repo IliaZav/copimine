@@ -1,4 +1,5 @@
 param(
+  [string]$LegacyClientJavaHome,
   # Useful after the current process has already built every artifact: this
   # preserves the exact verification suite without redundantly compiling all
   # unrelated first-party plugins a second time.
@@ -58,6 +59,36 @@ function Invoke-JavaTest {
   }
 }
 
+function Resolve-LegacyClientJavaHome([string]$Requested) {
+  if ([string]::IsNullOrWhiteSpace($Requested) -or -not (Test-Path -LiteralPath $Requested -PathType Container)) {
+    throw 'Pass -LegacyClientJavaHome pointing to a Java 21 runtime for the CopiMineClient 1.21.1 build.'
+  }
+  $resolved = (Resolve-Path -LiteralPath $Requested).Path
+  $javaExecutable = Join-Path $resolved 'bin\java.exe'
+  if (-not (Test-Path -LiteralPath $javaExecutable -PathType Leaf)) {
+    throw '-LegacyClientJavaHome must contain bin\java.exe.'
+  }
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $global:LASTEXITCODE = 0
+    $versionOutput = (& $javaExecutable '-version' 2>&1 | Out-String)
+    $versionExitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+  if ($versionExitCode -ne 0 -or $versionOutput -notmatch 'version\s+"21(?:[.]|")') {
+    throw 'CopiMineClient build requires Java 21; the supplied -LegacyClientJavaHome is not Java 21.'
+  }
+  return $resolved
+}
+
+$legacyClientJavaHomePath = $null
+if (-not [string]::IsNullOrWhiteSpace($LegacyClientJavaHome)) {
+  $legacyClientJavaHomePath = Resolve-LegacyClientJavaHome $LegacyClientJavaHome
+}
+
 $firstPartyBuilds = @(
   @{ Label = 'WorldCore'; Directory = 'copimine-world-core' },
   @{ Label = 'EconomyCore'; Directory = 'copimine-economy-core' },
@@ -80,9 +111,23 @@ if (-not $SkipBuilds) {
   }
   Invoke-GateStep 'CopiMineClient build' {
     Push-Location (Join-Path $root 'CopiMineClient')
+    $hadClientBuildJavaHome = Test-Path Env:JAVA_HOME
+    $previousClientBuildJavaHome = $env:JAVA_HOME
+    $previousClientBuildPath = $env:PATH
     try {
+      if ($legacyClientJavaHomePath) {
+        $legacyClientJavaBin = Join-Path $legacyClientJavaHomePath 'bin'
+        $env:JAVA_HOME = $legacyClientJavaHomePath
+        $env:PATH = "$legacyClientJavaBin;$previousClientBuildPath"
+      }
       & powershell -NoProfile -ExecutionPolicy Bypass -File '.\build-client.ps1'
     } finally {
+      if ($hadClientBuildJavaHome) {
+        $env:JAVA_HOME = $previousClientBuildJavaHome
+      } else {
+        Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue
+      }
+      $env:PATH = $previousClientBuildPath
       Pop-Location
     }
   }
@@ -130,8 +175,18 @@ Invoke-GateStep 'Wave navigation and physical passage regression' {
     if ($LASTEXITCODE -ne 0) { throw "Wave navigation and passage regressions failed with exit code $LASTEXITCODE" }
     & python -m pytest -q '.\tests\test_wave4_special_attack_fairness.py'
     if ($LASTEXITCODE -ne 0) { throw 'Wave 4 special attack fairness regression failed.' }
-    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
+    & python -m pytest -q '.\tests\test_wave1_carrier_retreat.py' '.\tests\test_wave1_carrier_slowness_lease.py' '.\tests\test_wave3_capture_clock.py' '.\tests\test_wave3_active_sequence.py' '.\tests\test_wave4_warning_geometry.py' '.\tests\test_wave4_obelisk_collapse.py' '.\tests\test_wave5_ai_freeze_ownership.py' '.\tests\test_minecraft_attribute_compat.py' '.\tests\test_minecraft_26_3_pack.py'
     if ($LASTEXITCODE -ne 0) { throw 'Waves 1-5 timing, objective and AI ownership regressions failed.' }
+  } finally {
+    Pop-Location
+  }
+}
+
+Invoke-GateStep 'Wave mob phase and chunk unload lifecycle' {
+  Push-Location $root
+  try {
+    & python -m pytest -q '.\tests\test_wave_coordinator_fog_lifecycle.py' '.\tests\test_wave_mob_lifecycle_registry.py'
+    if ($LASTEXITCODE -ne 0) { throw "Wave mob lifecycle regressions failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
   }
@@ -176,21 +231,25 @@ Invoke-GateStep 'Current Python contract' {
   if ($LASTEXITCODE -ne 0) { throw "Current Python contract failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_end_rift_wave_adapter_contract.py' '.\tests\test_end_rift_wave_probe_adapters.py'
   if ($LASTEXITCODE -ne 0) { throw "Wave adapter regression tests failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_end_rift_music_readiness_independence.py'
+  if ($LASTEXITCODE -ne 0) { throw "Event music readiness-independence contract failed with exit code $LASTEXITCODE" }
+  & python -m pytest -q '.\tests\test_end_rift_worldguard_web_shot.py'
+  if ($LASTEXITCODE -ne 0) { throw "WorldGuard web guard checks failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_end_rift_prisoner_client_boundaries.py' '.\tests\test_end_rift_portal_presentation_contract.py' '.\tests\test_end_rift_wave6_visual_mechanics.py' '.\tests\test_end_rift_barrier_coverage.py' '.\tests\test_end_rift_fog_effect_cleanup.py' '.\tests\test_end_rift_server_tick_transitions.py'
   if ($LASTEXITCODE -ne 0) { throw "Wave presentation regression tests failed with exit code $LASTEXITCODE" }
   & python -m pytest -q '.\tests\test_wave6_visual_cleanup_contract.py' '.\tests\test_end_event_wave6_progression_contract.py' '.\tests\test_end_event_wave6_no_legacy_contract.py' '.\tests\test_wave6_ritual_amplifier_contract.py' '.\tests\test_official_live_runner_wave6_contract.py' '.\tests\test_end_rift_wave1_interaction_harness_contract.py' '.\tests\test_end_rift_prisoner_hud_assets.py' '.\tests\test_end_rift_guard_tactics_runtime.py' '.\tests\test_end_rift_supplied_asset_checkout.py' '.\tests\test_end_rift_wave_daylight_runtime.py'
   if ($LASTEXITCODE -ne 0) { throw "Additional wave gameplay regression tests failed with exit code $LASTEXITCODE" }
-  & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py' '.\tests\test_end_rift_main_tick_dispatch.py'
+  & python -m pytest -q '.\tests\test_end_rift_wave_ai_roles.py' '.\tests\test_end_rift_miniboss_counterplay.py' '.\tests\test_end_rift_waves2_4_mechanics.py' '.\tests\test_end_rift_wave2_cleanup_epoch_contract.py' '.\tests\test_wave2_unlaunchable_start_contract.py' '.\tests\test_wave2_recovery_ai_fence.py' '.\tests\test_end_rift_obelisk_pulse_roster.py' '.\tests\test_end_rift_wave_structure_assets.py' '.\tests\test_end_rift_wave5_safe_tile_assets.py' '.\tests\test_end_rift_wave_glyph_assets.py' '.\tests\test_end_rift_disabled_packet_cleanup.py' '.\tests\test_end_rift_local_pack_sync.py' '.\tests\test_end_rift_main_tick_dispatch.py' '.\tests\test_end_rift_wave4_objective_dispatch_once.py' '.\tests\test_end_rift_wave4_pressure_retries.py'
   if ($LASTEXITCODE -ne 0) { throw "Waves 1-5 gameplay and authored assets failed with exit code $LASTEXITCODE" }
   } finally {
     Pop-Location
   }
 }
 
-Invoke-GateStep 'Live bot reflection target' {
+Invoke-GateStep 'Live bot reflection target and dependency tests' {
   Push-Location $root
   try {
-    & node --test '.\tests\LocalEndRiftReflectionTarget.test.js'
+    & node --test '.\tests\LocalEndRiftReflectionTarget.test.js' '.\tests\LocalEndRiftBotDependencies.test.js'
     if ($LASTEXITCODE -ne 0) {
       throw "Live bot reflection target tests failed with exit code $LASTEXITCODE"
     }
@@ -212,8 +271,11 @@ Invoke-GateStep 'Ritual restart contract' {
   }
 }
 
-$testBuild = Join-Path $root 'tests\build\end-event-current'
-New-Item -ItemType Directory -Path $testBuild -Force | Out-Null
+$testBuild = Join-Path ([IO.Path]::GetTempPath()) `
+  ("CopiMine-EndRiftEventChecks-" + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $testBuild | Out-Null
+$testBuildCreated = $true
+try {
 $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\domain') -Filter '*.java' |
   ForEach-Object FullName)
 $runtimeSources = @(
@@ -240,6 +302,7 @@ $diagnosticSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me
   ForEach-Object FullName)
 $pureTests = @(
   'Wave7AdmissionPolicyTest',
+  'WaveEliteCompositionPolicyTest',
   'WaveCombatCoordinatorTest',
   'WaveStructurePlacementTest',
   'AbyssAnchorPolicyTest',
@@ -278,7 +341,9 @@ $pureTests = @(
   'RealitySplitBarrierCoverageTest',
   'RealitySplitBarrierRecoveryTest',
   'RealitySplitChamberControllerTest',
+  'Wave7RoomLayoutPolicyTest',
   'RealitySplitTrialControllerTest',
+  'Wave7WardenCombatPolicyTest',
   'RealitySplitRuntimePolicyTest',
   'RealitySplitTrialSnapshotTest',
   'Wave7TrialMigrationTest',
@@ -320,6 +385,10 @@ $pureTests = @(
   'PreBossTransitionControllerTest',
   'PostWaveRecoveryPolicyTest',
   'EndRiftAiPolicyTest',
+  'EliteAbilityPolicyTest',
+  'DragonBreathCloudPolicyTest',
+  'EliteProjectileImpactPolicyTest',
+  'ExplosiveVolleyPolicyTest',
   'EventCombatScalingPolicyTest',
   'EventMobDamagePolicyTest',
   'EventRealHealthDamagePolicyTest',
@@ -328,8 +397,12 @@ $pureTests = @(
   'NightCloakRollPolicyTest',
   'PortalCapturePolicyTest',
   'PressureBudgetControllerTest',
+  'WaveProjectileAdmissionControllerTest',
+  'WaveProjectileTargetPolicyTest',
   'ResourceProgressFormatterTest',
   'RiftCarrierPolicyTest',
+  'CarrierSlownessLeasePolicyTest',
+  'EventMusicSyncPolicyTest',
   'VisualRefreshDeadlineTest',
   'RitualShieldOrbitPolicyTest',
   'RitualCasterHandPolicyTest',
@@ -345,6 +418,8 @@ $pureTests = @(
   'ShardPassivePolicyTest',
   'SkeletonArrowPolicyTest',
   'SkeletonCombatPolicyTest',
+  'me.copimine.endevent.domain.SpiderEffectLeasePolicyTest',
+  'SpiderRootControlPolicyTest',
   'SpellVisualPolicyTest',
   'TargetPressurePolicyTest',
   'TentacleAnimationPolicyTest',
@@ -354,10 +429,15 @@ $pureTests = @(
   'TransitionRuneControllerTest',
   'PreBossTickSnapshotPolicyTest',
   'TransitionRunePolicyTest',
+  'Wave4PressurePackPolicyTest',
+  'IntermissionWatchdogPolicyTest',
   'Wave3PortalPolicyTest',
   'WaveCommanderPolicyTest',
   'WaveDamagePolicyTest',
   'WaveMechanicsPolicyTest',
+  'WavePressurePolicyTest',
+  'me.copimine.endevent.domain.WaveTwoStagePolicyTest',
+  'WaveTwoEntityRecoveryPolicyTest',
   'WaveRewardPolicyTest',
   'WaveScalingPolicyTest',
   'WaveVisualPolicyTest',
@@ -369,7 +449,8 @@ $pureTests = @(
   'EndRiftDiagnosticServiceTest'
 )
 $pureSources = @($domainSources + $runtimeSources + $diagnosticSources + ($pureTests | ForEach-Object {
-  $path = Join-Path $root ("tests\{0}.java" -f $_)
+  $sourceName = $_.Split('.')[-1]
+  $path = Join-Path $root ("tests\{0}.java" -f $sourceName)
   if (-not (Test-Path -LiteralPath $path)) { throw "Missing current Java test: $path" }
   $path
 }))
@@ -529,3 +610,12 @@ foreach ($artifact in @(
 }
 
 Write-Host 'End Rift current local checks passed.'
+} finally {
+  if ($testBuildCreated -and (Test-Path -LiteralPath $testBuild -PathType Container)) {
+    $testBuildItem = Get-Item -LiteralPath $testBuild -Force
+    if ($testBuildItem.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+      throw 'Refused to remove a reparse point in place of the isolated Java test build directory.'
+    }
+    Remove-Item -LiteralPath $testBuild -Recurse -Force
+  }
+}

@@ -65,16 +65,26 @@ public class Wave7ReturnBootstrapProbe {
         void registerIncomingPluginChannel(Object plugin,String channel,Object handler){}
     }
     static class Scheduler {BukkitTask runTaskTimer(Object plugin,Runnable task,long delay,long interval){return new BukkitTask();}}
+    static class Player {UUID getUniqueId(){return OWNER;}}
+    static class EndEventBridgeV4Access {
+        void register(Object plugin){}
+        void requestFreshChallenges(Collection<UUID> players){}
+    }
+    static class EndEventBridgeV4Bootstrap {
+        static EndEventBridgeV4Access create(Object plugin){return null;}
+    }
     static class Bukkit {
         static PluginManager getPluginManager(){return new PluginManager();}
         static Services getServicesManager(){return new Services();}
         static Scheduler getScheduler(){return new Scheduler();}
+        static Collection<Player> getOnlinePlayers(){return List.of();}
     }
     static class Server {
         Messenger getMessenger(){return new Messenger();}
         PluginManager getPluginManager(){return new PluginManager();}
     }
     static class DepositJournal {static class JournalCorruptionException extends RuntimeException {}}
+    EndEventBridgeV4Access endEventBridgeV4;
     boolean isEnabled(){return true;}boolean isConfigured(){return configured;}
     boolean isOfficialAttemptActive(){return true;}
     boolean isOfficialCurrentAttempt(){return false;}
@@ -152,7 +162,7 @@ public class Wave7ReturnBootstrapProbe {
     paths = (
         "domain/EventPhase.java", "domain/EndEventStateMachine.java",
         "domain/EndRiftObjective.java", "domain/ChamberIsolationPolicy.java",
-        "domain/RealitySplitBarrierPolicy.java", "domain/Wave7DuoLayoutPolicy.java",
+        "domain/RealitySplitBarrierPolicy.java",
         "runtime/RealitySplitChamberController.java",
         "runtime/RealitySplitTrialController.java", "runtime/AttemptLifecycleController.java",
     )

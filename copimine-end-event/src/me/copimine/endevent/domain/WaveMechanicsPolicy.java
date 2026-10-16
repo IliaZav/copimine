@@ -47,12 +47,24 @@ public final class WaveMechanicsPolicy {
         return 3;
     }
 
-    /** The introduction uses melee pressure even with a stale ranged composition. */
+    /** Fold Wave 1 ranged and Wave 2 elite slots into ordinary roles; remove Wave 7 elites. */
     public static WaveCounts compositionForWave(int wave, WaveCounts requested) {
         if (requested == null) return new WaveCounts(0, 0, 0, 0, 0);
-        if (wave != 1) return requested;
-        return new WaveCounts(requested.endermen(), requested.spiders() + requested.skeletons(), 0,
-                requested.eliteEndermen() + requested.eliteSkeletons(), 0);
+        if (wave == 1) {
+            return new WaveCounts(requested.endermen() + requested.eliteEndermen(),
+                    requested.spiders() + requested.skeletons() + requested.eliteSkeletons(),
+                    0, 0, 0);
+        }
+        if (wave == 2) {
+            return new WaveCounts(requested.endermen() + requested.eliteEndermen(),
+                    requested.spiders(), requested.skeletons() + requested.eliteSkeletons(),
+                    0, 0);
+        }
+        if (wave == 7) {
+            return new WaveCounts(requested.endermen(), requested.spiders(), requested.skeletons(),
+                    0, 0);
+        }
+        return requested;
     }
 
     private static int largestOrdinaryBucket(int[] counts) {

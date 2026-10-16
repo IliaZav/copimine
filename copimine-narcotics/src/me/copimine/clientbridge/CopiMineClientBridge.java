@@ -3,6 +3,10 @@ package me.copimine.clientbridge;
 import me.copimine.narcotics.CopiMineNarcotics;
 import me.copimine.narcotics.config.NarcoticsConfigService;
 import me.copimine.protocol.ClientModHandshakePolicy;
+import me.copimine.protocol.ClientModSessionRegistry;
+import me.copimine.protocol.BridgeRequestCodec;
+import me.copimine.protocol.BridgeSigner;
+import me.copimine.protocol.InboundBridgeRequestRateLimiter;
 import me.copimine.protocol.PendingClientCommandPolicy;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -57,11 +61,15 @@ import java.util.stream.Collectors;
 
 public final class CopiMineClientBridge implements Listener, PluginMessageListener {
     private static final int MAX_INBOUND_MESSAGE_BYTES = 4_096;
+    private static final int MAX_V4_INBOUND_MESSAGE_BYTES = 1_024;
     private static final long INBOUND_MESSAGE_INTERVAL_MILLIS = 50L;
     private final CopiMineNarcotics plugin;
+    private final ClientModSessionRegistryService sessionRegistry;
     private NarcoticsConfigService configService;
     private final ClientCapabilityService capabilities;
     private final ClientVisualEffectService visuals;
+    private final NarcoticsBridgeV4Sender bridgeV4Sender;
+    private final InboundBridgeRequestRateLimiter v4InboundRateLimiter = new InboundBridgeRequestRateLimiter();
     private final Map<UUID, Long> nextInboundMessageAt = new ConcurrentHashMap<>();
     private final Map<UUID, PendingClientHandshake> pendingHandshakes = new ConcurrentHashMap<>();
     private final Map<UUID, VerifiedClientMod> verifiedClientMods = new ConcurrentHashMap<>();
@@ -73,20 +81,35 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     private record VerifiedClientMod(String sessionId, String modId, String version) {
     }
 
-    public CopiMineClientBridge(CopiMineNarcotics plugin, NarcoticsConfigService configService) {
+    public CopiMineClientBridge(CopiMineNarcotics plugin, NarcoticsConfigService configService,
+                                ClientModSessionRegistryService sessionRegistry) {
         this.plugin = plugin;
         this.configService = configService;
+        this.sessionRegistry = Objects.requireNonNull(sessionRegistry, "sessionRegistry");
         this.capabilities = new ClientCapabilityService();
-        this.visuals = new ClientVisualEffectService(plugin, capabilities);
+        BridgeSigner signer = Bukkit.getServicesManager().load(BridgeSigner.class);
+        this.bridgeV4Sender = new NarcoticsBridgeV4Sender(sessionRegistry,
+                signer == null ? BridgeSigner.unavailable() : signer,
+                (playerUuid, payload) -> {
+                    Player recipient = Bukkit.getPlayer(playerUuid);
+                    if (recipient != null && recipient.isOnline()) {
+                        recipient.sendPluginMessage(plugin, ClientBridgePayloads.V4_CHANNEL, payload);
+                    }
+                });
+        this.visuals = new ClientVisualEffectService(plugin, capabilities, bridgeV4Sender);
         this.lastRequiredClientModVersion = configService.requiredClientModVersion();
+        this.sessionRegistry.setFreshChallengeRequester(this::dispatchFreshChallenge);
         applyCapabilityTtl();
     }
 
     public void register() {
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        Bukkit.getMessenger().registerIncomingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL, this);
+        Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL);
         Bukkit.getPluginManager().registerEvents(this, plugin);
         for (Player player : Bukkit.getOnlinePlayers()) {
+            sessionRegistry.openConnection(player.getUniqueId());
             beginClientModHandshake(player);
         }
     }
@@ -97,8 +120,12 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             visuals.forgetPlayer(player);
             capabilities.clear(player.getUniqueId());
         }
+        bridgeV4Sender.close();
+        v4InboundRateLimiter.clear();
         Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.CHANNEL, this);
         Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.CHANNEL);
+        Bukkit.getMessenger().unregisterIncomingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL, this);
+        Bukkit.getMessenger().unregisterOutgoingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL);
         nextInboundMessageAt.clear();
         pendingHandshakes.clear();
         verifiedClientMods.clear();
@@ -113,6 +140,8 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         applyCapabilityTtl();
         if (requiredVersionChanged) {
             for (Player player : Bukkit.getOnlinePlayers()) {
+                sessionRegistry.invalidate(player.getUniqueId(),
+                        ClientModSessionRegistry.InvalidationReason.VERSION_CHANGED);
                 beginClientModHandshake(player);
             }
         }
@@ -124,6 +153,10 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     public ClientVisualEffectService visuals() {
         return visuals;
+    }
+
+    public NarcoticsBridgeV4Sender bridgeV4Sender() {
+        return bridgeV4Sender;
     }
 
     public boolean enabled() {
@@ -153,6 +186,19 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
+        if (ClientBridgePayloads.V4_CHANNEL.equalsIgnoreCase(channel)) {
+            if (!enabled() || player == null || message == null
+                    || message.length > MAX_V4_INBOUND_MESSAGE_BYTES
+                    || !BridgeRequestCodec.classifyRecipient(message).includesNarcotics()) {
+                return;
+            }
+            boolean admitted = v4InboundRateLimiter.allow(player.getUniqueId());
+            bridgeV4Sender.onRequest(player, message, admitted);
+            if (admitted) {
+                visuals.onBridgeStateChanged(player);
+            }
+            return;
+        }
         if (!ClientBridgePayloads.CHANNEL.equalsIgnoreCase(channel) || !enabled()) {
             return;
         }
@@ -186,16 +232,17 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
                     }
                 }
                 case ClientBridgePayloads.VISUAL_ACK, ClientBridgePayloads.VISUAL_FINISHED, ClientBridgePayloads.VISUAL_ERROR -> {
-                    if (isVerifiedClientMessage(player, payload)
-                            && capabilities.touch(player, payload.sessionId())) {
-                        visuals.handleMessage(player, payload);
+                    ClientBridgePayloads.Message strictReport = ClientBridgePayloads.decodeStrictVisualReport(message);
+                    if (isVerifiedClientMessage(player, strictReport)
+                            && capabilities.touch(player, strictReport.sessionId())) {
+                        visuals.handleMessage(player, strictReport);
                     }
                 }
                 default -> capabilities.reportProblem(player, "unsupported-message-type:" + payload.type());
             }
         } catch (Exception error) {
             capabilities.reportProblem(player, error.getMessage());
-            plugin.getLogger().warning("Invalid CopiMineClient payload from " + player.getName() + ": " + error.getMessage());
+            plugin.getLogger().warning("Invalid CopiMineClient bridge payload from " + player.getName() + ".");
             if (pendingHandshakes.containsKey(player.getUniqueId())) {
                 rejectClient(player, "invalid-handshake-payload");
             }
@@ -215,18 +262,15 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             return;
         }
 
-        boolean accepted = ClientModHandshakePolicy.acceptsResponse(
+        boolean accepted = sessionRegistry.acceptChallengeResponse(
+                playerId,
                 pending.challengeId(),
                 payload.sessionId(),
                 pending.expiresAtMillis(),
                 System.currentTimeMillis(),
                 payload.mode(),
-                ClientModHandshakePolicy.MOD_ID,
                 payload.clientVersion(),
-                configService.requiredClientModVersion(),
-                payload.protocol(),
-                ClientBridgePayloads.PROTOCOL_VERSION
-        );
+                payload.protocol());
         if (!accepted || !pendingHandshakes.remove(playerId, pending)) {
             rejectClient(player, "missing-or-incompatible-client-mod");
             return;
@@ -245,7 +289,11 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     private boolean isVerifiedClientMessage(Player player, ClientBridgePayloads.Message payload) {
         VerifiedClientMod verified = verifiedClientMods.get(player.getUniqueId());
-        return verified != null && verified.sessionId().equals(payload.sessionId());
+        return verified != null
+                && verified.sessionId().equals(payload.sessionId())
+                && sessionRegistry.current(player.getUniqueId())
+                        .map(session -> session.sessionUuid().toString().equals(payload.sessionId()))
+                        .orElse(false);
     }
 
     private boolean hasExpectedClientIdentity(ClientBridgePayloads.Message payload) {
@@ -258,6 +306,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
             return;
         }
         UUID playerId = player.getUniqueId();
+        sessionRegistry.invalidate(playerId, ClientModSessionRegistry.InvalidationReason.REJECTED);
         pendingHandshakes.remove(playerId);
         verifiedClientMods.remove(playerId);
         capabilities.clear(playerId);
@@ -272,7 +321,15 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
+        sessionRegistry.openConnection(event.getPlayer().getUniqueId());
         beginClientModHandshake(event.getPlayer());
+    }
+
+    private void dispatchFreshChallenge(UUID playerUuid) {
+        Player player = Bukkit.getPlayer(playerUuid);
+        if (player != null && player.isOnline()) {
+            beginClientModHandshake(player);
+        }
     }
 
     private void beginClientModHandshake(Player player) {
@@ -281,6 +338,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         visuals.forgetPlayer(player, "client-mod-check");
         capabilities.clear(playerId);
         nextInboundMessageAt.remove(playerId);
+        v4InboundRateLimiter.remove(playerId);
         verifiedClientMods.remove(playerId);
         if (!enabled()) {
             rejectClient(player, "client-bridge-disabled");
@@ -290,6 +348,8 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         long expiresAt = System.currentTimeMillis() + configService.handshakeTimeoutSeconds() * 1_000L;
         PendingClientHandshake pending = new PendingClientHandshake(UUID.randomUUID().toString(), expiresAt);
         pendingHandshakes.put(playerId, pending);
+        sessionRegistry.beginChallenge(playerId, UUID.fromString(pending.challengeId()),
+                pending.expiresAtMillis(), configService.requiredClientModVersion());
         long timeoutTicks = configService.handshakeTimeoutSeconds() * 20L;
         scheduleClientModChallenge(player, playerId, pending, 1L);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
@@ -329,10 +389,12 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     public void onQuit(PlayerQuitEvent event) {
         visuals.forgetPlayer(event.getPlayer());
         UUID playerId = event.getPlayer().getUniqueId();
+        sessionRegistry.closeConnection(playerId);
         capabilities.clear(playerId);
         pendingHandshakes.remove(playerId);
         verifiedClientMods.remove(playerId);
         nextInboundMessageAt.remove(playerId);
+        v4InboundRateLimiter.remove(playerId);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -522,8 +584,8 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
+        visuals.forgetPlayerPreservingSessionSequence(event.getEntity());
         visuals.clearVisuals(event.getEntity(), "death");
-        visuals.forgetPlayer(event.getEntity(), "death");
     }
 
     @EventHandler

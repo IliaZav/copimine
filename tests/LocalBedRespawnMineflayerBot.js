@@ -5,9 +5,9 @@
 const path = require('path')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
 const Vec3 = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'vec3')).Vec3
+const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 
-const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
-const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
+const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'BedMineProbe'
 const durationMs = Number(process.argv[3] || 30000)
 const bedPosition = new Vec3(
@@ -37,10 +37,6 @@ bot._client.on('packet', (data, meta) => {
 bot.once('spawn', () => {
   spawned = true
   console.log(`PLAYER_JOIN ${username}`)
-  bot.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) {
-    setTimeout(() => bot.chat('/login endrift-local'), delay)
-  }
   const tryActivateBed = async () => {
     if (!bot.entity || interactionAttempts >= 4) return
     interactionAttempts += 1

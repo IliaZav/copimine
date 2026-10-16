@@ -198,7 +198,11 @@ def test_java_plugin_build_scripts_prefer_the_isolated_maven_repository():
         assert '$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)' in source, relative
         assert "Join-Path $env:USERPROFILE '.m2\\repository'" in source, relative
         locked_branch=source.index('if ($env:PAPER_COMPILE_DEPS)')
-        assert source.index('$cp += $env:PAPER_COMPILE_DEPS', locked_branch) > locked_branch, relative
+        if '$cp += $env:PAPER_COMPILE_DEPS' in source:
+            assert source.index('$cp += $env:PAPER_COMPILE_DEPS', locked_branch) > locked_branch, relative
+        else:
+            assert '$cp = @($paperApi) + $compileDependencies' in source, relative
+            assert 'Assert-LockedCompileFile -Path $compileDependencies[$index]' in source, relative
         fallback_branch=source.index('} else {', locked_branch)
         for ambient_marker in ("Get-ChildItem -Path $groupPath", "Get-ChildItem -Path (Join-Path $serverDir 'libraries')", "Get-ChildItem -Path $serverLibraries"):
             ambient_index=source.find(ambient_marker)

@@ -57,3 +57,14 @@ def test_probe_uses_condition_waits_and_fail_closed_cleanup() -> None:
     assert "LIVE_CURRENT_CLEANUP_PASS" in probe
     assert "catch { }" not in probe
     assert "Start-Sleep -Seconds 3" not in probe
+
+
+def test_probe_bot_passes_its_named_command_line_into_the_child_process() -> None:
+    probe = read_probe()
+    start = probe.index("function Start-ProbeBot")
+    end = probe.index("\n}\n", start) + len("\n}\n")
+    start_bot = probe[start:end]
+
+    assert "$botArguments =" in start_bot
+    assert "-ArgumentList $botArguments" in start_bot
+    assert "-ArgumentList $args" not in start_bot

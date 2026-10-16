@@ -25,12 +25,28 @@ public final class RitualSphereScalingPolicyTest {
                 "solo and duo preserve the reduced guard pressure while retaining three projectiles");
         check(RitualSphereScalingPolicy.pressureMobsForPlayers(2).total() == 2,
                 "duo ritual needs a bounded ordinary combat pack");
+        var twoPlayerPressure = RitualSphereScalingPolicy.pressureMobsForPlayers(2);
+        check(twoPlayerPressure.eliteEndermen() == 1 && twoPlayerPressure.eliteSkeletons() == 1,
+                "duo pressure maps one Enderman and one Skeleton to the ordinary elite roles");
         check(RitualSphereScalingPolicy.pressureMobsForPlayers(6).total() == 4,
                 "six-player ritual pressure grows independently from caster count");
+        var fivePlayerPressure = RitualSphereScalingPolicy.pressureMobsForPlayers(5);
+        check(fivePlayerPressure.eliteEndermen() == 1 && fivePlayerPressure.eliteSkeletons() == 1,
+                "five-player pressure retains both ordinary elite roles within its existing roster");
+        check(RitualSphereScalingPolicy.pressureMobsForPlayers(6).eliteEndermen() == 1
+                        && me.copimine.endevent.domain.EliteAbilityPolicy.activeCastForWave(
+                        6, me.copimine.endevent.domain.EliteAbilityPolicy.Role.ENDERMAN)
+                        == me.copimine.endevent.domain.EliteAbilityPolicy.Ability.VOID_BURST,
+                "the six-player pressure Enderman is assigned the Void Burst live spell");
         check(RitualSphereScalingPolicy.pressureMobsForPlayers(20).total() == 7,
                 "full ritual pressure remains bounded");
-        check(RitualSphereScalingPolicy.pressureMobsForPlayers(20).eliteEndermen() == 2,
-                "large parties receive a visible but capped elite role");
+        var sixPlayerPressure = RitualSphereScalingPolicy.pressureMobsForPlayers(6);
+        check(sixPlayerPressure.eliteEndermen() == 1 && sixPlayerPressure.eliteSkeletons() == 1,
+                "Wave 6 pressure includes one Enderman and one Arrow Rain elite without changing its cap");
+        var twentyPlayerPressure = RitualSphereScalingPolicy.pressureMobsForPlayers(20);
+        check(twentyPlayerPressure.eliteEndermen() == 1 && twentyPlayerPressure.eliteSkeletons() == 1
+                        && twentyPlayerPressure.total() == 7,
+                "large parties receive the bounded Void Burst and Arrow Rain roles");
         System.out.println("RitualSphereScalingPolicyTest OK");
     }
 

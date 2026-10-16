@@ -499,6 +499,34 @@
       "base_material": "paper",
       "model": "copimine:item/end_event_rift_guardian_shield",
       "texture": "copimine:item/end_event_rift_guardian_shield_hd"
+    },
+    {
+      "id": "end_rift_web_shot",
+      "custom_model_data": 830030,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_web_shot",
+      "texture": "copimine:item/end_rift_web_shot"
+    },
+    {
+      "id": "end_rift_rift_bolt",
+      "custom_model_data": 830031,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_rift_bolt",
+      "texture": "copimine:item/end_rift_rift_bolt"
+    },
+    {
+      "id": "end_rift_dragon_breath",
+      "custom_model_data": 830032,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_dragon_breath",
+      "texture": "copimine:item/end_rift_dragon_breath"
+    },
+    {
+      "id": "end_rift_void_burst",
+      "custom_model_data": 830033,
+      "base_material": "paper",
+      "model": "copimine:item/end_rift_void_burst",
+      "texture": "copimine:item/end_rift_void_burst"
     }
   ]
 }

@@ -173,6 +173,7 @@ waves:
     endermen: 14
     spiders: 10
     skeletons: 6
+    # Approved two-player exception: keep these eight elites together; no ordinary mobs are admitted.
     elite-endermen: 6
     elite-skeletons: 2
   wave-6:
@@ -187,8 +188,8 @@ waves:
     endermen: 0
     spiders: 10
     skeletons: 3
-    elite-endermen: 6
-    elite-skeletons: 2
+    elite-endermen: 0
+    elite-skeletons: 0
 
 # Event-owned mobs use these bounded drops.  Recovery/cleanup removes entities
 # directly and therefore never enters EntityDeathEvent or creates kill loot.

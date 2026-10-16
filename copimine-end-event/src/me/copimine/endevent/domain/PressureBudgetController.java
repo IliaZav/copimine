@@ -6,16 +6,19 @@ import java.util.UUID;
 /**
  * The single pressure gate for hostile encounter work.
  *
- * <p>Wave reserve is deliberately not represented by this class. A wave may
- * have a large reserve, while this controller only grants a bounded number of
- * simultaneous pressure slots. The Bukkit controller releases a slot when an
- * owned entity or hazard is cleaned up and asks for another allowance when it
- * is ready to admit the next reserve entry.</p>
+ * <p>Wave reserve and per-player target assignments are deliberately not
+ * represented by this class. A wave may have a large reserve, while this
+ * controller only describes bounded simultaneous pressure slots. Stable
+ * 3–5 member target squads belong to {@code WaveCombatCoordinator}; their
+ * assignment does not mean every member attacks or lands damage at once.
+ * Major ability wind-ups use the coordinator's separate single lease.</p>
  */
 public final class PressureBudgetController {
     public static final int MIN_PLAYERS = 2;
     public static final int MAX_PLAYERS = 20;
     public static final int HARD_CAP = 56;
+    /** The named five-arrow rain is the only child-count exception below this bound. */
+    public static final int MIN_NAMED_VOLLEY_PROJECTILE_COUNT = 5;
 
     private PressureBudgetController() {
     }
@@ -27,18 +30,18 @@ public final class PressureBudgetController {
             return Profile.EMPTY;
         }
         if (players <= 3) {
-            return new Profile(players, 6, 4, 1, 1, 2);
+            return new Profile(players, 6, 4, 1, 1);
         }
         if (players <= 5) {
-            return new Profile(players, 9, 6, 1, 2, 2);
+            return new Profile(players, 9, 6, 1, 2);
         }
         if (players <= 10) {
-            return new Profile(players, 16, 10, 2, 3, 2);
+            return new Profile(players, 16, 10, 2, 3);
         }
         if (players <= 15) {
-            return new Profile(players, 22, 14, 3, 3, 3);
+            return new Profile(players, 22, 14, 3, 3);
         }
-        return new Profile(players, 30, 12, 3, 3, 3);
+        return new Profile(players, 30, 12, 3, 3);
     }
 
     /**
@@ -79,10 +82,23 @@ public final class PressureBudgetController {
         return Math.max(0, Math.min(Math.min(HARD_CAP, profile.activePressure()), requested));
     }
 
-    /** Return whether one more attacker may focus the same participant. */
-    public static boolean mayFocusPlayer(int currentFocused, int livingPlayers) {
+    /**
+     * Return the simultaneous physical-child limit used by wave projectile admission.
+     * The two- and three-player profiles keep their configured cap of four, while this
+     * narrow floor permits the explicitly named five-arrow rain to be admitted whole.
+     */
+    public static int effectiveProjectileCap(int livingPlayers) {
         Profile profile = profileForPlayers(livingPlayers);
-        return currentFocused >= 0 && currentFocused < profile.maxFocusedAttackers();
+        if (profile.players() < MIN_PLAYERS) {
+            return 0;
+        }
+        return Math.max(profile.projectileCap(), MIN_NAMED_VOLLEY_PROJECTILE_COUNT);
+    }
+
+    /** Return the ordinary projectile cap, excluding the named five-arrow exception. */
+    public static int configuredProjectileCap(int livingPlayers) {
+        Profile profile = profileForPlayers(livingPlayers);
+        return profile.players() < MIN_PLAYERS ? 0 : profile.projectileCap();
     }
 
     /** Bounded diagnostics suitable for a log line or a local probe. */
@@ -101,7 +117,7 @@ public final class PressureBudgetController {
                 + Math.max(0, activeHeavy);
         boolean exceeded = total > profile.activePressure()
                 || total > HARD_CAP
-                || Math.max(0, activeProjectiles) > profile.projectileCap()
+                || Math.max(0, activeProjectiles) > effectiveProjectileCap(livingPlayers)
                 || Math.max(0, activeMajorHazards) > profile.heavyCap();
         return new Diagnostics(Math.max(0, activeCommon), Math.max(0, activeElites),
                 Math.max(0, activeHeavy), Math.max(0, activeProjectiles),
@@ -118,9 +134,8 @@ public final class PressureBudgetController {
                           int activePressure,
                           int commonCap,
                           int eliteCap,
-                          int heavyCap,
-                          int maxFocusedAttackers) {
-        public static final Profile EMPTY = new Profile(0, 0, 0, 0, 0, 0);
+                          int heavyCap) {
+        public static final Profile EMPTY = new Profile(0, 0, 0, 0, 0);
 
         public Profile {
             players = Math.max(0, Math.min(MAX_PLAYERS, players));
@@ -128,7 +143,6 @@ public final class PressureBudgetController {
             commonCap = Math.max(0, commonCap);
             eliteCap = Math.max(0, eliteCap);
             heavyCap = Math.max(0, heavyCap);
-            maxFocusedAttackers = Math.max(0, maxFocusedAttackers);
             if (commonCap + eliteCap + heavyCap > HARD_CAP) {
                 throw new IllegalArgumentException("pressure profile exceeds hard cap");
             }

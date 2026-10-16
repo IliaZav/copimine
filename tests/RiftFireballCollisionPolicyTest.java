@@ -7,6 +7,9 @@ public final class RiftFireballCollisionPolicyTest {
         testMissOutsideVerticalBounds();
         testReturnPathReachesRaisedCrownSocket();
         testZeroLengthPathUsesCurrentPoint();
+        testWave4OwnedFireballPassesThroughNonparticipants();
+        testWave4OwnedFireballKeepsParticipantCollisions();
+        testOtherStaleAndUnownedFireballsKeepDefaultCollisionBehavior();
         System.out.println("RiftFireballCollisionPolicyTest OK");
     }
 
@@ -53,6 +56,33 @@ public final class RiftFireballCollisionPolicyTest {
                         17.5D, 68.0D, -38.5D,
                         2.2D, 67.5D, 74.25D),
                 "a reflected path must still reach the authored crown launch socket");
+    }
+
+    private static void testWave4OwnedFireballPassesThroughNonparticipants() {
+        check(RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        true, true, true, true, false),
+                "a current owned Wave 4 obelisk fireball must pass through mobs and ineligible players");
+    }
+
+    private static void testWave4OwnedFireballKeepsParticipantCollisions() {
+        check(!RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        true, true, true, true, true),
+                "a current Wave 4 obelisk fireball must collide with an active participant");
+    }
+
+    private static void testOtherStaleAndUnownedFireballsKeepDefaultCollisionBehavior() {
+        check(!RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        false, true, true, true, false),
+                "Wave 0 and Wave 7 fireballs must retain default collision behavior");
+        check(!RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        true, false, true, true, false),
+                "an inactive Wave 4 fireball must retain default collision behavior");
+        check(!RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        true, true, false, true, false),
+                "a stale-generation fireball must retain default collision behavior");
+        check(!RiftFireballCollisionPolicy.shouldPassThroughNonParticipantCollision(
+                        true, true, true, false, false),
+                "an unowned fireball must retain default collision behavior");
     }
 
     private static void check(boolean condition, String message) {

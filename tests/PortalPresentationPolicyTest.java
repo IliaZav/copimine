@@ -11,7 +11,7 @@ public final class PortalPresentationPolicyTest {
         run("subdued inactive", PortalPresentationPolicyTest::subduedInactive);
         run("one collapse deadline", PortalPresentationPolicyTest::oneCollapseDeadline);
         run("next gate activation", PortalPresentationPolicyTest::nextGateActivation);
-        run("bounded reconstruction", PortalPresentationPolicyTest::boundedReconstruction);
+        run("bounded reconstruction retries", PortalPresentationPolicyTest::boundedReconstruction);
         run("grace and decay projection", PortalPresentationPolicyTest::graceAndDecay);
         run("all closed", PortalPresentationPolicyTest::allClosed);
         if (failures != 0) throw new AssertionError(failures + " portal presentation scenarios failed");
@@ -60,10 +60,26 @@ public final class PortalPresentationPolicyTest {
     }
 
     private static void boundedReconstruction() {
-        check(PortalPresentationPolicy.shouldRebuild(true, false, 0), "lost visible layer gets one reconstruction");
-        check(!PortalPresentationPolicy.shouldRebuild(true, false, 1), "repeated disappearance must not spawn forever");
-        check(!PortalPresentationPolicy.shouldRebuild(true, true, 0), "live owned layer must not duplicate");
-        check(!PortalPresentationPolicy.shouldRebuild(false, false, 0), "closed layer must not resurrect");
+        check(PortalPresentationPolicy.shouldRebuild(true, false, 0, 0, 0),
+                "a missing visible layer may retry immediately");
+        check(!PortalPresentationPolicy.shouldRebuild(true, false, 1, 499, 500),
+                "retry backoff must suppress an early rebuild");
+        check(PortalPresentationPolicy.shouldRebuild(true, false, 1, 500, 500),
+                "a transient failure may retry after backoff");
+        check(PortalPresentationPolicy.shouldRebuild(true, false, 2, 1_000, 1_000),
+                "a second transient failure still has a bounded retry");
+        check(!PortalPresentationPolicy.shouldRebuild(true, false, 3, 2_000, 2_000),
+                "reconstruction must stop at the retry limit");
+        check(!PortalPresentationPolicy.shouldRebuild(true, true, 0, 0, 0),
+                "live owned layer must not duplicate");
+        check(!PortalPresentationPolicy.shouldRebuild(false, false, 0, 0, 0),
+                "closed layer must not resurrect");
+        check(PortalPresentationPolicy.retryDelayMillis(1) == 250L
+                        && PortalPresentationPolicy.retryDelayMillis(2) == 500L
+                        && PortalPresentationPolicy.retryDelayMillis(3) == 750L,
+                "consecutive failed rebuilds must back off");
+        check(PortalPresentationPolicy.retryDelayMillis(99) == 1_000L,
+                "rebuild backoff must remain bounded");
     }
 
     private static void graceAndDecay() {

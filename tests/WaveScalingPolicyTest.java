@@ -25,6 +25,10 @@ public final class WaveScalingPolicyTest {
                 "large roster must get a bounded effect increase");
         check(WaveScalingPolicy.effectDurationTicks(220, 20) == 275,
                 "large roster effect duration must be scaled deterministically");
+        var waveSeven = WaveScalingPolicy.scale(7,
+                new WaveMechanicsPolicy.WaveCounts(0, 10, 3, 6, 2), 20, 56);
+        check(waveSeven.eliteEndermen() == 0 && waveSeven.eliteSkeletons() == 0,
+                "Wave 7 scaling must suppress stale elite config at every player count");
         System.out.println("WaveScalingPolicyTest OK");
     }
 

@@ -42,7 +42,12 @@ public final class EndRiftAiPolicy {
         VOID_SNARE("void_snare", "Кандалы Пустоты"),
         ECHO_PULSE("echo_pulse", "Импульс Эха"),
         ARROW_SALVO("arrow_salvo", "Залп Разлома"),
-        RIFT_EUPHORIA("rift_euphoria", "Эйфория Пустоты");
+        RIFT_EUPHORIA("rift_euphoria", "Эйфория Пустоты"),
+        ARROW_RAIN("arrow_rain", "Град Стрел"),
+        RIFT_BOLT("rift_bolt", "Снаряд Разлома"),
+        DRAGON_BREATH("dragon_breath", "Дыхание Дракона"),
+        VOID_BURST("void_burst", "Всплеск Пустоты"),
+        WEB_SHOT("web_shot", "Паутина Разлома");
 
         private final String id;
         private final String displayName;
@@ -144,41 +149,6 @@ public final class EndRiftAiPolicy {
         List<BossSpell> alternatives = unique.stream().filter(spell -> spell != previous).toList();
         List<BossSpell> pool = alternatives.isEmpty() ? unique : alternatives;
         return pool.get(Math.floorMod(cursor, pool.size()));
-    }
-
-    /** Stable one-spell assignment for an elite's lifetime and objective. */
-    public static MiniBossSpell miniBossSpell(EndRiftObjective.Objective objective,
-                                              int eliteSlot) {
-        return miniBossSpell(objective, "ENDERMAN", eliteSlot);
-    }
-
-    /** Role and objective own the repertoire; no ordinal rotation across unrelated spells. */
-    public static MiniBossSpell miniBossSpell(EndRiftObjective.Objective objective,
-                                              String role, int slot) {
-        var safe = objective == null ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
-        if (safe == EndRiftObjective.Objective.COLLAPSE_RINGS
-                || safe == EndRiftObjective.Objective.RITUAL_SPHERE
-                || safe == EndRiftObjective.Objective.REALITY_SPLIT) {
-            MiniBossSpell[] existing = MiniBossSpell.values();
-            return existing[Math.floorMod(safe.ordinal() + slot, existing.length)];
-        }
-        String job = role == null ? "" : role.trim().toUpperCase(java.util.Locale.ROOT);
-        if (safe == EndRiftObjective.Objective.RIFT_CARRIERS) {
-            return Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.RIFT_STEP;
-        }
-        if (job.equals("SKELETON")) return MiniBossSpell.ARROW_SALVO;
-        if (job.equals("CHANNELER")) return MiniBossSpell.VOID_SNARE;
-        if (job.equals("BRUTE")) return MiniBossSpell.ECHO_PULSE;
-        if (job.equals("STALKER")) return MiniBossSpell.RIFT_STEP;
-        return switch (safe) {
-            case RIFT_CARRIERS -> MiniBossSpell.ECHO_PULSE;
-            case RIFT_HUNT -> Math.floorMod(slot, 3) == 0 ? MiniBossSpell.VOID_SNARE : MiniBossSpell.RIFT_STEP;
-            case RIFT_GATES -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
-            case OBELISK_ASSAULT -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
-            case BLACK_FOG -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.VOID_SNARE : MiniBossSpell.RIFT_STEP;
-            case COLLAPSE_RINGS, RITUAL_SPHERE -> Math.floorMod(slot, 2) == 0 ? MiniBossSpell.ECHO_PULSE : MiniBossSpell.VOID_SNARE;
-            case REALITY_SPLIT -> MiniBossSpell.RIFT_STEP;
-        };
     }
 
     public static NarcoticEffect randomNarcoticEffect(long seed) {

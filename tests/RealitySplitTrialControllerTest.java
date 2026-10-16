@@ -105,11 +105,108 @@ public final class RealitySplitTrialControllerTest {
                 "clear removes all trial state and is safe to repeat");
         fullParty.clear();
 
+        namedTrials();
         System.out.println("RealitySplitTrialControllerTest OK");
     }
 
     private static UUID player(String name) {
         return UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    private static void namedTrials() {
+        // This tests snapshot/controller bookkeeping only. The official personal Echo duel is deferred,
+        // and the event runtime must fail closed before an unsupported Echo actor can spawn.
+        UUID event = player("named-event");
+        for (int size : new int[] {2, 3, 4, 5, 6, 10, 20}) {
+            List<UUID> roster = java.util.stream.IntStream.range(0, size)
+                    .mapToObj(i -> player("named-owner-" + i)).toList();
+            var assignment = ChamberIsolationPolicy.assign(roster);
+            var sampled = new java.util.HashSet<RealitySplitTrialController.NamedTrial>();
+            for (int seed = 0; seed < 64; seed++) {
+                var controller = new RealitySplitTrialController();
+                controller.beginNamed(event, 71L, assignment, new java.util.Random(seed));
+                var data = controller.namedSnapshot();
+                check(data.trials().size() == Math.min(4, size), "roster chooses same count of parallel rooms");
+                check(new java.util.HashSet<>(data.selectedLayout()).size() == data.selectedLayout().size(),
+                        "selection is without replacement");
+                sampled.addAll(data.selectedLayout());
+                if (size >= 4) check(data.selectedLayout().containsAll(
+                        List.of(RealitySplitTrialController.NamedTrial.values())), "four-plus runs all trials");
+                var restored = new RealitySplitTrialController();
+                restored.restoreNamed(event, 71L, assignment, data);
+                check(restored.namedSnapshot().equals(data), "restore keeps sampled layout exactly");
+                check(restored.snapshot().isEmpty() && restored.trial(0) == null,
+                        "named identities never appear as legacy room state");
+                check(!restored.restoreCompleted(71L, 0), "legacy room-graph receipt cannot complete a named trial");
+            }
+            check(sampled.size() == 4, "small rosters can sample every approved archetype");
+        }
+
+        // Six sorted owners put two owners in room 1. Each gets an independent personal Echo.
+        List<UUID> roster = java.util.stream.IntStream.range(1, 7)
+                .mapToObj(i -> new UUID(0L, i)).toList();
+        var assignment = ChamberIsolationPolicy.assign(roster);
+        var controller = new RealitySplitTrialController();
+        var layout = List.of(RealitySplitTrialController.NamedTrial.WARDEN,
+                RealitySplitTrialController.NamedTrial.PERSONAL_ECHO,
+                RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN,
+                RealitySplitTrialController.NamedTrial.RIFT_ARCHMAGE);
+        controller.beginNamed(event, 72L, assignment, layout);
+        var echoOwners = assignment.playersIn(1).stream().sorted().toList();
+        UUID first = echoOwners.get(0), second = echoOwners.get(1);
+        check(!controller.completeNamedActor(event, 72L, 1, RealitySplitTrialController.NamedTrial.PERSONAL_ECHO),
+                "generic actor death cannot resolve a personal Echo room");
+        check(!controller.completePersonalEcho(event, 72L, 1, roster.get(0)), "wrong owner cannot finish Echo");
+        check(!controller.completePersonalEcho(player("wrong-event"), 72L, 1, first), "wrong event cannot finish Echo");
+        check(!controller.completePersonalEcho(event, 71L, 1, first), "stale generation cannot finish Echo");
+        check(controller.completePersonalEcho(event, 72L, 1, first), "first owner's Echo completes");
+        check(controller.namedTrial(1).stage() == RealitySplitTrialController.Stage.ACTIVE,
+                "other owner keeps shared Echo room unfinished");
+        check(!controller.completePersonalEcho(event, 72L, 1, first), "owner receipt is emitted exactly once");
+        var checkpoint = controller.namedSnapshot();
+        controller.beginNamed(event, 72L, assignment, new java.util.Random(999));
+        check(controller.namedSnapshot().equals(checkpoint), "repeated start cannot reroll layout or erase owner receipts");
+        var restored = new RealitySplitTrialController();
+        restored.restoreNamed(event, 72L, assignment, checkpoint);
+        restored.restoreNamed(event, 72L, assignment, checkpoint);
+        check(!restored.completePersonalEcho(event, 72L, 1, first), "duplicate restore preserves owner receipt");
+        check(restored.completePersonalEcho(event, 72L, 1, second), "second owner's Echo completes independently");
+        check(restored.namedTrial(1).stage() == RealitySplitTrialController.Stage.COMPLETE,
+                "Echo room completes only after every personal Echo");
+        check(!restored.allComplete(72L), "one completed room does not finish all selected trials");
+        for (int room : new int[] {0, 2, 3}) {
+            check(restored.completeNamedActor(event, 72L, room, layout.get(room)), "validated named actor death completes room");
+            check(!restored.completeNamedActor(event, 72L, room, layout.get(room)), "named actor completion is exactly once");
+        }
+        check(restored.allComplete(72L) && !restored.allComplete(73L), "only all selected receipts complete own generation");
+
+        var previous = restored.namedSnapshot();
+        var changedLayout = List.of(layout.get(2), layout.get(1), layout.get(0), layout.get(3));
+        var changedStates = new java.util.LinkedHashMap<>(previous.trials());
+        for (int room : new int[] {0, 2}) {
+            var old = previous.trials().get(room);
+            changedStates.put(room, new RealitySplitTrialController.NamedTrialState(room, changedLayout.get(room),
+                    old.stage(), old.owners(), old.echoReceipts()));
+        }
+        var changed = new RealitySplitTrialController.NamedData(
+                event, 72L, changedLayout, changedStates);
+        expectRejected(() -> restored.restoreNamed(event, 72L, assignment, changed), "same attempt cannot replace selected layout");
+        check(restored.namedSnapshot().equals(previous), "rejected layout replacement preserves receipt state");
+        var swapped = new java.util.LinkedHashMap<>(assignment.chamberByPlayer());
+        swapped.put(roster.get(0), 1);
+        swapped.put(first, 0);
+        expectRejected(() -> restored.restoreNamed(event, 72L,
+                new ChamberIsolationPolicy.Assignment(4, swapped), previous), "changed owners must fail restore");
+        check(restored.namedSnapshot().equals(previous), "failed restore preserves all published rooms and receipts");
+        expectRejected(() -> restored.restoreNamed(event, 73L, assignment, previous), "stale restore is refused");
+        check(restored.namedSnapshot().equals(previous) && restored.owns(72L), "stale restore cannot publish new generation");
+        restored.clear();
+        check(restored.namedTrial(1) == null && !restored.allComplete(72L), "clear removes named attempt state");
+    }
+
+    private static void expectRejected(Runnable action, String message) {
+        try { action.run(); } catch (IllegalArgumentException expected) { return; }
+        throw new AssertionError(message);
     }
 
     private static void check(boolean condition, String message) {

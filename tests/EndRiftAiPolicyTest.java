@@ -1,8 +1,8 @@
 import java.util.List;
 import java.util.UUID;
 import me.copimine.endevent.domain.BossPhase;
+import me.copimine.endevent.domain.EliteAbilityPolicy;
 import me.copimine.endevent.domain.EndRiftAiPolicy;
-import me.copimine.endevent.domain.EndRiftObjective;
 
 public final class EndRiftAiPolicyTest {
     public static void main(String[] args) {
@@ -11,8 +11,7 @@ public final class EndRiftAiPolicyTest {
         testWaveTargetMemoryIsBoundedAndNewestFirst();
         testBossSpellRotationAvoidsImmediateRepeat();
         testEveryBossSpellHasRussianDisplayName();
-        testEveryEliteHasExactlyOneDeterministicSpell();
-        testEuphoriaSpellHasBoundedRandomNarcoticEffect();
+        testEliteAbilitiesBelongToTheirWaves();
         System.out.println("EndRiftAiPolicyTest OK");
     }
 
@@ -88,37 +87,20 @@ public final class EndRiftAiPolicyTest {
         }
     }
 
-    private static void testEveryEliteHasExactlyOneDeterministicSpell() {
-        for (int index = 0; index < 12; index++) {
-            EndRiftAiPolicy.MiniBossSpell spell = EndRiftAiPolicy.miniBossSpell(
-                    EndRiftObjective.Objective.OBELISK_ASSAULT, index);
-            check(spell != null && !spell.id().isBlank(), "every elite must have one named spell");
-            check(EndRiftAiPolicy.miniBossSpell(
-                    EndRiftObjective.Objective.OBELISK_ASSAULT, index) == spell,
-                    "the same elite slot must keep the same spell after a rebuild");
+    private static void testEliteAbilitiesBelongToTheirWaves() {
+        check(EliteAbilityPolicy.activeCastForWave(3, EliteAbilityPolicy.Role.ENDERMAN)
+                        == EliteAbilityPolicy.Ability.RIFT_BOLT,
+                "Wave 3 Endermen use only Rift Bolt");
+        check(EliteAbilityPolicy.activeCastForWave(5, EliteAbilityPolicy.Role.ENDERMAN)
+                        == EliteAbilityPolicy.Ability.DRAGON_BREATH,
+                "Wave 5 Endermen use only Dragon Breath");
+        check(EliteAbilityPolicy.activeCastForWave(6, EliteAbilityPolicy.Role.ENDERMAN)
+                        == EliteAbilityPolicy.Ability.VOID_BURST,
+                "Wave 6 pressure Endermen use only Void Burst");
+        for (EliteAbilityPolicy.Role role : EliteAbilityPolicy.Role.values()) {
+            check(EliteAbilityPolicy.activeCastForWave(7, role) == null,
+                    "Wave 7 must not assign a generic cast to " + role);
         }
-        check(EndRiftAiPolicy.miniBossSpell(
-                        EndRiftObjective.Objective.OBELISK_ASSAULT, 0)
-                        != EndRiftAiPolicy.miniBossSpell(
-                                EndRiftObjective.Objective.OBELISK_ASSAULT, 1),
-                "adjacent elite mini-bosses must not all share one spell");
-    }
-
-    private static void testEuphoriaSpellHasBoundedRandomNarcoticEffect() {
-        check(EndRiftAiPolicy.MiniBossSpell.RIFT_EUPHORIA.displayName()
-                        .equals("Эйфория Пустоты"),
-                "the mini-boss spell must have a Russian player-facing name");
-        check(EndRiftAiPolicy.MiniBossSpell.RIFT_EUPHORIA.id()
-                        .equals("rift_euphoria"),
-                "the mini-boss spell id must be stable");
-        EndRiftAiPolicy.NarcoticEffect first = EndRiftAiPolicy.randomNarcoticEffect(0L);
-        EndRiftAiPolicy.NarcoticEffect second = EndRiftAiPolicy.randomNarcoticEffect(1L);
-        check(first != null && !first.id().isBlank() && !first.potionEffectId().isBlank(),
-                "every narcotic profile must be usable without the client mod");
-        check(second != null && !second.displayName().equals(second.id()),
-                "every narcotic profile needs a readable Russian name");
-        check(EndRiftAiPolicy.randomNarcoticEffect(0L) == first,
-                "the selected profile must be stable for a cast seed");
     }
 
     private static void check(boolean condition, String message) {

@@ -22,6 +22,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $botScript = Join-Path $root 'tests\LocalEndRiftBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $statePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
@@ -102,25 +103,40 @@ function Read-LogSince {
   }
 }
 
-function Wait-LogPattern {
-  param(
-    [Parameter(Mandatory = $true)][int64]$Offset,
-    [Parameter(Mandatory = $true)][string]$Pattern,
-    [Parameter(Mandatory = $true)][string]$Label
-  )
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  while ((Get-Date) -lt $deadline) {
-    if ((Read-LogSince -Offset $Offset) -match $Pattern) {
-      return
-    }
-    Start-Sleep -Milliseconds 250
-  }
-  throw "Rune wait music probe timed out waiting for $Label."
-}
+function Receive-EndRiftRuneBotOutput {
+  foreach ($client in $botClients) {
+    foreach ($streamKind in @('Stdout', 'Stderr')) {
+      if ($streamKind -eq 'Stdout') {
+        $taskProperty = 'StdoutTask'
+        $pathProperty = 'StdoutPath'
+        $reader = $client.Process.StandardOutput
+      } else {
+        $taskProperty = 'StderrTask'
+        $pathProperty = 'StderrPath'
+        $reader = $client.Process.StandardError
+      }
 
+      $task = $client.$taskProperty
+      while ($null -ne $task -and $task.IsCompleted) {
+        $line = $task.GetAwaiter().GetResult()
+        if ($null -eq $line) {
+          $client.$taskProperty = $null
+          break
+        }
+        [IO.File]::AppendAllText(
+          $client.$pathProperty,
+          $line + [Environment]::NewLine,
+          [Text.UTF8Encoding]::new($false))
+        $task = $reader.ReadLineAsync()
+        $client.$taskProperty = $task
+      }
+    }
+  }
+}
 function Wait-PlayersOnline {
   $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $deadline) {
+    Receive-EndRiftRuneBotOutput
     $list = Invoke-LocalRcon 'list'
     if (@($playerNames | Where-Object { $list -notmatch [Regex]::Escape($_) }).Count -eq 0) {
       return
@@ -128,55 +144,6 @@ function Wait-PlayersOnline {
     Start-Sleep -Milliseconds 500
   }
   throw "Rune wait music bots did not join: $($playerNames -join ', ')"
-}
-
-function Prepare-AuthMeAccounts {
-  foreach ($name in $playerNames) {
-    # This is an isolated local Paper database.  Pre-registering the disposable
-    # probes avoids AuthMe's concurrent /register executor race when two clients
-    # connect in the same tick; the real player flow still uses /login.
-    $unregisterOffset = Get-LogByteOffset
-    $unregisterResponse = Invoke-LocalRcon ("authme unregister $name")
-    if ($unregisterResponse -notmatch "(?i)This user isn't registered!") {
-      Wait-LogPattern -Offset $unregisterOffset `
-        -Pattern ("AuthMe\].*" + [Regex]::Escape($name) + " was unregistered by Rcon") `
-        -Label ("AuthMe unregister $name")
-    }
-    $registerOffset = Get-LogByteOffset
-    $null = Invoke-LocalRcon ("authme register $name endrift-local")
-    Wait-LogPattern -Offset $registerOffset `
-      -Pattern ("AuthMe\].*Rcon registered " + [Regex]::Escape($name)) `
-      -Label ("AuthMe register $name")
-  }
-}
-
-function Wait-PlayersAuthenticated {
-  param([Parameter(Mandatory = $true)][int64]$Offset)
-  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-  while ((Get-Date) -lt $deadline) {
-    $log = Read-LogSince -Offset $Offset
-    $missing = @($playerNames | Where-Object {
-        $log -notmatch ("AuthMe\].*" + [Regex]::Escape($_) + " logged in")
-      })
-    if ($missing.Count -eq 0) {
-      return
-    }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Rune wait music bots did not authenticate: $($playerNames -join ', ')"
-}
-
-function Force-LocalAuthMeLogin {
-  foreach ($name in $playerNames) {
-    # minecraft-protocol clients occasionally finish the play handshake but
-    # miss the AuthMe chat command on a busy local JVM. This fallback is
-    # deliberately limited to the isolated disposable test accounts; it does
-    # not change the player-facing /login flow or any production database.
-    $response = Invoke-LocalRcon ("authme forcelogin $name")
-    if ($response -match '(?i)not online|needs to be online|unknown command|error') {
-      throw "Local AuthMe could not force-login online probe '$name': $response"
-    }
-  }
 }
 
 function Teleport-ToPad {
@@ -194,6 +161,7 @@ function Write-Evidence {
 }
 
 Assert-LocalScope
+Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
 $processes = @()
 $pads = $null
 $logOffset = Get-LogByteOffset
@@ -207,33 +175,52 @@ try {
     throw "Rune wait music probe requires a clean READY_FOR_PLAYERS scene.`n$status"
   }
   $pads = Get-PadCoordinates
-  Prepare-AuthMeAccounts
-  $previousSkipRegister = $env:END_RIFT_BOT_SKIP_REGISTER
-  $previousBotPassword = $env:END_RIFT_BOT_PASSWORD
-  $previousLogSound = $env:END_RIFT_BOT_LOG_SOUND
-  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  $botPassword = [string]::Concat('end', 'rift', '-local')
-  $env:END_RIFT_BOT_PASSWORD = $botPassword
-  $env:END_RIFT_BOT_LOG_SOUND = '1'
+  $botClients = @()
   foreach ($name in $playerNames) {
     $botLog = Join-Path $botLogDirectory ($name + '.out.log')
     $botErr = Join-Path $botLogDirectory ($name + '.err.log')
-    $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]($BotDurationSeconds * 1000))
-    $processes += Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-      -RedirectStandardOutput $botLog -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
-    # AuthMe's local custom build performs account writes asynchronously; keep
-    # the two registration/login sessions out of the same scheduler tick.
-    Start-Sleep -Seconds 3
+    [IO.File]::WriteAllText($botLog, '')
+    [IO.File]::WriteAllText($botErr, '')
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $node
+    $startInfo.Arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]($BotDurationSeconds * 1000))
+    $startInfo.WorkingDirectory = $root
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $script:runeWaitMusicStartedProcess = $null
+    Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+      Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo
+      $startInfo.EnvironmentVariables['END_RIFT_BOT_LOG_SOUND'] = '1'
+      $process = [Diagnostics.Process]::new()
+      $process.StartInfo = $startInfo
+      if (-not $process.Start()) {
+        throw "Could not start the local rune-wait bot: $name"
+      }
+      $script:runeWaitMusicStartedProcess = $process
+    }
+    $process = $script:runeWaitMusicStartedProcess
+    $script:runeWaitMusicStartedProcess = $null
+    if ($null -eq $process) {
+      throw "No local rune-wait bot process was created: $name"
+    }
+    $processes += $process
+    $botClients += [pscustomobject]@{
+      Name = $name
+      Process = $process
+      StdoutPath = $botLog
+      StderrPath = $botErr
+      StdoutTask = $process.StandardOutput.ReadLineAsync()
+      StderrTask = $process.StandardError.ReadLineAsync()
+    }
+    $launchDeadline = (Get-Date).AddSeconds(3)
+    while ((Get-Date) -lt $launchDeadline) {
+      Receive-EndRiftRuneBotOutput
+      Start-Sleep -Milliseconds 100
+    }
   }
-  if ($null -eq $previousSkipRegister) { Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue }
-  else { $env:END_RIFT_BOT_SKIP_REGISTER = $previousSkipRegister }
-  if ($null -eq $previousBotPassword) { Remove-Item Env:END_RIFT_BOT_PASSWORD -ErrorAction SilentlyContinue }
-  else { $env:END_RIFT_BOT_PASSWORD = $previousBotPassword }
-  if ($null -eq $previousLogSound) { Remove-Item Env:END_RIFT_BOT_LOG_SOUND -ErrorAction SilentlyContinue }
-  else { $env:END_RIFT_BOT_LOG_SOUND = $previousLogSound }
   Wait-PlayersOnline
-  Force-LocalAuthMeLogin
-  Wait-PlayersAuthenticated -Offset $logOffset
   for ($index = 0; $index -lt $playerNames.Count; $index++) {
     Teleport-ToPad -Name $playerNames[$index] -Pad $pads[$index]
   }
@@ -242,6 +229,7 @@ try {
   $ritualSeen = $false
   $musicSeen = $false
   while ((Get-Date) -lt $deadline) {
+    Receive-EndRiftRuneBotOutput
     $chunk = Read-LogSince -Offset $logOffset
     $logOffset = Get-LogByteOffset
     if (-not [string]::IsNullOrEmpty($chunk)) {
@@ -252,6 +240,7 @@ try {
     if ($plainStatus -match 'state=START_RITUAL' -and $plainStatus -match 'pads=2/2') {
       $ritualSeen = $true
     }
+    Receive-EndRiftRuneBotOutput
     $botSoundEvidence = ($playerNames | ForEach-Object {
         $path = Join-Path $botLogDirectory ($_ + '.out.log')
         if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -Raw }
@@ -281,6 +270,7 @@ try {
   foreach ($process in $processes) {
     if ($process) {
       try { $process.WaitForExit(5000) | Out-Null } catch { }
+      try { Receive-EndRiftRuneBotOutput } catch { }
     }
   }
   try { $null = Invoke-LocalRcon 'cmend ritual cancel confirm' } catch { }

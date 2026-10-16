@@ -7,20 +7,28 @@ param(
   # client connected for the whole sequence so a valid final-strike probe is
   # not invalidated by the bot's own lifetime expiring.
   [ValidateRange(240, 600)]
-  [int]$BotDurationSeconds = 300
+  [int]$BotDurationSeconds = 300,
+  [string]$ExpectedBranch = 'codex/end-rift-26-3-integrated-final'
 )
 
 # Local-only spell/music smoke. It talks to the isolated Paper RCON endpoint,
 # never to the production address, and removes only disposable test entities.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or $branch -cne $ExpectedBranch) {
+  throw "Refused Git branch '$branch'."
+}
+$localRuntimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $localRuntimeRoot -LocalRuntimeRoot $localRuntimeRoot -MustExist
+$serverDir = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot 'end-rift-server') `
+  -LocalRuntimeRoot $runtimeRoot -MustExist
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
-$botLog = Join-Path $runtimeRoot 'spell-matrix-live-bot.log'
-$botErr = Join-Path $runtimeRoot 'spell-matrix-live-bot.err.log'
 $controlDirectory = Join-Path $runtimeRoot 'spell-matrix-control'
 
 $config = Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw
@@ -33,6 +41,24 @@ if (-not (Test-Path -LiteralPath $serverDir -PathType Container)) {
 }
 if (-not (Test-Path -LiteralPath $botScript -PathType Leaf)) {
   throw "Local protocol bot is missing: $botScript"
+}
+$serverProperties = @(Get-Content -LiteralPath (Join-Path $serverDir 'server.properties'))
+Assert-EndRiftLocalConfiguredPorts -ServerPropertiesLines $serverProperties -ServerPort 25566 -RconPort 25576 | Out-Null
+Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576 | Out-Null
+Assert-EndRiftLocalServerTreeIsolated -ServerDir $serverDir -LocalRuntimeRoot $runtimeRoot | Out-Null
+
+$spellMatrixBotNames = @($BotName)
+$botNamePrefixLength = [Math]::Min(12, $BotName.Length)
+$botNamePrefix = $BotName.Substring(0, $botNamePrefixLength)
+for ($index = 1; $index -le 5; $index++) {
+  $candidateName = $botNamePrefix + ('S{0:D2}' -f $index)
+  if ($candidateName -in $spellMatrixBotNames) {
+    throw "The base bot name collides with a generated six-player probe name: $candidateName"
+  }
+  $spellMatrixBotNames += $candidateName
+}
+if ($spellMatrixBotNames.Count -ne 6 -or @($spellMatrixBotNames | Sort-Object -Unique).Count -ne 6) {
+  throw 'The Wave 6 spell matrix requires six unique local bot names.'
 }
 
 function Invoke-LocalRcon {
@@ -67,14 +93,114 @@ function Get-CoreCoordinates {
   return @([int]$match.Groups[1].Value, [int]$match.Groups[2].Value, [int]$match.Groups[3].Value)
 }
 
-function Wait-LocalBot {
-  for ($attempt = 0; $attempt -lt 40; $attempt++) {
-    if ((Invoke-LocalRcon -CommandText 'list') -match [Regex]::Escape($BotName)) {
+function Test-EndRiftLocalPlayerNamesOnline {
+  param(
+    [Parameter(Mandatory = $true)][AllowEmptyString()][string]$PlayerListOutput,
+    [Parameter(Mandatory = $true)][string[]]$RequiredNames
+  )
+  if ([string]::IsNullOrWhiteSpace($PlayerListOutput)) { return $false }
+  foreach ($name in $RequiredNames) {
+    $pattern = '(?<![A-Za-z0-9_])' + [Regex]::Escape($name) + '(?![A-Za-z0-9_])'
+    if ($PlayerListOutput -notmatch $pattern) { return $false }
+  }
+  return $true
+}
+
+function Start-SpellMatrixBot {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][int[]]$Core
+  )
+  $node = (Get-Command node.exe -ErrorAction Stop).Source
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $node
+  $startInfo.WorkingDirectory = $root
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  $botX = [string]($Core[0] + 6)
+  $botY = [string]$Core[1]
+  $botZ = [string]$Core[2]
+  $durationMs = [string]($BotDurationSeconds * 1000)
+  if ($null -ne $startInfo.ArgumentList) {
+    foreach ($argument in @($botScript, $Name, $durationMs, $botX, $botY, $botZ, '20', '250', $controlDirectory)) {
+      $startInfo.ArgumentList.Add([string]$argument)
+    }
+  } else {
+    $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + $durationMs + ' ' +
+      $botX + ' ' + $botY + ' ' + $botZ + ' 20 250 "' + $controlDirectory + '"'
+  }
+
+  $script:spellMatrixStartedProcess = $null
+  Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+    Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo
+    Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{
+      END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+      END_RIFT_BOT_SKIP_AUTH = '1'
+      END_RIFT_BOT_SKIP_REGISTER = '1'
+    }
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    if (-not $process.Start()) {
+      throw "Could not start the local spell-matrix bot: $Name"
+    }
+    $script:spellMatrixStartedProcess = $process
+  }
+  $process = $script:spellMatrixStartedProcess
+  $script:spellMatrixStartedProcess = $null
+  if ($null -eq $process) { throw "No local spell-matrix bot process was created: $Name" }
+  $script:spellMatrixBotProcesses.Add([pscustomobject]@{
+      Name = $Name
+      Process = $process
+      StdoutTask = $process.StandardOutput.ReadToEndAsync()
+      StderrTask = $process.StandardError.ReadToEndAsync()
+    })
+}
+
+function Wait-LocalBots {
+  param([int]$TimeoutSeconds = 90)
+  for ($attempt = 0; $attempt -lt ($TimeoutSeconds * 2); $attempt++) {
+    foreach ($bot in $script:spellMatrixBotProcesses) {
+      if ($bot.Process.HasExited) {
+        throw "Local spell-matrix bot exited before joining: $($bot.Name) (exit=$($bot.Process.ExitCode))"
+      }
+    }
+    $list = Invoke-LocalRcon -CommandText 'list'
+    if (Test-EndRiftLocalPlayerNamesOnline -PlayerListOutput $list -RequiredNames $spellMatrixBotNames) {
       return
     }
     Start-Sleep -Milliseconds 500
   }
-  throw "Local spell-matrix bot did not join in time: $BotName"
+  throw "Local spell-matrix bots did not all join in time: $($spellMatrixBotNames -join ', ')"
+}
+
+function Stop-SpellMatrixBots {
+  foreach ($bot in $script:spellMatrixBotProcesses) {
+    if ($bot.Process -and -not $bot.Process.HasExited) {
+      try { $bot.Process.Kill() } catch { }
+    }
+  }
+  foreach ($bot in $script:spellMatrixBotProcesses) {
+    if ($bot.Process) {
+      $exited = $false
+      try { $exited = $bot.Process.WaitForExit(5000) } catch { }
+      if ($exited) {
+        $botLog = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("spell-matrix-live-$($bot.Name).log")) -LocalRuntimeRoot $runtimeRoot
+        $botErr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("spell-matrix-live-$($bot.Name).err.log")) -LocalRuntimeRoot $runtimeRoot
+        if ($bot.StdoutTask) {
+          try { [IO.File]::WriteAllText($botLog, $bot.StdoutTask.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) } catch { }
+        }
+        if ($bot.StderrTask) {
+          try { [IO.File]::WriteAllText($botErr, $bot.StderrTask.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) } catch { }
+        }
+      } else {
+        Write-Warning "Spell-matrix bot did not stop within the cleanup timeout: $($bot.Name)"
+      }
+    }
+    Remove-Item -LiteralPath (Join-Path $controlDirectory ($bot.Name + '.mode')) -Force -ErrorAction SilentlyContinue
+  }
+  $script:spellMatrixBotProcesses.Clear()
 }
 
 function Wait-LogMarker {
@@ -171,9 +297,10 @@ function Set-BossPhase {
   Write-Output "LIVE_BOSS_PHASE_PASS phase=$($Phase.ToUpperInvariant())"
 }
 
-$botProcess = $null
-$stdoutTask = $null
-$stderrTask = $null
+$script:spellMatrixBotProcesses = [System.Collections.Generic.List[object]]::new()
+$script:spellMatrixStartedProcess = $null
+$plugins = Invoke-LocalRcon -CommandText 'plugins'
+Assert-EndRiftLocalAuthMeDisabled -PluginListOutput $plugins | Out-Null
 try {
   $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
@@ -181,50 +308,29 @@ try {
   $matrixLogStart = Get-LogLength
 
   New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
-  Get-ChildItem -LiteralPath $controlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue |
-    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
-  # This matrix is a spell/visual probe, not a damage probe.  Keep the bot
-  # passive so automatic melee cannot move the boss across a phase threshold
-  # while the script is preparing the next forced spell.
-  Set-Content -LiteralPath (Join-Path $controlDirectory ($BotName + '.mode')) `
-    -Value 'PASSIVE' -NoNewline -Encoding ASCII
-
-  $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $startInfo = [Diagnostics.ProcessStartInfo]::new()
-  $startInfo.FileName = $node
-  $startInfo.WorkingDirectory = $root
-  $startInfo.UseShellExecute = $false
-  $startInfo.CreateNoWindow = $true
-  $startInfo.RedirectStandardOutput = $true
-  $startInfo.RedirectStandardError = $true
-  if ($null -ne $startInfo.ArgumentList) {
-    $startInfo.ArgumentList.Add($botScript)
-    $startInfo.ArgumentList.Add($BotName)
-    $startInfo.ArgumentList.Add(([string]($BotDurationSeconds * 1000)))
-    $startInfo.ArgumentList.Add('')
-    $startInfo.ArgumentList.Add('')
-    $startInfo.ArgumentList.Add('')
-    $startInfo.ArgumentList.Add('')
-    $startInfo.ArgumentList.Add('')
-    $startInfo.ArgumentList.Add($controlDirectory)
-  } else {
-    $startInfo.Arguments = '"' + $botScript + '" ' + $BotName + ' ' + ([string]($BotDurationSeconds * 1000)) + ' "" "" "" "" "" "' + $controlDirectory + '"'
+  $controlDirectory = Assert-EndRiftLocalRuntimePath -Path $controlDirectory -LocalRuntimeRoot $runtimeRoot -MustExist
+  foreach ($name in $spellMatrixBotNames) {
+    Remove-Item -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Force -ErrorAction SilentlyContinue
+    # These are disposable combat-roster clients. Passive controls keep them
+    # connected without making them fight the boss during the matrix.
+    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) `
+      -Value 'PASSIVE' -NoNewline -Encoding ASCII
   }
-  $botProcess = [Diagnostics.Process]::new()
-  $botProcess.StartInfo = $startInfo
-  $botProcess.Start() | Out-Null
-  $stdoutTask = $botProcess.StandardOutput.ReadToEndAsync()
-  $stderrTask = $botProcess.StandardError.ReadToEndAsync()
-  Wait-LocalBot
-  $null = Invoke-LocalRcon -CommandText ("gamemode survival $BotName")
-  # Keep the disposable probe alive long enough to observe every spell.  This
-  # changes only the temporary local test player, never event configuration or
-  # persistent player data on a production server.
-  $null = Invoke-LocalRcon -CommandText ("attribute $BotName minecraft:generic.max_health base set 1000")
-  $null = Invoke-LocalRcon -CommandText ("heal $BotName")
-  $null = Invoke-LocalRcon -CommandText ("effect give $BotName minecraft:resistance 1000 4 true")
-  $null = Invoke-LocalRcon -CommandText ("effect give $BotName minecraft:regeneration 1000 4 true")
-  $null = Invoke-LocalRcon -CommandText ("tp $BotName $($core[0] + 6) $($core[1]) $($core[2]) 180 0")
+  foreach ($name in $spellMatrixBotNames) {
+    Start-SpellMatrixBot -Name $name -Core $core
+  }
+  Wait-LocalBots
+  foreach ($name in $spellMatrixBotNames) {
+    $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
+    $null = Invoke-LocalRcon -CommandText ("attribute $name minecraft:generic.max_health base set 1000")
+    $null = Invoke-LocalRcon -CommandText ("heal $name")
+    $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:resistance 1000 4 true")
+    $null = Invoke-LocalRcon -CommandText ("effect give $name minecraft:regeneration 1000 4 true")
+    $nameIndex = [Array]::IndexOf($spellMatrixBotNames, $name)
+    $zOffset = ($nameIndex * 2) - 5
+    $playerZ = $core[2] + $zOffset
+    $null = Invoke-LocalRcon -CommandText ("tp $name $($core[0] + 6) $($core[1]) $playerZ 180 0")
+  }
   Start-Sleep -Seconds 1
 
   # Manual phase playback is explicitly local-only. Outside combat it must
@@ -280,6 +386,51 @@ try {
   }
 
   $null = Invoke-LocalRcon -CommandText 'cmend boss kill cleanup'
+
+  $wave = 6
+  $beforeWave6 = Get-LogLength
+  if ($wave -eq 6) {
+    $wave6Response = Invoke-LocalRcon -CommandText 'cmend test wave 6 combat'
+  } else {
+    throw "The combat spell matrix expected Wave 6, got $wave."
+  }
+  if ($wave6Response -match '(?i)refused|missing|event world') {
+    throw "Wave 6 combat spell probe was refused: $wave6Response"
+  }
+  Wait-LogMarker -PreviousLength $beforeWave6 -Pattern 'WAVE6_PRESSURE_PACK.*players=6.*planned=4.*spawned=4.*test=true' -TimeoutSeconds 12 | Out-Null
+  $assignment = Wait-LogMarker -PreviousLength $beforeWave6 -Pattern "TEST_WAVE_${wave}_SPELL_ASSIGNMENTS.*miniBossSpells=\[[^\]]*\]" -TimeoutSeconds 12
+  $assignmentMatch = [Regex]::Match($assignment, 'miniBossSpells=\[(?<spells>[^\]]*)\]')
+  if (-not $assignmentMatch.Success) {
+    throw "Wave 6 did not publish its assigned mini-boss spell set. $assignment"
+  }
+  $wave6Spells = @([Regex]::Matches($assignmentMatch.Groups['spells'].Value, '[a-z][a-z_]*') |
+    ForEach-Object { $_.Value } | Sort-Object -Unique)
+  $requiredWave6SpellIds = @('arrow_rain', 'void_burst', 'web_shot')
+  $missingWave6Spells = @($requiredWave6SpellIds | Where-Object { $_ -notin $wave6Spells })
+  if ($missingWave6Spells.Count -gt 0) {
+    throw "Wave 6 did not assign all required physical elite spells: $($missingWave6Spells -join ', '). $assignment"
+  }
+  $unknownWave6Spells = @($wave6Spells | Where-Object { $_ -notin $requiredWave6SpellIds })
+  if ($unknownWave6Spells.Count -gt 0) {
+    throw "Wave 6 published an unknown physical elite spell: $($unknownWave6Spells -join ', ')"
+  }
+  foreach ($spell in $wave6Spells) {
+    if ($spell -eq 'arrow_rain') {
+      Wait-LogMarker -PreviousLength $beforeWave6 -Pattern 'ELITE_ARROW_RAIN_RELEASE.*player_only=true' -TimeoutSeconds 45 | Out-Null
+      Write-Output 'LIVE_WAVE6_ELITE_SPELL_PASS spell=arrow_rain player_only=1'
+      continue
+    }
+    $ability = switch ($spell) {
+      'void_burst' { 'VOID_BURST' }
+      'web_shot' { 'WEB_SHOT' }
+      default { throw "Wave 6 spell has no physical projectile policy: $spell" }
+    }
+    Wait-LogMarker -PreviousLength $beforeWave6 -Pattern "ELITE_PROJECTILE_RELEASE.*ability=$ability.*player_only=true.*block_damage=false" -TimeoutSeconds 45 | Out-Null
+    Write-Output "LIVE_WAVE6_ELITE_SPELL_PASS spell=$spell ability=$ability player_only=1 block_damage=0"
+  }
+  Write-Output "LIVE_WAVE6_COMBAT_PASS players=6 planned=4 spawned=4 spells=$($wave6Spells -join ',')"
+  $null = Invoke-LocalRcon -CommandText 'cmend wave clear'
+
   $beforeMini = Get-LogLength
   # Follow the assignments emitted by the server.  Wave 3 can legitimately
   # expose only four distinct elite spells because its skeleton elite owns the
@@ -356,19 +507,10 @@ try {
   }
   Write-Output "LIVE_SPELL_MATRIX_PASS boss=7 mini=$($assignedMiniBossSpells.Count) assigned=$($assignedMiniBossSpells -join ',') music_phases=24 cleanup=1 current_phases=6"
 } finally {
+  Stop-SpellMatrixBots
   try { Invoke-LocalRcon -CommandText 'cmend wave clear' | Out-Null } catch { }
   try { Invoke-LocalRcon -CommandText 'cmend boss kill cleanup' | Out-Null } catch { }
-  if ($botProcess) {
-    if (-not $botProcess.HasExited) {
-      try { $botProcess.Kill() } catch { }
-      $botProcess.WaitForExit(5000) | Out-Null
-    }
-    if ($stdoutTask) {
-      try { [IO.File]::WriteAllText($botLog, $stdoutTask.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) } catch { }
-    }
-    if ($stderrTask) {
-      try { [IO.File]::WriteAllText($botErr, $stderrTask.GetAwaiter().GetResult(), [Text.UTF8Encoding]::new($false)) } catch { }
-    }
+  foreach ($name in $spellMatrixBotNames) {
+    Remove-Item -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Force -ErrorAction SilentlyContinue
   }
-  Remove-Item -LiteralPath (Join-Path $controlDirectory ($BotName + '.mode')) -Force -ErrorAction SilentlyContinue
 }

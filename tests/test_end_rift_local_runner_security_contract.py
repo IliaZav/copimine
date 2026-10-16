@@ -1,0 +1,428 @@
+from pathlib import Path
+import re
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_local_starter_preserves_stdout_path_while_validating_both_logs() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    validation_loop = re.search(
+        r"foreach\s*\(\s*\$(?P<variable>[A-Za-z_]\w*)\s+in\s+@\(\$LogPath,\s*\$ErrPath\)\s*\)\s*\{(?P<body>.*?)\n\}",
+        source,
+        re.DOTALL,
+    )
+
+    assert validation_loop is not None, "starter must validate both configured log paths"
+    assert validation_loop.group("variable").casefold() != "logpath", (
+        "PowerShell variable names are case-insensitive, so the loop variable must not overwrite stdout path"
+    )
+    assert "RedirectStandardOutput $LogPath" in source
+    assert "RedirectStandardError $ErrPath" in source
+
+
+def test_local_starter_checks_properties_before_start_and_listeners_after_readiness() -> None:
+    source = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+
+    property_path_guard = source.find("Test-EndRiftLocalRuntimePath -Path $propertiesPath")
+    preflight = source.find("Test-EndRiftLocalServerBind -ServerPropertiesLines")
+    resource_pack_sync = source.find("\nSync-LocalResourcePack\n")
+    paper_start = source.find("$paper = Start-Process")
+    ready_failure = source.find("if (-not $ready)")
+    listener_assertion = source.find("Assert-EndRiftLocalServerBind")
+    started_message = source.find('Write-Output "Started isolated local Paper')
+
+    assert min(property_path_guard, preflight) >= 0, "starter must guard and validate server.properties"
+    assert property_path_guard < preflight < resource_pack_sync < paper_start, (
+        "property bind check must happen before pack synchronization and Paper startup"
+    )
+    assert paper_start < ready_failure < listener_assertion < started_message, (
+        "active loopback listener assertion must happen after readiness and before success"
+    )
+
+
+def test_rune_wait_music_bot_child_cannot_inherit_host_port_or_chat_actions() -> None:
+    source = (ROOT / "tests" / "RunEndRiftRuneWaitMusicLive.ps1").read_text(encoding="utf-8")
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+    scope = source.find("Invoke-EndRiftLocalBotEnvironment")
+    host = source.find("-BotHost '127.0.0.1'", scope)
+    port = source.find("-BotPort 25566", scope)
+    bot_start = source.find("$process.Start()", scope)
+    clear_inherited = helper.find(
+        "if (Test-EndRiftLocalBotEnvironmentVariableToRemove -Name ([string]$environmentVariableName))"
+    )
+    remove_inherited = helper.find("SetEnvironmentVariable([string]$environmentVariableName, $null, 'Process')", clear_inherited)
+    action = helper.find("& $Action")
+    restore_actions = helper.find(
+        "SetEnvironmentVariable($environmentVariableName, $previousValues[$environmentVariableName], 'Process')"
+    )
+
+    assert min(host, port, clear_inherited, remove_inherited, bot_start, action, restore_actions) >= 0, (
+        "Rune runner must use a local-only child environment that drops inherited controls and credentials"
+    )
+    assert scope < host < port < bot_start, (
+        "Rune child must start only after the local-only environment is applied"
+    )
+    assert clear_inherited < remove_inherited < action < restore_actions, (
+        "The scoped helper must clear inherited credentials and controls before launch and restore env afterward"
+    )
+
+
+def test_rune_wait_music_runner_reads_fresh_bot_output_while_clients_are_running() -> None:
+    source = (ROOT / "tests" / "RunEndRiftRuneWaitMusicLive.ps1").read_text(encoding="utf-8")
+    truncate_logs = source.find("[IO.File]::WriteAllText($botLog, ''")
+    process_start = source.find("$process.Start()")
+    line_reader = source.find("ReadLineAsync()")
+    pump_function = source.find("function Receive-EndRiftRuneBotOutput")
+    online_wait_pump = source.find("Receive-EndRiftRuneBotOutput", source.find("function Wait-PlayersOnline"))
+    main_wait_pump = source.find("Receive-EndRiftRuneBotOutput", source.find("$deadline = (Get-Date).AddSeconds($TimeoutSeconds)"))
+    live_evidence = source.find("Get-Content -LiteralPath $path -Raw")
+
+    assert min(truncate_logs, process_start, line_reader, pump_function, online_wait_pump, main_wait_pump, live_evidence) >= 0
+    assert truncate_logs < process_start, "per-bot output files must be cleared before starting a new client"
+    assert source.count("Receive-EndRiftRuneBotOutput") >= 3, (
+        "bot stdout/stderr must be consumed while the runner waits for clients and for the music marker"
+    )
+    assert main_wait_pump < live_evidence, "fresh client output must reach the music marker check in the active wait loop"
+    assert "ReadToEndAsync()" not in source, "full-stream reads only complete after bot shutdown and cannot prove a live marker"
+
+
+def test_local_rcon_uses_canonical_descendant_path_guard() -> None:
+    source = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
+    identity = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert ". (Join-Path $scriptRoot 'EndRiftLocalAuthMode.ps1')" in source
+    assert "[IO.Path]::GetFullPath((Resolve-Path -LiteralPath $ServerDir).ProviderPath)" in source
+    assert "Test-EndRiftLocalRuntimePath -Path $ServerDir -LocalRuntimeRoot $localRuntimeRoot" in source
+    assert "Test-EndRiftLocalRuntimePath -Path $propertiesPath -LocalRuntimeRoot $localRuntimeRoot" in source
+    assert "foreach ($line in [IO.File]::ReadLines($propertiesPath))" in source
+    assert "Assert-EndRiftLocalServerBind -ServerDir $ServerDir `" in source
+    assert "$serverReceipt = Get-EndRiftLocalServerReceipt" in source
+    assert "-ExpectedProcessId $serverReceipt.ProcessId" in source
+    assert "-ExpectedProcessStartTimeUtcTicks $serverReceipt.ProcessStartTimeUtcTicks" in source
+    assert "$rconPasswordCount -ne 1" in source
+    assert "StartsWith($localRuntimeRoot," not in source
+    assert "CommandLineToArgvW" in identity
+    assert "-jar" in identity and "[IO.Path]::IsPathRooted($jarArgument)" in identity
+    assert "-not $paperJarArgumentMatches" in identity
+
+
+def test_wave7_rcon_forwards_the_configured_server_port() -> None:
+    source = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    rcon_script = source.index("function Invoke-LocalRcon")
+    rcon_body_end = source.index("\n}", rcon_script)
+    rcon_body = source[rcon_script:rcon_body_end]
+
+    assert "-ServerPort $ServerPort" in rcon_body, (
+        "Wave 6/7 local RCON must preserve the configurable Minecraft port when invoking the canonical client"
+    )
+
+
+def test_wave7_restart_starts_the_jar_by_its_absolute_isolated_path() -> None:
+    source = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    start = source.index("function Start-LocalMinecraft")
+    end = source.index("function Wait-Log-MarkerIncrease", start)
+    restart = source[start:end]
+
+    assert "$paperJarPath = Assert-EndRiftLocalRuntimePath" in restart
+    assert "-Path (Join-Path $serverDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot" in restart
+    assert "('-Xms1G', '-Xmx2G', '-jar', ('\"' + $paperJarPath + '\"'), 'nogui')" in restart
+
+
+def test_wave7_runner_rejects_reparse_paths_before_writing_control_files() -> None:
+    source = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    server_guard = source.find("Assert-EndRiftLocalRuntimePath -Path $serverDir -LocalRuntimeRoot $localRuntimeRoot")
+    runtime_guard = source.find("Resolve-EndRiftLocalRuntimePath `\n  -Path $RuntimeDataDir -LocalRuntimeRoot $localRuntimeRoot")
+    control_guard = source.find("Assert-EndRiftLocalRuntimePath -Path $controlDirectory -LocalRuntimeRoot $localRuntimeRoot")
+    create_controls = source.find("New-Item -ItemType Directory -Path $controlDirectory -Force")
+
+    assert min(server_guard, runtime_guard, control_guard, create_controls) >= 0, (
+        "Wave 7 runner must reject reparse paths for the server, runtime, and control directory"
+    )
+    assert server_guard < create_controls and runtime_guard < create_controls and control_guard < create_controls, (
+        "All runtime path guards must run before the runner writes its control directory"
+    )
+
+
+def test_wave7_runner_allows_exact_default_runtime_root_through_reparse_aware_resolver() -> None:
+    runner = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    default_runtime_root = runner.find("$RuntimeDataDir = Split-Path -Parent $serverDir")
+    runtime_resolver = runner.find("Resolve-EndRiftLocalRuntimePath `\n  -Path $RuntimeDataDir -LocalRuntimeRoot $localRuntimeRoot")
+    root_equality = helper.find("[string]::Equals($fullPath, $fullRuntimeRootName")
+    exact_root_guard = helper.find("if ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)", root_equality)
+    child_guard = helper.find("return Assert-EndRiftLocalRuntimePath -Path $fullPath -LocalRuntimeRoot $fullRuntimeRoot", root_equality)
+
+    assert min(default_runtime_root, runtime_resolver, root_equality, exact_root_guard, child_guard) >= 0
+    assert default_runtime_root < runtime_resolver, "default RuntimeDataDir must pass through the dual-mode resolver"
+    assert exact_root_guard < child_guard, "exact-root acceptance must still reject a reparse root before child handling"
+
+
+def test_paper_runners_scan_server_trees_and_guard_the_wave7_log_path() -> None:
+    starter = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    wave7 = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    starter_tree_guard = starter.find("Assert-EndRiftLocalServerTreeIsolated `\n  -ServerDir $ServerDir")
+    starter_paper_start = starter.find("$paper = Start-Process")
+    wave7_tree_guard = wave7.find("Assert-EndRiftLocalServerTreeIsolated `\n  -ServerDir $serverDir")
+    wave7_paper_log_guard = wave7.find("$paperLog = Assert-EndRiftLocalRuntimePath")
+    wave7_log_reader = wave7.find("function Read-Log")
+    wave7_log_read = wave7.find("Get-Content -LiteralPath $validatedPaperLog", wave7_log_reader)
+
+    assert min(starter_tree_guard, starter_paper_start, wave7_tree_guard, wave7_paper_log_guard, wave7_log_reader, wave7_log_read) >= 0
+    assert starter_tree_guard < starter_paper_start
+    assert wave7_tree_guard < wave7_log_read
+    assert wave7_paper_log_guard < wave7_log_read
+    assert wave7_log_reader < wave7_log_read
+    assert "[IO.Directory]::EnumerateFileSystemEntries($currentPath)" in helper
+    assert "[IO.FileAttributes]::ReparsePoint" in helper
+    assert "GetHardLinkCount" in helper and "NumberOfLinks" in helper
+
+
+def test_local_paper_boot_and_wave7_restart_share_environment_file_parsing() -> None:
+    starter = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    wave7 = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert "Import-EndRiftLocalEnvironment -Path $envPath" in starter
+    assert "Import-EndRiftLocalEnvironment -Path $path" in wave7
+    assert "function Import-EndRiftLocalEnvironment" in helper
+    assert ".Trim().Trim('\"').Trim(\"'\")" in helper
+    assert "Set-Item -Path (\"Env:\" + $name) -Value $value" in helper
+
+
+def test_mob_and_spell_bots_receive_only_explicit_loopback_environment() -> None:
+    for name in ("RunEndRiftMobCombatLive.ps1", "RunEndRiftSpellMatrixLive.ps1"):
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        helper = source.find("Set-EndRiftLocalBotChildEnvironment")
+        process_start = source.find("$process.Start()")
+        if name == "RunEndRiftSpellMatrixLive.ps1":
+            process_start = source.find("$process.Start()", source.find("function Start-SpellMatrixBot"))
+        assert min(helper, process_start) >= 0, f"{name} must pin bot child environment before launch"
+        assert helper < process_start, f"{name} must sanitize bot env before launching the client"
+        assert "-BotHost '127.0.0.1' -BotPort 25566" in source
+
+
+def test_shard_runner_guards_the_shared_postgres_client_against_its_own_runtime_root() -> None:
+    source = (ROOT / "tests" / "RunEndRiftShardPassivesLive.ps1").read_text(encoding="utf-8")
+
+    assert "$repoLocalRuntimeRoot = Join-Path $repoRoot 'local-runtime'" in source
+    psql_guard = source.find("Assert-EndRiftLocalRuntimePath -Path $psqlPath -LocalRuntimeRoot $repoLocalRuntimeRoot")
+    worktree_guards = source.find("foreach ($runtimePath in @(")
+    assert min(psql_guard, worktree_guards) >= 0
+    assert "$psqlPath" not in source[worktree_guards:psql_guard]
+
+
+def test_official_two_player_probe_forwards_only_its_explicit_child_environment() -> None:
+    source = (ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1").read_text(encoding="utf-8")
+    helper = source.find("Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo")
+    overrides = source.find("Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo")
+    launch = source.find("$process.Start()", helper)
+
+    assert min(helper, overrides, launch) >= 0
+    assert helper < overrides < launch
+    for name in (
+        "END_RIFT_REFLECT_ENABLED", "END_RIFT_REFLECT_START_MS", "END_RIFT_REFLECT_DIAGNOSTICS",
+        "END_RIFT_OBELISK_TARGETS", "END_RIFT_WAVE7_CHAMBERS", "END_RIFT_GUARDIAN_PROBE_NAMES",
+        "END_RIFT_ATTACK_INTERVAL_MS",
+    ):
+        assert name in source[overrides:launch]
+    assert "'20', '900'" not in source[helper:launch]
+
+
+def test_every_environment_configurable_local_bot_uses_shared_loopback_guard() -> None:
+    names = (
+        "LocalEndRiftBot.js",
+        "LocalEndRiftMobCombatBot.js",
+        "LocalEndRiftCoreRemovalGuiBot.js",
+        "LocalEndRiftBossPacketBot.js",
+        "LocalBedRespawnMineflayerBot.js",
+        "LocalEndRiftBossCombatBot.js",
+        "LocalBedRespawnBot.js",
+        "LocalEndRiftObeliskBot.js",
+        "LocalEndRiftGatePointsBot.js",
+        "LocalEndRiftShardProbe.js",
+    )
+    for name in names:
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        guard = source.find("resolveLocalEndRiftEndpoint")
+        client = min(
+            (position for position in (source.find("createBot("), source.find("createClient(")) if position >= 0),
+            default=-1,
+        )
+        assert guard >= 0, f"{name} must validate its configured host through the shared helper"
+        assert client < 0 or guard < client, f"{name} must validate the host before transport creation"
+
+
+def test_wave6_wave7_diagnostic_artifacts_and_bot_controls_guard_each_write_path() -> None:
+    source = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+    artifact_helper = source.split("function Get-DiagnosticArtifactPath", 1)[1].split("function Write-RunMetadata", 1)[0]
+    bot_start = source.split("function Start-Bot", 1)[1].split("function Set-BotMode", 1)[0]
+    bot_mode = source.split("function Set-BotMode", 1)[1].split("function Stop-Bots", 1)[0]
+
+    assert "Assert-EndRiftLocalOutputPath" in artifact_helper
+    for artifact in ("metadata.json", "live-test-steps.log", "end-rift-events.jsonl", "artifact-hashes.txt", "evidence-index.json", "summary.json", "report.md"):
+        assert artifact in artifact_helper
+    assert "$output = Assert-EndRiftLocalRuntimePath" in bot_start
+    assert "$errorOutput = Assert-EndRiftLocalRuntimePath" in bot_start
+    assert "$path = Assert-EndRiftLocalRuntimePath" in bot_mode
+
+
+def test_visual_five_player_child_guards_its_direct_evidence_and_bot_outputs() -> None:
+    source = (ROOT / "tests" / "RunEndRiftVisualFivePlayerLive.ps1").read_text(encoding="utf-8")
+
+    assert ". (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')" in source
+    for guard in (
+        "$evidenceDirectory = Assert-EndRiftLocalRuntimePath",
+        "$botLogDirectory = Assert-EndRiftLocalRuntimePath",
+        "$controlDirectory = Assert-EndRiftLocalRuntimePath",
+        "$evidencePath = Assert-EndRiftLocalRuntimePath",
+        "$outputPath = Assert-EndRiftLocalRuntimePath",
+        "$errorPath = Assert-EndRiftLocalRuntimePath",
+        "$controlPath = Assert-EndRiftLocalRuntimePath",
+    ):
+        assert guard in source
+
+
+def test_evidence_output_guards_reject_reparse_points_and_hard_links() -> None:
+    required_checks = {
+        "RunEndRiftPerformanceLive.ps1": ("$botOut = Assert-EndRiftLocalRuntimePath", "$botErr = Assert-EndRiftLocalRuntimePath"),
+        "RunEndRiftPerformanceFivePlayerLive.ps1": ("$botOut = Assert-EndRiftLocalRuntimePath", "$botErr = Assert-EndRiftLocalRuntimePath"),
+        "RunEndRiftBossHitboxLive.ps1": ("$stdoutPath = Assert-EndRiftLocalRuntimePath", "$stderrPath = Assert-EndRiftLocalRuntimePath"),
+        "RunEndRiftBossVisualLive.ps1": ("Assert-UnderRoot $evidenceDirectory", "Assert-UnderRoot $EvidencePath"),
+        "RunEndRiftWave6Wave7BoundariesLive.ps1": (
+            "$diagnosticRoot = Assert-EndRiftLocalOutputPath",
+            "$runDir = Assert-EndRiftLocalOutputPath",
+            "function Get-DiagnosticArtifactPath",
+            "$output = Assert-EndRiftLocalRuntimePath",
+            "$errorOutput = Assert-EndRiftLocalRuntimePath",
+            "$path = Assert-EndRiftLocalRuntimePath",
+        ),
+        "RunEndRiftVisualFivePlayerLive.ps1": (
+            ". (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')",
+            "$botLogDirectory = Assert-EndRiftLocalRuntimePath",
+            "$controlDirectory = Assert-EndRiftLocalRuntimePath",
+            "$evidencePath = Assert-EndRiftLocalRuntimePath",
+            "$outputPath = Assert-EndRiftLocalRuntimePath",
+            "$errorPath = Assert-EndRiftLocalRuntimePath",
+        ),
+        "RunEndRiftTentacleLive.ps1": (
+            "$botLogDirectory = Assert-EndRiftLocalRuntimePath",
+            "$botStdout = Assert-EndRiftLocalRuntimePath",
+            "$botStderr = Assert-EndRiftLocalRuntimePath",
+            "$botControlDirectory = Assert-EndRiftLocalRuntimePath",
+            "$botControlFile = Assert-EndRiftLocalRuntimePath",
+            "$botTargetFile = Assert-EndRiftLocalRuntimePath",
+        ),
+    }
+    for name, checks in required_checks.items():
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        guard_start = source.find("function Assert-Under")
+        if name in ("RunEndRiftWave6Wave7BoundariesLive.ps1", "RunEndRiftVisualFivePlayerLive.ps1"):
+            for check in checks:
+                assert check in source, f"{name} must validate every redirected or controlled write path: {check}"
+            continue
+        assert guard_start >= 0, f"{name} must retain its local-runtime output guard"
+        guard_end = source.find("\n}", guard_start)
+        assert guard_end > guard_start, f"{name} must define a complete output guard"
+        guard = source[guard_start:guard_end]
+        assert "Assert-EndRiftLocalRuntimePath" in guard, (
+            f"{name} must use the shared reparse-point and hard-link aware path validator"
+        )
+        for check in checks:
+            assert check in source, f"{name} must validate every redirected or controlled write path: {check}"
+
+
+def test_every_local_paper_start_records_a_server_directory_and_process_receipt() -> None:
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+    starter = (ROOT / "tests" / "StartEndRiftLocal.ps1").read_text(encoding="utf-8")
+    wave7 = (ROOT / "tests" / "RunEndRiftWave6Wave7BoundariesLive.ps1").read_text(encoding="utf-8")
+
+    assert "function Write-EndRiftLocalServerReceipt" in helper
+    assert "ProcessStartTimeUtcTicks" in helper
+    assert "WorkingDirectory" in helper
+    starter_start = starter.find("$paper = Start-Process")
+    starter_receipt = starter.find("Write-EndRiftLocalServerReceipt", starter_start)
+    starter_success = starter.find('Write-Output "Started isolated local Paper', starter_start)
+    assert min(starter_start, starter_receipt, starter_success) >= 0
+    assert starter_start < starter_receipt < starter_success
+
+    restart_start = wave7.find("function Start-LocalMinecraft")
+    restart_end = wave7.find("function Wait-Log-MarkerIncrease", restart_start)
+    restart = wave7[restart_start:restart_end]
+    assert "Write-EndRiftLocalServerReceipt" in restart
+    assert "-ProcessId $process.Id" in restart
+
+
+def test_bot_environment_helpers_remove_non_end_rift_credentials_and_restore_parent() -> None:
+    helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
+
+    assert "function Test-EndRiftLocalBotEnvironmentVariableToRemove" in helper
+    assert "function Get-EndRiftLocalBotSafeEnvironmentVariableNames" in helper
+    safe_names = helper.split("function Get-EndRiftLocalBotSafeEnvironmentVariableNames", 1)[1].split("function Test-EndRiftLocalBotEnvironmentVariableToRemove", 1)[0]
+    assert "'PATH'" in safe_names and "'SYSTEMROOT'" in safe_names and "'TEMP'" in safe_names
+    assert "JDBC_URL" not in safe_names and "MONGO_URI" not in safe_names and "NPM_CONFIG__AUTH" not in safe_names
+    assert "Test-EndRiftLocalBotEnvironmentVariableToRemove -Name ([string]$environmentVariableName)" in helper
+    assert "SetEnvironmentVariable($environmentVariableName, $previousValues[$environmentVariableName], 'Process')" in helper
+
+
+def test_ai_and_no_auth_probes_fail_closed_before_mutation_and_isolate_bot_environment() -> None:
+    ai = (ROOT / "tests" / "RunEndRiftAiPhasesLive.ps1").read_text(encoding="utf-8")
+    ai_guard = ai.find("$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')")
+    ai_try = ai.find("\ntry {", ai_guard)
+    ai_wave_clear = ai.find("Invoke-LocalRcon 'cmend wave clear'", ai_try)
+    ai_bot_launch = ai.find("$process = Start-ProbeBot $core", ai_try)
+    assert min(ai_guard, ai_try, ai_wave_clear, ai_bot_launch) >= 0
+    assert ai_guard < ai_try < min(ai_wave_clear, ai_bot_launch), (
+        "AI smoke must establish disabled AuthMe before its try/finally can clear waves or launch a client"
+    )
+    assert "Assert-EndRiftLocalServerTreeIsolated" in ai
+    assert "Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576" in ai
+    ai_start = ai.split("function Start-ProbeBot", 1)[1].split("function Set-ProbeBotMode", 1)[0]
+    assert "Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566" in ai_start
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in ai_start
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" in ai_start
+    assert ai_start.find("Invoke-EndRiftLocalBotEnvironment") < ai_start.find("Start-Process")
+
+    smoke = (ROOT / "tests" / "RunEndRiftLocalNoAuthSmoke.ps1").read_text(encoding="utf-8")
+    smoke_guard = smoke.find("$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput $pluginList")
+    smoke_try = smoke.find("\ntry {", smoke_guard)
+    smoke_bot_launch = smoke.find("Start-SmokeBot -Name $name -Core $core", smoke_try)
+    evidence_write = smoke.find("Set-Content -LiteralPath $evidencePath")
+    assert min(smoke_guard, smoke_try, smoke_bot_launch, evidence_write) >= 0
+    assert smoke_guard < evidence_write < smoke_try < smoke_bot_launch, (
+        "no-auth smoke must reject AuthMe before writing probe files or entering cleanup scope"
+    )
+    assert "codex/end-rift-26-3-integrated-final" in smoke
+    assert "Assert-EndRiftLocalServerBind" in smoke
+    assert "Assert-EndRiftLocalServerTreeIsolated" in smoke
+    smoke_start = smoke.split("function Start-SmokeBot", 1)[1].split("$activeBindings = Assert-LocalOnly", 1)[0]
+    assert "Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort $ServerPort" in smoke_start
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in smoke_start
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" in smoke_start
+    assert smoke_start.find("Invoke-EndRiftLocalBotEnvironment") < smoke_start.find("Start-Process")
+    assert "$env:END_RIFT_BOT_HOST" not in smoke
+    assert "$previousBotEnvironment" not in smoke
+
+
+def test_mob_and_spell_probes_reject_wrong_branch_and_authme_before_cleanup() -> None:
+    mob = (ROOT / "tests" / "RunEndRiftMobCombatLive.ps1").read_text(encoding="utf-8")
+    mob_branch_guard = mob.find("$branch -cne $ExpectedBranch")
+    mob_auth_guard = mob.find("Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Rcon 'plugins')")
+    mob_try = mob.find("\ntry {")
+    mob_mutation = mob.find("Rcon 'cmend wave clear'", mob_try)
+    assert min(mob_branch_guard, mob_auth_guard, mob_try, mob_mutation) >= 0
+    assert mob_branch_guard < mob_auth_guard < mob_try < mob_mutation
+    assert "Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort 25566 -RconPort 25576" in mob
+    assert "Set-EndRiftLocalBotChildEnvironment -StartInfo $start -BotHost '127.0.0.1' -BotPort 25566" in mob
+
+    spell = (ROOT / "tests" / "RunEndRiftSpellMatrixLive.ps1").read_text(encoding="utf-8")
+    spell_branch_guard = spell.find("$branch -cne $ExpectedBranch")
+    spell_auth_guard = spell.find("Assert-EndRiftLocalAuthMeDisabled -PluginListOutput $plugins | Out-Null")
+    spell_try = spell.find("\ntry {", spell_auth_guard)
+    spell_mutation = spell.find("Invoke-LocalRcon -CommandText 'cmend wave clear'", spell_try)
+    assert min(spell_branch_guard, spell_auth_guard, spell_try, spell_mutation) >= 0
+    assert spell_branch_guard < spell_auth_guard < spell_try < spell_mutation
+    assert "Assert-EndRiftLocalServerTreeIsolated" in spell

@@ -18,15 +18,20 @@ def test_cancelled_player_death_preserves_living_attempt_and_wave_controls(tmp_p
     probe.write_text('''
 import java.util.*;
 import java.util.logging.Logger;
+import me.copimine.endevent.domain.SpiderEffectLeasePolicy;
+import me.copimine.endevent.domain.SpiderRootControlPolicy;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
 public class CancelledDeathProbe {
     String eventId="synthetic";
     long generation=43;
-    int effectsReleased,wipes,overlayChanges;
+int effectsReleased,wipes,overlayChanges,carrierSlownessReleases;
     Object keyRitualPrisoner=new Object();
     UUID prisoner;
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     int forgottenProfileAnchors;
+        Map<UUID,Long> rootedPlayersUntilTick=new HashMap<>();
+    Map<UUID,Long> rootedPlayerNextApplyTick=new HashMap<>();
+    Map<UUID,SpiderEffectLeasePolicy.Owner> rootedPlayerOwners=new HashMap<>();
     class ProfileListener {void forget(UUID id){forgottenProfileAnchors++;}}
     ProfileListener combatProfileListener=new ProfileListener();
     Set<UUID> officialRewardRoster=new HashSet<>(),clientBindingReadyPlayers=new HashSet<>();
@@ -43,6 +48,7 @@ public class CancelledDeathProbe {
         boolean isCancelled(){return cancelled;}
     }
     void releaseBlackFogEffects(Player p){effectsReleased++;}
+    void releaseSpiderPotionLeases(Player p){effectsReleased++;}
     void cancelWaveCombatTarget(UUID id){effectsReleased++;}
     void resetTransitionRuneHoldForParticipant(UUID id){effectsReleased++;}
     void restoreRitualPrisonerGravity(Player p){effectsReleased++;}
@@ -57,6 +63,12 @@ public class CancelledDeathProbe {
     void cancelShardChannel(UUID id){effectsReleased++;}
     void removeShardPassiveEffects(Player p){effectsReleased++;}
     void refreshRuneOverlayVisuals(){overlayChanges++;}
+    void updateCurrentCarrierSlowness(Player player,boolean carryingCharge){
+        if(!carryingCharge) carrierSlownessReleases++;
+    }
+    boolean markOfficialParticipantDead(UUID owner,long expectedGeneration){
+        return attemptLifecycle.markDead(owner,expectedGeneration);
+    }
 ''' + adapter + '''
     static void require(boolean value,String message){if(!value)throw new AssertionError(message);}
     public static void main(String[] args) {
@@ -69,10 +81,18 @@ public class CancelledDeathProbe {
         probe.offlineRosterGraceUntilMillis.put(id,123L);
         probe.padOccupants.put("pad",id);
         probe.runeVisualOccupants.put("rune",id);
+            probe.rootedPlayersUntilTick.put(id,99L);
+        probe.rootedPlayerNextApplyTick.put(id,159L);
+        probe.rootedPlayerOwners.put(id,new SpiderEffectLeasePolicy.Owner("synthetic",43));
         probe.attemptLifecycle.begin(43,Set.of(id));
         probe.onPlayerDeath(new PlayerDeathEvent(player,true));
-        require(probe.effectsReleased==0 && probe.wipes==0 && probe.overlayChanges==0 && probe.forgottenProfileAnchors==0,
+        require(probe.effectsReleased==0 && probe.wipes==0 && probe.overlayChanges==0 && probe.forgottenProfileAnchors==0
+                && probe.carrierSlownessReleases==0,
                 "cancelled death must not clear wave controls, effects or trigger a wipe");
+            require(probe.rootedPlayersUntilTick.containsKey(id),
+                    "cancelled death retains the live spider web root");
+        require(probe.rootedPlayerNextApplyTick.containsKey(id) && probe.rootedPlayerOwners.containsKey(id),
+                "cancelled death retains spider root cooldown and owner lease");
         require(probe.attemptLifecycle.living().contains(id) && probe.attemptLifecycle.owns(43),
                 "cancelled lethal callback cannot remove the last living participant");
         require(probe.clientBindingReadyPlayers.contains(id) && probe.offlineRosterGraceUntilMillis.containsKey(id)
@@ -81,13 +101,23 @@ public class CancelledDeathProbe {
         probe.onPlayerDeath(new PlayerDeathEvent(player,false));
         require(probe.effectsReleased>0 && probe.wipes==1 && probe.attemptLifecycle.living().isEmpty() && probe.forgottenProfileAnchors==1,
                 "a committed death must still follow the real death cleanup path");
+        require(probe.carrierSlownessReleases==1,
+                "committed death releases the carrier movement modifier");
         require(!probe.clientBindingReadyPlayers.contains(id) && probe.padOccupants.isEmpty()
                 && probe.runeVisualOccupants.isEmpty(),"normal death releases client and rune state");
+            require(!probe.rootedPlayersUntilTick.containsKey(id),
+                    "committed death releases the spider web root");
+        require(!probe.rootedPlayerNextApplyTick.containsKey(id) && !probe.rootedPlayerOwners.containsKey(id),
+                "committed death releases spider root cooldown and owner lease");
     }
 }
 ''', encoding="utf-8")
     lifecycle = ROOT / "copimine-end-event/src/me/copimine/endevent/runtime/AttemptLifecycleController.java"
-    subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path), str(lifecycle), str(probe)],
+    source = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
+    subprocess.run(["javac", "-encoding", "UTF-8", "-d", str(tmp_path),
+                    str(source / "BlackFogEffectLeasePolicy.java"),
+                    str(source / "SpiderEffectLeasePolicy.java"),
+                    str(source / "SpiderRootControlPolicy.java"), str(lifecycle), str(probe)],
                    check=True, capture_output=True, text=True)
     result = subprocess.run(["java", "-cp", str(tmp_path), "CancelledDeathProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

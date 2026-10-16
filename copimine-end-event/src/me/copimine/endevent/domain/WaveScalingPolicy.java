@@ -42,6 +42,12 @@ public final class WaveScalingPolicy {
                 result[0], result[1], result[2], result[3], result[4]);
     }
 
+    /** Apply wave-owned roster exclusions before any count or pressure scaling. */
+    public static WaveMechanicsPolicy.WaveCounts scale(int wave,
+            WaveMechanicsPolicy.WaveCounts configured, int players, int hardCap) {
+        return scale(WaveMechanicsPolicy.compositionForWave(wave, configured), players, hardCap);
+    }
+
     /** Target count is monotonic in players and reaches hardCap at twenty. */
     public static int targetTotal(int configuredTotal, int players, int hardCap) {
         int safeConfigured = Math.max(0, configuredTotal);

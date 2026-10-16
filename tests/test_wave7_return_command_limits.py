@@ -89,15 +89,15 @@ public class ReturnCommandProbe {
         require(main.resolveWave7ReturnEntrance().getY()==69,"existing pad height must remain the preferred floor");
         main.pads.clear();main.handleWave7Return(player,new String[]{"return"});
         main.handleWave7Return(player,new String[]{"return","enter"});
-        require(main.saves==1&&main.attemptLifecycle.isReturnProtected(OWNER,43,100),"travel must allow immediate entrance-local staging");
+        require(main.saves==2&&main.attemptLifecycle.isReturnProtected(OWNER,43,100),"travel and staging must persist the owner deadline and entrance-local protection");
         var token=main.attemptLifecycle.stagingReturns(43).get(OWNER);
         require(main.attemptLifecycle.cancelReturn(token),"outgoing offense cancels staging");
         main.handleWave7Return(player,new String[]{"return","enter"});
-        require(main.saves==1&&!main.attemptLifecycle.isReturnProtected(OWNER,43,100),"same-tick offense cancellation repeated synchronous durable staging");
+        require(main.saves==2&&!main.attemptLifecycle.isReturnProtected(OWNER,43,100),"same-tick offense cancellation repeated synchronous durable staging");
         main.eventTickCounter=119;main.handleWave7Return(player,new String[]{"return","enter"});
-        require(main.saves==1,"retry before cooldown performed another synchronous save");
+        require(main.saves==2,"retry before cooldown performed another synchronous save");
         main.eventTickCounter=120;main.handleWave7Return(player,new String[]{"return","enter"});
-        require(main.saves==2&&main.attemptLifecycle.isReturnProtected(OWNER,43,120),"legitimate later retry remains possible");
+        require(main.saves==3&&main.attemptLifecycle.isReturnProtected(OWNER,43,120),"legitimate later retry remains possible");
     }
 }
 ''', encoding="utf-8")

@@ -18,7 +18,7 @@ public final class SkeletonCombatPolicy {
 
     public static ArrowProfile arrowProfile(boolean miniBoss) {
         return miniBoss
-                ? new ArrowProfile(3, 8.0D, 70, "rift_salvo")
+                ? new ArrowProfile(3, 3.5D, 70, "rift_salvo")
                 : new ArrowProfile(1, 5.0D, 50, "bone_tracer");
     }
 
@@ -55,20 +55,17 @@ public final class SkeletonCombatPolicy {
     }
 
     public static Maneuver maneuverFor(EndRiftObjective.Objective objective,
-                                       boolean miniBoss, int cycle, int slot) {
+                                       boolean miniBoss, int slot) {
         EndRiftObjective.Objective safeObjective = objective == null
                 ? EndRiftObjective.Objective.RIFT_CARRIERS : objective;
-        int beat = Math.floorMod(Math.max(0, cycle) + Math.max(0, slot), 6);
+        int beat = Math.floorMod(Math.max(0, slot), 6);
         return switch (safeObjective) {
             case RIFT_CARRIERS -> beat % 2 == 0 ? Maneuver.HOLD_LINE : Maneuver.SIDE_STEP;
             case RIFT_HUNT -> beat % 2 == 0 ? Maneuver.CROSS_FIRE : Maneuver.SIDE_STEP;
             case RIFT_GATES -> beat % 3 == 0 ? Maneuver.ROTATE_COVER : Maneuver.HOLD_LINE;
             case OBELISK_ASSAULT -> beat % 2 == 0 ? Maneuver.ROTATE_COVER : Maneuver.CROSS_FIRE;
-            case BLACK_FOG -> switch (beat % 3) {
-                case 0 -> Maneuver.SIDE_STEP;
-                case 1 -> Maneuver.FALLBACK;
-                default -> Maneuver.CROSS_FIRE;
-            };
+            case BLACK_FOG -> miniBoss ? Maneuver.CROSS_FIRE
+                    : beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
             case COLLAPSE_RINGS, RITUAL_SPHERE -> beat % 2 == 0 ? Maneuver.SIDE_STEP : Maneuver.FALLBACK;
             case REALITY_SPLIT -> miniBoss ? Maneuver.CHAMBER_STEP : Maneuver.HOLD_LINE;
         };

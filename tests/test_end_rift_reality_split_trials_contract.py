@@ -17,7 +17,8 @@ def test_wave_seven_uses_generation_scoped_trial_completion_not_generic_mob_clea
     chamber_tick = section(source, "private void tickCurrentChamberObjective", "private int countLiveWaveEntitiesForChamber")
 
     assert "private final RealitySplitTrialController realitySplitTrialController" in source
-    assert "realitySplitTrialController.begin(generation" in start_wave
+    assert "realitySplitTrialController.beginNamed(UUID.fromString(eventId), generation" in start_wave
+    assert "realitySplitTrialController.begin(generation" not in start_wave
     assert "startRealitySplitTrials(world, core)" in start_wave
     assert "wave == 7" in start_wave
     assert "realitySplitTrialController.trial(chamber)" in chamber_tick
@@ -129,6 +130,38 @@ def test_wave7_chamber_completion_log_reports_the_count_required_by_the_live_gat
     completion = section(source, "END_RIFT_CHAMBERS_COMPLETE event=", "if (checkpoint)")
 
     assert '" chambers=" + realitySplitChamberController.assignment().chamberCount()' in completion
+
+
+def test_warden_lunge_stops_before_leaving_its_assigned_room():
+    source = EVENT.read_text(encoding="utf-8")
+    warden = section(source, "private void tickRealitySplitWarden", "private void tickRealitySplitReflection")
+
+    assert "Bukkit.getPlayer(state.target)" in warden
+    assert "isCurrentRealitySplitTrialTarget(warden, target)" in warden
+    assert "isRealitySplitDestinationAllowed(state.target, next, assignment)" in warden
+    assert "isSafeCombatEntityLocation(next, warden)" in warden
+
+
+def test_warden_lunge_has_a_distinguishable_windup_cue():
+    source = EVENT.read_text(encoding="utf-8")
+    warden = section(source, "private void tickRealitySplitWarden", "private void tickRealitySplitReflection")
+
+    assert "Particle.SONIC_BOOM" in warden
+    assert "Sound.ENTITY_WARDEN_SONIC_CHARGE" in warden
+
+
+def test_warden_spawn_uses_the_approved_health_profile():
+    source = EVENT.read_text(encoding="utf-8")
+    spawn = section(source, "private Entity spawnRealitySplitTrialEntity", "private Location realitySplitTrialObjectiveLocation")
+
+    assert 'case "WARDEN" -> Wave7WardenCombatPolicy.maxHealth();' in spawn
+
+
+def test_warden_health_profile_migration_preserves_partial_health_on_recovery():
+    source = EVENT.read_text(encoding="utf-8")
+    ensure_room = section(source, "private boolean ensureRealitySplitTrialRoom", "private void logRealitySplitTrialComponentFailure")
+
+    assert "Wave7WardenCombatPolicy.currentHealthAfterMaxHealthChange" in ensure_room
 
 
 def test_wave7_barrier_plan_is_a_required_start_resource_and_final_seal_core_stays_clear():

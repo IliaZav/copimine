@@ -1,6 +1,8 @@
 package me.copimine.narcotics;
 
 import me.copimine.clientbridge.CopiMineClientBridge;
+import me.copimine.clientbridge.BridgePrivateKeyLoader;
+import me.copimine.clientbridge.ClientModSessionRegistryService;
 import me.copimine.narcotics.cauldron.CauldronBrewingService;
 import me.copimine.narcotics.config.NarcoticsConfigService;
 import me.copimine.narcotics.db.NarcoticsDatabase;
@@ -11,6 +13,8 @@ import me.copimine.narcotics.recipe.IngredientEntry;
 import me.copimine.narcotics.resourcepack.NarcoticsResourcePackAudit;
 import me.copimine.narcotics.use.OverdoseService;
 import me.copimine.visualruntime.VisualRuntimeService;
+import me.copimine.protocol.BridgeSigner;
+import me.copimine.protocol.ClientModSessionRegistry;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -60,6 +64,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryView;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.NamespacedKey;
 import org.bukkit.persistence.PersistentDataType;
@@ -70,6 +75,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -106,6 +112,8 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
     private NarcoticItemFactory itemFactory;
     private NarcoticsRecipeService recipeService;
     private CopiMineClientBridge clientBridge;
+    private ClientModSessionRegistryService clientModSessionRegistry;
+    private BridgeSigner bridgeSigner;
     private VisualRuntimeService visualRuntime;
     private OverdoseService overdoseService;
     private CauldronBrewingService cauldronService;
@@ -122,7 +130,19 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         pendingRefundKey = new NamespacedKey(this, "pending_refund_id");
         pendingOutputKey = new NamespacedKey(this, "pending_brewing_output_id");
         recipeService = new NarcoticsRecipeService(configService, itemFactory);
-        clientBridge = new CopiMineClientBridge(this, configService);
+        Optional<BridgeSigner> loadedSigner = BridgePrivateKeyLoader.loadFromEnvironment();
+        bridgeSigner = loadedSigner.orElseGet(BridgeSigner::unavailable);
+        if (loadedSigner.isPresent()) {
+            getLogger().info("Client bridge signer is ready.");
+        } else {
+            getLogger().warning("Client bridge signer is unavailable; protected client bridge sends are disabled.");
+        }
+        clientModSessionRegistry = new ClientModSessionRegistryService(
+                message -> getLogger().warning(message));
+        Bukkit.getServicesManager().register(
+                ClientModSessionRegistry.class, clientModSessionRegistry, this, ServicePriority.Normal);
+        Bukkit.getServicesManager().register(BridgeSigner.class, bridgeSigner, this, ServicePriority.Normal);
+        clientBridge = new CopiMineClientBridge(this, configService, clientModSessionRegistry);
         clientBridge.register();
         visualRuntime = new VisualRuntimeService(this, configService, clientBridge);
         overdoseService = new OverdoseService(this, configService, database, visualRuntime);
@@ -167,6 +187,13 @@ public final class CopiMineNarcotics extends JavaPlugin implements Listener, Com
         if (clientBridge != null) {
             clientBridge.shutdown();
         }
+        if (clientModSessionRegistry != null) {
+            clientModSessionRegistry.shutdown();
+        }
+        if (bridgeSigner != null) {
+            bridgeSigner.close();
+        }
+        Bukkit.getServicesManager().unregisterAll(this);
         if (cauldronService != null) {
             cauldronService.shutdown();
         }

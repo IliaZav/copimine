@@ -5,9 +5,9 @@
  */
 const path = require('path')
 const mc = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'minecraft-protocol'))
+const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 
-const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
-const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
+const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'BossHitProbe'
 const durationMs = Number(process.argv[3] || 45000)
 const bossUuid = (process.env.END_RIFT_BOSS_UUID || '').toLowerCase()
@@ -62,10 +62,6 @@ function begin () {
   started = true
   joined = true
   console.log(`PLAYER_JOIN ${username}`)
-  client.chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000]) {
-    setTimeout(() => client.chat('/login endrift-local'), delay)
-  }
   setTimeout(() => {
     if (bossEntityId === null) {
       console.log(`BOSS_ENTITY_MISSING ${username} expectedUuid=${bossUuid}`)

@@ -7,9 +7,9 @@
  */
 const path = require('path')
 const mineflayer = require(path.resolve(__dirname, '..', 'local-runtime', 'mc-bot', 'node_modules', 'mineflayer'))
+const { resolveLocalEndRiftEndpoint } = require('./LocalEndRiftEndpoint')
 
-const host = process.env.END_RIFT_BOT_HOST || '127.0.0.1'
-const port = Number(process.env.END_RIFT_BOT_PORT || 25566)
+const { host, port } = resolveLocalEndRiftEndpoint()
 const username = process.argv[2] || 'ShardProbe'
 const durationMs = Number(process.argv[3] || 90000)
 const adminGrant = process.argv[4] === 'admin-grant'
@@ -61,12 +61,8 @@ bot.once('spawn', () => {
   joined = true
   const uuid = bot.entity?.uuid || bot.player?.uuid || bot._client?.uuid || offlineUuid(username)
   console.log(`PLAYER_JOIN ${username} uuid=${uuid}`)
-  chat('/register endrift-local endrift-local')
-  for (const delay of [1000, 3000, 6000, 10000, 16000, 24000]) {
-    setTimeout(() => chat('/login endrift-local'), delay)
-  }
-  // The PowerShell driver issues the admin grant from the local console. The
-  // bot only claims the queued delivery after AuthMe accepts the session.
+  // The PowerShell driver issues the admin grant from the local console; the
+  // bot claims the queued delivery after joining.
   const grantAt = 14000
   if (adminGrant) setTimeout(() => chat(`/cmartifacts admin give ${username} rift_core_shard`), grantAt)
   for (const delay of [grantAt, grantAt + 7000, grantAt + 15000, grantAt + 26000]) {

@@ -14,6 +14,20 @@ public final class RiftFireballCollisionPolicy {
     }
 
     /**
+     * W4 obelisk shots have no living shooter, so only their current runtime
+     * provenance can safely admit entity pass-through. The caller cancels the
+     * Paper entity-collision event to let such a shot continue flying.
+     */
+    public static boolean shouldPassThroughNonParticipantCollision(boolean wave4Obelisk,
+                                                                   boolean activeWave4,
+                                                                   boolean currentGeneration,
+                                                                   boolean ownedBySession,
+                                                                   boolean activeArenaParticipant) {
+        return wave4Obelisk && activeWave4 && currentGeneration && ownedBySession
+                && !activeArenaParticipant;
+    }
+
+    /**
      * Return whether a segment intersects a vertical cylinder representing an
      * obelisk.  The vertical bounds are inclusive and are normalized so a
      * recovered/runtime record with reversed bounds remains safe.

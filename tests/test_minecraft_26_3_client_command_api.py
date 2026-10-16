@@ -23,6 +23,44 @@ MIGRATION_MODS_LOCK = ROOT / "tools/minecraft-26.3/client-mods.lock.json"
 MIGRATION_CANDIDATE_SCRIPT = ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1"
 
 
+def test_migration_client_tests_use_a_single_bounded_worker():
+    gradle = (ROOT / "tools/minecraft-26.3/client/build.gradle").read_text(encoding="utf-8")
+    runner = (ROOT / "tests/RunClientBridgeV4Integration.ps1").read_text(encoding="utf-8")
+
+    assert "maxParallelForks = 1" in gradle
+    assert "maxHeapSize = '256m'" in gradle
+    assert runner.count("'--max-workers=1'") == 2
+    assert runner.count("'-Dorg.gradle.jvmargs=-Xmx384m'") == 2
+
+
+def test_integrated_end_rift_gate_keeps_java25_and_passes_original_runtime_for_legacy_client():
+    runner = (ROOT / "tests/RunClientBridgeV4Integration.ps1").read_text(encoding="utf-8")
+    gate_start = runner.index("if ($SkipEndRiftGate)")
+    gate_end = runner.index("Write-Host ''", gate_start)
+    gate_section = runner[gate_start:gate_end]
+
+    assert "$env:JAVA_HOME = $previousJavaHome" not in gate_section
+    assert "$env:PATH = $previousPath" not in gate_section
+    assert "'-LegacyClientJavaHome', $legacyClientJavaHome" in gate_section
+
+
+def test_end_rift_gate_scopes_java21_only_to_legacy_client_build():
+    runner = (ROOT / "tests/RunEndRiftEventChecks.ps1").read_text(encoding="utf-8")
+    assert "[string]$LegacyClientJavaHome" in runner
+    assert "version\\s+" in runner
+    assert "21(?:[.]|" in runner
+
+    client_build_start = runner.index("Invoke-GateStep 'CopiMineClient build'")
+    client_build_end = runner.index("Invoke-GateStep 'Resource pack build'", client_build_start)
+    client_build_section = runner[client_build_start:client_build_end]
+
+    assert "$previousClientBuildJavaHome = $env:JAVA_HOME" in client_build_section
+    assert "$previousClientBuildPath = $env:PATH" in client_build_section
+    assert "$env:JAVA_HOME = $legacyClientJavaHome" in client_build_section
+    assert "$env:JAVA_HOME = $previousClientBuildJavaHome" in client_build_section
+    assert "$env:PATH = $previousClientBuildPath" in client_build_section
+
+
 def test_built_26_3_client_is_installable_while_native_acceptance_stays_open():
     profile = json.loads(MIGRATION_PROFILE_LOCK.read_text(encoding="utf-8"))
     modules = json.loads(MIGRATION_MODS_LOCK.read_text(encoding="utf-8"))

@@ -26,54 +26,43 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $localRuntimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$localPrefix = $localRuntimeRoot.TrimEnd('\') + '\'
 if ([string]::IsNullOrWhiteSpace($ServerDir)) {
   $ServerDir = Join-Path $localRuntimeRoot 'end-rift-server'
 }
-$serverDir = (Resolve-Path $ServerDir).Path
-if (-not $serverDir.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-  throw 'Refused to probe a server outside this worktree local-runtime directory.'
-}
+$serverDir = $ServerDir
+$serverDir = Assert-EndRiftLocalRuntimePath -Path $serverDir -LocalRuntimeRoot $localRuntimeRoot -MustExist
 if ([string]::IsNullOrWhiteSpace($RuntimeDataDir)) {
   $RuntimeDataDir = Split-Path -Parent $serverDir
 }
-$runtimeRoot = (Resolve-Path $RuntimeDataDir).Path
-# RuntimeDataDir defaults to localRuntimeRoot itself; both it and its children are isolated.
-$runtimeRootIsLocalRoot = [string]::Equals(
-  $runtimeRoot.TrimEnd('\\'),
-  $localRuntimeRoot.TrimEnd('\\'),
-  [StringComparison]::OrdinalIgnoreCase)
-if (-not $runtimeRootIsLocalRoot -and
-    -not $runtimeRoot.StartsWith($localPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-  throw 'Refused runtime evidence paths outside this worktree local-runtime directory.'
-}
+$runtimeRoot = Resolve-EndRiftLocalRuntimePath `
+  -Path $RuntimeDataDir -LocalRuntimeRoot $localRuntimeRoot
+Assert-EndRiftLocalServerTreeIsolated `
+  -ServerDir $serverDir -LocalRuntimeRoot $localRuntimeRoot | Out-Null
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
-$paperLog = Join-Path $serverDir 'logs\latest.log'
+$paperLog = Assert-EndRiftLocalRuntimePath -Path (Join-Path $serverDir 'logs\latest.log') `
+  -LocalRuntimeRoot $localRuntimeRoot -MustExist
+$validatedPaperLog = $paperLog
 $processes = [System.Collections.Generic.List[object]]::new()
 $botProcesses = [System.Collections.Generic.List[object]]::new()
 $controlDirectory = Join-Path $runtimeRoot 'wave6-wave7-controls'
+$controlDirectory = Assert-EndRiftLocalRuntimePath -Path $controlDirectory -LocalRuntimeRoot $localRuntimeRoot
 $previousBotControlDirectory = $env:END_RIFT_BOT_CONTROL_DIRECTORY
-New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
-$env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
 $previousWave7Autopilot = $env:END_RIFT_BOT_WAVE7_AUTOPILOT
 $previousWave7HoldPosition = $env:END_RIFT_BOT_WAVE7_HOLD_POSITION
 $previousReflectionEnabled = $env:END_RIFT_REFLECT_ENABLED
 $previousReflectionDiagnostics = $env:END_RIFT_REFLECT_DIAGNOSTICS
 $combatTraceProbe = $env:END_RIFT_BOT_COMBAT_TRACE -eq '1'
 $previousLocalMobSpawning = $null
-$previousBotPort = $env:END_RIFT_BOT_PORT
-$previousBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')
-$previousSkipAuth = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_AUTH', 'Process')
-$previousSkipRegister = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_SKIP_REGISTER', 'Process')
-$script:authMeEnabled = $true
-$diagnosticRoot = Join-Path $root 'artifacts\end-rift-diagnostics'
+$diagnosticRoot = Assert-EndRiftLocalOutputPath -Path (Join-Path $root 'artifacts\end-rift-diagnostics') `
+  -LocalRuntimeRoot $root
 $runStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
 $gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()
 $referenceSha = '79781d8c8be3827078a77972ccba851df4eb819f'
 $dirtyStatus = @(& git -C $root status --short 2>$null)
-$runDir = Join-Path $diagnosticRoot ($runStamp + '-' + $gitHead.Substring(0, [Math]::Min(12, $gitHead.Length)))
+$runDir = Assert-EndRiftLocalOutputPath -Path (Join-Path $diagnosticRoot ($runStamp + '-' + $gitHead.Substring(0, [Math]::Min(12, $gitHead.Length)))) `
+  -LocalRuntimeRoot $root
 $diagnosticSource = Join-Path $serverDir 'plugins\CopiMineEndEvent\diagnostics\end-rift-events.jsonl'
 $diagnosticStartSequence = 0L
 $script:activeLiveStepId = $null
@@ -82,20 +71,32 @@ $script:diagnosticReportResult = 'NOT RUN'
 $script:runMetadata = [ordered]@{}
 $cleanupFailures = [System.Collections.Generic.List[string]]::new()
 
+New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+$env:END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+
 function Write-Utf8NoBom {
   param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][string]$Text)
   [System.IO.File]::WriteAllText($Path, $Text, [System.Text.UTF8Encoding]::new($false))
 }
 
+function Get-DiagnosticArtifactPath {
+  param(
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('metadata.json', 'live-test-steps.log', 'end-rift-events.jsonl', 'artifact-hashes.txt', 'evidence-index.json', 'summary.json', 'report.md')]
+    [string]$Name
+  )
+  return Assert-EndRiftLocalOutputPath -Path (Join-Path $runDir $Name) -LocalRuntimeRoot $root
+}
+
 function Write-RunMetadata {
-  Write-Utf8NoBom -Path (Join-Path $runDir 'metadata.json') `
+  Write-Utf8NoBom -Path (Get-DiagnosticArtifactPath -Name 'metadata.json') `
     -Text ($script:runMetadata | ConvertTo-Json -Depth 12)
 }
 
 function Start-LiveStep {
   param([Parameter(Mandatory = $true)][string]$Id, [Parameter(Mandatory = $true)][string]$Description)
   $script:activeLiveStepId = $Id
-  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') `
+  Add-Content -LiteralPath (Get-DiagnosticArtifactPath -Name 'live-test-steps.log') `
     -Value ("LIVE_TEST STEP_START id=$Id description=" + ($Description -replace '[\r\n]+', ' '))
   Write-Host "LIVE_TEST STEP_START id=$Id"
 }
@@ -103,7 +104,7 @@ function Start-LiveStep {
 function Complete-LiveStep {
   if ($null -eq $script:activeLiveStepId) { return }
   $id = $script:activeLiveStepId
-  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') -Value "LIVE_TEST STEP_PASS id=$id"
+  Add-Content -LiteralPath (Get-DiagnosticArtifactPath -Name 'live-test-steps.log') -Value "LIVE_TEST STEP_PASS id=$id"
   Write-Host "LIVE_TEST STEP_PASS id=$id"
   $script:activeLiveStepId = $null
 }
@@ -112,7 +113,7 @@ function Fail-LiveStep {
   param([string]$Detail = 'step failed')
   if ($null -eq $script:activeLiveStepId) { return }
   $id = $script:activeLiveStepId
-  Add-Content -LiteralPath (Join-Path $runDir 'live-test-steps.log') `
+  Add-Content -LiteralPath (Get-DiagnosticArtifactPath -Name 'live-test-steps.log') `
     -Value ("LIVE_TEST STEP_FAIL id=$id detail=" + ($Detail -replace '[\r\n]+', ' '))
   Write-Host "LIVE_TEST STEP_FAIL id=$id"
   $script:activeLiveStepId = $null
@@ -170,7 +171,7 @@ function Export-DiagnosticRun {
   $lines = foreach ($record in $ordered) {
     $record | ConvertTo-Json -Depth 20 -Compress
   }
-  Write-Utf8NoBom -Path (Join-Path $runDir 'end-rift-events.jsonl') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
+  Write-Utf8NoBom -Path (Get-DiagnosticArtifactPath -Name 'end-rift-events.jsonl') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
   $script:runMetadata['diagnosticStartSequence'] = $diagnosticStartSequence
   $script:runMetadata['diagnosticRecords'] = $ordered.Count
 }
@@ -206,7 +207,7 @@ function Write-ArtifactHashes {
     $hash = (Get-FileHash -LiteralPath $artifact.Path -Algorithm SHA256).Hash.ToLowerInvariant()
     "$hash $($artifact.Name)"
   }
-  Write-Utf8NoBom -Path (Join-Path $runDir 'artifact-hashes.txt') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
+  Write-Utf8NoBom -Path (Get-DiagnosticArtifactPath -Name 'artifact-hashes.txt') -Text (($lines -join [Environment]::NewLine) + [Environment]::NewLine)
 }
 
 New-Item -ItemType Directory -Path $runDir -Force | Out-Null
@@ -235,7 +236,7 @@ $script:runMetadata = [ordered]@{
 }
 $diagnosticStartSequence = Get-HighestDiagnosticSequence
 Write-RunMetadata
-Write-Utf8NoBom -Path (Join-Path $runDir 'evidence-index.json') -Text ((ConvertTo-Json -InputObject (,[ordered]@{
+Write-Utf8NoBom -Path (Get-DiagnosticArtifactPath -Name 'evidence-index.json') -Text ((ConvertTo-Json -InputObject (,[ordered]@{
   id = 'native-minecraft-visual'
   file = ''
   gitHead = $gitHead
@@ -247,12 +248,12 @@ Write-Utf8NoBom -Path (Join-Path $runDir 'evidence-index.json') -Text ((ConvertT
 function Invoke-LocalRcon {
   param([Parameter(Mandatory = $true)][string]$CommandText)
   $result = & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $rconScript `
-    -ServerDir $serverDir -RconPort $RconPort -CommandText $CommandText | Out-String
+    -ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort -CommandText $CommandText | Out-String
   if ($LASTEXITCODE -ne 0) { throw "Local RCON failed: $CommandText $result" }
   return $result.Trim()
 }
 
-function Read-Log { return [string](Get-Content -LiteralPath $paperLog -Raw) }
+function Read-Log { return [string](Get-Content -LiteralPath $validatedPaperLog -Raw) }
 function Log-Length { return [int64](Read-Log).Length }
 function Log-Tail([int64]$Offset) {
   $text = Read-Log
@@ -323,19 +324,61 @@ function Set-LocalArenaMobSpawning([bool]$Enabled) {
 function Start-Bot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $env:END_RIFT_BOT_HOST = '127.0.0.1'
-  $env:END_RIFT_BOT_PORT = [string]$ServerPort
   # Wave 7 includes a Warden fight and a projectile reflection objective.
   # Exercise both through the local clients' real survival interaction path.
   $env:END_RIFT_REFLECT_ENABLED = '1'
   $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
-  $output = Join-Path $runtimeRoot ($Name + '-wave6-wave7.log')
-  $error = Join-Path $runtimeRoot ($Name + '-wave6-wave7.err.log')
-  $arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
-    ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
-    ([string]($Core[2] + 0.5D)) + ' 20 250 "' + $controlDirectory + '"'
-  $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-    -RedirectStandardOutput $output -RedirectStandardError $error -WindowStyle Hidden -PassThru
+  $output = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ($Name + '-wave6-wave7.log')) `
+    -LocalRuntimeRoot $localRuntimeRoot
+  $errorOutput = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ($Name + '-wave6-wave7.err.log')) `
+    -LocalRuntimeRoot $localRuntimeRoot
+  $startInfo = [Diagnostics.ProcessStartInfo]::new()
+  $startInfo.FileName = $node
+  $startInfo.WorkingDirectory = $root
+  $startInfo.UseShellExecute = $false
+  $startInfo.CreateNoWindow = $true
+  $startInfo.RedirectStandardOutput = $true
+  $startInfo.RedirectStandardError = $true
+  Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort $ServerPort
+  Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{
+    END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    END_RIFT_BOT_SKIP_AUTH = '1'
+    END_RIFT_BOT_SKIP_REGISTER = '1'
+    END_RIFT_BOT_WAVE7_AUTOPILOT = [string]$env:END_RIFT_BOT_WAVE7_AUTOPILOT
+    END_RIFT_BOT_WAVE7_HOLD_POSITION = [string]$env:END_RIFT_BOT_WAVE7_HOLD_POSITION
+    END_RIFT_REFLECT_ENABLED = '1'
+    END_RIFT_REFLECT_DIAGNOSTICS = '1'
+  }
+  $arguments = @(
+    $botScript, $Name, [string]($BotDurationSeconds * 1000),
+    [string]($Core[0] + 0.5D), [string]$Core[1], [string]($Core[2] + 0.5D),
+    [string]20, [string]250, $controlDirectory
+  )
+  if ($null -ne $startInfo.ArgumentList) {
+    foreach ($argument in $arguments) { $startInfo.ArgumentList.Add([string]$argument) }
+  } else {
+    $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
+      ([string]($Core[0] + 0.5D)) + ' ' + ([string]$Core[1]) + ' ' +
+      ([string]($Core[2] + 0.5D)) + ' 20 250 "' + $controlDirectory + '"'
+  }
+  $stdoutStream = [IO.FileStream]::new($output, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+  $stderrStream = [IO.FileStream]::new($errorOutput, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::ReadWrite)
+  $process = [Diagnostics.Process]::new()
+  $process.StartInfo = $startInfo
+  try {
+    if (-not $process.Start()) { throw "Could not start local End Rift bot $Name." }
+    $stdoutCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdoutStream)
+    $stderrCopy = $process.StandardError.BaseStream.CopyToAsync($stderrStream)
+    $process | Add-Member -NotePropertyName EndRiftOutputCapture -NotePropertyValue @{
+      StdoutTask = $stdoutCopy; StderrTask = $stderrCopy
+      StdoutStream = $stdoutStream; StderrStream = $stderrStream
+    } -Force
+  } catch {
+    $stdoutStream.Dispose()
+    $stderrStream.Dispose()
+    $process.Dispose()
+    throw
+  }
   $processes.Add($process)
   $botProcesses.Add($process)
 }
@@ -348,7 +391,8 @@ function Set-BotMode {
     [string]$Mode
   )
   foreach ($name in $Names) {
-    $path = Join-Path $controlDirectory ($name + '.mode')
+    $path = Assert-EndRiftLocalRuntimePath -Path (Join-Path $controlDirectory ($name + '.mode')) `
+      -LocalRuntimeRoot $localRuntimeRoot
     [System.IO.File]::WriteAllText($path, $Mode + [Environment]::NewLine,
       [System.Text.UTF8Encoding]::new($false))
   }
@@ -363,6 +407,13 @@ function Stop-Bots {
   foreach ($process in $botProcesses) {
     if ($process) {
       try { $process.WaitForExit(5000) | Out-Null } catch { $cleanupFailures.Add("bot-wait:$($_.Exception.Message)") }
+      $capture = $process.EndRiftOutputCapture
+      if ($null -ne $capture) {
+        try { $capture.StdoutTask.Wait(5000) | Out-Null } catch { $cleanupFailures.Add("bot-stdout-drain:$($_.Exception.Message)") }
+        try { $capture.StderrTask.Wait(5000) | Out-Null } catch { $cleanupFailures.Add("bot-stderr-drain:$($_.Exception.Message)") }
+        try { $capture.StdoutStream.Dispose() } catch { $cleanupFailures.Add("bot-stdout-close:$($_.Exception.Message)") }
+        try { $capture.StderrStream.Dispose() } catch { $cleanupFailures.Add("bot-stderr-close:$($_.Exception.Message)") }
+      }
     }
   }
   $botProcesses.Clear()
@@ -427,23 +478,6 @@ function Wait-BotsOnline([string[]]$Names) {
   } | Out-Null
 }
 
-function Wait-BotLoginSettle {
-  param(
-    [Parameter(Mandatory = $true)][string[]]$Names,
-    [Parameter(Mandatory = $true)][int64]$AfterOffset
-  )
-  if (-not $script:authMeEnabled) { return }
-  # The local accounts are authenticated by AuthMe shortly after the network
-  # join.  Configure persistent attributes only after that profile reload, or
-  # an old account value can silently replace the deterministic probe setup.
-  Wait-Until -Description ("AuthMe login for " + ($Names -join ', ')) -Seconds 45 -Condition {
-    $tail = Log-Tail $AfterOffset
-    return @($Names | Where-Object {
-        $tail -notmatch ('\[AuthMe\].*' + [Regex]::Escape($_) + '\s+logged in')
-      }).Count -eq 0
-  } | Out-Null
-}
-
 function Sync-BotsHeldItem {
   # Mineflayer can believe slot 0 is already selected and skip the packet that
   # makes Paper re-evaluate the item attribute modifier. Signal the already
@@ -494,10 +528,8 @@ function Restart-Bots([string[]]$Names, [int[]]$Core) {
   # post-restart completion probe has a full client lifetime.
   Stop-Bots
   Wait-BotsOffline -Names $Names
-  $authOffset = Log-Length
   foreach ($name in $Names) { Start-Bot -Name $name -Core $Core }
   Wait-BotsOnline -Names $Names
-  Wait-BotLoginSettle -Names $Names -AfterOffset $authOffset
   foreach ($name in $Names) { Configure-Bot -Name $name -Core $Core }
   Sync-BotsHeldItem
   Wait-BotsHeldItemSynced -Names $Names
@@ -563,27 +595,28 @@ function Read-LocalEnvironment {
   # The checked-in local launcher owns the environment in end-rift.env.  Keep
   # restart recovery on that same file so a clean local boot and an in-test
   # restart cannot drift to two different database/pack configurations.
-  $path = Join-Path $runtimeRoot 'end-rift.env'
-  if (-not (Test-Path -LiteralPath $path)) {
-    throw "Local environment file is missing: $path"
-  }
-  foreach ($line in Get-Content -LiteralPath $path) {
-    if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
-      Set-Item -Path ("Env:" + $matches[1]) -Value $matches[2].Trim().Trim('"').Trim("'")
-    }
-  }
+  $path = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot 'end-rift.env') `
+    -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  Import-EndRiftLocalEnvironment -Path $path
   $env:COPIMINE_ENV_FILE = $path
 }
 
 function Start-LocalMinecraft {
+  Assert-EndRiftLocalServerTreeIsolated `
+    -ServerDir $serverDir -LocalRuntimeRoot $localRuntimeRoot | Out-Null
   Read-LocalEnvironment
   $java = (Get-Command java.exe -ErrorAction Stop).Source
-  $stdout = Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stdout.log')
-  $stderr = Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stderr.log')
-  $process = Start-Process -FilePath $java -ArgumentList @('-Xms1G', '-Xmx2G', '-jar', 'purpur.jar', 'nogui') `
+  $paperJarPath = Assert-EndRiftLocalRuntimePath -Path (Join-Path $serverDir 'purpur.jar') -LocalRuntimeRoot $localRuntimeRoot -MustExist
+  $stdout = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stdout.log')) `
+    -LocalRuntimeRoot $localRuntimeRoot
+  $stderr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $runtimeRoot ("wave7-restart-" + (Get-Date -Format 'yyyyMMddHHmmss') + '.stderr.log')) `
+    -LocalRuntimeRoot $localRuntimeRoot
+  $process = Start-Process -FilePath $java -ArgumentList @('-Xms1G', '-Xmx2G', '-jar', ('"' + $paperJarPath + '"'), 'nogui') `
     -WorkingDirectory $serverDir -RedirectStandardOutput $stdout -RedirectStandardError $stderr `
     -WindowStyle Hidden -PassThru
   $processes.Add($process)
+  Write-EndRiftLocalServerReceipt -ProcessId $process.Id -ServerDir $serverDir `
+    -PaperJarPath $paperJarPath -LocalRuntimeRoot $localRuntimeRoot | Out-Null
   Wait-Port -Port $RconPort -Expected $true -Seconds 90
 }
 
@@ -613,7 +646,7 @@ function Wait-Log-MarkerIncrease {
 $names = @($FirstBotName, $SecondBotName)
 if ($names[0] -eq $names[1]) { throw 'Boundary probe players must be distinct.' }
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
   throw "Refused Git branch '$branch'."
 }
 $properties = Get-Content -LiteralPath (Join-Path $serverDir 'server.properties') -Raw
@@ -626,16 +659,10 @@ if ($ServerPort -eq $RconPort) {
   throw 'Refused: Minecraft and RCON must use separate ports.'
 }
 
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+Write-Output 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
+
 try {
-  $script:authMeEnabled = Test-EndRiftLocalAuthMeEnabled -PluginListOutput (Invoke-LocalRcon 'plugins')
-  if ($script:authMeEnabled) {
-    $env:END_RIFT_BOT_SKIP_AUTH = '0'
-    Write-Output 'LOCAL_AUTH_MODE authme=enabled'
-  } else {
-    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-    $env:END_RIFT_BOT_SKIP_AUTH = '1'
-    Write-Output 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
-  }
   Start-LiveStep -Id 'W6-SETUP-01' -Description 'Prepare isolated local arena, trace mode, and two real clients.'
   $core = Get-Core (Invoke-LocalRcon 'cmend status')
   # The status command exposes the Core block Y; barrier levels are anchored
@@ -756,7 +783,6 @@ try {
       }
     }
   }
-  $restartAuthOffset = Log-Length
   foreach ($name in $names) { Start-Bot -Name $name -Core $core }
   Wait-BotsOnline -Names $names
   # Validate recovery before the fresh clients begin attacking.  A disposable
@@ -769,11 +795,10 @@ try {
   $restartProbePoint = Assert-BarrierBlock -Core $core -FloorY $floorY -AfterOffset $restartProbeOffset
   Write-Output "LIVE_WAVE7_RESTART_RECOVERY_PASS rehydrated=true collision=true visible=true barrier=$restartProbePoint journal_replayed=true"
   Complete-LiveStep
-  Start-LiveStep -Id 'W7-POST-RESTART-CLIENTS-01' -Description 'Reconnect authenticated clients and restore the deterministic combat setup after Paper restart.'
+  Start-LiveStep -Id 'W7-POST-RESTART-CLIENTS-01' -Description 'Reconnect probe clients and restore the deterministic combat setup after Paper restart.'
   # The recovered Wave 7 room is already closed.  Keep the player's durable
   # position and let the server-side reconnect/containment path own placement;
   # a central admin teleport would be rejected by the very wall being tested.
-  Wait-BotLoginSettle -Names $names -AfterOffset $restartAuthOffset
   foreach ($name in $names) { Configure-Bot -Name $name -Core $core -SkipTeleport }
   Sync-BotsHeldItem
   Wait-BotsHeldItemSynced -Names $names
@@ -896,26 +921,6 @@ finally {
   } else {
     $env:END_RIFT_BOT_WAVE7_AUTOPILOT = $previousWave7Autopilot
   }
-  if ($null -eq $previousBotPort) {
-    Remove-Item Env:END_RIFT_BOT_PORT -ErrorAction SilentlyContinue
-  } else {
-    $env:END_RIFT_BOT_PORT = $previousBotPort
-  }
-  if ($null -eq $previousBotHost) {
-    Remove-Item Env:END_RIFT_BOT_HOST -ErrorAction SilentlyContinue
-  } else {
-    $env:END_RIFT_BOT_HOST = $previousBotHost
-  }
-  if ($null -eq $previousSkipAuth) {
-    Remove-Item Env:END_RIFT_BOT_SKIP_AUTH -ErrorAction SilentlyContinue
-  } else {
-    $env:END_RIFT_BOT_SKIP_AUTH = $previousSkipAuth
-  }
-  if ($null -eq $previousSkipRegister) {
-    Remove-Item Env:END_RIFT_BOT_SKIP_REGISTER -ErrorAction SilentlyContinue
-  } else {
-    $env:END_RIFT_BOT_SKIP_REGISTER = $previousSkipRegister
-  }
   if ($null -eq $previousBotControlDirectory) {
     Remove-Item Env:END_RIFT_BOT_CONTROL_DIRECTORY -ErrorAction SilentlyContinue
   } else {
@@ -945,30 +950,36 @@ finally {
     Write-ArtifactHashes
     Export-DiagnosticRun
     Write-RunMetadata
+    $summaryPath = Get-DiagnosticArtifactPath -Name 'summary.json'
+    $null = Get-DiagnosticArtifactPath -Name 'report.md'
     $reportOutput = (& python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir 2>&1 | Out-String).Trim()
     $reportExit = $LASTEXITCODE
     if ($reportExit -ne 0) {
       throw "Diagnostic report generation failed: $reportOutput"
     }
-    $summary = Get-Content -LiteralPath (Join-Path $runDir 'summary.json') -Raw | ConvertFrom-Json
+    $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     $script:diagnosticReportResult = [string]$summary.result
     # The first report pass reads the pre-report metadata. Persist the actual
     # report result and rebuild once so metadata.json, summary.json and
     # report.md all describe the same completed audit.
     $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
     Write-RunMetadata
+    $null = Get-DiagnosticArtifactPath -Name 'summary.json'
+    $null = Get-DiagnosticArtifactPath -Name 'report.md'
     $reportOutput = (& python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir 2>&1 | Out-String).Trim()
     $reportExit = $LASTEXITCODE
     if ($reportExit -ne 0) {
       throw "Diagnostic report regeneration failed: $reportOutput"
     }
-    $summary = Get-Content -LiteralPath (Join-Path $runDir 'summary.json') -Raw | ConvertFrom-Json
+    $summary = Get-Content -LiteralPath (Get-DiagnosticArtifactPath -Name 'summary.json') -Raw | ConvertFrom-Json
     $script:diagnosticReportResult = [string]$summary.result
     if ($script:diagnosticReportResult -ne 'PASS') {
       $script:livePaperResult = $script:diagnosticReportResult
       $script:runMetadata['livePaperResult'] = $script:livePaperResult
       $script:runMetadata['diagnosticReportResult'] = $script:diagnosticReportResult
       Write-RunMetadata
+      $null = Get-DiagnosticArtifactPath -Name 'summary.json'
+      $null = Get-DiagnosticArtifactPath -Name 'report.md'
       $null = & python (Join-Path $root 'tests\tools\build_end_rift_diagnostic_report.py') $runDir
       throw "Diagnostic report is not PASS: $($script:diagnosticReportResult)"
     }

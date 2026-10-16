@@ -1,5 +1,6 @@
 param(
-  [switch]$SyncServerConfig
+  [switch]$SyncServerConfig,
+  [switch]$CompileOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,7 +55,8 @@ Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApi
 $cp = @($paperApi)
 foreach ($dependency in @(
   (Join-Path $releaseRoot 'copimine-world-core\CopiMineWorldCore.jar'),
-  (Join-Path $releaseRoot 'copimine-artifacts\CopiMineArtifacts.jar')
+  (Join-Path $releaseRoot 'copimine-artifacts\CopiMineArtifacts.jar'),
+  (Join-Path $releaseRoot 'build\minecraft-26.3\plugins\jars\CopiMineNarcotics-26.3.jar')
 )) {
   if (-not (Test-Path $dependency)) {
     throw "Required typed dependency jar is missing: $dependency"
@@ -106,6 +108,10 @@ $compileArgs += @($sources | ForEach-Object { '"' + ($_ -replace '\\', '/') + '"
 [IO.File]::WriteAllLines($compileArgsPath, $compileArgs, [Text.UTF8Encoding]::new($false))
 & javac ("@" + $compileArgsPath)
 if ($LASTEXITCODE -ne 0) { throw "javac failed for CopiMineEndEvent." }
+if ($CompileOnly) {
+  Write-Host "Compiled End Event sources against the current Minecraft 26.3 plugin outputs: $classes"
+  return
+}
 Copy-Item -LiteralPath (Join-Path $pluginDir 'plugin.yml') -Destination (Join-Path $classes 'plugin.yml') -Force
 Copy-Item -LiteralPath (Join-Path $pluginDir 'config.yml') -Destination (Join-Path $classes 'config.yml') -Force
 Remove-Item -LiteralPath $jar -Force -ErrorAction SilentlyContinue

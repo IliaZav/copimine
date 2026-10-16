@@ -66,18 +66,22 @@ public final class CombatTacticsPolicyTest {
 
     private static void testWaveManeuversAreBoundedAndRepeatable() {
         CombatTacticsPolicy.MobManeuver first = CombatTacticsPolicy.maneuverFor(
-                EndRiftObjective.Objective.BLACK_FOG, "COMMON", 1, 2);
+                EndRiftObjective.Objective.BLACK_FOG, "COMMON", 2);
         CombatTacticsPolicy.MobManeuver second = CombatTacticsPolicy.maneuverFor(
-                EndRiftObjective.Objective.BLACK_FOG, "COMMON", 1, 2);
+                EndRiftObjective.Objective.BLACK_FOG, "COMMON", 2);
         check(first == second, "maneuver must be deterministic for a stable slot");
         check(CombatTacticsPolicy.maneuverFor(
-                EndRiftObjective.Objective.OBELISK_ASSAULT, "OBELISK_GUARD", 0, 0)
+                EndRiftObjective.Objective.OBELISK_ASSAULT, "OBELISK_GUARD", 0)
                 == CombatTacticsPolicy.MobManeuver.CIRCLE_OBJECTIVE,
                 "obelisk guard must circle its objective on the first beat");
         check(CombatTacticsPolicy.maneuverFor(
-                EndRiftObjective.Objective.REALITY_SPLIT, "CHAMBER_BLADE", 0, 0)
+                EndRiftObjective.Objective.REALITY_SPLIT, "CHAMBER_BLADE", 0)
                 == CombatTacticsPolicy.MobManeuver.BREAK_LINE,
                 "chamber blade must use a bounded line-breaking beat");
+        check(CombatTacticsPolicy.maneuverFor(
+                EndRiftObjective.Objective.BLACK_FOG, "COMMON", 0)
+                == CombatTacticsPolicy.MobManeuver.SIDE_STEP,
+                "squad intent must stay tied to its role and assignment slot");
     }
 
     private static void testTeleportPermitIsScopedAndSingleUse() {

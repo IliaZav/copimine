@@ -323,7 +323,8 @@ def test_disposable_boss_cleanup_clears_test_wave_marker() -> None:
     )
     assert match, "disposable cleanup method must remain a small, inspectable boundary"
     body = match.group("body")
-    assert "clearWaveObjectiveState();" in body
+    assert "if (!cancelSessionTasks()) return;" in body
+    assert body.index("if (!cancelSessionTasks()) return;") < body.index("activeWave = 0;")
     assert "activeWave = 0;" in body
     assert "if (!isPersistedBossPhase(phase))" not in body, (
         "test cleanup must clear the diagnostic wave marker even when the official phase is COLLECTING"
@@ -775,8 +776,8 @@ def test_creative_full_run_cleans_transient_wave_state() -> None:
     )
     assert match, "creative full-run cleanup method must remain inspectable"
     body = match.group("body")
-    assert "clearWaveObjectiveState();" in body, (
-        "creative full-run cleanup must remove objective visuals, barriers, rings and timers"
+    assert "if (!clearWaveEntities())" in body, (
+        "creative full-run cleanup must finish the checked wave/objective cleanup before restoring players"
     )
     assert re.search(r"activeWave\s*=\s*0\s*;", body), (
         "creative full-run cleanup must not leave the disposable wave marker active"
@@ -1338,7 +1339,7 @@ def test_wave1_selected_carrier_has_bounded_glow_that_clears_on_reset() -> None:
         "a carrier highlight must be removed when ownership moves to another entity"
     )
 
-    clear_start = source.index("private void clearWaveObjectiveState")
+    clear_start = source.index("private boolean clearWaveObjectiveState")
     clear_end = source.index("private void", clear_start + 1)
     clear_body = source[clear_start:clear_end]
     assert "clearCurrentCarrierHighlight();" in clear_body, (
@@ -1696,48 +1697,49 @@ def test_official_probe_carries_wave7_completion_cursor_into_boss_transition() -
     ), "the boss wait must not reset its cursor after Wave 7 completion"
 
 
-def test_official_probe_staggers_multi_client_login_burst() -> None:
+def test_official_probe_staggers_bot_joins_without_authme_commands() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     assert re.search(
-        r"Prepare-AuthMeAccounts[\s\S]*?"
-        r"END_RIFT_BOT_SKIP_REGISTER[\s\S]*?"
         r"foreach\s*\(\$name\s+in\s+\$playerNames\)[\s\S]*?"
-        r"\$authOffset\s*=\s*Get-LogLength[\s\S]*?"
         r"Start-PlayerBot\s+-Name\s+\$name\s+-Core\s+\$core[\s\S]*?"
-        r"Wait-PlayerAuthenticated\s+-Name\s+\$name\s+-AfterOffset\s+\$authOffset",
+        r"Start-Sleep\s+-Milliseconds\s+250[\s\S]*?Wait-PlayersOnline",
         probe,
-    ), "official multi-client probe must serialize AuthMe handshakes without a connection burst"
+    ), "official multi-client probe must stagger local clients without using AuthMe commands"
 
 
-def test_official_probe_uses_disposable_pre_registered_accounts() -> None:
+def test_official_probe_requires_authme_disabled_and_never_registers_accounts() -> None:
     probe = read(ROOT / "tests" / "RunEndRiftOfficialTwoPlayerLive.ps1")
     bot = read(ROOT / "tests" / "LocalEndRiftMobCombatBot.js")
-    assert re.search(
-        r"function\s+Prepare-AuthMeAccounts[\s\S]*?authme unregister[\s\S]*?"
-        r"authme register \$name endrift-local",
-        probe,
-    ), "official probe must prepare disposable AuthMe accounts before connecting"
-    assert "END_RIFT_BOT_SKIP_REGISTER" in bot and "if (!skipAuth && !skipRegister)" in bot
-    assert "END_RIFT_BOT_SKIP_AUTH" in bot and "if (!skipAuth)" in bot
-    assert "BOT_AUTH_MODE ${username} commands=${skipAuth ? 'skipped' : 'enabled'}" in bot
+    assert "Assert-EndRiftLocalAuthMeDisabled" in probe
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" in probe
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" in probe
+    assert "authme register" not in probe.lower()
+    assert "authme unregister" not in probe.lower()
+    assert "endrift-local" not in probe.lower()
+    assert "END_RIFT_BOT_PASSWORD" not in probe
+    assert "/register" not in bot.lower() and "/login" not in bot.lower()
+    assert "endrift-local" not in bot.lower()
 
 
-def test_live_probes_clear_inherited_skip_auth_when_authme_is_enabled() -> None:
+def test_live_probes_require_authme_disabled_before_any_mutating_rcon() -> None:
     for name in (
         "RunEndRiftOfficialTwoPlayerLive.ps1",
         "RunEndRiftVisualFivePlayerLive.ps1",
         "RunEndRiftWave6Wave7BoundariesLive.ps1",
     ):
         probe = read(ROOT / "tests" / name)
-        enabled_branch = re.search(
-            r"if\s*\(\$?(?:script:)?authMeEnabled\)\s*\{([\s\S]*?)\}\s*else",
-            probe,
+        gate = probe.find("Assert-EndRiftLocalAuthMeDisabled")
+        assert gate >= 0, f"{name} must fail closed when AuthMe is enabled"
+        mutations = [
+            position for marker in ("'cmend wave clear'", "'cmend boss kill cleanup'", '"cmend wave clear"')
+            if (position := probe.find(marker)) >= 0
+        ]
+        assert mutations and gate < min(mutations), (
+            f"{name} must check AuthMe before any encounter cleanup command"
         )
-        assert enabled_branch is not None, f"{name} must have an explicit AuthMe-enabled branch"
-        assert re.search(
-            r"\$env:END_RIFT_BOT_SKIP_AUTH\s*=\s*'0'",
-            enabled_branch.group(1),
-        ), f"{name} must clear inherited no-auth mode when AuthMe is enabled"
+        assert "Wait-PlayerAuthenticated" not in probe
+        assert "Wait-PlayersAuthenticated" not in probe
+        assert "Wait-BotLoginSettle" not in probe
 
 
 def test_live_probes_pin_minecraft_and_rcon_to_local_loopback() -> None:
@@ -1748,23 +1750,14 @@ def test_live_probes_pin_minecraft_and_rcon_to_local_loopback() -> None:
     }
     for name, port in expected.items():
         probe = read(ROOT / "tests" / name)
-        assert "$env:END_RIFT_BOT_HOST = '127.0.0.1'" in probe, (
-            f"{name} must not inherit an arbitrary Mineflayer destination"
+        endpoint = "-BotHost '127.0.0.1' -BotPort " + port
+        assert endpoint in probe, f"{name} must pin bots to its checked local Minecraft endpoint"
+        assert any(helper in probe for helper in (
+            "Invoke-EndRiftLocalBotEnvironment",
+            "Set-EndRiftLocalBotChildEnvironment",
+        )), (
+            f"{name} must isolate inherited bot controls with a shared environment helper"
         )
-        assert f"$env:END_RIFT_BOT_PORT = '{port}'" in probe or (
-            port == "$ServerPort" and "$env:END_RIFT_BOT_PORT = [string]$ServerPort" in probe
-        ), f"{name} must pin bots to its checked local Minecraft port"
-        assert f"$oldBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')" in probe or (
-            f"$previousBotHost = [Environment]::GetEnvironmentVariable('END_RIFT_BOT_HOST', 'Process')" in probe
-        ), f"{name} must save the caller's bot host"
-        host_restore_var = "previousBotHost" if "previousBotHost" in probe else "oldBotHost"
-        assert re.search(
-            rf"\$env:END_RIFT_BOT_HOST\s*=\s*\${host_restore_var}", probe
-        ), f"{name} must restore the caller's bot host"
-        port_restore_var = "previousBotPort" if "previousBotPort" in probe else "oldBotPort"
-        assert re.search(
-            rf"\$env:END_RIFT_BOT_PORT\s*=\s*\${port_restore_var}", probe
-        ), f"{name} must restore the caller's bot port"
         assert "Assert-EndRiftLocalServerBind" in probe, (
             f"{name} must validate both configured and active Minecraft/RCON loopback listeners"
         )
@@ -2343,7 +2336,7 @@ def test_local_texture_showroom_exposes_all_mob_variants_without_starting_combat
     for required in (
         '"local".equalsIgnoreCase(config.environment())',
         "clearBossOnly();",
-        "clearWaveEntities();",
+            "if (!clearWaveEntities())",
         "testCombatAiMode = true;",
         "testBossMovementFrozen = true;",
         "localTextureShowcase = true;",
@@ -2413,3 +2406,68 @@ def test_guardian_shield_orbit_interpolates_server_teleports() -> None:
     shield = source[start:end]
 
     assert "entity.setTeleportDuration(2);" in shield
+
+
+def test_creative_boss_configuration_failure_aborts_without_poisoning_official_state() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+
+    stage_start = source.index("private void runCreativeTestStage")
+    boss_stage_start = source.index("case 8 -> {", stage_start)
+    boss_stage_end = source.index("case 9, 10, 11, 12 ->", boss_stage_start)
+    boss_stage = source[boss_stage_start:boss_stage_end]
+    assert "if (!spawnCreativeTestBoss(player))" in boss_stage, (
+        "creative stage 8 must stop when boss configuration or spawn fails"
+    )
+    assert 'finishCreativeTest(false, "boss initialization failed");' in boss_stage
+    assert boss_stage.index("finishCreativeTest(false") < boss_stage.index("CREATIVE_TEST_BOSS_ACTIVE"), (
+        "a failed disposable boss must never be reported as active"
+    )
+
+    spawn_start = source.index("private boolean spawnCreativeTestBoss")
+    spawn_end = source.index("private String liveOwnedComposition", spawn_start)
+    spawn = source[spawn_start:spawn_end]
+    assert "if (!configureBoss(boss, true))" in spawn, (
+        "the creative harness must propagate configureBoss failure"
+    )
+    assert "return false;" in spawn
+    assert re.search(r"return true;\s*\}", spawn), "successful boss setup must be explicit"
+
+    failure_start = source.index('getLogger().severe("BOSS_CURRENT_HEALTH_UNSUPPORTED')
+    failure_end = source.index("return false;", failure_start)
+    health_failure = source[failure_start:failure_end]
+    assert re.search(r"if\s*\(!test\)\s*\{\s*forcePhase\(", health_failure), (
+        "a failed disposable boss must leave the official event phase unchanged"
+    )
+
+
+def test_dragon_breath_emissions_supply_required_float_data() -> None:
+    source = read(PLUGIN_SRC / "CopiMineEndEvent.java")
+    assert re.search(r"private void spawnTypedParticle\(", source), (
+        "shared particle emissions must route typed particles through one data-aware adapter"
+    )
+    typed_start = source.index("private void spawnTypedParticle(")
+    typed_end = source.index("private void spawnEventParticle(", typed_start)
+    typed = source[typed_start:typed_end]
+    assert "particle == Particle.DRAGON_BREATH" in typed
+    assert "Float.valueOf(0.15F)" in typed
+
+    start = source.index("private void spawnBossCueParticle")
+    end = source.index("private void spawnRiftProjectileTrail", start)
+    boss_cues = source[start:end]
+    assert "spawnTypedParticle(viewer, particle" in boss_cues
+
+    start = source.index("private void spawnPatternRing(Player player")
+    end = source.index("private boolean isSpellFlightAllowed", start)
+    patterns = source[start:end]
+    assert "spawnTypedParticle(player, particle" in patterns
+    assert "particle == Particle.DUST && dust != null" in patterns
+
+    start = source.index("private void spawnEventParticle(Location point, Particle particle")
+    end = source.index("private boolean isEventParticleViewer", start)
+    event_particles = source[start:end]
+    assert "spawnTypedParticle(viewer, particle" in event_particles
+
+    assert not re.search(r"(?:player|viewer)\.spawnParticle\(Particle\.DRAGON_BREATH", source), (
+        "direct DRAGON_BREATH emissions bypass the typed-data adapter"
+    )
+    assert "spawnTypedParticle(player, safe ? Particle.END_ROD : Particle.DRAGON_BREATH" in source

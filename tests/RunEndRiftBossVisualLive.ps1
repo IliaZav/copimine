@@ -27,20 +27,18 @@ $installedConfigPath = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml
 $propertiesPath = Join-Path $serverDir 'server.properties'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
 $evidenceDirectory = Join-Path $runtimeRoot 'current-visual-acceptance'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
   $EvidencePath = Join-Path $evidenceDirectory 'run.log'
 }
 
 function Assert-UnderRoot {
   param([string]$Path, [string]$AllowedRoot, [string]$Label)
-  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
-  $allowed = [IO.Path]::GetFullPath($AllowedRoot).TrimEnd('\') + '\'
-  if (-not $full.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "$Label is outside local-runtime: $Path"
-  }
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $AllowedRoot
 }
 
 Assert-UnderRoot $serverDir $runtimeRoot 'Server directory'
+Assert-UnderRoot $evidenceDirectory $runtimeRoot 'Evidence directory'
 Assert-UnderRoot $EvidencePath $runtimeRoot 'Evidence file'
 foreach ($path in @($visualDriver, $performanceDriver, $diagnosticsDriver,
     $rconScript, $configPath, $installedConfigPath, $propertiesPath, $paperLog)) {

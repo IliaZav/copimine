@@ -245,31 +245,71 @@ def test_plugin_build_scripts_find_paper_api_in_the_selected_maven_repository() 
     for relative in scripts:
         source = (ROOT / relative).read_text(encoding="utf-8")
         repo_override = source.index("$mavenRepo = if ($env:COPIMINE_MAVEN_REPOSITORY)")
-        if relative in (
-            "copimine-end-event/build-plugin.ps1",
-            "copimine-narcotics/build-plugin.ps1",
-        ):
-            # These direct builders use the migration lock and permit only the
-            # explicit, hash-pinned legacy API used by the shared Java gate.
-            assert repo_override < source.index("$profile.paper.api)/paper-api-")
-            assert "profile.lock.json" in source
-            assert "java-plugin-compile-dependencies.lock.json" in source
-            assert "-Sha256 $paperApiSha256 -Size $paperApiSize" in source
-            assert "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0" in source
-            assert "$paperApiSize = 2344886" in source
-            assert "$paperApiSize = 2934206" in source
-            for ambient_marker in (
-                "paper-api-*-R0.1-SNAPSHOT.jar",
-                "Sort-Object LastWriteTime",
-                "Get-ChildItem -Path $groupPath",
-                "Get-ChildItem -Path (Join-Path $serverDir 'libraries')",
-            ):
-                assert ambient_marker not in source, (relative, ambient_marker)
-            continue
-        paper_lookup = source.index("paper-api-*-R0.1-SNAPSHOT.jar")
-
+        # Every direct builder resolves one profile-locked Paper API and
+        # verifies its exact digest/size. It must not choose a cached version
+        # based on what happens to be present in a local Maven repository.
+        paper_lookup = source.index("$profile.paper.api)/paper-api-")
         assert repo_override < paper_lookup, relative
-        assert re.search(r"Get-ChildItem\s+(?:-Path\s+|-LiteralPath\s+)?\$mavenRepo", source), relative
+        assert "profile.lock.json" in source, relative
+        assert "java-plugin-compile-dependencies.lock.json" in source, relative
+        assert "Assert-LockedCompileFile -Path $paperApi -Sha256 $paperApiSha256 -Size $paperApiSize" in source, relative
+        assert "b8df3e7f2739e21072a5263e41b307bd30cfa8d8f72258ce27973167f8ad07c0" in source, relative
+        assert "$paperApiSize = 2344886" in source, relative
+        assert "$paperApiSize = 2934206" in source, relative
+        for ambient_marker in (
+            "paper-api-*-R0.1-SNAPSHOT.jar",
+            "Get-ChildItem -Path $groupPath",
+            "Get-ChildItem -Path (Join-Path $serverDir 'libraries')",
+        ):
+            assert ambient_marker not in source, (relative, ambient_marker)
+
+
+def test_candidate_build_pins_pillow_before_migration_pack_generation() -> None:
+    requirements = (ROOT / "admin-web/requirements.txt").read_text(encoding="utf-8")
+    candidate_builder = (ROOT / "scripts/minecraft/PrepareMigrationCandidates.ps1").read_text(encoding="utf-8")
+
+    assert "Pillow==12.3.0" in requirements
+    assert "resourcepacks/build-migration-pack.py" in candidate_builder
+
+
+def test_client_bridge_integration_uses_a_short_unique_pytest_basetemp() -> None:
+    runner = (ROOT / "tests/RunClientBridgeV4Integration.ps1").read_text(encoding="utf-8")
+
+    assert "('p-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))" in runner
+    assert "$baseTempPath = Join-Path $buildRoot" in runner
+    assert "$env:PYTEST_ADDOPTS = \"--basetemp='$pytestPathArgument'\"" in runner
+
+
+def test_client_bridge_gradle_invocations_stream_stderr_and_check_exit_after_restoring_preference() -> None:
+    integration = (ROOT / "tests/RunClientBridgeV4Integration.ps1").read_text(encoding="utf-8")
+    fail_closed = (ROOT / "tests/ValidateClientBridgeV4FailClosed.ps1").read_text(encoding="utf-8")
+    wrappers = (
+        (integration, "Invoke-CheckedProcess", "& $Executable @Arguments"),
+        (fail_closed, "Invoke-GradleTest", "& $script:gradlePath @Arguments"),
+    )
+
+    for script, function_name, invocation in wrappers:
+        match = re.search(
+            rf"function {function_name}\([^\n]*\)\s*\{{(?P<body>.*?)\n\}}",
+            script,
+            re.DOTALL,
+        )
+        assert match is not None
+        body = match.group("body")
+
+        assert "$previousErrorActionPreference = $ErrorActionPreference" in body
+        assert re.search(r"try\s*\{\s*\$ErrorActionPreference = 'Continue'", body)
+        assert invocation in body
+        assert "2>&1" not in body
+        assert "$exitCode = $LASTEXITCODE" in body
+        assert re.search(
+            r"finally\s*\{\s*\$ErrorActionPreference = \$previousErrorActionPreference\s*\}",
+            body,
+        )
+        assert body.index(invocation) < body.index("$exitCode = $LASTEXITCODE")
+        assert body.index("$ErrorActionPreference = $previousErrorActionPreference") < body.index(
+            "if ($exitCode -ne 0)"
+        )
 
 
 def test_local_java_gate_compiles_and_runs_client_visual_ack_status_policy_test() -> None:
@@ -830,6 +870,16 @@ def test_java_event_tests_bound_heap_and_compiler_threads() -> None:
 
     assert "$javaTestJvmArgs = @('-Xms128m', '-Xmx1g', '-XX:ActiveProcessorCount=4')" in event_runner
     assert "& java @javaTestJvmArgs -cp $Classpath $MainClass" in event_runner
+
+
+def test_legacy_client_build_bounds_gradle_and_test_fork_memory() -> None:
+    client_gradle = (ROOT / "CopiMineClient" / "build.gradle").read_text(encoding="utf-8")
+    client_builder = (ROOT / "CopiMineClient" / "build-client.ps1").read_text(encoding="utf-8")
+
+    assert "maxParallelForks = 1" in client_gradle
+    assert "maxHeapSize = '256m'" in client_gradle
+    assert "'-Dorg.gradle.jvmargs=-Xmx384m'" in client_builder
+    assert "'--max-workers=1'" in client_builder
 
 
 def test_windows_powershell_cabinet_validator_source_is_ansi_independent() -> None:

@@ -64,4 +64,8 @@ tasks.withType(AbstractArchiveTask).configureEach {
     preserveFileTimestamps = false
     reproducibleFileOrder = true
 }
-tasks.withType(Test).configureEach { useJUnitPlatform() }
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    maxParallelForks = 1
+    maxHeapSize = '256m'
+}

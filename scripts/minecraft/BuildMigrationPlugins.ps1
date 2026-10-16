@@ -22,11 +22,13 @@ finally {
 }
 $javaVersion = ($javaVersionText -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
     Select-Object -First 1).Trim()
-$javaMatch = [regex]::Match($javaVersion, '^(?:openjdk|java)(?: version)?\s+\D*(?<major>\d+)')
+$javaMatch = [regex]::Match($javaVersion, '^(?:openjdk|java)(?: version)?\s+"?(?<version>\d+(?:\.\d+){1,3})')
 if ($javaVersionExitCode -ne 0 -or -not $javaMatch.Success) { throw "Cannot read Java version: $javaVersion" }
-$javaMajor = [int]$javaMatch.Groups['major'].Value
-if ($javaMajor -lt [int]$profile.minimumJava -or $javaMajor -ne [int]$profile.buildJavaMajor) {
-    throw "Java $($profile.buildJavaMajor) is required for reproducible 26.3 plugin artifacts"
+$javaVersionValue = $javaMatch.Groups['version'].Value
+$javaMajor = [int]($javaVersionValue.Split('.')[0])
+if ($javaMajor -lt [int]$profile.minimumJava -or $javaMajor -ne [int]$profile.buildJavaMajor -or
+    $javaVersionValue -cne [string]$profile.buildJavaVersion) {
+    throw "Java $($profile.buildJavaVersion) is required for reproducible 26.3 plugin artifacts"
 }
 
 $toolchain = Join-Path $root 'build/minecraft-26.3/toolchain'

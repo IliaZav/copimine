@@ -156,7 +156,17 @@ def test_one_generation_roster_owns_participant_presence_and_objective_eligibili
     roster_helper = event[event.index("private Set<UUID> authoritativeAttemptRoster"):
                            event.index("private boolean isOfficialCurrentAttempt")]
     assert "attemptLifecycle.roster()" in roster_helper
-    assert "attemptLifecycle.markOffline(uuid, generation)" in event
+    assert "markOfficialParticipantOffline(uuid, generation)" in event
+    offline = event[event.index("private boolean markOfficialParticipantOffline"):
+                    event.index("private long wave7ReturnGraceMillis")]
+    assert "attemptLifecycle.markOffline(owner, expectedGeneration, System.nanoTime()," in offline
+    assert "System.currentTimeMillis(), wave7ReturnGraceMillis())" in offline
+    assert "attemptLifecycle.markOffline(owner, expectedGeneration)" in offline
+    death = event[event.index("private boolean markOfficialParticipantDead"):
+                  event.index("private boolean markOfficialParticipantOffline")]
+    assert "attemptLifecycle.markDead(owner, expectedGeneration, System.nanoTime()," in death
+    assert "System.currentTimeMillis(), wave7ReturnGraceMillis())" in death
+    assert "attemptLifecycle.markDead(owner, expectedGeneration)" in death
     assert "attemptLifecycle.markOnline(playerUuid, generation)" in event
 
 
@@ -219,6 +229,8 @@ def test_live_boundary_probe_can_use_a_separate_local_server_copy():
     assert "[string]$ServerDir" in script
     assert "[int]$ServerPort" in script
     assert "[int]$RconPort" in script
-    assert "END_RIFT_BOT_PORT" in script
-    assert "StartsWith($localPrefix" in script
-    assert "-RconPort $RconPort" in script
+    assert "-BotHost '127.0.0.1' -BotPort $ServerPort" in script
+    assert "Assert-EndRiftLocalRuntimePath -Path $serverDir -LocalRuntimeRoot $localRuntimeRoot -MustExist" in script
+    assert "Assert-EndRiftLocalServerTreeIsolated" in script
+    assert "Assert-EndRiftLocalServerBind -ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort" in script
+    assert "-ServerDir $serverDir -ServerPort $ServerPort -RconPort $RconPort -CommandText $CommandText" in script

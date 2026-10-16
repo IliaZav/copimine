@@ -881,11 +881,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             this.playerId = playerId;
         }
     }
-    private record PendingSkeletonSideArrowShot(UUID shooterId, UUID worldId, Location origin,
-                                                Vector direction, float speed, int wave,
+    private record PendingSkeletonSideArrowShot(UUID shooterId, int wave,
                                                 SkeletonArrowPolicy.ArrowKind arrowKind,
                                                 String arrowSpell, double damage, UUID volleyId,
-                                                String eventId, long generation) { }
+                                                String eventId, long generation, int arrowCount) { }
     private final Map<UUID, PendingSkeletonSideArrowShot> pendingSkeletonShotSideArrows = new HashMap<>();
     private final Map<UUID, Runnable> pendingEventArrowDamageEffects = new HashMap<>();
     private final Set<UUID> scheduledEventArrowDamageEffects = new HashSet<>();
@@ -1655,6 +1654,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean canResumeWave2AfterRestart() {
         return phase == EventPhase.WAVE_2
                 && isOfficialCurrentAttempt()
+                && attemptLifecycle.owns(generation)
+                && attemptLifecycle.roster().equals(officialRewardRoster)
                 && WaveTwoStagePolicy.hasConsistentProgress(
                 currentHuntCycles, waveTwoGroupsSpawned, waveTwoGroupCleared);
     }
@@ -2120,25 +2121,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (EVENT_KIND_WAVE_GUARDIAN.equals(kind) && isOfficialEntity(entity)) {
                 waveGuardianEntities.add(entity.getUniqueId());
             }
-            if ((EVENT_KIND_ELITE.equals(kind) || EVENT_KIND_WAVE_GUARDIAN.equals(kind))
-                    && keyMiniBossSpell != null) {
-                EliteAbilityPolicy.Role role = entity instanceof Skeleton
-                        ? EliteAbilityPolicy.Role.SKELETON
-                        : entity instanceof Enderman ? EliteAbilityPolicy.Role.ENDERMAN
-                        : entity instanceof Spider ? EliteAbilityPolicy.Role.SPIDER : null;
-                EndRiftAiPolicy.MiniBossSpell expected = role == null ? null
-                        : miniBossSpellFor(EliteAbilityPolicy.activeCastForWave(wave, role));
-                if (expected == null) {
-                    entity.getPersistentDataContainer().remove(keyMiniBossSpell);
-                } else {
-                    tagMiniBossSpell(entity, expected);
-                }
-                EndRiftAiPolicy.MiniBossSpell spell = expected;
-                if (spell != null) {
-                    miniBossSpells.put(entity.getUniqueId(), spell);
-                    nextMiniBossSpellMillis.put(entity.getUniqueId(), now + 3_000L);
-                }
-            }
+            restoreEliteSpellRuntime(entity, now);
         }
         if (staleProjectiles > 0 || duplicateBosses > 0 || obsoleteWaveElites > 0) {
             getLogger().warning("END_EVENT_COMBAT_REINDEX_CLEANUP event=" + eventId
@@ -2150,6 +2133,30 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().info("END_EVENT_COMBAT_REINDEX event=" + eventId
                     + " generation=" + generation + " restored=" + restored);
         }
+    }
+
+    /** Rebuild the in-memory spell and cooldown indexes from the elite's current wave role. */
+    private void restoreEliteSpellRuntime(Entity entity, long now) {
+        if (entity == null || keyMiniBossSpell == null) return;
+        String kind = readString(entity, keyKind);
+        if (!EVENT_KIND_ELITE.equals(kind) && !EVENT_KIND_WAVE_GUARDIAN.equals(kind)) return;
+        UUID entityId = entity.getUniqueId();
+        int wave = readInt(entity, keyWave, 0);
+        EliteAbilityPolicy.Role role = entity instanceof Skeleton
+                ? EliteAbilityPolicy.Role.SKELETON
+                : entity instanceof Enderman ? EliteAbilityPolicy.Role.ENDERMAN
+                : entity instanceof Spider ? EliteAbilityPolicy.Role.SPIDER : null;
+        EndRiftAiPolicy.MiniBossSpell spell = role == null ? null
+                : miniBossSpellFor(EliteAbilityPolicy.activeCastForWave(wave, role));
+        if (spell == null) {
+            entity.getPersistentDataContainer().remove(keyMiniBossSpell);
+            miniBossSpells.remove(entityId);
+            nextMiniBossSpellMillis.remove(entityId);
+            return;
+        }
+        tagMiniBossSpell(entity, spell);
+        miniBossSpells.put(entityId, spell);
+        nextMiniBossSpellMillis.put(entityId, now + 3_000L);
     }
 
     private boolean isObsoleteWaveEliteComposition(Entity entity) {
@@ -2231,6 +2238,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 }
                 registerOwnedEntity(entity);
                 ensureEventCombatAi(entity);
+                restoreEliteSpellRuntime(entity, System.currentTimeMillis());
                 continue;
             }
             if (!isWaveTwoOrdinaryMob(entity)) continue;
@@ -9950,22 +9958,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             nextSkeletonArrowMillis.put(skeleton.getUniqueId(),
                     now + profile.cooldownTicks() * 50L);
             tagEventArrowVolley(arrow, volleyId);
-            if (!configureEventSkeletonArrow(arrow, skeleton, wave, arrowKind, arrowSpell, profile.damage())) {
-                event.setCancelled(true);
-                if (isEventArrow(arrow)) cleanupEventArrow(arrow.getUniqueId());
-                else if (arrow.isValid()) arrow.remove();
-                clearWaveProjectileGroup(volleyId, "skeleton-arrow-admission-failed");
-                return;
-            }
-            if (arrowCount > 1) {
-                Vector baseVelocity = arrow.getVelocity();
-                double speed = Math.max(0.1D, baseVelocity.length());
-                Vector direction = baseVelocity.clone().normalize();
-                pendingSkeletonShotSideArrows.put(arrow.getUniqueId(), new PendingSkeletonSideArrowShot(
-                        skeleton.getUniqueId(), arrow.getWorld().getUID(), arrow.getLocation().clone(),
-                        direction, (float) speed, wave, arrowKind, arrowSpell, profile.damage(),
-                        volleyId, eventId, generation));
-            }
+            prepareEventSkeletonArrow(arrow, skeleton, wave, arrowKind, arrowSpell, profile.damage());
+            pendingSkeletonShotSideArrows.put(arrow.getUniqueId(), new PendingSkeletonSideArrowShot(
+                    skeleton.getUniqueId(), wave, arrowKind, arrowSpell,
+                    profile.damage(), volleyId, eventId, generation, arrowCount));
             getLogger().info("SKELETON_ARROW_SHOT entity=" + skeleton.getUniqueId()
                     + " arrow=" + arrow.getUniqueId() + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
                     + " physical_count=" + arrowCount + " target=PLAYER_ONLY damage=" + profile.damage()
@@ -9997,7 +9993,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return;
             }
             if (event.isCancelled()) {
-                waveProjectileAdmission.releaseUnspawnedReservations(pending.volleyId());
+                clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-shot-cancelled");
                 cleanupEventArrow(arrowId);
                 getLogger().info("SKELETON_ARROW_SHOT_CANCELLED arrow=" + arrowId
                         + " side_arrows_spawned=0");
@@ -10013,32 +10009,56 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || generation != pending.generation() || !isLiveOwnedEntity(pending.shooterId())) {
             if (pending != null) clearWaveProjectileGroup(pending.volleyId(),
                     "skeleton-side-arrow-owner-invalid");
+            cleanupEventArrow(arrowId);
             return;
         }
         Entity shooterEntity = ownedEntities.get(pending.shooterId());
-        if (!(shooterEntity instanceof Skeleton skeleton) || !isSkeletonMiniBoss(skeleton)
+        if (!(shooterEntity instanceof Skeleton skeleton)
                 || readInt(skeleton, keyWave, activeWave) != pending.wave()
                 || !isWaveProjectileShooterAllowed(skeleton)
                 || !ownedBySession(skeleton, pending.eventId(), pending.generation())) {
             clearWaveProjectileGroup(pending.volleyId(), "skeleton-side-arrow-owner-invalid");
+            cleanupEventArrow(arrowId);
             return;
         }
-        World world = Bukkit.getWorld(pending.worldId());
+        Entity projectile = Bukkit.getEntity(arrowId);
+        if (!(projectile instanceof Arrow mainArrow) || !mainArrow.isValid() || mainArrow.isDead()
+                || !ownedBySession(mainArrow, pending.eventId(), pending.generation())
+                || !EVENT_KIND_PROJECTILE.equals(readString(mainArrow, keyKind))) {
+            clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-not-inserted");
+            cleanupEventArrow(arrowId);
+            return;
+        }
+        if (!trackEventArrow(mainArrow)) {
+            clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-track-failed");
+            cleanupEventArrow(arrowId);
+            return;
+        }
+        if (pending.arrowCount() <= 1) {
+            return;
+        }
+        if (!isSkeletonMiniBoss(skeleton)) {
+            clearWaveProjectileGroup(pending.volleyId(), "skeleton-side-arrow-owner-invalid");
+            return;
+        }
+        World world = mainArrow.getWorld();
         if (world == null || !world.getUID().equals(skeleton.getWorld().getUID())) {
-            clearWaveProjectileGroup(pending.volleyId(), "skeleton-side-arrow-world-invalid");
-            return;
-        }
-        Location origin = pending.origin().clone();
-        if (origin.getWorld() == null || !pending.worldId().equals(origin.getWorld().getUID())) {
             clearWaveProjectileGroup(pending.volleyId(), "skeleton-side-arrow-origin-invalid");
             return;
         }
-        origin.setWorld(world);
+        Location origin = mainArrow.getLocation().clone();
+        Vector velocity = mainArrow.getVelocity();
+        if (origin.getWorld() == null || velocity == null || velocity.lengthSquared() < 1.0E-8D) {
+            clearWaveProjectileGroup(pending.volleyId(), "skeleton-side-arrow-origin-invalid");
+            return;
+        }
+        Vector direction = velocity.clone().normalize();
+        float speed = (float) Math.max(0.1D, velocity.length());
         List<Arrow> spawnedSideArrows = new ArrayList<>();
         try {
             for (int lane : new int[]{-1, 1}) {
                 Arrow extra = world.spawnArrow(origin,
-                        pending.direction().clone().rotateAroundY(lane * 0.095D), pending.speed(), 0.0F);
+                        direction.clone().rotateAroundY(lane * 0.095D), speed, 0.0F);
                 spawnedSideArrows.add(extra);
                 extra.setShooter(skeleton);
                 tagEventArrowVolley(extra, pending.volleyId());
@@ -10069,6 +10089,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private boolean configureEventSkeletonArrow(Arrow arrow, Skeleton shooter, int wave,
                                                 SkeletonArrowPolicy.ArrowKind arrowKind,
                                                 String arrowSpell, double damage) {
+        prepareEventSkeletonArrow(arrow, shooter, wave, arrowKind, arrowSpell, damage);
+        return trackEventArrow(arrow);
+    }
+
+    private void prepareEventSkeletonArrow(Arrow arrow, Skeleton shooter, int wave,
+                                          SkeletonArrowPolicy.ArrowKind arrowKind,
+                                          String arrowSpell, double damage) {
         tag(arrow, EVENT_KIND_PROJECTILE, wave, isOfficialEntity(shooter));
         tagArrowSpell(arrow, arrowSpell);
         if (isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)) {
@@ -10082,7 +10109,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             case POISON_NAUSEA -> Color.fromRGB(122, 255, 72);
             case COMMON -> Color.fromRGB(228, 228, 198);
         });
-        return trackEventArrow(arrow);
     }
 
     private void tagEventArrowVolley(Arrow arrow, UUID volleyId) {
@@ -37343,7 +37369,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private void restoreWave7ReturnParticipation(EventSnapshot snapshot) {
         attemptLifecycle.clear();
         wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear(); wave7ReturnEnterNextTicks.clear();
-        if (!isOfficialWave7ReturnContext()) return;
+        if (!isOfficialWave7ReturnContext()) {
+            restoreOfficialWave2AttemptLifecycle();
+            return;
+        }
         if (!realitySplitChamberController.owns(generation)
                 || !attemptLifecycle.restoreWave7Returns(snapshot.objectiveProgress(), eventId, generation,
                 realitySplitChamberController.assignment().chamberByPlayer(), officialRewardRoster,
@@ -37355,6 +37384,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             encounterController.restore(eventId, generation, phase, null);
             getLogger().severe("WAVE7_PARTICIPATION_RESTORE_REFUSED event=" + eventId
                     + " generation=" + generation + " action=recovery-no-return-grant");
+        }
+    }
+
+    /** Rebuild the transient official roster owner before a durable Wave 2 resume. */
+    private void restoreOfficialWave2AttemptLifecycle() {
+        if (phase != EventPhase.WAVE_2 || !isOfficialCurrentAttempt()
+                || generation <= 0L || officialRewardRoster.isEmpty()) {
+            return;
+        }
+        attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
+        for (UUID owner : officialRewardRoster) {
+            Player player = Bukkit.getPlayer(owner);
+            if (player == null || !player.isOnline()) {
+                attemptLifecycle.markOffline(owner, generation);
+            } else if (player.isDead()) {
+                attemptLifecycle.markDead(owner, generation);
+            }
+        }
+        if (!attemptLifecycle.owns(generation)
+                || !attemptLifecycle.roster().equals(officialRewardRoster)) {
+            attemptLifecycle.clear();
+            getLogger().severe("WAVE2_ATTEMPT_LIFECYCLE_RESTORE_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=roster-mismatch");
         }
     }
 

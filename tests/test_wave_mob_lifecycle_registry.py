@@ -103,3 +103,28 @@ def test_paper_adapter_uses_the_unload_roster_and_load_quarantine():
     assert "unloadedWaveMobs.onUnload" in removal
     assert "unloadedWaveMobs.onLoad" in load
     assert "unloadedWaveMobs.count(eventId, generation, wave)" in count
+
+
+def test_elite_spell_runtime_is_rebuilt_when_a_live_wave_chunk_loads():
+    source = SOURCE.read_text("utf-8")
+    load_start = source.index("public void onPersistedCombatEntitiesLoad(EntitiesLoadEvent event)")
+    load_end = source.index("\n    private void suspendWaveTwoRecoveryEntity", load_start)
+    load = source[load_start:load_end]
+
+    assert "restoreEliteSpellRuntime(entity, System.currentTimeMillis());" in load
+    assert load.index("registerOwnedEntity(entity);") < load.index(
+        "restoreEliteSpellRuntime(entity, System.currentTimeMillis());"
+    )
+    helper_start = source.index("private void restoreEliteSpellRuntime(Entity entity, long now)")
+    helper_end = source.index("\n    private boolean isObsoleteWaveEliteComposition", helper_start)
+    helper = source[helper_start:helper_end]
+    reindex_start = source.index("private void reindexPersistedCombatEntities()")
+    reindex_end = source.index("\n    private boolean isObsoleteWaveEliteComposition", reindex_start)
+    reindex = source[reindex_start:reindex_end]
+
+    assert "restoreEliteSpellRuntime(entity, now);" in reindex
+    assert "EliteAbilityPolicy.activeCastForWave(wave, role)" in helper
+    assert "miniBossSpells.put(entityId, spell);" in helper
+    assert "nextMiniBossSpellMillis.put(entityId, now + 3_000L);" in helper
+    assert "miniBossSpells.remove(entityId);" in helper
+    assert "nextMiniBossSpellMillis.remove(entityId);" in helper

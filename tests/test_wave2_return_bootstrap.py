@@ -36,6 +36,13 @@ public class Wave2ReturnBootstrapProbe {
     EventPhase phase=EventPhase.WAVE_2,restoredPhase;
     EventConfig config=new EventConfig();
     Set<UUID> officialRewardRoster=new LinkedHashSet<>(List.of(new UUID(0,1),new UUID(0,2)));
+    static class AttemptLifecycleController {
+        long generation=Long.MIN_VALUE; Set<UUID> roster=Set.of();
+        void begin(long value,Set<UUID> owners){generation=value;roster=Set.copyOf(owners);}
+        boolean owns(long value){return generation==value;}
+        Set<UUID> roster(){return roster;}
+    }
+    AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     BukkitTask bootstrapTask,tickTask,waveContainmentTask;
     WorldAccessService worldAccessService;
     EventArtifactRewardService rewardService;
@@ -109,6 +116,7 @@ public class Wave2ReturnBootstrapProbe {
     static Wave2ReturnBootstrapProbe validCheckpoint(){
         var probe=new Wave2ReturnBootstrapProbe();
         probe.currentHuntCycles=1;probe.waveTwoGroupsSpawned=2;probe.waveTwoGroupCleared=false;
+        probe.attemptLifecycle.begin(probe.generation,probe.officialRewardRoster);
         return probe;
     }
     public static void main(String[] args){

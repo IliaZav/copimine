@@ -279,6 +279,26 @@ def test_triple_arrow_side_projectiles_spawn_only_after_bow_event_is_accepted():
     assert "world.spawnArrow(origin," in spawn
 
 
+def test_native_bow_arrow_is_tracked_only_after_paper_inserts_the_accepted_projectile():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    shoot = _java_method_body(source, "public void onEventSkeletonShootBow(")
+    outcome = _java_method_body(source, "public void onEventSkeletonShootBowOutcome(")
+    spawn = _java_method_body(source, "private void spawnPendingSkeletonSideArrows(")
+    configure = _java_method_body(source, "private boolean configureEventSkeletonArrow(")
+
+    assert "prepareEventSkeletonArrow(" in shoot
+    assert "configureEventSkeletonArrow(" not in shoot
+    assert "trackEventArrow(" not in shoot
+    assert "pendingSkeletonShotSideArrows.put(arrow.getUniqueId()" in shoot
+    assert "pending.arrowCount()" in spawn
+    assert "Bukkit.getEntity(arrowId)" in spawn
+    assert "trackEventArrow(mainArrow)" in spawn
+    assert spawn.index("trackEventArrow(mainArrow)") < spawn.index("pending.arrowCount() <= 1")
+    assert "prepareEventSkeletonArrow(arrow," in configure
+    assert "return trackEventArrow(arrow);" in configure
+    assert "runTaskLater(this, () ->" in outcome
+
+
 def test_manual_skeleton_arrow_payloads_wait_for_final_damage_event_outcome():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     skeleton_damage = _java_method_body(source, "public void onEventSkeletonArrowDamage(")
@@ -595,9 +615,11 @@ def test_saved_elite_ability_entities_without_runtime_ttl_are_removed_on_chunk_l
 def test_skeleton_arrow_damage_has_no_critical_bonus_and_pickup_is_disabled():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     configure = _java_method_body(source, "private boolean configureEventSkeletonArrow(")
-    assert "arrow.setDamage(damage)" in configure
-    assert "arrow.setCritical(false)" in configure
-    assert "PickupStatus.DISALLOWED" in configure
+    prepare = _java_method_body(source, "private void prepareEventSkeletonArrow(")
+    assert "arrow.setDamage(damage)" in prepare
+    assert "arrow.setCritical(false)" in prepare
+    assert "PickupStatus.DISALLOWED" in prepare
+    assert "prepareEventSkeletonArrow(arrow," in configure
     assert "return trackEventArrow(arrow);" in configure
 
 

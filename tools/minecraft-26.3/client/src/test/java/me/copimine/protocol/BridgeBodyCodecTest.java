@@ -160,7 +160,7 @@ class BridgeBodyCodecTest {
         assertArrayEquals(confirmed.requestId(), decodedConfirmed.requestId());
         assertArrayEquals(confirmed.confirmRequestSha256(), decodedConfirmed.confirmRequestSha256());
 
-        byte[] trailing = java.util.Arrays.copyOf(helloExpected, helloExpected.length + 1);
+        byte[] trailing = java.util.Arrays.copyOf(helloExpected, helloExpected.length + 2);
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(trailing));
         byte[] invalidRequestKind = helloExpected.clone();
         invalidRequestKind[19] = 2;
@@ -176,6 +176,37 @@ class BridgeBodyCodecTest {
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.encode(
                 new BridgeControlBodyCodec.SenderReadyConfirmAck(
                         BridgeRequestCodec.Sender.END_EVENT, EVENT, hello.requestId(), 21L, new byte[31])));
+    }
+
+    @Test
+    void senderHeartbeatHasExactNineteenByteFixtureAndHelloAckNegotiatesOptionalFeature() throws Exception {
+        UUID session = UUID.fromString("00000000-0000-0000-0000-000000000022");
+        BridgeControlBodyCodec.SenderHeartbeat heartbeat = new BridgeControlBodyCodec.SenderHeartbeat(
+                BridgeRequestCodec.Sender.NARCOTICS, session);
+        byte[] heartbeatFixture = new byte[] {
+                1, (byte) 253, 2,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x22
+        };
+        assertArrayEquals(heartbeatFixture, BridgeControlBodyCodec.encode(heartbeat));
+        assertEquals(heartbeat, BridgeControlBodyCodec.decode(heartbeatFixture));
+
+        BridgeControlBodyCodec.HelloAck legacy = new BridgeControlBodyCodec.HelloAck(
+                BridgeRequestCodec.Sender.END_EVENT, session, 0, new byte[16]);
+        byte[] legacyFixture = controlHelloAckFixture(legacy);
+        assertEquals(36, legacyFixture.length);
+        BridgeControlBodyCodec.HelloAck legacyDecoded =
+                (BridgeControlBodyCodec.HelloAck) BridgeControlBodyCodec.decode(legacyFixture);
+        assertEquals(0, legacyDecoded.featureFlags());
+
+        BridgeControlBodyCodec.HelloAck extended = new BridgeControlBodyCodec.HelloAck(
+                BridgeRequestCodec.Sender.END_EVENT, session, 0, new byte[16],
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        byte[] extendedFixture = java.util.Arrays.copyOf(legacyFixture, 37);
+        extendedFixture[36] = 1;
+        assertEquals(37, extendedFixture.length);
+        assertArrayEquals(extendedFixture, BridgeControlBodyCodec.encode(extended));
+        assertEquals(BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE,
+                ((BridgeControlBodyCodec.HelloAck) BridgeControlBodyCodec.decode(extendedFixture)).featureFlags());
     }
 
     @Test
@@ -396,6 +427,7 @@ class BridgeBodyCodecTest {
         writeUuid(out, body.sessionUuid());
         out.writeByte(body.requestKind());
         out.write(body.requestId());
+        if (body.featureFlags() != 0) out.writeByte(body.featureFlags());
         return bytes.toByteArray();
     }
 

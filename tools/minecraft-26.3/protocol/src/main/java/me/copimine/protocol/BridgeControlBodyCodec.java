@@ -11,12 +11,17 @@ import java.util.UUID;
 public final class BridgeControlBodyCodec {
     public static final int SCHEMA = 1;
     public static final int HELLO_ACK_TYPE = 0;
+    public static final int SENDER_HEARTBEAT_TYPE = 253;
     public static final int SENDER_READY_CONFIRM_ACK_TYPE = 254;
     public static final int SENDER_READY_ACK_TYPE = 255;
     public static final int REQUEST_ID_BYTES = 16;
     public static final int SHA256_BYTES = 32;
+    public static final int SENDER_HEARTBEAT_FEATURE = 1;
+    public static final int KNOWN_HELLO_ACK_FEATURE_MASK = SENDER_HEARTBEAT_FEATURE;
 
     private static final int HELLO_ACK_BYTES = 1 + 1 + 1 + 16 + 1 + REQUEST_ID_BYTES;
+    private static final int HELLO_ACK_EXTENDED_BYTES = HELLO_ACK_BYTES + 1;
+    private static final int SENDER_HEARTBEAT_BYTES = 1 + 1 + 1 + 16;
     private static final int SENDER_READY_ACK_BYTES = 1 + 1 + 1 + 16 + REQUEST_ID_BYTES + 8;
     private static final int SENDER_READY_CONFIRM_ACK_BYTES = 1 + 1 + 1 + 16 + REQUEST_ID_BYTES + 8 + SHA256_BYTES;
 
@@ -31,6 +36,7 @@ public final class BridgeControlBodyCodec {
             if (helloAck.requestKind() != 0 && helloAck.requestKind() != 1) {
                 throw new IllegalArgumentException("Unknown hello_ack request kind");
             }
+            requireKnownFeatures(helloAck.featureFlags());
             return write(output -> {
                 output.writeByte(SCHEMA);
                 output.writeByte(HELLO_ACK_TYPE);
@@ -38,7 +44,20 @@ public final class BridgeControlBodyCodec {
                 writeUuid(output, helloAck.sessionUuid());
                 output.writeByte(helloAck.requestKind());
                 output.write(helloAck.requestId());
-            }, HELLO_ACK_BYTES);
+                if (helloAck.featureFlags() != 0) {
+                    output.writeByte(helloAck.featureFlags());
+                }
+            }, helloAck.featureFlags() == 0 ? HELLO_ACK_BYTES : HELLO_ACK_EXTENDED_BYTES);
+        }
+        if (body instanceof SenderHeartbeat heartbeat) {
+            requireSender(heartbeat.sender());
+            requireUuid(heartbeat.sessionUuid());
+            return write(output -> {
+                output.writeByte(SCHEMA);
+                output.writeByte(SENDER_HEARTBEAT_TYPE);
+                output.writeByte(heartbeat.sender().id());
+                writeUuid(output, heartbeat.sessionUuid());
+            }, SENDER_HEARTBEAT_BYTES);
         }
         if (body instanceof SenderReadyAck readyAck) {
             requireSender(readyAck.sender());
@@ -89,14 +108,23 @@ public final class BridgeControlBodyCodec {
         }
         Body body;
         if (type == HELLO_ACK_TYPE) {
-            requireExactLength(encoded, HELLO_ACK_BYTES);
+            if (encoded.length != HELLO_ACK_BYTES && encoded.length != HELLO_ACK_EXTENDED_BYTES) {
+                throw new IllegalArgumentException("Invalid bridge control body length");
+            }
             BridgeRequestCodec.Sender sender = readSender(input);
             UUID sessionUuid = readUuid(input);
             int requestKind = readU8(input);
             if (requestKind != 0 && requestKind != 1) {
                 throw new IllegalArgumentException("Unknown hello_ack request kind");
             }
-            body = new HelloAck(sender, sessionUuid, requestKind, readRequestId(input));
+            byte[] requestId = readRequestId(input);
+            int featureFlags = input.hasRemaining() ? readU8(input) : 0;
+            requireKnownFeatures(featureFlags);
+            body = new HelloAck(sender, sessionUuid, requestKind, requestId, featureFlags);
+        } else if (type == SENDER_HEARTBEAT_TYPE) {
+            requireExactLength(encoded, SENDER_HEARTBEAT_BYTES);
+            BridgeRequestCodec.Sender sender = readSender(input);
+            body = new SenderHeartbeat(sender, readUuid(input));
         } else if (type == SENDER_READY_ACK_TYPE) {
             requireExactLength(encoded, SENDER_READY_ACK_BYTES);
             BridgeRequestCodec.Sender sender = readSender(input);
@@ -225,16 +253,26 @@ public final class BridgeControlBodyCodec {
         }
     }
 
+    private static void requireKnownFeatures(int featureFlags) {
+        if ((featureFlags & ~KNOWN_HELLO_ACK_FEATURE_MASK) != 0 || featureFlags < 0 || featureFlags > 255) {
+            throw new IllegalArgumentException("Unknown hello_ack feature flags");
+        }
+    }
+
     @FunctionalInterface
     private interface Writer {
         void write(DataOutputStream output) throws IOException;
     }
 
-    public sealed interface Body permits HelloAck, SenderReadyAck, SenderReadyConfirmAck {
+    public sealed interface Body permits HelloAck, SenderHeartbeat, SenderReadyAck, SenderReadyConfirmAck {
     }
 
     public record HelloAck(BridgeRequestCodec.Sender sender, UUID sessionUuid,
-            int requestKind, byte[] requestId) implements Body {
+            int requestKind, byte[] requestId, int featureFlags) implements Body {
+        public HelloAck(BridgeRequestCodec.Sender sender, UUID sessionUuid, int requestKind, byte[] requestId) {
+            this(sender, sessionUuid, requestKind, requestId, 0);
+        }
+
         public HelloAck {
             requestId = requestId == null ? null : requestId.clone();
         }
@@ -243,6 +281,9 @@ public final class BridgeControlBodyCodec {
         public byte[] requestId() {
             return requestId == null ? null : requestId.clone();
         }
+    }
+
+    public record SenderHeartbeat(BridgeRequestCodec.Sender sender, UUID sessionUuid) implements Body {
     }
 
     public record SenderReadyAck(BridgeRequestCodec.Sender sender, UUID sessionUuid,

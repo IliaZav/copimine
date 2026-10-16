@@ -59,12 +59,28 @@ public class Wave7CheckpointProbe {
         named.beginNamed(UUID.fromString(legacy.eventId),73,assignment,List.of(
                 RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
         named.completeNamedActor(UUID.fromString(legacy.eventId),73,0,RealitySplitTrialController.NamedTrial.WARDEN);
-        state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
+        state = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of(),
+                Set.of(new RealitySplitChamberController.Passage(0,1))));
         state.putAll(RealitySplitTrialSnapshot.encodeNamed(named.namedSnapshot()));
         var valid = new Wave7CheckpointProbe();
         valid.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
         require(valid.phase==EventPhase.WAVE_7 && valid.realitySplitTrialController.namedTrial(0).stage()==RealitySplitTrialController.Stage.COMPLETE,
                 "valid named checkpoint keeps its sampled layout and completed trial");
+        require(valid.realitySplitChamberController.openingPassages().equals(
+                        Set.of(new RealitySplitChamberController.Passage(0,1)))
+                        && !valid.realitySplitChamberController.boundaryOpen(0,1),
+                "a valid OPENING checkpoint restores intent without granting room access");
+        var incompleteNamed = new RealitySplitTrialController();
+        incompleteNamed.beginNamed(UUID.fromString("00000000-0000-0000-0000-000000000073"),73,assignment,List.of(
+                RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
+        var unauthorizedOpeningState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),Set.of(),
+                Set.of(new RealitySplitChamberController.Passage(0,1))));
+        unauthorizedOpeningState.putAll(RealitySplitTrialSnapshot.encodeNamed(incompleteNamed.namedSnapshot()));
+        var unauthorizedOpening = new Wave7CheckpointProbe();
+        unauthorizedOpening.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(unauthorizedOpeningState)),false);
+        require(unauthorizedOpening.phase==EventPhase.RECOVERY_REQUIRED
+                        && !unauthorizedOpening.realitySplitChamberController.owns(73),
+                "official OPENING intent without an adjacent completed room must fail closed");
         var finalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0,1),Set.of()));
         finalSealState.put("final-seal-wave","7");
         var finalSeal = new Wave7CheckpointProbe();
@@ -73,6 +89,12 @@ public class Wave7CheckpointProbe {
                         &&finalSeal.realitySplitChamberController.completedChambers().equals(Set.of(0,1))
                         &&!finalSeal.realitySplitTrialController.owns(73),
                 "completed final-seal checkpoint restores its rooms without inventing active trial state");
+        var openingFinalSealState = new LinkedHashMap<>(finalSealState);
+        openingFinalSealState.put("reality-split.opening", "0:1");
+        var openingFinalSeal = new Wave7CheckpointProbe();
+        openingFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(openingFinalSealState)),false);
+        require(openingFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
+                "final-seal checkpoint cannot replay a Wave 7 opening intent into its contained room");
         var incompleteFinalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
         incompleteFinalSealState.put("final-seal-wave","7");
         var incompleteFinalSeal = new Wave7CheckpointProbe();

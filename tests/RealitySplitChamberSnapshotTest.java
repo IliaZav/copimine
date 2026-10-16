@@ -24,6 +24,8 @@ public final class RealitySplitChamberSnapshotTest {
         Map<String, String> encoded = RealitySplitChamberSnapshot.encode(
                 77L, controller.assignment(), controller.completedChambers(),
                 controller.openPassages());
+        check(encoded.containsKey("reality-split.opening"),
+                "passage snapshots must explicitly persist pending OPENING intents");
         RealitySplitChamberSnapshot.Data decoded = RealitySplitChamberSnapshot.decode(encoded, 77L);
         check(decoded.assignment().chamberByPlayer().equals(controller.assignment().chamberByPlayer()),
                 "player room assignment must survive restart encoding");
@@ -31,6 +33,10 @@ public final class RealitySplitChamberSnapshotTest {
                 "completed chamber state must survive restart encoding");
         check(decoded.openPassages().equals(controller.openPassages()),
                 "opened passage state must survive restart encoding");
+        Map<String, String> preOpeningSnapshot = new java.util.LinkedHashMap<>(encoded);
+        preOpeningSnapshot.remove("reality-split.opening");
+        check(RealitySplitChamberSnapshot.decode(preOpeningSnapshot, 77L).openingPassages().isEmpty(),
+                "legacy Wave 7 snapshots without an opening key must remain readable as no pending intent");
 
         RealitySplitChamberController restored = new RealitySplitChamberController();
         restored.restore(decoded.generation(), decoded.assignment(), decoded.completedChambers(),
@@ -41,6 +47,45 @@ public final class RealitySplitChamberSnapshotTest {
                 "restored completed rooms must remain complete");
         check(restored.boundaryOpen(firstRoom, secondRoom),
                 "restored opened passage must remain open");
+
+        RealitySplitChamberController openingController = new RealitySplitChamberController();
+        openingController.begin(80L, List.of(first, second));
+        check(openingController.markChamberComplete(80L, firstRoom),
+                "completed chamber must authorize a passage intent");
+        check(openingController.beginOpeningPassage(80L, firstRoom, secondRoom),
+                "passage intent must be recorded before physical opening");
+        Map<String, String> openingEncoded = RealitySplitChamberSnapshot.encode(
+                80L, openingController.assignment(), openingController.completedChambers(),
+                openingController.openPassages(), openingController.openingPassages());
+        RealitySplitChamberSnapshot.Data openingDecoded =
+                RealitySplitChamberSnapshot.decode(openingEncoded, 80L);
+        RealitySplitChamberController openingRestored = new RealitySplitChamberController();
+        openingRestored.restore(openingDecoded.generation(), openingDecoded.assignment(),
+                openingDecoded.completedChambers(), openingDecoded.openPassages(),
+                openingDecoded.openingPassages());
+        check(openingRestored.openingPassages().contains(
+                        new RealitySplitChamberController.Passage(firstRoom, secondRoom)),
+                "restart must retain an OPENING intent");
+        check(!openingRestored.boundaryOpen(firstRoom, secondRoom),
+                "OPENING must not grant passage before physical reconciliation");
+        check(openingRestored.commitOpeningPassage(80L, firstRoom, secondRoom),
+                "reconciliation may commit the passage after physical AIR is verified");
+        check(openingRestored.openingPassages().isEmpty()
+                        && openingRestored.boundaryOpen(firstRoom, secondRoom),
+                "successful reconciliation moves OPENING to OPEN");
+        Map<String, String> conflicting = new java.util.LinkedHashMap<>(openingEncoded);
+        conflicting.put("reality-split.opening", firstRoom + ":" + secondRoom);
+        conflicting.put("reality-split.open", firstRoom + ":" + secondRoom);
+        expectInvalid(() -> RealitySplitChamberSnapshot.decode(conflicting, 80L),
+                "a passage cannot be persisted as both OPEN and OPENING");
+        Map<String, String> invalidOpening = new java.util.LinkedHashMap<>(openingEncoded);
+        invalidOpening.put("reality-split.opening", "0:0");
+        expectInvalid(() -> RealitySplitChamberSnapshot.decode(invalidOpening, 80L),
+                "a self passage must be rejected from a pending opening snapshot");
+        Map<String, String> duplicateOpening = new java.util.LinkedHashMap<>(openingEncoded);
+        duplicateOpening.put("reality-split.opening", "0:1,1:0");
+        expectInvalid(() -> RealitySplitChamberSnapshot.decode(duplicateOpening, 80L),
+                "duplicate reversed passage intents must be rejected");
 
         RealitySplitChamberController disposable = new RealitySplitChamberController();
         disposable.beginDevSolo(78L, List.of(first));
@@ -77,5 +122,14 @@ public final class RealitySplitChamberSnapshotTest {
 
     private static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
+    }
+
+    private static void expectInvalid(Runnable operation, String message) {
+        try {
+            operation.run();
+            throw new AssertionError(message);
+        } catch (IllegalArgumentException expected) {
+            // expected
+        }
     }
 }

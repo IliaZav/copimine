@@ -18,6 +18,7 @@ public final class RealitySplitChamberSnapshot {
     private static final String PLAYER_PREFIX = PREFIX + "player.";
     private static final String COMPLETED = PREFIX + "completed";
     private static final String OPEN = PREFIX + "open";
+    private static final String OPENING = PREFIX + "opening";
 
     private RealitySplitChamberSnapshot() {
     }
@@ -26,7 +27,15 @@ public final class RealitySplitChamberSnapshot {
                                               ChamberIsolationPolicy.Assignment assignment,
                                               Set<Integer> completedChambers,
                                               Set<RealitySplitChamberController.Passage> openPassages) {
-        return encode(generation, assignment, completedChambers, openPassages, false);
+        return encode(generation, assignment, completedChambers, openPassages, Set.of(), false);
+    }
+
+    public static Map<String, String> encode(long generation,
+                                              ChamberIsolationPolicy.Assignment assignment,
+                                              Set<Integer> completedChambers,
+                                              Set<RealitySplitChamberController.Passage> openPassages,
+                                              Set<RealitySplitChamberController.Passage> openingPassages) {
+        return encode(generation, assignment, completedChambers, openPassages, openingPassages, false);
     }
 
     /**
@@ -38,13 +47,22 @@ public final class RealitySplitChamberSnapshot {
                                                         ChamberIsolationPolicy.Assignment assignment,
                                                         Set<Integer> completedChambers,
                                                         Set<RealitySplitChamberController.Passage> openPassages) {
-        return encode(generation, assignment, completedChambers, openPassages, true);
+        return encode(generation, assignment, completedChambers, openPassages, Set.of(), true);
+    }
+
+    public static Map<String, String> encodeDisposable(long generation,
+                                                        ChamberIsolationPolicy.Assignment assignment,
+                                                        Set<Integer> completedChambers,
+                                                        Set<RealitySplitChamberController.Passage> openPassages,
+                                                        Set<RealitySplitChamberController.Passage> openingPassages) {
+        return encode(generation, assignment, completedChambers, openPassages, openingPassages, true);
     }
 
     private static Map<String, String> encode(long generation,
                                               ChamberIsolationPolicy.Assignment assignment,
                                               Set<Integer> completedChambers,
                                               Set<RealitySplitChamberController.Passage> openPassages,
+                                              Set<RealitySplitChamberController.Passage> openingPassages,
                                               boolean allowSinglePlayer) {
         if (generation <= 0L || assignment == null || assignment.chamberCount() < 1
                 || assignment.chamberCount() > ChamberIsolationPolicy.MAX_CHAMBERS
@@ -55,12 +73,20 @@ public final class RealitySplitChamberSnapshot {
         Map<String, String> encoded = new LinkedHashMap<>();
         encoded.put(GENERATION, Long.toString(generation));
         encoded.put(CHAMBER_COUNT, Integer.toString(assignment.chamberCount()));
+        Set<RealitySplitChamberController.Passage> validatedOpen = validatePassages(
+                openPassages, assignment.chamberCount(), OPEN);
+        Set<RealitySplitChamberController.Passage> validatedOpening = validatePassages(
+                openingPassages, assignment.chamberCount(), OPENING);
+        if (!java.util.Collections.disjoint(validatedOpen, validatedOpening)) {
+            throw new IllegalArgumentException("Wave 7 passage cannot be OPEN and OPENING");
+        }
         assignment.chamberByPlayer().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey(Comparator.comparing(UUID::toString)))
                 .forEach(entry -> encoded.put(PLAYER_PREFIX + entry.getKey(),
                         Integer.toString(entry.getValue())));
         encoded.put(COMPLETED, joinIntegers(completedChambers));
-        encoded.put(OPEN, joinPassages(openPassages));
+        encoded.put(OPEN, joinPassages(validatedOpen));
+        encoded.put(OPENING, joinPassages(validatedOpening));
         return Map.copyOf(encoded);
     }
 
@@ -77,7 +103,7 @@ public final class RealitySplitChamberSnapshot {
                                boolean allowSinglePlayer) {
         if (encoded == null || encoded.isEmpty()
                 || encoded.keySet().stream().noneMatch(key -> key.startsWith(PREFIX))) {
-            return new Data(0L, null, Set.of(), Set.of());
+            return new Data(0L, null, Set.of(), Set.of(), Set.of());
         }
         long generation = parseLong(required(encoded, GENERATION), GENERATION);
         if (expectedGeneration <= 0L || generation != expectedGeneration) {
@@ -107,7 +133,30 @@ public final class RealitySplitChamberSnapshot {
         Set<Integer> completed = parseCompleted(required(encoded, COMPLETED), chamberCount);
         Set<RealitySplitChamberController.Passage> open = parsePassages(
                 required(encoded, OPEN), chamberCount);
-        return new Data(generation, assignment, completed, open);
+        Set<RealitySplitChamberController.Passage> opening = encoded.containsKey(OPENING)
+                ? parsePassages(required(encoded, OPENING), chamberCount) : Set.of();
+        if (!java.util.Collections.disjoint(open, opening)) {
+            throw new IllegalArgumentException("Wave 7 passage cannot be OPEN and OPENING");
+        }
+        return new Data(generation, assignment, completed, open, opening);
+    }
+
+    private static Set<RealitySplitChamberController.Passage> validatePassages(
+            Set<RealitySplitChamberController.Passage> passages, int chamberCount, String key) {
+        Set<RealitySplitChamberController.Passage> result = new LinkedHashSet<>();
+        if (passages == null) return result;
+        for (RealitySplitChamberController.Passage passage : passages) {
+            if (passage == null || passage.firstChamber() < 0 || passage.secondChamber() < 0
+                    || passage.firstChamber() >= chamberCount || passage.secondChamber() >= chamberCount
+                    || passage.firstChamber() == passage.secondChamber()
+                    || me.copimine.endevent.domain.RealitySplitBarrierPolicy.boundaryForPair(
+                            passage.firstChamber(), passage.secondChamber(), chamberCount) < 0
+                    || !result.add(new RealitySplitChamberController.Passage(
+                            passage.firstChamber(), passage.secondChamber()))) {
+                throw new IllegalArgumentException("Wave 7 snapshot has invalid " + key + " passage");
+            }
+        }
+        return result;
     }
 
     private static String joinIntegers(Set<Integer> values) {
@@ -199,10 +248,12 @@ public final class RealitySplitChamberSnapshot {
     public record Data(long generation,
                        ChamberIsolationPolicy.Assignment assignment,
                        Set<Integer> completedChambers,
-                       Set<RealitySplitChamberController.Passage> openPassages) {
+                       Set<RealitySplitChamberController.Passage> openPassages,
+                       Set<RealitySplitChamberController.Passage> openingPassages) {
         public Data {
             completedChambers = Set.copyOf(completedChambers == null ? Set.of() : completedChambers);
             openPassages = Set.copyOf(openPassages == null ? Set.of() : openPassages);
+            openingPassages = Set.copyOf(openingPassages == null ? Set.of() : openingPassages);
         }
     }
 }

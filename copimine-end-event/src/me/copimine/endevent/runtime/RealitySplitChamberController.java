@@ -20,6 +20,7 @@ public final class RealitySplitChamberController {
             new ChamberIsolationPolicy.Assignment(0, Map.of());
     private final Map<UUID, Integer> chamberByEntity = new LinkedHashMap<>();
     private final Set<Passage> openBoundaries = new LinkedHashSet<>();
+    private final Set<Passage> openingBoundaries = new LinkedHashSet<>();
     private final Set<Integer> completedChambers = new LinkedHashSet<>();
 
     public void begin(long generation, List<UUID> players) {
@@ -29,6 +30,7 @@ public final class RealitySplitChamberController {
         this.assignment = nextAssignment;
         this.chamberByEntity.clear();
         this.openBoundaries.clear();
+        this.openingBoundaries.clear();
         this.completedChambers.clear();
     }
 
@@ -54,6 +56,7 @@ public final class RealitySplitChamberController {
         this.assignment = new ChamberIsolationPolicy.Assignment(chamberCount, mapping);
         this.chamberByEntity.clear();
         this.openBoundaries.clear();
+        this.openingBoundaries.clear();
         this.completedChambers.clear();
     }
 
@@ -73,6 +76,11 @@ public final class RealitySplitChamberController {
         return Set.copyOf(openBoundaries);
     }
 
+    /** Pending durable physical passage transactions, restored before the world is exposed. */
+    public Set<Passage> openingPassages() {
+        return Set.copyOf(openingBoundaries);
+    }
+
     /**
      * Restore the exact generation-scoped assignment after a process restart.
      * Entity indexes are intentionally not restored here; the Bukkit adapter
@@ -82,7 +90,18 @@ public final class RealitySplitChamberController {
                         ChamberIsolationPolicy.Assignment restoredAssignment,
                         Set<Integer> restoredCompletedChambers,
                         Set<Passage> restoredOpenPassages) {
-        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages, false);
+        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages,
+                Set.of(), false);
+    }
+
+    /** Restore explicit passage intents without granting access until their physical commit finishes. */
+    public void restore(long generation,
+                        ChamberIsolationPolicy.Assignment restoredAssignment,
+                        Set<Integer> restoredCompletedChambers,
+                        Set<Passage> restoredOpenPassages,
+                        Set<Passage> restoredOpeningPassages) {
+        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages,
+                restoredOpeningPassages, false);
     }
 
     /** Restore a disposable local probe, which may have one operator UUID. */
@@ -90,13 +109,25 @@ public final class RealitySplitChamberController {
                                   ChamberIsolationPolicy.Assignment restoredAssignment,
                                   Set<Integer> restoredCompletedChambers,
                                   Set<Passage> restoredOpenPassages) {
-        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages, true);
+        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages,
+                Set.of(), true);
+    }
+
+    /** Restore a disposable local probe, including pending passage transactions. */
+    public void restoreDisposable(long generation,
+                                  ChamberIsolationPolicy.Assignment restoredAssignment,
+                                  Set<Integer> restoredCompletedChambers,
+                                  Set<Passage> restoredOpenPassages,
+                                  Set<Passage> restoredOpeningPassages) {
+        restore(generation, restoredAssignment, restoredCompletedChambers, restoredOpenPassages,
+                restoredOpeningPassages, true);
     }
 
     private void restore(long generation,
                          ChamberIsolationPolicy.Assignment restoredAssignment,
                          Set<Integer> restoredCompletedChambers,
                          Set<Passage> restoredOpenPassages,
+                         Set<Passage> restoredOpeningPassages,
                          boolean allowSinglePlayer) {
         if (generation <= 0L || restoredAssignment == null
                 || restoredAssignment.chamberCount() < 1
@@ -110,6 +141,7 @@ public final class RealitySplitChamberController {
         // or completion receipts while its caller enters the recovery path.
         Set<Integer> validatedCompleted = new LinkedHashSet<>();
         Set<Passage> validatedPassages = new LinkedHashSet<>();
+        Set<Passage> validatedOpeningPassages = new LinkedHashSet<>();
         int restoredCount = restoredAssignment.chamberCount();
         if (restoredCompletedChambers != null) {
             for (Integer chamber : restoredCompletedChambers) {
@@ -133,6 +165,15 @@ public final class RealitySplitChamberController {
                 validatedPassages.add(new Passage(passage.firstChamber(), passage.secondChamber()));
             }
         }
+        if (restoredOpeningPassages != null) {
+            for (Passage passage : restoredOpeningPassages) {
+                if (!validPassage(passage, restoredCount)
+                        || validatedPassages.contains(passage)) {
+                    throw new IllegalArgumentException("Wave 7 opening passage is invalid or already open");
+                }
+                validatedOpeningPassages.add(new Passage(passage.firstChamber(), passage.secondChamber()));
+            }
+        }
         this.generation = generation;
         this.assignment = restoredAssignment;
         this.chamberByEntity.clear();
@@ -140,6 +181,8 @@ public final class RealitySplitChamberController {
         this.completedChambers.addAll(validatedCompleted);
         this.openBoundaries.clear();
         this.openBoundaries.addAll(validatedPassages);
+        this.openingBoundaries.clear();
+        this.openingBoundaries.addAll(validatedOpeningPassages);
     }
 
     public boolean assignEntity(long generation, UUID entity, int chamber) {
@@ -203,6 +246,38 @@ public final class RealitySplitChamberController {
         return openBoundaries.size() > before;
     }
 
+    /** Record a passage opening intent before the adapter changes any world block. */
+    public boolean beginOpeningPassage(long generation, int firstChamber, int secondChamber) {
+        Passage passage = validOwnedPassage(generation, firstChamber, secondChamber);
+        if (passage == null || openBoundaries.contains(passage)) return false;
+        openingBoundaries.add(passage);
+        return true;
+    }
+
+    /** Move a durable opening intent into the access graph after physical AIR is verified. */
+    public boolean commitOpeningPassage(long generation, int firstChamber, int secondChamber) {
+        Passage passage = validOwnedPassage(generation, firstChamber, secondChamber);
+        if (passage == null) return false;
+        if (openBoundaries.contains(passage)) return true;
+        if (!openingBoundaries.remove(passage)) return false;
+        openBoundaries.add(passage);
+        return true;
+    }
+
+    /** Return to the durable intent if the final OPEN checkpoint could not be saved. */
+    public boolean revertOpenPassageToIntent(long generation, int firstChamber, int secondChamber) {
+        Passage passage = validOwnedPassage(generation, firstChamber, secondChamber);
+        if (passage == null || !openBoundaries.remove(passage)) return false;
+        openingBoundaries.add(passage);
+        return true;
+    }
+
+    /** Forget an intent only when its first durable checkpoint was refused before world mutation. */
+    public void cancelOpeningPassage(long generation, int firstChamber, int secondChamber) {
+        Passage passage = validOwnedPassage(generation, firstChamber, secondChamber);
+        if (passage != null) openingBoundaries.remove(passage);
+    }
+
     /** Preflight only; the adapter must restore the physical wall before committing. */
     public boolean canOpenCompletedPassage(long generation, int firstChamber, int secondChamber) {
         return owns(generation) && chamberComplete(generation, firstChamber)
@@ -237,12 +312,10 @@ public final class RealitySplitChamberController {
     }
 
     public void openBoundary(long generation, int firstChamber, int secondChamber) {
-        if (!owns(generation)
-                || !validChamber(firstChamber) || !validChamber(secondChamber)
-                || firstChamber == secondChamber
-                || RealitySplitBarrierPolicy.boundaryForPair(
-                        firstChamber, secondChamber, assignment.chamberCount()) < 0) return;
-        openBoundaries.add(new Passage(firstChamber, secondChamber));
+        Passage passage = validOwnedPassage(generation, firstChamber, secondChamber);
+        if (passage == null) return;
+        openingBoundaries.remove(passage);
+        openBoundaries.add(passage);
     }
 
     /** Open every boundary only for the explicit post-objective merge step. */
@@ -252,7 +325,9 @@ public final class RealitySplitChamberController {
             for (int second = first + 1; second < assignment.chamberCount(); second++) {
                 if (RealitySplitBarrierPolicy.boundaryForPair(
                         first, second, assignment.chamberCount()) >= 0) {
-                    openBoundaries.add(new Passage(first, second));
+                    Passage passage = new Passage(first, second);
+                    openingBoundaries.remove(passage);
+                    openBoundaries.add(passage);
                 }
             }
         }
@@ -269,7 +344,25 @@ public final class RealitySplitChamberController {
         assignment = new ChamberIsolationPolicy.Assignment(0, Map.of());
         chamberByEntity.clear();
         openBoundaries.clear();
+        openingBoundaries.clear();
         completedChambers.clear();
+    }
+
+    private Passage validOwnedPassage(long generation, int firstChamber, int secondChamber) {
+        if (!owns(generation) || !validChamber(firstChamber) || !validChamber(secondChamber)
+                || firstChamber == secondChamber
+                || RealitySplitBarrierPolicy.boundaryForPair(
+                        firstChamber, secondChamber, assignment.chamberCount()) < 0) return null;
+        return new Passage(firstChamber, secondChamber);
+    }
+
+    private static boolean validPassage(Passage passage, int chamberCount) {
+        return passage != null && passage.firstChamber() >= 0
+                && passage.firstChamber() < chamberCount
+                && passage.secondChamber() >= 0 && passage.secondChamber() < chamberCount
+                && passage.firstChamber() != passage.secondChamber()
+                && RealitySplitBarrierPolicy.boundaryForPair(
+                        passage.firstChamber(), passage.secondChamber(), chamberCount) >= 0;
     }
 
     private boolean validChamber(int chamber) {

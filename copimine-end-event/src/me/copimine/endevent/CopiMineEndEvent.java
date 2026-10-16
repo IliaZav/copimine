@@ -1864,8 +1864,39 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             return;
         }
+        if (!reconcileOpeningRealitySplitPassages()) {
+            getLogger().severe("END_RIFT_WAVE7_PASSAGE_RECONCILIATION_FAILED event=" + eventId
+                    + " generation=" + generation + " action=block-progression");
+            if (phase != EventPhase.RECOVERY_REQUIRED) {
+                enterNamedRealitySplitRecovery("WAVE7_PASSAGE_RECONCILIATION_FAILED");
+            }
+            return;
+        }
         getLogger().info("END_RIFT_WAVE7_BARRIERS_REHYDRATED event=" + eventId
                 + " generation=" + generation + " collision=true visible=true");
+    }
+
+    /** Finish every persisted passage intent after its CLOSED wall has been rebuilt. */
+    private boolean reconcileOpeningRealitySplitPassages() {
+        int chamberCount = realitySplitChamberController.assignment().chamberCount();
+        List<RealitySplitChamberController.Passage> pending = realitySplitChamberController
+                .openingPassages().stream()
+                .sorted(Comparator.comparingInt(RealitySplitChamberController.Passage::firstChamber)
+                        .thenComparingInt(RealitySplitChamberController.Passage::secondChamber))
+                .toList();
+        for (RealitySplitChamberController.Passage passage : pending) {
+            if (!openRealitySplitPassageDurably(
+                    passage.firstChamber(), passage.secondChamber(), chamberCount)) {
+                int boundary = RealitySplitBarrierPolicy.boundaryForPair(
+                        passage.firstChamber(), passage.secondChamber(), chamberCount);
+                if (phase != EventPhase.RECOVERY_REQUIRED) {
+                    enterNamedRealitySplitRecovery(
+                            "WAVE7_PASSAGE_RECONCILIATION_FAILED:" + boundary);
+                }
+                return false;
+            }
+        }
+        return true;
     }
 
     private boolean finalSealBarrierContext() {
@@ -3177,6 +3208,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             boolean persistedFinalSeal = !persistedDisposableWave7
                     && "7".equals(snapshot.objectiveProgress().get("final-seal-wave"));
             if (persistedFinalSeal) {
+                if (!wave7.openingPassages().isEmpty()) {
+                    throw new IllegalArgumentException("FINAL_SEAL_HAS_OPENING_PASSAGE");
+                }
                 if (snapshot.objectiveProgress().keySet().stream()
                         .anyMatch(key -> key.startsWith("reality-split-trial."))) {
                     throw new IllegalArgumentException("FINAL_SEAL_HAS_TRIAL_PROGRESS");
@@ -3193,9 +3227,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 // Wave 7 ended; do not synthesize a fresh active trial controller.
                 RealitySplitChamberController validatedRooms = new RealitySplitChamberController();
                 validatedRooms.restore(wave7.generation(), wave7.assignment(),
-                        wave7.completedChambers(), wave7.openPassages());
+                        wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 realitySplitChamberController.restore(wave7.generation(), wave7.assignment(),
-                        wave7.completedChambers(), wave7.openPassages());
+                        wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 realitySplitTrialController.clear();
                 getLogger().info("END_RIFT_WAVE7_FINAL_SEAL_SNAPSHOT_RESTORED event=" + eventId
                         + " generation=" + generation + " players="
@@ -3207,6 +3241,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     snapshot.objectiveProgress(), UUID.fromString(eventId), generation);
             if (trialSnapshot.trials().isEmpty()) {
                 throw new IllegalArgumentException("WAVE7_NAMED_TRIAL_PROGRESS_MISSING");
+            }
+            if (!persistedDisposableWave7 && wave7.openingPassages().stream().anyMatch(passage ->
+                    !wave7.completedChambers().contains(passage.firstChamber())
+                            && !wave7.completedChambers().contains(passage.secondChamber()))) {
+                throw new IllegalArgumentException("WAVE7_OPENING_PASSAGE_WITHOUT_COMPLETED_ROOM");
             }
             if (wave7.assignment() != null) {
                 if (!trialSnapshot.trials().isEmpty()) {
@@ -3226,20 +3265,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 RealitySplitChamberController validatedRooms = new RealitySplitChamberController();
                 if (persistedDisposableWave7) {
                     validatedRooms.restoreDisposable(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
+                            wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 } else {
                     validatedRooms.restore(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
+                            wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 }
                 if (persistedDisposableWave7) {
                     if (sandboxWaveRoster.isEmpty()) {
                         sandboxWaveRoster = Set.copyOf(wave7.assignment().chamberByPlayer().keySet());
                     }
                     realitySplitChamberController.restoreDisposable(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
+                            wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 } else {
                     realitySplitChamberController.restore(wave7.generation(), wave7.assignment(),
-                            wave7.completedChambers(), wave7.openPassages());
+                            wave7.completedChambers(), wave7.openPassages(), wave7.openingPassages());
                 }
                 realitySplitTrialController.restoreNamed(UUID.fromString(eventId), generation,
                         wave7.assignment(), trialSnapshot);
@@ -3355,11 +3394,13 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 ? RealitySplitChamberSnapshot.encodeDisposable(
                         generation, realitySplitChamberController.assignment(),
                         realitySplitChamberController.completedChambers(),
-                        realitySplitChamberController.openPassages())
+                        realitySplitChamberController.openPassages(),
+                        realitySplitChamberController.openingPassages())
                 : RealitySplitChamberSnapshot.encode(
                         generation, realitySplitChamberController.assignment(),
                         realitySplitChamberController.completedChambers(),
-                        realitySplitChamberController.openPassages()));
+                        realitySplitChamberController.openPassages(),
+                        realitySplitChamberController.openingPassages()));
         if (realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) {
             encoded.putAll(RealitySplitTrialSnapshot.encodeNamed(realitySplitTrialController.namedSnapshot()));
         } else if (realitySplitTrialController.owns(generation)
@@ -24743,8 +24784,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     int boundary = RealitySplitBarrierPolicy.boundaryForPair(
                             chamber, other, chamberCount);
                     if (boundary >= 0 && !realitySplitChamberController.boundaryOpen(chamber, other)) {
-                        if (openRealitySplitBoundary(boundary, chamberCount)) {
-                            realitySplitChamberController.openBoundary(generation, chamber, other);
+                        if (openRealitySplitPassageDurably(chamber, other, chamberCount)) {
                             checkpoint = true;
                         } else {
                             opened = false;
@@ -24794,14 +24834,65 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         for (int other = 0; other < chamberCount; other++) {
             if (realitySplitChamberController.canOpenCompletedPassage(
                     expectedGeneration, chamber, other)
-                    && openRealitySplitBoundary(RealitySplitBarrierPolicy.boundaryForPair(
-                        chamber, other, chamberCount), chamberCount)
-                    && realitySplitChamberController.openCompletedPassage(
-                            expectedGeneration, chamber, other)) {
+                    && openRealitySplitPassageDurably(chamber, other, chamberCount)) {
                 opened++;
             }
         }
         return opened;
+    }
+
+    /** Persist OPENING before AIR, then persist OPEN only after the world mutation commits. */
+    private boolean openRealitySplitPassageDurably(int firstChamber, int secondChamber,
+                                                    int chamberCount) {
+        long expectedGeneration = generation;
+        int boundary = RealitySplitBarrierPolicy.boundaryForPair(
+                firstChamber, secondChamber, chamberCount);
+        if (boundary < 0 || !realitySplitChamberController.owns(expectedGeneration)) return false;
+        if (realitySplitChamberController.boundaryOpen(firstChamber, secondChamber)) return true;
+
+        boolean intentAlreadyPersisted = realitySplitChamberController.openingPassages().contains(
+                new RealitySplitChamberController.Passage(firstChamber, secondChamber));
+        if (!realitySplitChamberController.beginOpeningPassage(
+                expectedGeneration, firstChamber, secondChamber)) return false;
+        Map<String, String> openingCheckpoint = Map.copyOf(waveObjectiveProgressSnapshot());
+        if (!saveStateSync()) {
+            if (!intentAlreadyPersisted) {
+                realitySplitChamberController.cancelOpeningPassage(
+                        expectedGeneration, firstChamber, secondChamber);
+                openingCheckpoint = Map.copyOf(waveObjectiveProgressSnapshot());
+            }
+            enterNamedRealitySplitRecovery(
+                    "WAVE7_PASSAGE_OPENING_SAVE_FAILED:" + boundary);
+            return false;
+        }
+
+        // Keep a durable recovery copy available if the adapter discovers a
+        // corrupt journal while committing. Outside recovery this is ignored.
+        wave7RecoveryCheckpoint = openingCheckpoint;
+        if (!openRealitySplitBoundary(boundary, chamberCount)) {
+            if (phase == EventPhase.RECOVERY_REQUIRED) {
+                enterNamedRealitySplitRecovery(
+                        "WAVE7_PASSAGE_PHYSICAL_OPEN_FAILED:" + boundary);
+            } else {
+                wave7RecoveryCheckpoint = Map.of();
+            }
+            return false;
+        }
+        if (!realitySplitChamberController.commitOpeningPassage(
+                expectedGeneration, firstChamber, secondChamber)) {
+            enterNamedRealitySplitRecovery(
+                    "WAVE7_PASSAGE_OPEN_COMMIT_REJECTED:" + boundary);
+            return false;
+        }
+        if (!saveStateSync()) {
+            realitySplitChamberController.revertOpenPassageToIntent(
+                    expectedGeneration, firstChamber, secondChamber);
+            enterNamedRealitySplitRecovery(
+                    "WAVE7_PASSAGE_OPEN_SAVE_FAILED:" + boundary);
+            return false;
+        }
+        wave7RecoveryCheckpoint = Map.of();
+        return true;
     }
 
     private void finishRealitySplitTrial(int chamber, String source) {
@@ -24941,8 +25032,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             for (int other = 0; other < chamberCount; other++) {
                 int boundary = RealitySplitBarrierPolicy.boundaryForPair(chamber, other, chamberCount);
                 if (boundary < 0 || realitySplitChamberController.boundaryOpen(chamber, other)) continue;
-                if (openRealitySplitBoundary(boundary, chamberCount)) {
-                    realitySplitChamberController.openBoundary(generation, chamber, other);
+                if (openRealitySplitPassageDurably(chamber, other, chamberCount)) {
                     opened++;
                 }
             }

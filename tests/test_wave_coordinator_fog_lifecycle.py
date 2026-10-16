@@ -43,7 +43,7 @@ import me.copimine.endevent.domain.EliteProjectileImpactPolicy;
 import me.copimine.endevent.domain.WaveProjectileAdmissionController;
 import me.copimine.endevent.domain.WaveProjectileTargetPolicy;
 public class WaveFogLifecycleProbe {
- enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_4,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
+ enum EventPhase { WAVE_1,WAVE_2,WAVE_3,WAVE_4,WAVE_5,WAVE_6,WAVE_7,INTERMISSION_1,INTERMISSION_2,INTERMISSION_3,INTERMISSION_4,INTERMISSION_5,INTERMISSION_6,CORE_RESTORATION,RECOVERY_REQUIRED,BOSS_ACTIVE,READY_FOR_PLAYERS }
  enum BlackFogPhase { COMBAT,FOG }
  EventPhase phase=EventPhase.WAVE_5;BlackFogPhase blackFogPhase=BlackFogPhase.COMBAT;
  long generation=3,eventTickCounter=40;int activeWave=5;boolean localTextureShowcase,testCombatAiMode;
@@ -162,6 +162,37 @@ public class WaveFogLifecycleProbe {
     h.tickWaveMobAi();check(h.waveCombatCoordinator.owns(h.generation),"valid resume failed to begin authoritative generation before planning");
     check(m.target!=null,"valid resume did not reacquire target");
    }
+   case "all-intermissions" -> {
+    EventPhase[] waves={EventPhase.WAVE_1,EventPhase.WAVE_2,EventPhase.WAVE_3,EventPhase.WAVE_4,EventPhase.WAVE_5,EventPhase.WAVE_6};
+    EventPhase[] breaks={EventPhase.INTERMISSION_1,EventPhase.INTERMISSION_2,EventPhase.INTERMISSION_3,EventPhase.INTERMISSION_4,EventPhase.INTERMISSION_5,EventPhase.INTERMISSION_6};
+    var participant=new Player();Bukkit.players.put(participant.id,participant);
+    for(int wave=1;wave<=6;wave++){
+     h.activeWave=wave;h.phase=waves[wave-1];
+     var mob=new Enderman();mob.wave=wave;h.ownedEntities.put(mob.id,mob);
+     h.tickWaveMobAi();check(mob.target!=null,"active wave failed to assign its combat target: "+wave);
+     h.phase=breaks[wave-1];h.waveCombatCoordinator.clear();mob.target=participant;
+     h.tickWaveMobAi();
+     check(!mob.ai&&!mob.aware,"intermission restored official Wave AI: "+wave);
+     check(mob.target==null&&mob.path.stopCount>0,"intermission retained target or path: "+wave);
+     check(!h.waveCombatCoordinator.owns(h.generation),"intermission reacquired coordinator ownership: "+wave);
+     h.ownedEntities.remove(mob.id);
+    }
+   }
+   case "fog-three-cycles" -> {
+    var mob=new Enderman();h.ownedEntities.put(mob.id,mob);var participant=new Player();Bukkit.players.put(participant.id,participant);
+    h.tickWaveMobAi();
+    for(int cycle=1;cycle<=3;cycle++){
+     h.blackFogPhase=BlackFogPhase.FOG;h.freezeWaveMobs(true);
+     check(!mob.ai&&!mob.aware&&mob.target==null,"fog did not freeze Wave 5 combat state: "+cycle);
+     check(!h.waveCombatCoordinator.owns(h.generation),"fog retained a combat coordinator lease: "+cycle);
+     h.tickWaveMobAi();
+     check(!mob.ai&&!mob.aware&&mob.target==null,"fog heartbeat resumed Wave 5 combat: "+cycle);
+     check(!h.waveCombatCoordinator.owns(h.generation),"fog heartbeat reacquired coordinator ownership: "+cycle);
+     h.blackFogPhase=BlackFogPhase.COMBAT;h.freezeWaveMobs(false);h.tickWaveMobAi();
+     check(mob.ai&&mob.aware&&mob.target!=null,"post-fog combat did not restore and reacquire legally: "+cycle);
+     check(h.waveCombatCoordinator.owns(h.generation),"post-fog planner failed to reacquire current generation: "+cycle);
+    }
+   }
    case "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume" -> {
     var m=new Skeleton();h.ownedEntities.put(m.id,m);var a=new Arrow();a.shooter=m;
     if(args[0].equals("arrow-fog"))h.blackFogPhase=BlackFogPhase.FOG;
@@ -244,7 +275,7 @@ public class WaveFogLifecycleProbe {
     return out
 
 
-@pytest.mark.parametrize("scenario", ["fog", "intermission", "intermission-wave1", "intermission-wave3", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
+@pytest.mark.parametrize("scenario", ["fog", "fog-three-cycles", "intermission", "intermission-wave1", "intermission-wave3", "all-intermissions", "core", "empty-resume", "generation-stale", "arrow-fog", "arrow-intermission", "arrow-stale", "arrow-resume", "elite-fog", "elite-stale", "elite-resume", "side-fog", "side-stale", "side-resume", "fog-cleanup", "cloud-fog", "cloud-stale", "cloud-resume", "cloud-cleaned-resume", "impact-fog", "impact-stale", "impact-resume", "impact-cleaned-resume", "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session"])
 def test_heartbeat_and_projectile_admission(probe, scenario):
     run = subprocess.run(["java", "-cp", str(probe), "WaveFogLifecycleProbe", scenario], capture_output=True, text=True)
     assert run.returncode == 0, run.stdout + run.stderr

@@ -36,6 +36,7 @@ import org.bukkit.plugin.messaging.PluginMessageListener;
 /** End Event's independent v4 stream, readiness gate, and request receiver. */
 public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, PluginMessageListener {
     public static final String CHANNEL = "copimine:client_bridge_v4";
+    private static final long HEARTBEAT_INTERVAL_MILLIS = 5_000L;
     private static final long ENVELOPE_VALIDITY_MILLIS = 30_000L;
     private static final int MAX_REQUEST_BYTES = BridgeRequestCodec.MAX_REQUEST_BYTES;
     private static final int MAX_STREAMS_PER_CONNECTION = 256;
@@ -94,6 +95,42 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         this.abilityHandler = Objects.requireNonNull(abilityHandler, "abilityHandler");
         this.inboundRateLimiter = Objects.requireNonNull(inboundRateLimiter, "inboundRateLimiter");
         this.readyListener = Objects.requireNonNull(readyListener, "readyListener");
+    }
+
+    /** Called by the owning plugin on the server thread. */
+    public synchronized void tick() {
+        if (closed) {
+            return;
+        }
+        long now = clock.getAsLong();
+        for (Player player : new ArrayList<>(playerHandles.values())) {
+            PlayerState state = currentReadyState(player);
+            if (state == null || !"0.1.3+26.3".equals(state.sessionVersion)) {
+                continue;
+            }
+            StreamState stream = state.stream;
+            if (now <= 0L || now < stream.nextHeartbeatAtMillis) {
+                continue;
+            }
+            if (stream.serverCounter == Long.MAX_VALUE) {
+                retireStream(state);
+                continue;
+            }
+            byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                    BridgeRequestCodec.Sender.END_EVENT, state.sessionUuid));
+            try {
+                SignedBytes signed = signAndSend(player, state, stream.streamId,
+                        stream.serverCounter + 1L, now, body);
+                if (signed == null) {
+                    retireStream(state);
+                } else if (state.stream == stream) {
+                    stream.serverCounter++;
+                    stream.nextHeartbeatAtMillis = now + HEARTBEAT_INTERVAL_MILLIS;
+                }
+            } catch (RuntimeException signingFailure) {
+                retireStream(state);
+            }
+        }
     }
 
     @Override
@@ -317,6 +354,11 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         inboundRateLimiter.clear();
     }
 
+    private static int heartbeatFeatures(PlayerState state) {
+        return "0.1.3+26.3".equals(state.sessionVersion)
+                ? BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE : 0;
+    }
+
     private boolean handleControlHello(Player player, BridgeRequestCodec.ControlHello hello, byte[] exactRequest) {
         ClientModSessionRegistry.VerifiedClientSession current = registry.current(player.getUniqueId()).orElse(null);
         if (current == null || !current.playerUuid().equals(player.getUniqueId())
@@ -371,7 +413,8 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             return false;
         }
         byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
-                BridgeRequestCodec.Sender.END_EVENT, state.sessionUuid, requestKind, requestId));
+                BridgeRequestCodec.Sender.END_EVENT, state.sessionUuid, requestKind, requestId,
+                heartbeatFeatures(state)));
         SignedBytes signed = signEnvelope(player, state, streamId, 1L, clock.getAsLong(), body);
         if (signed == null) {
             return false;
@@ -549,6 +592,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             ensureContextBound(player, state, context);
         }
         if (!wasReady) {
+            stream.nextHeartbeatAtMillis = clock.getAsLong() + HEARTBEAT_INTERVAL_MILLIS;
             try {
                 readyListener.accept(player.getUniqueId());
             } catch (RuntimeException failure) {
@@ -602,7 +646,8 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
             return false;
         }
         byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
-                BridgeRequestCodec.Sender.END_EVENT, state.sessionUuid, 1, reopen.requestId()));
+                BridgeRequestCodec.Sender.END_EVENT, state.sessionUuid, 1, reopen.requestId(),
+                heartbeatFeatures(state)));
         SignedBytes refreshed = signEnvelope(player, state, stream.streamId, 1L, clock.getAsLong(), body);
         if (refreshed != null) {
             stream.helloAckBytes = refreshed.envelopeBytes();
@@ -990,6 +1035,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private static final class StreamState {
+        long nextHeartbeatAtMillis;
         final String streamId;
         int helloAckRequestKind;
         byte[] helloAckRequestId;

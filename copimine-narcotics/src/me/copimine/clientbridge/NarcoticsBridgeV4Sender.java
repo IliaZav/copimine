@@ -25,6 +25,7 @@ import java.util.function.LongSupplier;
 
 /** Owns the Narcotics sender's authenticated v4 streams and visual packet outbox. */
 public final class NarcoticsBridgeV4Sender implements AutoCloseable {
+    private static final long HEARTBEAT_INTERVAL_MILLIS = 5_000L;
     private static final long ENVELOPE_TTL_MILLIS = 30_000L;
     private static final long REOPEN_INTERVAL_MILLIS = 1_000L;
     private static final long HELLO_ACK_REPLAY_INTERVAL_MILLIS = 1_000L;
@@ -54,6 +55,46 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
         this.listenerRegistration = registry.addInvalidationListener(invalidationListener);
     }
 
+    /** Called by the owning bridge on the server thread. */
+    public synchronized void tick() {
+        if (closed) {
+            return;
+        }
+        long now = positiveNow();
+        for (PlayerState state : players.values()) {
+            if (!isPlayerOnline(state.playerHandle) || !isCurrent(state.playerUuid, state.session)
+                    || state.session == null || !"0.1.3+26.3".equals(state.session.clientVersion())) {
+                continue;
+            }
+            Stream stream = state.current;
+            if (stream == null || stream.phase != Phase.READY
+                    || now <= 0L || now < stream.nextHeartbeatAtMillis) {
+                continue;
+            }
+            long counter = stream.nextEnvelopeCounter;
+            if (counter <= 0L || counter >= Long.MAX_VALUE - 1L) {
+                retireStream(state);
+                continue;
+            }
+            byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                    BridgeRequestCodec.Sender.NARCOTICS, state.session.sessionUuid()));
+            try {
+                byte[] envelope = signAndGet(state, stream, counter, now, body);
+                if (envelope == null) {
+                    retireStream(state);
+                    continue;
+                }
+                dispatch(state.playerUuid, state, stream, envelope);
+                if (state.current == stream) {
+                    stream.nextEnvelopeCounter = counter + 1L;
+                    stream.nextHeartbeatAtMillis = now + HEARTBEAT_INTERVAL_MILLIS;
+                }
+            } catch (RuntimeException signingFailure) {
+                retireStream(state);
+            }
+        }
+    }
+
     /** Starts a sender stream only for the registry's current verified session. */
     public synchronized boolean startStream(Player player,
             ClientModSessionRegistry.VerifiedClientSession verifiedSession,
@@ -72,6 +113,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
             }
             return existing;
         });
+        state.playerHandle = player;
         if (state.clientNonce != null && !state.clientNonce.equals(clientNonce)) {
             return false;
         }
@@ -407,6 +449,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
         dispatch(playerUuid, state, stream, receipt);
         if (state.current == stream) {
             stream.phase = Phase.READY;
+            stream.nextHeartbeatAtMillis = issuedAt + HEARTBEAT_INTERVAL_MILLIS;
         }
     }
 
@@ -491,6 +534,11 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
         return admitted;
     }
 
+    private static int heartbeatFeatures(PlayerState state) {
+        return "0.1.3+26.3".equals(state.session.clientVersion())
+                ? BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE : 0;
+    }
+
     private boolean createStream(UUID playerUuid, PlayerState state, int requestKind,
                                  byte[] requestId, byte[] exactRequest) {
         if (!isCurrent(playerUuid, state.session) || state.clientNonce == null) {
@@ -510,7 +558,8 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
         Stream stream = new Stream(streamId, requestId.clone(), requestKind);
         state.current = stream;
         byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
-                BridgeRequestCodec.Sender.NARCOTICS, state.session.sessionUuid(), requestKind, requestId));
+                BridgeRequestCodec.Sender.NARCOTICS, state.session.sessionUuid(), requestKind, requestId,
+                heartbeatFeatures(state)));
         byte[] envelope = signAndGet(state, stream, 1L, positiveNow(), body);
         if (envelope == null) {
             retireStream(state);
@@ -643,7 +692,8 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
             return false;
         }
         byte[] body = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
-                BridgeRequestCodec.Sender.NARCOTICS, state.session.sessionUuid(), 1, reopen.requestId()));
+                BridgeRequestCodec.Sender.NARCOTICS, state.session.sessionUuid(), 1, reopen.requestId(),
+                heartbeatFeatures(state)));
         byte[] refreshed = signAndGet(state, stream, 1L, now, body);
         if (refreshed != null) {
             stream.helloEnvelopeBytes = refreshed.clone();
@@ -781,6 +831,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
     }
 
     private static final class PlayerState {
+        Player playerHandle;
         final UUID playerUuid;
         final UUID connectionEpoch;
         final Set<String> seenStreamIds = new HashSet<>();
@@ -804,6 +855,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
     }
 
     private static final class Stream {
+        long nextHeartbeatAtMillis;
         final String streamId;
         final byte[] helloId;
         final int helloRequestKind;

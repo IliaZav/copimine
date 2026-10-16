@@ -590,6 +590,157 @@ final class EndEventBridgeV4SenderTest {
         assertEquals(2L, BridgeEnvelopeCodec.decode(fixture.outbound.get(3)).metadata().counter());
     }
 
+    @Test
+    void heartbeatStartsAtFiveSecondsOnlyAfterConfirmedReadyAndUsesContiguousCounters() throws Exception {
+        Fixture fixture = heartbeatFixture("0.1.3+26.3", false);
+        assertEquals(37, BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).bodyBytes().length);
+        BridgeControlBodyCodec.HelloAck hello = (BridgeControlBodyCodec.HelloAck)
+                BridgeControlBodyCodec.decode(BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).bodyBytes());
+        assertEquals(1, hello.featureFlags());
+        fixture.now.addAndGet(5_000L);
+        tick(fixture);
+        assertEquals(2, fixture.outbound.size(), "pending confirm cannot emit heartbeat");
+        confirmHeartbeatFixture(fixture);
+        assertEquals(3L, fixture.verify(fixture.outbound.getLast(), 3L).metadata().counter());
+        fixture.now.addAndGet(4_999L);
+        tick(fixture);
+        assertEquals(3, fixture.outbound.size());
+        fixture.now.incrementAndGet();
+        tick(fixture);
+        assertHeartbeat(fixture, 4L);
+        tick(fixture);
+        assertEquals(4, fixture.outbound.size(), "same deadline emits only once");
+        fixture.now.addAndGet(5_000L);
+        tick(fixture);
+        assertHeartbeat(fixture, 5L);
+    }
+
+    @Test
+    void legacyOfflineInvalidatedAndClosedStreamsNeverEmitHeartbeat() throws Exception {
+        for (String version : List.of("0.1.2+26.3", "26.3", "0.1.3+26.3-extra")) {
+            Fixture legacy = heartbeatFixture(version, true);
+            assertEquals(36, BridgeEnvelopeCodec.decode(legacy.outbound.get(0)).bodyBytes().length);
+            legacy.now.addAndGet(10_000L);
+            tick(legacy);
+            assertEquals(3, legacy.outbound.size());
+        }
+        Fixture offline = heartbeatFixture("0.1.3+26.3", true);
+        offline.online = false;
+        offline.now.addAndGet(5_000L);
+        tick(offline);
+        assertEquals(3, offline.outbound.size());
+        Fixture invalid = heartbeatFixture("0.1.3+26.3", true);
+        invalid.current = Optional.empty();
+        invalid.now.addAndGet(5_000L);
+        tick(invalid);
+        assertEquals(3, invalid.outbound.size());
+        Fixture closed = heartbeatFixture("0.1.3+26.3", true);
+        closed.sender.close();
+        closed.now.addAndGet(5_000L);
+        tick(closed);
+        assertEquals(3, closed.outbound.size());
+    }
+
+    @Test
+    void heartbeatFailuresRetireStreamAndPreserveTargetedReopenFence() throws Exception {
+        for (int failure = 0; failure < 3; failure++) {
+            Fixture fixture = heartbeatFixture("0.1.3+26.3", true);
+            String retired = BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).metadata().streamId();
+            if (failure == 0) fixture.signer.available = false;
+            if (failure == 1) fixture.failNextSendAfterCapture = true;
+            if (failure == 2) exhaustHeartbeatCounter(fixture);
+            fixture.now.addAndGet(5_000L);
+            tick(fixture);
+            assertFalse(fixture.sender.isReady(fixture.playerUuid));
+            int afterFailure = fixture.outbound.size();
+            tick(fixture);
+            assertEquals(afterFailure, fixture.outbound.size(), "retired stream cannot reuse a counter");
+            fixture.signer.available = true;
+            fixture.request(new BridgeRequestCodec.StreamReopenRequest(NONCE, fixture.playerUuid,
+                    fixture.session.sessionUuid(), 2L, BridgeRequestCodec.Sender.END_EVENT,
+                    Optional.of(retired), id(91)));
+            BridgeEnvelope reopened = fixture.verify(fixture.outbound.getLast(), 1L);
+            assertNotEquals(retired, reopened.metadata().streamId());
+            assertEquals(1, ((BridgeControlBodyCodec.HelloAck)
+                    BridgeControlBodyCodec.decode(reopened.bodyBytes())).featureFlags());
+        }
+    }
+
+    @Test
+    void streamsKeepIndependentCadenceAndApplicationCounters() throws Exception {
+        Fixture first = heartbeatFixture("0.1.3+26.3", true);
+        Fixture second = heartbeatFixture("0.1.3+26.3", false);
+        first.now.addAndGet(5_000L);
+        second.now.addAndGet(2_000L);
+        confirmHeartbeatFixture(second);
+        tick(first);
+        tick(second);
+        assertHeartbeat(first, 4L);
+        assertEquals(3, second.outbound.size());
+        assertTrue(first.sender.bindContext(first.playerUuid, first.event));
+        first.verify(first.outbound.getLast(), 5L);
+        first.now.addAndGet(5_000L);
+        second.now.addAndGet(4_999L);
+        tick(first);
+        tick(second);
+        assertHeartbeat(first, 6L);
+        assertEquals(3, second.outbound.size());
+        second.now.incrementAndGet();
+        tick(second);
+        assertHeartbeat(second, 4L);
+    }
+
+    private static Fixture heartbeatFixture(String version, boolean confirm) throws Exception {
+        Fixture fixture = new Fixture(true, false, version);
+        tick(fixture);
+        assertTrue(fixture.outbound.isEmpty());
+        fixture.request(new BridgeRequestCodec.ControlHello(NONCE, fixture.playerUuid,
+                fixture.session.sessionUuid(), id(89)));
+        tick(fixture);
+        assertEquals(1, fixture.outbound.size());
+        fixture.request(new BridgeRequestCodec.SenderReady(NONCE, fixture.playerUuid,
+                fixture.session.sessionUuid(), 1L, BridgeRequestCodec.Sender.END_EVENT,
+                BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).metadata().streamId(),
+                id(90), sha256(fixture.outbound.get(0))));
+        if (confirm) confirmHeartbeatFixture(fixture);
+        return fixture;
+    }
+
+    private static void confirmHeartbeatFixture(Fixture fixture) throws Exception {
+        fixture.request(new BridgeRequestCodec.SenderReadyConfirm(NONCE, fixture.playerUuid,
+                fixture.session.sessionUuid(), BridgeRequestCodec.Sender.END_EVENT,
+                BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).metadata().streamId(),
+                id(90), 1L, sha256(fixture.outbound.get(1))));
+        assertTrue(fixture.sender.isReady(fixture.playerUuid));
+    }
+
+    private static void tick(Fixture fixture) throws Exception {
+        fixture.sender.tick();
+    }
+
+    private static void assertHeartbeat(Fixture fixture, long counter) {
+        BridgeEnvelope envelope = fixture.verify(fixture.outbound.getLast(), counter);
+        assertEquals(30_000L, envelope.metadata().expiresAtMillis() - envelope.metadata().issuedAtMillis());
+        assertEquals(BridgeEnvelopeCodec.decode(fixture.outbound.get(0)).metadata().streamId(),
+                envelope.metadata().streamId());
+        BridgeControlBodyCodec.SenderHeartbeat heartbeat = assertInstanceOf(
+                BridgeControlBodyCodec.SenderHeartbeat.class, BridgeControlBodyCodec.decode(envelope.bodyBytes()));
+        assertEquals(BridgeRequestCodec.Sender.END_EVENT, heartbeat.sender());
+        assertEquals(fixture.session.sessionUuid(), heartbeat.sessionUuid());
+    }
+
+    private static void exhaustHeartbeatCounter(Fixture fixture) throws Exception {
+        var playersField = fixture.sender.getClass().getDeclaredField("players");
+        playersField.setAccessible(true);
+        Object state = ((java.util.Map<?, ?>) playersField.get(fixture.sender)).get(fixture.playerUuid);
+        var streamField = state.getClass().getDeclaredField("stream");
+        streamField.setAccessible(true);
+        Object stream = streamField.get(state);
+        var counterField = stream.getClass().getDeclaredField("serverCounter");
+        counterField.setAccessible(true);
+        counterField.setLong(stream, Long.MAX_VALUE);
+    }
+
     private static Fixture readyFixture() throws Exception {
         Fixture fixture = new Fixture(true, true);
         fixture.request(new BridgeRequestCodec.ControlHello(NONCE, fixture.playerUuid,
@@ -626,8 +777,7 @@ final class EndEventBridgeV4SenderTest {
     private static final class Fixture {
         final UUID playerUuid = UUID.randomUUID();
         final UUID eventUuid = UUID.randomUUID();
-        final ClientModSessionRegistry.VerifiedClientSession session =
-                new ClientModSessionRegistry.VerifiedClientSession(playerUuid, UUID.randomUUID(), "26.3", UUID.randomUUID());
+        final ClientModSessionRegistry.VerifiedClientSession session;
         final EndEventBridgeV4Access.EventContext event = new EndEventBridgeV4Access.EventContext(
                 eventUuid, 1L, "the_end", -8, 0, -8, 8, 128, 8);
         final AtomicLong now = new AtomicLong(1_700_000_000_000L);
@@ -635,19 +785,26 @@ final class EndEventBridgeV4SenderTest {
         final List<byte[]> outbound = new ArrayList<>();
         final List<UUID> requestedChallenges = new ArrayList<>();
         final List<EndEventBridgeV4Access.PrisonerAbilityRequest> abilities = new ArrayList<>();
+        boolean online = true;
         boolean failNextSendAfterCapture;
         final Player player = (Player) Proxy.newProxyInstance(Player.class.getClassLoader(), new Class<?>[] {Player.class},
                 (proxy, method, args) -> switch (method.getName()) {
                     case "getUniqueId" -> playerUuid;
-                    case "isOnline" -> true;
+                    case "isOnline" -> online;
                     case "getName" -> "end-event-test";
                     default -> null;
                 });
-        Optional<ClientModSessionRegistry.VerifiedClientSession> current = Optional.of(session);
+        Optional<ClientModSessionRegistry.VerifiedClientSession> current;
         final TestSigner signer;
         final EndEventBridgeV4Sender sender;
 
         Fixture(boolean signerAvailable, boolean contextAvailable) throws Exception {
+            this(signerAvailable, contextAvailable, "26.3");
+        }
+
+        Fixture(boolean signerAvailable, boolean contextAvailable, String version) throws Exception {
+            session = new ClientModSessionRegistry.VerifiedClientSession(playerUuid, UUID.randomUUID(), version, UUID.randomUUID());
+            current = Optional.of(session);
             signer = new TestSigner(signerAvailable);
             ClientModSessionRegistry registry = new ClientModSessionRegistry() {
                 @Override public Optional<VerifiedClientSession> current(UUID uuid) {

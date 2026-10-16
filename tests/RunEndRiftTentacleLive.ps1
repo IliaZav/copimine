@@ -20,9 +20,12 @@ param(
 # this script only positions the disposable client and reads authoritative
 # server state. It never edits a production world or grants rewards.
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $runtimeRoot -LocalRuntimeRoot $runtimeRoot -MustExist
 $serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$serverDir = Assert-EndRiftLocalRuntimePath -Path $serverDir -LocalRuntimeRoot $runtimeRoot -MustExist
 $pluginJar = Join-Path $serverDir 'plugins\CopiMineEndEvent.jar'
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
@@ -32,10 +35,22 @@ $sourceConfig = Join-Path $root 'copimine-end-event\config.yml'
 $installedConfig = Join-Path $serverDir 'plugins\CopiMineEndEvent\config.yml'
 $propertiesPath = Join-Path $serverDir 'server.properties'
 $paperLog = Join-Path $serverDir 'logs\latest.log'
+if ([string]::IsNullOrWhiteSpace($BotName)) {
+  $BotName = 'RiftProbe' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
+}
+if ($BotName -notmatch '^[A-Za-z0-9_]{1,16}$') {
+  throw "Invalid disposable bot name: $BotName"
+}
 $botLogDirectory = Join-Path $runtimeRoot 'tentacle-live'
+$botLogDirectory = Assert-EndRiftLocalRuntimePath -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
 $botStdout = Join-Path $botLogDirectory ($BotName + '.stdout.log')
+$botStdout = Assert-EndRiftLocalRuntimePath -Path $botStdout -LocalRuntimeRoot $runtimeRoot
+$botStderr = Join-Path $botLogDirectory ($BotName + '.stderr.log')
+$botStderr = Assert-EndRiftLocalRuntimePath -Path $botStderr -LocalRuntimeRoot $runtimeRoot
 $botControlDirectory = Join-Path $botLogDirectory 'control'
+$botControlDirectory = Assert-EndRiftLocalRuntimePath -Path $botControlDirectory -LocalRuntimeRoot $runtimeRoot
 $botTargetFile = Join-Path $botControlDirectory ($BotName + '.targets.json')
+$botTargetFile = Assert-EndRiftLocalRuntimePath -Path $botTargetFile -LocalRuntimeRoot $runtimeRoot
 $botEnvironmentNames = @(
   'END_RIFT_BOT_SKIP_REGISTER',
   'END_RIFT_BOT_SKIP_AUTH',
@@ -51,16 +66,12 @@ foreach ($name in $botEnvironmentNames) {
   $previousBotEnvironment[$name] = [Environment]::GetEnvironmentVariable(
     $name, [EnvironmentVariableTarget]::Process)
 }
-if ([string]::IsNullOrWhiteSpace($BotName)) {
-  $BotName = 'RiftProbe' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
-}
-if ($BotName -notmatch '^[A-Za-z0-9_]{1,16}$') {
-  throw "Invalid disposable bot name: $BotName"
-}
 $botControlFile = Join-Path $botControlDirectory ($BotName + '.mode')
+$botControlFile = Assert-EndRiftLocalRuntimePath -Path $botControlFile -LocalRuntimeRoot $runtimeRoot
 if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
   $EvidencePath = Join-Path $botLogDirectory 'tentacle-live.log'
 }
+$EvidencePath = Assert-EndRiftLocalRuntimePath -Path $EvidencePath -LocalRuntimeRoot $runtimeRoot
 $botProcess = $null
 $success = $false
 $protectedViewers = [System.Collections.Generic.List[string]]::new()
@@ -73,13 +84,10 @@ function Restore-BotEnvironment {
 }
 
 function Assert-UnderRuntime([string]$Path) {
-  $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
-  $allowed = [IO.Path]::GetFullPath($runtimeRoot).TrimEnd('\') + '\'
-  if (-not $full.StartsWith($allowed, [StringComparison]::OrdinalIgnoreCase)) {
-    throw "Tentacle evidence path is outside local-runtime: $Path"
-  }
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $runtimeRoot
 }
 
+$EvidencePath = Assert-EndRiftLocalRuntimePath -Path $EvidencePath -LocalRuntimeRoot $runtimeRoot
 Assert-UnderRuntime $EvidencePath
 foreach ($path in @($serverDir, $rconScript, $botScript, $sourceConfig,
     $installedConfig, $propertiesPath, $paperLog, $pluginJar,
@@ -106,14 +114,18 @@ if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
   throw "Refused Git branch '$branch'."
 }
 $gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()
-New-Item -ItemType Directory -Path $botLogDirectory, (Split-Path -Parent $EvidencePath) -Force | Out-Null
-Set-Content -LiteralPath $EvidencePath -Value @(
+$validatedBotLogDirectory = Assert-EndRiftLocalRuntimePath -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
+$validatedEvidenceDirectory = Assert-EndRiftLocalRuntimePath -Path (Split-Path -Parent $EvidencePath) -LocalRuntimeRoot $runtimeRoot
+$validatedEvidencePath = Assert-EndRiftLocalRuntimePath -Path $EvidencePath -LocalRuntimeRoot $runtimeRoot
+New-Item -ItemType Directory -Path $validatedBotLogDirectory, $validatedEvidenceDirectory -Force | Out-Null
+Set-Content -LiteralPath $validatedEvidencePath -Value @(
   "END_RIFT_TENTACLE_LIVE_START time=$((Get-Date).ToString('o')) branch=$branch gitHead=$gitHead"
   "environment=$($properties['server-port'])/$($properties['rcon.port'])"
 ) -Encoding UTF8
 
 function Record([string]$Text) {
-  Add-Content -LiteralPath $EvidencePath -Value $Text -Encoding UTF8
+  $validatedEvidencePath = Assert-EndRiftLocalRuntimePath -Path $EvidencePath -LocalRuntimeRoot $runtimeRoot
+  Add-Content -LiteralPath $validatedEvidencePath -Value $Text -Encoding UTF8
   Write-Output $Text
 }
 
@@ -245,23 +257,29 @@ function Assert-ProtectedViewers([string]$Stage) {
 
 function Start-Bot([int]$CoreX, [int]$CoreY, [int]$CoreZ) {
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $stderr = Join-Path $botLogDirectory ($BotName + '.stderr.log')
-  New-Item -ItemType Directory -Path $botControlDirectory -Force | Out-Null
-  Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
-  Set-Content -LiteralPath $botTargetFile -Value '[]' -Encoding ASCII
-  $env:END_RIFT_BOT_SKIP_REGISTER = '1'
-  $env:END_RIFT_BOT_SKIP_AUTH = '1'
-  $env:END_RIFT_TENTACLE_PROBE_NAMES = $BotName
-  $env:END_RIFT_TENTACLE_PROBE_TARGETS_FILE = $botTargetFile
-  $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
-  $env:END_RIFT_ATTACK_INTERVAL_MS = '1000'
-  $env:END_RIFT_TENTACLE_PROBE_MAX_ATTACKS = '8'
-  $env:END_RIFT_TENTACLE_TRACE = '1'
-  $botProcess = Start-Process -FilePath $node -WorkingDirectory $root -WindowStyle Hidden -PassThru `
-    -RedirectStandardOutput $botStdout -RedirectStandardError $stderr `
-    -ArgumentList @($botScript, $BotName, [string]($BotDurationSeconds * 1000),
-      (Format-Coordinate ($CoreX + 0.5D)), (Format-Coordinate $CoreY),
-      (Format-Coordinate ($CoreZ + 0.5D)), '20', '1000', $botControlDirectory)
+  $validatedControlDirectory = Assert-EndRiftLocalRuntimePath -Path $botControlDirectory -LocalRuntimeRoot $runtimeRoot
+  $validatedControlFile = Assert-EndRiftLocalRuntimePath -Path $botControlFile -LocalRuntimeRoot $runtimeRoot
+  $validatedTargetFile = Assert-EndRiftLocalRuntimePath -Path $botTargetFile -LocalRuntimeRoot $runtimeRoot
+  $validatedBotStdout = Assert-EndRiftLocalRuntimePath -Path $botStdout -LocalRuntimeRoot $runtimeRoot
+  $validatedBotStderr = Assert-EndRiftLocalRuntimePath -Path $botStderr -LocalRuntimeRoot $runtimeRoot
+  New-Item -ItemType Directory -Path $validatedControlDirectory -Force | Out-Null
+  Set-Content -LiteralPath $validatedControlFile -Value 'PASSIVE' -Encoding ASCII
+  Set-Content -LiteralPath $validatedTargetFile -Value '[]' -Encoding ASCII
+  $botProcess = Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+    $env:END_RIFT_BOT_SKIP_REGISTER = '1'
+    $env:END_RIFT_BOT_SKIP_AUTH = '1'
+    $env:END_RIFT_TENTACLE_PROBE_NAMES = $BotName
+    $env:END_RIFT_TENTACLE_PROBE_TARGETS_FILE = $validatedTargetFile
+    $env:END_RIFT_GUARDIAN_PROBE_NAMES = ''
+    $env:END_RIFT_ATTACK_INTERVAL_MS = '1000'
+    $env:END_RIFT_TENTACLE_PROBE_MAX_ATTACKS = '8'
+    $env:END_RIFT_TENTACLE_TRACE = '1'
+    Start-Process -FilePath $node -WorkingDirectory $root -WindowStyle Hidden -PassThru `
+      -RedirectStandardOutput $validatedBotStdout -RedirectStandardError $validatedBotStderr `
+      -ArgumentList @($botScript, $BotName, [string]($BotDurationSeconds * 1000),
+        (Format-Coordinate ($CoreX + 0.5D)), (Format-Coordinate $CoreY),
+        (Format-Coordinate ($CoreZ + 0.5D)), '20', '1000', $validatedControlDirectory)
+  }
   return $botProcess
 }
 
@@ -271,6 +289,9 @@ function Read-TentacleJson {
   if ($jsonLine.Count -eq 0) { throw "Tentacle JSON snapshot missing: $raw" }
   return ($jsonLine[0] | ConvertFrom-Json)
 }
+
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
+Record 'LOCAL_AUTH_MODE_PASS authme=disabled'
 
 try {
   $null = Invoke-LocalRcon 'cmend wave clear'
@@ -390,7 +411,9 @@ try {
   }
   Record "LIVE_TENTACLE_PROFILE_PASS count=$($snapshot.tentacleCount) permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) segments=6 length=6.25 hitbox=1.9x6.25 visual=END_RIFT_TENTACLE_V1"
   $probeHitboxIds = @($probeHitboxes | ForEach-Object { [string]$_.hitboxUuid })
-  Set-Content -LiteralPath $botTargetFile -Value (ConvertTo-Json -InputObject $probeHitboxIds -Compress) -Encoding ASCII
+  $validatedTargetFile = Assert-EndRiftLocalRuntimePath -Path $botTargetFile -LocalRuntimeRoot $runtimeRoot
+  $botControlFile = Assert-EndRiftLocalRuntimePath -Path $botControlFile -LocalRuntimeRoot $runtimeRoot
+  Set-Content -LiteralPath $validatedTargetFile -Value (ConvertTo-Json -InputObject $probeHitboxIds -Compress) -Encoding ASCII
   Set-Content -LiteralPath $botControlFile -Value 'ACTIVE' -Encoding ASCII
   Record "LIVE_TENTACLE_TARGETS_PASS permanent=$($snapshot.permanentCount) temporary=$($snapshot.temporaryCount) total=$($probeHitboxIds.Count) target=server-diagnostic-permanent-hitboxes temporary_excluded_for_stability=true max_attacks=8"
 
@@ -403,7 +426,8 @@ try {
   }
   $damagedTentacleUuid = $damageMatch.Groups[1].Value
   Record "LIVE_TENTACLE_DAMAGE_PASS entity=$damagedTentacleUuid health_before=$($damageMatch.Groups[2].Value) health_after=$($damageMatch.Groups[3].Value) player_packet=true server_authoritative=true"
-  Set-Content -LiteralPath $botControlFile -Value 'PASSIVE' -Encoding ASCII
+  $validatedControlFile = Assert-EndRiftLocalRuntimePath -Path $botControlFile -LocalRuntimeRoot $runtimeRoot
+  Set-Content -LiteralPath $validatedControlFile -Value 'PASSIVE' -Encoding ASCII
   Record 'LIVE_TENTACLE_PROBE_PASSIVE_AFTER_DAMAGE_PASS=true'
   $continuedAttackPattern = 'RIFT_TENTACLE_STATE .*entity=' +
     [Regex]::Escape($damagedTentacleUuid) + ' state=(GRAB_SUCCESS|HOLD|THROW)\b'

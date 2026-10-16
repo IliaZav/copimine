@@ -155,12 +155,15 @@ def test_official_last_seal_keeps_scripted_boss_ai_disabled():
 
 def test_tentacle_live_probe_skips_authme_commands_on_the_no_auth_local_server():
     script = HARNESS.read_text(encoding="utf-8")
+    auth_helper = (ROOT / "tests" / "EndRiftLocalAuthMode.ps1").read_text(encoding="utf-8")
 
-    assert "END_RIFT_BOT_SKIP_REGISTER" in script
-    assert "END_RIFT_BOT_SKIP_AUTH" in script
+    assert "Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {" in script
     assert "$env:END_RIFT_BOT_SKIP_REGISTER = '1'" in script
     assert "$env:END_RIFT_BOT_SKIP_AUTH = '1'" in script
-    assert "END_RIFT_BOT_PASSWORD = [Guid]::NewGuid()" not in script
+    assert "function Invoke-EndRiftLocalBotEnvironment" in auth_helper
+    assert "END_RIFT_BOT_SKIP_REGISTER = '1'" not in auth_helper
+    assert "END_RIFT_BOT_SKIP_AUTH = '1'" not in auth_helper
+    assert "END_RIFT_BOT_PASSWORD" not in script + auth_helper
 
 
 def test_live_tentacle_probe_requires_the_damaged_entity_to_continue_its_attack():

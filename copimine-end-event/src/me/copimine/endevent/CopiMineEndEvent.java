@@ -2738,7 +2738,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return;
         }
         int before = countLiveOwnedMobs();
-        if (!clearWaveEntities()) return;
+        // A validated Wave 7 recovery checkpoint owns the walls just rebuilt
+        // above. Remove its stale combat actors without resetting objective
+        // state, because that reset also restores the physical barriers.
+        boolean preserveWave7RecoveryCheckpoint = isWave7RecoveryCheckpointActive();
+        if (!clearWaveEntities(true, !preserveWave7RecoveryCheckpoint)) return;
         clearBossOnly();
         clearCombatAiState();
         if (before > 0) {
@@ -30072,8 +30076,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean clearWaveEntities(boolean includeRewards) {
+        return clearWaveEntities(includeRewards, true);
+    }
+
+    private boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState) {
         if (!archiveWaveTwoRosterForCleanup("wave-reset-cleanup")) return false;
-        if (!clearWaveObjectiveState()) return false;
+        if (resetWaveObjectiveState) {
+            if (!clearWaveObjectiveState()) return false;
+        }
         clearActiveEventArrows();
         clearCommanderAura();
         releaseAllSpiderEffects();

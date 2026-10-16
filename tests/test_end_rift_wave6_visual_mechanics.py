@@ -689,6 +689,7 @@ def test_actual_visual_abort_preserves_core_pad_rewards_and_foreign_entities(tmp
         'private boolean isWaveCleanupKind(String kind)',
         'private boolean isWaveCleanupKind(String kind, boolean includeRewards)',
         'private boolean clearWaveEntities(boolean includeRewards)',
+        'private boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)',
     ))
     constants = ('WAVE_MOB', 'ELITE', 'WAVE_GUARDIAN', 'REALITY_SPLIT_TRIAL',
                  'REALITY_SPLIT_OBJECTIVE', 'RITUAL_CASTER', 'RITUAL_GUARD', 'WAVE_REWARD')

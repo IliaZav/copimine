@@ -207,3 +207,57 @@ public class Wave7CheckpointProbe {
     assert bootstrap.index("if (isWave7RecoveryCheckpointActive())") < bootstrap.index(
         "reconcileOpeningRealitySplitPassages()"), (
             "recovery rebuild must keep a pending OPENING wall closed instead of replaying it")
+
+
+def test_recovery_bootstrap_cleanup_preserves_rebuilt_wave7_barriers(tmp_path):
+    source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
+    restore = extract(source, "void restorePersistedCombatRuntime()")
+    cleanup = extract(source, "void cleanupUnexpectedCombatEntitiesAfterRestart()")
+    clear = extract(source, "boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)")
+    assert restore.index("restoreRealitySplitBarriersAfterBootstrap()") < restore.index(
+        "cleanupUnexpectedCombatEntitiesAfterRestart()"), (
+            "bootstrap must rebuild the owned walls before stale combat cleanup")
+    assert "boolean preserveWave7RecoveryCheckpoint = isWave7RecoveryCheckpointActive();" in cleanup
+    assert "clearWaveEntities(true, !preserveWave7RecoveryCheckpoint)" in cleanup
+    assert "if (resetWaveObjectiveState)" in clear
+    assert "if (!clearWaveObjectiveState()) return false;" in clear
+
+    probe = tmp_path / "Wave7RecoveryCleanupProbe.java"
+    probe.write_text('''
+import java.util.logging.Logger;
+public class Wave7RecoveryCleanupProbe {
+    enum EventPhase { RECOVERY_REQUIRED, BOSS_CINEMATIC }
+    EventPhase phase = EventPhase.RECOVERY_REQUIRED;
+    String eventId = "synthetic";
+    boolean testWaveFrontVisualMode, recoveryCheckpointActive = true;
+    boolean barrierPresent = true, objectiveStateReset, staleCombatRemoved;
+    int activeWave, liveMobs = 2;
+    Logger getLogger() { return Logger.getAnonymousLogger(); }
+    int waveForPhase(EventPhase value) { return 0; }
+    boolean isWave7RecoveryCheckpointActive() { return recoveryCheckpointActive; }
+    boolean isPersistedBossPhase(EventPhase value) { return false; }
+    boolean finalSealBarrierContext() { return false; }
+    int countLiveOwnedMobs() { return liveMobs; }
+    boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState) {
+        objectiveStateReset = resetWaveObjectiveState;
+        staleCombatRemoved = true;
+        if (resetWaveObjectiveState) barrierPresent = false;
+        return true;
+    }
+    void clearBossOnly() { }
+    void clearCombatAiState() { }
+''' + cleanup + '''
+    public static void main(String[] args) {
+        var probe = new Wave7RecoveryCleanupProbe();
+        probe.cleanupUnexpectedCombatEntitiesAfterRestart();
+        if (!probe.staleCombatRemoved || probe.objectiveStateReset || !probe.barrierPresent)
+            throw new AssertionError("recovery cleanup must remove stale actors while retaining rebuilt barriers");
+    }
+}
+''', encoding="utf-8")
+    compiled = subprocess.run(["javac", "-d", str(tmp_path), str(probe)],
+                             capture_output=True, text=True)
+    assert compiled.returncode == 0, compiled.stdout + compiled.stderr
+    result = subprocess.run(["java", "-cp", str(tmp_path), "Wave7RecoveryCleanupProbe"],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

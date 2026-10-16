@@ -13,7 +13,7 @@ def test_official_wave_transition_preserves_rewards_and_still_cleans_pressure():
     source = _source()
     initialize = _method(source, "private boolean initializeWaveGameplay(")
     assert "clearWaveEntities(sandbox)" in initialize
-    cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards)")
+    cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)")
     assert cleanup.count("isWaveCleanupKind(") == 3
     assert cleanup.count("includeRewards") == 3
     predicate = _method(source, "private boolean isWaveCleanupKind(String kind, boolean includeRewards)")
@@ -201,7 +201,7 @@ def test_wave_two_roster_archive_failure_stops_cancel_reset_and_initialization()
     source = _source()
     cancel = _method(source, "private boolean cancelSessionTasks(boolean preserveCombatForRestart)")
     objective_cleanup = _method(source, "private boolean clearWaveObjectiveState()")
-    wave_cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards)")
+    wave_cleanup = _method(source, "private boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)")
     initialize = _method(source, "private boolean initializeWaveGameplay(")
     sandbox = _method(source, "private boolean spawnTestWave(")
 

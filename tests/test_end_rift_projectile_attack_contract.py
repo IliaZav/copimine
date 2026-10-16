@@ -563,7 +563,9 @@ def test_explosive_skeleton_arrow_cannot_damage_non_player_targets():
 
 def test_wave_entity_cleanup_releases_owned_spider_effect_leases():
     source = SOURCE_PATH.read_text(encoding="utf-8")
-    cleanup = _java_method_body(source, "private boolean clearWaveEntities(boolean includeRewards)")
+    cleanup = _java_method_body(
+        source, "private boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)"
+    )
 
     assert "releaseAllSpiderEffects()" in cleanup
 

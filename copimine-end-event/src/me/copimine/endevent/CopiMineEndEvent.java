@@ -15235,8 +15235,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
 
     /** Detonate an elite skeleton arrow without ever mutating arena blocks. */
     private void detonateExplosiveArrow(Arrow arrow, Location impact) {
-        if (arrow == null || impact == null || !isEventArrow(arrow)
-                || !detonatedEventArrows.add(arrow.getUniqueId())) {
+        if (arrow == null || impact == null || !isEventArrow(arrow)) {
+            return;
+        }
+        if (!isEventArrowPhaseAllowed(arrow)) {
+            cleanupEventArrow(arrow.getUniqueId());
+            return;
+        }
+        if (!detonatedEventArrows.add(arrow.getUniqueId())) {
             return;
         }
         Location point = impact.clone();

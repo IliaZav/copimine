@@ -31,6 +31,13 @@ public final class WavePressurePolicyTest {
                 new WaveMechanicsPolicy.WaveCounts(1, 0, 0, 6, 2), 5);
         check(fivePlayers.total() <= PressureBudgetController.profileForPlayers(5).activePressure(),
                 "other Wave 5 party sizes use the regular pressure profile");
+
+        var threePlayerWaveFive = WavePressurePolicy.clamp(5, configuredWaveFive, 3);
+        check(threePlayerWaveFive.total()
+                        <= PressureBudgetController.profileForPlayers(3).activePressure(),
+                "three-player Wave 5 cannot inherit the two-player eight-elite exception");
+        check(!WavePressurePolicy.isApprovedTwoPlayerException(5, 3, threePlayerWaveFive),
+                "the Wave 5 exception remains exclusive to exactly two players");
         System.out.println("WavePressurePolicyTest OK");
     }
 

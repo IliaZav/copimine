@@ -41,6 +41,16 @@ def test_explosive_arrow_aoe_requires_clear_block_sight_from_impact():
     assert "WaveProjectileTargetPolicy.allowsPlayerAoe" in detonate
 
 
+def test_explosive_arrow_block_impact_rechecks_active_event_phase_before_damage():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    detonate = java_method_body(source, "private void detonateExplosiveArrow(")
+    rejected_phase_cleanup = detonate.index("!isEventArrowPhaseAllowed(arrow)")
+    first_damage = detonate.index("player.damage(")
+
+    assert rejected_phase_cleanup < first_damage
+    assert "cleanupEventArrow(arrow.getUniqueId())" in detonate
+
+
 def test_block_sight_adapter_uses_the_real_world_block_ray_trace():
     source = SOURCE_PATH.read_text(encoding="utf-8")
     sight = java_method_body(source, "private boolean hasProjectileBlockLineOfSight(")

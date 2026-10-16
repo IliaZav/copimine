@@ -13,8 +13,9 @@ public final class WaveMechanicsPolicy {
 
     /**
      * Clamp a requested wave composition to the active-player pressure budget.
-     * Elite entries are preserved first; ordinary entries are trimmed in a
-     * stable order. The method is intentionally bounded for arbitrary input.
+     * Elite entries are preserved while ordinary entries are available;
+     * if elites alone exceed the budget, they are trimmed in a stable order.
+     * The method is intentionally bounded for arbitrary input.
      */
     public static WaveCounts clampToPressure(WaveCounts requested, int livingPlayers) {
         if (requested == null) {
@@ -33,6 +34,9 @@ public final class WaveMechanicsPolicy {
         }
         while (total > cap) {
             int selected = largestOrdinaryBucket(counts);
+            if (selected < 0) {
+                selected = largestEliteBucket(counts);
+            }
             if (selected < 0) {
                 break;
             }
@@ -70,6 +74,16 @@ public final class WaveMechanicsPolicy {
     private static int largestOrdinaryBucket(int[] counts) {
         int selected = -1;
         for (int index = 0; index < 3; index++) {
+            if (counts[index] > 0 && (selected < 0 || counts[index] > counts[selected])) {
+                selected = index;
+            }
+        }
+        return selected;
+    }
+
+    private static int largestEliteBucket(int[] counts) {
+        int selected = -1;
+        for (int index = 3; index < 5; index++) {
             if (counts[index] > 0 && (selected < 0 || counts[index] > counts[selected])) {
                 selected = index;
             }

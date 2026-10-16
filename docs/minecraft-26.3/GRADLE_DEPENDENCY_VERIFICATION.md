@@ -4,9 +4,9 @@ This record covers the migration's Paper plugin and Fabric client Gradle roots. 
 
 ## Checksum provenance
 
-[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 531 artifacts: 138 server artifacts and 393 client artifacts.
+[`GRADLE_DEPENDENCY_PROVENANCE.json`](GRADLE_DEPENDENCY_PROVENANCE.json) records the source URL, method, and SHA-256 for every external artifact entry in both manifests. The report contains 550 artifacts: 157 server artifacts and 393 client artifacts.
 
-- 440 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
+- 459 recorded hashes match the publisher's `.sha256` sidecar fetched over HTTPS.
 - 91 recorded hashes match a direct HTTPS download of the exact artifact, hashed locally.
 - Six common parent POM sidecars from the Paper Maven mirror differed from the locked bytes. Direct Maven Central downloads matched the lock for all six. Maven Central is the first repository in the server build; strict verification will reject the Paper mirror's different POM bytes if repository fallback selects them.
 - The Paper API JAR hash also matches `profile.lock.json`. The Fabric Loom 1.17.21 JAR, module metadata, and plugin marker POM match the SHA-256 sidecars published by Fabric Maven.

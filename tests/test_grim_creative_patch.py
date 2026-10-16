@@ -3,6 +3,7 @@
 from pathlib import Path
 import subprocess
 import zipfile
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +31,16 @@ def test_built_grim_patch_changes_exactly_one_class_and_keeps_survival_path() ->
     original = ROOT / "minecraft" / "server" / "plugins" / "GrimAC.jar"
     patched = PATCH_ROOT / "build" / "GrimAC-2.3.74-40684fb-creative-fix.jar"
     corrected_class = "ac/grim/grimac/utils/lists/CorrectingPlayerInventoryStorage.class"
+
+    if not original.is_file():
+        pytest.skip(
+            "Requires the deployment GrimAC.jar fixture, which is intentionally ignored; "
+            "CI prepares it before running this artifact-level contract."
+        )
+    assert patched.is_file(), (
+        "Run thirdparty/grim-creative-patch/build-grim-creative-patch.ps1 after "
+        "preparing the pinned original GrimAC.jar fixture."
+    )
 
     with zipfile.ZipFile(original) as original_jar, zipfile.ZipFile(patched) as patched_jar:
         assert set(original_jar.namelist()) == set(patched_jar.namelist())

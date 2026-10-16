@@ -21,7 +21,8 @@ def test_supplied_guardian_json_bytes_survive_windows_checkout(tmp_path):
         target.write_bytes(supplied[relative])
     assert len(supplied) == 8, "exercise geometry and all seven supplied animations"
     for arguments in (
-        ["init", "-q"], ["config", "core.autocrlf", "true"], ["add", "."],
+        ["init", "-q"], ["config", "core.autocrlf", "true"],
+        ["config", "core.longpaths", "true"], ["add", "."],
         ["checkout-index", "--all", f"--prefix={(tmp_path / 'export').as_posix()}/"],
     ):
         result = subprocess.run(["git", "-C", str(checkout), *arguments],
@@ -48,7 +49,8 @@ def test_generated_model_json_survives_windows_checkout_without_source_mutation(
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((ROOT / relative).read_bytes())
     for arguments in (
-        ["init", "-q"], ["config", "core.autocrlf", "true"], ["add", "."],
+        ["init", "-q"], ["config", "core.autocrlf", "true"],
+        ["config", "core.longpaths", "true"], ["add", "."],
         ["checkout-index", "--all", f"--prefix={(tmp_path / 'export').as_posix()}/"],
     ):
         result = subprocess.run(["git", "-C", str(checkout), *arguments],

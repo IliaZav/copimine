@@ -279,7 +279,8 @@ def test_local_rcon_reads_only_the_password_line_from_a_corrupt_properties_file(
     text = (ROOT / "tests" / "InvokeEndRiftLocalRcon.ps1").read_text(encoding="utf-8")
 
     assert "[IO.File]::ReadLines($propertiesPath)" in text
-    assert "rcon.password" in text
+    assert "StartsWith('rcon.password=', [StringComparison]::Ordinal)" in text
+    assert "ConvertFrom-StringData" not in text
 
 
 def test_local_properties_are_read_as_utf8_before_they_are_rewritten() -> None:

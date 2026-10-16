@@ -316,6 +316,27 @@ def test_evidence_output_guards_reject_reparse_points_and_hard_links() -> None:
             "$botControlFile = Assert-EndRiftLocalRuntimePath",
             "$botTargetFile = Assert-EndRiftLocalRuntimePath",
         ),
+        "RunEndRiftRuneWaitMusicLive.ps1": (
+            "$evidencePath = Assert-EndRiftLocalRuntimePath",
+            "$botLogDirectory = Assert-EndRiftLocalRuntimePath",
+            "$botLog = Assert-EndRiftLocalRuntimePath",
+            "$botErr = Assert-EndRiftLocalRuntimePath",
+        ),
+        "RunEndRiftOfficialTwoPlayerLive.ps1": (
+            "$evidencePath = Assert-EndRiftLocalRuntimePath",
+            "$botLogDirectory = Assert-EndRiftLocalRuntimePath",
+            "$controlDirectory = Assert-EndRiftLocalRuntimePath",
+            "$modePath = Assert-EndRiftLocalRuntimePath",
+            "$out = Assert-EndRiftLocalRuntimePath",
+            "$err = Assert-EndRiftLocalRuntimePath",
+            "Assert-EndRiftLocalRuntimePath `\n      -Path $_.FullName",
+        ),
+        "RunEndRiftBossMultiPlayerDamageLive.ps1": (
+            "$logDirectory = Assert-EndRiftLocalRuntimePath",
+            "$attackBarrier = Assert-EndRiftLocalRuntimePath",
+            "$stdoutPath = Assert-EndRiftLocalRuntimePath",
+            "$stderrPath = Assert-EndRiftLocalRuntimePath",
+        ),
     }
     for name, checks in required_checks.items():
         source = (ROOT / "tests" / name).read_text(encoding="utf-8")
@@ -405,6 +426,35 @@ def test_ai_and_no_auth_probes_fail_closed_before_mutation_and_isolate_bot_envir
     assert smoke_start.find("Invoke-EndRiftLocalBotEnvironment") < smoke_start.find("Start-Process")
     assert "$env:END_RIFT_BOT_HOST" not in smoke
     assert "$previousBotEnvironment" not in smoke
+
+    boss = (ROOT / "tests" / "RunEndRiftBossMultiPlayerDamageLive.ps1").read_text(encoding="utf-8")
+    boss_auth_guard = boss.find("Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon -CommandText 'plugins')")
+    boss_try = boss.find("\ntry {", boss_auth_guard)
+    boss_mutation = boss.find("cmend boss kill cleanup")
+    assert min(boss_auth_guard, boss_try, boss_mutation) >= 0
+    assert boss_auth_guard < boss_try < boss_mutation
+    assert "Wait-LocalAuthentication" not in boss
+    assert "logged in" not in boss
+
+
+def test_changed_mineflayer_live_runners_pin_child_host_and_port() -> None:
+    process_start_runners = (
+        "RunEndRiftBossMultiPlayerDamageLive.ps1",
+        "RunEndRiftBossHitboxLive.ps1",
+    )
+    for name in process_start_runners:
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        assert "Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566" in source
+
+    start_process_runners = (
+        "RunEndRiftPerformanceLive.ps1",
+        "RunEndRiftPerformanceFivePlayerLive.ps1",
+    )
+    for name in start_process_runners:
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        invoke = source.find("Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566")
+        launch = source.find("Start-Process", invoke)
+        assert min(invoke, launch) >= 0 and invoke < launch, name
 
 
 def test_mob_and_spell_probes_reject_wrong_branch_and_authme_before_cleanup() -> None:

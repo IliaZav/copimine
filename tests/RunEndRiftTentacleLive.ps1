@@ -110,7 +110,7 @@ if ($properties['server-port'] -ne '25566' -or $properties['rcon.port'] -ne '255
   throw 'Tentacle live probe requires isolated local ports 25566/25576.'
 }
 $branch = (& git -C $root branch --show-current 2>$null).Trim()
-if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
   throw "Refused Git branch '$branch'."
 }
 $gitHead = (& git -C $root rev-parse HEAD 2>$null).Trim()

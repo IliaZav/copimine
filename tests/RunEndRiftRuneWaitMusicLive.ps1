@@ -20,15 +20,27 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
-$rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 . (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $runtimeRoot -LocalRuntimeRoot $runtimeRoot -MustExist
+$serverDir = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'end-rift-server') -LocalRuntimeRoot $runtimeRoot -MustExist
+$rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftBot.js'
-$paperLog = Join-Path $serverDir 'logs\latest.log'
-$statePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
-$evidencePath = Join-Path $runtimeRoot 'rune-wait-music-live.log'
-$botLogDirectory = Join-Path $runtimeRoot 'rune-wait-music-bots'
+$paperLog = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $serverDir 'logs\latest.log') -LocalRuntimeRoot $runtimeRoot -MustExist
+$statePath = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml') `
+  -LocalRuntimeRoot $runtimeRoot -MustExist
+$evidencePath = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'rune-wait-music-live.log') -LocalRuntimeRoot $runtimeRoot
+$botLogDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'rune-wait-music-bots') -LocalRuntimeRoot $runtimeRoot
 $playerNames = @($FirstBotName, $SecondBotName)
+
+function Assert-UnderRuntime {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $runtimeRoot
+}
 
 function Assert-LocalScope {
   $configPath = Join-Path $root 'copimine-end-event\config.yml'
@@ -41,7 +53,7 @@ function Assert-LocalScope {
     throw 'Rune wait music probe requires isolated 25566/25576 ports.'
   }
   $branch = (& git -C $root branch --show-current 2>$null).Trim()
-  if ($LASTEXITCODE -ne 0 -or $branch -ne 'codex/end-rift-event') {
+  if ($LASTEXITCODE -ne 0 -or $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
     throw "Rune wait music probe refused Git branch '$branch'."
   }
   foreach ($path in @($botScript, $paperLog, $statePath)) {
@@ -157,7 +169,9 @@ function Teleport-ToPad {
 function Write-Evidence {
   param([Parameter(Mandatory = $true)][string]$Text)
   Write-Output $Text
-  Add-Content -LiteralPath $evidencePath -Value $Text -Encoding UTF8
+  $safeEvidencePath = Assert-EndRiftLocalRuntimePath `
+    -Path $evidencePath -LocalRuntimeRoot $runtimeRoot
+  Add-Content -LiteralPath $safeEvidencePath -Value $Text -Encoding UTF8
 }
 
 Assert-LocalScope
@@ -169,6 +183,8 @@ $logEvidence = [Text.StringBuilder]::new()
 $node = (Get-Command node.exe -ErrorAction Stop).Source
 try {
   New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
+  $botLogDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot -MustExist
   $status = Invoke-LocalRcon 'cmend status'
   if ($status -notmatch 'state=.*READY_FOR_PLAYERS' -or
       $status -notmatch 'boss=.*none' -or $status -notmatch 'event-mobs=.*0') {
@@ -177,8 +193,10 @@ try {
   $pads = Get-PadCoordinates
   $botClients = @()
   foreach ($name in $playerNames) {
-    $botLog = Join-Path $botLogDirectory ($name + '.out.log')
-    $botErr = Join-Path $botLogDirectory ($name + '.err.log')
+    $botLog = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $botLogDirectory ($name + '.out.log')) -LocalRuntimeRoot $runtimeRoot
+    $botErr = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $botLogDirectory ($name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
     [IO.File]::WriteAllText($botLog, '')
     [IO.File]::WriteAllText($botErr, '')
     $startInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -242,7 +260,8 @@ try {
     }
     Receive-EndRiftRuneBotOutput
     $botSoundEvidence = ($playerNames | ForEach-Object {
-        $path = Join-Path $botLogDirectory ($_ + '.out.log')
+        $path = Assert-EndRiftLocalRuntimePath `
+          -Path (Join-Path $botLogDirectory ($_ + '.out.log')) -LocalRuntimeRoot $runtimeRoot
         if (Test-Path -LiteralPath $path) { Get-Content -LiteralPath $path -Raw }
       }) -join "`n"
     if ($botSoundEvidence -match 'SOUND_PACKET .*sound_effect.*ritual_wait') {

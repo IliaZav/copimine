@@ -129,8 +129,11 @@ try {
     $botOut = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($name + '.out.log')) -LocalRuntimeRoot $runtimeRoot
     $botErr = Assert-EndRiftLocalRuntimePath -Path (Join-Path $botLogDirectory ($name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
     $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]$botDurationMs) + ' 0 68 0 0'
-    $processes += Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-      -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
+    $process = Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+      Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
+        -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
+    }
+    $processes += $process
   }
   for ($attempt = 0; $attempt -lt 90; $attempt++) {
     $list = Invoke-LocalRcon 'list'

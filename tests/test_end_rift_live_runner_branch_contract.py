@@ -27,6 +27,14 @@ def test_active_local_runners_default_to_the_current_end_rift_branch() -> None:
         assert match.group(1) == branch, f"{name} must default to {branch}"
 
 
+def test_wave_and_tentacle_live_runners_allow_the_integration_branch() -> None:
+    for name in ("RunEndRiftRuneWaitMusicLive.ps1", "RunEndRiftTentacleLive.ps1"):
+        source = (ROOT / "tests" / name).read_text(encoding="utf-8")
+        assert "codex/end-rift-26-3-integrated-final" in source, (
+            f"{name} must run on the authorized integration branch"
+        )
+
+
 def test_end_rift_live_runner_branch_checks_accept_an_explicit_expected_branch() -> None:
     runner_paths = sorted((ROOT / "tests").glob("RunEndRift*Live.ps1"))
     branch_reader = re.compile(

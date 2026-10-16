@@ -30,10 +30,13 @@ if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
   throw "Refused Git branch '$branch'."
 }
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $runtimeRoot -LocalRuntimeRoot $runtimeRoot -MustExist
+$serverDir = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'end-rift-server') -LocalRuntimeRoot $runtimeRoot -MustExist
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftBossCombatBot.js'
-$paperLog = Join-Path $serverDir 'logs\latest.log'
+$paperLog = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $serverDir 'logs\latest.log') -LocalRuntimeRoot $runtimeRoot -MustExist
 $playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames | ForEach-Object {
     [string]$_ -split ',' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
   })
@@ -42,8 +45,10 @@ foreach ($playerName in $playerNames) {
     throw "The multiplayer damage probe received an invalid bot name: $playerName"
   }
 }
-$logDirectory = Join-Path $runtimeRoot 'boss-multi-player-bots'
-$attackBarrier = Join-Path $logDirectory 'release-attacks.barrier'
+$logDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'boss-multi-player-bots') -LocalRuntimeRoot $runtimeRoot
+$attackBarrier = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $logDirectory 'release-attacks.barrier') -LocalRuntimeRoot $runtimeRoot
 
 if ($playerNames.Count -lt 2 -or $playerNames.Count -gt 5) {
   throw "The multiplayer damage probe supports 2-5 local players; received $($playerNames.Count)."
@@ -51,6 +56,12 @@ if ($playerNames.Count -lt 2 -or $playerNames.Count -gt 5) {
 if (@($playerNames | Select-Object -Unique).Count -ne $playerNames.Count) {
   throw 'The multiplayer damage probe requires unique bot names.'
 }
+
+function Assert-UnderRuntime {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $runtimeRoot
+}
+
 if ((Get-Content -LiteralPath (Join-Path $root 'copimine-end-event\config.yml') -Raw) -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: the multiplayer damage probe requires environment: local.'
 }
@@ -135,23 +146,11 @@ function Wait-LocalPlayers {
   throw "Multiplayer damage bots did not join: $($playerNames -join ', ')"
 }
 
-function Wait-LocalAuthentication {
-  for ($attempt = 0; $attempt -lt 60; $attempt++) {
-    $log = Read-SharedText -Path $paperLog
-    $missing = @($playerNames | Where-Object {
-        $log -notmatch ('\[AuthMe\].*' + [Regex]::Escape($_) + '\s+logged in')
-      })
-    if ($missing.Count -eq 0) {
-      return
-    }
-    Start-Sleep -Milliseconds 500
-  }
-  throw "Multiplayer damage bots did not complete AuthMe login: $($missing -join ', ')"
-}
-
 function Start-CombatBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][string]$BossUuid)
-  New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+  $safeLogDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $logDirectory -LocalRuntimeRoot $runtimeRoot
+  New-Item -ItemType Directory -Path $safeLogDirectory -Force | Out-Null
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
   $startInfo.FileName = (Get-Command node.exe -ErrorAction Stop).Source
   $startInfo.WorkingDirectory = $root
@@ -159,6 +158,7 @@ function Start-CombatBot {
   $startInfo.CreateNoWindow = $true
   $startInfo.RedirectStandardOutput = $true
   $startInfo.RedirectStandardError = $true
+  Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566
   if ($null -ne $startInfo.ArgumentList) {
     $startInfo.ArgumentList.Add($botScript)
     $startInfo.ArgumentList.Add($Name)
@@ -194,7 +194,10 @@ function Start-CombatBot {
 
 $processes = @()
 $boss = $null
+$null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon -CommandText 'plugins')
 try {
+  $attackBarrier = Assert-EndRiftLocalRuntimePath `
+    -Path $attackBarrier -LocalRuntimeRoot $runtimeRoot
   if (Test-Path -LiteralPath $attackBarrier -PathType Leaf) {
     Remove-Item -LiteralPath $attackBarrier -Force
   }
@@ -216,10 +219,6 @@ try {
     $processes += Start-CombatBot -Name $name -BossUuid $boss.Uuid
   }
   Wait-LocalPlayers
-  # A name in /list is not enough: AuthMe keeps pre-auth connections there.
-  # Wait for the server-side login record before any inventory, teleport or
-  # combat setup so every independent client is a valid participant.
-  Wait-LocalAuthentication
   foreach ($name in $playerNames) {
     $null = Invoke-LocalRcon -CommandText ("gamemode survival $name")
     $null = Invoke-LocalRcon -CommandText ("clear $name")
@@ -275,10 +274,13 @@ try {
     $process = $processes[$index]
     $output = $process.OutputTask.GetAwaiter().GetResult()
     $errorOutput = $process.ErrorTask.GetAwaiter().GetResult()
-    $botLogDirectory = Join-Path $runtimeRoot 'boss-multi-player-bots'
-    [IO.File]::WriteAllText((Join-Path $botLogDirectory ($playerNames[$index] + '.log')),
+    $stdoutPath = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $logDirectory ($playerNames[$index] + '.log')) -LocalRuntimeRoot $runtimeRoot
+    $stderrPath = Assert-EndRiftLocalRuntimePath `
+      -Path (Join-Path $logDirectory ($playerNames[$index] + '.err.log')) -LocalRuntimeRoot $runtimeRoot
+    [IO.File]::WriteAllText($stdoutPath,
       $output, [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText((Join-Path $botLogDirectory ($playerNames[$index] + '.err.log')),
+    [IO.File]::WriteAllText($stderrPath,
       $errorOutput, [Text.UTF8Encoding]::new($false))
   }
   $log = Read-SharedText -Path $paperLog
@@ -329,6 +331,8 @@ try {
   }
   Write-Output "LIVE_BOSS_MULTIPLAYER_REAL_HEALTH_PASS players=$($playerNames.Count) independent_attackers=$($attackers.Count) events=$($bossLines.Count) before=$($boss.Health) after=$($final.Health) summed_final_damage=$sum expected=$expected health_delta=$healthDelta same_tick_event_groups=$sameTick boss=$($boss.Uuid)"
 } finally {
+  $attackBarrier = Assert-EndRiftLocalRuntimePath `
+    -Path $attackBarrier -LocalRuntimeRoot $runtimeRoot
   if (Test-Path -LiteralPath $attackBarrier -PathType Leaf) {
     Remove-Item -LiteralPath $attackBarrier -Force
   }

@@ -23,18 +23,33 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'EndRiftLocalAuthMode.ps1')
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$branchLines = @(& git -C $root branch --show-current 2>$null)
+$branchExitCode = $LASTEXITCODE
+$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
+if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
+    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
+  throw "Refused Git branch '$branch'."
+}
 $runtimeRoot = (Resolve-Path (Join-Path $root 'local-runtime')).Path
-$serverDir = (Resolve-Path (Join-Path $runtimeRoot 'end-rift-server')).Path
+$runtimeRoot = Assert-EndRiftLocalRuntimePath -Path $runtimeRoot -LocalRuntimeRoot $runtimeRoot -MustExist
+$serverDir = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'end-rift-server') -LocalRuntimeRoot $runtimeRoot -MustExist
 $rconScript = Join-Path $root 'tests\InvokeEndRiftLocalRcon.ps1'
 $botScript = Join-Path $root 'tests\LocalEndRiftMobCombatBot.js'
-$paperLog = Join-Path $serverDir 'logs\latest.log'
-$statePath = Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml'
+$paperLog = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $serverDir 'logs\latest.log') -LocalRuntimeRoot $runtimeRoot -MustExist
+$statePath = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $serverDir 'plugins\CopiMineEndEvent\event-state.yml') `
+  -LocalRuntimeRoot $runtimeRoot -MustExist
 $configPath = Join-Path $root 'copimine-end-event\config.yml'
-$evidencePath = Join-Path $runtimeRoot 'official-current-live.log'
-$botLogDirectory = Join-Path $runtimeRoot 'official-current-bots'
+$evidencePath = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'official-current-live.log') -LocalRuntimeRoot $runtimeRoot
+$botLogDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $runtimeRoot 'official-current-bots') -LocalRuntimeRoot $runtimeRoot
 $playerNames = @($FirstBotName, $SecondBotName) + @($AdditionalBotNames)
 $processes = @()
-  $controlDirectory = Join-Path $botLogDirectory 'control'
+$controlDirectory = Assert-EndRiftLocalRuntimePath `
+  -Path (Join-Path $botLogDirectory 'control') -LocalRuntimeRoot $runtimeRoot
 $oldReflectEnabled = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_ENABLED', 'Process')
 $oldReflectStart = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_START_MS', 'Process')
 $oldReflectDiagnostics = [Environment]::GetEnvironmentVariable('END_RIFT_REFLECT_DIAGNOSTICS', 'Process')
@@ -45,6 +60,11 @@ $oldGuardianProbeNames = [Environment]::GetEnvironmentVariable('END_RIFT_GUARDIA
 $oldAttackInterval = [Environment]::GetEnvironmentVariable('END_RIFT_ATTACK_INTERVAL_MS', 'Process')
   $originalRequiredPlayers = 0
   $originalCore = $null
+
+function Assert-UnderRuntime {
+  param([Parameter(Mandatory = $true)][string]$Path)
+  return Assert-EndRiftLocalRuntimePath -Path $Path -LocalRuntimeRoot $runtimeRoot
+}
 
 if ($playerNames.Count -lt 2 -or $playerNames.Count -gt 20) {
   throw "Current official probe supports two to twenty players; received $($playerNames.Count)."
@@ -60,13 +80,6 @@ if ($configText -notmatch '(?m)^\s*schema-version:\s*4\s*$') {
 }
 if ($configText -notmatch '(?m)^environment:\s*local\s*$') {
   throw 'Refused: the official probe requires environment: local.'
-}
-$branchLines = @(& git -C $root branch --show-current 2>$null)
-$branchExitCode = $LASTEXITCODE
-$branch = if ($branchLines.Count -gt 0) { ([string]$branchLines[0]).Trim() } else { '' }
-if ($branchExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($branch) -or
-    $branch -notin @('codex/end-rift-event', 'codex/end-rift-26-3-integrated-final')) {
-  throw "Refused Git branch '$branch'."
 }
 foreach ($path in @($serverDir, $rconScript, $botScript, $paperLog, $statePath)) {
   if (-not (Test-Path -LiteralPath $path -PathType Leaf) -and
@@ -128,7 +141,9 @@ function Get-LogTail {
 function Write-Evidence {
   param([Parameter(Mandatory = $true)][string]$Text)
   Write-Output $Text
-  Add-Content -LiteralPath $evidencePath -Value $Text -Encoding UTF8
+  $safeEvidencePath = Assert-EndRiftLocalRuntimePath `
+    -Path $evidencePath -LocalRuntimeRoot $runtimeRoot
+  Add-Content -LiteralPath $safeEvidencePath -Value $Text -Encoding UTF8
 }
 
 function Wait-Log {
@@ -872,15 +887,21 @@ function Set-PlayerBotModeForName {
   if ($Name -notin $playerNames) {
     throw 'Wave 1 interaction mode is restricted to disposable local probe players.'
   }
-  Set-Content -LiteralPath (Join-Path $controlDirectory ($Name + '.mode')) `
+  $modePath = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $controlDirectory ($Name + '.mode')) -LocalRuntimeRoot $runtimeRoot
+  Set-Content -LiteralPath $modePath `
     -Value $Mode -NoNewline -Encoding ASCII
 }
 
 function Start-PlayerBot {
   param([Parameter(Mandatory = $true)][string]$Name, [Parameter(Mandatory = $true)][int[]]$Core)
   $node = (Get-Command node.exe -ErrorAction Stop).Source
-  $out = Join-Path $botLogDirectory ($Name + '.log')
-  $err = Join-Path $botLogDirectory ($Name + '.err.log')
+  $out = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $botLogDirectory ($Name + '.log')) -LocalRuntimeRoot $runtimeRoot
+  $err = Assert-EndRiftLocalRuntimePath `
+    -Path (Join-Path $botLogDirectory ($Name + '.err.log')) -LocalRuntimeRoot $runtimeRoot
+  $safeControlDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $controlDirectory -LocalRuntimeRoot $runtimeRoot -MustExist
   $interactionRange = 20
   $attackIntervalMilliseconds = 900
   $startInfo = [Diagnostics.ProcessStartInfo]::new()
@@ -892,7 +913,7 @@ function Start-PlayerBot {
   $startInfo.RedirectStandardError = $true
   Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566
   Set-EndRiftLocalBotChildEnvironmentOverrides -StartInfo $startInfo -Overrides @{
-    END_RIFT_BOT_CONTROL_DIRECTORY = $controlDirectory
+    END_RIFT_BOT_CONTROL_DIRECTORY = $safeControlDirectory
     END_RIFT_BOT_SKIP_AUTH = '1'
     END_RIFT_BOT_SKIP_REGISTER = '1'
     END_RIFT_REFLECT_ENABLED = [string]$env:END_RIFT_REFLECT_ENABLED
@@ -908,14 +929,14 @@ function Start-PlayerBot {
         $botScript, $Name, [string]($BotDurationSeconds * 1000),
         (Format-Coordinate ($Core[0] + 0.5D)), (Format-Coordinate $Core[1]),
         (Format-Coordinate ($Core[2] + 0.5D)), [string]$interactionRange,
-        [string]$attackIntervalMilliseconds, $controlDirectory)) {
+        [string]$attackIntervalMilliseconds, $safeControlDirectory)) {
       $startInfo.ArgumentList.Add([string]$argument)
     }
   } else {
     $startInfo.Arguments = '"' + $botScript + '" ' + $Name + ' ' + ([string]($BotDurationSeconds * 1000)) + ' ' +
       (Format-Coordinate ($Core[0] + 0.5D)) + ' ' + (Format-Coordinate $Core[1]) + ' ' +
       (Format-Coordinate ($Core[2] + 0.5D)) + ' ' + [string]$interactionRange + ' ' +
-      [string]$attackIntervalMilliseconds + ' "' + $controlDirectory + '"'
+      [string]$attackIntervalMilliseconds + ' "' + $safeControlDirectory + '"'
   }
   $stdoutStream = [IO.File]::Create($out)
   $stderrStream = [IO.File]::Create($err)
@@ -1108,10 +1129,20 @@ function Teleport-GuardianProbeToNearest {
 $null = Assert-EndRiftLocalAuthMeDisabled -PluginListOutput (Invoke-LocalRcon 'plugins')
 
 try {
-  New-Item -ItemType Directory -Path $botLogDirectory -Force | Out-Null
-  New-Item -ItemType Directory -Path $controlDirectory -Force | Out-Null
+  $safeBotLogDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $botLogDirectory -LocalRuntimeRoot $runtimeRoot
+  $safeControlDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $controlDirectory -LocalRuntimeRoot $runtimeRoot
+  New-Item -ItemType Directory -Path $safeBotLogDirectory -Force | Out-Null
+  New-Item -ItemType Directory -Path $safeControlDirectory -Force | Out-Null
+  $safeControlDirectory = Assert-EndRiftLocalRuntimePath `
+    -Path $controlDirectory -LocalRuntimeRoot $runtimeRoot -MustExist
   Write-Evidence 'LOCAL_AUTH_MODE authme=disabled bot_auth_commands=skipped'
-  Get-ChildItem -LiteralPath $controlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+  Get-ChildItem -LiteralPath $safeControlDirectory -Filter '*.mode' -File -ErrorAction SilentlyContinue | ForEach-Object {
+    $safeModePath = Assert-EndRiftLocalRuntimePath `
+      -Path $_.FullName -LocalRuntimeRoot $runtimeRoot -MustExist
+    Remove-Item -LiteralPath $safeModePath -Force
+  }
   # Keep one cursor for the whole disposable run. The event id is generated
   # after core setup, so this cursor is guaranteed to precede every marker for
   # the new attempt, including markers emitted during setup/teleport.
@@ -1147,7 +1178,7 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   $env:END_RIFT_GUARDIAN_PROBE_NAMES = $playerNames -join ','
   $env:END_RIFT_ATTACK_INTERVAL_MS = '200'
   foreach ($name in $playerNames) {
-    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
+    Set-PlayerBotModeForName -Name $name -Mode 'ACTIVE'
     Start-PlayerBot -Name $name -Core $core
     Start-Sleep -Milliseconds 250
   }
@@ -1324,13 +1355,13 @@ $env:END_RIFT_REFLECT_DIAGNOSTICS = '1'
   Wait-Log -AfterOffset $chamberOffset -Pattern 'END_RIFT_CHAMBERS_ASSIGNED' -WaitSeconds 180 | Out-Null
   Teleport-PlayersToChambers
   foreach ($name in $playerNames) {
-    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE_WAVE7' -NoNewline -Encoding ASCII
+    Set-PlayerBotModeForName -Name $name -Mode 'ACTIVE_WAVE7'
   }
   Wait-Log -AfterOffset $chamberOffset -Pattern 'END_RIFT_CHAMBERS_COMPLETE' -WaitSeconds 900 -Action { Teleport-PlayersToNearestChamberMob } | Out-Null
   # Chamber completion and Wave 7 completion may share a tick as well.
   $waveSevenTransitionOffset = Wait-WaveComplete -Wave 7 -Core $core -Seconds 900 -AfterOffset $chamberOffset
   foreach ($name in $playerNames) {
-    Set-Content -LiteralPath (Join-Path $controlDirectory ($name + '.mode')) -Value 'ACTIVE' -NoNewline -Encoding ASCII
+    Set-PlayerBotModeForName -Name $name -Mode 'ACTIVE'
   }
   Write-Evidence "CURRENT_WAVE_PASS event=$eventId wave=7 objective=REALITY_SPLIT chambers=local"
   if ($StopAfterWave -eq 7) { return }

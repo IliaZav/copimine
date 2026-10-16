@@ -171,8 +171,11 @@ try {
     # attack arbitrary entities, so keep its measured arena radius at zero.
     $botDurationMs = ($DurationSeconds + 60) * 1000
     $arguments = '"' + $botScript + '" ' + $name + ' ' + ([string]$botDurationMs) + ' 0 68 0 0'
-    $processes += Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
-      -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
+    $process = Invoke-EndRiftLocalBotEnvironment -BotHost '127.0.0.1' -BotPort 25566 -Action {
+      Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $root `
+        -RedirectStandardOutput $botOut -RedirectStandardError $botErr -WindowStyle Hidden -PassThru
+    }
+    $processes += $process
   }
   Wait-Players
 

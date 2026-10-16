@@ -191,6 +191,7 @@ function Start-Bot {
   $startInfo.CreateNoWindow = $true
   $startInfo.RedirectStandardOutput = $true
   $startInfo.RedirectStandardError = $true
+  Set-EndRiftLocalBotChildEnvironment -StartInfo $startInfo -BotHost '127.0.0.1' -BotPort 25566
   if ($null -ne $startInfo.ArgumentList) {
     $startInfo.ArgumentList.Add($botScript)
     $startInfo.ArgumentList.Add($Username)

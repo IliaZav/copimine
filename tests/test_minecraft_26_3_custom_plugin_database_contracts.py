@@ -498,8 +498,8 @@ def test_migration_plugin_build_order_follows_shared_bridge_dependencies():
             builds.index("copimine-election-core"),
             builds.index("copimine-admin-plugin"),
             builds.index("copimine-artifacts"),
-            builds.index("copimine-end-event"),
             builds.index("copimine-narcotics"),
+            builds.index("copimine-end-event"),
         ]
         assert order == sorted(order), "plugin CI must build bridge providers before their consumers"
 

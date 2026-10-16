@@ -95,8 +95,8 @@ $firstPartyBuilds = @(
   @{ Label = 'ElectionCore'; Directory = 'copimine-election-core' },
   @{ Label = 'UltimateAdminPlus'; Directory = 'copimine-admin-plugin' },
   @{ Label = 'Artifacts'; Directory = 'copimine-artifacts' },
-  @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
   @{ Label = 'Narcotics'; Directory = 'copimine-narcotics' },
+  @{ Label = 'End Event'; Directory = 'copimine-end-event'; SyncServerConfig = $true },
   @{ Label = 'AuthEffects'; Directory = 'minecraft\server\plugins\AuthEffects' }
 )
 if (-not $SkipBuilds) {

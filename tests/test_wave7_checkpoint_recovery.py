@@ -222,8 +222,13 @@ def test_recovery_bootstrap_cleanup_preserves_rebuilt_wave7_barriers(tmp_path):
     assert "clearWaveEntities(true, !preserveWave7RecoveryCheckpoint)" in cleanup
     assert "if (resetWaveObjectiveState)" in clear
     assert "if (!clearWaveObjectiveState()) return false;" in clear
-    assert "if (!finalSealBarrierContext() && !isWave7RecoveryCheckpointActive())" in boss_cleanup, (
-        "boss cleanup must not release barriers owned by an active Wave 7 recovery checkpoint")
+    normalized_boss_cleanup = " ".join(boss_cleanup.split())
+    guarded_barrier_release = (
+        'if (!finalSealBarrierContext() && !isWave7RecoveryCheckpointActive()) '
+        '{ releaseFinalSealBarriers("boss-cleanup"); }'
+    )
+    assert guarded_barrier_release in normalized_boss_cleanup, (
+        "boss cleanup must release barriers only outside an active Wave 7 recovery checkpoint")
 
     probe = tmp_path / "Wave7RecoveryCleanupProbe.java"
     probe.write_text('''

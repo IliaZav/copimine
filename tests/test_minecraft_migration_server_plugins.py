@@ -752,9 +752,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 357222
-    assert narcotics_candidate['sha256'] == '6b706bf34c864caa999a23a51776e9d3fd213d6635c3b5c66f8d0108e9a6eb01'
-    assert narcotics_candidate['sha512'] == 'e8fb40d94a6ce13236755de92b8c1c20e58c519655eb443a51b483eb67ed10546528e497895d52f28eec9b78b4ca9eb3a23e0632a422cbf4def5f4d1fc856b41'
+    assert narcotics_candidate['size'] == 360166
+    assert narcotics_candidate['sha256'] == 'cfce24c44a5f6a6b552424859ff6651fc962faa388187924ccff77807292e6a6'
+    assert narcotics_candidate['sha512'] == 'e21571d58aa06ed40917eba8873c5d86c9307a47f2532acc596dad842f967fb48ec9afceecfd441945233412358ae96f8f38ceb39dd14c3b94f134e815d56d92'
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)
@@ -1001,6 +1001,9 @@ def test_end_event_26_3_candidate_tracks_and_installs_the_real_target_jar():
     candidate=baseline['candidate']
     assert candidate['filename']=='CopiMineEndEvent-26.3.jar'
     assert candidate['runtimeFilename']=='CopiMineEndEvent.jar'
+    assert candidate['size']==1580201
+    assert candidate['sha256']=='40660d699c0a1fd4c8732f11d59d7797806ce877514b8141748fe589978177de'
+    assert candidate['sha512']=='a971c34af07846de705cb2fb0fc34d9bf0fb12bf6c90e51e14a58469c3c8d592b5032743d0594e10b98c7aaa236badfcb3e739c7df971f631d8d029c0132fb54'
     assert candidate['apiVersion']=='26.3'
     assert candidate['buildArtifact']=='build/minecraft-26.3/plugins/jars/CopiMineEndEvent-26.3.jar'
     assert candidate['nativeVerified'] is lock['nativeVerified']

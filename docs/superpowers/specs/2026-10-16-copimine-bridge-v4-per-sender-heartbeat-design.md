@@ -1,6 +1,6 @@
 # CopiMine Bridge V4 Per-Sender Heartbeat Design
 
-**Status:** Draft for review
+**Status:** Approved for implementation; native runtime verification pending
 
 **Date:** 2026-10-16
 

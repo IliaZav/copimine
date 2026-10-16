@@ -35,8 +35,8 @@
 - [x] Task 1: strict shared control codec (commits `6371b988`, `3a360897`; focused codec tests passed).
 - [x] Task 2: client per-sender watchdog (commit `72f73d31`; focused and full client tests passed).
 - [x] Task 3: Paper heartbeat production (commit `e13b22e2`; 62 focused and 86 full bridge-server tests passed; independent review approved; Codex Security reported zero findings).
-- [ ] Task 4: server tickers and version/config defaults (focused tests and Paper builds passed; requested CodeRabbit and Codex Security reviews pending).
-- [ ] Task 5: integrated builds, artifact lock, and runtime verification.
+- [x] Task 4: server tickers and version/config defaults (focused tests and Paper builds passed; CodeRabbit and Codex Security reviews approved with zero findings).
+- [ ] Task 5: integrated builds, artifact lock, and automated checks passed; native runtime verification remains pending because the isolated Paper runtime and controllable Minecraft client are unavailable.
 
 ---
 
@@ -113,9 +113,9 @@
 ### Task 5: Integration and final verification
 
 **Files:**
-- Update only Bridge V4 tests and implementation files from Tasks 1–4, the current-version build lock/tests/docs listed in Task 4, and no Wave 7 files.
+- Update only Bridge V4 tests and implementation files from Tasks 1–4, current-version build locks/tests/docs listed in Task 4, and migration candidate lock/test hashes for rebuilt Narcotics and EndEvent artifacts; do not change Wave 7 files.
 
-1. Build the client with the pinned Java 25.0.4.1 toolchain and update `tools/minecraft-26.3/profile.lock.json` from that JAR's exact filename, version, size, and SHA-512. Run current-version Python profile/native-acceptance assertions, the full focused protocol/client suite, `bridgeServerTest`, and the existing Paper plugin build tasks used by the Minecraft 26.3 migration gate.
+1. Build the client with the pinned Java 25.0.4.1 toolchain and update `tools/minecraft-26.3/profile.lock.json` from that JAR's exact filename, version, size, and SHA-512. Refresh only first-party Paper candidate hashes whose reproducible artifacts changed with the approved heartbeat work. Run current-version Python profile/native-acceptance assertions, the full focused protocol/client suite, `bridgeServerTest`, and the existing Paper plugin build tasks used by the Minecraft 26.3 migration gate.
 2. Review the final diff for exact legacy/extended HelloAck lengths, reserved-bit rejection, no key/secret changes, exact body signing, envelope TTL, monotonic client timeout, per-sender isolation, and no V3 mutation path.
 3. Explicitly configure the existing Paper `required_client_mod_version` to `0.1.3+26.3`, provision the server with the external protected key file without displaying or copying its content, and connect a `0.1.3+26.3` client. Verify both signed feature bits and per-sender heartbeats, and keep both streams READY for more than 20 seconds.
 4. Use deterministic fake-clock and sender transport tests to suppress one sender's heartbeat/application traffic while leaving the other sender live. Verify the client clears and reopens only the silent sender, the reopen names its retired stream, readiness is restored with a fresh stream, and the healthy sender's state remains intact.

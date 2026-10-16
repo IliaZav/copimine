@@ -17,10 +17,10 @@
     "size": 41483720
   },
   "clientArtifact": {
-    "filename": "CopiMineClient-0.1.2+26.3.jar",
-    "version": "0.1.2+26.3",
-    "size": 14954505,
-    "sha512": "c6aabd02a2b043aa57ebadeca5c4cc11c65e5bac866cd0984fc9fd76c4894053860bbc2d925b5e04143a757566ba627185fa1e9042e7470b94a094f9f867f171"
+    "filename": "CopiMineClient-0.1.3+26.3.jar",
+    "version": "0.1.3+26.3",
+    "size": 14957433,
+    "sha512": "815456edb10004ce552335e7d7427803de945598d2e6aa38494cc5bec4f1d13aea4fa58ca3b8bc5a21daec84b804303267c9c0593881da42d254a78a2d281730"
   },
   "paper": {
     "build": 169,

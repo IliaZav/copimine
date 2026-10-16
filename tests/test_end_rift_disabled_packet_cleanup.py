@@ -15,7 +15,7 @@ def packet_probe(tmp_path_factory):
     assert protocol_constant, "production bridge protocol version constant is required by the extracted packet boundary"
     start = source.index("    private void sendClientPacket(Player player, String type, String instanceId, long durationMillis,\n"
                          "                                  String subjectId, String visualId, int health, int maxHealth,\n"
-                         "                                  float progress, String clearPolicy, String status)")
+                         "                                  float progress, String clearPolicy, String status, String source)")
     opening = source.index("{", start)
     depth, end = 1, opening + 1
     while depth:
@@ -25,14 +25,26 @@ def packet_probe(tmp_path_factory):
     fixture = directory / "DisabledPacketCleanup.java"
     fixture.write_text('''
 import java.util.logging.Level;
+import java.util.UUID;
 public class DisabledPacketCleanup {
   %s
   boolean enabled = true, checkpointSaved; int packets;
   long generation = 5; String eventId = "attempt";
   record Config(String bridgeChannel) { }
   Config config = new Config("copimine:bridge");
+  static final class EndEventBridgeV4Access {
+    boolean isReady(UUID playerUuid) { return playerUuid != null; }
+    boolean send(UUID recipient, String type, String instanceId, long durationMillis,
+                 String subjectId, String visualId, int health, int maxHealth,
+                 float progress, String clearPolicy, String status, String source) {
+      return recipient != null;
+    }
+  }
+  EndEventBridgeV4Access endEventBridgeV4 = new EndEventBridgeV4Access();
   boolean isEnabled() { return enabled; }
   class Player {
+    private final UUID uniqueId = UUID.randomUUID();
+    UUID getUniqueId() { return uniqueId; }
     boolean isOnline() { return true; }
     void sendPluginMessage(DisabledPacketCleanup plugin, String channel, byte[] data) {
       if (!plugin.isEnabled()) throw new IllegalArgumentException("Plugin must be enabled to send messages");
@@ -40,13 +52,13 @@ public class DisabledPacketCleanup {
       packets++;
     }
   }
-  void recordPluginMessage() { }
+  void recordPluginMessage() { packets++; }
   java.util.logging.Logger getLogger() { return java.util.logging.Logger.getAnonymousLogger(); }
   public static void main(String[] args) {
     var p = new DisabledPacketCleanup();
     p.enabled = Boolean.parseBoolean(args[0]);
     if (Boolean.parseBoolean(args[1])) p.config = null;
-    p.sendClientPacket(p.new Player(), "CLEAR", "binding", 0, "entity", "visual", 0, 0, 0, "CLEAR", "");
+    p.sendClientPacket(p.new Player(), "CLEAR", "binding", 0, "entity", "visual", 0, 0, 0, "CLEAR", "", "");
     p.checkpointSaved = true;
     if (!p.checkpointSaved || p.packets != Integer.parseInt(args[2]))
       throw new AssertionError("cleanup must reach its checkpoint; only enabled plugins send packets");

@@ -50,27 +50,39 @@ def probe_harness(tmp_path_factory):
     }
     """)
     disable = _declaration(source, "public void onDisable()")
-    restart_policy = disable[disable.index("        boolean preserveWave6ForRestart ="):
+    restart_policy = disable[disable.index("        boolean preserveWave2ForRestart ="):
                              disable.index("        if (diagnosticsWatchdogTask != null)")]
     methods.append("private boolean preserveWaveForRestart() {\n" + restart_policy
-                   + "return preserveWave6ForRestart || preserveWave7ForRestart;\n}")
+                   + "return preserveWave2ForRestart || preserveWave6ForRestart || preserveWave7ForRestart;\n}")
     harness = r"""
 import java.util.*;
 import java.util.logging.*;
 import java.util.stream.Collectors;
+import me.copimine.endevent.domain.EventPhase;
 import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
+import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 
 public final class WaveProbeAdapterHarness {
     String eventId = "event", worldName = "world";
     EventPhase phase = EventPhase.READY_FOR_PLAYERS;
+    static final String WAVE_TWO_CYCLES_PROGRESS_KEY = "wave2-hunt-cycles";
+    static final String WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY = "wave2-groups-spawned";
+    static final String WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY = "wave2-group-cleared";
+    static final String WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY = "wave2-outstanding-uuids";
+    Map<String, String> wave7RecoveryCheckpoint = Map.of();
     long generation = 4L, creativeTestGeneration = 4L, phaseDeadlineMillis;
     UUID creativeTestPlayerUuid;
     int creativeTestStage = 3, creativeTestStageTicks, activeWave, waveSpawnGroupIndex,
             waveSpawnEntityOffset, sharedInitializations, initializedWave, saveCalls,
-            registryGeneration, sessionCancellations, scopeCloses;
+            registryGeneration, sessionCancellations, scopeCloses, currentHuntCycles,
+            waveTwoGroupsSpawned;
+        boolean waveTwoGroupCleared;
+    Set<UUID> waveTwoOutstandingEntityUuids = Set.of();
+        Set<UUID> waveTwoCleanupEntityUuids = Set.of();
     boolean officialActive, officialCurrent, diagnosticsFailureInjection, cleanupSucceeds = true,
             testCombatAiMode, testWaveFrontVisualMode, testPortalVisualMode,
-            testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested;
+            testWave4ObeliskMode, testRitualCombatMode, testWaveInspectionMode, preserveRequested,
+            officialAttempt;
     Set<UUID> sandboxWaveRoster = Set.of(), officialRoster = Set.of(), initializedRoster = Set.of();
     List<Object> waveSpawnSchedule = List.of();
     Task creativeTestTask;
@@ -91,6 +103,7 @@ public final class WaveProbeAdapterHarness {
     boolean isInsideOwnedPrisonerAnchor(Player player) { return false; }
     boolean isOfficialAttemptActive() { return officialActive; }
     boolean isOfficialCurrentAttempt() { return officialCurrent; }
+    boolean isOfficialAttempt() { return officialAttempt; }
     boolean isRitualCombatSandbox() { return testRitualCombatMode; }
     Set<UUID> authoritativeAttemptRoster() { return officialRoster; }
     int activeEventTaskCount() { return 0; }
@@ -98,23 +111,27 @@ public final class WaveProbeAdapterHarness {
         return cancelSessionTasks(false);
     }
     boolean cancelSessionTasks(boolean preserve) {
+        // Model the new durable roster checkpoint as the first cleanup step:
+        // a failed checkpoint must not cancel the creative run or mutate state.
+        if (!cleanupSucceeds) return false;
         sessionCancellations++;
         preserveRequested = preserve;
         cancelCreativeTestTask();
         if (!preserve) clearWaveObjectiveState();
-        return cleanupSucceeds;
+        return true;
     }
     boolean closeEncounterResourceScope(String reason) { scopeCloses++; return cleanupSucceeds; }
     boolean resetEncounterTaskRegistry(long value) { registryGeneration = (int) value; return cleanupSucceeds; }
-    void clearWaveEntities() { clearWaveEntities(true); }
-    void clearWaveEntities(boolean includeRewards) { clearWaveObjectiveState(); }
-    void clearWaveObjectiveState() {
+    boolean clearWaveEntities() { return clearWaveEntities(true); }
+    boolean clearWaveEntities(boolean includeRewards) { return clearWaveObjectiveState(); }
+    boolean clearWaveObjectiveState() {
         testWaveFrontVisualMode = false;
         testWaveInspectionMode = false;
         testPortalVisualMode = false;
         testWave4ObeliskMode = false;
         testRitualCombatMode = false;
         sandboxWaveRoster = Set.of();
+        return true;
     }
     void saveStateAsync() { saveCalls++; }
     boolean finalSealBarrierContext() { return false; }
@@ -126,7 +143,6 @@ public final class WaveProbeAdapterHarness {
                 .filter(player -> sandboxWaveRoster.contains(player.getUniqueId())).count();
     }
     enum GameMode { SURVIVAL, CREATIVE, SPECTATOR }
-    enum EventPhase { READY_FOR_PLAYERS, WAVE_6, WAVE_7 }
     static final class Chambers {
         boolean owns(long generation) { return true; }
         Assignment assignment() { return new Assignment(); }
@@ -136,7 +152,9 @@ public final class WaveProbeAdapterHarness {
     static final class Assignment { int chamberCount() { return 1; } }
     static final class Trials {
         boolean owns(long generation) { return true; }
+        boolean ownsNamed(UUID eventId, long generation) { return false; }
         Map<Object, Object> snapshot() { return Map.of(); }
+        Object namedSnapshot() { throw new AssertionError("unnamed Wave 7 probe must not read a named snapshot"); }
     }
     static final class RitualSphereEncounterSnapshot {
         static Map<String, String> encode(Object state) { return Map.of("ritual-wave", "6"); }
@@ -147,6 +165,7 @@ public final class WaveProbeAdapterHarness {
     }
     static final class RealitySplitTrialSnapshot {
         static Map<String, String> encode(Object... args) { return Map.of(); }
+        static Map<String, String> encodeNamed(Object... args) { return Map.of(); }
     }
     static final class World {
         String getName() { return "world"; }
@@ -237,6 +256,20 @@ public final class WaveProbeAdapterHarness {
                 check(probe.waveObjectiveProgressSnapshot().isEmpty(),
                         "inspection scene must never persist a playable sandbox marker or roster");
             }
+            case "wave2-snapshot" -> {
+                probe.phase = EventPhase.WAVE_2;
+                probe.currentHuntCycles = 1;
+                probe.waveTwoGroupsSpawned = 2;
+                probe.waveTwoGroupCleared = false;
+                UUID outstanding = UUID.fromString("00000000-0000-0000-0000-000000000002");
+                probe.waveTwoOutstandingEntityUuids = Set.of(outstanding);
+                Map<String, String> saved = probe.waveObjectiveProgressSnapshot();
+                check("1".equals(saved.get(WAVE_TWO_CYCLES_PROGRESS_KEY))
+                                && "2".equals(saved.get(WAVE_TWO_GROUPS_SPAWNED_PROGRESS_KEY))
+                                && "false".equals(saved.get(WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY))
+                                && outstanding.toString().equals(saved.get(WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY)),
+                        "active Wave 2 checkpoint must encode stage, group and durable outstanding UUIDs");
+            }
             case "playable-snapshot" -> {
                 probe.activeWave = 6;
                 probe.testWaveFrontVisualMode = true;
@@ -264,6 +297,22 @@ public final class WaveProbeAdapterHarness {
                 check(preserved == args[0].equals("playable-shutdown")
                         && probe.preserveRequested == preserved,
                         "only playable Wave 6/7 sessions may preserve combat state for restart");
+            }
+            case "official-wave2-shutdown" -> {
+                probe.activeWave = 2;
+                probe.phase = EventPhase.WAVE_2;
+                probe.officialAttempt = true;
+                boolean preserved = probe.preserveWaveForRestart();
+                check(preserved && probe.preserveRequested,
+                        "official Wave 2 shutdown must preserve its roster for bootstrap recovery");
+            }
+            case "test-wave2-shutdown" -> {
+                probe.activeWave = 2;
+                probe.phase = EventPhase.WAVE_2;
+                probe.testWaveFrontVisualMode = true;
+                boolean preserved = probe.preserveWaveForRestart();
+                check(!preserved && !probe.preserveRequested,
+                        "disposable Wave 2 test sessions must not be preserved for restart");
             }
             case "strict-creative" -> {
                 Bukkit.players.add(operator);
@@ -326,6 +375,11 @@ public final class WaveProbeAdapterHarness {
     static void check(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
     }
+    UUID parseUuidOrNull(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try { return UUID.fromString(raw.trim()); }
+        catch (IllegalArgumentException ignored) { return null; }
+    }
 }
 """
     harness = harness.replace("    public static void main(String[] args)",
@@ -333,8 +387,14 @@ public final class WaveProbeAdapterHarness {
     output = tmp_path_factory.mktemp("wave-probe-adapters")
     java_file = output / "WaveProbeAdapterHarness.java"
     java_file.write_text(harness, encoding="utf-8")
+    domain = ROOT / "copimine-end-event/src/me/copimine/endevent/domain"
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
-                               str(java_file), str(ROOT / "copimine-end-event/src/me/copimine/endevent/domain/SandboxWaveSessionSnapshot.java")],
+                               str(java_file), str(domain / "EventPhase.java"),
+                               str(domain / "SandboxWaveSessionSnapshot.java"),
+                               str(domain / "PressureBudgetController.java"),
+                               str(domain / "WaveMechanicsPolicy.java"),
+                               str(domain / "WaveTwoStagePolicy.java"),
+                               str(domain / "WaveTwoEntityRecoveryPolicy.java")],
                               capture_output=True, text=True, check=False)
     assert compiled.returncode == 0, compiled.stdout + compiled.stderr
     return output
@@ -344,6 +404,7 @@ public final class WaveProbeAdapterHarness {
     ("creative-only", 1), ("creative-only", 2), ("creative-only", 3),
     ("creative-with-survivor", 1), ("creative-with-survivor", 2), ("creative-with-survivor", 3),
     ("empty-inspection", 3), ("empty-ai", 3), ("strict-creative", 3),
+    ("wave2-snapshot", 2),
     ("strict-survival", 3), ("official", 3), ("official-active", 3),
     ("strict-after-inspection", 3),
     ("creative-cleanup-failure", 3),
@@ -352,6 +413,7 @@ public final class WaveProbeAdapterHarness {
     ("playable-snapshot", 6), ("empty-playable-snapshot", 6),
     ("inspection-shutdown", 6), ("inspection-shutdown", 7),
     ("playable-shutdown", 6), ("playable-shutdown", 7),
+    ("official-wave2-shutdown", 2), ("test-wave2-shutdown", 2),
 ])
 def test_wave_probe_session_boundaries(probe_harness, scenario, wave):
     result = subprocess.run(["java", "-cp", str(probe_harness), "WaveProbeAdapterHarness",

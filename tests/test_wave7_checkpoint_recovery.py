@@ -213,6 +213,7 @@ def test_recovery_bootstrap_cleanup_preserves_rebuilt_wave7_barriers(tmp_path):
     source = (SOURCE / "CopiMineEndEvent.java").read_text(encoding="utf-8")
     restore = extract(source, "void restorePersistedCombatRuntime()")
     cleanup = extract(source, "void cleanupUnexpectedCombatEntitiesAfterRestart()")
+    boss_cleanup = extract(source, "void clearBossOnly()")
     clear = extract(source, "boolean clearWaveEntities(boolean includeRewards, boolean resetWaveObjectiveState)")
     assert restore.index("restoreRealitySplitBarriersAfterBootstrap()") < restore.index(
         "cleanupUnexpectedCombatEntitiesAfterRestart()"), (
@@ -221,6 +222,8 @@ def test_recovery_bootstrap_cleanup_preserves_rebuilt_wave7_barriers(tmp_path):
     assert "clearWaveEntities(true, !preserveWave7RecoveryCheckpoint)" in cleanup
     assert "if (resetWaveObjectiveState)" in clear
     assert "if (!clearWaveObjectiveState()) return false;" in clear
+    assert "if (!finalSealBarrierContext() && !isWave7RecoveryCheckpointActive())" in boss_cleanup, (
+        "boss cleanup must not release barriers owned by an active Wave 7 recovery checkpoint")
 
     probe = tmp_path / "Wave7RecoveryCleanupProbe.java"
     probe.write_text('''

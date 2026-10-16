@@ -30789,10 +30789,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void clearBossOnly() {
-        // During LAST_SEAL/BOSS_FINISH the wall is the active arena boundary,
-        // not disposable boss VFX. Victory owns the explicit release; a
-        // boss-only cleanup must leave the eight-block room intact.
-        if (!finalSealBarrierContext()) {
+        // During LAST_SEAL/BOSS_FINISH or Wave 7 recovery the wall is an
+        // active arena boundary, not disposable boss VFX. The owning flow
+        // releases it explicitly; boss-only cleanup must leave it intact.
+        if (!finalSealBarrierContext() && !isWave7RecoveryCheckpointActive()) {
             releaseFinalSealBarriers("boss-cleanup");
         }
         clearWorldVfx();

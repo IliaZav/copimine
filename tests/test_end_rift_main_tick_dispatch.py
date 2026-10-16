@@ -26,6 +26,7 @@ def tick_probe(tmp_path_factory):
                 "updatePadOccupancy", "updateCombatHelpers", "tickWaveMobAi", "tickWaveCommanderAura",
                     "tickMiniBosses", "tickEliteAbilityState", "tickEventArrowProjectiles",
                     "refreshClientBindingsForOnlinePlayers",
+                "tickUncommittedRealitySplitBoundaryRollbacks",
                 "containRealitySplitPlayers", "tickWave4ObeliskAssault", "tickStartRitual",
                 "tickCurrentIntermission", "tickCoreRestoration", "tickPreBossCooldown", "tickBossCinematic",
                 "issueVictoryRewards", "tickShardChannels", "tickShardPassives"]

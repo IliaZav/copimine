@@ -153,6 +153,7 @@ public final class WaveProbeAdapterHarness {
         Assignment assignment() { return new Assignment(); }
         Set<Object> completedChambers() { return Set.of(); }
         Set<Object> openPassages() { return Set.of(); }
+        Set<Object> openingPassages() { return Set.of(); }
     }
     static final class Assignment { int chamberCount() { return 1; } }
     static final class Trials {

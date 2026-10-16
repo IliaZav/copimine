@@ -20,6 +20,11 @@ def test_named_checkpoint_resumes_and_legacy_or_malformed_trial_checkpoint_requi
         end = source.index("\n        worldName = snapshot.worldName();", start)
         body = source[start:end].rsplit("\n        }", 1)[0]
         adapter = "private " + signature + " {\n" + body + "\n}"
+    adapter = "\n".join((
+        adapter,
+        extract(source, "boolean shouldRestoreWave7RecoveryCheckpoint(Map<String, String> objectiveProgress)"),
+        extract(source, "boolean isWave7RecoveryCheckpointActive()"),
+    ))
     probe = tmp_path / "Wave7CheckpointProbe.java"
     probe.write_text('''
 import java.util.*;
@@ -70,6 +75,20 @@ public class Wave7CheckpointProbe {
                         Set.of(new RealitySplitChamberController.Passage(0,1)))
                         && !valid.realitySplitChamberController.boundaryOpen(0,1),
                 "a valid OPENING checkpoint restores intent without granting room access");
+        var recovery = new Wave7CheckpointProbe();
+        recovery.phase=EventPhase.RECOVERY_REQUIRED; recovery.activeWave=0; recovery.finalSealBarrierHold=false;
+        recovery.wave7RecoveryCheckpoint=Map.copyOf(state);
+        require(recovery.shouldRestoreWave7RecoveryCheckpoint(state),
+                "a recovery snapshot with Wave 7 checkpoint data must be selected for strict restoration");
+        recovery.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
+        require(recovery.phase==EventPhase.RECOVERY_REQUIRED
+                        && recovery.realitySplitChamberController.owns(73)
+                        && recovery.isWave7RecoveryCheckpointActive()
+                        && recovery.realitySplitChamberController.openingPassages().equals(
+                            Set.of(new RealitySplitChamberController.Passage(0,1))),
+                "restart recovery retains the valid OPENING checkpoint for a closed wall rebuild");
+        require(!recovery.shouldRestoreWave7RecoveryCheckpoint(Map.of("wave2.cycles","1")),
+                "unrelated recovery checkpoints must not be interpreted as Wave 7");
         var incompleteNamed = new RealitySplitTrialController();
         incompleteNamed.beginNamed(UUID.fromString("00000000-0000-0000-0000-000000000073"),73,assignment,List.of(
                 RealitySplitTrialController.NamedTrial.WARDEN,RealitySplitTrialController.NamedTrial.MOBILE_MARKSMAN));
@@ -81,6 +100,14 @@ public class Wave7CheckpointProbe {
         require(unauthorizedOpening.phase==EventPhase.RECOVERY_REQUIRED
                         && !unauthorizedOpening.realitySplitChamberController.owns(73),
                 "official OPENING intent without an adjacent completed room must fail closed");
+        var unauthorizedOpenState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(),
+                Set.of(new RealitySplitChamberController.Passage(0,1))));
+        unauthorizedOpenState.putAll(RealitySplitTrialSnapshot.encodeNamed(incompleteNamed.namedSnapshot()));
+        var unauthorizedOpen = new Wave7CheckpointProbe();
+        unauthorizedOpen.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(unauthorizedOpenState)),false);
+        require(unauthorizedOpen.phase==EventPhase.RECOVERY_REQUIRED
+                        && !unauthorizedOpen.realitySplitChamberController.owns(73),
+                "official OPEN passage without an adjacent completed room must fail closed");
         var finalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0,1),Set.of()));
         finalSealState.put("final-seal-wave","7");
         var finalSeal = new Wave7CheckpointProbe();
@@ -173,3 +200,10 @@ public class Wave7CheckpointProbe {
                    check=True, capture_output=True, text=True)
     result = subprocess.run(["java", "-cp", str(tmp_path), "Wave7CheckpointProbe"], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+    bootstrap = source[source.index("private void restoreRealitySplitBarriersAfterBootstrap()"):
+                       source.index("private boolean spawnRealitySplitBarriers(")]
+    assert "isWave7RecoveryCheckpointActive()" in bootstrap
+    assert bootstrap.index("if (isWave7RecoveryCheckpointActive())") < bootstrap.index(
+        "reconcileOpeningRealitySplitPassages()"), (
+            "recovery rebuild must keep a pending OPENING wall closed instead of replaying it")

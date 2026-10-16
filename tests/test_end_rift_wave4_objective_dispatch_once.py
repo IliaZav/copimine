@@ -26,7 +26,8 @@ def dispatch_probe(tmp_path_factory):
         "sampleRuntimeDiagnostics", "emitDiagnosticSnapshot", "tickOfflineRosterGrace",
         "updatePadOccupancy", "updateCombatHelpers", "tickWaveCommanderAura",
         "tickMiniBosses", "tickEliteAbilityState", "tickEventArrowProjectiles",
-        "refreshClientBindingsForOnlinePlayers", "containRealitySplitPlayers",
+        "refreshClientBindingsForOnlinePlayers", "tickUncommittedRealitySplitBoundaryRollbacks",
+        "containRealitySplitPlayers",
         "issueVictoryRewards", "tickShardChannels", "tickShardPassives",
     ]
     java = tmp_path / "Wave4ObjectiveDispatchProbe.java"

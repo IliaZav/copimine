@@ -41,7 +41,10 @@ def test_wave_seven_has_four_distinct_trial_runtime_paths_and_scoped_cleanup():
     assert "keyChamberId" in source
     assert "realitySplitTrialController.clear()" in source
     assert "clearRealitySplitTrialEntities" in source
-    assert "realitySplitChamberController.openBoundary(generation" in source
+    # Passage opening now uses a durable OPENING -> physical mutation -> OPEN
+    # transaction instead of the former direct openBoundary shortcut.
+    assert "realitySplitChamberController.commitOpeningPassage(" in source
+    assert "openRealitySplitPassageDurably" in source
 
 
 def test_reflection_and_juggernaut_progress_require_server_verified_actions():

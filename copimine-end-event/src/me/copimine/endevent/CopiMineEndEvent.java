@@ -760,6 +760,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     private final Set<RealitySplitBarrierPolicy.Cell> realitySplitBarrierCells = new LinkedHashSet<>();
     private final Map<RealitySplitBarrierPolicy.Cell, String> realitySplitBarrierOriginals = new LinkedHashMap<>();
     private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBarrierByBoundary = new LinkedHashMap<>();
+    /** In-memory rollback tickets until each OPEN passage checkpoint is durable. */
+    private final Map<Integer, Set<RealitySplitBarrierPolicy.Cell>> realitySplitBoundaryCellsPendingCommit = new LinkedHashMap<>();
+    private final Map<Integer, List<RealitySplitBarrierPolicy.Cell>> realitySplitOpenedCellsPendingCommit = new LinkedHashMap<>();
+    private long realitySplitBoundaryRollbackRetryAtTick;
     private final Map<RealitySplitBarrierPolicy.Cell, UUID> realitySplitBarrierVisuals = new LinkedHashMap<>();
     private final Map<UUID, Long> currentFogLastImpactAt = new HashMap<>();
     private record FogEffectKey(UUID playerId, PotionEffectType type) { }
@@ -1705,6 +1709,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             restorePersistedCollapseRingEncounter();
         }
         boolean wave7SceneActive = phase == EventPhase.WAVE_7
+                || isWave7RecoveryCheckpointActive()
                 || finalSealBarrierContext()
                 || testWaveFrontVisualMode && activeWave == 7;
         if (!wave7SceneActive) {
@@ -1837,7 +1842,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
      * This only rebuilds the current generation and never moves players.
      */
     private void restoreRealitySplitBarriersAfterBootstrap() {
-        if (!(phase == EventPhase.WAVE_7 || finalSealBarrierContext()
+        if (!(phase == EventPhase.WAVE_7 || isWave7RecoveryCheckpointActive()
+                || finalSealBarrierContext()
                 || testWaveFrontVisualMode && activeWave == 7)
                 || !isConfigured()
                 || !realitySplitChamberController.owns(generation)) {
@@ -1862,6 +1868,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 forcePhase(EventPhase.RECOVERY_REQUIRED,
                         "Wave 7 barriers could not be restored after restart");
             }
+            return;
+        }
+        if (isWave7RecoveryCheckpointActive()) {
+            getLogger().warning("END_RIFT_WAVE7_RECOVERY_BARRIERS_REBUILT event=" + eventId
+                    + " generation=" + generation
+                    + " collision=true visible=true passage_replay=false progression=blocked");
             return;
         }
         if (!reconcileOpeningRealitySplitPassages()) {
@@ -3075,6 +3087,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " wave=6 reason=missing-sandbox-roster action=clean-retry");
         }
         boolean persistedFinalSeal = "7".equals(snapshot.objectiveProgress().get("final-seal-wave"));
+        boolean persistedWave7Recovery = shouldRestoreWave7RecoveryCheckpoint(
+                snapshot.objectiveProgress());
         testWaveFrontVisualMode = persistedDisposableWave6 || persistedDisposableWave7;
         activeWave = persistedDisposableWave6 ? 6
                 : persistedDisposableWave7 || persistedFinalSeal ? 7 : 0;
@@ -3122,7 +3136,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " generation=" + generation
                         + " action=wait-for-runtime-rebuild");
             }
-        } else if (phase == EventPhase.WAVE_7 || persistedDisposableWave7 || persistedFinalSeal) {
+        } else if (phase == EventPhase.WAVE_7 || persistedDisposableWave7
+                || persistedFinalSeal || persistedWave7Recovery) {
             restoreWave7Checkpoint(snapshot, persistedDisposableWave7);
         }
         worldName = snapshot.worldName();
@@ -3247,6 +3262,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             && !wave7.completedChambers().contains(passage.secondChamber()))) {
                 throw new IllegalArgumentException("WAVE7_OPENING_PASSAGE_WITHOUT_COMPLETED_ROOM");
             }
+            if (!persistedDisposableWave7 && wave7.openPassages().stream().anyMatch(passage ->
+                    !wave7.completedChambers().contains(passage.firstChamber())
+                            && !wave7.completedChambers().contains(passage.secondChamber()))) {
+                throw new IllegalArgumentException("WAVE7_OPEN_PASSAGE_WITHOUT_COMPLETED_ROOM");
+            }
             if (wave7.assignment() != null) {
                 if (!trialSnapshot.trials().isEmpty()) {
                     Set<Integer> completedTrials = new LinkedHashSet<>();
@@ -3304,6 +3324,20 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             getLogger().log(Level.SEVERE, "END_RIFT_WAVE7_CHECKPOINT_RECOVERY_REQUIRED event="
                     + eventId + " generation=" + generation + " test=" + persistedDisposableWave7, error);
         }
+    }
+
+    private boolean shouldRestoreWave7RecoveryCheckpoint(Map<String, String> objectiveProgress) {
+        return phase == EventPhase.RECOVERY_REQUIRED && objectiveProgress != null
+                && objectiveProgress.keySet().stream().anyMatch(key -> key.startsWith("reality-split."));
+    }
+
+    /** True only after a strict Wave 7 decoder restored a recovery-owned checkpoint. */
+    private boolean isWave7RecoveryCheckpointActive() {
+        return phase == EventPhase.RECOVERY_REQUIRED
+                && !wave7RecoveryCheckpoint.isEmpty()
+                && wave7RecoveryCheckpoint.keySet().stream()
+                        .anyMatch(key -> key.startsWith("reality-split."))
+                && realitySplitChamberController.owns(generation);
     }
 
     private EventSnapshot snapshot() {
@@ -13207,6 +13241,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         lastMainThreadWave = activeWave;
         lastMainThreadGeneration = generation;
         eventTickCounter += 5L;
+        tickUncommittedRealitySplitBoundaryRollbacks();
         tickEventCombatProfiles();
         sampleRuntimeDiagnostics();
         emitDiagnosticSnapshot();
@@ -24744,23 +24779,28 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void tickCurrentChamberObjective(long now) {
-        if (!realitySplitChamberController.owns(generation)
+        if (phase == EventPhase.RECOVERY_REQUIRED
+                || !realitySplitChamberController.owns(generation)
                 || !realitySplitTrialController.owns(generation)) {
             return;
         }
         boolean checkpoint = false;
         tickRealitySplitTrialRuntimes();
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         recoverRealitySplitOrphanRooms(now);
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
         if (chamberCount <= 0) {
             return;
         }
-        for (int chamber = 0; chamber < chamberCount; chamber++) {
+        for (int chamber = 0; chamber < chamberCount
+                && phase != EventPhase.RECOVERY_REQUIRED; chamber++) {
             if (realitySplitChamberController.chamberComplete(generation, chamber)) {
                 if (eventTickCounter % 20L == 0L
                         && tryOpenCompletedRealitySplitPassages(chamber, chamberCount) > 0) {
                     checkpoint = true;
                 }
+                if (phase == EventPhase.RECOVERY_REQUIRED) return;
                 continue;
             }
             RealitySplitTrialController.TrialState trial =
@@ -24775,12 +24815,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     && realitySplitChamberController.markChamberComplete(generation, chamber)) {
                 openCompletedRealitySplitRoom(chamber, chamberCount);
                 checkpoint = true;
+                if (phase == EventPhase.RECOVERY_REQUIRED) return;
             }
         }
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         if (realitySplitTrialController.allComplete(generation) && !waveObjectiveComplete) {
             boolean opened = true;
-            for (int chamber = 0; chamber < chamberCount; chamber++) {
-                for (int other = chamber + 1; other < chamberCount; other++) {
+            for (int chamber = 0; chamber < chamberCount
+                    && phase != EventPhase.RECOVERY_REQUIRED; chamber++) {
+                for (int other = chamber + 1; other < chamberCount
+                        && phase != EventPhase.RECOVERY_REQUIRED; other++) {
                     int boundary = RealitySplitBarrierPolicy.boundaryForPair(
                             chamber, other, chamberCount);
                     if (boundary >= 0 && !realitySplitChamberController.boundaryOpen(chamber, other)) {
@@ -24792,6 +24836,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     }
                 }
             }
+            if (phase == EventPhase.RECOVERY_REQUIRED) return;
             if (!opened) {
                 if (checkpoint) saveStateAsync();
                 return;
@@ -24812,7 +24857,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void openCompletedRealitySplitRoom(int chamber, int chamberCount) {
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         tryOpenCompletedRealitySplitPassages(chamber, chamberCount);
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         realitySplitOrphanedSinceMillis.remove(chamber);
         renderWaveMilestone(7, realitySplitChamberCombatPoint(coreCombatAnchorLocation(), chamber, chamberCount),
                 "Испытание комнаты " + (chamber + 1) + " завершено: "
@@ -24829,16 +24876,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private int tryOpenCompletedRealitySplitPassages(int chamber, int chamberCount) {
+        if (phase == EventPhase.RECOVERY_REQUIRED || !mayOpenRealitySplitPassage()) return 0;
         long expectedGeneration = generation;
         int opened = 0;
         for (int other = 0; other < chamberCount; other++) {
+            if (phase == EventPhase.RECOVERY_REQUIRED) break;
             if (realitySplitChamberController.canOpenCompletedPassage(
                     expectedGeneration, chamber, other)
                     && openRealitySplitPassageDurably(chamber, other, chamberCount)) {
                 opened++;
             }
+            if (phase == EventPhase.RECOVERY_REQUIRED) break;
         }
         return opened;
+    }
+
+    private boolean mayOpenRealitySplitPassage() {
+        return phase == EventPhase.WAVE_7
+                || (phase != EventPhase.RECOVERY_REQUIRED
+                && testWaveFrontVisualMode && activeWave == 7);
     }
 
     /** Persist OPENING before AIR, then persist OPEN only after the world mutation commits. */
@@ -24847,7 +24903,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         long expectedGeneration = generation;
         int boundary = RealitySplitBarrierPolicy.boundaryForPair(
                 firstChamber, secondChamber, chamberCount);
-        if (boundary < 0 || !realitySplitChamberController.owns(expectedGeneration)) return false;
+        if (!mayOpenRealitySplitPassage() || boundary < 0
+                || !realitySplitChamberController.owns(expectedGeneration)) return false;
         if (realitySplitChamberController.boundaryOpen(firstChamber, secondChamber)) return true;
 
         boolean intentAlreadyPersisted = realitySplitChamberController.openingPassages().contains(
@@ -24880,17 +24937,23 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
         if (!realitySplitChamberController.commitOpeningPassage(
                 expectedGeneration, firstChamber, secondChamber)) {
-            enterNamedRealitySplitRecovery(
-                    "WAVE7_PASSAGE_OPEN_COMMIT_REJECTED:" + boundary);
+            boolean boundaryRestored = recloseUncommittedRealitySplitBoundary(boundary);
+            enterNamedRealitySplitRecovery(boundaryRestored
+                    ? "WAVE7_PASSAGE_OPEN_COMMIT_REJECTED:" + boundary
+                    : "WAVE7_PASSAGE_OPEN_ROLLBACK_FAILED:" + boundary);
             return false;
         }
         if (!saveStateSync()) {
-            realitySplitChamberController.revertOpenPassageToIntent(
+            boolean reverted = realitySplitChamberController.revertOpenPassageToIntent(
                     expectedGeneration, firstChamber, secondChamber);
-            enterNamedRealitySplitRecovery(
-                    "WAVE7_PASSAGE_OPEN_SAVE_FAILED:" + boundary);
+            boolean boundaryRestored = reverted
+                    && recloseUncommittedRealitySplitBoundary(boundary);
+            enterNamedRealitySplitRecovery(boundaryRestored
+                    ? "WAVE7_PASSAGE_OPEN_SAVE_FAILED:" + boundary
+                    : "WAVE7_PASSAGE_OPEN_ROLLBACK_FAILED:" + boundary);
             return false;
         }
+        clearRealitySplitBoundaryRollback(boundary);
         wave7RecoveryCheckpoint = Map.of();
         return true;
     }
@@ -24909,6 +24972,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         int count = realitySplitChamberController.assignment().chamberCount();
         if (realitySplitChamberController.markChamberComplete(generation, chamber)) {
             openCompletedRealitySplitRoom(chamber, count);
+            if (phase == EventPhase.RECOVERY_REQUIRED) return;
         }
         clearCompletedRealitySplitTrialObjectives(chamber);
         saveStateAsync();
@@ -24935,6 +24999,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
         }
         openCompletedRealitySplitRoom(chamber, realitySplitChamberController.assignment().chamberCount());
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         saveStateAsync();
         getLogger().info("END_RIFT_NAMED_WAVE7_TRIAL_COMPLETE event=" + eventId
                 + " generation=" + generation + " chamber=" + chamber
@@ -25006,6 +25071,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private void recoverRealitySplitOrphanRooms(long now) {
+        if (phase == EventPhase.RECOVERY_REQUIRED) return;
         if (realitySplitTrialController.ownsNamed(parseUuidOrNull(eventId), generation)) return;
         // Temporary death/return claims must not open unfinished rooms to substitutes.
         if (isOfficialWave7ReturnContext() && attemptLifecycle.hasWave7Returns(generation)) return;
@@ -25013,7 +25079,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 || !realitySplitTrialController.owns(generation)) return;
         int chamberCount = realitySplitChamberController.assignment().chamberCount();
         if (chamberCount < 2) return;
-        for (int chamber = 0; chamber < chamberCount; chamber++) {
+        for (int chamber = 0; chamber < chamberCount
+                && phase != EventPhase.RECOVERY_REQUIRED; chamber++) {
             if (realitySplitChamberController.chamberComplete(generation, chamber)) {
                 realitySplitOrphanedSinceMillis.remove(chamber);
                 continue;
@@ -25029,13 +25096,15 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             long since = realitySplitOrphanedSinceMillis.computeIfAbsent(chamber, ignored -> now);
             if (now - since < REALITY_SPLIT_ORPHAN_GRACE_MILLIS) continue;
             int opened = 0;
-            for (int other = 0; other < chamberCount; other++) {
+            for (int other = 0; other < chamberCount
+                    && phase != EventPhase.RECOVERY_REQUIRED; other++) {
                 int boundary = RealitySplitBarrierPolicy.boundaryForPair(chamber, other, chamberCount);
                 if (boundary < 0 || realitySplitChamberController.boundaryOpen(chamber, other)) continue;
                 if (openRealitySplitPassageDurably(chamber, other, chamberCount)) {
                     opened++;
                 }
             }
+            if (phase == EventPhase.RECOVERY_REQUIRED) return;
             if (opened > 0) {
                 realitySplitOrphanedSinceMillis.put(chamber, now);
                 saveStateAsync();
@@ -26573,6 +26642,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                             "original", entry.webOriginal(), "material",
                             closed ? REALITY_SPLIT_WALL_MATERIAL.getKey().getKey() : "air"));
         }
+        realitySplitBoundaryCellsPendingCommit.clear();
+        realitySplitOpenedCellsPendingCommit.clear();
+        realitySplitBoundaryRollbackRetryAtTick = 0L;
         realitySplitBarrierOriginals.putAll(plannedOriginals);
         realitySplitBarrierCells.addAll(plannedOriginals.keySet());
         realitySplitBarrierCells.removeAll(retainedOpenEntries.keySet());
@@ -26857,6 +26929,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 return false;
             }
         }
+        rememberRealitySplitBoundaryRollback(boundary, cells, toOpen);
         int opened = 0;
         for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
             int x = coreX + cell.xOffset();
@@ -26890,7 +26963,78 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 realitySplitBarrierByBoundary, boundaryBeingOpened, cell);
     }
 
+    private void rememberRealitySplitBoundaryRollback(int boundary,
+            Set<RealitySplitBarrierPolicy.Cell> ownedCells,
+            List<RealitySplitBarrierPolicy.Cell> openedCells) {
+        if (boundary < 0 || ownedCells == null || openedCells == null) {
+            throw new IllegalArgumentException("Wave 7 passage rollback ticket is invalid");
+        }
+        realitySplitBoundaryCellsPendingCommit.put(boundary, Set.copyOf(ownedCells));
+        realitySplitOpenedCellsPendingCommit.put(boundary, List.copyOf(openedCells));
+    }
+
+    /** Restore the physical wall and ownership map while OPEN is still uncommitted. */
+    private boolean recloseUncommittedRealitySplitBoundary(int boundary) {
+        Set<RealitySplitBarrierPolicy.Cell> ownedCells =
+                realitySplitBoundaryCellsPendingCommit.get(boundary);
+        List<RealitySplitBarrierPolicy.Cell> openedCells =
+                realitySplitOpenedCellsPendingCommit.get(boundary);
+        if (ownedCells == null || openedCells == null) {
+            return false;
+        }
+        World world = Bukkit.getWorld(worldName);
+        if (world == null || (!openedCells.isEmpty()
+                && !restoreRealitySplitBoundaryCollisionClosed(world, openedCells))) {
+            scheduleRealitySplitBoundaryRollbackRetry();
+            return false;
+        }
+        realitySplitBarrierCells.addAll(ownedCells);
+        realitySplitBarrierByBoundary.put(boundary, new LinkedHashSet<>(ownedCells));
+        if (!openedCells.isEmpty() && !restoreRealitySplitBoundaryVisuals(world, openedCells)) {
+            scheduleRealitySplitBoundaryRollbackRetry();
+            return false;
+        }
+        clearRealitySplitBoundaryRollback(boundary);
+        getLogger().warning("END_RIFT_WAVE7_BOUNDARY_OPEN_ROLLED_BACK event=" + eventId
+                + " boundary=" + boundary + " cells=" + openedCells.size());
+        return true;
+    }
+
+    private void clearRealitySplitBoundaryRollback(int boundary) {
+        realitySplitBoundaryCellsPendingCommit.remove(boundary);
+        realitySplitOpenedCellsPendingCommit.remove(boundary);
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
+            realitySplitBoundaryRollbackRetryAtTick = 0L;
+        }
+    }
+
+    private void scheduleRealitySplitBoundaryRollbackRetry() {
+        realitySplitBoundaryRollbackRetryAtTick = eventTickCounter + 20L;
+    }
+
+    private void tickUncommittedRealitySplitBoundaryRollbacks() {
+        if (realitySplitBoundaryCellsPendingCommit.isEmpty()) {
+            realitySplitBoundaryRollbackRetryAtTick = 0L;
+            return;
+        }
+        if (eventTickCounter < realitySplitBoundaryRollbackRetryAtTick) {
+            return;
+        }
+        scheduleRealitySplitBoundaryRollbackRetry();
+        for (int boundary : List.copyOf(realitySplitBoundaryCellsPendingCommit.keySet())) {
+            recloseUncommittedRealitySplitBoundary(boundary);
+        }
+    }
+
     private boolean restoreRealitySplitBoundaryClosed(
+            World world, List<RealitySplitBarrierPolicy.Cell> cells) {
+        if (!restoreRealitySplitBoundaryCollisionClosed(world, cells)) {
+            return false;
+        }
+        return restoreRealitySplitBoundaryVisuals(world, cells);
+    }
+
+    private boolean restoreRealitySplitBoundaryCollisionClosed(
             World world, List<RealitySplitBarrierPolicy.Cell> cells) {
         RealitySplitBarrierMutationPolicy.Result<RealitySplitBarrierPolicy.Cell> result =
                 RealitySplitBarrierMutationPolicy.applyAtomically(cells,
@@ -26906,13 +27050,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         (cell, before) -> restoreRealitySplitBlock(world.getBlockAt(
                                 coreX + cell.xOffset(), combatFloorY() + cell.level(),
                                 coreZ + cell.zOffset()), before),
-                        () -> {
-                            for (RealitySplitBarrierPolicy.Cell cell : cells) {
-                                if (!ensureRealitySplitBarrierVisual(world, cell)) return false;
-                            }
-                            return true;
-                        });
+                        () -> true);
         return result.committed();
+    }
+
+    private boolean restoreRealitySplitBoundaryVisuals(
+            World world, List<RealitySplitBarrierPolicy.Cell> cells) {
+        boolean restored = true;
+        for (RealitySplitBarrierPolicy.Cell cell : cells) {
+            try {
+                if (!ensureRealitySplitBarrierVisual(world, cell)) {
+                    restored = false;
+                }
+            } catch (RuntimeException error) {
+                restored = false;
+                getLogger().log(Level.WARNING, "END_RIFT_WAVE7_BOUNDARY_VISUAL_RESTORE_FAILED event="
+                        + eventId + " cell=" + cell, error);
+            }
+        }
+        return restored;
     }
 
     private boolean ensureRealitySplitBarrierVisual(World world, RealitySplitBarrierPolicy.Cell cell) {
@@ -27216,6 +27372,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         realitySplitBarrierCells.clear();
         realitySplitBarrierOriginals.clear();
         realitySplitBarrierByBoundary.clear();
+        realitySplitBoundaryCellsPendingCommit.clear();
+        realitySplitOpenedCellsPendingCommit.clear();
+        realitySplitBoundaryRollbackRetryAtTick = 0L;
         realitySplitBarrierVisuals.clear();
         getLogger().info("END_RIFT_WAVE7_BARRIERS_CLEANUP event=" + eventId
                 + " reason=" + reason + " restored=" + restored);

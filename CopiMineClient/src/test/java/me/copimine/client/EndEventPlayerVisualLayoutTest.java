@@ -29,15 +29,13 @@ class EndEventPlayerVisualLayoutTest {
     }
 
     @Test
-    void theHuntRevealSettlesToALowerPersistentEdgeWithoutContinuousPulsing() {
+    void theHuntMarkUsesGlowWithoutDrawingScreenEdges() {
         var hunt = new EndEventPlayerVisualManager.VisualState(EndEventPlayerVisualManager.Kind.HUNT, 1_000, 12_000);
         List<EndEventPlayerVisualLayout.Edge> early = EndEventPlayerVisualLayout.edges(640, 360, hunt, 1_200);
         List<EndEventPlayerVisualLayout.Edge> persistent = EndEventPlayerVisualLayout.edges(640, 360, hunt, 2_000);
-        assertFalse(early.isEmpty());
-        assertFalse(persistent.isEmpty());
-        assertTrue(early.getFirst().alphaFrom() > persistent.getFirst().alphaFrom());
-        assertEquals(persistent, EndEventPlayerVisualLayout.edges(640, 360, hunt, 11_999));
-        assertEquals(0xB387ED, persistent.getFirst().colorFrom() & 0xFFFFFF);
+        assertTrue(early.isEmpty());
+        assertTrue(persistent.isEmpty());
+        assertTrue(EndEventPlayerVisualLayout.edges(640, 360, hunt, 11_999).isEmpty());
     }
 
     @Test

@@ -281,6 +281,7 @@ $domainSources = @(Get-ChildItem (Join-Path $root 'copimine-end-event\src\me\cop
 $runtimeSources = @(
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveCombatCoordinator.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\AttemptLifecycleController.java'),
+  (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\WaveTwoAttemptLifecycleSnapshot.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\CombatTraceService.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EncounterContext.java'),
   (Join-Path $root 'copimine-end-event\src\me\copimine\endevent\runtime\EndRiftEncounterController.java'),

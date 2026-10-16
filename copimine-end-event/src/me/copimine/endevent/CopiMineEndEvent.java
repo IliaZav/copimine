@@ -195,6 +195,7 @@ import me.copimine.endevent.domain.RealitySplitChamberSnapshot;
 import me.copimine.endevent.domain.SandboxWaveSessionSnapshot;
 import me.copimine.endevent.runtime.CombatTraceService;
 import me.copimine.endevent.runtime.AttemptLifecycleController;
+import me.copimine.endevent.runtime.WaveTwoAttemptLifecycleSnapshot;
 import me.copimine.endevent.runtime.TransitionRuneController;
 import me.copimine.endevent.runtime.TentacleController;
 import me.copimine.endevent.runtime.RealitySplitChamberController;
@@ -1659,7 +1660,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return phase == EventPhase.WAVE_2
                 && isOfficialCurrentAttempt()
                 && attemptLifecycle.owns(generation)
-                && attemptLifecycle.roster().equals(officialRewardRoster)
+                && attemptLifecycle.registeredRoster().equals(officialRewardRoster)
+                && !attemptLifecycle.living().isEmpty()
                 && WaveTwoStagePolicy.hasConsistentProgress(
                 currentHuntCycles, waveTwoGroupsSpawned, waveTwoGroupCleared);
     }
@@ -3269,6 +3271,11 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             encoded.put(WAVE_TWO_GROUP_CLEARED_PROGRESS_KEY, Boolean.toString(waveTwoGroupCleared));
             encoded.put(WAVE_TWO_OUTSTANDING_UUIDS_PROGRESS_KEY, WaveTwoEntityRecoveryPolicy.encode(
                     waveTwoOutstandingEntityUuids, WaveTwoEntityRecoveryPolicy.MAX_OUTSTANDING_UUIDS));
+            if (attemptLifecycle.owns(generation)) {
+                encoded.putAll(WaveTwoAttemptLifecycleSnapshot.encode(eventId, generation, officialRewardRoster,
+                        attemptLifecycle, offlineRosterGraceUntilMillis, System.currentTimeMillis(),
+                        OFFLINE_RECONNECT_GRACE_MILLIS));
+            }
             return Map.copyOf(encoded);
         }
         if (phase == EventPhase.WAVE_6
@@ -13444,6 +13451,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     "Start ritual scope rotation failed after cleanup");
             return;
         }
+        offlineRosterGraceUntilMillis.clear();
         attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
         combatProfiles.beginAttempt(eventId, generation, generation, Set.copyOf(officialRewardRoster), true);
         if (combatProfileListener != null) combatProfileListener.clear();
@@ -37122,12 +37130,29 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             endEventBridgeV4.registerPlayer(player);
             endEventBridgeV4.requestFreshChallenges(java.util.List.of(playerUuid));
         }
-        offlineRosterGraceUntilMillis.remove(playerUuid);
         if (isOfficialAttemptActive() && attemptLifecycle.owns(generation)
                 && officialRewardRoster.contains(playerUuid)) {
-            attemptLifecycle.markOnline(playerUuid, generation);
-            attemptLifecycle.markAlive(playerUuid, generation);
-            offerWave7Return(player);
+            Long reconnectDeadline = offlineRosterGraceUntilMillis.get(playerUuid);
+            boolean reconnectGraceExpired = !isOfficialWave7ReturnContext()
+                    && reconnectDeadline != null
+                    && WaveTwoAttemptLifecycleSnapshot.reconnectDeadlineExpired(
+                    reconnectDeadline, System.currentTimeMillis());
+            offlineRosterGraceUntilMillis.remove(playerUuid);
+            if (reconnectGraceExpired) {
+                attemptLifecycle.setActive(playerUuid, generation, false);
+                attemptLifecycle.markOnline(playerUuid, generation);
+                attemptLifecycle.markDead(playerUuid, generation);
+                getLogger().warning("ATTEMPT_ROSTER_RECONNECT_REFUSED event=" + eventId
+                        + " player=" + playerUuid + " generation=" + generation
+                        + " reason=offline-grace-expired");
+                saveStateAsync();
+                wipeOfficialAttemptIfAllDead("official participant reconnected after offline grace");
+            } else {
+                attemptLifecycle.markOnline(playerUuid, generation);
+                attemptLifecycle.markAlive(playerUuid, generation);
+                if (!isOfficialWave7ReturnContext()) saveStateAsync();
+                offerWave7Return(player);
+            }
             AttemptLifecycleController.ParticipantStatus rosterStatus = attemptLifecycle.status(playerUuid);
             if (rosterStatus != null && rosterStatus.active() && rosterStatus.online()
                     && rosterStatus.alive()) {
@@ -37138,6 +37163,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                         + " player=" + playerUuid + " generation=" + generation
                         + " reason=inactive-roster-member");
             }
+        } else {
+            offlineRosterGraceUntilMillis.remove(playerUuid);
         }
         recoverUnresolvedDepositsFor(player);
         resumeVictorySaga();
@@ -37200,11 +37227,17 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 wipeOfficialAttemptIfAllDead("Wave 7 participant disconnected");
                 saveStateAsync();
             } else {
-            long deadline = System.currentTimeMillis() + OFFLINE_RECONNECT_GRACE_MILLIS;
-            offlineRosterGraceUntilMillis.put(uuid, deadline);
-            getLogger().info("ATTEMPT_ROSTER_OFFLINE_GRACE event=" + eventId
-                    + " player=" + uuid + " generation=" + generation
-                    + " grace_ms=" + OFFLINE_RECONNECT_GRACE_MILLIS);
+                AttemptLifecycleController.ParticipantStatus participant = attemptLifecycle.status(uuid);
+                if (participant != null && participant.active()) {
+                    long deadline = System.currentTimeMillis() + OFFLINE_RECONNECT_GRACE_MILLIS;
+                    offlineRosterGraceUntilMillis.put(uuid, deadline);
+                    getLogger().info("ATTEMPT_ROSTER_OFFLINE_GRACE event=" + eventId
+                            + " player=" + uuid + " generation=" + generation
+                            + " grace_ms=" + OFFLINE_RECONNECT_GRACE_MILLIS);
+                } else {
+                    offlineRosterGraceUntilMillis.remove(uuid);
+                }
+                saveStateAsync();
             }
         }
         clientBindingReadyPlayers.remove(uuid);
@@ -37245,7 +37278,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                     + " player=" + uuid + " generation=" + generation
                     + " living=" + attemptLifecycle.living().size());
             wipeOfficialAttemptIfAllDead("all official roster players died");
-            if (isOfficialWave7ReturnContext()) saveStateAsync();
+            saveStateAsync();
         }
         clientBindingReadyPlayers.remove(uuid);
         cancelShardChannel(uuid);
@@ -37268,6 +37301,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 && attemptLifecycle.owns(respawnGeneration)
                 && officialRewardRoster.contains(playerUuid)
                 && attemptLifecycle.markAlive(playerUuid, respawnGeneration);
+        if (rosterPlayer && !preserveNormalWave7Respawn) saveStateAsync();
         clientBindingReadyPlayers.remove(player.getUniqueId());
         if (!isCombatPhase() && !isEventMusicPhase() && !testCombatAiMode && liveBoss() == null) {
             return;
@@ -37303,17 +37337,18 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             wipeOfficialAttemptIfAllDead("Wave 7 admitted roster remains absent");
             return;
         }
-        if (!isOfficialAttemptActive() || !attemptLifecycle.owns(generation)
-                || offlineRosterGraceUntilMillis.isEmpty()) {
+        if (!isOfficialAttemptActive() || !attemptLifecycle.owns(generation)) {
             return;
         }
         long now = System.currentTimeMillis();
+        boolean lifecycleChanged = false;
         for (UUID playerUuid : new ArrayList<>(offlineRosterGraceUntilMillis.keySet())) {
             long deadline = offlineRosterGraceUntilMillis.getOrDefault(playerUuid, 0L);
             Player player = Bukkit.getPlayer(playerUuid);
             if (player != null && player.isOnline()) {
                 offlineRosterGraceUntilMillis.remove(playerUuid);
                 attemptLifecycle.markAlive(playerUuid, generation);
+                lifecycleChanged = true;
                 continue;
             }
             if (deadline <= 0L || now < deadline) {
@@ -37321,11 +37356,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             }
             offlineRosterGraceUntilMillis.remove(playerUuid);
             attemptLifecycle.setActive(playerUuid, generation, false);
-            if (attemptLifecycle.markDead(playerUuid, generation)) {
-                getLogger().info("ATTEMPT_ROSTER_OFFLINE_EXPIRED event=" + eventId
-                        + " player=" + playerUuid + " generation=" + generation);
-            }
+            attemptLifecycle.markDead(playerUuid, generation);
+            lifecycleChanged = true;
+            getLogger().info("ATTEMPT_ROSTER_OFFLINE_EXPIRED event=" + eventId
+                    + " player=" + playerUuid + " generation=" + generation);
         }
+        if (lifecycleChanged) saveStateAsync();
         wipeOfficialAttemptIfAllDead("official roster offline grace expired");
     }
 
@@ -37399,7 +37435,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         attemptLifecycle.clear();
         wave7ReturnStagingLocations.clear(); wave7ReturnActionNextTicks.clear(); wave7ReturnEnterNextTicks.clear();
         if (!isOfficialWave7ReturnContext()) {
-            restoreOfficialWave2AttemptLifecycle();
+            restoreOfficialWave2AttemptLifecycle(snapshot);
             return;
         }
         if (!realitySplitChamberController.owns(generation)
@@ -37417,23 +37453,79 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     /** Rebuild the transient official roster owner before a durable Wave 2 resume. */
-    private void restoreOfficialWave2AttemptLifecycle() {
+    private void restoreOfficialWave2AttemptLifecycle(EventSnapshot snapshot) {
         if (phase != EventPhase.WAVE_2 || !isOfficialCurrentAttempt()
-                || generation <= 0L || officialRewardRoster.isEmpty()) {
+                || generation <= 0L || officialRewardRoster.isEmpty() || snapshot == null) {
             return;
         }
+        WaveTwoAttemptLifecycleSnapshot.Snapshot restored;
+        long restoreNowMillis = System.currentTimeMillis();
+        try {
+            restored = WaveTwoAttemptLifecycleSnapshot.decode(snapshot.objectiveProgress(), eventId,
+                    generation, officialRewardRoster, restoreNowMillis, OFFLINE_RECONNECT_GRACE_MILLIS);
+        } catch (IllegalArgumentException | ArithmeticException invalidLifecycle) {
+            getLogger().log(Level.SEVERE, "WAVE2_ATTEMPT_LIFECYCLE_RESTORE_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=invalid-checkpoint", invalidLifecycle);
+            return;
+        }
+        if (restored == null) {
+            getLogger().severe("WAVE2_ATTEMPT_LIFECYCLE_RESTORE_REFUSED event=" + eventId
+                    + " generation=" + generation + " reason=missing-checkpoint");
+            return;
+        }
+        offlineRosterGraceUntilMillis.clear();
         attemptLifecycle.begin(generation, new LinkedHashSet<>(officialRewardRoster));
         for (UUID owner : officialRewardRoster) {
+            WaveTwoAttemptLifecycleSnapshot.ParticipantState saved = restored.participants().get(owner);
+            if (saved == null) {
+                attemptLifecycle.clear();
+                offlineRosterGraceUntilMillis.clear();
+                getLogger().severe("WAVE2_ATTEMPT_LIFECYCLE_RESTORE_REFUSED event=" + eventId
+                        + " generation=" + generation + " reason=owner-missing");
+                return;
+            }
+            attemptLifecycle.setActive(owner, generation, saved.active());
             Player player = Bukkit.getPlayer(owner);
+            if (WaveTwoAttemptLifecycleSnapshot.reconnectDeadlineExpired(
+                    saved.offlineDeadlineMillis(), restoreNowMillis)) {
+                if (player == null || !player.isOnline()) {
+                    attemptLifecycle.markOffline(owner, generation);
+                } else {
+                    attemptLifecycle.markOnline(owner, generation);
+                }
+                attemptLifecycle.setActive(owner, generation, false);
+                attemptLifecycle.markDead(owner, generation);
+                getLogger().warning("WAVE2_ATTEMPT_LIFECYCLE_OWNER_EXPIRED event=" + eventId
+                        + " generation=" + generation + " player=" + owner);
+                continue;
+            }
             if (player == null || !player.isOnline()) {
                 attemptLifecycle.markOffline(owner, generation);
-            } else if (player.isDead()) {
-                attemptLifecycle.markDead(owner, generation);
+                if (saved.offlineDeadlineMillis() > 0L) {
+                    offlineRosterGraceUntilMillis.put(owner, saved.offlineDeadlineMillis());
+                }
+                if (!saved.active()) {
+                    if (!saved.alive()) attemptLifecycle.markDead(owner, generation);
+                } else if (!saved.alive()) {
+                    attemptLifecycle.markDead(owner, generation);
+                } else if (saved.offlineDeadlineMillis() <= 0L) {
+                    // Without an original deadline, do not grant a fresh full reconnect window.
+                    attemptLifecycle.setActive(owner, generation, false);
+                    attemptLifecycle.markDead(owner, generation);
+                }
+            } else {
+                offlineRosterGraceUntilMillis.remove(owner);
+                if (player.isDead()) {
+                    attemptLifecycle.markDead(owner, generation);
+                } else {
+                    attemptLifecycle.markAlive(owner, generation);
+                }
             }
         }
         if (!attemptLifecycle.owns(generation)
-                || !attemptLifecycle.roster().equals(officialRewardRoster)) {
+                || !attemptLifecycle.registeredRoster().equals(officialRewardRoster)) {
             attemptLifecycle.clear();
+            offlineRosterGraceUntilMillis.clear();
             getLogger().severe("WAVE2_ATTEMPT_LIFECYCLE_RESTORE_REFUSED event=" + eventId
                     + " generation=" + generation + " reason=roster-mismatch");
         }

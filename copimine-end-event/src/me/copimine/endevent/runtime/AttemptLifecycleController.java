@@ -60,6 +60,15 @@ public final class AttemptLifecycleController {
         return Collections.unmodifiableSet(result);
     }
 
+    /** Every owner retained for attempt rewards, including inactive/retired members. */
+    public synchronized Set<UUID> registeredRoster() {
+        Set<UUID> result = new LinkedHashSet<>();
+        participants.forEach((player, status) -> {
+            if (status.registered()) result.add(player);
+        });
+        return Collections.unmodifiableSet(result);
+    }
+
     public synchronized Set<UUID> living() {
         Set<UUID> result = new LinkedHashSet<>();
         participants.forEach((player, status) -> {

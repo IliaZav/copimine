@@ -41,6 +41,8 @@ public class Wave2ReturnBootstrapProbe {
         void begin(long value,Set<UUID> owners){generation=value;roster=Set.copyOf(owners);}
         boolean owns(long value){return generation==value;}
         Set<UUID> roster(){return roster;}
+            Set<UUID> registeredRoster(){return roster;}
+            Set<UUID> living(){return roster;}
     }
     AttemptLifecycleController attemptLifecycle=new AttemptLifecycleController();
     BukkitTask bootstrapTask,tickTask,waveContainmentTask;

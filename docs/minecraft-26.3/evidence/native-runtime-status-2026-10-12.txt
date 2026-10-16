@@ -1,0 +1,88 @@
+# Minecraft 26.3 local runtime checks — 2026-10-12
+
+Observed locally: 2026-10-12 09:07:17 +03:00
+
+## Minecraft status handshake
+
+A standard Minecraft status handshake and status request were sent to the local Paper listener at `127.0.0.1:25568`. The client used protocol `-1` for the status-only probe; this is not a login handshake.
+
+Observed output:
+
+```text
+MINECRAFT_STATUS_PING_PASS
+version=Paper 26.3
+protocol=777
+players=0/1
+description="CopiMine 26.3 migration test"
+```
+
+Reproducible PowerShell command (Python 3.13 standard library only):
+
+```powershell
+@'
+import json, socket, struct
+
+def vi(n):
+    if n < 0: n &= 0xffffffff
+    out = bytearray()
+    while True:
+        part = n & 0x7f
+        n >>= 7
+        out.append(part | (0x80 if n else 0))
+        if not n: return bytes(out)
+
+def read_vi(s):
+    value = shift = 0
+    while True:
+        b = s.recv(1)
+        if not b: raise EOFError('closed while reading VarInt')
+        value |= (b[0] & 0x7f) << shift
+        if not b[0] & 0x80: return value
+        shift += 7
+        if shift >= 35: raise ValueError('VarInt too long')
+
+def read_exact(s, n):
+    data = bytearray()
+    while len(data) < n:
+        part = s.recv(n - len(data))
+        if not part: raise EOFError('closed during status packet')
+        data.extend(part)
+    return bytes(data)
+
+host, port = '127.0.0.1', 25568
+host_data = host.encode()
+payload = vi(0) + vi(-1) + vi(len(host_data)) + host_data + struct.pack('>H', port) + vi(1)
+with socket.create_connection((host, port), timeout=5) as s:
+    s.settimeout(5)
+    s.sendall(vi(len(payload)) + payload + b'\x01\x00')
+    frame = read_exact(s, read_vi(s))
+i = 1
+length = shift = 0
+while True:
+    b = frame[i]; i += 1
+    length |= (b & 0x7f) << shift
+    if not b & 0x80: break
+    shift += 7
+status = json.loads(frame[i:i+length].decode())
+print('MINECRAFT_STATUS_PING_PASS')
+print('version=' + status.get('version', {}).get('name', '<missing>'))
+print('protocol=' + str(status.get('version', {}).get('protocol', '<missing>')))
+print('players=' + str(status.get('players', {}).get('online', '<missing>')) + '/' + str(status.get('players', {}).get('max', '<missing>')))
+print('description=' + json.dumps(status.get('description'), ensure_ascii=False))
+'@ | py -3.13 -
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+```
+
+## Installed CopiMine client and resource pack hashes
+
+The client JAR is `D:\.minecraft\versions\Copimine\mods\CopiMineClient-0.1.1+26.3.jar`: `14,827,743` bytes and SHA-512 `68be0d8cf07d38c375cf49595e60ec8f21d4897414bff308dd09976e18fbf2127acfa6de84674cbbdd1c67e6b832a4ad52dccfa5b06253ea93e92d0c1b6f559e`, matching `profile.lock.json`.
+
+The active profile resource pack `D:\.minecraft\versions\Copimine\resourcepacks\CopiMineResourcePack-26.3.zip` has SHA-256 `d1178b427b926aee3c2e49f9a72aca7156f5e99917766e63248fb6226d4977dd`, matching `profile.lock.json`.
+
+## Client and server log observations
+
+- The profile client log records Minecraft 26.3, Fabric Loader 0.19.5 and `Loading 79 mods`. It lists `file/CopiMineResourcePack-26.3.zip` in the loaded resource manager. F2 screenshots were saved at 04:17:45, 04:19:20, 04:19:39 and 04:19:57. The tracked [main-menu screenshot](native-client-main-menu-2026-10-12.png) is byte-identical to the 04:19:57 screenshot (SHA-256 `7e710b323d7f5719dc5f8558fee7695e56ea92f7da2129d339aabf406d447260`). It shows the rendered Minecraft 26.3 main menu, not a connected game session.
+- The test profile used the local identity `CopiMineTest26`; expected Mojang/Realms HTTP 401 responses in that client log are not Paper login results.
+- The Paper log contains `Done (34.163s)!`, with no matching player `joined the game`, `lost connection`, or `handshake` entry. No player login was observed. The startup log has no `Server thread`/`ForkJoinPool` `ERROR`/`SEVERE`, `Failed to load`, `Could not load`, or uncaught thread exception match. It does contain host-level OSHI/Windows Perflib diagnostics, a ProtocolLib warning that Minecraft 26.3 has not yet been tested upstream, and offline-mode/voice-chat encryption warnings.
+- This is an isolated offline-mode loopback test selection with AuthMe/AuthEffects disabled as previously requested. It does not verify production authentication or plugin behavior after player login.
+- The desktop capture surface currently reports `apps: []`; no native window input or fresh screenshot could be captured in this check. `nativeVerified=false` remains in effect.

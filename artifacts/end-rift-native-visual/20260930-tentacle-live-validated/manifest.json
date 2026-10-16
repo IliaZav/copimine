@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "CAPTURED_AND_VISUALLY_REVIEWED",
+  "capturedAt": "2026-09-30T02:40:16+03:00",
+  "branch": "codex/end-rift-event",
+  "testedHead": "beb6761c3dd52a15d8f2401e734cc553135ab0f5",
+  "scenario": "Isolated local End Rift live tentacle probe",
+  "serverAddress": "127.0.0.1:25566",
+  "serverPluginSha256": "23c12bc19949f7f5eef057dfa731e95973346d6b3d252dbfba4af67b6097bca1",
+  "results": {
+    "sameEntityDamagedThenContinuedAttack": true,
+    "healthBeforeHp": 20.0,
+    "healthAfterHitHp": 17.918,
+    "nextState": "GRAB_SUCCESS",
+    "temporarySpawnMatchedToSuccessfulThrow": true,
+    "stateSequence": [
+      "GRAB_SUCCESS",
+      "HOLD",
+      "THROW",
+      "RECOVERY"
+    ],
+    "selectedThrowAppliedDamageHp": 10.0,
+    "selectedThrowHorizontalVelocity": 1.9,
+    "clientVectorMatchedServerVector": true,
+    "simultaneousThrowsInVolley": 2,
+    "clientTotalHpDelta": 20.0,
+    "perThrowDamageHp": 10.0
+  },
+  "images": [
+    {
+      "file": "tentacle-grab.png",
+      "phase": "grab/contact",
+      "capturedAt": "2026-09-30T02:40:16.8720565+03:00",
+      "captureMode": "PrintWindow",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "ec58a8aacea099957cbb1d1b18c6f78ecf74f57631da08c85a00643db83f54e8",
+      "bytes": 882904
+    },
+    {
+      "file": "tentacle-hold.png",
+      "phase": "hold",
+      "capturedAt": "2026-09-30T02:40:18.1082333+03:00",
+      "captureMode": "PrintWindow",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "ee0539f5aa7ebb53ee46ccf7605b7b1e0beb2940cfb1e3eadec3ea782249ae87",
+      "bytes": 878734
+    },
+    {
+      "file": "tentacle-throw.png",
+      "phase": "throw/release",
+      "capturedAt": "2026-09-30T02:40:19.3768685+03:00",
+      "captureMode": "PrintWindow",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "a96c0d700c4b7730482902d163a4766b76181f636da7f0c49b01ff44ac85ce4d",
+      "bytes": 882785
+    },
+    {
+      "file": "tentacle-recovery.png",
+      "phase": "recovery",
+      "capturedAt": "2026-09-30T02:40:20.6178316+03:00",
+      "captureMode": "PrintWindow",
+      "width": 1920,
+      "height": 1080,
+      "sha256": "44f21a32a2476ff3a5ccdf8ed377f96ee46c15a0599a068bb22bfac503c6cab7",
+      "bytes": 894505
+    }
+  ],
+  "notes": [
+    "Four unedited 1920x1080 Minecraft window captures were copied from the validated 500 ms frame burst.",
+    "The disposable client received two simultaneous 10 HP throws, so the observed aggregate loss was 20 HP.",
+    "This run confirms the live attack sequence and hit continuation; it does not replace the committed F2 elite texture evidence."
+  ]
+}

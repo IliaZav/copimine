@@ -716,20 +716,32 @@ def assert_admin_player_credentials_never_return_plaintext(main) -> None:
             ("profile-account", "oldprofile", "oldprofile", main.make_password_hash("OldPassword!23"), uuid, "ExistingHero", now, now, now),
         )
         conn.commit()
-    result = main.admin_update_player_account_sync(
-        "ExistingHero",
-        "AdminUser",
-        main.AdminPlayerAccountUpdateIn(username="newprofile", new_password="NewPassword!45"),
-    )
-    assert result["username"] == "newprofile", result
-    assert result["passwordChanged"] is True, result
-    assert "password" not in result and "password_hash" not in result, result
-    with main.auth_conn() as conn:
-        row = conn.execute("SELECT username,password_hash FROM site_accounts WHERE id=%s", ("profile-account",)).fetchone()
-        conn.commit()
-    assert row["username"] == "newprofile", row
-    assert main.verify_password_hash(row["password_hash"], "NewPassword!45")
-    assert "NewPassword!45" not in str(row["password_hash"])
+    try:
+        result = main.admin_update_player_account_sync(
+            "ExistingHero",
+            "AdminUser",
+            main.AdminPlayerAccountUpdateIn(username="newprofile", new_password="NewPassword!45"),
+        )
+        assert result["username"] == "newprofile", result
+        assert result["passwordChanged"] is True, result
+        assert "password" not in result and "password_hash" not in result, result
+        with main.auth_conn() as conn:
+            row = conn.execute("SELECT username,password_hash FROM site_accounts WHERE id=%s", ("profile-account",)).fetchone()
+            conn.commit()
+        assert row["username"] == "newprofile", row
+        assert main.verify_password_hash(row["password_hash"], "NewPassword!45")
+        assert "NewPassword!45" not in str(row["password_hash"])
+    finally:
+        # Keep this regression independent from the following player-list
+        # assertion.  The account is deliberately linked to ExistingHero for
+        # the credential update test, but must not remain an active roster row
+        # after that test has finished.
+        with main.auth_conn() as conn:
+            conn.execute(
+                "UPDATE site_accounts SET enabled=0,minecraft_uuid=%s,minecraft_name=%s WHERE id=%s",
+                ("", "", "profile-account"),
+            )
+            conn.commit()
 
 
 def assert_new_linked_site_account_appears_in_player_list(main) -> None:

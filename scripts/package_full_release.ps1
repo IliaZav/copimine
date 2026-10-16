@@ -13,6 +13,29 @@ if (-not $ProjectRoot) {
     $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 }
 $ProjectRoot = (Resolve-Path $ProjectRoot).Path
+$legacyMigrationProfileLock = Join-Path $ProjectRoot "tools\minecraft-26.3\profile.lock.json"
+$hasMinecraft263MigrationProfile = Test-Path -LiteralPath $legacyMigrationProfileLock -PathType Leaf
+$requiresMinecraft263ClientBridge = $false
+$legacyNarcoticsConfigPath = Join-Path $ProjectRoot "copimine-narcotics\config.yml"
+if (Test-Path -LiteralPath $legacyNarcoticsConfigPath -PathType Leaf) {
+    $legacyClientBridgeInspector = Join-Path $PSScriptRoot "minecraft\inspect_legacy_release_client_bridge.py"
+    if (-not (Test-Path -LiteralPath $legacyClientBridgeInspector -PathType Leaf)) {
+        throw 'The legacy full-release workflow cannot safely inspect copimine-narcotics/config.yml. Use PrepareMigrationCandidates.ps1.'
+    }
+    $legacyClientBridgeInspectionOutput = & python $legacyClientBridgeInspector $legacyNarcoticsConfigPath 2>$null
+    $legacyClientBridgeInspectorExitCode = $LASTEXITCODE
+    if ($legacyClientBridgeInspectorExitCode -ne 0) {
+        throw 'The legacy full-release workflow cannot safely inspect copimine-narcotics/config.yml. Ensure PyYAML is installed and the YAML is valid and unambiguous, or use PrepareMigrationCandidates.ps1.'
+    }
+    $legacyClientBridgeState = (($legacyClientBridgeInspectionOutput | Out-String).Trim())
+    if ($legacyClientBridgeState -notin @('legacy', 'requires-26.3')) {
+        throw 'The legacy full-release workflow received an invalid client bridge inspection result. Use PrepareMigrationCandidates.ps1.'
+    }
+    $requiresMinecraft263ClientBridge = $legacyClientBridgeState -eq 'requires-26.3'
+}
+if ($hasMinecraft263MigrationProfile -or $requiresMinecraft263ClientBridge) {
+    throw 'The legacy full-release workflow packages CopiMineClient 1.21.1 and cannot ship the Minecraft 26.3 client bridge. Use PrepareMigrationCandidates.ps1.'
+}
 $SigningKeyPath = if ($SigningKeyPath) { $SigningKeyPath } else { $env:COPIMINE_RELEASE_SIGNING_KEY }
 if (-not $SigningKeyPath) {
     throw 'Release packaging requires -SigningKeyPath or COPIMINE_RELEASE_SIGNING_KEY.'
@@ -58,8 +81,8 @@ $ReleaseDir = (Resolve-Path -LiteralPath $ReleaseDir).Path
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $clientBuildScript = Join-Path $ProjectRoot "CopiMineClient\build-client.ps1"
-$clientJar = Join-Path $ProjectRoot "CopiMineClient\build\libs\CopiMineClient-0.1.0.jar"
-$thirdpartyClientJar = Join-Path $ProjectRoot "thirdparty\client-mods\CopiMineClient-0.1.0.jar"
+$clientJar = Join-Path $ProjectRoot "CopiMineClient\build\libs\CopiMineClient-0.1.1.jar"
+$thirdpartyClientJar = Join-Path $ProjectRoot "thirdparty\client-mods\CopiMineClient-0.1.1.jar"
 $buildModpackScript = Join-Path $ProjectRoot "scripts\thirdparty\build_modpack.ps1"
 $resourcepackScript = Join-Path $ProjectRoot "resourcepacks\build-resourcepack.py"
 $resourcepackZip = Join-Path $ProjectRoot "resourcepacks\build\CopiMineResourcePack.zip"
@@ -109,6 +132,7 @@ $pluginBuildScripts = @(
     (Join-Path $ProjectRoot 'copimine-artifacts\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-narcotics\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-world-core\build-plugin.ps1'),
+    (Join-Path $ProjectRoot 'copimine-end-event\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'copimine-admin-plugin\build-plugin.ps1'),
     (Join-Path $ProjectRoot 'minecraft\server\plugins\AuthEffects\build-plugin.ps1')
 )
@@ -119,7 +143,8 @@ $firstPartyServerJars = @(
     'minecraft/server/plugins/CopiMineElectionCore.jar',
     'minecraft/server/plugins/CopiMineNarcotics.jar',
     'minecraft/server/plugins/CopiMineUltimateAdminPlus.jar',
-    'minecraft/server/plugins/CopiMineWorldCore.jar'
+    'minecraft/server/plugins/CopiMineWorldCore.jar',
+    'minecraft/server/plugins/CopiMineEndEvent.jar'
 )
 $modpackDownloadUrl = "/downloads/CopiMineMods.zip"
 if ($resourcePackDownloadUrl -notmatch '^https?://[^/]+(?:/.*)?$') {
@@ -208,10 +233,10 @@ function Get-RelativePathCompat {
 
 function Write-Checksums {
     $entries = @(
-        "thirdparty\client-mods\CopiMineClient-0.1.0.jar",
+        "thirdparty\client-mods\CopiMineClient-0.1.1.jar",
         "thirdparty\client-mods\CustomSkinLoader_Fabric-14.26.1.jar",
         "thirdparty\client-mods\emotecraft-for-MC1.21.1-2.4.12-fabric.jar",
-        "thirdparty\client-mods\fabric-api-0.116.11+1.21.1.jar",
+        "thirdparty\client-mods\fabric-api-0.116.12+1.21.1.jar",
         "thirdparty\client-mods\voicechat-fabric-1.21.1-2.6.16.jar",
         "thirdparty\client-mods\iris-fabric-1.8.8+mc1.21.1.jar",
         "thirdparty\client-mods\sodium-fabric-0.6.13+mc1.21.1.jar",
@@ -292,7 +317,7 @@ foreach ($artifact in $thirdpartyManifest.artifacts.clientMods) {
     if ($thirdpartySha256.ContainsKey($relative)) {
         $artifact | Add-Member -NotePropertyName sha256 -NotePropertyValue $thirdpartySha256[$relative] -Force
     }
-    if ($artifact.path -eq "thirdparty/client-mods/CopiMineClient-0.1.0.jar") {
+    if ($artifact.path -eq "thirdparty/client-mods/CopiMineClient-0.1.1.jar") {
         $artifact.sha1 = $clientSha1
         $artifact.sha256 = $clientSha256
     }
@@ -332,7 +357,7 @@ $releaseManifest = [ordered]@{
         downloadUrl = $modpackDownloadUrl
     }
     clientMod = [ordered]@{
-        path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
+        path = "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
         sha1 = $clientSha1
         sha256 = $clientSha256
     }
@@ -370,7 +395,7 @@ $installerManifest = [ordered]@{
             sha256 = $modpackSha256
         }
         clientMod = [ordered]@{
-            path = "thirdparty/client-mods/CopiMineClient-0.1.0.jar"
+            path = "thirdparty/client-mods/CopiMineClient-0.1.1.jar"
             sha1 = $clientSha1
             sha256 = $clientSha256
         }
@@ -503,7 +528,7 @@ $generatedReleaseFiles = @(
     'thirdparty\CopiMineMods.zip',
     'thirdparty\CopiMineMods.sha1',
     'thirdparty\CopiMineMods.sha256',
-    'thirdparty\client-mods\CopiMineClient-0.1.0.jar',
+    'thirdparty\client-mods\CopiMineClient-0.1.1.jar',
     'thirdparty\checksums.txt',
     'thirdparty\thirdparty_manifest.json'
 )
@@ -519,6 +544,7 @@ $serverReleaseJars = @(
     'minecraft\server\plugins\CopiMineNarcotics.jar',
     'minecraft\server\plugins\CopiMineUltimateAdminPlus.jar',
     'minecraft\server\plugins\CopiMineWorldCore.jar',
+    'minecraft\server\plugins\CopiMineEndEvent.jar',
     'minecraft\server\plugins\CoreProtect-CE-23.0.jar',
     'minecraft\server\plugins\emotecraft-2.4.12-bukkit.jar',
     'minecraft\server\plugins\EntityClearer.jar',

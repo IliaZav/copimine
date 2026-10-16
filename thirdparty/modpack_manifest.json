@@ -6,9 +6,9 @@
   "downloadPath": "/downloads/CopiMineMods.zip",
   "files": [
     {
-      "path": "mods/CopiMineClient-0.1.0.jar",
+      "path": "mods/CopiMineClient-0.1.1.jar",
       "component": "CopiMineClient",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "license": "Proprietary",
       "feature": "\u041a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0439 \u043c\u043e\u0434 CopiMine, \u0432\u0438\u0437\u0443\u0430\u043b\u044b \u0438 \u0441\u0432\u044f\u0437\u043a\u0430 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c",
       "required": true
@@ -32,9 +32,9 @@
       "required": true
     },
     {
-      "path": "mods/fabric-api-0.116.11+1.21.1.jar",
+      "path": "mods/fabric-api-0.116.12+1.21.1.jar",
       "component": "Fabric API",
-      "version": "0.116.11+1.21.1",
+      "version": "0.116.12+1.21.1",
       "license": "Apache-2.0",
       "source": "https://modrinth.com/project/P7dR8mSH",
       "feature": "\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u0431\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430 \u0434\u043b\u044f CopiMineClient \u0438 \u043a\u043b\u0438\u0435\u043d\u0442\u0441\u043a\u0438\u0445 \u043c\u043e\u0434\u043e\u0432",

@@ -1,0 +1,12 @@
+{
+  "source": "resourcepacks/tools/generate_echo_eye_mask.py",
+  "author": "CopiMine project",
+  "license": "Original CopiMine procedural artwork; no third-party bitmap or player skin input",
+  "external_source_url": null,
+  "original_filename": "end_event_echo_eyes.png",
+  "size": [64, 64],
+  "uv": "Minecraft 1.21.1 vanilla player head front; transparent everywhere except eight eye pixels",
+  "render_scope": "EchoPlayerView only; vanilla head transforms and emissive eye layer",
+  "sha256": "75d717e58a5151f445fd318c820eef76b3c66a2e45b52fc342127a8cfaf6f173",
+  "native_visual_acceptance": "BLOCKED: no matched other-player versus replica captures"
+}

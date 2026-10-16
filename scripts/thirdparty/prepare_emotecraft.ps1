@@ -28,9 +28,9 @@ $defaults = @{
         Sha256 = "b8defd7f557262db50b9d0c411544d09ced5bb7f10703e1ffa05f4b38c851e23"
     }
     FabricApiJar = @{
-        Url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/IpaMcBLh/fabric-api-0.116.11%2B1.21.1.jar"
-        Name = "fabric-api-0.116.11+1.21.1.jar"
-        Sha256 = "b791de6f6dce9c58d4ea2af6c713bbcc6dc64d0a5995a8bad6f225ee58cf17d2"
+        Url = "https://cdn.modrinth.com/data/P7dR8mSH/versions/Lwt6YYHL/fabric-api-0.116.12%2B1.21.1.jar"
+        Name = "fabric-api-0.116.12+1.21.1.jar"
+        Sha256 = "b872f8c6de3a49cb2f01482830552b4e9fa246ca2274e99f393caefa4a121ff2"
     }
 }
 

@@ -303,6 +303,22 @@ def sync_authme(path: Path, policy: dict[str, Any]) -> None:
     write_text(path, "\n".join(lines) + "\n")
 
 
+def sync_essentials(path: Path) -> None:
+    """Leave respawn selection to vanilla so beds remain per-player."""
+    if not path.is_file():
+        return
+    lines = read_text(path).splitlines()
+    key = "respawn-listener-priority"
+    replaced = False
+    for index, line in enumerate(lines):
+        if indentation(line) == 0 and key_matches(line, key):
+            lines[index] = f"{key}: {scalar('none')}"
+            replaced = True
+    if not replaced:
+        lines.append(f"{key}: {scalar('none')}")
+    write_text(path, "\n".join(lines) + "\n")
+
+
 def sync_runtime(server_dir: Path, policy_path: Path, voice_template: Path) -> None:
     policy = load_policy(policy_path)
     if not voice_template.is_file():
@@ -327,6 +343,7 @@ def sync_runtime(server_dir: Path, policy_path: Path, voice_template: Path) -> N
     if authme_jars and not authme_config.is_file():
         if not extract_jar_resource(authme_jars[0], "config.yml", authme_config):
             seed_authme_config(authme_config, policy["authme"])
+    sync_essentials(plugins / "Essentials" / "config.yml")
     sync_imageframe(plugins / "ImageFrame" / "config.yml", imageframe_jars[0], policy["imageframe"])
     voice_config = plugins / "voicechat" / "voicechat-server.properties"
     if not voice_config.exists():

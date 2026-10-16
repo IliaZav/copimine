@@ -64,7 +64,7 @@ if ([string]::IsNullOrWhiteSpace($onInteract)) {
     $errors.Add('Could not isolate onInteract station click handler.')
 } else {
   Reject-Regex 'Legacy station click flow must stay disabled in AdminPlus onInteract' $onInteract 'depositSealedBallotAtStation|sendPollingStationCitizenInfo|openPollingStationHub|giveRoleOfficialItemsAtStation'
-  Require-Regex 'AdminPlus legacy station path returns to ElectionCore' $onInteract 'legacyElectionRuntimeDisabled\(\)\) return'
+  Require-Regex 'AdminPlus leaves migrated station clicks to ElectionCore' $onInteract 'if\(clicked!=null&&!legacyElectionRuntimeDisabled\(\)&&isPollingStationBlock\(e\.getClickedBlock\(\)\)\)\{\s*handleLegacyPollingStationInteract'
 }
 
 $stationInfo = Slice-Between $election 'private void sendStationInfoToPlayer' 'private void openIssueTargetPicker'

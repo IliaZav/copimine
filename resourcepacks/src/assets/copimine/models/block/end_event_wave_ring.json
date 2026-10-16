@@ -1,0 +1,18 @@
+{
+  "parent": "minecraft:block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "copimine:item/end_event_wave_ring",
+    "ring": "copimine:item/end_event_wave_ring"
+  },
+  "elements": [
+    {
+      "from": [0.0, 0.0, 0.0],
+      "to": [16.0, 0.12, 16.0],
+      "faces": {
+        "up": {"texture": "#ring"},
+        "down": {"texture": "#ring"}
+      }
+    }
+  ]
+}

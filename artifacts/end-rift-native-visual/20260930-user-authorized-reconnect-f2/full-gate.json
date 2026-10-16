@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-09-30T01:10:04.4077488Z",
+  "branch": "codex/end-rift-event",
+  "gitHead": "52faec2f05ba9693eb462912dfcfa5d5bd422769",
+  "command": "powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\\tests\\RunEndRiftEventChecks.ps1",
+  "exitCode": 0,
+  "outcome": "PASS",
+  "builds": [
+    "WorldCore",
+    "Artifacts",
+    "End Event",
+    "EconomyCore",
+    "ElectionCore",
+    "Narcotics",
+    "UltimateAdminPlus",
+    "AuthEffects",
+    "CopiMineClient Fabric 1.21.1",
+    "CopiMineResourcePack"
+  ],
+  "checks": {
+    "localAuthMode": "19 PASS checks",
+    "pythonContract": "291 passed",
+    "ritualRestartRecovery": "1 passed",
+    "javaPolicies": "all current pure Java policies passed",
+    "persistenceAndRecovery": "all current persistence/recovery checks passed",
+    "diffHygiene": "PASS",
+    "artifacts": "SHA-256 inventory emitted"
+  },
+  "resourcePackSha1": "c49f2c4e1141f92641bb0c4dd8b272ef31fc098c",
+  "warnings": [
+    "81 Python Pillow deprecation warnings for Image.getdata; no test failures.",
+    "Existing Java deprecated API/removal warnings; builds succeeded."
+  ],
+  "scopeNote": "Automated build/test gate only. Does not claim full live seven-wave verification."
+}

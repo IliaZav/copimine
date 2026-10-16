@@ -1,0 +1,2 @@
+Validated CopiMineClient 0.1.1+26.3 and copimineclient-26.3.mixins.json
+Installed 26.3 Fabric profile validated without mutation

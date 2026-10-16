@@ -22,7 +22,7 @@ if (-not (Test-Path $gradleBat)) {
 
 Push-Location $projectDir
 try {
-  & $gradleBat build
+  & $gradleBat build '-Dorg.gradle.jvmargs=-Xmx384m' '--max-workers=1' '--no-daemon' '--console=plain'
   if ($LASTEXITCODE -ne 0) { throw 'Gradle build failed.' }
 } finally {
   Pop-Location

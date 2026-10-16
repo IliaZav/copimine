@@ -109,13 +109,8 @@ public final class NarcoticsConfigService {
             plugin.getConfig().set("client_bridge.required_client_mod_id", ClientModHandshakePolicy.MOD_ID);
             plugin.saveConfig();
         }
-        String configuredClientModVersion = root.getString(
-                "client_bridge.required_client_mod_version",
-                ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION
-        );
-        requiredClientModVersion = configuredClientModVersion == null
-                ? ""
-                : configuredClientModVersion.trim();
+        String configuredClientModVersion = readRequiredClientModVersion(root);
+        requiredClientModVersion = configuredClientModVersion;
         if (requiredClientModVersion.isBlank() || requiredClientModVersion.length() > 64) {
             plugin.getLogger().warning("Invalid required CopiMineClient version; using "
                     + ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION + ".");
@@ -411,6 +406,14 @@ public final class NarcoticsConfigService {
         visualEffectToggles.put(normalized, enabled);
         plugin.getConfig().set("visuals.effects." + normalized, enabled);
         plugin.saveConfig();
+    }
+
+    static String readRequiredClientModVersion(ConfigurationSection root) {
+        String configuredVersion = root.getString(
+                "client_bridge.required_client_mod_version",
+                ClientModHandshakePolicy.DEFAULT_REQUIRED_VERSION
+        );
+        return ClientModHandshakePolicy.requiredVersionFromConfig(configuredVersion);
     }
 
     private TextureMode parseTextureMode(String raw) {

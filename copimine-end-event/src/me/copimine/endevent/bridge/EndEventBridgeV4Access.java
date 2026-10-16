@@ -35,6 +35,10 @@ public interface EndEventBridgeV4Access extends AutoCloseable {
 
     void requestFreshChallenges(Collection<UUID> onlinePlayers);
 
+    /** Advances the optional sender's main-thread maintenance and heartbeat work. */
+    default void tick() {
+    }
+
     @Override
     void close();
 

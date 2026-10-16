@@ -25,6 +25,7 @@ import me.copimine.protocol.BridgeEnvelopeCodec;
 import me.copimine.protocol.BridgeRequestCodec;
 import me.copimine.protocol.BridgeSigner;
 import me.copimine.protocol.BridgeSigningPolicy;
+import me.copimine.protocol.ClientModHandshakePolicy;
 import me.copimine.protocol.ClientModSessionRegistry;
 import me.copimine.protocol.EndEventBridgeBodyCodec;
 import me.copimine.protocol.InboundBridgeRequestRateLimiter;
@@ -98,6 +99,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     /** Called by the owning plugin on the server thread. */
+    @Override
     public synchronized void tick() {
         if (closed) {
             return;
@@ -105,7 +107,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
         long now = clock.getAsLong();
         for (Player player : new ArrayList<>(playerHandles.values())) {
             PlayerState state = currentReadyState(player);
-            if (state == null || !"0.1.3+26.3".equals(state.sessionVersion)) {
+            if (state == null || !ClientModHandshakePolicy.isHeartbeatCapableVersion(state.sessionVersion)) {
                 continue;
             }
             StreamState stream = state.stream;
@@ -355,7 +357,7 @@ public final class EndEventBridgeV4Sender implements EndEventBridgeV4Access, Plu
     }
 
     private static int heartbeatFeatures(PlayerState state) {
-        return "0.1.3+26.3".equals(state.sessionVersion)
+        return ClientModHandshakePolicy.isHeartbeatCapableVersion(state.sessionVersion)
                 ? BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE : 0;
     }
 

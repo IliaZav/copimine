@@ -13261,6 +13261,9 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         tickEliteAbilityState();
         tickEventArrowProjectiles();
         refreshClientBindingsForOnlinePlayers();
+        if (endEventBridgeV4 != null) {
+            endEventBridgeV4.tick();
+        }
         containRealitySplitPlayers();
         // Official boss phases are handled by the switch below.  The extra
         // call is only for the disposable local AI harness, which deliberately

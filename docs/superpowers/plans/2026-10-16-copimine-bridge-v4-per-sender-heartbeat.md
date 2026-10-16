@@ -1,5 +1,5 @@
 # CopiMine Bridge V4 Per-Sender Heartbeat Implementation Plan
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to execute this plan task-by-task. The current assignment is specification and plan only; implementation starts after the written spec and plan are approved.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to execute this plan task-by-task. The user approved the written specification and plan on 2026-10-16; implementation is authorized and in progress.
 
 **Goal:** Add authenticated per-sender liveness to Bridge V4 so the client detects a Paper sender stream that silently stopped after readiness and recovers that sender through the existing targeted reopen protocol.
 
@@ -29,6 +29,14 @@
 - The first post-receipt server packet remains counter 4; heartbeats consume only the existing server stream counter.
 - Replay, counter gaps, expiry, malformed bodies, stream changes, reconnects, and server switching cannot refresh or inherit liveness.
 - A timeout or send failure clears/reopens only its named sender and continues to obey existing fail-closed signer behavior.
+
+## Execution Status
+
+- [x] Task 1: strict shared control codec (commits `6371b988`, `3a360897`; focused codec tests passed).
+- [x] Task 2: client per-sender watchdog (commit `72f73d31`; focused and full client tests passed).
+- [x] Task 3: Paper heartbeat production (commit `e13b22e2`; 62 focused and 86 full bridge-server tests passed; independent review approved; Codex Security reported zero findings).
+- [ ] Task 4: server tickers and version/config defaults (focused tests and Paper builds passed; requested CodeRabbit and Codex Security reviews pending).
+- [ ] Task 5: integrated builds, artifact lock, and runtime verification.
 
 ---
 

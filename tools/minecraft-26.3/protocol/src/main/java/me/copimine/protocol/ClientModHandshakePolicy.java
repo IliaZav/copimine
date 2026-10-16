@@ -6,10 +6,21 @@ import java.util.Objects;
 public final class ClientModHandshakePolicy {
     public static final String MOD_ID = "copimineclient";
     public static final String CHALLENGE_MESSAGE_TYPE = "client_mod_challenge";
-    public static final String DEFAULT_REQUIRED_VERSION = "0.1.2+26.3";
+    public static final String HEARTBEAT_CAPABLE_VERSION = "0.1.3+26.3";
+    public static final String DEFAULT_REQUIRED_VERSION = HEARTBEAT_CAPABLE_VERSION;
     public static final int PROTOCOL_VERSION = 3;
 
     private ClientModHandshakePolicy() {
+    }
+
+    /** Uses the default only when the saved configuration has no version value. */
+    public static String requiredVersionFromConfig(String configuredVersion) {
+        return configuredVersion == null ? DEFAULT_REQUIRED_VERSION : configuredVersion;
+    }
+
+    /** Heartbeat support is enabled only for this exact client metadata version. */
+    public static boolean isHeartbeatCapableVersion(String clientVersion) {
+        return Objects.equals(HEARTBEAT_CAPABLE_VERSION, clientVersion);
     }
 
     public static boolean acceptsResponse(

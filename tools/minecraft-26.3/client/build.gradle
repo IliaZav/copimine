@@ -7,7 +7,7 @@ plugins {
 
 def profile = new JsonSlurper().parse(file('../profile.lock.json'))
 def checkout = file('../../..').canonicalFile
-version = '0.1.2+26.3'
+version = '0.1.3+26.3'
 group = 'me.copimine'
 base { archivesName = 'CopiMineClient' }
 layout.buildDirectory = new File(checkout, 'build/minecraft-26.3/client')

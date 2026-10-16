@@ -12,6 +12,21 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_heartbeat_client_version_default_and_saved_exact_pins_are_explicit():
+    policy = (ROOT / "tools/minecraft-26.3/protocol/src/main/java/me/copimine/protocol/ClientModHandshakePolicy.java").read_text(encoding="utf-8")
+    config_service = (ROOT / "copimine-narcotics/src/me/copimine/narcotics/config/NarcoticsConfigService.java").read_text(encoding="utf-8")
+    config = (ROOT / "copimine-narcotics/config.yml").read_text(encoding="utf-8")
+    reload_body = config_service.split("public void reload() {", 1)[1].split("\n    public ", 1)[0]
+
+    assert 'HEARTBEAT_CAPABLE_VERSION = "0.1.3+26.3"' in policy
+    assert 'DEFAULT_REQUIRED_VERSION = HEARTBEAT_CAPABLE_VERSION' in policy
+    assert 'plugin.reloadConfig();' in reload_body
+    assert 'readRequiredClientModVersion(root)' in reload_body
+    assert 'requiredVersionFromConfig(configuredVersion)' in config_service
+    assert 'configuredClientModVersion.trim()' not in config_service
+    assert 'required_client_mod_version: 0.1.3+26.3' in config
+
+
 def _git_shell_path(value):
     value = str(value)
     drive = re.match(r"^([A-Za-z]):[\\/](.*)$", value)
@@ -52,7 +67,7 @@ def test_copimine_client_candidate_matches_locked_build_artifact():
     artifact = lock["clientArtifact"]
     candidate = ROOT / "build/minecraft-26.3/client/libs" / artifact["filename"]
 
-    assert artifact["filename"] == "CopiMineClient-0.1.2+26.3.jar"
+    assert artifact["filename"] == "CopiMineClient-0.1.3+26.3.jar"
     assert artifact["size"] > 0
     assert len(artifact["sha512"]) == 128
     assert candidate.is_file(), "PrepareMigrationCandidates.ps1 must build CopiMineClient before profile install"

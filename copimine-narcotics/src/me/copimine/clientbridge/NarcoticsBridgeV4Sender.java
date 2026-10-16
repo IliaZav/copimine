@@ -6,6 +6,7 @@ import me.copimine.protocol.BridgeEnvelopeCodec;
 import me.copimine.protocol.BridgeRequestCodec;
 import me.copimine.protocol.BridgeSigner;
 import me.copimine.protocol.BridgeSigningPolicy;
+import me.copimine.protocol.ClientModHandshakePolicy;
 import me.copimine.protocol.ClientModSessionRegistry;
 import me.copimine.protocol.NarcoticsBridgeBodyCodec;
 import org.bukkit.entity.Player;
@@ -63,7 +64,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
         long now = positiveNow();
         for (PlayerState state : players.values()) {
             if (!isPlayerOnline(state.playerHandle) || !isCurrent(state.playerUuid, state.session)
-                    || state.session == null || !"0.1.3+26.3".equals(state.session.clientVersion())) {
+                    || state.session == null || !ClientModHandshakePolicy.isHeartbeatCapableVersion(state.session.clientVersion())) {
                 continue;
             }
             Stream stream = state.current;
@@ -535,7 +536,7 @@ public final class NarcoticsBridgeV4Sender implements AutoCloseable {
     }
 
     private static int heartbeatFeatures(PlayerState state) {
-        return "0.1.3+26.3".equals(state.session.clientVersion())
+        return ClientModHandshakePolicy.isHeartbeatCapableVersion(state.session.clientVersion())
                 ? BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE : 0;
     }
 

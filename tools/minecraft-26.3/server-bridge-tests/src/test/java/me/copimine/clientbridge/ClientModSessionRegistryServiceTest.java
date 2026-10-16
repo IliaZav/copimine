@@ -18,7 +18,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClientModSessionRegistryServiceTest {
     private static final long NOW = 1_800_000_000_000L;
     private static final long EXPIRY = NOW + 10_000L;
-    private static final String VERSION = "0.1.2+26.3";
+    private static final String VERSION = ClientModHandshakePolicy.HEARTBEAT_CAPABLE_VERSION;
+
+    @Test
+    void explicitlyPinnedLegacyVersionRemainsAValidExactSessionButIsNotHeartbeatCapable() {
+        ClientModSessionRegistryService registry = new ClientModSessionRegistryService(message -> { });
+        UUID player = UUID.randomUUID();
+        UUID challenge = UUID.randomUUID();
+        String legacyVersion = "0.1.2+26.3";
+
+        registry.openConnection(player);
+        registry.beginChallenge(player, challenge, EXPIRY, legacyVersion);
+
+        assertTrue(accept(registry, player, challenge, legacyVersion, NOW));
+        ClientModSessionRegistry.VerifiedClientSession session = registry.current(player).orElseThrow();
+        assertEquals(legacyVersion, session.clientVersion());
+        assertFalse(ClientModHandshakePolicy.isHeartbeatCapableVersion(session.clientVersion()));
+    }
 
     @Test
     void publishesOnlyAnExactVerifiedV3ChallengeResponseForTheCurrentConnection() {

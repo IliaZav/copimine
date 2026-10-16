@@ -50,6 +50,7 @@ import org.bukkit.event.player.PlayerShearEntityEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
 import org.bukkit.event.player.PlayerTakeLecternBookEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 
 import java.util.Locale;
@@ -69,6 +70,7 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     private final ClientCapabilityService capabilities;
     private final ClientVisualEffectService visuals;
     private final NarcoticsBridgeV4Sender bridgeV4Sender;
+    private BukkitTask bridgeV4TickTask;
     private final InboundBridgeRequestRateLimiter v4InboundRateLimiter = new InboundBridgeRequestRateLimiter();
     private final Map<UUID, Long> nextInboundMessageAt = new ConcurrentHashMap<>();
     private final Map<UUID, PendingClientHandshake> pendingHandshakes = new ConcurrentHashMap<>();
@@ -108,6 +110,10 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
         Bukkit.getMessenger().registerIncomingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL, this);
         Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, ClientBridgePayloads.V4_CHANNEL);
         Bukkit.getPluginManager().registerEvents(this, plugin);
+        if (bridgeV4TickTask == null) {
+            bridgeV4TickTask = Bukkit.getScheduler().runTaskTimer(
+                    plugin, bridgeV4Sender::tick, 1L, 5L);
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             sessionRegistry.openConnection(player.getUniqueId());
             beginClientModHandshake(player);
@@ -115,6 +121,10 @@ public final class CopiMineClientBridge implements Listener, PluginMessageListen
     }
 
     public void shutdown() {
+        if (bridgeV4TickTask != null) {
+            bridgeV4TickTask.cancel();
+            bridgeV4TickTask = null;
+        }
         for (Player player : Bukkit.getOnlinePlayers()) {
             visuals.clearVisuals(player, "plugin-disable");
             visuals.forgetPlayer(player);

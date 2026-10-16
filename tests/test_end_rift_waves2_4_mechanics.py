@@ -755,10 +755,13 @@ def wave2_entity_load_harness(tmp_path_factory):
         "private boolean isKnownLegacyWave7Elite(Entity entity)",
         "private boolean isOfficialNumberedWaveMob(Entity entity)",
         "private boolean isOfficialWaveLifecycleMob(Entity entity)",
+        "private boolean isOfficialWaveSixPressureMob(Entity entity)",
         "private boolean isActiveOfficialWavePhase(int wave)",
         "private boolean isOfficialEntity(Entity entity)",
         "private boolean isWaveCombatKind(String kind)",
         "private long readEntityGeneration(Entity entity)",
+        "private void restoreEliteSpellRuntime(Entity entity, long now)",
+        "private EndRiftAiPolicy.MiniBossSpell miniBossSpellFor(EliteAbilityPolicy.Ability ability)",
         "private void suspendWaveTwoRecoveryEntity(Entity entity)",
         "public void onPersistedCombatEntitiesLoad(EntitiesLoadEvent event)",
         "private boolean isWaveTwoOrdinaryMob(Entity entity)",
@@ -769,6 +772,8 @@ def wave2_entity_load_harness(tmp_path_factory):
     )]
     harness = r'''
 import java.util.*;
+import me.copimine.endevent.domain.EliteAbilityPolicy;
+import me.copimine.endevent.domain.EndRiftAiPolicy;
 import me.copimine.endevent.domain.WaveTwoEntityRecoveryPolicy;
 import me.copimine.endevent.domain.WaveEliteCompositionPolicy;
 import me.copimine.endevent.domain.WaveTwoStagePolicy;
@@ -799,6 +804,7 @@ public final class WaveTwoEntityLoadHarness {
         final Map<Object,Object> values = new HashMap<>();
         final Map<Object,Object> types = new HashMap<>();
         void set(Object key, Object type, Object value) { values.put(key, value); types.put(key, type); }
+        void remove(Object key) { values.remove(key); types.remove(key); }
         boolean has(Object key, Object type) { return values.containsKey(key) && types.get(key) == type; }
         Set<Object> getKeys() { return new HashSet<>(values.keySet()); }
         @SuppressWarnings("unchecked") <T> T getOrDefault(Object key, Object type, T fallback) {
@@ -831,6 +837,8 @@ public final class WaveTwoEntityLoadHarness {
         Pathfinder getPathfinder() { return pathfinder; }
     }
     static final class Skeleton extends Mob {}
+    static final class Enderman extends Mob {}
+    static final class Spider extends Mob {}
     final Object keyWave = new Object(), keyKind = new Object(), keyEventGeneration = new Object();
     final Object keyGeneration = new Object(), keyWaveSpawnGroup = new Object(), keyEventId = new Object();
     final Object keyOfficial = new Object();
@@ -849,6 +857,8 @@ public final class WaveTwoEntityLoadHarness {
     Set<UUID> waveTwoCleanupEntityUuids = new LinkedHashSet<>();
     Set<UUID> waveTwoRecoveryFencedEntityUuids = new LinkedHashSet<>();
     Map<UUID,Entity> ownedEntities = new LinkedHashMap<>();
+    Map<UUID,EndRiftAiPolicy.MiniBossSpell> miniBossSpells = new LinkedHashMap<>();
+    Map<UUID,Long> nextMiniBossSpellMillis = new LinkedHashMap<>();
     final WaveMobLifecycleRegistry unloadedWaveMobs = new WaveMobLifecycleRegistry();
     int registerCalls, tacticCalls, ensureAiCalls, unregisterCalls, removalDiagnostics;
     String readString(Entity entity, Object key) {
@@ -872,6 +882,9 @@ public final class WaveTwoEntityLoadHarness {
             return;
         }
         if (entity instanceof Mob mob) { mob.ai = true; mob.aware = true; }
+    }
+    void tagMiniBossSpell(Entity entity, EndRiftAiPolicy.MiniBossSpell spell) {
+        entity.pdc.set(keyMiniBossSpell, STRING, spell.id());
     }
     void forcePhase(EventPhase next, String reason) { phase = next; recoveryReason = reason; }
     Mob taggedMob(int group, long taggedGeneration) {
@@ -1092,6 +1105,24 @@ public final class WaveTwoEntityLoadHarness {
                 check(!trial.removed,
                         "a named Wave 7 trial actor is never classified as a generic legacy elite");
             }
+            case "wave6-elite-chunk-reload" -> {
+                h.activeWave = 6;
+                h.phase = EventPhase.WAVE_6;
+                Spider elite = new Spider();
+                elite.pdc.set(h.keyWave, INTEGER, 6);
+                elite.pdc.set(h.keyKind, STRING, EVENT_KIND_ELITE);
+                elite.pdc.set(h.keyEventId, STRING, h.eventId);
+                elite.pdc.set(h.keyEventGeneration, LONG, h.generation);
+                elite.pdc.set(h.keyOfficial, BYTE, (byte) 1);
+                h.onPersistedCombatEntitiesLoad(new EntitiesLoadEvent(List.of(elite)));
+                check(!elite.removed && h.ownedEntities.get(elite.id) == elite
+                                && elite.ai && elite.aware
+                                && h.miniBossSpells.get(elite.id) == EndRiftAiPolicy.MiniBossSpell.WEB_SHOT
+                                && "web_shot".equals(elite.pdc.getOrDefault(
+                                h.keyMiniBossSpell, STRING, ""))
+                                && h.nextMiniBossSpellMillis.containsKey(elite.id),
+                        "an owned current-generation Wave 6 web elite rehydrates tracking, AI, spell and cooldown");
+            }
             default -> throw new IllegalArgumentException(scenario);
         }
         System.out.println(scenario + " OK");
@@ -1103,7 +1134,7 @@ public final class WaveTwoEntityLoadHarness {
     java.write_text(harness, encoding="utf-8")
     dependencies = [DOMAIN / f"{name}.java" for name in (
             "PressureBudgetController", "WaveTwoEntityRecoveryPolicy", "WaveEliteCompositionPolicy",
-            "WaveTwoStagePolicy", "WaveMechanicsPolicy",
+            "WaveTwoStagePolicy", "WaveMechanicsPolicy", "EliteAbilityPolicy", "EndRiftAiPolicy",
     )]
     dependencies.append(DOMAIN.parent / "runtime/WaveMobLifecycleRegistry.java")
     compiled = subprocess.run(["javac", "-proc:none", "-encoding", "UTF-8", "-d", str(output),
@@ -1118,7 +1149,7 @@ public final class WaveTwoEntityLoadHarness {
     "rotated-event-cleanup-tombstone", "foreign-event-untombstoned", "foreign-event-stale-generation",
     "wave7-ordinary-guardian", "wave7-marked-legacy-elite", "wave7-trial-actor",
     "stale-cleanup-epoch-load", "future-cleanup-epoch-load",
-    "approved-group-3-elite-load", "unmarked-wave-2-elite-load",
+    "approved-group-3-elite-load", "unmarked-wave-2-elite-load", "wave6-elite-chunk-reload",
     "legacy-final-elite-missing-epoch-load", "legacy-final-elite-wrong-epoch-type-load",
 ])
 def test_wave2_persisted_entity_load_adapter(wave2_entity_load_harness, scenario):

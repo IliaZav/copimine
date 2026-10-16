@@ -248,16 +248,16 @@ def test_triple_arrow_side_projectiles_spawn_only_after_bow_event_is_accepted():
     ]
     assert "event.isCancelled()" in outcome
     assert "pendingSkeletonShotSideArrows.remove" in outcome
-    assert "cleanupEventArrow(arrowId)" in outcome
-    assert "spawnPendingSkeletonSideArrows(arrowId, pending)" in outcome
+    assert "cleanupEventArrow(originalArrowId)" in outcome
+    assert "spawnPendingSkeletonSideArrows(originalArrowId, pending)" in outcome
     assert outcome.index("event.isCancelled()") < outcome.index(
-        "spawnPendingSkeletonSideArrows(arrowId, pending)"
+        "spawnPendingSkeletonSideArrows(originalArrowId, pending)"
     )
     cancellation_branch = outcome[
         outcome.index("if (event.isCancelled())"):
-        outcome.index("spawnPendingSkeletonSideArrows(arrowId, pending)")
+        outcome.index("spawnPendingSkeletonSideArrows(originalArrowId, pending)")
     ]
-    assert "cleanupEventArrow(arrowId)" in cancellation_branch
+    assert "cleanupEventArrow(originalArrowId)" in cancellation_branch
     assert "return;" in cancellation_branch
     assert "runTaskLater(this, () ->" in outcome
     cleanup = _java_method_body(source, "private void cleanupEventArrow(")
@@ -297,6 +297,31 @@ def test_native_bow_arrow_is_tracked_only_after_paper_inserts_the_accepted_proje
     assert "prepareEventSkeletonArrow(arrow," in configure
     assert "return trackEventArrow(arrow);" in configure
     assert "runTaskLater(this, () ->" in outcome
+
+
+def test_replaced_bow_projectile_releases_original_pending_arrow_reservation():
+    source = SOURCE_PATH.read_text(encoding="utf-8")
+    shoot = _java_method_body(source, "public void onEventSkeletonShootBow(")
+    outcome = _java_method_body(source, "public void onEventSkeletonShootBowOutcome(")
+    cleanup = _java_method_body(source, "private void cleanupEventArrow(")
+
+    # The MONITOR callback must resolve the projectile prepared at HIGHEST from
+    # the event itself; event.getProjectile() may now refer to a replacement.
+    assert "pendingSkeletonShotBowEventArrowIds.put(event, arrow.getUniqueId())" in shoot
+    assert "pendingSkeletonShotBowEventArrowIds.remove(event)" in outcome
+    assert outcome.index("pendingSkeletonShotBowEventArrowIds.remove(event)") < outcome.index(
+        "event.getProjectile()"
+    )
+    assert "originalArrowId" in outcome
+    assert "event.getProjectile() != originalArrow" in outcome
+
+    replacement_start = outcome.index("event.getProjectile() != originalArrow")
+    replacement_end = outcome.index("return;", replacement_start)
+    replacement_cleanup = outcome[replacement_start:replacement_end]
+    assert "pendingSkeletonShotSideArrows.remove(originalArrowId)" in replacement_cleanup
+    assert "clearWaveProjectileGroup(pending.volleyId()" in replacement_cleanup
+    assert "cleanupEventArrow(originalArrowId)" in replacement_cleanup
+    assert "releaseUnspawnedReservations(pendingShot.volleyId())" in cleanup
 
 
 def test_manual_skeleton_arrow_payloads_wait_for_final_damage_event_outcome():

@@ -886,6 +886,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                                                 String arrowSpell, double damage, UUID volleyId,
                                                 String eventId, long generation, int arrowCount) { }
     private final Map<UUID, PendingSkeletonSideArrowShot> pendingSkeletonShotSideArrows = new HashMap<>();
+    private final Map<EntityShootBowEvent, UUID> pendingSkeletonShotBowEventArrowIds =
+            new IdentityHashMap<>();
+    private final Map<EntityShootBowEvent, Arrow> pendingSkeletonShotBowEventArrows =
+            new IdentityHashMap<>();
     private final Map<UUID, Runnable> pendingEventArrowDamageEffects = new HashMap<>();
     private final Set<UUID> scheduledEventArrowDamageEffects = new HashSet<>();
     private final Set<UUID> scheduledEventArrowHitCleanup = new HashSet<>();
@@ -2220,7 +2224,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 entity.remove();
                 continue;
             }
-            if (isOfficialWaveLifecycleMob(entity)) {
+            if (isOfficialWaveLifecycleMob(entity) || isOfficialWaveSixPressureMob(entity)) {
                 int wave = readInt(entity, keyWave, 0);
                 WaveMobLifecycleRegistry.LoadDisposition disposition = unloadedWaveMobs.onLoad(
                         entity.getUniqueId(), eventId, generation, activeWave,
@@ -9962,6 +9966,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             pendingSkeletonShotSideArrows.put(arrow.getUniqueId(), new PendingSkeletonSideArrowShot(
                     skeleton.getUniqueId(), wave, arrowKind, arrowSpell,
                     profile.damage(), volleyId, eventId, generation, arrowCount));
+            pendingSkeletonShotBowEventArrowIds.put(event, arrow.getUniqueId());
+            pendingSkeletonShotBowEventArrows.put(event, arrow);
             getLogger().info("SKELETON_ARROW_SHOT entity=" + skeleton.getUniqueId()
                     + " arrow=" + arrow.getUniqueId() + " variant=" + (miniBoss ? "MINIBOSS" : "COMMON")
                     + " physical_count=" + arrowCount + " target=PLAYER_ONLY damage=" + profile.damage()
@@ -9980,26 +9986,33 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     /** Wait until later listeners have accepted the bow shot before creating its side arrows. */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = false)
     public void onEventSkeletonShootBowOutcome(EntityShootBowEvent event) {
-        if (!(event.getProjectile() instanceof Arrow arrow)) {
-            return;
-        }
-        UUID arrowId = arrow.getUniqueId();
-        if (!pendingSkeletonShotSideArrows.containsKey(arrowId)) {
-            return;
-        }
+        UUID originalArrowId = pendingSkeletonShotBowEventArrowIds.remove(event);
+        Arrow originalArrow = pendingSkeletonShotBowEventArrows.remove(event);
+        if (originalArrowId == null || originalArrow == null
+                || !pendingSkeletonShotSideArrows.containsKey(originalArrowId)) return;
         BukkitTask outcomeTask = Bukkit.getScheduler().runTaskLater(this, () -> {
-            PendingSkeletonSideArrowShot pending = pendingSkeletonShotSideArrows.remove(arrowId);
+            PendingSkeletonSideArrowShot pending = pendingSkeletonShotSideArrows.get(originalArrowId);
             if (pending == null) {
                 return;
             }
-            if (event.isCancelled()) {
-                clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-shot-cancelled");
-                cleanupEventArrow(arrowId);
-                getLogger().info("SKELETON_ARROW_SHOT_CANCELLED arrow=" + arrowId
+            if (event.getProjectile() != originalArrow) {
+                pendingSkeletonShotSideArrows.remove(originalArrowId);
+                clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-projectile-replaced");
+                cleanupEventArrow(originalArrowId);
+                if (originalArrow.isValid() && !originalArrow.isDead()) originalArrow.remove();
+                getLogger().info("SKELETON_ARROW_SHOT_REPLACED original=" + originalArrowId
                         + " side_arrows_spawned=0");
                 return;
             }
-            spawnPendingSkeletonSideArrows(arrowId, pending);
+            pendingSkeletonShotSideArrows.remove(originalArrowId);
+            if (event.isCancelled()) {
+                clearWaveProjectileGroup(pending.volleyId(), "skeleton-arrow-shot-cancelled");
+                cleanupEventArrow(originalArrowId);
+                getLogger().info("SKELETON_ARROW_SHOT_CANCELLED arrow=" + originalArrowId
+                        + " side_arrows_spawned=0");
+                return;
+            }
+            spawnPendingSkeletonSideArrows(originalArrowId, pending);
         }, 1L);
         registerEncounterTask(outcomeTask);
     }
@@ -15228,6 +15241,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (pendingShot != null) {
             waveProjectileAdmission.releaseUnspawnedReservations(pendingShot.volleyId());
         }
+        pendingSkeletonShotBowEventArrowIds.entrySet().removeIf(entry -> {
+            if (!Objects.equals(entry.getValue(), arrowId)) return false;
+            pendingSkeletonShotBowEventArrows.remove(entry.getKey());
+            return true;
+        });
+        pendingSkeletonShotBowEventArrows.entrySet().removeIf(
+                entry -> entry.getValue() != null
+                        && Objects.equals(entry.getValue().getUniqueId(), arrowId));
         waveProjectileAdmission.releaseProjectile(arrowId);
         Entity candidate = ownedEntities.get(arrowId);
         if (candidate == null) {
@@ -15392,6 +15413,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         statusArrowEffectsApplied.clear();
         detonatedEventArrows.clear();
         pendingSkeletonShotSideArrows.clear();
+        pendingSkeletonShotBowEventArrowIds.clear();
+        pendingSkeletonShotBowEventArrows.clear();
         pendingEventArrowDamageEffects.clear();
         scheduledEventArrowDamageEffects.clear();
         scheduledEventArrowHitCleanup.clear();
@@ -17515,6 +17538,12 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         if (!isOfficialNumberedWaveMob(entity)) return false;
         int wave = readInt(entity, keyWave, 0);
         return wave == 1 || wave == 3 || wave == 4 || wave == 5;
+    }
+
+    private boolean isOfficialWaveSixPressureMob(Entity entity) {
+        return isOfficialNumberedWaveMob(entity)
+                && readInt(entity, keyWave, 0) == 6
+                && EVENT_KIND_ELITE.equals(readString(entity, keyKind));
     }
 
     /** Ignores Wave 5's fog subphase: the wave remains current while its mobs are frozen. */
@@ -38460,7 +38489,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onOwnedEntityRemove(EntityRemoveEvent event) {
         Entity entity = event.getEntity();
-        if (isOfficialWaveLifecycleMob(entity)) {
+        if (isOfficialWaveLifecycleMob(entity) || isOfficialWaveSixPressureMob(entity)) {
             UUID entityId = entity.getUniqueId();
             if (event.getCause() == EntityRemoveEvent.Cause.UNLOAD
                     && ownedByEvent(entity, eventId)) {
@@ -38496,6 +38525,14 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
                 if (pendingShot != null) {
                     waveProjectileAdmission.releaseUnspawnedReservations(pendingShot.volleyId());
                 }
+                pendingSkeletonShotBowEventArrowIds.entrySet().removeIf(entry -> {
+                    if (!Objects.equals(entry.getValue(), removedId)) return false;
+                    pendingSkeletonShotBowEventArrows.remove(entry.getKey());
+                    return true;
+                });
+                pendingSkeletonShotBowEventArrows.entrySet().removeIf(
+                        entry -> entry.getValue() != null
+                                && Objects.equals(entry.getValue().getUniqueId(), removedId));
                 waveProjectileAdmission.releaseProjectile(removedId);
             }
             if (isTaggedEliteAbilityEntity(entity)) {

@@ -30,6 +30,7 @@ final class BridgeControlBodyCodecNegativeTest {
         extendedHello[1] = 0;
         extendedHello[2] = 1;
         extendedHello[19] = 0;
+        assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(extendedHello));
         extendedHello[36] = 2;
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(extendedHello));
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.encode(

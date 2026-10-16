@@ -92,6 +92,13 @@ public class Wave2AttemptLifecycleRestoreProbe {
                     beforeRestart.officialRewardRoster,restartObservedAtMillis,OFFLINE_RECONNECT_GRACE_MILLIS);
             throw new AssertionError("unknown lifecycle fields must be rejected");
         } catch (IllegalArgumentException expected) { }
+        var overflowTimestampProgress=new LinkedHashMap<>(persistedProgress);
+        overflowTimestampProgress.put("wave2-attempt-lifecycle.saved-millis",Long.toString(Long.MAX_VALUE));
+        try {
+            WaveTwoAttemptLifecycleSnapshot.decode(overflowTimestampProgress,"event",beforeRestart.generation,
+                    beforeRestart.officialRewardRoster,Long.MAX_VALUE,OFFLINE_RECONNECT_GRACE_MILLIS);
+            throw new AssertionError("timestamp overflow must be rejected as an invalid lifecycle checkpoint");
+        } catch (IllegalArgumentException expected) { }
         long expiredSavedAt=restartObservedAtMillis-30_000L;
         var expiredBeforeRestart=new Wave2AttemptLifecycleRestoreProbe();
         expiredBeforeRestart.attemptLifecycle.begin(expiredBeforeRestart.generation,

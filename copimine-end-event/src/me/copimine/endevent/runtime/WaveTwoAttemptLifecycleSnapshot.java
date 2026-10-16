@@ -65,11 +65,16 @@ public final class WaveTwoAttemptLifecycleSnapshot {
         String savedEvent = encoded.get(PREFIX + "event");
         long savedGeneration = parseLong(encoded.get(PREFIX + "generation"));
         long savedMillis = parseLong(encoded.get(PREFIX + "saved-millis"));
-        long latestAllowedDeadline = Math.addExact(savedMillis, graceMillis);
         if (!"1".equals(version) || !eventId.equals(savedEvent) || savedGeneration != generation
                 || savedMillis <= 0L || nowMillis < savedMillis
                 || !canonicalRoster(roster).equals(encoded.get(PREFIX + "roster"))) {
             throw new IllegalArgumentException("Wave 2 lifecycle checkpoint identity mismatch");
+        }
+        long latestAllowedDeadline;
+        try {
+            latestAllowedDeadline = Math.addExact(savedMillis, graceMillis);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("Wave 2 lifecycle checkpoint deadline window overflows", overflow);
         }
         Map<UUID, ParticipantState> states = new LinkedHashMap<>();
         Set<String> expectedKeys = new LinkedHashSet<>(Set.of(PREFIX + "version", PREFIX + "event",

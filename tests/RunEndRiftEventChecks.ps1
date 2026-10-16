@@ -342,6 +342,7 @@ $pureTests = @(
   'RealitySplitBarrierCoverageTest',
   'RealitySplitBarrierRecoveryTest',
   'RealitySplitBarrierMutationPolicyTest',
+  'RealitySplitBarrierOwnershipPolicyTest',
   'RealitySplitChamberControllerTest',
   'Wave7RoomLayoutPolicyTest',
   'RealitySplitTrialControllerTest',

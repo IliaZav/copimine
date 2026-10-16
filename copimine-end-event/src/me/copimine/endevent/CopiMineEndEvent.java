@@ -189,6 +189,7 @@ import me.copimine.endevent.domain.ClientBindingReconnectPolicy;
 import me.copimine.endevent.domain.CollapseRingGeometryPolicy;
 import me.copimine.endevent.domain.RealitySplitBarrierPolicy;
 import me.copimine.endevent.domain.RealitySplitBarrierMutationPolicy;
+import me.copimine.endevent.domain.RealitySplitBarrierOwnershipPolicy;
 import me.copimine.endevent.domain.RealitySplitCombatSeparationPolicy;
 import me.copimine.endevent.domain.RealitySplitPlayerTeleportPolicy;
 import me.copimine.endevent.domain.RealitySplitPlayerKnockbackPolicy;
@@ -26318,6 +26319,8 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             if (!geometryCells.contains(cell) || plannedCellSet.contains(cell)) {
                 continue;
             }
+            // Geometry is relative to the combat floor; retain this absolute-Y check so a stale
+            // journal cell cannot alias a different, otherwise valid wall level.
             if (entry.floorY() != floorY || entry.webOriginal() == null
                     || entry.webOriginal().isBlank()
                     || !entry.worldId().equalsIgnoreCase(world.getUID().toString())
@@ -26684,7 +26687,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         }
 
         List<RealitySplitBarrierPolicy.Cell> toOpen = cells.stream()
-                .filter(cell -> !realitySplitBarrierStillNeeded(cell))
+                .filter(cell -> !realitySplitBarrierStillNeeded(cell, boundary))
                 .toList();
         for (RealitySplitBarrierPolicy.Cell cell : toOpen) {
             String original = realitySplitBarrierOriginals.get(cell);
@@ -26791,13 +26794,10 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         return true;
     }
 
-    private boolean realitySplitBarrierStillNeeded(RealitySplitBarrierPolicy.Cell cell) {
-        for (Set<RealitySplitBarrierPolicy.Cell> cells : realitySplitBarrierByBoundary.values()) {
-            if (cells.contains(cell)) {
-                return true;
-            }
-        }
-        return false;
+    private boolean realitySplitBarrierStillNeeded(
+            RealitySplitBarrierPolicy.Cell cell, int boundaryBeingOpened) {
+        return RealitySplitBarrierOwnershipPolicy.isNeededByOtherBoundary(
+                realitySplitBarrierByBoundary, boundaryBeingOpened, cell);
     }
 
     private boolean restoreRealitySplitBoundaryClosed(

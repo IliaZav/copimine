@@ -74,3 +74,12 @@ def test_restart_rebuild_keeps_open_boundary_originals_in_hazard_journal() -> No
         "rehydration must merge retained open-boundary originals with newly planned wall cells "
         "instead of replacing their restart/cleanup records"
     )
+
+
+def test_opening_boundary_only_retains_cells_owned_by_other_boundaries() -> None:
+    source = EVENT.read_text(encoding="utf-8")
+    open_boundary = _method(source, "private boolean openRealitySplitBoundary(")
+    still_needed = _method(source, "private boolean realitySplitBarrierStillNeeded(")
+
+    assert ".filter(cell -> !realitySplitBarrierStillNeeded(cell, boundary))" in open_boundary
+    assert "RealitySplitBarrierOwnershipPolicy.isNeededByOtherBoundary" in still_needed

@@ -404,6 +404,10 @@ def test_wave7_cleanup_recovery_and_final_seal_require_complete_owned_geometry()
     assert "realitySplitBarrierCells.equals(requiredCells)" in final_seal
     assert "RealitySplitBarrierCoveragePolicy.missing(requiredInsideArena" in plan
     assert "existingWall.getState() instanceof org.bukkit.block.TileState" in plan
+    assert "entry.floorY() != floorY" in plan, (
+        "relative cell geometry must not let a stale journal entry at a different absolute Y "
+        "alias a valid wall level"
+    )
 
 
 def test_disposable_wave_completion_does_not_require_official_reward_roster() -> None:

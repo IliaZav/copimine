@@ -120,9 +120,6 @@ public final class BridgeControlBodyCodec {
             byte[] requestId = readRequestId(input);
             int featureFlags = input.hasRemaining() ? readU8(input) : 0;
             requireKnownFeatures(featureFlags);
-            if (encoded.length == HELLO_ACK_EXTENDED_BYTES && featureFlags == 0) {
-                throw new IllegalArgumentException("Extended hello_ack must advertise a feature");
-            }
             body = new HelloAck(sender, sessionUuid, requestKind, requestId, featureFlags);
         } else if (type == SENDER_HEARTBEAT_TYPE) {
             requireExactLength(encoded, SENDER_HEARTBEAT_BYTES);

@@ -113,6 +113,9 @@ $hadJavaHome = Test-Path Env:JAVA_HOME
 $previousJavaHome = $env:JAVA_HOME
 $previousPath = $env:PATH
 $legacyClientJavaHome = $previousJavaHome
+if (-not [string]::IsNullOrWhiteSpace($legacyClientJavaHome)) {
+    $legacyClientJavaHome = [System.IO.Path]::GetFullPath($legacyClientJavaHome).TrimEnd([char[]]@('\', '/'))
+}
 if (-not $SkipEndRiftGate -and [string]::IsNullOrWhiteSpace($legacyClientJavaHome)) {
     $originalJavaCommand = Get-Command 'java.exe' -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1

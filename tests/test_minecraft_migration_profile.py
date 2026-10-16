@@ -1386,6 +1386,7 @@ def test_required_client_validator_scopes_enabled_check_to_client_bridge(tmp_pat
         'copimine-narcotics/config.yml',
         'copimine-narcotics/src/me/copimine/clientbridge/ClientBridgePayloads.java',
         'copimine-narcotics/src/me/copimine/clientbridge/CopiMineClientBridge.java',
+        'copimine-narcotics/src/me/copimine/clientbridge/ClientModSessionRegistryService.java',
         'copimine-narcotics/src/me/copimine/narcotics/CopiMineNarcotics.java',
         'tests/ValidateCopiMineClientModRequired.ps1',
         'tools/minecraft-26.3/client/build.gradle',

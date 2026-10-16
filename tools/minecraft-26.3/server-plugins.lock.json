@@ -800,13 +800,13 @@
       "candidate": {
         "filename": "CopiMineNarcotics-26.3.jar",
         "runtimeFilename": "CopiMineNarcotics.jar",
-        "sha256": "cfce24c44a5f6a6b552424859ff6651fc962faa388187924ccff77807292e6a6",
+        "sha256": "db734b15b5d6b52293e10056df1d3414aa10ff85f1563551b59eedf4413aeced",
         "apiVersion": "26.3",
         "buildArtifact": "build/minecraft-26.3/plugins/jars/CopiMineNarcotics-26.3.jar",
         "compatibilityStatus": "requires-runtime-validation",
         "nativeVerified": false,
-        "size": 360166,
-        "sha512": "e21571d58aa06ed40917eba8873c5d86c9307a47f2532acc596dad842f967fb48ec9afceecfd441945233412358ae96f8f38ceb39dd14c3b94f134e815d56d92"
+        "size": 360109,
+        "sha512": "6dd69f6c56270c43ac0abe0afa3b022541bcfe2462fba33e39138e9d06a6cf9d40238902c1f20becb84f721ab4b1c66995f54672c411f27cc86dce699f6c70b3"
       },
       "nativeVerified": false
     },

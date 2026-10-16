@@ -43,6 +43,8 @@ public class Wave4ObjectiveDispatchProbe {
   int lastMainThreadWave, activeWave = 4, objectives, wave4Objectives, fireSchedules;
   boolean cancelInAi, restartInObjective, cancelInObjective;
   EventPhase phase = EventPhase.READY_FOR_PLAYERS;
+  BridgeTicker endEventBridgeV4 = new BridgeTicker();
+  static class BridgeTicker { int ticks; void tick() { ticks++; } }
   boolean isEnabled() { return enabled; }
   Object liveBoss() { return null; }
   void renderRitualZoneVisuals(long now) { }
@@ -85,6 +87,9 @@ public class Wave4ObjectiveDispatchProbe {
       if (probe.wave4Objectives != total || probe.objectives != total || probe.fireSchedules != total)
         throw new AssertionError(scenario + " cycle=" + cycle + " objective ticks=" + probe.wave4Objectives
                 + " dispatches=" + probe.objectives + " mutations=" + probe.fireSchedules + "; expected=" + total);
+      if (probe.endEventBridgeV4.ticks != cycle)
+        throw new AssertionError(scenario + " End Event Bridge V4 ticks=" + probe.endEventBridgeV4.ticks
+                + "; expected=" + cycle);
     }
   }
 """

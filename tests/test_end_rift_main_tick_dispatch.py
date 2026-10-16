@@ -35,10 +35,12 @@ import me.copimine.endevent.domain.EventPhase;
 public class MainTickWaveDispatch {
   boolean bootstrapped = true, enabled = true, testCombatAiMode, testWaveFrontVisualMode,
           testWave4ObeliskMode, testWaveInspectionMode, endUnlocked;
+  BridgeTicker endEventBridgeV4;
   long lastMainThreadTickAtMillis, lastMainThreadGeneration, generation = 5,
        eventTickCounter, nextVictoryRetryMillis;
   String lastMainThreadPhase; int lastMainThreadWave, activeWave, objectives, bosses, profileTicks, returnTicks, echoTicks;
   EventPhase phase = EventPhase.READY_FOR_PLAYERS; Object boss;
+  static class BridgeTicker { int ticks; void tick() { ticks++; } }
   boolean isEnabled() { return enabled; }
   Object liveBoss() { return boss; }
   void renderRitualZoneVisuals(long now) { }
@@ -56,6 +58,7 @@ public class MainTickWaveDispatch {
     p.bootstrapped = Boolean.parseBoolean(args[4]);
     p.boss = Boolean.parseBoolean(args[5]) ? new Object() : null;
     p.testWaveInspectionMode = Boolean.parseBoolean(args[8]);
+    p.endEventBridgeV4 = new BridgeTicker();
     p.tick();
     if (p.objectives != Integer.parseInt(args[6]) || p.bosses != Integer.parseInt(args[7]))
       throw new AssertionError("objectives=" + p.objectives + " bosses=" + p.bosses);
@@ -65,6 +68,8 @@ public class MainTickWaveDispatch {
       throw new AssertionError("return staging must share the existing five-tick loop and boot fence");
     if (p.echoTicks != (p.bootstrapped ? 1 : 0))
       throw new AssertionError("Echo probe must share the existing five-tick loop and boot fence");
+    if (p.endEventBridgeV4.ticks != (p.bootstrapped ? 1 : 0))
+      throw new AssertionError("End Event Bridge V4 ticker must share the existing five-tick loop and boot fence");
   }
 ''' + "\n".join("void " + name + "() { }" for name in ordinary) + "\n"
                     + method(source, "void tick()") + "\n" + method(source, "boolean isCombatPhase()")

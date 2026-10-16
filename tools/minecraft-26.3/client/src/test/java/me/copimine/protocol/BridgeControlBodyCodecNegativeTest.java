@@ -1,5 +1,6 @@
 package me.copimine.protocol;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.Arrays;
@@ -30,7 +31,9 @@ final class BridgeControlBodyCodecNegativeTest {
         extendedHello[1] = 0;
         extendedHello[2] = 1;
         extendedHello[19] = 0;
-        assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(extendedHello));
+        BridgeControlBodyCodec.HelloAck featureFreeExtended =
+                (BridgeControlBodyCodec.HelloAck) BridgeControlBodyCodec.decode(extendedHello);
+        assertEquals(0, featureFreeExtended.featureFlags());
         extendedHello[36] = 2;
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.decode(extendedHello));
         assertThrows(IllegalArgumentException.class, () -> BridgeControlBodyCodec.encode(

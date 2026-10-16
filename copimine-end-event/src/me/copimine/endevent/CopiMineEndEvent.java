@@ -28171,6 +28171,7 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
     }
 
     private boolean clearWaveObjectiveState() {
+        if (!clearRealitySplitBarriers("wave-objective-reset")) return false;
         if (!archiveWaveTwoRosterForCleanup("wave-objective-state-clear")) return false;
         releaseAllSpiderEffects();
         clearCurrentCarrierPlayerVisual();
@@ -28209,7 +28210,6 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         clearWave4Obelisks("wave-objective-reset");
         realitySplitPlayerKnockbackUntilMillis.clear();
         cancelWaveSpawnTask();
-        clearRealitySplitBarriers("wave-objective-reset");
         clearLegacyWave7BarrierArtifacts("wave-objective-reset");
         clearLegacyWave3PortalArtifacts("wave-objective-reset");
         clearCurrentSafeZoneVisuals();

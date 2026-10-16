@@ -79,6 +79,19 @@ public class Wave7CheckpointProbe {
         incompleteFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(incompleteFinalSealState)),false);
         require(incompleteFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
                 "final-seal marker cannot bypass incomplete room completion receipts");
+        var fourPlayerAssignment = ChamberIsolationPolicy.assign(List.of(
+                new UUID(0,1),new UUID(0,2),new UUID(0,3),new UUID(0,4)));
+        var oversizedChamberCountState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(
+                73,fourPlayerAssignment,Set.of(0,1,2,3),Set.of()));
+        oversizedChamberCountState.put("reality-split.chamber-count","5");
+        oversizedChamberCountState.put("final-seal-wave","7");
+        var oversizedChamberCount = new Wave7CheckpointProbe();
+        oversizedChamberCount.restoreWave7Checkpoint(
+                new EventSnapshot(Map.copyOf(oversizedChamberCountState)),false);
+        require(oversizedChamberCount.phase==EventPhase.RECOVERY_REQUIRED
+                        && !oversizedChamberCount.realitySplitChamberController.owns(73)
+                        && oversizedChamberCount.activeWave==0 && !oversizedChamberCount.finalSealBarrierHold,
+                "out-of-range raw chamber count cannot be clamped into a completed final seal");
         var mixedFinalSealState = new LinkedHashMap<>(finalSealState);
         mixedFinalSealState.put("reality-split-trial.schema","2");
         var mixedFinalSeal = new Wave7CheckpointProbe();

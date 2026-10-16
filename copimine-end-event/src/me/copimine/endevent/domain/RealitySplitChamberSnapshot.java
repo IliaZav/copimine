@@ -84,6 +84,9 @@ public final class RealitySplitChamberSnapshot {
             throw new IllegalArgumentException("Wave 7 snapshot generation does not match event generation");
         }
         int chamberCount = parseInt(required(encoded, CHAMBER_COUNT), CHAMBER_COUNT);
+        if (chamberCount < 1 || chamberCount > ChamberIsolationPolicy.MAX_CHAMBERS) {
+            throw new IllegalArgumentException("Wave 7 snapshot has invalid chamber count");
+        }
         Map<UUID, Integer> players = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : encoded.entrySet()) {
             if (!entry.getKey().startsWith(PLAYER_PREFIX)) {

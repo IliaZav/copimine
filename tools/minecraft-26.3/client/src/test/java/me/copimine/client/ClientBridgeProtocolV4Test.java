@@ -856,12 +856,264 @@ final class ClientBridgeProtocolV4Test {
         assertTrue(state.isReady(ClientBridgeConnectionState.Sender.NARCOTICS));
     }
 
+    @Test
+    void negotiatedHeartbeatWatchdogStartsAtReceiptAndReopensOnlySilentSenderAt20Seconds() throws Exception {
+        PendingReadyConfirm pending = beginPendingReadyConfirm(92,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        long receiptNanos = 500_000_000_000L;
+        transport.nowNanos = receiptNanos;
+        byte[] receipt = signedEnvelope(trustedKey, pending.stream(), 3, NOW + 2,
+                BridgeControlBodyCodec.encode(confirmReceipt(pending)));
+        assertTrue(protocol.onEnvelope(receipt, PLAYER, NOW + 2));
+        transport.drainClientQueue();
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+
+        transport.nowNanos = receiptNanos + 2_000_000_000L;
+        String narcoticsStream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 93,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+
+        transport.nowNanos = receiptNanos + 19_999_999_999L;
+        protocol.tick(NOW + 19_999L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT), "19,999 ms is before the deadline");
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS));
+
+        transport.nowNanos = receiptNanos + 20_000_000_000L;
+        protocol.tick(NOW + 20_000L);
+
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertTrue(state.activeStream(ClientBridgeConnectionState.Sender.END_EVENT).isEmpty());
+        BridgeRequestCodec.StreamReopenRequest reopen = lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class);
+        assertEquals(Optional.of(pending.stream()), reopen.expectedStreamId());
+        assertEquals(narcoticsStream,
+                state.activeStream(ClientBridgeConnectionState.Sender.NARCOTICS).orElseThrow());
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS),
+                "a healthy sibling stream remains ready when End Event times out");
+        assertEquals(List.of(BridgeRequestCodec.Sender.END_EVENT), clearedSenders);
+    }
+
+    @Test
+    void heartbeatTimeoutRetainsRetiredStreamWhenTransportIsTemporarilyUnavailable() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 106,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        long counterBeforeTimeout = state.lastRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT);
+        transport.nowNanos = 20_000_000_000L;
+        transport.channelAvailable = false;
+
+        protocol.tick(NOW + 20_000L);
+
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertTrue(state.activeStream(ClientBridgeConnectionState.Sender.END_EVENT).isEmpty());
+        assertEquals(counterBeforeTimeout,
+                state.lastRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT),
+                "unavailable transport must not consume a reopen counter");
+        assertTrue(transport.sentRequests.stream().map(BridgeRequestCodec::decode)
+                .noneMatch(request -> request instanceof BridgeRequestCodec.StreamReopenRequest reopen
+                        && reopen.sender() == BridgeRequestCodec.Sender.END_EVENT));
+
+        protocol.tick(NOW + 31_001L);
+        assertEquals(counterBeforeTimeout,
+                state.lastRequestCounter(ClientBridgeConnectionState.Sender.END_EVENT),
+                "HelloAck recovery must not replace the deferred target while the transport is unavailable");
+        assertTrue(transport.sentRequests.stream().map(BridgeRequestCodec::decode)
+                .noneMatch(request -> request instanceof BridgeRequestCodec.StreamReopenRequest reopen
+                        && reopen.sender() == BridgeRequestCodec.Sender.END_EVENT));
+
+        transport.channelAvailable = true;
+        protocol.tick(NOW + 31_002L);
+
+        BridgeRequestCodec.StreamReopenRequest reopen = lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class);
+        assertEquals(Optional.of(stream), reopen.expectedStreamId(),
+                "recovery must retain the retired stream fence across a transient transport outage");
+        assertEquals(counterBeforeTimeout + 1, reopen.requestCounter());
+    }
+
+    @Test
+    void validHeartbeatRefreshesOnlyItsSenderAndDuplicateDoesNotExtendTheDeadline() throws Exception {
+        String endStream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 94,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        String narcoticsStream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 95,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+
+        transport.nowNanos = 19_000_000_000L;
+        byte[] heartbeat = signedEnvelope(trustedKey, endStream, 4, NOW + 3,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION)));
+        assertTrue(protocol.onEnvelope(heartbeat, PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        transport.nowNanos = 20_000_000_000L;
+        assertTrue(protocol.onEnvelope(heartbeat, PLAYER, NOW + 3), "validly signed duplicate is admitted for replay checks");
+        transport.drainClientQueue();
+        protocol.tick(NOW + 20_000L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT), "the accepted heartbeat refreshed End Event");
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS), "Narcotics has its own earlier deadline");
+        assertEquals(narcoticsStream,
+                lastRequestFor(BridgeRequestCodec.Sender.NARCOTICS,
+                        BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+
+        transport.nowNanos = 38_999_999_999L;
+        protocol.tick(NOW + 38_999L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT), "duplicate counter did not reset liveness");
+        transport.nowNanos = 39_000_000_000L;
+        protocol.tick(NOW + 39_000L);
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertEquals(endStream,
+                lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                        BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+    }
+
+    @Test
+    void validApplicationEnvelopeRefreshesNegotiatedHeartbeatLiveness() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 96,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        transport.nowNanos = 15_000_000_000L;
+        byte[] application = endEventContextBind(1, NOW + 3);
+        assertTrue(protocol.onEnvelope(signedEnvelope(trustedKey, stream, 4, NOW + 3, application),
+                PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        transport.nowNanos = 34_999_999_999L;
+        protocol.tick(NOW + 34_999L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        transport.nowNanos = 35_000_000_000L;
+        protocol.tick(NOW + 35_000L);
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertEquals(stream, lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+    }
+
+    @Test
+    void legacyStreamHasNoHeartbeatTimeoutAndUnauthenticatedPacketsDoNotRefreshIt() throws Exception {
+        String legacyStream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 97);
+        transport.nowNanos = 120_000_000_000L;
+        protocol.tick(NOW + 120_000L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT),
+                "a legacy HelloAck is exempt from the heartbeat watchdog");
+        assertEquals(legacyStream,
+                state.activeStream(ClientBridgeConnectionState.Sender.END_EVENT).orElseThrow());
+        assertTrue(transport.sentRequests.stream().map(BridgeRequestCodec::decode)
+                .noneMatch(request -> request instanceof BridgeRequestCodec.StreamReopenRequest reopen
+                        && reopen.sender() == BridgeRequestCodec.Sender.END_EVENT));
+    }
+
+    @Test
+    void invalidHeartbeatEnvelopesDoNotExtendAuthenticatedActivityDeadline() throws Exception {
+        String stream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 102,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        byte[] heartbeatBody = BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                BridgeRequestCodec.Sender.END_EVENT, SESSION));
+        transport.nowNanos = 10_000_000_000L;
+        byte[] accepted = signedEnvelope(trustedKey, stream, 4, NOW + 3, heartbeatBody);
+        assertTrue(protocol.onEnvelope(accepted, PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        transport.nowNanos = 29_000_000_000L;
+        assertFalse(protocol.onEnvelope(signedEnvelope(otherKey, stream, 5, NOW + 4, heartbeatBody),
+                PLAYER, NOW + 4), "an untrusted signature cannot refresh liveness");
+
+        byte[] validCounterFive = signedEnvelope(trustedKey, stream, 5, NOW + 4, heartbeatBody);
+        BridgeEnvelope decoded = BridgeEnvelopeCodec.decode(validCounterFive);
+        byte[] modifiedBody = decoded.bodyBytes();
+        modifiedBody[2] = (byte) BridgeRequestCodec.Sender.NARCOTICS.id();
+        byte[] modified = BridgeEnvelopeCodec.encode(new BridgeEnvelope(decoded.metadata(), modifiedBody,
+                decoded.signature()));
+        assertFalse(protocol.onEnvelope(modified, PLAYER, NOW + 4), "a modified exact body cannot refresh liveness");
+
+        byte[] expired = signedEnvelope(trustedKey, stream, 5, NOW, heartbeatBody);
+        assertFalse(protocol.onEnvelope(expired, PLAYER, NOW + 6_000L), "an expired envelope cannot refresh liveness");
+        byte[] wrongNonceBytes = Base64.getUrlDecoder().decode(state.currentConnection().orElseThrow().nonce());
+        wrongNonceBytes[0] ^= 1;
+        String wrongCanonicalNonce = Base64.getUrlEncoder().withoutPadding().encodeToString(wrongNonceBytes);
+        byte[] wrongNonce = signedEnvelope(trustedKey, stream, 5, NOW + 4, heartbeatBody, wrongCanonicalNonce);
+        assertFalse(protocol.onEnvelope(wrongNonce, PLAYER, NOW + 4), "a wrong connection nonce cannot refresh liveness");
+        byte[] wrongStream = signedEnvelope(trustedKey, streamId(103), 5, NOW + 4, heartbeatBody);
+        assertTrue(protocol.onEnvelope(wrongStream, PLAYER, NOW + 4), "a packet on an unrelated stream is admitted for routing");
+        transport.drainClientQueue();
+
+        transport.nowNanos = 29_999_999_999L;
+        protocol.tick(NOW + 29_999L);
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        transport.nowNanos = 30_000_000_000L;
+        protocol.tick(NOW + 30_000L);
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertEquals(stream, lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+    }
+
+    @Test
+    void authenticatedHeartbeatWrongSessionRetiresOnlyItsBoundStream() throws Exception {
+        String endStream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 98,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        String narcoticsStream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 99,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        byte[] wrongSession = signedEnvelope(trustedKey, endStream, 4, NOW + 3,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                        BridgeRequestCodec.Sender.END_EVENT,
+                        UUID.fromString("00000000-0000-0000-0000-000000000099"))));
+
+        assertTrue(protocol.onEnvelope(wrongSession, PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        assertFalse(protocol.isReady(BridgeRequestCodec.Sender.END_EVENT));
+        assertEquals(endStream, lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+        assertEquals(narcoticsStream,
+                state.activeStream(ClientBridgeConnectionState.Sender.NARCOTICS).orElseThrow());
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS));
+    }
+
+    @Test
+    void authenticatedHeartbeatWrongSenderRetiresEnvelopeBoundStream() throws Exception {
+        String endStream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 104,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        String narcoticsStream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 105,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        byte[] wrongSender = signedEnvelope(trustedKey, endStream, 4, NOW + 3,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                        BridgeRequestCodec.Sender.NARCOTICS, SESSION)));
+
+        assertTrue(protocol.onEnvelope(wrongSender, PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        assertEquals(endStream, lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+        assertEquals(narcoticsStream,
+                state.activeStream(ClientBridgeConnectionState.Sender.NARCOTICS).orElseThrow());
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS));
+    }
+
+    @Test
+    void authenticatedHeartbeatCounterGapRetiresOnlyItsSender() throws Exception {
+        String endStream = establishReady(BridgeRequestCodec.Sender.END_EVENT, 100,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        String narcoticsStream = establishReady(BridgeRequestCodec.Sender.NARCOTICS, 101,
+                BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE);
+        byte[] gap = signedEnvelope(trustedKey, endStream, 5, NOW + 3,
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.SenderHeartbeat(
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION)));
+
+        assertTrue(protocol.onEnvelope(gap, PLAYER, NOW + 3));
+        transport.drainClientQueue();
+
+        assertEquals(endStream, lastRequestFor(BridgeRequestCodec.Sender.END_EVENT,
+                BridgeRequestCodec.StreamReopenRequest.class).expectedStreamId().orElseThrow());
+        assertEquals(narcoticsStream,
+                state.activeStream(ClientBridgeConnectionState.Sender.NARCOTICS).orElseThrow());
+        assertTrue(protocol.isReady(BridgeRequestCodec.Sender.NARCOTICS));
+    }
+
     private PendingReadyConfirm beginPendingReadyConfirm() throws Exception {
+        return beginPendingReadyConfirm(91, 0);
+    }
+
+    private PendingReadyConfirm beginPendingReadyConfirm(int seed, int featureFlags) throws Exception {
         BridgeRequestCodec.ControlHello hello = lastRequest(BridgeRequestCodec.ControlHello.class);
-        String stream = streamId(91);
+        String stream = streamId(seed);
         byte[] helloAck = signedEnvelope(trustedKey, stream, 1, NOW,
                 BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
-                        BridgeRequestCodec.Sender.END_EVENT, SESSION, 0, hello.helloId())));
+                        BridgeRequestCodec.Sender.END_EVENT, SESSION, 0, hello.helloId(), featureFlags)));
         assertTrue(protocol.onEnvelope(helloAck, PLAYER, NOW));
         transport.drainClientQueue();
 
@@ -898,10 +1150,15 @@ final class ClientBridgeProtocolV4Test {
     }
 
     private String establishReady(BridgeRequestCodec.Sender sender, int streamSeed) throws Exception {
+        return establishReady(sender, streamSeed, 0);
+    }
+
+    private String establishReady(BridgeRequestCodec.Sender sender, int streamSeed, int featureFlags) throws Exception {
         BridgeRequestCodec.ControlHello hello = lastRequest(BridgeRequestCodec.ControlHello.class);
         String stream = streamId(streamSeed);
         byte[] helloEnvelope = signedEnvelope(trustedKey, stream, 1, NOW,
-                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(sender, SESSION, 0, hello.helloId())));
+                BridgeControlBodyCodec.encode(new BridgeControlBodyCodec.HelloAck(
+                        sender, SESSION, 0, hello.helloId(), featureFlags)));
         assertTrue(protocol.onEnvelope(helloEnvelope, PLAYER, NOW));
         transport.drainClientQueue();
 
@@ -1010,6 +1267,7 @@ final class ClientBridgeProtocolV4Test {
         private final List<Runnable> clientQueue = new ArrayList<>();
         private UUID currentPlayer = PLAYER;
         private long nowMillis = NOW;
+        private long nowNanos;
         private boolean channelAvailable = true;
         private boolean failNextSend;
 
@@ -1045,6 +1303,11 @@ final class ClientBridgeProtocolV4Test {
         @Override
         public long currentTimeMillis() {
             return nowMillis;
+        }
+
+        @Override
+        public long nanoTime() {
+            return nowNanos;
         }
 
         private void drainClientQueue() {

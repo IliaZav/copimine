@@ -30,6 +30,7 @@ public final class ClientBridgeProtocolV4 {
     private static final long INITIAL_HELLO_ACK_RECOVERY_DELAY_MILLIS = 31_000L;
     private static final long FIRST_RETRY_DELAY_MILLIS = 1_000L;
     private static final long MAX_RETRY_DELAY_MILLIS = 30_000L;
+    private static final long SENDER_HEARTBEAT_TIMEOUT_NANOS = 20_000_000_000L;
     private static final int MAX_NARCOTICS_RECEIPTS = 256;
 
     private final ClientBridgeConnectionState connectionState;
@@ -241,7 +242,7 @@ public final class ClientBridgeProtocolV4 {
         if (lastControlHelloSentAt != 0L
                 && nowMillis - lastControlHelloSentAt >= CONTROL_HELLO_REOPEN_DELAY_MILLIS) {
             boolean awaitingInitialHelloAck = senders.values().stream()
-                    .anyMatch(flow -> flow.streamId == null);
+                    .anyMatch(flow -> flow.streamId == null && !flow.reopenDeferred);
             boolean initialHelloAckRecoveryDue = firstControlHelloSentAt > 0L
                     && nowMillis - firstControlHelloSentAt >= INITIAL_HELLO_ACK_RECOVERY_DELAY_MILLIS;
             if (awaitingInitialHelloAck) {
@@ -251,7 +252,7 @@ public final class ClientBridgeProtocolV4 {
                 if (initialHelloAckRecoveryDue) {
                     for (BridgeRequestCodec.Sender sender : BridgeRequestCodec.Sender.values()) {
                         SenderFlow flow = senders.get(sender);
-                        if (flow.streamId == null && !flow.reopenPending) {
+                        if (flow.streamId == null && !flow.reopenPending && !flow.reopenDeferred) {
                             requestReopen(sender, Optional.empty());
                         }
                     }
@@ -259,7 +260,8 @@ public final class ClientBridgeProtocolV4 {
             } else {
                 for (BridgeRequestCodec.Sender sender : BridgeRequestCodec.Sender.values()) {
                     SenderFlow flow = senders.get(sender);
-                    if (connectionState.activeStream(stateSender(sender)).isEmpty() && !flow.reopenPending) {
+                    if (connectionState.activeStream(stateSender(sender)).isEmpty()
+                            && !flow.reopenPending && !flow.reopenDeferred) {
                         requestReopen(sender, Optional.empty());
                     }
                 }
@@ -269,12 +271,22 @@ public final class ClientBridgeProtocolV4 {
 
         for (BridgeRequestCodec.Sender sender : BridgeRequestCodec.Sender.values()) {
             SenderFlow flow = senders.get(sender);
+            if (flow.reopenDeferred && transport.canSendRequest()) {
+                String expectedStreamId = flow.deferredExpectedStreamId;
+                flow.clearDeferredReopen();
+                requestRetiredStreamReopen(sender, expectedStreamId);
+            }
             if (flow.reopenPending && flow.reopenBytes != null && nowMillis >= flow.nextRetryAt) {
                 outboxes.get(sender).enqueue(flow.reopenBytes, transport);
                 scheduleNextRetry(flow, nowMillis);
                 continue;
             }
-            if (flow.streamId == null) {
+            if (flow.reopenDeferred || flow.streamId == null) {
+                continue;
+            }
+            if (flow.heartbeatEnabled && flow.readyConfirmAckReceived
+                    && transport.nanoTime() - flow.lastAuthenticatedActivityNanos >= SENDER_HEARTBEAT_TIMEOUT_NANOS) {
+                expireAndReopen(sender, flow.streamId);
                 continue;
             }
             if (!flow.readyAckAccepted && flow.helloAckExpiresAt > 0 && nowMillis >= flow.helloAckExpiresAt) {
@@ -348,6 +360,7 @@ public final class ClientBridgeProtocolV4 {
             int type = Byte.toUnsignedInt(bodyBytes[1]);
             if (schema == BridgeControlBodyCodec.SCHEMA
                     && (type == BridgeControlBodyCodec.HELLO_ACK_TYPE
+                            || type == BridgeControlBodyCodec.SENDER_HEARTBEAT_TYPE
                             || type == BridgeControlBodyCodec.SENDER_READY_CONFIRM_ACK_TYPE
                             || type == BridgeControlBodyCodec.SENDER_READY_ACK_TYPE)) {
                 handleControlEnvelope(raw, envelope, activeSender);
@@ -371,6 +384,8 @@ public final class ClientBridgeProtocolV4 {
         }
         if (body instanceof BridgeControlBodyCodec.HelloAck helloAck) {
             acceptHelloAck(raw, envelope, helloAck, activeSender);
+        } else if (body instanceof BridgeControlBodyCodec.SenderHeartbeat heartbeat) {
+            acceptSenderHeartbeat(envelope, heartbeat, activeSender);
         } else if (body instanceof BridgeControlBodyCodec.SenderReadyAck readyAck) {
             acceptSenderReadyAck(raw, envelope, readyAck, activeSender);
         } else if (body instanceof BridgeControlBodyCodec.SenderReadyConfirmAck confirmAck) {
@@ -418,6 +433,7 @@ public final class ClientBridgeProtocolV4 {
         flow.clearForNewStream();
         flow.sessionId = ack.sessionUuid();
         flow.streamId = streamId;
+        flow.heartbeatEnabled = (ack.featureFlags() & BridgeControlBodyCodec.SENDER_HEARTBEAT_FEATURE) != 0;
         flow.initialHelloAckSuperseded |= ack.requestKind() == 1;
         flow.lastServerCounter = 1;
         flow.helloAckEnvelope = raw.clone();
@@ -530,7 +546,38 @@ public final class ClientBridgeProtocolV4 {
         flow.lastServerCounter = 3L;
         flow.readyConfirmAckReceived = true;
         flow.readyConfirmAckEnvelope = raw.clone();
+        flow.lastAuthenticatedActivityNanos = transport.nanoTime();
         connectionState.setReady(stateSender(sender), true);
+    }
+
+    private void acceptSenderHeartbeat(BridgeEnvelope envelope, BridgeControlBodyCodec.SenderHeartbeat heartbeat,
+            BridgeRequestCodec.Sender activeSender) {
+        if (activeSender == null) {
+            return;
+        }
+        BridgeEnvelope.Metadata metadata = envelope.metadata();
+        SenderFlow flow = senders.get(activeSender);
+        if (!isCurrentSenderBinding(activeSender, flow, metadata)) {
+            return;
+        }
+        if (heartbeat.sender() != activeSender
+                || !heartbeat.sessionUuid().equals(flow.sessionId)
+                || !heartbeat.sessionUuid().equals(connectionState.verifiedSession().orElse(null))
+                || !flow.heartbeatEnabled
+                || !flow.readyConfirmAckReceived
+                || !connectionState.isReady(stateSender(activeSender))) {
+            retireMalformedStream(activeSender, metadata.streamId());
+            return;
+        }
+        if (metadata.counter() <= flow.lastServerCounter) {
+            return;
+        }
+        if (metadata.counter() != flow.lastServerCounter + 1L) {
+            retireMalformedStream(activeSender, metadata.streamId());
+            return;
+        }
+        flow.lastServerCounter = metadata.counter();
+        flow.lastAuthenticatedActivityNanos = transport.nanoTime();
     }
 
     private boolean sendReadyConfirm(BridgeRequestCodec.Sender sender, SenderFlow flow) {
@@ -567,10 +614,6 @@ public final class ClientBridgeProtocolV4 {
                         envelope.bodyBytes(), metadata.recipientUuid());
                 EndEventBridgeBodyCodec.validateTimestampMatches(body, metadata.issuedAtMillis());
                 mutation = validateEndEventBody(sender, flow, body);
-                if (mutation == null) {
-                    flow.lastServerCounter = metadata.counter();
-                    return;
-                }
             } else {
                 NarcoticsBridgeBodyCodec.Body body = NarcoticsBridgeBodyCodec.decode(envelope.bodyBytes());
                 NarcoticsBridgeBodyCodec.validateTimestampMatches(body, metadata.issuedAtMillis());
@@ -579,26 +622,28 @@ public final class ClientBridgeProtocolV4 {
                     throw new IllegalArgumentException("Narcotics body session does not match the verified sender session");
                 }
                 mutation = validateNarcoticsBody(body, metadata.counter());
-                if (mutation == null) {
-                    flow.lastServerCounter = metadata.counter();
-                    return;
-                }
             }
         } catch (IllegalArgumentException malformed) {
             retireMalformedStream(sender, metadata.streamId());
             return;
         }
 
-        flow.lastServerCounter = metadata.counter();
-        if (sender == BridgeRequestCodec.Sender.END_EVENT) {
-            flow.helloAckExpiresAt = 0L;
-        }
         if (!isCurrentBinding(metadata, ticket, transport.currentPlayerUuid())
                 || !isCurrentSenderBinding(sender, flow, metadata)) {
             return;
         }
         if (transport.currentTimeMillis() >= metadata.expiresAtMillis()) {
             expireAndReopen(sender, metadata.streamId());
+            return;
+        }
+        flow.lastServerCounter = metadata.counter();
+        if (flow.heartbeatEnabled) {
+            flow.lastAuthenticatedActivityNanos = transport.nanoTime();
+        }
+        if (sender == BridgeRequestCodec.Sender.END_EVENT) {
+            flow.helloAckExpiresAt = 0L;
+        }
+        if (mutation == null) {
             return;
         }
         if (sender == BridgeRequestCodec.Sender.END_EVENT
@@ -753,12 +798,23 @@ public final class ClientBridgeProtocolV4 {
         return false;
     }
 
+    private void requestRetiredStreamReopen(BridgeRequestCodec.Sender sender, String expectedStreamId) {
+        if (requestReopen(sender, Optional.of(expectedStreamId))) {
+            return;
+        }
+        if (connectionState.currentConnection().isPresent()
+                && connectionState.verifiedSession().isPresent()
+                && !transport.canSendRequest()) {
+            senders.get(sender).deferReopen(expectedStreamId);
+        }
+    }
+
     private void expireAndReopen(BridgeRequestCodec.Sender sender, String streamId) {
         if (!Objects.equals(connectionState.activeStream(stateSender(sender)).orElse(null), streamId)) {
             return;
         }
         retireAndNotify(sender, streamId);
-        requestReopen(sender, Optional.of(streamId));
+        requestRetiredStreamReopen(sender, streamId);
     }
 
     private void retireMalformedStream(BridgeRequestCodec.Sender sender, String streamId) {
@@ -766,7 +822,7 @@ public final class ClientBridgeProtocolV4 {
             return;
         }
         retireAndNotify(sender, streamId);
-        requestReopen(sender, Optional.of(streamId));
+        requestRetiredStreamReopen(sender, streamId);
     }
 
     private void retireAndNotify(BridgeRequestCodec.Sender sender, String streamId) {
@@ -846,7 +902,8 @@ public final class ClientBridgeProtocolV4 {
     private void clearSenderFlows(boolean notify) {
         for (BridgeRequestCodec.Sender sender : BridgeRequestCodec.Sender.values()) {
             SenderFlow flow = senders.get(sender);
-            boolean hadState = flow.streamId != null || flow.readyConfirmSent || flow.reopenPending;
+            boolean hadState = flow.streamId != null || flow.readyConfirmSent || flow.reopenPending
+                    || flow.reopenDeferred;
             flow.clearAll();
             if (notify && hadState) {
                 mutationHandler.clear(sender);
@@ -904,6 +961,10 @@ public final class ClientBridgeProtocolV4 {
         UUID currentPlayerUuid();
 
         long currentTimeMillis();
+
+        default long nanoTime() {
+            return System.nanoTime();
+        }
     }
 
     public interface MutationHandler {
@@ -952,6 +1013,8 @@ public final class ClientBridgeProtocolV4 {
         private UUID sessionId;
         private String streamId;
         private long lastServerCounter;
+        private boolean heartbeatEnabled;
+        private long lastAuthenticatedActivityNanos;
         private byte[] helloAckEnvelope;
         private long helloAckExpiresAt;
         private UUID readyRequestId;
@@ -965,6 +1028,8 @@ public final class ClientBridgeProtocolV4 {
         private boolean readyConfirmAckReceived;
         private byte[] readyConfirmAckEnvelope;
         private boolean reopenPending;
+        private boolean reopenDeferred;
+        private String deferredExpectedStreamId;
         private UUID reopenRequestId;
         private byte[] reopenBytes;
         private long nextRetryAt;
@@ -975,6 +1040,8 @@ public final class ClientBridgeProtocolV4 {
             sessionId = null;
             streamId = null;
             lastServerCounter = 0L;
+            heartbeatEnabled = false;
+            lastAuthenticatedActivityNanos = 0L;
             helloAckEnvelope = null;
             helloAckExpiresAt = 0L;
             readyRequestId = null;
@@ -988,6 +1055,8 @@ public final class ClientBridgeProtocolV4 {
             readyConfirmAckReceived = false;
             readyConfirmAckEnvelope = null;
             reopenPending = false;
+            reopenDeferred = false;
+            deferredExpectedStreamId = null;
             reopenRequestId = null;
             reopenBytes = null;
             nextRetryAt = 0L;
@@ -996,6 +1065,16 @@ public final class ClientBridgeProtocolV4 {
 
         private void clearForReopen() {
             clearForNewStream();
+        }
+
+        private void deferReopen(String expectedStreamId) {
+            reopenDeferred = true;
+            deferredExpectedStreamId = expectedStreamId;
+        }
+
+        private void clearDeferredReopen() {
+            reopenDeferred = false;
+            deferredExpectedStreamId = null;
         }
 
         private void clearAll() {

@@ -20,6 +20,8 @@ def inventory_probe(tmp_path_factory):
     source = EVENT.read_text(encoding="utf-8")
     pickup = declaration(source, "private boolean pickUpCurrentCarrierCharge(Player player)")
     has_charge = declaration(source, "private boolean hasCurrentCarrierInventoryCharge(Player holder)")
+    matches_charge = declaration(source, "private boolean isCurrentCarrierInventoryChargeItem(Player holder, ItemStack stack)")
+    remove_charge = declaration(source, "private void removeCurrentCarrierInventoryCharge(Player holder)")
     tick = declaration(source, "private void tickCurrentCarrierObjective(long now)")
     carried = declaration(tick, "if (currentCarrierState.phase() == RiftCarrierPolicy.Phase.CHARGE_CARRIED)")
     beam = declaration(tick[tick.rindex("        if ((currentCarrierState.phase()"):], "if ((currentCarrierState.phase()")
@@ -53,10 +55,13 @@ public class CarrierInventoryAcceptanceProbe {
     }
     static class Inventory {
         List<ItemStack> contents=new ArrayList<>(); boolean full;
+        ItemStack offHand;
         int firstEmpty(){return full?-1:contents.size();}
         Map<Integer,ItemStack> addItem(ItemStack item){if(full)return Map.of(0,item);contents.add(item);return Map.of();}
         ItemStack[] getStorageContents(){return contents.toArray(ItemStack[]::new);}
         void setStorageContents(ItemStack[] storage){contents=new ArrayList<>(Arrays.asList(storage));}
+        ItemStack getItemInOffHand(){return offHand;}
+        void setItemInOffHand(ItemStack item){offHand=item;}
     }
     static class Material {static final Material AIR=new Material(), AMETHYST_SHARD=new Material(); boolean isAir(){return this==AIR;}}
     static class PersistentDataType<T> {
@@ -149,6 +154,8 @@ public class CarrierInventoryAcceptanceProbe {
     ItemStack overlayItem(int model,String id){return new ItemStack(Material.AMETHYST_SHARD,1);}
 ''' + pickup + r'''
 ''' + has_charge + r'''
+''' + matches_charge + r'''
+''' + remove_charge + r'''
     void tickCarried(long now){
 ''' + carried + r'''
     }
@@ -173,6 +180,18 @@ public class CarrierInventoryAcceptanceProbe {
                 check(!p.pickUpCurrentCarrierCharge(p.holder),"full inventory must not acquire an abstract carried charge");
                 check(p.currentCarrierState.phase()==RiftCarrierPolicy.Phase.CHARGE_DROPPED,
                         "failed inventory insertion must preserve one available dropped charge");
+            }
+            case "offhand-carrier-charge" -> {
+                check(p.pickUpCurrentCarrierCharge(p.holder),"eligible holder must pick up a legal charge");
+                ItemStack carried=p.holder.inventory.contents.get(0);
+                p.holder.inventory.contents.set(0,null);
+                p.holder.inventory.setItemInOffHand(carried);
+                check(p.hasCurrentCarrierInventoryCharge(p.holder),
+                        "moving the owner's tagged charge into the offhand must preserve carried state");
+                p.removeCurrentCarrierInventoryCharge(p.holder);
+                check(p.holder.inventory.getItemInOffHand()==null
+                                &&!p.hasCurrentCarrierInventoryCharge(p.holder),
+                        "ending the carrier objective must remove its tagged offhand item");
             }
             case "owner-only-beam", "core-to-holder-beam" -> {
                 check(p.pickUpCurrentCarrierCharge(p.holder),"carrier pickup must create an inventory charge before presentation");
@@ -216,7 +235,7 @@ public class CarrierInventoryAcceptanceProbe {
 
 
 @pytest.mark.parametrize("scenario", ["inventory-pickup", "full-inventory", "owner-only-beam",
-                                      "core-to-holder-beam", "carrier-speed-lease"])
+                                      "core-to-holder-beam", "carrier-speed-lease", "offhand-carrier-charge"])
 def test_charge_inventory_and_personal_presentation(inventory_probe, scenario):
     result = subprocess.run(["java", "-Xmx64m", "-cp", str(inventory_probe),
                              "CarrierInventoryAcceptanceProbe", scenario], capture_output=True, text=True, timeout=15)

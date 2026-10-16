@@ -65,6 +65,26 @@ public class Wave7CheckpointProbe {
         valid.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(state)),false);
         require(valid.phase==EventPhase.WAVE_7 && valid.realitySplitTrialController.namedTrial(0).stage()==RealitySplitTrialController.Stage.COMPLETE,
                 "valid named checkpoint keeps its sampled layout and completed trial");
+        var finalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0,1),Set.of()));
+        finalSealState.put("final-seal-wave","7");
+        var finalSeal = new Wave7CheckpointProbe();
+        finalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(finalSealState)),false);
+        require(finalSeal.phase==EventPhase.WAVE_7 && finalSeal.realitySplitChamberController.owns(73)
+                        &&finalSeal.realitySplitChamberController.completedChambers().equals(Set.of(0,1))
+                        &&!finalSeal.realitySplitTrialController.owns(73),
+                "completed final-seal checkpoint restores its rooms without inventing active trial state");
+        var incompleteFinalSealState = new LinkedHashMap<>(RealitySplitChamberSnapshot.encode(73,assignment,Set.of(0),Set.of()));
+        incompleteFinalSealState.put("final-seal-wave","7");
+        var incompleteFinalSeal = new Wave7CheckpointProbe();
+        incompleteFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(incompleteFinalSealState)),false);
+        require(incompleteFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
+                "final-seal marker cannot bypass incomplete room completion receipts");
+        var mixedFinalSealState = new LinkedHashMap<>(finalSealState);
+        mixedFinalSealState.put("reality-split-trial.schema","2");
+        var mixedFinalSeal = new Wave7CheckpointProbe();
+        mixedFinalSeal.restoreWave7Checkpoint(new EventSnapshot(Map.copyOf(mixedFinalSealState)),false);
+        require(mixedFinalSeal.phase==EventPhase.RECOVERY_REQUIRED,
+                "final-seal checkpoint must not ignore partial or mixed trial progress");
         // Legacy schema 1-3 migration emits a current snapshot with WAVE_7
         // intact but no named-trial progress. It must not resume as a fresh
         // empty encounter merely because the absent checkpoint decodes empty.

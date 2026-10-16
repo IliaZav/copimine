@@ -3108,11 +3108,40 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             RealitySplitChamberSnapshot.Data wave7 = persistedDisposableWave7
                     ? RealitySplitChamberSnapshot.decodeDisposable(snapshot.objectiveProgress(), generation)
                     : RealitySplitChamberSnapshot.decode(snapshot.objectiveProgress(), generation);
-            RealitySplitTrialController.NamedData trialSnapshot = RealitySplitTrialSnapshot.decodeNamed(
-                    snapshot.objectiveProgress(), UUID.fromString(eventId), generation);
             if (wave7.assignment() == null) {
                 throw new IllegalArgumentException("WAVE7_CHECKPOINT_ASSIGNMENT_MISSING");
             }
+            boolean persistedFinalSeal = !persistedDisposableWave7
+                    && "7".equals(snapshot.objectiveProgress().get("final-seal-wave"));
+            if (persistedFinalSeal) {
+                if (snapshot.objectiveProgress().keySet().stream()
+                        .anyMatch(key -> key.startsWith("reality-split-trial."))) {
+                    throw new IllegalArgumentException("FINAL_SEAL_HAS_TRIAL_PROGRESS");
+                }
+                Set<Integer> allAssignedChambers = new LinkedHashSet<>();
+                for (int chamber = 0; chamber < wave7.assignment().chamberCount(); chamber++) {
+                    allAssignedChambers.add(chamber);
+                }
+                if (!wave7.completedChambers().equals(allAssignedChambers)) {
+                    throw new IllegalArgumentException("FINAL_SEAL_CHAMBERS_INCOMPLETE");
+                }
+                // The final seal is persisted after trial state is cleared. Its
+                // chamber completion receipts are the authoritative proof that
+                // Wave 7 ended; do not synthesize a fresh active trial controller.
+                RealitySplitChamberController validatedRooms = new RealitySplitChamberController();
+                validatedRooms.restore(wave7.generation(), wave7.assignment(),
+                        wave7.completedChambers(), wave7.openPassages());
+                realitySplitChamberController.restore(wave7.generation(), wave7.assignment(),
+                        wave7.completedChambers(), wave7.openPassages());
+                realitySplitTrialController.clear();
+                getLogger().info("END_RIFT_WAVE7_FINAL_SEAL_SNAPSHOT_RESTORED event=" + eventId
+                        + " generation=" + generation + " players="
+                        + wave7.assignment().chamberByPlayer().size()
+                        + " chambers=" + wave7.assignment().chamberCount());
+                return;
+            }
+            RealitySplitTrialController.NamedData trialSnapshot = RealitySplitTrialSnapshot.decodeNamed(
+                    snapshot.objectiveProgress(), UUID.fromString(eventId), generation);
             if (trialSnapshot.trials().isEmpty()) {
                 throw new IllegalArgumentException("WAVE7_NAMED_TRIAL_PROGRESS_MISSING");
             }
@@ -12907,20 +12936,25 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
             return false;
         }
         for (ItemStack stack : holder.getInventory().getStorageContents()) {
-            if (stack == null || stack.getType().isAir() || stack.getAmount() != 1
-                    || !stack.hasItemMeta()) {
-                continue;
-            }
-            PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
-            if (data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
-                    && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
-                    && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
-                    && holder.getUniqueId().toString().equals(
-                    data.get(keyCarrierChargeOwner, PersistentDataType.STRING))) {
+            if (stack != null && stack.getAmount() == 1 && isCurrentCarrierInventoryChargeItem(holder, stack)) {
                 return true;
             }
         }
-        return false;
+        ItemStack offHand = holder.getInventory().getItemInOffHand();
+        return offHand != null && offHand.getAmount() == 1
+                && isCurrentCarrierInventoryChargeItem(holder, offHand);
+    }
+
+    private boolean isCurrentCarrierInventoryChargeItem(Player holder, ItemStack stack) {
+        if (holder == null || stack == null || stack.getType().isAir() || !stack.hasItemMeta()) {
+            return false;
+        }
+        PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
+        return data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
+                && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
+                && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
+                && holder.getUniqueId().toString().equals(
+                data.get(keyCarrierChargeOwner, PersistentDataType.STRING));
     }
 
     private void removeCurrentCarrierInventoryCharge(Player holder) {
@@ -12931,22 +12965,16 @@ public final class CopiMineEndEvent extends JavaPlugin implements Listener, Comm
         ItemStack[] storage = holder.getInventory().getStorageContents();
         boolean changed = false;
         for (int slot = 0; slot < storage.length; slot++) {
-            ItemStack stack = storage[slot];
-            if (stack == null || stack.getType().isAir() || !stack.hasItemMeta()) {
-                continue;
-            }
-            PersistentDataContainer data = stack.getItemMeta().getPersistentDataContainer();
-            if (data.getOrDefault(keyCurrentCarrierCharge, PersistentDataType.BYTE, (byte) 0) == 1
-                    && eventId.equals(data.get(keyEventId, PersistentDataType.STRING))
-                    && data.getOrDefault(keyGeneration, PersistentDataType.LONG, Long.MIN_VALUE) == generation
-                    && holder.getUniqueId().toString().equals(
-                    data.get(keyCarrierChargeOwner, PersistentDataType.STRING))) {
+            if (isCurrentCarrierInventoryChargeItem(holder, storage[slot])) {
                 storage[slot] = null;
                 changed = true;
             }
         }
         if (changed) {
             holder.getInventory().setStorageContents(storage);
+        }
+        if (isCurrentCarrierInventoryChargeItem(holder, holder.getInventory().getItemInOffHand())) {
+            holder.getInventory().setItemInOffHand(null);
         }
     }
 

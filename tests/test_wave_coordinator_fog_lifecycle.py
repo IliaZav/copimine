@@ -71,19 +71,19 @@ public class WaveFogLifecycleProbe {
  Map<UUID,WaveFogAiLease> waveFogAiLeases=new HashMap<>();Set<UUID> waveFogResumeHolds=new HashSet<>();
  Map<UUID,Long> waveFrozenCueRefreshTicks=new HashMap<>();Map<UUID,String> waveCombatCueKeys=new HashMap<>();
  Map<UUID,Integer> activeEventArrowAges=new HashMap<>();Map<UUID,PendingSkeletonSideArrowShot> pendingSkeletonShotSideArrows=new HashMap<>();
- record PendingSkeletonSideArrowShot(UUID shooterId,UUID worldId,Location origin,Vector direction,float speed,int wave,Object arrowKind,String arrowSpell,double damage,UUID volleyId,String eventId,long generation){}
- static class Vector {public Vector clone(){return new Vector();}Vector rotateAroundY(double d){return this;}}
+ record PendingSkeletonSideArrowShot(UUID shooterId,int wave,Object arrowKind,String arrowSpell,double damage,UUID volleyId,String eventId,long generation,int arrowCount){}
+ static class Vector {double x,y,z;Vector(){this(1,0,0);}Vector(double x,double y,double z){this.x=x;this.y=y;this.z=z;}public Vector clone(){return new Vector(x,y,z);}Vector rotateAroundY(double d){double nextX=x*Math.cos(d)+z*Math.sin(d);z=-x*Math.sin(d)+z*Math.cos(d);x=nextX;return this;}double lengthSquared(){return x*x+y*y+z*z;}double length(){return Math.sqrt(lengthSquared());}Vector normalize(){double length=length();if(length>0){x/=length;y/=length;z/=length;}return this;}Vector multiply(double n){x*=n;y*=n;z*=n;return this;}}
  static final World WORLD=new World();
- static class Location {double distanceSquared(Location l){return 0;}double getX(){return 0;}double getY(){return 0;}double getZ(){return 0;}public Location clone(){return new Location();}World getWorld(){return WORLD;}void setWorld(World w){}}
- static class World {UUID getUID(){return new UUID(0,1);}Arrow spawnArrow(Location l,Vector v,float s,float spread){return new Arrow();}}
- static class Entity {UUID id=UUID.randomUUID();long gen=3;int wave=5;String kind="elite",session="event";boolean removed,official=true;UUID getUniqueId(){return id;}World getWorld(){return WORLD;}Location getLocation(){return new Location();}boolean isValid(){return !removed;}boolean isDead(){return removed;}void remove(){removed=true;}}
+ static class Location {double x,y,z;double distanceSquared(Location l){double dx=x-l.x,dy=y-l.y,dz=z-l.z;return dx*dx+dy*dy+dz*dz;}double getX(){return x;}double getY(){return y;}double getZ(){return z;}public Location clone(){Location copy=new Location();copy.x=x;copy.y=y;copy.z=z;return copy;}World getWorld(){return WORLD;}void setWorld(World w){}}
+ static class World {UUID getUID(){return new UUID(0,1);}Arrow spawnArrow(Location l,Vector v,float s,float spread){Arrow arrow=new Arrow();arrow.location=l.clone();arrow.velocity=v.clone().normalize().multiply(s);Bukkit.entities.put(arrow.id,arrow);return arrow;}}
+ static class Entity {UUID id=UUID.randomUUID();long gen=3;int wave=5;String kind="elite",session="event";boolean removed,official=true;Location location=new Location();UUID getUniqueId(){return id;}World getWorld(){return WORLD;}Location getLocation(){return location;}boolean isValid(){return !removed;}boolean isDead(){return removed;}void remove(){removed=true;}}
  static class LivingEntity extends Entity {}
  static class Player extends LivingEntity {int damageCalls;boolean isOnline(){return true;}void damage(double d,LivingEntity e){damageCalls++;}Location getEyeLocation(){return new Location();}}
  static class Path {int stopCount;void stopPathfinding(){stopCount++;}}
  static class Mob extends LivingEntity {boolean ai=true,aware=true;LivingEntity target;Path path=new Path();LivingEntity getTarget(){return target;}void setTarget(LivingEntity p){target=p;}Path getPathfinder(){return path;}boolean hasAI(){return ai;}boolean isAware(){return aware;}void setAI(boolean b){ai=b;}void setAware(boolean b){aware=b;}void setVelocity(Vector v){}Location getEyeLocation(){return new Location();}}
  static class Skeleton extends Mob {}static class Spider extends Mob {}static class Enderman extends Mob {}
  static class Projectile extends Entity {Object shooter;Object getShooter(){return shooter;}}
- static class Arrow extends Projectile {void setShooter(Entity e){shooter=e;}}
+ static class Arrow extends Projectile {UUID volleyId;Vector velocity=new Vector();void setShooter(Entity e){shooter=e;}Vector getVelocity(){return velocity.clone();}}
  static class AreaEffectCloud extends Entity {double getRadius(){return 3;}}
  static class BukkitTask {}static class Scheduler {List<Runnable> tasks=new ArrayList<>();BukkitTask runTaskLater(Object owner,Runnable r,long delay){tasks.add(r);return new BukkitTask();}void drain(){for(var r:new ArrayList<>(tasks))r.run();tasks.clear();}}
  static class Bukkit {static Scheduler scheduler=new Scheduler();static Scheduler getScheduler(){return scheduler;}static Map<UUID,Player> players=new HashMap<>();static Map<UUID,Entity> entities=new HashMap<>();static Player getPlayer(UUID id){return players.get(id);}static World getWorld(UUID id){return WORLD;}static Entity getEntity(UUID id){return entities.get(id);}}
@@ -98,7 +98,9 @@ public class WaveFogLifecycleProbe {
  String readString(Entity e,Object key){return key==keyKind?e.kind:key==keyEventId?e.session:key==keyEliteProjectileAbility?"DRAGON_BREATH":"";}int readInt(Entity e,Object key,int fallback){return e.wave;}
  void clearWaveCombatCue(UUID id){}void sendWaveMobPose(Entity e,String s,long d){}void finishWaveMobDash(Mob m,long g){waveDashGenerations.remove(m.id);}
  void renderWaveCombatCue(Mob m,Location l,String a,String b){}Location coreCombatAnchorLocation(){return new Location();}void playWaveFeedback(String s,Location l){}
- boolean isSkeletonMiniBoss(Skeleton s){return true;}boolean configureEventSkeletonArrow(Arrow a,Skeleton s,int w,Object k,String spell,double damage){sideArrows++;return true;}void tagEventArrowVolley(Arrow a,UUID id){}
+ boolean isSkeletonMiniBoss(Skeleton s){return true;}boolean configureEventSkeletonArrow(Arrow a,Skeleton s,int w,Object k,String spell,double damage){a.kind=EVENT_KIND_PROJECTILE;a.gen=generation;a.session=eventId;if(!trackEventArrow(a))return false;sideArrows++;return true;}void tagEventArrowVolley(Arrow a,UUID id){a.volleyId=id;}
+ boolean trackEventArrow(Arrow arrow){if(arrow==null||!arrow.isValid()||arrow.isDead())return false;UUID groupId=arrow.volleyId==null?arrow.id:arrow.volleyId;if(!waveProjectileAdmission.hasGroup(groupId)&&!waveProjectileAdmission.reserveGroup(groupId,2,1)){arrow.remove();return false;}if(!waveProjectileAdmission.trackProjectile(groupId,arrow.id))return false;activeEventArrowAges.put(arrow.id,0);return true;}
+ Arrow acceptedSkeletonShot(Skeleton shooter,int arrowCount){Arrow arrow=new Arrow();arrow.shooter=shooter;arrow.gen=generation;arrow.session=eventId;arrow.kind=EVENT_KIND_PROJECTILE;arrow.official=shooter.official;arrow.velocity=new Vector(0,0,1);tagEventArrowVolley(arrow,arrow.id);waveProjectileAdmission.reserveGroup(arrow.volleyId,2,arrowCount);Bukkit.entities.put(arrow.id,arrow);return arrow;}
  boolean isEventArrow(Arrow a){return true;}
  boolean isTaggedEliteAbilityEntity(Entity e){return true;}void clearEliteProjectileRuntime(UUID id,String why,boolean keep){waveProjectileAdmission.releaseProjectile(id);activeEliteProjectileExpiresAtTick.remove(id);eliteProjectileImpactScheduled.remove(id);eliteProjectileDamageAllowed.remove(id);}
  void cleanupEventArrow(UUID id){waveProjectileAdmission.releaseProjectile(id);activeEventArrowAges.remove(id);Entity e=Bukkit.getEntity(id);if(e!=null)e.remove();}
@@ -175,10 +177,11 @@ public class WaveFogLifecycleProbe {
    }
    case "side-fog", "side-stale", "side-resume" -> {
     var m=new Skeleton();h.ownedEntities.put(m.id,m);
-    var pending=new PendingSkeletonSideArrowShot(m.id,m.getWorld().getUID(),m.getLocation(),new Vector(),1,5,null,"spell",2,UUID.randomUUID(),h.eventId,h.generation);
+    var mainArrow=h.acceptedSkeletonShot(m,3);
+    var pending=new PendingSkeletonSideArrowShot(m.id,5,null,"spell",2,mainArrow.volleyId,h.eventId,h.generation,3);
     if(args[0].equals("side-fog"))h.blackFogPhase=BlackFogPhase.FOG;
     if(args[0].equals("side-stale"))h.generation++;
-    h.spawnPendingSkeletonSideArrows(UUID.randomUUID(),pending);
+    h.spawnPendingSkeletonSideArrows(mainArrow.id,pending);
     check(h.sideArrows==(args[0].equals("side-resume")?2:0),"delayed side-arrow callback escaped phase/generation fence");
    }
    case "fog-cleanup" -> {
@@ -186,7 +189,7 @@ public class WaveFogLifecycleProbe {
     for(var e:List.of(a,side,p,cloud))Bukkit.entities.put(e.id,e);
     UUID volley=UUID.randomUUID();h.waveProjectileAdmission.reserveGroup(volley,2,3);
     h.waveProjectileAdmission.trackProjectile(volley,a.id);h.waveProjectileAdmission.trackProjectile(volley,side.id);
-    var pending=new PendingSkeletonSideArrowShot(UUID.randomUUID(),WORLD.getUID(),new Location(),new Vector(),1,5,null,"spell",2,volley,h.eventId,h.generation);
+    var pending=new PendingSkeletonSideArrowShot(UUID.randomUUID(),5,null,"spell",2,volley,h.eventId,h.generation,3);
     h.pendingSkeletonShotSideArrows.put(a.id,pending);
     h.activeEventArrowAges.put(a.id,0);h.activeEventArrowAges.put(side.id,0);
     h.activeEliteProjectileExpiresAtTick.put(p.id,100L);h.activeEliteProjectileExpiresAtTick.put(cloud.id,100L);
@@ -219,8 +222,8 @@ public class WaveFogLifecycleProbe {
    case "local-arrow-ready", "local-side-ready", "local-arrow-fog", "local-side-fog", "local-arrow-stale", "local-side-stale", "local-arrow-session", "local-side-session" -> {
     h.phase=EventPhase.READY_FOR_PLAYERS;h.testCombatAiMode=false;
     var m=new Skeleton();m.official=false;h.ownedEntities.put(m.id,m);
-    var a=new Arrow();a.shooter=m;a.official=false;
-    var pending=new PendingSkeletonSideArrowShot(m.id,m.getWorld().getUID(),m.getLocation(),new Vector(),1,5,null,"spell",2,UUID.randomUUID(),h.eventId,h.generation);
+    var a=args[0].startsWith("local-side")?h.acceptedSkeletonShot(m,3):new Arrow();a.shooter=m;a.official=false;
+    var pending=new PendingSkeletonSideArrowShot(m.id,5,null,"spell",2,a.volleyId==null?UUID.randomUUID():a.volleyId,h.eventId,h.generation,3);
     if(args[0].endsWith("-fog"))h.blackFogPhase=BlackFogPhase.FOG;
     if(args[0].endsWith("-stale"))h.generation++;
     if(args[0].endsWith("-session"))m.session="old-event";

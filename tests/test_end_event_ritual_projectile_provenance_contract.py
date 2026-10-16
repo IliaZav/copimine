@@ -65,12 +65,30 @@ def test_dead_ritual_shooter_keeps_prisoner_out_of_all_arrow_recipients() -> Non
     assert "ritualProjectileTargetAllowed(skeleton, player)" not in damage_body
 
     skeleton_shoot_body = method_body(source, "public void onEventSkeletonShootBow")
-    assert "configureEventSkeletonArrow(arrow, skeleton" in skeleton_shoot_body
+    shoot_start = source.index("public void onEventSkeletonShootBow")
+    shoot_handler = source.rfind("@EventHandler", 0, shoot_start)
+    assert "priority = EventPriority.HIGHEST" in source[shoot_handler:shoot_start]
+    assert "prepareEventSkeletonArrow(arrow, skeleton" in skeleton_shoot_body
+    assert "configureEventSkeletonArrow(" not in skeleton_shoot_body
+    outcome_body = method_body(source, "public void onEventSkeletonShootBowOutcome")
+    assert "runTaskLater(this, () ->" in outcome_body
+    assert "event.isCancelled()" in outcome_body
+    assert "spawnPendingSkeletonSideArrows(arrowId, pending)" in outcome_body
+    assert outcome_body.index("event.isCancelled()") < outcome_body.index(
+        "spawnPendingSkeletonSideArrows(arrowId, pending)"
+    )
+    side_arrows_body = method_body(source, "private void spawnPendingSkeletonSideArrows(")
+    assert "configureEventSkeletonArrow(extra, skeleton" in side_arrows_body
     configure_arrow_body = method_body(
         source, "private boolean configureEventSkeletonArrow(Arrow arrow, Skeleton shooter"
     )
-    assert "isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)" in configure_arrow_body
-    assert "tagRitualProjectile(arrow)" in configure_arrow_body
+    assert "prepareEventSkeletonArrow(arrow, shooter" in configure_arrow_body
+    assert "return trackEventArrow(arrow)" in configure_arrow_body
+    prepare_arrow_body = method_body(
+        source, "private void prepareEventSkeletonArrow(Arrow arrow, Skeleton shooter"
+    )
+    assert "isCurrentRitualCaster(shooter) || isCurrentRitualGuard(shooter)" in prepare_arrow_body
+    assert "tagRitualProjectile(arrow)" in prepare_arrow_body
 
     custom_body = method_body(
         source, "private void onCustomEventArrowDamage(EntityDamageByEntityEvent event, Arrow arrow, String spell)"

@@ -31,6 +31,7 @@ public class Wave7ReturnBootstrapProbe {
     long generation=43;int activeWave=7,recoveries,restores;
     int currentHuntCycles,waveTwoGroupsSpawned,waveTwoGroupCleared;
     String eventId="synthetic-event",victoryStep="",recoveryReason="";
+    Set<UUID> officialRewardRoster=new LinkedHashSet<>();
     boolean endUnlocked;
     EventPhase phase=EventPhase.WAVE_7,restoredPhase;
     BukkitTask bootstrapTask,tickTask,waveContainmentTask;
@@ -103,6 +104,7 @@ public class Wave7ReturnBootstrapProbe {
     static void require(boolean value,String reason){if(!value)throw new AssertionError(reason);}
     Map<String,String> prepareRestoredReturns(){
         var roster=Set.of(OWNER,OTHER);
+        officialRewardRoster.addAll(roster);
         realitySplitChamberController.begin(generation,new ArrayList<>(roster));
         var claims=realitySplitChamberController.assignment();
         realitySplitTrialController.begin(generation,claims);

@@ -752,9 +752,9 @@ def test_migration_lock_loader_includes_each_built_first_party_plugin():
     assert '983fd1954eb85d8be8a5e18e0095200278933e930422854b4b19c19995fad116' in narcotics['replaceSha256']
     narcotics_candidate=next(item['candidate'] for item in lock['unchangedBaseline']
                              if item['pluginName']=='CopiMineNarcotics')
-    assert narcotics_candidate['size'] == 360166
-    assert narcotics_candidate['sha256'] == 'cfce24c44a5f6a6b552424859ff6651fc962faa388187924ccff77807292e6a6'
-    assert narcotics_candidate['sha512'] == 'e21571d58aa06ed40917eba8873c5d86c9307a47f2532acc596dad842f967fb48ec9afceecfd441945233412358ae96f8f38ceb39dd14c3b94f134e815d56d92'
+    assert narcotics_candidate['size'] == 360109
+    assert narcotics_candidate['sha256'] == 'db734b15b5d6b52293e10056df1d3414aa10ff85f1563551b59eedf4413aeced'
+    assert narcotics_candidate['sha512'] == '6dd69f6c56270c43ac0abe0afa3b022541bcfe2462fba33e39138e9d06a6cf9d40238902c1f20becb84f721ab4b1c66995f54672c411f27cc86dce699f6c70b3'
 
 def test_production_or_symlink_target_is_refused(tmp_path):
     mod=load();server,stage,r,old,new=fixture(tmp_path)

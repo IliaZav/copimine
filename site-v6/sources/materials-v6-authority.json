@@ -1,0 +1,2497 @@
+{
+  "schemaVersion": 1,
+  "version": "26.3",
+  "worldVersion": 5023,
+  "protocolVersion": 777,
+  "stable": true,
+  "clientSHA1": "e877b6a07acd633fb3bb475002175cec036e7b87",
+  "clientSHA256": "4508d006323f24fa02876310c192d739af56516eb259000ac50f0909a68c9a2d",
+  "clientBytes": 41483720,
+  "ruSHA1": "8a57cfb9eba6a0030253e1065e74f7c63da43a8b",
+  "ruSHA256": "4d7f9d1f501b100d08bf198ea7d61d04952550a12471a3355e5ab8984423d2ae",
+  "ruBytes": 773006,
+  "itemDefinitionsSHA256": "91c25a7b252265eae395da6936907c84cc239cc10aede7bbb1557295c8283b2e",
+  "materialsSHA256": "823175a7eb51660104076c7fe556dec68e33d70b729dcea207c8b7318dd82d54",
+  "urls": {
+    "client": "https://piston-data.mojang.com/v1/objects/e877b6a07acd633fb3bb475002175cec036e7b87/client.jar",
+    "ru": "https://resources.download.minecraft.net/8a/8a57cfb9eba6a0030253e1065e74f7c63da43a8b"
+  },
+  "materialCount": 1658,
+  "translatedCount": 1658,
+  "giveableCount": 1657,
+  "iconCount": 1617,
+  "missingIcons": [
+    "air",
+    "black_banner",
+    "blue_banner",
+    "brown_banner",
+    "copper_chest",
+    "copper_golem_statue",
+    "creeper_head",
+    "cyan_banner",
+    "decorated_pot",
+    "dragon_head",
+    "exposed_copper_chest",
+    "exposed_copper_golem_statue",
+    "gray_banner",
+    "green_banner",
+    "light_blue_banner",
+    "light_gray_banner",
+    "lime_banner",
+    "magenta_banner",
+    "orange_banner",
+    "oxidized_copper_chest",
+    "oxidized_copper_golem_statue",
+    "piglin_head",
+    "pink_banner",
+    "purple_banner",
+    "red_banner",
+    "skeleton_skull",
+    "trapped_chest",
+    "waxed_copper_chest",
+    "waxed_copper_golem_statue",
+    "waxed_exposed_copper_chest",
+    "waxed_exposed_copper_golem_statue",
+    "waxed_oxidized_copper_chest",
+    "waxed_oxidized_copper_golem_statue",
+    "waxed_weathered_copper_chest",
+    "waxed_weathered_copper_golem_statue",
+    "weathered_copper_chest",
+    "weathered_copper_golem_statue",
+    "white_banner",
+    "wither_skeleton_skull",
+    "yellow_banner",
+    "zombie_head"
+  ],
+  "iconProvenance": "1617 existing name-matched prototype icons; special entity models have no fabricated flat replacement.",
+  "coverage": "All assets/minecraft/items/*.json definitions in the pinned stable client, not a hand-maintained list.",
+  "translationRule": "Official item.minecraft.<id>, otherwise block.minecraft.<id>; both ru_ru and en_us must contain the key.",
+  "renamedFromPrototype": [
+    {
+      "id": "acacia_boat",
+      "previous": "Лодка · акация",
+      "official": "Акациевая лодка"
+    },
+    {
+      "id": "acacia_button",
+      "previous": "Кнопка · акация",
+      "official": "Акациевая кнопка"
+    },
+    {
+      "id": "acacia_chest_boat",
+      "previous": "Лодка с сундуком · акация",
+      "official": "Акациевая грузовая лодка"
+    },
+    {
+      "id": "acacia_door",
+      "previous": "Дверь · акация",
+      "official": "Акациевая дверь"
+    },
+    {
+      "id": "acacia_fence",
+      "previous": "Забор · акация",
+      "official": "Акациевый забор"
+    },
+    {
+      "id": "acacia_fence_gate",
+      "previous": "Калитка · акация",
+      "official": "Акациевые ворота"
+    },
+    {
+      "id": "acacia_hanging_sign",
+      "previous": "Подвесная табличка · акация",
+      "official": "Акациевая подвесная табличка"
+    },
+    {
+      "id": "acacia_leaves",
+      "previous": "Листва · акация",
+      "official": "Акациевые листья"
+    },
+    {
+      "id": "acacia_log",
+      "previous": "Бревно · акация",
+      "official": "Акациевое бревно"
+    },
+    {
+      "id": "acacia_planks",
+      "previous": "Доски · акация",
+      "official": "Акациевые доски"
+    },
+    {
+      "id": "acacia_pressure_plate",
+      "previous": "Нажимная плита · акация",
+      "official": "Акациевая нажимная пластина"
+    },
+    {
+      "id": "acacia_sapling",
+      "previous": "Саженец · акация",
+      "official": "Саженец акации"
+    },
+    {
+      "id": "acacia_sign",
+      "previous": "Табличка · акация",
+      "official": "Акациевая табличка"
+    },
+    {
+      "id": "acacia_slab",
+      "previous": "Плита · акация",
+      "official": "Акациевая плита"
+    },
+    {
+      "id": "acacia_stairs",
+      "previous": "Ступеньки · акация",
+      "official": "Акациевые ступеньки"
+    },
+    {
+      "id": "acacia_trapdoor",
+      "previous": "Люк · акация",
+      "official": "Акациевый люк"
+    },
+    {
+      "id": "acacia_wood",
+      "previous": "Древесина · акация",
+      "official": "Акациевая древесина"
+    },
+    {
+      "id": "bamboo_button",
+      "previous": "Кнопка · бамбук",
+      "official": "Бамбуковая кнопка"
+    },
+    {
+      "id": "bamboo_door",
+      "previous": "Дверь · бамбук",
+      "official": "Бамбуковая дверь"
+    },
+    {
+      "id": "bamboo_fence",
+      "previous": "Забор · бамбук",
+      "official": "Бамбуковый забор"
+    },
+    {
+      "id": "bamboo_fence_gate",
+      "previous": "Калитка · бамбук",
+      "official": "Бамбуковые ворота"
+    },
+    {
+      "id": "bamboo_hanging_sign",
+      "previous": "Подвесная табличка · бамбук",
+      "official": "Бамбуковая подвесная табличка"
+    },
+    {
+      "id": "bamboo_planks",
+      "previous": "Доски · бамбук",
+      "official": "Бамбуковые доски"
+    },
+    {
+      "id": "bamboo_pressure_plate",
+      "previous": "Нажимная плита · бамбук",
+      "official": "Бамбуковая нажимная пластина"
+    },
+    {
+      "id": "bamboo_sign",
+      "previous": "Табличка · бамбук",
+      "official": "Бамбуковая табличка"
+    },
+    {
+      "id": "bamboo_slab",
+      "previous": "Плита · бамбук",
+      "official": "Бамбуковая плита"
+    },
+    {
+      "id": "bamboo_stairs",
+      "previous": "Ступеньки · бамбук",
+      "official": "Бамбуковые ступеньки"
+    },
+    {
+      "id": "bamboo_trapdoor",
+      "previous": "Люк · бамбук",
+      "official": "Бамбуковый люк"
+    },
+    {
+      "id": "birch_boat",
+      "previous": "Лодка · берёза",
+      "official": "Берёзовая лодка"
+    },
+    {
+      "id": "birch_button",
+      "previous": "Кнопка · берёза",
+      "official": "Берёзовая кнопка"
+    },
+    {
+      "id": "birch_chest_boat",
+      "previous": "Лодка с сундуком · берёза",
+      "official": "Берёзовая грузовая лодка"
+    },
+    {
+      "id": "birch_door",
+      "previous": "Дверь · берёза",
+      "official": "Берёзовая дверь"
+    },
+    {
+      "id": "birch_fence",
+      "previous": "Забор · берёза",
+      "official": "Берёзовый забор"
+    },
+    {
+      "id": "birch_fence_gate",
+      "previous": "Калитка · берёза",
+      "official": "Берёзовые ворота"
+    },
+    {
+      "id": "birch_hanging_sign",
+      "previous": "Подвесная табличка · берёза",
+      "official": "Берёзовая подвесная табличка"
+    },
+    {
+      "id": "birch_leaves",
+      "previous": "Листва · берёза",
+      "official": "Берёзовые листья"
+    },
+    {
+      "id": "birch_log",
+      "previous": "Бревно · берёза",
+      "official": "Берёзовое бревно"
+    },
+    {
+      "id": "birch_planks",
+      "previous": "Доски · берёза",
+      "official": "Берёзовые доски"
+    },
+    {
+      "id": "birch_pressure_plate",
+      "previous": "Нажимная плита · берёза",
+      "official": "Берёзовая нажимная пластина"
+    },
+    {
+      "id": "birch_sapling",
+      "previous": "Саженец · берёза",
+      "official": "Саженец берёзы"
+    },
+    {
+      "id": "birch_sign",
+      "previous": "Табличка · берёза",
+      "official": "Берёзовая табличка"
+    },
+    {
+      "id": "birch_slab",
+      "previous": "Плита · берёза",
+      "official": "Берёзовая плита"
+    },
+    {
+      "id": "birch_stairs",
+      "previous": "Ступеньки · берёза",
+      "official": "Берёзовые ступеньки"
+    },
+    {
+      "id": "birch_trapdoor",
+      "previous": "Люк · берёза",
+      "official": "Берёзовый люк"
+    },
+    {
+      "id": "birch_wood",
+      "previous": "Древесина · берёза",
+      "official": "Берёзовая древесина"
+    },
+    {
+      "id": "black_bed",
+      "previous": "Кровать · чёрный",
+      "official": "Чёрная кровать"
+    },
+    {
+      "id": "black_bundle",
+      "previous": "Мешок · чёрный",
+      "official": "Чёрный мешок"
+    },
+    {
+      "id": "black_candle",
+      "previous": "Свеча · чёрный",
+      "official": "Чёрная свеча"
+    },
+    {
+      "id": "black_carpet",
+      "previous": "Ковёр · чёрный",
+      "official": "Чёрный ковёр"
+    },
+    {
+      "id": "black_concrete",
+      "previous": "Бетон · чёрный",
+      "official": "Чёрный бетон"
+    },
+    {
+      "id": "black_concrete_powder",
+      "previous": "Сухой бетон · чёрный",
+      "official": "Чёрный сухой бетон"
+    },
+    {
+      "id": "black_dye",
+      "previous": "Краситель · чёрный",
+      "official": "Чёрный краситель"
+    },
+    {
+      "id": "black_glazed_terracotta",
+      "previous": "Глазурованная керамика · чёрный",
+      "official": "Чёрная глазурованная керамика"
+    },
+    {
+      "id": "black_harness",
+      "previous": "Упряжь · чёрный",
+      "official": "Чёрная упряжь"
+    },
+    {
+      "id": "black_shulker_box",
+      "previous": "Шалкеровый ящик · чёрный",
+      "official": "Чёрный шалкеровый ящик"
+    },
+    {
+      "id": "black_stained_glass",
+      "previous": "Стекло · чёрный",
+      "official": "Чёрное стекло"
+    },
+    {
+      "id": "black_stained_glass_pane",
+      "previous": "Стеклянная панель · чёрный",
+      "official": "Чёрная стеклянная панель"
+    },
+    {
+      "id": "black_terracotta",
+      "previous": "Керамика · чёрный",
+      "official": "Чёрная керамика"
+    },
+    {
+      "id": "black_wool",
+      "previous": "Шерсть · чёрный",
+      "official": "Чёрная шерсть"
+    },
+    {
+      "id": "blue_bed",
+      "previous": "Кровать · синий",
+      "official": "Синяя кровать"
+    },
+    {
+      "id": "blue_bundle",
+      "previous": "Мешок · синий",
+      "official": "Синий мешок"
+    },
+    {
+      "id": "blue_candle",
+      "previous": "Свеча · синий",
+      "official": "Синяя свеча"
+    },
+    {
+      "id": "blue_carpet",
+      "previous": "Ковёр · синий",
+      "official": "Синий ковёр"
+    },
+    {
+      "id": "blue_concrete",
+      "previous": "Бетон · синий",
+      "official": "Синий бетон"
+    },
+    {
+      "id": "blue_concrete_powder",
+      "previous": "Сухой бетон · синий",
+      "official": "Синий сухой бетон"
+    },
+    {
+      "id": "blue_dye",
+      "previous": "Краситель · синий",
+      "official": "Синий краситель"
+    },
+    {
+      "id": "blue_glazed_terracotta",
+      "previous": "Глазурованная керамика · синий",
+      "official": "Синяя глазурованная керамика"
+    },
+    {
+      "id": "blue_harness",
+      "previous": "Упряжь · синий",
+      "official": "Синяя упряжь"
+    },
+    {
+      "id": "blue_shulker_box",
+      "previous": "Шалкеровый ящик · синий",
+      "official": "Синий шалкеровый ящик"
+    },
+    {
+      "id": "blue_stained_glass",
+      "previous": "Стекло · синий",
+      "official": "Синее стекло"
+    },
+    {
+      "id": "blue_stained_glass_pane",
+      "previous": "Стеклянная панель · синий",
+      "official": "Синяя стеклянная панель"
+    },
+    {
+      "id": "blue_terracotta",
+      "previous": "Керамика · синий",
+      "official": "Синяя керамика"
+    },
+    {
+      "id": "blue_wool",
+      "previous": "Шерсть · синий",
+      "official": "Синяя шерсть"
+    },
+    {
+      "id": "brown_bed",
+      "previous": "Кровать · коричневый",
+      "official": "Коричневая кровать"
+    },
+    {
+      "id": "brown_bundle",
+      "previous": "Мешок · коричневый",
+      "official": "Коричневый мешок"
+    },
+    {
+      "id": "brown_candle",
+      "previous": "Свеча · коричневый",
+      "official": "Коричневая свеча"
+    },
+    {
+      "id": "brown_carpet",
+      "previous": "Ковёр · коричневый",
+      "official": "Коричневый ковёр"
+    },
+    {
+      "id": "brown_concrete",
+      "previous": "Бетон · коричневый",
+      "official": "Коричневый бетон"
+    },
+    {
+      "id": "brown_concrete_powder",
+      "previous": "Сухой бетон · коричневый",
+      "official": "Коричневый сухой бетон"
+    },
+    {
+      "id": "brown_dye",
+      "previous": "Краситель · коричневый",
+      "official": "Коричневый краситель"
+    },
+    {
+      "id": "brown_glazed_terracotta",
+      "previous": "Глазурованная керамика · коричневый",
+      "official": "Коричневая глазурованная керамика"
+    },
+    {
+      "id": "brown_harness",
+      "previous": "Упряжь · коричневый",
+      "official": "Коричневая упряжь"
+    },
+    {
+      "id": "brown_shulker_box",
+      "previous": "Шалкеровый ящик · коричневый",
+      "official": "Коричневый шалкеровый ящик"
+    },
+    {
+      "id": "brown_stained_glass",
+      "previous": "Стекло · коричневый",
+      "official": "Коричневое стекло"
+    },
+    {
+      "id": "brown_stained_glass_pane",
+      "previous": "Стеклянная панель · коричневый",
+      "official": "Коричневая стеклянная панель"
+    },
+    {
+      "id": "brown_terracotta",
+      "previous": "Керамика · коричневый",
+      "official": "Коричневая керамика"
+    },
+    {
+      "id": "brown_wool",
+      "previous": "Шерсть · коричневый",
+      "official": "Коричневая шерсть"
+    },
+    {
+      "id": "chainmail_boots",
+      "previous": "Ботинки · кольчуга",
+      "official": "Кольчужные ботинки"
+    },
+    {
+      "id": "chainmail_chestplate",
+      "previous": "Нагрудник · кольчуга",
+      "official": "Кольчуга"
+    },
+    {
+      "id": "chainmail_helmet",
+      "previous": "Шлем · кольчуга",
+      "official": "Койф"
+    },
+    {
+      "id": "chainmail_leggings",
+      "previous": "Поножи · кольчуга",
+      "official": "Кольчужные поножи"
+    },
+    {
+      "id": "cherry_boat",
+      "previous": "Лодка · вишня",
+      "official": "Вишнёвая лодка"
+    },
+    {
+      "id": "cherry_button",
+      "previous": "Кнопка · вишня",
+      "official": "Вишнёвая кнопка"
+    },
+    {
+      "id": "cherry_chest_boat",
+      "previous": "Лодка с сундуком · вишня",
+      "official": "Вишнёвая грузовая лодка"
+    },
+    {
+      "id": "cherry_door",
+      "previous": "Дверь · вишня",
+      "official": "Вишнёвая дверь"
+    },
+    {
+      "id": "cherry_fence",
+      "previous": "Забор · вишня",
+      "official": "Вишнёвый забор"
+    },
+    {
+      "id": "cherry_fence_gate",
+      "previous": "Калитка · вишня",
+      "official": "Вишнёвые ворота"
+    },
+    {
+      "id": "cherry_hanging_sign",
+      "previous": "Подвесная табличка · вишня",
+      "official": "Вишнёвая подвесная табличка"
+    },
+    {
+      "id": "cherry_leaves",
+      "previous": "Листва · вишня",
+      "official": "Вишнёвые листья"
+    },
+    {
+      "id": "cherry_log",
+      "previous": "Бревно · вишня",
+      "official": "Вишнёвое бревно"
+    },
+    {
+      "id": "cherry_planks",
+      "previous": "Доски · вишня",
+      "official": "Вишнёвые доски"
+    },
+    {
+      "id": "cherry_pressure_plate",
+      "previous": "Нажимная плита · вишня",
+      "official": "Вишнёвая нажимная пластина"
+    },
+    {
+      "id": "cherry_sapling",
+      "previous": "Саженец · вишня",
+      "official": "Саженец вишни"
+    },
+    {
+      "id": "cherry_sign",
+      "previous": "Табличка · вишня",
+      "official": "Вишнёвая табличка"
+    },
+    {
+      "id": "cherry_slab",
+      "previous": "Плита · вишня",
+      "official": "Вишнёвая плита"
+    },
+    {
+      "id": "cherry_stairs",
+      "previous": "Ступеньки · вишня",
+      "official": "Вишнёвые ступеньки"
+    },
+    {
+      "id": "cherry_trapdoor",
+      "previous": "Люк · вишня",
+      "official": "Вишнёвый люк"
+    },
+    {
+      "id": "cherry_wood",
+      "previous": "Древесина · вишня",
+      "official": "Вишнёвая древесина"
+    },
+    {
+      "id": "chicken",
+      "previous": "Курятина",
+      "official": "Сырая курица"
+    },
+    {
+      "id": "copper_axe",
+      "previous": "Топор · медь",
+      "official": "Медный топор"
+    },
+    {
+      "id": "copper_boots",
+      "previous": "Ботинки · медь",
+      "official": "Медные ботинки"
+    },
+    {
+      "id": "copper_chestplate",
+      "previous": "Нагрудник · медь",
+      "official": "Медный нагрудник"
+    },
+    {
+      "id": "copper_helmet",
+      "previous": "Шлем · медь",
+      "official": "Медный шлем"
+    },
+    {
+      "id": "copper_hoe",
+      "previous": "Мотыга · медь",
+      "official": "Медная мотыга"
+    },
+    {
+      "id": "copper_horse_armor",
+      "previous": "Конская броня · медь",
+      "official": "Медная конская броня"
+    },
+    {
+      "id": "copper_leggings",
+      "previous": "Поножи · медь",
+      "official": "Медные поножи"
+    },
+    {
+      "id": "copper_pickaxe",
+      "previous": "Кирка · медь",
+      "official": "Медная кирка"
+    },
+    {
+      "id": "copper_shovel",
+      "previous": "Лопата · медь",
+      "official": "Медная лопата"
+    },
+    {
+      "id": "copper_sword",
+      "previous": "Меч · медь",
+      "official": "Медный меч"
+    },
+    {
+      "id": "crimson_button",
+      "previous": "Кнопка · багровое дерево",
+      "official": "Багровая кнопка"
+    },
+    {
+      "id": "crimson_door",
+      "previous": "Дверь · багровое дерево",
+      "official": "Багровая дверь"
+    },
+    {
+      "id": "crimson_fence",
+      "previous": "Забор · багровое дерево",
+      "official": "Багровый забор"
+    },
+    {
+      "id": "crimson_fence_gate",
+      "previous": "Калитка · багровое дерево",
+      "official": "Багровые ворота"
+    },
+    {
+      "id": "crimson_hanging_sign",
+      "previous": "Подвесная табличка · багровое дерево",
+      "official": "Багровая подвесная табличка"
+    },
+    {
+      "id": "crimson_planks",
+      "previous": "Доски · багровое дерево",
+      "official": "Багровые доски"
+    },
+    {
+      "id": "crimson_pressure_plate",
+      "previous": "Нажимная плита · багровое дерево",
+      "official": "Багровая нажимная пластина"
+    },
+    {
+      "id": "crimson_sign",
+      "previous": "Табличка · багровое дерево",
+      "official": "Багровая табличка"
+    },
+    {
+      "id": "crimson_slab",
+      "previous": "Плита · багровое дерево",
+      "official": "Багровая плита"
+    },
+    {
+      "id": "crimson_stairs",
+      "previous": "Ступеньки · багровое дерево",
+      "official": "Багровые ступеньки"
+    },
+    {
+      "id": "crimson_trapdoor",
+      "previous": "Люк · багровое дерево",
+      "official": "Багровый люк"
+    },
+    {
+      "id": "cyan_bed",
+      "previous": "Кровать · бирюзовый",
+      "official": "Бирюзовая кровать"
+    },
+    {
+      "id": "cyan_bundle",
+      "previous": "Мешок · бирюзовый",
+      "official": "Бирюзовый мешок"
+    },
+    {
+      "id": "cyan_candle",
+      "previous": "Свеча · бирюзовый",
+      "official": "Бирюзовая свеча"
+    },
+    {
+      "id": "cyan_carpet",
+      "previous": "Ковёр · бирюзовый",
+      "official": "Бирюзовый ковёр"
+    },
+    {
+      "id": "cyan_concrete",
+      "previous": "Бетон · бирюзовый",
+      "official": "Бирюзовый бетон"
+    },
+    {
+      "id": "cyan_concrete_powder",
+      "previous": "Сухой бетон · бирюзовый",
+      "official": "Бирюзовый сухой бетон"
+    },
+    {
+      "id": "cyan_dye",
+      "previous": "Краситель · бирюзовый",
+      "official": "Бирюзовый краситель"
+    },
+    {
+      "id": "cyan_glazed_terracotta",
+      "previous": "Глазурованная керамика · бирюзовый",
+      "official": "Бирюзовая глазурованная керамика"
+    },
+    {
+      "id": "cyan_harness",
+      "previous": "Упряжь · бирюзовый",
+      "official": "Бирюзовая упряжь"
+    },
+    {
+      "id": "cyan_shulker_box",
+      "previous": "Шалкеровый ящик · бирюзовый",
+      "official": "Бирюзовый шалкеровый ящик"
+    },
+    {
+      "id": "cyan_stained_glass",
+      "previous": "Стекло · бирюзовый",
+      "official": "Бирюзовое стекло"
+    },
+    {
+      "id": "cyan_stained_glass_pane",
+      "previous": "Стеклянная панель · бирюзовый",
+      "official": "Бирюзовая стеклянная панель"
+    },
+    {
+      "id": "cyan_terracotta",
+      "previous": "Керамика · бирюзовый",
+      "official": "Бирюзовая керамика"
+    },
+    {
+      "id": "cyan_wool",
+      "previous": "Шерсть · бирюзовый",
+      "official": "Бирюзовая шерсть"
+    },
+    {
+      "id": "dark_oak_boat",
+      "previous": "Лодка · тёмный дуб",
+      "official": "Лодка из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_button",
+      "previous": "Кнопка · тёмный дуб",
+      "official": "Кнопка из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_chest_boat",
+      "previous": "Лодка с сундуком · тёмный дуб",
+      "official": "Грузовая лодка из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_door",
+      "previous": "Дверь · тёмный дуб",
+      "official": "Дверь из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_fence",
+      "previous": "Забор · тёмный дуб",
+      "official": "Забор из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_fence_gate",
+      "previous": "Калитка · тёмный дуб",
+      "official": "Ворота из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_hanging_sign",
+      "previous": "Подвесная табличка · тёмный дуб",
+      "official": "Подвесная табличка из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_leaves",
+      "previous": "Листва · тёмный дуб",
+      "official": "Листья тёмного дуба"
+    },
+    {
+      "id": "dark_oak_log",
+      "previous": "Бревно · тёмный дуб",
+      "official": "Бревно тёмного дуба"
+    },
+    {
+      "id": "dark_oak_planks",
+      "previous": "Доски · тёмный дуб",
+      "official": "Доски из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_pressure_plate",
+      "previous": "Нажимная плита · тёмный дуб",
+      "official": "Нажимная пластина из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_sapling",
+      "previous": "Саженец · тёмный дуб",
+      "official": "Саженец тёмного дуба"
+    },
+    {
+      "id": "dark_oak_sign",
+      "previous": "Табличка · тёмный дуб",
+      "official": "Табличка из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_slab",
+      "previous": "Плита · тёмный дуб",
+      "official": "Плита из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_stairs",
+      "previous": "Ступеньки · тёмный дуб",
+      "official": "Ступеньки из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_trapdoor",
+      "previous": "Люк · тёмный дуб",
+      "official": "Люк из тёмного дуба"
+    },
+    {
+      "id": "dark_oak_wood",
+      "previous": "Древесина · тёмный дуб",
+      "official": "Древесина тёмного дуба"
+    },
+    {
+      "id": "diamond_axe",
+      "previous": "Топор · алмаз",
+      "official": "Алмазный топор"
+    },
+    {
+      "id": "diamond_boots",
+      "previous": "Ботинки · алмаз",
+      "official": "Алмазные ботинки"
+    },
+    {
+      "id": "diamond_chestplate",
+      "previous": "Нагрудник · алмаз",
+      "official": "Алмазный нагрудник"
+    },
+    {
+      "id": "diamond_helmet",
+      "previous": "Шлем · алмаз",
+      "official": "Алмазный шлем"
+    },
+    {
+      "id": "diamond_hoe",
+      "previous": "Мотыга · алмаз",
+      "official": "Алмазная мотыга"
+    },
+    {
+      "id": "diamond_horse_armor",
+      "previous": "Конская броня · алмаз",
+      "official": "Алмазная конская броня"
+    },
+    {
+      "id": "diamond_leggings",
+      "previous": "Поножи · алмаз",
+      "official": "Алмазные поножи"
+    },
+    {
+      "id": "diamond_pickaxe",
+      "previous": "Кирка · алмаз",
+      "official": "Алмазная кирка"
+    },
+    {
+      "id": "diamond_shovel",
+      "previous": "Лопата · алмаз",
+      "official": "Алмазная лопата"
+    },
+    {
+      "id": "diamond_sword",
+      "previous": "Меч · алмаз",
+      "official": "Алмазный меч"
+    },
+    {
+      "id": "enchanted_book",
+      "previous": "Зачарованная книга",
+      "official": "Чародейская книга"
+    },
+    {
+      "id": "golden_axe",
+      "previous": "Топор · золото",
+      "official": "Золотой топор"
+    },
+    {
+      "id": "golden_boots",
+      "previous": "Ботинки · золото",
+      "official": "Золотые ботинки"
+    },
+    {
+      "id": "golden_chestplate",
+      "previous": "Нагрудник · золото",
+      "official": "Золотой нагрудник"
+    },
+    {
+      "id": "golden_helmet",
+      "previous": "Шлем · золото",
+      "official": "Золотой шлем"
+    },
+    {
+      "id": "golden_hoe",
+      "previous": "Мотыга · золото",
+      "official": "Золотая мотыга"
+    },
+    {
+      "id": "golden_horse_armor",
+      "previous": "Конская броня · золото",
+      "official": "Золотая конская броня"
+    },
+    {
+      "id": "golden_leggings",
+      "previous": "Поножи · золото",
+      "official": "Золотые поножи"
+    },
+    {
+      "id": "golden_pickaxe",
+      "previous": "Кирка · золото",
+      "official": "Золотая кирка"
+    },
+    {
+      "id": "golden_shovel",
+      "previous": "Лопата · золото",
+      "official": "Золотая лопата"
+    },
+    {
+      "id": "golden_sword",
+      "previous": "Меч · золото",
+      "official": "Золотой меч"
+    },
+    {
+      "id": "gray_bed",
+      "previous": "Кровать · серый",
+      "official": "Серая кровать"
+    },
+    {
+      "id": "gray_bundle",
+      "previous": "Мешок · серый",
+      "official": "Серый мешок"
+    },
+    {
+      "id": "gray_candle",
+      "previous": "Свеча · серый",
+      "official": "Серая свеча"
+    },
+    {
+      "id": "gray_carpet",
+      "previous": "Ковёр · серый",
+      "official": "Серый ковёр"
+    },
+    {
+      "id": "gray_concrete",
+      "previous": "Бетон · серый",
+      "official": "Серый бетон"
+    },
+    {
+      "id": "gray_concrete_powder",
+      "previous": "Сухой бетон · серый",
+      "official": "Серый сухой бетон"
+    },
+    {
+      "id": "gray_dye",
+      "previous": "Краситель · серый",
+      "official": "Серый краситель"
+    },
+    {
+      "id": "gray_glazed_terracotta",
+      "previous": "Глазурованная керамика · серый",
+      "official": "Серая глазурованная керамика"
+    },
+    {
+      "id": "gray_harness",
+      "previous": "Упряжь · серый",
+      "official": "Серая упряжь"
+    },
+    {
+      "id": "gray_shulker_box",
+      "previous": "Шалкеровый ящик · серый",
+      "official": "Серый шалкеровый ящик"
+    },
+    {
+      "id": "gray_stained_glass",
+      "previous": "Стекло · серый",
+      "official": "Серое стекло"
+    },
+    {
+      "id": "gray_stained_glass_pane",
+      "previous": "Стеклянная панель · серый",
+      "official": "Серая стеклянная панель"
+    },
+    {
+      "id": "gray_terracotta",
+      "previous": "Керамика · серый",
+      "official": "Серая керамика"
+    },
+    {
+      "id": "gray_wool",
+      "previous": "Шерсть · серый",
+      "official": "Серая шерсть"
+    },
+    {
+      "id": "green_bed",
+      "previous": "Кровать · зелёный",
+      "official": "Зелёная кровать"
+    },
+    {
+      "id": "green_bundle",
+      "previous": "Мешок · зелёный",
+      "official": "Зелёный мешок"
+    },
+    {
+      "id": "green_candle",
+      "previous": "Свеча · зелёный",
+      "official": "Зелёная свеча"
+    },
+    {
+      "id": "green_carpet",
+      "previous": "Ковёр · зелёный",
+      "official": "Зелёный ковёр"
+    },
+    {
+      "id": "green_concrete",
+      "previous": "Бетон · зелёный",
+      "official": "Зелёный бетон"
+    },
+    {
+      "id": "green_concrete_powder",
+      "previous": "Сухой бетон · зелёный",
+      "official": "Зелёный сухой бетон"
+    },
+    {
+      "id": "green_dye",
+      "previous": "Краситель · зелёный",
+      "official": "Зелёный краситель"
+    },
+    {
+      "id": "green_glazed_terracotta",
+      "previous": "Глазурованная керамика · зелёный",
+      "official": "Зелёная глазурованная керамика"
+    },
+    {
+      "id": "green_harness",
+      "previous": "Упряжь · зелёный",
+      "official": "Зелёная упряжь"
+    },
+    {
+      "id": "green_shulker_box",
+      "previous": "Шалкеровый ящик · зелёный",
+      "official": "Зелёный шалкеровый ящик"
+    },
+    {
+      "id": "green_stained_glass",
+      "previous": "Стекло · зелёный",
+      "official": "Зелёное стекло"
+    },
+    {
+      "id": "green_stained_glass_pane",
+      "previous": "Стеклянная панель · зелёный",
+      "official": "Зелёная стеклянная панель"
+    },
+    {
+      "id": "green_terracotta",
+      "previous": "Керамика · зелёный",
+      "official": "Зелёная керамика"
+    },
+    {
+      "id": "green_wool",
+      "previous": "Шерсть · зелёный",
+      "official": "Зелёная шерсть"
+    },
+    {
+      "id": "hopper",
+      "previous": "Загрузочная воронка",
+      "official": "Воронка"
+    },
+    {
+      "id": "iron_axe",
+      "previous": "Топор · железо",
+      "official": "Железный топор"
+    },
+    {
+      "id": "iron_boots",
+      "previous": "Ботинки · железо",
+      "official": "Железные ботинки"
+    },
+    {
+      "id": "iron_chestplate",
+      "previous": "Нагрудник · железо",
+      "official": "Железный нагрудник"
+    },
+    {
+      "id": "iron_helmet",
+      "previous": "Шлем · железо",
+      "official": "Железный шлем"
+    },
+    {
+      "id": "iron_hoe",
+      "previous": "Мотыга · железо",
+      "official": "Железная мотыга"
+    },
+    {
+      "id": "iron_horse_armor",
+      "previous": "Конская броня · железо",
+      "official": "Железная конская броня"
+    },
+    {
+      "id": "iron_leggings",
+      "previous": "Поножи · железо",
+      "official": "Железные поножи"
+    },
+    {
+      "id": "iron_pickaxe",
+      "previous": "Кирка · железо",
+      "official": "Железная кирка"
+    },
+    {
+      "id": "iron_shovel",
+      "previous": "Лопата · железо",
+      "official": "Железная лопата"
+    },
+    {
+      "id": "iron_sword",
+      "previous": "Меч · железо",
+      "official": "Железный меч"
+    },
+    {
+      "id": "jungle_boat",
+      "previous": "Лодка · тропическое дерево",
+      "official": "Лодка из джунглевого дерева"
+    },
+    {
+      "id": "jungle_button",
+      "previous": "Кнопка · тропическое дерево",
+      "official": "Кнопка из джунглевого дерева"
+    },
+    {
+      "id": "jungle_chest_boat",
+      "previous": "Лодка с сундуком · тропическое дерево",
+      "official": "Грузовая лодка из джунглевого дерева"
+    },
+    {
+      "id": "jungle_door",
+      "previous": "Дверь · тропическое дерево",
+      "official": "Дверь из джунглевого дерева"
+    },
+    {
+      "id": "jungle_fence",
+      "previous": "Забор · тропическое дерево",
+      "official": "Забор из джунглевого дерева"
+    },
+    {
+      "id": "jungle_fence_gate",
+      "previous": "Калитка · тропическое дерево",
+      "official": "Ворота из джунглевого дерева"
+    },
+    {
+      "id": "jungle_hanging_sign",
+      "previous": "Подвесная табличка · тропическое дерево",
+      "official": "Подвесная табличка из джунглевого дерева"
+    },
+    {
+      "id": "jungle_leaves",
+      "previous": "Листва · тропическое дерево",
+      "official": "Листья джунглевого дерева"
+    },
+    {
+      "id": "jungle_log",
+      "previous": "Бревно · тропическое дерево",
+      "official": "Бревно джунглевого дерева"
+    },
+    {
+      "id": "jungle_planks",
+      "previous": "Доски · тропическое дерево",
+      "official": "Доски из джунглевого дерева"
+    },
+    {
+      "id": "jungle_pressure_plate",
+      "previous": "Нажимная плита · тропическое дерево",
+      "official": "Нажимная пластина из джунглевого дерева"
+    },
+    {
+      "id": "jungle_sapling",
+      "previous": "Саженец · тропическое дерево",
+      "official": "Саженец джунглевого дерева"
+    },
+    {
+      "id": "jungle_sign",
+      "previous": "Табличка · тропическое дерево",
+      "official": "Табличка из джунглевого дерева"
+    },
+    {
+      "id": "jungle_slab",
+      "previous": "Плита · тропическое дерево",
+      "official": "Плита из джунглевого дерева"
+    },
+    {
+      "id": "jungle_stairs",
+      "previous": "Ступеньки · тропическое дерево",
+      "official": "Ступеньки из джунглевого дерева"
+    },
+    {
+      "id": "jungle_trapdoor",
+      "previous": "Люк · тропическое дерево",
+      "official": "Люк из джунглевого дерева"
+    },
+    {
+      "id": "jungle_wood",
+      "previous": "Древесина · тропическое дерево",
+      "official": "Древесина джунглевого дерева"
+    },
+    {
+      "id": "leather_boots",
+      "previous": "Ботинки · кожа",
+      "official": "Кожаные ботинки"
+    },
+    {
+      "id": "leather_chestplate",
+      "previous": "Нагрудник · кожа",
+      "official": "Кожаная куртка"
+    },
+    {
+      "id": "leather_helmet",
+      "previous": "Шлем · кожа",
+      "official": "Кожаный шлем"
+    },
+    {
+      "id": "leather_horse_armor",
+      "previous": "Конская броня · кожа",
+      "official": "Кожаная конская броня"
+    },
+    {
+      "id": "leather_leggings",
+      "previous": "Поножи · кожа",
+      "official": "Кожаные штаны"
+    },
+    {
+      "id": "light_blue_bed",
+      "previous": "Кровать · голубой",
+      "official": "Голубая кровать"
+    },
+    {
+      "id": "light_blue_bundle",
+      "previous": "Мешок · голубой",
+      "official": "Голубой мешок"
+    },
+    {
+      "id": "light_blue_candle",
+      "previous": "Свеча · голубой",
+      "official": "Голубая свеча"
+    },
+    {
+      "id": "light_blue_carpet",
+      "previous": "Ковёр · голубой",
+      "official": "Голубой ковёр"
+    },
+    {
+      "id": "light_blue_concrete",
+      "previous": "Бетон · голубой",
+      "official": "Голубой бетон"
+    },
+    {
+      "id": "light_blue_concrete_powder",
+      "previous": "Сухой бетон · голубой",
+      "official": "Голубой сухой бетон"
+    },
+    {
+      "id": "light_blue_dye",
+      "previous": "Краситель · голубой",
+      "official": "Голубой краситель"
+    },
+    {
+      "id": "light_blue_glazed_terracotta",
+      "previous": "Глазурованная керамика · голубой",
+      "official": "Голубая глазурованная керамика"
+    },
+    {
+      "id": "light_blue_harness",
+      "previous": "Упряжь · голубой",
+      "official": "Голубая упряжь"
+    },
+    {
+      "id": "light_blue_shulker_box",
+      "previous": "Шалкеровый ящик · голубой",
+      "official": "Голубой шалкеровый ящик"
+    },
+    {
+      "id": "light_blue_stained_glass",
+      "previous": "Стекло · голубой",
+      "official": "Голубое стекло"
+    },
+    {
+      "id": "light_blue_stained_glass_pane",
+      "previous": "Стеклянная панель · голубой",
+      "official": "Голубая стеклянная панель"
+    },
+    {
+      "id": "light_blue_terracotta",
+      "previous": "Керамика · голубой",
+      "official": "Голубая керамика"
+    },
+    {
+      "id": "light_blue_wool",
+      "previous": "Шерсть · голубой",
+      "official": "Голубая шерсть"
+    },
+    {
+      "id": "light_gray_bed",
+      "previous": "Кровать · светло-серый",
+      "official": "Светло-серая кровать"
+    },
+    {
+      "id": "light_gray_bundle",
+      "previous": "Мешок · светло-серый",
+      "official": "Светло-серый мешок"
+    },
+    {
+      "id": "light_gray_candle",
+      "previous": "Свеча · светло-серый",
+      "official": "Светло-серая свеча"
+    },
+    {
+      "id": "light_gray_carpet",
+      "previous": "Ковёр · светло-серый",
+      "official": "Светло-серый ковёр"
+    },
+    {
+      "id": "light_gray_concrete",
+      "previous": "Бетон · светло-серый",
+      "official": "Светло-серый бетон"
+    },
+    {
+      "id": "light_gray_concrete_powder",
+      "previous": "Сухой бетон · светло-серый",
+      "official": "Светло-серый сухой бетон"
+    },
+    {
+      "id": "light_gray_dye",
+      "previous": "Краситель · светло-серый",
+      "official": "Светло-серый краситель"
+    },
+    {
+      "id": "light_gray_glazed_terracotta",
+      "previous": "Глазурованная керамика · светло-серый",
+      "official": "Светло-серая глазурованная керамика"
+    },
+    {
+      "id": "light_gray_harness",
+      "previous": "Упряжь · светло-серый",
+      "official": "Светло-серая упряжь"
+    },
+    {
+      "id": "light_gray_shulker_box",
+      "previous": "Шалкеровый ящик · светло-серый",
+      "official": "Светло-серый шалкеровый ящик"
+    },
+    {
+      "id": "light_gray_stained_glass",
+      "previous": "Стекло · светло-серый",
+      "official": "Светло-серое стекло"
+    },
+    {
+      "id": "light_gray_stained_glass_pane",
+      "previous": "Стеклянная панель · светло-серый",
+      "official": "Светло-серая стеклянная панель"
+    },
+    {
+      "id": "light_gray_terracotta",
+      "previous": "Керамика · светло-серый",
+      "official": "Светло-серая керамика"
+    },
+    {
+      "id": "light_gray_wool",
+      "previous": "Шерсть · светло-серый",
+      "official": "Светло-серая шерсть"
+    },
+    {
+      "id": "lime_bed",
+      "previous": "Кровать · лаймовый",
+      "official": "Лаймовая кровать"
+    },
+    {
+      "id": "lime_bundle",
+      "previous": "Мешок · лаймовый",
+      "official": "Лаймовый мешок"
+    },
+    {
+      "id": "lime_candle",
+      "previous": "Свеча · лаймовый",
+      "official": "Лаймовая свеча"
+    },
+    {
+      "id": "lime_carpet",
+      "previous": "Ковёр · лаймовый",
+      "official": "Лаймовый ковёр"
+    },
+    {
+      "id": "lime_concrete",
+      "previous": "Бетон · лаймовый",
+      "official": "Лаймовый бетон"
+    },
+    {
+      "id": "lime_concrete_powder",
+      "previous": "Сухой бетон · лаймовый",
+      "official": "Лаймовый сухой бетон"
+    },
+    {
+      "id": "lime_dye",
+      "previous": "Краситель · лаймовый",
+      "official": "Лаймовый краситель"
+    },
+    {
+      "id": "lime_glazed_terracotta",
+      "previous": "Глазурованная керамика · лаймовый",
+      "official": "Лаймовая глазурованная керамика"
+    },
+    {
+      "id": "lime_harness",
+      "previous": "Упряжь · лаймовый",
+      "official": "Лаймовая упряжь"
+    },
+    {
+      "id": "lime_shulker_box",
+      "previous": "Шалкеровый ящик · лаймовый",
+      "official": "Лаймовый шалкеровый ящик"
+    },
+    {
+      "id": "lime_stained_glass",
+      "previous": "Стекло · лаймовый",
+      "official": "Лаймовое стекло"
+    },
+    {
+      "id": "lime_stained_glass_pane",
+      "previous": "Стеклянная панель · лаймовый",
+      "official": "Лаймовая стеклянная панель"
+    },
+    {
+      "id": "lime_terracotta",
+      "previous": "Керамика · лаймовый",
+      "official": "Лаймовая керамика"
+    },
+    {
+      "id": "lime_wool",
+      "previous": "Шерсть · лаймовый",
+      "official": "Лаймовая шерсть"
+    },
+    {
+      "id": "magenta_bed",
+      "previous": "Кровать · пурпурный",
+      "official": "Пурпурная кровать"
+    },
+    {
+      "id": "magenta_bundle",
+      "previous": "Мешок · пурпурный",
+      "official": "Пурпурный мешок"
+    },
+    {
+      "id": "magenta_candle",
+      "previous": "Свеча · пурпурный",
+      "official": "Пурпурная свеча"
+    },
+    {
+      "id": "magenta_carpet",
+      "previous": "Ковёр · пурпурный",
+      "official": "Пурпурный ковёр"
+    },
+    {
+      "id": "magenta_concrete",
+      "previous": "Бетон · пурпурный",
+      "official": "Пурпурный бетон"
+    },
+    {
+      "id": "magenta_concrete_powder",
+      "previous": "Сухой бетон · пурпурный",
+      "official": "Пурпурный сухой бетон"
+    },
+    {
+      "id": "magenta_dye",
+      "previous": "Краситель · пурпурный",
+      "official": "Пурпурный краситель"
+    },
+    {
+      "id": "magenta_glazed_terracotta",
+      "previous": "Глазурованная керамика · пурпурный",
+      "official": "Пурпурная глазурованная керамика"
+    },
+    {
+      "id": "magenta_harness",
+      "previous": "Упряжь · пурпурный",
+      "official": "Пурпурная упряжь"
+    },
+    {
+      "id": "magenta_shulker_box",
+      "previous": "Шалкеровый ящик · пурпурный",
+      "official": "Пурпурный шалкеровый ящик"
+    },
+    {
+      "id": "magenta_stained_glass",
+      "previous": "Стекло · пурпурный",
+      "official": "Пурпурное стекло"
+    },
+    {
+      "id": "magenta_stained_glass_pane",
+      "previous": "Стеклянная панель · пурпурный",
+      "official": "Пурпурная стеклянная панель"
+    },
+    {
+      "id": "magenta_terracotta",
+      "previous": "Керамика · пурпурный",
+      "official": "Пурпурная керамика"
+    },
+    {
+      "id": "magenta_wool",
+      "previous": "Шерсть · пурпурный",
+      "official": "Пурпурная шерсть"
+    },
+    {
+      "id": "mangrove_boat",
+      "previous": "Лодка · мангровое дерево",
+      "official": "Мангровая лодка"
+    },
+    {
+      "id": "mangrove_button",
+      "previous": "Кнопка · мангровое дерево",
+      "official": "Мангровая кнопка"
+    },
+    {
+      "id": "mangrove_chest_boat",
+      "previous": "Лодка с сундуком · мангровое дерево",
+      "official": "Мангровая грузовая лодка"
+    },
+    {
+      "id": "mangrove_door",
+      "previous": "Дверь · мангровое дерево",
+      "official": "Мангровая дверь"
+    },
+    {
+      "id": "mangrove_fence",
+      "previous": "Забор · мангровое дерево",
+      "official": "Мангровый забор"
+    },
+    {
+      "id": "mangrove_fence_gate",
+      "previous": "Калитка · мангровое дерево",
+      "official": "Мангровые ворота"
+    },
+    {
+      "id": "mangrove_hanging_sign",
+      "previous": "Подвесная табличка · мангровое дерево",
+      "official": "Мангровая подвесная табличка"
+    },
+    {
+      "id": "mangrove_leaves",
+      "previous": "Листва · мангровое дерево",
+      "official": "Мангровые листья"
+    },
+    {
+      "id": "mangrove_log",
+      "previous": "Бревно · мангровое дерево",
+      "official": "Мангровое бревно"
+    },
+    {
+      "id": "mangrove_planks",
+      "previous": "Доски · мангровое дерево",
+      "official": "Мангровые доски"
+    },
+    {
+      "id": "mangrove_pressure_plate",
+      "previous": "Нажимная плита · мангровое дерево",
+      "official": "Мангровая нажимная пластина"
+    },
+    {
+      "id": "mangrove_sign",
+      "previous": "Табличка · мангровое дерево",
+      "official": "Мангровая табличка"
+    },
+    {
+      "id": "mangrove_slab",
+      "previous": "Плита · мангровое дерево",
+      "official": "Мангровая плита"
+    },
+    {
+      "id": "mangrove_stairs",
+      "previous": "Ступеньки · мангровое дерево",
+      "official": "Мангровые ступеньки"
+    },
+    {
+      "id": "mangrove_trapdoor",
+      "previous": "Люк · мангровое дерево",
+      "official": "Мангровый люк"
+    },
+    {
+      "id": "mangrove_wood",
+      "previous": "Древесина · мангровое дерево",
+      "official": "Мангровая древесина"
+    },
+    {
+      "id": "netherite_axe",
+      "previous": "Топор · незерит",
+      "official": "Незеритовый топор"
+    },
+    {
+      "id": "netherite_boots",
+      "previous": "Ботинки · незерит",
+      "official": "Незеритовые ботинки"
+    },
+    {
+      "id": "netherite_chestplate",
+      "previous": "Нагрудник · незерит",
+      "official": "Незеритовый нагрудник"
+    },
+    {
+      "id": "netherite_helmet",
+      "previous": "Шлем · незерит",
+      "official": "Незеритовый шлем"
+    },
+    {
+      "id": "netherite_hoe",
+      "previous": "Мотыга · незерит",
+      "official": "Незеритовая мотыга"
+    },
+    {
+      "id": "netherite_horse_armor",
+      "previous": "Конская броня · незерит",
+      "official": "Незеритовая конская броня"
+    },
+    {
+      "id": "netherite_leggings",
+      "previous": "Поножи · незерит",
+      "official": "Незеритовые поножи"
+    },
+    {
+      "id": "netherite_pickaxe",
+      "previous": "Кирка · незерит",
+      "official": "Незеритовая кирка"
+    },
+    {
+      "id": "netherite_scrap",
+      "previous": "Незеритовый скрап",
+      "official": "Незеритовый лом"
+    },
+    {
+      "id": "netherite_shovel",
+      "previous": "Лопата · незерит",
+      "official": "Незеритовая лопата"
+    },
+    {
+      "id": "netherite_sword",
+      "previous": "Меч · незерит",
+      "official": "Незеритовый меч"
+    },
+    {
+      "id": "oak_boat",
+      "previous": "Лодка · дуб",
+      "official": "Дубовая лодка"
+    },
+    {
+      "id": "oak_button",
+      "previous": "Кнопка · дуб",
+      "official": "Дубовая кнопка"
+    },
+    {
+      "id": "oak_chest_boat",
+      "previous": "Лодка с сундуком · дуб",
+      "official": "Дубовая грузовая лодка"
+    },
+    {
+      "id": "oak_door",
+      "previous": "Дверь · дуб",
+      "official": "Дубовая дверь"
+    },
+    {
+      "id": "oak_fence",
+      "previous": "Забор · дуб",
+      "official": "Дубовый забор"
+    },
+    {
+      "id": "oak_fence_gate",
+      "previous": "Калитка · дуб",
+      "official": "Дубовые ворота"
+    },
+    {
+      "id": "oak_hanging_sign",
+      "previous": "Подвесная табличка · дуб",
+      "official": "Дубовая подвесная табличка"
+    },
+    {
+      "id": "oak_leaves",
+      "previous": "Листва · дуб",
+      "official": "Дубовые листья"
+    },
+    {
+      "id": "oak_log",
+      "previous": "Бревно · дуб",
+      "official": "Дубовое бревно"
+    },
+    {
+      "id": "oak_planks",
+      "previous": "Доски · дуб",
+      "official": "Дубовые доски"
+    },
+    {
+      "id": "oak_pressure_plate",
+      "previous": "Нажимная плита · дуб",
+      "official": "Дубовая нажимная пластина"
+    },
+    {
+      "id": "oak_sapling",
+      "previous": "Саженец · дуб",
+      "official": "Саженец дуба"
+    },
+    {
+      "id": "oak_sign",
+      "previous": "Табличка · дуб",
+      "official": "Дубовая табличка"
+    },
+    {
+      "id": "oak_slab",
+      "previous": "Плита · дуб",
+      "official": "Дубовая плита"
+    },
+    {
+      "id": "oak_stairs",
+      "previous": "Ступеньки · дуб",
+      "official": "Дубовые ступеньки"
+    },
+    {
+      "id": "oak_trapdoor",
+      "previous": "Люк · дуб",
+      "official": "Дубовый люк"
+    },
+    {
+      "id": "oak_wood",
+      "previous": "Древесина · дуб",
+      "official": "Дубовая древесина"
+    },
+    {
+      "id": "orange_bed",
+      "previous": "Кровать · оранжевый",
+      "official": "Оранжевая кровать"
+    },
+    {
+      "id": "orange_bundle",
+      "previous": "Мешок · оранжевый",
+      "official": "Оранжевый мешок"
+    },
+    {
+      "id": "orange_candle",
+      "previous": "Свеча · оранжевый",
+      "official": "Оранжевая свеча"
+    },
+    {
+      "id": "orange_carpet",
+      "previous": "Ковёр · оранжевый",
+      "official": "Оранжевый ковёр"
+    },
+    {
+      "id": "orange_concrete",
+      "previous": "Бетон · оранжевый",
+      "official": "Оранжевый бетон"
+    },
+    {
+      "id": "orange_concrete_powder",
+      "previous": "Сухой бетон · оранжевый",
+      "official": "Оранжевый сухой бетон"
+    },
+    {
+      "id": "orange_dye",
+      "previous": "Краситель · оранжевый",
+      "official": "Оранжевый краситель"
+    },
+    {
+      "id": "orange_glazed_terracotta",
+      "previous": "Глазурованная керамика · оранжевый",
+      "official": "Оранжевая глазурованная керамика"
+    },
+    {
+      "id": "orange_harness",
+      "previous": "Упряжь · оранжевый",
+      "official": "Оранжевая упряжь"
+    },
+    {
+      "id": "orange_shulker_box",
+      "previous": "Шалкеровый ящик · оранжевый",
+      "official": "Оранжевый шалкеровый ящик"
+    },
+    {
+      "id": "orange_stained_glass",
+      "previous": "Стекло · оранжевый",
+      "official": "Оранжевое стекло"
+    },
+    {
+      "id": "orange_stained_glass_pane",
+      "previous": "Стеклянная панель · оранжевый",
+      "official": "Оранжевая стеклянная панель"
+    },
+    {
+      "id": "orange_terracotta",
+      "previous": "Керамика · оранжевый",
+      "official": "Оранжевая керамика"
+    },
+    {
+      "id": "orange_wool",
+      "previous": "Шерсть · оранжевый",
+      "official": "Оранжевая шерсть"
+    },
+    {
+      "id": "pale_oak_boat",
+      "previous": "Лодка · бледный дуб",
+      "official": "Лодка из бледного дуба"
+    },
+    {
+      "id": "pale_oak_button",
+      "previous": "Кнопка · бледный дуб",
+      "official": "Кнопка из бледного дуба"
+    },
+    {
+      "id": "pale_oak_chest_boat",
+      "previous": "Лодка с сундуком · бледный дуб",
+      "official": "Грузовая лодка из бледного дуба"
+    },
+    {
+      "id": "pale_oak_door",
+      "previous": "Дверь · бледный дуб",
+      "official": "Дверь из бледного дуба"
+    },
+    {
+      "id": "pale_oak_fence",
+      "previous": "Забор · бледный дуб",
+      "official": "Забор из бледного дуба"
+    },
+    {
+      "id": "pale_oak_fence_gate",
+      "previous": "Калитка · бледный дуб",
+      "official": "Ворота из бледного дуба"
+    },
+    {
+      "id": "pale_oak_hanging_sign",
+      "previous": "Подвесная табличка · бледный дуб",
+      "official": "Подвесная табличка из бледного дуба"
+    },
+    {
+      "id": "pale_oak_leaves",
+      "previous": "Листва · бледный дуб",
+      "official": "Листья бледного дуба"
+    },
+    {
+      "id": "pale_oak_log",
+      "previous": "Бревно · бледный дуб",
+      "official": "Бревно бледного дуба"
+    },
+    {
+      "id": "pale_oak_planks",
+      "previous": "Доски · бледный дуб",
+      "official": "Доски из бледного дуба"
+    },
+    {
+      "id": "pale_oak_pressure_plate",
+      "previous": "Нажимная плита · бледный дуб",
+      "official": "Нажимная пластина из бледного дуба"
+    },
+    {
+      "id": "pale_oak_sapling",
+      "previous": "Саженец · бледный дуб",
+      "official": "Саженец бледного дуба"
+    },
+    {
+      "id": "pale_oak_sign",
+      "previous": "Табличка · бледный дуб",
+      "official": "Табличка из бледного дуба"
+    },
+    {
+      "id": "pale_oak_slab",
+      "previous": "Плита · бледный дуб",
+      "official": "Плита из бледного дуба"
+    },
+    {
+      "id": "pale_oak_stairs",
+      "previous": "Ступеньки · бледный дуб",
+      "official": "Ступеньки из бледного дуба"
+    },
+    {
+      "id": "pale_oak_trapdoor",
+      "previous": "Люк · бледный дуб",
+      "official": "Люк из бледного дуба"
+    },
+    {
+      "id": "pale_oak_wood",
+      "previous": "Древесина · бледный дуб",
+      "official": "Древесина бледного дуба"
+    },
+    {
+      "id": "pink_bed",
+      "previous": "Кровать · розовый",
+      "official": "Розовая кровать"
+    },
+    {
+      "id": "pink_bundle",
+      "previous": "Мешок · розовый",
+      "official": "Розовый мешок"
+    },
+    {
+      "id": "pink_candle",
+      "previous": "Свеча · розовый",
+      "official": "Розовая свеча"
+    },
+    {
+      "id": "pink_carpet",
+      "previous": "Ковёр · розовый",
+      "official": "Розовый ковёр"
+    },
+    {
+      "id": "pink_concrete",
+      "previous": "Бетон · розовый",
+      "official": "Розовый бетон"
+    },
+    {
+      "id": "pink_concrete_powder",
+      "previous": "Сухой бетон · розовый",
+      "official": "Розовый сухой бетон"
+    },
+    {
+      "id": "pink_dye",
+      "previous": "Краситель · розовый",
+      "official": "Розовый краситель"
+    },
+    {
+      "id": "pink_glazed_terracotta",
+      "previous": "Глазурованная керамика · розовый",
+      "official": "Розовая глазурованная керамика"
+    },
+    {
+      "id": "pink_harness",
+      "previous": "Упряжь · розовый",
+      "official": "Розовая упряжь"
+    },
+    {
+      "id": "pink_shulker_box",
+      "previous": "Шалкеровый ящик · розовый",
+      "official": "Розовый шалкеровый ящик"
+    },
+    {
+      "id": "pink_stained_glass",
+      "previous": "Стекло · розовый",
+      "official": "Розовое стекло"
+    },
+    {
+      "id": "pink_stained_glass_pane",
+      "previous": "Стеклянная панель · розовый",
+      "official": "Розовая стеклянная панель"
+    },
+    {
+      "id": "pink_terracotta",
+      "previous": "Керамика · розовый",
+      "official": "Розовая керамика"
+    },
+    {
+      "id": "pink_wool",
+      "previous": "Шерсть · розовый",
+      "official": "Розовая шерсть"
+    },
+    {
+      "id": "purple_bed",
+      "previous": "Кровать · фиолетовый",
+      "official": "Фиолетовая кровать"
+    },
+    {
+      "id": "purple_bundle",
+      "previous": "Мешок · фиолетовый",
+      "official": "Фиолетовый мешок"
+    },
+    {
+      "id": "purple_candle",
+      "previous": "Свеча · фиолетовый",
+      "official": "Фиолетовая свеча"
+    },
+    {
+      "id": "purple_carpet",
+      "previous": "Ковёр · фиолетовый",
+      "official": "Фиолетовый ковёр"
+    },
+    {
+      "id": "purple_concrete",
+      "previous": "Бетон · фиолетовый",
+      "official": "Фиолетовый бетон"
+    },
+    {
+      "id": "purple_concrete_powder",
+      "previous": "Сухой бетон · фиолетовый",
+      "official": "Фиолетовый сухой бетон"
+    },
+    {
+      "id": "purple_dye",
+      "previous": "Краситель · фиолетовый",
+      "official": "Фиолетовый краситель"
+    },
+    {
+      "id": "purple_glazed_terracotta",
+      "previous": "Глазурованная керамика · фиолетовый",
+      "official": "Фиолетовая глазурованная керамика"
+    },
+    {
+      "id": "purple_harness",
+      "previous": "Упряжь · фиолетовый",
+      "official": "Фиолетовая упряжь"
+    },
+    {
+      "id": "purple_shulker_box",
+      "previous": "Шалкеровый ящик · фиолетовый",
+      "official": "Фиолетовый шалкеровый ящик"
+    },
+    {
+      "id": "purple_stained_glass",
+      "previous": "Стекло · фиолетовый",
+      "official": "Фиолетовое стекло"
+    },
+    {
+      "id": "purple_stained_glass_pane",
+      "previous": "Стеклянная панель · фиолетовый",
+      "official": "Фиолетовая стеклянная панель"
+    },
+    {
+      "id": "purple_terracotta",
+      "previous": "Керамика · фиолетовый",
+      "official": "Фиолетовая керамика"
+    },
+    {
+      "id": "purple_wool",
+      "previous": "Шерсть · фиолетовый",
+      "official": "Фиолетовая шерсть"
+    },
+    {
+      "id": "red_bed",
+      "previous": "Кровать · красный",
+      "official": "Красная кровать"
+    },
+    {
+      "id": "red_bundle",
+      "previous": "Мешок · красный",
+      "official": "Красный мешок"
+    },
+    {
+      "id": "red_candle",
+      "previous": "Свеча · красный",
+      "official": "Красная свеча"
+    },
+    {
+      "id": "red_carpet",
+      "previous": "Ковёр · красный",
+      "official": "Красный ковёр"
+    },
+    {
+      "id": "red_concrete",
+      "previous": "Бетон · красный",
+      "official": "Красный бетон"
+    },
+    {
+      "id": "red_concrete_powder",
+      "previous": "Сухой бетон · красный",
+      "official": "Красный сухой бетон"
+    },
+    {
+      "id": "red_dye",
+      "previous": "Краситель · красный",
+      "official": "Красный краситель"
+    },
+    {
+      "id": "red_glazed_terracotta",
+      "previous": "Глазурованная керамика · красный",
+      "official": "Красная глазурованная керамика"
+    },
+    {
+      "id": "red_harness",
+      "previous": "Упряжь · красный",
+      "official": "Красная упряжь"
+    },
+    {
+      "id": "red_shulker_box",
+      "previous": "Шалкеровый ящик · красный",
+      "official": "Красный шалкеровый ящик"
+    },
+    {
+      "id": "red_stained_glass",
+      "previous": "Стекло · красный",
+      "official": "Красное стекло"
+    },
+    {
+      "id": "red_stained_glass_pane",
+      "previous": "Стеклянная панель · красный",
+      "official": "Красная стеклянная панель"
+    },
+    {
+      "id": "red_terracotta",
+      "previous": "Керамика · красный",
+      "official": "Красная керамика"
+    },
+    {
+      "id": "red_wool",
+      "previous": "Шерсть · красный",
+      "official": "Красная шерсть"
+    },
+    {
+      "id": "redstone",
+      "previous": "Редстоун",
+      "official": "Редстоуновая пыль"
+    },
+    {
+      "id": "snow_block",
+      "previous": "Снежный блок",
+      "official": "Блок снега"
+    },
+    {
+      "id": "spruce_boat",
+      "previous": "Лодка · ель",
+      "official": "Еловая лодка"
+    },
+    {
+      "id": "spruce_button",
+      "previous": "Кнопка · ель",
+      "official": "Еловая кнопка"
+    },
+    {
+      "id": "spruce_chest_boat",
+      "previous": "Лодка с сундуком · ель",
+      "official": "Еловая грузовая лодка"
+    },
+    {
+      "id": "spruce_door",
+      "previous": "Дверь · ель",
+      "official": "Еловая дверь"
+    },
+    {
+      "id": "spruce_fence",
+      "previous": "Забор · ель",
+      "official": "Еловый забор"
+    },
+    {
+      "id": "spruce_fence_gate",
+      "previous": "Калитка · ель",
+      "official": "Еловые ворота"
+    },
+    {
+      "id": "spruce_hanging_sign",
+      "previous": "Подвесная табличка · ель",
+      "official": "Еловая подвесная табличка"
+    },
+    {
+      "id": "spruce_leaves",
+      "previous": "Листва · ель",
+      "official": "Хвоя"
+    },
+    {
+      "id": "spruce_log",
+      "previous": "Бревно · ель",
+      "official": "Еловое бревно"
+    },
+    {
+      "id": "spruce_planks",
+      "previous": "Доски · ель",
+      "official": "Еловые доски"
+    },
+    {
+      "id": "spruce_pressure_plate",
+      "previous": "Нажимная плита · ель",
+      "official": "Еловая нажимная пластина"
+    },
+    {
+      "id": "spruce_sapling",
+      "previous": "Саженец · ель",
+      "official": "Саженец ели"
+    },
+    {
+      "id": "spruce_sign",
+      "previous": "Табличка · ель",
+      "official": "Еловая табличка"
+    },
+    {
+      "id": "spruce_slab",
+      "previous": "Плита · ель",
+      "official": "Еловая плита"
+    },
+    {
+      "id": "spruce_stairs",
+      "previous": "Ступеньки · ель",
+      "official": "Еловые ступеньки"
+    },
+    {
+      "id": "spruce_trapdoor",
+      "previous": "Люк · ель",
+      "official": "Еловый люк"
+    },
+    {
+      "id": "spruce_wood",
+      "previous": "Древесина · ель",
+      "official": "Еловая древесина"
+    },
+    {
+      "id": "stone_axe",
+      "previous": "Топор · камень",
+      "official": "Каменный топор"
+    },
+    {
+      "id": "stone_hoe",
+      "previous": "Мотыга · камень",
+      "official": "Каменная мотыга"
+    },
+    {
+      "id": "stone_pickaxe",
+      "previous": "Кирка · камень",
+      "official": "Каменная кирка"
+    },
+    {
+      "id": "stone_shovel",
+      "previous": "Лопата · камень",
+      "official": "Каменная лопата"
+    },
+    {
+      "id": "stone_sword",
+      "previous": "Меч · камень",
+      "official": "Каменный меч"
+    },
+    {
+      "id": "warped_button",
+      "previous": "Кнопка · искажённое дерево",
+      "official": "Искажённая кнопка"
+    },
+    {
+      "id": "warped_door",
+      "previous": "Дверь · искажённое дерево",
+      "official": "Искажённая дверь"
+    },
+    {
+      "id": "warped_fence",
+      "previous": "Забор · искажённое дерево",
+      "official": "Искажённый забор"
+    },
+    {
+      "id": "warped_fence_gate",
+      "previous": "Калитка · искажённое дерево",
+      "official": "Искажённые ворота"
+    },
+    {
+      "id": "warped_hanging_sign",
+      "previous": "Подвесная табличка · искажённое дерево",
+      "official": "Искажённая подвесная табличка"
+    },
+    {
+      "id": "warped_planks",
+      "previous": "Доски · искажённое дерево",
+      "official": "Искажённые доски"
+    },
+    {
+      "id": "warped_pressure_plate",
+      "previous": "Нажимная плита · искажённое дерево",
+      "official": "Искажённая нажимная пластина"
+    },
+    {
+      "id": "warped_sign",
+      "previous": "Табличка · искажённое дерево",
+      "official": "Искажённая табличка"
+    },
+    {
+      "id": "warped_slab",
+      "previous": "Плита · искажённое дерево",
+      "official": "Искажённая плита"
+    },
+    {
+      "id": "warped_stairs",
+      "previous": "Ступеньки · искажённое дерево",
+      "official": "Искажённые ступеньки"
+    },
+    {
+      "id": "warped_trapdoor",
+      "previous": "Люк · искажённое дерево",
+      "official": "Искажённый люк"
+    },
+    {
+      "id": "white_bed",
+      "previous": "Кровать · белый",
+      "official": "Белая кровать"
+    },
+    {
+      "id": "white_bundle",
+      "previous": "Мешок · белый",
+      "official": "Белый мешок"
+    },
+    {
+      "id": "white_candle",
+      "previous": "Свеча · белый",
+      "official": "Белая свеча"
+    },
+    {
+      "id": "white_carpet",
+      "previous": "Ковёр · белый",
+      "official": "Белый ковёр"
+    },
+    {
+      "id": "white_concrete",
+      "previous": "Бетон · белый",
+      "official": "Белый бетон"
+    },
+    {
+      "id": "white_concrete_powder",
+      "previous": "Сухой бетон · белый",
+      "official": "Белый сухой бетон"
+    },
+    {
+      "id": "white_dye",
+      "previous": "Краситель · белый",
+      "official": "Белый краситель"
+    },
+    {
+      "id": "white_glazed_terracotta",
+      "previous": "Глазурованная керамика · белый",
+      "official": "Белая глазурованная керамика"
+    },
+    {
+      "id": "white_harness",
+      "previous": "Упряжь · белый",
+      "official": "Белая упряжь"
+    },
+    {
+      "id": "white_shulker_box",
+      "previous": "Шалкеровый ящик · белый",
+      "official": "Белый шалкеровый ящик"
+    },
+    {
+      "id": "white_stained_glass",
+      "previous": "Стекло · белый",
+      "official": "Белое стекло"
+    },
+    {
+      "id": "white_stained_glass_pane",
+      "previous": "Стеклянная панель · белый",
+      "official": "Белая стеклянная панель"
+    },
+    {
+      "id": "white_terracotta",
+      "previous": "Керамика · белый",
+      "official": "Белая керамика"
+    },
+    {
+      "id": "white_wool",
+      "previous": "Шерсть · белый",
+      "official": "Белая шерсть"
+    },
+    {
+      "id": "wooden_axe",
+      "previous": "Топор · дерево",
+      "official": "Деревянный топор"
+    },
+    {
+      "id": "wooden_hoe",
+      "previous": "Мотыга · дерево",
+      "official": "Деревянная мотыга"
+    },
+    {
+      "id": "wooden_pickaxe",
+      "previous": "Кирка · дерево",
+      "official": "Деревянная кирка"
+    },
+    {
+      "id": "wooden_shovel",
+      "previous": "Лопата · дерево",
+      "official": "Деревянная лопата"
+    },
+    {
+      "id": "wooden_sword",
+      "previous": "Меч · дерево",
+      "official": "Деревянный меч"
+    },
+    {
+      "id": "written_book",
+      "previous": "Написанная книга",
+      "official": "Завершённая книга"
+    },
+    {
+      "id": "yellow_bed",
+      "previous": "Кровать · жёлтый",
+      "official": "Жёлтая кровать"
+    },
+    {
+      "id": "yellow_bundle",
+      "previous": "Мешок · жёлтый",
+      "official": "Жёлтый мешок"
+    },
+    {
+      "id": "yellow_candle",
+      "previous": "Свеча · жёлтый",
+      "official": "Жёлтая свеча"
+    },
+    {
+      "id": "yellow_carpet",
+      "previous": "Ковёр · жёлтый",
+      "official": "Жёлтый ковёр"
+    },
+    {
+      "id": "yellow_concrete",
+      "previous": "Бетон · жёлтый",
+      "official": "Жёлтый бетон"
+    },
+    {
+      "id": "yellow_concrete_powder",
+      "previous": "Сухой бетон · жёлтый",
+      "official": "Жёлтый сухой бетон"
+    },
+    {
+      "id": "yellow_dye",
+      "previous": "Краситель · жёлтый",
+      "official": "Жёлтый краситель"
+    },
+    {
+      "id": "yellow_glazed_terracotta",
+      "previous": "Глазурованная керамика · жёлтый",
+      "official": "Жёлтая глазурованная керамика"
+    },
+    {
+      "id": "yellow_harness",
+      "previous": "Упряжь · жёлтый",
+      "official": "Жёлтая упряжь"
+    },
+    {
+      "id": "yellow_shulker_box",
+      "previous": "Шалкеровый ящик · жёлтый",
+      "official": "Жёлтый шалкеровый ящик"
+    },
+    {
+      "id": "yellow_stained_glass",
+      "previous": "Стекло · жёлтый",
+      "official": "Жёлтое стекло"
+    },
+    {
+      "id": "yellow_stained_glass_pane",
+      "previous": "Стеклянная панель · жёлтый",
+      "official": "Жёлтая стеклянная панель"
+    },
+    {
+      "id": "yellow_terracotta",
+      "previous": "Керамика · жёлтый",
+      "official": "Жёлтая керамика"
+    },
+    {
+      "id": "yellow_wool",
+      "previous": "Шерсть · жёлтый",
+      "official": "Жёлтая шерсть"
+    }
+  ],
+  "generatedAt": "2026-10-17T05:40:31.625420+00:00"
+}

@@ -1,0 +1,19 @@
+{
+  "format": "anvil-region",
+  "sourceArchive": "copimine-map-preview.tar(1).gz",
+  "sourceSha256": "d2a955c51ee1938249045a05968a4344c9f426c4417e5e46d0188acb842261e2",
+  "chunks": 4096,
+  "bounds": {
+    "x": -512,
+    "z": -512,
+    "width": 1024,
+    "height": 1024
+  },
+  "dataVersions": {
+    "3955": 4096
+  },
+  "coverage": "Only four supplied region files, not the complete server world",
+  "render": "Surface block textures; padded long palette decoder; no live positions",
+  "image": "assets/img/map-world.webp",
+  "renderSeconds": 6.81
+}

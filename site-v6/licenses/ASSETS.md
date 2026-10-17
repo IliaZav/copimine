@@ -1,0 +1,3 @@
+# Asset notes
+CopiMine wordmark, user world screenshot and custom resource-pack textures come from supplied project materials/repository. Vanilla Minecraft GUI, skins, block/item textures and derived isometric thumbnails remain third-party intellectual property. Included for the user's local project review, not under a new open licence. Do not redistribute the original executable JAR, game code, unrelated assets or claim these textures are original artwork. Public production licensing/brand compliance must be verified by the owner.
+UI icons use the existing local SVG set based on Lucide; see ICONS.txt. No emoji glyphs or font binaries are bundled. No AI-generated photographs or maps are introduced in v5.

@@ -1,0 +1,1637 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "kind": "archive",
+    "label": "copimine-map-20261016-222730.tar.gz",
+    "snapshotStartedAt": "2026-10-17T05:25:47.716637+00:00",
+    "capturedAt": "2026-10-16T22:27:30",
+    "archive": "copimine-map-20261016-222730.tar.gz",
+    "sha256": "fee5838c92bc34e3821c1f618501544a6e286cca98489666896b533c7c7b9ad2",
+    "bytes": 781340456,
+    "archiveModifiedAt": "2026-10-16T15:32:19.806179+00:00",
+    "captureTimeSource": "archive-filename; timezone is unspecified",
+    "snapshotCompletedAt": "2026-10-17T05:30:40.112594+00:00",
+    "regionBytes": 1033584640,
+    "stableReadRetries": 0,
+    "externalChunkFiles": 0
+  },
+  "generatedAt": "2026-10-17T05:30:51.148687+00:00",
+  "tileSize": 512,
+  "dimensions": [
+    {
+      "id": "overworld",
+      "name": "Обычный мир",
+      "regionFiles": 173,
+      "savedChunks": 118501,
+      "chunks": 88136,
+      "skippedUnfinishedChunks": 30365,
+      "emptySurfaceChunks": 0,
+      "surfacePixels": 22562816,
+      "externalChunks": 0,
+      "dataVersions": {
+        "3955": 118501
+      },
+      "chunkStatuses": {
+        "minecraft:full": 82610,
+        "minecraft:structure_starts": 26285,
+        "minecraft:biomes": 3202,
+        "minecraft:carvers": 3194,
+        "minecraft:initialize_light": 3195,
+        "minecraft:noise": 4,
+        "minecraft:surface": 7,
+        "minecraft:features": 2,
+        "minecraft:structure_references": 2
+      },
+      "bounds": {
+        "minX": -10048,
+        "minZ": -10080,
+        "maxX": 4528,
+        "maxZ": 4720,
+        "width": 14576,
+        "height": 14800
+      },
+      "savedBounds": {
+        "minX": -10192,
+        "minZ": -10224,
+        "maxX": 4672,
+        "maxZ": 4864
+      },
+      "surfaceMinY": -41,
+      "surfaceMaxY": 216,
+      "sourceSpawn": {
+        "x": 0,
+        "y": 64,
+        "z": -32
+      },
+      "overview": "assets/map/overworld/overview.webp",
+      "overviewMetadata": {
+        "width": 1458,
+        "height": 1480,
+        "blocksPerPixel": 10
+      },
+      "tiles": {
+        "template": "assets/map/overworld/{zoom}/{x}/{z}.webp",
+        "tileSize": 512,
+        "minZoom": 0,
+        "maxZoom": 5,
+        "levels": [
+          {
+            "zoom": 0,
+            "blocksPerPixel": 32,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 1,
+            "blocksPerPixel": 16,
+            "tileCount": 6,
+            "coordinates": [
+              [
+                -2,
+                -2
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 2,
+            "blocksPerPixel": 8,
+            "tileCount": 12,
+            "coordinates": [
+              [
+                -3,
+                -3
+              ],
+              [
+                -2,
+                -3
+              ],
+              [
+                -2,
+                1
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ]
+            ]
+          },
+          {
+            "zoom": 3,
+            "blocksPerPixel": 4,
+            "tileCount": 22,
+            "coordinates": [
+              [
+                -5,
+                -5
+              ],
+              [
+                -3,
+                -5
+              ],
+              [
+                -3,
+                2
+              ],
+              [
+                -2,
+                -1
+              ],
+              [
+                -2,
+                0
+              ],
+              [
+                -2,
+                1
+              ],
+              [
+                -1,
+                -3
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                -1,
+                1
+              ],
+              [
+                0,
+                -3
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                -1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ],
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                2,
+                2
+              ]
+            ]
+          },
+          {
+            "zoom": 4,
+            "blocksPerPixel": 2,
+            "tileCount": 48,
+            "coordinates": [
+              [
+                -10,
+                -10
+              ],
+              [
+                -6,
+                -10
+              ],
+              [
+                -6,
+                4
+              ],
+              [
+                -5,
+                4
+              ],
+              [
+                -4,
+                -2
+              ],
+              [
+                -4,
+                -1
+              ],
+              [
+                -4,
+                3
+              ],
+              [
+                -3,
+                -2
+              ],
+              [
+                -3,
+                -1
+              ],
+              [
+                -3,
+                0
+              ],
+              [
+                -3,
+                2
+              ],
+              [
+                -2,
+                -3
+              ],
+              [
+                -2,
+                -2
+              ],
+              [
+                -2,
+                -1
+              ],
+              [
+                -2,
+                0
+              ],
+              [
+                -2,
+                1
+              ],
+              [
+                -2,
+                2
+              ],
+              [
+                -1,
+                -5
+              ],
+              [
+                -1,
+                -4
+              ],
+              [
+                -1,
+                -3
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                -1,
+                1
+              ],
+              [
+                -1,
+                2
+              ],
+              [
+                0,
+                -6
+              ],
+              [
+                0,
+                -5
+              ],
+              [
+                0,
+                -4
+              ],
+              [
+                0,
+                -3
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                1,
+                -2
+              ],
+              [
+                1,
+                -1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ],
+              [
+                1,
+                2
+              ],
+              [
+                2,
+                -1
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                2,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                3,
+                2
+              ],
+              [
+                3,
+                3
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                4,
+                3
+              ],
+              [
+                4,
+                4
+              ]
+            ]
+          },
+          {
+            "zoom": 5,
+            "blocksPerPixel": 1,
+            "tileCount": 138,
+            "coordinates": [
+              [
+                -20,
+                -20
+              ],
+              [
+                -12,
+                -20
+              ],
+              [
+                -11,
+                -20
+              ],
+              [
+                -11,
+                8
+              ],
+              [
+                -11,
+                9
+              ],
+              [
+                -10,
+                8
+              ],
+              [
+                -10,
+                9
+              ],
+              [
+                -8,
+                -4
+              ],
+              [
+                -8,
+                -3
+              ],
+              [
+                -8,
+                6
+              ],
+              [
+                -7,
+                -4
+              ],
+              [
+                -7,
+                -3
+              ],
+              [
+                -7,
+                -2
+              ],
+              [
+                -7,
+                6
+              ],
+              [
+                -6,
+                -4
+              ],
+              [
+                -6,
+                -3
+              ],
+              [
+                -6,
+                -2
+              ],
+              [
+                -6,
+                -1
+              ],
+              [
+                -6,
+                4
+              ],
+              [
+                -6,
+                5
+              ],
+              [
+                -5,
+                -4
+              ],
+              [
+                -5,
+                -3
+              ],
+              [
+                -5,
+                -2
+              ],
+              [
+                -5,
+                -1
+              ],
+              [
+                -5,
+                0
+              ],
+              [
+                -5,
+                1
+              ],
+              [
+                -5,
+                4
+              ],
+              [
+                -5,
+                5
+              ],
+              [
+                -4,
+                -4
+              ],
+              [
+                -4,
+                -3
+              ],
+              [
+                -4,
+                -2
+              ],
+              [
+                -4,
+                -1
+              ],
+              [
+                -4,
+                0
+              ],
+              [
+                -4,
+                1
+              ],
+              [
+                -4,
+                2
+              ],
+              [
+                -4,
+                5
+              ],
+              [
+                -3,
+                -5
+              ],
+              [
+                -3,
+                -4
+              ],
+              [
+                -3,
+                -3
+              ],
+              [
+                -3,
+                -2
+              ],
+              [
+                -3,
+                -1
+              ],
+              [
+                -3,
+                0
+              ],
+              [
+                -3,
+                1
+              ],
+              [
+                -3,
+                2
+              ],
+              [
+                -3,
+                3
+              ],
+              [
+                -2,
+                -5
+              ],
+              [
+                -2,
+                -4
+              ],
+              [
+                -2,
+                -3
+              ],
+              [
+                -2,
+                -2
+              ],
+              [
+                -2,
+                -1
+              ],
+              [
+                -2,
+                0
+              ],
+              [
+                -2,
+                1
+              ],
+              [
+                -2,
+                2
+              ],
+              [
+                -2,
+                3
+              ],
+              [
+                -2,
+                4
+              ],
+              [
+                -1,
+                -9
+              ],
+              [
+                -1,
+                -8
+              ],
+              [
+                -1,
+                -7
+              ],
+              [
+                -1,
+                -6
+              ],
+              [
+                -1,
+                -5
+              ],
+              [
+                -1,
+                -4
+              ],
+              [
+                -1,
+                -3
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                -1,
+                1
+              ],
+              [
+                -1,
+                2
+              ],
+              [
+                -1,
+                3
+              ],
+              [
+                -1,
+                4
+              ],
+              [
+                0,
+                -12
+              ],
+              [
+                0,
+                -11
+              ],
+              [
+                0,
+                -10
+              ],
+              [
+                0,
+                -9
+              ],
+              [
+                0,
+                -8
+              ],
+              [
+                0,
+                -7
+              ],
+              [
+                0,
+                -6
+              ],
+              [
+                0,
+                -5
+              ],
+              [
+                0,
+                -4
+              ],
+              [
+                0,
+                -3
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                0,
+                1
+              ],
+              [
+                0,
+                2
+              ],
+              [
+                0,
+                3
+              ],
+              [
+                1,
+                -12
+              ],
+              [
+                1,
+                -11
+              ],
+              [
+                1,
+                -10
+              ],
+              [
+                1,
+                -9
+              ],
+              [
+                1,
+                -8
+              ],
+              [
+                1,
+                -7
+              ],
+              [
+                1,
+                -6
+              ],
+              [
+                1,
+                -5
+              ],
+              [
+                1,
+                -4
+              ],
+              [
+                1,
+                -3
+              ],
+              [
+                1,
+                -2
+              ],
+              [
+                1,
+                -1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                1,
+                1
+              ],
+              [
+                1,
+                2
+              ],
+              [
+                1,
+                3
+              ],
+              [
+                2,
+                -3
+              ],
+              [
+                2,
+                -2
+              ],
+              [
+                2,
+                -1
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                2,
+                1
+              ],
+              [
+                2,
+                2
+              ],
+              [
+                2,
+                3
+              ],
+              [
+                2,
+                4
+              ],
+              [
+                3,
+                -2
+              ],
+              [
+                3,
+                -1
+              ],
+              [
+                3,
+                0
+              ],
+              [
+                3,
+                1
+              ],
+              [
+                3,
+                2
+              ],
+              [
+                3,
+                3
+              ],
+              [
+                3,
+                4
+              ],
+              [
+                4,
+                -1
+              ],
+              [
+                4,
+                0
+              ],
+              [
+                4,
+                1
+              ],
+              [
+                4,
+                2
+              ],
+              [
+                4,
+                3
+              ],
+              [
+                4,
+                4
+              ],
+              [
+                4,
+                5
+              ],
+              [
+                4,
+                6
+              ],
+              [
+                5,
+                3
+              ],
+              [
+                5,
+                4
+              ],
+              [
+                5,
+                5
+              ],
+              [
+                5,
+                6
+              ],
+              [
+                6,
+                4
+              ],
+              [
+                6,
+                5
+              ],
+              [
+                6,
+                6
+              ],
+              [
+                6,
+                7
+              ],
+              [
+                7,
+                6
+              ],
+              [
+                7,
+                7
+              ],
+              [
+                7,
+                8
+              ],
+              [
+                7,
+                9
+              ],
+              [
+                8,
+                7
+              ],
+              [
+                8,
+                8
+              ]
+            ]
+          }
+        ],
+        "coordinateFormula": "worldX = tileX * 512 * blocksPerPixel; worldZ = tileZ * 512 * blocksPerPixel"
+      },
+      "renderMode": "saved-world-surface",
+      "renderDescription": "Highest non-air block from WORLD_SURFACE heightmap; no underground scan."
+    },
+    {
+      "id": "nether",
+      "name": "Нижний мир",
+      "regionFiles": 32,
+      "savedChunks": 18317,
+      "chunks": 11723,
+      "skippedUnfinishedChunks": 6514,
+      "emptySurfaceChunks": 80,
+      "surfacePixels": 2837158,
+      "externalChunks": 0,
+      "dataVersions": {
+        "3955": 18317
+      },
+      "chunkStatuses": {
+        "minecraft:structure_starts": 5592,
+        "minecraft:biomes": 668,
+        "minecraft:carvers": 660,
+        "minecraft:initialize_light": 654,
+        "minecraft:full": 10743
+      },
+      "bounds": {
+        "minX": -1408,
+        "minZ": -1040,
+        "maxX": 1968,
+        "maxZ": 384,
+        "width": 3376,
+        "height": 1424
+      },
+      "savedBounds": {
+        "minX": -1552,
+        "minZ": -1184,
+        "maxX": 2112,
+        "maxZ": 528
+      },
+      "surfaceMinY": 13,
+      "surfaceMaxY": 116,
+      "sourceSpawn": {
+        "x": 0,
+        "y": 66,
+        "z": 1
+      },
+      "overview": "assets/map/nether/overview.webp",
+      "overviewMetadata": {
+        "width": 1126,
+        "height": 475,
+        "blocksPerPixel": 3
+      },
+      "tiles": {
+        "template": "assets/map/nether/{zoom}/{x}/{z}.webp",
+        "tileSize": 512,
+        "minZoom": 0,
+        "maxZoom": 5,
+        "levels": [
+          {
+            "zoom": 0,
+            "blocksPerPixel": 32,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 1,
+            "blocksPerPixel": 16,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 2,
+            "blocksPerPixel": 8,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 3,
+            "blocksPerPixel": 4,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 4,
+            "blocksPerPixel": 2,
+            "tileCount": 9,
+            "coordinates": [
+              [
+                -2,
+                -1
+              ],
+              [
+                -2,
+                0
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                -1
+              ],
+              [
+                1,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 5,
+            "blocksPerPixel": 1,
+            "tileCount": 22,
+            "coordinates": [
+              [
+                -3,
+                -2
+              ],
+              [
+                -3,
+                -1
+              ],
+              [
+                -3,
+                0
+              ],
+              [
+                -2,
+                -2
+              ],
+              [
+                -2,
+                -1
+              ],
+              [
+                -2,
+                0
+              ],
+              [
+                -1,
+                -2
+              ],
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -3
+              ],
+              [
+                0,
+                -2
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ],
+              [
+                1,
+                -3
+              ],
+              [
+                1,
+                -2
+              ],
+              [
+                1,
+                -1
+              ],
+              [
+                1,
+                0
+              ],
+              [
+                2,
+                -2
+              ],
+              [
+                2,
+                -1
+              ],
+              [
+                2,
+                0
+              ],
+              [
+                3,
+                -1
+              ],
+              [
+                3,
+                0
+              ]
+            ]
+          }
+        ],
+        "coordinateFormula": "worldX = tileX * 512 * blocksPerPixel; worldZ = tileZ * 512 * blocksPerPixel"
+      },
+      "renderMode": "nether-floor-below-roof",
+      "renderDescription": "Roof hidden; first saved floor below 4 consecutive air blocks, scanned from Y=120 down."
+    },
+    {
+      "id": "end",
+      "name": "Край",
+      "regionFiles": 4,
+      "savedChunks": 841,
+      "chunks": 81,
+      "skippedUnfinishedChunks": 760,
+      "emptySurfaceChunks": 0,
+      "surfacePixels": 20689,
+      "externalChunks": 0,
+      "dataVersions": {
+        "3955": 841
+      },
+      "chunkStatuses": {
+        "minecraft:structure_starts": 672,
+        "minecraft:biomes": 48,
+        "minecraft:carvers": 40,
+        "minecraft:initialize_light": 32,
+        "minecraft:full": 49
+      },
+      "bounds": {
+        "minX": -64,
+        "minZ": -64,
+        "maxX": 80,
+        "maxZ": 80,
+        "width": 144,
+        "height": 144
+      },
+      "savedBounds": {
+        "minX": -224,
+        "minZ": -224,
+        "maxX": 240,
+        "maxZ": 240
+      },
+      "surfaceMinY": 32,
+      "surfaceMaxY": 104,
+      "sourceSpawn": {
+        "x": 0,
+        "y": 64,
+        "z": 0
+      },
+      "overview": "assets/map/end/overview.webp",
+      "overviewMetadata": {
+        "width": 144,
+        "height": 144,
+        "blocksPerPixel": 1
+      },
+      "tiles": {
+        "template": "assets/map/end/{zoom}/{x}/{z}.webp",
+        "tileSize": 512,
+        "minZoom": 0,
+        "maxZoom": 5,
+        "levels": [
+          {
+            "zoom": 0,
+            "blocksPerPixel": 32,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 1,
+            "blocksPerPixel": 16,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 2,
+            "blocksPerPixel": 8,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 3,
+            "blocksPerPixel": 4,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 4,
+            "blocksPerPixel": 2,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          },
+          {
+            "zoom": 5,
+            "blocksPerPixel": 1,
+            "tileCount": 4,
+            "coordinates": [
+              [
+                -1,
+                -1
+              ],
+              [
+                -1,
+                0
+              ],
+              [
+                0,
+                -1
+              ],
+              [
+                0,
+                0
+              ]
+            ]
+          }
+        ],
+        "coordinateFormula": "worldX = tileX * 512 * blocksPerPixel; worldZ = tileZ * 512 * blocksPerPixel"
+      },
+      "renderMode": "saved-world-surface",
+      "renderDescription": "Highest non-air block from WORLD_SURFACE heightmap; no underground scan."
+    }
+  ],
+  "renderSeconds": 303.43,
+  "renderer": "CopiMine sparse Anvil surface renderer 1.1",
+  "errors": 0,
+  "coverage": "All selected saved region files. Transparent pixels are absent, empty or unfinished terrain; no generated estimates.",
+  "privacy": "No player identities, locations, entities, inventory, block entities, POI, seed or raw region data exported.",
+  "colorNotes": "Average block texture colors, generic foliage/water colors, directional elevation shading; biome tints are approximate.",
+  "unmatchedBlockColors": {
+    "pointed_dripstone": 94840,
+    "moss_carpet": 10954,
+    "infested_stone": 9060,
+    "infested_deepslate": 8599,
+    "bamboo": 6467,
+    "waxed_oxidized_cut_copper_stairs": 5088,
+    "waxed_copper_block": 4665,
+    "chest": 4627,
+    "wall_torch": 4438,
+    "waxed_copper_bulb": 3843,
+    "waxed_oxidized_copper": 3726,
+    "waxed_oxidized_cut_copper": 2886,
+    "fire": 2851,
+    "waxed_exposed_copper_bulb": 2674,
+    "waxed_weathered_copper_bulb": 2610,
+    "waxed_chiseled_copper": 2060,
+    "cocoa": 2038,
+    "waxed_copper_grate": 1959,
+    "dispenser": 1749,
+    "chain": 1660,
+    "decorated_pot": 1455,
+    "waxed_oxidized_copper_bulb": 1347,
+    "waxed_oxidized_copper_grate": 1076,
+    "waxed_cut_copper_slab": 1011,
+    "trial_spawner": 915,
+    "waxed_cut_copper": 841,
+    "waxed_oxidized_copper_door": 719,
+    "soul_fire": 622,
+    "brain_coral_wall_fan": 438,
+    "bubble_coral_wall_fan": 435,
+    "tube_coral_wall_fan": 430,
+    "horn_coral_wall_fan": 423,
+    "waxed_oxidized_copper_trapdoor": 411,
+    "fire_coral_wall_fan": 410,
+    "potted_dead_bush": 330,
+    "sweet_berry_bush": 312,
+    "waxed_cut_copper_stairs": 275,
+    "wheat": 268,
+    "redstone_wire": 229,
+    "suspicious_gravel": 228,
+    "white_bed": 216,
+    "red_bed": 118,
+    "infested_stone_bricks": 114,
+    "green_bed": 98,
+    "blue_bed": 86,
+    "waxed_oxidized_cut_copper_slab": 86,
+    "waxed_copper_door": 80,
+    "purple_bed": 78,
+    "waxed_oxidized_chiseled_copper": 67,
+    "carrots": 67,
+    "potatoes": 64,
+    "stripped_spruce_wood": 62,
+    "yellow_bed": 54,
+    "gray_carpet": 51,
+    "brown_bed": 50,
+    "magenta_bed": 48,
+    "stripped_oak_wood": 42,
+    "redstone_wall_torch": 42,
+    "suspicious_sand": 37,
+    "nether_wart": 32,
+    "sticky_piston": 31,
+    "acacia_wood": 28,
+    "campfire": 25,
+    "cyan_carpet": 23,
+    "light_blue_carpet": 23,
+    "mangrove_wood": 20,
+    "skeleton_skull": 19,
+    "blue_carpet": 18,
+    "beetroots": 17,
+    "brown_wall_banner": 16,
+    "orange_bed": 12,
+    "water_cauldron": 11,
+    "white_carpet": 9,
+    "red_carpet": 7,
+    "red_wall_banner": 6,
+    "yellow_carpet": 5,
+    "purple_carpet": 5,
+    "potted_dandelion": 4,
+    "white_wall_banner": 4,
+    "piston_head": 4,
+    "smooth_quartz_slab": 4,
+    "potted_red_mushroom": 3,
+    "light_gray_carpet": 2,
+    "orange_carpet": 2,
+    "infested_mossy_stone_bricks": 2,
+    "potted_spruce_sapling": 2,
+    "green_carpet": 2,
+    "piglin_wall_head": 2,
+    "spruce_wood": 2,
+    "smooth_quartz": 2,
+    "infested_chiseled_stone_bricks": 1,
+    "potted_cactus": 1,
+    "infested_cracked_stone_bricks": 1,
+    "potted_cherry_sapling": 1,
+    "creeper_head": 1,
+    "potted_birch_sapling": 1
+  }
+}

@@ -1,0 +1,181 @@
+{
+  "player": "DemoBuilder",
+  "source": "example",
+  "at": 1792137600000,
+  "items": [
+    {
+      "slot": 0,
+      "id": "minecraft:diamond_pickaxe",
+      "qty": 1,
+      "durability": 0.78,
+      "name": "",
+      "enchantments": {
+        "efficiency": 5,
+        "unbreaking": 3
+      },
+      "customId": null
+    },
+    {
+      "slot": 1,
+      "id": "minecraft:stone",
+      "qty": 64,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 2,
+      "id": "minecraft:torch",
+      "qty": 32,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 3,
+      "id": "minecraft:cooked_beef",
+      "qty": 16,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 4,
+      "id": "minecraft:water_bucket",
+      "qty": 1,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 8,
+      "id": "minecraft:bow",
+      "qty": 1,
+      "durability": 0.65,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 9,
+      "id": "minecraft:oak_log",
+      "qty": 32,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 10,
+      "id": "minecraft:iron_ingot",
+      "qty": 14,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 11,
+      "id": "minecraft:diamond",
+      "qty": 6,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 12,
+      "id": "minecraft:emerald",
+      "qty": 3,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 18,
+      "id": "minecraft:bread",
+      "qty": 12,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 20,
+      "id": "minecraft:arrow",
+      "qty": 64,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 22,
+      "id": "minecraft:glass_bottle",
+      "qty": 8,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 27,
+      "id": "minecraft:redstone",
+      "qty": 34,
+      "durability": null,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 36,
+      "id": "minecraft:iron_boots",
+      "qty": 1,
+      "durability": 0.85,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 37,
+      "id": "minecraft:iron_leggings",
+      "qty": 1,
+      "durability": 0.88,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 38,
+      "id": "minecraft:diamond_chestplate",
+      "qty": 1,
+      "durability": 0.9,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 39,
+      "id": "minecraft:diamond_helmet",
+      "qty": 1,
+      "durability": 0.75,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    },
+    {
+      "slot": 40,
+      "id": "minecraft:shield",
+      "qty": 1,
+      "durability": 0.74,
+      "name": "",
+      "enchantments": {},
+      "customId": null
+    }
+  ]
+}

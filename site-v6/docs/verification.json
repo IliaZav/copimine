@@ -1,0 +1,362 @@
+{
+  "browser": {
+    "passed": [
+      "31 public catalogue items / private items excluded",
+      "Persistent header and admin top",
+      "Live function results / wrong keyboard / opening result",
+      "Player dropdown with heads / empty snapshot not fabricated",
+      "Native inventory armor offhand quantity details",
+      "Import actual snapshot JSON / selected player validation",
+      "Offline skin PNG import / head and body from same texture",
+      "Action preserves scroll; no reload",
+      "Formatted Russian actions and grouped technical stack traces",
+      "Log import multiline redaction",
+      "Live local event updates / pause / resume without refresh",
+      "Recipe material picker RU EN ID / quantities / save / publish",
+      "Private plugin actions remain in administration",
+      "One-time recovery / local outbox / cannot replay",
+      "Player nomination / programme / administrative review page",
+      "Surface map from archive covers four regions",
+      "1440px home: no horizontal overflow",
+      "1440px home: no broken images",
+      "1440px player: no horizontal overflow",
+      "1440px player: no broken images",
+      "1440px logs: no horizontal overflow",
+      "1440px logs: no broken images",
+      "1440px recipes: no horizontal overflow",
+      "1440px recipes: no broken images",
+      "1440px shop: no horizontal overflow",
+      "1440px shop: no broken images",
+      "1440px elections: no horizontal overflow",
+      "1440px elections: no broken images",
+      "1440px register: no horizontal overflow",
+      "1440px register: no broken images",
+      "1440px material picker: no broken images",
+      "768px home: no horizontal overflow",
+      "768px home: no broken images",
+      "768px player: no horizontal overflow",
+      "768px player: no broken images",
+      "768px logs: no horizontal overflow",
+      "768px logs: no broken images",
+      "768px recipes: no horizontal overflow",
+      "768px recipes: no broken images",
+      "768px shop: no horizontal overflow",
+      "768px shop: no broken images",
+      "768px elections: no horizontal overflow",
+      "768px elections: no broken images",
+      "768px register: no horizontal overflow",
+      "768px register: no broken images",
+      "768px material picker: no broken images",
+      "390px home: no horizontal overflow",
+      "390px home: no broken images",
+      "390px player: no horizontal overflow",
+      "390px player: no broken images",
+      "390px logs: no horizontal overflow",
+      "390px logs: no broken images",
+      "390px recipes: no horizontal overflow",
+      "390px recipes: no broken images",
+      "390px shop: no horizontal overflow",
+      "390px shop: no broken images",
+      "390px elections: no horizontal overflow",
+      "390px elections: no broken images",
+      "390px register: no horizontal overflow",
+      "390px register: no broken images",
+      "390px material picker: no broken images"
+    ],
+    "failed": [],
+    "runtimeErrors": []
+  },
+  "routeCoverage": {
+    "features": 41,
+    "aliases": 675,
+    "checks": [
+      {
+        "route": "admin/players?sub=profile",
+        "pass": true,
+        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
+      },
+      {
+        "route": "admin/players?sub=inventory",
+        "pass": true,
+        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
+      },
+      {
+        "route": "admin/players?sub=activity",
+        "pass": true,
+        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
+      },
+      {
+        "route": "admin/players?sub=access",
+        "pass": true,
+        "heading": "Игроки\nDemoBuilder\nПрофиль\nИнвентарь\nДействия\nПомощь со входом\nЗаявки на доступ\nDemoBuilder\n\nСтандар"
+      },
+      {
+        "route": "admin/players?sub=whitelist",
+        "pass": true,
+        "heading": "Игроки\nПрофили\nИнвентари\nДоступ на сервер\n\nЗаявка → решение → очередь синхронизации с сервером.\n\nСоз"
+      },
+      {
+        "route": "admin/shop?sub=catalog",
+        "pass": true,
+        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n41 предметов\nНовый товар\nПредмет\tКатегория\tЦена\tПуб"
+      },
+      {
+        "route": "admin/shop?sub=orders",
+        "pass": true,
+        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n2 записей\nЗаказ / получатель\tПредмет\tСумма\tСтатус\t\n"
+      },
+      {
+        "route": "admin/shop?sub=delivery",
+        "pass": true,
+        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\n1 записей\nЗаказ / получатель\tПредмет\tСумма\tСтатус\t\n"
+      },
+      {
+        "route": "admin/shop?sub=history",
+        "pass": true,
+        "heading": "Магазин\nВ магазин\nКаталог\nВсе заказы\nВыдача\nЦены\nДата\tТовар\tБыло\tСтало\tПричина\nЗаписей пока нет."
+      },
+      {
+        "route": "admin/finance?sub=accounts",
+        "pass": true,
+        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nИгрок\tAR\tCM\t\nDemoBuilder\t1 800 AR\t1 200 CM\t\nОперация\nDemoTrader\t6"
+      },
+      {
+        "route": "admin/finance?sub=payments",
+        "pass": true,
+        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\n\nПовторное подтверждение не зачисляет деньги второй раз.\n\nСтраниц"
+      },
+      {
+        "route": "admin/finance?sub=ledger",
+        "pass": true,
+        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nВремя\tИгрок\tИзменение\tОснование\nЗаписей пока нет."
+      },
+      {
+        "route": "admin/finance?sub=treasury",
+        "pass": true,
+        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nКазна\nБАЛАНС AR\n0\nДобавить операцию\n\nКаждая правка — отдельная за"
+      },
+      {
+        "route": "admin/world?sub=map",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\nКарта и зоны\n\nРедактиро"
+      },
+      {
+        "route": "admin/world?sub=elections",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта\nСобытия\nВыборы\nЗаконы\nТочки\nВыборы\n\nНовая кампания: заявки, провер"
+      },
+      {
+        "route": "admin/world?sub=laws",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nСогласованные тексты и"
+      },
+      {
+        "route": "admin/world?sub=events",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nАнонсы отдельно от вну"
+      },
+      {
+        "route": "admin/world?sub=points",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта и зоны\nСобытия\nВыборы\nЗаконы\nИгровые точки\n\nБанкоматы, лавки и точ"
+      },
+      {
+        "route": "admin/moderation?sub=tickets",
+        "pass": true,
+        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\nВсе\nНовые\nВ работе\nЗакрытые\n2 обращений\nОбращен"
+      },
+      {
+        "route": "admin/moderation?sub=cases",
+        "pass": true,
+        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\n\nФакты, область проверки и решение в одном деле"
+      },
+      {
+        "route": "admin/moderation?sub=anticheat",
+        "pass": true,
+        "heading": "Модерация\nОбращения\nРасследования\nБлокировки\nАнтичит\n\nСигнал не равен доказанному нарушению.\n\nИмпорт"
+      },
+      {
+        "route": "admin/logs",
+        "pass": true,
+        "heading": "Журналы\nДействия\nТехнические\nИмпорт\nЭкспорт\nВсе игроки\nDemoTrader\nDemoBuilder\nВсе источники\nCopiMine"
+      },
+      {
+        "route": "admin/recipes",
+        "pass": true,
+        "heading": "Рецепты\nРецепты\nДействия плагина\nРецепты\n\nПока пусто.\n\nИмпорт JSON\nНовый рецепт\n\nВыбери ингредиенты,"
+      },
+      {
+        "route": "admin/recipes?sub=events",
+        "pass": true,
+        "heading": "Рецепты\nРецепты\nДействия плагина\nДействия\nТехнические\nИмпорт\nЭкспорт\nВсе игроки\nDemoTrader\nDemoBuild"
+      },
+      {
+        "route": "admin/content?sub=pages&id=rules",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nСтраницы\nПравила се"
+      },
+      {
+        "route": "admin/content?sub=gallery",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nНастоящие скриншот"
+      },
+      {
+        "route": "admin/content?sub=faq",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nОпубликованные воп"
+      },
+      {
+        "route": "admin/content?sub=home",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nПервый экран\nЗаголо"
+      },
+      {
+        "route": "admin/content?sub=downloads",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nАрхив модов\n\nCopiMi"
+      },
+      {
+        "route": "admin/content?sub=links",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nСообщество\nID серве"
+      },
+      {
+        "route": "admin/statistics",
+        "pass": true,
+        "heading": "Статистика\nМагазин\nПоддержка\nСервер\n7 дней\n30 дней\n90 дней\nCSV\nИсточник: записи локальной базы прото"
+      },
+      {
+        "route": "admin/access",
+        "pass": true,
+        "heading": "Команда и доступ\nУчастники\nПрава ролей\nСессии и политика\nАудит\nУчастник\tРоль\tДоступ\t\nDemoAdmin\tВладе"
+      },
+      {
+        "route": "admin/access?sub=audit",
+        "pass": true,
+        "heading": "Команда и доступ\nУчастники\nПрава ролей\nСессии и политика\nАудит\nЭкспорт журнала\nВремя\tАвтор\tДействие\t"
+      },
+      {
+        "route": "admin/access?sub=messages",
+        "pass": true,
+        "heading": "Команда и доступ\nКоманда\nПочта и SMS\nПисьма и SMS\n\nЛокальный просмотр. Ни одно сообщение не отправле"
+      },
+      {
+        "route": "admin/system?sub=notifications",
+        "pass": true,
+        "heading": "Система\nПочта и SMS\n\nОтправка выключена. Ключи и пароли задаются на сервере, не в HTML.\n\nSMTP\nНе под"
+      },
+      {
+        "route": "admin/system?sub=plugins",
+        "pass": true,
+        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nЭкономика\n\nОсновные ограничения операций "
+      },
+      {
+        "route": "admin/system?sub=jobs",
+        "pass": true,
+        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\n\nПовторная попытка создаёт запись. Действ"
+      },
+      {
+        "route": "admin/system?sub=backups",
+        "pass": true,
+        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nРезервная копия прототипа\n\nКаталог, стран"
+      },
+      {
+        "route": "admin/system?sub=integrations",
+        "pass": true,
+        "heading": "Система\nПодключения\nПлагины\nЗадания\nЖурнал\nРезервные копии\nИнтеграции\nMinecraft\n\nСобытия, выдача, мо"
+      },
+      {
+        "route": "admin/world?sub=elections",
+        "pass": true,
+        "heading": "Мир и карта\nПубличная карта\nКарта\nСобытия\nВыборы\nЗаконы\nТочки\nВыборы\n\nНовая кампания: заявки, провер"
+      },
+      {
+        "route": "admin/finance?sub=treasury",
+        "pass": true,
+        "heading": "Финансы\nСчета\nПлатежи\nЖурнал\nКазна\nКазна\nБАЛАНС AR\n0\nДобавить операцию\n\nКаждая правка — отдельная за"
+      },
+      {
+        "route": "admin/content?sub=gallery",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\n\nНастоящие скриншот"
+      },
+      {
+        "route": "admin/content?sub=downloads",
+        "pass": true,
+        "heading": "Контент\nОткрыть сайт\nСтраницы\nГлавная\nГалерея\nВопросы\nНавигация\nЗагрузки\nDiscord\nАрхив модов\n\nCopiMi"
+      },
+      {
+        "route": "settings/contacts",
+        "pass": true,
+        "heading": "Настройки\n\nПрофиль, способы входа и устройства.\n\nВ кабинет\nПрофиль\nСпособы входа\nУстройства\nИнтерфей"
+      },
+      {
+        "route": "settings/devices",
+        "pass": true,
+        "heading": "Настройки\n\nПрофиль, способы входа и устройства.\n\nВ кабинет\nПрофиль\nСпособы входа\nУстройства\nИнтерфей"
+      },
+      {
+        "route": "account",
+        "pass": true,
+        "heading": "Привет, DemoBuilder.\n\nПокупки, баланс и ответы команды — здесь.\n\nВыйти\nОбзор\nПокупки\nПлатежи\nОбращен"
+      },
+      {
+        "route": "account/elections",
+        "pass": true,
+        "heading": "Выборы\nОбзор\nПокупки\nПлатежи\nОбращения\nВыборы\nКазна\nНастройки\nВыборы пока не объявлены\n\nЗдесь появят"
+      },
+      {
+        "route": "account/treasury",
+        "pass": true,
+        "heading": "Казна\nОбзор\nПокупки\nПлатежи\nОбращения\nВыборы\nКазна\nНастройки\nНА СЧЁТЕ\n0 AR\n\nДанные локального протот"
+      },
+      {
+        "route": "account/support",
+        "pass": true,
+        "heading": "Привет, DemoBuilder.\n\nПокупки, баланс и ответы команды — здесь.\n\nВыйти\nОбзор\nПокупки\nПлатежи\nОбращен"
+      },
+      {
+        "route": "cart",
+        "pass": true,
+        "heading": "Корзина\n\nЗдесь будут выбранные предметы.\n\nПродолжить выбор\nКорзина пуста\n\nДобавь предметы из магазин"
+      },
+      {
+        "route": "donate",
+        "pass": true,
+        "heading": "Донат\n\nПополнение CM для покупок в магазине.\n\nИстория платежей\nСколько CM добавить?\n\nСумма и получат"
+      },
+      {
+        "route": "map",
+        "pass": true,
+        "heading": "Карта мира\n\nОриентиры, города и общие территории.\n\nСнимок, не прямой эфир\n\nПубликация каждые 12 часо"
+      },
+      {
+        "route": "auth/register",
+        "pass": true,
+        "heading": "Один аккаунт\nдля CopiMine\n\nПокупки, обращения и вход в игру.\n\nИстория заказов\nПодключённые устройств"
+      },
+      {
+        "route": "home",
+        "pass": true,
+        "heading": "Строй. Торгуй.\nИграй с друзьями.\n\nMinecraft-сервер с экономикой, выборами и событиями.\n\nНачать играт"
+      },
+      {
+        "route": "legacy-transfer-audit-bridge",
+        "pass": true
+      },
+      {
+        "route": "sidebar-exits-live-search",
+        "pass": true
+      }
+    ],
+    "runtimeErrors": []
+  },
+  "additional": {
+    "checks": [
+      "Mobile C: 40x40 contain, native proportions preserved",
+      "Imported log action and event modal escape hostile metadata",
+      "Confirmed logout, cancel logout, registration remember option"
+    ],
+    "errors": []
+  }
+}

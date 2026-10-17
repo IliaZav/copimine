@@ -1,0 +1,12 @@
+{
+  "repository": "IliaZav/copimine",
+  "ref": "codex/site-launcher-audit",
+  "blob": "8d564579d1b10dd44edce6b409e8951abf93bd28",
+  "sourceKind": "reviewed-source-snapshot-not-live-database",
+  "total": 41,
+  "public": 31,
+  "removed": [
+    "gde_moy_lut_blyat_compass"
+  ],
+  "note": "Display names normalized; private recipe notes and admin items excluded from public storefront. No event branch merge."
+}

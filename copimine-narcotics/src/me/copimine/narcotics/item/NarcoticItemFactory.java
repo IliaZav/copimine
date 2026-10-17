@@ -21,11 +21,9 @@ import java.util.UUID;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 import java.util.Base64;
 
 public final class NarcoticItemFactory {
@@ -39,7 +37,7 @@ public final class NarcoticItemFactory {
     private final NamespacedKey signatureVersionKey;
     private final NamespacedKey narcoticSignatureKey;
     private final NarcoticsDatabase database;
-    private final byte[] signingSecret;
+    private final NarcoticSigningKeyring signingKeyring;
     private static final int LEGACY_SIGNATURE_VERSION = 1;
     private static final int STACK_SIGNATURE_VERSION = 2;
 
@@ -48,7 +46,7 @@ public final class NarcoticItemFactory {
         this.plugin = plugin;
         this.configService = configService;
         this.database = database;
-        this.signingSecret = loadSigningSecret(plugin);
+        this.signingKeyring = loadSigningKeyring(plugin);
         itemTypeKey = new NamespacedKey(plugin, "copimine_item_type");
         narcoticIdKey = new NamespacedKey(plugin, "narcotic_id");
         versionKey = new NamespacedKey(plugin, "narcotic_version");
@@ -162,9 +160,8 @@ public final class NarcoticItemFactory {
                 return null;
             }
         }
-        String expected = sign(instanceId, definition.id(), stack.getType(), version,
-                stackIdentity ? STACK_SIGNATURE_VERSION : LEGACY_SIGNATURE_VERSION);
-        if (!MessageDigest.isEqual(expected.getBytes(StandardCharsets.UTF_8), signature.getBytes(StandardCharsets.UTF_8))) {
+        if (!hasValidSignature(instanceId, definition.id(), stack.getType(), version,
+                stackIdentity ? STACK_SIGNATURE_VERSION : LEGACY_SIGNATURE_VERSION, signature)) {
             return null;
         }
         return definition;
@@ -471,44 +468,65 @@ public final class NarcoticItemFactory {
     }
 
     private String sign(String instanceId, String narcoticId, Material material, int version, int signatureVersion) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(signingSecret, "HmacSHA256"));
-            String payload = instanceId + "|" + narcoticId + "|" + material.name() + "|" + version
-                    + "|signature-v" + signatureVersion;
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(
-                    mac.doFinal(payload.getBytes(StandardCharsets.UTF_8)));
-        } catch (Exception error) {
-            throw new IllegalStateException("Narcotic signing is unavailable; refusing to issue an item.", error);
-        }
+        return signingKeyring.sign(signaturePayload(instanceId, narcoticId, material, version, signatureVersion));
+    }
+
+    private boolean hasValidSignature(String instanceId, String narcoticId, Material material,
+                                      int version, int signatureVersion, String actual) {
+        return signingKeyring.verify(
+                signaturePayload(instanceId, narcoticId, material, version, signatureVersion), actual);
+    }
+
+    private String signaturePayload(String instanceId, String narcoticId, Material material,
+                                    int version, int signatureVersion) {
+        return instanceId + "|" + narcoticId + "|" + material.name() + "|" + version
+                + "|signature-v" + signatureVersion;
     }
 
     private String stackIdentity(NarcoticDefinition definition, int version) {
         return "NARCOTIC_STACK:" + definition.id() + ":v" + version;
     }
 
-    private byte[] loadSigningSecret(CopiMineNarcotics plugin) {
+    private NarcoticSigningKeyring loadSigningKeyring(CopiMineNarcotics plugin) {
         String configured = System.getenv("COPIMINE_NARCOTICS_SIGNING_SECRET");
+        String primaryEncoded;
+        String primarySource;
         if (configured != null && !configured.isBlank()) {
-            try {
-                byte[] decoded = Base64.getDecoder().decode(configured.trim());
-                if (decoded.length >= 32) {
-                    return decoded;
-                }
-            } catch (IllegalArgumentException ignored) {
-                // Do not use a malformed or weak environment value.
+            primaryEncoded = configured;
+            primarySource = "COPIMINE_NARCOTICS_SIGNING_SECRET";
+        } else {
+            Path durable = configuredPath(
+                    "COPIMINE_NARCOTICS_SIGNING_SECRET_FILE",
+                    "/var/lib/copimine/narcotics-signing-secret.b64");
+            primaryEncoded = readSigningSecret(durable);
+            if (primaryEncoded == null) {
+                primaryEncoded = loadOrGenerateLocalSecret(plugin);
+                primarySource = plugin.getDataFolder().toPath().resolve("narcotics-signing-secret.b64").toString();
+            } else {
+                primarySource = durable.toString();
             }
-            throw new IllegalStateException("COPIMINE_NARCOTICS_SIGNING_SECRET must be base64 and at least 32 bytes.");
         }
+
+        Path legacy = configuredPath(
+                "COPIMINE_NARCOTICS_SIGNING_LEGACY_SECRETS_FILE",
+                "/var/lib/copimine/narcotics-signing-legacy.b64");
+        try {
+            List<String> legacyKeys = Files.isRegularFile(legacy)
+                    ? Files.readAllLines(legacy, StandardCharsets.US_ASCII)
+                    : List.of();
+            return NarcoticSigningKeyring.fromBase64(primaryEncoded, legacyKeys);
+        } catch (java.io.IOException | IllegalArgumentException error) {
+            throw new IllegalStateException("Unable to load narcotics signing keyring (primary source: "
+                    + primarySource + ", legacy source: " + legacy + ").", error);
+        }
+    }
+
+    private String loadOrGenerateLocalSecret(CopiMineNarcotics plugin) {
         Path path = plugin.getDataFolder().toPath().resolve("narcotics-signing-secret.b64");
         try {
             Files.createDirectories(path.getParent());
             if (Files.isRegularFile(path)) {
-                byte[] decoded = Base64.getDecoder().decode(Files.readString(path, StandardCharsets.US_ASCII).trim());
-                if (decoded.length >= 32) {
-                    return decoded;
-                }
-                throw new IllegalStateException("Narcotics signing secret is too short.");
+                return Files.readString(path, StandardCharsets.US_ASCII);
             }
             byte[] generated = new byte[32];
             new SecureRandom().nextBytes(generated);
@@ -518,9 +536,25 @@ public final class NarcoticItemFactory {
             try (var channel = java.nio.channels.FileChannel.open(path, StandardOpenOption.WRITE)) {
                 channel.force(true);
             }
-            return generated;
+            return encoded;
         } catch (Exception error) {
             throw new IllegalStateException("Unable to load or persist the narcotics signing secret.", error);
+        }
+    }
+
+    private Path configuredPath(String variable, String fallback) {
+        String configured = System.getenv(variable);
+        return configured == null || configured.isBlank() ? Paths.get(fallback) : Paths.get(configured.trim());
+    }
+
+    private String readSigningSecret(Path path) {
+        if (!Files.isRegularFile(path)) {
+            return null;
+        }
+        try {
+            return Files.readString(path, StandardCharsets.US_ASCII);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("Unable to read narcotics signing secret: " + path, error);
         }
     }
 

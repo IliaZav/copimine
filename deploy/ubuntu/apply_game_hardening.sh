@@ -16,6 +16,10 @@ copimine_require_root
 copimine_sync_game_runtime_hardening
 copimine_fix_runtime_plugin_ownership
 copimine_apply_post_start_game_hardening
+# Essentials may create its config after the Minecraft service is considered
+# started. Re-sync now that the plugin has finished loading so its respawn
+# listener cannot override vanilla per-player bed respawn.
+copimine_sync_game_runtime_hardening
 # The RCON policy step may recreate plugin files as root. Restore the
 # Minecraft service ownership after every post-start hardening run so
 # voicechat and ImageFrame can persist their configuration on the next boot.

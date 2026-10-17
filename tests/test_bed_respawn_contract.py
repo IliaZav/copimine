@@ -48,6 +48,20 @@ def test_deployment_hardening_disables_essentials_respawn_override(tmp_path: Pat
     assert "respawn-at-home-bed: true" in result
 
 
+def test_deployment_resyncs_essentials_after_startup_hardening() -> None:
+    source = (ROOT / "deploy/ubuntu/apply_game_hardening.sh").read_text(encoding="utf-8")
+    calls = [
+        index
+        for index in range(len(source))
+        if source.startswith("copimine_sync_game_runtime_hardening", index)
+    ]
+
+    assert len(calls) == 2
+    post_start = source.index("copimine_apply_post_start_game_hardening")
+    final_ownership = source.index("copimine_fix_runtime_plugin_ownership", post_start)
+    assert post_start < calls[1] < final_ownership
+
+
 def test_local_behavior_probe_uses_real_bed_interaction_and_respawn_ack() -> None:
     source = BED_PROBE.read_text(encoding="utf-8")
 

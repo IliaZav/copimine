@@ -1,0 +1,10 @@
+{
+  "checks": 13,
+  "gameServerStarted": false,
+  "passed": true,
+  "crossLanguageHmac": true,
+  "unicodeRoundTrip": true,
+  "pythonToJava": true,
+  "javaToPython": true,
+  "javaVersion": "javac 25.0.2"
+}

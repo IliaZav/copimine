@@ -327,6 +327,52 @@ jobs:
         with:
           distribution: temurin
           java-version: '21.0.12+101.0.LTS'
+      - name: Record Java 21 for the legacy plugin build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          "COPIMINE_JAVA_21_HOME=$env:JAVA_HOME" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Download pinned Temurin 25.0.4.1 for Java plugin validators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\scripts\minecraft\DownloadPinnedArtifact.ps1
+          $archive = Join-Path $env:RUNNER_TEMP 'temurin-25.0.4.1+1.zip'
+          Save-PinnedArtifact `
+            -Uri 'https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_x64_windows_hotspot_25.0.4.1_1.zip' `
+            -Destination $archive `
+            -Algorithm SHA256 `
+            -ExpectedHash '00c847d804f4a78e9f04f2683faf14fed898535b177b7fc704486cb0284e9283' `
+            -ExpectedSize 141167264 `
+            -MaximumBytes 141167264 `
+            -StopAt $env:RUNNER_TEMP
+      - name: Set up Java 25 for Java plugin validators
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: jdkfile
+          java-version: '25.0.4.1'
+          jdk-file: ${{ runner.temp }}/temurin-25.0.4.1+1.zip
+      - name: Download pinned Gradle for migration validators
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . .\scripts\minecraft\DownloadPinnedArtifact.ps1
+          $profile = Get-Content -LiteralPath .\tools\minecraft-26.3\profile.lock.json -Raw | ConvertFrom-Json
+          $archive = Join-Path $env:RUNNER_TEMP ('gradle-' + $profile.gradle.version + '-bin.zip')
+          $gradleHome = Join-Path $env:RUNNER_TEMP ('gradle-' + $profile.gradle.version)
+          if (Test-Path -LiteralPath $gradleHome) { throw "Pinned Gradle destination already exists: $gradleHome" }
+          Save-PinnedArtifact `
+            -Uri $profile.gradle.url `
+            -Destination $archive `
+            -Algorithm SHA256 `
+            -ExpectedHash $profile.gradle.sha256 `
+            -ExpectedSize ([long]$profile.gradle.size) `
+            -MaximumBytes ([long]$profile.gradle.size) `
+            -StopAt $env:RUNNER_TEMP
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
+          $gradleExecutable = Join-Path $gradleHome 'bin\gradle.bat'
+          if (-not (Test-Path -LiteralPath $gradleExecutable -PathType Leaf)) { throw "Pinned Gradle executable was not created: $gradleExecutable" }
+          "COPIMINE_MIGRATION_GRADLE_EXECUTABLE=$gradleExecutable" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Download verified Minecraft 26.3 event test inputs
         uses: actions/download-artifact@v4
         with:
@@ -337,7 +383,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\minecraft\RunJavaPluginCi.ps1 `
-            -JavaHome $env:JAVA_HOME `
+            -JavaHome $env:COPIMINE_JAVA_21_HOME `
+            -MigrationJavaHome $env:JAVA_HOME `
+            -MigrationGradleExecutable $env:COPIMINE_MIGRATION_GRADLE_EXECUTABLE `
             -WorkspaceRoot $env:GITHUB_WORKSPACE `
             -TemporaryDirectory $env:RUNNER_TEMP `
             -PythonExe python

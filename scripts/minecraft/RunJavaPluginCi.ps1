@@ -1,6 +1,10 @@
 param(
     [Parameter(Mandatory = $true)]
     [string] $JavaHome,
+    [Parameter(Mandatory = $true)]
+    [string] $MigrationJavaHome,
+    [Parameter(Mandatory = $true)]
+    [string] $MigrationGradleExecutable,
     [string] $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [string] $TemporaryDirectory = [IO.Path]::GetTempPath(),
     [string] $PythonExe = 'python',
@@ -239,6 +243,19 @@ $javaVersion = (& $java --version | Out-String)
 if ($LASTEXITCODE -ne 0 -or $javaVersion -notmatch '(?m)^openjdk 21\.0\.12\.1(?:\s|$)') {
     throw "The Java plugin release gate requires the pinned Temurin 21.0.12.1 release; found: $javaVersion"
 }
+$migrationJdk = (Resolve-Path -LiteralPath $MigrationJavaHome).Path
+$migrationJava = Join-Path $migrationJdk 'bin\java.exe'
+if (-not (Test-Path -LiteralPath $migrationJava -PathType Leaf)) {
+    throw "Pinned migration Java executable was not found: $migrationJava"
+}
+$profileLock = Get-Content -LiteralPath (Join-Path $repo 'tools/minecraft-26.3/profile.lock.json') -Raw | ConvertFrom-Json
+$migrationJavaVersion = (& $migrationJava --version | Out-String)
+if ($LASTEXITCODE -ne 0 -or $migrationJavaVersion -notmatch ('(?m)^openjdk ' + [regex]::Escape([string]$profileLock.buildJavaVersion) + '(?:\s|$)')) {
+    throw "The Java plugin release gate requires migration Java $($profileLock.buildJavaVersion); found: $migrationJavaVersion"
+}
+if (-not (Test-Path -LiteralPath $MigrationGradleExecutable -PathType Leaf)) {
+    throw "Pinned Minecraft 26.3 Gradle executable was not found: $MigrationGradleExecutable"
+}
 $pythonCommand = Get-Command -Name $PythonExe -ErrorAction Stop
 if (-not $pythonCommand.Source) {
     throw "Python executable did not resolve to a filesystem path: $PythonExe"
@@ -385,6 +402,38 @@ $env:PAPER_PLACEHOLDER_API_JAR = $placeholderCandidate
 
 $verifiedClasspath = [Collections.Generic.List[string]]::new()
 $mavenRepositoryFullPath = [IO.Path]::GetFullPath($mavenRepository).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$migrationDependencies = @($compileLock.paper26_3Dependencies)
+if ($compileLock.paper26_3Api -cne [string]$profileLock.paper.api -or $migrationDependencies.Count -eq 0) {
+    throw 'The 26.3 compile dependency lock must match the profile-locked Paper API and include dependencies.'
+}
+foreach ($locked in $migrationDependencies) {
+    if ($locked.path -notmatch '^[A-Za-z0-9._+/-]+\.jar$' -or $locked.path.Split('/') -contains '..' -or
+        $locked.size -le 0 -or $locked.sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw "Invalid Paper 26.3 compile dependency lock entry: $($locked.path)"
+    }
+    $expectedPath = [IO.Path]::GetFullPath((Join-Path $mavenRepository $locked.path.Replace('/', [IO.Path]::DirectorySeparatorChar)))
+    if (-not $expectedPath.StartsWith($mavenRepositoryFullPath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Paper 26.3 compile dependency path escapes its isolated repository: $($locked.path)"
+    }
+    $encodedPath = ($locked.path.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
+    $artifactUri = $compileLock.artifactRepository.TrimEnd('/') + '/' + $encodedPath
+    Save-PinnedArtifact -Uri $artifactUri -Destination $expectedPath -Algorithm SHA256 -ExpectedHash $locked.sha256 -ExpectedSize $locked.size -MaximumBytes $locked.size -StopAt $tempRoot
+}
+
+$paper263ApiRelativePath = 'io/papermc/paper/paper-api/' + [string]$profileLock.paper.api + '/paper-api-' + [string]$profileLock.paper.api + '.jar'
+$paper263ApiJar = [IO.Path]::GetFullPath((Join-Path $mavenRepository $paper263ApiRelativePath.Replace('/', [IO.Path]::DirectorySeparatorChar)))
+if (-not $paper263ApiJar.StartsWith($mavenRepositoryFullPath, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Paper 26.3 API path escapes its isolated Maven repository.'
+}
+$paper263ApiUri = $compileLock.artifactRepository.TrimEnd('/') + '/' + (($paper263ApiRelativePath.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/')
+$paper263ApiHead = Invoke-WebRequest -Uri $paper263ApiUri -Method Head -UseBasicParsing -MaximumRedirection 5 -TimeoutSec 30
+$paper263ApiSize = 0L
+if (-not [long]::TryParse([string]$paper263ApiHead.Headers['Content-Length'], [ref]$paper263ApiSize) -or
+    $paper263ApiSize -le 0 -or $paper263ApiSize -gt 100000000) {
+    throw 'Paper 26.3 API response did not provide a safe, positive content length.'
+}
+Save-PinnedArtifact -Uri $paper263ApiUri -Destination $paper263ApiJar -Algorithm SHA256 -ExpectedHash ([string]$profileLock.paper.apiSha256) -ExpectedSize $paper263ApiSize -MaximumBytes 100000000 -StopAt $tempRoot
+
 foreach ($locked in $lockedDependencies) {
     if ($locked.path -notmatch '^[A-Za-z0-9._+/-]+\.jar$' -or $locked.path.Split('/') -contains '..' -or
         $locked.size -le 0 -or $locked.sha256 -notmatch '^[0-9a-f]{64}$') {
@@ -526,7 +575,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Artifacts revenue payout policy test failed.' 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'CopiMineClient/build-client.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'CopiMineClient build failed.' }
 
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'resourcepacks/build-resourcepack.ps1') -SkipServerProperties
+# Keep the canonical resource-pack URI and its generated digest synchronized while
+# validators run; minecraft/server/server.properties is restored from the snapshot.
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'resourcepacks/build-resourcepack.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Resource pack build failed.' }
 $resourcePack = Join-Path $repo 'resourcepacks/build/CopiMineResourcePack.zip'
 $resourcePackSha1 = Join-Path $repo 'resourcepacks/build/CopiMineResourcePack.sha1'
@@ -535,7 +586,11 @@ if (-not (Test-Path -LiteralPath $resourcePackSha1 -PathType Leaf)) { throw "Res
 
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/PrepareCopiMinePluginFixtures.ps1')
 if ($LASTEXITCODE -ne 0) { throw 'Pinned third-party plugin fixtures failed verification.' }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/RunCopiMineValidators.ps1')
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repo 'tests/RunCopiMineValidators.ps1') `
+    -MigrationJavaHome $migrationJdk `
+    -MigrationGradleExecutable $MigrationGradleExecutable `
+    -MavenRepository $mavenRepository `
+    -PaperApiJar $paper263ApiJar
 if ($LASTEXITCODE -ne 0) { throw 'CopiMine source and release validators failed.' }
 
 $poseGeneratorCheck = Join-Path $repo 'copimine-end-event/tools/GenerateBossAnimationPoses.ps1'

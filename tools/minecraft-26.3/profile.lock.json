@@ -45,7 +45,7 @@
     "clientPortComplete": true
   },
   "resourcePackMigration": {
-    "legacyPackSha256": "9930255ea2f5afababdd2b300b699085f0f338efb3fd8ddb8a84ebbfacdea2e8",
-    "candidateSha256": "c08d50feea6d713e1e6cfd6ef9df9b0b255c542b97b320bab8566a549704b09b"
+    "legacyPackSha256": "92c7d0529751fdb6dee65bbd4de56356a54e8746dfd0672195bdfdab047b8664",
+    "candidateSha256": "54af52822994080e76ec0bf9cc36dd37349d2f42785622bac704284de8437a0a"
   }
 }
